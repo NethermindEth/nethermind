@@ -1,8 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
-
-namespace Nevermind.Core
+﻿namespace Nevermind.Core
 {
     /// <summary>
     ///     {"address":"c2d7cf95645d33006175b78989035c7c9061d3f9",
