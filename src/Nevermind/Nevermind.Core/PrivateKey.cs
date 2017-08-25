@@ -1,12 +1,31 @@
 ﻿using System;
 using System.Threading;
+using Org.BouncyCastle.Asn1.Sec;
+using Org.BouncyCastle.Asn1.X9;
+using Org.BouncyCastle.Crypto.Parameters;
+using Org.BouncyCastle.Math;
+using Org.BouncyCastle.Math.EC;
 
 namespace Nevermind.Core
 {
     public class PrivateKey
     {
-        private readonly byte[] _key;
+        private static readonly X9ECParameters Curve = SecNamedCurves.GetByName("secp256k1");
+        private static readonly ECDomainParameters Domain = new ECDomainParameters(Curve.Curve, Curve.G, Curve.N, Curve.H);
+
+        private const int PrivateKeyLengthInBytes = 32;
+        private readonly byte[] _privateKey;
         private PublicKey _publicKey;
+
+        public PrivateKey(string hexString)
+            :this(HexString.ToBytes(hexString))
+        {
+        }
+
+        public PrivateKey()
+            :this(Random.GeneratePrivateKey())
+        {
+        }
 
         public PrivateKey(byte[] bytes)
         {
@@ -15,25 +34,29 @@ namespace Nevermind.Core
                 throw new ArgumentNullException(nameof(bytes));
             }
 
-            if (bytes.Length != 32)
+            if (bytes.Length != PrivateKeyLengthInBytes)
             {
-                throw new ArgumentException("Invalid private key length", nameof(bytes));
+                throw new ArgumentException($"{nameof(PrivateKey)} should be {PrivateKeyLengthInBytes} bytes long", nameof(bytes));
             }
 
-            _key = bytes;
+            _privateKey = bytes;
         }
-
+        
         private PublicKey ComputePublicKey()
         {
-            byte[] bytes = _key;
-            throw new NotImplementedException();
+            BigInteger d = new BigInteger(_privateKey);
+            ECPoint q = Domain.G.Multiply(d);
+
+            var publicParams = new ECPublicKeyParameters(q, Domain);
+            byte[] publicKey = publicParams.Q.GetEncoded();
+            return new PublicKey(publicKey);
         }
 
         public PublicKey PublicKey => LazyInitializer.EnsureInitialized(ref _publicKey, ComputePublicKey);
 
         public override string ToString()
         {
-            return HexString.FromBytes(_key);
+            return HexString.FromBytes(_privateKey);
         }
     }
 }

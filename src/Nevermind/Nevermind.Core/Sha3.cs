@@ -2,11 +2,11 @@
 
 namespace Nevermind.Core
 {
-    public static class Keccak
+    public static class Sha3
     {
         public static byte[] Compute(byte[] input)
         {
-            KeccakDigest digest = new KeccakDigest(256);
+            var digest = new Sha3Digest();
             byte[] output = new byte[digest.GetDigestSize()];
             digest.BlockUpdate(input, 0, input.Length);
             digest.DoFinal(output, 0);

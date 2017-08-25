@@ -5,27 +5,39 @@ namespace Nevermind.Core
 {
     public class PublicKey
     {
-        private readonly byte[] _publicKey;
+        private const int PublicKeyWithPrefixLengthInBytes = 65;
+        private const int PublicKeyLengthInBytes = 64;
+        private readonly byte[] _publicKey = new byte[64];
         private Address _address;
 
         public PublicKey(byte[] bytes)
         {
-            _publicKey = bytes;
-            throw new NotImplementedException();
+            if (bytes == null)
+            {
+                throw new ArgumentNullException(nameof(bytes));
+            }
+
+            if (bytes.Length != PublicKeyLengthInBytes && bytes.Length != PublicKeyWithPrefixLengthInBytes)
+            {
+                throw new ArgumentException($"{nameof(PublicKey)} should be {PublicKeyLengthInBytes} bytes long", nameof(bytes));
+            }
+
+            if (bytes.Length == PublicKeyWithPrefixLengthInBytes && bytes[0] != 0x04)
+            {
+                throw new ArgumentException($"Expected prefix of 0x04 for {PublicKeyWithPrefixLengthInBytes} bytes long {nameof(PublicKey)}");
+            }
+
+            Array.Copy(bytes, bytes.Length - PublicKeyLengthInBytes, _publicKey, 0, 64);
         }
 
         private Address ComputeAddress()
         {
             byte[] hash = Keccak.Compute(_publicKey);
-            // get 160 bits
-            throw new NotImplementedException();
+            byte[] last160Bits = new byte[20];
+            Array.Copy(hash, 12, last160Bits, 0, 20);
+            return new Address(last160Bits);
         }
 
         public Address Address => LazyInitializer.EnsureInitialized(ref _address, ComputeAddress);
-
-        public override string ToString()
-        {
-            return HexString.FromBytes(_publicKey);
-        }
     }
 }
