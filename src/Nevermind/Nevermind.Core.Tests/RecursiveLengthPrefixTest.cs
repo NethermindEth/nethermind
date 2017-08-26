@@ -66,16 +66,14 @@ namespace Nevermind.Core.Tests
         [TestMethod] // not yet sure how it works
         public void Serializing_sequences()
         {
-            IEnumerable<object> input = new List<object> {255L, new byte[] {255}};
-            byte[] output = RecursiveLengthPrefix.Serialize(input);
+            byte[] output = RecursiveLengthPrefix.Serialize(255L, new byte[] { 255 });
             Assert.AreEqual(4, output.Length);
         }
 
         [TestMethod] // not yet sure how it works
         public void Serializing_empty_sequence()
         {
-            IEnumerable<object> input = new List<object>();
-            byte[] output = RecursiveLengthPrefix.Serialize(input);
+            byte[] output = RecursiveLengthPrefix.Serialize();
             Assert.AreEqual(1, output.Length);
             Assert.AreEqual(128, output[0]);
         }

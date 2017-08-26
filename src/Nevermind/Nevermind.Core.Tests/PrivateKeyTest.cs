@@ -4,7 +4,7 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace Nevermind.Core.Tests
 {
     [TestClass]
-    public class PrivateKeyTests
+    public class PrivateKeyTest
     {
         private const string TestPrivateKeyHex = "3a1076bf45ab87712ad64ccb3b10217737f7faacbf2872e88fdd9a537d8fe266";
 
@@ -61,18 +61,17 @@ namespace Nevermind.Core.Tests
         public void Address_as_expected(string privateKeyHex, string addressHex)
         {
             PrivateKey privateKey = new PrivateKey(privateKeyHex);
-            PublicKey publicKey = privateKey.PublicKey;
-            Address address = publicKey.Address;
+            Address address = privateKey.Address;
             Assert.AreEqual(addressHex, address.ToString());
         }
 
         [TestMethod]
-        public void Public_key_returns_the_same_value_when_called_twice()
+        public void Address_returns_the_same_value_when_called_twice()
         {
             PrivateKey privateKey = new PrivateKey(TestPrivateKeyHex);
-            PublicKey publicKey1 = privateKey.PublicKey;
-            PublicKey publicKey2 = privateKey.PublicKey;
-            Assert.AreSame(publicKey1, publicKey2);
+            Address address1 = privateKey.Address;
+            Address address2 = privateKey.Address;
+            Assert.AreSame(address1, address2);
         }
     }
 }

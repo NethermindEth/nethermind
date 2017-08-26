@@ -3,7 +3,7 @@
 namespace Nevermind.Core.Tests
 {
     [TestClass]
-    public class AddressTests
+    public class AddressTest
     {
         [DataTestMethod]
         [DataRow("0x5A4EAB120fB44eb6684E5e32785702FF45ea344D", "0x5a4eab120fb44eb6684e5e32785702ff45ea344d")]
@@ -33,6 +33,15 @@ namespace Nevermind.Core.Tests
             Address address = new Address(init);
             string addressString = address.ToString(true);
             Assert.AreEqual(expected, addressString);
+        }
+
+        [TestMethod]
+        public void Bytes_are_retrievable()
+        {
+            byte[] bytes = new byte[20];
+            new System.Random(1).NextBytes(bytes);
+            Address address = new Address(bytes);
+            Assert.AreSame(address.Bytes, bytes);
         }
     }
 }

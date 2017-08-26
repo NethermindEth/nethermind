@@ -52,7 +52,9 @@ namespace Nevermind.Core
             return new PublicKey(publicKey);
         }
 
-        public PublicKey PublicKey => LazyInitializer.EnsureInitialized(ref _publicKey, ComputePublicKey);
+        internal PublicKey PublicKey => LazyInitializer.EnsureInitialized(ref _publicKey, ComputePublicKey);
+
+        public Address Address => PublicKey.Address;
 
         public override string ToString()
         {

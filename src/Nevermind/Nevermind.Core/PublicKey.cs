@@ -3,11 +3,10 @@ using System.Threading;
 
 namespace Nevermind.Core
 {
-    public class PublicKey
+    internal class PublicKey
     {
         private const int PublicKeyWithPrefixLengthInBytes = 65;
         private const int PublicKeyLengthInBytes = 64;
-        private readonly byte[] _publicKey = new byte[64];
         private Address _address;
 
         public PublicKey(byte[] bytes)
@@ -27,17 +26,19 @@ namespace Nevermind.Core
                 throw new ArgumentException($"Expected prefix of 0x04 for {PublicKeyWithPrefixLengthInBytes} bytes long {nameof(PublicKey)}");
             }
 
-            Array.Copy(bytes, bytes.Length - PublicKeyLengthInBytes, _publicKey, 0, 64);
+            Array.Copy(bytes, bytes.Length - PublicKeyLengthInBytes, Bytes, 0, 64);
         }
 
         private Address ComputeAddress()
         {
-            byte[] hash = Keccak.Compute(_publicKey);
+            byte[] hash = Keccak.Compute(Bytes);
             byte[] last160Bits = new byte[20];
             Array.Copy(hash, 12, last160Bits, 0, 20);
             return new Address(last160Bits);
         }
 
         public Address Address => LazyInitializer.EnsureInitialized(ref _address, ComputeAddress);
+
+        public byte[] Bytes { get; } = new byte[64];
     }
 }

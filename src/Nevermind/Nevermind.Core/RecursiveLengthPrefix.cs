@@ -25,7 +25,7 @@ namespace Nevermind.Core
     public static class RecursiveLengthPrefix
     {
         [SuppressMessage("ReSharper", "PossibleMultipleEnumeration")]
-        public static byte[] Serialize(IEnumerable<object> sequence)
+        public static byte[] Serialize(params object[] sequence)
         {
             object firstItem = sequence.FirstOrDefault();
             if (firstItem == null)
@@ -49,7 +49,7 @@ namespace Nevermind.Core
             return Concat(prefix, serializedLength, concatenation);
         }
 
-        public static byte[] Concat(byte prefix, byte[] x)
+        private static byte[] Concat(byte prefix, byte[] x)
         {
             if (x == null) throw new ArgumentNullException(nameof(x));
 
@@ -59,7 +59,7 @@ namespace Nevermind.Core
             return output;
         }
 
-        public static byte[] Concat(byte[] x, byte[] y)
+        private static byte[] Concat(byte[] x, byte[] y)
         {
             if (x == null) throw new ArgumentNullException(nameof(x));
             if (y == null) throw new ArgumentNullException(nameof(y));
@@ -70,7 +70,7 @@ namespace Nevermind.Core
             return output;
         }
 
-        public static byte[] Concat(byte prefix, byte[] x, byte[] y)
+        private static byte[] Concat(byte prefix, byte[] x, byte[] y)
         {
             if (x == null) throw new ArgumentNullException(nameof(x));
             if (y == null) throw new ArgumentNullException(nameof(y));
