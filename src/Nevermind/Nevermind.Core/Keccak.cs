@@ -1,4 +1,5 @@
-﻿using Org.BouncyCastle.Crypto.Digests;
+﻿using System.Text;
+using Org.BouncyCastle.Crypto.Digests;
 
 namespace Nevermind.Core
 {
@@ -18,10 +19,14 @@ namespace Nevermind.Core
             return HexString.FromBytes(Compute(input));
         }
 
+        public static byte[] Compute(string input)
+        {
+            return Compute(Encoding.UTF8.GetBytes(input));
+        }
+
         public static string ComputeString(string input)
         {
             return HexString.FromBytes(Compute(HexString.ToBytes(input)));
         }
-
     }
 }

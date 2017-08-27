@@ -1,11 +1,21 @@
-using System.Numerics;
+using System;
 
 namespace Nevermind.Core
 {
     public class Signature
     {
-        public BigInteger R { get; set; }
-        public BigInteger S { get; set; }
-        public BigInteger V { get; set; }
+        public byte[] Bytes { get; }
+        public int RecoveryId { get; }
+
+        internal Signature(byte[] bytes, int recoveryId)
+        {
+            if (bytes.Length != 64)
+            {
+                throw new ArgumentException();
+            }
+
+            Bytes = bytes;
+            RecoveryId = recoveryId;
+        }
     }
 }

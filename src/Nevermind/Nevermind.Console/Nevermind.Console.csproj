@@ -4,15 +4,16 @@
   <PropertyGroup>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
-    <ProjectGuid>{051B3754-5FB6-4202-AF6E-D1764E2DED06}</ProjectGuid>
-    <OutputType>Library</OutputType>
-    <AppDesignerFolder>Properties</AppDesignerFolder>
-    <RootNamespace>Nevermind.Core</RootNamespace>
-    <AssemblyName>Nevermind.Core</AssemblyName>
+    <ProjectGuid>{1EF825BE-F038-47CB-9EC7-88BF0FEEFF45}</ProjectGuid>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>Nevermind.Console</RootNamespace>
+    <AssemblyName>Nevermind.Console</AssemblyName>
     <TargetFrameworkVersion>v4.6.1</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
+    <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+    <PlatformTarget>AnyCPU</PlatformTarget>
     <DebugSymbols>true</DebugSymbols>
     <DebugType>full</DebugType>
     <Optimize>false</Optimize>
@@ -22,6 +23,7 @@
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <PlatformTarget>AnyCPU</PlatformTarget>
     <DebugType>pdbonly</DebugType>
     <Optimize>true</Optimize>
     <OutputPath>bin\Release\</OutputPath>
@@ -30,9 +32,6 @@
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
   <ItemGroup>
-    <Reference Include="BouncyCastle.Crypto, Version=1.8.1.0, Culture=neutral, PublicKeyToken=0e99375e54769942">
-      <HintPath>..\packages\BouncyCastle.1.8.1\lib\BouncyCastle.Crypto.dll</HintPath>
-    </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core" />
     <Reference Include="System.Xml.Linq" />
@@ -43,45 +42,11 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Address.cs" />
-    <Compile Include="AssemblyInfo.cs" />
-    <Compile Include="Block.cs" />
-    <Compile Include="BlockHeader.cs" />
-    <Compile Include="BloomFilter.cs" />
-    <Compile Include="FeeSchedule.cs" />
-    <Compile Include="HexPrefix.cs" />
-    <Compile Include="HexString.cs" />
-    <Compile Include="Keccak.cs" />
-    <Compile Include="Keystore.cs" />
-    <Compile Include="ModifiedPatriciaTree.cs" />
-    <Compile Include="Nibelung.cs" />
-    <Compile Include="PrivateKey.cs" />
+    <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
-    <Compile Include="PublicKey.cs" />
-    <Compile Include="Random.cs" />
-    <Compile Include="RecursiveLengthPrefix.cs" />
-    <Compile Include="EC.cs" />
-    <Compile Include="Sha3.cs" />
-    <Compile Include="Signature.cs" />
-    <Compile Include="Signer.cs" />
-    <Compile Include="Transaction.cs" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\Secp256k1.Proxy\Secp256k1.Proxy.csproj">
-      <Project>{2b187a68-ca55-4f29-ae07-61464b86ebda}</Project>
-      <Name>Secp256k1.Proxy</Name>
-    </ProjectReference>
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="packages.config" />
-  </ItemGroup>
-  <ItemGroup>
-    <Content Include="Secp256k1.x64.dll">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </Content>
-    <Content Include="Secp256k1.x86.dll">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </Content>
+    <None Include="App.config" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

@@ -1,10 +1,10 @@
 ﻿using System;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
-namespace Nevermind.Core.Tests
+namespace Nevermind.Core.Test
 {
     [TestClass]
-    public class PrivateKeyTest
+    public class PrivateKeyTests
     {
         private const string TestPrivateKeyHex = "3a1076bf45ab87712ad64ccb3b10217737f7faacbf2872e88fdd9a537d8fe266";
 
@@ -44,6 +44,15 @@ namespace Nevermind.Core.Tests
         {
             // ReSharper disable once ObjectCreationAsStatement
             new PrivateKey((string)null);
+        }
+
+        [TestMethod]
+        public void Bytes_are_retrievable()
+        {
+            byte[] bytes = new byte[32];
+            new System.Random(12).NextBytes(bytes);
+            PrivateKey privateKey = new PrivateKey(bytes);
+            Assert.AreSame(bytes, privateKey.Bytes);
         }
 
         [DataTestMethod]

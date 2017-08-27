@@ -2,7 +2,7 @@
 
 namespace Nevermind.Core
 {
-    public class Address
+    public class Address : IEquatable<Address>
     {
         public Address(string hexString)
             :this(HexString.ToBytes(hexString.Replace("0x", String.Empty)))
@@ -40,6 +40,26 @@ namespace Nevermind.Core
         public override string ToString()
         {
             return ToString(false);
+        }
+
+        public bool Equals(Address other)
+        {
+            if (ReferenceEquals(null, other)) return false;
+            if (ReferenceEquals(this, other)) return true;
+            return Equals(ToString(), other.ToString());
+        }
+
+        public override bool Equals(object obj)
+        {
+            if (ReferenceEquals(null, obj)) return false;
+            if (ReferenceEquals(this, obj)) return true;
+            if (obj.GetType() != this.GetType()) return false;
+            return Equals((Address) obj);
+        }
+
+        public override int GetHashCode()
+        {
+            return ToString().GetHashCode();
         }
     }
 }

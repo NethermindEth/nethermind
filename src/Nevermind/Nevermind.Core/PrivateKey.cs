@@ -1,7 +1,5 @@
 ﻿using System;
 using System.Threading;
-using Org.BouncyCastle.Asn1.Sec;
-using Org.BouncyCastle.Asn1.X9;
 using Org.BouncyCastle.Crypto.Parameters;
 using Org.BouncyCastle.Math;
 using Org.BouncyCastle.Math.EC;
@@ -10,11 +8,7 @@ namespace Nevermind.Core
 {
     public class PrivateKey
     {
-        private static readonly X9ECParameters Curve = SecNamedCurves.GetByName("secp256k1");
-        private static readonly ECDomainParameters Domain = new ECDomainParameters(Curve.Curve, Curve.G, Curve.N, Curve.H);
-
         private const int PrivateKeyLengthInBytes = 32;
-        private readonly byte[] _privateKey;
         private PublicKey _publicKey;
 
         public PrivateKey(string hexString)
@@ -39,26 +33,31 @@ namespace Nevermind.Core
                 throw new ArgumentException($"{nameof(PrivateKey)} should be {PrivateKeyLengthInBytes} bytes long", nameof(bytes));
             }
 
-            _privateKey = bytes;
+            Bytes = bytes;
         }
-        
+
+        public byte[] Bytes { get; }
+
         private PublicKey ComputePublicKey()
         {
-            BigInteger d = new BigInteger(_privateKey);
-            ECPoint q = Domain.G.Multiply(d);
+            //return new PublicKey(Secp256k1.Proxy.Proxy.GetPublicKey(Bytes, false));
 
-            var publicParams = new ECPublicKeyParameters(q, Domain);
-            byte[] publicKey = publicParams.Q.GetEncoded();
-            return new PublicKey(publicKey);
+            BigInteger d = new BigInteger(Bytes);
+            ECPoint q = EC.DomainParameters.G.Multiply(d);
+
+            var publicParams = new ECPublicKeyParameters(q, EC.DomainParameters);
+            byte[] publicKey = publicParams.Q.GetEncoded(false);
+            byte[] publicKeyCompressed = publicParams.Q.GetEncoded(true);
+            return new PublicKey(publicKey, publicKeyCompressed);
         }
 
-        internal PublicKey PublicKey => LazyInitializer.EnsureInitialized(ref _publicKey, ComputePublicKey);
+        public PublicKey PublicKey => LazyInitializer.EnsureInitialized(ref _publicKey, ComputePublicKey);
 
         public Address Address => PublicKey.Address;
 
         public override string ToString()
         {
-            return HexString.FromBytes(_privateKey);
+            return HexString.FromBytes(Bytes);
         }
     }
 }

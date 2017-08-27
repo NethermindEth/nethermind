@@ -1,9 +1,9 @@
 ﻿using Microsoft.VisualStudio.TestTools.UnitTesting;
 
-namespace Nevermind.Core.Tests
+namespace Nevermind.Core.Test
 {
     [TestClass]
-    public class HexPrefixTest
+    public class HexPrefixTests
     {
         [DataTestMethod]
         [DataRow(false, (byte)3, (byte)19)]

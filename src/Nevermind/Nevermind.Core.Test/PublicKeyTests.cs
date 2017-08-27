@@ -1,10 +1,10 @@
 ﻿using System;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
-namespace Nevermind.Core.Tests
+namespace Nevermind.Core.Test
 {
     [TestClass]
-    public class PublicKeyTest
+    public class PublicKeyTests
     {
         [TestMethod]
         public void Address_is_correct()

@@ -1,9 +1,9 @@
 ﻿using Microsoft.VisualStudio.TestTools.UnitTesting;
 
-namespace Nevermind.Core.Tests
+namespace Nevermind.Core.Test
 {
     [TestClass]
-    public class AddressTest
+    public class AddressTests
     {
         [DataTestMethod]
         [DataRow("0x5A4EAB120fB44eb6684E5e32785702FF45ea344D", "0x5a4eab120fb44eb6684e5e32785702ff45ea344d")]

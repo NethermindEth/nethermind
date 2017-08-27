@@ -1,7 +1,6 @@
-using System.Collections.Generic;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
-namespace Nevermind.Core.Tests
+namespace Nevermind.Core.Test
 {
     [TestClass]
     public class RecursiveLengthPrefixTests

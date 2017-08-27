@@ -3,11 +3,17 @@ using System.Threading;
 
 namespace Nevermind.Core
 {
-    internal class PublicKey
+    public class PublicKey
     {
         private const int PublicKeyWithPrefixLengthInBytes = 65;
         private const int PublicKeyLengthInBytes = 64;
         private Address _address;
+
+        public PublicKey(byte[] bytes, byte[] compressedBytes)
+            : this(bytes)
+        {
+            CompressedBytes = compressedBytes;
+        }
 
         public PublicKey(byte[] bytes)
         {
@@ -27,6 +33,9 @@ namespace Nevermind.Core
             }
 
             Array.Copy(bytes, bytes.Length - PublicKeyLengthInBytes, Bytes, 0, 64);
+
+            Array.Copy(new byte[] { 0x04 }, 0, PrefixedBytes, 0, 1);
+            Array.Copy(bytes, bytes.Length - PublicKeyLengthInBytes, PrefixedBytes, 1, 64);
         }
 
         private Address ComputeAddress()
@@ -39,6 +48,13 @@ namespace Nevermind.Core
 
         public Address Address => LazyInitializer.EnsureInitialized(ref _address, ComputeAddress);
 
+        public byte[] PrefixedBytes { get; } = new byte[65];
         public byte[] Bytes { get; } = new byte[64];
+        public byte[] CompressedBytes { get; }
+
+        public override string ToString()
+        {
+            return HexString.FromBytes(PrefixedBytes);
+        }
     }
 }
