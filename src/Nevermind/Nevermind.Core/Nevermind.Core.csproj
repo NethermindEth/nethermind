@@ -57,6 +57,8 @@
     <Compile Include="PublicKey.cs" />
     <Compile Include="Random.cs" />
     <Compile Include="RecursiveLengthPrefix.cs" />
+    <Compile Include="Ripemd.cs" />
+    <Compile Include="Sha2.cs" />
     <Compile Include="Signature.cs" />
     <Compile Include="Signer.cs" />
     <Compile Include="Transaction.cs" />

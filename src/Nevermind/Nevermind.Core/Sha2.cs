@@ -1,11 +1,11 @@
-﻿using System.Text;
+using System.Text;
 using HashLib;
 
 namespace Nevermind.Core
 {
-    public static class Keccak
+    public static class Sha2
     {
-        private static readonly IHash Hash = HashFactory.Crypto.SHA3.CreateKeccak256();
+        private static readonly IHash Hash = HashFactory.Crypto.CreateSHA256();
 
         public static byte[] Compute(byte[] input)
         {
