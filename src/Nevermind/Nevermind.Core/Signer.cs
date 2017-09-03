@@ -24,24 +24,15 @@ namespace Nevermind.Core
         {
             if (!Secp256k1.Proxy.Proxy.VerifyPrivateKey(privateKey.Bytes))
             {
-                throw new NotImplementedException();
+                throw new ArgumentException("Invalid private key", nameof(privateKey));
             }
 
             int recoveryId;
             byte[] signature = Secp256k1.Proxy.Proxy.SignCompact(message, privateKey.Bytes, out recoveryId);
 
-            byte[] publicKey = Secp256k1.Proxy.Proxy.RecoverKeyFromCompact(message, signature, recoveryId, false);
-            string hashRecovered = new PublicKey(publicKey).ToString();
-
-            string hash = privateKey.PublicKey.ToString();
-            if (hash != hashRecovered)
-            {
-                throw new NotImplementedException($"{hash} {hashRecovered}");
-            }
-
             return new Signature(signature, recoveryId);
         }
-        
+
         public static Address RecoverSignerAddress(Signature signature, byte[] message)
         {
             byte[] publicKey = Secp256k1.Proxy.Proxy.RecoverKeyFromCompact(message, signature.Bytes, signature.RecoveryId, false);

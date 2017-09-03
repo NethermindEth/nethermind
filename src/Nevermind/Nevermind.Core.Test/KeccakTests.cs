@@ -1,4 +1,5 @@
-﻿using Microsoft.VisualStudio.TestTools.UnitTesting;
+﻿using HashLib;
+using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace Nevermind.Core.Test
 {
@@ -10,15 +11,18 @@ namespace Nevermind.Core.Test
         [TestMethod]
         public void Keccak_of_empty_byte_array()
         {
-            string result = Keccak.ComputeString(new byte[] {});
-            Assert.AreEqual(result, KeccakOfEmptyString);
+            IHash keccak256 = HashFactory.Crypto.SHA3.CreateKeccak256();
+            string value = keccak256.ComputeBytes(new byte[] { }).ToString().ToUpperInvariant();
+            Assert.IsTrue(value.StartsWith("C5D24"));
+            //string result = Keccak.ComputeString(new byte[] {});
+            //Assert.AreEqual(KeccakOfEmptyString, result);
         }
 
         [TestMethod]
         public void Keccak_of_empty_string()
         {
             string result = Keccak.ComputeString(string.Empty);
-            Assert.AreEqual(result, KeccakOfEmptyString);
+            Assert.AreEqual(KeccakOfEmptyString, result);
         }
     }
 }

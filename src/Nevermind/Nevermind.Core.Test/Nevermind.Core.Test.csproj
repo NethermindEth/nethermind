@@ -56,13 +56,16 @@
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="PublicKeyTests.cs" />
     <Compile Include="RecursiveLengthPrefixTests.cs" />
-    <Compile Include="Sha3Tests.cs" />
     <Compile Include="SignerTests.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\HashLib\HashLib.csproj">
+      <Project>{31880fb6-5b86-42b8-ab92-864045b5d7a2}</Project>
+      <Name>HashLib</Name>
+    </ProjectReference>
     <ProjectReference Include="..\Nevermind.Core\Nevermind.Core.csproj">
       <Project>{051B3754-5FB6-4202-AF6E-D1764E2DED06}</Project>
       <Name>Nevermind.Core</Name>

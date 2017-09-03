@@ -30,9 +30,6 @@
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
   <ItemGroup>
-    <Reference Include="BouncyCastle.Crypto, Version=1.8.1.0, Culture=neutral, PublicKeyToken=0e99375e54769942">
-      <HintPath>..\packages\BouncyCastle.1.8.1\lib\BouncyCastle.Crypto.dll</HintPath>
-    </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core" />
     <Reference Include="System.Xml.Linq" />
@@ -60,20 +57,19 @@
     <Compile Include="PublicKey.cs" />
     <Compile Include="Random.cs" />
     <Compile Include="RecursiveLengthPrefix.cs" />
-    <Compile Include="EC.cs" />
-    <Compile Include="Sha3.cs" />
     <Compile Include="Signature.cs" />
     <Compile Include="Signer.cs" />
     <Compile Include="Transaction.cs" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\HashLib\HashLib.csproj">
+      <Project>{31880FB6-5B86-42B8-AB92-864045B5D7A2}</Project>
+      <Name>HashLib</Name>
+    </ProjectReference>
     <ProjectReference Include="..\Secp256k1.Proxy\Secp256k1.Proxy.csproj">
       <Project>{2b187a68-ca55-4f29-ae07-61464b86ebda}</Project>
       <Name>Secp256k1.Proxy</Name>
     </ProjectReference>
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="Secp256k1.x64.dll">

@@ -6,7 +6,7 @@ namespace Nevermind.Core.Test
     public class SignerTests
     {
         [TestMethod]
-        public void Sign_and_verify()
+        public void Sign_and_recover()
         {
             byte[] message = Keccak.Compute("Test message");
             PrivateKey privateKey = new PrivateKey();
