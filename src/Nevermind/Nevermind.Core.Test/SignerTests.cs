@@ -8,7 +8,7 @@ namespace Nevermind.Core.Test
         [TestMethod]
         public void Sign_and_recover()
         {
-            byte[] message = Keccak.Compute("Test message");
+            Keccak message = Keccak.Compute("Test message");
             PrivateKey privateKey = new PrivateKey();
             Signature signature = Signer.Sign(privateKey, message);
             Assert.AreEqual(privateKey.Address, Signer.RecoverSignerAddress(signature, message));

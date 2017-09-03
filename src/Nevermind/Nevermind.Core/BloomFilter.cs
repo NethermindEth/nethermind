@@ -4,7 +4,7 @@ using System.Text;
 
 namespace Nevermind.Core
 {
-    class BloomFilter
+    public class BloomFilter
     {
     }
 }

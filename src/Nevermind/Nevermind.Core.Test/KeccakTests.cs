@@ -10,14 +10,14 @@ namespace Nevermind.Core.Test
         [TestMethod]
         public void Empty_byte_array()
         {
-            string result = Keccak.ComputeString(new byte[] { });
+            string result = Keccak.Compute(new byte[] { }).ToString();
             Assert.AreEqual(KeccakOfEmptyString, result);
         }
 
         [TestMethod]
         public void Empty_string()
         {
-            string result = Keccak.ComputeString(string.Empty);
+            string result = Keccak.Compute(string.Empty).ToString();
             Assert.AreEqual(KeccakOfEmptyString, result);
         }
     }

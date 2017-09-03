@@ -3,28 +3,30 @@ using HashLib;
 
 namespace Nevermind.Core
 {
-    public static class Keccak
+    public class Keccak
     {
         private static readonly IHash Hash = HashFactory.Crypto.SHA3.CreateKeccak256();
 
-        public static byte[] Compute(byte[] input)
+        private Keccak(byte[] bytes)
         {
-            return Hash.ComputeBytes(input).GetBytes();
+            Bytes = bytes;
         }
 
-        public static string ComputeString(byte[] input)
+        public byte[] Bytes { get; }
+
+        public override string ToString()
         {
-            return HexString.FromBytes(Compute(input));
+            return HexString.FromBytes(Bytes);
         }
 
-        public static byte[] Compute(string input)
+        public static Keccak Compute(byte[] input)
+        {
+            return new Keccak(Hash.ComputeBytes(input).GetBytes());
+        }
+
+        public static Keccak Compute(string input)
         {
             return Compute(Encoding.UTF8.GetBytes(input));
-        }
-
-        public static string ComputeString(string input)
-        {
-            return HexString.FromBytes(Compute(HexString.ToBytes(input)));
         }
     }
 }

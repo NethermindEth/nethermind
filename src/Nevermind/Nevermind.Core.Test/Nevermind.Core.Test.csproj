@@ -59,6 +59,7 @@
     <Compile Include="RipemdTests.cs" />
     <Compile Include="Sha2Tests.cs" />
     <Compile Include="SignerTests.cs" />
+    <Compile Include="UnitTests.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />

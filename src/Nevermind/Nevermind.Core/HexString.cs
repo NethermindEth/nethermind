@@ -27,8 +27,7 @@ namespace Nevermind.Core
             string hashHex = null;
             if (withEip55Checksum)
             {
-                byte[] hash = Keccak.Compute(Encoding.UTF8.GetBytes(FromBytes(bytes)));
-                hashHex = FromBytes(hash);
+                hashHex = Keccak.Compute(Encoding.UTF8.GetBytes(FromBytes(bytes))).ToString();
             }
 
             for (int i = 0; i < bytes.Length; i++)

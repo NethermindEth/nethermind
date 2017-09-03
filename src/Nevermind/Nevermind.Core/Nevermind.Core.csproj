@@ -40,6 +40,7 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Account.cs" />
     <Compile Include="Address.cs" />
     <Compile Include="AssemblyInfo.cs" />
     <Compile Include="Block.cs" />
@@ -62,6 +63,7 @@
     <Compile Include="Signature.cs" />
     <Compile Include="Signer.cs" />
     <Compile Include="Transaction.cs" />
+    <Compile Include="Unit.cs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\HashLib\HashLib.csproj">

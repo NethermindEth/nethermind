@@ -40,7 +40,7 @@ namespace Nevermind.Core
 
         private Address ComputeAddress()
         {
-            byte[] hash = Keccak.Compute(Bytes);
+            byte[] hash = Keccak.Compute(Bytes).Bytes;
             byte[] last160Bits = new byte[20];
             Array.Copy(hash, 12, last160Bits, 0, 20);
             return new Address(last160Bits);
