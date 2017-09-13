@@ -32,6 +32,7 @@
   <ItemGroup>
     <Reference Include="System" />
     <Reference Include="System.Core" />
+    <Reference Include="System.Numerics" />
     <Reference Include="System.Xml.Linq" />
     <Reference Include="System.Data.DataSetExtensions" />
     <Reference Include="Microsoft.CSharp" />
@@ -44,7 +45,9 @@
     <Compile Include="Address.cs" />
     <Compile Include="AssemblyInfo.cs" />
     <Compile Include="Block.cs" />
+    <Compile Include="Blockchain.cs" />
     <Compile Include="BlockHeader.cs" />
+    <Compile Include="BlockValidator.cs" />
     <Compile Include="BloomFilter.cs" />
     <Compile Include="FeeSchedule.cs" />
     <Compile Include="HexPrefix.cs" />
@@ -52,6 +55,7 @@
     <Compile Include="Keccak.cs" />
     <Compile Include="Keystore.cs" />
     <Compile Include="ModifiedPatriciaTree.cs" />
+    <Compile Include="Nevermind.Miner.cs" />
     <Compile Include="Nibelung.cs" />
     <Compile Include="PrivateKey.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
@@ -62,6 +66,7 @@
     <Compile Include="Sha2.cs" />
     <Compile Include="Signature.cs" />
     <Compile Include="Signer.cs" />
+    <Compile Include="StateDatabase.cs" />
     <Compile Include="Transaction.cs" />
     <Compile Include="Unit.cs" />
   </ItemGroup>
