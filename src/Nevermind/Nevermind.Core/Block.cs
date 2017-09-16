@@ -1,53 +1,28 @@
-﻿using System;
-using System.Numerics;
-using System.Xml.Schema;
+﻿using System.Numerics;
 
 namespace Nevermind.Core
 {
     public class Block
     {
-        private const long GenesisBlockDifficulty = 131072;
-
-        public Block(Block parentBlock, Transaction[] transactions, BlockHeader[] ommers)
+        public Block(Block parentBlock, BlockHeader[] ommers, Transaction[] transactions)
         {
-            Header = new BlockHeader();
-            Transactions = transactions;
+            Header = parentBlock == null ? BlockHeader.Genesis : new BlockHeader(parentBlock.Header, ommers, transactions);
+            Parent = parentBlock;
             Ommers = ommers;
-            
-            // set timestamp
-
-            if (parentBlock == null)
-            {
-                Header.Difficulty = GenesisBlockDifficulty;
-                Header.ParentHash = null;
-                //Header.GasLimit = 
-            }
-            else
-            {
-                Header.Difficulty = BigInteger.Max(
-                    GenesisBlockDifficulty,
-                    parentBlock.Header.Difficulty +
-                    TimeAdjustment(this, parentBlock) +
-                    TimeBomb(this) +
-                    BigInteger.Divide(parentBlock.Header.Difficulty, 2048));
-                Header.ParentHash = parentBlock.Header.MixHash;
-            }
+            Transactions = transactions;
         }
 
-        private long TimeAdjustment(Block parentBlock, Block block)
+        public BlockHeader Header { get; }
+        public Transaction[] Transactions { get; }
+        public BlockHeader[] Ommers { get; }
+        public BigInteger TotalDifficulty => Header.Difficulty + (Parent?.TotalDifficulty ?? 0);
+        public Block Parent { get; }
+
+        static Block()
         {
-            return Math.Max(1 - (block.Header.Timestamp - parentBlock.Header.Timestamp) / 10, 99);
+            Genesis = new Block(null, new BlockHeader[] { }, new Transaction[] { });
         }
 
-        private BigInteger TimeBomb(Block  block)
-        {
-            BigInteger timeBomb = 2;
-            BigInteger.Pow(timeBomb, (int)(Math.Floor(block.Header.Number / 100000m) - 2m));
-            return timeBomb;
-        }
-
-        public BlockHeader Header { get; set; }
-        public Transaction[] Transactions { get; set; }
-        public BlockHeader[] Ommers { get; set; }
+        public static Block Genesis { get; }
     }
 }

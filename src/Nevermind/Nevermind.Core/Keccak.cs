@@ -12,6 +12,8 @@ namespace Nevermind.Core
             Bytes = bytes;
         }
 
+        public static Keccak Zero { get; }  = new Keccak(new byte[32]);
+
         public byte[] Bytes { get; }
 
         public override string ToString()

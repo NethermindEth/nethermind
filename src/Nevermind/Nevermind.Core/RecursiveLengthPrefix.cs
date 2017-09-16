@@ -24,6 +24,8 @@ namespace Nevermind.Core
     /// </summary>
     public static class RecursiveLengthPrefix
     {
+        public static byte[] OfEmptySequence => Serialize();
+
         [SuppressMessage("ReSharper", "PossibleMultipleEnumeration")]
         public static byte[] Serialize(params object[] sequence)
         {
