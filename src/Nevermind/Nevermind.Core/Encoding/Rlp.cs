@@ -12,6 +12,34 @@ namespace Nevermind.Core.Encoding
             Bytes = bytes;
         }
 
+        public static Rlp Encode(BlockHeader header)
+        {
+            return new Rlp(
+                RecursiveLengthPrefix.Serialize(
+                    header.ParentHash,
+                    header.OmmersHash,
+                    header.Beneficiary,
+                    header.StateRoot,
+                    header.TransactionsRoot,
+                    header.ReceiptsRoot,
+                    header.LogsBloom,
+                    header.Difficulty,
+                    header.Number,
+                    header.GasLimit,
+                    header.GasUsed,
+                    header.Timestamp,
+                    header.ExtraData,
+                    header.MixHash,
+                    header.Nonce
+                    ));
+        }
+
+        public static Rlp Encode(Block block)
+        {
+            return new Rlp(
+                RecursiveLengthPrefix.Serialize(block.Header, block.Transactions, block.Ommers));
+        }
+
         public static Rlp Encode(BigInteger bigInteger)
         {
             throw new NotImplementedException();

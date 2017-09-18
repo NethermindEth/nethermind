@@ -1,5 +1,4 @@
-﻿using System;
-using System.Numerics;
+﻿using System.Numerics;
 using Nevermind.Core.Encoding;
 
 namespace Nevermind.Core
@@ -8,10 +7,13 @@ namespace Nevermind.Core
     {
         public BlockHeader(BlockHeader parentBlockHeader, BlockHeader[] ommers, Transaction[] transactions)
         {
-            Number = parentBlockHeader.Number + 1;
+            if (parentBlockHeader == null)
+            {
+                return;
+            }
+
             Timestamp = TimeStamp.Get();
             Difficulty = DifficultyCalculator.Calculate(this, parentBlockHeader);
-            ParentHash = parentBlockHeader.MixHash;
         }
 
         public Keccak ParentHash { get; set; }
@@ -28,11 +30,12 @@ namespace Nevermind.Core
         public BigInteger Timestamp { get; set; }
         public byte[] ExtraData { get; set; }
         public Keccak MixHash { get; set; }
-        public Keccak Nonce { get; set; }
+        public BigInteger Nonce { get; set; }
 
         static BlockHeader()
         {
-            Genesis = new BlockHeader(null, new BlockHeader[]{}, new Transaction[] {});
+            Genesis = new BlockHeader(null, new BlockHeader[] { }, new Transaction[] { });
+            Genesis.Number = 0;
             Genesis.ParentHash = Keccak.Zero;
             Genesis.OmmersHash = Keccak.Compute(RecursiveLengthPrefix.OfEmptySequence);
             Genesis.Beneficiary = Address.Zero;
@@ -40,14 +43,15 @@ namespace Nevermind.Core
             Genesis.TransactionsRoot = Keccak.Zero;
             Genesis.ReceiptsRoot = Keccak.Zero;
             Genesis.LogsBloom = new Bloom();
-            Genesis.Difficulty = Core.DifficultyCalculator.OfGenesisBlock;
+            Genesis.Difficulty = DifficultyCalculator.OfGenesisBlock;
             Genesis.Number = 0;
             Genesis.GasUsed = 0;
-            Genesis.GasLimit = 3141592;
+            //Genesis.GasLimit = 3141592;
+            Genesis.GasLimit = 5000;
             // timestamp
-            Genesis.ExtraData = new byte[0];
+            Genesis.ExtraData = HexString.ToBytes("0x11bbe8db4e347b4e8c937c1c8370e4b5ed33adb3db69cbdb7a38e1e50b1b82fa");
             Genesis.MixHash = Keccak.Zero;
-            // Genesis.Nonce = RecursiveLengthPrefix.Serialize(new byte[] {42});
+            Genesis.Nonce = new BigInteger(RecursiveLengthPrefix.Serialize(new byte[] {42}));
         }
 
         public static BlockHeader Genesis { get; }

@@ -58,9 +58,10 @@ namespace Nevermind.Core.Encoding
                 throw new ArgumentNullException($"{nameof(hexString)}");
             }
 
+            int startIndex = hexString.StartsWith("0x") ? 4 : 0;
             int numberChars = hexString.Length;
             byte[] bytes = new byte[numberChars / 2];
-            for (int i = 0; i < numberChars; i += 2)
+            for (int i = startIndex; i < numberChars; i += 2)
             {
                 bytes[i / 2] = Convert.ToByte(hexString.Substring(i, 2), 16);
             }

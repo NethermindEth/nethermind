@@ -50,6 +50,7 @@
     <Compile Include="DifficultyCalculator.cs" />
     <Compile Include="BlockHeader.cs" />
     <Compile Include="BlockRewardCalculator.cs" />
+    <Compile Include="Validators\BlockHeaderValidator.cs" />
     <Compile Include="Validators\BlockValidator.cs" />
     <Compile Include="Encoding\Bloom.cs" />
     <Compile Include="Sugar\DecimalExtensions.cs" />

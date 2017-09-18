@@ -5,7 +5,8 @@ namespace Nevermind.Core
 {
     public static class DifficultyCalculator
     {
-        public const long OfGenesisBlock = 131072;
+        //public const long OfGenesisBlock = 131_072;
+        public const long OfGenesisBlock = 17_179_869_184;
 
         public static BigInteger Calculate(BlockHeader blockHeader, BlockHeader parentBlockHeader)
         {

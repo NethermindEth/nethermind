@@ -1,4 +1,5 @@
 ﻿using System.Numerics;
+using Nevermind.Core.Encoding;
 
 namespace Nevermind.Core
 {
@@ -17,6 +18,8 @@ namespace Nevermind.Core
         public BlockHeader[] Ommers { get; }
         public BigInteger TotalDifficulty => Header.Difficulty + (Parent?.TotalDifficulty ?? 0);
         public Block Parent { get; }
+
+        public Keccak Hash => Keccak.Compute(Rlp.Encode(Header));
 
         static Block()
         {
