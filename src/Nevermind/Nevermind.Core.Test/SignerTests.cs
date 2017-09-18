@@ -1,4 +1,6 @@
 ﻿using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Nevermind.Core.Encoding;
+using Nevermind.Core.Signing;
 
 namespace Nevermind.Core.Test
 {

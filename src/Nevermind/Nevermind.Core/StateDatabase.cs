@@ -4,7 +4,12 @@ namespace Nevermind.Core
 {
     public class StateDatabase
     {
-        private Dictionary<byte[], byte[]> _state = new Dictionary<byte[], byte[]>();
+        public StateDatabase()
+        {
+            
+        }
+
+        public Dictionary<byte[], byte[]> State { get; } = new Dictionary<byte[], byte[]>();
     }
 
     public class World

@@ -3,30 +3,26 @@ using static System.Math;
 
 namespace Nevermind.Core
 {
-    public static class Difficulty
+    public static class DifficultyCalculator
     {
         public const long OfGenesisBlock = 131072;
 
-        public static BigInteger Calculate(Block block)
+        public static BigInteger Calculate(BlockHeader blockHeader, BlockHeader parentBlockHeader)
         {
-            Block parentBlock = block.Parent;
-            if (parentBlock == null)
+            if (parentBlockHeader == null)
                 return OfGenesisBlock;
-
-            BlockHeader parentBlockHeader = parentBlock.Header;
-            BlockHeader blockHeader = block.Header;
 
             return BigInteger.Max(
                 OfGenesisBlock,
-                parentBlock.Header.Difficulty +
+                parentBlockHeader.Difficulty +
                 TimeAdjustment(blockHeader, parentBlockHeader) +
                 TimeBomb(blockHeader) +
-                BigInteger.Divide(parentBlock.Header.Difficulty, 2048));
+                BigInteger.Divide(blockHeader.Difficulty, 2048));
         }
 
         private static BigInteger TimeAdjustment(BlockHeader parentBlockHeader, BlockHeader blockHeader)
         {
-            return Max(1 - (blockHeader.Timestamp - parentBlockHeader.Timestamp) / 10, 99);
+            return BigInteger.Max(1 - BigInteger.Divide(blockHeader.Timestamp - parentBlockHeader.Timestamp, 10), -99);
         }
 
         private static BigInteger TimeBomb(BlockHeader blockHeader)

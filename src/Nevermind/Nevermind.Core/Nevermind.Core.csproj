@@ -43,33 +43,43 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Account.cs" />
+    <Compile Include="Validators\AccountValidator.cs" />
     <Compile Include="Address.cs" />
-    <Compile Include="AssemblyInfo.cs" />
     <Compile Include="Block.cs" />
     <Compile Include="Blockchain.cs" />
+    <Compile Include="DifficultyCalculator.cs" />
     <Compile Include="BlockHeader.cs" />
-    <Compile Include="BlockValidator.cs" />
-    <Compile Include="BloomFilter.cs" />
-    <Compile Include="FeeSchedule.cs" />
-    <Compile Include="HexPrefix.cs" />
-    <Compile Include="HexString.cs" />
-    <Compile Include="Keccak.cs" />
-    <Compile Include="Keystore.cs" />
-    <Compile Include="ModifiedPatriciaTree.cs" />
-    <Compile Include="Nevermind.Miner.cs" />
-    <Compile Include="Nibelung.cs" />
-    <Compile Include="PrivateKey.cs" />
+    <Compile Include="BlockRewardCalculator.cs" />
+    <Compile Include="Validators\BlockValidator.cs" />
+    <Compile Include="Encoding\Bloom.cs" />
+    <Compile Include="Sugar\DecimalExtensions.cs" />
+    <Compile Include="VirtualMachine\FeeSchedule.cs" />
+    <Compile Include="Encoding\HexPrefix.cs" />
+    <Compile Include="Encoding\HexString.cs" />
+    <Compile Include="Sugar\IntExtensions.cs" />
+    <Compile Include="Encoding\Keccak.cs" />
+    <Compile Include="Signing\Keystore.cs" />
+    <Compile Include="LogEntry.cs" />
+    <Compile Include="MerklePatriciaTree.cs" />
+    <Compile Include="Validators\OmmersValidator.cs" />
+    <Compile Include="Signing\PrivateKey.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
-    <Compile Include="PublicKey.cs" />
-    <Compile Include="Random.cs" />
-    <Compile Include="RecursiveLengthPrefix.cs" />
-    <Compile Include="Ripemd.cs" />
-    <Compile Include="Sha2.cs" />
-    <Compile Include="Signature.cs" />
-    <Compile Include="Signer.cs" />
+    <Compile Include="Signing\PublicKey.cs" />
+    <Compile Include="Signing\Random.cs" />
+    <Compile Include="Encoding\RecursiveLengthPrefix.cs" />
+    <Compile Include="Encoding\Ripemd.cs" />
+    <Compile Include="Encoding\Rlp.cs" />
+    <Compile Include="Encoding\Sha2.cs" />
+    <Compile Include="Signing\Signature.cs" />
+    <Compile Include="Validators\SignatureValidator.cs" />
+    <Compile Include="Signing\Signer.cs" />
     <Compile Include="StateDatabase.cs" />
+    <Compile Include="TimeStamp.cs" />
     <Compile Include="Transaction.cs" />
-    <Compile Include="Unit.cs" />
+    <Compile Include="TransactionReceipt.cs" />
+    <Compile Include="Validators\TransactionValidator.cs" />
+    <Compile Include="Sugar\Unit.cs" />
+    <Compile Include="Validators\Validator.cs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\HashLib\HashLib.csproj">
@@ -89,5 +99,6 @@
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
   </ItemGroup>
+  <ItemGroup />
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

@@ -1,4 +1,4 @@
-﻿namespace Nevermind.Core
+﻿namespace Nevermind.Core.Signing
 {
     public static class Random
     {

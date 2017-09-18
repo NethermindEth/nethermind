@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace Nevermind.Core
+namespace Nevermind.Core.Validators
 {
     public class OmmersValidator
     {

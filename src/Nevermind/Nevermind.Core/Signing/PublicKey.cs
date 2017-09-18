@@ -1,7 +1,8 @@
 ﻿using System;
 using System.Threading;
+using Nevermind.Core.Encoding;
 
-namespace Nevermind.Core
+namespace Nevermind.Core.Signing
 {
     public class PublicKey
     {

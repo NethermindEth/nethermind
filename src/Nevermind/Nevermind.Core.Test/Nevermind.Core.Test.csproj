@@ -51,6 +51,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="AddressTests.cs" />
+    <Compile Include="BlockValidatorTests.cs" />
     <Compile Include="HexPrefixTests.cs" />
     <Compile Include="KeccakTests.cs" />
     <Compile Include="PrivateKeyTests.cs" />

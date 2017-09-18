@@ -1,13 +1,17 @@
 ﻿using System;
 using System.Numerics;
+using Nevermind.Core.Encoding;
 
 namespace Nevermind.Core
 {
     public class BlockHeader
     {
-        public BlockHeader(BlockHeader parentBlock, BlockHeader[] ommers, Transaction[] transactions)
+        public BlockHeader(BlockHeader parentBlockHeader, BlockHeader[] ommers, Transaction[] transactions)
         {
-            throw new NotImplementedException();
+            Number = parentBlockHeader.Number + 1;
+            Timestamp = TimeStamp.Get();
+            Difficulty = DifficultyCalculator.Calculate(this, parentBlockHeader);
+            ParentHash = parentBlockHeader.MixHash;
         }
 
         public Keccak ParentHash { get; set; }
@@ -16,12 +20,12 @@ namespace Nevermind.Core
         public Keccak StateRoot { get; set; }
         public Keccak TransactionsRoot { get; set; }
         public Keccak ReceiptsRoot { get; set; }
-        public BloomFilter LogsBloom { get; set; }
+        public Bloom LogsBloom { get; set; }
         public BigInteger Difficulty { get; set; }
         public long Number { get; set; }
         public long GasUsed { get; set; }
         public long GasLimit { get; set; }
-        public long Timestamp { get; set; }
+        public BigInteger Timestamp { get; set; }
         public byte[] ExtraData { get; set; }
         public Keccak MixHash { get; set; }
         public Keccak Nonce { get; set; }
@@ -35,8 +39,8 @@ namespace Nevermind.Core
             // state root
             Genesis.TransactionsRoot = Keccak.Zero;
             Genesis.ReceiptsRoot = Keccak.Zero;
-            Genesis.LogsBloom = new BloomFilter();
-            Genesis.Difficulty = Core.Difficulty.OfGenesisBlock;
+            Genesis.LogsBloom = new Bloom();
+            Genesis.Difficulty = Core.DifficultyCalculator.OfGenesisBlock;
             Genesis.Number = 0;
             Genesis.GasUsed = 0;
             Genesis.GasLimit = 3141592;

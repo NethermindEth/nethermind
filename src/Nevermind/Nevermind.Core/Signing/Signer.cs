@@ -1,6 +1,7 @@
 ﻿using System;
+using Nevermind.Core.Encoding;
 
-namespace Nevermind.Core
+namespace Nevermind.Core.Signing
 {
     /// <summary>
     ///     for signer tests
@@ -10,7 +11,7 @@ namespace Nevermind.Core
     {
         public static void Sign(Transaction transaction, PrivateKey privateKey)
         {
-            var hash = Keccak.Compute(transaction.Collapse());
+            var hash = Keccak.Compute(Rlp.Encode(transaction));
             throw new NotImplementedException();
         }
 

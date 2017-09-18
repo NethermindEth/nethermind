@@ -1,3 +1,5 @@
+using Nevermind.Core.Signing;
+
 namespace Nevermind.Core
 {
     public class Transaction
@@ -7,12 +9,9 @@ namespace Nevermind.Core
         public long GasLimit { get; set; }
         public Address To { get; set; }
         public long Value { get; set; }
+        public byte[] Data { get; set; }
+        public byte[] Init { get; set; }
         public Signature Signature { get; set; }
         public bool IsSigned => Signature != null;
-
-        public byte[] Collapse()
-        {
-            return RecursiveLengthPrefix.Serialize(Nonce, GasPrice, GasLimit);
-        }
     }
 }

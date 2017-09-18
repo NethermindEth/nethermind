@@ -1,9 +1,9 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
+using System.Numerics;
 
-namespace Nevermind.Core
+namespace Nevermind.Core.Encoding
 {
     /// <summary>
     /// If the value to be serialised is a byte-array, the RLP serialisation takes one of three forms:
@@ -117,25 +117,26 @@ namespace Nevermind.Core
             byte prefix = (byte)(183 + serializedLength.Length);
             return Concat(prefix, serializedLength, input);
         }
-
-        public static byte[] Serialize(long length)
+        
+        public static byte[] Serialize(BigInteger value)
         {
-            if (length < 56)
-            {
-                throw new ArgumentException("Length for BigEndian is expected to be above 56", nameof(length));
-            }
+            // need to change it to big-endian
+            return value.ToByteArray();
+        }
 
+        public static byte[] Serialize(long value)
+        {
             const int maxResultLength = 8;
             byte[] bytes = new byte[maxResultLength];
 
-            bytes[0] = (byte)(length >> 56);
-            bytes[1] = (byte)(length >> 48);
-            bytes[2] = (byte)(length >> 40);
-            bytes[3] = (byte)(length >> 32);
-            bytes[4] = (byte)(length >> 24);
-            bytes[5] = (byte)(length >> 16);
-            bytes[6] = (byte)(length >> 8);
-            bytes[7] = (byte)length;
+            bytes[0] = (byte)(value >> 56);
+            bytes[1] = (byte)(value >> 48);
+            bytes[2] = (byte)(value >> 40);
+            bytes[3] = (byte)(value >> 32);
+            bytes[4] = (byte)(value >> 24);
+            bytes[5] = (byte)(value >> 16);
+            bytes[6] = (byte)(value >> 8);
+            bytes[7] = (byte)value;
 
             int resultLength = maxResultLength;
             for (int i = 0; i < maxResultLength; i++)

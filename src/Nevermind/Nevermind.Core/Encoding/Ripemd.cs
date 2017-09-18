@@ -1,11 +1,10 @@
-using System.Text;
 using HashLib;
 
-namespace Nevermind.Core
+namespace Nevermind.Core.Encoding
 {
-    public static class Sha2
+    public static class Ripemd
     {
-        private static readonly IHash Hash = HashFactory.Crypto.CreateSHA256();
+        private static readonly IHash Hash = HashFactory.Crypto.CreateRIPEMD160();
 
         public static byte[] Compute(byte[] input)
         {
@@ -19,7 +18,7 @@ namespace Nevermind.Core
 
         public static byte[] Compute(string input)
         {
-            return Compute(Encoding.UTF8.GetBytes(input));
+            return Compute(System.Text.Encoding.UTF8.GetBytes(input));
         }
 
         public static string ComputeString(string input)

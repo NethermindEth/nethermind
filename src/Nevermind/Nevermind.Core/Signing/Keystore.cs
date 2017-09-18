@@ -1,4 +1,4 @@
-﻿namespace Nevermind.Core
+﻿namespace Nevermind.Core.Signing
 {
     /// <summary>
     ///     {"address":"c2d7cf95645d33006175b78989035c7c9061d3f9",

@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Numerics;
 
-namespace Nevermind.Core
+namespace Nevermind.Core.Validators
 {
     public class BlockValidator
     {
@@ -24,7 +24,7 @@ namespace Nevermind.Core
         {
             Block parent = Blockchain.GetParent(block);
             return
-                block.Header.Nonce < BigInteger.Divide(BigInteger.Pow(2, 256), block.Header.Difficulty) &&
+                //block.Header.Nonce < BigInteger.Divide(BigInteger.Pow(2, 256), block.Header.DifficultyCalculator) &&
                 // mix hash check
                 // proof of work check
                 // difficulty check

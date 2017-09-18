@@ -1,7 +1,6 @@
 ﻿using System;
-using System.Text;
 
-namespace Nevermind.Core
+namespace Nevermind.Core.Encoding
 {
     /// <summary>
     /// https://stackoverflow.com/questions/311165/how-do-you-convert-a-byte-array-to-a-hexadecimal-string-and-vice-versa
@@ -27,7 +26,7 @@ namespace Nevermind.Core
             string hashHex = null;
             if (withEip55Checksum)
             {
-                hashHex = Keccak.Compute(Encoding.UTF8.GetBytes(FromBytes(bytes))).ToString();
+                hashHex = Keccak.Compute(System.Text.Encoding.UTF8.GetBytes(FromBytes(bytes))).ToString();
             }
 
             for (int i = 0; i < bytes.Length; i++)

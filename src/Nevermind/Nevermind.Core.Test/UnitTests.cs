@@ -1,4 +1,5 @@
 ﻿using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Nevermind.Core.Sugar;
 
 namespace Nevermind.Core.Test
 {

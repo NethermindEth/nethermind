@@ -1,4 +1,5 @@
 ﻿using System;
+using Nevermind.Core.Encoding;
 
 namespace Nevermind.Core
 {
