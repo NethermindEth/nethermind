@@ -1,4 +1,5 @@
-﻿using System.Numerics;
+﻿using System;
+using System.Numerics;
 
 namespace Nevermind.Core.Sugar
 {
@@ -7,6 +8,17 @@ namespace Nevermind.Core.Sugar
         public static BigInteger Ether(this int @this)
         {
             return @this * Unit.Ether;
+        }
+
+        public static byte[] ToBigEndianByteArray(this int value)
+        {
+            byte[] bytes = BitConverter.GetBytes(value);
+            if (BitConverter.IsLittleEndian)
+            {
+                Array.Reverse(bytes);
+            }
+
+            return bytes;
         }
     }
 }

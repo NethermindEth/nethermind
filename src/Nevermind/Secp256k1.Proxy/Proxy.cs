@@ -13,7 +13,7 @@ namespace Secp256k1.Proxy
                 if (signaturesType == null)
                 {
                     Assembly a = Assembly.LoadFrom("Secp256k1." + (IntPtr.Size == 4 ? "x86" : "x64") + ".dll");
-                    var ver = a.GetName().Version;
+                    Version ver = a.GetName().Version;
                     if (ver.Major < 1)
                         return null;
                     if (ver.Major == 1 && ver.Minor < 1)

@@ -63,19 +63,19 @@ namespace Nevermind.Core.Test
             }
         }
 
-        [TestMethod] // not yet sure how it works
+        [TestMethod]
         public void Serializing_sequences()
         {
             byte[] output = RecursiveLengthPrefix.Serialize(255L, new byte[] { 255 });
-            Assert.AreEqual(4, output.Length);
+            Assert.AreEqual(5, output.Length);
         }
 
-        [TestMethod] // not yet sure how it works
+        [TestMethod]
         public void Serializing_empty_sequence()
         {
             byte[] output = RecursiveLengthPrefix.Serialize();
             Assert.AreEqual(1, output.Length);
-            Assert.AreEqual(128, output[0]);
+            Assert.AreEqual(192, output[0]);
         }
     }
 }

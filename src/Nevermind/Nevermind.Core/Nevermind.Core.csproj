@@ -43,6 +43,9 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Account.cs" />
+    <Compile Include="Sugar\BigIntegerExtensions.cs" />
+    <Compile Include="Sugar\ShortExtensions.cs" />
+    <Compile Include="Sugar\LongExtensions.cs" />
     <Compile Include="Validators\AccountValidator.cs" />
     <Compile Include="Address.cs" />
     <Compile Include="Block.cs" />
@@ -53,7 +56,6 @@
     <Compile Include="Validators\BlockHeaderValidator.cs" />
     <Compile Include="Validators\BlockValidator.cs" />
     <Compile Include="Encoding\Bloom.cs" />
-    <Compile Include="Sugar\DecimalExtensions.cs" />
     <Compile Include="VirtualMachine\FeeSchedule.cs" />
     <Compile Include="Encoding\HexPrefix.cs" />
     <Compile Include="Encoding\HexString.cs" />

@@ -101,7 +101,7 @@ namespace HashLib.Crypto
 
         private static ulong[] CalcTable(int i)
         {
-            var result = new ulong[256];
+            ulong[] result = new ulong[256];
             for (int j = 0; j < 256; j++)
                 result[j] = Bits.RotateRight(s_master_table[j], i * 8);
             return result;

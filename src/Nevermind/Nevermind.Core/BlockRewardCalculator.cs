@@ -11,7 +11,7 @@ namespace Nevermind.Core
         public static Dictionary<Address, BigInteger> CalculateRewards(Block block)
         {
             BlockHeader blockHeader = block.Header;
-            var rewards = new Dictionary<Address, BigInteger>();
+            Dictionary<Address, BigInteger> rewards = new Dictionary<Address, BigInteger>();
             rewards[blockHeader.Beneficiary] = BlockReward + block.Ommers.Length * BlockReward / 32;
             foreach (BlockHeader ommerHeader in block.Ommers)
             {

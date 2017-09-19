@@ -63,7 +63,7 @@ namespace HashLib.Crypto
 
         private static uint[] CalcTable(int i)
         {
-            var result = new uint[256];
+            uint[] result = new uint[256];
             for (int j = 0; j < 256; j++)
                 result[j] = (uint)((s_master_table[j] >> i * 8) | (s_master_table[j] << (32 - i * 8)));
             return result;

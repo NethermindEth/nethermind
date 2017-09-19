@@ -1,7 +1,9 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Numerics;
+using Nevermind.Core.Sugar;
 
 namespace Nevermind.Core.Encoding
 {
@@ -24,17 +26,114 @@ namespace Nevermind.Core.Encoding
     /// </summary>
     public static class RecursiveLengthPrefix
     {
+        public static object Deserialize(byte[] bytes)
+        {
+            return Deserialize(new DeserializationContext(bytes));
+        }
+
+        private static object Deserialize(DeserializationContext context)
+        {
+            object Collapse(List<object> resultToCollapse)
+            {
+                if (resultToCollapse.Count == 1)
+                {
+                    return resultToCollapse[0];
+                }
+
+                return resultToCollapse.ToArray();
+            }
+
+            List<object> result = new List<object>();
+
+            byte prefix = context.Pop();
+            if (prefix < 128)
+            {
+                result.Add(prefix);
+                return result.ToArray();
+            }
+
+            if (prefix < 183)
+            {
+                int length = prefix - 128;
+                byte[] data = context.Pop(length);
+                result.Add(data);
+                return Collapse(result);
+            }
+
+            if (prefix < 192)
+            {
+                int lengthOfLength = prefix - 183;
+                int length = DeserializeLength(context.Pop(lengthOfLength));
+                byte[] data = context.Pop(length);
+                result.Add(data);
+                return Collapse(result);
+            }
+
+            int concatenationLength;
+            if (prefix < 247)
+            {
+                concatenationLength = prefix - 192;
+            }
+            else
+            {
+                int lengthOfConcatenationLength = prefix - 247;
+                concatenationLength = DeserializeLength(context.Pop(lengthOfConcatenationLength));
+            }
+
+            long startIndex = context.CurrentIndex;
+            while(context.CurrentIndex < startIndex + concatenationLength)
+            { 
+                result.Add(Deserialize(context));
+            }
+
+            return Collapse(result);
+        }
+
+        // TODO: streams and proper encodings
+        public class DeserializationContext
+        {
+            public DeserializationContext(byte[] data)
+            {
+                Data = data;
+                MaxIndex = Data.Length;
+            }
+
+            public byte Pop()
+            {
+                return Data[CurrentIndex++];
+            }
+
+            public byte[] Pop(int n)
+            {
+                byte[] bytes = new byte[n];
+                Array.Copy(Data, CurrentIndex, bytes, 0, n);
+                CurrentIndex += n;
+                return bytes;
+            }
+
+            public byte[] Data { get; }
+            public long CurrentIndex { get; set; }
+            public long MaxIndex { get; set; }
+        }
+
+        public static int DeserializeLength(byte[] bytes)
+        {
+            const int size = sizeof(Int32);
+            byte[] padded = new byte[size];
+            Array.Copy(bytes, 0, padded, size - bytes.Length, bytes.Length);
+            if (BitConverter.IsLittleEndian)
+            {
+                Array.Reverse(padded);
+            }
+
+            return BitConverter.ToInt32(padded, 0);
+        }
+
         public static byte[] OfEmptySequence => Serialize();
 
         [SuppressMessage("ReSharper", "PossibleMultipleEnumeration")]
         public static byte[] Serialize(params object[] sequence)
         {
-            object firstItem = sequence.FirstOrDefault();
-            if (firstItem == null)
-            {
-                return Serialize(new byte[0]);
-            }
-
             byte[] concatenation = new byte[0];
             foreach (object item in sequence)
             {
@@ -46,8 +145,8 @@ namespace Nevermind.Core.Encoding
                 return Concat((byte)(192 + concatenation.Length), concatenation);
             }
 
-            byte[] serializedLength = Serialize(concatenation.Length);
-            byte prefix = (byte) (247 + serializedLength.Length);
+            byte[] serializedLength = SerializeLength(concatenation.Length);
+            byte prefix = (byte)(247 + serializedLength.Length);
             return Concat(prefix, serializedLength, concatenation);
         }
 
@@ -66,7 +165,7 @@ namespace Nevermind.Core.Encoding
             if (x == null) throw new ArgumentNullException(nameof(x));
             if (y == null) throw new ArgumentNullException(nameof(y));
 
-            byte[] output = new byte[x.Length + y.Length]; 
+            byte[] output = new byte[x.Length + y.Length];
             Array.Copy(x, 0, output, 0, x.Length);
             Array.Copy(y, 0, output, x.Length, y.Length);
             return output;
@@ -86,18 +185,66 @@ namespace Nevermind.Core.Encoding
 
         public static byte[] Serialize(object item)
         {
+            object[] objects = item as object[];
+            if (objects != null)
+            {
+                return Serialize(objects);
+            }
+
             byte[] byteArray = item as byte[];
             if (byteArray != null)
             {
                 return Serialize(byteArray);
             }
 
-            if (item is long)
+            if (item is BigInteger)
             {
-                return Serialize((long)item);
+                return Serialize(((BigInteger)item).ToBigEndianByteArray());
             }
 
-            throw new NotSupportedException($"{nameof(RecursiveLengthPrefix)} only supports {nameof(Int64)} and byte arrays");
+            if (item is byte || item is short || item is int || item is ushort || item is uint)
+            {
+                return Serialize(Convert.ToInt64(item));
+            }
+
+            // can use serialize length here and wrap in the byte array serialization
+            if (item is long)
+            {
+                long value = (long)item;
+                // repeat the incorrect implementation / spec?
+                if (value == 0L)
+                {
+                    return new byte[] { 128 };
+                }
+
+                if (value < 128L)
+                {
+                    // ReSharper disable once PossibleInvalidCastException
+                    return new[] { Convert.ToByte(value) };
+                }
+
+                if (value <= Byte.MaxValue)
+                {
+                    // ReSharper disable once PossibleInvalidCastException
+                    return Serialize(new[] { Convert.ToByte(value) });
+                }
+
+                if (value <= Int16.MaxValue)
+                {
+                    // ReSharper disable once PossibleInvalidCastException
+                    return Serialize(((short)value).ToBigEndianByteArray());
+                }
+
+                return Serialize(new BigInteger(value));
+            }
+
+            string s = item as string;
+            if (s != null)
+            {
+                return Serialize(System.Text.Encoding.ASCII.GetBytes(s));
+            }
+
+            throw new NotSupportedException($"{nameof(RecursiveLengthPrefix)} only supports {nameof(BigInteger)}, {nameof(String)} and byte arrays");
         }
 
         public static byte[] Serialize(byte[] input)
@@ -109,22 +256,16 @@ namespace Nevermind.Core.Encoding
 
             if (input.Length < 56)
             {
-                byte smallPrefix = (byte) (input.Length + 128);
+                byte smallPrefix = (byte)(input.Length + 128);
                 return Concat(smallPrefix, input);
             }
 
-            byte[] serializedLength = Serialize(input.Length);
+            byte[] serializedLength = SerializeLength(input.Length);
             byte prefix = (byte)(183 + serializedLength.Length);
             return Concat(prefix, serializedLength, input);
         }
-        
-        public static byte[] Serialize(BigInteger value)
-        {
-            // need to change it to big-endian
-            return value.ToByteArray();
-        }
 
-        public static byte[] Serialize(long value)
+        public static byte[] SerializeLength(long value)
         {
             const int maxResultLength = 8;
             byte[] bytes = new byte[maxResultLength];

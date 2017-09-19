@@ -120,7 +120,7 @@ namespace HashLib.Hash32
             m_h *= C5;
             m_h ^= m_h >> 16;
 
-            var result = unchecked((int)m_h);
+            int result = unchecked((int)m_h);
             Initialize();
             return result;
         }
@@ -153,7 +153,7 @@ namespace HashLib.Hash32
             m_h *= C5;
             m_h ^= m_h >> 16;
 
-            var result = unchecked((int)m_h);
+            int result = unchecked((int)m_h);
             Initialize();
             return result;
         }
@@ -177,7 +177,7 @@ namespace HashLib.Hash32
             m_h *= C5;
             m_h ^= m_h >> 16;
 
-            var result = unchecked((int)m_h);
+            int result = unchecked((int)m_h);
             Initialize();
             return result;
         }
@@ -201,7 +201,7 @@ namespace HashLib.Hash32
             m_h *= C5;
             m_h ^= m_h >> 16;
 
-            var result = unchecked((int)m_h);
+            int result = unchecked((int)m_h);
             Initialize();
             return result;
         }
@@ -281,7 +281,7 @@ namespace HashLib.Hash32
             m_h *= C5;
             m_h ^= m_h >> 16;
 
-            var result = unchecked((int)m_h);
+            int result = unchecked((int)m_h);
             Initialize();
             return result;
         }
@@ -301,7 +301,7 @@ namespace HashLib.Hash32
             m_h *= C5;
             m_h ^= m_h >> 16;
 
-            var result = unchecked((int)m_h);
+            int result = unchecked((int)m_h);
             Initialize();
             return result;
         }
@@ -321,7 +321,7 @@ namespace HashLib.Hash32
             m_h *= C5;
             m_h ^= m_h >> 16;
 
-            var result = unchecked((int)m_h);
+            int result = unchecked((int)m_h);
             Initialize();
             return result;
         }
@@ -341,7 +341,7 @@ namespace HashLib.Hash32
             m_h *= C5;
             m_h ^= m_h >> 16;
 
-            var result = unchecked((int)m_h);
+            int result = unchecked((int)m_h);
             Initialize();
             return result;
         }
@@ -360,7 +360,7 @@ namespace HashLib.Hash32
             m_h *= C5;
             m_h ^= m_h >> 16;
 
-            var result = unchecked((int)m_h);
+            int result = unchecked((int)m_h);
             Initialize();
             return result;
         }
@@ -383,7 +383,7 @@ namespace HashLib.Hash32
             m_h *= C5;
             m_h ^= m_h >> 16;
 
-            var result = unchecked((int)m_h);
+            int result = unchecked((int)m_h);
             Initialize();
             return result;
         }
@@ -408,7 +408,7 @@ namespace HashLib.Hash32
             m_h *= C5;
             m_h ^= m_h >> 16;
 
-            var result = unchecked((int)m_h);
+            int result = unchecked((int)m_h);
             Initialize();
             return result;
         }
@@ -446,7 +446,7 @@ namespace HashLib.Hash32
             m_h *= C5;
             m_h ^= m_h >> 16;
 
-            var result = unchecked((int)m_h);
+            int result = unchecked((int)m_h);
             Initialize();
             return result;
         }
@@ -484,7 +484,7 @@ namespace HashLib.Hash32
             m_h *= C5;
             m_h ^= m_h >> 16;
 
-            var result = unchecked((int)m_h);
+            int result = unchecked((int)m_h);
             Initialize();
             return result;
         }
@@ -523,7 +523,7 @@ namespace HashLib.Hash32
             m_h *= C5;
             m_h ^= m_h >> 16;
 
-            var result = unchecked((int)m_h);
+            int result = unchecked((int)m_h);
             Initialize();
             return result;
         }
@@ -562,7 +562,7 @@ namespace HashLib.Hash32
             m_h *= C5;
             m_h ^= m_h >> 16;
 
-            var result = unchecked((int)m_h);
+            int result = unchecked((int)m_h);
             Initialize();
             return result;
         }

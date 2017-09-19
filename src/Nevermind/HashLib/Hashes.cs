@@ -38,7 +38,7 @@ namespace HashLib
                    orderby hf.Name
                    select hf).ToList().AsReadOnly();
 
-            var x2 = new Type[] 
+            Type[] x2 = new Type[] 
             { 
                 typeof(HashLib.Crypto.BuildIn.SHA1Cng), 
                 typeof(HashLib.Crypto.BuildIn.SHA1Managed), 
