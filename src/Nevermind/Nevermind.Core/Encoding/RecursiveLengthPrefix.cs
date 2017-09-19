@@ -31,10 +31,15 @@ namespace Nevermind.Core.Encoding
             return Deserialize(new DeserializationContext(bytes));
         }
 
-        private static object Deserialize(DeserializationContext context)
+        private static object Deserialize(DeserializationContext context, bool check = true)
         {
-            object Collapse(List<object> resultToCollapse)
+            object CheckAndReturn(List<object> resultToCollapse, DeserializationContext contextToCheck)
             {
+                if (check && contextToCheck.CurrentIndex != contextToCheck.MaxIndex)
+                {
+                    throw new InvalidOperationException();
+                }
+
                 if (resultToCollapse.Count == 1)
                 {
                     return resultToCollapse[0];
@@ -46,47 +51,94 @@ namespace Nevermind.Core.Encoding
             List<object> result = new List<object>();
 
             byte prefix = context.Pop();
+
+            if (prefix == 0)
+            {
+                result.Add(new byte[] { 0 });
+                return CheckAndReturn(result, context);
+            }
+
             if (prefix < 128)
             {
                 result.Add(prefix);
-                return result.ToArray();
+                return CheckAndReturn(result, context);
             }
 
-            if (prefix < 183)
+            if (prefix == 128)
+            {
+                result.Add(0);
+                return CheckAndReturn(result, context);
+            }
+
+            if (prefix <= 183)
             {
                 int length = prefix - 128;
                 byte[] data = context.Pop(length);
+                if (data.Length == 1 && data[0] < 128)
+                {
+                    throw new InvalidOperationException();
+                }
+
                 result.Add(data);
-                return Collapse(result);
+                return CheckAndReturn(result, context);
             }
 
             if (prefix < 192)
             {
                 int lengthOfLength = prefix - 183;
+                if (lengthOfLength > 4)
+                {
+                    // strange but needed to pass tests -seems that spec gives int64 length and tests int32 length
+                    throw new InvalidOperationException();
+                }
+
                 int length = DeserializeLength(context.Pop(lengthOfLength));
+                if (length < 56)
+                {
+                    throw new InvalidOperationException();
+                }
+
                 byte[] data = context.Pop(length);
+                if (data[0] == 0)
+                {
+                    throw new InvalidOperationException();
+                }
+
                 result.Add(data);
-                return Collapse(result);
+                return CheckAndReturn(result, context);
             }
 
             int concatenationLength;
-            if (prefix < 247)
+            if (prefix <= 247)
             {
                 concatenationLength = prefix - 192;
             }
             else
             {
                 int lengthOfConcatenationLength = prefix - 247;
+                if (lengthOfConcatenationLength > 4)
+                {
+                    // strange but needed to pass tests -seems that spec gives int64 length and tests int32 length
+                    throw new InvalidOperationException();
+                }
+
                 concatenationLength = DeserializeLength(context.Pop(lengthOfConcatenationLength));
+                if (concatenationLength < 56)
+                {
+                    throw new InvalidOperationException();
+                }
             }
 
             long startIndex = context.CurrentIndex;
-            while(context.CurrentIndex < startIndex + concatenationLength)
-            { 
-                result.Add(Deserialize(context));
+            List<object> nestedList = new List<object>();
+            while (context.CurrentIndex < startIndex + concatenationLength)
+            {
+                nestedList.Add(Deserialize(context, false));
             }
 
-            return Collapse(result);
+            result.Add(nestedList.ToArray());
+
+            return CheckAndReturn(result, context);
         }
 
         // TODO: streams and proper encodings
@@ -211,7 +263,8 @@ namespace Nevermind.Core.Encoding
             if (item is long)
             {
                 long value = (long)item;
-                // repeat the incorrect implementation / spec?
+
+                // check test bytestring00 and zero - here is some inconsistency in tests
                 if (value == 0L)
                 {
                     return new byte[] { 128 };
@@ -249,6 +302,11 @@ namespace Nevermind.Core.Encoding
 
         public static byte[] Serialize(byte[] input)
         {
+            if (input.Length == 0)
+            {
+                return new byte[] { 128 };
+            }
+
             if (input.Length == 1 && input[0] < 128)
             {
                 return input;
