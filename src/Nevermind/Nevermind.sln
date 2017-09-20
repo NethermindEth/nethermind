@@ -21,6 +21,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ethereum.HexPrefix.Test", "
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ethereum.KeyAddress.Test", "Ethereum.KeyAddress.Test\Ethereum.KeyAddress.Test.csproj", "{356BD20D-16BD-4376-81AC-D8F36FB50439}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ethereum.Trie.Test", "Ethereum.Trie.Test\Ethereum.Trie.Test.csproj", "{E9CF17E9-3226-4A0F-83C9-E73D82DBD3FB}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -139,6 +141,18 @@ Global
 		{356BD20D-16BD-4376-81AC-D8F36FB50439}.Release|x64.Build.0 = Release|Any CPU
 		{356BD20D-16BD-4376-81AC-D8F36FB50439}.Release|x86.ActiveCfg = Release|Any CPU
 		{356BD20D-16BD-4376-81AC-D8F36FB50439}.Release|x86.Build.0 = Release|Any CPU
+		{E9CF17E9-3226-4A0F-83C9-E73D82DBD3FB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E9CF17E9-3226-4A0F-83C9-E73D82DBD3FB}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E9CF17E9-3226-4A0F-83C9-E73D82DBD3FB}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{E9CF17E9-3226-4A0F-83C9-E73D82DBD3FB}.Debug|x64.Build.0 = Debug|Any CPU
+		{E9CF17E9-3226-4A0F-83C9-E73D82DBD3FB}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{E9CF17E9-3226-4A0F-83C9-E73D82DBD3FB}.Debug|x86.Build.0 = Debug|Any CPU
+		{E9CF17E9-3226-4A0F-83C9-E73D82DBD3FB}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E9CF17E9-3226-4A0F-83C9-E73D82DBD3FB}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E9CF17E9-3226-4A0F-83C9-E73D82DBD3FB}.Release|x64.ActiveCfg = Release|Any CPU
+		{E9CF17E9-3226-4A0F-83C9-E73D82DBD3FB}.Release|x64.Build.0 = Release|Any CPU
+		{E9CF17E9-3226-4A0F-83C9-E73D82DBD3FB}.Release|x86.ActiveCfg = Release|Any CPU
+		{E9CF17E9-3226-4A0F-83C9-E73D82DBD3FB}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
