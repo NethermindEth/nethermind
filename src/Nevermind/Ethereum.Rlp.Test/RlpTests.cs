@@ -108,7 +108,6 @@ namespace Ethereum.Rlp.Test
             return input;
         }
 
-        [Test]
         [TestCaseSource(nameof(LoadValidTests))]
         public void Test(RlpTest test)
         {
@@ -125,7 +124,6 @@ namespace Ethereum.Rlp.Test
             Assert.AreEqual(serializedHex, serializedAgainHex);
         }
 
-        [Test]
         [TestCaseSource(nameof(LoadInvalidTests))]
         public void TestInvalid(RlpTest test)
         {
@@ -134,7 +132,6 @@ namespace Ethereum.Rlp.Test
                 () => RecursiveLengthPrefix.Deserialize(invalidBytes));
         }
 
-        [Test]
         [TestCaseSource(nameof(LoadRandomTests))]
         public void TestRandom(RlpTest test)
         {

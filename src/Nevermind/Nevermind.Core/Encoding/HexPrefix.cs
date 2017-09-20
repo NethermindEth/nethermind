@@ -1,5 +1,6 @@
 ﻿namespace Nevermind.Core.Encoding
 {
+    // TODO: better representation (just byte array)
     public class HexPrefix
     {
         public HexPrefix(bool flag, params byte[] nibbles)
@@ -30,7 +31,7 @@
         public static HexPrefix FromBytes(byte[] bytes)
         {
             HexPrefix hexPrefix = new HexPrefix(bytes[0] >= 32);
-            bool isEven = (bytes[0] | 240) == 240;
+            bool isEven = (bytes[0] & 16) == 0;
             int nibblesCount = bytes.Length * 2 - (isEven ? 2 : 1);
             hexPrefix.Nibbles = new byte[nibblesCount];
             for (int i = 0; i < nibblesCount; i++)

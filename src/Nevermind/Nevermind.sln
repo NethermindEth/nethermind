@@ -17,6 +17,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nevermind.Mining", "Nevermi
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ethereum.Rlp.Test", "Ethereum.Rlp.Test\Ethereum.Rlp.Test.csproj", "{C74439DD-8FF4-439B-92FC-128D37E808EC}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ethereum.HexPrefix.Test", "Ethereum.HexPrefix.Test\Ethereum.HexPrefix.Test.csproj", "{D25AEE99-401C-404A-9B22-2614139BF7CD}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -111,6 +113,18 @@ Global
 		{C74439DD-8FF4-439B-92FC-128D37E808EC}.Release|x64.Build.0 = Release|Any CPU
 		{C74439DD-8FF4-439B-92FC-128D37E808EC}.Release|x86.ActiveCfg = Release|Any CPU
 		{C74439DD-8FF4-439B-92FC-128D37E808EC}.Release|x86.Build.0 = Release|Any CPU
+		{D25AEE99-401C-404A-9B22-2614139BF7CD}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D25AEE99-401C-404A-9B22-2614139BF7CD}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D25AEE99-401C-404A-9B22-2614139BF7CD}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{D25AEE99-401C-404A-9B22-2614139BF7CD}.Debug|x64.Build.0 = Debug|Any CPU
+		{D25AEE99-401C-404A-9B22-2614139BF7CD}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{D25AEE99-401C-404A-9B22-2614139BF7CD}.Debug|x86.Build.0 = Debug|Any CPU
+		{D25AEE99-401C-404A-9B22-2614139BF7CD}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D25AEE99-401C-404A-9B22-2614139BF7CD}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D25AEE99-401C-404A-9B22-2614139BF7CD}.Release|x64.ActiveCfg = Release|Any CPU
+		{D25AEE99-401C-404A-9B22-2614139BF7CD}.Release|x64.Build.0 = Release|Any CPU
+		{D25AEE99-401C-404A-9B22-2614139BF7CD}.Release|x86.ActiveCfg = Release|Any CPU
+		{D25AEE99-401C-404A-9B22-2614139BF7CD}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
