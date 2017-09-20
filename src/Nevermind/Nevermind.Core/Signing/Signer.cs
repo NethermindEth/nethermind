@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Diagnostics;
 using Nevermind.Core.Encoding;
 
 namespace Nevermind.Core.Signing
@@ -21,6 +22,19 @@ namespace Nevermind.Core.Signing
             return publicKey.Address;
         }
 
+        public static Signature Sign(PrivateKey privateKey, byte[] bytes)
+        {
+            if (!Secp256k1.Proxy.Proxy.VerifyPrivateKey(privateKey.Bytes))
+            {
+                throw new ArgumentException("Invalid private key", nameof(privateKey));
+            }
+
+            int recoveryId;
+            byte[] signature = Secp256k1.Proxy.Proxy.SignCompact(bytes, privateKey.Bytes, out recoveryId);
+
+            return new Signature(signature, recoveryId);
+        }
+
         public static Signature Sign(PrivateKey privateKey, Keccak message)
         {
             if (!Secp256k1.Proxy.Proxy.VerifyPrivateKey(privateKey.Bytes))
@@ -29,9 +43,17 @@ namespace Nevermind.Core.Signing
             }
 
             int recoveryId;
-            byte[] signature = Secp256k1.Proxy.Proxy.SignCompact(message.Bytes, privateKey.Bytes, out recoveryId);
+            byte[] signatureBytes = Secp256k1.Proxy.Proxy.SignCompact(message.Bytes, privateKey.Bytes, out recoveryId);
 
-            return new Signature(signature, recoveryId);
+
+            Signature signature = new Signature(signatureBytes, recoveryId);
+#if DEBUG
+            Address address = RecoverSignerAddress(signature, message);
+            Debug.Assert(address.Equals(privateKey.Address));
+#endif
+
+            return signature;
+
         }
 
         public static Address RecoverSignerAddress(Signature signature, Keccak message)

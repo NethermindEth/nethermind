@@ -11,6 +11,6 @@ namespace Nevermind.Core
         public Keccak CodeHash { get; set; }
 
         // can be an extension
-        public bool IsSimple => CodeHash == Keccak.OfEmptyString;
+        public bool IsSimple => CodeHash == Keccak.OfAnEmptyString;
     }
 }

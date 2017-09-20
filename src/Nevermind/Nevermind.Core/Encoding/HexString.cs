@@ -26,7 +26,8 @@ namespace Nevermind.Core.Encoding
             string hashHex = null;
             if (withEip55Checksum)
             {
-                hashHex = Keccak.Compute(System.Text.Encoding.UTF8.GetBytes(FromBytes(bytes))).ToString();
+                // I guess it may be better (faster) than calling ToString here
+                hashHex = Keccak.Compute(System.Text.Encoding.UTF8.GetBytes(FromBytes(bytes))).ToString().Replace("0x", string.Empty);
             }
 
             for (int i = 0; i < bytes.Length; i++)
@@ -58,12 +59,12 @@ namespace Nevermind.Core.Encoding
                 throw new ArgumentNullException($"{nameof(hexString)}");
             }
 
-            int startIndex = hexString.StartsWith("0x") ? 4 : 0;
-            int numberChars = hexString.Length;
+            int startIndex = hexString.StartsWith("0x") ? 2 : 0;
+            int numberChars = hexString.Length - startIndex;
             byte[] bytes = new byte[numberChars / 2];
-            for (int i = startIndex; i < numberChars; i += 2)
+            for (int i = 0; i < numberChars; i += 2)
             {
-                bytes[i / 2] = Convert.ToByte(hexString.Substring(i, 2), 16);
+                bytes[i / 2] = Convert.ToByte(hexString.Substring(i + startIndex, 2), 16);
             }
 
             return bytes;

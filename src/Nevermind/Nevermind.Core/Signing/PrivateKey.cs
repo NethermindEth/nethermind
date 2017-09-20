@@ -47,7 +47,7 @@ namespace Nevermind.Core.Signing
 
         public override string ToString()
         {
-            return HexString.FromBytes(Bytes);
+            return string.Concat("0x", HexString.FromBytes(Bytes));
         }
     }
 }

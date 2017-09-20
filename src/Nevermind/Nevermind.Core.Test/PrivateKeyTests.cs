@@ -7,7 +7,7 @@ namespace Nevermind.Core.Test
     [TestClass]
     public class PrivateKeyTests
     {
-        private const string TestPrivateKeyHex = "3a1076bf45ab87712ad64ccb3b10217737f7faacbf2872e88fdd9a537d8fe266";
+        private const string TestPrivateKeyHex = "0x3a1076bf45ab87712ad64ccb3b10217737f7faacbf2872e88fdd9a537d8fe266";
 
         [TestMethod]
         public void Can_generate_new_through_constructor()

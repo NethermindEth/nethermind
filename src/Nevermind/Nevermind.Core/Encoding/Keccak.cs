@@ -11,16 +11,27 @@ namespace Nevermind.Core.Encoding
             Bytes = bytes;
         }
 
-        public static Keccak OfEmptyString { get; } = Compute("c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470");
+        /// <returns>
+        ///     <string>0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470</string>
+        /// </returns>
+        public static Keccak OfAnEmptyString { get; } = Compute("");
 
-        public static Keccak Zero { get; }  = new Keccak(new byte[32]);
+        /// <returns>
+        ///     <string>0x0000000000000000000000000000000000000000000000000000000000000000</string>
+        /// </returns>
+        public static Keccak Zero { get; } = new Keccak(new byte[32]);
 
         public byte[] Bytes { get; }
 
         public override string ToString()
         {
-            return HexString.FromBytes(Bytes);
+            return string.Concat("0x", HexString.FromBytes(Bytes));
         }
+
+        //public override string ToString()
+        //{
+        //    return HexString.FromBytes(Bytes);
+        //}
 
         public static Keccak Compute(Rlp rlp)
         {
