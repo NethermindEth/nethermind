@@ -66,13 +66,12 @@
     <Compile Include="Encoding\Keccak.cs" />
     <Compile Include="Signing\Keystore.cs" />
     <Compile Include="LogEntry.cs" />
-    <Compile Include="MerklePatriciaTree.cs" />
     <Compile Include="Validators\OmmersValidator.cs" />
     <Compile Include="Signing\PrivateKey.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Signing\PublicKey.cs" />
     <Compile Include="Signing\Random.cs" />
-    <Compile Include="Encoding\RecursiveLengthPrefix.cs" />
+    <Compile Include="Encoding\Rlp.encoding.cs" />
     <Compile Include="Encoding\Ripemd.cs" />
     <Compile Include="Encoding\Rlp.cs" />
     <Compile Include="Encoding\Sha2.cs" />

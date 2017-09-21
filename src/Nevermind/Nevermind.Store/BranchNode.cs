@@ -4,25 +4,25 @@ using Nevermind.Core.Sugar;
 
 namespace Nevermind.Store
 {
-    public class BranchNode : Node
+    internal class BranchNode : Node
     {
         public BranchNode()
         {
-            Nodes = new Keccak[16];
+            Nodes = new KeccakOrRlp[16];
         }
 
-        public BranchNode(Keccak[] nodes, byte[] value)
+        public BranchNode(KeccakOrRlp[] nodes, byte[] value)
         {
             Value = value;
             Nodes = nodes;
         }
 
-        public Keccak[] Nodes { get; set; }
+        public KeccakOrRlp[] Nodes { get; set; }
         public byte[] Value { get; set; }
 
         public override string ToString()
         {
-            return $"[{string.Join(",", Nodes.Select(n => n == null ? "<>" : n.ToString(true)))}, {Value.ToHex(false)}";
+            return $"[{string.Join(",", Nodes.Select(n => n?.ToString() ?? "<>"))}, {Value.ToHex(false)}";
         }
     }
 }

@@ -113,12 +113,12 @@ namespace Ethereum.Rlp.Test
         {
             object input = PrepareInput(test.Input);
 
-            byte[] serialized = RecursiveLengthPrefix.Serialize(input);
-            string serializedHex = Hex.FromBytes(serialized, false);
+            Nevermind.Core.Encoding.Rlp serialized = Nevermind.Core.Encoding.Rlp.Serialize(input);
+            string serializedHex = serialized.ToString(false);
 
-            object deserialized = RecursiveLengthPrefix.Deserialize(serialized);
-            byte[] serializedAgain = RecursiveLengthPrefix.Serialize(deserialized);
-            string serializedAgainHex = Hex.FromBytes(serializedAgain, false);
+            object deserialized = Nevermind.Core.Encoding.Rlp.Deserialize(serialized);
+            Nevermind.Core.Encoding.Rlp serializedAgain = Nevermind.Core.Encoding.Rlp.Serialize(deserialized);
+            string serializedAgainHex = serializedAgain.ToString(false);
 
             Assert.AreEqual(test.Output, serializedHex);
             Assert.AreEqual(serializedHex, serializedAgainHex);
@@ -127,16 +127,16 @@ namespace Ethereum.Rlp.Test
         [TestCaseSource(nameof(LoadInvalidTests))]
         public void TestInvalid(RlpTest test)
         {
-            byte[] invalidBytes = Hex.ToBytes(test.Output);
+            Nevermind.Core.Encoding.Rlp invalidBytes = new Nevermind.Core.Encoding.Rlp(Hex.ToBytes(test.Output));
             Assert.Throws<InvalidOperationException>(
-                () => RecursiveLengthPrefix.Deserialize(invalidBytes));
+                () => Nevermind.Core.Encoding.Rlp.Deserialize(invalidBytes));
         }
 
         [TestCaseSource(nameof(LoadRandomTests))]
         public void TestRandom(RlpTest test)
         {
-            byte[] validBytes = Hex.ToBytes(test.Output);
-            RecursiveLengthPrefix.Deserialize(validBytes);
+            Nevermind.Core.Encoding.Rlp validBytes = new Nevermind.Core.Encoding.Rlp(Hex.ToBytes(test.Output));
+            Nevermind.Core.Encoding.Rlp.Deserialize(validBytes);
         }
     }
 }

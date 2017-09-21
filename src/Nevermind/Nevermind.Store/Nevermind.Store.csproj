@@ -49,7 +49,9 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="BranchNode.cs" />
+    <Compile Include="Db.cs" />
     <Compile Include="ExtensionNode.cs" />
+    <Compile Include="KeccakOrRlp.cs" />
     <Compile Include="LeafNode.cs" />
     <Compile Include="Node.cs" />
     <Compile Include="PatriciaTree.cs" />

@@ -3,9 +3,17 @@ using System.Numerics;
 
 namespace Nevermind.Core.Encoding
 {
-    public class Rlp
+    public partial class Rlp
     {
         public byte[] Bytes { get; }
+
+        public byte this[int index] => Bytes[index];
+        public int Length => Bytes.Length;
+
+        public Rlp(byte singleByte)
+        {
+            Bytes = new[] { singleByte };
+        }
 
         public Rlp(byte[] bytes)
         {
@@ -14,8 +22,7 @@ namespace Nevermind.Core.Encoding
 
         public static Rlp Encode(BlockHeader header)
         {
-            return new Rlp(
-                RecursiveLengthPrefix.Serialize(
+            return Serialize(
                     header.ParentHash,
                     header.OmmersHash,
                     header.Beneficiary,
@@ -31,13 +38,12 @@ namespace Nevermind.Core.Encoding
                     header.ExtraData,
                     header.MixHash,
                     header.Nonce
-                    ));
+                    );
         }
 
         public static Rlp Encode(Block block)
         {
-            return new Rlp(
-                RecursiveLengthPrefix.Serialize(block.Header, block.Transactions, block.Ommers));
+            return Serialize(block.Header, block.Transactions, block.Ommers);
         }
 
         public static Rlp Encode(BigInteger bigInteger)
@@ -47,19 +53,27 @@ namespace Nevermind.Core.Encoding
 
         public static Rlp Encode(Account account)
         {
-            return new Rlp(
-                RecursiveLengthPrefix.Serialize(account.Nonce, account.Balance, account.StorageRoot, account.CodeHash));
+            return Serialize(account.Nonce, account.Balance, account.StorageRoot, account.CodeHash);
         }
 
         public static Rlp Encode(TransactionReceipt receipt)
         {
-            return new Rlp(
-                RecursiveLengthPrefix.Serialize(receipt.PostTransactionState, receipt.GasUsed, receipt.Bloom, receipt.Logs));
+            return Serialize(receipt.PostTransactionState, receipt.GasUsed, receipt.Bloom, receipt.Logs);
         }
 
         public static Rlp Encode(Transaction transaction)
         {
             throw new NotImplementedException();
+        }
+
+        public string ToString(bool withZeroX)
+        {
+            return Hex.FromBytes(Bytes, withZeroX);
+        }
+
+        public override string ToString()
+        {
+            return ToString(true);
         }
     }
 }

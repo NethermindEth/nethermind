@@ -37,7 +37,7 @@ namespace Nevermind.Core
             Genesis = new BlockHeader(null, new BlockHeader[] { }, new Transaction[] { });
             Genesis.Number = 0;
             Genesis.ParentHash = Keccak.Zero;
-            Genesis.OmmersHash = Keccak.Compute(RecursiveLengthPrefix.OfEmptySequence);
+            Genesis.OmmersHash = Keccak.Compute(Rlp.OfEmptySequence);
             Genesis.Beneficiary = Address.Zero;
             // state root
             Genesis.TransactionsRoot = Keccak.Zero;
@@ -51,7 +51,7 @@ namespace Nevermind.Core
             // timestamp
             Genesis.ExtraData = Hex.ToBytes("0x11bbe8db4e347b4e8c937c1c8370e4b5ed33adb3db69cbdb7a38e1e50b1b82fa");
             Genesis.MixHash = Keccak.Zero;
-            Genesis.Nonce = new BigInteger(RecursiveLengthPrefix.Serialize(new byte[] {42}));
+            Genesis.Nonce = new BigInteger(Rlp.Serialize(new byte[] {42}).Bytes);
         }
 
         public static BlockHeader Genesis { get; }

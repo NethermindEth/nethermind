@@ -58,7 +58,7 @@ namespace Ethereum.Trie.Test
             PatriciaTree patriciaTree = new PatriciaTree(db);
             patriciaTree.Set(
                 new byte[] { 1, 1, 2 },
-                RecursiveLengthPrefix.Serialize(new object[] { "hello" }));
+                Rlp.Serialize(new object[] { "hello" }));
 
             Assert.AreEqual("0x15da97c42b7ed2e1c0c8dab6a6d7e3d9dc0a75580bbc4f1f29c33996d1415dcc", patriciaTree.RootHash.ToString());
         }
@@ -70,7 +70,7 @@ namespace Ethereum.Trie.Test
             PatriciaTree patriciaTree = new PatriciaTree(db);
             patriciaTree.Set(
                 new byte[] { 1, 1, 2 },
-                RecursiveLengthPrefix.Serialize(new object[] { "hello" }));
+                Rlp.Serialize(new object[] { "hello" }));
 
             PatriciaTree another = new PatriciaTree(patriciaTree.RootHash, db);
             Assert.AreEqual(Keccak.Compute(((LeafNode)(patriciaTree.Root)).Key), Keccak.Compute(((LeafNode)(another.Root)).Key));
@@ -84,11 +84,11 @@ namespace Ethereum.Trie.Test
             PatriciaTree patriciaTree = new PatriciaTree(db);
             patriciaTree.Set(
                 new byte[] { 1, 1, 2 },
-                RecursiveLengthPrefix.Serialize(new object[] { "hello" }));
+                Rlp.Serialize(new object[] { "hello" }));
 
             patriciaTree.Set(
                 new byte[] { 1, 1, 2 },
-                RecursiveLengthPrefix.Serialize(new object[] { "hellothere" }));
+                Rlp.Serialize(new object[] { "hellothere" }));
 
             Assert.AreEqual("0x05e13d8be09601998499c89846ec5f3101a1ca09373a5f0b74021261af85d396", patriciaTree.RootHash.ToString());
         }
@@ -100,17 +100,17 @@ namespace Ethereum.Trie.Test
             PatriciaTree patriciaTree = new PatriciaTree(db);
             patriciaTree.Set(
                 new byte[] { 1, 1, 2 },
-                RecursiveLengthPrefix.Serialize(new object[] { "hello" }));
+                Rlp.Serialize(new object[] { "hello" }));
 
             patriciaTree.Set(
                 new byte[] { 1, 1, 3 },
-                RecursiveLengthPrefix.Serialize(new object[] { "hellothere" }));
+                Rlp.Serialize(new object[] { "hellothere" }));
 
             ExtensionNode extension = patriciaTree.Root as ExtensionNode;
             Assert.NotNull(extension);
-            BranchNode branch = patriciaTree.RlpDecode(db[extension.NextNodeHash]) as BranchNode;
+            BranchNode branch = patriciaTree.GetNode(extension.NextNode) as BranchNode;
             Assert.NotNull(branch);
-            Assert.AreEqual(5, db.Count);
+            Assert.AreEqual(3, db.Count);
         }
 
         public class TrieTestJson

@@ -4,20 +4,20 @@ using Nevermind.Core.Encoding;
 namespace Nevermind.Core.Test
 {
     [TestClass]
-    public class RecursiveLengthPrefixTests
+    public class RlpTests
     {
         [TestMethod]
         public void Serialized_form_is_same_as_input_when_input_length_is_1_and_value_is_less_than_128()
         {
-            Assert.AreEqual(0, RecursiveLengthPrefix.Serialize(new byte[] {0})[0], "0");
-            Assert.AreEqual(127, RecursiveLengthPrefix.Serialize(new byte[] {127})[0], "128");
-            Assert.AreEqual(1, RecursiveLengthPrefix.Serialize(new byte[] {1})[0], "1");
+            Assert.AreEqual(0, Rlp.Serialize(new byte[] {0})[0], "0");
+            Assert.AreEqual(127, Rlp.Serialize(new byte[] {127})[0], "128");
+            Assert.AreEqual(1, Rlp.Serialize(new byte[] {1})[0], "1");
         }
 
         [TestMethod]
         public void Serialized_form_is_128_when_input_is_empty()
         {
-            Assert.AreEqual(128, RecursiveLengthPrefix.Serialize(new byte[] { })[0]);
+            Assert.AreEqual(128, Rlp.Serialize(new byte[] { })[0]);
         }
 
         [TestMethod]
@@ -29,11 +29,11 @@ namespace Nevermind.Core.Test
             input[1] = 128;
             input[2] = 1;
 
-            Assert.AreEqual(183, RecursiveLengthPrefix.Serialize(input)[0]);
-            Assert.AreEqual(56, RecursiveLengthPrefix.Serialize(input).Length);
+            Assert.AreEqual(183, Rlp.Serialize(input)[0]);
+            Assert.AreEqual(56, Rlp.Serialize(input).Length);
             for (int i = 0; i < 55; i++)
             {
-                Assert.AreEqual(input[i], RecursiveLengthPrefix.Serialize(input)[i + 1]);
+                Assert.AreEqual(input[i], Rlp.Serialize(input)[i + 1]);
             }
         }
 
@@ -51,14 +51,14 @@ namespace Nevermind.Core.Test
             input[1] = 128;
             input[2] = 1;
 
-            Assert.AreEqual(expectedFirstByte, RecursiveLengthPrefix.Serialize(input)[0]);
-            Assert.AreEqual(expectedSecondByte, RecursiveLengthPrefix.Serialize(input)[1]);
+            Assert.AreEqual(expectedFirstByte, Rlp.Serialize(input)[0]);
+            Assert.AreEqual(expectedSecondByte, Rlp.Serialize(input)[1]);
 
             if (inputLength < 256)
             {
                 for (int i = 0; i < 128; i++)
                 {
-                    Assert.AreEqual(input[i], RecursiveLengthPrefix.Serialize(input)[i + 1 + expectedFirstByte - 183]);
+                    Assert.AreEqual(input[i], Rlp.Serialize(input)[i + 1 + expectedFirstByte - 183]);
                 }
             }
         }
@@ -66,14 +66,14 @@ namespace Nevermind.Core.Test
         [TestMethod]
         public void Serializing_sequences()
         {
-            byte[] output = RecursiveLengthPrefix.Serialize(255L, new byte[] { 255 });
+            Rlp output = Rlp.Serialize(255L, new byte[] { 255 });
             Assert.AreEqual(5, output.Length);
         }
 
         [TestMethod]
         public void Serializing_empty_sequence()
         {
-            byte[] output = RecursiveLengthPrefix.Serialize();
+            Rlp output = Rlp.Serialize();
             Assert.AreEqual(1, output.Length);
             Assert.AreEqual(192, output[0]);
         }

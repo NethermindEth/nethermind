@@ -1,26 +1,25 @@
-﻿using Nevermind.Core.Encoding;
-using Nevermind.Core.Sugar;
+﻿using Nevermind.Core.Sugar;
 
 namespace Nevermind.Store
 {
-    public class ExtensionNode : Node
+    internal class ExtensionNode : Node
     {
         public ExtensionNode()
         {
         }
 
-        public ExtensionNode(byte[] key, Keccak nextNodeHash)
+        public ExtensionNode(byte[] key, KeccakOrRlp nextNode)
         {
             Key = key;
-            NextNodeHash = nextNodeHash;
+            NextNode = nextNode;
         }
 
         public byte[] Key { get; set; }
-        public Keccak NextNodeHash { get; set; }
+        public KeccakOrRlp NextNode { get; set; }
 
         public override string ToString()
         {
-            return $"[{Key.ToHex(false)}, {NextNodeHash.ToString(true)}";
+            return $"[{Key.ToHex(false)}, {NextNode}";
         }
     }
 }

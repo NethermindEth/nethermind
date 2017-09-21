@@ -76,7 +76,7 @@ namespace Nevermind.Core.Encoding
 
         public override int GetHashCode()
         {
-            return (Bytes != null ? Bytes.GetHashCode() : 0);
+            return Bytes[0] ^ Bytes[31];
         }
     }
 }

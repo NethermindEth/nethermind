@@ -2,7 +2,7 @@
 
 namespace Nevermind.Store
 {
-    public class LeafNode : Node
+    internal class LeafNode : Node
     {
         public LeafNode()
         {

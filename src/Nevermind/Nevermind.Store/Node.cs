@@ -1,6 +1,6 @@
 ﻿namespace Nevermind.Store
 {
-    public abstract class Node
+    internal abstract class Node
     {
     }
 }

@@ -24,13 +24,14 @@ namespace Nevermind.Core.Encoding
     ///     which when interpreted as a big-endian integer is equal to the length of the concatenated serialisations byte array,
     ///     which is itself preﬁxed by the number of bytes required to faithfully encode this length value plus 247. 
     /// </summary>
-    //[DebuggerStepThrough]
+    // clean heap allocations (new Rlp())
+    [DebuggerStepThrough]
     // https://github.com/ethereum/wiki/wiki/RLP
-    public static class RecursiveLengthPrefix
+    public partial class Rlp
     {
-        public static object Deserialize(byte[] bytes)
+        public static object Deserialize(Rlp rlp)
         {
-            return Deserialize(new DeserializationContext(bytes));
+            return Deserialize(new DeserializationContext(rlp.Bytes));
         }
 
         private static object Deserialize(DeserializationContext context, bool check = true)
@@ -183,26 +184,26 @@ namespace Nevermind.Core.Encoding
             return BitConverter.ToInt32(padded, 0);
         }
 
-        public static byte[] OfEmptySequence => Serialize();
+        public static Rlp OfEmptySequence => Serialize();
 
         [SuppressMessage("ReSharper", "PossibleMultipleEnumeration")]
-        public static byte[] Serialize(params object[] sequence)
+        public static Rlp Serialize(params object[] sequence)
         {
             byte[] concatenation = new byte[0];
             foreach (object item in sequence)
             {
                 // do that at once (unnecessary objects creation here)
-                concatenation = Concat(concatenation, Serialize(item));
+                concatenation = Concat(concatenation, Serialize(item).Bytes);
             }
 
             if (concatenation.Length < 56)
             {
-                return Concat((byte)(192 + concatenation.Length), concatenation);
+                return new Rlp(Concat((byte)(192 + concatenation.Length), concatenation));
             }
 
             byte[] serializedLength = SerializeLength(concatenation.Length);
             byte prefix = (byte)(247 + serializedLength.Length);
-            return Concat(prefix, serializedLength, concatenation);
+            return new Rlp(Concat(prefix, serializedLength, concatenation));
         }
 
         private static byte[] Concat(byte prefix, byte[] x)
@@ -238,7 +239,7 @@ namespace Nevermind.Core.Encoding
             return output;
         }
 
-        public static byte[] Serialize(object item)
+        public static Rlp Serialize(object item)
         {
             object[] objects = item as object[];
             if (objects != null)
@@ -270,13 +271,13 @@ namespace Nevermind.Core.Encoding
                 // check test bytestring00 and zero - here is some inconsistency in tests
                 if (value == 0L)
                 {
-                    return new byte[] { 128 };
+                    return new Rlp(128);
                 }
 
                 if (value < 128L)
                 {
                     // ReSharper disable once PossibleInvalidCastException
-                    return new[] { Convert.ToByte(value) };
+                    return new Rlp(Convert.ToByte(value));
                 }
 
                 if (value <= Byte.MaxValue)
@@ -300,30 +301,35 @@ namespace Nevermind.Core.Encoding
                 return Serialize(System.Text.Encoding.ASCII.GetBytes(s));
             }
 
-            throw new NotSupportedException($"{nameof(RecursiveLengthPrefix)} only supports {nameof(BigInteger)}, {nameof(String)} and byte arrays");
+            throw new NotSupportedException($"RLP does not support items of type {item.GetType().Name}");
         }
 
-        public static byte[] Serialize(byte[] input)
+        private static Rlp Serialize(Rlp input)
+        {
+            return Serialize(input.Bytes);
+        }
+
+        public static Rlp Serialize(byte[] input)
         {
             if (input.Length == 0)
             {
-                return new byte[] { 128 };
+                return new Rlp(128);
             }
 
             if (input.Length == 1 && input[0] < 128)
             {
-                return input;
+                return new Rlp(input[0]);
             }
 
             if (input.Length < 56)
             {
                 byte smallPrefix = (byte)(input.Length + 128);
-                return Concat(smallPrefix, input);
+                return new Rlp(Concat(smallPrefix, input));
             }
 
             byte[] serializedLength = SerializeLength(input.Length);
             byte prefix = (byte)(183 + serializedLength.Length);
-            return Concat(prefix, serializedLength, input);
+            return new Rlp(Concat(prefix, serializedLength, input));
         }
 
         public static byte[] SerializeLength(long value)
