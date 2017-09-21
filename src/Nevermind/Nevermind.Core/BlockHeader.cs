@@ -49,7 +49,7 @@ namespace Nevermind.Core
             //Genesis.GasLimit = 3141592;
             Genesis.GasLimit = 5000;
             // timestamp
-            Genesis.ExtraData = HexString.ToBytes("0x11bbe8db4e347b4e8c937c1c8370e4b5ed33adb3db69cbdb7a38e1e50b1b82fa");
+            Genesis.ExtraData = Hex.ToBytes("0x11bbe8db4e347b4e8c937c1c8370e4b5ed33adb3db69cbdb7a38e1e50b1b82fa");
             Genesis.MixHash = Keccak.Zero;
             Genesis.Nonce = new BigInteger(RecursiveLengthPrefix.Serialize(new byte[] {42}));
         }

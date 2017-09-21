@@ -13,7 +13,7 @@ namespace Nevermind.Core.Encoding
 
         public static string ComputeString(byte[] input)
         {
-            return HexString.FromBytes(Compute(input));
+            return Hex.FromBytes(Compute(input), false);
         }
 
         public static byte[] Compute(string input)
@@ -23,7 +23,7 @@ namespace Nevermind.Core.Encoding
 
         public static string ComputeString(string input)
         {
-            return HexString.FromBytes(Compute(HexString.ToBytes(input)));
+            return ComputeString(System.Text.Encoding.UTF8.GetBytes(input));
         }
     }
 }

@@ -9,45 +9,40 @@ namespace Nevermind.Core.Signing
         private const int PrivateKeyLengthInBytes = 32;
         private PublicKey _publicKey;
 
-        public PrivateKey(string hexString)
-            :this(HexString.ToBytes(hexString))
-        {
-        }
-
         public PrivateKey()
             :this(Random.GeneratePrivateKey())
         {
         }
 
-        public PrivateKey(byte[] bytes)
+        public PrivateKey(Hex key)
         {
-            if (bytes == null)
+            if (key == null)
             {
-                throw new ArgumentNullException(nameof(bytes));
+                throw new ArgumentNullException(nameof(key));
             }
 
-            if (bytes.Length != PrivateKeyLengthInBytes)
+            if (key.ByteLength != PrivateKeyLengthInBytes)
             {
-                throw new ArgumentException($"{nameof(PrivateKey)} should be {PrivateKeyLengthInBytes} bytes long", nameof(bytes));
+                throw new ArgumentException($"{nameof(PrivateKey)} should be {PrivateKeyLengthInBytes} bytes long", nameof(key));
             }
 
-            Bytes = bytes;
+            Hex = key;
         }
 
-        public byte[] Bytes { get; }
+        public Hex Hex { get; set; }
 
         private PublicKey ComputePublicKey()
         {
-            return new PublicKey(Secp256k1.Proxy.Proxy.GetPublicKey(Bytes, false));
+            return new PublicKey(Secp256k1.Proxy.Proxy.GetPublicKey(Hex, false));
         }
 
-        public PublicKey PublicKey => LazyInitializer.EnsureInitialized(ref _publicKey, ComputePublicKey);
+        internal PublicKey PublicKey => LazyInitializer.EnsureInitialized(ref _publicKey, ComputePublicKey);
 
         public Address Address => PublicKey.Address;
 
         public override string ToString()
         {
-            return string.Concat("0x", HexString.FromBytes(Bytes));
+            return Hex.ToString(true);
         }
     }
 }

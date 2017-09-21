@@ -5,36 +5,32 @@ namespace Nevermind.Core
 {
     public class Address : IEquatable<Address>
     {
-        public Address(string hexString)
-            :this(HexString.ToBytes(hexString.Replace("0x", String.Empty)))
-        {
-        }
-
         private const int AddressLengthInBytes = 20;
 
         public static Address Zero { get; } = new Address(new byte[20]); 
 
-        public Address(byte[] bytes)
+        public Address(Hex hex)
         {
-            if (bytes == null)
+            if (hex == null)
             {
-                throw new ArgumentNullException(nameof(bytes));
+                throw new ArgumentNullException(nameof(hex));
             }
 
-            if (bytes.Length != AddressLengthInBytes)
+            if (hex.ByteLength != AddressLengthInBytes)
             {
-                throw new ArgumentException($"{nameof(Address)} should be {AddressLengthInBytes} bytes long", nameof(bytes));
+                throw new ArgumentException($"{nameof(Address)} should be {AddressLengthInBytes} bytes long", nameof(hex));
             }
 
-            Bytes = bytes;
+            Hex = hex;
         }
 
         public string ToString(bool withEip55Checksum)
         {
-            return string.Concat("0x", HexString.FromBytes(Bytes, withEip55Checksum));
+            // use inside hex?
+            return string.Concat("0x", Hex.FromBytes(Hex, false, withEip55Checksum));
         }
 
-        public byte[] Bytes { get; }
+        public Hex Hex { get; set; }
 
         /// <summary>
         /// https://github.com/ethereum/EIPs/issues/55

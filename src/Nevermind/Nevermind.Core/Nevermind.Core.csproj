@@ -21,6 +21,7 @@
     <DefineConstants>DEBUG;TRACE</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
     <DebugType>pdbonly</DebugType>
@@ -44,6 +45,8 @@
   <ItemGroup>
     <Compile Include="Account.cs" />
     <Compile Include="Sugar\BigIntegerExtensions.cs" />
+    <Compile Include="Sugar\ByteArrayExtensions.cs" />
+    <Compile Include="Sugar\Nibbles.cs" />
     <Compile Include="Sugar\ShortExtensions.cs" />
     <Compile Include="Sugar\LongExtensions.cs" />
     <Compile Include="Validators\AccountValidator.cs" />
@@ -58,7 +61,7 @@
     <Compile Include="Encoding\Bloom.cs" />
     <Compile Include="VirtualMachine\FeeSchedule.cs" />
     <Compile Include="Encoding\HexPrefix.cs" />
-    <Compile Include="Encoding\HexString.cs" />
+    <Compile Include="Encoding\Hex.cs" />
     <Compile Include="Sugar\IntExtensions.cs" />
     <Compile Include="Encoding\Keccak.cs" />
     <Compile Include="Signing\Keystore.cs" />

@@ -24,26 +24,26 @@ namespace Nevermind.Core.Signing
 
         public static Signature Sign(PrivateKey privateKey, byte[] bytes)
         {
-            if (!Secp256k1.Proxy.Proxy.VerifyPrivateKey(privateKey.Bytes))
+            if (!Secp256k1.Proxy.Proxy.VerifyPrivateKey(privateKey.Hex))
             {
                 throw new ArgumentException("Invalid private key", nameof(privateKey));
             }
 
             int recoveryId;
-            byte[] signature = Secp256k1.Proxy.Proxy.SignCompact(bytes, privateKey.Bytes, out recoveryId);
+            byte[] signature = Secp256k1.Proxy.Proxy.SignCompact(bytes, privateKey.Hex, out recoveryId);
 
             return new Signature(signature, recoveryId);
         }
 
         public static Signature Sign(PrivateKey privateKey, Keccak message)
         {
-            if (!Secp256k1.Proxy.Proxy.VerifyPrivateKey(privateKey.Bytes))
+            if (!Secp256k1.Proxy.Proxy.VerifyPrivateKey(privateKey.Hex))
             {
                 throw new ArgumentException("Invalid private key", nameof(privateKey));
             }
 
             int recoveryId;
-            byte[] signatureBytes = Secp256k1.Proxy.Proxy.SignCompact(message.Bytes, privateKey.Bytes, out recoveryId);
+            byte[] signatureBytes = Secp256k1.Proxy.Proxy.SignCompact(message.Bytes, privateKey.Hex, out recoveryId);
 
 
             Signature signature = new Signature(signatureBytes, recoveryId);

@@ -1,12 +1,13 @@
-﻿using HashLib;
+﻿using System;
+using HashLib;
 
 namespace Nevermind.Core.Encoding
 {
-    public class Keccak
+    public class Keccak : IEquatable<Keccak>
     {
         private static readonly IHash Hash = HashFactory.Crypto.SHA3.CreateKeccak256();
 
-        private Keccak(byte[] bytes)
+        public Keccak(byte[] bytes)
         {
             Bytes = bytes;
         }
@@ -25,13 +26,13 @@ namespace Nevermind.Core.Encoding
 
         public override string ToString()
         {
-            return string.Concat("0x", HexString.FromBytes(Bytes));
+            return Hex.FromBytes(Bytes, true);
         }
 
-        //public override string ToString()
-        //{
-        //    return HexString.FromBytes(Bytes);
-        //}
+        public string ToString(bool withZeroX)
+        {
+            return Hex.FromBytes(Bytes, withZeroX);
+        }
 
         public static Keccak Compute(Rlp rlp)
         {
@@ -46,6 +47,36 @@ namespace Nevermind.Core.Encoding
         public static Keccak Compute(string input)
         {
             return Compute(System.Text.Encoding.UTF8.GetBytes(input));
+        }
+
+        public bool Equals(Keccak other)
+        {
+            if (ReferenceEquals(null, other)) return false;
+            if (ReferenceEquals(this, other)) return true;
+
+            // timing attacks? probably not
+            for (int i = 0; i < 32; i++)
+            {
+                if (other.Bytes[i] != Bytes[i])
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        public override bool Equals(object obj)
+        {
+            if (ReferenceEquals(null, obj)) return false;
+            if (ReferenceEquals(this, obj)) return true;
+            if (obj.GetType() != this.GetType()) return false;
+            return Equals((Keccak) obj);
+        }
+
+        public override int GetHashCode()
+        {
+            return (Bytes != null ? Bytes.GetHashCode() : 0);
         }
     }
 }

@@ -1,4 +1,6 @@
-﻿namespace Nevermind.Core.Encoding
+﻿using Nevermind.Core.Sugar;
+
+namespace Nevermind.Core.Encoding
 {
     // TODO: better representation (just byte array)
     public class HexPrefix
@@ -11,9 +13,14 @@
 
         public byte[] Nibbles { get; set; }
         public bool Flag { get; set; }
-    
+
         public byte[] ToBytes()
         {
+            if (Nibbles.Length == 0)
+            {
+                return Sugar.Nibbles.ToBytes((byte)(Flag ? 2 : 0), 0);
+            }
+
             byte[] output = new byte[Nibbles.Length / 2 + 1];
             output[0] = (byte)(16 * (Flag ? 2 : 0) +
                                 Nibbles.Length % 2 * (16 + Nibbles[0]));
@@ -22,7 +29,7 @@
                 output[i / 2 + 1] =
                     Nibbles.Length % 2 == 0
                         ? (byte)(16 * Nibbles[i] + Nibbles[i + 1])
-                        :  output[i / 2 + 1] = (byte)(16 * Nibbles[i + 1] + Nibbles[i + 2]);
+                        : output[i / 2 + 1] = (byte)(16 * Nibbles[i + 1] + Nibbles[i + 2]);
             }
 
             return output;

@@ -114,11 +114,11 @@ namespace Ethereum.Rlp.Test
             object input = PrepareInput(test.Input);
 
             byte[] serialized = RecursiveLengthPrefix.Serialize(input);
-            string serializedHex = HexString.FromBytes(serialized);
+            string serializedHex = Hex.FromBytes(serialized, false);
 
             object deserialized = RecursiveLengthPrefix.Deserialize(serialized);
             byte[] serializedAgain = RecursiveLengthPrefix.Serialize(deserialized);
-            string serializedAgainHex = HexString.FromBytes(serializedAgain);
+            string serializedAgainHex = Hex.FromBytes(serializedAgain, false);
 
             Assert.AreEqual(test.Output, serializedHex);
             Assert.AreEqual(serializedHex, serializedAgainHex);
@@ -127,7 +127,7 @@ namespace Ethereum.Rlp.Test
         [TestCaseSource(nameof(LoadInvalidTests))]
         public void TestInvalid(RlpTest test)
         {
-            byte[] invalidBytes = HexString.ToBytes(test.Output);
+            byte[] invalidBytes = Hex.ToBytes(test.Output);
             Assert.Throws<InvalidOperationException>(
                 () => RecursiveLengthPrefix.Deserialize(invalidBytes));
         }
@@ -135,7 +135,7 @@ namespace Ethereum.Rlp.Test
         [TestCaseSource(nameof(LoadRandomTests))]
         public void TestRandom(RlpTest test)
         {
-            byte[] validBytes = HexString.ToBytes(test.Output);
+            byte[] validBytes = Hex.ToBytes(test.Output);
             RecursiveLengthPrefix.Deserialize(validBytes);
         }
     }

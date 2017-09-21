@@ -26,7 +26,7 @@ namespace Ethereum.HexPrefix.Test
                 IsTerm = isTerm;
                 Output = output;
             }
-            
+
             public string Name { get; }
             public byte[] Sequence { get; }
             public bool IsTerm { get; }
@@ -59,15 +59,24 @@ namespace Ethereum.HexPrefix.Test
         [TestCaseSource(nameof(LoadTests))]
         public void Test(HexPrefixTest test)
         {
-            Nevermind.Core.Encoding.HexPrefix result = new Nevermind.Core.Encoding.HexPrefix(test.IsTerm, test.Sequence);
+            Nevermind.Core.Encoding.HexPrefix result =
+                new Nevermind.Core.Encoding.HexPrefix(test.IsTerm, test.Sequence);
             byte[] bytes = result.ToBytes();
-            string resultHex = HexString.FromBytes(bytes);
+            string resultHex = Hex.FromBytes(bytes, false);
             Assert.AreEqual(test.Output, resultHex);
 
             Nevermind.Core.Encoding.HexPrefix check = Nevermind.Core.Encoding.HexPrefix.FromBytes(bytes);
             byte[] checkBytes = check.ToBytes();
-            string checkHex = HexString.FromBytes(checkBytes);
+            string checkHex = Hex.FromBytes(checkBytes, false);
             Assert.AreEqual(test.Output, checkHex);
+        }
+
+        // https://easythereentropy.wordpress.com/2014/06/04/understanding-the-ethereum-trie/
+        [Test]
+        public void Tutorial_test()
+        {
+            Nevermind.Core.Encoding.HexPrefix hexPrefix = new Nevermind.Core.Encoding.HexPrefix(true, new byte[] { 1, 1, 2 });
+            byte[] result = hexPrefix.ToBytes();
         }
     }
 }

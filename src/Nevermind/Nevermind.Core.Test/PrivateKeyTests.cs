@@ -1,5 +1,6 @@
 ﻿using System;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Nevermind.Core.Encoding;
 using Nevermind.Core.Signing;
 
 namespace Nevermind.Core.Test
@@ -48,12 +49,12 @@ namespace Nevermind.Core.Test
         }
 
         [TestMethod]
-        public void Bytes_are_retrievable()
+        public void HEx_is_stored_correctly()
         {
             byte[] bytes = new byte[32];
             new System.Random(12).NextBytes(bytes);
             PrivateKey privateKey = new PrivateKey(bytes);
-            Assert.AreSame(bytes, privateKey.Bytes);
+            Assert.AreEqual(new Hex(bytes), privateKey.Hex);
         }
 
         [DataTestMethod]

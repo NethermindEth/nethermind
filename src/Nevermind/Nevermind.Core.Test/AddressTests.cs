@@ -1,4 +1,5 @@
 ﻿using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Nevermind.Core.Encoding;
 
 namespace Nevermind.Core.Test
 {
@@ -35,13 +36,12 @@ namespace Nevermind.Core.Test
             Assert.AreEqual(expected, addressString);
         }
 
-        [TestMethod]
-        public void Bytes_are_retrievable()
+        [TestMethod] public void Hex_is_correctly_assigned()
         {
             byte[] bytes = new byte[20];
             new System.Random(1).NextBytes(bytes);
             Address address = new Address(bytes);
-            Assert.AreSame(address.Bytes, bytes);
+            Assert.AreEqual(address.Hex, new Hex(bytes));
         }
     }
 }

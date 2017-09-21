@@ -4,7 +4,7 @@ using Nevermind.Core.Encoding;
 
 namespace Nevermind.Core.Signing
 {
-    public class PublicKey
+    internal class PublicKey
     {
         private const int PublicKeyWithPrefixLengthInBytes = 65;
         private const int PublicKeyLengthInBytes = 64;
@@ -33,29 +33,29 @@ namespace Nevermind.Core.Signing
                 throw new ArgumentException($"Expected prefix of 0x04 for {PublicKeyWithPrefixLengthInBytes} bytes long {nameof(PublicKey)}");
             }
 
-            Array.Copy(bytes, bytes.Length - PublicKeyLengthInBytes, Bytes, 0, 64);
-
-            Array.Copy(new byte[] { 0x04 }, 0, PrefixedBytes, 0, 1);
-            Array.Copy(bytes, bytes.Length - PublicKeyLengthInBytes, PrefixedBytes, 1, 64);
+            Buffer.BlockCopy(new byte[] { 0x04 }, 0, PrefixedBytes, 0, 1);
+            Buffer.BlockCopy(bytes, bytes.Length - PublicKeyLengthInBytes, PrefixedBytes, 1, 64);
         }
 
         private Address ComputeAddress()
         {
-            byte[] hash = Keccak.Compute(Bytes).Bytes;
+            byte[] bytes = new byte[64];
+            Buffer.BlockCopy(PrefixedBytes, 1, bytes, 0, 64);
+            byte[] hash = Keccak.Compute(bytes).Bytes;
             byte[] last160Bits = new byte[20];
-            Array.Copy(hash, 12, last160Bits, 0, 20);
+            Buffer.BlockCopy(hash, 12, last160Bits, 0, 20);
             return new Address(last160Bits);
         }
 
         public Address Address => LazyInitializer.EnsureInitialized(ref _address, ComputeAddress);
 
         public byte[] PrefixedBytes { get; } = new byte[65];
-        public byte[] Bytes { get; } = new byte[64];
+
         public byte[] CompressedBytes { get; }
 
         public override string ToString()
         {
-            return HexString.FromBytes(PrefixedBytes);
+            return Hex.FromBytes(PrefixedBytes, true);
         }
     }
 }

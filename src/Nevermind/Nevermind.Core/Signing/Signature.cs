@@ -14,7 +14,7 @@ namespace Nevermind.Core.Signing
                 throw new ArgumentException();
             }
 
-            Array.Copy(bytes, 0, Bytes, 0, 64);
+            Buffer.BlockCopy(bytes, 0, Bytes, 0, 64);
             V = (byte) (recoveryId + 27);
         }
 
@@ -25,7 +25,7 @@ namespace Nevermind.Core.Signing
                 throw new ArgumentException();
             }
 
-            Array.Copy(bytes, 0, Bytes, 0, 64);
+            Buffer.BlockCopy(bytes, 0, Bytes, 0, 64);
             V = bytes[64];
         }
 
@@ -34,13 +34,13 @@ namespace Nevermind.Core.Signing
             byte[] rBytes = r.ToBigEndianByteArray();
             byte[] sBytes = s.ToBigEndianByteArray();
 
-            Array.Copy(rBytes, 0, Bytes, 0, 32);
-            Array.Copy(sBytes, 0, Bytes, 32, 32);
+            Buffer.BlockCopy(rBytes, 0, Bytes, 0, 32);
+            Buffer.BlockCopy(sBytes, 0, Bytes, 32, 32);
             V = v;
         }
 
         public Signature(string hexString)
-            : this(HexString.ToBytes(hexString))
+            : this(Hex.ToBytes(hexString))
         {
         }
 
@@ -50,7 +50,7 @@ namespace Nevermind.Core.Signing
 
         public override string ToString()
         {
-            return string.Concat("0x", HexString.FromBytes(Bytes), HexString.FromBytes(new[] {V}));
+            return string.Concat(Hex.FromBytes(Bytes, true), Hex.FromBytes(new[] {V}, false));
         }
     }
 }

@@ -3,8 +3,6 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 15
 VisualStudioVersion = 15.0.26730.12
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nevermind.Console", "Nevermind.Console\Nevermind.Console.csproj", "{1EF825BE-F038-47CB-9EC7-88BF0FEEFF45}"
-EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nevermind.Core", "Nevermind.Core\Nevermind.Core.csproj", "{051B3754-5FB6-4202-AF6E-D1764E2DED06}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nevermind.Core.Test", "Nevermind.Core.Test\Nevermind.Core.Test.csproj", "{9308BD5B-CA67-401D-9E51-6B970327C03F}"
@@ -25,6 +23,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ethereum.Trie.Test", "Ether
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ethereum.Difficulty.Test", "Ethereum.Difficulty.Test\Ethereum.Difficulty.Test.csproj", "{09FEF09F-3BE1-40EF-AA67-855A23463834}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nevermind.Store", "Nevermind.Store\Nevermind.Store.csproj", "{3A5B9092-C842-4EFD-ACC3-1C6CF57D09B0}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -35,18 +35,6 @@ Global
 		Release|x86 = Release|x86
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{1EF825BE-F038-47CB-9EC7-88BF0FEEFF45}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{1EF825BE-F038-47CB-9EC7-88BF0FEEFF45}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{1EF825BE-F038-47CB-9EC7-88BF0FEEFF45}.Debug|x64.ActiveCfg = Debug|Any CPU
-		{1EF825BE-F038-47CB-9EC7-88BF0FEEFF45}.Debug|x64.Build.0 = Debug|Any CPU
-		{1EF825BE-F038-47CB-9EC7-88BF0FEEFF45}.Debug|x86.ActiveCfg = Debug|Any CPU
-		{1EF825BE-F038-47CB-9EC7-88BF0FEEFF45}.Debug|x86.Build.0 = Debug|Any CPU
-		{1EF825BE-F038-47CB-9EC7-88BF0FEEFF45}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{1EF825BE-F038-47CB-9EC7-88BF0FEEFF45}.Release|Any CPU.Build.0 = Release|Any CPU
-		{1EF825BE-F038-47CB-9EC7-88BF0FEEFF45}.Release|x64.ActiveCfg = Release|Any CPU
-		{1EF825BE-F038-47CB-9EC7-88BF0FEEFF45}.Release|x64.Build.0 = Release|Any CPU
-		{1EF825BE-F038-47CB-9EC7-88BF0FEEFF45}.Release|x86.ActiveCfg = Release|Any CPU
-		{1EF825BE-F038-47CB-9EC7-88BF0FEEFF45}.Release|x86.Build.0 = Release|Any CPU
 		{051B3754-5FB6-4202-AF6E-D1764E2DED06}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{051B3754-5FB6-4202-AF6E-D1764E2DED06}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{051B3754-5FB6-4202-AF6E-D1764E2DED06}.Debug|x64.ActiveCfg = Debug|Any CPU
@@ -167,6 +155,18 @@ Global
 		{09FEF09F-3BE1-40EF-AA67-855A23463834}.Release|x64.Build.0 = Release|Any CPU
 		{09FEF09F-3BE1-40EF-AA67-855A23463834}.Release|x86.ActiveCfg = Release|Any CPU
 		{09FEF09F-3BE1-40EF-AA67-855A23463834}.Release|x86.Build.0 = Release|Any CPU
+		{3A5B9092-C842-4EFD-ACC3-1C6CF57D09B0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3A5B9092-C842-4EFD-ACC3-1C6CF57D09B0}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3A5B9092-C842-4EFD-ACC3-1C6CF57D09B0}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{3A5B9092-C842-4EFD-ACC3-1C6CF57D09B0}.Debug|x64.Build.0 = Debug|Any CPU
+		{3A5B9092-C842-4EFD-ACC3-1C6CF57D09B0}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{3A5B9092-C842-4EFD-ACC3-1C6CF57D09B0}.Debug|x86.Build.0 = Debug|Any CPU
+		{3A5B9092-C842-4EFD-ACC3-1C6CF57D09B0}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3A5B9092-C842-4EFD-ACC3-1C6CF57D09B0}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3A5B9092-C842-4EFD-ACC3-1C6CF57D09B0}.Release|x64.ActiveCfg = Release|Any CPU
+		{3A5B9092-C842-4EFD-ACC3-1C6CF57D09B0}.Release|x64.Build.0 = Release|Any CPU
+		{3A5B9092-C842-4EFD-ACC3-1C6CF57D09B0}.Release|x86.ActiveCfg = Release|Any CPU
+		{3A5B9092-C842-4EFD-ACC3-1C6CF57D09B0}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

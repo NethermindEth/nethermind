@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using System.Linq;
 using System.Numerics;
 using Nevermind.Core.Sugar;
 
@@ -24,6 +24,8 @@ namespace Nevermind.Core.Encoding
     ///     which when interpreted as a big-endian integer is equal to the length of the concatenated serialisations byte array,
     ///     which is itself preﬁxed by the number of bytes required to faithfully encode this length value plus 247. 
     /// </summary>
+    //[DebuggerStepThrough]
+    // https://github.com/ethereum/wiki/wiki/RLP
     public static class RecursiveLengthPrefix
     {
         public static object Deserialize(byte[] bytes)
@@ -66,7 +68,7 @@ namespace Nevermind.Core.Encoding
 
             if (prefix == 128)
             {
-                result.Add(0);
+                result.Add(new byte[] {});
                 return CheckAndReturn(result, context);
             }
 
@@ -158,14 +160,14 @@ namespace Nevermind.Core.Encoding
             public byte[] Pop(int n)
             {
                 byte[] bytes = new byte[n];
-                Array.Copy(Data, CurrentIndex, bytes, 0, n);
+                Buffer.BlockCopy(Data, CurrentIndex, bytes, 0, n);
                 CurrentIndex += n;
                 return bytes;
             }
 
             public byte[] Data { get; }
-            public long CurrentIndex { get; set; }
-            public long MaxIndex { get; set; }
+            public int CurrentIndex { get; set; }
+            public int MaxIndex { get; set; }
         }
 
         public static int DeserializeLength(byte[] bytes)
@@ -189,6 +191,7 @@ namespace Nevermind.Core.Encoding
             byte[] concatenation = new byte[0];
             foreach (object item in sequence)
             {
+                // do that at once (unnecessary objects creation here)
                 concatenation = Concat(concatenation, Serialize(item));
             }
 
@@ -208,7 +211,7 @@ namespace Nevermind.Core.Encoding
 
             byte[] output = new byte[1 + x.Length];
             output[0] = prefix;
-            Array.Copy(x, 0, output, 1, x.Length);
+            Buffer.BlockCopy(x, 0, output, 1, x.Length);
             return output;
         }
 
@@ -218,8 +221,8 @@ namespace Nevermind.Core.Encoding
             if (y == null) throw new ArgumentNullException(nameof(y));
 
             byte[] output = new byte[x.Length + y.Length];
-            Array.Copy(x, 0, output, 0, x.Length);
-            Array.Copy(y, 0, output, x.Length, y.Length);
+            Buffer.BlockCopy(x, 0, output, 0, x.Length);
+            Buffer.BlockCopy(y, 0, output, x.Length, y.Length);
             return output;
         }
 
@@ -230,8 +233,8 @@ namespace Nevermind.Core.Encoding
 
             byte[] output = new byte[1 + x.Length + y.Length];
             output[0] = prefix;
-            Array.Copy(x, 0, output, 1, x.Length);
-            Array.Copy(y, 0, output, 1 + x.Length, y.Length);
+            Buffer.BlockCopy(x, 0, output, 1, x.Length);
+            Buffer.BlockCopy(y, 0, output, 1 + x.Length, y.Length);
             return output;
         }
 
@@ -351,7 +354,7 @@ namespace Nevermind.Core.Encoding
             }
 
             byte[] result = new byte[resultLength];
-            Array.Copy(bytes, maxResultLength - resultLength, result, 0, resultLength);
+            Buffer.BlockCopy(bytes, maxResultLength - resultLength, result, 0, resultLength);
             return result;
         }
     }
