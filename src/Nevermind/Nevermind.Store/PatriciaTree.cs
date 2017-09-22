@@ -21,9 +21,9 @@ namespace Nevermind.Store
             Root = RlpDecode(rootRlp);
         }
 
-        public Keccak RootHash { get; private set; }
+        public Keccak RootHash { get; internal set; }
 
-        internal Node Root { get; private set; }
+        internal Node Root { get; set; }
 
         internal Rlp RlpEncode(Node node)
         {
@@ -122,164 +122,9 @@ namespace Nevermind.Store
 
         public void Set(byte[] rawKey, byte[] value)
         {
-            byte[] hpKey = new HexPrefix(true, Nibbles.FromBytes(rawKey)).ToBytes();
-            if (Root == null)
-            {
-                StoreNode(new LeafNode(hpKey, value), true);
-                return;
-            }
-
-            Node previousNode = null;
-            Node currentNode = Root;
-            int previousBranchIndex = -1;
-            int currentIndex = 0;
-            LeafNode currentLeaf = currentNode as LeafNode;
-            if (currentLeaf != null)
-            {
-                for (int i = 0; i < currentLeaf.Key.Length; i++)
-                {
-                    if (currentLeaf.Key[i] != hpKey[currentIndex])
-                    {
-                        LeafNode oldLeaf = new LeafNode(new byte[] { }, currentLeaf.Value);
-                        // 0 for now
-                        //byte[] newLeafKey = new byte[rawKey.Length - currentLeaf.Key.Length];
-                        KeccakOrRlp oldLeafHash = StoreNode(oldLeaf);
-
-                        LeafNode newLeaf = new LeafNode(new byte[] { }, value);
-                        // 0 for now
-                        //byte[] newLeafKey = new byte[rawKey.Length - currentLeaf.Key.Length];
-                        KeccakOrRlp newLeafHash = StoreNode(newLeaf);
-
-                        BranchNode branch = new BranchNode();
-                        branch.Nodes[hpKey[currentIndex]] = newLeafHash;
-                        branch.Nodes[currentLeaf.Key[i]] = oldLeafHash;
-                        KeccakOrRlp branchHash = StoreNode(branch);
-
-                        ExtensionNode extension = new ExtensionNode();
-                        extension.Key = currentLeaf.Key;
-                        extension.NextNode = branchHash;
-                        StoreNode(extension, previousNode == null);
-
-                        previousNode = currentNode;
-                        previousBranchIndex = -1;
-                    }
-                    else if (currentIndex == hpKey.Length - 1 && hpKey.Length == currentLeaf.Key.Length &&
-                             currentLeaf.Key[i] == hpKey[currentIndex])
-                    {
-                        // if same
-                        if (Bytes.UnsafeCompare(currentLeaf.Value, value))
-                        {
-                            return;
-                        }
-
-                        LeafNode newLeaf = new LeafNode(hpKey, value);
-                        // 0 for now
-                        //byte[] newLeafKey = new byte[rawKey.Length - currentLeaf.Key.Length];
-                        StoreNode(newLeaf, previousNode == null);
-                    }
-
-                    currentIndex++;
-                }
-            }
+            byte[] hexPrefix = new HexPrefix(true, Nibbles.FromBytes(rawKey)).ToBytes();
+            new TreeUpdate(this, hexPrefix, value).Run();
         }
-
-        ////private class Position
-        ////{
-        ////    public Position(Node node, int index, bool isNewNode)
-        ////    {
-        ////        Node = node;
-        ////        IndexWithinNode = index;
-        ////        IsNewNode = isNewNode;
-        ////    }
-
-        ////    public bool IsNewNode { get; set; }
-        ////    public Node Node { get; set; }
-        ////    public int IndexWithinNode { get; set; }
-        ////}
-
-        ////private Position GetNext(LeafNode currentNode, int indexWithinNode, byte nibble, bool create)
-        ////{
-        ////    if (indexWithinNode == currentNode.Key.Length - 1)
-        ////    {
-        ////        return null; // extend into branch with a leaf and value, leaf with nibble, return new leaf 
-        ////    }
-
-        ////    if (currentNode.Key[indexWithinNode + 1] == nibble)
-        ////    {
-        ////        return new Position(currentNode, indexWithinNode++);
-        ////    }
-
-        ////    if (currentNode.Key[indexWithinNode + 1] != nibble)
-        ////    {
-        ////        return null; //extend into branch with two leaf nodes, one finalized, return new lead
-        ////    }
-
-        ////    throw new InvalidOperationException();
-        ////}
-
-        ////private Position GetNext(ExtensionNode currentNode, int indexWithinNode, byte nibble, bool create)
-        ////{
-        ////    if (indexWithinNode == currentNode.Key.Length - 1)
-        ////    {
-        ////        Node nextNode = RlpDecode(_db[currentNode.NextNode]);
-        ////        //...
-        ////        return null; // extend into branch with a leaf and value, leaf with nibble, return new leaf 
-        ////    }
-
-        ////    if (currentNode.Key[indexWithinNode + 1] == nibble)
-        ////    {
-        ////        return new Position(currentNode, indexWithinNode++, false);
-        ////    }
-
-        ////    if (currentNode.Key[indexWithinNode + 1] != nibble)
-        ////    {
-        ////        ExtensionNode extensionNode = new ExtensionNode();
-        ////        return null; //extend into branch with two leaf nodes, one finalized, return new lead
-        ////    }
-
-        ////    throw new InvalidOperationException();
-        ////}
-
-        ////private Position GetNext(BranchNode currentNode, int indexWithinNode, byte nibble, bool create)
-        ////{
-        ////    if (indexWithinNode != 0)
-        ////    {
-        ////        throw new InvalidOperationException();
-        ////    }
-
-        ////    if (currentNode.Nodes[nibble] == null)
-        ////    {
-        ////        if (!create)
-        ////        {
-        ////            return null;
-        ////        }
-
-        ////        LeafNode newLeaf = new LeafNode();
-        ////        newLeaf.Key = new byte[] { nibble };
-        ////        return new Position(newLeaf, 1, true);
-        ////    }
-
-        ////    Node nextNode = RlpDecode(_db[currentNode.Nodes[nibble]]);
-        ////    LeafNode nextLeaf = nextNode as LeafNode;
-        ////    if (nextLeaf != null)
-        ////    {
-        ////        return GetNext(nextLeaf, indexWithinNode, nibble, create);
-        ////    }
-
-        ////    ExtensionNode nextExtension = nextNode as ExtensionNode;
-        ////    if (nextExtension != null)
-        ////    {
-        ////        return GetNext(nextExtension, indexWithinNode, nibble, create);
-        ////    }
-
-        ////    BranchNode nextBranch = nextNode as BranchNode;
-        ////    if (nextBranch != null)
-        ////    {
-        ////        return GetNext(nextBranch, indexWithinNode, nibble, create);
-        ////    }
-
-        ////    throw new InvalidOperationException();
-        ////}
 
         internal Node GetNode(KeccakOrRlp keccakOrRlp)
         {
@@ -287,7 +132,7 @@ namespace Nevermind.Store
             return RlpDecode(rlp);
         }
 
-        private KeccakOrRlp StoreNode(Node node, bool isRoot = false)
+        internal KeccakOrRlp StoreNode(Node node, bool isRoot = false)
         {
             Rlp rlp = RlpEncode(node);
             KeccakOrRlp key = new KeccakOrRlp(rlp);

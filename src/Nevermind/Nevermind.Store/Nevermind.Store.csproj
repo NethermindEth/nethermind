@@ -56,6 +56,7 @@
     <Compile Include="Node.cs" />
     <Compile Include="PatriciaTree.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="TrieWalker.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
