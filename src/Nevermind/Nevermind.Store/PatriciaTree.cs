@@ -1,6 +1,5 @@
 ﻿using System;
 using Nevermind.Core.Encoding;
-using Nevermind.Core.Sugar;
 
 namespace Nevermind.Store
 {
@@ -30,7 +29,7 @@ namespace Nevermind.Store
             LeafNode leaf = node as LeafNode;
             if (leaf != null)
             {
-                return Rlp.Serialize(leaf.Key, leaf.Value);
+                return Rlp.Serialize(leaf.Key.ToBytes(), leaf.Value);
             }
 
             BranchNode branch = node as BranchNode;
@@ -59,7 +58,7 @@ namespace Nevermind.Store
             ExtensionNode extension = node as ExtensionNode;
             if (extension != null)
             {
-                return Rlp.Serialize(extension.Key, extension.NextNode.Bytes);
+                return Rlp.Serialize(extension.Key.ToBytes(), extension.NextNode.Bytes);
             }
 
             throw new NotImplementedException("Unknown node type");
@@ -83,8 +82,8 @@ namespace Nevermind.Store
 
             if (decoded.Length == 2)
             {
-                byte[] key = (byte[]) decoded[0];
-                bool isExtension = (byte) (key[0] & (2 << 4)) == 0;
+                HexPrefix key = HexPrefix.FromBytes((byte[]) decoded[0]);
+                bool isExtension = key.IsExtension;
                 if (isExtension)
                 {
                     ExtensionNode extension = new ExtensionNode();
@@ -122,8 +121,7 @@ namespace Nevermind.Store
 
         public void Set(byte[] rawKey, byte[] value)
         {
-            byte[] hexPrefix = new HexPrefix(true, Nibbles.FromBytes(rawKey)).ToBytes();
-            new TreeUpdate(this, hexPrefix, value).Run();
+            new TreeUpdate(this, rawKey, value).Run();
         }
 
         internal Node GetNode(KeccakOrRlp keccakOrRlp)

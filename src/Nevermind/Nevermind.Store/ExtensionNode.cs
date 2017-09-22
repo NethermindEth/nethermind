@@ -1,4 +1,5 @@
-﻿using Nevermind.Core.Sugar;
+﻿using System.Diagnostics;
+using Nevermind.Core.Encoding;
 
 namespace Nevermind.Store
 {
@@ -8,18 +9,20 @@ namespace Nevermind.Store
         {
         }
 
-        public ExtensionNode(byte[] key, KeccakOrRlp nextNode)
+        [DebuggerStepThrough]
+        public ExtensionNode(HexPrefix key, KeccakOrRlp nextNode)
         {
             Key = key;
             NextNode = nextNode;
         }
 
-        public byte[] Key { get; set; }
+        public byte[] Path => Key.Path;
+        public HexPrefix Key { get; set; }
         public KeccakOrRlp NextNode { get; set; }
 
         public override string ToString()
         {
-            return $"[{Key.ToHex(false)}, {NextNode}";
+            return $"[{Key}, {NextNode}";
         }
     }
 }

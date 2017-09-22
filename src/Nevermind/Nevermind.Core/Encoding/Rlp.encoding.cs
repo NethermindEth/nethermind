@@ -63,7 +63,7 @@ namespace Nevermind.Core.Encoding
 
             if (prefix < 128)
             {
-                result.Add(prefix);
+                result.Add(new [] {prefix});
                 return CheckAndReturn(result, context);
             }
 

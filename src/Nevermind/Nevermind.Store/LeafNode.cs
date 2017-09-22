@@ -1,4 +1,6 @@
-﻿using Nevermind.Core.Sugar;
+﻿using System.Diagnostics;
+using Nevermind.Core.Encoding;
+using Nevermind.Core.Sugar;
 
 namespace Nevermind.Store
 {
@@ -8,18 +10,20 @@ namespace Nevermind.Store
         {
         }
 
-        public LeafNode(byte[] key, byte[] value)
+        [DebuggerStepThrough]
+        public LeafNode(HexPrefix key, byte[] value)
         {
             Key = key;
             Value = value;
         }
 
-        public byte[] Key { get; set; }
+        public byte[] Path => Key.Path;
+        public HexPrefix Key { get; set; }
         public byte[] Value { get; set; }
 
         public override string ToString()
         {
-            return $"[{Key.ToHex(false)}, {Value.ToHex()}";
+            return $"[{Key}, {Value.ToHex()}";
         }
     }
 }

@@ -15,6 +15,12 @@ namespace Ethereum.Trie.Test
     {
         private static IEnumerable<TrieTest> LoadAnyOrderTests()
         {
+            return LoadTests<Dictionary<string, TrieTestJson>>("trieanyorder.json",
+                dwj => dwj.Select(p => new TrieTest(p.Key, p.Value.In.ToList(), p.Value.Root)));
+        }
+
+        private static IEnumerable<TrieTest> LoadAnyOrderSecureTests()
+        {
             return LoadTests<Dictionary<string, TrieTestJson>>("trieanyorder_secureTrie.json",
                 dwj => dwj.Select(p => new TrieTest(p.Key, p.Value.In.ToList(), p.Value.Root)));
         }
@@ -45,9 +51,23 @@ namespace Ethereum.Trie.Test
             PatriciaTree patriciaTree = new PatriciaTree(db);
             foreach (KeyValuePair<string, string> keyValuePair in test.Input)
             {
-                patriciaTree.Set(Encoding.ASCII.GetBytes(keyValuePair.Key), Encoding.ASCII.GetBytes(keyValuePair.Key));
-                Assert.AreEqual(test.ExpectedRoot, patriciaTree.Root);
+                patriciaTree.Set(Encoding.ASCII.GetBytes(keyValuePair.Key), Encoding.ASCII.GetBytes(keyValuePair.Value));
             }
+
+            Assert.AreEqual(test.ExpectedRoot, patriciaTree.RootHash.ToString());
+        }
+
+        [TestCaseSource(nameof(LoadAnyOrderSecureTests))]
+        public void Test_any_order_secure(TrieTest test)
+        {
+            Db db = new Db();
+            PatriciaTree patriciaTree = new PatriciaTree(db);
+            foreach (KeyValuePair<string, string> keyValuePair in test.Input)
+            {
+                patriciaTree.Set(Encoding.ASCII.GetBytes(keyValuePair.Key), Encoding.ASCII.GetBytes(keyValuePair.Key));
+            }
+
+            Assert.AreEqual(test.ExpectedRoot, patriciaTree.RootHash.ToString());
         }
 
         // https://easythereentropy.wordpress.com/2014/06/04/understanding-the-ethereum-trie/
@@ -73,8 +93,8 @@ namespace Ethereum.Trie.Test
                 Rlp.Serialize(new object[] { "hello" }));
 
             PatriciaTree another = new PatriciaTree(patriciaTree.RootHash, db);
-            Assert.AreEqual(Keccak.Compute(((LeafNode)(patriciaTree.Root)).Key), Keccak.Compute(((LeafNode)(another.Root)).Key));
-            Assert.AreEqual(Keccak.Compute(((LeafNode)(patriciaTree.Root)).Value), Keccak.Compute(((LeafNode)(another.Root)).Value));
+            Assert.AreEqual(((LeafNode)patriciaTree.Root).Key.ToString(), ((LeafNode)another.Root).Key.ToString());
+            Assert.AreEqual(Keccak.Compute(((LeafNode)patriciaTree.Root).Value), Keccak.Compute(((LeafNode)another.Root).Value));
         }
 
         [Test]

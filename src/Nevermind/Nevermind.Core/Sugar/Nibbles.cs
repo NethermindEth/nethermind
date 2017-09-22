@@ -16,7 +16,7 @@ namespace Nevermind.Core.Sugar
             byte[] nibbles = new byte[2 * bytes.Length];
             for (int i = 0; i < bytes.Length; i++)
             {
-                nibbles[i * 2] = (byte)(bytes[i] & 240);
+                nibbles[i * 2] = (byte)((bytes[i] & 240) >> 4);
                 nibbles[i * 2 + 1] = (byte)(bytes[i] & 15);
             }
 

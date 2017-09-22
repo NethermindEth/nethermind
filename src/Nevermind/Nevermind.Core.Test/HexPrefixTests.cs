@@ -47,10 +47,10 @@ namespace Nevermind.Core.Test
         public void Decode_gives_correct_output_when_even(bool expectedFlag, byte nibble1, byte nibble2, byte byte1, byte byte2)
         {
             HexPrefix hexPrefix = HexPrefix.FromBytes(new[] { byte1, byte2 });
-            Assert.AreEqual(expectedFlag, hexPrefix.Flag);
-            Assert.AreEqual(2, hexPrefix.Nibbles.Length);
-            Assert.AreEqual(nibble1, hexPrefix.Nibbles[0]);
-            Assert.AreEqual(nibble2, hexPrefix.Nibbles[1]);
+            Assert.AreEqual(expectedFlag, hexPrefix.IsLeaf);
+            Assert.AreEqual(2, hexPrefix.Path.Length);
+            Assert.AreEqual(nibble1, hexPrefix.Path[0]);
+            Assert.AreEqual(nibble2, hexPrefix.Path[1]);
         }
 
         [DataTestMethod]
@@ -59,9 +59,9 @@ namespace Nevermind.Core.Test
         public void Decode_gives_correct_output_when_one(bool expectedFlag, byte nibble1, byte byte1)
         {
             HexPrefix hexPrefix = HexPrefix.FromBytes(new[] { byte1 });
-            Assert.AreEqual(expectedFlag, hexPrefix.Flag);
-            Assert.AreEqual(1, hexPrefix.Nibbles.Length);
-            Assert.AreEqual(nibble1, hexPrefix.Nibbles[0]);
+            Assert.AreEqual(expectedFlag, hexPrefix.IsLeaf);
+            Assert.AreEqual(1, hexPrefix.Path.Length);
+            Assert.AreEqual(nibble1, hexPrefix.Path[0]);
         }
 
         [DataTestMethod]
@@ -70,11 +70,11 @@ namespace Nevermind.Core.Test
         public void Decode_gives_correct_output_when_odd(bool expectedFlag, byte nibble1, byte nibble2, byte nibble3, byte byte1, byte byte2)
         {
             HexPrefix hexPrefix = HexPrefix.FromBytes(new[] { byte1, byte2 });
-            Assert.AreEqual(expectedFlag, hexPrefix.Flag);
-            Assert.AreEqual(3, hexPrefix.Nibbles.Length);
-            Assert.AreEqual(nibble1, hexPrefix.Nibbles[0]);
-            Assert.AreEqual(nibble2, hexPrefix.Nibbles[1]);
-            Assert.AreEqual(nibble3, hexPrefix.Nibbles[2]);
+            Assert.AreEqual(expectedFlag, hexPrefix.IsLeaf);
+            Assert.AreEqual(3, hexPrefix.Path.Length);
+            Assert.AreEqual(nibble1, hexPrefix.Path[0]);
+            Assert.AreEqual(nibble2, hexPrefix.Path[1]);
+            Assert.AreEqual(nibble3, hexPrefix.Path[2]);
         }
     }
 }

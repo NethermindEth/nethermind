@@ -1,35 +1,37 @@
-﻿using Nevermind.Core.Sugar;
+﻿using System.Diagnostics;
 
 namespace Nevermind.Core.Encoding
 {
     // TODO: better representation (just byte array)
     public class HexPrefix
     {
-        public HexPrefix(bool flag, params byte[] nibbles)
+        [DebuggerStepThrough]
+        public HexPrefix(bool isLeaf, params byte[] path)
         {
-            Flag = flag;
-            Nibbles = nibbles;
+            IsLeaf = isLeaf;
+            Path = path;
         }
 
-        public byte[] Nibbles { get; set; }
-        public bool Flag { get; set; }
+        public byte[] Path { get; set; }
+        public bool IsLeaf { get; set; }
+        public bool IsExtension => !IsLeaf;
 
         public byte[] ToBytes()
         {
-            if (Nibbles.Length == 0)
+            if (Path.Length == 0)
             {
-                return Sugar.Nibbles.ToBytes((byte)(Flag ? 2 : 0), 0);
+                return Sugar.Nibbles.ToBytes((byte)(IsLeaf ? 2 : 0), 0);
             }
 
-            byte[] output = new byte[Nibbles.Length / 2 + 1];
-            output[0] = (byte)(16 * (Flag ? 2 : 0) +
-                                Nibbles.Length % 2 * (16 + Nibbles[0]));
-            for (int i = 0; i < Nibbles.Length - 1; i = i + 2)
+            byte[] output = new byte[Path.Length / 2 + 1];
+            output[0] = (byte)(16 * (IsLeaf ? 2 : 0) +
+                                Path.Length % 2 * (16 + Path[0]));
+            for (int i = 0; i < Path.Length - 1; i = i + 2)
             {
                 output[i / 2 + 1] =
-                    Nibbles.Length % 2 == 0
-                        ? (byte)(16 * Nibbles[i] + Nibbles[i + 1])
-                        : output[i / 2 + 1] = (byte)(16 * Nibbles[i + 1] + Nibbles[i + 2]);
+                    Path.Length % 2 == 0
+                        ? (byte)(16 * Path[i] + Path[i + 1])
+                        : output[i / 2 + 1] = (byte)(16 * Path[i + 1] + Path[i + 2]);
             }
 
             return output;
@@ -40,10 +42,10 @@ namespace Nevermind.Core.Encoding
             HexPrefix hexPrefix = new HexPrefix(bytes[0] >= 32);
             bool isEven = (bytes[0] & 16) == 0;
             int nibblesCount = bytes.Length * 2 - (isEven ? 2 : 1);
-            hexPrefix.Nibbles = new byte[nibblesCount];
+            hexPrefix.Path = new byte[nibblesCount];
             for (int i = 0; i < nibblesCount; i++)
             {
-                hexPrefix.Nibbles[i] =
+                hexPrefix.Path[i] =
                     isEven
                         ? i % 2 == 0
                             ? (byte)((bytes[1 + i / 2] & 240) / 16)
@@ -54,6 +56,11 @@ namespace Nevermind.Core.Encoding
             }
 
             return hexPrefix;
+        }
+
+        public override string ToString()
+        {
+            return Hex.FromBytes(ToBytes(), false);
         }
     }
 }
