@@ -20,6 +20,7 @@ namespace Nevermind.Core.Encoding
         {
             if (Path.Length == 0)
             {
+                // not sure of the following
                 return Sugar.Nibbles.ToBytes((byte)(IsLeaf ? 2 : 0), 0);
             }
 

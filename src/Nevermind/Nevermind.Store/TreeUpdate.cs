@@ -18,7 +18,6 @@ namespace Nevermind.Store
 
         private readonly Stack<StackedNode> _nodeStack = new Stack<StackedNode>();
 
-        [DebuggerStepThrough]
         public TreeUpdate(PatriciaTree tree, byte[] updatePath, byte[] updateValue)
         {
             _tree = tree;
@@ -63,71 +62,77 @@ namespace Nevermind.Store
             }
         }
 
+        private byte[] RemainingUpdatePath
+        {
+            get
+            {
+                byte[] remaining = new byte[_updatePath.Length - _currentIndex];
+                Buffer.BlockCopy(_updatePath, _currentIndex, remaining, 0, remaining.Length);
+                return remaining;
+            }
+        }
+
         // done?
         private void TraverseLeaf(LeafNode node)
         {
-            LeafNode leaf = null;
+            (byte[] shorterPath, byte[] longerPath) = RemainingUpdatePath.Length - node.Path.Length < 0
+                ? (RemainingUpdatePath, node.Path)
+                : (node.Path, RemainingUpdatePath);
 
-            if (node.Path.Length == 0)
+            byte[] shorterPathValue;
+            byte[] longerPathValue;
+
+            if (Bytes.UnsafeCompare(shorterPath, node.Path))
             {
-                byte[] newLeafPath = new byte[_updatePath.Length - _currentIndex];
-
-                Buffer.BlockCopy(_updatePath, _currentIndex, newLeafPath, 0, newLeafPath.Length);
-
-                HexPrefix newLeafKey = new HexPrefix(true, newLeafPath);
-                leaf = new LeafNode(newLeafKey, _updateValue);
-
-                BranchNode branch = new BranchNode();
-                branch.Value = node.Value;
-
-                _nodeStack.Push(new StackedNode(branch, _updatePath[_currentIndex]));
+                shorterPathValue = node.Value;
+                longerPathValue = _updateValue;
             }
             else
             {
-                for (int i = 0; i < node.Path.Length; i++, _currentIndex++)
+                shorterPathValue = _updateValue;
+                longerPathValue = node.Value;
+            }
+
+            int extensionLength = 0;
+            for (int i = 0; i < Math.Min(shorterPath.Length, longerPath.Length) && shorterPath[i] == longerPath[i]; i++, extensionLength++)
+            {
+            }
+
+            if (extensionLength == shorterPath.Length && extensionLength == longerPath.Length)
+            {
+                if (!Bytes.UnsafeCompare(node.Value, _updateValue))
                 {
-                    if (node.Path[i] != _updatePath[_currentIndex])
-                    {
-                        byte[] oldLeafPath = new byte[node.Path.Length - i - 1];
-                        byte[] newLeafPath = new byte[_updatePath.Length - _currentIndex - 1];
-
-                        Buffer.BlockCopy(node.Path, i + 1, oldLeafPath, 0, oldLeafPath.Length);
-                        Buffer.BlockCopy(_updatePath, _currentIndex + 1, newLeafPath, 0, newLeafPath.Length);
-
-                        HexPrefix oldLeafKey = new HexPrefix(true, oldLeafPath);
-                        HexPrefix newLeafKey = new HexPrefix(true, newLeafPath);
-
-                        LeafNode oldLeaf = new LeafNode(oldLeafKey, node.Value);
-                        leaf = new LeafNode(newLeafKey, _updateValue);
-
-                        BranchNode branch = new BranchNode();
-                        branch.Nodes[node.Path[i]] = _tree.StoreNode(oldLeaf);
-
-                        if (i != 0)
-                        {
-                            byte[] extensionPath = new byte[i];
-                            Buffer.BlockCopy(node.Path, 0, extensionPath, 0, i);
-                            ExtensionNode extension = new ExtensionNode();
-                            extension.Key = new HexPrefix(false, extensionPath);
-                            _nodeStack.Push(new StackedNode(extension, 0));
-                        }
-
-                        _nodeStack.Push(new StackedNode(branch, _updatePath[_currentIndex]));
-                        break;
-                    }
+                    // only remaining path here
+                    LeafNode newLeaf = new LeafNode(new HexPrefix(true, _updatePath), _updateValue);
+                    UpdateHashes(newLeaf);
+                    return;
                 }
             }
 
-            if (leaf == null && !Bytes.UnsafeCompare(node.Value, _updateValue))
+            if (extensionLength != 0)
             {
-                // only remaining path here
-                leaf = new LeafNode(new HexPrefix(true, _updatePath), _updateValue);
+                ExtensionNode extension = new ExtensionNode();
+                byte[] extensionPath = longerPath.Slice(0, extensionLength);
+                extension.Key = new HexPrefix(false, extensionPath);
+                _nodeStack.Push(new StackedNode(extension, 0));
             }
 
-            if (leaf != null)
+            BranchNode branch = new BranchNode();
+            if (extensionLength == shorterPath.Length)
             {
-                UpdateHashes(leaf);
+                branch.Value = shorterPathValue;
             }
+            else
+            {
+                byte[] shortLeafPath = shorterPath.Slice(extensionLength, shorterPath.Length - extensionLength - 1);
+                LeafNode shortLeaf = new LeafNode(new HexPrefix(true, shortLeafPath), shorterPathValue);
+                branch.Nodes[shorterPath[extensionLength]] = _tree.StoreNode(shortLeaf);
+            }
+
+            byte[] leafPath = longerPath.Slice(extensionLength, longerPath.Length - extensionLength - 1);
+            LeafNode leaf = new LeafNode(new HexPrefix(true, leafPath), longerPathValue);
+            _nodeStack.Push(new StackedNode(branch, longerPath[extensionLength]));
+            UpdateHashes(leaf);
         }
 
         private class StackedNode
@@ -144,19 +149,14 @@ namespace Nevermind.Store
 
         private void UpdateHashes(Node node)
         {
+            Keccak previousRootHash = _tree.RootHash;
+
             Debug.Assert((bool)(node is LeafNode), "Can only update hashes starting from a leaf");
 
-            KeccakOrRlp hash = _tree.StoreNode(node);
+            bool isRoot = _nodeStack.Count == 0;
+            KeccakOrRlp hash = _tree.StoreNode(node, isRoot);
 
             // nodes should immutable here I guess
-            bool isRoot = _nodeStack.Count == 0;
-            if (isRoot)
-            {
-                _tree.RootHash = hash.GetKeccakOrComputeFromRlp();
-                _tree.Root = node;
-                return;
-            }
-
             while (!isRoot)
             {
                 StackedNode parentOnStack = _nodeStack.Pop();
@@ -173,6 +173,7 @@ namespace Nevermind.Store
                 BranchNode branch = node as BranchNode;
                 if (branch != null)
                 {
+                    _tree.DeleteNode(branch.Nodes[parentOnStack.PathIndex]);
                     branch.Nodes[parentOnStack.PathIndex] = hash;
                     hash = _tree.StoreNode(branch, isRoot);
                 }
@@ -181,6 +182,7 @@ namespace Nevermind.Store
                     ExtensionNode extension = node as ExtensionNode;
                     if (extension != null)
                     {
+                        _tree.DeleteNode(extension.NextNode);
                         extension.NextNode = hash;
                         hash = _tree.StoreNode(extension, isRoot);
                     }
@@ -190,6 +192,8 @@ namespace Nevermind.Store
                     }
                 }
             }
+
+            _tree.DeleteNode(new KeccakOrRlp(previousRootHash), true);
         }
 
         private void TraverseBranch(BranchNode node)
@@ -216,6 +220,11 @@ namespace Nevermind.Store
         private void TraverseExtension(ExtensionNode node)
         {
             LeafNode leaf = null;
+
+            if (node.Path.Length < 2)
+            {
+                throw new InvalidOperationException("Extension is too short");
+            }
 
             for (int i = 0; i < node.Path.Length; i++, _currentIndex++)
             {

@@ -1,5 +1,4 @@
 using System.Linq;
-using Nevermind.Core.Encoding;
 using Nevermind.Core.Sugar;
 
 namespace Nevermind.Store
@@ -22,7 +21,7 @@ namespace Nevermind.Store
 
         public override string ToString()
         {
-            return $"[{string.Join(",", Nodes.Select(n => n?.ToString() ?? "<>"))}, {Value.ToHex(false)}";
+            return $"[{string.Join(",", Nodes.Select(n => n?.ToString() ?? "<>"))}, {Value.ToHex(false)}]";
         }
     }
 }

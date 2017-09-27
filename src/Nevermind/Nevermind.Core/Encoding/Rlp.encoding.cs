@@ -25,7 +25,7 @@ namespace Nevermind.Core.Encoding
     ///     which is itself preﬁxed by the number of bytes required to faithfully encode this length value plus 247. 
     /// </summary>
     // clean heap allocations (new Rlp())
-    [DebuggerStepThrough]
+    //[DebuggerStepThrough]
     // https://github.com/ethereum/wiki/wiki/RLP
     public partial class Rlp
     {

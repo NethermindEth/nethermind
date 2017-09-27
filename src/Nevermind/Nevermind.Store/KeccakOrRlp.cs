@@ -35,7 +35,13 @@ namespace Nevermind.Store
 
         public override string ToString()
         {
-            return Hex.FromBytes(Bytes, IsKeccak);
+            if (IsKeccak)
+            {
+                string full = Hex.FromBytes(Bytes, IsKeccak);
+                return IsKeccak ? full.Substring(0, 6) : full;
+            }
+
+            return PatriciaTree.RlpDecode(new Rlp(Bytes)).ToString();
         }
     }
 }

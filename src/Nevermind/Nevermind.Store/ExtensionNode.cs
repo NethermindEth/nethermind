@@ -22,7 +22,7 @@ namespace Nevermind.Store
 
         public override string ToString()
         {
-            return $"[{Key}, {NextNode}";
+            return $"[{Key}, {NextNode}]";
         }
     }
 }

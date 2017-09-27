@@ -1,4 +1,5 @@
-﻿using Nevermind.Core.Encoding;
+﻿using System;
+using Nevermind.Core.Encoding;
 
 namespace Nevermind.Core.Sugar
 {
@@ -7,6 +8,13 @@ namespace Nevermind.Core.Sugar
         public static string ToHex(this byte[] bytes, bool withZeroX = true)
         {
             return Hex.FromBytes(bytes, withZeroX);
+        }
+
+        public static byte[] Slice(this byte[] bytes, int startIndex, int length)
+        {
+            byte[] slice = new byte[length];
+            Buffer.BlockCopy(bytes, startIndex, slice, 0, length);
+            return slice;
         }
     }
 

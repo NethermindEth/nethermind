@@ -23,7 +23,7 @@ namespace Nevermind.Store
 
         public override string ToString()
         {
-            return $"[{Key}, {Value.ToHex()}";
+            return $"[{Key}, {Value.ToHex()}]";
         }
     }
 }

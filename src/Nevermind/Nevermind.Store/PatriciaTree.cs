@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Diagnostics;
 using Nevermind.Core.Encoding;
 
 namespace Nevermind.Store
@@ -24,35 +25,37 @@ namespace Nevermind.Store
 
         internal Node Root { get; set; }
 
-        internal Rlp RlpEncode(Node node)
+        internal static Rlp RlpEncode(Node node)
         {
             LeafNode leaf = node as LeafNode;
             if (leaf != null)
             {
-                return Rlp.Serialize(leaf.Key.ToBytes(), leaf.Value);
+                Rlp result = Rlp.Serialize(leaf.Key.ToBytes(), leaf.Value);
+                return result;
             }
 
             BranchNode branch = node as BranchNode;
             if (branch != null)
             {
-                return Rlp.Serialize(
-                    branch.Nodes[0x0]?.Bytes ?? new byte[] { },
-                    branch.Nodes[0x1]?.Bytes ?? new byte[] { },
-                    branch.Nodes[0x2]?.Bytes ?? new byte[] { },
-                    branch.Nodes[0x3]?.Bytes ?? new byte[] { },
-                    branch.Nodes[0x4]?.Bytes ?? new byte[] { },
-                    branch.Nodes[0x5]?.Bytes ?? new byte[] { },
-                    branch.Nodes[0x6]?.Bytes ?? new byte[] { },
-                    branch.Nodes[0x7]?.Bytes ?? new byte[] { },
-                    branch.Nodes[0x8]?.Bytes ?? new byte[] { },
-                    branch.Nodes[0x9]?.Bytes ?? new byte[] { },
-                    branch.Nodes[0xa]?.Bytes ?? new byte[] { },
-                    branch.Nodes[0xb]?.Bytes ?? new byte[] { },
-                    branch.Nodes[0xc]?.Bytes ?? new byte[] { },
-                    branch.Nodes[0xd]?.Bytes ?? new byte[] { },
-                    branch.Nodes[0xe]?.Bytes ?? new byte[] { },
-                    branch.Nodes[0xf]?.Bytes ?? new byte[] { },
-                    branch.Value ?? new byte[] { });
+                Rlp result = Rlp.Serialize(
+                    branch.Nodes[0x0]?.Bytes ?? new byte[0],
+                    branch.Nodes[0x1]?.Bytes ?? new byte[0],
+                    branch.Nodes[0x2]?.Bytes ?? new byte[0],
+                    branch.Nodes[0x3]?.Bytes ?? new byte[0],
+                    branch.Nodes[0x4]?.Bytes ?? new byte[0],
+                    branch.Nodes[0x5]?.Bytes ?? new byte[0],
+                    branch.Nodes[0x6]?.Bytes ?? new byte[0],
+                    branch.Nodes[0x7]?.Bytes ?? new byte[0],
+                    branch.Nodes[0x8]?.Bytes ?? new byte[0],
+                    branch.Nodes[0x9]?.Bytes ?? new byte[0],
+                    branch.Nodes[0xa]?.Bytes ?? new byte[0],
+                    branch.Nodes[0xb]?.Bytes ?? new byte[0],
+                    branch.Nodes[0xc]?.Bytes ?? new byte[0],
+                    branch.Nodes[0xd]?.Bytes ?? new byte[0],
+                    branch.Nodes[0xe]?.Bytes ?? new byte[0],
+                    branch.Nodes[0xf]?.Bytes ?? new byte[0],
+                    branch.Value ?? new byte[0]);
+                return result;
             }
 
             ExtensionNode extension = node as ExtensionNode;
@@ -64,7 +67,7 @@ namespace Nevermind.Store
             throw new NotImplementedException("Unknown node type");
         }
 
-        internal Node RlpDecode(Rlp bytes)
+        internal static Node RlpDecode(Rlp bytes)
         {
             object[] decoded = (object[]) Rlp.Deserialize(bytes);
             if (decoded.Length == 17)
@@ -88,7 +91,7 @@ namespace Nevermind.Store
                 {
                     ExtensionNode extension = new ExtensionNode();
                     extension.Key = key;
-                    byte[] nodeBytes = (byte[]) Rlp.Deserialize(new Rlp((byte[]) decoded[16]));
+                    byte[] nodeBytes = (byte[])decoded[1];
                     extension.NextNode = DecodeKeccakOrRlp(nodeBytes);
                     return extension;
                 }
@@ -128,6 +131,39 @@ namespace Nevermind.Store
         {
             Rlp rlp = new Rlp(keccakOrRlp.IsKeccak ? _db[keccakOrRlp.GetKeccakOrComputeFromRlp()] : keccakOrRlp.Bytes);
             return RlpDecode(rlp);
+        }
+
+        internal void DeleteNode(KeccakOrRlp hash, bool ignoreChildren = false)
+        {
+            if (hash == null || ! hash.IsKeccak)
+            {
+                return;
+            }
+
+            Keccak thisNodeKeccak = hash.GetKeccakOrComputeFromRlp();
+            Node node = ignoreChildren ? null : RlpDecode(new Rlp(_db[thisNodeKeccak]));
+            _db.Delete(thisNodeKeccak);
+
+            if (ignoreChildren)
+            {
+                return;
+            }
+            
+            ExtensionNode extension = node as ExtensionNode;
+            if (extension != null)
+            {
+                DeleteNode(extension.NextNode);
+                _db.Delete(hash.GetKeccakOrComputeFromRlp());
+            }
+
+            BranchNode branch = node as BranchNode;
+            if (branch != null)
+            {
+                foreach (KeccakOrRlp subnode in branch.Nodes)
+                {
+                    DeleteNode(subnode);
+                }
+            }
         }
 
         internal KeccakOrRlp StoreNode(Node node, bool isRoot = false)
