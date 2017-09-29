@@ -1,8 +1,10 @@
 ﻿using System;
+using System.Diagnostics;
 using HashLib;
 
 namespace Nevermind.Core.Encoding
 {
+    [DebuggerStepThrough]
     public class Keccak : IEquatable<Keccak>
     {
         private static readonly IHash Hash = HashFactory.Crypto.SHA3.CreateKeccak256();
@@ -34,16 +36,19 @@ namespace Nevermind.Core.Encoding
             return Hex.FromBytes(Bytes, withZeroX);
         }
 
+        [DebuggerStepThrough]
         public static Keccak Compute(Rlp rlp)
         {
             return new Keccak(Hash.ComputeBytes(rlp.Bytes).GetBytes());
         }
 
+        [DebuggerStepThrough]
         public static Keccak Compute(byte[] input)
         {
             return new Keccak(Hash.ComputeBytes(input).GetBytes());
         }
 
+        [DebuggerStepThrough]
         public static Keccak Compute(string input)
         {
             return Compute(System.Text.Encoding.UTF8.GetBytes(input));

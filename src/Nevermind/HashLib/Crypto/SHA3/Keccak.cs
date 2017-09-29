@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 
 namespace HashLib.Crypto.SHA3
 {
@@ -34,6 +35,7 @@ namespace HashLib.Crypto.SHA3
         }
     }
 
+    [DebuggerNonUserCode]
     internal abstract class Keccak : BlockHash, ICryptoNotBuildIn
     {
         private readonly ulong[] m_state = new ulong[25];

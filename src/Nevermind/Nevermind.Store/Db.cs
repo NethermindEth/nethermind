@@ -16,7 +16,10 @@ namespace Nevermind.Store
 
         public void Delete(Keccak key)
         {
-            _db.Remove(key);
+            if (_db.ContainsKey(key))
+            {
+                _db.Remove(key);
+            }
         }
 
         // temp

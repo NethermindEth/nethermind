@@ -1,8 +1,8 @@
-﻿using System;
-using System.Diagnostics;
+﻿using System.Diagnostics;
 
 namespace HashLib
 {
+    [DebuggerNonUserCode]
     internal abstract class BlockHash : Hash, IBlockHash
     {
         protected readonly HashBuffer m_buffer;

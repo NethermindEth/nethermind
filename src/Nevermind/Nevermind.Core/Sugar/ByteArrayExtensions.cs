@@ -12,6 +12,11 @@ namespace Nevermind.Core.Sugar
 
         public static byte[] Slice(this byte[] bytes, int startIndex, int length)
         {
+            if (length == 1)
+            {
+                return new[] { bytes[startIndex] };
+            }
+
             byte[] slice = new byte[length];
             Buffer.BlockCopy(bytes, startIndex, slice, 0, length);
             return slice;

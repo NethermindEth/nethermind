@@ -3,6 +3,7 @@ using Nevermind.Core.Encoding;
 
 namespace Nevermind.Store
 {
+    // I guess it is a very slow to Keccak-heavy implementation, the first one to pass tests
     public class PatriciaTree
     {
         private readonly Db _db;
@@ -141,7 +142,7 @@ namespace Nevermind.Store
             Set(rawKey, rlp.Bytes);
         }
 
-        public void Set(byte[] rawKey, byte[] value)
+        public virtual void Set(byte[] rawKey, byte[] value)
         {
             new TreeUpdate(this, rawKey, value).Run();
         }
@@ -171,7 +172,7 @@ namespace Nevermind.Store
             ExtensionNode extension = node as ExtensionNode;
             if (extension != null)
             {
-                DeleteNode(extension.NextNode);
+                DeleteNode(extension.NextNode, true);
                 _db.Delete(hash.GetOrComputeKeccak());
             }
 
@@ -180,7 +181,7 @@ namespace Nevermind.Store
             {
                 foreach (KeccakOrRlp subnode in branch.Nodes)
                 {
-                    DeleteNode(subnode);
+                    DeleteNode(subnode, true);
                 }
             }
         }

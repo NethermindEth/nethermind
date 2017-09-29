@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 
 namespace HashLib
 {
+    [DebuggerStepThrough]
     internal abstract class Hash : IHash
     {
         private readonly int m_block_size;
