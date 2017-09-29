@@ -1,12 +1,12 @@
-using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Nevermind.Core.Encoding;
+using NUnit.Framework;
 
 namespace Nevermind.Core.Test
 {
-    [TestClass]
+    [TestFixture]
     public class RlpTests
     {
-        [TestMethod]
+        [Test]
         public void Serialized_form_is_same_as_input_when_input_length_is_1_and_value_is_less_than_128()
         {
             Assert.AreEqual(0, Rlp.Serialize(new byte[] {0})[0], "0");
@@ -14,13 +14,13 @@ namespace Nevermind.Core.Test
             Assert.AreEqual(1, Rlp.Serialize(new byte[] {1})[0], "1");
         }
 
-        [TestMethod]
+        [Test]
         public void Serialized_form_is_128_when_input_is_empty()
         {
             Assert.AreEqual(128, Rlp.Serialize(new byte[] { })[0]);
         }
 
-        [TestMethod]
+        [Test]
         public void
             Serialized_form_is_input_prefixed_with_128_plus_length_of_input_when_input_length_is_between_1_and_56()
         {
@@ -37,12 +37,11 @@ namespace Nevermind.Core.Test
             }
         }
 
-        [DataTestMethod]
-        [DataRow(128L, (byte) (1 + 183), (byte) 128)]
-        [DataRow(256L, (byte) (1 + 1 + 183), (byte) 1)]
-        [DataRow(256L * 256L, (byte) (1 + 2 + 183), (byte) 1)]
-        [DataRow(256L * 256L * 256L, (byte) (1 + 3 + 183), (byte) 1)]
-        //[DataRow(256L * 256L * 256L * 256L, (byte)(1 + 4 + 183), (byte)1)]
+        [TestCase(128L, (byte) (1 + 183), (byte) 128)]
+        [TestCase(256L, (byte) (1 + 1 + 183), (byte) 1)]
+        [TestCase(256L * 256L, (byte) (1 + 2 + 183), (byte) 1)]
+        [TestCase(256L * 256L * 256L, (byte) (1 + 3 + 183), (byte) 1)]
+        //[TestCase(256L * 256L * 256L * 256L, (byte)(1 + 4 + 183), (byte)1)]
         public void Serialized_form_is_input_prefixed_with_big_endian_length_and_prefixed_with_length_of_it_plus_183(
             long inputLength, byte expectedFirstByte, byte expectedSecondByte)
         {
@@ -63,14 +62,14 @@ namespace Nevermind.Core.Test
             }
         }
 
-        [TestMethod]
+        [Test]
         public void Serializing_sequences()
         {
             Rlp output = Rlp.Serialize(255L, new byte[] { 255 });
             Assert.AreEqual(5, output.Length);
         }
 
-        [TestMethod]
+        [Test]
         public void Serializing_empty_sequence()
         {
             Rlp output = Rlp.Serialize();

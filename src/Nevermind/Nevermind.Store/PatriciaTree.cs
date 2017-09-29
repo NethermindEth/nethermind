@@ -27,27 +27,20 @@ namespace Nevermind.Store
 
         private static Rlp RlpEncode(KeccakOrRlp keccakOrRlp)
         {
-            if (keccakOrRlp == null)
-            {
-                return Rlp.OfEmptyString;
-            }
-
-            return keccakOrRlp.GetOrEncodeRlp();
+            return keccakOrRlp == null ? Rlp.OfEmptyString : keccakOrRlp.GetOrEncodeRlp();
         }
 
         internal static Rlp RlpEncode(Node node)
         {
-            LeafNode leaf = node as LeafNode;
-            if (leaf != null)
+            if (node is LeafNode leaf)
             {
                 Rlp result = Rlp.Serialize(leaf.Key.ToBytes(), leaf.Value);
                 return result;
             }
 
-            BranchNode branch = node as BranchNode;
-            if (branch != null)
+            if (node is BranchNode branch)
             {
-                // Geth encoded a structure of nodes where child nodes are not rlp but actual objects,
+                // Geth encoded a structure of nodes so child nodes are actual objects and not RLP of items,
                 // hence when RLP encoding nodes are not byte arrays but actual objects of format byte[][2] or their Keccak
                 Rlp result = Rlp.Serialize(
                     RlpEncode(branch.Nodes[0x0]),
@@ -70,8 +63,7 @@ namespace Nevermind.Store
                 return result;
             }
 
-            ExtensionNode extension = node as ExtensionNode;
-            if (extension != null)
+            if (node is ExtensionNode extension)
             {
                 return Rlp.Serialize(extension.Key.ToBytes(), RlpEncode(extension.NextNode));
             }
@@ -81,7 +73,7 @@ namespace Nevermind.Store
 
         internal static Node RlpDecode(Rlp bytes)
         {
-            object[] decoded = (object[])Rlp.Deserialize(bytes);
+            object[] decoded = (object[]) Rlp.Deserialize(bytes);
             if (decoded.Length == 17)
             {
                 BranchNode branch = new BranchNode();
@@ -90,13 +82,13 @@ namespace Nevermind.Store
                     branch.Nodes[i] = DecodeChildNode(decoded[i]);
                 }
 
-                branch.Value = (byte[])decoded[16];
+                branch.Value = (byte[]) decoded[16];
                 return branch;
             }
 
             if (decoded.Length == 2)
             {
-                HexPrefix key = HexPrefix.FromBytes((byte[])decoded[0]);
+                HexPrefix key = HexPrefix.FromBytes((byte[]) decoded[0]);
                 bool isExtension = key.IsExtension;
                 if (isExtension)
                 {
@@ -108,7 +100,7 @@ namespace Nevermind.Store
 
                 LeafNode leaf = new LeafNode();
                 leaf.Key = key;
-                leaf.Value = (byte[])decoded[1];
+                leaf.Value = (byte[]) decoded[1];
                 return leaf;
             }
 
@@ -117,24 +109,17 @@ namespace Nevermind.Store
 
         private static KeccakOrRlp DecodeChildNode(object deserialized)
         {
-            object[] nodeSequence = deserialized as object[];
-            if (nodeSequence != null)
+            if (deserialized is object[] nodeSequence)
             {
                 return new KeccakOrRlp(Rlp.Serialize(nodeSequence));
             }
 
-            byte[] bytes = deserialized as byte[];
-            if (bytes == null || (bytes.Length != 32 && bytes.Length != 0))
+            if (deserialized is byte[] bytes)
             {
-                throw new InvalidOperationException("Invalid child node RLP");
+                return bytes.Length == 0 ? null : new KeccakOrRlp(new Keccak(bytes));
             }
 
-            if (bytes.Length == 0)
-            {
-                return null;
-            }
-
-            return new KeccakOrRlp(new Keccak((byte[])deserialized));
+            throw new InvalidOperationException("Invalid child node RLP");
         }
 
         public void Set(byte[] rawKey, Rlp rlp)
@@ -169,15 +154,13 @@ namespace Nevermind.Store
                 return;
             }
 
-            ExtensionNode extension = node as ExtensionNode;
-            if (extension != null)
+            if (node is ExtensionNode extension)
             {
                 DeleteNode(extension.NextNode, true);
                 _db.Delete(hash.GetOrComputeKeccak());
             }
 
-            BranchNode branch = node as BranchNode;
-            if (branch != null)
+            if (node is BranchNode branch)
             {
                 foreach (KeccakOrRlp subnode in branch.Nodes)
                 {

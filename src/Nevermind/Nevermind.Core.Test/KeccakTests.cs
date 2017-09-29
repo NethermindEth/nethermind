@@ -1,29 +1,29 @@
-﻿using Microsoft.VisualStudio.TestTools.UnitTesting;
-using Nevermind.Core.Encoding;
+﻿using Nevermind.Core.Encoding;
+using NUnit.Framework;
 
 namespace Nevermind.Core.Test
 {
-    [TestClass]
+    [TestFixture]
     public class KeccakTests
     {
         public const string KeccakOfAnEmptyString = "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470";
         public const string KeccakZero = "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470";
 
-        [TestMethod]
+        [Test]
         public void Empty_byte_array()
         {
             string result = Keccak.Compute(new byte[] { }).ToString();
             Assert.AreEqual(KeccakOfAnEmptyString, result);
         }
 
-        [TestMethod]
+        [Test]
         public void Empty_string()
         {
             string result = Keccak.Compute(string.Empty).ToString();
             Assert.AreEqual(KeccakOfAnEmptyString, result);
         }
 
-        [TestMethod]
+        [Test]
         public void Zero()
         {
             string result = Keccak.Zero.ToString();

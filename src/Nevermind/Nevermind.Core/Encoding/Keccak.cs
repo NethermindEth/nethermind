@@ -11,6 +11,11 @@ namespace Nevermind.Core.Encoding
 
         public Keccak(byte[] bytes)
         {
+            if (bytes.Length != 32)
+            {
+                throw new ArgumentException("Keccak must be 32 bytes", nameof(bytes));
+            }
+
             Bytes = bytes;
         }
 
@@ -75,8 +80,7 @@ namespace Nevermind.Core.Encoding
         {
             if (ReferenceEquals(null, obj)) return false;
             if (ReferenceEquals(this, obj)) return true;
-            if (obj.GetType() != this.GetType()) return false;
-            return Equals((Keccak) obj);
+            return obj.GetType() == GetType() && Equals((Keccak)obj);
         }
 
         public override int GetHashCode()

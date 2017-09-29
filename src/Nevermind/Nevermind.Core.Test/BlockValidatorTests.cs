@@ -1,12 +1,12 @@
-﻿using Microsoft.VisualStudio.TestTools.UnitTesting;
-using Nevermind.Core.Validators;
+﻿using Nevermind.Core.Validators;
+using NUnit.Framework;
 
 namespace Nevermind.Core.Test
 {
-    [TestClass]
+    [TestFixture]
     public class BlockValidatorTests
     {
-        [TestMethod]
+        [Test]
         public void Test()
         {
             BlockValidator blockValidator = new BlockValidator();

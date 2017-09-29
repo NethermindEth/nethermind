@@ -1,12 +1,12 @@
-﻿using Microsoft.VisualStudio.TestTools.UnitTesting;
-using Nevermind.Core.Sugar;
+﻿using Nevermind.Core.Sugar;
+using NUnit.Framework;
 
 namespace Nevermind.Core.Test
 {
-    [TestClass]
+    [TestFixture]
     public class UnitTests
     {
-        [TestMethod]
+        [Test]
         public void Ratios_are_correct()
         {
             Assert.AreEqual(Unit.Ether, Unit.Finney * 1000);

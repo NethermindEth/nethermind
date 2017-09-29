@@ -5,10 +5,6 @@ using Nevermind.Core.Sugar;
 
 namespace Nevermind.Store
 {
-    /// <summary>
-    /// Remember:
-    ///   extension always points at a branch
-    /// </summary>
     public class TreeUpdate
     {
         private readonly PatriciaTree _tree;
@@ -40,22 +36,19 @@ namespace Nevermind.Store
 
         private void TraverseNode(Node node)
         {
-            LeafNode leaf = node as LeafNode;
-            if (leaf != null)
+            if (node is LeafNode leaf)
             {
                 TraverseLeaf(leaf);
                 return;
             }
 
-            BranchNode branch = node as BranchNode;
-            if (branch != null)
+            if (node is BranchNode branch)
             {
                 TraverseBranch(branch);
                 return;
             }
 
-            ExtensionNode extension = node as ExtensionNode;
-            if (extension != null)
+            if (node is ExtensionNode extension)
             {
                 TraverseExtension(extension);
             }
@@ -87,9 +80,6 @@ namespace Nevermind.Store
         {
             Keccak previousRootHash = _tree.RootHash;
 
-            // actually can do that from a branch...
-            ////Debug.Assert((bool)(node is LeafNode), "Can only update hashes starting from a leaf");
-
             bool isRoot = _nodeStack.Count == 0;
             KeccakOrRlp hash = _tree.StoreNode(node, isRoot);
 
@@ -101,32 +91,26 @@ namespace Nevermind.Store
 
                 isRoot = _nodeStack.Count == 0;
 
-                LeafNode leaf = node as LeafNode;
-                if (leaf != null)
+                if (node is LeafNode leaf)
                 {
                     throw new InvalidOperationException($"Leaf {leaf} cannot be a parent of {hash}");
                 }
 
-                BranchNode branch = node as BranchNode;
-                if (branch != null)
+                if (node is BranchNode branch)
                 {
                     _tree.DeleteNode(branch.Nodes[parentOnStack.PathIndex]);
                     branch.Nodes[parentOnStack.PathIndex] = hash;
                     hash = _tree.StoreNode(branch, isRoot);
                 }
+                else if (node is ExtensionNode extension)
+                {
+                    _tree.DeleteNode(extension.NextNode);
+                    extension.NextNode = hash;
+                    hash = _tree.StoreNode(extension, isRoot);
+                }
                 else
                 {
-                    ExtensionNode extension = node as ExtensionNode;
-                    if (extension != null)
-                    {
-                        _tree.DeleteNode(extension.NextNode);
-                        extension.NextNode = hash;
-                        hash = _tree.StoreNode(extension, isRoot);
-                    }
-                    else
-                    {
-                        throw new InvalidOperationException($"Unknown node type {node.GetType().Name}");
-                    }
+                    throw new InvalidOperationException($"Unknown node type {node.GetType().Name}");
                 }
             }
 
@@ -152,7 +136,6 @@ namespace Nevermind.Store
             }
         }
 
-        // done?
         private void TraverseLeaf(LeafNode node)
         {
             (byte[] shorterPath, byte[] longerPath) = RemainingUpdatePath.Length - node.Path.Length < 0
@@ -182,7 +165,6 @@ namespace Nevermind.Store
             {
                 if (!Bytes.UnsafeCompare(node.Value, _updateValue))
                 {
-                    // only remaining path here
                     LeafNode newLeaf = new LeafNode(new HexPrefix(true, _updatePath), _updateValue);
                     UpdateHashes(newLeaf);
                     return;
@@ -253,7 +235,6 @@ namespace Nevermind.Store
 
             if (node.Path.Length - extensionLength > 1)
             {
-                // create extension
                 byte[] extensionPath = node.Path.Slice(extensionLength + 1, node.Path.Length - extensionLength - 1);
                 ExtensionNode secondExtension = new ExtensionNode(new HexPrefix(false, extensionPath), node.NextNode);
                 branch.Nodes[node.Path[extensionLength]] = _tree.StoreNode(secondExtension);

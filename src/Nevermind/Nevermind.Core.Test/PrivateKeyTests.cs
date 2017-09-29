@@ -1,16 +1,16 @@
 ﻿using System;
-using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Nevermind.Core.Encoding;
 using Nevermind.Core.Signing;
+using NUnit.Framework;
 
 namespace Nevermind.Core.Test
 {
-    [TestClass]
+    [TestFixture]
     public class PrivateKeyTests
     {
         private const string TestPrivateKeyHex = "0x3a1076bf45ab87712ad64ccb3b10217737f7faacbf2872e88fdd9a537d8fe266";
 
-        [TestMethod]
+        [Test]
         public void Can_generate_new_through_constructor()
         {
             PrivateKey privateKey = new PrivateKey();
@@ -18,37 +18,33 @@ namespace Nevermind.Core.Test
             Assert.AreNotEqual(privateKey.ToString(), zeroKey.ToString());
         }
 
-        [DataTestMethod]
-        [DataRow(0)]
-        [DataRow(1)]
-        [DataRow(16)]
-        [DataRow(31)]
-        [DataRow(33)]
-        [ExpectedException(typeof(ArgumentException))]
+        [TestCase(0)]
+        [TestCase(1)]
+        [TestCase(16)]
+        [TestCase(31)]
+        [TestCase(33)]
         public void Cannot_be_initialized_with_array_of_length_different_than_32(int length)
         {
             byte[] bytes = new byte[length];
             // ReSharper disable once ObjectCreationAsStatement
-            new PrivateKey(bytes);
+            Assert.Throws<ArgumentException>(() => new PrivateKey(bytes));
         }
 
-        [TestMethod]
-        [ExpectedException(typeof(ArgumentNullException))]
+        [Test]
         public void Cannot_be_initialized_with_null_bytes()
         {
             // ReSharper disable once ObjectCreationAsStatement
-            new PrivateKey((byte[])null);
+            Assert.Throws<ArgumentNullException>(() => new PrivateKey((byte[])null));
         }
 
-        [TestMethod]
-        [ExpectedException(typeof(ArgumentNullException))]
+        [Test]
         public void Cannot_be_initialized_with_null_string()
         {
             // ReSharper disable once ObjectCreationAsStatement
-            new PrivateKey((string)null);
+            Assert.Throws<ArgumentNullException>(() => new PrivateKey((string)null));
         }
 
-        [TestMethod]
+        [Test]
         public void HEx_is_stored_correctly()
         {
             byte[] bytes = new byte[32];
@@ -57,8 +53,7 @@ namespace Nevermind.Core.Test
             Assert.AreEqual(new Hex(bytes), privateKey.Hex);
         }
 
-        [DataTestMethod]
-        [DataRow(TestPrivateKeyHex)]
+        [TestCase(TestPrivateKeyHex)]
         public void String_representation_is_correct(string hexString)
         {
             PrivateKey privateKey = new PrivateKey(hexString);
@@ -66,9 +61,8 @@ namespace Nevermind.Core.Test
             Assert.AreEqual(hexString, privateKeyString);
         }
 
-        [DataTestMethod]
-        [DataRow("3a1076bf45ab87712ad64ccb3b10217737f7faacbf2872e88fdd9a537d8fe266", "0xc2d7cf95645d33006175b78989035c7c9061d3f9")]
-        [DataRow("56e044e40c2d225593bc0a4ae3fd4a31ab11f9351f98e60109c1fb429b52e876", "0xd1dc4a77be62d06f0760187be2e505d270c170fd")]
+        [TestCase("3a1076bf45ab87712ad64ccb3b10217737f7faacbf2872e88fdd9a537d8fe266", "0xc2d7cf95645d33006175b78989035c7c9061d3f9")]
+        [TestCase("56e044e40c2d225593bc0a4ae3fd4a31ab11f9351f98e60109c1fb429b52e876", "0xd1dc4a77be62d06f0760187be2e505d270c170fd")]
         public void Address_as_expected(string privateKeyHex, string addressHex)
         {
             PrivateKey privateKey = new PrivateKey(privateKeyHex);
@@ -76,7 +70,7 @@ namespace Nevermind.Core.Test
             Assert.AreEqual(addressHex, address.ToString());
         }
 
-        [TestMethod]
+        [Test]
         public void Address_returns_the_same_value_when_called_twice()
         {
             PrivateKey privateKey = new PrivateKey(TestPrivateKeyHex);
