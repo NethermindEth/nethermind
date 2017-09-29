@@ -98,13 +98,13 @@ namespace Nevermind.Store
 
                 if (node is BranchNode branch)
                 {
-                    _tree.DeleteNode(branch.Nodes[parentOnStack.PathIndex]);
+                    _tree.DeleteNode(branch.Nodes[parentOnStack.PathIndex], true);
                     branch.Nodes[parentOnStack.PathIndex] = hash;
                     hash = _tree.StoreNode(branch, isRoot);
                 }
                 else if (node is ExtensionNode extension)
                 {
-                    _tree.DeleteNode(extension.NextNode);
+                    _tree.DeleteNode(extension.NextNode, true);
                     extension.NextNode = hash;
                     hash = _tree.StoreNode(extension, isRoot);
                 }

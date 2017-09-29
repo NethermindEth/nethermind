@@ -9,6 +9,16 @@ namespace Nevermind.Core.Encoding
     {
         private static readonly IHash Hash = HashFactory.Crypto.SHA3.CreateKeccak256();
 
+        public Keccak(Hex hex)
+        {
+            if (hex.ByteLength != 32)
+            {
+                throw new ArgumentException("Keccak must be 32 bytes", nameof(hex));
+            }
+
+            Bytes = hex;
+        }
+
         public Keccak(byte[] bytes)
         {
             if (bytes.Length != 32)

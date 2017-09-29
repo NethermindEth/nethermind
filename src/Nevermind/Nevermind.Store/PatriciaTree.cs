@@ -6,6 +6,8 @@ namespace Nevermind.Store
     // I guess it is a very slow to Keccak-heavy implementation, the first one to pass tests
     public class PatriciaTree
     {
+        public static readonly Keccak EmptyTreeHash = new Keccak("0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421");
+
         private readonly Db _db;
 
         public PatriciaTree(Db db)
@@ -21,7 +23,7 @@ namespace Nevermind.Store
             Root = RlpDecode(rootRlp);
         }
 
-        public Keccak RootHash { get; internal set; } = Keccak.OfAnEmptyString;
+        public Keccak RootHash { get; internal set; } = EmptyTreeHash;
 
         internal Node Root { get; set; }
 
@@ -40,6 +42,11 @@ namespace Nevermind.Store
 
             if (node is BranchNode branch)
             {
+
+                if (branch.Value == null)
+                {
+                    
+                }
                 // Geth encoded a structure of nodes so child nodes are actual objects and not RLP of items,
                 // hence when RLP encoding nodes are not byte arrays but actual objects of format byte[][2] or their Keccak
                 Rlp result = Rlp.Serialize(

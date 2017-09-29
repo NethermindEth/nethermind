@@ -70,13 +70,5 @@ namespace Ethereum.HexPrefix.Test
             string checkHex = Hex.FromBytes(checkBytes, false);
             Assert.AreEqual(test.Output, checkHex);
         }
-
-        // https://easythereentropy.wordpress.com/2014/06/04/understanding-the-ethereum-trie/
-        [Test]
-        public void Tutorial_test()
-        {
-            Nevermind.Core.Encoding.HexPrefix hexPrefix = new Nevermind.Core.Encoding.HexPrefix(true, new byte[] { 1, 1, 2 });
-            byte[] result = hexPrefix.ToBytes();
-        }
     }
 }
