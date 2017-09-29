@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Diagnostics;
 using Nevermind.Core.Encoding;
 
 namespace Nevermind.Store
@@ -21,9 +20,19 @@ namespace Nevermind.Store
             Root = RlpDecode(rootRlp);
         }
 
-        public Keccak RootHash { get; internal set; }
+        public Keccak RootHash { get; internal set; } = Keccak.OfAnEmptyString;
 
         internal Node Root { get; set; }
+
+        private static Rlp RlpEncode(KeccakOrRlp keccakOrRlp)
+        {
+            if (keccakOrRlp == null)
+            {
+                return Rlp.OfEmptyString;
+            }
+
+            return keccakOrRlp.GetOrEncodeRlp();
+        }
 
         internal static Rlp RlpEncode(Node node)
         {
@@ -37,23 +46,25 @@ namespace Nevermind.Store
             BranchNode branch = node as BranchNode;
             if (branch != null)
             {
+                // Geth encoded a structure of nodes where child nodes are not rlp but actual objects,
+                // hence when RLP encoding nodes are not byte arrays but actual objects of format byte[][2] or their Keccak
                 Rlp result = Rlp.Serialize(
-                    branch.Nodes[0x0]?.Bytes ?? new byte[0],
-                    branch.Nodes[0x1]?.Bytes ?? new byte[0],
-                    branch.Nodes[0x2]?.Bytes ?? new byte[0],
-                    branch.Nodes[0x3]?.Bytes ?? new byte[0],
-                    branch.Nodes[0x4]?.Bytes ?? new byte[0],
-                    branch.Nodes[0x5]?.Bytes ?? new byte[0],
-                    branch.Nodes[0x6]?.Bytes ?? new byte[0],
-                    branch.Nodes[0x7]?.Bytes ?? new byte[0],
-                    branch.Nodes[0x8]?.Bytes ?? new byte[0],
-                    branch.Nodes[0x9]?.Bytes ?? new byte[0],
-                    branch.Nodes[0xa]?.Bytes ?? new byte[0],
-                    branch.Nodes[0xb]?.Bytes ?? new byte[0],
-                    branch.Nodes[0xc]?.Bytes ?? new byte[0],
-                    branch.Nodes[0xd]?.Bytes ?? new byte[0],
-                    branch.Nodes[0xe]?.Bytes ?? new byte[0],
-                    branch.Nodes[0xf]?.Bytes ?? new byte[0],
+                    RlpEncode(branch.Nodes[0x0]),
+                    RlpEncode(branch.Nodes[0x1]),
+                    RlpEncode(branch.Nodes[0x2]),
+                    RlpEncode(branch.Nodes[0x3]),
+                    RlpEncode(branch.Nodes[0x4]),
+                    RlpEncode(branch.Nodes[0x5]),
+                    RlpEncode(branch.Nodes[0x6]),
+                    RlpEncode(branch.Nodes[0x7]),
+                    RlpEncode(branch.Nodes[0x8]),
+                    RlpEncode(branch.Nodes[0x9]),
+                    RlpEncode(branch.Nodes[0xa]),
+                    RlpEncode(branch.Nodes[0xb]),
+                    RlpEncode(branch.Nodes[0xc]),
+                    RlpEncode(branch.Nodes[0xd]),
+                    RlpEncode(branch.Nodes[0xe]),
+                    RlpEncode(branch.Nodes[0xf]),
                     branch.Value ?? new byte[0]);
                 return result;
             }
@@ -61,7 +72,7 @@ namespace Nevermind.Store
             ExtensionNode extension = node as ExtensionNode;
             if (extension != null)
             {
-                return Rlp.Serialize(extension.Key.ToBytes(), extension.NextNode.Bytes);
+                return Rlp.Serialize(extension.Key.ToBytes(), RlpEncode(extension.NextNode));
             }
 
             throw new NotImplementedException("Unknown node type");
@@ -69,52 +80,60 @@ namespace Nevermind.Store
 
         internal static Node RlpDecode(Rlp bytes)
         {
-            object[] decoded = (object[]) Rlp.Deserialize(bytes);
+            object[] decoded = (object[])Rlp.Deserialize(bytes);
             if (decoded.Length == 17)
             {
                 BranchNode branch = new BranchNode();
                 for (int i = 0; i < 16; i++)
                 {
-                    byte[] nodeBytes = (byte[]) decoded[i];
-                    branch.Nodes[i] = DecodeKeccakOrRlp(nodeBytes);
+                    branch.Nodes[i] = DecodeChildNode(decoded[i]);
                 }
 
-                branch.Value = (byte[]) decoded[16];
+                branch.Value = (byte[])decoded[16];
                 return branch;
             }
 
             if (decoded.Length == 2)
             {
-                HexPrefix key = HexPrefix.FromBytes((byte[]) decoded[0]);
+                HexPrefix key = HexPrefix.FromBytes((byte[])decoded[0]);
                 bool isExtension = key.IsExtension;
                 if (isExtension)
                 {
                     ExtensionNode extension = new ExtensionNode();
                     extension.Key = key;
-                    byte[] nodeBytes = (byte[])decoded[1];
-                    extension.NextNode = DecodeKeccakOrRlp(nodeBytes);
+                    extension.NextNode = DecodeChildNode(decoded[1]);
                     return extension;
                 }
 
                 LeafNode leaf = new LeafNode();
                 leaf.Key = key;
-                leaf.Value = (byte[]) decoded[1];
+                leaf.Value = (byte[])decoded[1];
                 return leaf;
             }
 
             throw new NotImplementedException("Invalid node RLP");
         }
 
-        private static KeccakOrRlp DecodeKeccakOrRlp(byte[] nodeBytes)
+        private static KeccakOrRlp DecodeChildNode(object deserialized)
         {
-            KeccakOrRlp keccakOrRlp = null;
-            if (nodeBytes.Length != 0)
+            object[] nodeSequence = deserialized as object[];
+            if (nodeSequence != null)
             {
-                keccakOrRlp = nodeBytes.Length == 32
-                    ? new KeccakOrRlp(new Keccak(nodeBytes))
-                    : new KeccakOrRlp(new Rlp(nodeBytes));
+                return new KeccakOrRlp(Rlp.Serialize(nodeSequence));
             }
-            return keccakOrRlp;
+
+            byte[] bytes = deserialized as byte[];
+            if (bytes == null || (bytes.Length != 32 && bytes.Length != 0))
+            {
+                throw new InvalidOperationException("Invalid child node RLP");
+            }
+
+            if (bytes.Length == 0)
+            {
+                return null;
+            }
+
+            return new KeccakOrRlp(new Keccak((byte[])deserialized));
         }
 
         public void Set(byte[] rawKey, Rlp rlp)
@@ -129,18 +148,18 @@ namespace Nevermind.Store
 
         internal Node GetNode(KeccakOrRlp keccakOrRlp)
         {
-            Rlp rlp = new Rlp(keccakOrRlp.IsKeccak ? _db[keccakOrRlp.GetKeccakOrComputeFromRlp()] : keccakOrRlp.Bytes);
+            Rlp rlp = new Rlp(keccakOrRlp.IsKeccak ? _db[keccakOrRlp.GetOrComputeKeccak()] : keccakOrRlp.Bytes);
             return RlpDecode(rlp);
         }
 
         internal void DeleteNode(KeccakOrRlp hash, bool ignoreChildren = false)
         {
-            if (hash == null || ! hash.IsKeccak)
+            if (hash == null || !hash.IsKeccak)
             {
                 return;
             }
 
-            Keccak thisNodeKeccak = hash.GetKeccakOrComputeFromRlp();
+            Keccak thisNodeKeccak = hash.GetOrComputeKeccak();
             Node node = ignoreChildren ? null : RlpDecode(new Rlp(_db[thisNodeKeccak]));
             _db.Delete(thisNodeKeccak);
 
@@ -148,12 +167,12 @@ namespace Nevermind.Store
             {
                 return;
             }
-            
+
             ExtensionNode extension = node as ExtensionNode;
             if (extension != null)
             {
                 DeleteNode(extension.NextNode);
-                _db.Delete(hash.GetKeccakOrComputeFromRlp());
+                _db.Delete(hash.GetOrComputeKeccak());
             }
 
             BranchNode branch = node as BranchNode;
@@ -172,13 +191,13 @@ namespace Nevermind.Store
             KeccakOrRlp key = new KeccakOrRlp(rlp);
             if (key.IsKeccak || isRoot)
             {
-                _db[key.GetKeccakOrComputeFromRlp()] = rlp.Bytes;
+                _db[key.GetOrComputeKeccak()] = rlp.Bytes;
             }
 
             if (isRoot)
             {
                 Root = node;
-                RootHash = key.GetKeccakOrComputeFromRlp();
+                RootHash = key.GetOrComputeKeccak();
             }
 
             return key;

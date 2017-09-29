@@ -129,7 +129,7 @@ namespace Nevermind.Store
                 branch.Nodes[shorterPath[extensionLength]] = _tree.StoreNode(shortLeaf);
             }
 
-            byte[] leafPath = longerPath.Slice(extensionLength, longerPath.Length - extensionLength - 1);
+            byte[] leafPath = longerPath.Slice(extensionLength + 1, longerPath.Length - extensionLength - 1);
             LeafNode leaf = new LeafNode(new HexPrefix(true, leafPath), longerPathValue);
             _nodeStack.Push(new StackedNode(branch, longerPath[extensionLength]));
             UpdateHashes(leaf);

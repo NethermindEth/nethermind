@@ -1,10 +1,15 @@
 using System;
 using System.Numerics;
+using Nevermind.Core.Sugar;
 
 namespace Nevermind.Core.Encoding
 {
     public partial class Rlp
     {
+        public static Rlp OfEmptyString { get; } = new Rlp(128);
+
+        public static Rlp OfEmptySequence => Serialize();
+
         public byte[] Bytes { get; }
 
         public byte this[int index] => Bytes[index];
@@ -64,6 +69,32 @@ namespace Nevermind.Core.Encoding
         public static Rlp Encode(Transaction transaction)
         {
             throw new NotImplementedException();
+        }
+
+        public static Rlp Encode(Keccak keccak)
+        {
+            byte[] result = new byte[33];
+            result[0] = 161;
+            Buffer.BlockCopy(keccak.Bytes, 0, result, 1, 32);
+            return new Rlp(result);
+        }
+
+        public static Keccak DecodeKeccak(Rlp rlp)
+        {
+            return new Keccak(rlp.Bytes.Slice(1, 32));
+        }
+
+        public static Rlp Encode(Address address)
+        {
+            byte[] result = new byte[21];
+            result[0] = 148;
+            Buffer.BlockCopy(address.Hex, 0, result, 1, 32);
+            return new Rlp(result);
+        }
+
+        public static Rlp Encode(Rlp rlp)
+        {
+            return rlp;
         }
 
         public string ToString(bool withZeroX)

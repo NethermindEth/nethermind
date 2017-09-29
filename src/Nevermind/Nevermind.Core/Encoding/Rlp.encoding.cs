@@ -184,8 +184,6 @@ namespace Nevermind.Core.Encoding
             return BitConverter.ToInt32(padded, 0);
         }
 
-        public static Rlp OfEmptySequence => Serialize();
-
         [SuppressMessage("ReSharper", "PossibleMultipleEnumeration")]
         public static Rlp Serialize(params object[] sequence)
         {
@@ -241,6 +239,12 @@ namespace Nevermind.Core.Encoding
 
         public static Rlp Serialize(object item)
         {
+            Rlp rlp = item as Rlp;
+            if (rlp != null)
+            {
+                return rlp;
+            }
+
             object[] objects = item as object[];
             if (objects != null)
             {

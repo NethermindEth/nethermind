@@ -18,21 +18,19 @@ namespace Nevermind.Core.Encoding
 
         public byte[] ToBytes()
         {
-            if (Path.Length == 0)
+            byte[] output = new byte[Path.Length / 2 + 1];
+            output[0] = (byte)(IsLeaf ? 0x20 : 0x000);
+            if (Path.Length % 2 != 0)
             {
-                // not sure of the following
-                return Sugar.Nibbles.ToBytes((byte)(IsLeaf ? 2 : 0), 0);
+                output[0] += (byte)(0x10 + Path[0]);
             }
 
-            byte[] output = new byte[Path.Length / 2 + 1];
-            output[0] = (byte)(16 * (IsLeaf ? 2 : 0) +
-                                Path.Length % 2 * (16 + Path[0]));
             for (int i = 0; i < Path.Length - 1; i = i + 2)
             {
                 output[i / 2 + 1] =
                     Path.Length % 2 == 0
                         ? (byte)(16 * Path[i] + Path[i + 1])
-                        : output[i / 2 + 1] = (byte)(16 * Path[i + 1] + Path[i + 2]);
+                        : (byte)(16 * Path[i + 1] + Path[i + 2]);
             }
 
             return output;

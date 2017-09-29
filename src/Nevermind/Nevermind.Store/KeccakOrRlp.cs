@@ -4,9 +4,12 @@ namespace Nevermind.Store
 {
     internal class KeccakOrRlp
     {
+        public bool IsKeccak { get; }
+
         public KeccakOrRlp(Keccak keccak)
         {
             _keccak = keccak;
+            IsKeccak = true;
         }
 
         public KeccakOrRlp(Rlp rlp)
@@ -18,19 +21,23 @@ namespace Nevermind.Store
             else
             {
                 _keccak = Keccak.Compute(rlp);
+                IsKeccak = true;
             }
         }
 
-        private readonly Rlp _rlp;
-        private readonly Keccak _keccak;
+        private Rlp _rlp;
+        private Keccak _keccak;
 
         public byte[] Bytes => _rlp?.Bytes ?? _keccak.Bytes;
 
-        public bool IsKeccak => _keccak != null;
-
-        public Keccak GetKeccakOrComputeFromRlp()
+        public Keccak GetOrComputeKeccak()
         {
-            return _keccak ?? Keccak.Compute(_rlp);
+            return _keccak ?? (_keccak = Keccak.Compute(_rlp));
+        }
+
+        public Rlp GetOrEncodeRlp()
+        {
+            return _rlp ?? (_rlp = Rlp.Serialize(_keccak.Bytes));
         }
 
         public override string ToString()
