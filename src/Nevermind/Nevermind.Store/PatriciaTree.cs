@@ -7,7 +7,7 @@ namespace Nevermind.Store
     public class PatriciaTree
     {
         public static readonly Keccak EmptyTreeHash = new Keccak("0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421");
-
+        
         private readonly Db _db;
 
         public PatriciaTree(Db db)
@@ -42,11 +42,6 @@ namespace Nevermind.Store
 
             if (node is BranchNode branch)
             {
-
-                if (branch.Value == null)
-                {
-                    
-                }
                 // Geth encoded a structure of nodes so child nodes are actual objects and not RLP of items,
                 // hence when RLP encoding nodes are not byte arrays but actual objects of format byte[][2] or their Keccak
                 Rlp result = Rlp.Serialize(
@@ -75,7 +70,7 @@ namespace Nevermind.Store
                 return Rlp.Serialize(extension.Key.ToBytes(), RlpEncode(extension.NextNode));
             }
 
-            throw new NotImplementedException("Unknown node type");
+            throw new InvalidOperationException("Unknown node type");
         }
 
         internal static Node RlpDecode(Rlp bytes)
@@ -111,7 +106,7 @@ namespace Nevermind.Store
                 return leaf;
             }
 
-            throw new NotImplementedException("Invalid node RLP");
+            throw new InvalidOperationException("Invalid node RLP");
         }
 
         private static KeccakOrRlp DecodeChildNode(object deserialized)
@@ -178,6 +173,18 @@ namespace Nevermind.Store
 
         internal KeccakOrRlp StoreNode(Node node, bool isRoot = false)
         {
+            if (isRoot && node == null)
+            {
+                Root = null;
+                RootHash = EmptyTreeHash;
+                return new KeccakOrRlp(EmptyTreeHash);
+            }
+
+            if (node == null)
+            {
+                return null;
+            }
+
             Rlp rlp = RlpEncode(node);
             KeccakOrRlp key = new KeccakOrRlp(rlp);
             if (key.IsKeccak || isRoot)
@@ -187,7 +194,7 @@ namespace Nevermind.Store
 
             if (isRoot)
             {
-                Root = node;
+                Root = node;   
                 RootHash = key.GetOrComputeKeccak();
             }
 

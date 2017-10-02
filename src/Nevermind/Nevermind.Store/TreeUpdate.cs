@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using Nevermind.Core.Encoding;
 using Nevermind.Core.Sugar;
 
@@ -17,7 +18,7 @@ namespace Nevermind.Store
         {
             _tree = tree;
             _updatePath = Nibbles.FromBytes(updatePath);
-            _updateValue = updateValue;
+            _updateValue = updateValue.Length == 0 ? null : updateValue;
         }
 
         private int _currentIndex;
@@ -54,15 +55,9 @@ namespace Nevermind.Store
             }
         }
 
-        private byte[] RemainingUpdatePath
-        {
-            get
-            {
-                byte[] remaining = new byte[_updatePath.Length - _currentIndex];
-                Buffer.BlockCopy(_updatePath, _currentIndex, remaining, 0, remaining.Length);
-                return remaining;
-            }
-        }
+        private int RemainingUpdatePathLength => _updatePath.Length - _currentIndex;
+
+        private byte[] RemainingUpdatePath => _updatePath.Slice(_currentIndex, RemainingUpdatePathLength);
 
         private class StackedNode
         {
@@ -81,7 +76,8 @@ namespace Nevermind.Store
             Keccak previousRootHash = _tree.RootHash;
 
             bool isRoot = _nodeStack.Count == 0;
-            KeccakOrRlp hash = _tree.StoreNode(node, isRoot);
+            KeccakOrRlp nextNodeHash = _tree.StoreNode(node, isRoot);
+            Node nextNode = node;
 
             // nodes should immutable here I guess
             while (!isRoot)
@@ -93,20 +89,85 @@ namespace Nevermind.Store
 
                 if (node is LeafNode leaf)
                 {
-                    throw new InvalidOperationException($"Leaf {leaf} cannot be a parent of {hash}");
+                    throw new InvalidOperationException($"Leaf {leaf} cannot be a parent of {nextNodeHash}");
                 }
 
                 if (node is BranchNode branch)
                 {
                     _tree.DeleteNode(branch.Nodes[parentOnStack.PathIndex], true);
-                    branch.Nodes[parentOnStack.PathIndex] = hash;
-                    hash = _tree.StoreNode(branch, isRoot);
+                    branch.Nodes[parentOnStack.PathIndex] = nextNodeHash;
+                    if (branch.IsValid)
+                    {
+                        nextNodeHash = _tree.StoreNode(branch, isRoot);
+                        nextNode = branch;
+                    }
+                    else
+                    {
+                        if (branch.Value.Length != 0)
+                        {
+                            LeafNode leafFromBranch = new LeafNode(new HexPrefix(true), branch.Value);
+                            nextNodeHash = _tree.StoreNode(leafFromBranch, isRoot);
+                            nextNode = leafFromBranch;
+                        }
+                        else
+                        {
+                            int childNodeIndex = Array.FindIndex(branch.Nodes, n => n != null);
+                            KeccakOrRlp childNodeHash = branch.Nodes[childNodeIndex];
+                            Debug.Assert(childNodeHash != null, "Before updating branch should have had at least two non-empty children");
+                            // need to restore this node now?
+                            Node childNode = _tree.GetNode(childNodeHash);
+                            if (childNode is BranchNode)
+                            {
+                                ExtensionNode extensionFromBranch = new ExtensionNode(new HexPrefix(false, (byte)childNodeIndex), childNodeHash);
+                                nextNodeHash = _tree.StoreNode(extensionFromBranch, isRoot);
+                                nextNode = extensionFromBranch;
+                            }
+                            else if (childNode is ExtensionNode childExtension)
+                            {
+                                _tree.DeleteNode(childNodeHash, true);
+                                ExtensionNode extensionFromBranch = new ExtensionNode(new HexPrefix(false, Bytes.Merge((byte)childNodeIndex, childExtension.Path)), childExtension.NextNode);
+                                nextNodeHash = _tree.StoreNode(extensionFromBranch, isRoot);
+                                nextNode = extensionFromBranch;
+                            }
+                            else if (childNode is LeafNode childLeaf)
+                            {
+                                _tree.DeleteNode(childNodeHash, true);
+                                LeafNode leafFromBranch = new LeafNode(new HexPrefix(true, Bytes.Merge((byte)childNodeIndex, childLeaf.Path)), childLeaf.Value);
+                                nextNodeHash = _tree.StoreNode(leafFromBranch, isRoot);
+                                nextNode = leafFromBranch;
+                            }
+                            else
+                            {
+                                throw new InvalidOperationException($"Unknown node type {nextNode.GetType().Name}");
+                            }
+                        }
+                    }
                 }
                 else if (node is ExtensionNode extension)
                 {
                     _tree.DeleteNode(extension.NextNode, true);
-                    extension.NextNode = hash;
-                    hash = _tree.StoreNode(extension, isRoot);
+                    if (nextNode is LeafNode childLeaf)
+                    {
+                        LeafNode leafFromExtension = new LeafNode(new HexPrefix(true, Bytes.Merge(extension.Path, childLeaf.Path)), childLeaf.Value);
+                        nextNodeHash = _tree.StoreNode(leafFromExtension, isRoot);
+                        nextNode = leafFromExtension;
+                    }
+                    else if (nextNode is ExtensionNode childExtension)
+                    {
+                        ExtensionNode extensionFromExtension = new ExtensionNode(new HexPrefix(false, Bytes.Merge(extension.Path, childExtension.Path)), childExtension.NextNode);
+                        nextNodeHash = _tree.StoreNode(extensionFromExtension, isRoot);
+                        nextNode = extensionFromExtension;
+                    }
+                    else if (nextNode is BranchNode)
+                    {
+                        extension.NextNode = nextNodeHash;
+                        nextNodeHash = _tree.StoreNode(extension, isRoot);
+                        nextNode = extension;
+                    }
+                    else
+                    {
+                        throw new InvalidOperationException($"Unknown node type {nextNode.GetType().Name}");
+                    }
                 }
                 else
                 {
@@ -119,12 +180,32 @@ namespace Nevermind.Store
 
         private void TraverseBranch(BranchNode node)
         {
+            if (RemainingUpdatePathLength == 0)
+            {
+                if (_updateValue == null)
+                {
+                    UpdateHashes(null);
+                }
+                else
+                {
+                    node.Value = _updateValue;
+                    UpdateHashes(node);
+                }
+
+                return;
+            }
+
             KeccakOrRlp nextHash = node.Nodes[_updatePath[_currentIndex]];
             _nodeStack.Push(new StackedNode(node, _updatePath[_currentIndex]));
             _currentIndex++;
 
             if (nextHash == null)
             {
+                if (_updateValue == null)
+                {
+                    throw new InvalidOperationException($"Could not find the leaf node to delete: {Hex.FromBytes(_updatePath, false)}");
+                }
+
                 byte[] leafPath = _updatePath.Slice(_currentIndex, _updatePath.Length - _currentIndex);
                 LeafNode leaf = new LeafNode(new HexPrefix(true, leafPath), _updateValue);
                 UpdateHashes(leaf);
@@ -163,12 +244,23 @@ namespace Nevermind.Store
 
             if (extensionLength == shorterPath.Length && extensionLength == longerPath.Length)
             {
+                if (_updateValue == null)
+                {
+                    UpdateHashes(null);
+                    return;
+                }
+
                 if (!Bytes.UnsafeCompare(node.Value, _updateValue))
                 {
-                    LeafNode newLeaf = new LeafNode(new HexPrefix(true, _updatePath), _updateValue);
+                    LeafNode newLeaf = new LeafNode(new HexPrefix(true, RemainingUpdatePath), _updateValue);
                     UpdateHashes(newLeaf);
                     return;
                 }
+            }
+
+            if (_updateValue == null)
+            {
+                throw new InvalidOperationException($"Could not find the leaf node to delete: {Hex.FromBytes(_updatePath, false)}");
             }
 
             if (extensionLength != 0)
@@ -211,6 +303,11 @@ namespace Nevermind.Store
                 Node nextNode = _tree.GetNode(node.NextNode);
                 TraverseNode(nextNode);
                 return;
+            }
+
+            if (_updateValue == null)
+            {
+                throw new InvalidOperationException("Could find the leaf node to delete: {Hex.FromBytes(_updatePath, false)}");
             }
 
             if (extensionLength != 0)

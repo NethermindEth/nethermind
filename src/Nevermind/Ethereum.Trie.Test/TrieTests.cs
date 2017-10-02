@@ -151,7 +151,7 @@ namespace Ethereum.Trie.Test
 
                 _db.Print(TestContext.WriteLine);
                 TestContext.WriteLine();
-                TestContext.WriteLine($"Settign {keyString} -> {valueString}");
+                TestContext.WriteLine($"Setting {keyString} -> {valueString}");
                 patriciaTree.Set(key, value);
             }
 
@@ -293,6 +293,16 @@ namespace Ethereum.Trie.Test
         {
             PatriciaTree patriciaTree = new PatriciaTree(_db);
             Assert.AreEqual(PatriciaTree.EmptyTreeHash, patriciaTree.RootHash);
+        }
+
+        [Test]
+        public void Assigning_null_value_in_branch_throws_an_exception()
+        {
+            // ReSharper disable once ObjectCreationAsStatement
+            Assert.Throws<ArgumentNullException>(() => new BranchNode(new KeccakOrRlp[16], null));
+
+            BranchNode branch = new BranchNode();
+            Assert.Throws<ArgumentNullException>(() => branch.Value = null);
         }
 
         public class TrieTestJson

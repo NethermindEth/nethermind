@@ -42,5 +42,29 @@ namespace Nevermind.Core.Sugar
                 return true;
             }
         }
+
+        public static byte[] Merge(byte prefix, byte[] bytes)
+        {
+            byte[] result = new byte[1 + bytes.Length];
+            result[0] = prefix;
+            Buffer.BlockCopy(bytes, 0, result, 1, bytes.Length);
+            return result;
+        }
+
+        public static byte[] Merge(byte[] firstPart, byte[] secondPart)
+        {
+            byte[] result = new byte[firstPart.Length + secondPart.Length];
+            Buffer.BlockCopy(firstPart, 0, result, 0, firstPart.Length);
+            Buffer.BlockCopy(secondPart, 0, result, firstPart.Length, secondPart.Length);
+            return result;
+        }
+
+        public static byte[] Merge(byte[] bytes, byte suffix)
+        {
+            byte[] result = new byte[bytes.Length + 1];
+            result[result.Length - 1] = suffix;
+            Buffer.BlockCopy(bytes, 0, result, 0, bytes.Length);
+            return result;
+        }
     }
 }
