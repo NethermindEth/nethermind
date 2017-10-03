@@ -1,4 +1,5 @@
-﻿using System.Numerics;
+﻿using System;
+using System.Numerics;
 using Nevermind.Core.Encoding;
 
 namespace Nevermind.Core
@@ -13,7 +14,8 @@ namespace Nevermind.Core
             }
 
             Timestamp = TimeStamp.Get();
-            Difficulty = DifficultyCalculator.Calculate(this, parentBlockHeader);
+            throw new NotImplementedException();
+            //Difficulty = DifficultyCalculator.Calculate(this, parentBlockHeader);
         }
 
         public Keccak ParentHash { get; set; }
@@ -24,9 +26,9 @@ namespace Nevermind.Core
         public Keccak ReceiptsRoot { get; set; }
         public Bloom LogsBloom { get; set; }
         public BigInteger Difficulty { get; set; }
-        public long Number { get; set; }
-        public long GasUsed { get; set; }
-        public long GasLimit { get; set; }
+        public ulong Number { get; set; }
+        public ulong GasUsed { get; set; }
+        public ulong GasLimit { get; set; }
         public BigInteger Timestamp { get; set; }
         public byte[] ExtraData { get; set; }
         public Keccak MixHash { get; set; }
@@ -43,7 +45,8 @@ namespace Nevermind.Core
             Genesis.TransactionsRoot = Keccak.Zero;
             Genesis.ReceiptsRoot = Keccak.Zero;
             Genesis.LogsBloom = new Bloom();
-            Genesis.Difficulty = DifficultyCalculator.OfGenesisBlock;
+            throw new NotImplementedException();
+            //Genesis.Difficulty = DifficultyCalculator.OfGenesisBlock;
             Genesis.Number = 0;
             Genesis.GasUsed = 0;
             //Genesis.GasLimit = 3141592;

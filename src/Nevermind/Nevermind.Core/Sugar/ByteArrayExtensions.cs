@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Numerics;
 using Nevermind.Core.Encoding;
 
 namespace Nevermind.Core.Sugar
@@ -51,6 +52,20 @@ namespace Nevermind.Core.Sugar
             return result;
         }
 
+        public static byte[] PadLeft(byte[] bytes, int length)
+        {
+            byte[] result = new byte[length];
+            Buffer.BlockCopy(bytes, 0, result, length - bytes.Length, bytes.Length);
+            return result;
+        }
+
+        public static byte[] PadRight(byte[] bytes, int length)
+        {
+            byte[] result = new byte[length];
+            Buffer.BlockCopy(bytes, 0, result, 0, bytes.Length);
+            return result;
+        }
+
         public static byte[] Merge(byte[] firstPart, byte[] secondPart)
         {
             byte[] result = new byte[firstPart.Length + secondPart.Length];
@@ -65,6 +80,41 @@ namespace Nevermind.Core.Sugar
             result[result.Length - 1] = suffix;
             Buffer.BlockCopy(bytes, 0, result, 0, bytes.Length);
             return result;
+        }
+
+        public static byte[] Reverse(byte[] bytes)
+        {
+            byte[] result = new byte[bytes.Length];
+            Buffer.BlockCopy(bytes, 0, result, 0, bytes.Length);
+            Array.Reverse(result);
+            return result;
+        }
+
+        public static BigInteger ToUnsignedBigInteger(this byte[] bytes, Endianness endianness = Endianness.Big)
+        {
+            if (BitConverter.IsLittleEndian && endianness == Endianness.Big)
+            {
+                bytes = Reverse(bytes);
+            }
+
+            byte[] unsigned = Merge(bytes, 0);
+            return new BigInteger(unsigned);
+        }
+
+        public static BigInteger ToSignedBigInteger(this byte[] bytes, Endianness endianness = Endianness.Big)
+        {
+            if (BitConverter.IsLittleEndian && endianness == Endianness.Big)
+            {
+                bytes = Reverse(bytes);
+            }
+
+            return new BigInteger(bytes);
+        }
+
+        public enum Endianness
+        {
+            Big,
+            Little
         }
     }
 }
