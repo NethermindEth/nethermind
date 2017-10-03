@@ -52,6 +52,7 @@
     <Compile Include="MainNetworkDifficultyCalculator.cs" />
     <Compile Include="MordenDifficultyCalculator.cs" />
     <Compile Include="OlimpicDifficultyCalculator.cs" />
+    <Compile Include="RopstenDifficultyCalculator.cs" />
     <Compile Include="Sugar\BigIntegerExtensions.cs" />
     <Compile Include="Sugar\ByteArrayExtensions.cs" />
     <Compile Include="Sugar\Nibbles.cs" />
