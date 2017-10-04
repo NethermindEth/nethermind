@@ -111,6 +111,18 @@ namespace Nevermind.Core.Sugar
             return new BigInteger(bytes);
         }
 
+        public static ulong ToUInt64(this byte[] bytes, Endianness endianness = Endianness.Big)
+        {
+            if (BitConverter.IsLittleEndian && endianness == Endianness.Big)
+            {
+                Array.Reverse(bytes);
+            }
+
+            bytes = PadRight(bytes, 8);
+            ulong result = BitConverter.ToUInt64(bytes, 0);
+            return result;
+        }
+
         public enum Endianness
         {
             Big,

@@ -1,38 +1,19 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Diagnostics;
-using System.Globalization;
-using System.IO;
 using System.Linq;
 using System.Numerics;
-using System.Reflection;
+using Ethereum.Test.Base;
+using JetBrains.Annotations;
 using Nevermind.Core;
 using Nevermind.Core.Encoding;
 using Nevermind.Core.Sugar;
-using Newtonsoft.Json;
 using NUnit.Framework;
 
 namespace Ethereum.Difficulty.Test
 {
     public class DifficultyTests
     {
-        private class DifficultyTestJson
-        {
-            public int ParentTimestamp { get; set; }
-            public int ParentDifficulty { get; set; }
-            public int CurrentTimestamp { get; set; }
-            public int CurrentBlockNumber { get; set; }
-            public int CurrentDifficulty { get; set; }
-        }
-
-        private class DifficultyTestHexJson
-        {
-            public string ParentTimestamp { get; set; }
-            public string ParentDifficulty { get; set; }
-            public string CurrentTimestamp { get; set; }
-            public string CurrentBlockNumber { get; set; }
-            public string CurrentDifficulty { get; set; }
-        }
+        private readonly DifficultyCalculatorFactory _factory = new DifficultyCalculatorFactory();
 
         private static DifficultyTest ToTest(string fileName, string name, DifficultyTestJson json)
         {
@@ -42,7 +23,7 @@ namespace Ethereum.Difficulty.Test
                 json.ParentTimestamp,
                 json.ParentDifficulty,
                 json.CurrentTimestamp,
-                (ulong)json.CurrentBlockNumber,
+                (ulong) json.CurrentBlockNumber,
                 json.CurrentDifficulty);
         }
 
@@ -55,10 +36,7 @@ namespace Ethereum.Difficulty.Test
         private static ulong ToUlong(string hex)
         {
             byte[] bytes = Hex.ToBytes(hex);
-            Array.Reverse(bytes);
-            bytes = Bytes.PadRight(bytes, 8);
-            ulong result = BitConverter.ToUInt64(bytes, 0);
-            return result;
+            return bytes.ToUInt64();
         }
 
         private static DifficultyTest ToTest(string fileName, string name, DifficultyTestHexJson json)
@@ -73,108 +51,63 @@ namespace Ethereum.Difficulty.Test
                 ToBigInteger(json.CurrentDifficulty));
         }
 
-        [DebuggerDisplay("{Name}")]
-        public class DifficultyTest
-        {
-            public DifficultyTest(string fileName, string name, BigInteger parentTimestamp, BigInteger parentDifficulty, BigInteger currentTimestamp, ulong currentBlockNumber, BigInteger currentDifficulty)
-            {
-                Name = name;
-                FileName = fileName;
-                ParentTimestamp = parentTimestamp;
-                ParentDifficulty = parentDifficulty;
-                CurrentTimestamp = currentTimestamp;
-                CurrentDifficulty = currentDifficulty;
-                CurrentBlockNumber = currentBlockNumber;
-            }
-
-            public BigInteger ParentTimestamp { get; set; }
-            public BigInteger ParentDifficulty { get; set; }
-            public BigInteger CurrentTimestamp { get; set; }
-            public ulong CurrentBlockNumber { get; set; }
-            public BigInteger CurrentDifficulty { get; set; }
-            public string Name { get; set; }
-            public string FileName { get; set; }
-
-            public override string ToString()
-            {
-                return string.Concat(CurrentBlockNumber, ".", CurrentTimestamp - ParentTimestamp, ".", Name);
-            }
-        }
-
         public static IEnumerable<DifficultyTest> LoadBasicTests()
         {
-            return LoadTests("difficulty.json");
+            return Load("difficulty.json");
         }
 
         public static IEnumerable<DifficultyTest> LoadFrontierTests()
         {
-            return LoadHexTests("difficultyFrontier.json");
+            return LoadHex("difficultyFrontier.json");
         }
 
         public static IEnumerable<DifficultyTest> LoadMainNetworkTests()
         {
-            return LoadHexTests("difficultyMainNetwork.json");
+            return LoadHex("difficultyMainNetwork.json");
         }
 
         public static IEnumerable<DifficultyTest> LoadHomesteadTests()
         {
-            return LoadHexTests("difficultyHomestead.json");
+            return LoadHex("difficultyHomestead.json");
         }
 
         public static IEnumerable<DifficultyTest> LoadMordenTests()
         {
-            return LoadHexTests("difficultyMorden.json");
+            return LoadHex("difficultyMorden.json");
         }
 
         public static IEnumerable<DifficultyTest> LoadOlimpicTests()
         {
-            return LoadHexTests("difficultyOlimpic.json");
+            return LoadHex("difficultyOlimpic.json");
         }
 
         public static IEnumerable<DifficultyTest> LoadRopstenTests()
         {
-            return LoadHexTests("difficultyRopsten.json");
+            return LoadHex("difficultyRopsten.json");
         }
 
         public static IEnumerable<DifficultyTest> LoadCustomHomesteadTests()
         {
-            return LoadHexTests("difficultyCustomHomestead.json");
+            return LoadHex("difficultyCustomHomestead.json");
         }
 
         public static IEnumerable<DifficultyTest> LoadCustomMainNetworkTests()
         {
-            return LoadHexTests("difficultyCustomMainNetwork.json");
+            return LoadHex("difficultyCustomMainNetwork.json");
         }
 
-        public static IEnumerable<DifficultyTest> LoadTests(string fileName)
+        public static IEnumerable<DifficultyTest> Load(string fileName)
         {
-            return LoadFromFile<Dictionary<string, DifficultyTestJson>>(fileName, t =>
-                t.Select(dtj => ToTest(fileName, dtj.Key, dtj.Value)));
+            return TestLoader.LoadFromFile<Dictionary<string, DifficultyTestJson>, DifficultyTest>(
+                fileName,
+                t => t.Select(dtj => ToTest(fileName, dtj.Key, dtj.Value)));
         }
 
-        public static IEnumerable<DifficultyTest> LoadHexTests(string fileName)
+        public static IEnumerable<DifficultyTest> LoadHex(string fileName)
         {
-            return LoadFromFile<Dictionary<string, DifficultyTestHexJson>>(fileName, t =>
-                t.Select(dtj => ToTest(fileName, dtj.Key, dtj.Value)));
-        }
-
-        private static IEnumerable<DifficultyTest> LoadFromFile<TContainer>(string testFileName,
-            Func<TContainer, IEnumerable<DifficultyTest>> testExtractor)
-        {
-            Assembly assembly = typeof(DifficultyTest).Assembly;
-            string[] resourceNames = Assembly.GetExecutingAssembly().GetManifestResourceNames();
-            string resourceName = resourceNames.SingleOrDefault(r => r.Contains(testFileName));
-            using (Stream stream = assembly.GetManifestResourceStream(resourceName))
-            {
-                Assert.NotNull(stream);
-                using (StreamReader reader = new StreamReader(stream))
-                {
-                    string testJson = reader.ReadToEnd();
-                    TContainer testSpecs =
-                        JsonConvert.DeserializeObject<TContainer>(testJson);
-                    return testExtractor(testSpecs);
-                }
-            }
+            return TestLoader.LoadFromFile<Dictionary<string, DifficultyTestHexJson>, DifficultyTest>(
+                fileName,
+                t => t.Select(dtj => ToTest(fileName, dtj.Key, dtj.Value)));
         }
 
         [TestCaseSource(nameof(LoadBasicTests))]
@@ -216,10 +149,9 @@ namespace Ethereum.Difficulty.Test
             RunTest(test, EthereumNetwork.Olimpic);
         }
 
-        private static void RunTest(DifficultyTest test, EthereumNetwork network)
+        private void RunTest(DifficultyTest test, EthereumNetwork network)
         {
-            DifficultyCalculatorFactory factory = new DifficultyCalculatorFactory();
-            IDifficultyCalculator calculator = factory.GetCalculator(network);
+            IDifficultyCalculator calculator = _factory.GetCalculator(network);
 
             BigInteger difficulty = calculator.Calculate(
                 test.ParentDifficulty,
@@ -228,6 +160,55 @@ namespace Ethereum.Difficulty.Test
                 test.CurrentBlockNumber);
 
             Assert.AreEqual(test.CurrentDifficulty, difficulty, test.Name);
+        }
+
+        [UsedImplicitly]
+        private class DifficultyTestJson
+        {
+            public int ParentTimestamp { get; set; }
+            public int ParentDifficulty { get; set; }
+            public int CurrentTimestamp { get; set; }
+            public int CurrentBlockNumber { get; set; }
+            public int CurrentDifficulty { get; set; }
+        }
+
+        [UsedImplicitly]
+        private class DifficultyTestHexJson
+        {
+            public string ParentTimestamp { get; set; }
+            public string ParentDifficulty { get; set; }
+            public string CurrentTimestamp { get; set; }
+            public string CurrentBlockNumber { get; set; }
+            public string CurrentDifficulty { get; set; }
+        }
+
+        [DebuggerDisplay("{Name}")]
+        public class DifficultyTest
+        {
+            public DifficultyTest(string fileName, string name, BigInteger parentTimestamp, BigInteger parentDifficulty,
+                BigInteger currentTimestamp, ulong currentBlockNumber, BigInteger currentDifficulty)
+            {
+                Name = name;
+                FileName = fileName;
+                ParentTimestamp = parentTimestamp;
+                ParentDifficulty = parentDifficulty;
+                CurrentTimestamp = currentTimestamp;
+                CurrentDifficulty = currentDifficulty;
+                CurrentBlockNumber = currentBlockNumber;
+            }
+
+            public BigInteger ParentTimestamp { get; set; }
+            public BigInteger ParentDifficulty { get; set; }
+            public BigInteger CurrentTimestamp { get; set; }
+            public ulong CurrentBlockNumber { get; set; }
+            public BigInteger CurrentDifficulty { get; set; }
+            public string Name { get; set; }
+            public string FileName { get; set; }
+
+            public override string ToString()
+            {
+                return string.Concat(CurrentBlockNumber, ".", CurrentTimestamp - ParentTimestamp, ".", Name);
+            }
         }
     }
 }

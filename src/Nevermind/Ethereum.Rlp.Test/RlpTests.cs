@@ -1,13 +1,11 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.IO;
 using System.Linq;
 using System.Numerics;
-using System.Reflection;
+using Ethereum.Test.Base;
 using JetBrains.Annotations;
 using Nevermind.Core.Encoding;
-using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 using Assert = NUnit.Framework.Assert;
@@ -44,37 +42,17 @@ namespace Ethereum.Rlp.Test
             }
         }
 
-        private static IEnumerable<RlpTest> LoadValidTests()
-        {
-            return LoadTests("rlptest.json");
-        }
+        private static IEnumerable<RlpTest> LoadValidTests() => LoadTests("rlptest.json");
+    
+        private static IEnumerable<RlpTest> LoadRandomTests() => LoadTests("example.json");
 
-        private static IEnumerable<RlpTest> LoadRandomTests()
-        {
-            return LoadTests("example.json");
-        }
+        private static IEnumerable<RlpTest> LoadInvalidTests() => LoadTests("invalidRLPTest.json");
 
         private static IEnumerable<RlpTest> LoadTests(string testFileName)
         {
-            Assembly assembly = typeof(RlpTests).Assembly;
-            string[] resourceNames = Assembly.GetExecutingAssembly().GetManifestResourceNames();
-            string resourceName = resourceNames.SingleOrDefault(r => r.Contains(testFileName));
-            using (Stream stream = assembly.GetManifestResourceStream(resourceName))
-            {
-                Assert.NotNull(stream);
-                using (StreamReader reader = new StreamReader(stream))
-                {
-                    string testJson = reader.ReadToEnd();
-                    Dictionary<string, RlpTestJson> testSpecs =
-                        JsonConvert.DeserializeObject<Dictionary<string, RlpTestJson>>(testJson);
-                    return testSpecs.Select(p => new RlpTest(p.Key, p.Value.In, p.Value.Out));
-                }
-            }
-        }
-
-        private static IEnumerable<RlpTest> LoadInvalidTests()
-        {
-            return LoadTests("invalidRLPTest.json");
+            return TestLoader.LoadFromFile<Dictionary<string, RlpTestJson>, RlpTest>(
+                testFileName,
+                c => c.Select(p => new RlpTest(p.Key, p.Value.In, p.Value.Out)));
         }
 
         private object PrepareInput(object input)

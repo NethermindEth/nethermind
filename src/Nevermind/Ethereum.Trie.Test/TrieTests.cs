@@ -1,12 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
-using System.Reflection;
 using System.Text;
+using Ethereum.Test.Base;
 using Nevermind.Core.Encoding;
 using Nevermind.Store;
-using Newtonsoft.Json;
 using NUnit.Framework;
 
 namespace Ethereum.Trie.Test
@@ -27,29 +25,6 @@ namespace Ethereum.Trie.Test
             _db.Print(Console.WriteLine);
         }
 
-        private static IEnumerable<TrieTest> LoadTests()
-        {
-            List<TrieTest> tests = LoadFromFile<Dictionary<string, TrieTestArraysJson>>("trietest.json",
-                dwj => dwj.Select(p => new TrieTest(p.Key, p.Value.In.Select(entry => new KeyValuePair<string, string>(entry[0], entry[1] ?? string.Empty)).ToList(), p.Value.Root)))
-                .ToList();
-            return tests;
-        }
-
-        private static IEnumerable<TrieTest> LoadSecureTests()
-        {
-            List<TrieTest> tests = LoadFromFile<Dictionary<string, TrieTestArraysJson>>("trietest_secureTrie.json",
-                dwj => dwj.Select(p => new TrieTest(p.Key, p.Value.In.Select(entry => new KeyValuePair<string, string>(entry[0], entry[1] ?? string.Empty)).ToList(), p.Value.Root)))
-                .ToList();
-            return tests;
-        }
-
-        private static IEnumerable<TrieTest> LoadAnyOrderTests()
-        {
-            IEnumerable<TrieTest> tests = LoadFromFile<Dictionary<string, TrieTestJson>>("trieanyorder.json",
-                dwj => dwj.Select(p => new TrieTest(p.Key, p.Value.In.ToList(), p.Value.Root)));
-            return GetTestPermutations(tests);
-        }
-
         private static IEnumerable<TrieTest> GetTestPermutations(IEnumerable<TrieTest> tests)
         {
             return tests.SelectMany(t =>
@@ -65,37 +40,51 @@ namespace Ethereum.Trie.Test
             });
         }
 
+        private static TrieTest Convert(KeyValuePair<string, TrieTestArraysJson> p)
+        {
+            return new TrieTest(
+                p.Key,
+                p.Value.In.Select(entry => new KeyValuePair<string, string>(entry[0], entry[1] ?? string.Empty))
+                    .ToList(),
+                p.Value.Root);
+        }
+
+        private static IEnumerable<TrieTest> LoadTests()
+        {
+            return TestLoader.LoadFromFile<Dictionary<string, TrieTestArraysJson>, TrieTest>(
+                "trietest.json",
+                dwj => dwj.Select(Convert));
+        }
+
+        private static IEnumerable<TrieTest> LoadSecureTests()
+        {
+            return TestLoader.LoadFromFile<Dictionary<string, TrieTestArraysJson>, TrieTest>(
+                "trietest_secureTrie.json",
+                dwj => dwj.Select(Convert));
+        }
+
+        private static IEnumerable<TrieTest> LoadAnyOrderTests()
+        {
+            IEnumerable<TrieTest> tests = TestLoader.LoadFromFile<Dictionary<string, TrieTestJson>, TrieTest>(
+                "trieanyorder.json",
+                dwj => dwj.Select(p => new TrieTest(p.Key, p.Value.In.ToList(), p.Value.Root)));
+            return GetTestPermutations(tests);
+        }
+
         private static IEnumerable<TrieTest> LoadHexEncodedSecureTests()
         {
-            IEnumerable<TrieTest> tests = LoadFromFile<Dictionary<string, TrieTestJson>>("hex_encoded_securetrie_test.json",
+            IEnumerable<TrieTest> tests = TestLoader.LoadFromFile<Dictionary<string, TrieTestJson>, TrieTest>(
+                "hex_encoded_securetrie_test.json",
                 dwj => dwj.Select(p => new TrieTest(p.Key, p.Value.In.ToList(), p.Value.Root)));
             return GetTestPermutations(tests);
         }
 
         private static IEnumerable<TrieTest> LoadAnyOrderSecureTests()
         {
-            IEnumerable<TrieTest> tests = LoadFromFile<Dictionary<string, TrieTestJson>>("trieanyorder_secureTrie.json",
+            IEnumerable<TrieTest> tests = TestLoader.LoadFromFile<Dictionary<string, TrieTestJson>, TrieTest>(
+                "trieanyorder_secureTrie.json",
                 dwj => dwj.Select(p => new TrieTest(p.Key, p.Value.In.ToList(), p.Value.Root)));
             return GetTestPermutations(tests);
-        }
-
-        private static IEnumerable<TrieTest> LoadFromFile<TContainer>(string testFileName,
-            Func<TContainer, IEnumerable<TrieTest>> testExtractor)
-        {
-            Assembly assembly = typeof(TrieTest).Assembly;
-            string[] resourceNames = Assembly.GetExecutingAssembly().GetManifestResourceNames();
-            string resourceName = resourceNames.SingleOrDefault(r => r.Contains(testFileName));
-            using (Stream stream = assembly.GetManifestResourceStream(resourceName))
-            {
-                Assert.NotNull(stream);
-                using (StreamReader reader = new StreamReader(stream))
-                {
-                    string testJson = reader.ReadToEnd();
-                    TContainer testSpecs =
-                        JsonConvert.DeserializeObject<TContainer>(testJson);
-                    return testExtractor(testSpecs);
-                }
-            }
         }
 
         [TestCaseSource(nameof(LoadTests))]
@@ -171,8 +160,8 @@ namespace Ethereum.Trie.Test
         {
             PatriciaTree patriciaTree = new PatriciaTree(_db);
             patriciaTree.Set(
-                new byte[] { 0x01, 0x01, 0x02 },
-                Rlp.Serialize(new object[] { "hello" }));
+                new byte[] {0x01, 0x01, 0x02},
+                Rlp.Serialize(new object[] {"hello"}));
 
             Assert.AreEqual("0x15da97c42b7ed2e1c0c8dab6a6d7e3d9dc0a75580bbc4f1f29c33996d1415dcc",
                 patriciaTree.RootHash.ToString());
@@ -183,13 +172,13 @@ namespace Ethereum.Trie.Test
         {
             PatriciaTree patriciaTree = new PatriciaTree(_db);
             patriciaTree.Set(
-                new byte[] { 0x01, 0x01, 0x02 },
-                Rlp.Serialize(new object[] { "hello" }));
+                new byte[] {0x01, 0x01, 0x02},
+                Rlp.Serialize(new object[] {"hello"}));
 
             PatriciaTree another = new PatriciaTree(patriciaTree.RootHash, _db);
-            Assert.AreEqual(((LeafNode)patriciaTree.Root).Key.ToString(), ((LeafNode)another.Root).Key.ToString());
-            Assert.AreEqual(Keccak.Compute(((LeafNode)patriciaTree.Root).Value),
-                Keccak.Compute(((LeafNode)another.Root).Value));
+            Assert.AreEqual(((LeafNode) patriciaTree.Root).Key.ToString(), ((LeafNode) another.Root).Key.ToString());
+            Assert.AreEqual(Keccak.Compute(((LeafNode) patriciaTree.Root).Value),
+                Keccak.Compute(((LeafNode) another.Root).Value));
         }
 
         [Test]
@@ -197,12 +186,12 @@ namespace Ethereum.Trie.Test
         {
             PatriciaTree patriciaTree = new PatriciaTree(_db);
             patriciaTree.Set(
-                new byte[] { 0x01, 0x01, 0x02 },
-                Rlp.Serialize(new object[] { "hello" }));
+                new byte[] {0x01, 0x01, 0x02},
+                Rlp.Serialize(new object[] {"hello"}));
 
             patriciaTree.Set(
-                new byte[] { 0x01, 0x01, 0x02 },
-                Rlp.Serialize(new object[] { "hellothere" }));
+                new byte[] {0x01, 0x01, 0x02},
+                Rlp.Serialize(new object[] {"hellothere"}));
 
             Assert.AreEqual("0x05e13d8be09601998499c89846ec5f3101a1ca09373a5f0b74021261af85d396",
                 patriciaTree.RootHash.ToString());
@@ -213,12 +202,12 @@ namespace Ethereum.Trie.Test
         {
             PatriciaTree patriciaTree = new PatriciaTree(_db);
             patriciaTree.Set(
-                new byte[] { 0x01, 0x01, 0x02 },
-                Rlp.Serialize(new object[] { "hello" }));
+                new byte[] {0x01, 0x01, 0x02},
+                Rlp.Serialize(new object[] {"hello"}));
 
             patriciaTree.Set(
-                new byte[] { 0x01, 0x01, 0x03 },
-                Rlp.Serialize(new object[] { "hellothere" }));
+                new byte[] {0x01, 0x01, 0x03},
+                Rlp.Serialize(new object[] {"hellothere"}));
 
             ExtensionNode extension = patriciaTree.Root as ExtensionNode;
             Assert.NotNull(extension);
@@ -234,12 +223,12 @@ namespace Ethereum.Trie.Test
         {
             PatriciaTree patriciaTree = new PatriciaTree(_db);
             patriciaTree.Set(
-                new byte[] { 0x01, 0x01, 0x02 },
-                Rlp.Serialize(new object[] { "hello" }));
+                new byte[] {0x01, 0x01, 0x02},
+                Rlp.Serialize(new object[] {"hello"}));
 
             patriciaTree.Set(
-                new byte[] { 0x01, 0x01 },
-                Rlp.Serialize(new object[] { "hellothere" }));
+                new byte[] {0x01, 0x01},
+                Rlp.Serialize(new object[] {"hellothere"}));
 
             ExtensionNode extension = patriciaTree.Root as ExtensionNode;
             Assert.NotNull(extension);
@@ -252,12 +241,12 @@ namespace Ethereum.Trie.Test
         {
             PatriciaTree patriciaTree = new PatriciaTree(_db);
             patriciaTree.Set(
-                new byte[] { 0x01, 0x01, 0x02 },
-                Rlp.Serialize(new object[] { "hello" }));
+                new byte[] {0x01, 0x01, 0x02},
+                Rlp.Serialize(new object[] {"hello"}));
 
             patriciaTree.Set(
-                new byte[] { 0x01, 0x01, 0x02, 0x55 },
-                Rlp.Serialize(new object[] { "hellothere" }));
+                new byte[] {0x01, 0x01, 0x02, 0x55},
+                Rlp.Serialize(new object[] {"hellothere"}));
 
             ExtensionNode extension = patriciaTree.Root as ExtensionNode;
             Assert.NotNull(extension);
@@ -273,16 +262,16 @@ namespace Ethereum.Trie.Test
         {
             PatriciaTree patriciaTree = new PatriciaTree(_db);
             patriciaTree.Set(
-                new byte[] { 0x01, 0x01, 0x02 },
-                Rlp.Serialize(new object[] { "hello" }));
+                new byte[] {0x01, 0x01, 0x02},
+                Rlp.Serialize(new object[] {"hello"}));
 
             patriciaTree.Set(
-                new byte[] { 0x01, 0x01, 0x02, 0x55 },
-                Rlp.Serialize(new object[] { "hellothere" }));
+                new byte[] {0x01, 0x01, 0x02, 0x55},
+                Rlp.Serialize(new object[] {"hellothere"}));
 
             patriciaTree.Set(
-                new byte[] { 0x01, 0x01, 0x02, 0x57 },
-                Rlp.Serialize(new object[] { "jimbojones" }));
+                new byte[] {0x01, 0x01, 0x02, 0x57},
+                Rlp.Serialize(new object[] {"jimbojones"}));
 
             Assert.AreEqual("0xfcb2e3098029e816b04d99d7e1bba22d7b77336f9fe8604f2adfb04bcf04a727",
                 patriciaTree.RootHash.ToString());

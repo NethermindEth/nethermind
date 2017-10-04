@@ -5,11 +5,11 @@
   <PropertyGroup>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
-    <ProjectGuid>{D25AEE99-401C-404A-9B22-2614139BF7CD}</ProjectGuid>
+    <ProjectGuid>{F6A86097-CB14-4D78-B4DA-082B163219A8}</ProjectGuid>
     <OutputType>Library</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
-    <RootNamespace>Ethereum.HexPrefix.Test</RootNamespace>
-    <AssemblyName>Ethereum.HexPrefix.Test</AssemblyName>
+    <RootNamespace>Ethereum.Blockchain.Test</RootNamespace>
+    <AssemblyName>Ethereum.Blockchain.Test</AssemblyName>
     <TargetFrameworkVersion>v4.7</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <NuGetPackageImportStamp>
@@ -34,12 +34,6 @@
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
   <ItemGroup>
-    <Reference Include="JetBrains.Annotations, Version=11.0.0.0, Culture=neutral, PublicKeyToken=1010a0d8d6380325, processorArchitecture=MSIL">
-      <HintPath>..\packages\JetBrains.Annotations.11.0.0\lib\net20\JetBrains.Annotations.dll</HintPath>
-    </Reference>
-    <Reference Include="Newtonsoft.Json, Version=10.0.0.0, Culture=neutral, PublicKeyToken=30ad4fe6b2a6aeed, processorArchitecture=MSIL">
-      <HintPath>..\packages\Newtonsoft.Json.10.0.3\lib\net45\Newtonsoft.Json.dll</HintPath>
-    </Reference>
     <Reference Include="nunit.framework, Version=3.8.1.0, Culture=neutral, PublicKeyToken=2638cd05610744eb, processorArchitecture=MSIL">
       <HintPath>..\packages\NUnit.3.8.1\lib\net45\nunit.framework.dll</HintPath>
     </Reference>
@@ -53,28 +47,15 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="HexPrefixTests.cs" />
+    <Compile Include="GenesisTests.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
-    <EmbeddedResource Include="..\..\tests\BasicTests\hexencodetest.json">
-      <Link>hexencodetest.json</Link>
+    <EmbeddedResource Include="..\..\tests\GenesisTests\basic_genesis_tests.json">
+      <Link>basic_genesis_tests.json</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </EmbeddedResource>
     <None Include="packages.config" />
-  </ItemGroup>
-  <ItemGroup>
-    <ProjectReference Include="..\Ethereum.Test.Base\Ethereum.Test.Base.csproj">
-      <Project>{72E80636-D6CA-42DB-A49F-830CB9BAD87D}</Project>
-      <Name>Ethereum.Test.Base</Name>
-    </ProjectReference>
-    <ProjectReference Include="..\Nevermind.Core\Nevermind.Core.csproj">
-      <Project>{051B3754-5FB6-4202-AF6E-D1764E2DED06}</Project>
-      <Name>Nevermind.Core</Name>
-    </ProjectReference>
-  </ItemGroup>
-  <ItemGroup>
-    <Service Include="{82A7F48D-3B50-4B1E-B82E-3ADA8210C358}" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <Target Name="EnsureNuGetPackageBuildImports" BeforeTargets="PrepareForBuild">
