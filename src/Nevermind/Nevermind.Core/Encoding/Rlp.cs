@@ -1,14 +1,13 @@
 using System;
-using System.Numerics;
 using Nevermind.Core.Sugar;
 
 namespace Nevermind.Core.Encoding
 {
-    public partial class Rlp
+    public partial class Rlp : IEquatable<Rlp>
     {
-        public static Rlp OfEmptyString { get; } = new Rlp(128);
+        public static readonly Rlp OfEmptyByteArray = new Rlp(128);
 
-        public static Rlp OfEmptySequence => Serialize();
+        public static Rlp OfEmptySequence = Encode();
 
         public byte[] Bytes { get; }
 
@@ -27,7 +26,7 @@ namespace Nevermind.Core.Encoding
 
         public static Rlp Encode(BlockHeader header)
         {
-            return Serialize(
+            return Encode(
                     header.ParentHash,
                     header.OmmersHash,
                     header.Beneficiary,
@@ -48,22 +47,27 @@ namespace Nevermind.Core.Encoding
 
         public static Rlp Encode(Block block)
         {
-            return Serialize(block.Header, block.Transactions, block.Ommers);
+            return Encode(block.Header, block.Transactions, block.Ommers);
         }
 
-        public static Rlp Encode(BigInteger bigInteger)
+        public static Rlp Encode(Bloom bloom)
         {
-            throw new NotImplementedException();
+            byte[] result = new byte[259];
+            result[0] = 185;
+            result[1] = 1;
+            result[2] = 0;
+            Buffer.BlockCopy(bloom.Bytes, 0, result, 3, 256);
+            return new Rlp(result);
         }
 
         public static Rlp Encode(Account account)
         {
-            return Serialize(account.Nonce, account.Balance, account.StorageRoot, account.CodeHash);
+            return Encode(account.Nonce, account.Balance, account.StorageRoot, account.CodeHash);
         }
 
         public static Rlp Encode(TransactionReceipt receipt)
         {
-            return Serialize(receipt.PostTransactionState, receipt.GasUsed, receipt.Bloom, receipt.Logs);
+            return Encode(receipt.PostTransactionState, receipt.GasUsed, receipt.Bloom, receipt.Logs);
         }
 
         public static Rlp Encode(Transaction transaction)
@@ -74,7 +78,7 @@ namespace Nevermind.Core.Encoding
         public static Rlp Encode(Keccak keccak)
         {
             byte[] result = new byte[33];
-            result[0] = 161;
+            result[0] = 160;
             Buffer.BlockCopy(keccak.Bytes, 0, result, 1, 32);
             return new Rlp(result);
         }
@@ -88,13 +92,8 @@ namespace Nevermind.Core.Encoding
         {
             byte[] result = new byte[21];
             result[0] = 148;
-            Buffer.BlockCopy(address.Hex, 0, result, 1, 32);
+            Buffer.BlockCopy(address.Hex, 0, result, 1, 20);
             return new Rlp(result);
-        }
-
-        public static Rlp Encode(Rlp rlp)
-        {
-            return rlp;
         }
 
         public string ToString(bool withZeroX)
@@ -102,9 +101,24 @@ namespace Nevermind.Core.Encoding
             return Hex.FromBytes(Bytes, withZeroX);
         }
 
+        public bool Equals(Rlp other)
+        {
+            if (other == null)
+            {
+                return false;
+            }
+
+            return Sugar.Bytes.UnsafeCompare(Bytes, other.Bytes);
+        }
+
         public override string ToString()
         {
             return ToString(true);
+        }
+
+        public int GetHashCode(Rlp obj)
+        {
+            return obj.Bytes.GetXxHashCode();
         }
     }
 }

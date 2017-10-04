@@ -34,6 +34,15 @@
   <ItemGroup>
     <Reference Include="System" />
     <Reference Include="System.Core" />
+    <Reference Include="System.Data.HashFunction.Core, Version=1.8.2.2, Culture=neutral, PublicKeyToken=80c9288e394c1322, processorArchitecture=MSIL">
+      <HintPath>..\packages\System.Data.HashFunction.Core.1.8.2.2\lib\net45\System.Data.HashFunction.Core.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Data.HashFunction.Interfaces, Version=1.0.0.2, Culture=neutral, PublicKeyToken=80c9288e394c1322, processorArchitecture=MSIL">
+      <HintPath>..\packages\System.Data.HashFunction.Interfaces.1.0.0.2\lib\net45\System.Data.HashFunction.Interfaces.dll</HintPath>
+    </Reference>
+    <Reference Include="System.Data.HashFunction.xxHash, Version=1.8.2.2, Culture=neutral, PublicKeyToken=80c9288e394c1322, processorArchitecture=MSIL">
+      <HintPath>..\packages\System.Data.HashFunction.xxHash.1.8.2.2\lib\net45\System.Data.HashFunction.xxHash.dll</HintPath>
+    </Reference>
     <Reference Include="System.Numerics" />
     <Reference Include="System.Xml.Linq" />
     <Reference Include="System.Data.DataSetExtensions" />
@@ -55,9 +64,12 @@
     <Compile Include="RopstenDifficultyCalculator.cs" />
     <Compile Include="Sugar\BigIntegerExtensions.cs" />
     <Compile Include="Sugar\ByteArrayExtensions.cs" />
+    <Compile Include="Sugar\Bytes.cs" />
     <Compile Include="Sugar\Nibbles.cs" />
     <Compile Include="Sugar\ShortExtensions.cs" />
-    <Compile Include="Sugar\LongExtensions.cs" />
+    <Compile Include="Sugar\Int64Extensions.cs" />
+    <Compile Include="Sugar\UInt64Extensions.cs" />
+    <Compile Include="UInt256.cs" />
     <Compile Include="Validators\AccountValidator.cs" />
     <Compile Include="Address.cs" />
     <Compile Include="Block.cs" />
@@ -113,6 +125,8 @@
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
   </ItemGroup>
-  <ItemGroup />
+  <ItemGroup>
+    <None Include="packages.config" />
+  </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

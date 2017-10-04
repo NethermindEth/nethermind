@@ -27,7 +27,7 @@ namespace Nevermind.Core
         public string ToString(bool withEip55Checksum)
         {
             // use inside hex?
-            return string.Concat("0x", Hex.FromBytes(Hex, false, withEip55Checksum));
+            return string.Concat("0x", Hex.FromBytes(Hex, false, false, withEip55Checksum));
         }
 
         public Hex Hex { get; set; }

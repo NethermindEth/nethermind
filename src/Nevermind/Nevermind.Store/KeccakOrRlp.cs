@@ -37,7 +37,7 @@ namespace Nevermind.Store
 
         public Rlp GetOrEncodeRlp()
         {
-            return _rlp ?? (_rlp = Rlp.Serialize(_keccak.Bytes));
+            return _rlp ?? (_rlp = Rlp.Encode(_keccak.Bytes));
         }
 
         public override string ToString()

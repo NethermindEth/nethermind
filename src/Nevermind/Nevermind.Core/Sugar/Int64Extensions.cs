@@ -2,7 +2,7 @@
 
 namespace Nevermind.Core.Sugar
 {
-    public static class LongExtensions
+    public static class Int64Extensions
     {
         public static byte[] ToBigEndianByteArray(this long value)
         {

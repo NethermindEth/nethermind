@@ -4,16 +4,14 @@ using System.Diagnostics;
 namespace Nevermind.Core.Encoding
 {
     /// <summary>
-    /// https://stackoverflow.com/questions/311165/how-do-you-convert-a-byte-array-to-a-hexadecimal-string-and-vice-versa
+    ///     https://stackoverflow.com/questions/311165/how-do-you-convert-a-byte-array-to-a-hexadecimal-string-and-vice-versa
     /// </summary>
     // from performance / memory perspective probably better to remove this class entirely, experimental
     public class Hex : IEquatable<Hex>
     {
-        private string _hexString;
+        private static readonly uint[] Lookup32 = CreateLookup32("x2");
         private byte[] _bytes;
-
-        public int ByteLength => _bytes?.Length ?? _hexString.Length / 2;
-        public int StringLenght => _hexString?.Length ?? _bytes.Length * 2;
+        private string _hexString;
 
         public Hex(string hexString)
         {
@@ -25,19 +23,48 @@ namespace Nevermind.Core.Encoding
             _bytes = bytes;
         }
 
+        public int ByteLength => _bytes?.Length ?? _hexString.Length / 2;
+        public int StringLenght => _hexString?.Length ?? _bytes.Length * 2;
+
+        public bool Equals(Hex obj)
+        {
+            if (obj == null)
+            {
+                return false;
+            }
+
+            if (_hexString != null && obj._hexString != null)
+            {
+                return _hexString == obj;
+            }
+
+            if (_hexString != null && obj._hexString == null)
+            {
+                return _hexString == obj;
+            }
+
+            if (_hexString == null && obj._hexString == null)
+            {
+                return this == (string) obj;
+            }
+
+            Debug.Assert(false, "one of the conditions should be true");
+            return false;
+        }
+
         public override string ToString()
         {
             return ToString(true);
         }
 
-        public string ToString(bool withZeroX)
+        public string ToString(bool withZeroX, bool noLeadingZeros = false)
         {
             if (_hexString == null)
             {
-                _hexString = FromBytes(_bytes, false);
+                _hexString = FromBytes(_bytes, false, noLeadingZeros);
             }
 
-            return withZeroX ? string.Concat("0x", _hexString) : _hexString;
+            return withZeroX ? string.Concat("0x", noLeadingZeros ? _hexString.TrimStart('0') : _hexString) : _hexString;
         }
 
         public static implicit operator byte[](Hex hex)
@@ -77,33 +104,7 @@ namespace Nevermind.Core.Encoding
                 return false;
             }
 
-            return Equals((Hex)obj);
-        }
-
-        public bool Equals(Hex obj)
-        {
-            if (obj == null)
-            {
-                return false;
-            }
-
-            if (_hexString != null && obj._hexString != null)
-            {
-                return _hexString == obj;
-            }
-
-            if (_hexString != null && obj._hexString == null)
-            {
-                return _hexString == obj;
-            }
-
-            if (_hexString == null && obj._hexString == null)
-            {
-                return this == (string)obj;
-            }
-
-            Debug.Assert(false, "one of the conditions should be true");
-            return false;
+            return Equals((Hex) obj);
         }
 
         public override int GetHashCode()
@@ -112,27 +113,26 @@ namespace Nevermind.Core.Encoding
             return (_hexString ?? this).GetHashCode();
         }
 
-        private static readonly uint[] Lookup32 = CreateLookup32("x2");
-
         private static uint[] CreateLookup32(string format)
         {
             uint[] result = new uint[256];
             for (int i = 0; i < 256; i++)
             {
                 string s = i.ToString(format);
-                result[i] = s[0] + ((uint)s[1] << 16);
+                result[i] = s[0] + ((uint) s[1] << 16);
             }
             return result;
         }
 
-        private static string ByteArrayToHexViaLookup32(byte[] bytes, bool withZeroX, bool withEip55Checksum)
+        private static string ByteArrayToHexViaLookup32(byte[] bytes, bool withZeroX, bool skipLeadingZeros, bool withEip55Checksum)
         {
-            char[] result = new char[bytes.Length * 2 + (withZeroX ? 2 : 0)];
+            int leadingZeros = skipLeadingZeros ? CountLeadingZeros(bytes) : 0;
+            char[] result = new char[bytes.Length * 2 + (withZeroX ? 2 : 0) - leadingZeros];
             string hashHex = null;
             if (withEip55Checksum)
             {
                 // I guess it may be better (faster) than calling ToString here
-                hashHex = Keccak.Compute(System.Text.Encoding.UTF8.GetBytes(FromBytes(bytes, false))).ToString(false);
+                hashHex = Keccak.Compute(new Hex(bytes).ToString(false)).ToString(false);
             }
 
             if (withZeroX)
@@ -144,23 +144,68 @@ namespace Nevermind.Core.Encoding
             for (int i = 0; i < bytes.Length; i++)
             {
                 uint val = Lookup32[bytes[i]];
-                char char1 = (char)val;
-                char char2 = (char)(val >> 16);
-                result[2 * i+ (withZeroX ? 2 : 0)] = withEip55Checksum && Char.IsLetter(char1) && hashHex[2 * i] > '7' ? Char.ToUpper(char1) : char1;
-                result[2 * i + 1 + (withZeroX ? 2 : 0)] = withEip55Checksum && Char.IsLetter(char2) && hashHex[2 * i + 1] > '7' ? Char.ToUpper(char2) : char2;
+                char char1 = (char) val;
+                char char2 = (char) (val >> 16);
+
+                if (leadingZeros <= i * 2)
+                {
+                    result[2 * i + (withZeroX ? 2 : 0) - leadingZeros] =
+                        withEip55Checksum && char.IsLetter(char1) && hashHex[2 * i] > '7'
+                            ? char.ToUpper(char1)
+                            : char1;
+                }
+
+                if (leadingZeros <= i * 2 + 1)
+                {
+                    result[2 * i + 1 + (withZeroX ? 2 : 0) - leadingZeros] =
+                        withEip55Checksum && char.IsLetter(char2) && hashHex[2 * i + 1] > '7'
+                            ? char.ToUpper(char2)
+                            : char2;
+                }
             }
 
             return new string(result);
         }
 
-        public static string FromBytes(byte[] bytes, bool withZeroX)
+        private static int CountLeadingZeros(byte[] bytes)
         {
-            return FromBytes(bytes, withZeroX, false);
+            int leadingZeros = 0;
+            for (int i = 0; i < bytes.Length; i++)
+            {
+                if ((bytes[i] & 240) == 0)
+                {
+                    leadingZeros++;
+                    if ((bytes[i] & 15) == 0)
+                    {
+                        leadingZeros++;
+                    }
+                    else
+                    {
+                        break;
+                    }
+                }
+                else
+                {
+                    break;
+                }
+            }
+
+            return leadingZeros;
         }
 
-        public static string FromBytes(byte[] bytes, bool withZeroX, bool withEip55Checksum)
+        public static string FromBytes(byte[] bytes, bool withZeroX)
         {
-            return ByteArrayToHexViaLookup32(bytes, withZeroX, withEip55Checksum);
+            return FromBytes(bytes, withZeroX, false, false);
+        }
+
+        public static string FromBytes(byte[] bytes, bool withZeroX, bool noLeadingZeros)
+        {
+            return FromBytes(bytes, withZeroX, noLeadingZeros, false);
+        }
+
+        public static string FromBytes(byte[] bytes, bool withZeroX, bool noLeadingZeros, bool withEip55Checksum)
+        {
+            return ByteArrayToHexViaLookup32(bytes, withZeroX, noLeadingZeros, withEip55Checksum);
         }
 
         public static byte[] ToBytes(string hexString)
@@ -171,7 +216,13 @@ namespace Nevermind.Core.Encoding
             }
 
             int startIndex = hexString.StartsWith("0x") ? 2 : 0;
+            if (hexString.Length % 2 == 1)
+            {
+                hexString = hexString.Insert(startIndex, "0");
+            }
+
             int numberChars = hexString.Length - startIndex;
+
             byte[] bytes = new byte[numberChars / 2];
             for (int i = 0; i < numberChars; i += 2)
             {

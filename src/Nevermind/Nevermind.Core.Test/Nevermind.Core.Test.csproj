@@ -51,6 +51,7 @@
     <Compile Include="AddressTests.cs" />
     <Compile Include="BlockValidatorTests.cs" />
     <Compile Include="HexPrefixTests.cs" />
+    <Compile Include="HexTests.cs" />
     <Compile Include="KeccakTests.cs" />
     <Compile Include="PrivateKeyTests.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />

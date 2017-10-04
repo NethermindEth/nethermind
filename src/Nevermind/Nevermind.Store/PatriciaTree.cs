@@ -6,8 +6,11 @@ namespace Nevermind.Store
     // I guess it is a very slow to Keccak-heavy implementation, the first one to pass tests
     public class PatriciaTree
     {
-        public static readonly Keccak EmptyTreeHash = new Keccak("0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421");
-        
+        /// <summary>
+        /// 0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421
+        /// </summary>
+        public static readonly Keccak EmptyTreeHash = Keccak.Compute(new byte[] {128});
+
         private readonly Db _db;
 
         public PatriciaTree(Db db)
@@ -29,14 +32,14 @@ namespace Nevermind.Store
 
         private static Rlp RlpEncode(KeccakOrRlp keccakOrRlp)
         {
-            return keccakOrRlp == null ? Rlp.OfEmptyString : keccakOrRlp.GetOrEncodeRlp();
+            return keccakOrRlp == null ? Rlp.OfEmptyByteArray : keccakOrRlp.GetOrEncodeRlp();
         }
 
         internal static Rlp RlpEncode(Node node)
         {
             if (node is LeafNode leaf)
             {
-                Rlp result = Rlp.Serialize(leaf.Key.ToBytes(), leaf.Value);
+                Rlp result = Rlp.Encode(leaf.Key.ToBytes(), leaf.Value);
                 return result;
             }
 
@@ -44,7 +47,7 @@ namespace Nevermind.Store
             {
                 // Geth encoded a structure of nodes so child nodes are actual objects and not RLP of items,
                 // hence when RLP encoding nodes are not byte arrays but actual objects of format byte[][2] or their Keccak
-                Rlp result = Rlp.Serialize(
+                Rlp result = Rlp.Encode(
                     RlpEncode(branch.Nodes[0x0]),
                     RlpEncode(branch.Nodes[0x1]),
                     RlpEncode(branch.Nodes[0x2]),
@@ -67,7 +70,7 @@ namespace Nevermind.Store
 
             if (node is ExtensionNode extension)
             {
-                return Rlp.Serialize(extension.Key.ToBytes(), RlpEncode(extension.NextNode));
+                return Rlp.Encode(extension.Key.ToBytes(), RlpEncode(extension.NextNode));
             }
 
             throw new InvalidOperationException("Unknown node type");
@@ -75,7 +78,7 @@ namespace Nevermind.Store
 
         internal static Node RlpDecode(Rlp bytes)
         {
-            object[] decoded = (object[]) Rlp.Deserialize(bytes);
+            object[] decoded = (object[]) Rlp.Decode(bytes);
             if (decoded.Length == 17)
             {
                 BranchNode branch = new BranchNode();
@@ -113,7 +116,7 @@ namespace Nevermind.Store
         {
             if (deserialized is object[] nodeSequence)
             {
-                return new KeccakOrRlp(Rlp.Serialize(nodeSequence));
+                return new KeccakOrRlp(Rlp.Encode(nodeSequence));
             }
 
             if (deserialized is byte[] bytes)

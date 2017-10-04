@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using Nevermind.Core.Sugar;
@@ -29,14 +28,14 @@ namespace Nevermind.Core.Encoding
     // https://github.com/ethereum/wiki/wiki/RLP
     public partial class Rlp
     {
-        public static object Deserialize(Rlp rlp)
+        public static object Decode(Rlp rlp)
         {
-            return Deserialize(new DeserializationContext(rlp.Bytes));
+            return Decode(new DecoderContext(rlp.Bytes));
         }
 
-        private static object Deserialize(DeserializationContext context, bool check = true)
+        private static object Decode(DecoderContext context, bool check = true)
         {
-            object CheckAndReturn(List<object> resultToCollapse, DeserializationContext contextToCheck)
+            object CheckAndReturn(List<object> resultToCollapse, DecoderContext contextToCheck)
             {
                 if (check && contextToCheck.CurrentIndex != contextToCheck.MaxIndex)
                 {
@@ -136,7 +135,7 @@ namespace Nevermind.Core.Encoding
             List<object> nestedList = new List<object>();
             while (context.CurrentIndex < startIndex + concatenationLength)
             {
-                nestedList.Add(Deserialize(context, false));
+                nestedList.Add(Decode(context, false));
             }
 
             result.Add(nestedList.ToArray());
@@ -145,9 +144,9 @@ namespace Nevermind.Core.Encoding
         }
 
         // TODO: streams and proper encodings
-        public class DeserializationContext
+        public class DecoderContext
         {
-            public DeserializationContext(byte[] data)
+            public DecoderContext(byte[] data)
             {
                 Data = data;
                 MaxIndex = Data.Length;
@@ -185,86 +184,83 @@ namespace Nevermind.Core.Encoding
         }
 
         [SuppressMessage("ReSharper", "PossibleMultipleEnumeration")]
-        public static Rlp Serialize(params object[] sequence)
+        public static Rlp Encode(params object[] sequence)
         {
             byte[] concatenation = new byte[0];
             foreach (object item in sequence)
             {
+                byte[] itemBytes = Encode(item).Bytes;
                 // do that at once (unnecessary objects creation here)
-                concatenation = Concat(concatenation, Serialize(item).Bytes);
+                concatenation = Sugar.Bytes.Merge(concatenation, itemBytes);
             }
 
             if (concatenation.Length < 56)
             {
-                return new Rlp(Concat((byte)(192 + concatenation.Length), concatenation));
+                return new Rlp(Sugar.Bytes.Merge((byte)(192 + concatenation.Length), concatenation));
             }
 
             byte[] serializedLength = SerializeLength(concatenation.Length);
             byte prefix = (byte)(247 + serializedLength.Length);
-            return new Rlp(Concat(prefix, serializedLength, concatenation));
+            return new Rlp(Sugar.Bytes.Merge(prefix, serializedLength, concatenation));
         }
 
-        private static byte[] Concat(byte prefix, byte[] x)
+        public static Rlp Encode(BigInteger bigInteger)
         {
-            if (x == null) throw new ArgumentNullException(nameof(x));
-
-            byte[] output = new byte[1 + x.Length];
-            output[0] = prefix;
-            Buffer.BlockCopy(x, 0, output, 1, x.Length);
-            return output;
+            return bigInteger == 0 ? OfEmptyByteArray : Encode(bigInteger.ToBigEndianByteArray());
         }
 
-        private static byte[] Concat(byte[] x, byte[] y)
+        public static Rlp Encode(object item)
         {
-            if (x == null) throw new ArgumentNullException(nameof(x));
-            if (y == null) throw new ArgumentNullException(nameof(y));
+            // code below was written at the beginning - needs some rewrite
 
-            byte[] output = new byte[x.Length + y.Length];
-            Buffer.BlockCopy(x, 0, output, 0, x.Length);
-            Buffer.BlockCopy(y, 0, output, x.Length, y.Length);
-            return output;
-        }
-
-        private static byte[] Concat(byte prefix, byte[] x, byte[] y)
-        {
-            if (x == null) throw new ArgumentNullException(nameof(x));
-            if (y == null) throw new ArgumentNullException(nameof(y));
-
-            byte[] output = new byte[1 + x.Length + y.Length];
-            output[0] = prefix;
-            Buffer.BlockCopy(x, 0, output, 1, x.Length);
-            Buffer.BlockCopy(y, 0, output, 1 + x.Length, y.Length);
-            return output;
-        }
-
-        public static Rlp Serialize(object item)
-        {
-            Rlp rlp = item as Rlp;
-            if (rlp != null)
+            if (item is Rlp rlp)
             {
-                return rlp;
+                return Encode(rlp);
             }
 
-            object[] objects = item as object[];
-            if (objects != null)
+            if (item is object[] objects)
             {
-                return Serialize(objects);
+                return Encode(objects);
             }
 
-            byte[] byteArray = item as byte[];
-            if (byteArray != null)
+            if (item is byte[] byteArray)
             {
-                return Serialize(byteArray);
+                return Encode(byteArray);
             }
 
-            if (item is BigInteger)
+            if (item is Keccak keccak)
             {
-                return Serialize(((BigInteger)item).ToBigEndianByteArray());
+                return Encode(keccak);
+            }
+
+            if (item is Address address)
+            {
+                return Encode(address);
+            }
+
+            if (item is BigInteger bigInt)
+            {
+                return Encode(bigInt);
+            }
+
+            if (item is BlockHeader header)
+            {
+                return Encode(header);
+            }
+
+            if (item is Bloom bloom)
+            {
+                return Encode(bloom);
+            }
+
+            if (item is ulong ulongNumber)
+            {
+                return Encode(ulongNumber.ToBigEndianByteArray());
             }
 
             if (item is byte || item is short || item is int || item is ushort || item is uint)
             {
-                return Serialize(Convert.ToInt64(item));
+                return Encode((object) Convert.ToInt64(item));
             }
 
             // can use serialize length here and wrap in the byte array serialization
@@ -284,36 +280,41 @@ namespace Nevermind.Core.Encoding
                     return new Rlp(Convert.ToByte(value));
                 }
 
-                if (value <= Byte.MaxValue)
+                if (value <= byte.MaxValue)
                 {
                     // ReSharper disable once PossibleInvalidCastException
-                    return Serialize(new[] { Convert.ToByte(value) });
+                    return Encode(new[] { Convert.ToByte(value) });
                 }
 
-                if (value <= Int16.MaxValue)
+                if (value <= short.MaxValue)
                 {
                     // ReSharper disable once PossibleInvalidCastException
-                    return Serialize(((short)value).ToBigEndianByteArray());
+                    return Encode(((short)value).ToBigEndianByteArray());
                 }
 
-                return Serialize(new BigInteger(value));
+                return Encode(new BigInteger(value));
             }
 
-            string s = item as string;
-            if (s != null)
+            if (item is string s)
             {
-                return Serialize(System.Text.Encoding.ASCII.GetBytes(s));
+                return Encode(s);
             }
 
             throw new NotSupportedException($"RLP does not support items of type {item.GetType().Name}");
         }
 
-        private static Rlp Serialize(Rlp input)
+        private static Rlp Encode(string s)
         {
-            return Serialize(input.Bytes);
+            return Encode(System.Text.Encoding.ASCII.GetBytes(s));
         }
 
-        public static Rlp Serialize(byte[] input)
+        private static Rlp Encode(Rlp rlp)
+        {
+            //return Encode(rlp.Bytes);
+            return rlp;
+        }
+
+        public static Rlp Encode(byte[] input)
         {
             if (input.Length == 0)
             {
@@ -328,12 +329,12 @@ namespace Nevermind.Core.Encoding
             if (input.Length < 56)
             {
                 byte smallPrefix = (byte)(input.Length + 128);
-                return new Rlp(Concat(smallPrefix, input));
+                return new Rlp(Sugar.Bytes.Merge(smallPrefix, input));
             }
 
             byte[] serializedLength = SerializeLength(input.Length);
             byte prefix = (byte)(183 + serializedLength.Length);
-            return new Rlp(Concat(prefix, serializedLength, input));
+            return new Rlp(Sugar.Bytes.Merge(prefix, serializedLength, input));
         }
 
         public static byte[] SerializeLength(long value)

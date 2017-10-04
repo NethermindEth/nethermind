@@ -4,10 +4,6 @@ namespace Nevermind.Core
 {
     public interface IDifficultyCalculator
     {
-        BigInteger Calculate(
-            BigInteger parentDifficulty,
-            BigInteger parentTimestamp,
-            BigInteger currentTimestamp,
-            ulong blockNumber);
+        BigInteger Calculate(BigInteger parentDifficulty, BigInteger parentTimestamp, BigInteger currentTimestamp, BigInteger blockNumber);
     }
 }

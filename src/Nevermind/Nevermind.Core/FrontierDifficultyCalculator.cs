@@ -13,7 +13,7 @@ namespace Nevermind.Core
             BigInteger parentDifficulty,
             BigInteger parentTimestamp,
             BigInteger currentTimestamp,
-            ulong blockNumber)
+            BigInteger blockNumber)
         {
             BigInteger baseIncrease = BigInteger.Divide(parentDifficulty, 2048);
             BigInteger timeAdjustment = TimeAdjustment(parentTimestamp, currentTimestamp, blockNumber);
@@ -40,7 +40,7 @@ namespace Nevermind.Core
         }
 
         protected internal virtual BigInteger TimeAdjustment(BigInteger parentTimestamp, BigInteger currentTimestamp,
-            ulong blockNumber)
+            BigInteger blockNumber)
         {
 #if DEBUG
             BigInteger difference = parentTimestamp - currentTimestamp;
@@ -49,14 +49,14 @@ namespace Nevermind.Core
             return timeAdjustment;
         }
 
-        protected internal virtual BigInteger TimeBomb(ulong blockNumber)
+        protected internal virtual BigInteger TimeBomb(BigInteger blockNumber)
         {
             if (blockNumber < 200000)
             {
                 return 0;
             }
 
-            BigInteger timeBomb = BigInteger.Pow(2, (int)(Floor(blockNumber / 100000m) - 2m));
+            BigInteger timeBomb = BigInteger.Pow(2, (int)(BigInteger.Divide(blockNumber, 100000) - 2));
             return timeBomb;
         }
     }

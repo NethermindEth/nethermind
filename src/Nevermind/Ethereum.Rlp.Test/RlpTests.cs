@@ -91,11 +91,11 @@ namespace Ethereum.Rlp.Test
         {
             object input = PrepareInput(test.Input);
 
-            Nevermind.Core.Encoding.Rlp serialized = Nevermind.Core.Encoding.Rlp.Serialize(input);
+            Nevermind.Core.Encoding.Rlp serialized = Nevermind.Core.Encoding.Rlp.Encode(input);
             string serializedHex = serialized.ToString(false);
 
-            object deserialized = Nevermind.Core.Encoding.Rlp.Deserialize(serialized);
-            Nevermind.Core.Encoding.Rlp serializedAgain = Nevermind.Core.Encoding.Rlp.Serialize(deserialized);
+            object deserialized = Nevermind.Core.Encoding.Rlp.Decode(serialized);
+            Nevermind.Core.Encoding.Rlp serializedAgain = Nevermind.Core.Encoding.Rlp.Encode(deserialized);
             string serializedAgainHex = serializedAgain.ToString(false);
 
             Assert.AreEqual(test.Output, serializedHex);
@@ -107,14 +107,14 @@ namespace Ethereum.Rlp.Test
         {
             Nevermind.Core.Encoding.Rlp invalidBytes = new Nevermind.Core.Encoding.Rlp(Hex.ToBytes(test.Output));
             Assert.Throws<InvalidOperationException>(
-                () => Nevermind.Core.Encoding.Rlp.Deserialize(invalidBytes));
+                () => Nevermind.Core.Encoding.Rlp.Decode(invalidBytes));
         }
 
         [TestCaseSource(nameof(LoadRandomTests))]
         public void TestRandom(RlpTest test)
         {
             Nevermind.Core.Encoding.Rlp validBytes = new Nevermind.Core.Encoding.Rlp(Hex.ToBytes(test.Output));
-            Nevermind.Core.Encoding.Rlp.Deserialize(validBytes);
+            Nevermind.Core.Encoding.Rlp.Decode(validBytes);
         }
     }
 }

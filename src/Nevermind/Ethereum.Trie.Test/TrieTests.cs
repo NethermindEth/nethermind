@@ -161,7 +161,7 @@ namespace Ethereum.Trie.Test
             PatriciaTree patriciaTree = new PatriciaTree(_db);
             patriciaTree.Set(
                 new byte[] {0x01, 0x01, 0x02},
-                Rlp.Serialize(new object[] {"hello"}));
+                Rlp.Encode(new object[] {"hello"}));
 
             Assert.AreEqual("0x15da97c42b7ed2e1c0c8dab6a6d7e3d9dc0a75580bbc4f1f29c33996d1415dcc",
                 patriciaTree.RootHash.ToString());
@@ -173,7 +173,7 @@ namespace Ethereum.Trie.Test
             PatriciaTree patriciaTree = new PatriciaTree(_db);
             patriciaTree.Set(
                 new byte[] {0x01, 0x01, 0x02},
-                Rlp.Serialize(new object[] {"hello"}));
+                Rlp.Encode(new object[] {"hello"}));
 
             PatriciaTree another = new PatriciaTree(patriciaTree.RootHash, _db);
             Assert.AreEqual(((LeafNode) patriciaTree.Root).Key.ToString(), ((LeafNode) another.Root).Key.ToString());
@@ -187,11 +187,11 @@ namespace Ethereum.Trie.Test
             PatriciaTree patriciaTree = new PatriciaTree(_db);
             patriciaTree.Set(
                 new byte[] {0x01, 0x01, 0x02},
-                Rlp.Serialize(new object[] {"hello"}));
+                Rlp.Encode(new object[] {"hello"}));
 
             patriciaTree.Set(
                 new byte[] {0x01, 0x01, 0x02},
-                Rlp.Serialize(new object[] {"hellothere"}));
+                Rlp.Encode(new object[] {"hellothere"}));
 
             Assert.AreEqual("0x05e13d8be09601998499c89846ec5f3101a1ca09373a5f0b74021261af85d396",
                 patriciaTree.RootHash.ToString());
@@ -203,11 +203,11 @@ namespace Ethereum.Trie.Test
             PatriciaTree patriciaTree = new PatriciaTree(_db);
             patriciaTree.Set(
                 new byte[] {0x01, 0x01, 0x02},
-                Rlp.Serialize(new object[] {"hello"}));
+                Rlp.Encode(new object[] {"hello"}));
 
             patriciaTree.Set(
                 new byte[] {0x01, 0x01, 0x03},
-                Rlp.Serialize(new object[] {"hellothere"}));
+                Rlp.Encode(new object[] {"hellothere"}));
 
             ExtensionNode extension = patriciaTree.Root as ExtensionNode;
             Assert.NotNull(extension);
@@ -224,11 +224,11 @@ namespace Ethereum.Trie.Test
             PatriciaTree patriciaTree = new PatriciaTree(_db);
             patriciaTree.Set(
                 new byte[] {0x01, 0x01, 0x02},
-                Rlp.Serialize(new object[] {"hello"}));
+                Rlp.Encode(new object[] {"hello"}));
 
             patriciaTree.Set(
                 new byte[] {0x01, 0x01},
-                Rlp.Serialize(new object[] {"hellothere"}));
+                Rlp.Encode(new object[] {"hellothere"}));
 
             ExtensionNode extension = patriciaTree.Root as ExtensionNode;
             Assert.NotNull(extension);
@@ -242,11 +242,11 @@ namespace Ethereum.Trie.Test
             PatriciaTree patriciaTree = new PatriciaTree(_db);
             patriciaTree.Set(
                 new byte[] {0x01, 0x01, 0x02},
-                Rlp.Serialize(new object[] {"hello"}));
+                Rlp.Encode(new object[] {"hello"}));
 
             patriciaTree.Set(
                 new byte[] {0x01, 0x01, 0x02, 0x55},
-                Rlp.Serialize(new object[] {"hellothere"}));
+                Rlp.Encode(new object[] {"hellothere"}));
 
             ExtensionNode extension = patriciaTree.Root as ExtensionNode;
             Assert.NotNull(extension);
@@ -263,15 +263,15 @@ namespace Ethereum.Trie.Test
             PatriciaTree patriciaTree = new PatriciaTree(_db);
             patriciaTree.Set(
                 new byte[] {0x01, 0x01, 0x02},
-                Rlp.Serialize(new object[] {"hello"}));
+                Rlp.Encode(new object[] {"hello"}));
 
             patriciaTree.Set(
                 new byte[] {0x01, 0x01, 0x02, 0x55},
-                Rlp.Serialize(new object[] {"hellothere"}));
+                Rlp.Encode(new object[] {"hellothere"}));
 
             patriciaTree.Set(
                 new byte[] {0x01, 0x01, 0x02, 0x57},
-                Rlp.Serialize(new object[] {"jimbojones"}));
+                Rlp.Encode(new object[] {"jimbojones"}));
 
             Assert.AreEqual("0xfcb2e3098029e816b04d99d7e1bba22d7b77336f9fe8604f2adfb04bcf04a727",
                 patriciaTree.RootHash.ToString());

@@ -10,6 +10,11 @@ namespace Nevermind.Core.Sugar
             return @this * Unit.Ether;
         }
 
+        public static BigInteger Wei(this int @this)
+        {
+            return @this * Unit.Wei;
+        }
+
         public static byte[] ToBigEndianByteArray(this int value)
         {
             byte[] bytes = BitConverter.GetBytes(value);
