@@ -3,7 +3,9 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using Ethereum.Test.Base;
+using Nevermind.Core;
 using Nevermind.Core.Encoding;
+using Nevermind.Core.Sugar;
 using Nevermind.Store;
 using NUnit.Framework;
 
@@ -130,9 +132,9 @@ namespace Ethereum.Trie.Test
                 string keyString = keyValuePair.Key;
                 string valueString = keyValuePair.Value;
 
-                byte[] key = keyString.StartsWith("0x")
-                    ? Hex.ToBytes(keyString)
-                    : Encoding.ASCII.GetBytes(keyString);
+                Nibble[] key = keyString.StartsWith("0x")
+                    ?  Hex.ToNibbles(keyString)
+                    :  Nibbles.FromBytes(Encoding.ASCII.GetBytes(keyString));
 
                 byte[] value = valueString.StartsWith("0x")
                     ? Hex.ToBytes(valueString)

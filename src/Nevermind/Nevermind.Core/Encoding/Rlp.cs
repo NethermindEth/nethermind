@@ -62,7 +62,11 @@ namespace Nevermind.Core.Encoding
 
         public static Rlp Encode(Account account)
         {
-            return Encode(account.Nonce, account.Balance, account.StorageRoot, account.CodeHash);
+            return Encode(
+                account.Nonce,
+                account.Balance,
+                account.StorageRoot,
+                account.CodeHash);
         }
 
         public static Rlp Encode(TransactionReceipt receipt)

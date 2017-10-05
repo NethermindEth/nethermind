@@ -60,6 +60,7 @@
     <Compile Include="IDifficultyCalculator.cs" />
     <Compile Include="MainNetworkDifficultyCalculator.cs" />
     <Compile Include="MordenDifficultyCalculator.cs" />
+    <Compile Include="Nibbles.cs" />
     <Compile Include="OlimpicDifficultyCalculator.cs" />
     <Compile Include="RopstenDifficultyCalculator.cs" />
     <Compile Include="Sugar\BigIntegerExtensions.cs" />
@@ -99,7 +100,6 @@
     <Compile Include="Signing\Signature.cs" />
     <Compile Include="Validators\SignatureValidator.cs" />
     <Compile Include="Signing\Signer.cs" />
-    <Compile Include="StateDatabase.cs" />
     <Compile Include="TimeStamp.cs" />
     <Compile Include="Transaction.cs" />
     <Compile Include="TransactionReceipt.cs" />

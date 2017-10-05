@@ -97,5 +97,25 @@ namespace Nevermind.Core.Encoding
         {
             return Bytes[0] ^ Bytes[31];
         }
+
+        public static bool operator ==(Keccak a, Keccak b)
+        {
+            if (ReferenceEquals(a, b))
+            {
+                return true;
+            }
+
+            if (ReferenceEquals(a, null) || ReferenceEquals(b, null))
+            {
+                return false;
+            }
+
+            return Sugar.Bytes.UnsafeCompare(a.Bytes, b.Bytes);
+        }
+
+        public static bool operator !=(Keccak a, Keccak b)
+        {
+            return !(a == b);
+        }
     }
 }

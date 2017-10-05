@@ -1,11 +1,14 @@
 ﻿using System;
+using Nevermind.Core;
 using Nevermind.Core.Encoding;
+using Nevermind.Core.Sugar;
 
 namespace Nevermind.Store
 {
     // I guess it is a very slow to Keccak-heavy implementation, the first one to pass tests
     public class PatriciaTree
     {
+        
         /// <summary>
         /// 0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421
         /// </summary>
@@ -127,14 +130,24 @@ namespace Nevermind.Store
             throw new InvalidOperationException("Invalid child node RLP");
         }
 
-        public void Set(byte[] rawKey, Rlp rlp)
+        public void Set(Nibble[] nibbles, Rlp rlp)
         {
-            Set(rawKey, rlp.Bytes);
+            Set(nibbles, rlp.Bytes);
         }
 
-        public virtual void Set(byte[] rawKey, byte[] value)
+        public virtual void Set(Nibble[] nibbles, byte[] value)
         {
-            new TreeUpdate(this, rawKey, value).Run();
+            new TreeUpdate(this, nibbles, value).Run();
+        }
+
+        public void Set(byte[] rawKey, byte[] value)
+        {
+            Set(Nibbles.FromBytes(rawKey), value);
+        }
+
+        public void Set(byte[] rawKey, Rlp value)
+        {
+            Set(Nibbles.FromBytes(rawKey), value.Bytes);
         }
 
         internal Node GetNode(KeccakOrRlp keccakOrRlp)

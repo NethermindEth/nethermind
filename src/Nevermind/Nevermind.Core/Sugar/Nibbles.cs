@@ -1,34 +1,38 @@
 ﻿using System;
-using System.Diagnostics;
 
 namespace Nevermind.Core.Sugar
 {
-    [DebuggerStepThrough]
     public static class Nibbles
     {
-        public static byte ToByte(byte highNibble, byte lowNibble)
+        public static Nibble[] FromBytes(params byte[] bytes)
         {
-            return (byte)(highNibble << 4 | lowNibble);
-        }
-
-        public static byte[] FromBytes(params byte[] bytes)
-        {
-            byte[] nibbles = new byte[2 * bytes.Length];
+            Nibble[] nibbles = new Nibble[2 * bytes.Length];
             for (int i = 0; i < bytes.Length; i++)
             {
-                nibbles[i * 2] = (byte)((bytes[i] & 240) >> 4);
-                nibbles[i * 2 + 1] = (byte)(bytes[i] & 15);
+                nibbles[i * 2] = new Nibble((byte) ((bytes[i] & 240) >> 4));
+                nibbles[i * 2 + 1] = new Nibble((byte) (bytes[i] & 15));
             }
 
             return nibbles;
         }
 
-        public static byte[] FromBytes(byte @byte)
+        public static Nibble[] FromBytes(byte @byte)
         {
-            return new[] { (byte)(@byte & 240), (byte)(@byte & 15) };
+            return new[] {new Nibble((byte) (@byte & 240)), new Nibble((byte) (@byte & 15))};
         }
 
-        public static byte[] ToBytes(params byte[] nibbles)
+        public static byte[] ToLooseByteArray(this Nibble[] nibbles)
+        {
+            byte[] bytes = new byte[nibbles.Length];
+            for (int i = 0; i < nibbles.Length; i++)
+            {
+                bytes[i] = (byte) nibbles[i];
+            }
+
+            return bytes;
+        }
+
+        public static byte[] ToPackedByteArray(this Nibble[] nibbles)
         {
             if (nibbles.Length % 2 != 0)
             {
@@ -42,6 +46,11 @@ namespace Nevermind.Core.Sugar
             }
 
             return bytes;
+        }
+
+        public static byte ToByte(Nibble highNibble, Nibble lowNibble)
+        {
+            return (byte) (((byte)highNibble << 4) | (byte)lowNibble);
         }
     }
 }

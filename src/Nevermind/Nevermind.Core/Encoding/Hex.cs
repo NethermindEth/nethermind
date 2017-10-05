@@ -61,10 +61,17 @@ namespace Nevermind.Core.Encoding
         {
             if (_hexString == null)
             {
-                _hexString = FromBytes(_bytes, false, noLeadingZeros);
+                _hexString = FromBytes(_bytes, false, false);
             }
 
-            return withZeroX ? string.Concat("0x", noLeadingZeros ? _hexString.TrimStart('0') : _hexString) : _hexString;
+            // this actually depends on whether it is quantity or byte data...
+            string trimmed = noLeadingZeros ? _hexString.TrimStart('0') : _hexString;
+            if(trimmed.Length == 0)
+            {
+                trimmed = string.Concat(trimmed, '0');
+            }
+
+            return withZeroX ? string.Concat("0x", trimmed) : trimmed;
         }
 
         public static implicit operator byte[](Hex hex)
@@ -164,6 +171,11 @@ namespace Nevermind.Core.Encoding
                 }
             }
 
+            if (skipLeadingZeros && result.Length == (withZeroX ? 2 : 0))
+            {
+                return withZeroX ? "0x0" : "0";
+            }
+
             return new string(result);
         }
 
@@ -206,6 +218,25 @@ namespace Nevermind.Core.Encoding
         public static string FromBytes(byte[] bytes, bool withZeroX, bool noLeadingZeros, bool withEip55Checksum)
         {
             return ByteArrayToHexViaLookup32(bytes, withZeroX, noLeadingZeros, withEip55Checksum);
+        }
+
+        public static Nibble[] ToNibbles(string hexString)
+        {
+            if (hexString == null)
+            {
+                throw new ArgumentNullException($"{nameof(hexString)}");
+            }
+
+            int startIndex = hexString.StartsWith("0x") ? 2 : 0;
+            int numberChars = hexString.Length - startIndex;
+
+            Nibble[] nibbles = new Nibble[numberChars];
+            for (int i = 0; i < numberChars; i++)
+            {
+                nibbles[i] = new Nibble(hexString[i + startIndex]);
+            }
+
+            return nibbles;
         }
 
         public static byte[] ToBytes(string hexString)

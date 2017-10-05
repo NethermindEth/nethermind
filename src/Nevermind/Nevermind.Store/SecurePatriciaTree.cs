@@ -1,4 +1,6 @@
+using Nevermind.Core;
 using Nevermind.Core.Encoding;
+using Nevermind.Core.Sugar;
 
 namespace Nevermind.Store
 {
@@ -14,9 +16,10 @@ namespace Nevermind.Store
         {
         }
 
-        public override void Set(byte[] rawKey, byte[] value)
+        public override void Set(Nibble[] rawKey, byte[] value)
         {
-            base.Set(Keccak.Compute(rawKey).Bytes, value);
+            Keccak keccak = Keccak.Compute(rawKey.ToPackedByteArray());
+            base.Set(Nibbles.FromBytes(keccak.Bytes), value);
         }
     }
 }

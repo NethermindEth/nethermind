@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using Nevermind.Core;
 using Nevermind.Core.Encoding;
 using Nevermind.Core.Sugar;
 
@@ -14,10 +15,10 @@ namespace Nevermind.Store
 
         private readonly Stack<StackedNode> _nodeStack = new Stack<StackedNode>();
 
-        public TreeUpdate(PatriciaTree tree, byte[] updatePath, byte[] updateValue)
+        public TreeUpdate(PatriciaTree tree, Nibble[] updatePath, byte[] updateValue)
         {
             _tree = tree;
-            _updatePath = Nibbles.FromBytes(updatePath);
+            _updatePath = updatePath.ToLooseByteArray();
             _updateValue = updateValue.Length == 0 ? null : updateValue;
         }
 

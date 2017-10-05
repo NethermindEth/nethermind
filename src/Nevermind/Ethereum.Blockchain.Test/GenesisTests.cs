@@ -24,6 +24,21 @@ namespace Ethereum.Blockchain.Test
             test.Nonce = Hex.ToBytes(pair.Value.Nonce).ToUInt64();
             test.Result = new Rlp(Hex.ToBytes(pair.Value.Result));
             test.Timestamp = Hex.ToBytes(pair.Value.Timestamp).ToUnsignedBigInteger();
+            foreach (KeyValuePair<string, AllocationJson> addressBalance in pair.Value.Alloc)
+            {
+                (Address address, AllocationJson allocJson) = (new Address(addressBalance.Key), addressBalance.Value);
+                Allocation allocation = new Allocation();
+                if (allocJson.Balance != null)
+                {
+                    allocation.Balance = BigInteger.Parse(allocJson.Balance);
+                }
+
+                allocation.Storage = allocJson.Storage ?? new Dictionary<string, string>();
+                allocation.Code = allocJson.Code;
+
+                test.Allocations[address] = allocation;
+            }
+
             return test;
         }
 
@@ -34,10 +49,77 @@ namespace Ethereum.Blockchain.Test
                 c => c.Select(Convert));
         }
 
+        [TestCaseSource(nameof(LoadTests))]
+        public void Test(GenesisTest test)
+        {
+            BlockHeader[] ommers = { };
+            Transaction[] transactions = { };
+
+            Db stateDb = new Db();
+            Db storageDb = new Db();
+            StateTree state = new StateTree(stateDb);
+            foreach (KeyValuePair<Address, Allocation> allocation in test.Allocations)
+            {
+                Address address = allocation.Key;
+                Account account = new Account();
+                //account.Nonce = string.IsNullOrEmpty(allocation.Value.Code)
+                //    ? 0
+                //    : 1;
+                account.Nonce = 0;
+                account.Balance = allocation.Value.Balance;
+                account.CodeHash = string.IsNullOrEmpty(allocation.Value.Code)
+                    ? Keccak.OfAnEmptyString
+                    : Keccak.Compute(Hex.ToBytes(allocation.Value.Code));
+
+                PatriciaTree storage = new PatriciaTree(storageDb);
+
+                foreach (KeyValuePair<string, string> keyValuePair in allocation.Value.Storage)
+                {
+                    //Nibble[] path = Hex.ToNibbles(keyValuePair.Key);
+                    Nibble[] path = new Nibble[] { 0, 3 };
+                    Rlp value = Rlp.Encode(Hex.ToBytes(keyValuePair.Value).ToUnsignedBigInteger());
+                    storage.Set(path, value);
+                }
+
+                account.StorageRoot = storage.RootHash;
+
+                Rlp accountRlp = Rlp.Encode(account);
+                state.Set(address, accountRlp);
+            }
+
+            if (test.Name == "test1")
+            {
+                Assert.AreEqual("dd406a973a0a5a9826d00da276e996d28426d24f12b8fa683723e9db532b8c59",
+                    state.RootHash.ToString(false));
+            }
+
+            // in RLP encoding order
+            BlockHeader header = new BlockHeader();
+            header.ParentHash = test.ParentHash;
+            // ReSharper disable once CoVariantArrayConversion
+            header.OmmersHash = Keccak.Compute(Rlp.Encode(ommers));
+            header.Beneficiary = test.Beneficiary;
+            header.StateRoot = state.RootHash;
+            header.TransactionsRoot = PatriciaTree.EmptyTreeHash;
+            header.ReceiptsRoot = PatriciaTree.EmptyTreeHash;
+            header.LogsBloom = new Bloom();
+            header.Difficulty = test.Difficulty;
+            header.Number = BlockHeader.GenesisBlockNumber;
+            header.GasLimit = test.GasLimit;
+            header.GasUsed = 0;
+            header.Timestamp = test.Timestamp;
+            header.ExtraData = test.ExtraData;
+            header.MixHash = test.MixHash;
+            header.Nonce = test.Nonce;
+
+            Rlp encoded = Rlp.Encode(header, transactions, ommers);
+            Assert.AreEqual(test.Result, encoded);
+        }
+
         public class GenesisTestJson
         {
             public string Nonce { get; set; }
-            public Dictionary<string, AllocJson> Alloc { get; set; }
+            public Dictionary<string, AllocationJson> Alloc { get; set; }
             public string Timestamp { get; set; }
             public string ParentHash { get; set; }
             public string ExtraData { get; set; }
@@ -48,11 +130,26 @@ namespace Ethereum.Blockchain.Test
             public string CoinBase { get; set; }
         }
 
-        public class AllocJson
+        public class AllocationJson
         {
+            private string _balance;
             public string Code { get; set; }
             public Dictionary<string, string> Storage { get; set; }
-            public string Balance { get; set; }
+
+            public string Balance
+            {
+                get => _balance ?? Wei;
+                set => _balance = value;
+            }
+
+            public string Wei { private get; set; }
+        }
+
+        public class Allocation
+        {
+            public BigInteger Balance { get; set; }
+            public string Code { get; set; }
+            public Dictionary<string, string> Storage { get; set; }
         }
 
         public class GenesisTest
@@ -61,6 +158,9 @@ namespace Ethereum.Blockchain.Test
             {
                 Name = name;
             }
+
+            public Dictionary<Address, Allocation> Allocations { get; set; }
+                = new Dictionary<Address, Allocation>();
 
             public Address Beneficiary { get; set; }
             public Keccak ParentHash { get; set; }
@@ -78,36 +178,6 @@ namespace Ethereum.Blockchain.Test
             {
                 return Name;
             }
-        }
-
-        [TestCaseSource(nameof(LoadTests))]
-        public void Test(GenesisTest test)
-        {
-            BlockHeader[] ommers = new BlockHeader[] { };
-            Transaction[] transactions = new Transaction[] { };
-
-            // in RLP encoding order
-            BlockHeader header = new BlockHeader();
-            header.ParentHash = test.ParentHash;
-            // ReSharper disable once CoVariantArrayConversion
-            header.OmmersHash = Keccak.Compute(Rlp.Encode(ommers));
-            header.Beneficiary = test.Beneficiary;
-            header.StateRoot = PatriciaTree.EmptyTreeHash;
-            header.TransactionsRoot = PatriciaTree.EmptyTreeHash;
-            header.ReceiptsRoot = PatriciaTree.EmptyTreeHash;
-            header.LogsBloom = new Bloom();
-            header.Difficulty = test.Difficulty;
-            header.Number = BlockHeader.GenesisBlockNumber;
-            header.GasLimit = test.GasLimit;
-            header.GasUsed = 0;
-            header.Timestamp = test.Timestamp;
-            header.ExtraData = test.ExtraData;
-            header.MixHash = test.MixHash;
-            header.Nonce = test.Nonce;
-
-            Rlp encoded = Rlp.Encode(header, transactions, ommers);
-            TestContext.WriteLine(test.Result.ToString(true), encoded.ToString(true));
-            Assert.AreEqual(test.Result, encoded);
         }
     }
 }
