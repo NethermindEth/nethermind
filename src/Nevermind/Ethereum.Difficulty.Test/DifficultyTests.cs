@@ -5,6 +5,7 @@ using System.Numerics;
 using Ethereum.Test.Base;
 using JetBrains.Annotations;
 using Nevermind.Core;
+using Nevermind.Core.Difficulty;
 using Nevermind.Core.Encoding;
 using Nevermind.Core.Sugar;
 using NUnit.Framework;

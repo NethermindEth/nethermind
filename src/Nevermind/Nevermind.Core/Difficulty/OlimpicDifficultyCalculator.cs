@@ -1,6 +1,6 @@
 using System.Numerics;
 
-namespace Nevermind.Core
+namespace Nevermind.Core.Difficulty
 {
     public class OlimpicDifficultyCalculator : FrontierDifficultyCalculator
     {

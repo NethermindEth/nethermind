@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Collections.Concurrent;
 
-namespace Nevermind.Core
+namespace Nevermind.Core.Difficulty
 {
     public class DifficultyCalculatorFactory
     {

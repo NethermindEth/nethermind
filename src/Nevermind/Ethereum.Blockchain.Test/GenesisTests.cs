@@ -52,31 +52,25 @@ namespace Ethereum.Blockchain.Test
         [TestCaseSource(nameof(LoadTests))]
         public void Test(GenesisTest test)
         {
-            BlockHeader[] ommers = { };
-            Transaction[] transactions = { };
-
             Db stateDb = new Db();
-            Db storageDb = new Db();
             StateTree state = new StateTree(stateDb);
+
             foreach (KeyValuePair<Address, Allocation> allocation in test.Allocations)
             {
+                Db storageDb = new Db();
+                SecurePatriciaTree storage = new SecurePatriciaTree(storageDb);
+
                 Address address = allocation.Key;
                 Account account = new Account();
-                //account.Nonce = string.IsNullOrEmpty(allocation.Value.Code)
-                //    ? 0
-                //    : 1;
                 account.Nonce = 0;
                 account.Balance = allocation.Value.Balance;
                 account.CodeHash = string.IsNullOrEmpty(allocation.Value.Code)
                     ? Keccak.OfAnEmptyString
                     : Keccak.Compute(Hex.ToBytes(allocation.Value.Code));
 
-                PatriciaTree storage = new PatriciaTree(storageDb);
-
                 foreach (KeyValuePair<string, string> keyValuePair in allocation.Value.Storage)
                 {
-                    //Nibble[] path = Hex.ToNibbles(keyValuePair.Key);
-                    Nibble[] path = new Nibble[] { 0, 3 };
+                    Nibble[] path = Nibbles.FromBytes(Bytes.PadLeft(Hex.ToBytes(keyValuePair.Key), 32));
                     Rlp value = Rlp.Encode(Hex.ToBytes(keyValuePair.Value).ToUnsignedBigInteger());
                     storage.Set(path, value);
                 }
@@ -87,11 +81,8 @@ namespace Ethereum.Blockchain.Test
                 state.Set(address, accountRlp);
             }
 
-            if (test.Name == "test1")
-            {
-                Assert.AreEqual("dd406a973a0a5a9826d00da276e996d28426d24f12b8fa683723e9db532b8c59",
-                    state.RootHash.ToString(false));
-            }
+            BlockHeader[] ommers = { };
+            Transaction[] transactions = { };
 
             // in RLP encoding order
             BlockHeader header = new BlockHeader();
@@ -115,69 +106,69 @@ namespace Ethereum.Blockchain.Test
             Rlp encoded = Rlp.Encode(header, transactions, ommers);
             Assert.AreEqual(test.Result, encoded);
         }
+    }
 
-        public class GenesisTestJson
+    public class GenesisTestJson
+    {
+        public string Nonce { get; set; }
+        public Dictionary<string, AllocationJson> Alloc { get; set; }
+        public string Timestamp { get; set; }
+        public string ParentHash { get; set; }
+        public string ExtraData { get; set; }
+        public string GasLimit { get; set; }
+        public string Difficulty { get; set; }
+        public string Result { get; set; }
+        public string MixHash { get; set; }
+        public string CoinBase { get; set; }
+    }
+
+    public class AllocationJson
+    {
+        private string _balance;
+        public string Code { get; set; }
+        public Dictionary<string, string> Storage { get; set; }
+
+        public string Balance
         {
-            public string Nonce { get; set; }
-            public Dictionary<string, AllocationJson> Alloc { get; set; }
-            public string Timestamp { get; set; }
-            public string ParentHash { get; set; }
-            public string ExtraData { get; set; }
-            public string GasLimit { get; set; }
-            public string Difficulty { get; set; }
-            public string Result { get; set; }
-            public string MixHash { get; set; }
-            public string CoinBase { get; set; }
+            get => _balance ?? Wei;
+            set => _balance = value;
         }
 
-        public class AllocationJson
+        public string Wei { private get; set; }
+    }
+
+    public class Allocation
+    {
+        public BigInteger Balance { get; set; }
+        public string Code { get; set; }
+        public Dictionary<string, string> Storage { get; set; }
+    }
+
+    public class GenesisTest
+    {
+        public GenesisTest(string name)
         {
-            private string _balance;
-            public string Code { get; set; }
-            public Dictionary<string, string> Storage { get; set; }
-
-            public string Balance
-            {
-                get => _balance ?? Wei;
-                set => _balance = value;
-            }
-
-            public string Wei { private get; set; }
+            Name = name;
         }
 
-        public class Allocation
+        public Dictionary<Address, Allocation> Allocations { get; set; }
+            = new Dictionary<Address, Allocation>();
+
+        public Address Beneficiary { get; set; }
+        public Keccak ParentHash { get; set; }
+        public byte[] ExtraData { get; set; }
+        public Rlp Result { get; set; }
+        public Keccak MixHash { get; set; }
+        public BigInteger Difficulty { get; set; }
+        public BigInteger GasLimit { get; set; }
+        public BigInteger Timestamp { get; set; }
+        public ulong Nonce { get; set; }
+
+        public string Name { get; }
+
+        public override string ToString()
         {
-            public BigInteger Balance { get; set; }
-            public string Code { get; set; }
-            public Dictionary<string, string> Storage { get; set; }
-        }
-
-        public class GenesisTest
-        {
-            public GenesisTest(string name)
-            {
-                Name = name;
-            }
-
-            public Dictionary<Address, Allocation> Allocations { get; set; }
-                = new Dictionary<Address, Allocation>();
-
-            public Address Beneficiary { get; set; }
-            public Keccak ParentHash { get; set; }
-            public byte[] ExtraData { get; set; }
-            public Rlp Result { get; set; }
-            public Keccak MixHash { get; set; }
-            public BigInteger Difficulty { get; set; }
-            public BigInteger GasLimit { get; set; }
-            public BigInteger Timestamp { get; set; }
-            public ulong Nonce { get; set; }
-
-            public string Name { get; }
-
-            public override string ToString()
-            {
-                return Name;
-            }
+            return Name;
         }
     }
 }

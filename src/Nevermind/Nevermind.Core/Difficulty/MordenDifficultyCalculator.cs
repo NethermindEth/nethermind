@@ -1,10 +1,10 @@
-﻿using System.Numerics;
+using System.Numerics;
 
-namespace Nevermind.Core
+namespace Nevermind.Core.Difficulty
 {
-    public class MainNetworkDifficultyCalculator : FrontierDifficultyCalculator
+    public class MordenDifficultyCalculator : FrontierDifficultyCalculator
     {
-        public const long HomesteadBlockNumber = 1150000;
+        public const long HomesteadBlockNumber = 500000; // more or less?
 
         private readonly HomesteadDifficultyCalculator _homestead = new HomesteadDifficultyCalculator();
 

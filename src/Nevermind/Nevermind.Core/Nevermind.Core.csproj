@@ -53,16 +53,16 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Account.cs" />
-    <Compile Include="DifficultyCalculatorFactory.cs" />
+    <Compile Include="Difficulty\DifficultyCalculatorFactory.cs" />
     <Compile Include="EthereumNetwork.cs" />
     <Compile Include="EthereumNetworkExtensions.cs" />
-    <Compile Include="HomesteadDifficultyCalculator.cs" />
-    <Compile Include="IDifficultyCalculator.cs" />
-    <Compile Include="MainNetworkDifficultyCalculator.cs" />
-    <Compile Include="MordenDifficultyCalculator.cs" />
+    <Compile Include="Difficulty\HomesteadDifficultyCalculator.cs" />
+    <Compile Include="Difficulty\IDifficultyCalculator.cs" />
+    <Compile Include="Difficulty\MainNetworkDifficultyCalculator.cs" />
+    <Compile Include="Difficulty\MordenDifficultyCalculator.cs" />
     <Compile Include="Nibbles.cs" />
-    <Compile Include="OlimpicDifficultyCalculator.cs" />
-    <Compile Include="RopstenDifficultyCalculator.cs" />
+    <Compile Include="Difficulty\OlimpicDifficultyCalculator.cs" />
+    <Compile Include="Difficulty\RopstenDifficultyCalculator.cs" />
     <Compile Include="Sugar\BigIntegerExtensions.cs" />
     <Compile Include="Sugar\ByteArrayExtensions.cs" />
     <Compile Include="Sugar\Bytes.cs" />
@@ -75,7 +75,7 @@
     <Compile Include="Address.cs" />
     <Compile Include="Block.cs" />
     <Compile Include="Blockchain.cs" />
-    <Compile Include="FrontierDifficultyCalculator.cs" />
+    <Compile Include="Difficulty\FrontierDifficultyCalculator.cs" />
     <Compile Include="BlockHeader.cs" />
     <Compile Include="BlockRewardCalculator.cs" />
     <Compile Include="Validators\BlockHeaderValidator.cs" />

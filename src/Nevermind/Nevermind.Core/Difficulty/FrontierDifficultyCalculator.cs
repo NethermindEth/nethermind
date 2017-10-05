@@ -1,7 +1,6 @@
 ﻿using System.Numerics;
-using static System.Math;
 
-namespace Nevermind.Core
+namespace Nevermind.Core.Difficulty
 {
     public class FrontierDifficultyCalculator : IDifficultyCalculator
     {

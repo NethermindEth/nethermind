@@ -1,4 +1,4 @@
-namespace Nevermind.Core
+namespace Nevermind.Core.Difficulty
 {
     public class RopstenDifficultyCalculator : HomesteadDifficultyCalculator
     {
