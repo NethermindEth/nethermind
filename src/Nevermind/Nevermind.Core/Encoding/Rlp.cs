@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Numerics;
 using Nevermind.Core.Sugar;
 
@@ -10,14 +11,15 @@ namespace Nevermind.Core.Encoding
 
         public static Rlp OfEmptySequence = Encode();
 
-        public byte[] Bytes { get; }
-
-        public byte this[int index] => Bytes[index];
-        public int Length => Bytes.Length;
+        private static readonly Dictionary<RuntimeTypeHandle, IRlpDecoder> Decoders =
+            new Dictionary<RuntimeTypeHandle, IRlpDecoder>
+            {
+                [typeof(Transaction).TypeHandle] = new TransactionDecoder()
+            };
 
         public Rlp(byte singleByte)
         {
-            Bytes = new[] { singleByte };
+            Bytes = new[] {singleByte};
         }
 
         public Rlp(byte[] bytes)
@@ -25,25 +27,40 @@ namespace Nevermind.Core.Encoding
             Bytes = bytes;
         }
 
+        public byte[] Bytes { get; }
+
+        public byte this[int index] => Bytes[index];
+        public int Length => Bytes.Length;
+
+        public bool Equals(Rlp other)
+        {
+            if (other == null)
+            {
+                return false;
+            }
+
+            return Sugar.Bytes.UnsafeCompare(Bytes, other.Bytes);
+        }
+
         public static Rlp Encode(BlockHeader header)
         {
             return Encode(
-                    header.ParentHash,
-                    header.OmmersHash,
-                    header.Beneficiary,
-                    header.StateRoot,
-                    header.TransactionsRoot,
-                    header.ReceiptsRoot,
-                    header.LogsBloom,
-                    header.Difficulty,
-                    header.Number,
-                    header.GasLimit,
-                    header.GasUsed,
-                    header.Timestamp,
-                    header.ExtraData,
-                    header.MixHash,
-                    header.Nonce
-                    );
+                header.ParentHash,
+                header.OmmersHash,
+                header.Beneficiary,
+                header.StateRoot,
+                header.TransactionsRoot,
+                header.ReceiptsRoot,
+                header.LogsBloom,
+                header.Difficulty,
+                header.Number,
+                header.GasLimit,
+                header.GasUsed,
+                header.Timestamp,
+                header.ExtraData,
+                header.MixHash,
+                header.Nonce
+            );
         }
 
         public static Rlp Encode(Block block)
@@ -73,6 +90,16 @@ namespace Nevermind.Core.Encoding
         public static Rlp Encode(TransactionReceipt receipt)
         {
             return Encode(receipt.PostTransactionState, receipt.GasUsed, receipt.Bloom, receipt.Logs);
+        }
+
+        public static T Decode<T>(Rlp rlp)
+        {
+            if (Decoders.ContainsKey(typeof(T).TypeHandle))
+            {
+                return ((IRlpDecoder<T>)Decoders[typeof(T).TypeHandle]).Decode(rlp);
+            }
+
+            throw new NotImplementedException();
         }
 
         public static Rlp Encode(Transaction transaction, bool forSigning, bool eip155 = false, int chainId = 0)
@@ -138,16 +165,6 @@ namespace Nevermind.Core.Encoding
         public string ToString(bool withZeroX)
         {
             return Hex.FromBytes(Bytes, withZeroX);
-        }
-
-        public bool Equals(Rlp other)
-        {
-            if (other == null)
-            {
-                return false;
-            }
-
-            return Sugar.Bytes.UnsafeCompare(Bytes, other.Bytes);
         }
 
         public override string ToString()

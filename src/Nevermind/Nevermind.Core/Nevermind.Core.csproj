@@ -55,6 +55,8 @@
     <Compile Include="Account.cs" />
     <Compile Include="ChainId.cs" />
     <Compile Include="Difficulty\DifficultyCalculatorFactory.cs" />
+    <Compile Include="Encoding\IRlpDecoder.cs" />
+    <Compile Include="Encoding\TransactionDecoder.cs" />
     <Compile Include="EthereumNetwork.cs" />
     <Compile Include="EthereumNetworkExtensions.cs" />
     <Compile Include="Difficulty\HomesteadDifficultyCalculator.cs" />

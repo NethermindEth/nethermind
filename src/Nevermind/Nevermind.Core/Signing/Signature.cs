@@ -8,7 +8,7 @@ namespace Nevermind.Core.Signing
     /// <summary>
     /// Can I mark it as a EIP155 signature? otherwise it should not be accepted with V > 28
     /// </summary>
-    public class Signature
+    public class Signature : IEquatable<Signature>
     {
         public Signature(byte[] bytes, int recoveryId)
         {
@@ -18,7 +18,7 @@ namespace Nevermind.Core.Signing
             }
 
             Buffer.BlockCopy(bytes, 0, Bytes, 0, 64);
-            V = (byte) (recoveryId + 27);
+            V = (byte)(recoveryId + 27);
         }
 
         private Signature(byte[] bytes)
@@ -34,6 +34,11 @@ namespace Nevermind.Core.Signing
 
         public Signature(BigInteger r, BigInteger s, byte v)
         {
+            if (v < 27)
+            {
+                throw new ArgumentException(nameof(v));
+            }
+
             byte[] rBytes = r.ToBigEndianByteArray();
             byte[] sBytes = s.ToBigEndianByteArray();
 
@@ -53,11 +58,6 @@ namespace Nevermind.Core.Signing
         {
             get
             {
-                if (V <= 1)
-                {
-                    return V;
-                }
-
                 if (V <= 28)
                 {
                     return (byte)(V - 27);
@@ -72,7 +72,27 @@ namespace Nevermind.Core.Signing
 
         public override string ToString()
         {
-            return string.Concat(Hex.FromBytes(Bytes, true), Hex.FromBytes(new[] {V}, false));
+            return string.Concat(Hex.FromBytes(Bytes, true), Hex.FromBytes(new[] { V }, false));
+        }
+
+        public bool Equals(Signature other)
+        {
+            if (ReferenceEquals(null, other)) return false;
+            if (ReferenceEquals(this, other)) return true;
+            return Sugar.Bytes.UnsafeCompare(Bytes, other.Bytes) && V == other.V;
+        }
+
+        public override bool Equals(object obj)
+        {
+            if (ReferenceEquals(null, obj)) return false;
+            if (ReferenceEquals(this, obj)) return true;
+            if (obj.GetType() != this.GetType()) return false;
+            return Equals((Signature)obj);
+        }
+
+        public override int GetHashCode()
+        {
+            return Bytes.GetXxHashCode() ^ V.GetHashCode();
         }
     }
 }
