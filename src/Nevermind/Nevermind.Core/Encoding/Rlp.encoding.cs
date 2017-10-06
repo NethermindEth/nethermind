@@ -211,6 +211,12 @@ namespace Nevermind.Core.Encoding
 
         public static Rlp Encode(object item)
         {
+            // will this work?
+            if (item == null)
+            {
+                return OfEmptyByteArray;
+            }
+
             // code below was written at the beginning - needs some rewrite
 
             if (item is Rlp rlp)

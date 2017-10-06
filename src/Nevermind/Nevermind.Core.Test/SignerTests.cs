@@ -1,4 +1,6 @@
-﻿using Nevermind.Core.Encoding;
+﻿using System;
+using System.IO;
+using Nevermind.Core.Encoding;
 using Nevermind.Core.Signing;
 using NUnit.Framework;
 
@@ -7,6 +9,12 @@ namespace Nevermind.Core.Test
     [TestFixture]
     public class SignerTests
     {
+        [OneTimeSetUp]
+        public void SetUp()
+        {
+            Directory.SetCurrentDirectory(AppDomain.CurrentDomain.BaseDirectory);
+        }
+
         [Test]
         public void Sign_and_recover()
         {

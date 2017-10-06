@@ -71,16 +71,20 @@
       <Project>{051B3754-5FB6-4202-AF6E-D1764E2DED06}</Project>
       <Name>Nevermind.Core</Name>
     </ProjectReference>
+    <ProjectReference Include="..\Secp256k1.Proxy\Secp256k1.Proxy.csproj">
+      <Project>{2b187a68-ca55-4f29-ae07-61464b86ebda}</Project>
+      <Name>Secp256k1.Proxy</Name>
+    </ProjectReference>
   </ItemGroup>
   <ItemGroup>
     <Service Include="{82A7F48D-3B50-4B1E-B82E-3ADA8210C358}" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="Secp256k1.x64.dll">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
     <Content Include="Secp256k1.x86.dll">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>
   <ItemGroup>

@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Numerics;
 using Nevermind.Core.Encoding;
-using Nevermind.Core.Sugar;
 
 namespace Nevermind.Core
 {

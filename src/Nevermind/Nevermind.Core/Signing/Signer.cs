@@ -12,14 +12,14 @@ namespace Nevermind.Core.Signing
     {
         public static void Sign(Transaction transaction, PrivateKey privateKey)
         {
-            Keccak hash = Keccak.Compute(Rlp.Encode(transaction));
-            throw new NotImplementedException();
+            Keccak hash = Keccak.Compute(Rlp.Encode(transaction, true));
+            transaction.Signature = Sign(privateKey, hash);
         }
 
         public static Address Recover(Transaction transaction)
         {
-            PublicKey publicKey = new PublicKey(new byte[64]);
-            return publicKey.Address;
+            Keccak hash = Keccak.Compute(Rlp.Encode(transaction, true));
+            return RecoverSignerAddress(transaction.Signature, hash);
         }
 
         public static Signature Sign(PrivateKey privateKey, byte[] bytes)

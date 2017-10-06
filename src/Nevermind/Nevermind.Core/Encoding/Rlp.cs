@@ -74,9 +74,29 @@ namespace Nevermind.Core.Encoding
             return Encode(receipt.PostTransactionState, receipt.GasUsed, receipt.Bloom, receipt.Logs);
         }
 
+        public static Rlp Encode(Transaction transaction, bool forSigning)
+        {
+            object[] sequence = new object[forSigning ? 6 : 9];
+            sequence[0] = transaction.Nonce;
+            sequence[1] = transaction.GasPrice;
+            sequence[2] = transaction.GasLimit;
+            sequence[3] = transaction.To;
+            sequence[4] = transaction.Value;
+            sequence[5] = transaction.To == null ? transaction.Init : transaction.Data;
+
+            if (!forSigning)
+            {
+                sequence[6] = transaction.Signature?.V;
+                sequence[7] = transaction.Signature?.R;
+                sequence[8] = transaction.Signature?.S;
+            }
+
+            return Encode(sequence);
+        }
+
         public static Rlp Encode(Transaction transaction)
         {
-            throw new NotImplementedException();
+            return Encode(transaction, false);
         }
 
         public static Rlp Encode(Keccak keccak)
@@ -94,6 +114,11 @@ namespace Nevermind.Core.Encoding
 
         public static Rlp Encode(Address address)
         {
+            if (address == null)
+            {
+                return OfEmptyByteArray;
+            }
+
             byte[] result = new byte[21];
             result[0] = 148;
             Buffer.BlockCopy(address.Hex, 0, result, 1, 20);

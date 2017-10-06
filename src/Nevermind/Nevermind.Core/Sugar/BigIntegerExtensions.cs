@@ -9,6 +9,13 @@ namespace Nevermind.Core.Sugar
         {
             byte[] result = bigInteger.ToByteArray();
             Array.Reverse(result);
+
+            // remove leading sign zero
+            if (result[0] == 0)
+            {
+                return result.Slice(1, result.Length - 1);
+            }
+
             return result;
         }
     }

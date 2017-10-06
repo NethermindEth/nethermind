@@ -47,6 +47,8 @@ namespace Nevermind.Core.Signing
         public byte[] Bytes { get; } = new byte[64];
         public byte V { get; }
         public int RecoveryId => V - 27;
+        public byte[] R => Bytes.Slice(0, 32);
+        public byte[] S => Bytes.Slice(32, 32);
 
         public override string ToString()
         {

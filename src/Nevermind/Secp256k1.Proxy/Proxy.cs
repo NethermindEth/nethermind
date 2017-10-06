@@ -5,22 +5,22 @@ namespace Secp256k1.Proxy
 {
     public static class Proxy
     {
-        static Type signaturesType;
+        static Type _signaturesType;
         static Type SignaturesType
         {
             get
             {
-                if (signaturesType == null)
+                if (_signaturesType == null)
                 {
-                    Assembly a = Assembly.LoadFrom("Secp256k1." + (IntPtr.Size == 4 ? "x86" : "x64") + ".dll");
-                    Version ver = a.GetName().Version;
+                    Assembly secpAssembly = Assembly.LoadFrom("Secp256k1." + (IntPtr.Size == 4 ? "x86" : "x64") + ".dll");
+                    Version ver = secpAssembly.GetName().Version;
                     if (ver.Major < 1)
                         return null;
                     if (ver.Major == 1 && ver.Minor < 1)
                         return null;
-                    signaturesType = a.GetType("Secp256k1.Signatures");
+                    _signaturesType = secpAssembly.GetType("Secp256k1.Signatures");
                 }
-                return signaturesType;
+                return _signaturesType;
             }
         }
 

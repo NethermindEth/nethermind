@@ -1,4 +1,6 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Numerics;
 using Ethereum.Test.Base;
@@ -13,6 +15,12 @@ namespace Ethereum.KeyAddress.Test
 {
     public class KeyAddressTests
     {
+        [OneTimeSetUp]
+        public void SetUp()
+        {
+            Directory.SetCurrentDirectory(AppDomain.CurrentDomain.BaseDirectory);
+        }
+
         private static IEnumerable<KeyAddressTest> LoadTests()
         {
             return TestLoader.LoadFromFile<KeyAddressTestJson[], KeyAddressTest>(
