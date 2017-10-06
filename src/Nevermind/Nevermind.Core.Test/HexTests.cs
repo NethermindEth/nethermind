@@ -11,7 +11,7 @@ namespace Nevermind.Core.Test
         [TestCase("0x12345")]
         [TestCase("0x0")]
         [TestCase("0x12")]
-        [TestCase("1234")]
+        [TestCase("0x1234")]
         [TestCase("1")]
         [TestCase("123")]
         [TestCase("12345")]

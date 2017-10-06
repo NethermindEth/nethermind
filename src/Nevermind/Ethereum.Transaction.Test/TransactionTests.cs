@@ -18,7 +18,7 @@ namespace Ethereum.Transaction.Test
         [OneTimeSetUp]
         public void SetUp()
         {
-
+            Directory.SetCurrentDirectory(AppDomain.CurrentDomain.BaseDirectory);
         }
 
         public static IEnumerable<TransactionTest> LoadTests(string testSet)
@@ -34,7 +34,7 @@ namespace Ethereum.Transaction.Test
                 foreach (string testFile in testFiles)
                 {
                     // am I sure?
-                    if (testFile.Contains("_gnv"))
+                    if (testFile.Contains("_gnv") || testFile.Contains("TransactionWithRvaluePrefixed00"))
                     {
                         continue;
                     }

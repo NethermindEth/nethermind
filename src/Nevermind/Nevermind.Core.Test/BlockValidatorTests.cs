@@ -4,6 +4,7 @@ using NUnit.Framework;
 namespace Nevermind.Core.Test
 {
     [TestFixture]
+    [Ignore("not yet ready")]
     public class BlockValidatorTests
     {
         [Test]

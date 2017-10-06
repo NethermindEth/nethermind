@@ -323,7 +323,7 @@ namespace Ethereum.Trie.Test
 
             public override string ToString()
             {
-                return $"{Name}, exp: {ExpectedRoot}";
+                return $"{Name}, exp: {ExpectedRoot} {Guid.NewGuid()}";
             }
         }
     }
