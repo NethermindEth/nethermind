@@ -80,6 +80,11 @@ namespace Nevermind.Core.Sugar
 
         public static byte[] PadLeft(byte[] bytes, int length)
         {
+            if (bytes.Length == length)
+            {
+                return bytes;
+            }
+
             byte[] result = new byte[length];
             Buffer.BlockCopy(bytes, 0, result, length - bytes.Length, bytes.Length);
             return result;
@@ -87,6 +92,11 @@ namespace Nevermind.Core.Sugar
 
         public static byte[] PadRight(byte[] bytes, int length)
         {
+            if (bytes.Length == length)
+            {
+                return bytes;
+            }
+
             byte[] result = new byte[length];
             Buffer.BlockCopy(bytes, 0, result, 0, bytes.Length);
             return result;

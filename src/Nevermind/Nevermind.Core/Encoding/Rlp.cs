@@ -1,4 +1,5 @@
 using System;
+using System.Numerics;
 using Nevermind.Core.Sugar;
 
 namespace Nevermind.Core.Encoding
@@ -74,9 +75,9 @@ namespace Nevermind.Core.Encoding
             return Encode(receipt.PostTransactionState, receipt.GasUsed, receipt.Bloom, receipt.Logs);
         }
 
-        public static Rlp Encode(Transaction transaction, bool forSigning)
+        public static Rlp Encode(Transaction transaction, bool forSigning, bool eip155 = false, int chainId = 0)
         {
-            object[] sequence = new object[forSigning ? 6 : 9];
+            object[] sequence = new object[forSigning && !eip155 ? 6 : 9];
             sequence[0] = transaction.Nonce;
             sequence[1] = transaction.GasPrice;
             sequence[2] = transaction.GasLimit;
@@ -84,7 +85,16 @@ namespace Nevermind.Core.Encoding
             sequence[4] = transaction.Value;
             sequence[5] = transaction.To == null ? transaction.Init : transaction.Data;
 
-            if (!forSigning)
+            if (forSigning)
+            {
+                if (eip155)
+                {
+                    sequence[6] = chainId;
+                    sequence[7] = BigInteger.Zero;
+                    sequence[8] = BigInteger.Zero;
+                }
+            }
+            else
             {
                 sequence[6] = transaction.Signature?.V;
                 sequence[7] = transaction.Signature?.R;

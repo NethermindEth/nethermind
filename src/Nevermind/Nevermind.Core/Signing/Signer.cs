@@ -10,10 +10,21 @@ namespace Nevermind.Core.Signing
     /// </summary>
     public static class Signer
     {
-        public static void Sign(Transaction transaction, PrivateKey privateKey)
+        public static void Sign(Transaction transaction, PrivateKey privateKey, bool eip155 = false, ChainId chainId = 0)
         {
-            Keccak hash = Keccak.Compute(Rlp.Encode(transaction, true));
+            int chainIdValue = (int)chainId;
+
+            Keccak hash = Keccak.Compute(Rlp.Encode(transaction, true, eip155, chainIdValue));
             transaction.Signature = Sign(privateKey, hash);
+        }
+
+        public static bool Verify(Address sender, Transaction transaction, bool eip155 = false, ChainId chainId = 0)
+        {
+            int chainIdValue = (int)chainId;
+
+            Keccak hash = Keccak.Compute(Rlp.Encode(transaction, true, eip155, chainIdValue));
+            Address recovered = RecoverSignerAddress(transaction.Signature, hash);
+            return recovered.Equals(sender);
         }
 
         public static Address Recover(Transaction transaction)

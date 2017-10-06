@@ -29,6 +29,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ethereum.Blockchain.Test", 
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ethereum.Test.Base", "Ethereum.Test.Base\Ethereum.Test.Base.csproj", "{72E80636-D6CA-42DB-A49F-830CB9BAD87D}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ethereum.Transaction.Test", "Ethereum.Transaction.Test\Ethereum.Transaction.Test.csproj", "{BC9683BE-6041-4D4F-A478-B39388248134}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -195,6 +197,18 @@ Global
 		{72E80636-D6CA-42DB-A49F-830CB9BAD87D}.Release|x64.Build.0 = Release|Any CPU
 		{72E80636-D6CA-42DB-A49F-830CB9BAD87D}.Release|x86.ActiveCfg = Release|Any CPU
 		{72E80636-D6CA-42DB-A49F-830CB9BAD87D}.Release|x86.Build.0 = Release|Any CPU
+		{BC9683BE-6041-4D4F-A478-B39388248134}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{BC9683BE-6041-4D4F-A478-B39388248134}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{BC9683BE-6041-4D4F-A478-B39388248134}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{BC9683BE-6041-4D4F-A478-B39388248134}.Debug|x64.Build.0 = Debug|Any CPU
+		{BC9683BE-6041-4D4F-A478-B39388248134}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{BC9683BE-6041-4D4F-A478-B39388248134}.Debug|x86.Build.0 = Debug|Any CPU
+		{BC9683BE-6041-4D4F-A478-B39388248134}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{BC9683BE-6041-4D4F-A478-B39388248134}.Release|Any CPU.Build.0 = Release|Any CPU
+		{BC9683BE-6041-4D4F-A478-B39388248134}.Release|x64.ActiveCfg = Release|Any CPU
+		{BC9683BE-6041-4D4F-A478-B39388248134}.Release|x64.Build.0 = Release|Any CPU
+		{BC9683BE-6041-4D4F-A478-B39388248134}.Release|x86.ActiveCfg = Release|Any CPU
+		{BC9683BE-6041-4D4F-A478-B39388248134}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

@@ -5,6 +5,9 @@ using Nevermind.Core.Sugar;
 
 namespace Nevermind.Core.Signing
 {
+    /// <summary>
+    /// Can I mark it as a EIP155 signature? otherwise it should not be accepted with V > 28
+    /// </summary>
     public class Signature
     {
         public Signature(byte[] bytes, int recoveryId)
@@ -34,8 +37,8 @@ namespace Nevermind.Core.Signing
             byte[] rBytes = r.ToBigEndianByteArray();
             byte[] sBytes = s.ToBigEndianByteArray();
 
-            Buffer.BlockCopy(rBytes, 0, Bytes, 0, 32);
-            Buffer.BlockCopy(sBytes, 0, Bytes, 32, 32);
+            Buffer.BlockCopy(Sugar.Bytes.PadLeft(rBytes, 32), 0, Bytes, 0, 32);
+            Buffer.BlockCopy(Sugar.Bytes.PadLeft(sBytes, 32), 0, Bytes, 32, 32);
             V = v;
         }
 
@@ -46,7 +49,24 @@ namespace Nevermind.Core.Signing
 
         public byte[] Bytes { get; } = new byte[64];
         public byte V { get; }
-        public int RecoveryId => V - 27;
+        public byte RecoveryId
+        {
+            get
+            {
+                if (V <= 1)
+                {
+                    return V;
+                }
+
+                if (V <= 28)
+                {
+                    return (byte)(V - 27);
+                }
+
+                return (byte)(1 - V % 2);
+            }
+        }
+
         public byte[] R => Bytes.Slice(0, 32);
         public byte[] S => Bytes.Slice(32, 32);
 
