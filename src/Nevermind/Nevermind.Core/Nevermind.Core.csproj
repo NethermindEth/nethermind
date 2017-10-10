@@ -63,9 +63,12 @@
     <Compile Include="Difficulty\IDifficultyCalculator.cs" />
     <Compile Include="Difficulty\MainNetworkDifficultyCalculator.cs" />
     <Compile Include="Difficulty\MordenDifficultyCalculator.cs" />
+    <Compile Include="GasCostOf.cs" />
+    <Compile Include="IntrinsicGasCalculator.cs" />
     <Compile Include="Nibbles.cs" />
     <Compile Include="Difficulty\OlimpicDifficultyCalculator.cs" />
     <Compile Include="Difficulty\RopstenDifficultyCalculator.cs" />
+    <Compile Include="RefundOf.cs" />
     <Compile Include="Sugar\BigIntegerExtensions.cs" />
     <Compile Include="Sugar\ByteArrayExtensions.cs" />
     <Compile Include="Sugar\Bytes.cs" />

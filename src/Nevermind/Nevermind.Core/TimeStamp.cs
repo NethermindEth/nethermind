@@ -3,11 +3,15 @@ using System.Numerics;
 
 namespace Nevermind.Core
 {
-    public static class TimeStamp
+    public static class Timestamp
     {
-        public static BigInteger Get()
+        public static BigInteger UtcNow
         {
-            throw new NotImplementedException();
+            get
+            {
+                ulong timestamp = (ulong) DateTime.UtcNow.Subtract(new DateTime(1970, 1, 1)).TotalSeconds;
+                return new BigInteger(timestamp);
+            }
         }
     }
 }

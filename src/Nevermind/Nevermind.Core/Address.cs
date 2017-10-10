@@ -7,7 +7,12 @@ namespace Nevermind.Core
     {
         private const int AddressLengthInBytes = 20;
 
-        public static Address Zero { get; } = new Address(new byte[20]); 
+        public static Address Zero { get; } = new Address(new byte[20]);
+
+        public Address(Keccak keccak)
+            :this(keccak.Bytes)
+        {
+        }
 
         public Address(Hex hex)
         {

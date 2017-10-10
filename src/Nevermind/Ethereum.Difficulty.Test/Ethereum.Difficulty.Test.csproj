@@ -54,7 +54,16 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="DifficultyTests.cs" />
+    <Compile Include="DifficultyTest.cs" />
+    <Compile Include="DifficultyTestHexJson.cs" />
+    <Compile Include="DifficultyTestJson.cs" />
+    <Compile Include="DifficultyTestsHomestead.cs" />
+    <Compile Include="DifficultyTestsFrontier.cs" />
+    <Compile Include="DifficultyTestsOlimpic.cs" />
+    <Compile Include="DifficultyTestsMorden.cs" />
+    <Compile Include="DifficultyTestsMain.cs" />
+    <Compile Include="DifficultyTestsRopsten.cs" />
+    <Compile Include="TestsBase.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>

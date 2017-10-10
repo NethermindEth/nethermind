@@ -31,6 +31,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ethereum.Test.Base", "Ether
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ethereum.Transaction.Test", "Ethereum.Transaction.Test\Ethereum.Transaction.Test.csproj", "{BC9683BE-6041-4D4F-A478-B39388248134}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nevermind.Evm", "Nevermind.Evm\Nevermind.Evm.csproj", "{13911438-F79E-4DA4-B3FF-0649C38D32B1}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -209,6 +211,18 @@ Global
 		{BC9683BE-6041-4D4F-A478-B39388248134}.Release|x64.Build.0 = Release|Any CPU
 		{BC9683BE-6041-4D4F-A478-B39388248134}.Release|x86.ActiveCfg = Release|Any CPU
 		{BC9683BE-6041-4D4F-A478-B39388248134}.Release|x86.Build.0 = Release|Any CPU
+		{13911438-F79E-4DA4-B3FF-0649C38D32B1}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{13911438-F79E-4DA4-B3FF-0649C38D32B1}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{13911438-F79E-4DA4-B3FF-0649C38D32B1}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{13911438-F79E-4DA4-B3FF-0649C38D32B1}.Debug|x64.Build.0 = Debug|Any CPU
+		{13911438-F79E-4DA4-B3FF-0649C38D32B1}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{13911438-F79E-4DA4-B3FF-0649C38D32B1}.Debug|x86.Build.0 = Debug|Any CPU
+		{13911438-F79E-4DA4-B3FF-0649C38D32B1}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{13911438-F79E-4DA4-B3FF-0649C38D32B1}.Release|Any CPU.Build.0 = Release|Any CPU
+		{13911438-F79E-4DA4-B3FF-0649C38D32B1}.Release|x64.ActiveCfg = Release|Any CPU
+		{13911438-F79E-4DA4-B3FF-0649C38D32B1}.Release|x64.Build.0 = Release|Any CPU
+		{13911438-F79E-4DA4-B3FF-0649C38D32B1}.Release|x86.ActiveCfg = Release|Any CPU
+		{13911438-F79E-4DA4-B3FF-0649C38D32B1}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

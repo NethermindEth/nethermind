@@ -1,0 +1,13 @@
+﻿<ProjectConfiguration>
+  <Settings>
+    <AllowCodeAnalysis>False</AllowCodeAnalysis>
+    <AllowDynamicCodeContractChecking>False</AllowDynamicCodeContractChecking>
+    <AllowStaticCodeContractChecking>False</AllowStaticCodeContractChecking>
+    <AnalyseExecutionTimes>False</AnalyseExecutionTimes>
+    <DefaultTestTimeout>300000</DefaultTestTimeout>
+    <IgnoredTests>
+      <AllTestsSelector />
+    </IgnoredTests>
+    <TrackFileDependencies>False</TrackFileDependencies>
+  </Settings>
+</ProjectConfiguration>

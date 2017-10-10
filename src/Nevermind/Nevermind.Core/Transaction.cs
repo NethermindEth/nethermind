@@ -16,5 +16,7 @@ namespace Nevermind.Core
         public Signature Signature { get; set; }
         public bool IsSigned => Signature != null;
         public bool IsContractCreation => Init != null;
+        public bool IsMessageCall => Data != null;
+        public bool IsTransfer => !IsContractCreation && !IsMessageCall;
     }
 }

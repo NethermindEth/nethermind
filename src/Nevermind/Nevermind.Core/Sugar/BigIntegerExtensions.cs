@@ -5,6 +5,11 @@ namespace Nevermind.Core.Sugar
 {
     public static class BigIntegerExtensions
     {
+        public static BigInteger Abs(this BigInteger @this)
+        {
+            return BigInteger.Abs(@this);
+        }
+
         public static byte[] ToBigEndianByteArray(this BigInteger bigInteger)
         {
             byte[] result = bigInteger.ToByteArray();

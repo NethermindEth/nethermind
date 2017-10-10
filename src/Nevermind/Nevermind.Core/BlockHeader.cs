@@ -19,7 +19,7 @@ namespace Nevermind.Core
                 return;
             }
 
-            Timestamp = TimeStamp.Get();
+            Timestamp = Core.Timestamp.UtcNow;
             throw new NotImplementedException();
             //Difficulty = DifficultyCalculator.Calculate(this, parentBlockHeader);
         }

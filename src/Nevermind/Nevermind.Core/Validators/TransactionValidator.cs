@@ -1,4 +1,6 @@
-﻿namespace Nevermind.Core.Validators
+﻿using System.Numerics;
+
+namespace Nevermind.Core.Validators
 {
     public static class TransactionValidator
     {
@@ -14,6 +16,9 @@
                    (transaction.Signature == null || SignatureValidator.IsValid(transaction.Signature)) &&
                    // both null: transfer; data not null: message call; init not null: account creation
                    !(transaction.Data != null && transaction.Init != null);
+            // also check if nonce is equal to sending account nonce
         }
+
+        
     }
 }
