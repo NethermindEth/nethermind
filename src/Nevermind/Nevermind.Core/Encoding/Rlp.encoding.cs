@@ -191,17 +191,17 @@ namespace Nevermind.Core.Encoding
             {
                 byte[] itemBytes = Encode(item).Bytes;
                 // do that at once (unnecessary objects creation here)
-                concatenation = Sugar.Bytes.Merge(concatenation, itemBytes);
+                concatenation = Sugar.Bytes.Concat(concatenation, itemBytes);
             }
 
             if (concatenation.Length < 56)
             {
-                return new Rlp(Sugar.Bytes.Merge((byte)(192 + concatenation.Length), concatenation));
+                return new Rlp(Sugar.Bytes.Concat((byte)(192 + concatenation.Length), concatenation));
             }
 
             byte[] serializedLength = SerializeLength(concatenation.Length);
             byte prefix = (byte)(247 + serializedLength.Length);
-            return new Rlp(Sugar.Bytes.Merge(prefix, serializedLength, concatenation));
+            return new Rlp(Sugar.Bytes.Concat(prefix, serializedLength, concatenation));
         }
 
         public static Rlp Encode(BigInteger bigInteger)
@@ -335,12 +335,12 @@ namespace Nevermind.Core.Encoding
             if (input.Length < 56)
             {
                 byte smallPrefix = (byte)(input.Length + 128);
-                return new Rlp(Sugar.Bytes.Merge(smallPrefix, input));
+                return new Rlp(Sugar.Bytes.Concat(smallPrefix, input));
             }
 
             byte[] serializedLength = SerializeLength(input.Length);
             byte prefix = (byte)(183 + serializedLength.Length);
-            return new Rlp(Sugar.Bytes.Merge(prefix, serializedLength, input));
+            return new Rlp(Sugar.Bytes.Concat(prefix, serializedLength, input));
         }
 
         public static byte[] SerializeLength(long value)

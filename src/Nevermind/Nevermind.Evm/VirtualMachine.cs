@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using Nevermind.Core.Sugar;
 
@@ -55,25 +54,25 @@ namespace Nevermind.Evm
                     case Instruction.ADD:
                     {
                         reg1 = _stack.Pop().ToUnsignedBigInteger();
-                        reg2 = _stack.Peek().ToUnsignedBigInteger();
+                        reg2 = _stack.Pop().ToUnsignedBigInteger();
                         _stack.Push((reg1 + reg2).ToBigEndianByteArray());
                         break;
                     }
                     case Instruction.MUL:
                     {
                         reg1 = _stack.Pop().ToUnsignedBigInteger();
-                        reg2 = _stack.Peek().ToUnsignedBigInteger();
+                        reg2 = _stack.Pop().ToUnsignedBigInteger();
                         _stack.Push((reg1 * reg2).ToBigEndianByteArray());
                         break;
                     }
                     case Instruction.DIV:
                         reg1 = _stack.Pop().ToUnsignedBigInteger();
-                        reg2 = _stack.Peek().ToUnsignedBigInteger();
+                        reg2 = _stack.Pop().ToUnsignedBigInteger();
                         _stack.Push(reg2 == BigInteger.Zero ? P0 : BigInteger.Divide(reg1, reg2).ToBigEndianByteArray());
                         break;
                     case Instruction.SDIV:
                         reg1 = _stack.Pop().ToSignedBigInteger();
-                        reg2 = _stack.Peek().ToSignedBigInteger();
+                        reg2 = _stack.Pop().ToSignedBigInteger();
                         if (reg2 == BigInteger.Zero)
                         {
                             _stack.Push(P0);
@@ -89,12 +88,12 @@ namespace Nevermind.Evm
                         break;
                     case Instruction.MOD:
                         reg1 = _stack.Pop().ToUnsignedBigInteger();
-                        reg2 = _stack.Peek().ToUnsignedBigInteger();
+                        reg2 = _stack.Pop().ToUnsignedBigInteger();
                         _stack.Push(reg2 == BigInteger.Zero ? P0 : BigInteger.Remainder(reg1, reg2).ToBigEndianByteArray());
                         break;
                     case Instruction.SMOD:
                         reg1 = _stack.Pop().ToSignedBigInteger();
-                        reg2 = _stack.Peek().ToSignedBigInteger();
+                        reg2 = _stack.Pop().ToSignedBigInteger();
                         _stack.Push(
                             reg2 == BigInteger.Zero
                                 ? P0
@@ -103,7 +102,7 @@ namespace Nevermind.Evm
                     case Instruction.ADDMOD:
                         reg1 = _stack.Pop().ToUnsignedBigInteger();
                         reg2 = _stack.Pop().ToUnsignedBigInteger();
-                        reg3 = _stack.Peek().ToUnsignedBigInteger();
+                        reg3 = _stack.Pop().ToUnsignedBigInteger();
                         _stack.Push(reg2.ToBigEndianByteArray());
                         _stack.Push(
                             reg3 == BigInteger.Zero
@@ -112,7 +111,7 @@ namespace Nevermind.Evm
                     case Instruction.MULMOD:
                         reg1 = _stack.Pop().ToUnsignedBigInteger();
                         reg2 = _stack.Pop().ToUnsignedBigInteger();
-                        reg3 = _stack.Peek().ToUnsignedBigInteger();
+                        reg3 = _stack.Pop().ToUnsignedBigInteger();
                         _stack.Push(reg2.ToBigEndianByteArray());
                         _stack.Push(
                             reg3 == BigInteger.Zero
@@ -120,7 +119,7 @@ namespace Nevermind.Evm
                         break;
                     case Instruction.EXP:
                         reg1 = _stack.Pop().ToUnsignedBigInteger();
-                        reg2 = _stack.Peek().ToUnsignedBigInteger();
+                        reg2 = _stack.Pop().ToUnsignedBigInteger();
                         if (reg1 == 0)
                         {
                             _stack.Push(P0);
@@ -137,11 +136,11 @@ namespace Nevermind.Evm
                         break;
                     case Instruction.SIGNEXTEND:
                         byte1 = _stack.Pop();
-                        byte2 = _stack.Peek();
+                        byte2 = _stack.Pop();
                         throw new NotImplementedException();
                     case Instruction.LT:
                         reg1 = _stack.Pop().ToUnsignedBigInteger();
-                        reg2 = _stack.Peek().ToUnsignedBigInteger();
+                        reg2 = _stack.Pop().ToUnsignedBigInteger();
                         _stack.Push(BigInteger.Compare(reg1, reg2) < 0 ? reg1.ToBigEndianByteArray() : reg2.ToBigEndianByteArray());
                         break;
                     case Instruction.GT:
@@ -151,17 +150,17 @@ namespace Nevermind.Evm
                         break;
                     case Instruction.SLT:
                         reg1 = _stack.Pop().ToSignedBigInteger();
-                        reg2 = _stack.Peek().ToSignedBigInteger();
+                        reg2 = _stack.Pop().ToSignedBigInteger();
                         _stack.Push(BigInteger.Compare(reg1, reg2) < 0 ? P1 : P0);
                         break;
                     case Instruction.SGT:
                         reg1 = _stack.Pop().ToSignedBigInteger();
-                        reg2 = _stack.Peek().ToSignedBigInteger();
+                        reg2 = _stack.Pop().ToSignedBigInteger();
                         _stack.Push(BigInteger.Compare(reg1, reg2) > 0 ? P1 : P0);
                         break;
                     case Instruction.EQ:
                         reg1 = _stack.Pop().ToSignedBigInteger();
-                        reg2 = _stack.Peek().ToSignedBigInteger();
+                        reg2 = _stack.Pop().ToSignedBigInteger();
                         _stack.Push(reg1 == reg2 ? P1 : P0);
                         break;
                     case Instruction.ISZERO:
@@ -170,7 +169,7 @@ namespace Nevermind.Evm
                         break;
                     case Instruction.AND:
                         byte1 = _stack.Pop();
-                        byte2 = _stack.Peek();
+                        byte2 = _stack.Pop();
                         for (int i = 0; i <= 255; ++i)
                         {
                             byte1[i] = (byte) (byte1[i] & byte2[i]);
@@ -180,7 +179,7 @@ namespace Nevermind.Evm
                         break;
                     case Instruction.OR:
                         byte1 = _stack.Pop();
-                        byte2 = _stack.Peek();
+                        byte2 = _stack.Pop();
                         for (int i = 0; i <= 255; ++i)
                         {
                             byte1[i] = (byte)(byte1[i] | byte2[i]);
@@ -190,7 +189,7 @@ namespace Nevermind.Evm
                         break;
                     case Instruction.XOR:
                         byte1 = _stack.Pop();
-                        byte2 = _stack.Peek();
+                        byte2 = _stack.Pop();
                         for (int i = 0; i <= 255; ++i)
                         {
                             byte1[i] = (byte)(byte1[i] % byte2[i]);
@@ -199,13 +198,16 @@ namespace Nevermind.Evm
                         _stack.Push(byte1);
                         break;
                     case Instruction.NOT:
-                        byte1 = _stack.Peek();
+                        byte1 = _stack.Pop();
                         for (int i = 0; i <= 255; ++i)
                         {
                             byte1[i] = (byte)~byte1[i];
-                        }                
+                        }
+                        _stack.Push(byte1);
                         break;
                     case Instruction.BYTE:
+                        throw new NotImplementedException();
+                    case Instruction.SHA3:
                         throw new NotImplementedException();
                     default:
                         throw new ArgumentOutOfRangeException();
@@ -219,34 +221,5 @@ namespace Nevermind.Evm
 
             return output;
         }
-    }
-
-    [SuppressMessage("ReSharper", "InconsistentNaming")]
-    public enum Instruction : byte
-    {
-        STOP = 0x00,
-        ADD = 0x01,
-        MUL = 0x02,
-        SUB = 0x03,
-        DIV = 0x04,
-        SDIV = 0x05,
-        MOD = 0x06,
-        SMOD = 0x07,
-        ADDMOD = 0x08,
-        MULMOD = 0x09,
-        EXP = 0x0a,
-        SIGNEXTEND = 0x0b,
-
-        LT = 0x10,
-        GT = 0x11,
-        SLT = 0x12,
-        SGT = 0x13,
-        EQ = 0x14,
-        ISZERO = 0x15,
-        AND = 0x16,
-        OR = 0x17,
-        XOR = 0x18,
-        NOT = 0x19,
-        BYTE = 0x1a,
     }
 }

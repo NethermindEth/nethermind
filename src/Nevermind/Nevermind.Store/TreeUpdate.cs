@@ -126,14 +126,14 @@ namespace Nevermind.Store
                             else if (childNode is ExtensionNode childExtension)
                             {
                                 _tree.DeleteNode(childNodeHash, true);
-                                ExtensionNode extensionFromBranch = new ExtensionNode(new HexPrefix(false, Bytes.Merge((byte)childNodeIndex, childExtension.Path)), childExtension.NextNode);
+                                ExtensionNode extensionFromBranch = new ExtensionNode(new HexPrefix(false, Bytes.Concat((byte)childNodeIndex, childExtension.Path)), childExtension.NextNode);
                                 nextNodeHash = _tree.StoreNode(extensionFromBranch, isRoot);
                                 nextNode = extensionFromBranch;
                             }
                             else if (childNode is LeafNode childLeaf)
                             {
                                 _tree.DeleteNode(childNodeHash, true);
-                                LeafNode leafFromBranch = new LeafNode(new HexPrefix(true, Bytes.Merge((byte)childNodeIndex, childLeaf.Path)), childLeaf.Value);
+                                LeafNode leafFromBranch = new LeafNode(new HexPrefix(true, Bytes.Concat((byte)childNodeIndex, childLeaf.Path)), childLeaf.Value);
                                 nextNodeHash = _tree.StoreNode(leafFromBranch, isRoot);
                                 nextNode = leafFromBranch;
                             }
@@ -149,13 +149,13 @@ namespace Nevermind.Store
                     _tree.DeleteNode(extension.NextNode, true);
                     if (nextNode is LeafNode childLeaf)
                     {
-                        LeafNode leafFromExtension = new LeafNode(new HexPrefix(true, Bytes.Merge(extension.Path, childLeaf.Path)), childLeaf.Value);
+                        LeafNode leafFromExtension = new LeafNode(new HexPrefix(true, Bytes.Concat(extension.Path, childLeaf.Path)), childLeaf.Value);
                         nextNodeHash = _tree.StoreNode(leafFromExtension, isRoot);
                         nextNode = leafFromExtension;
                     }
                     else if (nextNode is ExtensionNode childExtension)
                     {
-                        ExtensionNode extensionFromExtension = new ExtensionNode(new HexPrefix(false, Bytes.Merge(extension.Path, childExtension.Path)), childExtension.NextNode);
+                        ExtensionNode extensionFromExtension = new ExtensionNode(new HexPrefix(false, Bytes.Concat(extension.Path, childExtension.Path)), childExtension.NextNode);
                         nextNodeHash = _tree.StoreNode(extensionFromExtension, isRoot);
                         nextNode = extensionFromExtension;
                     }

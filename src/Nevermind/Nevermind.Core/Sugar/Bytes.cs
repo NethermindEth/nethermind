@@ -61,7 +61,7 @@ namespace Nevermind.Core.Sugar
             }
         }
 
-        public static byte[] Merge(byte prefix, byte[] bytes)
+        public static byte[] Concat(byte prefix, byte[] bytes)
         {
             byte[] result = new byte[1 + bytes.Length];
             result[0] = prefix;
@@ -69,7 +69,7 @@ namespace Nevermind.Core.Sugar
             return result;
         }
 
-        public static byte[] Merge(byte prefix, byte[] part1, byte[] part2)
+        public static byte[] Concat(byte prefix, byte[] part1, byte[] part2)
         {
             byte[] output = new byte[1 + part1.Length + part2.Length];
             output[0] = prefix;
@@ -102,15 +102,26 @@ namespace Nevermind.Core.Sugar
             return result;
         }
 
-        public static byte[] Merge(byte[] firstPart, byte[] secondPart)
+        public static byte[] Concat(params byte[][] parts)
         {
-            byte[] result = new byte[firstPart.Length + secondPart.Length];
-            Buffer.BlockCopy(firstPart, 0, result, 0, firstPart.Length);
-            Buffer.BlockCopy(secondPart, 0, result, firstPart.Length, secondPart.Length);
+            int totalLength = 0;
+            for (int i = 0; i < parts.Length; i++)
+            {
+                totalLength += parts[i].Length;
+            }
+
+            byte[] result = new byte[totalLength];
+            int position = 0;
+            for (int i = 0; i < parts.Length; i++)
+            {
+                Buffer.BlockCopy(parts[i], 0, result, position, parts[i].Length);
+                position += parts[i].Length;
+            }
+
             return result;
         }
 
-        public static byte[] Merge(byte[] bytes, byte suffix)
+        public static byte[] Concat(byte[] bytes, byte suffix)
         {
             byte[] result = new byte[bytes.Length + 1];
             result[result.Length - 1] = suffix;
@@ -133,7 +144,7 @@ namespace Nevermind.Core.Sugar
                 bytes = Reverse(bytes);
             }
 
-            byte[] unsigned = Merge(bytes, 0);
+            byte[] unsigned = Concat(bytes, 0);
             return new BigInteger(unsigned);
         }
 

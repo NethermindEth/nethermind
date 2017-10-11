@@ -1,17 +1,20 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="..\packages\NUnit3TestAdapter.3.8.0\build\net35\NUnit3TestAdapter.props" Condition="Exists('..\packages\NUnit3TestAdapter.3.8.0\build\net35\NUnit3TestAdapter.props')" />
   <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
   <PropertyGroup>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
-    <ProjectGuid>{13911438-F79E-4DA4-B3FF-0649C38D32B1}</ProjectGuid>
+    <ProjectGuid>{24284C0D-51B4-4B23-8855-B059C46CB28B}</ProjectGuid>
     <OutputType>Library</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
-    <RootNamespace>Nevermind.Evm</RootNamespace>
-    <AssemblyName>Nevermind.Evm</AssemblyName>
+    <RootNamespace>Nevermind.Evm.Test</RootNamespace>
+    <AssemblyName>Nevermind.Evm.Test</AssemblyName>
     <TargetFrameworkVersion>v4.7</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <TargetFrameworkProfile />
+    <NuGetPackageImportStamp>
+    </NuGetPackageImportStamp>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <DebugSymbols>true</DebugSymbols>
@@ -31,9 +34,11 @@
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
   <ItemGroup>
+    <Reference Include="nunit.framework, Version=3.8.1.0, Culture=neutral, PublicKeyToken=2638cd05610744eb, processorArchitecture=MSIL">
+      <HintPath>..\packages\NUnit.3.8.1\lib\net45\nunit.framework.dll</HintPath>
+    </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core" />
-    <Reference Include="System.Numerics" />
     <Reference Include="System.Xml.Linq" />
     <Reference Include="System.Data.DataSetExtensions" />
     <Reference Include="Microsoft.CSharp" />
@@ -42,42 +47,30 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Abi\AbiEncoder.cs" />
-    <Compile Include="Abi\AbiArray.cs" />
-    <Compile Include="Abi\AbiBool.cs" />
-    <Compile Include="Abi\AbiDynamicBytes.cs" />
-    <Compile Include="Abi\AbiBytes.cs" />
-    <Compile Include="Abi\AbiException.cs" />
-    <Compile Include="Abi\AbiFixed.cs" />
-    <Compile Include="Abi\AbiFunction.cs" />
-    <Compile Include="Abi\AbiInt.cs" />
-    <Compile Include="Abi\AbiSignature.cs" />
-    <Compile Include="Abi\AbiString.cs" />
-    <Compile Include="Abi\AbiType.cs" />
-    <Compile Include="Abi\AbiUFixed.cs" />
-    <Compile Include="Abi\AbiUInt.cs" />
-    <Compile Include="Abi\AbiAddress.cs" />
-    <Compile Include="EvmMemory.cs" />
-    <Compile Include="EvmStack.cs" />
-    <Compile Include="EvmStore.cs" />
-    <Compile Include="ExecutionEnvironment.cs" />
-    <Compile Include="Abi\AbiFixedLengthArray.cs" />
-    <Compile Include="Instruction.cs" />
-    <Compile Include="InstructionCostCalculator.cs" />
-    <Compile Include="TransactionProcessor.cs" />
-    <Compile Include="TransactionSubstate.cs" />
-    <Compile Include="VirtualMachine.cs" />
+    <Compile Include="AbiTests.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Nevermind.Core\Nevermind.Core.csproj">
       <Project>{051b3754-5fb6-4202-af6e-d1764e2ded06}</Project>
       <Name>Nevermind.Core</Name>
     </ProjectReference>
-    <ProjectReference Include="..\Nevermind.Store\Nevermind.Store.csproj">
-      <Project>{3A5B9092-C842-4EFD-ACC3-1C6CF57D09B0}</Project>
-      <Name>Nevermind.Store</Name>
+    <ProjectReference Include="..\Nevermind.Evm\Nevermind.Evm.csproj">
+      <Project>{13911438-F79E-4DA4-B3FF-0649C38D32B1}</Project>
+      <Name>Nevermind.Evm</Name>
     </ProjectReference>
   </ItemGroup>
+  <ItemGroup>
+    <Service Include="{82A7F48D-3B50-4B1E-B82E-3ADA8210C358}" />
+  </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+  <Target Name="EnsureNuGetPackageBuildImports" BeforeTargets="PrepareForBuild">
+    <PropertyGroup>
+      <ErrorText>This project references NuGet package(s) that are missing on this computer. Use NuGet Package Restore to download them.  For more information, see http://go.microsoft.com/fwlink/?LinkID=322105. The missing file is {0}.</ErrorText>
+    </PropertyGroup>
+    <Error Condition="!Exists('..\packages\NUnit3TestAdapter.3.8.0\build\net35\NUnit3TestAdapter.props')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\NUnit3TestAdapter.3.8.0\build\net35\NUnit3TestAdapter.props'))" />
+  </Target>
 </Project>
