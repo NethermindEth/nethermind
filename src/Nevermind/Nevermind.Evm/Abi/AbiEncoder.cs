@@ -12,13 +12,13 @@ namespace Nevermind.Evm.Abi
         {
             List<byte[]> dynamicParts = new List<byte[]>();
             List<byte[]> headerParts = new List<byte[]>();
-            int currentOffset = arguments.Length * 32;
+            BigInteger currentOffset = arguments.Length * AbiType.UInt.LengthInBytes;
             for (int i = 0; i < arguments.Length; i++)
             {
                 AbiType type = signature.Types[i];
                 if (type.IsDynamic)
                 {
-                    headerParts.Add(AbiUInt.EncodeUInt(currentOffset));
+                    headerParts.Add(AbiType.UInt.Encode(currentOffset));
                     byte[] encoded = type.Encode(arguments[i]);
                     currentOffset += encoded.Length;
                     dynamicParts.Add(encoded);
@@ -93,7 +93,7 @@ namespace Nevermind.Evm.Abi
                 if (type.IsDynamic)
                 {
                     // TODO: do not have to decode this - can just jump 32 and check if first call and use dynamic position
-                    (BigInteger offset, int nextPosition) = AbiUInt.DecodeUInt(data, position);
+                    (BigInteger offset, int nextPosition) = AbiType.UInt.DecodeUInt(data, position);
                     (arguments[i], dynamicPosition) = type.Decode(data, 4 + (int)offset);
                     position = nextPosition;
                 }

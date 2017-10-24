@@ -1,8 +1,10 @@
-﻿namespace Nevermind.Evm.Abi
+﻿using System;
+
+namespace Nevermind.Evm.Abi
 {
     public abstract class AbiType
     {
-        public static AbiDynamicBytes Bytes { get; } = AbiDynamicBytes.Instance;
+        public static AbiDynamicBytes DynamicBytes { get; } = AbiDynamicBytes.Instance;
 
         public static AbiAddress Address { get; } = AbiAddress.Instance;
 
@@ -51,5 +53,7 @@
         }
 
         protected string AbiEncodingExceptionMessage => $"Argument cannot be encoded by { GetType().Name}";
+
+        public abstract Type CSharpType { get; }
     }
 }

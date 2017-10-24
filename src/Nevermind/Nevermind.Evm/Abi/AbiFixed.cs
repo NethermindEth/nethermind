@@ -1,4 +1,6 @@
 ﻿using System;
+using System.Numerics;
+using Numerics;
 
 namespace Nevermind.Evm.Abi
 {
@@ -45,21 +47,40 @@ namespace Nevermind.Evm.Abi
             }
 
             Length = length;
+            Precision = precision;
+
+            _denominator = BigInteger.Pow(10, Precision);
         }
 
         public override string Name => $"fixed{Length}x{Precision}";
 
-        public int Length { get; set; }
-        public int Precision { get; set; }
+        public int Length { get; }
+        public int Precision { get; }
 
         public override (object, int) Decode(byte[] data, int position)
         {
-            throw new NotImplementedException();
+            (BigInteger nominator, int newPosition) = Int.DecodeInt(data, position);
+            BigRational rational = new BigRational(nominator, BigInteger.Pow(10, Precision));
+            return (rational, newPosition);
         }
+
+        private readonly BigInteger _denominator;
 
         public override byte[] Encode(object arg)
         {
-            throw new NotImplementedException();
+            if (arg is BigRational input)
+            {
+                if (_denominator != input.Denominator)
+                {
+                    throw new AbiException(AbiEncodingExceptionMessage);
+                }
+
+                return UInt.Encode(input.Numerator);
+            }
+
+            throw new AbiException(AbiEncodingExceptionMessage);
         }
+
+        public override Type CSharpType { get; } = typeof(BigRational);
     }
 }

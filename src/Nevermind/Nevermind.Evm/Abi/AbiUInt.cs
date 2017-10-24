@@ -41,28 +41,25 @@ namespace Nevermind.Evm.Abi
 
         public override (object, int) Decode(byte[] data, int position)
         {
-            return DecodeUInt(data, position);
+            BigInteger lengthData = data.Slice(position, LengthInBytes).ToUnsignedBigInteger();
+            return (lengthData, position + LengthInBytes);
         }
 
-        public static (BigInteger, int) DecodeUInt(byte[] data, int position)
+        public (BigInteger, int) DecodeUInt(byte[] data, int position)
         {
-            BigInteger lengthData = data.Slice(position, 32).ToUnsignedBigInteger();
-            return (lengthData, position + 32);
-        }
-
-        public static byte[] EncodeUInt(BigInteger length)
-        {
-            return Core.Sugar.Bytes.PadLeft(length.ToBigEndianByteArray(), 32);
+            return ((BigInteger, int))Decode(data, position);
         }
 
         public override byte[] Encode(object arg)
         {
             if (arg is BigInteger input)
             {
-                return EncodeUInt(input);
+                return Core.Sugar.Bytes.PadLeft(input.ToBigEndianByteArray(), UInt.LengthInBytes);
             }
 
             throw new AbiException(AbiEncodingExceptionMessage);
         }
+
+        public override Type CSharpType { get; } = typeof(BigInteger);
     }
 }

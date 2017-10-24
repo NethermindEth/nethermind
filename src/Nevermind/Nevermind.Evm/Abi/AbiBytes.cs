@@ -31,7 +31,7 @@ namespace Nevermind.Evm.Abi
 
         public override (object, int) Decode(byte[] data, int position)
         {
-            return (data.Slice(position, Length), position + Length);
+            return (data.Slice(position, Length), position + MaxLength);
         }
 
         public override byte[] Encode(object arg)
@@ -43,10 +43,12 @@ namespace Nevermind.Evm.Abi
                     throw new AbiException(AbiEncodingExceptionMessage);
                 }
 
-                return input;
+                return Bytes.PadRight(input, MaxLength);
             }
 
             throw new AbiException(AbiEncodingExceptionMessage);
         }
+
+        public override Type CSharpType { get; } = typeof(byte[]);
     }
 }

@@ -11,36 +11,40 @@ namespace Nevermind.Evm.Abi
         public AbiArray(AbiType elementType)
         {
             _elementType = elementType;
+            CSharpType = _elementType.CSharpType.MakeArrayType();
         }
 
         public override bool IsDynamic => true;
 
         public override string Name => $"{_elementType}[]";
 
+        public override Type CSharpType { get; }
+
         public override (object, int) Decode(byte[] data, int position)
         {
-            // this is incorrect
-            int currentPosition = position;
             BigInteger length;
-            (length, currentPosition) = AbiUInt.DecodeUInt(data, currentPosition);
-            BigInteger totalLength = length * 32;
+            (length, position) = UInt.DecodeUInt(data, position);
+
+            Array result = Array.CreateInstance(_elementType.CSharpType, (int)length);
             for (int i = 0; i < length; i++)
             {
-                BigInteger currentLength;
-                (currentLength, currentPosition) = AbiUInt.DecodeUInt(data, currentPosition);
-                totalLength += currentLength;
+                object element;
+                (element, position) = _elementType.Decode(data, position);
+
+                result.SetValue(element, i);
             }
 
-            return (data.Slice(position, (int) totalLength), currentPosition);
+            return (result, position);
         }
 
         public override byte[] Encode(object arg)
         {
-            if (arg is Array array)
+            if (arg is Array input)
             {
+                byte[][] encodedItems = new byte[input.Length + 1][];
                 int i = 0;
-                byte[][] encodedItems = new byte[array.Length][];
-                foreach (object o in array)
+                encodedItems[i++] = UInt.Encode((BigInteger)input.Length);
+                foreach (object o in input)
                 {
                     encodedItems[i++] = _elementType.Encode(o);
                 }

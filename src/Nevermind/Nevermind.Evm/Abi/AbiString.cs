@@ -1,4 +1,5 @@
-﻿using System.Text;
+﻿using System;
+using System.Text;
 
 namespace Nevermind.Evm.Abi
 {
@@ -16,7 +17,7 @@ namespace Nevermind.Evm.Abi
 
         public override (object, int) Decode(byte[] data, int position)
         {
-            (object bytes, int newPosition) = Bytes.Decode(data, position);
+            (object bytes, int newPosition) = DynamicBytes.Decode(data, position);
             return (Encoding.ASCII.GetString((byte[]) bytes), newPosition);
         }
 
@@ -24,10 +25,12 @@ namespace Nevermind.Evm.Abi
         {
             if (arg is string input)
             {
-                return Bytes.Encode(Encoding.ASCII.GetBytes(input));
+                return DynamicBytes.Encode(Encoding.ASCII.GetBytes(input));
             }
 
             throw new AbiException(AbiEncodingExceptionMessage);
         }
+
+        public override Type CSharpType { get; } = typeof(string);
     }
 }

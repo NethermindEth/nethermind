@@ -1,10 +1,13 @@
-﻿using System.Numerics;
+﻿using System;
+using System.Numerics;
 using Nevermind.Core.Sugar;
 
 namespace Nevermind.Evm.Abi
 {
     public class AbiDynamicBytes : AbiType
     {
+        private const int PaddingMultiple = 32;
+
         public static AbiDynamicBytes Instance = new AbiDynamicBytes();
 
         private AbiDynamicBytes()
@@ -15,10 +18,12 @@ namespace Nevermind.Evm.Abi
 
         public override string Name => "bytes";
 
+        public override Type CSharpType { get; } = typeof(byte[]);
+
         public override (object, int) Decode(byte[] data, int position)
         {
-            (BigInteger length, int currentPosition) = AbiUInt.DecodeUInt(data, position);
-            int paddingSize = (1 + (int)length / 32) * 32;
+            (BigInteger length, int currentPosition) = UInt.DecodeUInt(data, position);
+            int paddingSize = (1 + (int) length / PaddingMultiple) * PaddingMultiple;
             return (data.Slice(currentPosition, (int) length), currentPosition + paddingSize);
         }
 
@@ -26,8 +31,8 @@ namespace Nevermind.Evm.Abi
         {
             if (arg is byte[] input)
             {
-                int paddingSize = (1 + input.Length / 32) * 32;
-                byte[] lengthEncoded = AbiUInt.EncodeUInt(input.Length);
+                int paddingSize = (1 + input.Length / PaddingMultiple) * PaddingMultiple;
+                byte[] lengthEncoded = UInt.Encode(new BigInteger(input.Length));
                 return Core.Sugar.Bytes.Concat(lengthEncoded, Core.Sugar.Bytes.PadRight(input, paddingSize));
             }
 

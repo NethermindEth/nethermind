@@ -45,14 +45,24 @@ namespace Nevermind.Evm.Abi
             return (input.ToSignedBigInteger(), position + LengthInBytes);
         }
 
+        public (BigInteger, int) DecodeInt(byte[] data, int position)
+        {
+            return ((BigInteger, int))Decode(data, position);
+        }
+
         public override byte[] Encode(object arg)
         {
             if (arg is BigInteger input)
             {
-                return Core.Sugar.Bytes.PadLeft(input.ToBigEndianByteArray(false), 32, input < 0 ? (byte)0xff : (byte)0x00);
+                return Core.Sugar.Bytes.PadLeft(
+                    input.ToBigEndianByteArray(false),
+                    Int.LengthInBytes,
+                    input < 0 ? (byte)0xff : (byte)0x00);
             }
 
             throw new AbiException(AbiEncodingExceptionMessage);
         }
+
+        public override Type CSharpType { get; } = typeof(BigInteger);
     }
 }
