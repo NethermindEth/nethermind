@@ -8,14 +8,14 @@ namespace Nevermind.Core.Difficulty
 
         private readonly HomesteadDifficultyCalculator _homestead = new HomesteadDifficultyCalculator();
 
-        protected internal override BigInteger TimeAdjustment(BigInteger parentTimestamp, BigInteger currentTimestamp, BigInteger blockNumber)
+        protected internal override BigInteger TimeAdjustment(BigInteger parentTimestamp, BigInteger currentTimestamp, BigInteger blockNumber, bool parentHasUncles)
         {
             if (blockNumber < HomesteadBlockNumber)
             {
-                return base.TimeAdjustment(parentTimestamp, currentTimestamp, blockNumber);
+                return base.TimeAdjustment(parentTimestamp, currentTimestamp, blockNumber, parentHasUncles);
             }
 
-            return _homestead.TimeAdjustment(parentTimestamp, currentTimestamp, blockNumber);
+            return _homestead.TimeAdjustment(parentTimestamp, currentTimestamp, blockNumber, parentHasUncles);
         }
     }
 }

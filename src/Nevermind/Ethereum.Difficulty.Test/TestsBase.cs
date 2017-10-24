@@ -40,7 +40,8 @@ namespace Ethereum.Difficulty.Test
                 json.ParentDifficulty,
                 json.CurrentTimestamp,
                 (ulong)json.CurrentBlockNumber,
-                json.CurrentDifficulty);
+                json.CurrentDifficulty,
+                false);
         }
 
         private static BigInteger ToBigInteger(string hex)
@@ -57,6 +58,8 @@ namespace Ethereum.Difficulty.Test
 
         protected static DifficultyTest ToTest(string fileName, string name, DifficultyTestHexJson json)
         {
+            Keccak noUnclesHash = Keccak.OfAnEmptySequenceRlp;
+
             return new DifficultyTest(
                 fileName,
                 name,
@@ -64,7 +67,8 @@ namespace Ethereum.Difficulty.Test
                 ToBigInteger(json.ParentDifficulty),
                 ToBigInteger(json.CurrentTimestamp),
                 ToUlong(json.CurrentBlockNumber),
-                ToBigInteger(json.CurrentDifficulty));
+                ToBigInteger(json.CurrentDifficulty),
+                !string.IsNullOrWhiteSpace(json.ParentUncles) && new Keccak(json.ParentUncles) != noUnclesHash);
         }
 
         private readonly DifficultyCalculatorFactory _factory = new DifficultyCalculatorFactory();
@@ -77,7 +81,8 @@ namespace Ethereum.Difficulty.Test
                 test.ParentDifficulty,
                 test.ParentTimestamp,
                 test.CurrentTimestamp,
-                test.CurrentBlockNumber);
+                test.CurrentBlockNumber,
+                test.ParentHasUncles);
 
             Assert.AreEqual(test.CurrentDifficulty, difficulty, test.Name);
         }

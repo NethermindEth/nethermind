@@ -12,10 +12,11 @@ namespace Nevermind.Core.Difficulty
             BigInteger parentDifficulty,
             BigInteger parentTimestamp,
             BigInteger currentTimestamp,
-            BigInteger blockNumber)
+            BigInteger blockNumber,
+            bool parentHasUncles)
         {
             BigInteger baseIncrease = BigInteger.Divide(parentDifficulty, 2048);
-            BigInteger timeAdjustment = TimeAdjustment(parentTimestamp, currentTimestamp, blockNumber);
+            BigInteger timeAdjustment = TimeAdjustment(parentTimestamp, currentTimestamp, blockNumber, parentHasUncles);
             BigInteger timeBomb = TimeBomb(blockNumber);
             return BigInteger.Max(
                 OfGenesisBlock,
@@ -24,7 +25,7 @@ namespace Nevermind.Core.Difficulty
                 timeBomb);
         }
 
-        public virtual BigInteger Calculate(BlockHeader blockHeader, BlockHeader parentBlockHeader)
+        public virtual BigInteger Calculate(BlockHeader blockHeader, BlockHeader parentBlockHeader, bool parentHasUncles)
         {
             if (parentBlockHeader == null)
             {
@@ -35,11 +36,15 @@ namespace Nevermind.Core.Difficulty
                 parentBlockHeader.Difficulty,
                 parentBlockHeader.Timestamp,
                 blockHeader.Timestamp,
-                blockHeader.Number);
+                blockHeader.Number,
+                parentHasUncles);
         }
 
-        protected internal virtual BigInteger TimeAdjustment(BigInteger parentTimestamp, BigInteger currentTimestamp,
-            BigInteger blockNumber)
+        protected internal virtual BigInteger TimeAdjustment(
+            BigInteger parentTimestamp,
+            BigInteger currentTimestamp,
+            BigInteger blockNumber,
+            bool parentHasUncles)
         {
 #if DEBUG
             BigInteger difference = parentTimestamp - currentTimestamp;

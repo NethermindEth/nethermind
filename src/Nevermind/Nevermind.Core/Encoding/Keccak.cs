@@ -35,6 +35,11 @@ namespace Nevermind.Core.Encoding
         public static Keccak OfAnEmptyString { get; } = Compute("");
 
         /// <returns>
+        ///     <string>0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347</string>
+        /// </returns>
+        public static Keccak OfAnEmptySequenceRlp { get; } = Compute(new byte[] { 192 });
+
+        /// <returns>
         ///     <string>0x0000000000000000000000000000000000000000000000000000000000000000</string>
         /// </returns>
         public static Keccak Zero { get; } = new Keccak(new byte[32]);
