@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Numerics;
+using System.Text;
 using Nevermind.Core.Sugar;
 
 namespace Nevermind.Evm.Abi
@@ -34,6 +35,11 @@ namespace Nevermind.Evm.Abi
                 int paddingSize = (1 + input.Length / PaddingMultiple) * PaddingMultiple;
                 byte[] lengthEncoded = UInt.Encode(new BigInteger(input.Length));
                 return Core.Sugar.Bytes.Concat(lengthEncoded, Core.Sugar.Bytes.PadRight(input, paddingSize));
+            }
+
+            if (arg is string stringInput)
+            {
+                return Encode(Encoding.ASCII.GetBytes(stringInput));
             }
 
             throw new AbiException(AbiEncodingExceptionMessage);

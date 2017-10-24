@@ -17,7 +17,13 @@ namespace Nevermind.Evm.Abi
         {
             if (arg is Address input)
             {
-                return input.Hex;
+                byte[] bytes = input.Hex;
+                return UInt.Encode(bytes.ToUnsignedBigInteger());
+            }
+
+            if (arg is string stringInput)
+            {
+                return Encode(new Address(stringInput));
             }
 
             throw new AbiException(AbiEncodingExceptionMessage);
@@ -25,7 +31,7 @@ namespace Nevermind.Evm.Abi
 
         public override (object, int) Decode(byte[] data, int position)
         {
-            return (new Address(data.Slice(position, 20)), position + 20);
+            return (new Address(data.Slice(position + 12, Address.LengthInBytes)), position + UInt.LengthInBytes);
         }
     }
 }

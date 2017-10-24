@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Text;
 using Nevermind.Core.Sugar;
 
 namespace Nevermind.Evm.Abi
@@ -44,6 +45,11 @@ namespace Nevermind.Evm.Abi
                 }
 
                 return Bytes.PadRight(input, MaxLength);
+            }
+
+            if (arg is string stringInput)
+            {
+                return Encode(Encoding.ASCII.GetBytes(stringInput));
             }
 
             throw new AbiException(AbiEncodingExceptionMessage);

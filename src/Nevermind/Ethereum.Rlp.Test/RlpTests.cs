@@ -2,11 +2,9 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
-using System.Numerics;
 using Ethereum.Test.Base;
 using JetBrains.Annotations;
 using Nevermind.Core.Encoding;
-using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 using Assert = NUnit.Framework.Assert;
 
@@ -55,41 +53,10 @@ namespace Ethereum.Rlp.Test
                 c => c.Select(p => new RlpTest(p.Key, p.Value.In, p.Value.Out)));
         }
 
-        private object PrepareInput(object input)
-        {
-            string s = input as string;
-            if (s != null && s.StartsWith("#"))
-            {
-                BigInteger bigInteger = BigInteger.Parse(s.Substring(1));
-                input = bigInteger;
-            }
-
-            if (input is JArray)
-            {
-                input = ((JArray)input).Select(PrepareInput).ToArray();
-            }
-
-            JToken token = input as JToken;
-            if (token != null)
-            {
-                if (token.Type == JTokenType.String)
-                {
-                    return token.Value<string>();
-                }
-
-                if (token.Type == JTokenType.Integer)
-                {
-                    return token.Value<long>();
-                }
-            }
-
-            return input;
-        }
-
         [TestCaseSource(nameof(LoadValidTests))]
         public void Test(RlpTest test)
         {
-            object input = PrepareInput(test.Input);
+            object input = TestLoader.PrepareInput(test.Input);
 
             Nevermind.Core.Encoding.Rlp serialized = Nevermind.Core.Encoding.Rlp.Encode(input);
             string serializedHex = serialized.ToString(false);

@@ -13,6 +13,13 @@ namespace Nevermind.Core.Sugar
             return Hex.FromBytes(bytes, withZeroX);
         }
 
+        public static byte[] Slice(this byte[] bytes, int startIndex)
+        {
+            byte[] slice = new byte[bytes.Length - startIndex];
+            Buffer.BlockCopy(bytes, startIndex, slice, 0, bytes.Length - startIndex);
+            return slice;
+        }
+
         public static byte[] Slice(this byte[] bytes, int startIndex, int length)
         {
             if (length == 1)
