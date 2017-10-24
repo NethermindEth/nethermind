@@ -1,4 +1,6 @@
 ﻿using System;
+using System.Collections.Generic;
+using System.Numerics;
 using Nevermind.Core.Encoding;
 using Nevermind.Core.Sugar;
 
@@ -6,15 +8,39 @@ namespace Nevermind.Evm.Abi
 {
     public class AbiEncoder
     {
-        public byte[] Encode(AbiSignature signature, params byte[][] arguments)
+        public byte[] Encode(AbiSignature signature, params object[] arguments)
         {
-            byte[][] encodedParts = new byte[1 + arguments.Length][];
+            List<byte[]> dynamicParts = new List<byte[]>();
+            List<byte[]> headerParts = new List<byte[]>();
+            int currentOffset = arguments.Length * 32;
             for (int i = 0; i < arguments.Length; i++)
             {
-                encodedParts[1 + i] = arguments[i];
+                AbiType type = signature.Types[i];
+                if (type.IsDynamic)
+                {
+                    headerParts.Add(AbiUInt.EncodeUInt(currentOffset));
+                    byte[] encoded = type.Encode(arguments[i]);
+                    currentOffset += encoded.Length;
+                    dynamicParts.Add(encoded);
+                }
+                else
+                {
+                    headerParts.Add(type.Encode(arguments[i]));
+                }
             }
 
+            byte[][] encodedParts = new byte[1 + headerParts.Count + dynamicParts.Count][];
             encodedParts[0] = ComputeAddress(signature);
+            for (int i = 0; i < headerParts.Count; i++)
+            {
+                encodedParts[1 + i] = headerParts[i];
+            }
+
+            for (int i = 0; i < dynamicParts.Count; i++)
+            {
+                encodedParts[1 + headerParts.Count + i] = dynamicParts[i];
+            }
+
             return Bytes.Concat(encodedParts);
         }
 
@@ -44,7 +70,7 @@ namespace Nevermind.Evm.Abi
             return $"{functionName}({typeList})";
         }
 
-        public byte[][] Decode(AbiSignature signature, byte[] data)
+        public object[] Decode(AbiSignature signature, byte[] data)
         {
             string[] argTypeNames = new string[signature.Types.Length];
             for (int i = 0; i < signature.Types.Length; i++)
@@ -59,13 +85,25 @@ namespace Nevermind.Evm.Abi
             }
 
             int position = 4;
-            byte[][] arguments = new byte[signature.Types.Length][];
+            object[] arguments = new object[signature.Types.Length];
+            int dynamicPosition = 0;
             for (int i = 0; i < signature.Types.Length; i++)
             {
-                (arguments[i], position) = signature.Types[i].Decode(data, position);
+                AbiType type = signature.Types[i];
+                if (type.IsDynamic)
+                {
+                    // TODO: do not have to decode this - can just jump 32 and check if first call and use dynamic position
+                    (BigInteger offset, int nextPosition) = AbiUInt.DecodeUInt(data, position);
+                    (arguments[i], dynamicPosition) = type.Decode(data, 4 + (int)offset);
+                    position = nextPosition;
+                }
+                else
+                {
+                    (arguments[i], position) = type.Decode(data, position);
+                }
             }
 
-            if (position != data.Length)
+            if (Math.Max(position, dynamicPosition) != data.Length)
             {
                 throw new AbiException($"Unexpected data at position {position}");
             }

@@ -2,15 +2,19 @@
 {
     public abstract class AbiType
     {
-        public static AbiAddress Address { get; } = new AbiAddress();
+        public static AbiDynamicBytes Bytes { get; } = AbiDynamicBytes.Instance;
 
-        public static AbiFunction Function { get; } = new AbiFunction();
+        public static AbiAddress Address { get; } = AbiAddress.Instance;
 
-        public static AbiBool Bool { get; } = new AbiBool();
+        public static AbiFunction Function { get; } = AbiFunction.Instance;
+
+        public static AbiBool Bool { get; } = AbiBool.Instance;
 
         public static AbiInt Int { get; } = new AbiInt(256);
 
         public static AbiUInt UInt { get; } = new AbiUInt(256);
+
+        public static AbiString String { get; } = AbiString.Instance;
 
         public static AbiFixed Fixed { get; } = new AbiFixed(128, 19);
 
@@ -25,7 +29,9 @@
             return true;
         }
 
-        public abstract (byte[], int) Decode(byte[] data, int position);
+        public abstract (object, int) Decode(byte[] data, int position);
+
+        public abstract byte[] Encode(object arg);
 
         public override string ToString()
         {
@@ -43,5 +49,7 @@
             return type != null &&
                    Name == type.Name;
         }
+
+        protected string AbiEncodingExceptionMessage => $"Argument cannot be encoded by { GetType().Name}";
     }
 }

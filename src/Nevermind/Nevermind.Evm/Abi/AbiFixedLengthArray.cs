@@ -1,4 +1,5 @@
-﻿using System.Numerics;
+﻿using System;
+using System.Numerics;
 using Nevermind.Core.Sugar;
 
 namespace Nevermind.Evm.Abi
@@ -19,7 +20,7 @@ namespace Nevermind.Evm.Abi
 
         public override string Name => $"{_elementType}[{Length}]";
 
-        public override (byte[], int) Decode(byte[] data, int position)
+        public override (object, int) Decode(byte[] data, int position)
         {
             // this is incorrect
             BigInteger totalLength = Length * 32;
@@ -27,11 +28,31 @@ namespace Nevermind.Evm.Abi
             for (int i = 0; i < Length; i++)
             {
                 BigInteger currentLength;
-                (currentLength, currentPosition) = AbiUInt.DecodeLength(data, currentPosition);
+                (currentLength, currentPosition) = AbiUInt.DecodeUInt(data, currentPosition);
                 totalLength += currentLength;
             }
 
-            return (data.Slice(position, (int) totalLength), currentPosition);
+            return (data.Slice(position, (int)totalLength), currentPosition);
+        }
+
+        public override byte[] Encode(object arg)
+        {
+            if (arg is Array input)
+            {
+                if (input.Length != Length)
+                {
+                    throw new AbiException(AbiEncodingExceptionMessage);
+                }
+
+                byte[][] encodedItems = new byte[Length][];
+                int i = 0;
+                foreach (object o in input)
+                {
+                    encodedItems[i++] = _elementType.Encode(o);
+                }
+            }
+
+            throw new AbiException(AbiEncodingExceptionMessage);
         }
     }
 }

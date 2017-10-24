@@ -1,5 +1,6 @@
 ﻿using System;
 using Nevermind.Core.Encoding;
+using Nevermind.Core.Sugar;
 
 namespace Nevermind.Core
 {
@@ -10,7 +11,7 @@ namespace Nevermind.Core
         public static Address Zero { get; } = new Address(new byte[20]);
 
         public Address(Keccak keccak)
-            :this(keccak.Bytes)
+            :this(keccak.Bytes.Slice(12, 20))
         {
         }
 

@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Numerics;
 using Nevermind.Core.Sugar;
 
 namespace Nevermind.Evm.Abi
@@ -34,11 +35,24 @@ namespace Nevermind.Evm.Abi
 
         public int Length { get; }
 
+        public int LengthInBytes => Length / 8;
+
         public override string Name => $"int{Length}";
 
-        public override (byte[], int) Decode(byte[] data, int position)
+        public override (object, int) Decode(byte[] data, int position)
         {
-            return (data.Slice(position, Length), position + Length);
+            byte[] input = data.Slice(position, LengthInBytes);
+            return (input.ToSignedBigInteger(), position + LengthInBytes);
+        }
+
+        public override byte[] Encode(object arg)
+        {
+            if (arg is BigInteger input)
+            {
+                return Core.Sugar.Bytes.PadLeft(input.ToBigEndianByteArray(false), 32, input < 0 ? (byte)0xff : (byte)0x00);
+            }
+
+            throw new AbiException(AbiEncodingExceptionMessage);
         }
     }
 }

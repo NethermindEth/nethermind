@@ -50,7 +50,12 @@ namespace Nevermind.Evm.Abi
         public int Length { get; }
         public int Precision { get; }
 
-        public override (byte[], int) Decode(byte[] data, int position)
+        public override (object, int) Decode(byte[] data, int position)
+        {
+            throw new NotImplementedException();
+        }
+
+        public override byte[] Encode(object arg)
         {
             throw new NotImplementedException();
         }

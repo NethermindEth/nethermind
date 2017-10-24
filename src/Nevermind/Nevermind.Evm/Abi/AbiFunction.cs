@@ -2,9 +2,11 @@ namespace Nevermind.Evm.Abi
 {
     public class AbiFunction : AbiBytes
     {
-        public AbiFunction() : base(24)
+        private AbiFunction() : base(24)
         {
         }
+
+        public static AbiFunction Instance = new AbiFunction();
 
         public override string Name => "function";
     }

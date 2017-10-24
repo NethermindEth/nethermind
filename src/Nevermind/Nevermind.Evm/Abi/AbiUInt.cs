@@ -39,15 +39,30 @@ namespace Nevermind.Evm.Abi
 
         public override string Name => $"uint{Length}";
 
-        public override (byte[], int) Decode(byte[] data, int position)
+        public override (object, int) Decode(byte[] data, int position)
         {
-            return (data.Slice(position, LengthInBytes), position + LengthInBytes);
+            return DecodeUInt(data, position);
         }
 
-        public static (BigInteger, int) DecodeLength(byte[] data, int position)
+        public static (BigInteger, int) DecodeUInt(byte[] data, int position)
         {
-            BigInteger lengthData = data.Slice(0, 32).ToUnsignedBigInteger();
-            return (lengthData, position + 64);
+            BigInteger lengthData = data.Slice(position, 32).ToUnsignedBigInteger();
+            return (lengthData, position + 32);
+        }
+
+        public static byte[] EncodeUInt(BigInteger length)
+        {
+            return Core.Sugar.Bytes.PadLeft(length.ToBigEndianByteArray(), 32);
+        }
+
+        public override byte[] Encode(object arg)
+        {
+            if (arg is BigInteger input)
+            {
+                return EncodeUInt(input);
+            }
+
+            throw new AbiException(AbiEncodingExceptionMessage);
         }
     }
 }

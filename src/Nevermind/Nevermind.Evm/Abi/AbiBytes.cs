@@ -29,9 +29,24 @@ namespace Nevermind.Evm.Abi
 
         public override string Name => $"bytes{Length}";
 
-        public override (byte[], int) Decode(byte[] data, int position)
+        public override (object, int) Decode(byte[] data, int position)
         {
             return (data.Slice(position, Length), position + Length);
+        }
+
+        public override byte[] Encode(object arg)
+        {
+            if (arg is byte[] input)
+            {
+                if (input.Length != Length)
+                {
+                    throw new AbiException(AbiEncodingExceptionMessage);
+                }
+
+                return input;
+            }
+
+            throw new AbiException(AbiEncodingExceptionMessage);
         }
     }
 }
