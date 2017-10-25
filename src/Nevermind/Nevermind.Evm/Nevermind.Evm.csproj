@@ -62,11 +62,11 @@
     <Compile Include="Abi\AbiAddress.cs" />
     <Compile Include="EvmMemory.cs" />
     <Compile Include="EvmStack.cs" />
-    <Compile Include="EvmStore.cs" />
     <Compile Include="ExecutionEnvironment.cs" />
     <Compile Include="Abi\AbiFixedLengthArray.cs" />
     <Compile Include="Instruction.cs" />
     <Compile Include="InstructionCostCalculator.cs" />
+    <Compile Include="MachineState.cs" />
     <Compile Include="TransactionProcessor.cs" />
     <Compile Include="TransactionSubstate.cs" />
     <Compile Include="VirtualMachine.cs" />
