@@ -7,53 +7,59 @@ using Nevermind.Core.Sugar;
 
 namespace Nevermind.Store
 {
-    public class TreeUpdate
+    public class TreeOperation
     {
         private readonly PatriciaTree _tree;
         private readonly byte[] _updatePath;
         private readonly byte[] _updateValue;
+        private readonly bool _isUpdate;
 
         private readonly Stack<StackedNode> _nodeStack = new Stack<StackedNode>();
 
-        public TreeUpdate(PatriciaTree tree, Nibble[] updatePath, byte[] updateValue)
+        public TreeOperation(PatriciaTree tree, Nibble[] updatePath, byte[] updateValue, bool isUpdate)
         {
             _tree = tree;
             _updatePath = updatePath.ToLooseByteArray();
-            _updateValue = updateValue.Length == 0 ? null : updateValue;
+            if (isUpdate)
+            {
+                _updateValue = updateValue.Length == 0 ? null : updateValue;
+            }
+
+            _isUpdate = isUpdate;
         }
 
         private int _currentIndex;
 
-        public void Run()
+        public byte[] Run()
         {
             if (_tree.Root == null)
             {
                 LeafNode leafNode = new LeafNode(new HexPrefix(true, _updatePath), _updateValue);
                 _tree.StoreNode(leafNode, true);
-                return;
+                return _isUpdate ? null : _updateValue;
             }
 
-            TraverseNode(_tree.Root);
+            return TraverseNode(_tree.Root);
         }
 
-        private void TraverseNode(Node node)
+        private byte[] TraverseNode(Node node)
         {
             if (node is LeafNode leaf)
             {
-                TraverseLeaf(leaf);
-                return;
+                return TraverseLeaf(leaf);
             }
 
             if (node is BranchNode branch)
             {
-                TraverseBranch(branch);
-                return;
+                return TraverseBranch(branch);
             }
 
             if (node is ExtensionNode extension)
             {
-                TraverseExtension(extension);
+                return TraverseExtension(extension);
             }
+
+            throw new NotImplementedException($"Unknown node type {typeof(Node).Name}");
         }
 
         private int RemainingUpdatePathLength => _updatePath.Length - _currentIndex;
@@ -179,10 +185,15 @@ namespace Nevermind.Store
             _tree.DeleteNode(new KeccakOrRlp(previousRootHash), true);
         }
 
-        private void TraverseBranch(BranchNode node)
+        private byte[] TraverseBranch(BranchNode node)
         {
             if (RemainingUpdatePathLength == 0)
             {
+                if (!_isUpdate)
+                {
+                    return node.Value;
+                }
+
                 if (_updateValue == null)
                 {
                     UpdateHashes(null);
@@ -193,7 +204,7 @@ namespace Nevermind.Store
                     UpdateHashes(node);
                 }
 
-                return;
+                return _updateValue;
             }
 
             KeccakOrRlp nextHash = node.Nodes[_updatePath[_currentIndex]];
@@ -202,6 +213,11 @@ namespace Nevermind.Store
 
             if (nextHash == null)
             {
+                if (!_isUpdate)
+                {
+                    return null;
+                }
+
                 if (_updateValue == null)
                 {
                     throw new InvalidOperationException($"Could not find the leaf node to delete: {Hex.FromBytes(_updatePath, false)}");
@@ -210,15 +226,15 @@ namespace Nevermind.Store
                 byte[] leafPath = _updatePath.Slice(_currentIndex, _updatePath.Length - _currentIndex);
                 LeafNode leaf = new LeafNode(new HexPrefix(true, leafPath), _updateValue);
                 UpdateHashes(leaf);
+
+                return _updateValue;
             }
-            else
-            {
-                Node nextNode = _tree.GetNode(nextHash);
-                TraverseNode(nextNode);
-            }
+
+            Node nextNode = _tree.GetNode(nextHash);
+            return TraverseNode(nextNode);
         }
 
-        private void TraverseLeaf(LeafNode node)
+        private byte[] TraverseLeaf(LeafNode node)
         {
             (byte[] shorterPath, byte[] longerPath) = RemainingUpdatePath.Length - node.Path.Length < 0
                 ? (RemainingUpdatePath, node.Path)
@@ -245,18 +261,28 @@ namespace Nevermind.Store
 
             if (extensionLength == shorterPath.Length && extensionLength == longerPath.Length)
             {
+                if (!_isUpdate)
+                {
+                    return node.Value;
+                }
+
                 if (_updateValue == null)
                 {
                     UpdateHashes(null);
-                    return;
+                    return _updateValue;
                 }
 
                 if (!Bytes.UnsafeCompare(node.Value, _updateValue))
                 {
                     LeafNode newLeaf = new LeafNode(new HexPrefix(true, RemainingUpdatePath), _updateValue);
                     UpdateHashes(newLeaf);
-                    return;
+                    return _updateValue;
                 }
+            }
+
+            if (!_isUpdate)
+            {
+                return null;
             }
 
             if (_updateValue == null)
@@ -288,9 +314,11 @@ namespace Nevermind.Store
             LeafNode leaf = new LeafNode(new HexPrefix(true, leafPath), longerPathValue);
             _nodeStack.Push(new StackedNode(branch, longerPath[extensionLength]));
             UpdateHashes(leaf);
+
+            return _updateValue;
         }
 
-        private void TraverseExtension(ExtensionNode node)
+        private byte[] TraverseExtension(ExtensionNode node)
         {
             int extensionLength = 0;
             for (int i = 0; i < Math.Min(RemainingUpdatePath.Length, node.Path.Length) && RemainingUpdatePath[i] == node.Path[i]; i++, extensionLength++)
@@ -302,13 +330,17 @@ namespace Nevermind.Store
                 _currentIndex += extensionLength;
                 _nodeStack.Push(new StackedNode(node, 0));
                 Node nextNode = _tree.GetNode(node.NextNode);
-                TraverseNode(nextNode);
-                return;
+                return TraverseNode(nextNode);
             }
 
             if (_updateValue == null)
             {
                 throw new InvalidOperationException("Could find the leaf node to delete: {Hex.FromBytes(_updatePath, false)}");
+            }
+
+            if (!_isUpdate)
+            {
+                return null;
             }
 
             if (extensionLength != 0)
@@ -343,6 +375,7 @@ namespace Nevermind.Store
             }
 
             UpdateHashes(branch);
+            return _updateValue;
         }
     }
 }

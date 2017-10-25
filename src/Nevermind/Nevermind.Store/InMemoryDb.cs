@@ -4,7 +4,7 @@ using Nevermind.Core.Encoding;
 
 namespace Nevermind.Store
 {
-    public class Db
+    public class InMemoryDb
     {
         private readonly Dictionary<Keccak, byte[]> _db = new Dictionary<Keccak, byte[]>();
 

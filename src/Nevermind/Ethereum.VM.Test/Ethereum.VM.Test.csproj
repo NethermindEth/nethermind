@@ -101,6 +101,10 @@
       <Project>{13911438-F79E-4DA4-B3FF-0649C38D32B1}</Project>
       <Name>Nevermind.Evm</Name>
     </ProjectReference>
+    <ProjectReference Include="..\Nevermind.Store\Nevermind.Store.csproj">
+      <Project>{3A5B9092-C842-4EFD-ACC3-1C6CF57D09B0}</Project>
+      <Name>Nevermind.Store</Name>
+    </ProjectReference>
   </ItemGroup>
   <ItemGroup>
     <Service Include="{82A7F48D-3B50-4B1E-B82E-3ADA8210C358}" />

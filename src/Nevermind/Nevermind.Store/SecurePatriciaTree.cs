@@ -6,12 +6,12 @@ namespace Nevermind.Store
 {
     public class SecurePatriciaTree : PatriciaTree
     {
-        public SecurePatriciaTree(Keccak rootHash, Db db)
+        public SecurePatriciaTree(Keccak rootHash, InMemoryDb db)
             : base(rootHash, db)
         {
         }
 
-        public SecurePatriciaTree(Db db)
+        public SecurePatriciaTree(InMemoryDb db)
             :base(db)
         {
         }

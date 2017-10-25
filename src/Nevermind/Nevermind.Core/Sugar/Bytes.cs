@@ -27,14 +27,14 @@ namespace Nevermind.Core.Sugar
                 int l = a1.Length;
                 for (int i = 0; i < l / 8; i++, x1 += 8, x2 += 8)
                 {
-                    if (*((long*) x1) != *((long*) x2))
+                    if (*((long*)x1) != *((long*)x2))
                     {
                         return false;
                     }
                 }
                 if ((l & 4) != 0)
                 {
-                    if (*((int*) x1) != *((int*) x2))
+                    if (*((int*)x1) != *((int*)x2))
                     {
                         return false;
                     }
@@ -43,7 +43,7 @@ namespace Nevermind.Core.Sugar
                 }
                 if ((l & 2) != 0)
                 {
-                    if (*((short*) x1) != *((short*) x2))
+                    if (*((short*)x1) != *((short*)x2))
                     {
                         return false;
                     }
@@ -59,6 +59,32 @@ namespace Nevermind.Core.Sugar
                 }
                 return true;
             }
+        }
+
+        public static bool IsZero(this byte[] bytes)
+        {
+            for (int i = 0; i < bytes.Length; i++)
+            {
+                if (bytes[i] != 0)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        public static byte[] WithoutLeadingZeros(this byte[] bytes)
+        {
+            for (int i = 0; i < bytes.Length; i++)
+            {
+                if (bytes[i] != 0)
+                {
+                    return bytes.Slice(i, bytes.Length - i);
+                }
+            }
+
+            return new byte[] { 0 };
         }
 
         public static byte[] Concat(byte prefix, byte[] bytes)

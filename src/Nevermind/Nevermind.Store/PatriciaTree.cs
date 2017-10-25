@@ -13,14 +13,14 @@ namespace Nevermind.Store
         /// </summary>
         public static readonly Keccak EmptyTreeHash = Keccak.Compute(new byte[] {128});
 
-        private readonly Db _db;
+        private readonly InMemoryDb _db;
 
-        public PatriciaTree(Db db)
+        public PatriciaTree(InMemoryDb db)
         {
             _db = db;
         }
 
-        public PatriciaTree(Keccak rootHash, Db db)
+        public PatriciaTree(Keccak rootHash, InMemoryDb db)
             : this(db)
         {
             RootHash = rootHash;
@@ -136,7 +136,12 @@ namespace Nevermind.Store
 
         public virtual void Set(Nibble[] nibbles, byte[] value)
         {
-            new TreeUpdate(this, nibbles, value).Run();
+            new TreeOperation(this, nibbles, value, true).Run();
+        }
+
+        public byte[] Get(byte[] rawKey)
+        {
+            return new TreeOperation(this, Nibbles.FromBytes(rawKey), null, false).Run();
         }
 
         public void Set(byte[] rawKey, byte[] value)

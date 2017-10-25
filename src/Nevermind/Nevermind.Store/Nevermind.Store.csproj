@@ -50,7 +50,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="BranchNode.cs" />
-    <Compile Include="Db.cs" />
+    <Compile Include="InMemoryDb.cs" />
     <Compile Include="ExtensionNode.cs" />
     <Compile Include="KeccakOrRlp.cs" />
     <Compile Include="LeafNode.cs" />
@@ -59,7 +59,8 @@
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="SecurePatriciaTree.cs" />
     <Compile Include="StateTree.cs" />
-    <Compile Include="TreeUpdate.cs" />
+    <Compile Include="StorageTree.cs" />
+    <Compile Include="TreeOperation.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />

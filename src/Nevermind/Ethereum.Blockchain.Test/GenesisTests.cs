@@ -52,12 +52,12 @@ namespace Ethereum.Blockchain.Test
         [TestCaseSource(nameof(LoadTests))]
         public void Test(GenesisTest test)
         {
-            Db stateDb = new Db();
+            InMemoryDb stateDb = new InMemoryDb();
             StateTree state = new StateTree(stateDb);
 
             foreach (KeyValuePair<Address, Allocation> allocation in test.Allocations)
             {
-                Db storageDb = new Db();
+                InMemoryDb storageDb = new InMemoryDb();
                 SecurePatriciaTree storage = new SecurePatriciaTree(storageDb);
 
                 Address address = allocation.Key;

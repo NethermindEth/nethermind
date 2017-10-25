@@ -13,12 +13,12 @@ namespace Ethereum.Trie.Test
 {
     public class TrieTests
     {
-        private Db _db;
+        private InMemoryDb _db;
 
         [SetUp]
         public void Setup()
         {
-            _db = new Db();
+            _db = new InMemoryDb();
         }
 
         [TearDown]

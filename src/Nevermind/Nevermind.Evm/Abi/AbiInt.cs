@@ -54,10 +54,7 @@ namespace Nevermind.Evm.Abi
         {
             if (arg is BigInteger input)
             {
-                return Core.Sugar.Bytes.PadLeft(
-                    input.ToBigEndianByteArray(false),
-                    Int.LengthInBytes,
-                    input < 0 ? (byte)0xff : (byte)0x00);
+                return input.ToBigEndianByteArray(false, 32);
             }
 
             throw new AbiException(AbiEncodingExceptionMessage);

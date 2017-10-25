@@ -7,14 +7,52 @@ using Nevermind.Core;
 using Nevermind.Core.Encoding;
 using Nevermind.Core.Sugar;
 using Nevermind.Evm;
+using Nevermind.Store;
 using Newtonsoft.Json;
 using NUnit.Framework;
 
 namespace Ethereum.VM.Test
 {
+    public class TestStorageProvider : IStorageProvider
+    {
+        private readonly InMemoryDb _db;
+
+        private readonly Dictionary<Address, StorageTree> _storages = new Dictionary<Address, StorageTree>();
+
+        public TestStorageProvider(InMemoryDb db)
+        {
+            _db = db;
+        }
+
+        public StorageTree GetStorage(Address address)
+        {
+            return _storages[address];
+        }
+
+        public StorageTree GetOrCreateStorage(Address address)
+        {
+            if (!_storages.ContainsKey(address))
+            {
+                _storages[address] = new StorageTree(_db);
+            }
+
+            return GetStorage(address);
+        }
+    }
+
     [TestFixture]
     public class ArithmeticTests
     {
+        [SetUp]
+        public void Setup()
+        {
+            _db = new InMemoryDb();
+            _storageProvider = new TestStorageProvider(_db);
+        }
+
+        private InMemoryDb _db;
+        private IStorageProvider _storageProvider;
+
         public static IEnumerable<ArithmeticTest> LoadTests(string testSet)
         {
             Directory.SetCurrentDirectory(AppDomain.CurrentDomain.BaseDirectory);
@@ -109,10 +147,34 @@ namespace Ethereum.VM.Test
             environment.Originator = test.Execution.Origin;
 
             MachineState state = new MachineState(test.Execution.Gas);
+            foreach (KeyValuePair<Address, AccountState> accountState in test.Pre)
+            {
+                StorageTree storageTree = _storageProvider.GetOrCreateStorage(accountState.Key);
+                foreach (KeyValuePair<BigInteger, byte[]> storageItem in accountState.Value.Storage)
+                {
+                    storageTree.Set(storageItem.Key, storageItem.Value);
+                }
+            }
 
-            byte[] result = machine.Run(environment, state);
+            if (test.Out == null)
+            {
+                Assert.That(() =>  machine.Run(environment, state, _storageProvider), Throws.Exception);
+                return;
+            }
+
+            byte[] result = machine.Run(environment, state, _storageProvider);
+
             Assert.True(Bytes.UnsafeCompare(test.Out, result));
             Assert.AreEqual(test.Gas, state.GasAvailable);
+            foreach (KeyValuePair<Address, AccountState> accountState in test.Post)
+            {
+                StorageTree storage = _storageProvider.GetStorage(accountState.Key);
+                foreach (KeyValuePair<BigInteger, byte[]> storageItem in accountState.Value.Storage)
+                {
+                    byte[] value = storage.Get(storageItem.Key);
+                    Assert.True(Bytes.UnsafeCompare(storageItem.Value, value), $"{Hex.FromBytes(storageItem.Value, true)} != {Hex.FromBytes(value, true)}");
+                }
+            }
         }
 
         public class ArithmeticTestJson
