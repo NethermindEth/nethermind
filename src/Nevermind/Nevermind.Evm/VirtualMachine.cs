@@ -1,9 +1,9 @@
 ﻿using System;
+using System.Collections;
 using System.Numerics;
 using Nevermind.Core;
 using Nevermind.Core.Sugar;
 using Nevermind.Store;
-using Numerics;
 
 namespace Nevermind.Evm
 {
@@ -47,7 +47,7 @@ namespace Nevermind.Evm
                     break;
                 }
 
-                Instruction instruction = (Instruction) code[(int) machineState.ProgramCounter];
+                Instruction instruction = (Instruction)code[(int)machineState.ProgramCounter];
                 if (instruction == Instruction.STOP)
                 {
                     break;
@@ -65,62 +65,62 @@ namespace Nevermind.Evm
                 switch (instruction)
                 {
                     case Instruction.STOP:
-                    {
-                        if (IsLogging)
                         {
-                            Console.WriteLine(instruction);
-                        }
+                            if (IsLogging)
+                            {
+                                Console.WriteLine(instruction);
+                            }
 
-                        stopExecution = true;
-                        break;
-                    }
+                            stopExecution = true;
+                            break;
+                        }
                     case Instruction.ADD:
-                    {
-                        machineState.GasAvailable -= GasCostOf.VeryLow;
-                        reg1 = PopUInt();
-                        reg2 = PopUInt();
-
-                        if (IsLogging)
                         {
-                            Console.WriteLine(instruction);
-                        }
+                            machineState.GasAvailable -= GasCostOf.VeryLow;
+                            reg1 = PopUInt();
+                            reg2 = PopUInt();
 
-                        stack.Push(BigInteger.ModPow(reg1 + reg2, 1, P256Int).ToBigEndianByteArray());
-                        break;
-                    }
+                            if (IsLogging)
+                            {
+                                Console.WriteLine(instruction);
+                            }
+
+                            stack.Push(BigInteger.ModPow(reg1 + reg2, 1, P256Int).ToBigEndianByteArray());
+                            break;
+                        }
                     case Instruction.MUL:
-                    {
-                        machineState.GasAvailable -= GasCostOf.Low;
-                        reg1 = PopUInt();
-                        reg2 = PopUInt();
-
-                        if (IsLogging)
                         {
-                            Console.WriteLine(instruction);
-                        }
+                            machineState.GasAvailable -= GasCostOf.Low;
+                            reg1 = PopUInt();
+                            reg2 = PopUInt();
 
-                        stack.Push(BigInteger.ModPow(reg1 * reg2, 1, P256Int).ToBigEndianByteArray());
-                        break;
-                    }
+                            if (IsLogging)
+                            {
+                                Console.WriteLine(instruction);
+                            }
+
+                            stack.Push(BigInteger.ModPow(reg1 * reg2, 1, P256Int).ToBigEndianByteArray());
+                            break;
+                        }
                     case Instruction.SUB:
-                    {
-                        machineState.GasAvailable -= GasCostOf.VeryLow;
-                        reg1 = PopUInt();
-                        reg2 = PopUInt();
-                        BigInteger res = reg1 - reg2;
-                        if (res < 0)
                         {
-                            res += P256Int;
-                        }
+                            machineState.GasAvailable -= GasCostOf.VeryLow;
+                            reg1 = PopUInt();
+                            reg2 = PopUInt();
+                            BigInteger res = reg1 - reg2;
+                            if (res < 0)
+                            {
+                                res += P256Int;
+                            }
 
-                        if (IsLogging)
-                        {
-                            Console.WriteLine(instruction);
-                        }
+                            if (IsLogging)
+                            {
+                                Console.WriteLine(instruction);
+                            }
 
-                        stack.Push(res.ToBigEndianByteArray());
-                        break;
-                    }
+                            stack.Push(res.ToBigEndianByteArray());
+                            break;
+                        }
                     case Instruction.DIV:
                         machineState.GasAvailable -= GasCostOf.Low;
                         reg1 = PopUInt();
@@ -254,13 +254,30 @@ namespace Nevermind.Evm
                         }
                         break;
                     case Instruction.SIGNEXTEND:
+                        machineState.GasAvailable -= GasCostOf.Low;
                         byte1 = PopBytes();
-                        byte2 = PopBytes();
+                        byte2 = Bytes.PadLeft(PopBytes(), 32);
                         if (IsLogging)
                         {
                             Console.WriteLine(instruction);
                         }
-                        throw new NotImplementedException();
+
+                        BitArray bitArray = new BitArray(256);
+                        for (int i = 0; i < 256; i++)
+                        {
+                            bitArray[i] = byte2[i / 8].GetBit(i % 8);
+                        }
+
+                        int bitNumber = (int)BigInteger.Max(0, 256 - 8 * (byte1.ToUnsignedBigInteger() + 1));
+                        bool isSet = bitArray[bitNumber];
+                        for (int i = 0; i < bitNumber; i++)
+                        {
+                            bitArray[i] = isSet;
+                        }
+
+                        byte[] extended = bitArray.ToBigEndianBytes();
+                        stack.Push(extended.WithoutLeadingZeros());
+                        break;
                     case Instruction.LT:
                         machineState.GasAvailable -= GasCostOf.VeryLow;
                         reg1 = PopUInt();
@@ -341,7 +358,7 @@ namespace Nevermind.Evm
 
                         for (int i = 0; i <= 255; ++i)
                         {
-                            byte1[i] = (byte) (byte1[i] & byte2[i]);
+                            byte1[i] = (byte)(byte1[i] & byte2[i]);
                         }
 
                         stack.Push(byte1);
@@ -357,7 +374,7 @@ namespace Nevermind.Evm
 
                         for (int i = 0; i <= 255; ++i)
                         {
-                            byte1[i] = (byte) (byte1[i] | byte2[i]);
+                            byte1[i] = (byte)(byte1[i] | byte2[i]);
                         }
 
                         stack.Push(byte1);
@@ -373,7 +390,7 @@ namespace Nevermind.Evm
 
                         for (int i = 0; i <= 255; ++i)
                         {
-                            byte1[i] = (byte) (byte1[i] % byte2[i]);
+                            byte1[i] = (byte)(byte1[i] % byte2[i]);
                         }
 
                         stack.Push(byte1);
@@ -388,7 +405,7 @@ namespace Nevermind.Evm
 
                         for (int i = 0; i < 32; ++i)
                         {
-                            byte1[i] = (byte) ~byte1[i];
+                            byte1[i] = (byte)~byte1[i];
                         }
 
                         stack.Push(byte1);
@@ -404,7 +421,7 @@ namespace Nevermind.Evm
                         break;
                     case Instruction.MLOAD:
                         machineState.GasAvailable -= GasCostOf.VeryLow;
-                        reg1 = PopUInt();                        
+                        reg1 = PopUInt();
                         if (IsLogging)
                         {
                             Console.WriteLine(instruction);
@@ -443,6 +460,74 @@ namespace Nevermind.Evm
                         machineState.GasAvailable -=
                             CalculateMemoryCost(machineState.ActiveWordsInMemory, newActiveWordsS);
                         machineState.ActiveWordsInMemory = newActiveWordsS;
+                        break;
+                    case Instruction.SLOAD:
+                        machineState.GasAvailable -= GasCostOf.SLoad;
+                        BigInteger storagePositionLoad = PopInt();
+                        if (IsLogging)
+                        {
+                            Console.WriteLine(instruction);
+                        }
+
+                        Address accountAddressLoad = executionEnvironment.CodeOwner;
+                        StorageTree treeLoad = storageProvider.GetStorage(accountAddressLoad);
+                        stack.Push(treeLoad.Get(storagePositionLoad));
+                        break;
+                    case Instruction.SSTORE:
+                        BigInteger storagePosition = PopInt();
+                        byte[] storageData = PopBytes();
+                        if (IsLogging)
+                        {
+                            Console.WriteLine(instruction);
+                        }
+
+                        Address accountAddress = executionEnvironment.CodeOwner;
+                        StorageTree tree = storageProvider.GetStorage(accountAddress);
+                        byte[] previousValue = tree.Get(storagePosition);
+                        if (!storageData.IsZero() && !Bytes.UnsafeCompare(storageData, previousValue))
+                        {
+                            tree.Set(storagePosition, storageData);
+                            machineState.GasAvailable -= GasCostOf.SSet;
+                        }
+                        else
+                        {
+                            machineState.GasAvailable -= GasCostOf.SReset;
+                        }
+
+                        // update account storage
+                        break;
+                    case Instruction.JUMP:
+                        machineState.GasAvailable -= GasCostOf.Mid;
+                        reg1 = PopUInt();
+                        if (IsLogging)
+                        {
+                            Console.WriteLine(instruction);
+                        }
+
+                        machineState.ProgramCounter = reg1;
+
+                        break;
+                    case Instruction.JUMPI:
+                        machineState.GasAvailable -= GasCostOf.High;
+                        reg1 = PopUInt();
+                        reg2 = PopUInt();
+                        if (IsLogging)
+                        {
+                            Console.WriteLine(instruction);
+                        }
+
+                        if (reg2 > 0)
+                        {
+                            machineState.ProgramCounter = reg1;
+                        }
+
+                        break;
+                    case Instruction.JUMPDEST:
+                        machineState.GasAvailable -= GasCostOf.JumpDest;
+                        if (IsLogging)
+                        {
+                            Console.WriteLine(instruction);
+                        }
                         break;
                     case Instruction.PUSH1:
                     case Instruction.PUSH2:
@@ -483,7 +568,7 @@ namespace Nevermind.Evm
                         }
 
                         int bytesToPush = instruction - Instruction.PUSH1 + 1;
-                        stack.Push(code.Slice((int) machineState.ProgramCounter, bytesToPush));
+                        stack.Push(code.Slice((int)machineState.ProgramCounter, bytesToPush));
                         machineState.ProgramCounter += bytesToPush;
                         break;
                     case Instruction.DUP1:
@@ -562,41 +647,6 @@ namespace Nevermind.Evm
                         stack.Push(tempSwapItems[swapDepth - 1]);
 
                         break;
-                    case Instruction.SLOAD:
-                        machineState.GasAvailable -= GasCostOf.SLoad;
-                        BigInteger storagePositionLoad = PopInt();
-                        if (IsLogging)
-                        {
-                            Console.WriteLine(instruction);
-                        }
-
-                        Address accountAddressLoad = executionEnvironment.CodeOwner;
-                        StorageTree treeLoad = storageProvider.GetStorage(accountAddressLoad);
-                        stack.Push(treeLoad.Get(storagePositionLoad));
-                        break;
-                    case Instruction.SSTORE:
-                        BigInteger storagePosition = PopInt();
-                        byte[] storageData = PopBytes();
-                        if (IsLogging)
-                        {
-                            Console.WriteLine(instruction);
-                        }
-
-                        Address accountAddress = executionEnvironment.CodeOwner;
-                        StorageTree tree = storageProvider.GetStorage(accountAddress);
-                        byte[] previousValue = tree.Get(storagePosition);
-                        if (!storageData.IsZero() && !Bytes.UnsafeCompare(storageData, previousValue))
-                        {
-                            tree.Set(storagePosition, storageData);
-                            machineState.GasAvailable -= GasCostOf.SSet;
-                        }
-                        else
-                        {
-                            machineState.GasAvailable -= GasCostOf.SReset;
-                        }
-
-                        // update account storage
-                        break;
                     case Instruction.RETURN:
                         machineState.GasAvailable -= GasCostOf.Zero;
                         reg1 = PopUInt();
@@ -606,7 +656,7 @@ namespace Nevermind.Evm
                             Console.WriteLine(instruction);
                         }
 
-                        return machineState.Memory.Load(reg1, reg2);                        
+                        return machineState.Memory.Load(reg1, reg2);
                     default:
                         if (IsLogging)
                         {

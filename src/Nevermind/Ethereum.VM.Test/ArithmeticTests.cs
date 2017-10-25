@@ -172,7 +172,7 @@ namespace Ethereum.VM.Test
                 foreach (KeyValuePair<BigInteger, byte[]> storageItem in accountState.Value.Storage)
                 {
                     byte[] value = storage.Get(storageItem.Key);
-                    Assert.True(Bytes.UnsafeCompare(storageItem.Value, value), $"{Hex.FromBytes(storageItem.Value, true)} != {Hex.FromBytes(value, true)}");
+                    Assert.True(Bytes.UnsafeCompare(storageItem.Value, value), $"Exp: {Hex.FromBytes(storageItem.Value, true)} != Actual: {Hex.FromBytes(value, true)}");
                 }
             }
         }

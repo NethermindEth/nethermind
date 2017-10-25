@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections;
 using System.Numerics;
 
 namespace Nevermind.Core.Sugar
@@ -9,6 +10,16 @@ namespace Nevermind.Core.Sugar
         {
             Big,
             Little
+        }
+
+        public static bool GetBit(this byte b, int bitNumber, Endianness endianness = Endianness.Big)
+        {
+            if (endianness == Endianness.Big)
+            {
+                return (b & (1 << (7 - bitNumber))) != 0;
+            }
+
+            return (b & (1 << bitNumber)) != 0;
         }
 
         public static unsafe bool UnsafeCompare(byte[] a1, byte[] a2)
@@ -203,6 +214,22 @@ namespace Nevermind.Core.Sugar
             bytes = PadRight(bytes, 8);
             ulong result = BitConverter.ToUInt64(bytes, 0);
             return result;
+        }
+
+        public static byte[] ToBigEndianBytes(this BitArray bits)
+        {
+            if (bits.Length % 8 != 0)
+            {
+                throw new ArgumentException(nameof(bits));
+            }
+
+            byte[] bytes = new byte[bits.Length / 8];
+            for (int i = 0; i < bits.Length; i++)
+            {
+                bytes[i / 8] += (byte)((bits[i] ? 1 : 0) * Pow2.To(7 - i % 8));
+            }
+
+            return bytes;
         }
     }
 }
