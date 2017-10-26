@@ -1,12 +1,14 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿using NUnit.Framework;
 
 namespace Ethereum.VM.Test
 {
-    class LogTests
+    [TestFixture]
+    public class LogTests : TestsBase
     {
+        [TestCaseSource(nameof(LoadTests), new object[] {"LogTest"})]
+        public void Test(VirtualMachineTest test)
+        {
+            RunTest(test);
+        }
     }
 }

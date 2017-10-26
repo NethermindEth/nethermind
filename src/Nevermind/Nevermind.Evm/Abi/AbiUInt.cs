@@ -54,17 +54,17 @@ namespace Nevermind.Evm.Abi
         {
             if (arg is BigInteger input)
             {
-                return Bytes.PadLeft(input.ToBigEndianByteArray(), UInt.LengthInBytes);
+                return input.ToBigEndianByteArray().PadLeft(UInt.LengthInBytes);
             }
 
             if (arg is int intInput)
             {
-                return Bytes.PadLeft(intInput.ToBigEndianByteArray(), UInt.LengthInBytes);
+                return intInput.ToBigEndianByteArray().PadLeft(UInt.LengthInBytes);
             }
 
             if (arg is long longInput)
             {
-                return Bytes.PadLeft(longInput.ToBigEndianByteArray(), UInt.LengthInBytes);
+                return longInput.ToBigEndianByteArray().PadLeft(UInt.LengthInBytes);
             }
 
             throw new AbiException(AbiEncodingExceptionMessage);

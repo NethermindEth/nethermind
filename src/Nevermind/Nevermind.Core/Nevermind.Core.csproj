@@ -89,7 +89,6 @@
     <Compile Include="Validators\BlockHeaderValidator.cs" />
     <Compile Include="Validators\BlockValidator.cs" />
     <Compile Include="Encoding\Bloom.cs" />
-    <Compile Include="VirtualMachine\FeeSchedule.cs" />
     <Compile Include="Encoding\HexPrefix.cs" />
     <Compile Include="Encoding\Hex.cs" />
     <Compile Include="Sugar\IntExtensions.cs" />

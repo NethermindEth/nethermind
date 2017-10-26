@@ -62,9 +62,20 @@ namespace Nevermind.Evm
 
         public (byte[], BigInteger) Load(BigInteger location, BigInteger length)
         {
-            byte[] bytes = _memory.Slice((int) location, Math.Min((int) length, _memory.Length - (int) location))
-                .PadRight((int) length);
+            if (length == BigInteger.Zero)
+            {
+                return (new byte[0], _activeWordsInMemory);
+            }
+
             _activeWordsInMemory = BigInteger.Max(_activeWordsInMemory, Div32Ceiling(location + length));
+
+            if (location > _memory.Length)
+            {
+                return (new byte[(int)length], _activeWordsInMemory);
+            }
+
+            byte[] bytes = _memory.Slice((int) location, (int)BigInteger.Max(0, BigInteger.Min(length, _memory.Length - location)))
+                .PadRight((int) length);
             return (bytes, _activeWordsInMemory);
         }
     }

@@ -135,7 +135,7 @@ namespace Nevermind.Core.Sugar
         {
             if (bytes.Length == length)
             {
-                return bytes;
+                return (byte[])bytes.Clone();
             }
 
             byte[] result = new byte[length];
@@ -180,13 +180,24 @@ namespace Nevermind.Core.Sugar
 
         public static BigInteger ToUnsignedBigInteger(this byte[] bytes, Endianness endianness = Endianness.Big)
         {
+            byte[] unsignedResult = new byte[bytes.Length + 1];
+
             if (BitConverter.IsLittleEndian && endianness == Endianness.Big)
             {
-                bytes = Reverse(bytes);
+                for (int i = 0; i < bytes.Length; i++)
+                {
+                    unsignedResult[bytes.Length - i - 1] = bytes[i];
+                }
+            }
+            else
+            {
+                for (int i = 0; i < bytes.Length; i++)
+                {
+                    unsignedResult[i] = bytes[i];
+                }
             }
 
-            byte[] unsigned = Concat(bytes, 0);
-            return new BigInteger(unsigned);
+            return new BigInteger(unsignedResult);
         }
 
         public static BigInteger ToSignedBigInteger(this byte[] bytes, Endianness endianness = Endianness.Big)

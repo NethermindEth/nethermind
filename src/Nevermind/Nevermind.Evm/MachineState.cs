@@ -5,7 +5,7 @@ namespace Nevermind.Evm
 {
     public class MachineState
     {
-        private const bool IsLogging = true;
+        private const bool IsLogging = false;
 
         public MachineState(BigInteger gasAvailable)
         {
