@@ -333,14 +333,14 @@ namespace Nevermind.Store
                 return TraverseNode(nextNode);
             }
 
-            if (_updateValue == null)
-            {
-                throw new InvalidOperationException("Could find the leaf node to delete: {Hex.FromBytes(_updatePath, false)}");
-            }
-
             if (!_isUpdate)
             {
                 return null;
+            }
+
+            if (_updateValue == null)
+            {
+                throw new InvalidOperationException("Could find the leaf node to delete: {Hex.FromBytes(_updatePath, false)}");
             }
 
             if (extensionLength != 0)

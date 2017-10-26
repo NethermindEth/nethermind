@@ -18,6 +18,7 @@ namespace Ethereum.VM.Test
         private InMemoryDb _db;
         private IStorageProvider _storageProvider;
         private IBlockhashProvider _blockhashProvider;
+        private IWorldStateProvider _stateProvider;
 
         [SetUp]
         public void Setup()
@@ -25,6 +26,7 @@ namespace Ethereum.VM.Test
             _db = new InMemoryDb();
             _storageProvider = new TestStorageProvider(_db);
             _blockhashProvider = new TestBlockhashProvider();
+            _stateProvider = new TestWorldStateProvider(new StateTree(_db));
         }
 
         public static IEnumerable<VirtualMachineTest> LoadTests(string testSet)
@@ -61,7 +63,7 @@ namespace Ethereum.VM.Test
         {
             AccountState state = new AccountState();
             state.Balance = Hex.ToBytes(accountStateJson.Balance).ToUnsignedBigInteger();
-            state.Code = Hex.ToBytes(accountStateJson.Balance);
+            state.Code = Hex.ToBytes(accountStateJson.Code);
             state.Nonce = Hex.ToBytes(accountStateJson.Balance).ToUnsignedBigInteger();
             state.Storage = accountStateJson.Storage.ToDictionary(
                 p => Hex.ToBytes(p.Key).ToUnsignedBigInteger(),
@@ -141,22 +143,31 @@ namespace Ethereum.VM.Test
                 {
                     storageTree.Set(storageItem.Key, storageItem.Value);
                 }
+
+                storageTree.SetCode(accountState.Value.Code);
+
+                Account account = new Account();
+                account.Balance = accountState.Value.Balance;
+                account.Nonce = accountState.Value.Nonce;
+                account.StorageRoot = storageTree.RootHash;
+                account.CodeHash = Keccak.Compute(accountState.Value.Code);
+                _stateProvider.State.Set(accountState.Key, Rlp.Encode(account));
             }
 
             if (test.Out == null)
             {
-                Assert.That(() => machine.Run(environment, state, _storageProvider, _blockhashProvider), Throws.Exception);
+                Assert.That(() => machine.Run(environment, state, _storageProvider, _blockhashProvider, _stateProvider), Throws.Exception);
                 return;
             }
 
-            byte[] result = machine.Run(environment, state, _storageProvider, _blockhashProvider);
+            byte[] result = machine.Run(environment, state, _storageProvider, _blockhashProvider, _stateProvider);
 
             Assert.True(Bytes.UnsafeCompare(test.Out, result),
                 $"Exp: {Hex.FromBytes(test.Out, true)} != Actual: {Hex.FromBytes(result, true)}");
             Assert.AreEqual(test.Gas, state.GasAvailable);
             foreach (KeyValuePair<Address, AccountState> accountState in test.Post)
             {
-                StorageTree storage = _storageProvider.GetStorage(accountState.Key);
+                StorageTree storage = _storageProvider.GetOrCreateStorage(accountState.Key);
                 foreach (KeyValuePair<BigInteger, byte[]> storageItem in accountState.Value.Storage)
                 {
                     byte[] value = storage.Get(storageItem.Key);

@@ -69,11 +69,13 @@
     <Compile Include="Instruction.cs" />
     <Compile Include="InstructionCostCalculator.cs" />
     <Compile Include="IStorageProvider.cs" />
+    <Compile Include="IWorldStateProvider.cs" />
     <Compile Include="MachineState.cs" />
     <Compile Include="TransactionProcessor.cs" />
     <Compile Include="TransactionSubstate.cs" />
     <Compile Include="VirtualMachine.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="WorldStateProvider.cs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Nevermind.Core\Nevermind.Core.csproj">

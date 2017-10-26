@@ -14,12 +14,13 @@ namespace Nevermind.Core.Encoding
         private static readonly Dictionary<RuntimeTypeHandle, IRlpDecoder> Decoders =
             new Dictionary<RuntimeTypeHandle, IRlpDecoder>
             {
-                [typeof(Transaction).TypeHandle] = new TransactionDecoder()
+                [typeof(Transaction).TypeHandle] = new TransactionDecoder(),
+                [typeof(Account).TypeHandle] = new AccountDecoder()
             };
 
         public Rlp(byte singleByte)
         {
-            Bytes = new[] {singleByte};
+            Bytes = new[] { singleByte };
         }
 
         public Rlp(byte[] bytes)

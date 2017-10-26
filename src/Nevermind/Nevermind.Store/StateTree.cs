@@ -1,5 +1,4 @@
-﻿using System;
-using Nevermind.Core;
+﻿using Nevermind.Core;
 using Nevermind.Core.Encoding;
 
 namespace Nevermind.Store
@@ -16,7 +15,7 @@ namespace Nevermind.Store
 
         public Rlp Get(Address address)
         {
-            throw new NotImplementedException();
+            return new Rlp(Get(Keccak.Compute((byte[])address.Hex).Bytes));
         }
 
         public void Set(Address address, Rlp rlp)

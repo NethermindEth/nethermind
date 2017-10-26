@@ -10,9 +10,12 @@ namespace Nevermind.Core
         public static BigInteger Low = 5;
         public static BigInteger Mid = 8;
         public static BigInteger High = 10;
-        public static BigInteger ExtCode = 700;
-        public static BigInteger Balance = 400;
-        public static BigInteger SLoad = 200;
+        //public static BigInteger ExtCode = 700;
+        public static BigInteger ExtCode = 20;
+        //public static BigInteger Balance = 400;
+        public static BigInteger Balance = 20;
+        //public static BigInteger SLoad = 200;
+        public static BigInteger SLoad = 50;
         public static BigInteger JumpDest = 1;
         public static BigInteger SSet = 20000;
         public static BigInteger SReset = 5000;
