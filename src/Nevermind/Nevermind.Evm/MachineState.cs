@@ -1,9 +1,12 @@
+using System;
 using System.Numerics;
 
 namespace Nevermind.Evm
 {
     public class MachineState
     {
+        private const bool IsLogging = true;
+
         public MachineState(BigInteger gasAvailable)
         {
             GasAvailable = gasAvailable;
@@ -12,7 +15,19 @@ namespace Nevermind.Evm
         public BigInteger GasAvailable { get; set; }
         public BigInteger ProgramCounter { get; set; }
         public EvmMemory Memory { get; set; } = new EvmMemory();
-        public BigInteger ActiveWordsInMemory { get; set; }
+        private BigInteger _activeWordsInMemory;
+        public BigInteger ActiveWordsInMemory
+        {
+            get => _activeWordsInMemory;
+            set
+            {
+                _activeWordsInMemory = value;
+                if (IsLogging)
+                {
+                    Console.WriteLine($"MEMORY SIZE CHANGED TO {value}");
+                }
+            }
+        }
         public EvmStack Stack { get; set; } = new EvmStack();
     }
 }

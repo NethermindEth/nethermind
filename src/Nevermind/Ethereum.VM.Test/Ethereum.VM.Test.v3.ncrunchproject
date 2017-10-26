@@ -25,6 +25,9 @@
       <FixtureTestSelector>
         <FixtureName>Ethereum.VM.Test.RandomTests</FixtureName>
       </FixtureTestSelector>
+      <NamedTestSelector>
+        <TestName>Ethereum.VM.Test.OtherTests.Test(suicide)</TestName>
+      </NamedTestSelector>
     </IgnoredTests>
   </Settings>
 </ProjectConfiguration>
