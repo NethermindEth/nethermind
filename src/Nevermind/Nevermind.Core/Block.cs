@@ -13,7 +13,7 @@ namespace Nevermind.Core
             Transactions = transactions;
         }
 
-        public BlockHeader Header { get; }
+        public BlockHeader Header { get; set; }
         public Transaction[] Transactions { get; }
         public BlockHeader[] Ommers { get; }
         public BigInteger TotalDifficulty => Header.Difficulty + (Parent?.TotalDifficulty ?? 0);

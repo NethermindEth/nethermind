@@ -1,12 +1,13 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿using NUnit.Framework;
 
 namespace Ethereum.VM.Test
 {
-    class PerformanceTests
+    public class PerformanceTests : TestsBase
     {
+        [TestCaseSource(nameof(LoadTests), new object[] {"Performance"})]
+        public void Test(VirtualMachineTest test)
+        {
+            RunTest(test);
+        }
     }
 }

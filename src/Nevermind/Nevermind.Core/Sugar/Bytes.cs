@@ -12,14 +12,9 @@ namespace Nevermind.Core.Sugar
             Little
         }
 
-        public static bool GetBit(this byte b, int bitNumber, Endianness endianness = Endianness.Big)
+        public static bool GetBit(this byte b, int bitNumber)
         {
-            if (endianness == Endianness.Big)
-            {
-                return (b & (1 << (7 - bitNumber))) != 0;
-            }
-
-            return (b & (1 << bitNumber)) != 0;
+            return (b & (1 << (7 - bitNumber))) != 0;
         }
 
         public static unsafe bool UnsafeCompare(byte[] a1, byte[] a2)
@@ -115,11 +110,11 @@ namespace Nevermind.Core.Sugar
             return output;
         }
 
-        public static byte[] PadLeft(byte[] bytes, int length, byte padding = 0)
+        public static byte[] PadLeft(this byte[] bytes, int length, byte padding = 0)
         {
             if (bytes.Length == length)
             {
-                return bytes;
+                return (byte[])bytes.Clone();
             }
 
             byte[] result = new byte[length];
@@ -136,7 +131,7 @@ namespace Nevermind.Core.Sugar
             return result;
         }
 
-        public static byte[] PadRight(byte[] bytes, int length)
+        public static byte[] PadRight(this byte[] bytes, int length)
         {
             if (bytes.Length == length)
             {
@@ -216,7 +211,7 @@ namespace Nevermind.Core.Sugar
             return result;
         }
 
-        public static byte[] ToBigEndianBytes(this BitArray bits)
+        public static byte[] ToBytes(this BitArray bits)
         {
             if (bits.Length % 8 != 0)
             {
@@ -226,10 +221,25 @@ namespace Nevermind.Core.Sugar
             byte[] bytes = new byte[bits.Length / 8];
             for (int i = 0; i < bits.Length; i++)
             {
-                bytes[i / 8] += (byte)((bits[i] ? 1 : 0) * Pow2.To(7 - i % 8));
+                if (bits[i])
+                {
+                    bytes[i / 8] |= (byte)(1 << (7 - i % 8));
+                }
             }
 
             return bytes;
+        }
+
+        public static BitArray ToBigEndianBitArray256(this byte[] bytes)
+        {
+            BitArray bitArray = new BitArray(256);
+            int startIndex = 256 - bytes.Length * 8;
+            for (int i = startIndex; i < 256; i++)
+            {
+                bitArray[i] = bytes[(i - startIndex) / 8].GetBit(i % 8);
+            }
+
+            return bitArray;
         }
     }
 }

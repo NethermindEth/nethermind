@@ -54,7 +54,7 @@ namespace Nevermind.Evm
 
         public (byte[], BigInteger) Load(BigInteger location)
         {
-            byte[] word = _memory.Slice((int)location, WordSize);
+            byte[] word = _memory.Slice((int)location, Math.Min(WordSize, _memory.Length - (int)location)).PadRight(32);
             BigInteger rem;
             BigInteger newActiveWords = BigInteger.Max(_activeWordsInMemory, BigInteger.DivRem(location + WordSize, WordSize, out rem));
             return (word, newActiveWords + rem > 0 ? 1 : 0);
@@ -62,7 +62,8 @@ namespace Nevermind.Evm
 
         public byte[] Load(BigInteger location, BigInteger length)
         {
-            return _memory.Slice((int)location, (int)length);
+            // TODO: harmful with big length values?
+            return _memory.Slice((int)location, Math.Min((int)length, _memory.Length - (int)location)).PadRight((int)length);
         }
     }
 }

@@ -23,10 +23,7 @@ namespace Nevermind.Core.Sugar
 
             if (result.Length < length)
             {
-                return Bytes.PadLeft(
-                    result,
-                    length,
-                    bigInteger < 0 ? (byte)0xff : (byte)0x00);
+                return result.PadLeft(length, bigInteger < 0 ? (byte)0xff : (byte)0x00);
             }
 
             return result;

@@ -74,7 +74,6 @@
     <Compile Include="Sugar\ByteArrayExtensions.cs" />
     <Compile Include="Sugar\Bytes.cs" />
     <Compile Include="Sugar\Nibbles.cs" />
-    <Compile Include="Sugar\Pow2.cs" />
     <Compile Include="Sugar\ShortExtensions.cs" />
     <Compile Include="Sugar\Int64Extensions.cs" />
     <Compile Include="Sugar\UInt64Extensions.cs" />

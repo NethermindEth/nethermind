@@ -71,6 +71,10 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="AbiTests.cs" />
+    <Compile Include="BitwiseLogicTests.cs" />
+    <Compile Include="TestBlockhashProvider.cs" />
+    <Compile Include="TestsBase.cs" />
+    <Compile Include="TestStorageProvider.cs" />
     <Compile Include="ArithmeticTests.cs" />
     <Compile Include="BlockInfoTests.cs" />
     <Compile Include="EnvironmentalInfoTests.cs" />
@@ -79,7 +83,6 @@
     <Compile Include="OtherTests.cs" />
     <Compile Include="PerformanceTests.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
-    <Compile Include="BitwiseLogicTests.cs" />
     <Compile Include="PushDupSwapTests.cs" />
     <Compile Include="RandomTests.cs" />
     <Compile Include="Sha3Tests.cs" />

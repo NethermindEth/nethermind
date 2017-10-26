@@ -23,8 +23,12 @@ namespace Nevermind.Evm
             throw new NotImplementedException();
         }
 
-        public TransactionReceipt Execute(TransactionSubstate substate, Address sender, Transaction transaction,
-            BlockHeader block, BigInteger blockGasUsedSoFar)
+        public TransactionReceipt Execute(
+            TransactionSubstate substate,
+            Address sender,
+            Transaction transaction,
+            BlockHeader block,
+            BigInteger blockGasUsedSoFar)
         {
             if (sender == null)
             {

@@ -1,0 +1,30 @@
+﻿<ProjectConfiguration>
+  <Settings>
+    <IgnoredTests>
+      <NamedTestSelector>
+        <TestName>Ethereum.VM.Test.BlockInfoTests.Test(blockhash258Block)</TestName>
+      </NamedTestSelector>
+      <NamedTestSelector>
+        <TestName>Ethereum.VM.Test.BlockInfoTests.Test(blockhash257Block)</TestName>
+      </NamedTestSelector>
+      <NamedTestSelector>
+        <TestName>Ethereum.VM.Test.BlockInfoTests.Test(blockhashMyBlock)</TestName>
+      </NamedTestSelector>
+      <NamedTestSelector>
+        <TestName>Ethereum.VM.Test.BlockInfoTests.Test(blockhashNotExistingBlock)</TestName>
+      </NamedTestSelector>
+      <FixtureTestSelector>
+        <FixtureName>Ethereum.VM.Test.PerformanceTests</FixtureName>
+      </FixtureTestSelector>
+      <FixtureTestSelector>
+        <FixtureName>Ethereum.VM.Test.Sha3Tests</FixtureName>
+      </FixtureTestSelector>
+      <FixtureTestSelector>
+        <FixtureName>Ethereum.VM.Test.SystemTests</FixtureName>
+      </FixtureTestSelector>
+      <FixtureTestSelector>
+        <FixtureName>Ethereum.VM.Test.RandomTests</FixtureName>
+      </FixtureTestSelector>
+    </IgnoredTests>
+  </Settings>
+</ProjectConfiguration>

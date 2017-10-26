@@ -60,10 +60,12 @@
     <Compile Include="Abi\AbiUFixed.cs" />
     <Compile Include="Abi\AbiUInt.cs" />
     <Compile Include="Abi\AbiAddress.cs" />
+    <Compile Include="BlockhashProvider.cs" />
     <Compile Include="EvmMemory.cs" />
     <Compile Include="EvmStack.cs" />
     <Compile Include="ExecutionEnvironment.cs" />
     <Compile Include="Abi\AbiFixedLengthArray.cs" />
+    <Compile Include="IBlockhashProvider.cs" />
     <Compile Include="Instruction.cs" />
     <Compile Include="InstructionCostCalculator.cs" />
     <Compile Include="IStorageProvider.cs" />
