@@ -6,7 +6,7 @@ namespace Nevermind.Evm
 {
     public class EvmStack
     {
-        private const bool IsLogging = true;
+        private const bool IsLogging = false;
 
         public const int MaxSize = 1024;
 

@@ -26,7 +26,7 @@ namespace Ethereum.VM.Test
             _db = new InMemoryDb();
             _storageProvider = new TestStorageProvider(_db);
             _blockhashProvider = new TestBlockhashProvider();
-            _stateProvider = new TestWorldStateProvider(new StateTree(_db));
+            _stateProvider = new WorldStateProvider(new StateTree(_db));
         }
 
         public static IEnumerable<VirtualMachineTest> LoadTests(string testSet)
@@ -135,7 +135,7 @@ namespace Ethereum.VM.Test
             environment.MachineCode = test.Execution.Code;
             environment.Originator = test.Execution.Origin;
 
-            MachineState state = new MachineState(test.Execution.Gas);
+            MachineState state = new MachineState((long)test.Execution.Gas);
             foreach (KeyValuePair<Address, AccountState> accountState in test.Pre)
             {
                 StorageTree storageTree = _storageProvider.GetOrCreateStorage(accountState.Key);
@@ -160,10 +160,10 @@ namespace Ethereum.VM.Test
                 return;
             }
 
-            byte[] result = machine.Run(environment, state, _storageProvider, _blockhashProvider, _stateProvider);
+            (byte[] output, TransactionSubstate substate) = machine.Run(environment, state, _storageProvider, _blockhashProvider, _stateProvider);
 
-            Assert.True(Bytes.UnsafeCompare(test.Out, result),
-                $"Exp: {Hex.FromBytes(test.Out, true)} != Actual: {Hex.FromBytes(result, true)}");
+            Assert.True(Bytes.UnsafeCompare(test.Out, output),
+                $"Exp: {Hex.FromBytes(test.Out, true)} != Actual: {Hex.FromBytes(output, true)}");
             Assert.AreEqual(test.Gas, state.GasAvailable);
             foreach (KeyValuePair<Address, AccountState> accountState in test.Post)
             {

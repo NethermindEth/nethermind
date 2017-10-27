@@ -43,12 +43,12 @@ namespace Nevermind.Evm
         {
             if (_memory.Length < location + value.Length)
             {
-                Expand((int) location + value.Length);
+                Expand((int)location + value.Length);
             }
 
             for (int i = 0; i < value.Length; i++)
             {
-                _memory[(int) location + i] = value[i];
+                _memory[(int)location + i] = value[i];
             }
 
             _activeWordsInMemory = BigInteger.Max(_activeWordsInMemory, Div32Ceiling(location + value.Length));
@@ -60,7 +60,7 @@ namespace Nevermind.Evm
             return Load(location, WordSize);
         }
 
-        public (byte[], BigInteger) Load(BigInteger location, BigInteger length)
+        public (byte[], BigInteger) Load(BigInteger location, BigInteger length, bool allowInvalidLocations = true)
         {
             if (length == BigInteger.Zero)
             {
@@ -69,13 +69,13 @@ namespace Nevermind.Evm
 
             _activeWordsInMemory = BigInteger.Max(_activeWordsInMemory, Div32Ceiling(location + length));
 
-            if (location > _memory.Length)
+            if (allowInvalidLocations && location > _memory.Length)
             {
                 return (new byte[(int)length], _activeWordsInMemory);
             }
 
-            byte[] bytes = _memory.Slice((int) location, (int)BigInteger.Max(0, BigInteger.Min(length, _memory.Length - location)))
-                .PadRight((int) length);
+            byte[] bytes = _memory.Slice((int)location, (int)BigInteger.Max(0, BigInteger.Min(length, _memory.Length - location)))
+                .PadRight((int)length);
             return (bytes, _activeWordsInMemory);
         }
     }

@@ -1,5 +1,4 @@
-﻿using System;
-using System.Numerics;
+﻿using System.Numerics;
 
 namespace Nevermind.Core.Sugar
 {
@@ -12,18 +11,28 @@ namespace Nevermind.Core.Sugar
 
         public static byte[] ToBigEndianByteArray(this BigInteger bigInteger, bool unsigned = true, int length = -1)
         {
-            byte[] result = bigInteger.ToByteArray();
-            Array.Reverse(result);
+            byte[] fromBigInteger = bigInteger.ToByteArray();
+            bool removeLeadingZero =
+                unsigned
+                && fromBigInteger.Length != 1
+                && fromBigInteger[fromBigInteger.Length - 1] == 0;
 
-            // remove leading sign zero
-            if (unsigned && result[0] == 0 && result.Length != 1)
+            int desiredLength = length == -1
+                ? fromBigInteger.Length - (removeLeadingZero ? 1 : 0)
+                : length;
+
+            byte[] result = new byte[desiredLength];
+            for (int i = 0; i < fromBigInteger.Length - (removeLeadingZero ? 1 : 0); i++)
             {
-                return result.Slice(1, result.Length - 1);
+                result[desiredLength - 1 - i] = fromBigInteger[i];
             }
 
-            if (result.Length < length)
+            if (bigInteger.Sign < 0)
             {
-                return result.PadLeft(length, bigInteger < 0 ? (byte)0xff : (byte)0x00);
+                for (int i = 0; i < desiredLength - fromBigInteger.Length - (removeLeadingZero ? 1 : 0); i++)
+                {
+                    result[i] = 0xff;
+                }
             }
 
             return result;

@@ -144,6 +144,8 @@ namespace Nevermind.Evm
         CALLCODE = 0xf2,
         RETURN = 0xf3,
         DELEGATECALL = 0xf4,
-        SUICIDE = 0xf5,
+        REVERT = 0xfd,
+        INVALID = 0xfe,
+        SUICIDE = 0xff,
     }
 }

@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Numerics;
 using Nevermind.Core;
 using Nevermind.Core.Encoding;
@@ -104,7 +105,7 @@ namespace Nevermind.Evm
             BigInteger gasSpent = transaction.GasLimit - gasAvailable;
             BigInteger halfOfGasSpend = BigInteger.Divide(gasSpent, 2);
             BigInteger refund = gasAvailable +
-                                BigInteger.Min(halfOfGasSpend * transaction.GasPrice, substate.RefundCounter);
+                                BigInteger.Min(halfOfGasSpend * transaction.GasPrice, substate.Refund);
             senderAccount.Balance += refund;
 
             // final

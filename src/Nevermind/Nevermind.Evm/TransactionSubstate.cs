@@ -6,10 +6,20 @@ namespace Nevermind.Evm
 {
     public class TransactionSubstate
     {
-        public BigInteger RefundCounter { get; set; }
+        public TransactionSubstate(
+            BigInteger refund,
+            IReadOnlyCollection<Address> destroyList,
+            IReadOnlyCollection<LogEntry> logs)
+        {
+            Refund = refund;
+            DestroyList = destroyList;
+            Logs = logs;
+        }
 
-        public List<LogEntry> Logs { get; set; }
+        public BigInteger Refund { get; }
 
-        public List<Address> DestroyList { get; set; }
+        public IReadOnlyCollection<LogEntry> Logs { get; }
+
+        public IReadOnlyCollection<Address> DestroyList { get; }
     }
 }

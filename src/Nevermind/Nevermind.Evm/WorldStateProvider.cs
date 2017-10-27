@@ -13,10 +13,32 @@ namespace Nevermind.Evm
 
         public StateTree State { get; }
 
-        public Account GetOrCreateAccount(Address address)
+        public Account GetAccount(Address address)
         {
             Rlp rlp = State.Get(address);
-            return rlp.Bytes == null ? null : Rlp.Decode<Account>(rlp);
+            if (rlp.Bytes == null)
+            {
+                return null;
+            }
+
+            return Rlp.Decode<Account>(rlp);
+        }
+
+        public Account GetOrCreateAccount(Address address)
+        {
+            Account account = GetAccount(address);
+            if (account == null)
+            {
+                account = new Account();
+                UpdateAccount(address, account);
+            }
+
+            return account;
+        }
+
+        public void UpdateAccount(Address address, Account account)
+        {
+            State.Set(address, Rlp.Encode(account));
         }
     }
 }

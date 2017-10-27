@@ -8,5 +8,9 @@ namespace Nevermind.Evm
         StateTree State { get; }
 
         Account GetOrCreateAccount(Address address);
+
+        void UpdateAccount(Address address, Account account);
+
+        Account GetAccount(Address address);
     }
 }

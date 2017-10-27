@@ -87,7 +87,6 @@
     <Compile Include="RandomTests.cs" />
     <Compile Include="Sha3Tests.cs" />
     <Compile Include="SystemTests.cs" />
-    <Compile Include="TestWorldStateProvider.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />

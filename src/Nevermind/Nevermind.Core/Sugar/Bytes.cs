@@ -69,15 +69,20 @@ namespace Nevermind.Core.Sugar
 
         public static bool IsZero(this byte[] bytes)
         {
-            for (int i = 0; i < bytes.Length; i++)
+            for (int i = 0; i < bytes.Length / 2; i++)
             {
                 if (bytes[i] != 0)
                 {
                     return false;
                 }
+
+                if (bytes[bytes.Length - i - 1] != 0)
+                {
+                    return false;
+                }
             }
 
-            return true;
+            return bytes.Length % 2 == 0 || bytes[bytes.Length / 2] == 0;
         }
 
         public static byte[] WithoutLeadingZeros(this byte[] bytes)
@@ -178,33 +183,49 @@ namespace Nevermind.Core.Sugar
             return result;
         }
 
-        public static BigInteger ToUnsignedBigInteger(this byte[] bytes, Endianness endianness = Endianness.Big)
+        public static byte[] ReverseInPlace(this byte[] bytes)
         {
-            byte[] unsignedResult = new byte[bytes.Length + 1];
+            Array.Reverse(bytes);
+            return bytes;
+        }
 
+        // seems that Reverse and additional allocation makes it slower than iteration
+        ////public static BigInteger ToUnsignedBigIntegerSlower(this byte[] bytes, Endianness endianness = Endianness.Big)
+        ////{
+        ////    byte[] unsignedResult = new byte[bytes.Length + 1];
+        ////    Buffer.BlockCopy(bytes, 0, unsignedResult, 1, bytes.Length);
+        ////    Array.Reverse(unsignedResult);
+
+        ////    return new BigInteger(unsignedResult);
+        ////}
+
+        public static BigInteger ToUnsignedBigInteger(this byte[] bytes, Endianness endianness = Endianness.Big, bool noReverse = false)
+        {
             if (BitConverter.IsLittleEndian && endianness == Endianness.Big)
             {
+                byte[] unsignedResult = new byte[bytes.Length + 1];
                 for (int i = 0; i < bytes.Length; i++)
                 {
                     unsignedResult[bytes.Length - i - 1] = bytes[i];
                 }
-            }
-            else
-            {
-                for (int i = 0; i < bytes.Length; i++)
-                {
-                    unsignedResult[i] = bytes[i];
-                }
+
+                return new BigInteger(unsignedResult);
             }
 
-            return new BigInteger(unsignedResult);
+            return new BigInteger(bytes);
         }
 
         public static BigInteger ToSignedBigInteger(this byte[] bytes, Endianness endianness = Endianness.Big)
         {
             if (BitConverter.IsLittleEndian && endianness == Endianness.Big)
             {
-                bytes = Reverse(bytes);
+                byte[] signedResult = new byte[bytes.Length];
+                for (int i = 0; i < bytes.Length; i++)
+                {
+                    signedResult[bytes.Length - i - 1] = bytes[i];
+                }
+
+                return new BigInteger(signedResult);
             }
 
             return new BigInteger(bytes);
