@@ -5,22 +5,13 @@
         <TestName>Ethereum.VM.Test.PerformanceTests.Test(loop-divadd-unr100-10M)</TestName>
       </NamedTestSelector>
       <NamedTestSelector>
-        <TestName>Ethereum.VM.Test.PerformanceTests.Test(loop-mulmod-2M)</TestName>
-      </NamedTestSelector>
-      <NamedTestSelector>
         <TestName>Ethereum.VM.Test.PerformanceTests.Test(loop-exp-nop-1M)</TestName>
       </NamedTestSelector>
       <NamedTestSelector>
         <TestName>Ethereum.VM.Test.PerformanceTests.Test(loop-add-10M)</TestName>
       </NamedTestSelector>
       <NamedTestSelector>
-        <TestName>Ethereum.VM.Test.PerformanceTests.Test(loop-mul)</TestName>
-      </NamedTestSelector>
-      <NamedTestSelector>
         <TestName>Ethereum.VM.Test.PerformanceTests.Test(loop-exp-16b-100k)</TestName>
-      </NamedTestSelector>
-      <NamedTestSelector>
-        <TestName>Ethereum.VM.Test.PerformanceTests.Test(loop-exp-2b-100k)</TestName>
       </NamedTestSelector>
       <NamedTestSelector>
         <TestName>Ethereum.VM.Test.PerformanceTests.Test(loop-exp-4b-100k)</TestName>
@@ -34,6 +25,27 @@
       <NamedTestSelector>
         <TestName>Ethereum.VM.Test.PerformanceTests.Test(loop-exp-32b-100k)</TestName>
       </NamedTestSelector>
+      <FixtureTestSelector>
+        <FixtureName>Ethereum.VM.Test.EnvironmentalInfoTests</FixtureName>
+      </FixtureTestSelector>
+      <NamedTestSelector>
+        <TestName>Ethereum.VM.Test.PerformanceTests.Test(loop-divadd-10M)</TestName>
+      </NamedTestSelector>
+      <FixtureTestSelector>
+        <FixtureName>Ethereum.VM.Test.AbiTests</FixtureName>
+      </FixtureTestSelector>
+      <NamedTestSelector>
+        <TestName>Ethereum.VM.Test.PerformanceTests.Test(loop-mul)</TestName>
+      </NamedTestSelector>
+      <NamedTestSelector>
+        <TestName>Ethereum.VM.Test.PerformanceTests.Test(loop-mulmod-2M)</TestName>
+      </NamedTestSelector>
+      <NamedTestSelector>
+        <TestName>Ethereum.VM.Test.PerformanceTests.Test(loop-exp-2b-100k)</TestName>
+      </NamedTestSelector>
+      <FixtureTestSelector>
+        <FixtureName>Ethereum.VM.Test.OtherTests</FixtureName>
+      </FixtureTestSelector>
       <NamedTestSelector>
         <TestName>Ethereum.VM.Test.BlockInfoTests.Test(blockhash258Block)</TestName>
       </NamedTestSelector>
@@ -43,18 +55,111 @@
       <NamedTestSelector>
         <TestName>Ethereum.VM.Test.BlockInfoTests.Test(blockhashNotExistingBlock)</TestName>
       </NamedTestSelector>
-      <FixtureTestSelector>
-        <FixtureName>Ethereum.VM.Test.EnvironmentalInfoTests</FixtureName>
-      </FixtureTestSelector>
-      <FixtureTestSelector>
-        <FixtureName>Ethereum.VM.Test.LogTests</FixtureName>
-      </FixtureTestSelector>
-      <FixtureTestSelector>
-        <FixtureName>Ethereum.VM.Test.RandomTests</FixtureName>
-      </FixtureTestSelector>
-      <FixtureTestSelector>
-        <FixtureName>Ethereum.VM.Test.SystemTests</FixtureName>
-      </FixtureTestSelector>
+      <NamedTestSelector>
+        <TestName>Ethereum.VM.Test.SystemTests.Test(ABAcalls0)</TestName>
+      </NamedTestSelector>
+      <NamedTestSelector>
+        <TestName>Ethereum.VM.Test.SystemTests.Test(ABAcalls1)</TestName>
+      </NamedTestSelector>
+      <NamedTestSelector>
+        <TestName>Ethereum.VM.Test.SystemTests.Test(ABAcalls2)</TestName>
+      </NamedTestSelector>
+      <NamedTestSelector>
+        <TestName>Ethereum.VM.Test.SystemTests.Test(ABAcalls3)</TestName>
+      </NamedTestSelector>
+      <NamedTestSelector>
+        <TestName>Ethereum.VM.Test.SystemTests.Test(ABAcallsSuicide0)</TestName>
+      </NamedTestSelector>
+      <NamedTestSelector>
+        <TestName>Ethereum.VM.Test.SystemTests.Test(ABAcallsSuicide1)</TestName>
+      </NamedTestSelector>
+      <NamedTestSelector>
+        <TestName>Ethereum.VM.Test.SystemTests.Test(callcodeToNameRegistrator0)</TestName>
+      </NamedTestSelector>
+      <NamedTestSelector>
+        <TestName>Ethereum.VM.Test.SystemTests.Test(callcodeToReturn1)</TestName>
+      </NamedTestSelector>
+      <NamedTestSelector>
+        <TestName>Ethereum.VM.Test.SystemTests.Test(CallRecursiveBomb0)</TestName>
+      </NamedTestSelector>
+      <NamedTestSelector>
+        <TestName>Ethereum.VM.Test.SystemTests.Test(CallRecursiveBomb1)</TestName>
+      </NamedTestSelector>
+      <NamedTestSelector>
+        <TestName>Ethereum.VM.Test.SystemTests.Test(CallRecursiveBomb2)</TestName>
+      </NamedTestSelector>
+      <NamedTestSelector>
+        <TestName>Ethereum.VM.Test.SystemTests.Test(CallRecursiveBomb3)</TestName>
+      </NamedTestSelector>
+      <NamedTestSelector>
+        <TestName>Ethereum.VM.Test.SystemTests.Test(callstatelessToNameRegistrator0)</TestName>
+      </NamedTestSelector>
+      <NamedTestSelector>
+        <TestName>Ethereum.VM.Test.SystemTests.Test(callstatelessToReturn1)</TestName>
+      </NamedTestSelector>
+      <NamedTestSelector>
+        <TestName>Ethereum.VM.Test.SystemTests.Test(CallToNameRegistrator0)</TestName>
+      </NamedTestSelector>
+      <NamedTestSelector>
+        <TestName>Ethereum.VM.Test.SystemTests.Test(CallToNameRegistratorNotMuchMemory0)</TestName>
+      </NamedTestSelector>
+      <NamedTestSelector>
+        <TestName>Ethereum.VM.Test.SystemTests.Test(CallToNameRegistratorNotMuchMemory1)</TestName>
+      </NamedTestSelector>
+      <NamedTestSelector>
+        <TestName>Ethereum.VM.Test.SystemTests.Test(CallToNameRegistratorOutOfGas)</TestName>
+      </NamedTestSelector>
+      <NamedTestSelector>
+        <TestName>Ethereum.VM.Test.SystemTests.Test(CallToNameRegistratorTooMuchMemory0)</TestName>
+      </NamedTestSelector>
+      <NamedTestSelector>
+        <TestName>Ethereum.VM.Test.SystemTests.Test(CallToNameRegistratorTooMuchMemory1)</TestName>
+      </NamedTestSelector>
+      <NamedTestSelector>
+        <TestName>Ethereum.VM.Test.SystemTests.Test(CallToNameRegistratorTooMuchMemory2)</TestName>
+      </NamedTestSelector>
+      <NamedTestSelector>
+        <TestName>Ethereum.VM.Test.SystemTests.Test(CallToPrecompiledContract)</TestName>
+      </NamedTestSelector>
+      <NamedTestSelector>
+        <TestName>Ethereum.VM.Test.SystemTests.Test(CallToReturn1)</TestName>
+      </NamedTestSelector>
+      <NamedTestSelector>
+        <TestName>Ethereum.VM.Test.SystemTests.Test(createNameRegistrator)</TestName>
+      </NamedTestSelector>
+      <NamedTestSelector>
+        <TestName>Ethereum.VM.Test.SystemTests.Test(createNameRegistratorOutOfMemoryBonds0)</TestName>
+      </NamedTestSelector>
+      <NamedTestSelector>
+        <TestName>Ethereum.VM.Test.SystemTests.Test(createNameRegistratorOutOfMemoryBonds1)</TestName>
+      </NamedTestSelector>
+      <NamedTestSelector>
+        <TestName>Ethereum.VM.Test.SystemTests.Test(createNameRegistratorValueTooHigh)</TestName>
+      </NamedTestSelector>
+      <NamedTestSelector>
+        <TestName>Ethereum.VM.Test.SystemTests.Test(PostToReturn1)</TestName>
+      </NamedTestSelector>
+      <NamedTestSelector>
+        <TestName>Ethereum.VM.Test.SystemTests.Test(return0)</TestName>
+      </NamedTestSelector>
+      <NamedTestSelector>
+        <TestName>Ethereum.VM.Test.SystemTests.Test(return1)</TestName>
+      </NamedTestSelector>
+      <NamedTestSelector>
+        <TestName>Ethereum.VM.Test.SystemTests.Test(return2)</TestName>
+      </NamedTestSelector>
+      <NamedTestSelector>
+        <TestName>Ethereum.VM.Test.SystemTests.Test(suicide0)</TestName>
+      </NamedTestSelector>
+      <NamedTestSelector>
+        <TestName>Ethereum.VM.Test.SystemTests.Test(suicideNotExistingAccount)</TestName>
+      </NamedTestSelector>
+      <NamedTestSelector>
+        <TestName>Ethereum.VM.Test.SystemTests.Test(suicideSendEtherToMe)</TestName>
+      </NamedTestSelector>
+      <NamedTestSelector>
+        <TestName>Ethereum.VM.Test.SystemTests.Test(TestNameRegistrator)</TestName>
+      </NamedTestSelector>
     </IgnoredTests>
   </Settings>
 </ProjectConfiguration>

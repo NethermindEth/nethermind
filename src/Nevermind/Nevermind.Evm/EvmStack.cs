@@ -7,73 +7,89 @@ namespace Nevermind.Evm
 {
     public class EvmStack
     {
-        private int _head;
-
+        public const int MaxSize = 1024;
         private readonly byte[][] _array = new byte[1024][];
         private readonly BigInteger?[] _intArray = new BigInteger?[1024];
 
-        private const bool IsLogging = false;
+        public EvmStack(int callDepth)
+        {
+            CallDepth = callDepth;
+        }
 
-        public const int MaxSize = 1024;
+        public int CallDepth { get; private set; }
 
         public void Push(byte[] value)
         {
-            if (IsLogging)
+            if (ShouldLog.VM)
             {
                 Console.WriteLine($"PUSH {Hex.FromBytes(value, true)}");
             }
 
-            _intArray[_head] = null;
-            _array[_head++] = value;
+            _intArray[CallDepth] = null;
+            _array[CallDepth] = value;
+            CallDepth++;
+            if (CallDepth >= 1024)
+            {
+                throw new InvalidOperationException();
+            }
         }
 
         public void Push(BigInteger value)
         {
-            if (IsLogging)
+            if (ShouldLog.VM)
             {
                 Console.WriteLine($"PUSH {value}");
             }
 
-            _array[_head] = null;
-            _intArray[_head++] = value;
+            _array[CallDepth] = null;
+            _intArray[CallDepth] = value;
+            CallDepth++;
+            if (CallDepth >= 1024)
+            {
+                throw new InvalidOperationException();
+            }
         }
 
         public void PopLimbo()
         {
-            if (_head == 0)
+            if (CallDepth == 0)
             {
                 throw new InvalidOperationException();
             }
 
-            _head--;
+            CallDepth--;
         }
 
         public void Dup(int depth)
         {
-            _array[_head] = _array[_head - depth];
-            _intArray[_head] = _intArray[_head - depth];
-            _head++;
+            _array[CallDepth] = _array[CallDepth - depth];
+            _intArray[CallDepth] = _intArray[CallDepth - depth];
+            CallDepth++;
+            if (CallDepth >= 1024)
+            {
+                throw new InvalidOperationException();
+            }
         }
 
         public void Swap(int depth)
         {
-            byte[] bytes = _array[_head - depth];
-            BigInteger? intVal = _intArray[_head - depth];
+            byte[] bytes = _array[CallDepth - depth];
+            BigInteger? intVal = _intArray[CallDepth - depth];
 
-            _array[_head - depth] = _array[_head - 1];
-            _intArray[_head - depth] = _intArray[_head - 1];
+            _array[CallDepth - depth] = _array[CallDepth - 1];
+            _intArray[CallDepth - depth] = _intArray[CallDepth - 1];
 
-            _array[_head - 1] = bytes;
-            _intArray[_head - 1] = intVal;
+            _array[CallDepth - 1] = bytes;
+            _intArray[CallDepth - 1] = intVal;
         }
 
         public byte[] PopBytes()
         {
-            byte[] value = _array[_head - 1];
-            BigInteger? bigInteger = _intArray[_head - 1];
-            _head--;
+            byte[] value = _array[CallDepth - 1];
+            BigInteger? bigInteger = _intArray[CallDepth - 1];
+            CallDepth--;
 
-            if (IsLogging)
+            if (ShouldLog.VM)
             {
                 string valueSTring = value == null ? bigInteger.ToString() : Hex.FromBytes(value, true);
                 Console.WriteLine($"POP {valueSTring}");
@@ -89,11 +105,11 @@ namespace Nevermind.Evm
 
         public BigInteger PopInt(bool signed)
         {
-            byte[] value = _array[_head - 1];
-            BigInteger? bigInteger = _intArray[_head - 1];
-            _head--;
+            byte[] value = _array[CallDepth - 1];
+            BigInteger? bigInteger = _intArray[CallDepth - 1];
+            CallDepth--;
 
-            if (IsLogging)
+            if (ShouldLog.VM)
             {
                 string valueSTring = value == null ? bigInteger.ToString() : Hex.FromBytes(value, true);
                 Console.WriteLine($"POP {valueSTring}");

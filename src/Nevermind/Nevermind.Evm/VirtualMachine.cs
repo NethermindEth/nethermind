@@ -12,8 +12,6 @@ namespace Nevermind.Evm
 {
     public class VirtualMachine
     {
-        private static readonly bool IsLogging = false;
-
         private static readonly BigInteger P255Int = BigInteger.Pow(2, 255);
         private static readonly BigInteger P256Int = P255Int * 2;
         private static readonly BigInteger P255 = P255Int;
@@ -52,6 +50,11 @@ namespace Nevermind.Evm
             byte[] PopAddress()
             {
                 byte[] bytes = stack.PopBytes();
+                if (bytes.Length < 20)
+                {
+                    bytes = bytes.PadLeft(20, 0);
+                }
+
                 return bytes.Slice(bytes.Length - 20, 20);
             }
 
@@ -95,7 +98,7 @@ namespace Nevermind.Evm
             {
                 if (state.GasAvailable < BigInteger.Zero)
                 {
-                    throw new Exception();
+                    throw new OutOfGasException();
                 }
 
                 if (state.ProgramCounter >= code.Length)
@@ -111,7 +114,7 @@ namespace Nevermind.Evm
                 {
                     case Instruction.STOP:
                     {
-                        if (IsLogging)
+                        if (ShouldLog.VM)
                         {
                             Console.WriteLine(instruction);
                         }
@@ -124,7 +127,7 @@ namespace Nevermind.Evm
                         i256Reg[0] = PopUInt();
                         i256Reg[1] = PopUInt();
 
-                        if (IsLogging)
+                        if (ShouldLog.VM)
                         {
                             Console.WriteLine(instruction);
                         }
@@ -143,12 +146,12 @@ namespace Nevermind.Evm
                         i256Reg[0] = PopUInt();
                         i256Reg[1] = PopUInt();
 
-                        if (IsLogging)
+                        if (ShouldLog.VM)
                         {
                             Console.WriteLine(instruction);
                         }
 
-                        stack.Push(BigInteger.ModPow(i256Reg[0] * i256Reg[1], BigInteger.One, P256Int)
+                        stack.Push(BigInteger.Remainder(i256Reg[0] * i256Reg[1], P256Int)
                         );
                         break;
                     }
@@ -158,7 +161,7 @@ namespace Nevermind.Evm
                         i256Reg[0] = PopUInt();
                         i256Reg[1] = PopUInt();
 
-                        if (IsLogging)
+                        if (ShouldLog.VM)
                         {
                             Console.WriteLine(instruction);
                         }
@@ -178,7 +181,7 @@ namespace Nevermind.Evm
                         i256Reg[0] = PopUInt();
                         i256Reg[1] = PopUInt();
 
-                        if (IsLogging)
+                        if (ShouldLog.VM)
                         {
                             Console.WriteLine(instruction);
                         }
@@ -193,7 +196,7 @@ namespace Nevermind.Evm
                         state.GasAvailable -= GasCostOf.Low;
                         i256Reg[0] = PopInt();
                         i256Reg[1] = PopInt();
-                        if (IsLogging)
+                        if (ShouldLog.VM)
                         {
                             Console.WriteLine(instruction);
                         }
@@ -218,7 +221,7 @@ namespace Nevermind.Evm
                         state.GasAvailable -= GasCostOf.Low;
                         i256Reg[0] = PopUInt();
                         i256Reg[1] = PopUInt();
-                        if (IsLogging)
+                        if (ShouldLog.VM)
                         {
                             Console.WriteLine(instruction);
                         }
@@ -233,7 +236,7 @@ namespace Nevermind.Evm
                         state.GasAvailable -= GasCostOf.Low;
                         i256Reg[0] = PopInt();
                         i256Reg[1] = PopInt();
-                        if (IsLogging)
+                        if (ShouldLog.VM)
                         {
                             Console.WriteLine(instruction);
                         }
@@ -251,7 +254,7 @@ namespace Nevermind.Evm
                         i256Reg[0] = PopUInt();
                         i256Reg[1] = PopUInt();
                         i256Reg[2] = PopUInt();
-                        if (IsLogging)
+                        if (ShouldLog.VM)
                         {
                             Console.WriteLine(instruction);
                         }
@@ -269,7 +272,7 @@ namespace Nevermind.Evm
                         i256Reg[0] = PopUInt();
                         i256Reg[1] = PopUInt();
                         i256Reg[2] = PopUInt();
-                        if (IsLogging)
+                        if (ShouldLog.VM)
                         {
                             Console.WriteLine(instruction);
                         }
@@ -303,7 +306,7 @@ namespace Nevermind.Evm
                             state.GasAvailable -= GasCostOf.ExpByte * (1 + expSize);
                         }
 
-                        if (IsLogging)
+                        if (ShouldLog.VM)
                         {
                             Console.WriteLine(instruction);
                         }
@@ -328,7 +331,7 @@ namespace Nevermind.Evm
                         state.GasAvailable -= GasCostOf.Low;
                         bytesReg[0] = PopBytes();
                         bytesReg[1] = PopBytes();
-                        if (IsLogging)
+                        if (ShouldLog.VM)
                         {
                             Console.WriteLine(instruction);
                         }
@@ -352,12 +355,12 @@ namespace Nevermind.Evm
                         state.GasAvailable -= GasCostOf.VeryLow;
                         i256Reg[0] = PopUInt();
                         i256Reg[1] = PopUInt();
-                        if (IsLogging)
+                        if (ShouldLog.VM)
                         {
                             Console.WriteLine(instruction);
                         }
 
-                        stack.Push(BigInteger.Compare(i256Reg[0], i256Reg[1]) < 0 ? One : Zero);
+                        stack.Push(i256Reg[0] < i256Reg[1] ? One : Zero);
                         break;
                     }
                     case Instruction.GT:
@@ -365,12 +368,12 @@ namespace Nevermind.Evm
                         state.GasAvailable -= GasCostOf.VeryLow;
                         i256Reg[0] = PopUInt();
                         i256Reg[1] = PopUInt();
-                        if (IsLogging)
+                        if (ShouldLog.VM)
                         {
                             Console.WriteLine(instruction);
                         }
 
-                        stack.Push(BigInteger.Compare(i256Reg[0], i256Reg[1]) > 0 ? BigInteger.One : BigInteger.Zero);
+                        stack.Push(i256Reg[0] > i256Reg[1] ? BigInteger.One : BigInteger.Zero);
                         break;
                     }
                     case Instruction.SLT:
@@ -378,7 +381,7 @@ namespace Nevermind.Evm
                         state.GasAvailable -= GasCostOf.VeryLow;
                         i256Reg[0] = PopInt();
                         i256Reg[1] = PopInt();
-                        if (IsLogging)
+                        if (ShouldLog.VM)
                         {
                             Console.WriteLine(instruction);
                         }
@@ -391,12 +394,12 @@ namespace Nevermind.Evm
                         state.GasAvailable -= GasCostOf.VeryLow;
                         i256Reg[0] = PopInt();
                         i256Reg[1] = PopInt();
-                        if (IsLogging)
+                        if (ShouldLog.VM)
                         {
                             Console.WriteLine(instruction);
                         }
 
-                        stack.Push(BigInteger.Compare(i256Reg[0], i256Reg[1]) > 0 ? BigInteger.One : BigInteger.Zero);
+                        stack.Push(i256Reg[0] > i256Reg[1] ? BigInteger.One : BigInteger.Zero);
                         break;
                     }
                     case Instruction.EQ:
@@ -404,7 +407,7 @@ namespace Nevermind.Evm
                         state.GasAvailable -= GasCostOf.VeryLow;
                         i256Reg[0] = PopInt();
                         i256Reg[1] = PopInt();
-                        if (IsLogging)
+                        if (ShouldLog.VM)
                         {
                             Console.WriteLine(instruction);
                         }
@@ -415,13 +418,13 @@ namespace Nevermind.Evm
                     case Instruction.ISZERO:
                     {
                         state.GasAvailable -= GasCostOf.VeryLow;
-                        bytesReg[0] = PopBytes();
-                        if (IsLogging)
+                        i256Reg[0] = PopInt();
+                        if (ShouldLog.VM)
                         {
                             Console.WriteLine(instruction);
                         }
 
-                        stack.Push(bytesReg[0].IsZero() ? BigInteger.One : BigInteger.Zero);
+                        stack.Push(i256Reg[0].IsZero ? BigInteger.One : BigInteger.Zero);
                         break;
                     }
                     case Instruction.AND:
@@ -429,7 +432,7 @@ namespace Nevermind.Evm
                         state.GasAvailable -= GasCostOf.VeryLow;
                         bytesReg[0] = PopBytes();
                         bytesReg[1] = PopBytes();
-                        if (IsLogging)
+                        if (ShouldLog.VM)
                         {
                             Console.WriteLine(instruction);
                         }
@@ -444,7 +447,7 @@ namespace Nevermind.Evm
                         state.GasAvailable -= GasCostOf.VeryLow;
                         bytesReg[0] = PopBytes();
                         bytesReg[1] = PopBytes();
-                        if (IsLogging)
+                        if (ShouldLog.VM)
                         {
                             Console.WriteLine(instruction);
                         }
@@ -459,7 +462,7 @@ namespace Nevermind.Evm
                         state.GasAvailable -= GasCostOf.VeryLow;
                         bytesReg[0] = PopBytes();
                         bytesReg[1] = PopBytes();
-                        if (IsLogging)
+                        if (ShouldLog.VM)
                         {
                             Console.WriteLine(instruction);
                         }
@@ -474,7 +477,7 @@ namespace Nevermind.Evm
                         state.GasAvailable -= GasCostOf.VeryLow;
                         bytesReg[0] = PopBytes();
                         byte[] result = new byte[32];
-                        if (IsLogging)
+                        if (ShouldLog.VM)
                         {
                             Console.WriteLine(instruction);
                         }
@@ -500,7 +503,7 @@ namespace Nevermind.Evm
                         i256Reg[0] = PopUInt();
                         bytesReg[0] = PopBytes();
 
-                        if (IsLogging)
+                        if (ShouldLog.VM)
                         {
                             Console.WriteLine(instruction);
                         }
@@ -541,7 +544,7 @@ namespace Nevermind.Evm
                     {
                         state.GasAvailable -= GasCostOf.Balance;
                         bytesReg[0] = PopAddress();
-                        if (IsLogging)
+                        if (ShouldLog.VM)
                         {
                             Console.WriteLine(instruction);
                         }
@@ -572,7 +575,7 @@ namespace Nevermind.Evm
                     {
                         state.GasAvailable -= GasCostOf.VeryLow;
                         i256Reg[0] = PopUInt();
-                        if (IsLogging)
+                        if (ShouldLog.VM)
                         {
                             Console.WriteLine(instruction);
                         }
@@ -583,7 +586,7 @@ namespace Nevermind.Evm
                     case Instruction.CALLDATASIZE:
                     {
                         state.GasAvailable -= GasCostOf.Base;
-                        if (IsLogging)
+                        if (ShouldLog.VM)
                         {
                             Console.WriteLine(instruction);
                         }
@@ -597,7 +600,7 @@ namespace Nevermind.Evm
                         i256Reg[0] = PopUInt(); // dest
                         i256Reg[1] = PopUInt(); // source
                         i256Reg[2] = PopUInt(); // length
-                        if (IsLogging)
+                        if (ShouldLog.VM)
                         {
                             Console.WriteLine(instruction);
                         }
@@ -613,7 +616,7 @@ namespace Nevermind.Evm
                     case Instruction.CODESIZE:
                     {
                         state.GasAvailable -= GasCostOf.Base;
-                        if (IsLogging)
+                        if (ShouldLog.VM)
                         {
                             Console.WriteLine(instruction);
                         }
@@ -627,7 +630,7 @@ namespace Nevermind.Evm
                         i256Reg[0] = PopUInt(); // dest
                         i256Reg[1] = PopUInt(); // source
                         i256Reg[2] = PopUInt(); // length
-                        if (IsLogging)
+                        if (ShouldLog.VM)
                         {
                             Console.WriteLine(instruction);
                         }
@@ -643,7 +646,7 @@ namespace Nevermind.Evm
                     case Instruction.GASPRICE:
                     {
                         state.GasAvailable -= GasCostOf.Base;
-                        if (IsLogging)
+                        if (ShouldLog.VM)
                         {
                             Console.WriteLine(instruction);
                         }
@@ -655,7 +658,7 @@ namespace Nevermind.Evm
                     {
                         state.GasAvailable -= GasCostOf.ExtCodeSize;
                         bytesReg[0] = PopBytes();
-                        if (IsLogging)
+                        if (ShouldLog.VM)
                         {
                             Console.WriteLine(instruction);
                         }
@@ -674,7 +677,7 @@ namespace Nevermind.Evm
                         i256Reg[0] = PopUInt(); // dest
                         i256Reg[1] = PopUInt(); // source
                         i256Reg[2] = PopUInt(); // length
-                        if (IsLogging)
+                        if (ShouldLog.VM)
                         {
                             Console.WriteLine(instruction);
                         }
@@ -705,7 +708,7 @@ namespace Nevermind.Evm
                     {
                         state.GasAvailable -= GasCostOf.BlockHash;
                         i256Reg[0] = PopUInt();
-                        if (IsLogging)
+                        if (ShouldLog.VM)
                         {
                             Console.WriteLine(instruction);
                         }
@@ -728,7 +731,7 @@ namespace Nevermind.Evm
                     case Instruction.COINBASE:
                     {
                         state.GasAvailable -= GasCostOf.Base;
-                        if (IsLogging)
+                        if (ShouldLog.VM)
                         {
                             Console.WriteLine(instruction);
                         }
@@ -739,7 +742,7 @@ namespace Nevermind.Evm
                     case Instruction.DIFFICULTY:
                     {
                         state.GasAvailable -= GasCostOf.Base;
-                        if (IsLogging)
+                        if (ShouldLog.VM)
                         {
                             Console.WriteLine(instruction);
                         }
@@ -750,7 +753,7 @@ namespace Nevermind.Evm
                     case Instruction.TIMESTAMP:
                     {
                         state.GasAvailable -= GasCostOf.Base;
-                        if (IsLogging)
+                        if (ShouldLog.VM)
                         {
                             Console.WriteLine(instruction);
                         }
@@ -761,7 +764,7 @@ namespace Nevermind.Evm
                     case Instruction.NUMBER:
                     {
                         state.GasAvailable -= GasCostOf.Base;
-                        if (IsLogging)
+                        if (ShouldLog.VM)
                         {
                             Console.WriteLine(instruction);
                         }
@@ -772,7 +775,7 @@ namespace Nevermind.Evm
                     case Instruction.GASLIMIT:
                     {
                         state.GasAvailable -= GasCostOf.Base;
-                        if (IsLogging)
+                        if (ShouldLog.VM)
                         {
                             Console.WriteLine(instruction);
                         }
@@ -784,7 +787,7 @@ namespace Nevermind.Evm
                     {
                         state.GasAvailable -= GasCostOf.Base;
                         stack.PopLimbo();
-                        if (IsLogging)
+                        if (ShouldLog.VM)
                         {
                             Console.WriteLine(instruction);
                         }
@@ -795,7 +798,7 @@ namespace Nevermind.Evm
                     {
                         state.GasAvailable -= GasCostOf.VeryLow;
                         i256Reg[0] = PopUInt();
-                        if (IsLogging)
+                        if (ShouldLog.VM)
                         {
                             Console.WriteLine(instruction);
                         }
@@ -812,7 +815,7 @@ namespace Nevermind.Evm
                         state.GasAvailable -= GasCostOf.VeryLow;
                         i256Reg[0] = PopUInt();
                         bytesReg[1] = PopBytes();
-                        if (IsLogging)
+                        if (ShouldLog.VM)
                         {
                             Console.WriteLine(instruction);
                         }
@@ -828,7 +831,7 @@ namespace Nevermind.Evm
                         state.GasAvailable -= GasCostOf.VeryLow;
                         i256Reg[0] = PopUInt();
                         bytesReg[1] = PopBytes();
-                        if (IsLogging)
+                        if (ShouldLog.VM)
                         {
                             Console.WriteLine(instruction);
                         }
@@ -843,21 +846,21 @@ namespace Nevermind.Evm
                     {
                         state.GasAvailable -= GasCostOf.SLoad;
                         i256Reg[0] = PopInt();
-                        if (IsLogging)
+                        if (ShouldLog.VM)
                         {
                             Console.WriteLine(instruction);
                         }
 
                         Address accountAddressLoad = env.CodeOwner;
                         StorageTree treeLoad = storageProvider.GetOrCreateStorage(accountAddressLoad);
-                        stack.Push(treeLoad.Get(i256Reg[0]));
+                        stack.Push(treeLoad.Get(i256Reg[0]) ?? new byte[] { 0 });
                         break;
                     }
                     case Instruction.SSTORE:
                     {
                         i256Reg[0] = PopInt();
                         bytesReg[0] = PopBytes();
-                        if (IsLogging)
+                        if (ShouldLog.VM)
                         {
                             Console.WriteLine(instruction);
                         }
@@ -882,7 +885,7 @@ namespace Nevermind.Evm
                     {
                         state.GasAvailable -= GasCostOf.Mid;
                         i256Reg[0] = PopUInt();
-                        if (IsLogging)
+                        if (ShouldLog.VM)
                         {
                             Console.WriteLine(instruction);
                         }
@@ -896,7 +899,7 @@ namespace Nevermind.Evm
                         state.GasAvailable -= GasCostOf.High;
                         i256Reg[0] = PopUInt();
                         i256Reg[1] = PopUInt();
-                        if (IsLogging)
+                        if (ShouldLog.VM)
                         {
                             Console.WriteLine(instruction);
                         }
@@ -911,18 +914,18 @@ namespace Nevermind.Evm
                     case Instruction.PC:
                     {
                         state.GasAvailable -= GasCostOf.Base;
-                        if (IsLogging)
+                        if (ShouldLog.VM)
                         {
                             Console.WriteLine(instruction);
                         }
 
-                        stack.Push(state.ProgramCounter);
+                        stack.Push(state.ProgramCounter - 1);
                         break;
                     }
                     case Instruction.MSIZE:
                     {
                         state.GasAvailable -= GasCostOf.Base;
-                        if (IsLogging)
+                        if (ShouldLog.VM)
                         {
                             Console.WriteLine(instruction);
                         }
@@ -933,7 +936,7 @@ namespace Nevermind.Evm
                     case Instruction.GAS:
                     {
                         state.GasAvailable -= GasCostOf.Base;
-                        if (IsLogging)
+                        if (ShouldLog.VM)
                         {
                             Console.WriteLine(instruction);
                         }
@@ -944,7 +947,7 @@ namespace Nevermind.Evm
                     case Instruction.JUMPDEST:
                     {
                         state.GasAvailable -= GasCostOf.JumpDest;
-                        if (IsLogging)
+                        if (ShouldLog.VM)
                         {
                             Console.WriteLine(instruction);
                         }
@@ -985,7 +988,7 @@ namespace Nevermind.Evm
                     case Instruction.PUSH32:
                     {
                         state.GasAvailable -= GasCostOf.VeryLow;
-                        if (IsLogging)
+                        if (ShouldLog.VM)
                         {
                             Console.WriteLine(instruction);
                         }
@@ -1068,7 +1071,7 @@ namespace Nevermind.Evm
                             bytesReg[0],
                             topics);
                         logs.Add(logEntry);
-                        if (IsLogging)
+                        if (ShouldLog.VM)
                         {
                             Console.WriteLine(instruction);
                         }
@@ -1081,16 +1084,22 @@ namespace Nevermind.Evm
                         i256Reg[0] = PopUInt();
                         i256Reg[1] = PopUInt();
                         i256Reg[2] = PopUInt();
-                        if (IsLogging)
+                        if (ShouldLog.VM)
                         {
                             Console.WriteLine(instruction);
                         }
 
+                        Account callerAccount = worldStateProvider.GetAccount(env.Caller);
+                        (byte[] accountCode, BigInteger newMemoryAllocation) =
+                            state.Memory.Load(i256Reg[1], i256Reg[2], false);
+
                         Account account = new Account();
                         account.Balance = i256Reg[0];
+                        if (i256Reg[0] > (callerAccount?.Balance ?? 0))
+                        {
+                            return (new byte[0], null);
+                        }
 
-                        (byte[] accountCode, BigInteger newMemoryAllocation) =
-                            state.Memory.Load(i256Reg[1], i256Reg[2]);
                         Keccak codeHash = Keccak.Compute(accountCode);
 
                         Address address = new Address(codeHash);
@@ -1100,8 +1109,9 @@ namespace Nevermind.Evm
                         account.Nonce = 0;
                         account.StorageRoot = storageTree.RootHash;
 
-                        worldStateProvider.State.Set(address, Rlp.Encode(account));
+                        worldStateProvider.State.Set(address, Rlp.Encode(env.Caller, callerAccount.Nonce - 1));
                         stack.Push(address.Hex);
+
                         break;
                     }
                     case Instruction.RETURN:
@@ -1109,15 +1119,121 @@ namespace Nevermind.Evm
                         state.GasAvailable -= GasCostOf.Zero;
                         i256Reg[0] = PopUInt();
                         i256Reg[1] = PopUInt();
-                        if (IsLogging)
+                        if (ShouldLog.VM)
                         {
                             Console.WriteLine(instruction);
                         }
-                        
+
                         totalTime.Stop();
                         Console.WriteLine(totalTime.ElapsedMilliseconds);
                         (byte[] returnValue, BigInteger _) = state.Memory.Load(i256Reg[0], i256Reg[1]);
                         return (returnValue, new TransactionSubstate(refund, destroyList, logs));
+                    }
+                    case Instruction.CALL:
+                    case Instruction.CALLCODE:
+                    {
+                        if (state.GasAvailable < 0)
+                        {
+                            throw new OutOfGasException();
+                        }
+
+                        i256Reg[0] = PopUInt(); // gas
+                        Address target = new Address(PopAddress());
+                        i256Reg[1] = PopUInt(); // value
+                        i256Reg[2] = PopUInt(); // data offset
+                        i256Reg[3] = PopUInt(); // data length
+                        i256Reg[4] = PopUInt(); // output offset
+                        i256Reg[5] = PopUInt(); // output length
+
+                        if (ShouldLog.VM)
+                        {
+                            Console.WriteLine(instruction);
+                        }
+
+                        BigInteger gasExtra = instruction == Instruction.CALL ? GasCostOf.Call : GasCostOf.CallCode;
+                        if (!i256Reg[1].IsZero)
+                        {
+                            gasExtra += GasCostOf.CallValue - GasCostOf.CallStipend;
+                        }
+
+                        state.GasAvailable -= gasExtra;
+
+                        (byte[] callData, BigInteger newMemory) = state.Memory.Load(i256Reg[2], i256Reg[3]);
+                        state.GasAvailable -= CalculateMemoryCost(state.ActiveWordsInMemory, newMemory);
+                        state.ActiveWordsInMemory = newMemory;
+
+                        if (!i256Reg[1].IsZero)
+                        {
+                            Account codeOwnerAccount = worldStateProvider.GetAccount(env.CodeOwner);
+                            if (codeOwnerAccount.Balance < i256Reg[1])
+                            {
+                                stack.Push(BigInteger.One);
+                                break;
+                            }
+
+                            codeOwnerAccount.Balance -= i256Reg[1]; // do not subtract if failed
+                            worldStateProvider.UpdateAccount(env.CodeOwner, codeOwnerAccount);
+                        }
+
+                        Account targetAccount = worldStateProvider.GetAccount(target);
+                        if (targetAccount == null)
+                        {
+                            gasExtra += GasCostOf.NewAccount;
+                            state.GasAvailable -= GasCostOf.NewAccount;
+                            targetAccount = new Account();
+                            targetAccount.Balance = i256Reg[1];
+                            worldStateProvider.UpdateAccount(target, targetAccount);
+                        }
+
+                        targetAccount.Balance += i256Reg[1];
+                        worldStateProvider.UpdateAccount(target, targetAccount);
+
+                        BigInteger gasCap = gasExtra < state.GasAvailable
+                            ? BigInteger.Min((state.GasAvailable - gasExtra) - (state.GasAvailable - gasExtra) / 64, i256Reg[0])
+                            : i256Reg[0];
+
+                        if (state.GasAvailable < gasCap + gasExtra)
+                        {
+                            throw new OutOfGasException();
+                        }
+
+                        ExecutionEnvironment callEnv = new ExecutionEnvironment();
+                        callEnv.Value = i256Reg[1];
+                        callEnv.Caller = env.CodeOwner;
+                        callEnv.Originator = env.Originator;
+                        callEnv.CallDepth = stack.CallDepth + 1;
+                        callEnv.CurrentBlock = env.CurrentBlock;
+                        callEnv.GasPrice = env.GasPrice;
+                        callEnv.InputData = callData;
+                        callEnv.CodeOwner = instruction == Instruction.CALL ? target : env.CodeOwner;
+                        callEnv.MachineCode = storageProvider.GetOrCreateStorage(target).GetCode(targetAccount.CodeHash);
+
+                        if (callEnv.CallDepth >= 1024)
+                        {
+                            throw new InvalidOperationException();
+                        }
+
+                        try
+                        {
+                            // stipend only with value
+                            MachineState callState = new MachineState(gasCap + GasCostOf.CallStipend, callEnv.CallDepth);
+                            (byte[] callOutput, TransactionSubstate callResult) = Run(callEnv, callState,
+                                storageProvider, blockhashProvider, worldStateProvider);
+                            //state.GasAvailable -= gasCap + GasCostOf.CallStipend - callState.GasAvailable;
+                            state.Memory.Save(i256Reg[4], GetPaddedSlice(callOutput, 0, i256Reg[5]));
+                            stack.Push(0);
+                        }
+                        catch (Exception)
+                        {
+                            if (ShouldLog.VM)
+                            {
+                                Console.WriteLine("FAIL");
+                            }
+
+                            stack.Push(1);
+                        }
+
+                        break;
                     }
                     case Instruction.INVALID:
                     {
@@ -1127,6 +1243,12 @@ namespace Nevermind.Evm
                     {
                         state.GasAvailable -= GasCostOf.Suicide;
                         bytesReg[0] = PopAddress();
+
+                        if (ShouldLog.VM)
+                        {
+                            Console.WriteLine(instruction);
+                        }
+
                         if (!destroyList.Contains(env.CodeOwner))
                         {
                             destroyList.Add(env.CodeOwner);
@@ -1151,14 +1273,14 @@ namespace Nevermind.Evm
                         }
 
                         worldStateProvider.UpdateAccount(inheritorAddress, inheritorAccount);
-                        codeOwnerAccount.Balance = 0;
+                        codeOwnerAccount.Balance = BigInteger.Zero;
                         worldStateProvider.UpdateAccount(env.CodeOwner, codeOwnerAccount);
 
                         return (new byte[0], new TransactionSubstate(refund, destroyList, logs));
                     }
                     default:
                     {
-                        if (IsLogging)
+                        if (ShouldLog.VM)
                         {
                             Console.WriteLine($"INVALID INSTRUCTION 0x{instruction:X}");
                         }
@@ -1167,11 +1289,12 @@ namespace Nevermind.Evm
                 }
 
                 stopwatches[(int)instruction].Stop();
-                
 
-                if (IsLogging)
+
+                if (ShouldLog.VM)
                 {
-                    Console.WriteLine($"GAS {state.GasAvailable}");
+                    string extraInfo = instruction == Instruction.CALL || instruction == Instruction.CALLCODE ? " AFTER CALL " : " ";
+                    Console.WriteLine($"GAS{extraInfo}{state.GasAvailable}");
                 }
             }
 

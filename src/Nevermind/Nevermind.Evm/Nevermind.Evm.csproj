@@ -71,6 +71,8 @@
     <Compile Include="IStorageProvider.cs" />
     <Compile Include="IWorldStateProvider.cs" />
     <Compile Include="MachineState.cs" />
+    <Compile Include="OutOfGasException.cs" />
+    <Compile Include="ShouldLog.cs" />
     <Compile Include="TransactionProcessor.cs" />
     <Compile Include="TransactionSubstate.cs" />
     <Compile Include="VirtualMachine.cs" />

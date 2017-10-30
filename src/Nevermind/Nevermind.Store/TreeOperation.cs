@@ -278,6 +278,8 @@ namespace Nevermind.Store
                     UpdateHashes(newLeaf);
                     return _updateValue;
                 }
+
+                return _updateValue;
             }
 
             if (!_isUpdate)

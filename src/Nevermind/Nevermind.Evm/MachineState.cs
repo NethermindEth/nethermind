@@ -5,11 +5,10 @@ namespace Nevermind.Evm
 {
     public class MachineState
     {
-        private const bool IsLogging = false;
-
-        public MachineState(long gasAvailable)
+        public MachineState(BigInteger gasAvailable, int callDepth = 0)
         {
             GasAvailable = gasAvailable;
+            Stack = new EvmStack(callDepth);
         }
 
         public BigInteger GasAvailable { get; set; }
@@ -22,12 +21,13 @@ namespace Nevermind.Evm
             set
             {
                 _activeWordsInMemory = value;
-                if (IsLogging)
+                if (ShouldLog.VM)
                 {
                     Console.WriteLine($"MEMORY SIZE CHANGED TO {value}");
                 }
             }
         }
-        public EvmStack Stack { get; set; } = new EvmStack();
+
+        public EvmStack Stack { get; set; }
     }
 }
