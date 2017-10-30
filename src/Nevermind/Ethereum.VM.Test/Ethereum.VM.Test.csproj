@@ -52,6 +52,10 @@
     </Content>
   </ItemGroup>
   <ItemGroup>
+    <Reference Include="NCrunch.Framework, Version=3.11.0.9, Culture=neutral, PublicKeyToken=01d101bf6f3e0aea, processorArchitecture=MSIL">
+      <HintPath>..\packages\NCrunch.Framework.3.11.0.9\lib\net35\NCrunch.Framework.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
     <Reference Include="Newtonsoft.Json, Version=10.0.0.0, Culture=neutral, PublicKeyToken=30ad4fe6b2a6aeed, processorArchitecture=MSIL">
       <SpecificVersion>False</SpecificVersion>
       <HintPath>..\packages\Newtonsoft.Json.10.0.3\lib\net45\Newtonsoft.Json.dll</HintPath>
