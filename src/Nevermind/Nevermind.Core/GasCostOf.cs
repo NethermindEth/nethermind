@@ -11,24 +11,24 @@ namespace Nevermind.Core
         public static long Low = 5;
         public static long Mid = 8;
         public static long High = 10;
-        public static long ExtCode = 20; // 700
-        public static long ExtCodeSize = 20; // 700
-        public static long Balance = 20; // 400
-        public static long SLoad = 50; // 200
+        public static long ExtCode = 20; // 700 // EIP-150
+        public static long ExtCodeSize = 20; // 700 // EIP-150
+        public static long Balance = 20; // 400 // EIP-150
+        public static long SLoad = 50; // 200 // EIP-150
         public static long JumpDest = 1;
         public static long SSet = 20000;
         public static long SReset = 5000;
         public static long Destroy = 5000;
-        public static long Create = 32000;
-        public static long CodeDeposit = 200;
-        public static long Call = 40; // 700
-        public static long CallCode = 40; // 700
-        public static long DelegateCall = 40; // 700
+        public static long Create = 32000; // EIP-2
+        public static long CodeDeposit = 0; // 200 // ???
+        public static long Call = 40; // 700 // EIP-150
+        public static long CallCode = 40; // 700 // EIP-150
+        public static long DelegateCall = 40; // 700 // EIP-150
         public static long CallValue = 9000;
         public static long CallStipend = 2300;
         public static long NewAccount = 25000;
         public static long Exp = 10;
-        public static long ExpByte = 10;
+        public static long ExpByte = 10; // 50 // EIP-160
         public static long Memory = 3;
         public static long TxCreate = 32000;
         public static long TxDataZero = 4;
@@ -41,6 +41,6 @@ namespace Nevermind.Core
         public static long Sha3Word = 6;
         public static long Copy = 3;
         public static long BlockHash = 20;
-        public static long Suicide = 0; // 5000
+        public static long Suicide = 0; // 5000  // EIP-150
     }
 }

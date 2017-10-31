@@ -64,7 +64,7 @@ namespace Ethereum.VM.Test
             AccountState state = new AccountState();
             state.Balance = Hex.ToBytes(accountStateJson.Balance).ToUnsignedBigInteger();
             state.Code = Hex.ToBytes(accountStateJson.Code);
-            state.Nonce = Hex.ToBytes(accountStateJson.Balance).ToUnsignedBigInteger();
+            state.Nonce = Hex.ToBytes(accountStateJson.Nonce).ToUnsignedBigInteger();
             state.Storage = accountStateJson.Storage.ToDictionary(
                 p => Hex.ToBytes(p.Key).ToUnsignedBigInteger(),
                 p => Hex.ToBytes(p.Value));

@@ -643,7 +643,7 @@ namespace Nevermind.Evm
                     case Instruction.SLOAD:
                     {
                         state.GasAvailable -= GasCostOf.SLoad;
-                        i256Reg[0] = PopInt();
+                        i256Reg[0] = PopUInt();
                         StorageTree storage = storageProvider.GetOrCreateStorage(env.CodeOwner);
                         byte[] value = storage.Get(i256Reg[0]);
                         stack.Push(value);
@@ -651,7 +651,7 @@ namespace Nevermind.Evm
                     }
                     case Instruction.SSTORE:
                     {
-                        i256Reg[0] = PopInt();
+                        i256Reg[0] = PopUInt();
                         bytesReg[0] = PopBytes();
                         StorageTree storage = storageProvider.GetOrCreateStorage(env.CodeOwner);
                         byte[] previousValue = storage.Get(i256Reg[0]);
@@ -854,6 +854,8 @@ namespace Nevermind.Evm
                         (byte[] accountCode, BigInteger newMemoryAllocation) =
                             state.Memory.Load(i256Reg[1], i256Reg[2], false);
 
+                        state.GasAvailable -= GasCostOf.CodeDeposit * accountCode.Length;
+
                         Account account = new Account();
                         account.Balance = i256Reg[0];
                         if (i256Reg[0] > (codeOwner?.Balance ?? 0))
@@ -865,7 +867,8 @@ namespace Nevermind.Evm
                         account.CodeHash = codeHash;
                         account.Nonce = 0;
 
-                        Address address = new Address(Keccak.Compute(Rlp.Encode(env.CodeOwner, codeOwner.Nonce - 1).Bytes));
+                        Keccak newAddress = Keccak.Compute(Rlp.Encode(env.CodeOwner, codeOwner.Nonce));
+                        Address address = new Address(newAddress);
                         worldStateProvider.UpdateAccount(address, account);
                         stack.Push(address.Hex);
 
@@ -940,13 +943,26 @@ namespace Nevermind.Evm
                         targetAccount.Balance += i256Reg[1];
                         worldStateProvider.UpdateAccount(target, targetAccount);
 
-                        BigInteger gasCap = gasExtra < state.GasAvailable
-                            ? BigInteger.Min((state.GasAvailable - gasExtra) - (state.GasAvailable - gasExtra) / 64, i256Reg[0])
-                            : i256Reg[0];
-
-                        if (state.GasAvailable < gasCap + gasExtra)
+                        if (i256Reg[0] > state.GasAvailable)
                         {
                             throw new OutOfGasException();
+                        }
+
+                        BigInteger gasCap = i256Reg[0];
+
+                        bool eip150 = false;
+                        if (eip150)
+                        {
+                            gasCap = gasExtra < state.GasAvailable
+                                ? BigInteger.Min((state.GasAvailable - gasExtra) - (state.GasAvailable - gasExtra) / 64, i256Reg[0])
+                                : i256Reg[0];
+                        }
+                        else
+                        {
+                            if (state.GasAvailable < gasCap + gasExtra)
+                            {
+                                throw new OutOfGasException();
+                            }
                         }
 
                         ExecutionEnvironment callEnv = new ExecutionEnvironment();
