@@ -11,24 +11,19 @@ namespace Nevermind.Evm
         private readonly byte[][] _array = new byte[1024][];
         private readonly BigInteger?[] _intArray = new BigInteger?[1024];
 
-        public EvmStack(int callDepth)
-        {
-            CallDepth = callDepth;
-        }
-
-        public int CallDepth { get; private set; }
+        private int _head;
 
         public void Push(byte[] value)
         {
             if (ShouldLog.VM)
             {
-                Console.WriteLine($"PUSH {Hex.FromBytes(value, true)}");
+                Console.WriteLine($"  PUSH {Hex.FromBytes(value, true)}");
             }
 
-            _intArray[CallDepth] = null;
-            _array[CallDepth] = value;
-            CallDepth++;
-            if (CallDepth >= 1024)
+            _intArray[_head] = null;
+            _array[_head] = value;
+            _head++;
+            if (_head >= 1024)
             {
                 throw new InvalidOperationException();
             }
@@ -38,13 +33,13 @@ namespace Nevermind.Evm
         {
             if (ShouldLog.VM)
             {
-                Console.WriteLine($"PUSH {value}");
+                Console.WriteLine($"  PUSH {value}");
             }
 
-            _array[CallDepth] = null;
-            _intArray[CallDepth] = value;
-            CallDepth++;
-            if (CallDepth >= 1024)
+            _array[_head] = null;
+            _intArray[_head] = value;
+            _head++;
+            if (_head >= 1024)
             {
                 throw new InvalidOperationException();
             }
@@ -52,20 +47,20 @@ namespace Nevermind.Evm
 
         public void PopLimbo()
         {
-            if (CallDepth == 0)
+            if (_head == 0)
             {
                 throw new InvalidOperationException();
             }
 
-            CallDepth--;
+            _head--;
         }
 
         public void Dup(int depth)
         {
-            _array[CallDepth] = _array[CallDepth - depth];
-            _intArray[CallDepth] = _intArray[CallDepth - depth];
-            CallDepth++;
-            if (CallDepth >= 1024)
+            _array[_head] = _array[_head - depth];
+            _intArray[_head] = _intArray[_head - depth];
+            _head++;
+            if (_head >= 1024)
             {
                 throw new InvalidOperationException();
             }
@@ -73,26 +68,26 @@ namespace Nevermind.Evm
 
         public void Swap(int depth)
         {
-            byte[] bytes = _array[CallDepth - depth];
-            BigInteger? intVal = _intArray[CallDepth - depth];
+            byte[] bytes = _array[_head - depth];
+            BigInteger? intVal = _intArray[_head - depth];
 
-            _array[CallDepth - depth] = _array[CallDepth - 1];
-            _intArray[CallDepth - depth] = _intArray[CallDepth - 1];
+            _array[_head - depth] = _array[_head - 1];
+            _intArray[_head - depth] = _intArray[_head - 1];
 
-            _array[CallDepth - 1] = bytes;
-            _intArray[CallDepth - 1] = intVal;
+            _array[_head - 1] = bytes;
+            _intArray[_head - 1] = intVal;
         }
 
         public byte[] PopBytes()
         {
-            byte[] value = _array[CallDepth - 1];
-            BigInteger? bigInteger = _intArray[CallDepth - 1];
-            CallDepth--;
+            byte[] value = _array[_head - 1];
+            BigInteger? bigInteger = _intArray[_head - 1];
+            _head--;
 
             if (ShouldLog.VM)
             {
                 string valueSTring = value == null ? bigInteger.ToString() : Hex.FromBytes(value, true);
-                Console.WriteLine($"POP {valueSTring}");
+                Console.WriteLine($"  POP {valueSTring}");
             }
 
             if (value != null)
@@ -105,18 +100,18 @@ namespace Nevermind.Evm
 
         public BigInteger PopInt(bool signed)
         {
-            byte[] value = _array[CallDepth - 1];
-            BigInteger? bigInteger = _intArray[CallDepth - 1];
-            CallDepth--;
-
-            if (ShouldLog.VM)
-            {
-                string valueSTring = value == null ? bigInteger.ToString() : Hex.FromBytes(value, true);
-                Console.WriteLine($"POP {valueSTring}");
-            }
+            byte[] value = _array[_head - 1];
+            BigInteger? bigInteger = _intArray[_head - 1];
+            _head--;
 
             if (bigInteger.HasValue)
             {
+                if (ShouldLog.VM)
+                {
+                    string valueSTring = value == null ? bigInteger.ToString() : Hex.FromBytes(value, true);
+                    Console.WriteLine($"  POP {valueSTring}");
+                }
+
                 if (signed)
                 {
                     return bigInteger.Value.ToBigEndianByteArray().ToSignedBigInteger();
@@ -125,7 +120,14 @@ namespace Nevermind.Evm
                 return bigInteger.Value;
             }
 
-            return signed ? value.ToSignedBigInteger() : value.ToUnsignedBigInteger();
+            BigInteger result = signed ? value.ToSignedBigInteger() : value.ToUnsignedBigInteger();
+
+            if (ShouldLog.VM)
+            {
+                Console.WriteLine($"  POP {result}");
+            }
+            
+            return result;
         }
     }
 }

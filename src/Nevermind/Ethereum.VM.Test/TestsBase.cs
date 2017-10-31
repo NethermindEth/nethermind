@@ -135,7 +135,7 @@ namespace Ethereum.VM.Test
             environment.MachineCode = test.Execution.Code;
             environment.Originator = test.Execution.Origin;
 
-            MachineState state = new MachineState((long)test.Execution.Gas);
+            EvmState state = new EvmState((long)test.Execution.Gas);
             foreach (KeyValuePair<Address, AccountState> accountState in test.Pre)
             {
                 StorageTree storageTree = _storageProvider.GetOrCreateStorage(accountState.Key);

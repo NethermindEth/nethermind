@@ -56,7 +56,7 @@ namespace Nevermind.Evm
         POP = 0x50,
         MLOAD = 0x51,
         MSTORE = 0x52,
-        MSTORES = 0x53,
+        MSTORE8 = 0x53,
         SLOAD = 0x54,
         SSTORE = 0x55,
         JUMP = 0x56,
