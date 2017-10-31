@@ -58,6 +58,7 @@
     <Compile Include="PatriciaTree.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="SecurePatriciaTree.cs" />
+    <Compile Include="StateSnapshot.cs" />
     <Compile Include="StateTree.cs" />
     <Compile Include="StorageTree.cs" />
     <Compile Include="TreeOperation.cs" />

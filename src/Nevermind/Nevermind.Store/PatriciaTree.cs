@@ -7,13 +7,15 @@ namespace Nevermind.Store
 {
     // I guess it is a very slow to Keccak-heavy implementation, the first one to pass tests
     public class PatriciaTree
-    {   
+    {
         /// <summary>
-        /// 0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421
+        ///     0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421
         /// </summary>
         public static readonly Keccak EmptyTreeHash = Keccak.Compute(new byte[] {128});
 
-        private readonly InMemoryDb _db;
+        private InMemoryDb _db;
+
+        internal Node Root;
 
         public PatriciaTree(InMemoryDb db)
         {
@@ -23,14 +25,23 @@ namespace Nevermind.Store
         public PatriciaTree(Keccak rootHash, InMemoryDb db)
             : this(db)
         {
-            RootHash = rootHash;
-            Rlp rootRlp = new Rlp(_db[rootHash]);
-            Root = RlpDecode(rootRlp);
+            Restore(new StateSnapshot(db, rootHash));
         }
 
         public Keccak RootHash { get; internal set; } = EmptyTreeHash;
 
-        internal Node Root { get; set; }
+        public StateSnapshot TakeSnapshot()
+        {
+            return new StateSnapshot(_db.TakeSnapshot(), RootHash);
+        }
+
+        public void Restore(StateSnapshot snapshot)
+        {
+            _db = snapshot.DbSnapshot;
+            RootHash = snapshot.RootHash;
+            Rlp rootRlp = new Rlp(_db[RootHash]);
+            Root = RlpDecode(rootRlp);
+        }
 
         private static Rlp RlpEncode(KeccakOrRlp keccakOrRlp)
         {
@@ -80,7 +91,7 @@ namespace Nevermind.Store
 
         internal static Node RlpDecode(Rlp bytes)
         {
-            object[] decoded = (object[]) Rlp.Decode(bytes);
+            object[] decoded = (object[])Rlp.Decode(bytes);
             if (decoded.Length == 17)
             {
                 BranchNode branch = new BranchNode();
@@ -89,13 +100,13 @@ namespace Nevermind.Store
                     branch.Nodes[i] = DecodeChildNode(decoded[i]);
                 }
 
-                branch.Value = (byte[]) decoded[16];
+                branch.Value = (byte[])decoded[16];
                 return branch;
             }
 
             if (decoded.Length == 2)
             {
-                HexPrefix key = HexPrefix.FromBytes((byte[]) decoded[0]);
+                HexPrefix key = HexPrefix.FromBytes((byte[])decoded[0]);
                 bool isExtension = key.IsExtension;
                 if (isExtension)
                 {
@@ -107,7 +118,7 @@ namespace Nevermind.Store
 
                 LeafNode leaf = new LeafNode();
                 leaf.Key = key;
-                leaf.Value = (byte[]) decoded[1];
+                leaf.Value = (byte[])decoded[1];
                 return leaf;
             }
 
@@ -196,6 +207,7 @@ namespace Nevermind.Store
             if (isRoot && node == null)
             {
                 Root = null;
+                _db.Delete(RootHash);
                 RootHash = EmptyTreeHash;
                 return new KeccakOrRlp(EmptyTreeHash);
             }
@@ -214,7 +226,8 @@ namespace Nevermind.Store
 
             if (isRoot)
             {
-                Root = node;   
+                Root = node;
+                _db[RootHash] = RlpEncode(node).Bytes;
                 RootHash = key.GetOrComputeKeccak();
             }
 

@@ -22,9 +22,6 @@ namespace Nevermind.Store
             }
         }
 
-        // temp
-        public int Count => _db.Count;
-
         public void Print(Action<string> output)
         {
             foreach (KeyValuePair<Keccak, byte[]> keyValuePair in _db)
@@ -32,6 +29,17 @@ namespace Nevermind.Store
                 Node node = PatriciaTree.RlpDecode(new Rlp(keyValuePair.Value));
                 output($"{keyValuePair.Key.ToString(true).Substring(0, 6)} : {node}");
             }
+        }
+
+        public InMemoryDb TakeSnapshot()
+        {
+            InMemoryDb snapshot = new InMemoryDb();
+            foreach (KeyValuePair<Keccak, byte[]> pair in _db)
+            {
+                snapshot._db[pair.Key] = pair.Value;
+            }
+
+            return snapshot;
         }
     }
 }

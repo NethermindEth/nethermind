@@ -866,7 +866,7 @@ namespace Nevermind.Evm
                         account.Nonce = 0;
 
                         Address address = new Address(Keccak.Compute(Rlp.Encode(env.CodeOwner, codeOwner.Nonce - 1).Bytes));
-                        worldStateProvider.State.Set(address, Rlp.Encode(account));
+                        worldStateProvider.UpdateAccount(address, account);
                         stack.Push(address.Hex);
 
                         break;
@@ -965,7 +965,8 @@ namespace Nevermind.Evm
                             throw new InvalidOperationException();
                         }
 
-                        // take snapshot
+                        StateSnapshot stateSnapshot = worldStateProvider.TakeSnapshot();
+                        StateSnapshot storageSnapshot = storageProvider.TakeSnapshot(callEnv.CodeOwner);
 
                         try
                         {
@@ -994,7 +995,8 @@ namespace Nevermind.Evm
                                 Console.WriteLine("FAIL");
                             }
 
-                            // restore from snapshot
+                            worldStateProvider.Restore(stateSnapshot);
+                            storageProvider.Restore(callEnv.CodeOwner, storageSnapshot);
 
                             stack.Push(1);
                         }

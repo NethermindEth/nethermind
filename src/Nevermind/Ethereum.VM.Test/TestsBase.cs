@@ -156,7 +156,7 @@ namespace Ethereum.VM.Test
                 account.Nonce = accountState.Value.Nonce;
                 account.StorageRoot = storageTree.RootHash;
                 account.CodeHash = Keccak.Compute(accountState.Value.Code);
-                _stateProvider.State.Set(accountState.Key, Rlp.Encode(account));
+                _stateProvider.UpdateAccount(accountState.Key, account);
             }
 
             EvmState state = new EvmState((long)test.Execution.Gas);

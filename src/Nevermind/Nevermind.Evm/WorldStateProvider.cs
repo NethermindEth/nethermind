@@ -41,6 +41,16 @@ namespace Nevermind.Evm
             return State.Get(codeHash.Bytes);
         }
 
+        public StateSnapshot TakeSnapshot()
+        {
+            return State.TakeSnapshot();
+        }
+
+        public void Restore(StateSnapshot snapshot)
+        {
+            State.Restore(snapshot);
+        }
+
         public Account GetOrCreateAccount(Address address)
         {
             Account account = GetAccount(address);

@@ -6,8 +6,6 @@ namespace Nevermind.Evm
 {
     public interface IWorldStateProvider
     {
-        StateTree State { get; }
-
         Account GetOrCreateAccount(Address address);
 
         void UpdateAccount(Address address, Account account);
@@ -17,5 +15,9 @@ namespace Nevermind.Evm
         Keccak UpdateCode(byte[] code);
 
         byte[] GetCode(Keccak codeHash);
+
+        StateSnapshot TakeSnapshot();
+
+        void Restore(StateSnapshot snapshot);
     }
 }

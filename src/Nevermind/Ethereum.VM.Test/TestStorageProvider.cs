@@ -16,11 +16,6 @@ namespace Ethereum.VM.Test
             _db = db;
         }
 
-        public StorageTree GetStorage(Address address)
-        {
-            return _storages[address];
-        }
-
         public StorageTree GetOrCreateStorage(Address address)
         {
             if (!_storages.ContainsKey(address))
@@ -29,6 +24,28 @@ namespace Ethereum.VM.Test
             }
 
             return GetStorage(address);
+        }
+
+        public StorageTree GetStorage(Address address)
+        {
+            return _storages[address];
+        }
+
+        public StateSnapshot TakeSnapshot(Address address)
+        {
+            return _storages[address]?.TakeSnapshot();
+        }
+
+        public void Restore(Address address, StateSnapshot snapshot)
+        {
+            if (snapshot == null)
+            {
+                _storages[address] = null;
+            }
+            else
+            {
+                _storages[address].Restore(snapshot);
+            }
         }
     }
 }
