@@ -1,4 +1,5 @@
 using Nevermind.Core;
+using Nevermind.Core.Encoding;
 using Nevermind.Store;
 
 namespace Nevermind.Evm
@@ -12,5 +13,9 @@ namespace Nevermind.Evm
         void UpdateAccount(Address address, Account account);
 
         Account GetAccount(Address address);
+
+        Keccak UpdateCode(byte[] code);
+
+        byte[] GetCode(Keccak codeHash);
     }
 }

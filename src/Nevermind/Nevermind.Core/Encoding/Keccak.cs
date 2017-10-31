@@ -32,12 +32,12 @@ namespace Nevermind.Core.Encoding
         /// <returns>
         ///     <string>0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470</string>
         /// </returns>
-        public static Keccak OfAnEmptyString { get; } = Compute("");
+        public static Keccak OfAnEmptyString { get; } = InternalCompute(new byte[] { });
 
         /// <returns>
         ///     <string>0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347</string>
         /// </returns>
-        public static Keccak OfAnEmptySequenceRlp { get; } = Compute(new byte[] { 192 });
+        public static Keccak OfAnEmptySequenceRlp { get; } = InternalCompute(new byte[] { 192 });
 
         /// <returns>
         ///     <string>0x0000000000000000000000000000000000000000000000000000000000000000</string>
@@ -65,13 +65,28 @@ namespace Nevermind.Core.Encoding
         [DebuggerStepThrough]
         public static Keccak Compute(byte[] input)
         {
+            if (input == null || input.Length == 0)
+            {
+                return OfAnEmptyString;
+            }
+
+            return new Keccak(Hash.ComputeBytes(input).GetBytes());
+        }
+
+        private static Keccak InternalCompute(byte[] input)
+        {
             return new Keccak(Hash.ComputeBytes(input).GetBytes());
         }
 
         [DebuggerStepThrough]
         public static Keccak Compute(string input)
         {
-            return Compute(System.Text.Encoding.UTF8.GetBytes(input));
+            if (string.IsNullOrWhiteSpace(input))
+            {
+                return OfAnEmptyString;
+            }
+
+            return InternalCompute(System.Text.Encoding.UTF8.GetBytes(input));
         }
 
         public bool Equals(Keccak other)

@@ -101,6 +101,9 @@ namespace Nevermind.Evm
                 recipientAccount.Balance += transaction.Value;
             }
 
+            // execute here
+            // update account storage?
+
             // pre-final
             BigInteger gasSpent = transaction.GasLimit - gasAvailable;
             BigInteger halfOfGasSpend = BigInteger.Divide(gasSpent, 2);

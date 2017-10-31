@@ -24,6 +24,20 @@ namespace Nevermind.Core.Test
         }
 
         [Test]
+        public void Null_string()
+        {
+            string result = Keccak.Compute((string)null).ToString();
+            Assert.AreEqual(KeccakOfAnEmptyString, result);
+        }
+
+        [Test]
+        public void Null_bytes()
+        {
+            string result = Keccak.Compute((byte[])null).ToString();
+            Assert.AreEqual(KeccakOfAnEmptyString, result);
+        }
+
+        [Test]
         public void Zero()
         {
             string result = Keccak.Zero.ToString();

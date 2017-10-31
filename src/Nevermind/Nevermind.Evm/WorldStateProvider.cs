@@ -24,6 +24,23 @@ namespace Nevermind.Evm
             return Rlp.Decode<Account>(rlp);
         }
 
+        public Keccak UpdateCode(byte[] code)
+        {
+            if (code.Length == 0)
+            {
+                return Keccak.OfAnEmptyString;
+            }
+
+            Keccak codeHash = Keccak.Compute(code);
+            State.Set(codeHash, new Rlp(code));
+            return codeHash;
+        }
+
+        public byte[] GetCode(Keccak codeHash)
+        {
+            return State.Get(codeHash.Bytes);
+        }
+
         public Account GetOrCreateAccount(Address address)
         {
             Account account = GetAccount(address);

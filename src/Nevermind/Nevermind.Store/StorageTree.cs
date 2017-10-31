@@ -16,17 +16,7 @@ namespace Nevermind.Store
 
         public byte[] Get(BigInteger position)
         {
-            return Get(Keccak.Compute(position.ToBigEndianByteArray()).Bytes);
-        }
-
-        public byte[] GetCode(Keccak codeHash)
-        {
-            return Get(codeHash.Bytes);
-        }
-
-        public void SetCode(byte[] value)
-        {
-            Set(Keccak.Compute(value).Bytes, value);
+            return Get(Keccak.Compute(position.ToBigEndianByteArray()).Bytes) ?? new byte[] { 0 };
         }
 
         public void Set(BigInteger position, byte[] value)

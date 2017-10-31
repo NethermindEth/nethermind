@@ -135,16 +135,21 @@ namespace Ethereum.VM.Test
             environment.MachineCode = test.Execution.Code;
             environment.Originator = test.Execution.Origin;
 
-            EvmState state = new EvmState((long)test.Execution.Gas);
+            Dictionary<BigInteger, byte[]> storage = new Dictionary<BigInteger, byte[]>();
+
             foreach (KeyValuePair<Address, AccountState> accountState in test.Pre)
             {
                 StorageTree storageTree = _storageProvider.GetOrCreateStorage(accountState.Key);
                 foreach (KeyValuePair<BigInteger, byte[]> storageItem in accountState.Value.Storage)
                 {
                     storageTree.Set(storageItem.Key, storageItem.Value);
+                    if (accountState.Key.Equals(test.Execution.Address))
+                    {
+                        storage[storageItem.Key] = storageItem.Value;
+                    }
                 }
 
-                storageTree.SetCode(accountState.Value.Code);
+                _stateProvider.UpdateCode(accountState.Value.Code);
 
                 Account account = new Account();
                 account.Balance = accountState.Value.Balance;
@@ -154,23 +159,25 @@ namespace Ethereum.VM.Test
                 _stateProvider.State.Set(accountState.Key, Rlp.Encode(account));
             }
 
+            EvmState state = new EvmState((long)test.Execution.Gas);
+
             if (test.Out == null)
             {
-                Assert.That(() => machine.Run(environment, state, _storageProvider, _blockhashProvider, _stateProvider), Throws.Exception);
+                Assert.That(() => machine.Run(environment, state, _blockhashProvider, _stateProvider, _storageProvider), Throws.Exception);
                 return;
             }
 
-            (byte[] output, TransactionSubstate substate) = machine.Run(environment, state, _storageProvider, _blockhashProvider, _stateProvider);
+            (byte[] output, TransactionSubstate substate) = machine.Run(environment, state, _blockhashProvider, _stateProvider, _storageProvider);
 
             Assert.True(Bytes.UnsafeCompare(test.Out, output),
                 $"Exp: {Hex.FromBytes(test.Out, true)} != Actual: {Hex.FromBytes(output, true)}");
             Assert.AreEqual(test.Gas, state.GasAvailable);
             foreach (KeyValuePair<Address, AccountState> accountState in test.Post)
             {
-                StorageTree storage = _storageProvider.GetOrCreateStorage(accountState.Key);
+                StorageTree accountStorage = _storageProvider.GetOrCreateStorage(accountState.Key);
                 foreach (KeyValuePair<BigInteger, byte[]> storageItem in accountState.Value.Storage)
                 {
-                    byte[] value = storage.Get(storageItem.Key);
+                    byte[] value = accountStorage.Get(storageItem.Key);
                     Assert.True(Bytes.UnsafeCompare(storageItem.Value, value),
                         $"Exp: {Hex.FromBytes(storageItem.Value, true)} != Actual: {Hex.FromBytes(value, true)}");
                 }

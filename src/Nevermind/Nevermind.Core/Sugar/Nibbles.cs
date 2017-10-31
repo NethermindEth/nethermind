@@ -1,7 +1,9 @@
 ﻿using System;
+using System.Diagnostics;
 
 namespace Nevermind.Core.Sugar
 {
+    [DebuggerStepThrough]
     public static class Nibbles
     {
         public static Nibble[] FromBytes(params byte[] bytes)

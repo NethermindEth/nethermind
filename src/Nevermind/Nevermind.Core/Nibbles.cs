@@ -3,6 +3,7 @@
 namespace Nevermind.Core
 {
     [DebuggerDisplay("{_nibble}")]
+    [DebuggerStepThrough]
     public struct Nibble
     {
         private readonly byte _nibble;

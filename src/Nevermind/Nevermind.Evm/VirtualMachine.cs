@@ -26,9 +26,9 @@ namespace Nevermind.Evm
         public (byte[] output, TransactionSubstate) Run(
             ExecutionEnvironment env,
             EvmState state,
-            IStorageProvider storageProvider,
             IBlockhashProvider blockhashProvider,
-            IWorldStateProvider worldStateProvider)
+            IWorldStateProvider worldStateProvider,
+            IStorageProvider storageProvider)
         {
             EvmStack stack = state.Stack;
 
@@ -144,7 +144,7 @@ namespace Nevermind.Evm
                         state.GasAvailable -= GasCostOf.Low;
                         i256Reg[0] = PopUInt();
                         i256Reg[1] = PopUInt();
-      
+
                         stack.Push(BigInteger.Remainder(i256Reg[0] * i256Reg[1], P256Int)
                         );
                         break;
@@ -197,7 +197,7 @@ namespace Nevermind.Evm
                     {
                         state.GasAvailable -= GasCostOf.Low;
                         i256Reg[0] = PopUInt();
-                        i256Reg[1] = PopUInt();    
+                        i256Reg[1] = PopUInt();
                         stack.Push(i256Reg[1] == BigInteger.Zero
                             ? BigInteger.Zero
                             : BigInteger.Remainder(i256Reg[0], i256Reg[1]));
@@ -207,7 +207,7 @@ namespace Nevermind.Evm
                     {
                         state.GasAvailable -= GasCostOf.Low;
                         i256Reg[0] = PopInt();
-                        i256Reg[1] = PopInt();                    
+                        i256Reg[1] = PopInt();
                         stack.Push(
                             i256Reg[1] == BigInteger.Zero
                                 ? Zero
@@ -520,7 +520,7 @@ namespace Nevermind.Evm
                         Address address = new Address(bytesReg[0].Slice(bytesReg[0].Length - 20, 20));
                         Account account =
                             worldStateProvider.GetOrCreateAccount(address);
-                        byte[] accountCode = storageProvider.GetOrCreateStorage(address).GetCode(account.CodeHash);
+                        byte[] accountCode = worldStateProvider.GetCode(account.CodeHash);
                         stack.Push(accountCode?.Length ?? BigInteger.Zero);
                         break;
                     }
@@ -541,8 +541,7 @@ namespace Nevermind.Evm
                         }
                         else
                         {
-                            externalCode = storageProvider.GetOrCreateStorage(
-                                new Address(bytesReg[0])).Get(account.CodeHash.Bytes);
+                            externalCode = worldStateProvider.GetCode(account.CodeHash);
                         }
 
                         byte[] callDataSlice = GetPaddedSlice(externalCode, i256Reg[1], i256Reg[2]);
@@ -645,27 +644,45 @@ namespace Nevermind.Evm
                     {
                         state.GasAvailable -= GasCostOf.SLoad;
                         i256Reg[0] = PopInt();
-                        Address accountAddressLoad = env.CodeOwner;
-                        StorageTree treeLoad = storageProvider.GetOrCreateStorage(accountAddressLoad);
-                        stack.Push(treeLoad.Get(i256Reg[0]) ?? new byte[] { 0 });
+                        StorageTree storage = storageProvider.GetOrCreateStorage(env.CodeOwner);
+                        byte[] value = storage.Get(i256Reg[0]);
+                        stack.Push(value);
                         break;
                     }
                     case Instruction.SSTORE:
                     {
                         i256Reg[0] = PopInt();
                         bytesReg[0] = PopBytes();
-                        Address accountAddress = env.CodeOwner;
-                        StorageTree tree = storageProvider.GetOrCreateStorage(accountAddress);
-                        byte[] previousValue = tree.Get(i256Reg[0]);
-                        if (!bytesReg[0].IsZero() && !Bytes.UnsafeCompare(bytesReg[0], previousValue))
+                        StorageTree storage = storageProvider.GetOrCreateStorage(env.CodeOwner);
+                        byte[] previousValue = storage.Get(i256Reg[0]);
+
+                        bool isNewValueZero = bytesReg[0].IsZero();
+                        bool isValueChanged = !(isNewValueZero && previousValue.IsZero()) ||
+                                              !Bytes.UnsafeCompare(previousValue, bytesReg[0]);
+                        if (isNewValueZero)
                         {
-                            tree.Set(i256Reg[0], bytesReg[0].WithoutLeadingZeros());
-                            state.GasAvailable -= GasCostOf.SSet;
+                            state.GasAvailable -= GasCostOf.SReset;
+                            if (isValueChanged)
+                            {
+                                refund += RefundOf.SClear;
+                            }
                         }
                         else
                         {
-                            state.GasAvailable -= GasCostOf.SReset;
-                            refund += RefundOf.SClear;
+                            if (previousValue.IsZero())
+                            {
+                                state.GasAvailable -= GasCostOf.SSet;
+                            }
+                            else
+                            {
+                                state.GasAvailable -= GasCostOf.SReset;
+                            }
+                        }
+
+                        // do not apply changes if not possible (reverting state)
+                        if (isValueChanged && state.GasAvailable >= 0)
+                        {
+                            storage.Set(i256Reg[0], isNewValueZero ? new byte[] { 0 } : bytesReg[0].WithoutLeadingZeros());
                         }
 
                         break;
@@ -844,16 +861,12 @@ namespace Nevermind.Evm
                             return (new byte[0], null);
                         }
 
-                        Keccak codeHash = Keccak.Compute(accountCode);
-
-                        Address address = new Address(codeHash);
-                        StorageTree storageTree = storageProvider.GetOrCreateStorage(address);
-                        storageTree.SetCode(accountCode);
+                        Keccak codeHash = worldStateProvider.UpdateCode(accountCode);
                         account.CodeHash = codeHash;
                         account.Nonce = 0;
-                        account.StorageRoot = storageTree.RootHash;
 
-                        worldStateProvider.State.Set(address, Rlp.Encode(env.CodeOwner, codeOwner.Nonce - 1));
+                        Address address = new Address(Keccak.Compute(Rlp.Encode(env.CodeOwner, codeOwner.Nonce - 1).Bytes));
+                        worldStateProvider.State.Set(address, Rlp.Encode(account));
                         stack.Push(address.Hex);
 
                         break;
@@ -945,24 +958,34 @@ namespace Nevermind.Evm
                         callEnv.GasPrice = env.GasPrice;
                         callEnv.InputData = callData;
                         callEnv.CodeOwner = instruction == Instruction.CALL ? target : env.CodeOwner;
-                        callEnv.MachineCode = storageProvider.GetOrCreateStorage(target).GetCode(targetAccount.CodeHash);
+                        callEnv.MachineCode = worldStateProvider.GetCode(targetAccount.CodeHash);
 
                         if (callEnv.CallDepth >= 1024)
                         {
                             throw new InvalidOperationException();
                         }
 
+                        // take snapshot
+
                         try
                         {
+                            BigInteger callGas =
+                                i256Reg[1].IsZero
+                                    ? gasCap
+                                    : gasCap + GasCostOf.CallStipend;
                             // stipend only with value
-                            EvmState callState = new EvmState(gasCap + GasCostOf.CallStipend);
-                            (byte[] callOutput, TransactionSubstate callResult) = Run(callEnv, callState,
-                                storageProvider, blockhashProvider, worldStateProvider);
-                            //state.GasAvailable -= gasCap + GasCostOf.CallStipend - callState.GasAvailable;
+                            EvmState callState = new EvmState(callGas);
+                            (byte[] callOutput, TransactionSubstate callResult) = Run(
+                                callEnv,
+                                callState,
+                                blockhashProvider,
+                                worldStateProvider,
+                                storageProvider);
+                            //state.GasAvailable -= callGas - callState.GasAvailable;
                             newMemory = state.Memory.Save(i256Reg[4], GetPaddedSlice(callOutput, 0, i256Reg[5]));
                             state.GasAvailable -= CalculateMemoryCost(state.ActiveWordsInMemory, newMemory);
                             state.ActiveWordsInMemory = newMemory;
-                            stack.Push(0);
+                            stack.Push(1);
                         }
                         catch (Exception)
                         {
@@ -970,6 +993,8 @@ namespace Nevermind.Evm
                             {
                                 Console.WriteLine("FAIL");
                             }
+
+                            // restore from snapshot
 
                             stack.Push(1);
                         }
@@ -1038,6 +1063,27 @@ namespace Nevermind.Evm
             Console.WriteLine(totalTime.ElapsedMilliseconds);
 
             return (new byte[0], new TransactionSubstate(refund, destroyList, logs));
+        }
+
+        private Dictionary<BigInteger, byte[]> TakeStorageSnapshot(Dictionary<BigInteger, byte[]> storage)
+        {
+            Dictionary<BigInteger, byte[]> snapshot = new Dictionary<BigInteger, byte[]>();
+            foreach (KeyValuePair<BigInteger, byte[]> keyValuePair in storage)
+            {
+                snapshot[keyValuePair.Key] = keyValuePair.Value; // no need to clone, immutable
+            }
+
+            return snapshot;
+        }
+
+        private void ApplyStateChanges(EvmState state, IStorageProvider storageProvider)
+        {
+            if (state.GasAvailable < 0)
+            {
+                return;
+            }
+
+            throw new NotImplementedException();
         }
 
         public static BigInteger CalculateMemoryCost(BigInteger initial, BigInteger final)

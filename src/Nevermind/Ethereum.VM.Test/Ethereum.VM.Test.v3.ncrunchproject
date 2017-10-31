@@ -38,13 +38,31 @@
         <TestName>Ethereum.VM.Test.PerformanceTests.Test(loop-exp-2b-100k)</TestName>
       </NamedTestSelector>
       <FixtureTestSelector>
+        <FixtureName>Ethereum.VM.Test.PerformanceTests</FixtureName>
+      </FixtureTestSelector>
+      <FixtureTestSelector>
+        <FixtureName>Ethereum.VM.Test.LogTests</FixtureName>
+      </FixtureTestSelector>
+      <FixtureTestSelector>
+        <FixtureName>Ethereum.VM.Test.OtherTests</FixtureName>
+      </FixtureTestSelector>
+      <FixtureTestSelector>
         <FixtureName>Ethereum.VM.Test.PushDupSwapTests</FixtureName>
+      </FixtureTestSelector>
+      <FixtureTestSelector>
+        <FixtureName>Ethereum.VM.Test.Sha3Tests</FixtureName>
       </FixtureTestSelector>
       <FixtureTestSelector>
         <FixtureName>Ethereum.VM.Test.BlockInfoTests</FixtureName>
       </FixtureTestSelector>
       <FixtureTestSelector>
-        <FixtureName>Ethereum.VM.Test.OtherTests</FixtureName>
+        <FixtureName>Ethereum.VM.Test.AbiTests</FixtureName>
+      </FixtureTestSelector>
+      <FixtureTestSelector>
+        <FixtureName>Ethereum.VM.Test.ArithmeticTests</FixtureName>
+      </FixtureTestSelector>
+      <FixtureTestSelector>
+        <FixtureName>Ethereum.VM.Test.BitwiseLogicTests</FixtureName>
       </FixtureTestSelector>
     </IgnoredTests>
   </Settings>
