@@ -7,9 +7,10 @@ namespace Nevermind.Evm
     {
         private BigInteger _activeWordsInMemory;
 
-        public EvmState(BigInteger gasAvailable)
+        public EvmState(BigInteger gasAvailable, EvmStack stack = null)
         {
             GasAvailable = gasAvailable;
+            Stack = stack ?? new EvmStack();
         }
 
         public BigInteger GasAvailable { get; set; }
@@ -34,6 +35,6 @@ namespace Nevermind.Evm
         }
 
         public EvmMemory Memory { get; } = new EvmMemory();
-        public EvmStack Stack { get; } = new EvmStack();
+        public EvmStack Stack { get; }
     }
 }

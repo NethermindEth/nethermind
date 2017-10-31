@@ -32,16 +32,16 @@
         <TestName>Ethereum.VM.Test.PerformanceTests.Test(loop-mul)</TestName>
       </NamedTestSelector>
       <NamedTestSelector>
-        <TestName>Ethereum.VM.Test.PerformanceTests.Test(loop-mulmod-2M)</TestName>
+        <TestName>Ethereum.VM.Test.PerformanceTests.Test(manyFunctions100)</TestName>
       </NamedTestSelector>
       <NamedTestSelector>
         <TestName>Ethereum.VM.Test.PerformanceTests.Test(loop-exp-2b-100k)</TestName>
       </NamedTestSelector>
+      <NamedTestSelector>
+        <TestName>Ethereum.VM.Test.PerformanceTests.Test(loop-mulmod-2M)</TestName>
+      </NamedTestSelector>
       <FixtureTestSelector>
         <FixtureName>Ethereum.VM.Test.PerformanceTests</FixtureName>
-      </FixtureTestSelector>
-      <FixtureTestSelector>
-        <FixtureName>Ethereum.VM.Test.OtherTests</FixtureName>
       </FixtureTestSelector>
     </IgnoredTests>
   </Settings>

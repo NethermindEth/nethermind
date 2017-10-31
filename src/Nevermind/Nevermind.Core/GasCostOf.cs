@@ -20,7 +20,7 @@ namespace Nevermind.Core
         public static long SReset = 5000;
         public static long Destroy = 5000;
         public static long Create = 32000; // EIP-2
-        public static long CodeDeposit = 0; // 200 // ???
+        public static long CodeDeposit = 0; // 200 // ??? I guess this is outside of EVM
         public static long Call = 40; // 700 // EIP-150
         public static long CallCode = 40; // 700 // EIP-150
         public static long DelegateCall = 40; // 700 // EIP-150

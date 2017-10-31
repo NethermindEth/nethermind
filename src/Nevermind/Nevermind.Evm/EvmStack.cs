@@ -25,7 +25,7 @@ namespace Nevermind.Evm
             _head++;
             if (_head >= 1024)
             {
-                throw new InvalidOperationException();
+                throw new StackOverflowException();
             }
         }
 
@@ -41,7 +41,7 @@ namespace Nevermind.Evm
             _head++;
             if (_head >= 1024)
             {
-                throw new InvalidOperationException();
+                throw new StackOverflowException();
             }
         }
 
@@ -49,7 +49,7 @@ namespace Nevermind.Evm
         {
             if (_head == 0)
             {
-                throw new InvalidOperationException();
+                throw new StackUnderflowException();
             }
 
             _head--;
@@ -62,7 +62,7 @@ namespace Nevermind.Evm
             _head++;
             if (_head >= 1024)
             {
-                throw new InvalidOperationException();
+                throw new StackOverflowException();
             }
         }
 
@@ -80,6 +80,11 @@ namespace Nevermind.Evm
 
         public byte[] PopBytes()
         {
+            if (_head == 0)
+            {
+                throw new StackUnderflowException();
+            }
+
             byte[] value = _array[_head - 1];
             BigInteger? bigInteger = _intArray[_head - 1];
             _head--;
@@ -100,6 +105,11 @@ namespace Nevermind.Evm
 
         public BigInteger PopInt(bool signed)
         {
+            if (_head == 0)
+            {
+                throw new StackUnderflowException();
+            }
+
             byte[] value = _array[_head - 1];
             BigInteger? bigInteger = _intArray[_head - 1];
             _head--;

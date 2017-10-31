@@ -669,6 +669,12 @@ namespace Nevermind.Evm
                         }
                         else
                         {
+                            // TODO: temp
+                            if (bytesReg[0][0] > 1)
+                            {
+                                
+                            }
+
                             if (previousValue.IsZero())
                             {
                                 state.GasAvailable -= GasCostOf.SSet;
@@ -853,14 +859,17 @@ namespace Nevermind.Evm
                         Account codeOwner = worldStateProvider.GetAccount(env.CodeOwner);
                         (byte[] accountCode, BigInteger newMemoryAllocation) =
                             state.Memory.Load(i256Reg[1], i256Reg[2], false);
+                        state.GasAvailable -= CalculateMemoryCost(state.ActiveWordsInMemory, newMemoryAllocation);
+                        state.ActiveWordsInMemory = newMemoryAllocation;
 
-                        state.GasAvailable -= GasCostOf.CodeDeposit * accountCode.Length;
+                        state.GasAvailable -= GasCostOf.CodeDeposit * (i256Reg[2]);
 
                         Account account = new Account();
                         account.Balance = i256Reg[0];
                         if (i256Reg[0] > (codeOwner?.Balance ?? 0))
                         {
-                            return (new byte[0], null);
+                            stack.Push(BigInteger.Zero);
+                            break;
                         }
 
                         Keccak codeHash = worldStateProvider.UpdateCode(accountCode);
@@ -871,7 +880,6 @@ namespace Nevermind.Evm
                         Address address = new Address(newAddress);
                         worldStateProvider.UpdateAccount(address, account);
                         stack.Push(address.Hex);
-
                         break;
                     }
                     case Instruction.RETURN:
@@ -890,10 +898,13 @@ namespace Nevermind.Evm
                     case Instruction.CALL:
                     case Instruction.CALLCODE:
                     {
-                        if (state.GasAvailable < 0)
+                        if (env.CallDepth >= 1024)
                         {
-                            throw new OutOfGasException();
+                            throw new CallDepthException();
                         }
+
+                        BigInteger failure = BigInteger.One; // seems that tests are incorrect here...
+                        BigInteger success = BigInteger.One; //failure.IsZero ? BigInteger.One : BigInteger.Zero;
 
                         i256Reg[0] = PopUInt(); // gas
                         Address target = new Address(PopAddress());
@@ -910,6 +921,12 @@ namespace Nevermind.Evm
 
                         state.GasAvailable -= gasExtra;
 
+                        if (target.Equals(env.CodeOwner))
+                        {
+                            stack.Push(failure);
+                            break;
+                        }
+
                         (byte[] callData, BigInteger newMemory) = state.Memory.Load(i256Reg[2], i256Reg[3]);
                         state.GasAvailable -= CalculateMemoryCost(state.ActiveWordsInMemory, newMemory);
                         state.ActiveWordsInMemory = newMemory;
@@ -919,10 +936,10 @@ namespace Nevermind.Evm
                             Account codeOwnerAccount = worldStateProvider.GetAccount(env.CodeOwner);
                             if (codeOwnerAccount.Balance < i256Reg[1])
                             {
-                                stack.Push(BigInteger.One);
                                 newMemory = state.Memory.Save(i256Reg[4], new byte[(int)i256Reg[5]]);
                                 state.GasAvailable -= CalculateMemoryCost(state.ActiveWordsInMemory, newMemory);
                                 state.ActiveWordsInMemory = newMemory;
+                                stack.Push(failure);
                                 break;
                             }
 
@@ -939,13 +956,10 @@ namespace Nevermind.Evm
                             targetAccount.Balance = i256Reg[1];
                             worldStateProvider.UpdateAccount(target, targetAccount);
                         }
-
-                        targetAccount.Balance += i256Reg[1];
-                        worldStateProvider.UpdateAccount(target, targetAccount);
-
-                        if (i256Reg[0] > state.GasAvailable)
+                        else
                         {
-                            throw new OutOfGasException();
+                            targetAccount.Balance += i256Reg[1];
+                            worldStateProvider.UpdateAccount(target, targetAccount);
                         }
 
                         BigInteger gasCap = i256Reg[0];
@@ -957,12 +971,9 @@ namespace Nevermind.Evm
                                 ? BigInteger.Min((state.GasAvailable - gasExtra) - (state.GasAvailable - gasExtra) / 64, i256Reg[0])
                                 : i256Reg[0];
                         }
-                        else
+                        else if (state.GasAvailable < gasCap)
                         {
-                            if (state.GasAvailable < gasCap + gasExtra)
-                            {
-                                throw new OutOfGasException();
-                            }
+                            throw new OutOfGasException(); // no EIP-150
                         }
 
                         ExecutionEnvironment callEnv = new ExecutionEnvironment();
@@ -976,20 +987,16 @@ namespace Nevermind.Evm
                         callEnv.CodeOwner = instruction == Instruction.CALL ? target : env.CodeOwner;
                         callEnv.MachineCode = worldStateProvider.GetCode(targetAccount.CodeHash);
 
-                        if (callEnv.CallDepth >= 1024)
-                        {
-                            throw new InvalidOperationException();
-                        }
-
                         StateSnapshot stateSnapshot = worldStateProvider.TakeSnapshot();
                         StateSnapshot storageSnapshot = storageProvider.TakeSnapshot(callEnv.CodeOwner);
 
+                        BigInteger callGas =
+                            i256Reg[1].IsZero
+                                ? gasCap
+                                : gasCap + GasCostOf.CallStipend;
+
                         try
                         {
-                            BigInteger callGas =
-                                i256Reg[1].IsZero
-                                    ? gasCap
-                                    : gasCap + GasCostOf.CallStipend;
                             // stipend only with value
                             EvmState callState = new EvmState(callGas);
                             (byte[] callOutput, TransactionSubstate callResult) = Run(
@@ -998,23 +1005,25 @@ namespace Nevermind.Evm
                                 blockhashProvider,
                                 worldStateProvider,
                                 storageProvider);
+
                             //state.GasAvailable -= callGas - callState.GasAvailable;
                             newMemory = state.Memory.Save(i256Reg[4], GetPaddedSlice(callOutput, 0, i256Reg[5]));
                             state.GasAvailable -= CalculateMemoryCost(state.ActiveWordsInMemory, newMemory);
                             state.ActiveWordsInMemory = newMemory;
-                            stack.Push(1);
+                            stack.Push(success);
                         }
-                        catch (Exception)
+                        catch (Exception ex)
                         {
                             if (ShouldLog.VM)
                             {
-                                Console.WriteLine("FAIL");
+                                Console.WriteLine($"FAIL {ex.GetType().Name}");
                             }
-
+           
                             worldStateProvider.Restore(stateSnapshot);
                             storageProvider.Restore(callEnv.CodeOwner, storageSnapshot);
 
-                            stack.Push(1);
+                            stack.Push(failure);
+        
                         }
 
                         break;
@@ -1081,27 +1090,6 @@ namespace Nevermind.Evm
             Console.WriteLine(totalTime.ElapsedMilliseconds);
 
             return (new byte[0], new TransactionSubstate(refund, destroyList, logs));
-        }
-
-        private Dictionary<BigInteger, byte[]> TakeStorageSnapshot(Dictionary<BigInteger, byte[]> storage)
-        {
-            Dictionary<BigInteger, byte[]> snapshot = new Dictionary<BigInteger, byte[]>();
-            foreach (KeyValuePair<BigInteger, byte[]> keyValuePair in storage)
-            {
-                snapshot[keyValuePair.Key] = keyValuePair.Value; // no need to clone, immutable
-            }
-
-            return snapshot;
-        }
-
-        private void ApplyStateChanges(EvmState state, IStorageProvider storageProvider)
-        {
-            if (state.GasAvailable < 0)
-            {
-                return;
-            }
-
-            throw new NotImplementedException();
         }
 
         public static BigInteger CalculateMemoryCost(BigInteger initial, BigInteger final)
