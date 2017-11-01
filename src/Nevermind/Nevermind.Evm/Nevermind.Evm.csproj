@@ -61,6 +61,9 @@
     <Compile Include="Abi\AbiUInt.cs" />
     <Compile Include="Abi\AbiAddress.cs" />
     <Compile Include="BlockhashProvider.cs" />
+    <Compile Include="CallDepthException.cs" />
+    <Compile Include="InvalidInstructionException.cs" />
+    <Compile Include="InvalidJumpDestinationException.cs" />
     <Compile Include="Precompiles\ECRecoverPrecompiledContract.cs" />
     <Compile Include="EvmMemory.cs" />
     <Compile Include="EvmStack.cs" />
@@ -78,6 +81,8 @@
     <Compile Include="Precompiles\Ripemd160PrecompiledContract.cs" />
     <Compile Include="Precompiles\Sha256PrecompiledContract.cs" />
     <Compile Include="ShouldLog.cs" />
+    <Compile Include="StackOverflowException.cs" />
+    <Compile Include="StackUnderflowException.cs" />
     <Compile Include="TransactionProcessor.cs" />
     <Compile Include="TransactionSubstate.cs" />
     <Compile Include="VirtualMachine.cs" />

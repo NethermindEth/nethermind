@@ -22,15 +22,15 @@ namespace Nevermind.Evm
 
         public void Push(byte[] value)
         {
-            //if (ShouldLog.Evm)
-            //{
-            //    Console.WriteLine($"  PUSH {Hex.FromBytes(value, true)}");
-            //}
+            if (ShouldLog.Evm)
+            {
+                Console.WriteLine($"  PUSH {Hex.FromBytes(value, true)}");
+            }
 
             _isInt[_head] = false;
             _array[_head] = value;
             _head++;
-            if (_head >= MaxSize)
+            if (_head > MaxSize)
             {
                 throw new StackOverflowException();
             }
@@ -38,15 +38,15 @@ namespace Nevermind.Evm
 
         public void Push(BigInteger value)
         {
-            //if (ShouldLog.Evm)
-            //{
-            //    Console.WriteLine($"  PUSH {value}");
-            //}
+            if (ShouldLog.Evm)
+            {
+                Console.WriteLine($"  PUSH {value}");
+            }
 
             _isInt[_head] = true;
             _intArray[_head] = value;
             _head++;
-            if (_head >= MaxSize)
+            if (_head > MaxSize)
             {
                 throw new StackOverflowException();
             }
@@ -76,7 +76,7 @@ namespace Nevermind.Evm
             }
 
             _head++;
-            if (_head >= MaxSize)
+            if (_head > MaxSize)
             {
                 throw new StackOverflowException();
             }
@@ -130,7 +130,14 @@ namespace Nevermind.Evm
             }
 
             _head--;
-            return _isInt[_head] ? _intArray[_head].ToBigEndianByteArray() : _array[_head];
+
+            byte[] result = _isInt[_head] ? _intArray[_head].ToBigEndianByteArray() : _array[_head];
+            if (ShouldLog.Evm)
+            {
+                Console.WriteLine($"  POP {Hex.FromBytes(result, true)}");
+            }
+
+            return result;
         }
 
         public BigInteger PopUInt()
@@ -144,7 +151,17 @@ namespace Nevermind.Evm
 
             if (_isInt[_head])
             {
+                if (ShouldLog.Evm)
+                {
+                    Console.WriteLine($"  POP {_intArray[_head]}");
+                }
+
                 return _intArray[_head];
+            }
+
+            if (ShouldLog.Evm)
+            {
+                Console.WriteLine($"  POP {_array[_head]}");
             }
 
             return _array[_head].ToUnsignedBigInteger();
@@ -162,7 +179,17 @@ namespace Nevermind.Evm
             // TODO: if I remember if it was signed?
             if (_isInt[_head])
             {
+                if (ShouldLog.Evm)
+                {
+                    Console.WriteLine($"  POP {_intArray[_head]}");
+                }
+
                 return _intArray[_head].ToBigEndianByteArray().ToSignedBigInteger();
+            }
+
+            if (ShouldLog.Evm)
+            {
+                Console.WriteLine($"  POP {_array[_head]}");
             }
 
             return _array[_head].ToSignedBigInteger();
@@ -224,33 +251,14 @@ namespace Nevermind.Evm
         {
             _head = 0;
 
-            ulong gasBefore = state.GasAvailable;
             ulong gasAvailable = state.GasAvailable;
             long programCounter = (long)state.ProgramCounter;
             //EvmStack stack = state.Stack;
             EvmMemory memory = state.Memory;
             byte[] code = env.MachineCode;
-            BitArray jumpDestinations = new BitArray(code.Length);
+            bool[] jumpDestinations = new bool[code.Length]; // TODO: cache across recursive calls
             HashSet<Address> destroyList = new HashSet<Address>();
             List<LogEntry> logs = new List<LogEntry>();
-
-            //// TODO: outside and inline?
-            //BigInteger PopUInt()
-            //{
-            //    return stack.PopInt();
-            //}
-
-            //// TODO: outside and inline?
-            //BigInteger PopInt()
-            //{
-            //    return stack.PopInt(true);
-            //}
-
-            //// TODO: outside and inline?
-            //byte[] PopBytes()
-            //{
-            //    return stack.PopBytes();
-            //}
 
             // TODO: outside and inline?
             Address PopAddress()
@@ -283,23 +291,34 @@ namespace Nevermind.Evm
             BitArray bits1 = new BitArray(256); // TODO: reuse object
             BitArray bits2 = new BitArray(256); // TODO: reuse object
 
-            ulong newMemory;
-
             void ValidateJump(int destination)
             {
-                if (destination < 0 || destination >= jumpDestinations.Length)
+                if (destination < 0 || destination > jumpDestinations.Length || !jumpDestinations[destination])
                 {
-                    // || !jumpDestinations[destination]
                     throw new InvalidJumpDestinationException();
                 }
             }
 
-            while (true)
+            while (programCounter < code.Length)
             {
-                if (programCounter >= code.Length)
+                int intPorgramCounter = (int)programCounter;
+                Instruction instruction = (Instruction)code[intPorgramCounter];
+                jumpDestinations[intPorgramCounter] = true;
+                if (instruction >= Instruction.PUSH1 && instruction <= Instruction.PUSH32)
                 {
-                    break;
+                    programCounter += instruction - Instruction.PUSH1 + 2;
                 }
+                else
+                {
+                    programCounter++;
+                }
+            }
+
+            programCounter = 0;
+
+            while (programCounter < code.Length)
+            {
+                ulong gasBefore = gasAvailable;
 
                 Instruction instruction = (Instruction)code[(int)programCounter];
                 programCounter++;
@@ -310,6 +329,7 @@ namespace Nevermind.Evm
                 }
 
                 int intReg;
+                ulong newMemory;
                 switch (instruction)
                 {
                     case Instruction.STOP:
@@ -1208,6 +1228,7 @@ namespace Nevermind.Evm
                     }
                     case Instruction.INVALID:
                     {
+                        throw new InvalidInstructionException();
                         break;
                     }
                     case Instruction.SELFDESTRUCT:
@@ -1251,7 +1272,7 @@ namespace Nevermind.Evm
                             Console.WriteLine("UNKNOWN INSTRUCTION");
                         }
 
-                        throw new InvalidOperationException();
+                        throw new InvalidInstructionException();
                     }
                 }
 
