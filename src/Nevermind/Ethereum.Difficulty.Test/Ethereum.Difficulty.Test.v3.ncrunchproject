@@ -24,6 +24,7 @@
       <FixtureTestSelector>
         <FixtureName>Ethereum.Difficulty.Test.DifficultyTestsRopsten</FixtureName>
       </FixtureTestSelector>
+      <AllTestsSelector />
     </IgnoredTests>
     <TrackFileDependencies>False</TrackFileDependencies>
   </Settings>

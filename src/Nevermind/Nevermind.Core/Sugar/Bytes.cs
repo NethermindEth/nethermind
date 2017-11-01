@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 
 namespace Nevermind.Core.Sugar
 {
@@ -12,6 +13,7 @@ namespace Nevermind.Core.Sugar
             Little
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool GetBit(this byte b, int bitNumber)
         {
             return (b & (1 << (7 - bitNumber))) != 0;
@@ -201,6 +203,7 @@ namespace Nevermind.Core.Sugar
 
         public static BigInteger ToUnsignedBigInteger(this byte[] bytes, Endianness endianness = Endianness.Big, bool noReverse = false)
         {
+            // TODO: could rewrite BigInteger with BigEndianness but since BigInteger is NGened I would probably only loose perf
             if (BitConverter.IsLittleEndian && endianness == Endianness.Big)
             {
                 byte[] unsignedResult = new byte[bytes.Length + 1];

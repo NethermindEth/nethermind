@@ -12,7 +12,7 @@ namespace Nevermind.Evm.Precompiles
         public static IPrecompiledContract Instance = new ECRecoverPrecompiledContract();
 
         public BigInteger Address => 2;
-        public BigInteger GasCost(byte[] inputData)
+        public ulong GasCost(byte[] inputData)
         {
             return 3000;
         }

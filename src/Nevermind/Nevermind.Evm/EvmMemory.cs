@@ -8,7 +8,7 @@ namespace Nevermind.Evm
     {
         private const int WordSize = 32;
 
-        private BigInteger _activeWordsInMemory = 0;
+        private ulong _activeWordsInMemory = 0;
 
         private byte[] _memory = new byte[0];
 
@@ -17,25 +17,25 @@ namespace Nevermind.Evm
             Array.Resize(ref _memory, size);
         }
 
-        public BigInteger SaveWord(BigInteger location, byte[] word)
+        public ulong SaveWord(BigInteger location, byte[] word)
         {
             return Save(location, word.PadLeft(32));
         }
 
-        public BigInteger SaveByte(BigInteger location, byte[] value)
+        public ulong SaveByte(BigInteger location, byte[] value)
         {
             return Save(location, new byte[] {value[value.Length - 1]});
         }
 
         // TODO: move
-        public static BigInteger Div32Ceiling(BigInteger length)
+        public static ulong Div32Ceiling(BigInteger length)
         {
             BigInteger rem;
             BigInteger result = BigInteger.DivRem(length, 32, out rem);
-            return result + (rem > 0 ? 1 : 0);
+            return (ulong)(result + (rem > 0 ? 1 : 0));
         }
 
-        public BigInteger Save(BigInteger location, byte[] value)
+        public ulong Save(BigInteger location, byte[] value)
         {
             if (_memory.Length < location + value.Length)
             {
@@ -47,23 +47,23 @@ namespace Nevermind.Evm
                 _memory[(int)location + i] = value[i];
             }
 
-            _activeWordsInMemory = BigInteger.Max(_activeWordsInMemory, Div32Ceiling(location + value.Length));
+            _activeWordsInMemory = Math.Max(_activeWordsInMemory, Div32Ceiling(location + value.Length));
             return _activeWordsInMemory;
         }
 
-        public (byte[], BigInteger) Load(BigInteger location)
+        public (byte[], ulong) Load(BigInteger location)
         {
             return Load(location, WordSize);
         }
 
-        public (byte[], BigInteger) Load(BigInteger location, BigInteger length, bool allowInvalidLocations = true)
+        public (byte[], ulong) Load(BigInteger location, BigInteger length, bool allowInvalidLocations = true)
         {
             if (length == BigInteger.Zero)
             {
                 return (new byte[0], _activeWordsInMemory);
             }
 
-            _activeWordsInMemory = BigInteger.Max(_activeWordsInMemory, Div32Ceiling(location + length));
+            _activeWordsInMemory = Math.Max(_activeWordsInMemory, Div32Ceiling(location + length));
 
             if (allowInvalidLocations && location > _memory.Length)
             {

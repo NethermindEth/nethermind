@@ -14,7 +14,7 @@ namespace Nevermind.Evm.Precompiles
 
         public BigInteger Address => 2;
 
-        public BigInteger GasCost(byte[] inputData)
+        public ulong GasCost(byte[] inputData)
         {
             // TODO: check why test assumes 0 cost - it the empty inputData assumption correct?
             if(inputData.Length == 0)

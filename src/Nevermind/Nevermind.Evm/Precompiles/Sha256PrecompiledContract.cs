@@ -13,7 +13,7 @@ namespace Nevermind.Evm.Precompiles
 
         public BigInteger Address => 3;
 
-        public BigInteger GasCost(byte[] inputData)
+        public ulong GasCost(byte[] inputData)
         {
             return 60 + 12 * EvmMemory.Div32Ceiling(inputData.Length);
         }

@@ -5,17 +5,17 @@ namespace Nevermind.Evm
 {
     public class EvmState
     {
-        private BigInteger _activeWordsInMemory;
+        private ulong _activeWordsInMemory;
 
-        public EvmState(BigInteger gasAvailable)
+        public EvmState(ulong gasAvailable)
         {
             GasAvailable = gasAvailable;
         }
 
-        public BigInteger GasAvailable { get; set; }
+        public ulong GasAvailable { get; set; }
         public BigInteger ProgramCounter { get; set; }
 
-        public BigInteger ActiveWordsInMemory
+        public ulong ActiveWordsInMemory
         {
             get => _activeWordsInMemory;
             set

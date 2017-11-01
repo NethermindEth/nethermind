@@ -41,9 +41,18 @@
       <NamedTestSelector>
         <TestName>Ethereum.VM.Test.PerformanceTests.Test(loop-mulmod-2M)</TestName>
       </NamedTestSelector>
-      <NamedTestSelector>
-        <TestName>Ethereum.VM.Test.PerformanceTests.Test(ackermann31)</TestName>
-      </NamedTestSelector>
+      <FixtureTestSelector>
+        <FixtureName>Ethereum.VM.Test.IoAndFlowTests</FixtureName>
+      </FixtureTestSelector>
+      <FixtureTestSelector>
+        <FixtureName>Ethereum.VM.Test.PerformanceTests</FixtureName>
+      </FixtureTestSelector>
+      <FixtureTestSelector>
+        <FixtureName>Ethereum.VM.Test.LogTests</FixtureName>
+      </FixtureTestSelector>
+      <FixtureTestSelector>
+        <FixtureName>Ethereum.VM.Test.OtherTests</FixtureName>
+      </FixtureTestSelector>
       <FixtureTestSelector>
         <FixtureName>Ethereum.VM.Test.PushDupSwapTests</FixtureName>
       </FixtureTestSelector>
@@ -56,9 +65,6 @@
       <FixtureTestSelector>
         <FixtureName>Ethereum.VM.Test.SystemTests</FixtureName>
       </FixtureTestSelector>
-      <NamedTestSelector>
-        <TestName>Ethereum.VM.Test.PerformanceTests.Test(fibonacci10)</TestName>
-      </NamedTestSelector>
       <FixtureTestSelector>
         <FixtureName>Ethereum.VM.Test.AbiTests</FixtureName>
       </FixtureTestSelector>
@@ -73,18 +79,6 @@
       </FixtureTestSelector>
       <FixtureTestSelector>
         <FixtureName>Ethereum.VM.Test.EnvironmentalInfoTests</FixtureName>
-      </FixtureTestSelector>
-      <FixtureTestSelector>
-        <FixtureName>Ethereum.VM.Test.LogTests</FixtureName>
-      </FixtureTestSelector>
-      <FixtureTestSelector>
-        <FixtureName>Ethereum.VM.Test.OtherTests</FixtureName>
-      </FixtureTestSelector>
-      <NamedTestSelector>
-        <TestName>Ethereum.VM.Test.PerformanceTests.Test(ackermann33)</TestName>
-      </NamedTestSelector>
-      <FixtureTestSelector>
-        <FixtureName>Ethereum.VM.Test.IoAndFlowTests</FixtureName>
       </FixtureTestSelector>
     </IgnoredTests>
   </Settings>

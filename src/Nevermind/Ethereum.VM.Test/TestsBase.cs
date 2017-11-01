@@ -159,7 +159,7 @@ namespace Ethereum.VM.Test
                 _stateProvider.UpdateAccount(accountState.Key, account);
             }
 
-            EvmState state = new EvmState((long)test.Execution.Gas);
+            EvmState state = new EvmState((ulong)test.Execution.Gas);
 
             if (test.Out == null)
             {
@@ -171,7 +171,7 @@ namespace Ethereum.VM.Test
 
             Assert.True(Bytes.UnsafeCompare(test.Out, output),
                 $"Exp: {Hex.FromBytes(test.Out, true)} != Actual: {Hex.FromBytes(output, true)}");
-            Assert.AreEqual(test.Gas, state.GasAvailable);
+            Assert.AreEqual((ulong)test.Gas, state.GasAvailable);
             foreach (KeyValuePair<Address, AccountState> accountState in test.Post)
             {
                 StorageTree accountStorage = _storageProvider.GetOrCreateStorage(accountState.Key);
