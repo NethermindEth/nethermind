@@ -7,10 +7,9 @@ namespace Nevermind.Evm
     {
         private BigInteger _activeWordsInMemory;
 
-        public EvmState(BigInteger gasAvailable, EvmStack stack = null)
+        public EvmState(BigInteger gasAvailable)
         {
             GasAvailable = gasAvailable;
-            Stack = stack ?? new EvmStack();
         }
 
         public BigInteger GasAvailable { get; set; }
@@ -21,11 +20,11 @@ namespace Nevermind.Evm
             get => _activeWordsInMemory;
             set
             {
-                if (value != _activeWordsInMemory && ShouldLog.VM)
+                if (value != _activeWordsInMemory && ShouldLog.Evm)
                 {
                     Console.WriteLine($"  MEMORY SIZE CHANGED FROM {_activeWordsInMemory} TO {value}");
                 }
-                else if (ShouldLog.VM)
+                else if (ShouldLog.Evm)
                 {
                     Console.WriteLine($"  MEMORY SIZE REMAINS {_activeWordsInMemory}");
                 }
@@ -35,6 +34,6 @@ namespace Nevermind.Evm
         }
 
         public EvmMemory Memory { get; } = new EvmMemory();
-        public EvmStack Stack { get; }
+        public EvmStack Stack { get; } = new EvmStack();
     }
 }

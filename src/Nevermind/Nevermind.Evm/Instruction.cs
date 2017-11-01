@@ -146,6 +146,6 @@ namespace Nevermind.Evm
         DELEGATECALL = 0xf4,
         REVERT = 0xfd,
         INVALID = 0xfe,
-        SUICIDE = 0xff,
+        SELFDESTRUCT = 0xff,
     }
 }

@@ -83,7 +83,7 @@
     <Compile Include="BlockInfoTests.cs" />
     <Compile Include="EnvironmentalInfoTests.cs" />
     <Compile Include="LogTests.cs" />
-    <Compile Include="OandFlowTests.cs" />
+    <Compile Include="IoAndFlowTests.cs" />
     <Compile Include="OtherTests.cs" />
     <Compile Include="PerformanceTests.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />

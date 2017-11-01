@@ -15,7 +15,7 @@ namespace Nevermind.Evm
 
         public void Push(byte[] value)
         {
-            if (ShouldLog.VM)
+            if (ShouldLog.Evm)
             {
                 Console.WriteLine($"  PUSH {Hex.FromBytes(value, true)}");
             }
@@ -31,7 +31,7 @@ namespace Nevermind.Evm
 
         public void Push(BigInteger value)
         {
-            if (ShouldLog.VM)
+            if (ShouldLog.Evm)
             {
                 Console.WriteLine($"  PUSH {value}");
             }
@@ -85,11 +85,11 @@ namespace Nevermind.Evm
                 throw new StackUnderflowException();
             }
 
-            byte[] value = _array[_head - 1];
-            BigInteger? bigInteger = _intArray[_head - 1];
             _head--;
-
-            if (ShouldLog.VM)
+            byte[] value = _array[_head];
+            BigInteger? bigInteger = _intArray[_head];
+            
+            if (ShouldLog.Evm)
             {
                 string valueSTring = value == null ? bigInteger.ToString() : Hex.FromBytes(value, true);
                 Console.WriteLine($"  POP {valueSTring}");
@@ -110,13 +110,13 @@ namespace Nevermind.Evm
                 throw new StackUnderflowException();
             }
 
-            byte[] value = _array[_head - 1];
-            BigInteger? bigInteger = _intArray[_head - 1];
             _head--;
+            byte[] value = _array[_head];
+            BigInteger? bigInteger = _intArray[_head];
 
             if (bigInteger.HasValue)
             {
-                if (ShouldLog.VM)
+                if (ShouldLog.Evm)
                 {
                     string valueSTring = value == null ? bigInteger.ToString() : Hex.FromBytes(value, true);
                     Console.WriteLine($"  POP {valueSTring}");
@@ -132,7 +132,7 @@ namespace Nevermind.Evm
 
             BigInteger result = signed ? value.ToSignedBigInteger() : value.ToUnsignedBigInteger();
 
-            if (ShouldLog.VM)
+            if (ShouldLog.Evm)
             {
                 Console.WriteLine($"  POP {result}");
             }

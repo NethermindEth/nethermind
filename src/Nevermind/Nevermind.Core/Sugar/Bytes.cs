@@ -262,15 +262,20 @@ namespace Nevermind.Core.Sugar
             return bytes;
         }
 
-        public static BitArray ToBigEndianBitArray256(this byte[] bytes)
+        public static void ToBigEndianBitArray256(this byte[] bytes, ref BitArray bitArray)
         {
-            BitArray bitArray = new BitArray(256);
+            bitArray.SetAll(false);
             int startIndex = 256 - bytes.Length * 8;
             for (int i = startIndex; i < 256; i++)
             {
                 bitArray[i] = bytes[(i - startIndex) / 8].GetBit(i % 8);
             }
+        }
 
+        public static BitArray ToBigEndianBitArray256(this byte[] bytes)
+        {
+            BitArray bitArray = new BitArray(256);
+            ToBigEndianBitArray256(bytes, ref bitArray);
             return bitArray;
         }
     }

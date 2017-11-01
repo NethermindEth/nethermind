@@ -24,14 +24,10 @@ namespace Nevermind.Evm
 
         public BigInteger SaveByte(BigInteger location, byte[] value)
         {
-            if (value.Length != 1)
-            {
-                throw new ArgumentException(nameof(value));
-            }
-
-            return Save(location, value);
+            return Save(location, new byte[] {value[value.Length - 1]});
         }
 
+        // TODO: move
         public static BigInteger Div32Ceiling(BigInteger length)
         {
             BigInteger rem;

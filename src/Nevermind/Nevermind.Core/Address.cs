@@ -4,6 +4,7 @@ using Nevermind.Core.Sugar;
 
 namespace Nevermind.Core
 {
+    // can change it to behave as an array wrapper
     public class Address : IEquatable<Address>
     {
         private const int AddressLengthInBytes = 20;

@@ -1,5 +1,6 @@
 ﻿<ProjectConfiguration>
   <Settings>
+    <AnalyseExecutionTimes>False</AnalyseExecutionTimes>
     <IgnoredTests>
       <NamedTestSelector>
         <TestName>Ethereum.VM.Test.PerformanceTests.Test(loop-divadd-unr100-10M)</TestName>
@@ -40,8 +41,50 @@
       <NamedTestSelector>
         <TestName>Ethereum.VM.Test.PerformanceTests.Test(loop-mulmod-2M)</TestName>
       </NamedTestSelector>
+      <NamedTestSelector>
+        <TestName>Ethereum.VM.Test.PerformanceTests.Test(ackermann31)</TestName>
+      </NamedTestSelector>
       <FixtureTestSelector>
-        <FixtureName>Ethereum.VM.Test.PerformanceTests</FixtureName>
+        <FixtureName>Ethereum.VM.Test.PushDupSwapTests</FixtureName>
+      </FixtureTestSelector>
+      <FixtureTestSelector>
+        <FixtureName>Ethereum.VM.Test.RandomTests</FixtureName>
+      </FixtureTestSelector>
+      <FixtureTestSelector>
+        <FixtureName>Ethereum.VM.Test.Sha3Tests</FixtureName>
+      </FixtureTestSelector>
+      <FixtureTestSelector>
+        <FixtureName>Ethereum.VM.Test.SystemTests</FixtureName>
+      </FixtureTestSelector>
+      <NamedTestSelector>
+        <TestName>Ethereum.VM.Test.PerformanceTests.Test(fibonacci10)</TestName>
+      </NamedTestSelector>
+      <FixtureTestSelector>
+        <FixtureName>Ethereum.VM.Test.AbiTests</FixtureName>
+      </FixtureTestSelector>
+      <FixtureTestSelector>
+        <FixtureName>Ethereum.VM.Test.ArithmeticTests</FixtureName>
+      </FixtureTestSelector>
+      <FixtureTestSelector>
+        <FixtureName>Ethereum.VM.Test.BitwiseLogicTests</FixtureName>
+      </FixtureTestSelector>
+      <FixtureTestSelector>
+        <FixtureName>Ethereum.VM.Test.BlockInfoTests</FixtureName>
+      </FixtureTestSelector>
+      <FixtureTestSelector>
+        <FixtureName>Ethereum.VM.Test.EnvironmentalInfoTests</FixtureName>
+      </FixtureTestSelector>
+      <FixtureTestSelector>
+        <FixtureName>Ethereum.VM.Test.LogTests</FixtureName>
+      </FixtureTestSelector>
+      <FixtureTestSelector>
+        <FixtureName>Ethereum.VM.Test.OtherTests</FixtureName>
+      </FixtureTestSelector>
+      <NamedTestSelector>
+        <TestName>Ethereum.VM.Test.PerformanceTests.Test(ackermann33)</TestName>
+      </NamedTestSelector>
+      <FixtureTestSelector>
+        <FixtureName>Ethereum.VM.Test.IoAndFlowTests</FixtureName>
       </FixtureTestSelector>
     </IgnoredTests>
   </Settings>
