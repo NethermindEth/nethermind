@@ -34,6 +34,5 @@ namespace Nevermind.Evm
         }
 
         public EvmMemory Memory { get; } = new EvmMemory();
-        public EvmStack Stack { get; } = new EvmStack();
     }
 }

@@ -108,7 +108,7 @@ namespace Nevermind.Evm
             return bigInteger.Value.ToBigEndianByteArray();
         }
 
-        public BigInteger PopInt(bool signed)
+        public BigInteger PopInt(bool signed = false)
         {
             if (_head == 0)
             {
