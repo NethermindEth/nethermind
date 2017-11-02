@@ -11,6 +11,10 @@ namespace Nevermind.Evm
             State = stateTree;
         }
 
+        public WorldStateProvider()
+        {
+        }
+
         public StateTree State { get; }
 
         public Account GetAccount(Address address)

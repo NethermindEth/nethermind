@@ -19,7 +19,7 @@ namespace Nevermind.Evm
 
         public byte[] MachineCode { get; set; }
 
-        public Block CurrentBlock { get; set; }
+        public BlockHeader CurrentBlock { get; set; }
 
         public int CallDepth { get; set; }
     }

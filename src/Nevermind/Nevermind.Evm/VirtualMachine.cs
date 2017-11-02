@@ -11,7 +11,7 @@ using Nevermind.Store;
 
 namespace Nevermind.Evm
 {
-    public class VirtualMachine
+    public class VirtualMachine : IVirtualMachine
     {
         public const int MaxSize = 1024;
         private readonly byte[][] _array = new byte[MaxSize][];
@@ -20,7 +20,7 @@ namespace Nevermind.Evm
 
         private int _head;
 
-        public void Push(byte[] value)
+        private void Push(byte[] value)
         {
             if (ShouldLog.Evm)
             {
@@ -36,7 +36,7 @@ namespace Nevermind.Evm
             }
         }
 
-        public void Push(BigInteger value)
+        private void Push(BigInteger value)
         {
             if (ShouldLog.Evm)
             {
@@ -52,7 +52,7 @@ namespace Nevermind.Evm
             }
         }
 
-        public void PopLimbo()
+        private void PopLimbo()
         {
             if (_head == 0)
             {
@@ -62,7 +62,7 @@ namespace Nevermind.Evm
             _head--;
         }
 
-        public void Dup(int depth)
+        private void Dup(int depth)
         {
             if (_isInt[_head - depth])
             {
@@ -82,7 +82,7 @@ namespace Nevermind.Evm
             }
         }
 
-        public void Swap(int depth)
+        private void Swap(int depth)
         {
             bool isIntBottom = _isInt[_head - depth];
             bool isIntUp = _isInt[_head - 1];
@@ -122,7 +122,7 @@ namespace Nevermind.Evm
             _isInt[_head - 1] = isIntBottom;
         }
 
-        public byte[] PopBytes()
+        private byte[] PopBytes()
         {
             if (_head == 0)
             {
@@ -140,7 +140,7 @@ namespace Nevermind.Evm
             return result;
         }
 
-        public BigInteger PopUInt()
+        private BigInteger PopUInt()
         {
             if (_head == 0)
             {
@@ -167,7 +167,7 @@ namespace Nevermind.Evm
             return _array[_head].ToUnsignedBigInteger();
         }
 
-        public BigInteger PopInt()
+        private BigInteger PopInt()
         {
             if (_head == 0)
             {
@@ -206,7 +206,7 @@ namespace Nevermind.Evm
 
         private static readonly Dictionary<BigInteger, IPrecompiledContract> PrecompiledContracts;
 
-        public static readonly BigInteger DaoExploitFixBlockNumber = 10
+        private static readonly BigInteger DaoExploitFixBlockNumber = 10
             ; // have not found this yet, setting to a random value for tests to pass
 
         static VirtualMachine()
@@ -473,10 +473,10 @@ namespace Nevermind.Evm
                     case Instruction.SIGNEXTEND:
                     {
                         UpdateGas(GasCostOf.Low, ref gasAvailable);
-                        BigInteger a = PopUInt();
+                        int a = (int)PopUInt(); // TODO: check if there is spec for handling too big numbers
                         byte[] b = PopBytes();
                         b.ToBigEndianBitArray256(ref bits1);
-                        int bitPosition = (int)BigInteger.Max(0, 248 - 8 * a);
+                        int bitPosition = Math.Max(0, 248 - 8 * a);
                         bool isSet = bits1[bitPosition];
                         for (int i = 0; i < bitPosition; i++)
                         {
@@ -727,31 +727,31 @@ namespace Nevermind.Evm
                     case Instruction.COINBASE:
                     {
                         UpdateGas(GasCostOf.Base, ref gasAvailable);
-                        Push(env.CurrentBlock.Header.Beneficiary.Hex);
+                        Push(env.CurrentBlock.Beneficiary.Hex);
                         break;
                     }
                     case Instruction.DIFFICULTY:
                     {
                         UpdateGas(GasCostOf.Base, ref gasAvailable);
-                        Push(env.CurrentBlock.Header.Difficulty);
+                        Push(env.CurrentBlock.Difficulty);
                         break;
                     }
                     case Instruction.TIMESTAMP:
                     {
                         UpdateGas(GasCostOf.Base, ref gasAvailable);
-                        Push(env.CurrentBlock.Header.Timestamp);
+                        Push(env.CurrentBlock.Timestamp);
                         break;
                     }
                     case Instruction.NUMBER:
                     {
                         UpdateGas(GasCostOf.Base, ref gasAvailable);
-                        Push(env.CurrentBlock.Header.Number);
+                        Push(env.CurrentBlock.Number);
                         break;
                     }
                     case Instruction.GASLIMIT:
                     {
                         UpdateGas(GasCostOf.Base, ref gasAvailable);
-                        Push(env.CurrentBlock.Header.GasLimit);
+                        Push(env.CurrentBlock.GasLimit);
                         break;
                     }
                     case Instruction.POP:
@@ -823,6 +823,9 @@ namespace Nevermind.Evm
                         {
                             storage.Set(storageIndex,
                                 isNewValueZero ? new byte[] { 0 } : data.WithoutLeadingZeros());
+                            Account account = worldStateProvider.GetAccount(env.CodeOwner);
+                            account.StorageRoot = storage.RootHash;
+                            worldStateProvider.UpdateAccount(env.CodeOwner, account);
                         }
 
                         break;
@@ -1202,7 +1205,7 @@ namespace Nevermind.Evm
                         {
                             inheritorAccount = new Account();
                             inheritorAccount.Balance = codeOwnerAccount.Balance;
-                            if (env.CurrentBlock.Header.Number > DaoExploitFixBlockNumber)
+                            if (env.CurrentBlock.Number > DaoExploitFixBlockNumber)
                             {
                                 UpdateGas(GasCostOf.NewAccount, ref gasAvailable);
                             }

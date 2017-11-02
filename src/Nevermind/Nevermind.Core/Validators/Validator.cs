@@ -10,12 +10,12 @@ namespace Nevermind.Core.Validators
 
         public static bool IsInP256(BigInteger value)
         {
-            return value > 0 && value < P256;
+            return value >= BigInteger.Zero && value < P256;
         }
 
         public static bool IsInP5(BigInteger value)
         {
-            return value > 0 && value < P5;
+            return value >= BigInteger.Zero && value < P5;
         }
     }
 }

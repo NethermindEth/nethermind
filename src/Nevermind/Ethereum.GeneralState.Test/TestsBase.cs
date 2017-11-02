@@ -4,15 +4,17 @@ using System.IO;
 using System.Linq;
 using System.Numerics;
 using Ethereum.Test.Base;
+using Ethereum.VM.Test;
 using Nevermind.Core;
 using Nevermind.Core.Encoding;
+using Nevermind.Core.Signing;
 using Nevermind.Core.Sugar;
 using Nevermind.Evm;
 using Nevermind.Store;
 using Newtonsoft.Json;
 using NUnit.Framework;
 
-namespace Ethereum.VM.Test
+namespace Ethereum.GeneralState.Test
 {
     public class TestsBase
     {
@@ -20,6 +22,7 @@ namespace Ethereum.VM.Test
         private IStorageProvider _storageProvider;
         private IBlockhashProvider _blockhashProvider;
         private IWorldStateProvider _stateProvider;
+        private IVirtualMachine _virtualMachine;
 
         [SetUp]
         public void Setup()
@@ -28,24 +31,25 @@ namespace Ethereum.VM.Test
             _storageProvider = new TestStorageProvider(_db);
             _blockhashProvider = new TestBlockhashProvider();
             _stateProvider = new WorldStateProvider(new StateTree(_db));
+            _virtualMachine = new VirtualMachine();
         }
 
-        public static IEnumerable<VirtualMachineTest> LoadTests(string testSet)
+        public static IEnumerable<GenerateStateTest> LoadTests(string testSet)
         {
             Directory.SetCurrentDirectory(AppDomain.CurrentDomain.BaseDirectory);
-            IEnumerable<string> testDirs = Directory.EnumerateDirectories(".", "vm" + testSet);
-            Dictionary<string, Dictionary<string, VirtualMachineTestJson>> testJsons =
-                new Dictionary<string, Dictionary<string, VirtualMachineTestJson>>();
+            IEnumerable<string> testDirs = Directory.EnumerateDirectories(".", "st" + testSet);
+            Dictionary<string, Dictionary<string, GeneralStateTestJson>> testJsons =
+                new Dictionary<string, Dictionary<string, GeneralStateTestJson>>();
             foreach (string testDir in testDirs)
             {
-                testJsons[testDir] = new Dictionary<string, VirtualMachineTestJson>();
+                testJsons[testDir] = new Dictionary<string, GeneralStateTestJson>();
                 IEnumerable<string> testFiles = Directory.EnumerateFiles(testDir).ToList();
                 foreach (string testFile in testFiles)
                 {
                     string json = File.ReadAllText(testFile);
-                    Dictionary<string, VirtualMachineTestJson> testsInFile =
-                        JsonConvert.DeserializeObject<Dictionary<string, VirtualMachineTestJson>>(json);
-                    foreach (KeyValuePair<string, VirtualMachineTestJson> namedTest in testsInFile)
+                    Dictionary<string, GeneralStateTestJson> testsInFile =
+                        JsonConvert.DeserializeObject<Dictionary<string, GeneralStateTestJson>>(json);
+                    foreach (KeyValuePair<string, GeneralStateTestJson> namedTest in testsInFile)
                     {
                         testJsons[testDir].Add(namedTest.Key, namedTest.Value);
                     }
@@ -57,7 +61,7 @@ namespace Ethereum.VM.Test
                 return testJsons.First().Value.Select(pair => Convert(pair.Key, pair.Value));
             }
 
-            return new VirtualMachineTest[0];
+            return new GenerateStateTest[0];
         }
 
         private static AccountState Convert(AccountStateJson accountStateJson)
@@ -72,18 +76,26 @@ namespace Ethereum.VM.Test
             return state;
         }
 
-        private static Execution Convert(ExecJson execJson)
+        private static IncomingTransaction Convert(TransactionJson transactionJson)
         {
-            Execution environment = new Execution();
-            environment.Address = execJson.Address == null ? null : new Address(execJson.Address);
-            environment.Caller = execJson.Caller == null ? null : new Address(execJson.Caller);
-            environment.Origin = execJson.Origin == null ? null : new Address(execJson.Origin);
-            environment.Code = Hex.ToBytes(execJson.Code);
-            environment.Data = Hex.ToBytes(execJson.Data);
-            environment.Gas = Hex.ToBytes(execJson.Gas).ToUnsignedBigInteger();
-            environment.GasPrice = Hex.ToBytes(execJson.GasPrice).ToUnsignedBigInteger();
-            environment.Value = Hex.ToBytes(execJson.Value).ToUnsignedBigInteger();
-            return environment;
+            IncomingTransaction incomingTransaction = new IncomingTransaction();
+            incomingTransaction.Data = Hex.ToBytes(transactionJson.Data[0]);
+            incomingTransaction.Value = Hex.ToBytes(transactionJson.Value[0]).ToUnsignedBigInteger();
+            incomingTransaction.GasLimit = Hex.ToBytes(transactionJson.GasLimit[0]).ToUnsignedBigInteger();
+            incomingTransaction.GasPrice = Hex.ToBytes(transactionJson.GasPrice).ToUnsignedBigInteger();
+            incomingTransaction.Nonce = Hex.ToBytes(transactionJson.Nonce).ToUnsignedBigInteger();
+            incomingTransaction.To = new Address(new Hex(transactionJson.To));
+            incomingTransaction.SecretKey = new PrivateKey(new Hex(transactionJson.SecretKey));
+            return incomingTransaction;
+        }
+
+        private static GeneralState Convert(GeneralStateJson generalStateJson)
+        {
+            GeneralState generalState = new GeneralState();
+            generalState.Hash = new Keccak(generalStateJson.Hash);
+            generalState.Indexes = generalStateJson.Indexes;
+            generalState.Logs = new Keccak(generalStateJson.Logs);
+            return generalState;
         }
 
         private static Environment Convert(EnvironmentJson envJson)
@@ -97,57 +109,28 @@ namespace Ethereum.VM.Test
             return environment;
         }
 
-        private static VirtualMachineTest Convert(string name, VirtualMachineTestJson testJson)
+        private static GenerateStateTest Convert(string name, GeneralStateTestJson testJson)
         {
-            VirtualMachineTest test = new VirtualMachineTest();
+            GenerateStateTest test = new GenerateStateTest();
             test.Name = name;
             test.Environment = Convert(testJson.Env);
-            test.Execution = Convert(testJson.Exec);
+            test.IncomingTransaction = Convert(testJson.Transaction);
             test.Gas = testJson.Gas == null ? (BigInteger?)null : Hex.ToBytes(testJson.Gas).ToUnsignedBigInteger();
             test.Logs = testJson.Logs == null ? null : Hex.ToBytes(testJson.Gas);
             test.Out = testJson.Out == null ? null : Hex.ToBytes(testJson.Out);
-            test.Post = testJson.Post?.ToDictionary(p => new Address(p.Key), p => Convert(p.Value));
+            test.Post = testJson.Post?.ToDictionary(p => p.Key, p => p.Value.Select(Convert).ToArray());
             test.Pre = testJson.Pre.ToDictionary(p => new Address(p.Key), p => Convert(p.Value));
             return test;
         }
 
-        protected void RunTest(VirtualMachineTest test)
+        protected void RunTest(GenerateStateTest test)
         {
-            VirtualMachine machine = new VirtualMachine();
-            ExecutionEnvironment environment = new ExecutionEnvironment();
-            environment.Value = test.Execution.Value;
-            environment.CallDepth = 0;
-            environment.Caller = test.Execution.Caller;
-            environment.CodeOwner = test.Execution.Address;
-
-            Block block = new Block(null, new BlockHeader[0], new Transaction[0]);
-            BlockHeader header = new BlockHeader();
-            header.Number = test.Environment.CurrentNumber;
-            header.Difficulty = test.Environment.CurrentDifficulty;
-            header.Timestamp = test.Environment.CurrentTimestamp;
-            header.GasLimit = test.Environment.CurrentGasLimit;
-            header.Beneficiary = test.Environment.CurrentCoinbase;
-            block.Header = header;
-
-            environment.CurrentBlock = header;
-
-            environment.GasPrice = test.Execution.GasPrice;
-            environment.InputData = test.Execution.Data;
-            environment.MachineCode = test.Execution.Code;
-            environment.Originator = test.Execution.Origin;
-
-            Dictionary<BigInteger, byte[]> storage = new Dictionary<BigInteger, byte[]>();
-
             foreach (KeyValuePair<Address, AccountState> accountState in test.Pre)
             {
                 StorageTree storageTree = _storageProvider.GetOrCreateStorage(accountState.Key);
                 foreach (KeyValuePair<BigInteger, byte[]> storageItem in accountState.Value.Storage)
                 {
                     storageTree.Set(storageItem.Key, storageItem.Value);
-                    if (accountState.Key.Equals(test.Execution.Address))
-                    {
-                        storage[storageItem.Key] = storageItem.Value;
-                    }
                 }
 
                 _stateProvider.UpdateCode(accountState.Value.Code);
@@ -160,40 +143,47 @@ namespace Ethereum.VM.Test
                 _stateProvider.UpdateAccount(accountState.Key, account);
             }
 
-            EvmState state = new EvmState((ulong)test.Execution.Gas);
+            TransactionProcessor processor = new TransactionProcessor(_virtualMachine,  _stateProvider, _storageProvider, ChainId.Mainnet, false); // run twice depending on the EIP-155
+            Transaction transaction = new Transaction();
+            transaction.To = test.IncomingTransaction.To;
+            transaction.Value = test.IncomingTransaction.Value;
+            transaction.GasLimit = test.IncomingTransaction.GasLimit;
+            transaction.GasPrice = test.IncomingTransaction.GasPrice;
+            transaction.Data = test.IncomingTransaction.Data;
+            transaction.Init = null; // code here / create
+            transaction.Nonce = test.IncomingTransaction.Nonce;
 
-            if (test.Out == null)
-            {
-                Assert.That(() => machine.Run(environment, state, _blockhashProvider, _stateProvider, _storageProvider), Throws.Exception);
-                return;
-            }
+            Signer.Sign(transaction, test.IncomingTransaction.SecretKey, false, 0); // check EIP and chain id
 
-            (byte[] output, TransactionSubstate substate) = machine.Run(environment, state, _blockhashProvider, _stateProvider, _storageProvider);
+            Block block = new Block(null, new BlockHeader[0], new Transaction[0]);
+            BlockHeader header = new BlockHeader();
+            header.Number = test.Environment.CurrentNumber;
+            header.Difficulty = test.Environment.CurrentDifficulty;
+            header.Timestamp = test.Environment.CurrentTimestamp;
+            header.GasLimit = test.Environment.CurrentGasLimit;
+            header.Beneficiary = test.Environment.CurrentCoinbase;
+            block.Header = header;
 
-            Assert.True(Bytes.UnsafeCompare(test.Out, output),
-                $"Exp: {Hex.FromBytes(test.Out, true)} != Actual: {Hex.FromBytes(output, true)}");
-            Assert.AreEqual((ulong)test.Gas, state.GasAvailable);
-            foreach (KeyValuePair<Address, AccountState> accountState in test.Post)
-            {
-                StorageTree accountStorage = _storageProvider.GetOrCreateStorage(accountState.Key);
-                foreach (KeyValuePair<BigInteger, byte[]> storageItem in accountState.Value.Storage)
-                {
-                    byte[] value = accountStorage.Get(storageItem.Key);
-                    Assert.True(Bytes.UnsafeCompare(storageItem.Value, value),
-                        $"Storage[{storageItem.Key}] Exp: {Hex.FromBytes(storageItem.Value, true)} != Actual: {Hex.FromBytes(value, true)}");
-                }
-            }
+            Address sender = test.IncomingTransaction.SecretKey.Address;
+            TransactionReceipt receipt =  processor.Execute(
+                sender,
+                transaction,
+                header,
+                BigInteger.Zero
+            );
+
+            Assert.AreEqual(test.Post["Frontier"][0].Hash, receipt.PostTransactionState);
         }
 
-        public class VirtualMachineTestJson
+        public class GeneralStateTestJson
         {
             public EnvironmentJson Env { get; set; }
-            public ExecJson Exec { get; set; }
+            public TransactionJson Transaction { get; set; }
             public string Gas { get; set; }
             public string Logs { get; set; }
             public string Out { get; set; }
             public Dictionary<string, AccountStateJson> Pre { get; set; }
-            public Dictionary<string, AccountStateJson> Post { get; set; }
+            public Dictionary<string, GeneralStateJson[]> Post { get; set; }
         }
 
         public class AccountState
@@ -202,6 +192,27 @@ namespace Ethereum.VM.Test
             public byte[] Code { get; set; }
             public BigInteger Nonce { get; set; }
             public Dictionary<BigInteger, byte[]> Storage { get; set; }
+        }
+
+        public class GeneralStateIndexes
+        {
+            public string Data { get; set; }
+            public string Gas { get; set; }
+            public string Value { get; set; }
+        }
+
+        public class GeneralState
+        {
+            public Keccak Hash { get; set; }
+            public GeneralStateIndexes Indexes { get; set; }
+            public Keccak Logs { get; set; }
+        }
+
+        public class GeneralStateJson
+        {
+            public string Hash { get; set; }
+            public GeneralStateIndexes Indexes { get; set; }
+            public string Logs { get; set; }
         }
 
         public class AccountStateJson
@@ -230,40 +241,38 @@ namespace Ethereum.VM.Test
             public string CurrentTimestamp { get; set; }
         }
 
-        public class Execution
+        public class IncomingTransaction
         {
-            public Address Address { get; set; }
-            public Address Caller { get; set; }
-            public byte[] Code { get; set; }
             public byte[] Data { get; set; }
-            public BigInteger Gas { get; set; }
+            public BigInteger GasLimit { get; set; }
             public BigInteger GasPrice { get; set; }
-            public Address Origin { get; set; }
+            public BigInteger Nonce { get; set; }
+            public PrivateKey SecretKey { get; set; }
+            public Address To { get; set; }
             public BigInteger Value { get; set; }
         }
 
-        public class ExecJson
+        public class TransactionJson
         {
-            public string Address { get; set; }
-            public string Caller { get; set; }
-            public string Code { get; set; }
-            public string Data { get; set; }
-            public string Gas { get; set; }
+            public string[] Data { get; set; }
+            public string[] GasLimit { get; set; }
             public string GasPrice { get; set; }
-            public string Origin { get; set; }
-            public string Value { get; set; }
+            public string Nonce { get; set; }
+            public string SecretKey { get; set; }
+            public string To { get; set; }
+            public string[] Value { get; set; }
         }
 
-        public class VirtualMachineTest
+        public class GenerateStateTest
         {
             public string Name { get; set; }
             public Environment Environment { get; set; }
-            public Execution Execution { get; set; }
+            public IncomingTransaction IncomingTransaction { get; set; }
             public BigInteger? Gas { get; set; }
             public byte[] Logs { get; set; }
             public byte[] Out { get; set; }
             public Dictionary<Address, AccountState> Pre { get; set; }
-            public Dictionary<Address, AccountState> Post { get; set; }
+            public Dictionary<string, GeneralState[]> Post { get; set; }
 
             public override string ToString()
             {

@@ -10,7 +10,7 @@ namespace Nevermind.Core
             Balance = BigInteger.Zero;
             Nonce = BigInteger.Zero;
             CodeHash = Keccak.OfAnEmptyString;
-            StorageRoot = Keccak.OfAnEmptyString;
+            StorageRoot = Keccak.EmptyTreeHash;
         }
 
         public BigInteger Nonce { get; set; }

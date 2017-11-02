@@ -105,7 +105,6 @@
     <Compile Include="Encoding\Rlp.cs" />
     <Compile Include="Encoding\Sha2.cs" />
     <Compile Include="Signing\Signature.cs" />
-    <Compile Include="Validators\SignatureValidator.cs" />
     <Compile Include="Signing\Signer.cs" />
     <Compile Include="TimeStamp.cs" />
     <Compile Include="Transaction.cs" />

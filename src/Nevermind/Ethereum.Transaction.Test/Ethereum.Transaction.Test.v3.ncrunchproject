@@ -1,7 +1,9 @@
 ﻿<ProjectConfiguration>
   <Settings>
     <IgnoredTests>
-      <AllTestsSelector />
+      <FixtureTestSelector>
+        <FixtureName>Ethereum.Transaction.Test.TransactionTests</FixtureName>
+      </FixtureTestSelector>
     </IgnoredTests>
   </Settings>
 </ProjectConfiguration>

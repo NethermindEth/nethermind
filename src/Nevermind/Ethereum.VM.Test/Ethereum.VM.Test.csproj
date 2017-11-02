@@ -76,9 +76,7 @@
   <ItemGroup>
     <Compile Include="AbiTests.cs" />
     <Compile Include="BitwiseLogicTests.cs" />
-    <Compile Include="TestBlockhashProvider.cs" />
     <Compile Include="TestsBase.cs" />
-    <Compile Include="TestStorageProvider.cs" />
     <Compile Include="ArithmeticTests.cs" />
     <Compile Include="BlockInfoTests.cs" />
     <Compile Include="EnvironmentalInfoTests.cs" />

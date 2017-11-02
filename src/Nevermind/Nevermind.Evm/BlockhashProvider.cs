@@ -5,7 +5,7 @@ namespace Nevermind.Evm
 {
     public class BlockhashProvider : IBlockhashProvider
     {
-        public Keccak GetBlockhash(Block block, int depth)
+        public Keccak GetBlockhash(BlockHeader block, int depth)
         {
             throw new System.NotImplementedException();
         }

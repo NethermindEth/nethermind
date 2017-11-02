@@ -218,7 +218,7 @@ namespace Ethereum.Transaction.Test
                 {
                     Rlp rlp = new Rlp(Hex.ToBytes(test.Rlp));
                     Nevermind.Core.Transaction transaction = Rlp.Decode<Nevermind.Core.Transaction>(rlp);
-                    Assert.True(TransactionValidator.IsValid(transaction));
+                    Assert.True(TransactionValidator.IsWellFormed(transaction));
                 });
             }
         }

@@ -180,11 +180,14 @@ namespace Nevermind.Core.Sugar
         public static byte[] Reverse(byte[] bytes)
         {
             byte[] result = new byte[bytes.Length];
-            Buffer.BlockCopy(bytes, 0, result, 0, bytes.Length);
-            Array.Reverse(result);
+            for (int i = 0; i < bytes.Length; i++)
+            {
+                result[i] = bytes[bytes.Length - i - 1];
+            }
+            
             return result;
         }
-
+        
         public static byte[] ReverseInPlace(this byte[] bytes)
         {
             Array.Reverse(bytes);
@@ -203,7 +206,6 @@ namespace Nevermind.Core.Sugar
 
         public static BigInteger ToUnsignedBigInteger(this byte[] bytes, Endianness endianness = Endianness.Big, bool noReverse = false)
         {
-            // TODO: could rewrite BigInteger with BigEndianness but since BigInteger is NGened I would probably only loose perf
             if (BitConverter.IsLittleEndian && endianness == Endianness.Big)
             {
                 byte[] unsignedResult = new byte[bytes.Length + 1];

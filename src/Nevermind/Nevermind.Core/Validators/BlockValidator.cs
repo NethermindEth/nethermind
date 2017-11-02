@@ -18,7 +18,7 @@ namespace Nevermind.Core.Validators
 
             foreach (Transaction transaction in block.Transactions)
             {
-                if (!TransactionValidator.IsValid(transaction))
+                if (!TransactionValidator.IsWellFormed(transaction))
                 {
                     return false;
                 }

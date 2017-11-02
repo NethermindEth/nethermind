@@ -5,6 +5,6 @@ namespace Nevermind.Evm
 {
     public interface IBlockhashProvider
     {
-        Keccak GetBlockhash(Block block, int depth);
+        Keccak GetBlockhash(BlockHeader block, int depth);
     }
 }

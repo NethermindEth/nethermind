@@ -6,9 +6,9 @@ namespace Nevermind.Core
     {
         public BigInteger HomesteadBlockNumber = 1150000;
 
-        public BigInteger Calculate(Transaction transaction, BigInteger blockNumber)
+        public ulong Calculate(Transaction transaction, BigInteger blockNumber)
         {
-            BigInteger result = GasCostOf.Transaction;
+            ulong result = GasCostOf.Transaction;
 
             // compare perf for BigInteger operations and ints
             if (transaction.Data != null)
