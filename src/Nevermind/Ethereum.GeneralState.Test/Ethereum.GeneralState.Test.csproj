@@ -100,7 +100,7 @@
     <Compile Include="RandomTests.cs" />
     <Compile Include="ExampleTests.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
-    <Compile Include="TestsBase.cs" />
+    <Compile Include="GeneralTestBase.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />

@@ -14,7 +14,7 @@ using NUnit.Framework;
 
 namespace Ethereum.VM.Test
 {
-    public class TestsBase
+    public class VMTestBase
     {
         private InMemoryDb _db;
         private IStorageProvider _storageProvider;

@@ -3,7 +3,7 @@
 namespace Ethereum.GeneralState.Test
 {
     [TestFixture]
-    public class CallCreateCallCodeTests : TestsBase
+    public class CallCreateCallCodeTests : GeneralTestBase
     {
         [TestCaseSource(nameof(LoadTests), new object[] { "CallCreateCallCodeTest" })]
         public void Test(GenerateStateTest generateStateTest)

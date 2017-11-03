@@ -3,7 +3,7 @@
 namespace Ethereum.VM.Test
 {
     [TestFixture]
-    public class OtherTests : TestsBase
+    public class OtherTests : VMTestBase
     {
         [TestCaseSource(nameof(LoadTests), new object[] { "Tests" })]
         public void Test(VirtualMachineTest test)

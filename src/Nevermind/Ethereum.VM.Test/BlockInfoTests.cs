@@ -3,7 +3,7 @@ using NUnit.Framework;
 
 namespace Ethereum.VM.Test
 {
-    public class BlockInfoTests : TestsBase
+    public class BlockInfoTests : VMTestBase
     {
         [TestCaseSource(nameof(LoadTests), new object[] {"BlockInfoTest"})]
         public void Test(VirtualMachineTest test)

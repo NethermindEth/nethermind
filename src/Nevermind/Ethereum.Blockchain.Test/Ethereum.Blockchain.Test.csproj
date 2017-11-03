@@ -37,6 +37,9 @@
     <Reference Include="JetBrains.Annotations, Version=11.0.0.0, Culture=neutral, PublicKeyToken=1010a0d8d6380325, processorArchitecture=MSIL">
       <HintPath>..\packages\JetBrains.Annotations.11.0.0\lib\net20\JetBrains.Annotations.dll</HintPath>
     </Reference>
+    <Reference Include="Newtonsoft.Json, Version=10.0.0.0, Culture=neutral, PublicKeyToken=30ad4fe6b2a6aeed, processorArchitecture=MSIL">
+      <HintPath>..\packages\Newtonsoft.Json.10.0.3\lib\net45\Newtonsoft.Json.dll</HintPath>
+    </Reference>
     <Reference Include="nunit.framework, Version=3.8.1.0, Culture=neutral, PublicKeyToken=2638cd05610744eb, processorArchitecture=MSIL">
       <HintPath>..\packages\NUnit.3.8.1\lib\net45\nunit.framework.dll</HintPath>
     </Reference>
@@ -52,6 +55,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="BlockchainTestBase.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
@@ -64,6 +68,10 @@
     <ProjectReference Include="..\Nevermind.Core\Nevermind.Core.csproj">
       <Project>{051B3754-5FB6-4202-AF6E-D1764E2DED06}</Project>
       <Name>Nevermind.Core</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\Nevermind.Evm\Nevermind.Evm.csproj">
+      <Project>{13911438-F79E-4DA4-B3FF-0649C38D32B1}</Project>
+      <Name>Nevermind.Evm</Name>
     </ProjectReference>
     <ProjectReference Include="..\Nevermind.Store\Nevermind.Store.csproj">
       <Project>{3A5B9092-C842-4EFD-ACC3-1C6CF57D09B0}</Project>

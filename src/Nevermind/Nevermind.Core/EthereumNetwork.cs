@@ -11,6 +11,7 @@
         Kovan,
         Rinkeby,
         Metropolis,
+        Byzantium,
         Serenity,
     }
 }

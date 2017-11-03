@@ -3,7 +3,7 @@
 namespace Ethereum.GeneralState.Test
 {
     [TestFixture]
-    public class MemExpandingEip150CallsTests : TestsBase
+    public class MemExpandingEip150CallsTests : GeneralTestBase
     {
         [TestCaseSource(nameof(LoadTests), new object[] { "MemExpandingEIP150Calls" })]
         public void Test(GenerateStateTest generateStateTest)

@@ -11,7 +11,7 @@ using Nevermind.Core.Encoding;
 using Nevermind.Core.Signing;
 using NUnit.Framework;
 
-namespace Ethereum.Blockchain.Test
+namespace Ethereum.Basic.Test
 {
     public class TransactionTests
     {

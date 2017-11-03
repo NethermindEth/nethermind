@@ -8,7 +8,7 @@ using Nevermind.Core.Sugar;
 using Nevermind.Store;
 using NUnit.Framework;
 
-namespace Ethereum.Blockchain.Test
+namespace Ethereum.Basic.Test
 {
     public class GenesisTests
     {

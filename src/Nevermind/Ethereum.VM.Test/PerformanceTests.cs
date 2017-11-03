@@ -3,7 +3,7 @@ using NUnit.Framework;
 
 namespace Ethereum.VM.Test
 {
-    public class PerformanceTests : TestsBase
+    public class PerformanceTests : VMTestBase
     {
         [Isolated]
         [TestCaseSource(nameof(LoadTests), new object[] {"Performance"})]

@@ -16,7 +16,7 @@ using NUnit.Framework;
 
 namespace Ethereum.GeneralState.Test
 {
-    public class TestsBase
+    public class GeneralTestBase
     {
         private IBlockhashProvider _blockhashProvider;
         private InMemoryDb _db;

@@ -1,4 +1,5 @@
 ﻿using System.Collections;
+using Nevermind.Core.Sugar;
 
 namespace Nevermind.Core.Encoding
 {

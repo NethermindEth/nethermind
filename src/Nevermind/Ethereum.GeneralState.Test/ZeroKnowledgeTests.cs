@@ -3,7 +3,7 @@
 namespace Ethereum.GeneralState.Test
 {
     [TestFixture]
-    public class ZeroKnowledgeTests : TestsBase
+    public class ZeroKnowledgeTests : GeneralTestBase
     {
         [TestCaseSource(nameof(LoadTests), new object[] { "ZeroKnowledge" })]
         public void Test(GenerateStateTest generateStateTest)

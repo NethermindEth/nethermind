@@ -2,7 +2,7 @@
 
 namespace Ethereum.VM.Test
 {
-    public class SystemTests : TestsBase
+    public class SystemTests : VMTestBase
     {
         [TestCaseSource(nameof(LoadTests), new object[] {"SystemOperations"})]
         public void Test(VirtualMachineTest test)
