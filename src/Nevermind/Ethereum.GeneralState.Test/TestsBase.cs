@@ -18,10 +18,10 @@ namespace Ethereum.GeneralState.Test
 {
     public class TestsBase
     {
-        private InMemoryDb _db;
-        private IStorageProvider _storageProvider;
         private IBlockhashProvider _blockhashProvider;
+        private InMemoryDb _db;
         private IWorldStateProvider _stateProvider;
+        private IStorageProvider _storageProvider;
         private IVirtualMachine _virtualMachine;
 
         [SetUp]
@@ -143,7 +143,9 @@ namespace Ethereum.GeneralState.Test
                 _stateProvider.UpdateAccount(accountState.Key, account);
             }
 
-            TransactionProcessor processor = new TransactionProcessor(_virtualMachine,  _stateProvider, _storageProvider, ChainId.Mainnet, false); // run twice depending on the EIP-155
+            TransactionProcessor processor =
+                new TransactionProcessor(_virtualMachine, _stateProvider, _storageProvider, ChainId.Mainnet,
+                    false); // run twice depending on the EIP-155
             Transaction transaction = new Transaction();
             transaction.To = test.IncomingTransaction.To;
             transaction.Value = test.IncomingTransaction.Value;
@@ -165,41 +167,19 @@ namespace Ethereum.GeneralState.Test
             block.Header = header;
 
             Address sender = test.IncomingTransaction.SecretKey.Address;
-            //TransactionReceipt receipt = processor.Execute(
-            //    sender,
-            //    transaction,
-            //    header,
-            //    BigInteger.Zero
-            //);
+            TransactionReceipt receipt = processor.Execute(
+                sender,
+                transaction,
+                header,
+                BigInteger.Zero
+            );
 
-            TransactionReceipt receipt = new TransactionReceipt();
-            receipt.PostTransactionState = _stateProvider.State.RootHash;
+            ////Keccak receiptsRoot = BlockProcessor.GetReceiptsRoot(new[] {receipt});
+            ////Keccak transactionsRoot = BlockProcessor.GetTransactionsRoot(new[] { transaction });
+            ////Assert.AreEqual(new Keccak("0x93ca2a18d52e7c1846f7b104e2fc1e5fdc71ebe38187248f9437d39e74f43aab"), transactionsRoot);
+            ////Assert.AreEqual(new Keccak("0xe151c94b824bded58346fa03fc91fa275bd0cf94caac0ea4ebb9c8d32a574644"), receiptsRoot);
 
-            Account minerAccount = _stateProvider.GetAccount(header.Beneficiary);
-            Account senderAccount = _stateProvider.GetAccount(sender);
-            Account recipientAccount = _stateProvider.GetAccount(transaction.To);
-            Keccak postTransctionState = _stateProvider.State.RootHash;
-            _stateProvider.State.PrintDbContent();
-
-            //PatriciaTree tree0 = new PatriciaTree(new InMemoryDb());
-            //tree0.Set(0.ToBigEndianByteArray(), Rlp.Encode(receipt));
-            //Keccak root0 = tree0.RootHash;
-
-            //PatriciaTree tree1 = new PatriciaTree(new InMemoryDb());
-            //tree1.Set(BigInteger.Zero.ToBigEndianByteArray(), Rlp.Encode(receipt));
-            //Keccak root1 = tree1.RootHash;
-
-            //PatriciaTree tree2 = new PatriciaTree(new InMemoryDb());
-            //tree2.Set(BigInteger.Zero.ToBigEndianByteArray(true, 32), Rlp.Encode(receipt));
-            //Keccak root2 = tree2.RootHash;
-
-            //PatriciaTree tree3 = new PatriciaTree(new InMemoryDb());
-            //tree3.Set(Keccak.Compute(BigInteger.Zero.ToBigEndianByteArray(true, 32)).Bytes, Rlp.Encode(receipt));
-            //Keccak root3 = tree3.RootHash;
-
-            Assert.AreEqual(new Keccak("0x328f16ca7b0259d7617b3ddf711c107efe6d5785cbeb11a8ed1614b484a6bc3a"), _stateProvider.State.RootHash);
-
-            //Assert.AreEqual(test.Post["Frontier"][0].Hash, receipt.PostTransactionState);
+            Assert.AreEqual(test.Post["Frontier"][0].Hash, receipt.PostTransactionState);
         }
 
         public class GeneralStateTestJson

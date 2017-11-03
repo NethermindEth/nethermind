@@ -233,5 +233,10 @@ namespace Nevermind.Store
 
             return key;
         }
+
+        public void PrintDbContent()
+        {
+            _db.Print(Console.WriteLine);
+        }
     }
 }

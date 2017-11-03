@@ -461,7 +461,7 @@ namespace Nevermind.Core.Encoding
             return Encode(
                 receipt.PostTransactionState,
                 receipt.GasUsed,
-                receipt.Bloom.Bytes,
+                receipt.Bloom,
                 receipt.Logs);
         }
 

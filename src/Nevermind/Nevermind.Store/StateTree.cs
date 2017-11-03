@@ -28,10 +28,5 @@ namespace Nevermind.Store
         {
             base.Set(addressHash.Bytes, rlp);
         }
-
-        public void PrintDbContent()
-        {
-            _db.Print(Console.WriteLine);
-        }
     }
 }

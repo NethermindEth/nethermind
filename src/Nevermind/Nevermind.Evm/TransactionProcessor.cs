@@ -3,7 +3,6 @@ using System.Linq;
 using System.Numerics;
 using Nevermind.Core;
 using Nevermind.Core.Encoding;
-using Nevermind.Core.Sugar;
 using Nevermind.Core.Validators;
 using Nevermind.Store;
 
@@ -157,9 +156,6 @@ namespace Nevermind.Evm
                     {
                         _stateProvider.UpdateAccount(toBeDestroyed, null);
                     }
-
-                    minerAccount.Balance += 5.Ether();
-                    _stateProvider.UpdateAccount(block.Beneficiary, minerAccount);
 
                     // receipt
                     TransactionReceipt receipt = new TransactionReceipt();
