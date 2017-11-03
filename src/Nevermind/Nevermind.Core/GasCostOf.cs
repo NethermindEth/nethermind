@@ -30,7 +30,7 @@ namespace Nevermind.Core
         public const ulong Memory = 3;
         public const ulong TxCreate = 32000;
         public const ulong TxDataZero = 4;
-        public const ulong TxDataNonZero = 64;
+        public const ulong TxDataNonZero = 68;
         public const ulong Transaction = 21000;
         public const ulong Log = 375;
         public const ulong LogTopic = 375; // ?

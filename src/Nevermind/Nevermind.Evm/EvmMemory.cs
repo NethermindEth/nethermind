@@ -24,7 +24,7 @@ namespace Nevermind.Evm
 
         public ulong SaveByte(BigInteger location, byte[] value)
         {
-            return Save(location, new byte[] {value[value.Length - 1]});
+            return Save(location, new byte[] { value[value.Length - 1] });
         }
 
         // TODO: move
@@ -65,9 +65,14 @@ namespace Nevermind.Evm
 
             _activeWordsInMemory = Math.Max(_activeWordsInMemory, Div32Ceiling(location + length));
 
-            if (allowInvalidLocations && location > _memory.Length)
+            if (location > _memory.Length)
             {
-                return (new byte[(int)length], _activeWordsInMemory);
+                if (allowInvalidLocations)
+                {
+                    return (new byte[(int)length], _activeWordsInMemory);
+                }
+
+                throw new MemoryAccessException();
             }
 
             byte[] bytes = _memory.Slice((int)location, (int)BigInteger.Max(0, BigInteger.Min(length, _memory.Length - location)))

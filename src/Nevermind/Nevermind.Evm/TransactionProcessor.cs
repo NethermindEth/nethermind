@@ -44,6 +44,13 @@ namespace Nevermind.Evm
             }
 
             ulong intrinsicGas = IntrinsicGasCalculator.Calculate(transaction, block.Number);
+            // THEIR TOTAL: 29198 - on state
+            // THEIR IMPLIED INTRINSIC: 29158
+
+            // MY TOTAL: 28704
+            // MY INTRINSIC: 28664
+            // MY VM: 40
+
             if (intrinsicGas > block.GasLimit - blockGasUsedSoFar)
             {
                 return null;
@@ -73,11 +80,17 @@ namespace Nevermind.Evm
             // checkpoint
             senderAccount.Nonce++;
             senderAccount.Balance -= transaction.GasLimit * transaction.GasPrice;
-            senderAccount.Balance -= transaction.Value;
             _stateProvider.UpdateAccount(sender, senderAccount);
+
             // TODO: fail if not enough? or just revert?
 
             ulong gasAvailable = (ulong)(transaction.GasLimit - intrinsicGas);
+            BigInteger gasSpent = transaction.GasLimit;
+
+            StateSnapshot snapshot = _stateProvider.TakeSnapshot();
+            StateSnapshot storageSnapshot = _storageProvider.TakeSnapshot(transaction.To);
+            senderAccount.Balance -= transaction.Value;
+            _stateProvider.UpdateAccount(sender, senderAccount);
 
             if (transaction.IsContractCreation)
             {
@@ -99,91 +112,70 @@ namespace Nevermind.Evm
 
                 senderAccount.Balance += gasAvailable; // refund unused
                 _stateProvider.UpdateAccount(contractAddress, contractAccount);
-
-                TransactionReceipt receipt = new TransactionReceipt();
-                receipt.Logs = new LogEntry[0];
-                receipt.Bloom = new Bloom();
-                receipt.GasUsed = transaction.GasLimit - gasAvailable;
-                receipt.PostTransactionState = _stateProvider.State.RootHash;
-                return receipt;
             }
-
-            // make transfer
-            Account recipientAccount = _stateProvider.GetAccount(transaction.To);
-            if (recipientAccount == null)
-            {
-                gasAvailable -= GasCostOf.NewAccount;
-                recipientAccount = new Account();
-            }
-
-            recipientAccount.Balance += transaction.Value;
-            _stateProvider.UpdateAccount(transaction.To, recipientAccount);
-
-            if (transaction.IsMessageCall)
-            {
-                ExecutionEnvironment env = new ExecutionEnvironment();
-                env.Value = transaction.Value;
-                env.Caller = sender;
-                env.CodeOwner = transaction.To;
-                env.CurrentBlock = block;
-                env.GasPrice = transaction.GasPrice;
-                env.InputData = transaction.Data;
-                env.MachineCode = _stateProvider.GetCode(recipientAccount.CodeHash);
-
-                EvmState state = new EvmState(gasAvailable);
-                StateSnapshot snapshot = _stateProvider.TakeSnapshot();
-                StateSnapshot storageSnapshot = _storageProvider.TakeSnapshot(transaction.To);
-                try
+            else
+            {                
+                // make transfer
+                Account recipientAccount = _stateProvider.GetAccount(transaction.To);
+                if (recipientAccount == null)
                 {
-                    (byte[] output, TransactionSubstate substate) =
-                        _virtualMachine.Run(env, state, new BlockhashProvider(), _stateProvider, _storageProvider);
+                    gasAvailable -= GasCostOf.NewAccount;
+                    recipientAccount = new Account();
+                }
 
-                    gasAvailable = state.GasAvailable;
+                recipientAccount.Balance += transaction.Value;
+                _stateProvider.UpdateAccount(transaction.To, recipientAccount);
 
-                    // pre-final
-                    BigInteger gasSpent = transaction.GasLimit - gasAvailable; // TODO: does refund use intrinsic value to calculate cap?
-                    BigInteger halfOfGasSpend = BigInteger.Divide(gasSpent, 2);
-                    BigInteger refund = gasAvailable + BigInteger.Min(halfOfGasSpend, substate.Refund);
-                    senderAccount.Balance += refund * transaction.GasPrice;
-                    _stateProvider.UpdateAccount(sender, senderAccount);
+                if (transaction.IsMessageCall)
+                {
+                    ExecutionEnvironment env = new ExecutionEnvironment();
+                    env.Value = transaction.Value;
+                    env.Caller = sender;
+                    env.CodeOwner = transaction.To;
+                    env.CurrentBlock = block;
+                    env.GasPrice = transaction.GasPrice;
+                    env.InputData = transaction.Data;
+                    env.MachineCode = _stateProvider.GetCode(recipientAccount.CodeHash);
 
-                    // final
-
-                    Account minerAccount = _stateProvider.GetOrCreateAccount(block.Beneficiary); // not sure about account creation here
-                    minerAccount.Balance += gasSpent * transaction.GasPrice;
-                    _stateProvider.UpdateAccount(block.Beneficiary, minerAccount);
-                    foreach (Address toBeDestroyed in substate.DestroyList)
+                    EvmState state = new EvmState(gasAvailable);
+                    try
                     {
-                        _stateProvider.UpdateAccount(toBeDestroyed, null);
+                        (byte[] _, TransactionSubstate substate) =
+                            _virtualMachine.Run(env, state, new BlockhashProvider(), _stateProvider, _storageProvider);
+
+                        gasAvailable = state.GasAvailable;
+
+                        // pre-final
+                        gasSpent = transaction.GasLimit -
+                                   gasAvailable; // TODO: does refund use intrinsic value to calculate cap?
+                        BigInteger halfOfGasSpend = BigInteger.Divide(gasSpent, 2);
+                        BigInteger refund = gasAvailable + BigInteger.Min(halfOfGasSpend, substate.Refund);
+                        senderAccount.Balance += refund * transaction.GasPrice;
+                        _stateProvider.UpdateAccount(sender, senderAccount);
+
+                        // final
+                        foreach (Address toBeDestroyed in substate.DestroyList)
+                        {
+                            _stateProvider.UpdateAccount(toBeDestroyed, null);
+                        }
                     }
-
-                    // receipt
-                    TransactionReceipt receipt = new TransactionReceipt();
-                    receipt.Logs = substate.Logs.ToArray(); // is it held between transactions?
-                    receipt.Bloom = new Bloom(); // calculate from logs?
-                    receipt.GasUsed = blockGasUsedSoFar + gasSpent;
-                    receipt.PostTransactionState = _stateProvider.State.RootHash;
-                    return receipt;
-                }
-                catch (Exception e)
-                {
-                    Console.WriteLine(e);
-                    _stateProvider.Restore(snapshot);
-                    _storageProvider.Restore(transaction.To, storageSnapshot);
-
-                    TransactionReceipt receipt = new TransactionReceipt();
-                    receipt.Logs = new LogEntry[0];
-                    receipt.Bloom = new Bloom();
-                    receipt.GasUsed = transaction.GasLimit;
-                    receipt.PostTransactionState = _stateProvider.State.RootHash;
-                    return receipt;
+                    catch (Exception e)
+                    {
+                        Console.WriteLine(e);
+                        _stateProvider.Restore(snapshot);
+                        _storageProvider.Restore(transaction.To, storageSnapshot);                        
+                    }
                 }
             }
+
+            Account minerAccount = _stateProvider.GetOrCreateAccount(block.Beneficiary);
+            minerAccount.Balance += gasSpent * transaction.GasPrice;
+            _stateProvider.UpdateAccount(block.Beneficiary, minerAccount);
 
             TransactionReceipt transferReceipt = new TransactionReceipt();
             transferReceipt.Logs = new LogEntry[0];
             transferReceipt.Bloom = new Bloom();
-            transferReceipt.GasUsed = transaction.GasLimit;
+            transferReceipt.GasUsed = transaction.GasLimit + gasSpent;
             transferReceipt.PostTransactionState = _stateProvider.State.RootHash;
             return transferReceipt;
         }

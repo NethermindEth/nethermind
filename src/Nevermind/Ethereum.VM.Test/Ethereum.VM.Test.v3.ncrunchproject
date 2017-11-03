@@ -26,6 +26,7 @@
       <FixtureTestSelector>
         <FixtureName>Ethereum.VM.Test.PerformanceTests</FixtureName>
       </FixtureTestSelector>
+      <AllTestsSelector />
     </IgnoredTests>
   </Settings>
 </ProjectConfiguration>

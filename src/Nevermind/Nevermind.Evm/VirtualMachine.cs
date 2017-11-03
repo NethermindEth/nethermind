@@ -64,6 +64,11 @@ namespace Nevermind.Evm
 
         private void Dup(int depth)
         {
+            if (_head < depth)
+            {
+                throw new StackUnderflowException();
+            }
+
             if (_isInt[_head - depth])
             {
                 _intArray[_head] = _intArray[_head - depth];
@@ -84,6 +89,11 @@ namespace Nevermind.Evm
 
         private void Swap(int depth)
         {
+            if (_head < depth)
+            {
+                throw new StackUnderflowException();
+            }
+
             bool isIntBottom = _isInt[_head - depth];
             bool isIntUp = _isInt[_head - 1];
 
@@ -159,12 +169,13 @@ namespace Nevermind.Evm
                 return _intArray[_head];
             }
 
+            BigInteger res = _array[_head].ToUnsignedBigInteger();
             if (ShouldLog.Evm)
             {
-                Console.WriteLine($"  POP {_array[_head]}");
+                Console.WriteLine($"  POP {res}");
             }
 
-            return _array[_head].ToUnsignedBigInteger();
+            return res;
         }
 
         private BigInteger PopInt()

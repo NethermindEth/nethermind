@@ -61,10 +61,12 @@
     <Compile Include="Abi\AbiUInt.cs" />
     <Compile Include="Abi\AbiAddress.cs" />
     <Compile Include="BlockhashProvider.cs" />
+    <Compile Include="BlockProcessor.cs" />
     <Compile Include="CallDepthException.cs" />
     <Compile Include="InvalidInstructionException.cs" />
     <Compile Include="InvalidJumpDestinationException.cs" />
     <Compile Include="IVirtualMachine.cs" />
+    <Compile Include="MemoryAccessException.cs" />
     <Compile Include="Precompiles\ECRecoverPrecompiledContract.cs" />
     <Compile Include="EvmMemory.cs" />
     <Compile Include="EvmStack.cs" />
