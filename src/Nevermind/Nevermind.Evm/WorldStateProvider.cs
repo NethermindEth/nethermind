@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Nevermind.Core;
 using Nevermind.Core.Encoding;
 using Nevermind.Store;
@@ -6,6 +7,9 @@ namespace Nevermind.Evm
 {
     public class WorldStateProvider : IWorldStateProvider
     {
+        private readonly bool _codeInState = false; // that is sure - with code outside of state genesis block hash works fine in one of the tests with an account with code (example add11)
+        private readonly Dictionary<Keccak, byte[]> _code = new Dictionary<Keccak, byte[]>();
+
         public WorldStateProvider(StateTree stateTree)
         {
             State = stateTree;
@@ -36,13 +40,33 @@ namespace Nevermind.Evm
             }
 
             Keccak codeHash = Keccak.Compute(code);
-            State.Set(codeHash, new Rlp(code));
+            if (_codeInState)
+            {
+                State.Set(codeHash, new Rlp(code));    
+            }
+            else
+            {
+                _code[codeHash] = code;
+            }
+            
             return codeHash;
         }
 
         public byte[] GetCode(Keccak codeHash)
         {
-            return State.Get(codeHash.Bytes);
+            if (codeHash == Keccak.OfAnEmptyString)
+            {
+                return new byte[0];
+            }
+
+            if (_codeInState)
+            {
+                return State.Get(codeHash.Bytes);
+            }
+            else
+            {
+                return _code[codeHash];
+            }
         }
 
         public StateSnapshot TakeSnapshot()

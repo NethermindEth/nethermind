@@ -1,4 +1,5 @@
-﻿using Nevermind.Core;
+﻿using System;
+using Nevermind.Core;
 using Nevermind.Core.Encoding;
 
 namespace Nevermind.Store
@@ -26,6 +27,11 @@ namespace Nevermind.Store
         public void Set(Keccak addressHash, Rlp rlp)
         {
             base.Set(addressHash.Bytes, rlp);
+        }
+
+        public void PrintDbContent()
+        {
+            _db.Print(Console.WriteLine);
         }
     }
 }

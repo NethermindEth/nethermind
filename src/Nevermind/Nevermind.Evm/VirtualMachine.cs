@@ -473,10 +473,15 @@ namespace Nevermind.Evm
                     case Instruction.SIGNEXTEND:
                     {
                         UpdateGas(GasCostOf.Low, ref gasAvailable);
-                        int a = (int)PopUInt(); // TODO: check if there is spec for handling too big numbers
+                        BigInteger a = PopUInt(); // TODO: check if there is spec for handling too big numbers
+                        if (a >= BigInt32)
+                        {
+                            break;
+                        }
+
                         byte[] b = PopBytes();
                         b.ToBigEndianBitArray256(ref bits1);
-                        int bitPosition = Math.Max(0, 248 - 8 * a);
+                        int bitPosition = Math.Max(0, 248 - 8 * (int)a);
                         bool isSet = bits1[bitPosition];
                         for (int i = 0; i < bitPosition; i++)
                         {

@@ -13,7 +13,7 @@ namespace Nevermind.Store
         /// </summary>
         public static readonly Keccak EmptyTreeHash = Keccak.EmptyTreeHash;
 
-        private InMemoryDb _db;
+        protected InMemoryDb _db;
 
         internal Node Root;
 

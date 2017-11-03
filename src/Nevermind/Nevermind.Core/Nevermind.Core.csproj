@@ -100,9 +100,8 @@
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Signing\PublicKey.cs" />
     <Compile Include="Signing\Random.cs" />
-    <Compile Include="Encoding\Rlp.encoding.cs" />
-    <Compile Include="Encoding\Ripemd.cs" />
     <Compile Include="Encoding\Rlp.cs" />
+    <Compile Include="Encoding\Ripemd.cs" />
     <Compile Include="Encoding\Sha2.cs" />
     <Compile Include="Signing\Signature.cs" />
     <Compile Include="Signing\Signer.cs" />

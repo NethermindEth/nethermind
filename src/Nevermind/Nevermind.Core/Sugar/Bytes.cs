@@ -87,6 +87,19 @@ namespace Nevermind.Core.Sugar
             return bytes.Length % 2 == 0 || bytes[bytes.Length / 2] == 0;
         }
 
+        public static int TrailingZerosCount(this byte[] bytes)
+        {
+            for (int i = 0; i < bytes.Length; i++)
+            {
+                if (bytes[bytes.Length - i - 1] != 0)
+                {
+                    return i;
+                }
+            }
+
+            return bytes.Length;
+        }
+
         public static byte[] WithoutLeadingZeros(this byte[] bytes)
         {
             for (int i = 0; i < bytes.Length; i++)
@@ -184,10 +197,10 @@ namespace Nevermind.Core.Sugar
             {
                 result[i] = bytes[bytes.Length - i - 1];
             }
-            
+
             return result;
         }
-        
+
         public static byte[] ReverseInPlace(this byte[] bytes)
         {
             Array.Reverse(bytes);
