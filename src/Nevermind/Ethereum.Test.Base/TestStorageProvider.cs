@@ -33,7 +33,7 @@ namespace Ethereum.VM.Test
 
         public StateSnapshot TakeSnapshot(Address address)
         {
-            return _storages[address]?.TakeSnapshot();
+            return _storages.ContainsKey(address) ? _storages[address].TakeSnapshot() : null;
         }
 
         public void Restore(Address address, StateSnapshot snapshot)

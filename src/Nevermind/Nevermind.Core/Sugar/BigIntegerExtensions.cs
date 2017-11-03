@@ -26,7 +26,7 @@ namespace Nevermind.Core.Sugar
                 result[fromBigInteger.Length - trailingZeros - 1 - i] = fromBigInteger[i];
             }
 
-            if (bigInteger.Sign < 0)
+            if (bigInteger.Sign < 0 && outputLength != -1)
             {
                 byte[] newResult = new byte[outputLength];
                 Buffer.BlockCopy(result, 0, newResult, outputLength - result.Length, result.Length);

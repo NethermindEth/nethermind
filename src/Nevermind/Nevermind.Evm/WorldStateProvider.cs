@@ -93,7 +93,7 @@ namespace Nevermind.Evm
 
         public void UpdateAccount(Address address, Account account)
         {
-            State.Set(address, Rlp.Encode(account));
+            State.Set(address, account == null ? null : Rlp.Encode(account));
         }
     }
 }

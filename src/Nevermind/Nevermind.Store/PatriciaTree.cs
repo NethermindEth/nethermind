@@ -162,7 +162,7 @@ namespace Nevermind.Store
 
         public void Set(byte[] rawKey, Rlp value)
         {
-            Set(Nibbles.FromBytes(rawKey), value.Bytes);
+            Set(Nibbles.FromBytes(rawKey), value == null ? new byte[0] : value.Bytes);
         }
 
         internal Node GetNode(KeccakOrRlp keccakOrRlp)

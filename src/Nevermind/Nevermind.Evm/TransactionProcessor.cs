@@ -88,7 +88,7 @@ namespace Nevermind.Evm
             BigInteger gasSpent = transaction.GasLimit;
 
             StateSnapshot snapshot = _stateProvider.TakeSnapshot();
-            StateSnapshot storageSnapshot = _storageProvider.TakeSnapshot(transaction.To);
+            StateSnapshot storageSnapshot = transaction.To != null ? _storageProvider.TakeSnapshot(transaction.To) : null;
             senderAccount.Balance -= transaction.Value;
             _stateProvider.UpdateAccount(sender, senderAccount);
 

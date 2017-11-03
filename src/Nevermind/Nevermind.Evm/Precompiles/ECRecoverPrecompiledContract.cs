@@ -1,5 +1,8 @@
 ﻿using System;
 using System.Numerics;
+using Nevermind.Core.Encoding;
+using Nevermind.Core.Signing;
+using Nevermind.Core.Sugar;
 
 namespace Nevermind.Evm.Precompiles
 {
@@ -19,7 +22,20 @@ namespace Nevermind.Evm.Precompiles
 
         public byte[] Run(byte[] inputData)
         {
-            throw new NotImplementedException();
+            // TODO:
+            try
+            {
+                Keccak hash = new Keccak(inputData.Slice(0, 32));
+                byte[] v = inputData.Slice(32, 32);
+                byte[] r = inputData.Slice(64, 32);
+                byte[] s = inputData.Slice(96, 32);
+                Signature signature = new Signature(r, s, v[31]);
+                return ((byte[])Signer.RecoverSignerAddress(signature, hash).Hex).PadLeft(32); // change recovery code to return bytes?
+            }
+            catch (Exception)
+            {
+                return new byte[0];
+            }
         }
     }
 }

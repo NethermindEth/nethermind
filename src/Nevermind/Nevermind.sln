@@ -41,6 +41,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PerfTest", "PerfTest\PerfTe
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ethereum.GeneralState.Test", "Ethereum.GeneralState.Test\Ethereum.GeneralState.Test.csproj", "{C2D748FB-AE65-4388-9E0B-CD31C9671AEE}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ethereum.Basic.Test", "Ethereum.Basic.Test\Ethereum.Basic.Test.csproj", "{6FAC611D-9CA1-4EA6-9C82-06AA10A0DA4C}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -279,6 +281,18 @@ Global
 		{C2D748FB-AE65-4388-9E0B-CD31C9671AEE}.Release|x64.Build.0 = Release|Any CPU
 		{C2D748FB-AE65-4388-9E0B-CD31C9671AEE}.Release|x86.ActiveCfg = Release|Any CPU
 		{C2D748FB-AE65-4388-9E0B-CD31C9671AEE}.Release|x86.Build.0 = Release|Any CPU
+		{6FAC611D-9CA1-4EA6-9C82-06AA10A0DA4C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6FAC611D-9CA1-4EA6-9C82-06AA10A0DA4C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6FAC611D-9CA1-4EA6-9C82-06AA10A0DA4C}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{6FAC611D-9CA1-4EA6-9C82-06AA10A0DA4C}.Debug|x64.Build.0 = Debug|Any CPU
+		{6FAC611D-9CA1-4EA6-9C82-06AA10A0DA4C}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{6FAC611D-9CA1-4EA6-9C82-06AA10A0DA4C}.Debug|x86.Build.0 = Debug|Any CPU
+		{6FAC611D-9CA1-4EA6-9C82-06AA10A0DA4C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6FAC611D-9CA1-4EA6-9C82-06AA10A0DA4C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6FAC611D-9CA1-4EA6-9C82-06AA10A0DA4C}.Release|x64.ActiveCfg = Release|Any CPU
+		{6FAC611D-9CA1-4EA6-9C82-06AA10A0DA4C}.Release|x64.Build.0 = Release|Any CPU
+		{6FAC611D-9CA1-4EA6-9C82-06AA10A0DA4C}.Release|x86.ActiveCfg = Release|Any CPU
+		{6FAC611D-9CA1-4EA6-9C82-06AA10A0DA4C}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

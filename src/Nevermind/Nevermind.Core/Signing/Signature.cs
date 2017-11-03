@@ -32,6 +32,28 @@ namespace Nevermind.Core.Signing
             V = bytes[64];
         }
 
+        public Signature(byte[] r, byte[] s, byte v)
+        {
+            if (r.Length != 32)
+            {
+                throw new ArgumentException(nameof(r));
+            }
+
+            if (s.Length != 32)
+            {
+                throw new ArgumentException(nameof(s));
+            }
+
+            if (v < 27)
+            {
+                throw new ArgumentException(nameof(v));
+            }
+
+            Buffer.BlockCopy(r, 0, Bytes, 0, 32);
+            Buffer.BlockCopy(s, 0, Bytes, 32, 32);
+            V = v;
+        }
+
         public Signature(BigInteger r, BigInteger s, byte v)
         {
             if (v < 27)

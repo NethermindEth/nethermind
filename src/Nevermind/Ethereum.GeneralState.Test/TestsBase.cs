@@ -84,7 +84,7 @@ namespace Ethereum.GeneralState.Test
             incomingTransaction.GasLimit = Hex.ToBytes(transactionJson.GasLimit[0]).ToUnsignedBigInteger();
             incomingTransaction.GasPrice = Hex.ToBytes(transactionJson.GasPrice).ToUnsignedBigInteger();
             incomingTransaction.Nonce = Hex.ToBytes(transactionJson.Nonce).ToUnsignedBigInteger();
-            incomingTransaction.To = new Address(new Hex(transactionJson.To));
+            incomingTransaction.To = string.IsNullOrWhiteSpace(transactionJson.To) ? null : new Address(new Hex(transactionJson.To));
             incomingTransaction.SecretKey = new PrivateKey(new Hex(transactionJson.SecretKey));
             return incomingTransaction;
         }
@@ -174,9 +174,9 @@ namespace Ethereum.GeneralState.Test
                 BigInteger.Zero
             );
 
-            Account minerAccount = _stateProvider.GetAccount(header.Beneficiary);
-            Account senderAccount = _stateProvider.GetAccount(sender);
-            Account recipientAccount = _stateProvider.GetAccount(transaction.To);
+            //Account minerAccount = _stateProvider.GetAccount(header.Beneficiary);
+            //Account senderAccount = _stateProvider.GetAccount(sender);
+            //Account recipientAccount = _stateProvider.GetAccount(transaction.To);
 
             ////Keccak receiptsRoot = BlockProcessor.GetReceiptsRoot(new[] {receipt});
             ////Keccak transactionsRoot = BlockProcessor.GetTransactionsRoot(new[] { transaction });

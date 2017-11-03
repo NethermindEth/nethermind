@@ -27,6 +27,7 @@ namespace Nevermind.Core.Validators
                    Validator.IsInP256(transaction.GasLimit) &&
                    // ReSharper disable once IsExpressionAlwaysTrue
                    // ReSharper disable once ConditionIsAlwaysTrueOrFalse
+                   transaction.To != null || transaction.Init != null && // TODO: check tests where this is the case and still state changes (is the gas substracted?)
                    (transaction.To == null || transaction.To is Address) &&
                    Validator.IsInP256(transaction.Value) &&
                    // both null: transfer; data not null: message call; init not null: account creation
