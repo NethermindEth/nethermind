@@ -37,7 +37,7 @@ namespace Ethereum.GeneralState.Test
         public static IEnumerable<GenerateStateTest> LoadTests(string testSet)
         {
             Directory.SetCurrentDirectory(AppDomain.CurrentDomain.BaseDirectory);
-            IEnumerable<string> testDirs = Directory.EnumerateDirectories(".", "st" + testSet);
+            IEnumerable<string> testDirs = Directory.EnumerateDirectories(".\\Tests\\", "st" + testSet);
             Dictionary<string, Dictionary<string, GeneralStateTestJson>> testJsons =
                 new Dictionary<string, Dictionary<string, GeneralStateTestJson>>();
             foreach (string testDir in testDirs)

@@ -175,12 +175,23 @@ namespace Ethereum.VM.Test
             Assert.AreEqual((ulong)test.Gas, state.GasAvailable);
             foreach (KeyValuePair<Address, AccountState> accountState in test.Post)
             {
+                Account account = _stateProvider.GetAccount(accountState.Key);
+                Assert.AreEqual(accountState.Value.Balance, account?.Balance, $"{accountState.Key} Balance");
+                Assert.AreEqual(accountState.Value.Nonce, account?.Nonce, $"{accountState.Key} Nonce");
+
+                // TODO: not testing properly 0 balance accounts
+                if (account != null)
+                {
+                    byte[] code = _stateProvider.GetCode(account.CodeHash);
+                    Assert.AreEqual(accountState.Value.Code, code, $"{accountState.Key} Code");
+                }
+
                 StorageTree accountStorage = _storageProvider.GetOrCreateStorage(accountState.Key);
                 foreach (KeyValuePair<BigInteger, byte[]> storageItem in accountState.Value.Storage)
                 {
                     byte[] value = accountStorage.Get(storageItem.Key);
                     Assert.True(Bytes.UnsafeCompare(storageItem.Value, value),
-                        $"Storage[{storageItem.Key}] Exp: {Hex.FromBytes(storageItem.Value, true)} != Actual: {Hex.FromBytes(value, true)}");
+                        $"Storage[{accountState.Key}_{storageItem.Key}] Exp: {Hex.FromBytes(storageItem.Value, true)} != Actual: {Hex.FromBytes(value, true)}");
                 }
             }
         }

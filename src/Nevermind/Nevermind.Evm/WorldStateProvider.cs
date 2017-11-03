@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using Nevermind.Core;
 using Nevermind.Core.Encoding;
@@ -93,6 +94,14 @@ namespace Nevermind.Evm
 
         public void UpdateAccount(Address address, Account account)
         {
+            if (ShouldLog.Evm)
+            {
+                if (account != null)
+                {
+                    Console.WriteLine($"  UPDATING BALANCE OF {address} to {account.Balance}");
+                }
+            }
+
             State.Set(address, account == null ? null : Rlp.Encode(account));
         }
     }

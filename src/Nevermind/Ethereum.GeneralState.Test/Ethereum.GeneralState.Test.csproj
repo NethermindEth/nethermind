@@ -35,7 +35,7 @@
   </PropertyGroup>
   <ItemGroup>
     <EmbeddedResource Include="..\..\tests\GeneralStateTests\**\*.*">
-      <Link>%(RecursiveDir)%(FileName)%(Extension)</Link>
+      <Link>Tests\%(RecursiveDir)%(FileName)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </EmbeddedResource>
   </ItemGroup>

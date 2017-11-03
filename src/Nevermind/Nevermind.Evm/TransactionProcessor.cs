@@ -175,7 +175,7 @@ namespace Nevermind.Evm
             TransactionReceipt transferReceipt = new TransactionReceipt();
             transferReceipt.Logs = new LogEntry[0];
             transferReceipt.Bloom = new Bloom();
-            transferReceipt.GasUsed = transaction.GasLimit + gasSpent;
+            transferReceipt.GasUsed = block.GasUsed + gasSpent;
             transferReceipt.PostTransactionState = _stateProvider.State.RootHash;
             return transferReceipt;
         }

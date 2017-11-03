@@ -1,12 +1,12 @@
 ﻿using NUnit.Framework;
 
-namespace Ethereum.GeneralState.Test
+namespace Ethereum.Blockchain.Test
 {
     [TestFixture]
-    public class ExampleTests : GeneralTestBase
+    public class ExampleTests : BlockchainTestBase
     {
         [TestCaseSource(nameof(LoadTests), new object[] { "Example" })]
-        public void Test(GenerateStateTest generateStateTest)
+        public void Test(BlockchainTest generateStateTest)
         {
             RunTest(generateStateTest);
         }

@@ -1,9 +1,6 @@
 ﻿<ProjectConfiguration>
   <Settings>
     <IgnoredTests>
-      <FixtureTestSelector>
-        <FixtureName>Ethereum.GeneralState.Test.ExampleTests</FixtureName>
-      </FixtureTestSelector>
       <AllTestsSelector />
     </IgnoredTests>
   </Settings>

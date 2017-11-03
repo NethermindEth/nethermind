@@ -629,8 +629,8 @@ namespace Nevermind.Evm
                     {
                         UpdateGas(GasCostOf.Balance, ref gasAvailable);
                         Address address = PopAddress();
-                        Account account = worldStateProvider.GetAccount(address);
-                        Push(account?.Balance ?? BigInteger.Zero);
+                        Account account = worldStateProvider.GetOrCreateAccount(address);
+                        Push(account.Balance);
                         break;
                     }
                     case Instruction.CALLER:
@@ -714,8 +714,8 @@ namespace Nevermind.Evm
                         BigInteger src = PopUInt();
                         BigInteger length = PopUInt();
                         UpdateGas(GasCostOf.ExtCode + GasCostOf.Memory * EvmMemory.Div32Ceiling(length), ref gasAvailable);
-                        Account account = worldStateProvider.GetAccount(address);
-                        byte[] externalCode = account == null ? new byte[] { 0 } : worldStateProvider.GetCode(account.CodeHash);
+                        Account account = worldStateProvider.GetOrCreateAccount(address);
+                        byte[] externalCode = worldStateProvider.GetCode(account.CodeHash);
                         byte[] callDataSlice = GetPaddedSlice(externalCode, src, length);
                         ulong newMemory = memory.Save(dest, callDataSlice);
                         UpdateMemoryCost(newMemory);
@@ -1093,9 +1093,31 @@ namespace Nevermind.Evm
                         Address target = ToAddress(targetAddress);
                         if (target.Equals(env.CodeOwner))
                         {
-                            Push(failure);
-                            break;
+                            // TODO: investigate
+                            if (env.CallDepth == 0)
+                            {
+                                Push(failure);
+                                break;
+                            }
+                            else
+                            {
+                                throw new RecursiveCallException();
+                            }
                         }
+
+                        Account targetAccount = worldStateProvider.GetAccount(target);
+                        ExecutionEnvironment callEnv = new ExecutionEnvironment();
+                        callEnv.Value = b;
+                        callEnv.Caller = env.CodeOwner;
+                        callEnv.Originator = env.Originator;
+                        callEnv.CallDepth = env.CallDepth + 1;
+                        callEnv.CurrentBlock = env.CurrentBlock;
+                        callEnv.GasPrice = env.GasPrice;
+                        callEnv.InputData = callData;
+                        callEnv.CodeOwner = instruction == Instruction.CALL ? target : env.CodeOwner;
+
+                        StateSnapshot stateSnapshot = worldStateProvider.TakeSnapshot();
+                        StateSnapshot storageSnapshot = storageProvider.TakeSnapshot(callEnv.CodeOwner);
 
                         if (!b.IsZero)
                         {
@@ -1112,7 +1134,6 @@ namespace Nevermind.Evm
                             worldStateProvider.UpdateAccount(env.CodeOwner, codeOwnerAccount);
                         }
 
-                        Account targetAccount = worldStateProvider.GetAccount(target);
                         if (targetAccount == null)
                         {
                             gasExtra += GasCostOf.NewAccount;
@@ -1148,27 +1169,17 @@ namespace Nevermind.Evm
                         }
                         else if (gasAvailable < gasCap)
                         {
+                            worldStateProvider.Restore(stateSnapshot);
+                            storageProvider.Restore(callEnv.CodeOwner, storageSnapshot);
                             throw new OutOfGasException(); // no EIP-150
                         }
-
-                        ExecutionEnvironment callEnv = new ExecutionEnvironment();
-                        callEnv.Value = b;
-                        callEnv.Caller = env.CodeOwner;
-                        callEnv.Originator = env.Originator;
-                        callEnv.CallDepth = env.CallDepth + 1;
-                        callEnv.CurrentBlock = env.CurrentBlock;
-                        callEnv.GasPrice = env.GasPrice;
-                        callEnv.InputData = callData;
-                        callEnv.CodeOwner = instruction == Instruction.CALL ? target : env.CodeOwner;
-                        callEnv.MachineCode = worldStateProvider.GetCode(targetAccount.CodeHash);
-
-                        StateSnapshot stateSnapshot = worldStateProvider.TakeSnapshot();
-                        StateSnapshot storageSnapshot = storageProvider.TakeSnapshot(callEnv.CodeOwner);
 
                         ulong callGas =
                             b.IsZero
                                 ? gasCap
                                 : gasCap + GasCostOf.CallStipend;
+
+                        callEnv.MachineCode = worldStateProvider.GetCode(targetAccount.CodeHash);
 
                         try
                         {
@@ -1199,6 +1210,10 @@ namespace Nevermind.Evm
                             Push(failure);
                         }
 
+                        if (ShouldLog.Evm)
+                        {
+                            Console.WriteLine($"SUCCESS");
+                        }
                         break;
                     }
                     case Instruction.INVALID:
