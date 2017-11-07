@@ -244,6 +244,11 @@ namespace Nevermind.Core.Encoding
                 return Encode(address);
             }
 
+            if (item is LogEntry logEntry)
+            {
+                return Encode(logEntry);
+            }
+
             if (item is BigInteger bigInt)
             {
                 return Encode(bigInt);
@@ -445,6 +450,14 @@ namespace Nevermind.Core.Encoding
             result[2] = 0;
             Buffer.BlockCopy(bloom.Bytes, 0, result, 3, 256);
             return new Rlp(result);
+        }
+
+        public static Rlp Encode(LogEntry logEntry)
+        {
+            return Encode(
+                logEntry.LoggersAddress,
+                logEntry.Topics,
+                logEntry.Data);
         }
 
         public static Rlp Encode(Account account)

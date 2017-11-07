@@ -1,8 +1,10 @@
+using Nevermind.Core.Encoding;
+
 namespace Nevermind.Core
 {
     public class LogEntry
     {
-        public LogEntry(Address address, byte[] data, byte[][] topics)
+        public LogEntry(Address address, byte[] data, Keccak[] topics)
         {
             LoggersAddress = address;
             Data = data;
@@ -10,7 +12,7 @@ namespace Nevermind.Core
         }
 
         public Address LoggersAddress { get; }
-        public byte[][] Topics { get; }
+        public Keccak[] Topics { get; }
         public byte[] Data { get; }
     }
 }

@@ -23,10 +23,11 @@ namespace Nevermind.Core.Encoding
 
         public void Set(byte[] sequence)
         {
-            Keccak keccak = Keccak.Compute(sequence);
+            //Keccak keccak = Keccak.Compute(sequence);
+            byte[] bytes = sequence;
             for (int i = 0; i < 6; i += 2)
             {
-                int index = (keccak.Bytes[i] + keccak.Bytes[i + 1]) % 2048;
+                int index = ((bytes[i] << 8) + bytes[i + 1]) % 2048;
                 _bits.Set(index, true);
             }
         }

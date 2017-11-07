@@ -131,6 +131,7 @@ namespace Nevermind.Core.Encoding
             return result;
         }
 
+        [DebuggerStepThrough]
         private static string ByteArrayToHexViaLookup32(byte[] bytes, bool withZeroX, bool skipLeadingZeros, bool withEip55Checksum)
         {
             int leadingZeros = skipLeadingZeros ? CountLeadingZeros(bytes) : 0;

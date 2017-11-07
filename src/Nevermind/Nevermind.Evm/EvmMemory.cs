@@ -8,8 +8,6 @@ namespace Nevermind.Evm
     {
         private const int WordSize = 32;
 
-        private ulong _activeWordsInMemory = 0;
-
         private byte[] _memory = new byte[0];
 
         private void Expand(int size)
@@ -17,14 +15,14 @@ namespace Nevermind.Evm
             Array.Resize(ref _memory, size);
         }
 
-        public ulong SaveWord(BigInteger location, byte[] word)
+        public void SaveWord(BigInteger location, byte[] word)
         {
-            return Save(location, word.PadLeft(32));
+            Save(location, word.PadLeft(32));
         }
 
-        public ulong SaveByte(BigInteger location, byte[] value)
+        public void SaveByte(BigInteger location, byte[] value)
         {
-            return Save(location, new byte[] { value[value.Length - 1] });
+            Save(location, new byte[] { value[value.Length - 1] });
         }
 
         // TODO: move
@@ -35,7 +33,7 @@ namespace Nevermind.Evm
             return (ulong)(result + (rem > 0 ? 1 : 0));
         }
 
-        public ulong Save(BigInteger location, byte[] value)
+        public void Save(BigInteger location, byte[] value)
         {
             if (_memory.Length < location + value.Length)
             {
@@ -46,30 +44,25 @@ namespace Nevermind.Evm
             {
                 _memory[(int)location + i] = value[i];
             }
-
-            _activeWordsInMemory = Math.Max(_activeWordsInMemory, Div32Ceiling(location + value.Length));
-            return _activeWordsInMemory;
         }
 
-        public (byte[], ulong) Load(BigInteger location)
+        public byte[] Load(BigInteger location)
         {
             return Load(location, WordSize);
         }
 
-        public (byte[], ulong) Load(BigInteger location, BigInteger length, bool allowInvalidLocations = true)
+        public byte[] Load(BigInteger location, BigInteger length, bool allowInvalidLocations = true)
         {
             if (length == BigInteger.Zero)
             {
-                return (new byte[0], _activeWordsInMemory);
+                return new byte[0];
             }
-
-            _activeWordsInMemory = Math.Max(_activeWordsInMemory, Div32Ceiling(location + length));
 
             if (location > _memory.Length)
             {
                 if (allowInvalidLocations)
                 {
-                    return (new byte[(int)length], _activeWordsInMemory);
+                    return new byte[(int)length];
                 }
 
                 throw new MemoryAccessException();
@@ -77,7 +70,7 @@ namespace Nevermind.Evm
 
             byte[] bytes = _memory.Slice((int)location, (int)BigInteger.Max(0, BigInteger.Min(length, _memory.Length - location)))
                 .PadRight((int)length);
-            return (bytes, _activeWordsInMemory);
+            return bytes;
         }
     }
 }

@@ -51,7 +51,7 @@ namespace Ethereum.Blockchain.Test
                         JsonConvert.DeserializeObject<Dictionary<string, BlockchainTestJson>>(json);
                     foreach (KeyValuePair<string, BlockchainTestJson> namedTest in testsInFile)
                     {
-                        if (namedTest.Key.Contains("Byzantium") && DateTime.Now < new DateTime(2017, 11, 15))
+                        if (!namedTest.Key.Contains("Homestead") && DateTime.Now < new DateTime(2017, 11, 15))
                         {
                             continue;
                         }
@@ -108,17 +108,6 @@ namespace Ethereum.Blockchain.Test
             // TODO: handle multiple
             TestBlock oneBlock = test.Blocks[0];
             TestBlockHeader oneHeader = oneBlock.BlockHeader;
-            IncomingTransaction oneTransaction = oneBlock.Transactions[0];
-
-            Transaction transaction = new Transaction();
-            transaction.To = oneTransaction.To;
-            transaction.Value = oneTransaction.Value;
-            transaction.GasLimit = oneTransaction.GasLimit;
-            transaction.GasPrice = oneTransaction.GasPrice;
-            transaction.Data = transaction.To == null ? null : oneTransaction.Data;
-            transaction.Init = transaction.To == null ? oneTransaction.Data : null;
-            transaction.Nonce = oneTransaction.Nonce;
-            transaction.Signature = new Signature(oneTransaction.R, oneTransaction.S, oneTransaction.V);
 
             BlockHeader header = new BlockHeader();
             header.Number = oneHeader.Number;
@@ -136,48 +125,89 @@ namespace Ethereum.Blockchain.Test
             header.StateRoot = oneHeader.StateRoot;
             header.LogsBloom = oneHeader.Bloom;
 
-            Address sender = Signer.Recover(transaction);
-            TransactionReceipt receipt = processor.Execute(
-                sender,
-                transaction,
-                header,
-                BigInteger.Zero
-            );
+            List<TransactionReceipt> receipts = new List<TransactionReceipt>();
+            List<Transaction> transactions = new List<Transaction>();
 
-            Account minerAccount = _stateProvider.GetAccount(header.Beneficiary);
+            BigInteger gasUsedSoFar = 0;
+            foreach (IncomingTransaction testTransaction in oneBlock.Transactions)
+            {
+                Transaction transaction = new Transaction();
+                transaction.To = testTransaction.To;
+                transaction.Value = testTransaction.Value;
+                transaction.GasLimit = testTransaction.GasLimit;
+                transaction.GasPrice = testTransaction.GasPrice;
+                transaction.Data = transaction.To == null ? null : testTransaction.Data;
+                transaction.Init = transaction.To == null ? testTransaction.Data : null;
+                transaction.Nonce = testTransaction.Nonce;
+                transaction.Signature = new Signature(testTransaction.R, testTransaction.S, testTransaction.V);
+                transactions.Add(transaction);
+
+                Address sender = Signer.Recover(transaction);
+                TransactionReceipt receipt = processor.Execute(
+                    sender,
+                    transaction,
+                    header,
+                    gasUsedSoFar
+                );
+
+                receipts.Add(receipt);
+                gasUsedSoFar += receipt.GasUsed;
+            }
+
+            Account minerAccount = _stateProvider.GetOrCreateAccount(header.Beneficiary);
             minerAccount.Balance += 5.Ether();
             _stateProvider.UpdateAccount(header.Beneficiary, minerAccount);
 
+            List<string> differences = new List<string>();
             foreach (KeyValuePair<Address, AccountState> accountState in test.PostState)
             {
                 Account account = _stateProvider.GetAccount(accountState.Key);
-                Assert.AreEqual(accountState.Value.Balance, account.Balance, $"{accountState.Key} Balance");
-                Assert.AreEqual(accountState.Value.Nonce, account.Nonce, $"{accountState.Key} Nonce");
+                if (accountState.Value.Balance != account?.Balance)
+                {
+                    differences.Add($"{accountState.Key} balance exp: {accountState.Value.Balance}, actual: {account?.Balance}");
+                }
 
-                byte[] code = _stateProvider.GetCode(account.CodeHash);
-                Assert.AreEqual(accountState.Value.Code, code, $"{accountState.Key} Code");
+                if (accountState.Value.Nonce != account?.Nonce)
+                {
+                    differences.Add($"{accountState.Key} nonce exp: {accountState.Value.Nonce}, actual: {account?.Nonce}");
+                }
+
+                byte[] code = _stateProvider.GetCode(account?.CodeHash);
+                if (!Bytes.UnsafeCompare(accountState.Value.Code, code))
+                {
+                    differences.Add($"{accountState.Key} code exp: {accountState.Value.Code?.Length}, actual: {code?.Length}");
+                }
 
                 StorageTree accountStorage = _storageProvider.GetOrCreateStorage(accountState.Key);
                 foreach (KeyValuePair<BigInteger, byte[]> storageItem in accountState.Value.Storage)
                 {
                     byte[] value = accountStorage.Get(storageItem.Key);
-                    Assert.True(Bytes.UnsafeCompare(storageItem.Value, value),
-                        $"Storage[{storageItem.Key}] Exp: {Hex.FromBytes(storageItem.Value, true)} != Actual: {Hex.FromBytes(value, true)}");
+                    if (!Bytes.UnsafeCompare(storageItem.Value, value))
+                    {
+                        differences.Add($"{accountState.Key} storage[{storageItem.Key}] exp: {Hex.FromBytes(storageItem.Value, true)}, actual: {Hex.FromBytes(value, true)}");
+                    }
                 }
             }
 
-            Assert.AreEqual(oneHeader.GasUsed, receipt.GasUsed);
+            foreach (string difference in differences)
+            {
+                Console.WriteLine(difference);
+            }
 
-            Keccak receiptsRoot = BlockProcessor.GetReceiptsRoot(new[] { receipt });
-            Keccak transactionsRoot = BlockProcessor.GetTransactionsRoot(new[] { transaction });
-            Assert.AreEqual(header.TransactionsRoot, transactionsRoot);
-            Assert.AreEqual(header.ReceiptsRoot, receiptsRoot);
-            Assert.AreEqual(oneHeader.StateRoot, _stateProvider.State.RootHash);
+            Assert.Zero(differences.Count, "differences");
+
+            Assert.AreEqual(oneHeader.GasUsed, gasUsedSoFar);
+
+            Keccak receiptsRoot = BlockProcessor.GetReceiptsRoot(receipts.ToArray());
+            Keccak transactionsRoot = BlockProcessor.GetTransactionsRoot(transactions.ToArray());
+            Assert.AreEqual(header.TransactionsRoot, transactionsRoot, "transactions root");
+            Assert.AreEqual(header.ReceiptsRoot, receiptsRoot, "receipts root");
+            Assert.AreEqual(oneHeader.StateRoot, _stateProvider.State.RootHash, "state root");
         }
 
         private static TestBlockHeader Convert(TestBlockHeaderJson headerJson)
         {
-            TestBlockHeader header = new TestBlockHeader();            
+            TestBlockHeader header = new TestBlockHeader();
             header.Coinbase = new Address(headerJson.Coinbase);
             header.Bloom = new Bloom(); // TODO: bloom from string
             header.Difficulty = Hex.ToBytes(headerJson.Difficulty).ToUnsignedBigInteger();

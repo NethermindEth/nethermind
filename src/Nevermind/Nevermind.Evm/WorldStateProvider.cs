@@ -98,7 +98,7 @@ namespace Nevermind.Evm
             {
                 if (account != null)
                 {
-                    Console.WriteLine($"  UPDATING BALANCE OF {address} to {account.Balance}");
+                    Console.WriteLine($"  UPDATING BALANCE OF {address.Hex.ToString().Substring(0, 6)} to {account.Balance}");
                 }
             }
 

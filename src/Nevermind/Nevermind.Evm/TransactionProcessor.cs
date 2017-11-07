@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using Nevermind.Core;
@@ -33,6 +34,10 @@ namespace Nevermind.Evm
             BlockHeader block,
             BigInteger blockGasUsedSoFar)
         {
+            Console.WriteLine("GAS LIMIT: " + transaction.GasLimit);
+            Console.WriteLine("GAS PRICE: " + transaction.GasPrice);
+            Console.WriteLine("VALUE: " + transaction.Value);
+
             if (sender == null)
             {
                 return null;
@@ -44,6 +49,7 @@ namespace Nevermind.Evm
             }
 
             ulong intrinsicGas = IntrinsicGasCalculator.Calculate(transaction, block.Number);
+            Console.WriteLine("INTRINSIC GAS: " + intrinsicGas);
             // THEIR TOTAL: 29198 - on state
             // THEIR IMPLIED INTRINSIC: 29158
 
@@ -86,6 +92,7 @@ namespace Nevermind.Evm
 
             ulong gasAvailable = (ulong)(transaction.GasLimit - intrinsicGas);
             BigInteger gasSpent = transaction.GasLimit;
+            List<LogEntry> logEntries = new List<LogEntry>();
 
             StateSnapshot snapshot = _stateProvider.TakeSnapshot();
             StateSnapshot storageSnapshot = transaction.To != null ? _storageProvider.TakeSnapshot(transaction.To) : null;
@@ -111,6 +118,9 @@ namespace Nevermind.Evm
                 gasAvailable -= GasCostOf.CodeDeposit * (ulong)transaction.Init.Length;
 
                 senderAccount.Balance += gasAvailable; // refund unused
+                senderAccount.Nonce++;
+
+                _stateProvider.UpdateAccount(sender, senderAccount);
                 _stateProvider.UpdateAccount(contractAddress, contractAccount);
             }
             else
@@ -136,12 +146,14 @@ namespace Nevermind.Evm
                     env.GasPrice = transaction.GasPrice;
                     env.InputData = transaction.Data;
                     env.MachineCode = _stateProvider.GetCode(recipientAccount.CodeHash);
+                    env.Originator = sender;
 
                     EvmState state = new EvmState(gasAvailable);
                     try
                     {
                         (byte[] _, TransactionSubstate substate) =
                             _virtualMachine.Run(env, state, new BlockhashProvider(), _stateProvider, _storageProvider);
+                        logEntries.AddRange(substate.Logs);
 
                         gasAvailable = state.GasAvailable;
 
@@ -149,9 +161,13 @@ namespace Nevermind.Evm
                         gasSpent = transaction.GasLimit -
                                    gasAvailable; // TODO: does refund use intrinsic value to calculate cap?
                         BigInteger halfOfGasSpend = BigInteger.Divide(gasSpent, 2);
-                        BigInteger refund = gasAvailable + BigInteger.Min(halfOfGasSpend, substate.Refund);
-                        senderAccount.Balance += refund * transaction.GasPrice;
+                        BigInteger refund = BigInteger.Min(halfOfGasSpend, substate.Refund);
+                        BigInteger gasUnused = gasAvailable + refund;
+                        Console.WriteLine("REFUNDING UNUSED GAS OF " + gasUnused + " AND REFUND OF " + refund);
+                        senderAccount.Balance += gasUnused * transaction.GasPrice;
                         _stateProvider.UpdateAccount(sender, senderAccount);
+
+                        gasSpent -= refund;
 
                         // final
                         foreach (Address toBeDestroyed in substate.DestroyList)
@@ -168,13 +184,23 @@ namespace Nevermind.Evm
                 }
             }
 
+            Console.WriteLine("GAS SPENT: " + gasSpent);
+
             Account minerAccount = _stateProvider.GetOrCreateAccount(block.Beneficiary);
             minerAccount.Balance += gasSpent * transaction.GasPrice;
             _stateProvider.UpdateAccount(block.Beneficiary, minerAccount);
 
             TransactionReceipt transferReceipt = new TransactionReceipt();
-            transferReceipt.Logs = new LogEntry[0];
+            transferReceipt.Logs = logEntries.ToArray();
             transferReceipt.Bloom = new Bloom();
+            foreach (LogEntry logEntry in logEntries)
+            {
+                foreach (Keccak entryTopic in logEntry.Topics)
+                {
+                    transferReceipt.Bloom.Set(entryTopic.Bytes);
+                }
+            }
+
             transferReceipt.GasUsed = block.GasUsed + gasSpent;
             transferReceipt.PostTransactionState = _stateProvider.State.RootHash;
             return transferReceipt;
