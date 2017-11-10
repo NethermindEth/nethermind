@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Nevermind.Core;
 using Nevermind.Core.Encoding;
 using Nevermind.Core.Sugar;
@@ -258,7 +259,8 @@ namespace Nevermind.Evm
             EvmState state,
             IBlockhashProvider blockhashProvider,
             IWorldStateProvider worldStateProvider,
-            IStorageProvider storageProvider)
+            IStorageProvider storageProvider,
+            IProtocolSpecification protocolSpecification)
         {
             _head = 0;
 
@@ -632,8 +634,8 @@ namespace Nevermind.Evm
                     {
                         UpdateGas(GasCostOf.Balance, ref gasAvailable);
                         Address address = PopAddress();
-                        Account account = worldStateProvider.GetOrCreateAccount(address);
-                        Push(account.Balance);
+                        BigInteger balance = worldStateProvider.GetBalance(address);
+                        Push(balance);
                         break;
                     }
                     case Instruction.CALLER:
@@ -706,8 +708,7 @@ namespace Nevermind.Evm
                     {
                         UpdateGas(GasCostOf.ExtCodeSize, ref gasAvailable);
                         Address address = PopAddress();
-                        Account account = worldStateProvider.GetOrCreateAccount(address);
-                        byte[] accountCode = worldStateProvider.GetCode(account.CodeHash);
+                        byte[] accountCode = worldStateProvider.GetCode(address);
                         Push(accountCode?.Length ?? BigInteger.Zero);
                         break;
                     }
@@ -719,8 +720,7 @@ namespace Nevermind.Evm
                         BigInteger length = PopUInt();
                         UpdateGas(GasCostOf.ExtCode + GasCostOf.Memory * EvmMemory.Div32Ceiling(length), ref gasAvailable);
                         UpdateMemoryCost(dest, length);
-                        Account account = worldStateProvider.GetOrCreateAccount(address);
-                        byte[] externalCode = worldStateProvider.GetCode(account.CodeHash);
+                        byte[] externalCode = worldStateProvider.GetCode(address);
                         byte[] callDataSlice = GetPaddedSlice(externalCode, src, length);
                         memory.Save(dest, callDataSlice);
                         break;
@@ -841,11 +841,13 @@ namespace Nevermind.Evm
 
                         if (isValueChanged)
                         {
-                            storage.Set(storageIndex,
-                                isNewValueZero ? new byte[] { 0 } : data.WithoutLeadingZeros());
-                            Account account = worldStateProvider.GetAccount(env.CodeOwner);
-                            account.StorageRoot = storage.RootHash;
-                            worldStateProvider.UpdateAccount(env.CodeOwner, account);
+                            byte[] newValue = isNewValueZero ? new byte[] { 0 } : data.WithoutLeadingZeros();
+                            storage.Set(storageIndex, newValue);
+                            worldStateProvider.UpdateStorageRoot(env.CodeOwner, storage.RootHash);
+                            if (ShouldLog.Evm)
+                            {
+                                Console.WriteLine($"  UPDATING STORAGE: {env.CodeOwner} {storageIndex} {newValue}");
+                            }
                         }
 
                         break;
@@ -1035,33 +1037,44 @@ namespace Nevermind.Evm
                         BigInteger value = PopUInt();
                         BigInteger memSrc = PopUInt();
                         BigInteger length = PopUInt();
-                        UpdateGas(GasCostOf.Create + GasCostOf.CodeDeposit * (ulong)length, ref gasAvailable);
-                        UpdateMemoryCost(memSrc, length);
 
-                        Account codeOwner = worldStateProvider.GetAccount(env.CodeOwner);
+                        ulong codeDepositGasCost = GasCostOf.CodeDeposit * (ulong)length;
+                        if (protocolSpecification.IsEip2Enabled)
+                        {
+                            UpdateGas(codeDepositGasCost, ref gasAvailable);
+                        }
+
+                        UpdateGas(protocolSpecification.IsEip2Enabled ? 0UL : GasCostOf.Create, ref gasAvailable);
+                        UpdateMemoryCost(memSrc, length);
+                        
                         byte[] depositCode = memory.Load(memSrc, length, false);
                         
+                        Keccak newAddress = Keccak.Compute(Rlp.Encode(env.CodeOwner, worldStateProvider.GetNonce(env.CodeOwner)));
+                        Address address = new Address(newAddress);
+                        worldStateProvider.IncrementNonce(env.CodeOwner);
 
                         Account account = new Account();
                         account.Balance = value;
-                        if (value > (codeOwner?.Balance ?? 0))
+                        if (value > worldStateProvider.GetBalance(env.CodeOwner))
                         {
                             Push(BigInteger.Zero);
                             break;
                         }
 
-                        Account codeOwnerAccount = worldStateProvider.GetAccount(env.CodeOwner);
-                        codeOwnerAccount.Balance -= value;
-                        
-                        Keccak codeHash = worldStateProvider.UpdateCode(depositCode);
-                        account.CodeHash = codeHash;
+                        worldStateProvider.UpdateBalance(env.CodeOwner, -value);
+                        worldStateProvider.CreateAccount(address, value);
 
-                        Keccak newAddress = Keccak.Compute(Rlp.Encode(env.CodeOwner, codeOwnerAccount.Nonce));
-                        Address address = new Address(newAddress);
-                        codeOwnerAccount.Nonce++;
+                        if (protocolSpecification.IsEip2Enabled || gasAvailable > codeDepositGasCost)
+                        {
+                            Keccak codeHash = worldStateProvider.UpdateCode(depositCode);
+                            worldStateProvider.UpdateCodeHash(address, codeHash);
 
-                        worldStateProvider.UpdateAccount(env.CodeOwner, codeOwnerAccount);
-                        worldStateProvider.UpdateAccount(address, account);
+                            if (protocolSpecification.IsEip2Enabled)
+                            {
+                                UpdateGas(codeDepositGasCost, ref gasAvailable);
+                            }
+                        }
+
                         Push(address.Hex);
                         break;
                     }
@@ -1145,8 +1158,7 @@ namespace Nevermind.Evm
 
                         if (!b.IsZero)
                         {
-                            Account codeOwnerAccount = worldStateProvider.GetAccount(env.CodeOwner);
-                            if (codeOwnerAccount.Balance < b)
+                            if (worldStateProvider.GetBalance(env.CodeOwner) < b)
                             {
                                 memory.Save(outputOffset, new byte[(int)outputLength]);
                                 Push(failure);
@@ -1157,23 +1169,18 @@ namespace Nevermind.Evm
                                 break;
                             }
 
-                            codeOwnerAccount.Balance -= b; // do not subtract if failed
-                            worldStateProvider.UpdateAccount(env.CodeOwner, codeOwnerAccount);
+                            worldStateProvider.UpdateBalance(env.CodeOwner, -b); // do not subtract if failed
                         }
 
-                        Account targetAccount = worldStateProvider.GetAccount(target);
-                        if (targetAccount == null)
+                        if (!worldStateProvider.AccountExists(target))
                         {
                             gasExtra += GasCostOf.NewAccount;
                             UpdateGas(GasCostOf.NewAccount, ref gasAvailable); // TODO: check this earlier?
-                            targetAccount = new Account();
-                            targetAccount.Balance = b;
-                            worldStateProvider.UpdateAccount(target, targetAccount);
+                            worldStateProvider.CreateAccount(target, b);
                         }
                         else
                         {
-                            targetAccount.Balance += b;
-                            worldStateProvider.UpdateAccount(target, targetAccount);
+                            worldStateProvider.UpdateBalance(target, b);
                         }
 
                         if (addressInt <= 4 && addressInt != 0)
@@ -1213,7 +1220,7 @@ namespace Nevermind.Evm
                                 ? gasCap
                                 : gasCap + GasCostOf.CallStipend;
 
-                        callEnv.MachineCode = worldStateProvider.GetCode(targetAccount.CodeHash);
+                        callEnv.MachineCode = worldStateProvider.GetCode(target);
 
                         try
                         {
@@ -1224,7 +1231,7 @@ namespace Nevermind.Evm
                                 callState,
                                 blockhashProvider,
                                 worldStateProvider,
-                                storageProvider);
+                                storageProvider, protocolSpecification);
 
                             //state.GasAvailable -= callGas - callState.GasAvailable;
                             memory.Save(outputOffset, GetPaddedSlice(callOutput, 0, outputLength));
@@ -1274,25 +1281,20 @@ namespace Nevermind.Evm
                             refund += RefundOf.Destroy;
                         }
 
-                        Account codeOwnerAccount = worldStateProvider.GetAccount(env.CodeOwner);
-                        Account inheritorAccount = worldStateProvider.GetAccount(inheritor);
-                        if (inheritorAccount == null)
+                        if (!worldStateProvider.AccountExists(inheritor))
                         {
-                            inheritorAccount = new Account();
-                            inheritorAccount.Balance = codeOwnerAccount.Balance;
-                            if (env.CurrentBlock.Number > DaoExploitFixBlockNumber)
+                            worldStateProvider.CreateAccount(inheritor, worldStateProvider.GetBalance(env.CodeOwner));
+                            if (protocolSpecification.IsEip150Enabled)
                             {
                                 UpdateGas(GasCostOf.NewAccount, ref gasAvailable);
                             }
                         }
                         else
                         {
-                            inheritorAccount.Balance += codeOwnerAccount.Balance;
+                            worldStateProvider.UpdateBalance(inheritor, worldStateProvider.GetBalance(env.CodeOwner));
                         }
 
-                        worldStateProvider.UpdateAccount(inheritor, inheritorAccount);
-                        codeOwnerAccount.Balance = BigInteger.Zero;
-                        worldStateProvider.UpdateAccount(env.CodeOwner, codeOwnerAccount);
+                        worldStateProvider.UpdateBalance(env.CodeOwner, BigInteger.Zero);
 
                         state.GasAvailable = gasAvailable;
                         state.ProgramCounter = programCounter;

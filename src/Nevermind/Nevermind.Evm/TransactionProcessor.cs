@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Numerics;
 using Nevermind.Core;
 using Nevermind.Core.Encoding;
@@ -13,22 +12,27 @@ namespace Nevermind.Evm
     {
         private readonly IWorldStateProvider _stateProvider;
         private readonly IStorageProvider _storageProvider;
+        private readonly IProtocolSpecification _protocolSpecification;
         private readonly IVirtualMachine _virtualMachine;
         public ChainId ChainId { get; }
-        public bool UsesEip155Rule { get; }
-        
+
         private static readonly IntrinsicGasCalculator IntrinsicGasCalculator = new IntrinsicGasCalculator();
 
-        public TransactionProcessor(IVirtualMachine virtualMachine, IWorldStateProvider stateProvider, IStorageProvider storageProvider, ChainId chainId, bool usesEip155Rule = false)
+        public TransactionProcessor(
+            IVirtualMachine virtualMachine,
+            IWorldStateProvider stateProvider,
+            IStorageProvider storageProvider,
+            IProtocolSpecification protocolSpecification,
+            ChainId chainId)
         {
             _virtualMachine = virtualMachine;
             _stateProvider = stateProvider;
             _storageProvider = storageProvider;
+            _protocolSpecification = protocolSpecification;
             ChainId = chainId;
-            UsesEip155Rule = usesEip155Rule;
         }
 
-        public TransactionReceipt Execute(            
+        public TransactionReceipt Execute(
             Address sender,
             Transaction transaction,
             BlockHeader block,
@@ -43,7 +47,7 @@ namespace Nevermind.Evm
                 return null;
             }
 
-            if (!TransactionValidator.IsValid(transaction, sender, UsesEip155Rule, (int)ChainId))
+            if (!TransactionValidator.IsValid(transaction, sender, _protocolSpecification.IsEip155Enabled, (int)ChainId))
             {
                 return null;
             }
@@ -67,26 +71,24 @@ namespace Nevermind.Evm
                 return null;
             }
 
-            Account senderAccount = _stateProvider.GetAccount(sender);
-            if (senderAccount == null)
+            if (!_stateProvider.AccountExists(sender))
             {
                 return null;
             }
 
-            if (intrinsicGas * transaction.GasPrice + transaction.Value > senderAccount.Balance)
+            if (intrinsicGas * transaction.GasPrice + transaction.Value > _stateProvider.GetBalance(sender))
             {
                 return null;
             }
 
-            if (transaction.Nonce != senderAccount.Nonce)
+            if (transaction.Nonce != _stateProvider.GetNonce(sender))
             {
                 return null;
             }
 
             // checkpoint
-            senderAccount.Nonce++;
-            senderAccount.Balance -= transaction.GasLimit * transaction.GasPrice;
-            _stateProvider.UpdateAccount(sender, senderAccount);
+            _stateProvider.IncrementNonce(sender);
+            _stateProvider.UpdateBalance(sender, -transaction.GasLimit * transaction.GasPrice);
 
             // TODO: fail if not enough? or just revert?
 
@@ -96,45 +98,45 @@ namespace Nevermind.Evm
 
             StateSnapshot snapshot = _stateProvider.TakeSnapshot();
             StateSnapshot storageSnapshot = transaction.To != null ? _storageProvider.TakeSnapshot(transaction.To) : null;
-            senderAccount.Balance -= transaction.Value;
-            _stateProvider.UpdateAccount(sender, senderAccount);
+            _stateProvider.UpdateBalance(sender, -transaction.Value);
 
             if (transaction.IsContractCreation)
             {
                 // TODO: extract since it is used in VM as well
-                Rlp addressBaseRlp = Rlp.Encode(sender, senderAccount.Nonce - 1);
+                Rlp addressBaseRlp = Rlp.Encode(sender, _stateProvider.GetNonce(sender) - 1);
                 Keccak addressBaseKeccak = Keccak.Compute(addressBaseRlp);
                 Address contractAddress = new Address(addressBaseKeccak);
-                Account contractAccount = new Account();
-                contractAccount.Balance += transaction.Value;
-                contractAccount.Nonce = 0;
-                contractAccount.CodeHash = Keccak.OfAnEmptyString;
-                contractAccount.StorageRoot = Keccak.OfAnEmptyString;
 
-                // creation code
-                // before homestead you may end up with value transfer but no code deployed
-
-                gasAvailable -= GasCostOf.Create;
-                gasAvailable -= GasCostOf.CodeDeposit * (ulong)transaction.Init.Length;
-
-                senderAccount.Balance += gasAvailable; // refund unused
-                senderAccount.Nonce++;
-
-                _stateProvider.UpdateAccount(sender, senderAccount);
-                _stateProvider.UpdateAccount(contractAddress, contractAccount);
-            }
-            else
-            {                
-                // make transfer
-                Account recipientAccount = _stateProvider.GetAccount(transaction.To);
-                if (recipientAccount == null)
+                ulong codeDepositCost = GasCostOf.CodeDeposit * (ulong)transaction.Init.Length;
+                if (gasAvailable > (_protocolSpecification.IsEip2Enabled ? GasCostOf.Create + codeDepositCost : GasCostOf.Create))
                 {
-                    gasAvailable -= GasCostOf.NewAccount;
-                    recipientAccount = new Account();
+                    throw new OutOfGasException();
                 }
 
-                recipientAccount.Balance += transaction.Value;
-                _stateProvider.UpdateAccount(transaction.To, recipientAccount);
+                gasAvailable -= GasCostOf.Create;
+                _stateProvider.CreateAccount(contractAddress, transaction.Value);
+                if (!(_protocolSpecification.IsEip2Enabled && gasAvailable < codeDepositCost))
+                {
+                    gasAvailable -= codeDepositCost;
+                    _stateProvider.UpdateCode(transaction.Init);
+                    _stateProvider.UpdateCodeHash(contractAddress, Keccak.Compute(transaction.Init));
+                }
+
+                _stateProvider.UpdateBalance(sender, gasAvailable * transaction.GasPrice); // refund unused
+                _stateProvider.IncrementNonce(sender);
+            }
+            else
+            {
+                // make transfer
+                if (!_stateProvider.AccountExists(transaction.To))
+                {
+                    gasAvailable -= GasCostOf.NewAccount;
+                    _stateProvider.CreateAccount(transaction.To, transaction.Value);
+                }
+                else
+                {
+                    _stateProvider.UpdateBalance(transaction.To, transaction.Value);
+                }
 
                 if (transaction.IsMessageCall)
                 {
@@ -145,14 +147,14 @@ namespace Nevermind.Evm
                     env.CurrentBlock = block;
                     env.GasPrice = transaction.GasPrice;
                     env.InputData = transaction.Data;
-                    env.MachineCode = _stateProvider.GetCode(recipientAccount.CodeHash);
+                    env.MachineCode = _stateProvider.GetCode(transaction.To);
                     env.Originator = sender;
 
                     EvmState state = new EvmState(gasAvailable);
                     try
                     {
                         (byte[] _, TransactionSubstate substate) =
-                            _virtualMachine.Run(env, state, new BlockhashProvider(), _stateProvider, _storageProvider);
+                            _virtualMachine.Run(env, state, new BlockhashProvider(), _stateProvider, _storageProvider, _protocolSpecification);
                         logEntries.AddRange(substate.Logs);
 
                         gasAvailable = state.GasAvailable;
@@ -164,31 +166,27 @@ namespace Nevermind.Evm
                         BigInteger refund = BigInteger.Min(halfOfGasSpend, substate.Refund);
                         BigInteger gasUnused = gasAvailable + refund;
                         Console.WriteLine("REFUNDING UNUSED GAS OF " + gasUnused + " AND REFUND OF " + refund);
-                        senderAccount.Balance += gasUnused * transaction.GasPrice;
-                        _stateProvider.UpdateAccount(sender, senderAccount);
+                        _stateProvider.UpdateBalance(sender, gasUnused * transaction.GasPrice);
 
                         gasSpent -= refund;
 
                         // final
                         foreach (Address toBeDestroyed in substate.DestroyList)
                         {
-                            _stateProvider.UpdateAccount(toBeDestroyed, null);
+                            _stateProvider.DeleteAccount(toBeDestroyed);
                         }
                     }
                     catch (Exception e)
                     {
                         Console.WriteLine(e);
                         _stateProvider.Restore(snapshot);
-                        _storageProvider.Restore(transaction.To, storageSnapshot);                        
+                        _storageProvider.Restore(transaction.To, storageSnapshot);
                     }
                 }
             }
 
             Console.WriteLine("GAS SPENT: " + gasSpent);
-
-            Account minerAccount = _stateProvider.GetOrCreateAccount(block.Beneficiary);
-            minerAccount.Balance += gasSpent * transaction.GasPrice;
-            _stateProvider.UpdateAccount(block.Beneficiary, minerAccount);
+            _stateProvider.UpdateBalance(block.Beneficiary, gasSpent * transaction.GasPrice);
 
             TransactionReceipt transferReceipt = new TransactionReceipt();
             transferReceipt.Logs = logEntries.ToArray();

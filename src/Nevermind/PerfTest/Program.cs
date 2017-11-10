@@ -120,6 +120,7 @@ namespace PerfTest
             //BlockhashProvider blockhashProvider = new BlockhashProvider();
             //WorldStateProvider worldStateProvider = new WorldStateProvider(stateTree);
             //TestStorageProvider storageProvider = new TestStorageProvider(db);
+            IProtocolSpecification protocolSpecification = new FrontierProtocolSpecification();
 
             Stopwatch stopwatch = new Stopwatch();
             stopwatch.Start();
@@ -130,7 +131,8 @@ namespace PerfTest
                     new EvmState(1_000_000_000L),
                     null,
                     null,
-                    null);
+                    null,
+                    protocolSpecification);
             }
 
             stopwatch.Stop();

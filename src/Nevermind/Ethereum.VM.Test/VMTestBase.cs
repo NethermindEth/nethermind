@@ -20,6 +20,7 @@ namespace Ethereum.VM.Test
         private IStorageProvider _storageProvider;
         private IBlockhashProvider _blockhashProvider;
         private IWorldStateProvider _stateProvider;
+        private IProtocolSpecification _protocolSpecification = new FrontierProtocolSpecification();
 
         [SetUp]
         public void Setup()
@@ -152,37 +153,41 @@ namespace Ethereum.VM.Test
 
                 _stateProvider.UpdateCode(accountState.Value.Code);
 
-                Account account = new Account();
-                account.Balance = accountState.Value.Balance;
-                account.Nonce = accountState.Value.Nonce;
-                account.StorageRoot = storageTree.RootHash;
-                account.CodeHash = Keccak.Compute(accountState.Value.Code);
-                _stateProvider.UpdateAccount(accountState.Key, account);
+                _stateProvider.CreateAccount(accountState.Key, accountState.Value.Balance);
+                _stateProvider.UpdateStorageRoot(accountState.Key, storageTree.RootHash);
+                Keccak codeHash = _stateProvider.UpdateCode(accountState.Value.Code);
+                _stateProvider.UpdateCodeHash(accountState.Key, codeHash);
+                for (int i = 0; i < accountState.Value.Nonce; i++)
+                {
+                    _stateProvider.IncrementNonce(accountState.Key);
+                }
             }
 
             EvmState state = new EvmState((ulong)test.Execution.Gas);
 
             if (test.Out == null)
             {
-                Assert.That(() => machine.Run(environment, state, _blockhashProvider, _stateProvider, _storageProvider), Throws.Exception);
+                Assert.That(() => machine.Run(environment, state, _blockhashProvider, _stateProvider, _storageProvider, _protocolSpecification), Throws.Exception);
                 return;
             }
 
-            (byte[] output, TransactionSubstate substate) = machine.Run(environment, state, _blockhashProvider, _stateProvider, _storageProvider);
+            (byte[] output, TransactionSubstate substate) = machine.Run(environment, state, _blockhashProvider, _stateProvider, _storageProvider, _protocolSpecification);
 
             Assert.True(Bytes.UnsafeCompare(test.Out, output),
                 $"Exp: {Hex.FromBytes(test.Out, true)} != Actual: {Hex.FromBytes(output, true)}");
             Assert.AreEqual((ulong)test.Gas, state.GasAvailable);
             foreach (KeyValuePair<Address, AccountState> accountState in test.Post)
             {
-                Account account = _stateProvider.GetAccount(accountState.Key);
-                Assert.AreEqual(accountState.Value.Balance, account?.Balance, $"{accountState.Key} Balance");
-                Assert.AreEqual(accountState.Value.Nonce, account?.Nonce, $"{accountState.Key} Nonce");
+                bool accountExists = _stateProvider.AccountExists(accountState.Key);
+                BigInteger balance = accountExists ? _stateProvider.GetBalance(accountState.Key) : 0;
+                BigInteger nonce = accountExists ? _stateProvider.GetNonce(accountState.Key) : 0;
+                Assert.AreEqual(accountState.Value.Balance, balance, $"{accountState.Key} Balance");
+                Assert.AreEqual(accountState.Value.Nonce, nonce, $"{accountState.Key} Nonce");
 
                 // TODO: not testing properly 0 balance accounts
-                if (account != null)
+                if (accountExists)
                 {
-                    byte[] code = _stateProvider.GetCode(account.CodeHash);
+                    byte[] code = _stateProvider.GetCode(accountState.Key);
                     Assert.AreEqual(accountState.Value.Code, code, $"{accountState.Key} Code");
                 }
 

@@ -23,6 +23,7 @@ namespace Ethereum.Blockchain.Test
         private IWorldStateProvider _stateProvider;
         private IStorageProvider _storageProvider;
         private IVirtualMachine _virtualMachine;
+        private IProtocolSpecification _protocolSpecification = new FrontierProtocolSpecification();
 
         [SetUp]
         public void Setup()
@@ -51,7 +52,7 @@ namespace Ethereum.Blockchain.Test
                         JsonConvert.DeserializeObject<Dictionary<string, BlockchainTestJson>>(json);
                     foreach (KeyValuePair<string, BlockchainTestJson> namedTest in testsInFile)
                     {
-                        if (!namedTest.Key.Contains("Homestead") && DateTime.Now < new DateTime(2017, 11, 15))
+                        if (!namedTest.Key.Contains("Frontier") && DateTime.Now < new DateTime(2017, 11, 15))
                         {
                             continue;
                         }
@@ -91,19 +92,18 @@ namespace Ethereum.Blockchain.Test
                     storageTree.Set(storageItem.Key, storageItem.Value);
                 }
 
-                _stateProvider.UpdateCode(accountState.Value.Code);
-
-                Account account = new Account();
-                account.Balance = accountState.Value.Balance;
-                account.Nonce = accountState.Value.Nonce;
-                account.StorageRoot = storageTree.RootHash;
-                account.CodeHash = Keccak.Compute(accountState.Value.Code);
-                _stateProvider.UpdateAccount(accountState.Key, account);
+                _stateProvider.CreateAccount(accountState.Key, accountState.Value.Balance);
+                _stateProvider.UpdateStorageRoot(accountState.Key, storageTree.RootHash);
+                Keccak codeHash = _stateProvider.UpdateCode(accountState.Value.Code);
+                _stateProvider.UpdateCodeHash(accountState.Key, codeHash);
+                for (int i = 0; i < accountState.Value.Nonce; i++)
+                {
+                    _stateProvider.IncrementNonce(accountState.Key);
+                }
             }
 
             TransactionProcessor processor =
-                new TransactionProcessor(_virtualMachine, _stateProvider, _storageProvider, ChainId.Mainnet,
-                    false); // run twice depending on the EIP-155
+                new TransactionProcessor(_virtualMachine, _stateProvider, _storageProvider, _protocolSpecification, ChainId.Mainnet);
 
             // TODO: handle multiple
             TestBlock oneBlock = test.Blocks[0];
@@ -154,25 +154,31 @@ namespace Ethereum.Blockchain.Test
                 gasUsedSoFar += receipt.GasUsed;
             }
 
-            Account minerAccount = _stateProvider.GetOrCreateAccount(header.Beneficiary);
-            minerAccount.Balance += 5.Ether();
-            _stateProvider.UpdateAccount(header.Beneficiary, minerAccount);
+            if (!_stateProvider.AccountExists(header.Beneficiary))
+            {
+                _stateProvider.CreateAccount(header.Beneficiary, 0);
+            }
+
+            _stateProvider.UpdateBalance(header.Beneficiary, 5.Ether());
 
             List<string> differences = new List<string>();
             foreach (KeyValuePair<Address, AccountState> accountState in test.PostState)
             {
-                Account account = _stateProvider.GetAccount(accountState.Key);
-                if (accountState.Value.Balance != account?.Balance)
+                bool accountExists = _stateProvider.AccountExists(accountState.Key);
+                BigInteger? balance = accountExists ? _stateProvider.GetBalance(accountState.Key) : (BigInteger?)null;
+                BigInteger? nonce = accountExists ? _stateProvider.GetNonce(accountState.Key) : (BigInteger?)null;
+
+                if (accountState.Value.Balance != balance)
                 {
-                    differences.Add($"{accountState.Key} balance exp: {accountState.Value.Balance}, actual: {account?.Balance}");
+                    differences.Add($"{accountState.Key} balance exp: {accountState.Value.Balance}, actual: {balance}");
                 }
 
-                if (accountState.Value.Nonce != account?.Nonce)
+                if (accountState.Value.Nonce != nonce)
                 {
-                    differences.Add($"{accountState.Key} nonce exp: {accountState.Value.Nonce}, actual: {account?.Nonce}");
+                    differences.Add($"{accountState.Key} nonce exp: {accountState.Value.Nonce}, actual: {nonce}");
                 }
 
-                byte[] code = _stateProvider.GetCode(account?.CodeHash);
+                byte[] code = accountExists ? _stateProvider.GetCode(accountState.Key) : new byte[0];
                 if (!Bytes.UnsafeCompare(accountState.Value.Code, code))
                 {
                     differences.Add($"{accountState.Key} code exp: {accountState.Value.Code?.Length}, actual: {code?.Length}");

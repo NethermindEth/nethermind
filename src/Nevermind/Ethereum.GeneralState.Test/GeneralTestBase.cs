@@ -22,6 +22,7 @@ namespace Ethereum.GeneralState.Test
         private InMemoryDb _db;
         private IWorldStateProvider _stateProvider;
         private IStorageProvider _storageProvider;
+        private IProtocolSpecification _protocolSpecification = new FrontierProtocolSpecification();
         private IVirtualMachine _virtualMachine;
 
         [SetUp]
@@ -135,17 +136,18 @@ namespace Ethereum.GeneralState.Test
 
                 _stateProvider.UpdateCode(accountState.Value.Code);
 
-                Account account = new Account();
-                account.Balance = accountState.Value.Balance;
-                account.Nonce = accountState.Value.Nonce;
-                account.StorageRoot = storageTree.RootHash;
-                account.CodeHash = Keccak.Compute(accountState.Value.Code);
-                _stateProvider.UpdateAccount(accountState.Key, account);
+                _stateProvider.CreateAccount(accountState.Key, accountState.Value.Balance);
+                _stateProvider.UpdateStorageRoot(accountState.Key, storageTree.RootHash);
+                Keccak codeHash = _stateProvider.UpdateCode(accountState.Value.Code);
+                _stateProvider.UpdateCodeHash(accountState.Key, codeHash);
+                for (int i = 0; i < accountState.Value.Nonce; i++)
+                {
+                    _stateProvider.IncrementNonce(accountState.Key);
+                }
             }
 
             TransactionProcessor processor =
-                new TransactionProcessor(_virtualMachine, _stateProvider, _storageProvider, ChainId.Mainnet,
-                    false); // run twice depending on the EIP-155
+                new TransactionProcessor(_virtualMachine, _stateProvider, _storageProvider, _protocolSpecification, ChainId.Mainnet);
             Transaction transaction = new Transaction();
             transaction.To = test.IncomingTransaction.To;
             transaction.Value = test.IncomingTransaction.Value;
