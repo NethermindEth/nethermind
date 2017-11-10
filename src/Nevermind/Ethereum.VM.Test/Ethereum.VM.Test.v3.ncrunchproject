@@ -2,62 +2,29 @@
   <Settings>
     <AnalyseExecutionTimes>False</AnalyseExecutionTimes>
     <IgnoredTests>
-      <NamedTestSelector>
-        <TestName>Ethereum.VM.Test.PerformanceTests.Test(loop-add-10M)</TestName>
-      </NamedTestSelector>
-      <NamedTestSelector>
-        <TestName>Ethereum.VM.Test.PerformanceTests.Test(loop-divadd-10M)</TestName>
-      </NamedTestSelector>
-      <NamedTestSelector>
-        <TestName>Ethereum.VM.Test.PerformanceTests.Test(loop-divadd-unr100-10M)</TestName>
-      </NamedTestSelector>
-      <NamedTestSelector>
-        <TestName>Ethereum.VM.Test.PerformanceTests.Test(loop-exp-16b-100k)</TestName>
-      </NamedTestSelector>
-      <NamedTestSelector>
-        <TestName>Ethereum.VM.Test.PerformanceTests.Test(loop-exp-1b-1M)</TestName>
-      </NamedTestSelector>
-      <NamedTestSelector>
-        <TestName>Ethereum.VM.Test.PerformanceTests.Test(loop-exp-2b-100k)</TestName>
-      </NamedTestSelector>
-      <NamedTestSelector>
-        <TestName>Ethereum.VM.Test.PerformanceTests.Test(loop-exp-32b-100k)</TestName>
-      </NamedTestSelector>
-      <NamedTestSelector>
-        <TestName>Ethereum.VM.Test.PerformanceTests.Test(loop-exp-4b-100k)</TestName>
-      </NamedTestSelector>
-      <NamedTestSelector>
-        <TestName>Ethereum.VM.Test.PerformanceTests.Test(loop-exp-8b-100k)</TestName>
-      </NamedTestSelector>
-      <NamedTestSelector>
-        <TestName>Ethereum.VM.Test.PerformanceTests.Test(loop-exp-nop-1M)</TestName>
-      </NamedTestSelector>
-      <NamedTestSelector>
-        <TestName>Ethereum.VM.Test.PerformanceTests.Test(loop-mul)</TestName>
-      </NamedTestSelector>
-      <NamedTestSelector>
-        <TestName>Ethereum.VM.Test.PerformanceTests.Test(loop-mulmod-2M)</TestName>
-      </NamedTestSelector>
       <FixtureTestSelector>
         <FixtureName>Ethereum.VM.Test.PerformanceTests</FixtureName>
       </FixtureTestSelector>
       <FixtureTestSelector>
-        <FixtureName>Ethereum.VM.Test.IoAndFlowTests</FixtureName>
-      </FixtureTestSelector>
-      <FixtureTestSelector>
-        <FixtureName>Ethereum.VM.Test.LogTests</FixtureName>
+        <FixtureName>Ethereum.VM.Test.SystemTests</FixtureName>
       </FixtureTestSelector>
       <FixtureTestSelector>
         <FixtureName>Ethereum.VM.Test.Sha3Tests</FixtureName>
       </FixtureTestSelector>
       <FixtureTestSelector>
-        <FixtureName>Ethereum.VM.Test.OtherTests</FixtureName>
-      </FixtureTestSelector>
-      <FixtureTestSelector>
         <FixtureName>Ethereum.VM.Test.RandomTests</FixtureName>
       </FixtureTestSelector>
       <FixtureTestSelector>
-        <FixtureName>Ethereum.VM.Test.SystemTests</FixtureName>
+        <FixtureName>Ethereum.VM.Test.PushDupSwapTests</FixtureName>
+      </FixtureTestSelector>
+      <FixtureTestSelector>
+        <FixtureName>Ethereum.VM.Test.OtherTests</FixtureName>
+      </FixtureTestSelector>
+      <FixtureTestSelector>
+        <FixtureName>Ethereum.VM.Test.LogTests</FixtureName>
+      </FixtureTestSelector>
+      <FixtureTestSelector>
+        <FixtureName>Ethereum.VM.Test.IoAndFlowTests</FixtureName>
       </FixtureTestSelector>
       <FixtureTestSelector>
         <FixtureName>Ethereum.VM.Test.EnvironmentalInfoTests</FixtureName>
@@ -66,16 +33,13 @@
         <FixtureName>Ethereum.VM.Test.BlockInfoTests</FixtureName>
       </FixtureTestSelector>
       <FixtureTestSelector>
-        <FixtureName>Ethereum.VM.Test.ArithmeticTests</FixtureName>
-      </FixtureTestSelector>
-      <FixtureTestSelector>
         <FixtureName>Ethereum.VM.Test.BitwiseLogicTests</FixtureName>
       </FixtureTestSelector>
       <FixtureTestSelector>
-        <FixtureName>Ethereum.VM.Test.AbiTests</FixtureName>
+        <FixtureName>Ethereum.VM.Test.ArithmeticTests</FixtureName>
       </FixtureTestSelector>
       <FixtureTestSelector>
-        <FixtureName>Ethereum.VM.Test.PushDupSwapTests</FixtureName>
+        <FixtureName>Ethereum.VM.Test.AbiTests</FixtureName>
       </FixtureTestSelector>
     </IgnoredTests>
   </Settings>

@@ -206,9 +206,10 @@ namespace Ethereum.Blockchain.Test
 
             Keccak receiptsRoot = BlockProcessor.GetReceiptsRoot(receipts.ToArray());
             Keccak transactionsRoot = BlockProcessor.GetTransactionsRoot(transactions.ToArray());
+            
+            Assert.AreEqual(oneHeader.StateRoot, _stateProvider.State.RootHash, "state root");
             Assert.AreEqual(header.TransactionsRoot, transactionsRoot, "transactions root");
             Assert.AreEqual(header.ReceiptsRoot, receiptsRoot, "receipts root");
-            Assert.AreEqual(oneHeader.StateRoot, _stateProvider.State.RootHash, "state root");
         }
 
         private static TestBlockHeader Convert(TestBlockHeaderJson headerJson)

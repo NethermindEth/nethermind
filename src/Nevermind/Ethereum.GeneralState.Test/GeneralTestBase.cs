@@ -176,15 +176,6 @@ namespace Ethereum.GeneralState.Test
                 BigInteger.Zero
             );
 
-            //Account minerAccount = _stateProvider.GetAccount(header.Beneficiary);
-            //Account senderAccount = _stateProvider.GetAccount(sender);
-            //Account recipientAccount = _stateProvider.GetAccount(transaction.To);
-
-            ////Keccak receiptsRoot = BlockProcessor.GetReceiptsRoot(new[] {receipt});
-            ////Keccak transactionsRoot = BlockProcessor.GetTransactionsRoot(new[] { transaction });
-            ////Assert.AreEqual(new Keccak("0x93ca2a18d52e7c1846f7b104e2fc1e5fdc71ebe38187248f9437d39e74f43aab"), transactionsRoot);
-            ////Assert.AreEqual(new Keccak("0xe151c94b824bded58346fa03fc91fa275bd0cf94caac0ea4ebb9c8d32a574644"), receiptsRoot);
-
             Assert.AreEqual(test.Post["Frontier"][0].Hash, receipt.PostTransactionState);
         }
 

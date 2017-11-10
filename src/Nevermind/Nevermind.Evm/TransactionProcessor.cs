@@ -111,13 +111,17 @@ namespace Nevermind.Evm
             {
                 if (transaction.IsContractCreation)
                 {
+                    if (ShouldLog.Evm)
+                    {
+                        Console.WriteLine("THIS IS CONTRACT CREATION");
+                    }
                     // TODO: extract since it is used in VM as well
                     Rlp addressBaseRlp = Rlp.Encode(sender, _stateProvider.GetNonce(sender) - 1);
                     Keccak addressBaseKeccak = Keccak.Compute(addressBaseRlp);
                     recipient = new Address(addressBaseKeccak);
 
                     ulong codeDepositCost = GasCostOf.CodeDeposit * (ulong)data.Length;
-                    if (gasAvailable < (_protocolSpecification.IsEip2Enabled ? GasCostOf.Create + codeDepositCost : GasCostOf.Create))
+                    if (gasAvailable < (_protocolSpecification.IsEip2Enabled ? GasCostOf.Create + codeDepositCost : codeDepositCost))
                     {
                         throw new OutOfGasException();
                     }
@@ -127,19 +131,21 @@ namespace Nevermind.Evm
                         throw new TransactionCollissionException();
                     }
 
-                    if (value != BigInteger.Zero)
+                    if (!_stateProvider.AccountExists(recipient))
                     {
                         _stateProvider.CreateAccount(recipient, value);
-                        if (_protocolSpecification.IsEip2Enabled)
-                        {
-                            gasAvailable -= GasCostOf.Create;
-                        }
+                    }
+                    else
+                    {
+                        _stateProvider.UpdateBalance(recipient, value);
                     }
 
-                    // TODO: confirm if really not needed or EIP
-                    //_stateProvider.IncrementNonce(sender);
+                    if (_protocolSpecification.IsEip2Enabled)
+                    {
+                        gasAvailable -= GasCostOf.Create;
+                    }
 
-                    if (!(_protocolSpecification.IsEip2Enabled && gasAvailable < codeDepositCost))
+                    if (gasAvailable >= codeDepositCost)
                     {
                         gasAvailable -= codeDepositCost;
                         _stateProvider.UpdateCode(data);

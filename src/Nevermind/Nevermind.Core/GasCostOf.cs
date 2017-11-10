@@ -18,7 +18,7 @@ namespace Nevermind.Core
         public const ulong SReset = 5000;
         public const ulong Destroy = 5000;
         public const ulong Create = 32000; // EIP-2
-        public const ulong CodeDeposit = 0; // 200 // ??? I guess this is outside of EVM
+        public const ulong CodeDeposit = 200;
         public const ulong Call = 40; // 700 // EIP-150
         public const ulong CallCode = 40; // 700 // EIP-150
         public const ulong DelegateCall = 40; // 700 // EIP-150

@@ -98,6 +98,7 @@ namespace Nevermind.Evm
 
         public void IncrementNonce(Address address)
         {
+            Console.WriteLine($"  SETTING NONCE of {address}");
             Account account = GetAccount(address);
             account.Nonce++;
             if (ShouldLog.Evm)
