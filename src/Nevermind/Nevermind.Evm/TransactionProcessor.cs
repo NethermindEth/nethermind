@@ -127,10 +127,13 @@ namespace Nevermind.Evm
                         throw new TransactionCollissionException();
                     }
 
-                    _stateProvider.CreateAccount(recipient, value);
-                    if (_protocolSpecification.IsEip2Enabled)
+                    if (value != BigInteger.Zero)
                     {
-                        gasAvailable -= GasCostOf.Create;
+                        _stateProvider.CreateAccount(recipient, value);
+                        if (_protocolSpecification.IsEip2Enabled)
+                        {
+                            gasAvailable -= GasCostOf.Create;
+                        }
                     }
 
                     // TODO: confirm if really not needed or EIP
@@ -147,7 +150,11 @@ namespace Nevermind.Evm
                 {
                     if (!_stateProvider.AccountExists(recipient))
                     {
-                        gasAvailable -= GasCostOf.NewAccount;
+                        if (value != BigInteger.Zero)
+                        {
+                            gasAvailable -= GasCostOf.NewAccount;
+                        }
+
                         _stateProvider.CreateAccount(recipient, value);
                     }
                     else

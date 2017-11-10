@@ -1029,9 +1029,9 @@ namespace Nevermind.Evm
                     {
                         if (ShouldLog.Evm)
                         {
-                            Console.WriteLine("CALLER: " + env.Caller);
-                            Console.WriteLine("CODE OWNER: " + env.CodeOwner);
-                            Console.WriteLine("ORIGINATOR: " + env.Originator);
+                            Console.WriteLine("  CALLER: " + env.Caller);
+                            Console.WriteLine("  CODE OWNER: " + env.CodeOwner);
+                            Console.WriteLine("  ORIGINATOR: " + env.Originator);
                         }
                         // TODO: this is wrong
 
@@ -1047,9 +1047,9 @@ namespace Nevermind.Evm
 
                         UpdateGas(protocolSpecification.IsEip2Enabled ? 0UL : GasCostOf.Create, ref gasAvailable);
                         UpdateMemoryCost(memSrc, length);
-                        
+
                         byte[] depositCode = memory.Load(memSrc, length, false);
-                        
+
                         Keccak newAddress = Keccak.Compute(Rlp.Encode(env.CodeOwner, worldStateProvider.GetNonce(env.CodeOwner)));
                         Address address = new Address(newAddress);
                         worldStateProvider.IncrementNonce(env.CodeOwner);
@@ -1100,10 +1100,11 @@ namespace Nevermind.Evm
                             throw new CallDepthException();
                         }
 
-                        BigInteger failure = BigInteger.One; // seems that tests are incorrect here...
-                        BigInteger success = BigInteger.One; //failure.IsZero ? BigInteger.One : BigInteger.Zero;
+                        BigInteger failure = BigInteger.Zero;
+                        BigInteger success = BigInteger.One;
 
                         BigInteger a = PopUInt(); // gas
+
                         byte[] toAddress = PopBytes();
                         BigInteger b = PopUInt(); // value
                         BigInteger dataOffset = PopUInt(); // data offset
@@ -1111,6 +1112,7 @@ namespace Nevermind.Evm
                         BigInteger outputOffset = PopUInt(); // output offset
                         BigInteger outputLength = PopUInt(); // output length
 
+                        ulong gasCap = (ulong)a;
                         ulong gasExtra = instruction == Instruction.CALL ? GasCostOf.Call : GasCostOf.CallCode;
                         if (!b.IsZero)
                         {
@@ -1126,23 +1128,19 @@ namespace Nevermind.Evm
                         BigInteger addressInt = toAddress.ToUnsignedBigInteger();
 
                         Address target = instruction == Instruction.CALL ? ToAddress(toAddress) : env.CodeOwner;
-                        if (target.Equals(env.CodeOwner) && addressInt > 4) // TODO: add a method to check if precompiled
-                        {
-                            //// TODO: investigate
-                            //if (env.CallDepth == 0)
-                            //{
-                            Push(failure);
-                            if (ShouldLog.Evm)
-                            {
-                                Console.WriteLine($"FAIL - RECURSIVE");
-                            }
-                            break;
-                            //}
-                            //else
-                            //{
-                            //    throw new RecursiveCallException();
-                            //}
-                        }
+
+                        // TODO: finally it seems like the check below is not needed
+                        //if (target.Equals(env.CodeOwner) && addressInt > 4) // TODO: add a method to check if precompiled
+                        //{
+                        //    UpdateGas(gasCap, ref gasAvailable);
+                        //    Push(failure);
+                        //    if (ShouldLog.Evm)
+                        //    {
+                        //        Console.WriteLine($"FAIL - RECURSIVE");
+                        //    }
+
+                        //    break;
+                        //}
 
                         ExecutionEnvironment callEnv = new ExecutionEnvironment();
                         callEnv.Value = b;
@@ -1161,12 +1159,14 @@ namespace Nevermind.Evm
                         {
                             if (worldStateProvider.GetBalance(env.CodeOwner) < b)
                             {
+                                // do not take gas here - balance and inrinsic gas check is first
                                 memory.Save(outputOffset, new byte[(int)outputLength]);
                                 Push(failure);
                                 if (ShouldLog.Evm)
                                 {
                                     Console.WriteLine($"FAIL - NOT ENOUGH BALANCE");
                                 }
+
                                 break;
                             }
 
@@ -1198,8 +1198,6 @@ namespace Nevermind.Evm
 
                             break;
                         }
-
-                        ulong gasCap = (ulong)a;
 
                         bool eip150 = false;
                         if (eip150)
@@ -1245,21 +1243,13 @@ namespace Nevermind.Evm
                                 Console.WriteLine($"FAIL {ex.GetType().Name}");
                             }
 
-                            //if (!b.IsZero)
-                            //{
-                            //    UpdateGas(gasCap + GasCostOf.CallStipend, ref gasAvailable);
-
-                            //    //UpdateGas(gasCap, ref gasAvailable);
-                            //}
-                            //else
-                            //{
-                            //    UpdateGas(gasCap, ref gasAvailable);
-                            //}
+                            UpdateGas(callGas, ref gasAvailable);
 
                             worldStateProvider.Restore(stateSnapshot);
                             storageProvider.Restore(callEnv.CodeOwner, storageSnapshot);
 
                             Push(failure);
+                            break;
                         }
 
                         if (ShouldLog.Evm)
