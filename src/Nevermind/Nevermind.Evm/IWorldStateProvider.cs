@@ -19,6 +19,8 @@ namespace Nevermind.Evm
 
         bool AccountExists(Address address);
 
+        bool IsEmptyAccount(Address address);
+
         BigInteger GetNonce(Address address);
 
         BigInteger GetBalance(Address address);

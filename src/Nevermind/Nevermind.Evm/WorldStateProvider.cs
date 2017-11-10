@@ -39,6 +39,15 @@ namespace Nevermind.Evm
             return GetAccount(address) != null;
         }
 
+        public bool IsEmptyAccount(Address address)
+        {
+            Account account = GetAccount(address);
+            return account.Balance == BigInteger.Zero &&
+                   account.Nonce == BigInteger.Zero &&
+                   account.CodeHash == Keccak.OfAnEmptyString &&
+                   account.StorageRoot == Keccak.EmptyTreeHash;
+        }
+
         public BigInteger GetNonce(Address address)
         {
             Account account = GetAccount(address);

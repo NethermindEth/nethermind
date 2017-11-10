@@ -187,7 +187,7 @@ namespace Ethereum.Blockchain.Test
                 StorageTree accountStorage = _storageProvider.GetOrCreateStorage(accountState.Key);
                 foreach (KeyValuePair<BigInteger, byte[]> storageItem in accountState.Value.Storage)
                 {
-                    byte[] value = accountStorage.Get(storageItem.Key);
+                    byte[] value = accountStorage?.Get(storageItem.Key) ?? new byte[0];
                     if (!Bytes.UnsafeCompare(storageItem.Value, value))
                     {
                         differences.Add($"{accountState.Key} storage[{storageItem.Key}] exp: {Hex.FromBytes(storageItem.Value, true)}, actual: {Hex.FromBytes(value, true)}");
@@ -323,8 +323,8 @@ namespace Ethereum.Blockchain.Test
             incomingTransaction.GasPrice = Hex.ToBytes(transactionJson.GasPrice).ToUnsignedBigInteger();
             incomingTransaction.Nonce = Hex.ToBytes(transactionJson.Nonce).ToUnsignedBigInteger();
             incomingTransaction.To = string.IsNullOrWhiteSpace(transactionJson.To) ? null : new Address(new Hex(transactionJson.To));
-            incomingTransaction.R = Hex.ToBytes(transactionJson.R);
-            incomingTransaction.S = Hex.ToBytes(transactionJson.S);
+            incomingTransaction.R = Hex.ToBytes(transactionJson.R).PadLeft(32);
+            incomingTransaction.S = Hex.ToBytes(transactionJson.S).PadLeft(32);
             incomingTransaction.V = Hex.ToBytes(transactionJson.V)[0];
             return incomingTransaction;
         }

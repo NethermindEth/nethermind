@@ -1,5 +1,8 @@
 namespace Nevermind.Evm
 {
+    /// <summary>
+    /// https://github.com/ethereum/EIPs
+    /// </summary>
     public interface IProtocolSpecification
     {
         /// <summary>
@@ -21,5 +24,10 @@ namespace Nevermind.Evm
         /// Chain ID in signatures
         /// </summary>
         bool IsEip155Enabled { get; }
+
+        /// <summary>
+        /// Code size limit
+        /// </summary>
+        bool IsEip170Enabled { get; }
     }
 }

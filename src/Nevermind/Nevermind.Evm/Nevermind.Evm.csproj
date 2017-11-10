@@ -71,7 +71,6 @@
     <Compile Include="MemoryAccessException.cs" />
     <Compile Include="Precompiles\ECRecoverPrecompiledContract.cs" />
     <Compile Include="EvmMemory.cs" />
-    <Compile Include="EvmStack.cs" />
     <Compile Include="ExecutionEnvironment.cs" />
     <Compile Include="Abi\AbiFixedLengthArray.cs" />
     <Compile Include="IBlockhashProvider.cs" />
@@ -85,9 +84,11 @@
     <Compile Include="OutOfGasException.cs" />
     <Compile Include="Precompiles\Ripemd160PrecompiledContract.cs" />
     <Compile Include="Precompiles\Sha256PrecompiledContract.cs" />
+    <Compile Include="RecursiveCallException.cs" />
     <Compile Include="ShouldLog.cs" />
     <Compile Include="StackOverflowException.cs" />
     <Compile Include="StackUnderflowException.cs" />
+    <Compile Include="TransactionCollissionException.cs" />
     <Compile Include="TransactionProcessor.cs" />
     <Compile Include="TransactionSubstate.cs" />
     <Compile Include="VirtualMachine.cs" />

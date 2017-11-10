@@ -510,8 +510,8 @@ namespace Nevermind.Core.Encoding
             else
             {
                 sequence[6] = transaction.Signature?.V;
-                sequence[7] = transaction.Signature?.R;
-                sequence[8] = transaction.Signature?.S;
+                sequence[7] = transaction.Signature?.R.WithoutLeadingZeros(); // TODO: consider storing R and S differently
+                sequence[8] = transaction.Signature?.S.WithoutLeadingZeros(); // TODO: consider storing R and S differently
             }
 
             return Encode(sequence);

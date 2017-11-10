@@ -14,10 +14,11 @@ namespace Nevermind.Evm
 {
     public class VirtualMachine : IVirtualMachine
     {
-        public const int MaxSize = 1024;
+        public const int MaxCallDepth = 1024;
+        public const int MaxSize = 1025;
         private readonly byte[][] _array = new byte[MaxSize][];
         private readonly BigInteger[] _intArray = new BigInteger[MaxSize];
-        private readonly bool[] _isInt = new bool[1024];
+        private readonly bool[] _isInt = new bool[MaxSize];
 
         private int _head;
 
@@ -31,7 +32,7 @@ namespace Nevermind.Evm
             _isInt[_head] = false;
             _array[_head] = value;
             _head++;
-            if (_head > MaxSize)
+            if (_head >= MaxSize)
             {
                 throw new StackOverflowException();
             }
@@ -47,7 +48,7 @@ namespace Nevermind.Evm
             _isInt[_head] = true;
             _intArray[_head] = value;
             _head++;
-            if (_head > MaxSize)
+            if (_head >= MaxSize)
             {
                 throw new StackOverflowException();
             }
@@ -82,7 +83,7 @@ namespace Nevermind.Evm
             }
 
             _head++;
-            if (_head > MaxSize)
+            if (_head >= MaxSize)
             {
                 throw new StackOverflowException();
             }
@@ -1094,7 +1095,7 @@ namespace Nevermind.Evm
                     case Instruction.CALL:
                     case Instruction.CALLCODE:
                     {
-                        if (env.CallDepth >= 1024)
+                        if (env.CallDepth >= MaxCallDepth)
                         {
                             throw new CallDepthException();
                         }
