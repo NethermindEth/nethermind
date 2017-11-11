@@ -4,7 +4,6 @@ using System.IO;
 using System.Linq;
 using System.Numerics;
 using Ethereum.Test.Base;
-using Ethereum.VM.Test;
 using Nevermind.Core;
 using Nevermind.Core.Encoding;
 using Nevermind.Core.Signing;
@@ -185,6 +184,8 @@ namespace Ethereum.Blockchain.Test
                 }
 
                 StorageTree accountStorage = _storageProvider.GetOrCreateStorage(accountState.Key);
+
+
                 foreach (KeyValuePair<BigInteger, byte[]> storageItem in accountState.Value.Storage)
                 {
                     byte[] value = accountStorage?.Get(storageItem.Key) ?? new byte[0];

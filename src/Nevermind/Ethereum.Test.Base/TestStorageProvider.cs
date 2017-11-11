@@ -3,7 +3,7 @@ using Nevermind.Core;
 using Nevermind.Evm;
 using Nevermind.Store;
 
-namespace Ethereum.VM.Test
+namespace Ethereum.Test.Base
 {
     public class TestStorageProvider : IStorageProvider
     {

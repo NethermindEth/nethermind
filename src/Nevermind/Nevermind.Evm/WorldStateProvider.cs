@@ -9,7 +9,6 @@ namespace Nevermind.Evm
 {
     public class WorldStateProvider : IWorldStateProvider
     {
-        private readonly bool _codeInState = false; // that is sure - with code outside of state genesis block hash works fine in one of the tests with an account with code (example add11)
         private readonly Dictionary<Keccak, byte[]> _code = new Dictionary<Keccak, byte[]>();
 
         public WorldStateProvider(StateTree stateTree)
@@ -87,18 +86,22 @@ namespace Nevermind.Evm
         public void UpdateStorageRoot(Address address, Keccak storageRoot)
         {
             Account account = GetAccount(address);
-            account.StorageRoot = storageRoot;
             if (ShouldLog.Evm)
             {
-                Console.WriteLine($"  SETTING STORAGE ROOT of {address} to {account.StorageRoot}");
+                Console.WriteLine($"  SETTING STORAGE ROOT of {address} from {account.StorageRoot} to {storageRoot}");
             }
 
+            account.StorageRoot = storageRoot;
             UpdateAccount(address, account);
         }
 
         public void IncrementNonce(Address address)
         {
-            Console.WriteLine($"  SETTING NONCE of {address}");
+            if (ShouldLog.Evm)
+            {
+                Console.WriteLine($"  SETTING NONCE of {address}");
+            }
+
             Account account = GetAccount(address);
             account.Nonce++;
             if (ShouldLog.Evm)
@@ -117,14 +120,7 @@ namespace Nevermind.Evm
             }
 
             Keccak codeHash = Keccak.Compute(code);
-            if (_codeInState)
-            {
-                State.Set(codeHash, new Rlp(code));
-            }
-            else
-            {
-                _code[codeHash] = code;
-            }
+            _code[codeHash] = code;
 
             return codeHash;
         }
@@ -134,11 +130,6 @@ namespace Nevermind.Evm
             if (codeHash == Keccak.OfAnEmptyString)
             {
                 return new byte[0];
-            }
-
-            if (_codeInState)
-            {
-                return State.Get(codeHash.Bytes);
             }
 
             return _code[codeHash];

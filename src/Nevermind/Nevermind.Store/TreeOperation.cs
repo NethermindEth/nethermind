@@ -34,9 +34,14 @@ namespace Nevermind.Store
         {
             if (_tree.Root == null)
             {
+                if (!_isUpdate)
+                {
+                    return null;
+                }
+
                 LeafNode leafNode = new LeafNode(new HexPrefix(true, _updatePath), _updateValue);
                 _tree.StoreNode(leafNode, true);
-                return _isUpdate ? null : _updateValue;
+                return _updateValue;
             }
 
             return TraverseNode(_tree.Root);

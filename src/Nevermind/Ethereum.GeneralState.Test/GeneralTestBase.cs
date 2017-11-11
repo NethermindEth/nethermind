@@ -4,7 +4,6 @@ using System.IO;
 using System.Linq;
 using System.Numerics;
 using Ethereum.Test.Base;
-using Ethereum.VM.Test;
 using Nevermind.Core;
 using Nevermind.Core.Encoding;
 using Nevermind.Core.Signing;

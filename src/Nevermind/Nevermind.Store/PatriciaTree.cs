@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Diagnostics;
 using Nevermind.Core;
 using Nevermind.Core.Encoding;
 using Nevermind.Core.Sugar;
@@ -6,6 +7,7 @@ using Nevermind.Core.Sugar;
 namespace Nevermind.Store
 {
     // I guess it is a very slow to Keccak-heavy implementation, the first one to pass tests
+    [DebuggerDisplay("{RootHash}")]
     public class PatriciaTree
     {
         /// <summary>
@@ -39,8 +41,15 @@ namespace Nevermind.Store
         {
             _db = snapshot.DbSnapshot;
             RootHash = snapshot.RootHash;
-            Rlp rootRlp = new Rlp(_db[RootHash]);
-            Root = RlpDecode(rootRlp);
+            if (RootHash == Keccak.EmptyTreeHash)
+            {
+                Root = null;
+            }
+            else
+            {
+                Rlp rootRlp = new Rlp(_db[RootHash]);
+                Root = RlpDecode(rootRlp);
+            }
         }
 
         private static Rlp RlpEncode(KeccakOrRlp keccakOrRlp)
@@ -221,14 +230,14 @@ namespace Nevermind.Store
             KeccakOrRlp key = new KeccakOrRlp(rlp);
             if (key.IsKeccak || isRoot)
             {
-                _db[key.GetOrComputeKeccak()] = rlp.Bytes;
-            }
+                Keccak keyKeccak = key.GetOrComputeKeccak();
+                _db[keyKeccak] = rlp.Bytes;
 
-            if (isRoot)
-            {
-                Root = node;
-                _db[RootHash] = RlpEncode(node).Bytes;
-                RootHash = key.GetOrComputeKeccak();
+                if (isRoot)
+                {
+                    Root = node;
+                    RootHash = keyKeccak;
+                }
             }
 
             return key;
