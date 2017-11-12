@@ -9,19 +9,10 @@
         <FixtureName>Ethereum.VM.Test.IoAndFlowTests</FixtureName>
       </FixtureTestSelector>
       <FixtureTestSelector>
-        <FixtureName>Ethereum.VM.Test.SystemTests</FixtureName>
-      </FixtureTestSelector>
-      <FixtureTestSelector>
-        <FixtureName>Ethereum.VM.Test.EnvironmentalInfoTests</FixtureName>
-      </FixtureTestSelector>
-      <FixtureTestSelector>
-        <FixtureName>Ethereum.VM.Test.Sha3Tests</FixtureName>
-      </FixtureTestSelector>
-      <FixtureTestSelector>
         <FixtureName>Ethereum.VM.Test.RandomTests</FixtureName>
       </FixtureTestSelector>
       <FixtureTestSelector>
-        <FixtureName>Ethereum.VM.Test.PushDupSwapTests</FixtureName>
+        <FixtureName>Ethereum.VM.Test.Sha3Tests</FixtureName>
       </FixtureTestSelector>
       <FixtureTestSelector>
         <FixtureName>Ethereum.VM.Test.OtherTests</FixtureName>
@@ -40,6 +31,15 @@
       </FixtureTestSelector>
       <FixtureTestSelector>
         <FixtureName>Ethereum.VM.Test.AbiTests</FixtureName>
+      </FixtureTestSelector>
+      <FixtureTestSelector>
+        <FixtureName>Ethereum.VM.Test.PushDupSwapTests</FixtureName>
+      </FixtureTestSelector>
+      <FixtureTestSelector>
+        <FixtureName>Ethereum.VM.Test.SystemTests</FixtureName>
+      </FixtureTestSelector>
+      <FixtureTestSelector>
+        <FixtureName>Ethereum.VM.Test.EnvironmentalInfoTests</FixtureName>
       </FixtureTestSelector>
     </IgnoredTests>
   </Settings>

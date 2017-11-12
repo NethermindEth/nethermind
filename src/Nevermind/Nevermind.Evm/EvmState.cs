@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Numerics;
 using Nevermind.Core;
+using Nevermind.Store;
 
 namespace Nevermind.Evm
 {
@@ -46,5 +47,10 @@ namespace Nevermind.Evm
         public HashSet<Address> DestroyList = new HashSet<Address>();
         public List<LogEntry> Logs = new List<LogEntry>();
         public BigInteger Refund { get; set; } = BigInteger.Zero;
+
+        public StateSnapshot StateSnapshot { get; set; }
+        public StateSnapshot StorageSnapshot { get; set; }
+
+        public bool IsCreate { get; set; }
     }
 }
