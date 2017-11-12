@@ -92,7 +92,7 @@ namespace Nevermind.Evm
                 stackHead++;
                 if (stackHead >= MaxSize)
                 {
-                    throw new StackOverflowException();
+                    throw new EvmStackOverflowException();
                 }
             }
 
@@ -108,7 +108,7 @@ namespace Nevermind.Evm
                 stackHead++;
                 if (stackHead >= MaxSize)
                 {
-                    throw new StackOverflowException();
+                    throw new EvmStackOverflowException();
                 }
             }
 
@@ -143,7 +143,7 @@ namespace Nevermind.Evm
                 stackHead++;
                 if (stackHead >= MaxSize)
                 {
-                    throw new StackOverflowException();
+                    throw new EvmStackOverflowException();
                 }
             }
 
@@ -1161,20 +1161,31 @@ namespace Nevermind.Evm
                         BigInteger failure = BigInteger.Zero;
                         BigInteger success = BigInteger.One;
 
-                        BigInteger a = PopUInt(); // gas
-
+                        BigInteger gasLimit = PopUInt();
                         byte[] toAddress = PopBytes();
-                        BigInteger b = PopUInt(); // value
-                        BigInteger dataOffset = PopUInt(); // data offset
-                        BigInteger dataLength = PopUInt(); // data length
-                        BigInteger outputOffset = PopUInt(); // output offset
-                        BigInteger outputLength = PopUInt(); // output length
+                        BigInteger value = PopUInt();
+                        BigInteger dataOffset = PopUInt();
+                        BigInteger dataLength = PopUInt();
+                        BigInteger outputOffset = PopUInt();
+                        BigInteger outputLength = PopUInt();
 
-                        ulong gasCap = (ulong)a;
+                        Address target = instruction == Instruction.CALL ? ToAddress(toAddress) : env.CodeOwner; // CALLCODE targets the current contract, CALL targets another contract
+                        Address codeSource = ToAddress(toAddress);
                         ulong gasExtra = instruction == Instruction.CALL ? GasCostOf.Call : GasCostOf.CallCode;
-                        if (!b.IsZero)
+                        if (!value.IsZero)
                         {
                             gasExtra += GasCostOf.CallValue - GasCostOf.CallStipend;
+                        }
+
+                        bool didAccountExist = worldStateProvider.AccountExists(target);
+                        if (!didAccountExist)
+                        {
+                            gasExtra += GasCostOf.NewAccount;
+                        }
+
+                        if (gasLimit > gasAvailable)
+                        {
+                            throw new OutOfGasException(); // important to avoid casting
                         }
 
                         UpdateGas(gasExtra, ref gasAvailable);
@@ -1185,25 +1196,12 @@ namespace Nevermind.Evm
 
                         BigInteger addressInt = toAddress.ToUnsignedBigInteger();
 
-                        Address target = instruction == Instruction.CALL ? ToAddress(toAddress) : env.CodeOwner;
-                        Address codeSource = ToAddress(toAddress);
-
-                        ExecutionEnvironment callEnv = new ExecutionEnvironment();
-                        callEnv.Value = b;
-                        callEnv.Caller = env.CodeOwner;
-                        callEnv.Originator = env.Originator;
-                        callEnv.CallDepth = env.CallDepth + 1;
-                        callEnv.CurrentBlock = env.CurrentBlock;
-                        callEnv.GasPrice = env.GasPrice;
-                        callEnv.InputData = callData;
-                        callEnv.CodeOwner = target;
-
                         StateSnapshot stateSnapshot = worldStateProvider.TakeSnapshot();
-                        StateSnapshot storageSnapshot = storageProvider.TakeSnapshot(callEnv.CodeOwner);
+                        StateSnapshot storageSnapshot = storageProvider.TakeSnapshot(target);
 
-                        if (!b.IsZero)
+                        if (!value.IsZero)
                         {
-                            if (worldStateProvider.GetBalance(env.CodeOwner) < b)
+                            if (worldStateProvider.GetBalance(env.CodeOwner) < value)
                             {
                                 // do not take gas here - balance and inrinsic gas check is first
                                 memory.Save(outputOffset, new byte[(int)outputLength]);
@@ -1216,18 +1214,16 @@ namespace Nevermind.Evm
                                 break;
                             }
 
-                            worldStateProvider.UpdateBalance(env.CodeOwner, -b); // do not subtract if failed
+                            worldStateProvider.UpdateBalance(env.CodeOwner, -value); // do not subtract if failed
                         }
 
                         if (!worldStateProvider.AccountExists(target))
                         {
-                            gasExtra += GasCostOf.NewAccount;
-                            UpdateGas(GasCostOf.NewAccount, ref gasAvailable); // TODO: check this earlier?
-                            worldStateProvider.CreateAccount(target, b);
+                            worldStateProvider.CreateAccount(target, value);
                         }
                         else
                         {
-                            worldStateProvider.UpdateBalance(target, b);
+                            worldStateProvider.UpdateBalance(target, value);
                         }
 
                         if (addressInt <= 4 && addressInt != 0)
@@ -1245,32 +1241,34 @@ namespace Nevermind.Evm
                             break;
                         }
 
-                        bool eip150 = false;
-                        if (eip150)
+                        ulong gasCap = (ulong)gasLimit;
+                        if (protocolSpecification.IsEip150Enabled)
                         {
                             gasCap = gasExtra < gasAvailable
-                                ? Math.Min(gasAvailable - gasExtra - (gasAvailable - gasExtra) / 64,
-                                    (ulong)a)
-                                : (ulong)a;
+                                ? Math.Min(gasAvailable - gasExtra - (gasAvailable - gasExtra) / 64, (ulong)gasLimit)
+                                : (ulong)gasLimit;
                         }
                         else if (gasAvailable < gasCap)
                         {
-                            worldStateProvider.Restore(stateSnapshot);
-                            storageProvider.Restore(callEnv.CodeOwner, storageSnapshot);
-                            throw new OutOfGasException(); // no EIP-150
+                            throw new OutOfGasException();
                         }
 
-                        ulong callGas =
-                            b.IsZero
-                                ? gasCap
-                                : gasCap + GasCostOf.CallStipend;
+                        ulong callGas = value.IsZero ? gasCap : gasCap + GasCostOf.CallStipend;
                         UpdateGas(callGas, ref gasAvailable);
-
-                        callEnv.MachineCode = worldStateProvider.GetCode(codeSource);
 
                         try
                         {
-                            // stipend only with value
+                            ExecutionEnvironment callEnv = new ExecutionEnvironment();
+                            callEnv.Value = value;
+                            callEnv.Caller = env.CodeOwner;
+                            callEnv.Originator = env.Originator;
+                            callEnv.CallDepth = env.CallDepth + 1;
+                            callEnv.CurrentBlock = env.CurrentBlock;
+                            callEnv.GasPrice = env.GasPrice;
+                            callEnv.InputData = callData;
+                            callEnv.CodeOwner = target;
+                            callEnv.MachineCode = worldStateProvider.GetCode(codeSource);
+
                             EvmState callState = new EvmState(callGas);
                             (byte[] callOutput, TransactionSubstate callResult) = Run(
                                 callEnv,
@@ -1285,7 +1283,7 @@ namespace Nevermind.Evm
                                 destroyList.Add(toBeDestroyed);
                             }
 
-                            memory.Save(outputOffset, GetPaddedSlice(callOutput, 0, outputLength));
+                            memory.Save(outputOffset, GetPaddedSlice(callOutput, BigInteger.Zero, BigInteger.Min(callOutput.Length, outputLength)));
                             PushInt(success);
                         }
                         catch (Exception ex)
@@ -1296,7 +1294,7 @@ namespace Nevermind.Evm
                             }
 
                             worldStateProvider.Restore(stateSnapshot);
-                            storageProvider.Restore(callEnv.CodeOwner, storageSnapshot);
+                            storageProvider.Restore(target, storageSnapshot);
 
                             PushInt(failure);
                             break;
