@@ -63,6 +63,7 @@
     <Compile Include="BlockhashProvider.cs" />
     <Compile Include="BlockProcessor.cs" />
     <Compile Include="CallDepthException.cs" />
+    <Compile Include="EvmState.cs" />
     <Compile Include="FrontierProtocolSpecification.cs" />
     <Compile Include="IProtocolSpecification.cs" />
     <Compile Include="InvalidInstructionException.cs" />
@@ -80,13 +81,12 @@
     <Compile Include="Precompiles\IPrecompiledContract.cs" />
     <Compile Include="IStorageProvider.cs" />
     <Compile Include="IWorldStateProvider.cs" />
-    <Compile Include="EvmState.cs" />
     <Compile Include="OutOfGasException.cs" />
     <Compile Include="Precompiles\Ripemd160PrecompiledContract.cs" />
     <Compile Include="Precompiles\Sha256PrecompiledContract.cs" />
     <Compile Include="RecursiveCallException.cs" />
     <Compile Include="ShouldLog.cs" />
-    <Compile Include="StackOverflowException.cs" />
+    <Compile Include="EvmStackOverflowException.cs" />
     <Compile Include="StackUnderflowException.cs" />
     <Compile Include="TransactionCollisionException.cs" />
     <Compile Include="TransactionProcessor.cs" />

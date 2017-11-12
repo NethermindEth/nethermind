@@ -171,7 +171,7 @@ namespace Nevermind.Evm
                     env.MachineCode = machineCode ?? _stateProvider.GetCode(recipient);
                     env.Originator = sender;
 
-                    EvmState state = new EvmState(gasAvailable);
+                    EvmState state = new EvmState(gasAvailable, env);
 
                     if (_protocolSpecification.IsEip170Enabled
                         && transaction.IsContractCreation
@@ -180,8 +180,7 @@ namespace Nevermind.Evm
                         throw new OutOfGasException();
                     }
 
-                    (byte[] output, TransactionSubstate substate) =
-                        _virtualMachine.Run(env, state, new BlockhashProvider(), _stateProvider, _storageProvider, _protocolSpecification);
+                    (byte[] output, TransactionSubstate substate) = _virtualMachine.Run(state);
                     logEntries.AddRange(substate.Logs);
 
                     gasAvailable = state.GasAvailable;

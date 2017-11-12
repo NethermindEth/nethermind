@@ -89,7 +89,7 @@ namespace PerfTest
                 //)
             };
 
-        private static readonly VirtualMachine Machine = new VirtualMachine();
+        private static readonly VirtualMachine Machine = new VirtualMachine(null, null, null, new FrontierProtocolSpecification());
 
         private static void Main(string[] args)
         {
@@ -120,19 +120,12 @@ namespace PerfTest
             //BlockhashProvider blockhashProvider = new BlockhashProvider();
             //WorldStateProvider worldStateProvider = new WorldStateProvider(stateTree);
             //TestStorageProvider storageProvider = new TestStorageProvider(db);
-            IProtocolSpecification protocolSpecification = new FrontierProtocolSpecification();
 
             Stopwatch stopwatch = new Stopwatch();
             stopwatch.Start();
             for (int i = 0; i < iterations; i++)
             {
-                Machine.Run(
-                    env,
-                    new EvmState(1_000_000_000L),
-                    null,
-                    null,
-                    null,
-                    protocolSpecification);
+                Machine.Run(new EvmState(1_000_000_000L, env));
             }
 
             stopwatch.Stop();

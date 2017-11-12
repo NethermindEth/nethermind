@@ -20,7 +20,7 @@ namespace Ethereum.VM.Test
         private IStorageProvider _storageProvider;
         private IBlockhashProvider _blockhashProvider;
         private IWorldStateProvider _stateProvider;
-        private IProtocolSpecification _protocolSpecification = new FrontierProtocolSpecification();
+        private readonly IProtocolSpecification _protocolSpecification = new FrontierProtocolSpecification();
 
         [SetUp]
         public void Setup()
@@ -114,7 +114,7 @@ namespace Ethereum.VM.Test
 
         protected void RunTest(VirtualMachineTest test)
         {
-            VirtualMachine machine = new VirtualMachine();
+            VirtualMachine machine = new VirtualMachine(_blockhashProvider, _stateProvider, _storageProvider, _protocolSpecification);
             ExecutionEnvironment environment = new ExecutionEnvironment();
             environment.Value = test.Execution.Value;
             environment.CallDepth = 0;
@@ -163,15 +163,15 @@ namespace Ethereum.VM.Test
                 }
             }
 
-            EvmState state = new EvmState((ulong)test.Execution.Gas);
+            EvmState state = new EvmState((ulong)test.Execution.Gas, environment);
 
             if (test.Out == null)
             {
-                Assert.That(() => machine.Run(environment, state, _blockhashProvider, _stateProvider, _storageProvider, _protocolSpecification), Throws.Exception);
+                Assert.That(() => machine.Run(state), Throws.Exception);
                 return;
             }
 
-            (byte[] output, TransactionSubstate substate) = machine.Run(environment, state, _blockhashProvider, _stateProvider, _storageProvider, _protocolSpecification);
+            (byte[] output, TransactionSubstate substate) = machine.Run(state);
 
             Assert.True(Bytes.UnsafeCompare(test.Out, output),
                 $"Exp: {Hex.FromBytes(test.Out, true)} != Actual: {Hex.FromBytes(output, true)}");

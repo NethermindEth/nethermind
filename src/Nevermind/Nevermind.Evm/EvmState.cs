@@ -1,16 +1,19 @@
 using System;
+using System.Collections.Generic;
 using System.Numerics;
+using Nevermind.Core;
 
 namespace Nevermind.Evm
 {
     public class EvmState
     {
-        private ulong _activeWordsInMemory;
-
-        public EvmState(ulong gasAvailable)
+        public EvmState(ulong gasAvailable, ExecutionEnvironment env)
         {
             GasAvailable = gasAvailable;
+            Env = env;
         }
+
+        private ulong _activeWordsInMemory;
 
         public ulong GasAvailable { get; set; }
         public BigInteger ProgramCounter { get; set; }
@@ -34,5 +37,14 @@ namespace Nevermind.Evm
         }
 
         public EvmMemory Memory { get; } = new EvmMemory();
+
+        public readonly byte[][] BytesOnStack = new byte[VirtualMachine.MaxStackSize][];
+        public readonly BigInteger[] IntsOnStack = new BigInteger[VirtualMachine.MaxStackSize];
+        public readonly bool[] IntPositions = new bool[VirtualMachine.MaxStackSize];
+        public int StackHead = 0;
+        public readonly ExecutionEnvironment Env;
+        public HashSet<Address> DestroyList = new HashSet<Address>();
+        public List<LogEntry> Logs = new List<LogEntry>();
+        public BigInteger Refund { get; set; } = BigInteger.Zero;
     }
 }
