@@ -88,7 +88,7 @@
     <Compile Include="ShouldLog.cs" />
     <Compile Include="StackOverflowException.cs" />
     <Compile Include="StackUnderflowException.cs" />
-    <Compile Include="TransactionCollissionException.cs" />
+    <Compile Include="TransactionCollisionException.cs" />
     <Compile Include="TransactionProcessor.cs" />
     <Compile Include="TransactionSubstate.cs" />
     <Compile Include="VirtualMachine.cs" />

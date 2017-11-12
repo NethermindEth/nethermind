@@ -29,5 +29,10 @@ namespace Nevermind.Evm
         /// Code size limit
         /// </summary>
         bool IsEip170Enabled { get; }
+
+        /// <summary>
+        /// Code size limit
+        /// </summary>
+        bool IsEmptyCodeContractBugFixed { get; }
     }
 }

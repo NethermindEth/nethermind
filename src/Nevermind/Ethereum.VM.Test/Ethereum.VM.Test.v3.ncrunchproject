@@ -8,6 +8,7 @@
       <FixtureTestSelector>
         <FixtureName>Ethereum.VM.Test.IoAndFlowTests</FixtureName>
       </FixtureTestSelector>
+      <AllTestsSelector />
     </IgnoredTests>
   </Settings>
 </ProjectConfiguration>

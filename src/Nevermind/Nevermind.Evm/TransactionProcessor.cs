@@ -61,12 +61,6 @@ namespace Nevermind.Evm
 
             ulong intrinsicGas = IntrinsicGasCalculator.Calculate(transaction, block.Number);
             Console.WriteLine("INTRINSIC GAS: " + intrinsicGas);
-            // THEIR TOTAL: 29198 - on state
-            // THEIR IMPLIED INTRINSIC: 29158
-
-            // MY TOTAL: 28704
-            // MY INTRINSIC: 28664
-            // MY VM: 40
 
             if (intrinsicGas > block.GasLimit - blockGasUsedSoFar)
             {
@@ -103,6 +97,13 @@ namespace Nevermind.Evm
             BigInteger gasSpent = gasLimit;
             List<LogEntry> logEntries = new List<LogEntry>();
 
+            if (transaction.IsContractCreation)
+            {
+                Rlp addressBaseRlp = Rlp.Encode(sender, _stateProvider.GetNonce(sender) - 1);
+                Keccak addressBaseKeccak = Keccak.Compute(addressBaseRlp);
+                recipient = new Address(addressBaseKeccak);
+            }
+
             StateSnapshot snapshot = _stateProvider.TakeSnapshot();
             StateSnapshot storageSnapshot = recipient != null ? _storageProvider.TakeSnapshot(recipient) : null;
             _stateProvider.UpdateBalance(sender, -value);
@@ -115,20 +116,11 @@ namespace Nevermind.Evm
                     {
                         Console.WriteLine("THIS IS CONTRACT CREATION");
                     }
-                    // TODO: extract since it is used in VM as well
-                    Rlp addressBaseRlp = Rlp.Encode(sender, _stateProvider.GetNonce(sender) - 1);
-                    Keccak addressBaseKeccak = Keccak.Compute(addressBaseRlp);
-                    recipient = new Address(addressBaseKeccak);
 
-                    ulong codeDepositCost = GasCostOf.CodeDeposit * (ulong)data.Length;
-                    if (gasAvailable < (_protocolSpecification.IsEip2Enabled ? GasCostOf.Create + codeDepositCost : codeDepositCost))
-                    {
-                        throw new OutOfGasException();
-                    }
 
                     if (_stateProvider.AccountExists(recipient) && !_stateProvider.IsEmptyAccount(recipient))
                     {
-                        throw new TransactionCollissionException();
+                        throw new TransactionCollisionException();
                     }
 
                     if (!_stateProvider.AccountExists(recipient))
@@ -142,14 +134,12 @@ namespace Nevermind.Evm
 
                     if (_protocolSpecification.IsEip2Enabled)
                     {
-                        gasAvailable -= GasCostOf.Create;
-                    }
+                        if (gasAvailable < GasCostOf.Create)
+                        {
+                            throw new OutOfGasException();
+                        }
 
-                    if (gasAvailable >= codeDepositCost)
-                    {
-                        gasAvailable -= codeDepositCost;
-                        _stateProvider.UpdateCode(data);
-                        _stateProvider.UpdateCodeHash(recipient, Keccak.Compute(data));
+                        gasAvailable -= GasCostOf.Create;
                     }
                 }
                 else
@@ -177,7 +167,7 @@ namespace Nevermind.Evm
                     env.CodeOwner = recipient;
                     env.CurrentBlock = block;
                     env.GasPrice = gasPrice;
-                    env.InputData = transaction.Data ?? new byte[0];
+                    env.InputData = data ?? new byte[0];
                     env.MachineCode = machineCode ?? _stateProvider.GetCode(recipient);
                     env.Originator = sender;
 
@@ -190,11 +180,27 @@ namespace Nevermind.Evm
                         throw new OutOfGasException();
                     }
 
-                    (byte[] _, TransactionSubstate substate) =
+                    (byte[] output, TransactionSubstate substate) =
                         _virtualMachine.Run(env, state, new BlockhashProvider(), _stateProvider, _storageProvider, _protocolSpecification);
                     logEntries.AddRange(substate.Logs);
 
                     gasAvailable = state.GasAvailable;
+
+                    if (transaction.IsContractCreation)
+                    {
+                        ulong codeDepositGasCost = GasCostOf.CodeDeposit * (ulong)output.Length;
+                        if (gasAvailable < codeDepositGasCost && _protocolSpecification.IsEmptyCodeContractBugFixed)
+                        {
+                            throw new OutOfGasException();
+                        }
+
+                        if (gasAvailable >= codeDepositGasCost)
+                        {
+                            Keccak codeHash = _stateProvider.UpdateCode(output);
+                            _stateProvider.UpdateCodeHash(recipient, codeHash);
+                            gasAvailable -= codeDepositGasCost;
+                        }
+                    }
 
                     // pre-final
                     gasSpent = gasLimit - gasAvailable; // TODO: does refund use intrinsic value to calculate cap?

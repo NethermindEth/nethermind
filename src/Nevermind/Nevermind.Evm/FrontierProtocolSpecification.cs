@@ -7,5 +7,6 @@ namespace Nevermind.Evm
         public bool IsEip150Enabled => false;
         public bool IsEip155Enabled => false;
         public bool IsEip170Enabled => false;
+        public bool IsEmptyCodeContractBugFixed => false;
     }
 }

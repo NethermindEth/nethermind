@@ -1054,29 +1054,19 @@ namespace Nevermind.Evm
 
                         Keccak contractAddressKeccak = Keccak.Compute(Rlp.Encode(env.CodeOwner, worldStateProvider.GetNonce(env.CodeOwner)));
                         Address contractAddress = new Address(contractAddressKeccak);
-                        worldStateProvider.IncrementNonce(env.CodeOwner);
 
                         if (value > worldStateProvider.GetBalance(env.CodeOwner))
                         {
-                            // TODO: what really happens when it fails?
                             PushInt(BigInteger.Zero);
                             break;
                         }
 
-                        worldStateProvider.UpdateBalance(env.CodeOwner, -value);
+                        worldStateProvider.IncrementNonce(env.CodeOwner);
+
                         bool accountExists = worldStateProvider.AccountExists(contractAddress);
                         if (accountExists && !worldStateProvider.IsEmptyAccount(contractAddress))
                         {
-                            throw new TransactionCollissionException();
-                        }
-
-                        if (!accountExists)
-                        {
-                            worldStateProvider.CreateAccount(contractAddress, value);
-                        }
-                        else
-                        {
-                            worldStateProvider.UpdateBalance(contractAddress, value);
+                            throw new TransactionCollisionException();
                         }
 
                         StateSnapshot stateSnapshot = worldStateProvider.TakeSnapshot();
@@ -1086,6 +1076,16 @@ namespace Nevermind.Evm
                         UpdateGas(callGas, ref gasAvailable);
                         try
                         {
+                            worldStateProvider.UpdateBalance(env.CodeOwner, -value);
+                            if (!accountExists)
+                            {
+                                worldStateProvider.CreateAccount(contractAddress, value);
+                            }
+                            else
+                            {
+                                worldStateProvider.UpdateBalance(contractAddress, value);
+                            }
+
                             ExecutionEnvironment callEnv = new ExecutionEnvironment();
                             callEnv.Value = value;
                             callEnv.Caller = env.CodeOwner;
