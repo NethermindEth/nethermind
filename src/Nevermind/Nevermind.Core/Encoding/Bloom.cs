@@ -1,35 +1,48 @@
 ﻿using System.Collections;
+using System.Diagnostics;
+using System.Text;
 using Nevermind.Core.Sugar;
 
 namespace Nevermind.Core.Encoding
 {
     public class Bloom
     {
-        /// <summary>
-        /// https://stackoverflow.com/questions/560123/convert-from-bitarray-to-byte
-        /// </summary>
-        /// <param name="bits"></param>
-        /// <returns></returns>
-        private static byte[] BitArrayToByteArray(BitArray bits)
+        private readonly BitArray _bits;
+
+        public Bloom()
         {
-            byte[] ret = new byte[(bits.Length - 1) / 8 + 1];
-            bits.CopyTo(ret, 0);
-            return ret;
+            _bits = new BitArray(2048);
         }
 
-        private readonly BitArray _bits = new BitArray(2048);
+        public Bloom(BitArray bitArray)
+        {
+            Debug.Assert(bitArray.Length == 2048);
+            _bits = bitArray;
+        }
 
-        public byte[] Bytes => BitArrayToByteArray(_bits);
+        public byte[] Bytes => _bits.ToBytes();
 
         public void Set(byte[] sequence)
         {
-            //Keccak keccak = Keccak.Compute(sequence);
-            byte[] bytes = sequence;
+            byte[] keccakBytes = Keccak.Compute(sequence).Bytes;
             for (int i = 0; i < 6; i += 2)
             {
-                int index = ((bytes[i] << 8) + bytes[i + 1]) % 2048;
+                int index = 2047 - ((keccakBytes[i] << 8) + keccakBytes[i + 1]) % 2048;
                 _bits.Set(index, true);
             }
+        }
+
+        public override string ToString()
+        {
+            StringBuilder stringBuilder = new StringBuilder();
+
+            for (int i = 0; i < _bits.Count; i++)
+            {
+                char c = _bits[i] ? '1' : '0';
+                stringBuilder.Append(c);
+            }
+
+            return stringBuilder.ToString();
         }
     }
 }

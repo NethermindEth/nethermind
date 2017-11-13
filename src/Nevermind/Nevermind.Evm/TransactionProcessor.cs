@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Numerics;
 using Nevermind.Core;
 using Nevermind.Core.Encoding;
+using Nevermind.Core.Sugar;
 using Nevermind.Core.Validators;
 using Nevermind.Store;
 
@@ -63,6 +64,7 @@ namespace Nevermind.Evm
             Console.WriteLine("GAS LIMIT: " + transaction.GasLimit);
             Console.WriteLine("GAS PRICE: " + transaction.GasPrice);
             Console.WriteLine("VALUE: " + transaction.Value);
+            Console.WriteLine("DATA_LENGTH: " + (transaction.Data?.Length ?? 0));
 
             if (sender == null)
             {
@@ -161,20 +163,6 @@ namespace Nevermind.Evm
                 {
                     if (!_stateProvider.AccountExists(recipient))
                     {
-                        // if changing test
-                        // * static_CALL_ZeroVCallSuicide_d0g0v0
-                        // * randomStatetest645_d0g0v0
-                        // * randomStatetest149_d0g0v0
-                        if (gasAvailable < GasCostOf.NewAccount)
-                        {
-                            throw new OutOfGasException();
-                        }
-
-                        if (value != BigInteger.Zero)
-                        {
-                            gasAvailable -= GasCostOf.NewAccount;
-                        }
-
                         _stateProvider.CreateAccount(recipient, value);
                     }
                     else
@@ -203,6 +191,8 @@ namespace Nevermind.Evm
                     {
                         throw new OutOfGasException();
                     }
+
+                    // TODO: precompiles here... !
 
                     (byte[] output, TransactionSubstate substate) = _virtualMachine.Run(state);
                     logEntries.AddRange(substate.Logs);
@@ -267,6 +257,8 @@ namespace Nevermind.Evm
             transferReceipt.Bloom = new Bloom();
             foreach (LogEntry logEntry in logEntries)
             {
+                byte[] addressBytes = logEntry.LoggersAddress.Hex;
+                transferReceipt.Bloom.Set(addressBytes);
                 foreach (Keccak entryTopic in logEntry.Topics)
                 {
                     transferReceipt.Bloom.Set(entryTopic.Bytes);

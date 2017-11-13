@@ -11,16 +11,21 @@ namespace Nevermind.Evm.Precompiles
         {
         }
 
-        public BigInteger Address => 3;
-
-        public ulong GasCost(byte[] inputData)
+        public BigInteger Address => 2;
+        public ulong BaseGasCost()
         {
-            return 60 + 12 * EvmMemory.Div32Ceiling(inputData.Length);
+            return 60UL;
+        }
+
+        public ulong DataGasCost(byte[] inputData)
+        {
+            return 12UL * EvmMemory.Div32Ceiling(inputData.Length);
         }
 
         public byte[] Run(byte[] inputData)
         {
-            return Sha2.Compute(inputData);
+            byte[] result = Sha2.Compute(inputData);
+            return result;
         }
     }
 }

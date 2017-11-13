@@ -1172,7 +1172,7 @@ namespace Nevermind.Evm
                         Keccak[] topics = new Keccak[topicsCount];
                         for (int i = 0; i < topicsCount; i++)
                         {
-                            topics[i] = Keccak.Compute(PopBytes());
+                            topics[i] = new Keccak(PopBytes().PadLeft(32));
                         }
 
                         LogEntry logEntry = new LogEntry(
@@ -1291,6 +1291,9 @@ namespace Nevermind.Evm
                         Address target = instruction == Instruction.CALL
                             ? ToAddress(toAddress)
                             : env.CodeOwner; // CALLCODE targets the current contract, CALL targets another contract
+                        BigInteger addressInt = toAddress.ToUnsignedBigInteger();
+                        bool isPrecompile = addressInt <= 4 && addressInt > 0;
+
                         Address codeSource = ToAddress(toAddress);
                         ulong gasExtra = instruction == Instruction.CALL ? GasCostOf.Call : GasCostOf.CallCode;
                         if (!value.IsZero)
@@ -1321,8 +1324,6 @@ namespace Nevermind.Evm
 
                         byte[] callData = state.Memory.Load(dataOffset, dataLength);
 
-                        BigInteger addressInt = toAddress.ToUnsignedBigInteger();
-
                         StateSnapshot stateSnapshot = _worldStateProvider.TakeSnapshot();
                         Dictionary<Address, StateSnapshot> storageSnapshot = _storageProvider.TakeSnapshot();
 
@@ -1344,6 +1345,62 @@ namespace Nevermind.Evm
                             _worldStateProvider.UpdateBalance(env.CodeOwner, -value); // do not subtract if failed
                         }
 
+                        // TODO: move precompiles somewhere else
+                        if (isPrecompile)
+                        {
+                            ulong baseGasCost = PrecompiledContracts[addressInt].BaseGasCost();
+                            ulong dataGasCost = PrecompiledContracts[addressInt].DataGasCost(callData);
+                            if (gasLimit < dataGasCost + baseGasCost)
+                            {
+                                if (!value.IsZero)
+                                {
+                                    UpdateGas(GasCostOf.CallStipend, ref gasAvailable);
+                                }
+
+                                UpdateGas((ulong)gasLimit, ref gasAvailable);
+                                PushInt(BigInteger.Zero);
+
+                                _worldStateProvider.Restore(stateSnapshot);
+                                _storageProvider.Restore(storageSnapshot);
+                                break;
+                            }
+
+                            if (!_worldStateProvider.AccountExists(target))
+                            {
+                                _worldStateProvider.CreateAccount(target, value);
+                            }
+                            else
+                            {
+                                _worldStateProvider.UpdateBalance(target, value);
+                            }
+
+                            UpdateGas(baseGasCost, ref gasAvailable);
+                            UpdateGas(dataGasCost, ref gasAvailable); // TODO: check EIP-150
+
+                            try
+                            {
+                                byte[] output = PrecompiledContracts[addressInt].Run(callData);
+                                state.Memory.Save(outputOffset, GetPaddedSlice(output, 0, outputLength));
+                                PushInt(BigInteger.One);
+                                if (ShouldLog.Evm) // TODO: log inside precompiled
+                                {
+                                    Console.WriteLine($"  {instruction} SUCCESS PRECOMPILED");
+                                }
+
+                                break;
+                            }
+                            catch (Exception)
+                            {
+                                PushInt(BigInteger.One);
+                                if (ShouldLog.Evm) // TODO: log inside precompiled
+                                {
+                                    Console.WriteLine($"  {instruction} FAIL PRECOMPILED");
+                                }
+
+                                break;
+                            }
+                        }
+
                         if (!_worldStateProvider.AccountExists(target))
                         {
                             _worldStateProvider.CreateAccount(target, value);
@@ -1351,21 +1408,6 @@ namespace Nevermind.Evm
                         else
                         {
                             _worldStateProvider.UpdateBalance(target, value);
-                        }
-
-                        if (addressInt <= 4 && addressInt != 0)
-                        {
-                            ulong gasCost = PrecompiledContracts[addressInt].GasCost(env.InputData);
-                            UpdateGas(gasCost, ref gasAvailable); // TODO: check EIP-150
-                            byte[] output = PrecompiledContracts[addressInt].Run(env.InputData);
-                            state.Memory.Save(outputOffset, GetPaddedSlice(output, 0, outputLength));
-                            PushInt(BigInteger.One);
-                            if (ShouldLog.Evm) // TODO: log inside precompiled
-                            {
-                                Console.WriteLine($"  {instruction} SUCCESS PRECOMPILED");
-                            }
-
-                            break;
                         }
 
                         ulong gasCap = (ulong)gasLimit;

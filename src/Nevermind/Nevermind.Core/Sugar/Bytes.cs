@@ -137,6 +137,11 @@ namespace Nevermind.Core.Sugar
                 return (byte[])bytes.Clone();
             }
 
+            if (bytes.Length > length)
+            {
+                return bytes.Slice(0, length);
+            }
+
             byte[] result = new byte[length];
             Buffer.BlockCopy(bytes, 0, result, length - bytes.Length, bytes.Length);
 
@@ -290,10 +295,27 @@ namespace Nevermind.Core.Sugar
             }
         }
 
+        public static void ToBigEndianBitArray2048(this byte[] bytes, ref BitArray bitArray)
+        {
+            bitArray.SetAll(false);
+            int startIndex = 2048 - bytes.Length * 8;
+            for (int i = startIndex; i < 2048; i++)
+            {
+                bitArray[i] = bytes[(i - startIndex) / 8].GetBit(i % 8);
+            }
+        }
+
         public static BitArray ToBigEndianBitArray256(this byte[] bytes)
         {
             BitArray bitArray = new BitArray(256);
             ToBigEndianBitArray256(bytes, ref bitArray);
+            return bitArray;
+        }
+
+        public static BitArray ToBigEndianBitArray2048(this byte[] bytes)
+        {
+            BitArray bitArray = new BitArray(2048);
+            ToBigEndianBitArray2048(bytes, ref bitArray);
             return bitArray;
         }
     }

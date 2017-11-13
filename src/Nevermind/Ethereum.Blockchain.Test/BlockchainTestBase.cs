@@ -169,7 +169,7 @@ namespace Ethereum.Blockchain.Test
 
                 if (accountState.Value.Balance != balance)
                 {
-                    differences.Add($"{accountState.Key} balance exp: {accountState.Value.Balance}, actual: {balance}");
+                    differences.Add($"{accountState.Key} balance exp: {accountState.Value.Balance}, actual: {balance}, diff: {accountState.Value.Balance - balance}");
                 }
 
                 if (accountState.Value.Nonce != nonce)
@@ -210,9 +210,9 @@ namespace Ethereum.Blockchain.Test
             Keccak receiptsRoot = BlockProcessor.GetReceiptsRoot(receipts.ToArray());
             Keccak transactionsRoot = BlockProcessor.GetTransactionsRoot(transactions.ToArray());
 
-            if (receipts.Any(r => r.Logs.Length != 0) && header.ReceiptsRoot.Equals(receiptsRoot))
+            if (receipts.Any())
             {
-
+                Assert.AreEqual(oneHeader.Bloom.ToString(), receipts.Last().Bloom.ToString(), "bloom");
             }
 
             Assert.AreEqual(oneHeader.StateRoot, _stateProvider.State.RootHash, "state root");
@@ -224,7 +224,7 @@ namespace Ethereum.Blockchain.Test
         {
             TestBlockHeader header = new TestBlockHeader();
             header.Coinbase = new Address(headerJson.Coinbase);
-            header.Bloom = new Bloom(); // TODO: bloom from string
+            header.Bloom = new Bloom(Hex.ToBytes(headerJson.Bloom).ToBigEndianBitArray2048());
             header.Difficulty = Hex.ToBytes(headerJson.Difficulty).ToUnsignedBigInteger();
             header.ExtraData = Hex.ToBytes(headerJson.ExtraData);
             header.GasLimit = Hex.ToBytes(headerJson.GasLimit).ToUnsignedBigInteger();

@@ -34,6 +34,78 @@
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
   <ItemGroup>
+    <EmbeddedResource Include="..\..\tests\BlockchainTests\GeneralStateTests\stBugs*\*.*">
+      <Link>%(RecursiveDir)%(FileName)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </EmbeddedResource>
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\tests\BlockchainTests\GeneralStateTests\stQuadraticComplexityTest*\*.*">
+      <Link>%(RecursiveDir)%(FileName)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </EmbeddedResource>
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\tests\BlockchainTests\GeneralStateTests\stCodeSizeLimit*\*.*">
+      <Link>%(RecursiveDir)%(FileName)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </EmbeddedResource>
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\tests\BlockchainTests\GeneralStateTests\stAttackTest*\*.*">
+      <Link>%(RecursiveDir)%(FileName)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </EmbeddedResource>
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\tests\BlockchainTests\GeneralStateTests\stTransactionTest*\*.*">
+      <Link>%(RecursiveDir)%(FileName)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </EmbeddedResource>
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\tests\BlockchainTests\GeneralStateTests\stBadOpcode*\*.*">
+      <Link>%(RecursiveDir)%(FileName)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </EmbeddedResource>
+  </ItemGroup>
+  <!--<ItemGroup>
+    <EmbeddedResource Include="..\..\tests\BlockchainTests\GeneralStateTests\stNonZeroCallsTest*\*.*">
+      <Link>%(RecursiveDir)%(FileName)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </EmbeddedResource>
+  </ItemGroup>-->
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\tests\BlockchainTests\GeneralStateTests\stSystemOperationsTest*\*.*">
+      <Link>%(RecursiveDir)%(FileName)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </EmbeddedResource>
+  </ItemGroup>
+  <!--<ItemGroup>
+    <EmbeddedResource Include="..\..\tests\BlockchainTests\GeneralStateTests\stPreCompiledContracts*\*.*">
+      <Link>%(RecursiveDir)%(FileName)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </EmbeddedResource>
+  </ItemGroup>-->
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\tests\BlockchainTests\GeneralStateTests\stSpecialTest*\*.*">
+      <Link>%(RecursiveDir)%(FileName)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </EmbeddedResource>
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\tests\BlockchainTests\GeneralStateTests\stSolidityTest*\*.*">
+      <Link>%(RecursiveDir)%(FileName)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </EmbeddedResource>
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\tests\BlockchainTests\GeneralStateTests\stRevertTest*\*.*">
+      <Link>%(RecursiveDir)%(FileName)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </EmbeddedResource>
+  </ItemGroup>
+  <ItemGroup>
     <EmbeddedResource Include="..\..\tests\BlockchainTests\GeneralStateTests\stRandom*\*.*">
       <Link>%(RecursiveDir)%(FileName)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
@@ -53,6 +125,12 @@
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="..\..\tests\BlockchainTests\GeneralStateTests\stCodeCopy*\*.*">
+      <Link>%(RecursiveDir)%(FileName)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </EmbeddedResource>
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\tests\BlockchainTests\GeneralStateTests\stRecursiveCreate*\*.*">
       <Link>%(RecursiveDir)%(FileName)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </EmbeddedResource>
@@ -111,7 +189,7 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </EmbeddedResource>
   </ItemGroup>
-  <ItemGroup>
+  <!--<ItemGroup>
     <EmbeddedResource Include="..\..\tests\BlockchainTests\GeneralStateTests\stZeroCallsRevert*\*.*">
       <Link>%(RecursiveDir)%(FileName)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
@@ -122,7 +200,7 @@
       <Link>%(RecursiveDir)%(FileName)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </EmbeddedResource>
-  </ItemGroup>
+  </ItemGroup>-->
   <ItemGroup>
     <Reference Include="JetBrains.Annotations, Version=11.0.0.0, Culture=neutral, PublicKeyToken=1010a0d8d6380325, processorArchitecture=MSIL">
       <HintPath>..\packages\JetBrains.Annotations.11.0.0\lib\net20\JetBrains.Annotations.dll</HintPath>
@@ -144,15 +222,27 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="AttackTests.cs" />
+    <Compile Include="BadOpcodeTests.cs" />
+    <Compile Include="BugTestsTests.cs" />
     <Compile Include="CallCreateCallCodeTests.cs" />
     <Compile Include="CodeCopyTests.cs" />
+    <Compile Include="CodeSizeLimitTests.cs" />
     <Compile Include="InitCodeTests.cs" />
     <Compile Include="ExampleTests.cs" />
     <Compile Include="CallCodeTests.cs" />
     <Compile Include="MemoryStressTests.cs" />
     <Compile Include="MemoryTests.cs" />
+    <Compile Include="NonZeroCallTests.cs" />
+    <Compile Include="PreCompiledContracts2Tests.cs" />
+    <Compile Include="PreCompiledContractsTests.cs" />
+    <Compile Include="QuadraticComplexityTests.cs" />
+    <Compile Include="RecursiveCreateTests.cs" />
     <Compile Include="RefundTests.cs" />
     <Compile Include="ReturnDataTests.cs" />
+    <Compile Include="RevertTests.cs" />
+    <Compile Include="SolidityTests.cs" />
+    <Compile Include="SpecialTests.cs" />
     <Compile Include="StaticCallTests.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="BlockchainTestBase.cs" />
@@ -161,6 +251,8 @@
     <Compile Include="CreateTests.cs" />
     <Compile Include="Random2Tests.cs" />
     <Compile Include="RandomTests.cs" />
+    <Compile Include="SystemOperationsTests.cs" />
+    <Compile Include="TransactionTests.cs" />
     <Compile Include="ZeroCallsRevertTests.cs" />
     <Compile Include="ZeroCallsTests.cs" />
   </ItemGroup>
