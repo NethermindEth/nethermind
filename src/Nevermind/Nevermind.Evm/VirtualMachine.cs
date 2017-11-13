@@ -1011,20 +1011,20 @@ namespace Nevermind.Evm
                     case Instruction.JUMP:
                     {
                         UpdateGas(GasCostOf.Mid, ref gasAvailable);
-                        BigInteger dest = PopUInt();
-                        ValidateJump((int)dest);
-                        programCounter = (long)dest;
+                        int dest = (int)PopUInt();
+                        ValidateJump(dest);
+                        programCounter = dest;
                         break;
                     }
                     case Instruction.JUMPI:
                     {
                         UpdateGas(GasCostOf.High, ref gasAvailable);
-                        BigInteger dest = PopUInt();
+                        int dest = (int)PopUInt();
                         BigInteger condition = PopUInt();
                         if (condition > BigInteger.Zero)
                         {
-                            ValidateJump((int)dest);
-                            programCounter = (long)dest;
+                            ValidateJump(dest);
+                            programCounter = dest;
                         }
 
                         break;

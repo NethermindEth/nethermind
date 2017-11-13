@@ -40,6 +40,24 @@
     </EmbeddedResource>
   </ItemGroup>
   <ItemGroup>
+    <EmbeddedResource Include="..\..\tests\BlockchainTests\GeneralStateTests\stReturnDataTest*\*.*">
+      <Link>%(RecursiveDir)%(FileName)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </EmbeddedResource>
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\tests\BlockchainTests\GeneralStateTests\stMemoryStressTest*\*.*">
+      <Link>%(RecursiveDir)%(FileName)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </EmbeddedResource>
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\tests\BlockchainTests\GeneralStateTests\stCodeCopy*\*.*">
+      <Link>%(RecursiveDir)%(FileName)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </EmbeddedResource>
+  </ItemGroup>
+  <ItemGroup>
     <EmbeddedResource Include="..\..\tests\BlockchainTests\GeneralStateTests\stCreate*\*.*">
       <Link>%(RecursiveDir)%(FileName)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
@@ -127,11 +145,14 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="CallCreateCallCodeTests.cs" />
+    <Compile Include="CodeCopyTests.cs" />
     <Compile Include="InitCodeTests.cs" />
     <Compile Include="ExampleTests.cs" />
     <Compile Include="CallCodeTests.cs" />
+    <Compile Include="MemoryStressTests.cs" />
     <Compile Include="MemoryTests.cs" />
     <Compile Include="RefundTests.cs" />
+    <Compile Include="ReturnDataTests.cs" />
     <Compile Include="StaticCallTests.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="BlockchainTestBase.cs" />

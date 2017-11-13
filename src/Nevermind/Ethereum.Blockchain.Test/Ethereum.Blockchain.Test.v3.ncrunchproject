@@ -5,10 +5,52 @@
         <FixtureName>Ethereum.Blockchain.Test.LogTests</FixtureName>
       </FixtureTestSelector>
       <FixtureTestSelector>
+        <FixtureName>Ethereum.Blockchain.Test.Random2Tests</FixtureName>
+      </FixtureTestSelector>
+      <NamedTestSelector>
+        <TestName>Ethereum.Blockchain.Test.RandomTests.Test(randomStatetest307_d0g0v0_Frontier)</TestName>
+      </NamedTestSelector>
+      <FixtureTestSelector>
         <FixtureName>Ethereum.Blockchain.Test.RandomTests</FixtureName>
       </FixtureTestSelector>
       <FixtureTestSelector>
-        <FixtureName>Ethereum.Blockchain.Test.Random2Tests</FixtureName>
+        <FixtureName>Ethereum.Blockchain.Test.ZeroCallsTests</FixtureName>
+      </FixtureTestSelector>
+      <FixtureTestSelector>
+        <FixtureName>Ethereum.Blockchain.Test.ZeroCallsRevertTests</FixtureName>
+      </FixtureTestSelector>
+      <FixtureTestSelector>
+        <FixtureName>Ethereum.Blockchain.Test.StaticCallTests</FixtureName>
+      </FixtureTestSelector>
+      <FixtureTestSelector>
+        <FixtureName>Ethereum.Blockchain.Test.ReturnDataTests</FixtureName>
+      </FixtureTestSelector>
+      <FixtureTestSelector>
+        <FixtureName>Ethereum.Blockchain.Test.RefundTests</FixtureName>
+      </FixtureTestSelector>
+      <FixtureTestSelector>
+        <FixtureName>Ethereum.Blockchain.Test.StackTests</FixtureName>
+      </FixtureTestSelector>
+      <FixtureTestSelector>
+        <FixtureName>Ethereum.Blockchain.Test.MemoryTests</FixtureName>
+      </FixtureTestSelector>
+      <FixtureTestSelector>
+        <FixtureName>Ethereum.Blockchain.Test.MemoryStressTests</FixtureName>
+      </FixtureTestSelector>
+      <FixtureTestSelector>
+        <FixtureName>Ethereum.Blockchain.Test.InitCodeTests</FixtureName>
+      </FixtureTestSelector>
+      <FixtureTestSelector>
+        <FixtureName>Ethereum.Blockchain.Test.CreateTests</FixtureName>
+      </FixtureTestSelector>
+      <FixtureTestSelector>
+        <FixtureName>Ethereum.Blockchain.Test.CodeCopyTests</FixtureName>
+      </FixtureTestSelector>
+      <FixtureTestSelector>
+        <FixtureName>Ethereum.Blockchain.Test.CallCreateCallCodeTests</FixtureName>
+      </FixtureTestSelector>
+      <FixtureTestSelector>
+        <FixtureName>Ethereum.Blockchain.Test.CallCodeTests</FixtureName>
       </FixtureTestSelector>
     </IgnoredTests>
   </Settings>
