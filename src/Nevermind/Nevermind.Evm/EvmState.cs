@@ -16,20 +16,28 @@ namespace Nevermind.Evm
         public int StackHead = 0;
 
         public EvmState(ulong gasAvailable, ExecutionEnvironment env)
-            : this(gasAvailable, env, ExecutionType.TransactionLevel, null, null)
+            : this(gasAvailable, env, ExecutionType.TransactionLevel, null, null, BigInteger.Zero, BigInteger.Zero)
         {
             GasAvailable = gasAvailable;
             Env = env;
         }
 
-        internal EvmState(ulong gasAvailable, ExecutionEnvironment env, ExecutionType executionType,
-            StateSnapshot stateSnapshot, StateSnapshot storageSnapshot)
+        internal EvmState(
+            ulong gasAvailable,
+            ExecutionEnvironment env,
+            ExecutionType executionType,
+            StateSnapshot stateSnapshot,
+            StateSnapshot storageSnapshot,
+            BigInteger outputDestination,
+            BigInteger outputLength)
         {
             GasAvailable = gasAvailable;
             ExecutionType = executionType;
             StateSnapshot = stateSnapshot;
             StorageSnapshot = storageSnapshot;
             Env = env;
+            OutputDestination = outputDestination;
+            OutputLength = outputLength;
         }
 
         public ExecutionEnvironment Env { get; }
@@ -55,6 +63,8 @@ namespace Nevermind.Evm
         }
 
         internal ExecutionType ExecutionType { get; }
+        internal BigInteger OutputDestination { get; }
+        internal BigInteger OutputLength { get; }
         public StateSnapshot StateSnapshot { get; }
         public StateSnapshot StorageSnapshot { get; }
 

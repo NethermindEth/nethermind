@@ -99,14 +99,14 @@ namespace Nevermind.Evm
         {
             if (ShouldLog.Evm)
             {
-                Console.WriteLine($"  SETTING NONCE of {address}");
+                //Console.WriteLine($"  SETTING NONCE of {address}");
             }
 
             Account account = GetAccount(address);
             account.Nonce++;
             if (ShouldLog.Evm)
             {
-                Console.WriteLine($"  SETTING NONCE of {address} to {account.Nonce}");
+                //Console.WriteLine($"  SETTING NONCE of {address} to {account.Nonce}");
             }
 
             UpdateAccount(address, account);

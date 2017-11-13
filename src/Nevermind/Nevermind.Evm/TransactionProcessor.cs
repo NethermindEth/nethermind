@@ -45,6 +45,11 @@ namespace Nevermind.Evm
             byte[] machineCode = transaction.Init;
             byte[] data = transaction.Data ?? new byte[0];
 
+            Console.WriteLine("IS_CONTRACT_CREATION: " + transaction.IsContractCreation);
+            Console.WriteLine("IS_MESSAGE_CALL: " + transaction.IsMessageCall);
+            Console.WriteLine("IS_TRANSFER: " + transaction.IsTransfer);
+            Console.WriteLine("SENDER: " + sender);
+            Console.WriteLine("TO: " + transaction.To);
             Console.WriteLine("GAS LIMIT: " + transaction.GasLimit);
             Console.WriteLine("GAS PRICE: " + transaction.GasPrice);
             Console.WriteLine("VALUE: " + transaction.Value);
@@ -146,20 +151,21 @@ namespace Nevermind.Evm
                 {
                     if (!_stateProvider.AccountExists(recipient))
                     {
+                        // if changing test
+                        // * static_CALL_ZeroVCallSuicide_d0g0v0
+                        // * randomStatetest645_d0g0v0
+                        // * randomStatetest149_d0g0v0
+                        if (gasAvailable < GasCostOf.NewAccount)
+                        {
+                            throw new OutOfGasException();
+                        }
+
                         if (value != BigInteger.Zero)
                         {
-                            if (gasAvailable < GasCostOf.NewAccount)
-                            {
-                                throw new OutOfGasException();
-                            }
-
                             gasAvailable -= GasCostOf.NewAccount;
-                            _stateProvider.CreateAccount(recipient, value);
                         }
-                        else
-                        {
-                            throw new NotImplementedException();
-                        }
+
+                        _stateProvider.CreateAccount(recipient, value);
                     }
                     else
                     {

@@ -13,7 +13,7 @@ namespace Nevermind.Evm
 {
     public class VirtualMachine : IVirtualMachine
     {
-        public const int MaxCallDepth = 1025;
+        public const int MaxCallDepth = 1024;
         public const int MaxStackSize = 1025;
 
         private static readonly BigInteger P255Int = BigInteger.Pow(2, 255);
@@ -34,6 +34,17 @@ namespace Nevermind.Evm
         private readonly Stack<EvmState> _stateStack = new Stack<EvmState>();
         private readonly IStorageProvider _storageProvider;
         private readonly IWorldStateProvider _worldStateProvider;
+
+        private static byte[] GetPaddedSlice(byte[] data, BigInteger position, BigInteger length)
+        {
+            BigInteger bytesFromInput = BigInteger.Max(0, BigInteger.Min(data.Length - position, length));
+            if (position > data.Length)
+            {
+                return new byte[(int)length];
+            }
+
+            return data.Slice((int)position, (int)bytesFromInput).PadRight((int)length);
+        }
 
         static VirtualMachine()
         {
@@ -83,7 +94,7 @@ namespace Nevermind.Evm
 
                     if (currentState.ExecutionType == ExecutionType.TransactionLevel)
                     {
-                        return (callResult.Output, new TransactionSubstate(state.Refund, state.DestroyList, state.Logs));
+                        return (callResult.Output, new TransactionSubstate(currentState.Refund, currentState.DestroyList, currentState.Logs));
                     }
 
                     Address callCodeOwner = currentState.Env.CodeOwner;
@@ -121,8 +132,8 @@ namespace Nevermind.Evm
                     else
                     {
                         previousCallResult = BytesOne;
-                        previousCallOutput = callResult.Output;
-                        previousCallOutputDestination = callResult.OutputDestination;
+                        previousCallOutput = GetPaddedSlice(callResult.Output, BigInteger.Zero, BigInteger.Min(callResult.Output.Length, previousState.OutputLength));
+                        previousCallOutputDestination = previousState.OutputDestination;
                     }
 
                     if (ShouldLog.Evm)
@@ -426,17 +437,6 @@ namespace Nevermind.Evm
                 ulong newMemoryCost = CalculateMemoryCost(state.ActiveWordsInMemory, newMemory);
                 UpdateGas(newMemoryCost, ref gasAvailable);
                 state.ActiveWordsInMemory = newMemory;
-            }
-
-            byte[] GetPaddedSlice(byte[] data, BigInteger position, BigInteger length)
-            {
-                BigInteger bytesFromInput = BigInteger.Max(0, BigInteger.Min(data.Length - position, length));
-                if (position > data.Length)
-                {
-                    return new byte[(int)length];
-                }
-
-                return data.Slice((int)position, (int)bytesFromInput).PadRight((int)length);
             }
 
             void ValidateJump(int destination)
@@ -1248,8 +1248,14 @@ namespace Nevermind.Evm
                         callEnv.InputData = initCode;
                         callEnv.CodeOwner = contractAddress;
                         callEnv.MachineCode = initCode;
-                        EvmState callState = new EvmState(callGas, callEnv, ExecutionType.Create, stateSnapshot,
-                            storageSnapshot);
+                        EvmState callState = new EvmState(
+                            callGas,
+                            callEnv,
+                            ExecutionType.Create,
+                            stateSnapshot,
+                            storageSnapshot,
+                            BigInteger.Zero,
+                            BigInteger.Zero);
                         UpdateState();
                         return new CallResult(callState);
                     }
@@ -1269,16 +1275,11 @@ namespace Nevermind.Evm
                         }
 
                         UpdateState();
-                        return new CallResult(returnData, memoryPos);
+                        return new CallResult(returnData);
                     }
                     case Instruction.CALL:
                     case Instruction.CALLCODE:
                     {
-                        if (env.CallDepth >= MaxCallDepth)
-                        {
-                            throw new CallDepthException();
-                        }
-
                         BigInteger gasLimit = PopUInt();
                         byte[] toAddress = PopBytes();
                         BigInteger value = PopUInt();
@@ -1311,6 +1312,12 @@ namespace Nevermind.Evm
                         UpdateGas(gasExtra, ref gasAvailable);
                         UpdateMemoryCost(dataOffset, dataLength);
                         UpdateMemoryCost(outputOffset, outputLength);
+
+                        if (env.CallDepth >= MaxCallDepth) // TODO: fragile ordering / potential vulnerability for different clients
+                        {
+                            PushInt(BigInteger.Zero);
+                            break;
+                        }
 
                         byte[] callData = state.Memory.Load(dataOffset, dataLength);
 
@@ -1387,9 +1394,14 @@ namespace Nevermind.Evm
                         callEnv.Value = value;
                         callEnv.InputData = callData;
                         callEnv.MachineCode = _worldStateProvider.GetCode(codeSource);
-                        EvmState callState = new EvmState(callGas, callEnv,
+                        EvmState callState = new EvmState(
+                            callGas,
+                            callEnv,
                             instruction == Instruction.CALL ? ExecutionType.Call : ExecutionType.Callcode,
-                            stateSnapshot, storageSnapshot);
+                            stateSnapshot,
+                            storageSnapshot,
+                            outputOffset,
+                            outputLength);
                         UpdateState();
                         return new CallResult(callState);
                     }
@@ -1488,15 +1500,13 @@ namespace Nevermind.Evm
             {
             }
 
-            public CallResult(byte[] output, BigInteger outputDestination)
+            public CallResult(byte[] output)
             {
                 Output = output;
-                OutputDestination = outputDestination;
             }
 
             public EvmState StateToExecute { get; }
             public byte[] Output { get; } = EmptyBytes;
-            public BigInteger OutputDestination { get; }
             public bool IsReturn => StateToExecute == null;
         }
     }
