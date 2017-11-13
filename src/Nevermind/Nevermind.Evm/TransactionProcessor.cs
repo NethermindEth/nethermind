@@ -148,10 +148,18 @@ namespace Nevermind.Evm
                     {
                         if (value != BigInteger.Zero)
                         {
-                            gasAvailable -= GasCostOf.NewAccount;
-                        }
+                            if (gasAvailable < GasCostOf.NewAccount)
+                            {
+                                throw new OutOfGasException();
+                            }
 
-                        _stateProvider.CreateAccount(recipient, value);
+                            gasAvailable -= GasCostOf.NewAccount;
+                            _stateProvider.CreateAccount(recipient, value);
+                        }
+                        else
+                        {
+                            throw new NotImplementedException();
+                        }
                     }
                     else
                     {

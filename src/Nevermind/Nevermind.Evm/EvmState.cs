@@ -8,14 +8,31 @@ namespace Nevermind.Evm
 {
     public class EvmState
     {
+        public readonly byte[][] BytesOnStack = new byte[VirtualMachine.MaxStackSize][];
+        public readonly bool[] IntPositions = new bool[VirtualMachine.MaxStackSize];
+        public readonly BigInteger[] IntsOnStack = new BigInteger[VirtualMachine.MaxStackSize];
+
+        private ulong _activeWordsInMemory;
+        public int StackHead = 0;
+
         public EvmState(ulong gasAvailable, ExecutionEnvironment env)
+            : this(gasAvailable, env, ExecutionType.TransactionLevel, null, null)
         {
             GasAvailable = gasAvailable;
             Env = env;
         }
 
-        private ulong _activeWordsInMemory;
+        internal EvmState(ulong gasAvailable, ExecutionEnvironment env, ExecutionType executionType,
+            StateSnapshot stateSnapshot, StateSnapshot storageSnapshot)
+        {
+            GasAvailable = gasAvailable;
+            ExecutionType = executionType;
+            StateSnapshot = stateSnapshot;
+            StorageSnapshot = storageSnapshot;
+            Env = env;
+        }
 
+        public ExecutionEnvironment Env { get; }
         public ulong GasAvailable { get; set; }
         public BigInteger ProgramCounter { get; set; }
 
@@ -37,20 +54,13 @@ namespace Nevermind.Evm
             }
         }
 
-        public EvmMemory Memory { get; } = new EvmMemory();
+        internal ExecutionType ExecutionType { get; }
+        public StateSnapshot StateSnapshot { get; }
+        public StateSnapshot StorageSnapshot { get; }
 
-        public readonly byte[][] BytesOnStack = new byte[VirtualMachine.MaxStackSize][];
-        public readonly BigInteger[] IntsOnStack = new BigInteger[VirtualMachine.MaxStackSize];
-        public readonly bool[] IntPositions = new bool[VirtualMachine.MaxStackSize];
-        public int StackHead = 0;
-        public readonly ExecutionEnvironment Env;
-        public HashSet<Address> DestroyList = new HashSet<Address>();
-        public List<LogEntry> Logs = new List<LogEntry>();
         public BigInteger Refund { get; set; } = BigInteger.Zero;
-
-        public StateSnapshot StateSnapshot { get; set; }
-        public StateSnapshot StorageSnapshot { get; set; }
-
-        public bool IsCreate { get; set; }
+        public EvmMemory Memory { get; } = new EvmMemory();
+        public HashSet<Address> DestroyList { get; } = new HashSet<Address>();
+        public List<LogEntry> Logs { get; } = new List<LogEntry>();
     }
 }

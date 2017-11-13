@@ -64,6 +64,7 @@
     <Compile Include="BlockProcessor.cs" />
     <Compile Include="CallDepthException.cs" />
     <Compile Include="EvmState.cs" />
+    <Compile Include="ExecutionType.cs" />
     <Compile Include="FrontierProtocolSpecification.cs" />
     <Compile Include="IProtocolSpecification.cs" />
     <Compile Include="InvalidInstructionException.cs" />

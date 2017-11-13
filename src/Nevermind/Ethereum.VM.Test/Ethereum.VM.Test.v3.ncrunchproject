@@ -36,10 +36,10 @@
         <FixtureName>Ethereum.VM.Test.PushDupSwapTests</FixtureName>
       </FixtureTestSelector>
       <FixtureTestSelector>
-        <FixtureName>Ethereum.VM.Test.SystemTests</FixtureName>
+        <FixtureName>Ethereum.VM.Test.EnvironmentalInfoTests</FixtureName>
       </FixtureTestSelector>
       <FixtureTestSelector>
-        <FixtureName>Ethereum.VM.Test.EnvironmentalInfoTests</FixtureName>
+        <FixtureName>Ethereum.VM.Test.SystemTests</FixtureName>
       </FixtureTestSelector>
     </IgnoredTests>
   </Settings>
