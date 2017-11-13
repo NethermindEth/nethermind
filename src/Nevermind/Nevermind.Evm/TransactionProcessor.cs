@@ -32,6 +32,16 @@ namespace Nevermind.Evm
             ChainId = chainId;
         }
 
+        private TransactionReceipt GetNullReceipt(BigInteger totalGasUsed)
+        {
+            TransactionReceipt transferReceipt = new TransactionReceipt();
+            transferReceipt.Logs = new LogEntry[0];
+            transferReceipt.Bloom = new Bloom();
+            transferReceipt.GasUsed = totalGasUsed;
+            transferReceipt.PostTransactionState = _stateProvider.State.RootHash;
+            return transferReceipt;
+        }
+
         public TransactionReceipt Execute(
             Address sender,
             Transaction transaction,
@@ -56,12 +66,12 @@ namespace Nevermind.Evm
 
             if (sender == null)
             {
-                return null;
+                return GetNullReceipt(block.GasUsed + gasLimit);
             }
 
             if (!TransactionValidator.IsValid(transaction, sender, _protocolSpecification.IsEip155Enabled, (int)ChainId))
             {
-                return null;
+                return GetNullReceipt(block.GasUsed + gasLimit);
             }
 
             ulong intrinsicGas = IntrinsicGasCalculator.Calculate(transaction, block.Number);
@@ -69,27 +79,27 @@ namespace Nevermind.Evm
 
             if (intrinsicGas > block.GasLimit - blockGasUsedSoFar)
             {
-                return null;
+                return GetNullReceipt(block.GasUsed + gasLimit);
             }
 
             if (gasLimit < intrinsicGas)
             {
-                return null;
+                return GetNullReceipt(block.GasUsed + gasLimit);
             }
 
             if (!_stateProvider.AccountExists(sender))
             {
-                return null;
+                return GetNullReceipt(block.GasUsed + gasLimit);
             }
 
             if (intrinsicGas * gasPrice + value > _stateProvider.GetBalance(sender))
             {
-                return null;
+                return GetNullReceipt(block.GasUsed + gasLimit);
             }
 
             if (transaction.Nonce != _stateProvider.GetNonce(sender))
             {
-                return null;
+                return GetNullReceipt(block.GasUsed + gasLimit);
             }
 
             // checkpoint
@@ -110,7 +120,7 @@ namespace Nevermind.Evm
             }
 
             StateSnapshot snapshot = _stateProvider.TakeSnapshot();
-            StateSnapshot storageSnapshot = recipient != null ? _storageProvider.TakeSnapshot(recipient) : null;
+            Dictionary<Address, StateSnapshot> storageSnapshot = recipient != null ? _storageProvider.TakeSnapshot() : null;
             _stateProvider.UpdateBalance(sender, -value);
 
             try
@@ -218,7 +228,8 @@ namespace Nevermind.Evm
                     // pre-final
                     gasSpent = gasLimit - gasAvailable; // TODO: does refund use intrinsic value to calculate cap?
                     BigInteger halfOfGasSpend = BigInteger.Divide(gasSpent, 2);
-                    BigInteger refund = BigInteger.Min(halfOfGasSpend, substate.Refund);
+                    ulong destroyRefund = (ulong)substate.DestroyList.Count * RefundOf.Destroy;
+                    BigInteger refund = BigInteger.Min(halfOfGasSpend, substate.Refund + destroyRefund);
                     BigInteger gasUnused = gasAvailable + refund;
                     Console.WriteLine("REFUNDING UNUSED GAS OF " + gasUnused + " AND REFUND OF " + refund);
                     _stateProvider.UpdateBalance(sender, gasUnused * gasPrice);
@@ -237,10 +248,11 @@ namespace Nevermind.Evm
             {
                 Console.WriteLine($"  EVM EXCEPTION: {e.GetType().Name}");
                 _stateProvider.Restore(snapshot);
-                _storageProvider.Restore(recipient, storageSnapshot);
+                _storageProvider.Restore(storageSnapshot);
+
+                Console.WriteLine("GAS SPENT: " + gasSpent);
             }
 
-            Console.WriteLine("GAS SPENT: " + gasSpent);
             if (!_stateProvider.AccountExists(block.Beneficiary))
             {
                 _stateProvider.CreateAccount(block.Beneficiary, gasSpent * gasPrice);

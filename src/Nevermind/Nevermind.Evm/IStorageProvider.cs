@@ -1,4 +1,5 @@
-﻿using Nevermind.Core;
+﻿using System.Collections.Generic;
+using Nevermind.Core;
 using Nevermind.Store;
 
 namespace Nevermind.Evm
@@ -7,8 +8,8 @@ namespace Nevermind.Evm
     {
         StorageTree GetOrCreateStorage(Address address);
 
-        StateSnapshot TakeSnapshot(Address address);
+        Dictionary<Address, StateSnapshot> TakeSnapshot();
 
-        void Restore(Address address, StateSnapshot snapshot);
+        void Restore(Dictionary<Address, StateSnapshot> storageSnapshot);
     }
 }

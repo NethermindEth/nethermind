@@ -14,6 +14,10 @@ namespace Nevermind.Store
         {
         }
 
+        public StorageTree(StateSnapshot stateSnapshot) : base(stateSnapshot)
+        {
+        }
+
         private byte[] GetKey(BigInteger index)
         {
             return Keccak.Compute(index.ToBigEndianByteArray(true, 32)).Bytes;
@@ -24,7 +28,7 @@ namespace Nevermind.Store
             byte[] value = Get(GetKey(index));
             if (value == null)
             {
-                return new byte[] {0};
+                return new byte[] { 0 };
             }
             Rlp rlp = new Rlp(value);
             return (byte[])Rlp.Decode(rlp);
@@ -32,7 +36,14 @@ namespace Nevermind.Store
 
         public void Set(BigInteger index, byte[] value)
         {
-            Set(GetKey(index), Rlp.Encode(value));
+            if (value.IsZero())
+            {
+                Set(GetKey(index), new byte[] { });
+            }
+            else
+            {
+                Set(GetKey(index), Rlp.Encode(value));
+            }
         }
     }
 }

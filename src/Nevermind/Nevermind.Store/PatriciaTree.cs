@@ -30,6 +30,12 @@ namespace Nevermind.Store
             Restore(new StateSnapshot(db, rootHash));
         }
 
+        public PatriciaTree(StateSnapshot snapshot)
+            : this((InMemoryDb)null)
+        {
+            Restore(snapshot);
+        }
+
         public Keccak RootHash { get; internal set; } = EmptyTreeHash;
 
         public StateSnapshot TakeSnapshot()

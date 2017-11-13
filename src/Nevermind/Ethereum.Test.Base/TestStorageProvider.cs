@@ -1,4 +1,5 @@
 ﻿using System.Collections.Generic;
+using System.Linq;
 using Nevermind.Core;
 using Nevermind.Evm;
 using Nevermind.Store;
@@ -31,20 +32,17 @@ namespace Ethereum.Test.Base
             return _storages[address];
         }
 
-        public StateSnapshot TakeSnapshot(Address address)
+        public Dictionary<Address, StateSnapshot> TakeSnapshot()
         {
-            return _storages.ContainsKey(address) ? _storages[address].TakeSnapshot() : null;
+            return _storages.ToDictionary(s => s.Key, s => s.Value.TakeSnapshot());
         }
 
-        public void Restore(Address address, StateSnapshot snapshot)
+        public void Restore(Dictionary<Address, StateSnapshot> snapshot)
         {
-            if (snapshot == null)
+            _storages.Clear();
+            foreach (KeyValuePair<Address, StateSnapshot> snapByAddress in snapshot)
             {
-                _storages[address] = null;
-            }
-            else
-            {
-                _storages[address].Restore(snapshot);
+                _storages[snapByAddress.Key] = new StorageTree(snapByAddress.Value); 
             }
         }
     }

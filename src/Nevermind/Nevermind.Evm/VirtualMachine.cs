@@ -81,7 +81,7 @@ namespace Nevermind.Evm
                 {
                     if (ShouldLog.Evm)
                     {
-                        Console.WriteLine($"BEGIN {currentState.ExecutionType} AT DEPTH {currentState.Env.CallDepth}");
+                        Console.WriteLine($"BEGIN {currentState.ExecutionType} AT DEPTH {currentState.Env.CallDepth} (at {currentState.Env.CodeOwner})");
                     }
 
                     CallResult callResult = ExecuteCall(currentState, previousCallResult, previousCallOutput, previousCallOutputDestination);
@@ -151,7 +151,7 @@ namespace Nevermind.Evm
                     if (currentState.StateSnapshot != null) // TODO: temp check - handle transaction processor calls here as well or change up
                     {
                         _worldStateProvider.Restore(currentState.StateSnapshot);
-                        _storageProvider.Restore(currentState.Env.CodeOwner, currentState.StorageSnapshot);
+                        _storageProvider.Restore(currentState.StorageSnapshot);
                     }
 
                     if (currentState.ExecutionType == ExecutionType.TransactionLevel)
@@ -972,7 +972,7 @@ namespace Nevermind.Evm
                     case Instruction.SSTORE:
                     {
                         BigInteger storageIndex = PopUInt();
-                        byte[] data = PopBytes();
+                        byte[] data = PopBytes().WithoutLeadingZeros();
                         StorageTree storage = _storageProvider.GetOrCreateStorage(env.CodeOwner);
                         byte[] previousValue = storage.Get(storageIndex);
 
@@ -995,7 +995,7 @@ namespace Nevermind.Evm
 
                         if (isValueChanged)
                         {
-                            byte[] newValue = isNewValueZero ? new byte[] { 0 } : data.WithoutLeadingZeros();
+                            byte[] newValue = isNewValueZero ? new byte[] { 0 } : data;
                             storage.Set(storageIndex, newValue);
                             if (ShouldLog.Evm)
                             {
@@ -1218,7 +1218,7 @@ namespace Nevermind.Evm
                         }
 
                         StateSnapshot stateSnapshot = _worldStateProvider.TakeSnapshot();
-                        StateSnapshot storageSnapshot = _storageProvider.TakeSnapshot(contractAddress);
+                        Dictionary<Address, StateSnapshot> storageSnapshot = _storageProvider.TakeSnapshot();
 
                         ulong callGas = gasAvailable;
                         UpdateGas(callGas, ref gasAvailable);
@@ -1324,7 +1324,7 @@ namespace Nevermind.Evm
                         BigInteger addressInt = toAddress.ToUnsignedBigInteger();
 
                         StateSnapshot stateSnapshot = _worldStateProvider.TakeSnapshot();
-                        StateSnapshot storageSnapshot = _storageProvider.TakeSnapshot(target);
+                        Dictionary<Address, StateSnapshot> storageSnapshot = _storageProvider.TakeSnapshot();
 
                         if (!value.IsZero)
                         {
@@ -1416,29 +1416,27 @@ namespace Nevermind.Evm
                         if (!state.DestroyList.Contains(env.CodeOwner))
                         {
                             state.DestroyList.Add(env.CodeOwner);
-                            state.Refund += RefundOf.Destroy;
-                        }
 
-                        if (!_worldStateProvider.AccountExists(inheritor))
-                        {
-                            _worldStateProvider.CreateAccount(inheritor,
-                                _worldStateProvider.GetBalance(env.CodeOwner));
-                            if (_protocolSpecification.IsEip150Enabled)
+                            BigInteger ownerBalance = _worldStateProvider.GetBalance(env.CodeOwner);
+                            if (!_worldStateProvider.AccountExists(inheritor))
                             {
-                                UpdateGas(GasCostOf.NewAccount, ref gasAvailable);
+                                _worldStateProvider.CreateAccount(inheritor, ownerBalance);
+                                if (_protocolSpecification.IsEip150Enabled)
+                                {
+                                    UpdateGas(GasCostOf.NewAccount, ref gasAvailable);
+                                }
                             }
-                        }
-                        else
-                        {
-                            _worldStateProvider.UpdateBalance(inheritor,
-                                _worldStateProvider.GetBalance(env.CodeOwner));
-                        }
+                            else
+                            {
+                                _worldStateProvider.UpdateBalance(inheritor, ownerBalance);
+                            }
 
-                        _worldStateProvider.UpdateBalance(env.CodeOwner, BigInteger.Zero);
+                            _worldStateProvider.UpdateBalance(env.CodeOwner, -ownerBalance);
 
-                        if (ShouldLog.Evm)
-                        {
-                            LogInstructionResult(instruction, gasBefore);
+                            if (ShouldLog.Evm)
+                            {
+                                LogInstructionResult(instruction, gasBefore);
+                            }
                         }
 
                         UpdateState();

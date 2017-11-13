@@ -26,6 +26,7 @@
       </FixtureTestSelector>
       <AllTestsSelector />
     </IgnoredTests>
+    <IgnoreThisComponentCompletely>True</IgnoreThisComponentCompletely>
     <TrackFileDependencies>False</TrackFileDependencies>
   </Settings>
 </ProjectConfiguration>

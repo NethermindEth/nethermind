@@ -27,7 +27,7 @@ namespace Nevermind.Evm
             ExecutionEnvironment env,
             ExecutionType executionType,
             StateSnapshot stateSnapshot,
-            StateSnapshot storageSnapshot,
+            Dictionary<Address, StateSnapshot> storageSnapshot,
             BigInteger outputDestination,
             BigInteger outputLength)
         {
@@ -66,7 +66,7 @@ namespace Nevermind.Evm
         internal BigInteger OutputDestination { get; }
         internal BigInteger OutputLength { get; }
         public StateSnapshot StateSnapshot { get; }
-        public StateSnapshot StorageSnapshot { get; }
+        public Dictionary<Address, StateSnapshot> StorageSnapshot { get; }
 
         public BigInteger Refund { get; set; } = BigInteger.Zero;
         public EvmMemory Memory { get; } = new EvmMemory();

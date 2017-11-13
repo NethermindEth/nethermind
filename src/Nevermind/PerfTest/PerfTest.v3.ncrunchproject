@@ -3,5 +3,6 @@
     <IgnoredTests>
       <AllTestsSelector />
     </IgnoredTests>
+    <IgnoreThisComponentCompletely>True</IgnoreThisComponentCompletely>
   </Settings>
 </ProjectConfiguration>

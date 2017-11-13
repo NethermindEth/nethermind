@@ -8,8 +8,14 @@
       <FixtureTestSelector>
         <FixtureName>Ethereum.VM.Test.IoAndFlowTests</FixtureName>
       </FixtureTestSelector>
+      <NamedTestSelector>
+        <TestName>Ethereum.VM.Test.EnvironmentalInfoTests.Test(env1)</TestName>
+      </NamedTestSelector>
       <FixtureTestSelector>
-        <FixtureName>Ethereum.VM.Test.RandomTests</FixtureName>
+        <FixtureName>Ethereum.VM.Test.SystemTests</FixtureName>
+      </FixtureTestSelector>
+      <FixtureTestSelector>
+        <FixtureName>Ethereum.VM.Test.LogTests</FixtureName>
       </FixtureTestSelector>
       <FixtureTestSelector>
         <FixtureName>Ethereum.VM.Test.Sha3Tests</FixtureName>
@@ -18,16 +24,19 @@
         <FixtureName>Ethereum.VM.Test.OtherTests</FixtureName>
       </FixtureTestSelector>
       <FixtureTestSelector>
-        <FixtureName>Ethereum.VM.Test.LogTests</FixtureName>
+        <FixtureName>Ethereum.VM.Test.RandomTests</FixtureName>
+      </FixtureTestSelector>
+      <FixtureTestSelector>
+        <FixtureName>Ethereum.VM.Test.EnvironmentalInfoTests</FixtureName>
       </FixtureTestSelector>
       <FixtureTestSelector>
         <FixtureName>Ethereum.VM.Test.BlockInfoTests</FixtureName>
       </FixtureTestSelector>
       <FixtureTestSelector>
-        <FixtureName>Ethereum.VM.Test.BitwiseLogicTests</FixtureName>
+        <FixtureName>Ethereum.VM.Test.ArithmeticTests</FixtureName>
       </FixtureTestSelector>
       <FixtureTestSelector>
-        <FixtureName>Ethereum.VM.Test.ArithmeticTests</FixtureName>
+        <FixtureName>Ethereum.VM.Test.BitwiseLogicTests</FixtureName>
       </FixtureTestSelector>
       <FixtureTestSelector>
         <FixtureName>Ethereum.VM.Test.AbiTests</FixtureName>
@@ -35,12 +44,7 @@
       <FixtureTestSelector>
         <FixtureName>Ethereum.VM.Test.PushDupSwapTests</FixtureName>
       </FixtureTestSelector>
-      <FixtureTestSelector>
-        <FixtureName>Ethereum.VM.Test.EnvironmentalInfoTests</FixtureName>
-      </FixtureTestSelector>
-      <FixtureTestSelector>
-        <FixtureName>Ethereum.VM.Test.SystemTests</FixtureName>
-      </FixtureTestSelector>
     </IgnoredTests>
+    <IgnoreThisComponentCompletely>True</IgnoreThisComponentCompletely>
   </Settings>
 </ProjectConfiguration>
