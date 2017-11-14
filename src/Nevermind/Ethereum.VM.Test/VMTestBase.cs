@@ -163,7 +163,7 @@ namespace Ethereum.VM.Test
                 }
             }
 
-            EvmState state = new EvmState((ulong)test.Execution.Gas, environment);
+            EvmState state = new EvmState((ulong)test.Execution.Gas, environment, ExecutionType.Transaction);
 
             if (test.Out == null)
             {

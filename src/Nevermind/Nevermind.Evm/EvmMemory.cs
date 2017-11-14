@@ -1,4 +1,5 @@
 ﻿using System;
+using System.IO;
 using System.Numerics;
 using Nevermind.Core.Sugar;
 
@@ -6,6 +7,8 @@ namespace Nevermind.Evm
 {
     public class EvmMemory
     {
+        private MemoryStream memory = new MemoryStream();
+
         private const int WordSize = 32;
 
         private byte[] _memory = new byte[0];

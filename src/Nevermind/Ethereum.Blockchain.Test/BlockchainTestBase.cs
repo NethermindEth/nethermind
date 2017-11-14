@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Numerics;
@@ -37,7 +38,7 @@ namespace Ethereum.Blockchain.Test
         public static IEnumerable<BlockchainTest> LoadTests(string testSet)
         {
             Directory.SetCurrentDirectory(AppDomain.CurrentDomain.BaseDirectory);
-            IEnumerable<string> testDirs = Directory.EnumerateDirectories(".", "st" + testSet);
+            IEnumerable<string> testDirs = Directory.EnumerateDirectories(".", "st" + (testSet.StartsWith("st") ? testSet.Substring(2) : testSet));
             Dictionary<string, Dictionary<string, BlockchainTestJson>> testJsons =
                 new Dictionary<string, Dictionary<string, BlockchainTestJson>>();
             foreach (string testDir in testDirs)
@@ -81,7 +82,7 @@ namespace Ethereum.Blockchain.Test
             return state;
         }
 
-        protected void RunTest(BlockchainTest test)
+        protected void RunTest(BlockchainTest test, Stopwatch stopwatch = null)
         {
             foreach (KeyValuePair<Address, AccountState> accountState in test.Pre)
             {
@@ -128,6 +129,8 @@ namespace Ethereum.Blockchain.Test
             List<Transaction> transactions = new List<Transaction>();
 
             BigInteger gasUsedSoFar = 0;
+
+            stopwatch?.Start();
             foreach (IncomingTransaction testTransaction in oneBlock.Transactions)
             {
                 Transaction transaction = new Transaction();
@@ -152,6 +155,8 @@ namespace Ethereum.Blockchain.Test
                 receipts.Add(receipt);
                 gasUsedSoFar += receipt.GasUsed;
             }
+
+            stopwatch?.Start();
 
             if (!_stateProvider.AccountExists(header.Beneficiary))
             {
@@ -204,8 +209,6 @@ namespace Ethereum.Blockchain.Test
             Assert.Zero(differences.Count, "differences");
 
             Assert.AreEqual(oneHeader.GasUsed, gasUsedSoFar);
-
-            
 
             Keccak receiptsRoot = BlockProcessor.GetReceiptsRoot(receipts.ToArray());
             Keccak transactionsRoot = BlockProcessor.GetTransactionsRoot(transactions.ToArray());

@@ -183,6 +183,27 @@ namespace Nevermind.Core.Encoding
             return BitConverter.ToInt32(padded, 0);
         }
 
+        // experimenting
+        public static Rlp Encode(params Keccak[] sequence)
+        {
+            byte[] concatenation = new byte[0];
+            foreach (Keccak item in sequence)
+            {
+                byte[] itemBytes = Encode(item).Bytes;
+                // do that at once (unnecessary objects creation here)
+                concatenation = Sugar.Bytes.Concat(concatenation, itemBytes);
+            }
+
+            if (concatenation.Length < 56)
+            {
+                return new Rlp(Sugar.Bytes.Concat((byte)(192 + concatenation.Length), concatenation));
+            }
+
+            byte[] serializedLength = SerializeLength(concatenation.Length);
+            byte prefix = (byte)(247 + serializedLength.Length);
+            return new Rlp(Sugar.Bytes.Concat(prefix, serializedLength, concatenation));
+        }
+
         [SuppressMessage("ReSharper", "PossibleMultipleEnumeration")]
         public static Rlp Encode(params object[] sequence)
         {
@@ -237,6 +258,11 @@ namespace Nevermind.Core.Encoding
             if (item is Keccak keccak)
             {
                 return Encode(keccak);
+            }
+
+            if (item is Keccak[] keccakArray)
+            {
+                return Encode(keccakArray);
             }
 
             if (item is Address address)
@@ -382,7 +408,7 @@ namespace Nevermind.Core.Encoding
 
         public static readonly Rlp OfEmptyByteArray = new Rlp(128);
 
-        public static Rlp OfEmptySequence = Encode();
+        public static Rlp OfEmptySequence = Encode(new object[] {});
 
         private static readonly Dictionary<RuntimeTypeHandle, IRlpDecoder> Decoders =
             new Dictionary<RuntimeTypeHandle, IRlpDecoder>

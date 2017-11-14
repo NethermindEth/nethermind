@@ -1,11 +1,13 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Numerics;
 using Nevermind.Core;
 using Nevermind.Store;
 
 namespace Nevermind.Evm
 {
+    [DebuggerDisplay("{ExecutionType} to {Env.CodeOwner}, G {GasAvailable} R {Refund} PC {ProgramCounter} OUT {OutputDestination}:{OutputLength}")]
     public class EvmState
     {
         public readonly byte[][] BytesOnStack = new byte[VirtualMachine.MaxStackSize][];
@@ -15,8 +17,8 @@ namespace Nevermind.Evm
         private ulong _activeWordsInMemory;
         public int StackHead = 0;
 
-        public EvmState(ulong gasAvailable, ExecutionEnvironment env)
-            : this(gasAvailable, env, ExecutionType.TransactionLevel, null, null, BigInteger.Zero, BigInteger.Zero)
+        public EvmState(ulong gasAvailable, ExecutionEnvironment env, ExecutionType executionType)
+            : this(gasAvailable, env, executionType, null, null, BigInteger.Zero, BigInteger.Zero)
         {
             GasAvailable = gasAvailable;
             Env = env;

@@ -53,6 +53,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Account.cs" />
+    <Compile Include="AddressExtensions.cs" />
     <Compile Include="ChainId.cs" />
     <Compile Include="Difficulty\DifficultyCalculatorFactory.cs" />
     <Compile Include="Difficulty\ByzantiumDifficultyCalculator.cs" />

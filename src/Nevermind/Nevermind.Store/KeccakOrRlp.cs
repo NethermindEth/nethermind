@@ -32,7 +32,12 @@ namespace Nevermind.Store
 
         public Keccak GetOrComputeKeccak()
         {
-            return _keccak ?? (_keccak = Keccak.Compute(_rlp));
+            if (!IsKeccak)
+            {
+                _keccak = Keccak.Compute(_rlp);
+            }
+
+            return _keccak;
         }
 
         public Rlp GetOrEncodeRlp()

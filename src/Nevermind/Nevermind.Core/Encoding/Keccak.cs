@@ -5,7 +5,7 @@ using HashLib;
 namespace Nevermind.Core.Encoding
 {
     [DebuggerStepThrough]
-    public class Keccak : IEquatable<Keccak>
+    public struct Keccak : IEquatable<Keccak>
     {
         private static readonly IHash Hash = HashFactory.Crypto.SHA3.CreateKeccak256();
 
@@ -96,45 +96,30 @@ namespace Nevermind.Core.Encoding
 
         public bool Equals(Keccak other)
         {
-            if (ReferenceEquals(null, other)) return false;
-            if (ReferenceEquals(this, other)) return true;
-
-            // timing attacks? probably not
-            for (int i = 0; i < 32; i++)
-            {
-                if (other.Bytes[i] != Bytes[i])
-                {
-                    return false;
-                }
-            }
-
-            return true;
+            return Sugar.Bytes.UnsafeCompare(other.Bytes, Bytes);
         }
 
         public override bool Equals(object obj)
         {
-            if (ReferenceEquals(null, obj)) return false;
-            if (ReferenceEquals(this, obj)) return true;
-            return obj.GetType() == GetType() && Equals((Keccak)obj);
+            return obj?.GetType() == typeof(Keccak) && Equals((Keccak)obj);
         }
 
         public override int GetHashCode()
         {
-            return Bytes[0] ^ Bytes[31];
+            unchecked
+            {
+                const int p = 16777619;
+                int hash = (int)2166136261;
+
+                hash = hash ^ Bytes[0] * p;
+                hash = hash ^ Bytes[16] * p;
+                hash = hash ^ Bytes[31] * p;
+                return hash;
+            }
         }
 
         public static bool operator ==(Keccak a, Keccak b)
         {
-            if (ReferenceEquals(a, b))
-            {
-                return true;
-            }
-
-            if (ReferenceEquals(a, null) || ReferenceEquals(b, null))
-            {
-                return false;
-            }
-
             return Sugar.Bytes.UnsafeCompare(a.Bytes, b.Bytes);
         }
 

@@ -182,7 +182,17 @@ namespace Nevermind.Store
 
         internal Node GetNode(KeccakOrRlp keccakOrRlp)
         {
-            Rlp rlp = new Rlp(keccakOrRlp.IsKeccak ? _db[keccakOrRlp.GetOrComputeKeccak()] : keccakOrRlp.Bytes);
+            Rlp rlp = null;
+            try
+            {
+
+            
+            rlp = new Rlp(keccakOrRlp.IsKeccak ? _db[keccakOrRlp.GetOrComputeKeccak()] : keccakOrRlp.Bytes);
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e);
+            }
             return RlpDecode(rlp);
         }
 

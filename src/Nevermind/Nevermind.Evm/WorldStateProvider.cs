@@ -86,11 +86,6 @@ namespace Nevermind.Evm
         public void UpdateStorageRoot(Address address, Keccak storageRoot)
         {
             Account account = GetAccount(address);
-            if (ShouldLog.Evm)
-            {
-                Console.WriteLine($"  SETTING STORAGE ROOT of {address} from {account.StorageRoot} to {storageRoot}");
-            }
-
             account.StorageRoot = storageRoot;
             UpdateAccount(address, account);
         }

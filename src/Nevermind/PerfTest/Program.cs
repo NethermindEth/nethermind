@@ -93,6 +93,7 @@ namespace PerfTest
 
         private static void Main(string[] args)
         {
+            ShouldLog.Evm = false;
             Stopwatch stopwatch = new Stopwatch();
             stopwatch.Start();
 
@@ -125,7 +126,7 @@ namespace PerfTest
             stopwatch.Start();
             for (int i = 0; i < iterations; i++)
             {
-                Machine.Run(new EvmState(1_000_000_000L, env));
+                Machine.Run(new EvmState(1_000_000_000L, env, ExecutionType.Transaction));
             }
 
             stopwatch.Stop();

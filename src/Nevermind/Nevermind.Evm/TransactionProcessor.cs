@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Numerics;
 using Nevermind.Core;
 using Nevermind.Core.Encoding;
-using Nevermind.Core.Sugar;
 using Nevermind.Core.Validators;
 using Nevermind.Store;
 
@@ -56,15 +55,18 @@ namespace Nevermind.Evm
             byte[] machineCode = transaction.Init;
             byte[] data = transaction.Data ?? new byte[0];
 
-            Console.WriteLine("IS_CONTRACT_CREATION: " + transaction.IsContractCreation);
-            Console.WriteLine("IS_MESSAGE_CALL: " + transaction.IsMessageCall);
-            Console.WriteLine("IS_TRANSFER: " + transaction.IsTransfer);
-            Console.WriteLine("SENDER: " + sender);
-            Console.WriteLine("TO: " + transaction.To);
-            Console.WriteLine("GAS LIMIT: " + transaction.GasLimit);
-            Console.WriteLine("GAS PRICE: " + transaction.GasPrice);
-            Console.WriteLine("VALUE: " + transaction.Value);
-            Console.WriteLine("DATA_LENGTH: " + (transaction.Data?.Length ?? 0));
+            if (ShouldLog.TransactionProcessor)
+            {
+                Console.WriteLine("IS_CONTRACT_CREATION: " + transaction.IsContractCreation);
+                Console.WriteLine("IS_MESSAGE_CALL: " + transaction.IsMessageCall);
+                Console.WriteLine("IS_TRANSFER: " + transaction.IsTransfer);
+                Console.WriteLine("SENDER: " + sender);
+                Console.WriteLine("TO: " + transaction.To);
+                Console.WriteLine("GAS LIMIT: " + transaction.GasLimit);
+                Console.WriteLine("GAS PRICE: " + transaction.GasPrice);
+                Console.WriteLine("VALUE: " + transaction.Value);
+                Console.WriteLine("DATA_LENGTH: " + (transaction.Data?.Length ?? 0));
+            }
 
             if (sender == null)
             {
@@ -77,7 +79,7 @@ namespace Nevermind.Evm
             }
 
             ulong intrinsicGas = IntrinsicGasCalculator.Calculate(transaction, block.Number);
-            Console.WriteLine("INTRINSIC GAS: " + intrinsicGas);
+            if (ShouldLog.TransactionProcessor) Console.WriteLine("INTRINSIC GAS: " + intrinsicGas);
 
             if (intrinsicGas > block.GasLimit - blockGasUsedSoFar)
             {
@@ -125,15 +127,16 @@ namespace Nevermind.Evm
             Dictionary<Address, StateSnapshot> storageSnapshot = recipient != null ? _storageProvider.TakeSnapshot() : null;
             _stateProvider.UpdateBalance(sender, -value);
 
+            HashSet<Address> destroyedAccounts = new HashSet<Address>();
+            // TODO: can probably merge it with the inner loop in VM
             try
             {
                 if (transaction.IsContractCreation)
                 {
-                    if (ShouldLog.Evm)
+                    if (ShouldLog.TransactionProcessor)
                     {
                         Console.WriteLine("THIS IS CONTRACT CREATION");
                     }
-
 
                     if (_stateProvider.AccountExists(recipient) && !_stateProvider.IsEmptyAccount(recipient))
                     {
@@ -183,7 +186,7 @@ namespace Nevermind.Evm
                     env.MachineCode = machineCode ?? _stateProvider.GetCode(recipient);
                     env.Originator = sender;
 
-                    EvmState state = new EvmState(gasAvailable, env);
+                    EvmState state = new EvmState(gasAvailable, env, recipient.IsPrecompiled() ? ExecutionType.Precompile : ExecutionType.Transaction);
 
                     if (_protocolSpecification.IsEip170Enabled
                         && transaction.IsContractCreation
@@ -191,8 +194,6 @@ namespace Nevermind.Evm
                     {
                         throw new OutOfGasException();
                     }
-
-                    // TODO: precompiles here... !
 
                     (byte[] output, TransactionSubstate substate) = _virtualMachine.Run(state);
                     logEntries.AddRange(substate.Logs);
@@ -218,10 +219,11 @@ namespace Nevermind.Evm
                     // pre-final
                     gasSpent = gasLimit - gasAvailable; // TODO: does refund use intrinsic value to calculate cap?
                     BigInteger halfOfGasSpend = BigInteger.Divide(gasSpent, 2);
+
                     ulong destroyRefund = (ulong)substate.DestroyList.Count * RefundOf.Destroy;
                     BigInteger refund = BigInteger.Min(halfOfGasSpend, substate.Refund + destroyRefund);
                     BigInteger gasUnused = gasAvailable + refund;
-                    Console.WriteLine("REFUNDING UNUSED GAS OF " + gasUnused + " AND REFUND OF " + refund);
+                    if (ShouldLog.TransactionProcessor) Console.WriteLine("REFUNDING UNUSED GAS OF " + gasUnused + " AND REFUND OF " + refund);
                     _stateProvider.UpdateBalance(sender, gasUnused * gasPrice);
 
                     gasSpent -= refund;
@@ -230,26 +232,30 @@ namespace Nevermind.Evm
                     foreach (Address toBeDestroyed in substate.DestroyList)
                     {
                         _stateProvider.DeleteAccount(toBeDestroyed);
+                        destroyedAccounts.Add(toBeDestroyed);
                     }
 
                 }
             }
             catch (Exception e)
             {
-                Console.WriteLine($"  EVM EXCEPTION: {e.GetType().Name}");
+                if (ShouldLog.TransactionProcessor) Console.WriteLine($"  EVM EXCEPTION: {e.GetType().Name}");
                 _stateProvider.Restore(snapshot);
                 _storageProvider.Restore(storageSnapshot);
 
-                Console.WriteLine("GAS SPENT: " + gasSpent);
+                if (ShouldLog.TransactionProcessor) Console.WriteLine("GAS SPENT: " + gasSpent);
             }
 
-            if (!_stateProvider.AccountExists(block.Beneficiary))
+            if (!destroyedAccounts.Contains(block.Beneficiary))
             {
-                _stateProvider.CreateAccount(block.Beneficiary, gasSpent * gasPrice);
-            }
-            else
-            {
-                _stateProvider.UpdateBalance(block.Beneficiary, gasSpent * gasPrice);
+                if (!_stateProvider.AccountExists(block.Beneficiary))
+                {
+                    _stateProvider.CreateAccount(block.Beneficiary, gasSpent * gasPrice);
+                }
+                else
+                {
+                    _stateProvider.UpdateBalance(block.Beneficiary, gasSpent * gasPrice);
+                }
             }
 
             TransactionReceipt transferReceipt = new TransactionReceipt();

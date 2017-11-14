@@ -21,7 +21,7 @@ namespace Ethereum.Test.Base
         {
             if (!_storages.ContainsKey(address))
             {
-                _storages[address] = new StorageTree(_db);
+                _storages[address] = new StorageTree(new InMemoryDb());
             }
 
             return GetStorage(address);

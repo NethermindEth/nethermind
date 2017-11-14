@@ -2,6 +2,7 @@
 using System.Collections;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using Nevermind.Core.Encoding;
 
 namespace Nevermind.Core.Sugar
 {
@@ -221,6 +222,11 @@ namespace Nevermind.Core.Sugar
 
         ////    return new BigInteger(unsignedResult);
         ////}
+
+        public static BigInteger ToUnsignedBigInteger(this Hex hex, Endianness endianness = Endianness.Big, bool noReverse = false)
+        {
+            return ((byte[])hex).ToUnsignedBigInteger();
+        }
 
         public static BigInteger ToUnsignedBigInteger(this byte[] bytes, Endianness endianness = Endianness.Big, bool noReverse = false)
         {

@@ -1,10 +1,11 @@
 namespace Nevermind.Evm
 {
-    internal enum ExecutionType
+    public enum ExecutionType
     {
-        TransactionLevel,
+        Transaction,
         Call,
         Callcode,
-        Create
+        Create,
+        Precompile,
     }
 }

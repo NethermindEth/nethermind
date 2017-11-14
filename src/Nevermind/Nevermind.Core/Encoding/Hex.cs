@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Nevermind.Core.Encoding
 {
@@ -33,6 +34,11 @@ namespace Nevermind.Core.Encoding
                 return false;
             }
 
+            if (_bytes != null && obj._bytes != null)
+            {
+                return Sugar.Bytes.UnsafeCompare(_bytes, obj._bytes);
+            }
+
             if (_hexString != null && obj._hexString != null)
             {
                 return _hexString == obj;
@@ -43,9 +49,9 @@ namespace Nevermind.Core.Encoding
                 return _hexString == obj;
             }
 
-            if (_hexString == null && obj._hexString == null)
+            if (_hexString == null && obj._hexString != null)
             {
-                return this == (string) obj;
+                return this == obj._hexString;
             }
 
             Debug.Assert(false, "one of the conditions should be true");
@@ -66,7 +72,7 @@ namespace Nevermind.Core.Encoding
 
             // this actually depends on whether it is quantity or byte data...
             string trimmed = noLeadingZeros ? _hexString.TrimStart('0') : _hexString;
-            if(trimmed.Length == 0)
+            if (trimmed.Length == 0)
             {
                 trimmed = string.Concat(trimmed, '0');
             }
@@ -74,7 +80,7 @@ namespace Nevermind.Core.Encoding
             return withZeroX ? string.Concat("0x", trimmed) : trimmed;
         }
 
-        public static implicit operator byte[](Hex hex)
+        public static implicit operator byte[] (Hex hex)
         {
             return hex._bytes ?? (hex._bytes = ToBytes(hex._hexString));
         }
@@ -111,13 +117,37 @@ namespace Nevermind.Core.Encoding
                 return false;
             }
 
-            return Equals((Hex) obj);
+            return Equals((Hex)obj);
         }
 
+        [SuppressMessage("ReSharper", "NonReadonlyMemberInGetHashCode")]
         public override int GetHashCode()
         {
-            // ReSharper disable once NonReadonlyMemberInGetHashCode
-            return (_hexString ?? this).GetHashCode();
+            if (_bytes == null)
+            {
+                _bytes = ToBytes(_hexString);
+            }
+
+            if (_bytes.Length == 0)
+            {
+                return 0;
+            }
+
+            unchecked
+            {
+                const int p = 16777619;
+                int hash = (int)2166136261;
+
+                hash = hash ^ _bytes[0] * p;
+                hash = hash ^ _bytes[_bytes.Length - 1] * p;
+
+                hash += hash << 13;
+                hash ^= hash >> 7;
+                hash += hash << 3;
+                hash ^= hash >> 17;
+                hash += hash << 5;
+                return hash;
+            }
         }
 
         private static uint[] CreateLookup32(string format)
@@ -126,7 +156,7 @@ namespace Nevermind.Core.Encoding
             for (int i = 0; i < 256; i++)
             {
                 string s = i.ToString(format);
-                result[i] = s[0] + ((uint) s[1] << 16);
+                result[i] = s[0] + ((uint)s[1] << 16);
             }
             return result;
         }
@@ -152,8 +182,8 @@ namespace Nevermind.Core.Encoding
             for (int i = 0; i < bytes.Length; i++)
             {
                 uint val = Lookup32[bytes[i]];
-                char char1 = (char) val;
-                char char2 = (char) (val >> 16);
+                char char1 = (char)val;
+                char char2 = (char)(val >> 16);
 
                 if (leadingZeros <= i * 2)
                 {
