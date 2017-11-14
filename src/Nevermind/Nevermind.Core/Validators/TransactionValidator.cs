@@ -1,6 +1,4 @@
-﻿using Nevermind.Core.Signing;
-
-namespace Nevermind.Core.Validators
+﻿namespace Nevermind.Core.Validators
 {
     public static class TransactionValidator
     {
@@ -10,12 +8,15 @@ namespace Nevermind.Core.Validators
             bool useEip155Rule = false,
             int chainIdValue = 0)
         {
-            bool verified = Signer.Verify(
-                sender,
-                transaction,
-                useEip155Rule,
-                (ChainId)chainIdValue);
+            // TODO: since I recover myself I guess there is no need for it?
+            //bool verified = Signer.Verify(
+            //    sender,
+            //    transaction,
+            //    useEip155Rule,
+            //    (ChainId)chainIdValue);
+            bool verified = true;
 
+            // ReSharper disable once ConditionIsAlwaysTrueOrFalse
             return IsWellFormed(transaction) && verified;
         }
 

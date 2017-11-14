@@ -14,6 +14,7 @@ namespace Nevermind.Blockchain.Test.Runner
             Console.WriteLine($"RUNNING {subset}");
             Stopwatch stopwatch = new Stopwatch();
             IEnumerable<BlockchainTest> tests = LoadTests(subset);
+            bool isNewLine = true;
             foreach (BlockchainTest test in tests)
             {
                 stopwatch.Reset();
@@ -37,9 +38,26 @@ namespace Nevermind.Blockchain.Test.Runner
                 long ns = 1_000_000_000L * stopwatch.ElapsedTicks / Stopwatch.Frequency;
                 long ms = 1_000L * stopwatch.ElapsedTicks / Stopwatch.Frequency;
                 totalMs += ms;
-                Console.WriteLine($"  {test.Name,-80}{ns / iterations,14}ns{ms / iterations,8}ms");
+                if (ms > 10)
+                {
+                    if (!isNewLine)
+                    {
+                        Console.WriteLine();
+                    }
+
+                    Console.WriteLine($"  {test.Name,-80}{ns / iterations,14}ns{ms / iterations,8}ms");
+                }
+                else
+                {
+                    Console.Write(".");
+                    isNewLine = false;
+                }
             }
 
+            if (!isNewLine)
+            {
+                Console.WriteLine();
+            }
             return new CategoryResult(totalMs, failingTests.ToArray());
         }
     }

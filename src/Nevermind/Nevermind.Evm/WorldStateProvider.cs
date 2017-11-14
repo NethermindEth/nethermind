@@ -11,13 +11,11 @@ namespace Nevermind.Evm
     {
         private readonly Dictionary<Keccak, byte[]> _code = new Dictionary<Keccak, byte[]>();
 
+        private readonly Dictionary<Address, Account> _accountCache = new Dictionary<Address, Account>();
+
         public WorldStateProvider(StateTree stateTree)
         {
             State = stateTree;
-        }
-
-        public WorldStateProvider()
-        {
         }
 
         public StateTree State { get; }
@@ -35,12 +33,41 @@ namespace Nevermind.Evm
 
         public bool AccountExists(Address address)
         {
-            return GetAccount(address) != null;
+            if (_accountCache.ContainsKey(address))
+            {
+                return true;
+            }
+
+            Account account = GetAccount(address);
+            if (account != null)
+            {
+                _accountCache[address] = account;
+            }
+
+            return account != null;
+        }
+
+        private Account GetThroughCache(Address address)
+        {
+            if (_accountCache.ContainsKey(address))
+            {
+                return _accountCache[address];
+            }
+
+            Account account = GetAccount(address);
+            if (account != null)
+            {
+                _accountCache[address] = account;
+            }
+            
+            return account;
         }
 
         public bool IsEmptyAccount(Address address)
         {
-            Account account = GetAccount(address);
+            // TODO: assumed exists
+
+            Account account = GetThroughCache(address);
             return account.Balance == BigInteger.Zero &&
                    account.Nonce == BigInteger.Zero &&
                    account.CodeHash == Keccak.OfAnEmptyString &&
@@ -49,19 +76,19 @@ namespace Nevermind.Evm
 
         public BigInteger GetNonce(Address address)
         {
-            Account account = GetAccount(address);
+            Account account = GetThroughCache(address);
             return account?.Nonce ?? BigInteger.Zero;
         }
 
         public BigInteger GetBalance(Address address)
         {
-            Account account = GetAccount(address);
+            Account account = GetThroughCache(address);
             return account?.Balance ?? BigInteger.Zero;
         }
 
         public void UpdateCodeHash(Address address, Keccak codeHash)
         {
-            Account account = GetAccount(address);
+            Account account = GetThroughCache(address);
             account.CodeHash = codeHash;
             if (ShouldLog.Evm)
             {
@@ -73,7 +100,7 @@ namespace Nevermind.Evm
 
         public void UpdateBalance(Address address, BigInteger balanceChange)
         {
-            Account account = GetAccount(address);
+            Account account = GetThroughCache(address);
             account.Balance += balanceChange;
             if (ShouldLog.Evm)
             {
@@ -85,7 +112,7 @@ namespace Nevermind.Evm
 
         public void UpdateStorageRoot(Address address, Keccak storageRoot)
         {
-            Account account = GetAccount(address);
+            Account account = GetThroughCache(address);
             account.StorageRoot = storageRoot;
             UpdateAccount(address, account);
         }
@@ -97,7 +124,7 @@ namespace Nevermind.Evm
                 //Console.WriteLine($"  SETTING NONCE of {address}");
             }
 
-            Account account = GetAccount(address);
+            Account account = GetThroughCache(address);
             account.Nonce++;
             if (ShouldLog.Evm)
             {
@@ -132,7 +159,7 @@ namespace Nevermind.Evm
 
         public byte[] GetCode(Address address)
         {
-            Account account = GetAccount(address);
+            Account account = GetThroughCache(address);
             if (account == null)
             {
                 return new byte[0];
@@ -143,16 +170,28 @@ namespace Nevermind.Evm
 
         public void DeleteAccount(Address address)
         {
+            if (_accountCache.ContainsKey(address))
+            {
+                _accountCache.Remove(address);
+            }
+
             UpdateAccount(address, null);
         }
 
-        public StateSnapshot TakeSnapshot()
+        private class Change
         {
-            return State.TakeSnapshot();
+        }
+
+        private List<Change> _changes = new List<Change>();
+
+        public int TakeSnapshot()
+        {
+            return _changes.Count;
         }
 
         public void Restore(StateSnapshot snapshot)
         {
+            _accountCache.Clear();
             State.Restore(snapshot);
         }
 
@@ -165,19 +204,9 @@ namespace Nevermind.Evm
 
             Account account = new Account();
             account.Balance = balance;
+
+            _accountCache.Add(address, account);
             UpdateAccount(address, account);
-        }
-
-        private Account GetOrCreateAccount(Address address)
-        {
-            Account account = GetAccount(address);
-            if (account == null)
-            {
-                account = new Account();
-                UpdateAccount(address, account);
-            }
-
-            return account;
         }
 
         private void UpdateAccount(Address address, Account account)

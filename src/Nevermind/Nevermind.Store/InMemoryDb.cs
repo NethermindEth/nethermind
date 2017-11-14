@@ -6,7 +6,19 @@ namespace Nevermind.Store
 {
     public class InMemoryDb
     {
-        private readonly Dictionary<Keccak, byte[]> _db = new Dictionary<Keccak, byte[]>();
+        private const int DefaultInitialSize = 4;
+
+        private InMemoryDb(Dictionary<Keccak, byte[]> toCopy)
+        {
+            _db = new Dictionary<Keccak, byte[]>(toCopy);
+        }
+
+        public InMemoryDb()
+        {
+            _db = new Dictionary<Keccak, byte[]>(DefaultInitialSize);
+        }
+
+        private readonly Dictionary<Keccak, byte[]> _db;
 
         public byte[] this[Keccak key]
         {
@@ -33,13 +45,7 @@ namespace Nevermind.Store
 
         public InMemoryDb TakeSnapshot()
         {
-            InMemoryDb snapshot = new InMemoryDb();
-            foreach (KeyValuePair<Keccak, byte[]> pair in _db)
-            {
-                snapshot._db[pair.Key] = pair.Value;
-            }
-
-            return snapshot;
+            return new InMemoryDb(_db);
         }
     }
 }

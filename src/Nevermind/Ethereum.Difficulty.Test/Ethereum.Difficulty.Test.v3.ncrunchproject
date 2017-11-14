@@ -6,24 +6,6 @@
     <AnalyseExecutionTimes>False</AnalyseExecutionTimes>
     <DefaultTestTimeout>300000</DefaultTestTimeout>
     <IgnoredTests>
-      <FixtureTestSelector>
-        <FixtureName>Ethereum.Difficulty.Test.DifficultyTestsHomestead</FixtureName>
-      </FixtureTestSelector>
-      <FixtureTestSelector>
-        <FixtureName>Ethereum.Difficulty.Test.DifficultyTestsFrontier</FixtureName>
-      </FixtureTestSelector>
-      <FixtureTestSelector>
-        <FixtureName>Ethereum.Difficulty.Test.DifficultyTestsOlimpic</FixtureName>
-      </FixtureTestSelector>
-      <FixtureTestSelector>
-        <FixtureName>Ethereum.Difficulty.Test.DifficultyTestsMorden</FixtureName>
-      </FixtureTestSelector>
-      <FixtureTestSelector>
-        <FixtureName>Ethereum.Difficulty.Test.DifficultyTestsMain</FixtureName>
-      </FixtureTestSelector>
-      <FixtureTestSelector>
-        <FixtureName>Ethereum.Difficulty.Test.DifficultyTestsRopsten</FixtureName>
-      </FixtureTestSelector>
       <AllTestsSelector />
     </IgnoredTests>
     <IgnoreThisComponentCompletely>True</IgnoreThisComponentCompletely>

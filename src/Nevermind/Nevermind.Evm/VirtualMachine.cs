@@ -176,6 +176,11 @@ namespace Nevermind.Evm
                     currentState = _stateStack.Pop();
                     if (removeStipend)
                     {
+                        if (currentState.GasAvailable < GasCostOf.CallStipend)
+                        {
+                            throw new OutOfGasException();
+                        }
+
                         currentState.GasAvailable -= GasCostOf.CallStipend;
                     }
                 }

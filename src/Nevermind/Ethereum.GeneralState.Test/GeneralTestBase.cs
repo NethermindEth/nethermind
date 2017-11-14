@@ -169,7 +169,6 @@ namespace Ethereum.GeneralState.Test
 
             Address sender = test.IncomingTransaction.SecretKey.Address;
             TransactionReceipt receipt = processor.Execute(
-                sender,
                 transaction,
                 header,
                 BigInteger.Zero

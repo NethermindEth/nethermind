@@ -146,7 +146,6 @@ namespace Ethereum.Blockchain.Test
 
                 Address sender = Signer.Recover(transaction);
                 TransactionReceipt receipt = processor.Execute(
-                    sender,
                     transaction,
                     header,
                     gasUsedSoFar

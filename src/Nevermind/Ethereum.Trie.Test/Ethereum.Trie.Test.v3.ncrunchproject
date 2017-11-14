@@ -1,9 +1,7 @@
 ﻿<ProjectConfiguration>
   <Settings>
     <IgnoredTests>
-      <FixtureTestSelector>
-        <FixtureName>Ethereum.Trie.Test.TrieTests</FixtureName>
-      </FixtureTestSelector>
+      <AllTestsSelector />
     </IgnoredTests>
     <IgnoreThisComponentCompletely>True</IgnoreThisComponentCompletely>
   </Settings>

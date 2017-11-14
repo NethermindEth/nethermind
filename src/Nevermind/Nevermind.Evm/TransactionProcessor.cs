@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Numerics;
 using Nevermind.Core;
 using Nevermind.Core.Encoding;
+using Nevermind.Core.Signing;
 using Nevermind.Core.Validators;
 using Nevermind.Store;
 
@@ -43,7 +44,6 @@ namespace Nevermind.Evm
         }
 
         public TransactionReceipt Execute(
-            Address sender,
             Transaction transaction,
             BlockHeader block,
             BigInteger blockGasUsedSoFar)
@@ -55,6 +55,7 @@ namespace Nevermind.Evm
             byte[] machineCode = transaction.Init;
             byte[] data = transaction.Data ?? new byte[0];
 
+            Address sender = Signer.Recover(transaction);
             if (ShouldLog.TransactionProcessor)
             {
                 Console.WriteLine("IS_CONTRACT_CREATION: " + transaction.IsContractCreation);

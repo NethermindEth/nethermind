@@ -37,7 +37,7 @@ namespace Nevermind.Blockchain.Test.Runner
             ShouldLog.Evm = false;
             ShouldLog.TransactionProcessor = false;
 
-            //Run("stAttackTest");
+            Run("stAttackTest");
             Run("stBadOpcode");
             Run("stCallCodes");
             Run("stCallCreateCallCodeTest");
@@ -61,14 +61,14 @@ namespace Nevermind.Blockchain.Test.Runner
             Run("stNonZeroCallsTest");
             Run("stPreCompiledContracts");
             Run("stPreCompiledContracts2");
-            //Run("stQuadraticComplexityTest");
-            //Run("stRandom");
-            //Run("stRandom2");
-            //Run("stRecursiveCreate");
+            Run("stQuadraticComplexityTest");
+            Run("stRandom");
+            Run("stRandom2");
+            Run("stRecursiveCreate");
             Run("stRefundTest");
             Run("stReturnDataTest");
-            //Run("stRevertTest");
-            //Run("stSolidityTest");
+            Run("stRevertTest");
+            Run("stSolidityTest");
             Run("stSpecialTest");
             Run("stStackTests");
             Run("stStaticCall");
