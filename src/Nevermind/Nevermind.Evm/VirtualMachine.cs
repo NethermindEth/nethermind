@@ -157,7 +157,7 @@ namespace Nevermind.Evm
                         Console.WriteLine($"EXCEPTION ({ex.GetType().Name}) IN {currentState.ExecutionType} AT DEPTH {currentState.Env.CallDepth} - RESTORING SNAPSHOT");
                     }
 
-                    if (currentState.StateSnapshot != null) // TODO: temp check - handle transaction processor calls here as well or change up
+                    if (currentState.StateSnapshot != -1) // TODO: temp check - handle transaction processor calls here as well or change up
                     {
                         _worldStateProvider.Restore(currentState.StateSnapshot);
                         _storageProvider.Restore(currentState.StorageSnapshot);
@@ -1294,7 +1294,7 @@ namespace Nevermind.Evm
                             throw new TransactionCollisionException();
                         }
 
-                        StateSnapshot stateSnapshot = _worldStateProvider.TakeSnapshot();
+                        int stateSnapshot = _worldStateProvider.TakeSnapshot();
                         Dictionary<Address, StateSnapshot> storageSnapshot = _storageProvider.TakeSnapshot();
 
                         ulong callGas = gasAvailable;
@@ -1402,7 +1402,7 @@ namespace Nevermind.Evm
 
                         byte[] callData = state.Memory.Load(dataOffset, dataLength);
 
-                        StateSnapshot stateSnapshot = _worldStateProvider.TakeSnapshot();
+                        int stateSnapshot = _worldStateProvider.TakeSnapshot();
                         Dictionary<Address, StateSnapshot> storageSnapshot = _storageProvider.TakeSnapshot();
 
                         if (!value.IsZero)

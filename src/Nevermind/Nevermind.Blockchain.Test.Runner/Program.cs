@@ -34,8 +34,9 @@ namespace Nevermind.Blockchain.Test.Runner
 
         private static void Main(string[] args)
         {
-            ShouldLog.Evm = false;
-            ShouldLog.TransactionProcessor = false;
+            //ShouldLog.Evm = false;
+            //ShouldLog.TransactionProcessor = false;
+            //ShouldLog.State = false;
 
             Run("stAttackTest");
             Run("stBadOpcode");

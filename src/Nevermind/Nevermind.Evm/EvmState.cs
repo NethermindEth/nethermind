@@ -17,8 +17,9 @@ namespace Nevermind.Evm
         private ulong _activeWordsInMemory;
         public int StackHead = 0;
 
+        // TODO - snapshot 0, not -1 I guess
         public EvmState(ulong gasAvailable, ExecutionEnvironment env, ExecutionType executionType)
-            : this(gasAvailable, env, executionType, null, null, BigInteger.Zero, BigInteger.Zero)
+            : this(gasAvailable, env, executionType, -1, null, BigInteger.Zero, BigInteger.Zero)
         {
             GasAvailable = gasAvailable;
             Env = env;
@@ -28,7 +29,7 @@ namespace Nevermind.Evm
             ulong gasAvailable,
             ExecutionEnvironment env,
             ExecutionType executionType,
-            StateSnapshot stateSnapshot,
+            int stateSnapshot,
             Dictionary<Address, StateSnapshot> storageSnapshot,
             BigInteger outputDestination,
             BigInteger outputLength)
@@ -67,7 +68,7 @@ namespace Nevermind.Evm
         internal ExecutionType ExecutionType { get; }
         internal BigInteger OutputDestination { get; }
         internal BigInteger OutputLength { get; }
-        public StateSnapshot StateSnapshot { get; }
+        public int StateSnapshot { get; }
         public Dictionary<Address, StateSnapshot> StorageSnapshot { get; }
 
         public BigInteger Refund { get; set; } = BigInteger.Zero;

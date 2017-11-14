@@ -124,7 +124,7 @@ namespace Nevermind.Evm
                 recipient = new Address(addressBaseKeccak);
             }
 
-            StateSnapshot snapshot = _stateProvider.TakeSnapshot();
+            int snapshot = _stateProvider.TakeSnapshot();
             Dictionary<Address, StateSnapshot> storageSnapshot = recipient != null ? _storageProvider.TakeSnapshot() : null;
             _stateProvider.UpdateBalance(sender, -value);
 
@@ -258,6 +258,8 @@ namespace Nevermind.Evm
                     _stateProvider.UpdateBalance(block.Beneficiary, gasSpent * gasPrice);
                 }
             }
+
+            _stateProvider.Commit();
 
             TransactionReceipt transferReceipt = new TransactionReceipt();
             transferReceipt.Logs = logEntries.ToArray();

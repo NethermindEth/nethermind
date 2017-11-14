@@ -20,5 +20,45 @@ namespace Nevermind.Core
 
         // can be an extension
         public bool IsSimple => CodeHash == Keccak.OfAnEmptyString;
+
+        public Account WithChangedBalance(BigInteger newBalance)
+        {
+            Account account = new Account();
+            account.Nonce = Nonce;
+            account.Balance = newBalance;
+            account.StorageRoot = StorageRoot;
+            account.CodeHash = CodeHash;
+            return account;
+        }
+
+        public Account WithChangedNonce(BigInteger newNonce)
+        {
+            Account account = new Account();
+            account.Nonce = newNonce;
+            account.Balance = Balance;
+            account.StorageRoot = StorageRoot;
+            account.CodeHash = CodeHash;
+            return account;
+        }
+
+        public Account WithChangedStorageRoot(Keccak newStorageRoot)
+        {
+            Account account = new Account();
+            account.Nonce = Nonce;
+            account.Balance = Balance;
+            account.StorageRoot = newStorageRoot;
+            account.CodeHash = CodeHash;
+            return account;
+        }
+
+        public Account WithChangedCodeHash(Keccak newCodeHash)
+        {
+            Account account = new Account();
+            account.Nonce = Nonce;
+            account.Balance = Balance;
+            account.StorageRoot = StorageRoot;
+            account.CodeHash = newCodeHash;
+            return account;
+        }
     }
 }

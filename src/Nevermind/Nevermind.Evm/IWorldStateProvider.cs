@@ -9,13 +9,9 @@ namespace Nevermind.Evm
     {
         StateTree State { get; }
 
+        void DeleteAccount(Address address);
+
         void CreateAccount(Address address, BigInteger balance);
-
-        //Account GetOrCreateAccount(Address address);
-
-        //void UpdateAccount(Address address, Account account);
-
-        //Account GetAccount(Address address);
 
         bool AccountExists(Address address);
 
@@ -24,6 +20,10 @@ namespace Nevermind.Evm
         BigInteger GetNonce(Address address);
 
         BigInteger GetBalance(Address address);
+
+        byte[] GetCode(Keccak codeHash);
+
+        byte[] GetCode(Address address);
 
         void UpdateCodeHash(Address address, Keccak codeHash);
 
@@ -35,14 +35,10 @@ namespace Nevermind.Evm
 
         Keccak UpdateCode(byte[] code);
 
-        byte[] GetCode(Keccak codeHash);
+        int TakeSnapshot();
 
-        byte[] GetCode(Address address);
+        void Restore(int snapshot);
 
-        void DeleteAccount(Address address);
-
-        StateSnapshot TakeSnapshot();
-
-        void Restore(StateSnapshot snapshot);
+        void Commit();
     }
 }

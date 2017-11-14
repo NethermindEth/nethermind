@@ -129,6 +129,7 @@ namespace Ethereum.Blockchain.Test
             List<Transaction> transactions = new List<Transaction>();
 
             BigInteger gasUsedSoFar = 0;
+            _stateProvider.Commit();
 
             stopwatch?.Start();
             foreach (IncomingTransaction testTransaction in oneBlock.Transactions)
@@ -163,6 +164,7 @@ namespace Ethereum.Blockchain.Test
             }
 
             _stateProvider.UpdateBalance(header.Beneficiary, 5.Ether());
+            _stateProvider.Commit();
 
             List<string> differences = new List<string>();
             foreach (KeyValuePair<Address, AccountState> accountState in test.PostState)
