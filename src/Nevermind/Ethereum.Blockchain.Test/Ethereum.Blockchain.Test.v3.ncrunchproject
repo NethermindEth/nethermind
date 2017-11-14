@@ -69,9 +69,6 @@
         <FixtureName>Ethereum.Blockchain.Test.NonZeroCallTests</FixtureName>
       </FixtureTestSelector>
       <FixtureTestSelector>
-        <FixtureName>Ethereum.Blockchain.Test.AttackTests</FixtureName>
-      </FixtureTestSelector>
-      <FixtureTestSelector>
         <FixtureName>Ethereum.Blockchain.Test.QuadraticComplexityTests</FixtureName>
       </FixtureTestSelector>
       <FixtureTestSelector>
@@ -85,6 +82,9 @@
       </FixtureTestSelector>
       <FixtureTestSelector>
         <FixtureName>Ethereum.Blockchain.Test.CreateTests</FixtureName>
+      </FixtureTestSelector>
+      <FixtureTestSelector>
+        <FixtureName>Ethereum.Blockchain.Test.AttackTests</FixtureName>
       </FixtureTestSelector>
     </IgnoredTests>
     <InstrumentOutputAssembly>False</InstrumentOutputAssembly>

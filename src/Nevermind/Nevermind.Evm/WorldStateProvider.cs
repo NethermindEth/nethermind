@@ -287,10 +287,11 @@ namespace Nevermind.Evm
                 }
             }
 
+            _capacity = 1024;
+            _changes = new Change[_capacity];
             _currentPosition = -1;
             _committedThisRound.Clear();
             _cache.Clear();
-            _changes = new Change[1024]; // TODO: remove after tests passing
         }
 
         private Account GetAccount(Address address)
