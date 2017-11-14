@@ -1240,7 +1240,7 @@ namespace Nevermind.Evm
                             GasCostOf.Log + (ulong)topicsCount * GasCostOf.LogTopic +
                             (ulong)length * GasCostOf.LogData, ref gasAvailable);
 
-                        byte[] data = state.Memory.Load(memoryPos, length, true);
+                        byte[] data = state.Memory.Load(memoryPos, length);
                         Keccak[] topics = new Keccak[topicsCount];
                         for (int i = 0; i < topicsCount; i++)
                         {
@@ -1269,7 +1269,7 @@ namespace Nevermind.Evm
                         UpdateGas(GasCostOf.Create, ref gasAvailable);
                         UpdateMemoryCost(memoryPositionOfInitCode, initCodeLength);
 
-                        byte[] initCode = state.Memory.Load(memoryPositionOfInitCode, initCodeLength, true);
+                        byte[] initCode = state.Memory.Load(memoryPositionOfInitCode, initCodeLength);
 
                         Keccak contractAddressKeccak =
                             Keccak.Compute(Rlp.Encode(env.CodeOwner, _worldStateProvider.GetNonce(env.CodeOwner)));

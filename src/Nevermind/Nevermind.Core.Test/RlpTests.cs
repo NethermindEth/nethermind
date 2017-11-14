@@ -72,7 +72,7 @@ namespace Nevermind.Core.Test
         [Test]
         public void Serializing_empty_sequence()
         {
-            Rlp output = Rlp.Encode();
+            Rlp output = Rlp.Encode(new object[0]);
             Assert.AreEqual(1, output.Length);
             Assert.AreEqual(192, output[0]);
         }

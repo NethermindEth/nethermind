@@ -1,79 +1,71 @@
-﻿using System;
-using System.IO;
+﻿using System.IO;
 using System.Numerics;
-using Nevermind.Core.Sugar;
 
 namespace Nevermind.Evm
 {
     public class EvmMemory
     {
-        private MemoryStream memory = new MemoryStream();
-
         private const int WordSize = 32;
 
-        private byte[] _memory = new byte[0];
-
-        private void Expand(int size)
-        {
-            Array.Resize(ref _memory, size);
-        }
+        private static readonly byte[] EmptyBytes = new byte[0];
+        private readonly MemoryStream _memory = new MemoryStream();
 
         public void SaveWord(BigInteger location, byte[] word)
         {
-            Save(location, word.PadLeft(32));
+            _memory.Position = (long)location;
+            if (word.Length < WordSize)
+            {
+                byte[] zeros = new byte[WordSize - word.Length];
+                _memory.Write(zeros, 0, zeros.Length);
+            }
+
+            _memory.Write(word, 0, word.Length);
         }
 
         public void SaveByte(BigInteger location, byte[] value)
         {
-            Save(location, new byte[] { value[value.Length - 1] });
+            _memory.Position = (long)location;
+            _memory.WriteByte(value[value.Length - 1]);
         }
 
         // TODO: move
         public static ulong Div32Ceiling(BigInteger length)
         {
-            BigInteger rem;
-            BigInteger result = BigInteger.DivRem(length, 32, out rem);
+            BigInteger result = BigInteger.DivRem(length, 32, out BigInteger rem);
             return (ulong)(result + (rem > 0 ? 1 : 0));
         }
 
         public void Save(BigInteger location, byte[] value)
         {
-            if (_memory.Length < location + value.Length)
-            {
-                Expand((int)location + value.Length);
-            }
-
-            for (int i = 0; i < value.Length; i++)
-            {
-                _memory[(int)location + i] = value[i];
-            }
+            _memory.Position = (long)location;
+            _memory.Write(value, 0, value.Length);
         }
 
         public byte[] Load(BigInteger location)
         {
-            return Load(location, WordSize);
+            byte[] buffer = new byte[WordSize];
+            _memory.Position = (long)location;
+            _memory.Read(buffer, 0, WordSize);
+            return buffer;
         }
 
-        public byte[] Load(BigInteger location, BigInteger length, bool allowInvalidLocations = true)
+        public byte[] Load(BigInteger location, BigInteger length)
         {
             if (length == BigInteger.Zero)
             {
-                return new byte[0];
+                return EmptyBytes;
             }
 
-            if (location > _memory.Length)
+            long position = (long)location;
+
+            byte[] buffer = new byte[(long)length];
+            if (location <= _memory.Length)
             {
-                if (allowInvalidLocations)
-                {
-                    return new byte[(int)length];
-                }
-
-                throw new MemoryAccessException();
+                _memory.Position = position;
+                _memory.Read(buffer, 0, buffer.Length);
             }
 
-            byte[] bytes = _memory.Slice((int)location, (int)BigInteger.Max(0, BigInteger.Min(length, _memory.Length - location)))
-                .PadRight((int)length);
-            return bytes;
+            return buffer;
         }
     }
 }

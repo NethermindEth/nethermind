@@ -29,9 +29,6 @@
         <TestName>Ethereum.Blockchain.Test.TransactionTests.Test(Opcodes_TransactionInit_d8g0v0_Frontier)</TestName>
       </NamedTestSelector>
       <FixtureTestSelector>
-        <FixtureName>Ethereum.Blockchain.Test.MemoryTests</FixtureName>
-      </FixtureTestSelector>
-      <FixtureTestSelector>
         <FixtureName>Ethereum.Blockchain.Test.ZeroCallsTests</FixtureName>
       </FixtureTestSelector>
       <FixtureTestSelector>
@@ -50,9 +47,6 @@
         <FixtureName>Ethereum.Blockchain.Test.ReturnDataTests</FixtureName>
       </FixtureTestSelector>
       <FixtureTestSelector>
-        <FixtureName>Ethereum.Blockchain.Test.CreateTests</FixtureName>
-      </FixtureTestSelector>
-      <FixtureTestSelector>
         <FixtureName>Ethereum.Blockchain.Test.NonZeroCallTests</FixtureName>
       </FixtureTestSelector>
       <FixtureTestSelector>
@@ -66,15 +60,6 @@
       </FixtureTestSelector>
       <FixtureTestSelector>
         <FixtureName>Ethereum.Blockchain.Test.StackTests</FixtureName>
-      </FixtureTestSelector>
-      <FixtureTestSelector>
-        <FixtureName>Ethereum.Blockchain.Test.MemoryStressTests</FixtureName>
-      </FixtureTestSelector>
-      <FixtureTestSelector>
-        <FixtureName>Ethereum.Blockchain.Test.CallCreateCallCodeTests</FixtureName>
-      </FixtureTestSelector>
-      <FixtureTestSelector>
-        <FixtureName>Ethereum.Blockchain.Test.CallCodeTests</FixtureName>
       </FixtureTestSelector>
       <FixtureTestSelector>
         <FixtureName>Ethereum.Blockchain.Test.RecursiveCreateTests</FixtureName>
@@ -2770,6 +2755,33 @@
       <NamedTestSelector>
         <TestName>Ethereum.Blockchain.Test.AttackTests.Test(ContractCreationSpam_d0g0v0_Frontier)</TestName>
       </NamedTestSelector>
+      <FixtureTestSelector>
+        <FixtureName>Ethereum.Blockchain.Test.TransactionTests</FixtureName>
+      </FixtureTestSelector>
+      <FixtureTestSelector>
+        <FixtureName>Ethereum.Blockchain.Test.Random2Tests</FixtureName>
+      </FixtureTestSelector>
+      <FixtureTestSelector>
+        <FixtureName>Ethereum.Blockchain.Test.SystemOperationsTests</FixtureName>
+      </FixtureTestSelector>
+      <NamedTestSelector>
+        <TestName>Ethereum.Blockchain.Test.RandomTests.Test(randomStatetest148_d0g0v0_Frontier)</TestName>
+      </NamedTestSelector>
+      <FixtureTestSelector>
+        <FixtureName>Ethereum.Blockchain.Test.CallCodeTests</FixtureName>
+      </FixtureTestSelector>
+      <FixtureTestSelector>
+        <FixtureName>Ethereum.Blockchain.Test.CallCreateCallCodeTests</FixtureName>
+      </FixtureTestSelector>
+      <FixtureTestSelector>
+        <FixtureName>Ethereum.Blockchain.Test.CreateTests</FixtureName>
+      </FixtureTestSelector>
+      <FixtureTestSelector>
+        <FixtureName>Ethereum.Blockchain.Test.MemoryTests</FixtureName>
+      </FixtureTestSelector>
+      <FixtureTestSelector>
+        <FixtureName>Ethereum.Blockchain.Test.MemoryStressTests</FixtureName>
+      </FixtureTestSelector>
     </IgnoredTests>
   </Settings>
 </ProjectConfiguration>
