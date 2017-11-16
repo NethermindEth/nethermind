@@ -11,27 +11,30 @@ namespace Nevermind.Evm
 {
     public class TransactionProcessor
     {
+        private static readonly IntrinsicGasCalculator IntrinsicGasCalculator = new IntrinsicGasCalculator();
+        private readonly ILogger _logger;
+        private readonly IProtocolSpecification _protocolSpecification;
         private readonly IWorldStateProvider _stateProvider;
         private readonly IStorageProvider _storageProvider;
-        private readonly IProtocolSpecification _protocolSpecification;
         private readonly IVirtualMachine _virtualMachine;
-        public ChainId ChainId { get; }
-
-        private static readonly IntrinsicGasCalculator IntrinsicGasCalculator = new IntrinsicGasCalculator();
 
         public TransactionProcessor(
             IVirtualMachine virtualMachine,
             IWorldStateProvider stateProvider,
             IStorageProvider storageProvider,
             IProtocolSpecification protocolSpecification,
-            ChainId chainId)
+            ChainId chainId,
+            ILogger logger)
         {
             _virtualMachine = virtualMachine;
             _stateProvider = stateProvider;
             _storageProvider = storageProvider;
             _protocolSpecification = protocolSpecification;
+            _logger = logger;
             ChainId = chainId;
         }
+
+        public ChainId ChainId { get; }
 
         private TransactionReceipt GetNullReceipt(BigInteger totalGasUsed)
         {
@@ -56,18 +59,15 @@ namespace Nevermind.Evm
             byte[] data = transaction.Data ?? new byte[0];
 
             Address sender = Signer.Recover(transaction);
-            if (ShouldLog.TransactionProcessor)
-            {
-                Console.WriteLine("IS_CONTRACT_CREATION: " + transaction.IsContractCreation);
-                Console.WriteLine("IS_MESSAGE_CALL: " + transaction.IsMessageCall);
-                Console.WriteLine("IS_TRANSFER: " + transaction.IsTransfer);
-                Console.WriteLine("SENDER: " + sender);
-                Console.WriteLine("TO: " + transaction.To);
-                Console.WriteLine("GAS LIMIT: " + transaction.GasLimit);
-                Console.WriteLine("GAS PRICE: " + transaction.GasPrice);
-                Console.WriteLine("VALUE: " + transaction.Value);
-                Console.WriteLine("DATA_LENGTH: " + (transaction.Data?.Length ?? 0));
-            }
+            _logger?.Log("IS_CONTRACT_CREATION: " + transaction.IsContractCreation);
+            _logger?.Log("IS_MESSAGE_CALL: " + transaction.IsMessageCall);
+            _logger?.Log("IS_TRANSFER: " + transaction.IsTransfer);
+            _logger?.Log("SENDER: " + sender);
+            _logger?.Log("TO: " + transaction.To);
+            _logger?.Log("GAS LIMIT: " + transaction.GasLimit);
+            _logger?.Log("GAS PRICE: " + transaction.GasPrice);
+            _logger?.Log("VALUE: " + transaction.Value);
+            _logger?.Log("DATA_LENGTH: " + (transaction.Data?.Length ?? 0));
 
             if (sender == null)
             {
@@ -80,7 +80,7 @@ namespace Nevermind.Evm
             }
 
             ulong intrinsicGas = IntrinsicGasCalculator.Calculate(transaction, block.Number);
-            if (ShouldLog.TransactionProcessor) Console.WriteLine("INTRINSIC GAS: " + intrinsicGas);
+            _logger?.Log("INTRINSIC GAS: " + intrinsicGas);
 
             if (intrinsicGas > block.GasLimit - blockGasUsedSoFar)
             {
@@ -107,11 +107,8 @@ namespace Nevermind.Evm
                 return GetNullReceipt(block.GasUsed + gasLimit);
             }
 
-            // checkpoint
             _stateProvider.IncrementNonce(sender);
-            _stateProvider.UpdateBalance(sender, -gasLimit * gasPrice);
-
-            // TODO: fail if not enough? or just revert?
+            _stateProvider.UpdateBalance(sender, -gasLimit * gasPrice); // TODO: fail if not enough? or just revert?
 
             ulong gasAvailable = (ulong)(gasLimit - intrinsicGas);
             BigInteger gasSpent = gasLimit;
@@ -125,7 +122,7 @@ namespace Nevermind.Evm
             }
 
             int snapshot = _stateProvider.TakeSnapshot();
-            Dictionary<Address, StateSnapshot> storageSnapshot = recipient != null ? _storageProvider.TakeSnapshot() : null;
+            int storageSnapshot = _storageProvider.TakeSnapshot();
             _stateProvider.UpdateBalance(sender, -value);
 
             HashSet<Address> destroyedAccounts = new HashSet<Address>();
@@ -134,10 +131,7 @@ namespace Nevermind.Evm
             {
                 if (transaction.IsContractCreation)
                 {
-                    if (ShouldLog.TransactionProcessor)
-                    {
-                        Console.WriteLine("THIS IS CONTRACT CREATION");
-                    }
+                    _logger?.Log("THIS IS CONTRACT CREATION");
 
                     if (_stateProvider.AccountExists(recipient) && !_stateProvider.IsEmptyAccount(recipient))
                     {
@@ -224,7 +218,7 @@ namespace Nevermind.Evm
                     ulong destroyRefund = (ulong)substate.DestroyList.Count * RefundOf.Destroy;
                     BigInteger refund = BigInteger.Min(halfOfGasSpend, substate.Refund + destroyRefund);
                     BigInteger gasUnused = gasAvailable + refund;
-                    if (ShouldLog.TransactionProcessor) Console.WriteLine("REFUNDING UNUSED GAS OF " + gasUnused + " AND REFUND OF " + refund);
+                    _logger?.Log("REFUNDING UNUSED GAS OF " + gasUnused + " AND REFUND OF " + refund);
                     _stateProvider.UpdateBalance(sender, gasUnused * gasPrice);
 
                     gasSpent -= refund;
@@ -235,16 +229,15 @@ namespace Nevermind.Evm
                         _stateProvider.DeleteAccount(toBeDestroyed);
                         destroyedAccounts.Add(toBeDestroyed);
                     }
-
                 }
             }
             catch (Exception e)
             {
-                if (ShouldLog.TransactionProcessor) Console.WriteLine($"  EVM EXCEPTION: {e.GetType().Name}");
+                _logger?.Log($"  EVM EXCEPTION: {e.GetType().Name}");
                 _stateProvider.Restore(snapshot);
                 _storageProvider.Restore(storageSnapshot);
 
-                if (ShouldLog.TransactionProcessor) Console.WriteLine("GAS SPENT: " + gasSpent);
+                _logger?.Log("GAS SPENT: " + gasSpent);
             }
 
             if (!destroyedAccounts.Contains(block.Beneficiary))
@@ -259,6 +252,7 @@ namespace Nevermind.Evm
                 }
             }
 
+            _storageProvider.Commit(_stateProvider);
             _stateProvider.Commit();
 
             TransactionReceipt transferReceipt = new TransactionReceipt();

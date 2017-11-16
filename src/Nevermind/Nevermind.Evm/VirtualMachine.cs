@@ -3,7 +3,6 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.CompilerServices;
-using System.Text;
 using Nevermind.Core;
 using Nevermind.Core.Encoding;
 using Nevermind.Core.Sugar;
@@ -30,22 +29,12 @@ namespace Nevermind.Evm
 
         private static readonly Dictionary<BigInteger, IPrecompiledContract> PrecompiledContracts;
         private readonly IBlockhashProvider _blockhashProvider;
+        private readonly ILogger _logger;
         private readonly IProtocolSpecification _protocolSpecification;
 
         private readonly Stack<EvmState> _stateStack = new Stack<EvmState>();
         private readonly IStorageProvider _storageProvider;
         private readonly IWorldStateProvider _worldStateProvider;
-
-        private static byte[] GetPaddedSlice(byte[] data, BigInteger position, BigInteger length)
-        {
-            BigInteger bytesFromInput = BigInteger.Max(0, BigInteger.Min(data.Length - position, length));
-            if (position > data.Length)
-            {
-                return new byte[(int)length];
-            }
-
-            return data.Slice((int)position, (int)bytesFromInput).PadRight((int)length);
-        }
 
         static VirtualMachine()
         {
@@ -62,12 +51,14 @@ namespace Nevermind.Evm
             IBlockhashProvider blockhashProvider,
             IWorldStateProvider worldStateProvider,
             IStorageProvider storageProvider,
-            IProtocolSpecification protocolSpecification)
+            IProtocolSpecification protocolSpecification,
+            ILogger logger)
         {
             _blockhashProvider = blockhashProvider;
             _worldStateProvider = worldStateProvider;
             _storageProvider = storageProvider;
             _protocolSpecification = protocolSpecification;
+            _logger = logger;
         }
 
         public (byte[] output, TransactionSubstate) Run(EvmState state)
@@ -80,10 +71,7 @@ namespace Nevermind.Evm
             {
                 try
                 {
-                    if (ShouldLog.Evm)
-                    {
-                        Console.WriteLine($"BEGIN {currentState.ExecutionType} AT DEPTH {currentState.Env.CallDepth} (at {currentState.Env.CodeOwner})");
-                    }
+                    _logger?.Log($"BEGIN {currentState.ExecutionType} AT DEPTH {currentState.Env.CallDepth} (at {currentState.Env.CodeOwner})");
 
                     CallResult callResult;
                     if (currentState.ExecutionType == ExecutionType.Precompile)
@@ -145,17 +133,11 @@ namespace Nevermind.Evm
                         previousCallOutputDestination = previousState.OutputDestination;
                     }
 
-                    if (ShouldLog.Evm)
-                    {
-                        Console.WriteLine($"END {previousState.ExecutionType} AT DEPTH {previousState.Env.CallDepth} (RESULT {Hex.FromBytes(previousCallResult ?? EmptyBytes, true)}) RETURNS ({previousCallOutputDestination} : {Hex.FromBytes(previousCallOutput, true)})");
-                    }
+                    _logger?.Log($"END {previousState.ExecutionType} AT DEPTH {previousState.Env.CallDepth} (RESULT {Hex.FromBytes(previousCallResult ?? EmptyBytes, true)}) RETURNS ({previousCallOutputDestination} : {Hex.FromBytes(previousCallOutput, true)})");
                 }
                 catch (Exception ex) // TODO: catch EVM exceptions only
                 {
-                    if (ShouldLog.Evm)
-                    {
-                        Console.WriteLine($"EXCEPTION ({ex.GetType().Name}) IN {currentState.ExecutionType} AT DEPTH {currentState.Env.CallDepth} - RESTORING SNAPSHOT");
-                    }
+                    _logger?.Log($"EXCEPTION ({ex.GetType().Name}) IN {currentState.ExecutionType} AT DEPTH {currentState.Env.CallDepth} - RESTORING SNAPSHOT");
 
                     if (currentState.StateSnapshot != -1) // TODO: temp check - handle transaction processor calls here as well or change up
                     {
@@ -185,6 +167,17 @@ namespace Nevermind.Evm
                     }
                 }
             }
+        }
+
+        private static byte[] GetPaddedSlice(byte[] data, BigInteger position, BigInteger length)
+        {
+            BigInteger bytesFromInput = BigInteger.Max(0, BigInteger.Min(data.Length - position, length));
+            if (position > data.Length)
+            {
+                return new byte[(int)length];
+            }
+
+            return data.Slice((int)position, (int)bytesFromInput).PadRight((int)length);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -230,7 +223,7 @@ namespace Nevermind.Evm
                 throw new OutOfGasException();
             }
 
-            // confirm this comes only after the gas checks which requires it to be handled slightly different than inside the call
+            // TODO: confirm this comes only after the gas checks which requires it to be handled slightly different than inside the call
             if (!_worldStateProvider.AccountExists(state.Env.Caller))
             {
                 _worldStateProvider.CreateAccount(state.Env.Caller, value);
@@ -241,40 +234,22 @@ namespace Nevermind.Evm
             }
 
             UpdateGas(baseGasCost, ref gasAvailable);
-            UpdateGas(dataGasCost, ref gasAvailable); // TODO: check EIP-150
+            UpdateGas(dataGasCost, ref gasAvailable);
             state.GasAvailable = gasAvailable;
 
             try
             {
                 byte[] output = PrecompiledContracts[addressInt].Run(callData);
                 return new CallResult(output);
-
-                //state.Memory.Save(outputOffset, GetPaddedSlice(output, 0, outputLength));
-                //PushInt(BigInteger.One);
-                //if (ShouldLog.Evm) // TODO: log inside precompiled
-                //{
-                //    Console.WriteLine($"  {instruction} SUCCESS PRECOMPILED");
-                //}
-
-                //break;
             }
             catch (Exception)
             {
-                return new CallResult(EmptyBytes); // TODO: check this
-
-                //PushInt(BigInteger.One);
-                //if (ShouldLog.Evm) // TODO: log inside precompiled
-                //{
-                //    Console.WriteLine($"  {instruction} FAIL PRECOMPILED");
-                //}
-
-                //break;
+                return new CallResult(EmptyBytes);
             }
         }
 
         private CallResult ExecuteCall(EvmState state, byte[] previousCallResult, byte[] previousCallOutput, BigInteger previousCallOutputDestination)
         {
-            // internal state speed-ups
             ExecutionEnvironment env;
             byte[][] bytesOnStack;
             BigInteger[] intsOnStack;
@@ -310,16 +285,13 @@ namespace Nevermind.Evm
 
             void LogInstructionResult(Instruction instruction, ulong gasBefore)
             {
-                Console.WriteLine(
+                _logger?.Log(
                     $"  END {env.CallDepth}_{instruction} GAS {gasAvailable} ({gasBefore - gasAvailable}) STACK {stackHead} MEMORY {state.ActiveWordsInMemory} PC {programCounter}");
             }
 
             void PushBytes(byte[] value)
             {
-                if (ShouldLog.Evm)
-                {
-                    Console.WriteLine($"  PUSH {Hex.FromBytes(value, true)}");
-                }
+                _logger?.Log($"  PUSH {Hex.FromBytes(value, true)}");
 
                 intPositions[stackHead] = false;
                 bytesOnStack[stackHead] = value;
@@ -332,10 +304,7 @@ namespace Nevermind.Evm
 
             void PushInt(BigInteger value)
             {
-                if (ShouldLog.Evm)
-                {
-                    Console.WriteLine($"  PUSH {value}");
-                }
+                _logger?.Log($"  PUSH {value}");
 
                 intPositions[stackHead] = true;
                 intsOnStack[stackHead] = value;
@@ -438,10 +407,7 @@ namespace Nevermind.Evm
                 byte[] result = intPositions[stackHead]
                     ? intsOnStack[stackHead].ToBigEndianByteArray()
                     : bytesOnStack[stackHead];
-                if (ShouldLog.Evm)
-                {
-                    Console.WriteLine($"  POP {Hex.FromBytes(result, true)}");
-                }
+                _logger?.Log($"  POP {Hex.FromBytes(result, true)}");
 
                 return result;
             }
@@ -457,19 +423,13 @@ namespace Nevermind.Evm
 
                 if (intPositions[stackHead])
                 {
-                    if (ShouldLog.Evm)
-                    {
-                        Console.WriteLine($"  POP {intsOnStack[stackHead]}");
-                    }
+                    _logger?.Log($"  POP {intsOnStack[stackHead]}");
 
                     return intsOnStack[stackHead];
                 }
 
                 BigInteger res = bytesOnStack[stackHead].ToUnsignedBigInteger();
-                if (ShouldLog.Evm)
-                {
-                    Console.WriteLine($"  POP {res}");
-                }
+                _logger?.Log($"  POP {res}");
 
                 return res;
             }
@@ -486,18 +446,12 @@ namespace Nevermind.Evm
                 // TODO: can remember whether integer was signed or not so I do not have to convert
                 if (intPositions[stackHead])
                 {
-                    if (ShouldLog.Evm)
-                    {
-                        Console.WriteLine($"  POP {intsOnStack[stackHead]}");
-                    }
+                    _logger?.Log($"  POP {intsOnStack[stackHead]}");
 
                     return intsOnStack[stackHead].ToBigEndianByteArray().ToSignedBigInteger();
                 }
 
-                if (ShouldLog.Evm)
-                {
-                    Console.WriteLine($"  POP {bytesOnStack[stackHead]}");
-                }
+                _logger?.Log($"  POP {bytesOnStack[stackHead]}");
 
                 return bytesOnStack[stackHead].ToSignedBigInteger();
             }
@@ -560,10 +514,7 @@ namespace Nevermind.Evm
                 Instruction instruction = (Instruction)code[(int)programCounter];
                 programCounter++;
 
-                if (ShouldLog.Evm)
-                {
-                    Console.WriteLine($"{instruction} (0x{instruction:X})");
-                }
+                _logger?.Log($"{instruction} (0x{instruction:X})");
 
                 switch (instruction)
                 {
@@ -693,7 +644,7 @@ namespace Nevermind.Evm
                                 expSize++;
                             }
 
-                            UpdateGas(GasCostOf.ExpByte * (1UL + (ulong)expSize), ref gasAvailable);
+                            UpdateGas((_protocolSpecification.IsEip160Enabled ? GasCostOf.ExpByteEip160 : GasCostOf.ExpByte) * (ulong)(1 + expSize), ref gasAvailable);
                         }
 
                         if (baseInt == BigInteger.Zero)
@@ -859,7 +810,7 @@ namespace Nevermind.Evm
                     }
                     case Instruction.BALANCE:
                     {
-                        UpdateGas(GasCostOf.Balance, ref gasAvailable);
+                        UpdateGas(_protocolSpecification.IsEip150Enabled ? GasCostOf.BalanceEip150 : GasCostOf.Balance, ref gasAvailable);
                         Address address = PopAddress();
                         BigInteger balance = _worldStateProvider.GetBalance(address);
                         PushInt(balance);
@@ -935,7 +886,7 @@ namespace Nevermind.Evm
                     }
                     case Instruction.EXTCODESIZE:
                     {
-                        UpdateGas(GasCostOf.ExtCodeSize, ref gasAvailable);
+                        UpdateGas(_protocolSpecification.IsEip150Enabled ? GasCostOf.ExtCodeSizeEip150 : GasCostOf.ExtCodeSize, ref gasAvailable);
                         Address address = PopAddress();
                         byte[] accountCode = _worldStateProvider.GetCode(address);
                         PushInt(accountCode?.Length ?? BigInteger.Zero);
@@ -947,7 +898,7 @@ namespace Nevermind.Evm
                         BigInteger dest = PopUInt();
                         BigInteger src = PopUInt();
                         BigInteger length = PopUInt();
-                        UpdateGas(GasCostOf.ExtCode + GasCostOf.Memory * EvmMemory.Div32Ceiling(length),
+                        UpdateGas((_protocolSpecification.IsEip150Enabled ? GasCostOf.ExtCodeEip150 : GasCostOf.ExtCode) + GasCostOf.Memory * EvmMemory.Div32Ceiling(length),
                             ref gasAvailable);
                         UpdateMemoryCost(dest, length);
                         byte[] externalCode = _worldStateProvider.GetCode(address);
@@ -1039,19 +990,17 @@ namespace Nevermind.Evm
                     }
                     case Instruction.SLOAD:
                     {
-                        UpdateGas(GasCostOf.SLoad, ref gasAvailable);
+                        UpdateGas(_protocolSpecification.IsEip150Enabled ? GasCostOf.SLoadEip150 : GasCostOf.SLoad, ref gasAvailable);
                         BigInteger storageIndex = PopUInt();
-                        StorageTree storage = _storageProvider.GetOrCreateStorage(env.CodeOwner);
-                        byte[] value = storage.Get(storageIndex);
+                        byte[] value = _storageProvider.Get(env.CodeOwner, storageIndex);
                         PushBytes(value);
                         break;
                     }
                     case Instruction.SSTORE:
                     {
                         BigInteger storageIndex = PopUInt();
-                        byte[] data = PopBytes().WithoutLeadingZeros();
-                        StorageTree storage = _storageProvider.GetOrCreateStorage(env.CodeOwner);
-                        byte[] previousValue = storage.Get(storageIndex);
+                        byte[] data = PopBytes().WithoutLeadingZeros();                      
+                        byte[] previousValue = _storageProvider.Get(env.CodeOwner, storageIndex);
 
                         bool isNewValueZero = data.IsZero();
                         bool isValueChanged = !(isNewValueZero && previousValue.IsZero()) ||
@@ -1073,14 +1022,8 @@ namespace Nevermind.Evm
                         if (isValueChanged)
                         {
                             byte[] newValue = isNewValueZero ? new byte[] { 0 } : data;
-                            storage.Set(storageIndex, newValue);
-                            if (ShouldLog.Evm)
-                            {
-                                Console.WriteLine(
-                                    $"  UPDATING STORAGE: {env.CodeOwner} {storageIndex} {Hex.FromBytes(newValue, true)}");
-                            }
-
-                            _worldStateProvider.UpdateStorageRoot(env.CodeOwner, storage.RootHash);
+                            _storageProvider.Set(env.CodeOwner, storageIndex, newValue);
+                            _logger?.Log($"  UPDATING STORAGE: {env.CodeOwner} {storageIndex} {Hex.FromBytes(newValue, true)}");
                         }
 
                         break;
@@ -1295,7 +1238,7 @@ namespace Nevermind.Evm
                         }
 
                         int stateSnapshot = _worldStateProvider.TakeSnapshot();
-                        Dictionary<Address, StateSnapshot> storageSnapshot = _storageProvider.TakeSnapshot();
+                        int storageSnapshot = _storageProvider.TakeSnapshot();
 
                         ulong callGas = gasAvailable;
                         UpdateGas(callGas, ref gasAvailable);
@@ -1310,10 +1253,7 @@ namespace Nevermind.Evm
                             _worldStateProvider.UpdateBalance(contractAddress, value);
                         }
 
-                        if (ShouldLog.Evm)
-                        {
-                            Console.WriteLine("  INIT: " + contractAddress);
-                        }
+                        _logger?.Log("  INIT: " + contractAddress);
 
                         ExecutionEnvironment callEnv = new ExecutionEnvironment();
                         callEnv.Value = value;
@@ -1346,35 +1286,38 @@ namespace Nevermind.Evm
                         UpdateMemoryCost(memoryPos, length);
                         byte[] returnData = state.Memory.Load(memoryPos, length);
 
-                        if (ShouldLog.Evm)
-                        {
-                            LogInstructionResult(instruction, gasBefore);
-                        }
+                        LogInstructionResult(instruction, gasBefore);
 
                         UpdateCurrentState();
                         return new CallResult(returnData);
                     }
                     case Instruction.CALL:
                     case Instruction.CALLCODE:
+                    case Instruction.DELEGATECALL:
                     {
+                        if (instruction == Instruction.DELEGATECALL && !_protocolSpecification.IsEip7Enabled)
+                        {
+                            throw new InvalidInstructionException((byte)instruction);
+                        }
+
                         BigInteger gasLimit = PopUInt();
                         byte[] toAddress = PopBytes();
-                        BigInteger value = PopUInt();
+                        BigInteger value = instruction == Instruction.DELEGATECALL ? env.Value : PopUInt();
                         BigInteger dataOffset = PopUInt();
                         BigInteger dataLength = PopUInt();
                         BigInteger outputOffset = PopUInt();
                         BigInteger outputLength = PopUInt();
 
                         // TODO: there is an inconsistency in naming below - target / code owner - will resolve it after adding DELEGATECALL
-                        Address target = instruction == Instruction.CALLCODE
-                            ? env.CodeOwner
-                            : ToAddress(toAddress); // CALLCODE targets the current contract, CALL targets another contract
+                        Address target = instruction == Instruction.CALL
+                            ? ToAddress(toAddress)
+                            : env.CodeOwner; // CALLCODE targets the current contract, CALL targets another contract
                         BigInteger addressInt = toAddress.ToUnsignedBigInteger();
                         bool isPrecompile = addressInt <= 4 && addressInt > 0;
 
                         Address codeSource = ToAddress(toAddress);
-                        ulong gasExtra = instruction == Instruction.CALL ? GasCostOf.Call : GasCostOf.CallCode;
-                        if (!value.IsZero)
+                        ulong gasExtra = _protocolSpecification.IsEip150Enabled ? GasCostOf.CallOrCallCodeEip150 : GasCostOf.CallOrCallCode;
+                        if (!value.IsZero && instruction != Instruction.DELEGATECALL)
                         {
                             gasExtra += GasCostOf.CallValue - GasCostOf.CallStipend;
                         }
@@ -1403,24 +1346,19 @@ namespace Nevermind.Evm
                         byte[] callData = state.Memory.Load(dataOffset, dataLength);
 
                         int stateSnapshot = _worldStateProvider.TakeSnapshot();
-                        Dictionary<Address, StateSnapshot> storageSnapshot = _storageProvider.TakeSnapshot();
+                        int storageSnapshot = _storageProvider.TakeSnapshot();
 
                         if (!value.IsZero)
                         {
                             if (_worldStateProvider.GetBalance(env.CodeOwner) < value)
                             {
-                                // do not take gas here - balance and inrinsic gas check is first
                                 state.Memory.Save(outputOffset, new byte[(int)outputLength]);
                                 PushInt(BigInteger.Zero);
-                                if (ShouldLog.Evm)
-                                {
-                                    Console.WriteLine($"  {instruction} FAIL - NOT ENOUGH BALANCE");
-                                }
-
+                                _logger?.Log($"  {instruction} FAIL - NOT ENOUGH BALANCE");
                                 break;
                             }
 
-                            _worldStateProvider.UpdateBalance(env.CodeOwner, -value); // do not subtract if failed
+                            _worldStateProvider.UpdateBalance(env.CodeOwner, -value);
                         }
 
                         ExecutionEnvironment callEnv = new ExecutionEnvironment();
@@ -1428,9 +1366,9 @@ namespace Nevermind.Evm
                         callEnv.CurrentBlock = env.CurrentBlock;
                         callEnv.GasPrice = env.GasPrice;
                         callEnv.Originator = env.Originator;
-                        callEnv.Caller = isPrecompile ? target : env.CodeOwner;
+                        callEnv.Caller = isPrecompile ? target : (instruction == Instruction.DELEGATECALL ? env.Caller : env.CodeOwner);
                         callEnv.CodeOwner = isPrecompile ? codeSource : target;
-                        callEnv.Value = value;
+                        callEnv.Value = (instruction == Instruction.DELEGATECALL ? env.Value : value);
                         callEnv.InputData = callData;
                         callEnv.MachineCode = _worldStateProvider.GetCode(codeSource);
 
@@ -1490,7 +1428,7 @@ namespace Nevermind.Evm
                     }
                     case Instruction.SELFDESTRUCT:
                     {
-                        UpdateGas(GasCostOf.SelfDestruct, ref gasAvailable);
+                        UpdateGas(_protocolSpecification.IsEip150Enabled ? GasCostOf.SelfDestructEip150 : GasCostOf.SelfDestruct, ref gasAvailable);
                         Address inheritor = PopAddress();
                         if (!state.DestroyList.Contains(env.CodeOwner))
                         {
@@ -1515,10 +1453,7 @@ namespace Nevermind.Evm
 
                             _worldStateProvider.UpdateBalance(env.CodeOwner, -ownerBalance);
 
-                            if (ShouldLog.Evm)
-                            {
-                                LogInstructionResult(instruction, gasBefore);
-                            }
+                            LogInstructionResult(instruction, gasBefore);
                         }
 
                         UpdateCurrentState();
@@ -1526,19 +1461,13 @@ namespace Nevermind.Evm
                     }
                     default:
                     {
-                        if (ShouldLog.Evm)
-                        {
-                            Console.WriteLine("UNKNOWN INSTRUCTION");
-                        }
+                        _logger?.Log("UNKNOWN INSTRUCTION");
 
                         throw new InvalidInstructionException((byte)instruction);
                     }
                 }
 
-                if (ShouldLog.Evm)
-                {
-                    LogInstructionResult(instruction, gasBefore);
-                }
+                LogInstructionResult(instruction, gasBefore);
             }
 
             UpdateCurrentState();

@@ -18,7 +18,7 @@ namespace Nevermind.Core
                     return 3;
                 case EthereumNetwork.Morden:
                     return 2;
-                case EthereumNetwork.Olimpic:
+                case EthereumNetwork.Olympic:
                     return 0;
                 case EthereumNetwork.Kovan:
                     return 42;

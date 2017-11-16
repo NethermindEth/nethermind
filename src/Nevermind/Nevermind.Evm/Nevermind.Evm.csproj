@@ -65,8 +65,6 @@
     <Compile Include="CallDepthException.cs" />
     <Compile Include="EvmState.cs" />
     <Compile Include="ExecutionType.cs" />
-    <Compile Include="FrontierProtocolSpecification.cs" />
-    <Compile Include="IProtocolSpecification.cs" />
     <Compile Include="InvalidInstructionException.cs" />
     <Compile Include="InvalidJumpDestinationException.cs" />
     <Compile Include="IVirtualMachine.cs" />
@@ -89,6 +87,7 @@
     <Compile Include="ShouldLog.cs" />
     <Compile Include="EvmStackOverflowException.cs" />
     <Compile Include="StackUnderflowException.cs" />
+    <Compile Include="StorageProvider.cs" />
     <Compile Include="TransactionCollisionException.cs" />
     <Compile Include="TransactionProcessor.cs" />
     <Compile Include="TransactionSubstate.cs" />

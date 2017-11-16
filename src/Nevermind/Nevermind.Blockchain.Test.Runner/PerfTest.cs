@@ -30,7 +30,13 @@ namespace Nevermind.Blockchain.Test.Runner
                         failingTests.Add(test.Name);
                         ConsoleColor mem = Console.ForegroundColor;
                         Console.ForegroundColor = ConsoleColor.Red;
-                        Console.WriteLine($"  EXCEPTION: {e.GetType().Name}");
+                        if (!isNewLine)
+                        {
+                            Console.WriteLine();
+                            isNewLine = true;
+                        }
+
+                        Console.WriteLine($"  {test.Name,-80} {e.GetType().Name}");
                         Console.ForegroundColor = mem;
                     }
                 }
@@ -38,11 +44,12 @@ namespace Nevermind.Blockchain.Test.Runner
                 long ns = 1_000_000_000L * stopwatch.ElapsedTicks / Stopwatch.Frequency;
                 long ms = 1_000L * stopwatch.ElapsedTicks / Stopwatch.Frequency;
                 totalMs += ms;
-                if (ms > 10)
+                if (ms > 100)
                 {
                     if (!isNewLine)
                     {
                         Console.WriteLine();
+                        isNewLine = true;
                     }
 
                     Console.WriteLine($"  {test.Name,-80}{ns / iterations,14}ns{ms / iterations,8}ms");

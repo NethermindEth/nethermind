@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using Nevermind.Core;
 using Nevermind.Core.Encoding;
 using Nevermind.Evm;
 
@@ -89,11 +90,11 @@ namespace PerfTest
                 //)
             };
 
-        private static readonly VirtualMachine Machine = new VirtualMachine(null, null, null, new FrontierProtocolSpecification());
+        private static readonly VirtualMachine Machine = new VirtualMachine(null, null, null, new FrontierProtocolSpecification(), null);
 
         private static void Main(string[] args)
         {
-            ShouldLog.Evm = false;
+            //ShouldLog.Evm = false;
             Stopwatch stopwatch = new Stopwatch();
             stopwatch.Start();
 

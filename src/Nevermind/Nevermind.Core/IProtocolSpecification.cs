@@ -1,4 +1,4 @@
-namespace Nevermind.Evm
+namespace Nevermind.Core
 {
     /// <summary>
     /// https://github.com/ethereum/EIPs
@@ -26,6 +26,16 @@ namespace Nevermind.Evm
         bool IsEip155Enabled { get; }
 
         /// <summary>
+        /// State clearing
+        /// </summary>
+        bool IsEip158Enabled { get; }
+
+        /// <summary>
+        /// EXP cost increase
+        /// </summary>
+        bool IsEip160Enabled { get; }
+
+        /// <summary>
         /// Code size limit
         /// </summary>
         bool IsEip170Enabled { get; }
@@ -34,5 +44,10 @@ namespace Nevermind.Evm
         /// Code size limit
         /// </summary>
         bool IsEmptyCodeContractBugFixed { get; }
+
+        /// <summary>
+        /// Block reward decreased to 3 ETH
+        /// </summary>
+        bool IsEip186Enabled { get; }
     }
 }

@@ -18,56 +18,81 @@ namespace Ethereum.Blockchain.Test
 {
     public class BlockchainTestBase
     {
+        private readonly IProtocolSpecificationProvider _protocolSpecificationProvider = new ProtocolSpecificationProvider();
         private IBlockhashProvider _blockhashProvider;
         private InMemoryDb _db;
         private IWorldStateProvider _stateProvider;
         private IStorageProvider _storageProvider;
-        private IVirtualMachine _virtualMachine;
-        private readonly IProtocolSpecification _protocolSpecification = new FrontierProtocolSpecification();
+        private Dictionary<EthereumNetwork, VirtualMachine> _virtualMachines;
 
         [SetUp]
         public void Setup()
         {
             _db = new InMemoryDb();
-            _storageProvider = new TestStorageProvider(_db);
+            _storageProvider = new StorageProvider(_db);
             _blockhashProvider = new TestBlockhashProvider();
             _stateProvider = new WorldStateProvider(new StateTree(_db));
-            _virtualMachine = new VirtualMachine(_blockhashProvider, _stateProvider, _storageProvider, _protocolSpecification);
+            _virtualMachines = new Dictionary<EthereumNetwork, VirtualMachine>();
+            EthereumNetwork[] networks = {EthereumNetwork.Frontier, EthereumNetwork.Homestead, EthereumNetwork.Byzantium, EthereumNetwork.SpuriousDragon, EthereumNetwork.TangerineWhistle};
+            foreach (EthereumNetwork ethereumNetwork in networks)
+            {
+                IProtocolSpecification spec = _protocolSpecificationProvider.GetSpec(ethereumNetwork, 1);
+                _virtualMachines[ethereumNetwork] = new VirtualMachine(_blockhashProvider, _stateProvider, _storageProvider, spec, ShouldLog.Evm ? new ConsoleLogger() : null);
+            }
         }
 
         public static IEnumerable<BlockchainTest> LoadTests(string testSet)
         {
             Directory.SetCurrentDirectory(AppDomain.CurrentDomain.BaseDirectory);
             IEnumerable<string> testDirs = Directory.EnumerateDirectories(".", "st" + (testSet.StartsWith("st") ? testSet.Substring(2) : testSet));
-            Dictionary<string, Dictionary<string, BlockchainTestJson>> testJsons =
-                new Dictionary<string, Dictionary<string, BlockchainTestJson>>();
+            Dictionary<string, Dictionary<string, BlockchainTestJson>> testJsons = new Dictionary<string, Dictionary<string, BlockchainTestJson>>();
             foreach (string testDir in testDirs)
             {
-                testJsons[testDir] = new Dictionary<string, BlockchainTestJson>();
-                IEnumerable<string> testFiles = Directory.EnumerateFiles(testDir).ToList();
-                foreach (string testFile in testFiles)
-                {
-                    string json = File.ReadAllText(testFile);
-                    Dictionary<string, BlockchainTestJson> testsInFile =
-                        JsonConvert.DeserializeObject<Dictionary<string, BlockchainTestJson>>(json);
-                    foreach (KeyValuePair<string, BlockchainTestJson> namedTest in testsInFile)
-                    {
-                        if (!namedTest.Key.Contains("Frontier") && DateTime.Now < new DateTime(2017, 11, 15))
-                        {
-                            continue;
-                        }
+                testJsons[testDir] = LoadTestsFromDirectory(testDir);
+            }
 
-                        testJsons[testDir].Add(namedTest.Key, namedTest.Value);
+            return testJsons.SelectMany(d => d.Value).Select(pair => Convert(pair.Key, pair.Value));
+        }
+
+        private static Dictionary<string, BlockchainTestJson> LoadTestsFromDirectory(string testDir)
+        {
+            Dictionary<string, BlockchainTestJson> testsByName = new Dictionary<string, BlockchainTestJson>();
+            List<string> testFiles = Directory.EnumerateFiles(testDir).ToList();
+            foreach (string testFile in testFiles)
+            {
+                string json = File.ReadAllText(testFile);
+                Dictionary<string, BlockchainTestJson> testsInFile = JsonConvert.DeserializeObject<Dictionary<string, BlockchainTestJson>>(json);
+                foreach (KeyValuePair<string, BlockchainTestJson> namedTest in testsInFile)
+                {
+                    if (namedTest.Key.Contains("Frontier"))
+                    {
+                        namedTest.Value.EthereumNetwork = EthereumNetwork.Frontier;
                     }
+                    //else if (namedTest.Key.Contains("Homestead"))
+                    //{
+                    //    namedTest.Value.EthereumNetwork = EthereumNetwork.Homestead;
+                    //}
+                    else
+                    {
+                        continue;
+                    }
+                    //else if (namedTest.Key.Contains("Eip150"))
+                    //{
+                    //    namedTest.Value.EthereumNetwork = EthereumNetwork.TangerineWhistle;
+                    //}
+                    //else if (namedTest.Key.Contains("Eip158"))
+                    //{
+                    //    namedTest.Value.EthereumNetwork = EthereumNetwork.SpuriousDragon;
+                    //}
+                    //else if (namedTest.Key.Contains("Byzantium"))
+                    //{
+                    //    namedTest.Value.EthereumNetwork = EthereumNetwork.Byzantium;
+                    //}
+
+                    testsByName.Add(namedTest.Key, namedTest.Value);
                 }
             }
-
-            if (testJsons.Any())
-            {
-                return testJsons.First().Value.Select(pair => Convert(pair.Key, pair.Value));
-            }
-
-            return new BlockchainTest[0];
+            return testsByName;
         }
 
         private static AccountState Convert(AccountStateJson accountStateJson)
@@ -86,14 +111,12 @@ namespace Ethereum.Blockchain.Test
         {
             foreach (KeyValuePair<Address, AccountState> accountState in test.Pre)
             {
-                StorageTree storageTree = _storageProvider.GetOrCreateStorage(accountState.Key);
                 foreach (KeyValuePair<BigInteger, byte[]> storageItem in accountState.Value.Storage)
                 {
-                    storageTree.Set(storageItem.Key, storageItem.Value);
+                    _storageProvider.Set(accountState.Key, storageItem.Key, storageItem.Value);
                 }
 
                 _stateProvider.CreateAccount(accountState.Key, accountState.Value.Balance);
-                _stateProvider.UpdateStorageRoot(accountState.Key, storageTree.RootHash);
                 Keccak codeHash = _stateProvider.UpdateCode(accountState.Value.Code);
                 _stateProvider.UpdateCodeHash(accountState.Key, codeHash);
                 for (int i = 0; i < accountState.Value.Nonce; i++)
@@ -102,37 +125,21 @@ namespace Ethereum.Blockchain.Test
                 }
             }
 
-            TransactionProcessor processor =
-                new TransactionProcessor(_virtualMachine, _stateProvider, _storageProvider, _protocolSpecification, ChainId.Mainnet);
+            _storageProvider.Commit(_stateProvider);
+            _stateProvider.Commit();
+
+            IProtocolSpecification spec = _protocolSpecificationProvider.GetSpec(test.Network, 1);
+            ConsoleLogger logger = ShouldLog.TransactionProcessor ? new ConsoleLogger() : null;
+            TransactionProcessor processor = new TransactionProcessor(_virtualMachines[test.Network], _stateProvider, _storageProvider, spec, ChainId.Mainnet, logger);
 
             // TODO: handle multiple
-            TestBlock oneBlock = test.Blocks[0];
-            TestBlockHeader oneHeader = oneBlock.BlockHeader;
-
-            BlockHeader header = new BlockHeader();
-            header.Number = oneHeader.Number;
-            header.Difficulty = oneHeader.Difficulty;
-            header.Timestamp = oneHeader.Timestamp;
-            header.GasLimit = oneHeader.GasLimit;
-            header.Beneficiary = oneHeader.Coinbase;
-            header.GasUsed = 0;
-            header.MixHash = oneHeader.MixHash;
-            header.ParentHash = oneHeader.ParentHash;
-            header.OmmersHash = oneHeader.UncleHash;
-            header.ReceiptsRoot = oneHeader.ReceiptTrie;
-            header.TransactionsRoot = oneHeader.TransactionsTrie;
-            header.ExtraData = oneHeader.ExtraData;
-            header.StateRoot = oneHeader.StateRoot;
-            header.LogsBloom = oneHeader.Bloom;
-
+            BlockHeader header = BuildBlockHeader(test.Blocks[0].BlockHeader);
             List<TransactionReceipt> receipts = new List<TransactionReceipt>();
             List<Transaction> transactions = new List<Transaction>();
 
-            BigInteger gasUsedSoFar = 0;
-            _stateProvider.Commit();
-
             stopwatch?.Start();
-            foreach (IncomingTransaction testTransaction in oneBlock.Transactions)
+            BigInteger gasUsedSoFar = 0;
+            foreach (IncomingTransaction testTransaction in test.Blocks[0].Transactions)
             {
                 Transaction transaction = new Transaction();
                 transaction.To = testTransaction.To;
@@ -145,7 +152,6 @@ namespace Ethereum.Blockchain.Test
                 transaction.Signature = new Signature(testTransaction.R, testTransaction.S, testTransaction.V);
                 transactions.Add(transaction);
 
-                Address sender = Signer.Recover(transaction);
                 TransactionReceipt receipt = processor.Execute(
                     transaction,
                     header,
@@ -163,9 +169,17 @@ namespace Ethereum.Blockchain.Test
                 _stateProvider.CreateAccount(header.Beneficiary, 0);
             }
 
-            _stateProvider.UpdateBalance(header.Beneficiary, 5.Ether());
+            _stateProvider.UpdateBalance(header.Beneficiary, spec.IsEip186Enabled ? 3.Ether() : 5.Ether());
+
+            _storageProvider.Commit(_stateProvider);
             _stateProvider.Commit();
 
+            RunAssertions(test, receipts, transactions);
+        }
+
+        private void RunAssertions(BlockchainTest test, List<TransactionReceipt> receipts, List<Transaction> transactions)
+        {
+            TestBlockHeader testHeader = test.Blocks[0].BlockHeader;
             List<string> differences = new List<string>();
             foreach (KeyValuePair<Address, AccountState> accountState in test.PostState)
             {
@@ -189,12 +203,9 @@ namespace Ethereum.Blockchain.Test
                     differences.Add($"{accountState.Key} code exp: {accountState.Value.Code?.Length}, actual: {code?.Length}");
                 }
 
-                StorageTree accountStorage = _storageProvider.GetOrCreateStorage(accountState.Key);
-
-
                 foreach (KeyValuePair<BigInteger, byte[]> storageItem in accountState.Value.Storage)
                 {
-                    byte[] value = accountStorage?.Get(storageItem.Key) ?? new byte[0];
+                    byte[] value = _storageProvider.Get(accountState.Key, storageItem.Key) ?? new byte[0];
                     if (!Bytes.UnsafeCompare(storageItem.Value, value))
                     {
                         differences.Add($"{accountState.Key} storage[{storageItem.Key}] exp: {Hex.FromBytes(storageItem.Value, true)}, actual: {Hex.FromBytes(value, true)}");
@@ -209,19 +220,38 @@ namespace Ethereum.Blockchain.Test
 
             Assert.Zero(differences.Count, "differences");
 
-            Assert.AreEqual(oneHeader.GasUsed, gasUsedSoFar);
-
+            Assert.AreEqual(testHeader.GasUsed, receipts.Last()?.GasUsed ?? 0);
             Keccak receiptsRoot = BlockProcessor.GetReceiptsRoot(receipts.ToArray());
             Keccak transactionsRoot = BlockProcessor.GetTransactionsRoot(transactions.ToArray());
 
             if (receipts.Any())
             {
-                Assert.AreEqual(oneHeader.Bloom.ToString(), receipts.Last().Bloom.ToString(), "bloom");
+                Assert.AreEqual(testHeader.Bloom.ToString(), receipts.Last().Bloom.ToString(), "bloom");
             }
 
-            Assert.AreEqual(oneHeader.StateRoot, _stateProvider.State.RootHash, "state root");
-            Assert.AreEqual(header.TransactionsRoot, transactionsRoot, "transactions root");
-            Assert.AreEqual(header.ReceiptsRoot, receiptsRoot, "receipts root");
+            Assert.AreEqual(testHeader.StateRoot, _stateProvider.State.RootHash, "state root");
+            Assert.AreEqual(testHeader.TransactionsTrie, transactionsRoot, "transactions root");
+            Assert.AreEqual(testHeader.ReceiptTrie, receiptsRoot, "receipts root");
+        }
+
+        private static BlockHeader BuildBlockHeader(TestBlockHeader oneHeader)
+        {
+            BlockHeader header = new BlockHeader();
+            header.Number = oneHeader.Number;
+            header.Difficulty = oneHeader.Difficulty;
+            header.Timestamp = oneHeader.Timestamp;
+            header.GasLimit = oneHeader.GasLimit;
+            header.Beneficiary = oneHeader.Coinbase;
+            header.GasUsed = 0;
+            header.MixHash = oneHeader.MixHash;
+            header.ParentHash = oneHeader.ParentHash;
+            header.OmmersHash = oneHeader.UncleHash;
+            header.ReceiptsRoot = oneHeader.ReceiptTrie;
+            header.TransactionsRoot = oneHeader.TransactionsTrie;
+            header.ExtraData = oneHeader.ExtraData;
+            header.StateRoot = oneHeader.StateRoot;
+            header.LogsBloom = oneHeader.Bloom;
+            return header;
         }
 
         private static TestBlockHeader Convert(TestBlockHeaderJson headerJson)
@@ -244,6 +274,44 @@ namespace Ethereum.Blockchain.Test
             header.TransactionsTrie = new Keccak(headerJson.TransactionsTrie);
             header.UncleHash = new Keccak(headerJson.UncleHash);
             return header;
+        }
+
+        private static TestBlock Convert(TestBlockJson testBlockJson)
+        {
+            TestBlock block = new TestBlock();
+            block.BlockHeader = Convert(testBlockJson.BlockHeader);
+            block.UncleHeaders = testBlockJson.UncleHeaders.Select(Convert).ToArray();
+            block.Transactions = testBlockJson.Transactions.Select(Convert).ToArray();
+            return block;
+        }
+
+        private static IncomingTransaction Convert(TransactionJson transactionJson)
+        {
+            IncomingTransaction incomingTransaction = new IncomingTransaction();
+            incomingTransaction.Data = Hex.ToBytes(transactionJson.Data);
+            incomingTransaction.Value = Hex.ToBytes(transactionJson.Value).ToUnsignedBigInteger();
+            incomingTransaction.GasLimit = Hex.ToBytes(transactionJson.GasLimit).ToUnsignedBigInteger();
+            incomingTransaction.GasPrice = Hex.ToBytes(transactionJson.GasPrice).ToUnsignedBigInteger();
+            incomingTransaction.Nonce = Hex.ToBytes(transactionJson.Nonce).ToUnsignedBigInteger();
+            incomingTransaction.To = string.IsNullOrWhiteSpace(transactionJson.To) ? null : new Address(new Hex(transactionJson.To));
+            incomingTransaction.R = Hex.ToBytes(transactionJson.R).PadLeft(32);
+            incomingTransaction.S = Hex.ToBytes(transactionJson.S).PadLeft(32);
+            incomingTransaction.V = Hex.ToBytes(transactionJson.V)[0];
+            return incomingTransaction;
+        }
+
+        private static BlockchainTest Convert(string name, BlockchainTestJson testJson)
+        {
+            BlockchainTest test = new BlockchainTest();
+            test.Name = name;
+            test.Network = testJson.EthereumNetwork;
+            test.LastBlockHash = new Keccak(testJson.LastBlockHash);
+            test.GenesisRlp = new Rlp(Hex.ToBytes(testJson.GenesisRlp));
+            test.GenesisBlockHeader = Convert(testJson.GenesisBlockHeader);
+            test.Blocks = testJson.Blocks.Select(Convert).ToArray();
+            test.PostState = testJson.PostState.ToDictionary(p => new Address(p.Key), p => Convert(p.Value));
+            test.Pre = testJson.Pre.ToDictionary(p => new Address(p.Key), p => Convert(p.Value));
+            return test;
         }
 
         public class TestBlockHeaderJson
@@ -286,15 +354,6 @@ namespace Ethereum.Blockchain.Test
             public Keccak UncleHash { get; set; }
         }
 
-        private static TestBlock Convert(TestBlockJson testBlockJson)
-        {
-            TestBlock block = new TestBlock();
-            block.BlockHeader = Convert(testBlockJson.BlockHeader);
-            block.UncleHeaders = testBlockJson.UncleHeaders.Select(Convert).ToArray();
-            block.Transactions = testBlockJson.Transactions.Select(Convert).ToArray();
-            return block;
-        }
-
         public class TestBlockJson
         {
             public TestBlockHeaderJson BlockHeader { get; set; }
@@ -327,21 +386,6 @@ namespace Ethereum.Blockchain.Test
             public Dictionary<string, string> Storage { get; set; }
         }
 
-        private static IncomingTransaction Convert(TransactionJson transactionJson)
-        {
-            IncomingTransaction incomingTransaction = new IncomingTransaction();
-            incomingTransaction.Data = Hex.ToBytes(transactionJson.Data);
-            incomingTransaction.Value = Hex.ToBytes(transactionJson.Value).ToUnsignedBigInteger();
-            incomingTransaction.GasLimit = Hex.ToBytes(transactionJson.GasLimit).ToUnsignedBigInteger();
-            incomingTransaction.GasPrice = Hex.ToBytes(transactionJson.GasPrice).ToUnsignedBigInteger();
-            incomingTransaction.Nonce = Hex.ToBytes(transactionJson.Nonce).ToUnsignedBigInteger();
-            incomingTransaction.To = string.IsNullOrWhiteSpace(transactionJson.To) ? null : new Address(new Hex(transactionJson.To));
-            incomingTransaction.R = Hex.ToBytes(transactionJson.R).PadLeft(32);
-            incomingTransaction.S = Hex.ToBytes(transactionJson.S).PadLeft(32);
-            incomingTransaction.V = Hex.ToBytes(transactionJson.V)[0];
-            return incomingTransaction;
-        }
-
         public class TransactionJson
         {
             public string Data { get; set; }
@@ -368,25 +412,10 @@ namespace Ethereum.Blockchain.Test
             public byte V { get; set; }
         }
 
-        private static BlockchainTest Convert(string name, BlockchainTestJson testJson)
-        {
-            BlockchainTest test = new BlockchainTest();
-            test.Name = name;
-            EthereumNetwork network;
-            Enum.TryParse(testJson.Network, true, out network);
-            test.Network = network;
-            test.LastBlockHash = new Keccak(testJson.LastBlockHash);
-            test.GenesisRlp = new Rlp(Hex.ToBytes(testJson.GenesisRlp));
-            test.GenesisBlockHeader = Convert(testJson.GenesisBlockHeader);
-            test.Blocks = testJson.Blocks.Select(Convert).ToArray();
-            test.PostState = testJson.PostState.ToDictionary(p => new Address(p.Key), p => Convert(p.Value));
-            test.Pre = testJson.Pre.ToDictionary(p => new Address(p.Key), p => Convert(p.Value));
-            return test;
-        }
-
         public class BlockchainTestJson
         {
             public string Network { get; set; }
+            public EthereumNetwork EthereumNetwork { get; set; }
             public string LastBlockHash { get; set; }
             public string GenesisRlp { get; set; }
 

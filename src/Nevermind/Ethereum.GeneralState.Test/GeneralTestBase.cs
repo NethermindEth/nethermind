@@ -28,10 +28,10 @@ namespace Ethereum.GeneralState.Test
         public void Setup()
         {
             _db = new InMemoryDb();
-            _storageProvider = new TestStorageProvider(_db);
+            _storageProvider = new StorageProvider(_db);
             _blockhashProvider = new TestBlockhashProvider();
             _stateProvider = new WorldStateProvider(new StateTree(_db));
-            _virtualMachine = new VirtualMachine(_blockhashProvider, _stateProvider, _storageProvider, _protocolSpecification);
+            _virtualMachine = new VirtualMachine(_blockhashProvider, _stateProvider, _storageProvider, _protocolSpecification, ShouldLog.Evm ? new ConsoleLogger() : null);
         }
 
         public static IEnumerable<GenerateStateTest> LoadTests(string testSet)
@@ -127,16 +127,15 @@ namespace Ethereum.GeneralState.Test
         {
             foreach (KeyValuePair<Address, AccountState> accountState in test.Pre)
             {
-                StorageTree storageTree = _storageProvider.GetOrCreateStorage(accountState.Key);
                 foreach (KeyValuePair<BigInteger, byte[]> storageItem in accountState.Value.Storage)
                 {
-                    storageTree.Set(storageItem.Key, storageItem.Value);
+                    _storageProvider.Set(accountState.Key, storageItem.Key, storageItem.Value);
                 }
 
                 _stateProvider.UpdateCode(accountState.Value.Code);
 
                 _stateProvider.CreateAccount(accountState.Key, accountState.Value.Balance);
-                _stateProvider.UpdateStorageRoot(accountState.Key, storageTree.RootHash);
+                _stateProvider.UpdateStorageRoot(accountState.Key, _storageProvider.GetRoot(accountState.Key));
                 Keccak codeHash = _stateProvider.UpdateCode(accountState.Value.Code);
                 _stateProvider.UpdateCodeHash(accountState.Key, codeHash);
                 for (int i = 0; i < accountState.Value.Nonce; i++)
@@ -146,7 +145,7 @@ namespace Ethereum.GeneralState.Test
             }
 
             TransactionProcessor processor =
-                new TransactionProcessor(_virtualMachine, _stateProvider, _storageProvider, _protocolSpecification, ChainId.Mainnet);
+                new TransactionProcessor(_virtualMachine, _stateProvider, _storageProvider, _protocolSpecification, ChainId.Mainnet, ShouldLog.TransactionProcessor ? new ConsoleLogger() : null);
             Transaction transaction = new Transaction();
             transaction.To = test.IncomingTransaction.To;
             transaction.Value = test.IncomingTransaction.Value;

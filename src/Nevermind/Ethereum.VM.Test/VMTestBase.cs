@@ -26,7 +26,7 @@ namespace Ethereum.VM.Test
         public void Setup()
         {
             _db = new InMemoryDb();
-            _storageProvider = new TestStorageProvider(_db);
+            _storageProvider = new StorageProvider(_db);
             _blockhashProvider = new TestBlockhashProvider();
             _stateProvider = new WorldStateProvider(new StateTree(_db));
         }
@@ -114,7 +114,7 @@ namespace Ethereum.VM.Test
 
         protected void RunTest(VirtualMachineTest test)
         {
-            VirtualMachine machine = new VirtualMachine(_blockhashProvider, _stateProvider, _storageProvider, _protocolSpecification);
+            VirtualMachine machine = new VirtualMachine(_blockhashProvider, _stateProvider, _storageProvider, _protocolSpecification, ShouldLog.Evm ? new ConsoleLogger() : null);
             ExecutionEnvironment environment = new ExecutionEnvironment();
             environment.Value = test.Execution.Value;
             environment.CallDepth = 0;
@@ -137,24 +137,21 @@ namespace Ethereum.VM.Test
             environment.MachineCode = test.Execution.Code;
             environment.Originator = test.Execution.Origin;
 
-            Dictionary<BigInteger, byte[]> storage = new Dictionary<BigInteger, byte[]>();
-
             foreach (KeyValuePair<Address, AccountState> accountState in test.Pre)
             {
-                StorageTree storageTree = _storageProvider.GetOrCreateStorage(accountState.Key);
                 foreach (KeyValuePair<BigInteger, byte[]> storageItem in accountState.Value.Storage)
                 {
-                    storageTree.Set(storageItem.Key, storageItem.Value);
+                    _storageProvider.Set(accountState.Key, storageItem.Key, storageItem.Value);
                     if (accountState.Key.Equals(test.Execution.Address))
                     {
-                        storage[storageItem.Key] = storageItem.Value;
+                        _storageProvider.Set(accountState.Key, storageItem.Key, storageItem.Value);
                     }
                 }
 
                 _stateProvider.UpdateCode(accountState.Value.Code);
 
                 _stateProvider.CreateAccount(accountState.Key, accountState.Value.Balance);
-                _stateProvider.UpdateStorageRoot(accountState.Key, storageTree.RootHash);
+                _stateProvider.UpdateStorageRoot(accountState.Key, _storageProvider.GetRoot(accountState.Key));
                 Keccak codeHash = _stateProvider.UpdateCode(accountState.Value.Code);
                 _stateProvider.UpdateCodeHash(accountState.Key, codeHash);
                 for (int i = 0; i < accountState.Value.Nonce; i++)
@@ -170,6 +167,9 @@ namespace Ethereum.VM.Test
                 Assert.That(() => machine.Run(state), Throws.Exception);
                 return;
             }
+
+            _stateProvider.Commit();
+            _storageProvider.Commit(_stateProvider);
 
             (byte[] output, TransactionSubstate substate) = machine.Run(state);
 
@@ -191,10 +191,9 @@ namespace Ethereum.VM.Test
                     Assert.AreEqual(accountState.Value.Code, code, $"{accountState.Key} Code");
                 }
 
-                StorageTree accountStorage = _storageProvider.GetOrCreateStorage(accountState.Key);
                 foreach (KeyValuePair<BigInteger, byte[]> storageItem in accountState.Value.Storage)
                 {
-                    byte[] value = accountStorage.Get(storageItem.Key);
+                    byte[] value = _storageProvider.Get(accountState.Key, storageItem.Key);
                     Assert.True(Bytes.UnsafeCompare(storageItem.Value, value),
                         $"Storage[{accountState.Key}_{storageItem.Key}] Exp: {Hex.FromBytes(storageItem.Value, true)} != Actual: {Hex.FromBytes(value, true)}");
                 }

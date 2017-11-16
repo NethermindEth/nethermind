@@ -19,7 +19,7 @@ namespace Nevermind.Evm
 
         // TODO - snapshot 0, not -1 I guess
         public EvmState(ulong gasAvailable, ExecutionEnvironment env, ExecutionType executionType)
-            : this(gasAvailable, env, executionType, -1, null, BigInteger.Zero, BigInteger.Zero)
+            : this(gasAvailable, env, executionType, -1, -1, BigInteger.Zero, BigInteger.Zero)
         {
             GasAvailable = gasAvailable;
             Env = env;
@@ -30,7 +30,7 @@ namespace Nevermind.Evm
             ExecutionEnvironment env,
             ExecutionType executionType,
             int stateSnapshot,
-            Dictionary<Address, StateSnapshot> storageSnapshot,
+            int storageSnapshot,
             BigInteger outputDestination,
             BigInteger outputLength)
         {
@@ -69,7 +69,7 @@ namespace Nevermind.Evm
         internal BigInteger OutputDestination { get; }
         internal BigInteger OutputLength { get; }
         public int StateSnapshot { get; }
-        public Dictionary<Address, StateSnapshot> StorageSnapshot { get; }
+        public int StorageSnapshot { get; }
 
         public BigInteger Refund { get; set; } = BigInteger.Zero;
         public EvmMemory Memory { get; } = new EvmMemory();

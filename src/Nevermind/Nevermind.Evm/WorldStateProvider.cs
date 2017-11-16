@@ -163,48 +163,48 @@ namespace Nevermind.Evm
                 Console.WriteLine($"  RESTORING SNAPSHOT {snapshot}");
             }
 
+            List<Change> keptInCache = new List<Change>();
+
             for (int i = 0; i < _currentPosition - snapshot; i++)
             {
                 Change change = _changes[_currentPosition - i];
+                if (_cache[change.Address].Count == 1)
+                {
+                    if(change.ChangeType == ChangeType.JustCache)
+                    {
+                        int actualPosition = _cache[change.Address].Pop();
+                        Debug.Assert(_currentPosition - i == actualPosition);
+                        keptInCache.Add(change);
+                        _changes[actualPosition] = null;
+                        continue;
+                    }
+                }
+
                 _changes[_currentPosition - i] = null; // TODO: temp
                 int forAssertion = _cache[change.Address].Pop();
                 Debug.Assert(forAssertion == _currentPosition - i);
 
                 if (_cache[change.Address].Count == 0)
                 {
-                    continue; // it will just be ignored in commit
-                }
-
-                int previousPosition = _cache[change.Address].Peek();
-                Change previousValue = _changes[previousPosition];
-                if (previousValue == null)
-
-                {
-                    switch (previousValue.ChangeType)
-                    {
-                        case ChangeType.JustCache:
-                        case ChangeType.Update:
-                        case ChangeType.New:
-                            if (ShouldLog.State)
-                            {
-                                Console.WriteLine($"  UPDATE {previousValue.Address} B = {previousValue.Account.Balance} N = {previousValue.Account.Nonce}");
-                            }
-                            State.Set(previousValue.Address, Rlp.Encode(previousValue.Account));
-                            break;
-                        case ChangeType.Delete:
-                            if (ShouldLog.State)
-                            {
-                                Console.WriteLine($"  DELETE {previousValue.Address}");
-                            }
-                            State.Set(previousValue.Address, null);
-                            break;
-                        default:
-                            throw new ArgumentOutOfRangeException();
-                    }
+                    _cache.Remove(change.Address);
                 }
             }
 
             _currentPosition = snapshot;
+            foreach (Change kept in keptInCache)
+            {
+                _currentPosition++;
+                _changes[_currentPosition] = kept;
+                _cache[kept.Address].Push(_currentPosition);
+            }
+
+            for (int i = 0; i < _capacity; i++)
+            {
+                if (i > _currentPosition)
+                {
+                    Debug.Assert(_changes[i] == null);
+                }
+            }
         }
 
         public void CreateAccount(Address address, BigInteger balance)
@@ -226,6 +226,11 @@ namespace Nevermind.Evm
                 Console.WriteLine("  COMMITTING CHANGES");
             }
 
+            if (_currentPosition == -1)
+            {
+                return;
+            }
+
             Debug.Assert(_changes[_currentPosition] != null);
             Debug.Assert(_changes[_currentPosition + 1] == null);
 
@@ -245,45 +250,45 @@ namespace Nevermind.Evm
                 switch (change.ChangeType)
                 {
                     case ChangeType.JustCache:
-                        break;
+                    break;
                     case ChangeType.Update:
-                        if (ShouldLog.State)
-                        {
-                            Console.WriteLine($"  UPDATE {change.Address} B = {change.Account.Balance} N = {change.Account.Nonce}");
-                        }
-                        State.Set(change.Address, Rlp.Encode(change.Account));
-                        break;
+                    if (ShouldLog.State)
+                    {
+                        Console.WriteLine($"  UPDATE {change.Address} B = {change.Account.Balance} N = {change.Account.Nonce}");
+                    }
+                    State.Set(change.Address, Rlp.Encode(change.Account));
+                    break;
                     case ChangeType.New:
-                        if (ShouldLog.State)
-                        {
-                            Console.WriteLine($"  CREATE {change.Address} B = {change.Account.Balance} N = {change.Account.Nonce}");
-                        }
-                        State.Set(change.Address, Rlp.Encode(change.Account));
-                        break;
+                    if (ShouldLog.State)
+                    {
+                        Console.WriteLine($"  CREATE {change.Address} B = {change.Account.Balance} N = {change.Account.Nonce}");
+                    }
+                    State.Set(change.Address, Rlp.Encode(change.Account));
+                    break;
                     case ChangeType.Delete:
-                        if (ShouldLog.State)
-                        {
-                            Console.WriteLine($"  DELETE {change.Address}");
-                        }
+                    if (ShouldLog.State)
+                    {
+                        Console.WriteLine($"  DELETE {change.Address}");
+                    }
 
-                        bool wasItCreatedNow = false;
-                        while (_cache[change.Address].Count > 0)
+                    bool wasItCreatedNow = false;
+                    while (_cache[change.Address].Count > 0)
+                    {
+                        int previousOne = _cache[change.Address].Pop();
+                        wasItCreatedNow |= (_changes[previousOne].ChangeType == ChangeType.New);
+                        if (wasItCreatedNow)
                         {
-                            int previousOne = _cache[change.Address].Pop();
-                            wasItCreatedNow |= (_changes[previousOne].ChangeType == ChangeType.New);
-                            if (wasItCreatedNow)
-                            {
-                                break;
-                            }
+                            break;
                         }
+                    }
 
-                        if (!wasItCreatedNow)
-                        {
-                            State.Set(change.Address, null);
-                        }
-                        break;
+                    if (!wasItCreatedNow)
+                    {
+                        State.Set(change.Address, null);
+                    }
+                    break;
                     default:
-                        throw new ArgumentOutOfRangeException();
+                    throw new ArgumentOutOfRangeException();
                 }
             }
 

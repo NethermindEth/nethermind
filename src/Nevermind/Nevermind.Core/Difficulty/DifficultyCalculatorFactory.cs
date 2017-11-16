@@ -26,8 +26,8 @@ namespace Nevermind.Core.Difficulty
                     return Calculators.GetOrAdd(EthereumNetwork.Ropsten, n => new RopstenDifficultyCalculator());
                 case EthereumNetwork.Morden:
                     return Calculators.GetOrAdd(EthereumNetwork.Morden, n => new MordenDifficultyCalculator());
-                case EthereumNetwork.Olimpic:
-                    return Calculators.GetOrAdd(EthereumNetwork.Olimpic, n => new OlimpicDifficultyCalculator());
+                case EthereumNetwork.Olympic:
+                    return Calculators.GetOrAdd(EthereumNetwork.Olympic, n => new OlimpicDifficultyCalculator());
                 default:
                     throw new NotImplementedException();
             }

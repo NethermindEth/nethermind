@@ -1,15 +1,21 @@
-﻿using System.Collections.Generic;
+﻿using System.Numerics;
 using Nevermind.Core;
-using Nevermind.Store;
+using Nevermind.Core.Encoding;
 
 namespace Nevermind.Evm
 {
     public interface IStorageProvider
     {
-        StorageTree GetOrCreateStorage(Address address);
+        byte[] Get(Address address, BigInteger index);
 
-        Dictionary<Address, StateSnapshot> TakeSnapshot();
+        void Set(Address address, BigInteger index, byte[] newValue);
 
-        void Restore(Dictionary<Address, StateSnapshot> storageSnapshot);
+        Keccak GetRoot(Address address);
+
+        int TakeSnapshot();
+
+        void Restore(int snapshot);
+
+        void Commit(IWorldStateProvider worldStateProvider);
     }
 }
