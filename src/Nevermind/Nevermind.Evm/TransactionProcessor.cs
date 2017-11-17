@@ -14,13 +14,13 @@ namespace Nevermind.Evm
         private static readonly IntrinsicGasCalculator IntrinsicGasCalculator = new IntrinsicGasCalculator();
         private readonly ILogger _logger;
         private readonly IProtocolSpecification _protocolSpecification;
-        private readonly IWorldStateProvider _stateProvider;
+        private readonly IStateProvider _stateProvider;
         private readonly IStorageProvider _storageProvider;
         private readonly IVirtualMachine _virtualMachine;
 
         public TransactionProcessor(
             IVirtualMachine virtualMachine,
-            IWorldStateProvider stateProvider,
+            IStateProvider stateProvider,
             IStorageProvider storageProvider,
             IProtocolSpecification protocolSpecification,
             ChainId chainId,
@@ -138,15 +138,6 @@ namespace Nevermind.Evm
                         throw new TransactionCollisionException();
                     }
 
-                    if (!_stateProvider.AccountExists(recipient))
-                    {
-                        _stateProvider.CreateAccount(recipient, value);
-                    }
-                    else
-                    {
-                        _stateProvider.UpdateBalance(recipient, value);
-                    }
-
                     if (_protocolSpecification.IsEip2Enabled)
                     {
                         if (gasAvailable < GasCostOf.Create)
@@ -157,31 +148,25 @@ namespace Nevermind.Evm
                         gasAvailable -= GasCostOf.Create;
                     }
                 }
-                else
-                {
-                    if (!_stateProvider.AccountExists(recipient))
-                    {
-                        _stateProvider.CreateAccount(recipient, value);
-                    }
-                    else
-                    {
-                        _stateProvider.UpdateBalance(recipient, value);
-                    }
-                }
 
-                if (!transaction.IsTransfer)
+                if (transaction.IsTransfer)
+                {
+                    _stateProvider.UpdateBalance(sender, -value);
+                    _stateProvider.UpdateBalance(recipient, value);
+                }
+                else
                 {
                     ExecutionEnvironment env = new ExecutionEnvironment();
                     env.Value = value;
-                    env.Caller = sender;
-                    env.CodeOwner = recipient;
+                    env.Sender = sender;
+                    env.ExecutingAccount = recipient;
                     env.CurrentBlock = block;
                     env.GasPrice = gasPrice;
                     env.InputData = data ?? new byte[0];
                     env.MachineCode = machineCode ?? _stateProvider.GetCode(recipient);
                     env.Originator = sender;
 
-                    EvmState state = new EvmState(gasAvailable, env, recipient.IsPrecompiled() ? ExecutionType.Precompile : ExecutionType.Transaction);
+                    EvmState state = new EvmState(gasAvailable, env, recipient.IsPrecompiled() ? ExecutionType.Precompile : ExecutionType.Transaction, false);
 
                     if (_protocolSpecification.IsEip170Enabled
                         && transaction.IsContractCreation

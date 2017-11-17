@@ -16,17 +16,39 @@ namespace Nevermind.Evm.Test
         private readonly Address _address2 = new Address(Hash2);
 
         [Test]
+        public void Eip_158_zero_value_transfer_deletes()
+        {
+            StateTree tree = new StateTree(new InMemoryDb());
+            StateProvider frontierProvider = new StateProvider(tree, new FrontierProtocolSpecification());
+            frontierProvider.CreateAccount(_address1, 0);
+            frontierProvider.Commit();
+            StateProvider provider = new StateProvider(tree, new SpuriousDragonProtocolSpecification());
+            provider.UpdateBalance(_address1, 0);
+            provider.Commit();
+            Assert.False(provider.AccountExists(_address1));
+        }
+
+        [Test]
         public void Empty_commit_restore()
         {
-            WorldStateProvider provider = new WorldStateProvider(new StateTree(new InMemoryDb()));
+            StateProvider provider = new StateProvider(new StateTree(new InMemoryDb()), new FrontierProtocolSpecification());
             provider.Commit();
             provider.Restore(-1);
         }
 
         [Test]
+        public void Is_empty_account()
+        {
+            StateProvider provider = new StateProvider(new StateTree(new InMemoryDb()), new FrontierProtocolSpecification());
+            provider.CreateAccount(_address1, 0);
+            provider.Commit();
+            Assert.True(provider.IsEmptyAccount(_address1));
+        }
+
+        [Test]
         public void Restore_update_restore()
         {
-            WorldStateProvider provider = new WorldStateProvider(new StateTree(new InMemoryDb()));
+            StateProvider provider = new StateProvider(new StateTree(new InMemoryDb()), new FrontierProtocolSpecification());
             provider.CreateAccount(_address1, 0);
             provider.UpdateBalance(_address1, 1);
             provider.UpdateBalance(_address1, 1);
@@ -52,7 +74,7 @@ namespace Nevermind.Evm.Test
         [Test]
         public void Keep_in_cache()
         {
-            WorldStateProvider provider = new WorldStateProvider(new StateTree(new InMemoryDb()));
+            StateProvider provider = new StateProvider(new StateTree(new InMemoryDb()), new FrontierProtocolSpecification());
             provider.CreateAccount(_address1, 0);
             provider.Commit();
             provider.GetBalance(_address1);
@@ -70,7 +92,7 @@ namespace Nevermind.Evm.Test
         {
             byte[] code = new byte[] {1};
 
-            WorldStateProvider provider = new WorldStateProvider(new StateTree(new InMemoryDb()));
+            StateProvider provider = new StateProvider(new StateTree(new InMemoryDb()), new FrontierProtocolSpecification());
             provider.CreateAccount(_address1, 1);
             provider.UpdateBalance(_address1, 1);
             provider.IncrementNonce(_address1);

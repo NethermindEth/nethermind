@@ -5,7 +5,7 @@ using Nevermind.Store;
 
 namespace Nevermind.Evm
 {
-    public interface IWorldStateProvider
+    public interface IStateProvider
     {
         StateTree State { get; }
 

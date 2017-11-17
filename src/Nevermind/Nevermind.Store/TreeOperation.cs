@@ -34,7 +34,7 @@ namespace Nevermind.Store
         {
             if (_tree.Root == null)
             {
-                if (!_isUpdate)
+                if (!_isUpdate || _updateValue == null)
                 {
                     return null;
                 }

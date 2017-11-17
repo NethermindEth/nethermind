@@ -120,7 +120,7 @@ namespace PerfTest
             //InMemoryDb db = new InMemoryDb();
             //StateTree stateTree = new StateTree(db);
             //BlockhashProvider blockhashProvider = new BlockhashProvider();
-            //WorldStateProvider worldStateProvider = new WorldStateProvider(stateTree);
+            //StateProvider worldStateProvider = new StateProvider(stateTree);
             //TestStorageProvider storageProvider = new TestStorageProvider(db);
 
             Stopwatch stopwatch = new Stopwatch();

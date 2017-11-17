@@ -5,11 +5,11 @@ namespace Nevermind.Evm
 {
     public class ExecutionEnvironment
     {
-        public Address CodeOwner { get; set; }
+        public Address ExecutingAccount { get; set; }
 
         public Address Originator { get; set; }
 
-        public Address Caller { get; set; }
+        public Address Sender { get; set; }
 
         public BigInteger GasPrice { get; set; }
 

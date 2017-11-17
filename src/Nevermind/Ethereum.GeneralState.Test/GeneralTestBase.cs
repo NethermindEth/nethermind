@@ -19,7 +19,7 @@ namespace Ethereum.GeneralState.Test
     {
         private IBlockhashProvider _blockhashProvider;
         private InMemoryDb _db;
-        private IWorldStateProvider _stateProvider;
+        private IStateProvider _stateProvider;
         private IStorageProvider _storageProvider;
         private readonly IProtocolSpecification _protocolSpecification = new FrontierProtocolSpecification();
         private IVirtualMachine _virtualMachine;
@@ -28,9 +28,9 @@ namespace Ethereum.GeneralState.Test
         public void Setup()
         {
             _db = new InMemoryDb();
-            _storageProvider = new StorageProvider(_db);
+            _storageProvider = new StorageProvider();
             _blockhashProvider = new TestBlockhashProvider();
-            _stateProvider = new WorldStateProvider(new StateTree(_db));
+            _stateProvider = new StateProvider(new StateTree(_db), _protocolSpecification);
             _virtualMachine = new VirtualMachine(_blockhashProvider, _stateProvider, _storageProvider, _protocolSpecification, ShouldLog.Evm ? new ConsoleLogger() : null);
         }
 

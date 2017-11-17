@@ -287,6 +287,14 @@ namespace Ethereum.Trie.Test
         }
 
         [Test]
+        public void Delete_on_empty()
+        {
+            PatriciaTree patriciaTree = new PatriciaTree(_db);
+            patriciaTree.Set(Keccak.Compute("1").Bytes, new byte[0]);
+            Assert.AreEqual(PatriciaTree.EmptyTreeHash, patriciaTree.RootHash);
+        }
+
+        [Test]
         public void Assigning_null_value_in_branch_throws_an_exception()
         {
             // ReSharper disable once ObjectCreationAsStatement

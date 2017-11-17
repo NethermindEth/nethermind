@@ -19,16 +19,16 @@ namespace Ethereum.VM.Test
         private InMemoryDb _db;
         private IStorageProvider _storageProvider;
         private IBlockhashProvider _blockhashProvider;
-        private IWorldStateProvider _stateProvider;
+        private IStateProvider _stateProvider;
         private readonly IProtocolSpecification _protocolSpecification = new FrontierProtocolSpecification();
 
         [SetUp]
         public void Setup()
         {
             _db = new InMemoryDb();
-            _storageProvider = new StorageProvider(_db);
+            _storageProvider = new StorageProvider();
             _blockhashProvider = new TestBlockhashProvider();
-            _stateProvider = new WorldStateProvider(new StateTree(_db));
+            _stateProvider = new StateProvider(new StateTree(_db), new FrontierProtocolSpecification());
         }
 
         public static IEnumerable<VirtualMachineTest> LoadTests(string testSet)
@@ -118,8 +118,8 @@ namespace Ethereum.VM.Test
             ExecutionEnvironment environment = new ExecutionEnvironment();
             environment.Value = test.Execution.Value;
             environment.CallDepth = 0;
-            environment.Caller = test.Execution.Caller;
-            environment.CodeOwner = test.Execution.Address;
+            environment.Sender = test.Execution.Caller;
+            environment.ExecutingAccount = test.Execution.Address;
 
             Block block = new Block(null, new BlockHeader[0], new Transaction[0]);
             BlockHeader header = new BlockHeader();

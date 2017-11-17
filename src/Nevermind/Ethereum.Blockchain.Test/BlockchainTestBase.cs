@@ -21,23 +21,24 @@ namespace Ethereum.Blockchain.Test
         private readonly IProtocolSpecificationProvider _protocolSpecificationProvider = new ProtocolSpecificationProvider();
         private IBlockhashProvider _blockhashProvider;
         private InMemoryDb _db;
-        private IWorldStateProvider _stateProvider;
         private IStorageProvider _storageProvider;
         private Dictionary<EthereumNetwork, VirtualMachine> _virtualMachines;
+        private Dictionary<EthereumNetwork, StateProvider> _stateProviders;
 
         [SetUp]
         public void Setup()
         {
             _db = new InMemoryDb();
-            _storageProvider = new StorageProvider(_db);
+            _storageProvider = new StorageProvider();
             _blockhashProvider = new TestBlockhashProvider();
-            _stateProvider = new WorldStateProvider(new StateTree(_db));
             _virtualMachines = new Dictionary<EthereumNetwork, VirtualMachine>();
+            _stateProviders = new Dictionary<EthereumNetwork, StateProvider>();
             EthereumNetwork[] networks = {EthereumNetwork.Frontier, EthereumNetwork.Homestead, EthereumNetwork.Byzantium, EthereumNetwork.SpuriousDragon, EthereumNetwork.TangerineWhistle};
             foreach (EthereumNetwork ethereumNetwork in networks)
             {
                 IProtocolSpecification spec = _protocolSpecificationProvider.GetSpec(ethereumNetwork, 1);
-                _virtualMachines[ethereumNetwork] = new VirtualMachine(_blockhashProvider, _stateProvider, _storageProvider, spec, ShouldLog.Evm ? new ConsoleLogger() : null);
+                _stateProviders[ethereumNetwork] = new StateProvider(new StateTree(_db), spec);
+                _virtualMachines[ethereumNetwork] = new VirtualMachine(_blockhashProvider, _stateProviders[ethereumNetwork], _storageProvider, spec, ShouldLog.Evm ? new ConsoleLogger() : null);
             }
         }
 
@@ -68,26 +69,30 @@ namespace Ethereum.Blockchain.Test
                     {
                         namedTest.Value.EthereumNetwork = EthereumNetwork.Frontier;
                     }
-                    //else if (namedTest.Key.Contains("Homestead"))
+                    //else
+                    //if (namedTest.Key.Contains("Homestead"))
                     //{
                     //    namedTest.Value.EthereumNetwork = EthereumNetwork.Homestead;
+                    //}
+                    //else
+                    //if (namedTest.Key.Contains("EIP150"))
+                    //{
+                    //    namedTest.Value.EthereumNetwork = EthereumNetwork.TangerineWhistle;
+                    //}
+                    //else
+                    //if (namedTest.Key.Contains("EIP158"))
+                    //{
+                    //    namedTest.Value.EthereumNetwork = EthereumNetwork.SpuriousDragon;
+                    //}
+                    //else
+                    //if (namedTest.Key.Contains("Byzantium"))
+                    //{
+                    //    namedTest.Value.EthereumNetwork = EthereumNetwork.Byzantium;
                     //}
                     else
                     {
                         continue;
                     }
-                    //else if (namedTest.Key.Contains("Eip150"))
-                    //{
-                    //    namedTest.Value.EthereumNetwork = EthereumNetwork.TangerineWhistle;
-                    //}
-                    //else if (namedTest.Key.Contains("Eip158"))
-                    //{
-                    //    namedTest.Value.EthereumNetwork = EthereumNetwork.SpuriousDragon;
-                    //}
-                    //else if (namedTest.Key.Contains("Byzantium"))
-                    //{
-                    //    namedTest.Value.EthereumNetwork = EthereumNetwork.Byzantium;
-                    //}
 
                     testsByName.Add(namedTest.Key, namedTest.Value);
                 }
@@ -116,21 +121,21 @@ namespace Ethereum.Blockchain.Test
                     _storageProvider.Set(accountState.Key, storageItem.Key, storageItem.Value);
                 }
 
-                _stateProvider.CreateAccount(accountState.Key, accountState.Value.Balance);
-                Keccak codeHash = _stateProvider.UpdateCode(accountState.Value.Code);
-                _stateProvider.UpdateCodeHash(accountState.Key, codeHash);
+                _stateProviders[test.Network].CreateAccount(accountState.Key, accountState.Value.Balance);
+                Keccak codeHash = _stateProviders[test.Network].UpdateCode(accountState.Value.Code);
+                _stateProviders[test.Network].UpdateCodeHash(accountState.Key, codeHash);
                 for (int i = 0; i < accountState.Value.Nonce; i++)
                 {
-                    _stateProvider.IncrementNonce(accountState.Key);
+                    _stateProviders[test.Network].IncrementNonce(accountState.Key);
                 }
             }
 
-            _storageProvider.Commit(_stateProvider);
-            _stateProvider.Commit();
+            _storageProvider.Commit(_stateProviders[test.Network]);
+            _stateProviders[test.Network].Commit();
 
             IProtocolSpecification spec = _protocolSpecificationProvider.GetSpec(test.Network, 1);
             ConsoleLogger logger = ShouldLog.TransactionProcessor ? new ConsoleLogger() : null;
-            TransactionProcessor processor = new TransactionProcessor(_virtualMachines[test.Network], _stateProvider, _storageProvider, spec, ChainId.Mainnet, logger);
+            TransactionProcessor processor = new TransactionProcessor(_virtualMachines[test.Network], _stateProviders[test.Network], _storageProvider, spec, ChainId.Mainnet, logger);
 
             // TODO: handle multiple
             BlockHeader header = BuildBlockHeader(test.Blocks[0].BlockHeader);
@@ -164,15 +169,18 @@ namespace Ethereum.Blockchain.Test
 
             stopwatch?.Start();
 
-            if (!_stateProvider.AccountExists(header.Beneficiary))
+            BigInteger reward = spec.IsEip186Enabled ? 3.Ether() : 5.Ether();
+            if (!_stateProviders[test.Network].AccountExists(header.Beneficiary))
             {
-                _stateProvider.CreateAccount(header.Beneficiary, 0);
+                _stateProviders[test.Network].CreateAccount(header.Beneficiary, reward);
+            }
+            else
+            {
+                _stateProviders[test.Network].UpdateBalance(header.Beneficiary, reward);
             }
 
-            _stateProvider.UpdateBalance(header.Beneficiary, spec.IsEip186Enabled ? 3.Ether() : 5.Ether());
-
-            _storageProvider.Commit(_stateProvider);
-            _stateProvider.Commit();
+            _storageProvider.Commit(_stateProviders[test.Network]);
+            _stateProviders[test.Network].Commit();
 
             RunAssertions(test, receipts, transactions);
         }
@@ -183,9 +191,15 @@ namespace Ethereum.Blockchain.Test
             List<string> differences = new List<string>();
             foreach (KeyValuePair<Address, AccountState> accountState in test.PostState)
             {
-                bool accountExists = _stateProvider.AccountExists(accountState.Key);
-                BigInteger? balance = accountExists ? _stateProvider.GetBalance(accountState.Key) : (BigInteger?)null;
-                BigInteger? nonce = accountExists ? _stateProvider.GetNonce(accountState.Key) : (BigInteger?)null;
+                if (differences.Count > 8)
+                {
+                    Console.WriteLine("More than 8 differences...");
+                    break;
+                }
+
+                bool accountExists = _stateProviders[test.Network].AccountExists(accountState.Key);
+                BigInteger? balance = accountExists ? _stateProviders[test.Network].GetBalance(accountState.Key) : (BigInteger?)null;
+                BigInteger? nonce = accountExists ? _stateProviders[test.Network].GetNonce(accountState.Key) : (BigInteger?)null;
 
                 if (accountState.Value.Balance != balance)
                 {
@@ -197,7 +211,7 @@ namespace Ethereum.Blockchain.Test
                     differences.Add($"{accountState.Key} nonce exp: {accountState.Value.Nonce}, actual: {nonce}");
                 }
 
-                byte[] code = accountExists ? _stateProvider.GetCode(accountState.Key) : new byte[0];
+                byte[] code = accountExists ? _stateProviders[test.Network].GetCode(accountState.Key) : new byte[0];
                 if (!Bytes.UnsafeCompare(accountState.Value.Code, code))
                 {
                     differences.Add($"{accountState.Key} code exp: {accountState.Value.Code?.Length}, actual: {code?.Length}");
@@ -220,7 +234,7 @@ namespace Ethereum.Blockchain.Test
 
             Assert.Zero(differences.Count, "differences");
 
-            Assert.AreEqual(testHeader.GasUsed, receipts.Last()?.GasUsed ?? 0);
+            Assert.AreEqual(testHeader.GasUsed, receipts.LastOrDefault()?.GasUsed ?? 0);
             Keccak receiptsRoot = BlockProcessor.GetReceiptsRoot(receipts.ToArray());
             Keccak transactionsRoot = BlockProcessor.GetTransactionsRoot(transactions.ToArray());
 
@@ -229,7 +243,7 @@ namespace Ethereum.Blockchain.Test
                 Assert.AreEqual(testHeader.Bloom.ToString(), receipts.Last().Bloom.ToString(), "bloom");
             }
 
-            Assert.AreEqual(testHeader.StateRoot, _stateProvider.State.RootHash, "state root");
+            Assert.AreEqual(testHeader.StateRoot, _stateProviders[test.Network].State.RootHash, "state root");
             Assert.AreEqual(testHeader.TransactionsTrie, transactionsRoot, "transactions root");
             Assert.AreEqual(testHeader.ReceiptTrie, receiptsRoot, "receipts root");
         }

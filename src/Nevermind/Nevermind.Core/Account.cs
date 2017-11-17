@@ -18,8 +18,13 @@ namespace Nevermind.Core
         public Keccak StorageRoot { get; set; }
         public Keccak CodeHash { get; set; }
 
-        // can be an extension
         public bool IsSimple => CodeHash == Keccak.OfAnEmptyString;
+
+        public bool IsEmpty =>
+            Balance == BigInteger.Zero &&
+            Nonce == BigInteger.Zero &&
+            CodeHash == Keccak.OfAnEmptyString &&
+            StorageRoot == Keccak.EmptyTreeHash;
 
         public Account WithChangedBalance(BigInteger newBalance)
         {

@@ -8,7 +8,7 @@ using Nevermind.Store;
 
 namespace Nevermind.Evm
 {
-    public class WorldStateProvider : IWorldStateProvider
+    public class StateProvider : IStateProvider
     {
         private const int StartCapacity = 1024;
 
@@ -17,12 +17,16 @@ namespace Nevermind.Evm
 
         private readonly HashSet<Address> _committedThisRound = new HashSet<Address>();
 
+        private readonly List<Change> _keptInCache = new List<Change>();
+        private readonly IProtocolSpecification _protocolSpecification;
+
         private int _capacity = StartCapacity;
         private Change[] _changes = new Change[StartCapacity];
         private int _currentPosition = -1;
 
-        public WorldStateProvider(StateTree stateTree)
+        public StateProvider(StateTree stateTree, IProtocolSpecification protocolSpecification)
         {
+            _protocolSpecification = protocolSpecification;
             State = stateTree;
         }
 
@@ -35,19 +39,12 @@ namespace Nevermind.Evm
                 return _changes[_cache[address].Peek()].ChangeType != ChangeType.Delete;
             }
 
-            Account account = GetAndAddToCache(address);
-
-            return account != null;
+            return GetAndAddToCache(address) != null;
         }
 
         public bool IsEmptyAccount(Address address)
         {
-            // TODO: assumed exists
-            Account account = GetThroughCache(address);
-            return account.Balance == BigInteger.Zero &&
-                   account.Nonce == BigInteger.Zero &&
-                   account.CodeHash == Keccak.OfAnEmptyString &&
-                   account.StorageRoot == Keccak.EmptyTreeHash;
+            return GetThroughCache(address).IsEmpty;
         }
 
         public BigInteger GetNonce(Address address)
@@ -70,25 +67,41 @@ namespace Nevermind.Evm
             }
 
             Account account = GetThroughCache(address);
-            if (account.CodeHash == codeHash)
+            if (account.CodeHash != codeHash)
             {
-                return;
+                Account changedAccount = account.WithChangedCodeHash(codeHash);
+                PushUpdate(address, changedAccount);
             }
-
-            Account changedAccount = account.WithChangedCodeHash(codeHash);
-            PushUpdate(address, changedAccount);
         }
 
         public void UpdateBalance(Address address, BigInteger balanceChange)
         {
-            Account account = GetThroughCache(address);
-            if (balanceChange == 0)
-            {
+            if (balanceChange == BigInteger.Zero && !_protocolSpecification.IsEip158Enabled)
+            {    
                 return;
             }
 
-            Account changedAccount = account.WithChangedBalance(account.Balance + balanceChange);
-            PushUpdate(address, changedAccount);
+            Account account = GetThroughCache(address);
+            if (_protocolSpecification.IsEip158Enabled && balanceChange == BigInteger.Zero && account.IsEmpty)
+            {
+                PushDelete(address);
+            }
+            else
+            {
+                BigInteger newbalance = account.Balance + balanceChange;
+                if (newbalance < 0)
+                {
+                    throw new InsufficientBalanceException();
+                }
+
+                Account changedAccount = account.WithChangedBalance(account.Balance + balanceChange);
+                if (ShouldLog.State)
+                {
+                    Console.WriteLine($"  UPDATE {address} B = {account.Balance + balanceChange} B_CHANGE = {balanceChange}");
+                }
+
+                PushUpdate(address, changedAccount);
+            }
         }
 
         public void UpdateStorageRoot(Address address, Keccak storageRoot)
@@ -99,8 +112,11 @@ namespace Nevermind.Evm
                 return;
             }
 
-            Account changedAccount = account.WithChangedStorageRoot(storageRoot);
-            PushUpdate(address, changedAccount);
+            if (account.StorageRoot != storageRoot) // TODO: will it ever be called? unnecessary comp
+            {
+                Account changedAccount = account.WithChangedStorageRoot(storageRoot);
+                PushUpdate(address, changedAccount);
+            }
         }
 
         public void IncrementNonce(Address address)
@@ -163,18 +179,16 @@ namespace Nevermind.Evm
                 Console.WriteLine($"  RESTORING SNAPSHOT {snapshot}");
             }
 
-            List<Change> keptInCache = new List<Change>();
-
             for (int i = 0; i < _currentPosition - snapshot; i++)
             {
                 Change change = _changes[_currentPosition - i];
                 if (_cache[change.Address].Count == 1)
                 {
-                    if(change.ChangeType == ChangeType.JustCache)
+                    if (change.ChangeType == ChangeType.JustCache)
                     {
                         int actualPosition = _cache[change.Address].Pop();
                         Debug.Assert(_currentPosition - i == actualPosition);
-                        keptInCache.Add(change);
+                        _keptInCache.Add(change);
                         _changes[actualPosition] = null;
                         continue;
                     }
@@ -191,20 +205,14 @@ namespace Nevermind.Evm
             }
 
             _currentPosition = snapshot;
-            foreach (Change kept in keptInCache)
+            foreach (Change kept in _keptInCache)
             {
                 _currentPosition++;
                 _changes[_currentPosition] = kept;
                 _cache[kept.Address].Push(_currentPosition);
             }
 
-            for (int i = 0; i < _capacity; i++)
-            {
-                if (i > _currentPosition)
-                {
-                    Debug.Assert(_changes[i] == null);
-                }
-            }
+            _keptInCache.Clear();
         }
 
         public void CreateAccount(Address address, BigInteger balance)
@@ -250,45 +258,67 @@ namespace Nevermind.Evm
                 switch (change.ChangeType)
                 {
                     case ChangeType.JustCache:
-                    break;
+                    {
+                        break;
+                    }
                     case ChangeType.Update:
-                    if (ShouldLog.State)
                     {
-                        Console.WriteLine($"  UPDATE {change.Address} B = {change.Account.Balance} N = {change.Account.Nonce}");
-                    }
-                    State.Set(change.Address, Rlp.Encode(change.Account));
-                    break;
-                    case ChangeType.New:
-                    if (ShouldLog.State)
-                    {
-                        Console.WriteLine($"  CREATE {change.Address} B = {change.Account.Balance} N = {change.Account.Nonce}");
-                    }
-                    State.Set(change.Address, Rlp.Encode(change.Account));
-                    break;
-                    case ChangeType.Delete:
-                    if (ShouldLog.State)
-                    {
-                        Console.WriteLine($"  DELETE {change.Address}");
-                    }
-
-                    bool wasItCreatedNow = false;
-                    while (_cache[change.Address].Count > 0)
-                    {
-                        int previousOne = _cache[change.Address].Pop();
-                        wasItCreatedNow |= (_changes[previousOne].ChangeType == ChangeType.New);
-                        if (wasItCreatedNow)
+                        if (ShouldLog.State)
                         {
-                            break;
+                            Console.WriteLine($"  UPDATE {change.Address} B = {change.Account.Balance} N = {change.Account.Nonce}");
                         }
-                    }
 
-                    if (!wasItCreatedNow)
-                    {
-                        State.Set(change.Address, null);
+                        if (_protocolSpecification.IsEip158Enabled && change.Account.IsEmpty)
+                        {
+                            State.Set(change.Address, null);
+                        }
+                        else
+                        {
+                            State.Set(change.Address, Rlp.Encode(change.Account));
+                        }
+
+                        break;
                     }
-                    break;
+                    case ChangeType.New:
+                    {
+                        if (ShouldLog.State)
+                        {
+                            Console.WriteLine($"  CREATE {change.Address} B = {change.Account.Balance} N = {change.Account.Nonce}");
+                        }
+
+                        if (!_protocolSpecification.IsEip158Enabled || !change.Account.IsEmpty)
+                        {
+                            State.Set(change.Address, Rlp.Encode(change.Account));
+                        }
+
+                        break;
+                    }
+                    case ChangeType.Delete:
+                    {
+                        if (ShouldLog.State)
+                        {
+                            Console.WriteLine($"  DELETE {change.Address}");
+                        }
+
+                        bool wasItCreatedNow = false;
+                        while (_cache[change.Address].Count > 0)
+                        {
+                            int previousOne = _cache[change.Address].Pop();
+                            wasItCreatedNow |= _changes[previousOne].ChangeType == ChangeType.New;
+                            if (wasItCreatedNow)
+                            {
+                                break;
+                            }
+                        }
+
+                        if (!wasItCreatedNow)
+                        {
+                            State.Set(change.Address, null);
+                        }
+                        break;
+                    }
                     default:
-                    throw new ArgumentOutOfRangeException();
+                        throw new ArgumentOutOfRangeException();
                 }
             }
 

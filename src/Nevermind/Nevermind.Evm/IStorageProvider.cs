@@ -16,6 +16,6 @@ namespace Nevermind.Evm
 
         void Restore(int snapshot);
 
-        void Commit(IWorldStateProvider worldStateProvider);
+        void Commit(IStateProvider stateProvider);
     }
 }

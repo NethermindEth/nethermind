@@ -16,18 +16,11 @@ namespace Nevermind.Evm
 
         private readonly HashSet<StorageAddress> _committedThisRound = new HashSet<StorageAddress>();
 
-        private readonly InMemoryDb _db;
-
         private readonly Dictionary<Address, StorageTree> _storages = new Dictionary<Address, StorageTree>();
 
         private int _capacity = StartCapacity;
         private Change[] _changes = new Change[StartCapacity];
         private int _currentPosition = -1;
-
-        public StorageProvider(InMemoryDb db)
-        {
-            _db = db;
-        }
 
         public byte[] Get(Address address, BigInteger index)
         {
@@ -92,17 +85,9 @@ namespace Nevermind.Evm
                 _changes[_currentPosition] = kept;
                 _cache[kept.StorageAddress].Push(_currentPosition);
             }
-
-            for (int i = 0; i < _capacity; i++)
-            {
-                if (i > _currentPosition)
-                {
-                    Debug.Assert(_changes[i] == null);
-                }
-            }
         }
 
-        public void Commit(IWorldStateProvider stateProvider)
+        public void Commit(IStateProvider stateProvider)
         {
             if (ShouldLog.State)
             {
@@ -153,9 +138,17 @@ namespace Nevermind.Evm
 
             foreach (Address address in toUpdateRoots)
             {
+                // TODO: this is tricky... for EIP-158
                 if (stateProvider.AccountExists(address))
                 {
-                    stateProvider.UpdateStorageRoot(address, GetRoot(address));
+                    Keccak root = GetRoot(address);
+
+                    if (ShouldLog.State)
+                    {
+                        Console.WriteLine($"  UPDATE {address} STORAGE ROOT = {root}");
+                    }
+
+                    stateProvider.UpdateStorageRoot(address, root);
                 }
             }
 

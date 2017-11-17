@@ -34,9 +34,9 @@ namespace Nevermind.Blockchain.Test.Runner
 
         private static void Main(string[] args)
         {
-            //ShouldLog.Evm = false;
-            //ShouldLog.TransactionProcessor = false;
-            //ShouldLog.State = false;
+            ShouldLog.Evm = false;
+            ShouldLog.TransactionProcessor = false;
+            ShouldLog.State = false;
 
             Run("stAttackTest");
             Run("stBadOpcode");
@@ -79,8 +79,8 @@ namespace Nevermind.Blockchain.Test.Runner
             Run("stWalletTest");
             Run("stZeroCallsRevert");
             Run("stZeroCallsTest");
-            Run("stZeroKnowledge");
-            Run("stZeroKnowledge2");
+            //Run("stZeroKnowledge");
+            //Run("stZeroKnowledge2");
 
             Console.WriteLine($"FINISHED {_totalMs}ms, FAILURES {AllFailingTests.Count}");
             foreach (string failingTest in AllFailingTests)
