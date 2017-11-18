@@ -202,6 +202,12 @@
     </EmbeddedResource>
   </ItemGroup>
   <ItemGroup>
+    <EmbeddedResource Include="..\..\tests\BlockchainTests\GeneralStateTests\stWalletTest*\*.*">
+      <Link>%(RecursiveDir)%(FileName)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </EmbeddedResource>
+  </ItemGroup>
+  <ItemGroup>
     <Reference Include="JetBrains.Annotations, Version=11.0.0.0, Culture=neutral, PublicKeyToken=1010a0d8d6380325, processorArchitecture=MSIL">
       <HintPath>..\packages\JetBrains.Annotations.11.0.0\lib\net20\JetBrains.Annotations.dll</HintPath>
     </Reference>
@@ -257,6 +263,7 @@
     <Compile Include="RandomTests.cs" />
     <Compile Include="SystemOperationsTests.cs" />
     <Compile Include="TransactionTests.cs" />
+    <Compile Include="WalletTests.cs" />
     <Compile Include="ZeroCallsRevertTests.cs" />
     <Compile Include="ZeroCallsTests.cs" />
   </ItemGroup>

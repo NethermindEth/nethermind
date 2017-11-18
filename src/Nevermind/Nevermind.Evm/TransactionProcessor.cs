@@ -156,6 +156,8 @@ namespace Nevermind.Evm
                 }
                 else
                 {
+                    bool isPrecompile = recipient.IsPrecompiled();
+
                     ExecutionEnvironment env = new ExecutionEnvironment();
                     env.Value = value;
                     env.Sender = sender;
@@ -163,10 +165,10 @@ namespace Nevermind.Evm
                     env.CurrentBlock = block;
                     env.GasPrice = gasPrice;
                     env.InputData = data ?? new byte[0];
-                    env.MachineCode = machineCode ?? _stateProvider.GetCode(recipient);
+                    env.MachineCode = isPrecompile ? (byte[])recipient.Hex : machineCode ?? _stateProvider.GetCode(recipient);
                     env.Originator = sender;
 
-                    EvmState state = new EvmState(gasAvailable, env, recipient.IsPrecompiled() ? ExecutionType.Precompile : ExecutionType.Transaction, false);
+                    EvmState state = new EvmState(gasAvailable, env, isPrecompile ? ExecutionType.DirectPrecompile : ExecutionType.Transaction, false);
 
                     if (_protocolSpecification.IsEip170Enabled
                         && transaction.IsContractCreation

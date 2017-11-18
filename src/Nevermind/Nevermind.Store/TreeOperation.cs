@@ -13,10 +13,11 @@ namespace Nevermind.Store
         private readonly byte[] _updatePath;
         private readonly byte[] _updateValue;
         private readonly bool _isUpdate;
+        private readonly bool _ignoreMissingDelete;
 
         private readonly Stack<StackedNode> _nodeStack = new Stack<StackedNode>();
 
-        public TreeOperation(PatriciaTree tree, Nibble[] updatePath, byte[] updateValue, bool isUpdate)
+        public TreeOperation(PatriciaTree tree, Nibble[] updatePath, byte[] updateValue, bool isUpdate, bool ignoreMissingDelete = true)
         {
             _tree = tree;
             _updatePath = updatePath.ToLooseByteArray();
@@ -26,6 +27,7 @@ namespace Nevermind.Store
             }
 
             _isUpdate = isUpdate;
+            _ignoreMissingDelete = ignoreMissingDelete;
         }
 
         private int _currentIndex;
@@ -225,6 +227,11 @@ namespace Nevermind.Store
 
                 if (_updateValue == null)
                 {
+                    if (_ignoreMissingDelete)
+                    {
+                        return null;
+                    }
+
                     throw new InvalidOperationException($"Could not find the leaf node to delete: {Hex.FromBytes(_updatePath, false)}");
                 }
 
@@ -294,6 +301,11 @@ namespace Nevermind.Store
 
             if (_updateValue == null)
             {
+                if (_ignoreMissingDelete)
+                {
+                    return null;
+                }
+
                 throw new InvalidOperationException($"Could not find the leaf node to delete: {Hex.FromBytes(_updatePath, false)}");
             }
 
@@ -347,6 +359,11 @@ namespace Nevermind.Store
 
             if (_updateValue == null)
             {
+                if (_ignoreMissingDelete)
+                {
+                    return null;
+                }
+
                 throw new InvalidOperationException("Could find the leaf node to delete: {Hex.FromBytes(_updatePath, false)}");
             }
 

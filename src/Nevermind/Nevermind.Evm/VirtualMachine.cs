@@ -74,7 +74,7 @@ namespace Nevermind.Evm
                     _logger?.Log($"BEGIN {currentState.ExecutionType} AT DEPTH {currentState.Env.CallDepth} (at {currentState.Env.ExecutingAccount})");
 
                     CallResult callResult;
-                    if (currentState.ExecutionType == ExecutionType.Precompile)
+                    if (currentState.ExecutionType == ExecutionType.Precompile || currentState.ExecutionType == ExecutionType.DirectPrecompile)
                     {
                         callResult = ExecutePrecompile(currentState);
                     }
@@ -146,7 +146,7 @@ namespace Nevermind.Evm
                         _storageProvider.Restore(currentState.StorageSnapshot);
                     }
 
-                    if (currentState.ExecutionType == ExecutionType.Transaction)
+                    if (currentState.ExecutionType == ExecutionType.Transaction || currentState.ExecutionType ==  ExecutionType.DirectPrecompile)
                     {
                         throw;
                     }
@@ -524,6 +524,20 @@ namespace Nevermind.Evm
                 programCounter++;
 
                 _logger?.Log($"{instruction} (0x{instruction:X})");
+                if (ShouldLog.EvmStack)
+                {
+                    for (int i = 0; i < Math.Min(stackHead, 7); i++)
+                    {
+                        if (intPositions[stackHead - i - 1])
+                        {
+                            _logger?.Log($"STACK{i} -> {intsOnStack[stackHead - i - 1]}");
+                        }
+                        else
+                        {
+                            _logger?.Log($"STACK{i} -> {Hex.FromBytes(bytesOnStack[stackHead - i - 1], true)}");
+                        }
+                    }
+                }
 
                 switch (instruction)
                 {
@@ -1257,6 +1271,7 @@ namespace Nevermind.Evm
                         bool accountExists = _stateProvider.AccountExists(contractAddress);
                         if (accountExists && !_stateProvider.IsEmptyAccount(contractAddress))
                         {
+                            // TODO: reset to blank instead, except for balance
                             throw new TransactionCollisionException();
                         }
 
@@ -1352,7 +1367,7 @@ namespace Nevermind.Evm
                         UpdateGas(_protocolSpecification.IsEip150Enabled ? GasCostOf.CallOrCallCodeEip150 : GasCostOf.CallOrCallCode, ref gasAvailable);
                         UpdateMemoryCost(dataOffset, dataLength);
                         byte[] callData = evmState.Memory.Load(dataOffset, dataLength);
-                        UpdateMemoryCost(outputLength, outputOffset);
+                        UpdateMemoryCost(outputOffset, outputLength);
 
                         UpdateGas(gasExtra, ref gasAvailable);
                         if (env.CallDepth >= MaxCallDepth) // TODO: fragile ordering / potential vulnerability for different clients

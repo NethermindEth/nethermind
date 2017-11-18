@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Numerics;
 using System.Text;
+using System.Threading.Tasks;
 using Ethereum.Test.Base;
 using Nevermind.Core;
 using Nevermind.Core.Encoding;
@@ -129,7 +130,7 @@ namespace Ethereum.Blockchain.Test
                 _logger = logger;
             }
 
-            private StringBuilder _line = new StringBuilder();
+            private readonly StringBuilder _line = new StringBuilder();
 
             public override void Write(string message)
             {
@@ -139,7 +140,7 @@ namespace Ethereum.Blockchain.Test
             public override void WriteLine(string message)
             {
                 Write(message);
-                _logger.Log(_line.ToString());
+                _logger?.Log(_line.ToString());
                 _line.Clear();
             }
         }
@@ -158,6 +159,22 @@ namespace Ethereum.Blockchain.Test
                 _traceListener.Write(value);
             }
 
+            public override void WriteLine()
+            {
+                _traceListener.WriteLine("");
+            }
+
+            public override void WriteLine(string value)
+            {
+                _traceListener.WriteLine(value);
+            }
+
+            public override Task WriteAsync(char value)
+            {
+                _traceListener.Write(value);
+                return Task.CompletedTask;
+            }
+
             public override Encoding Encoding => Encoding.UTF8;
         }
 
@@ -167,8 +184,10 @@ namespace Ethereum.Blockchain.Test
             Debug.Listeners.Clear();
             Debug.Listeners.Add(traceListener);
 
+            TextWriter defaultWriterError = Console.Error;
             TextWriter defaultWriter = Console.Out;
-            Console.SetOut(new LoggingConsole(traceListener));
+            //Console.SetError(new LoggingConsole(traceListener));
+            //Console.SetOut(new LoggingConsole(traceListener));
 
             try
 
@@ -245,6 +264,7 @@ namespace Ethereum.Blockchain.Test
             }
             finally
             {
+                Console.SetError(defaultWriterError);
                 Console.SetOut(defaultWriter);
             }
         }
@@ -293,7 +313,7 @@ namespace Ethereum.Blockchain.Test
 
             foreach (string difference in differences)
             {
-                Console.WriteLine(difference);
+                _logger?.Log(difference);
             }
 
             Assert.Zero(differences.Count, "differences");

@@ -7,5 +7,6 @@ namespace Nevermind.Evm
         Callcode,
         Create,
         Precompile,
+        DirectPrecompile,
     }
 }

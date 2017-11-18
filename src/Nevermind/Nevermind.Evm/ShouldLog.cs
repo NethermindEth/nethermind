@@ -4,6 +4,7 @@ namespace Nevermind.Evm
     {
         public static bool TransactionProcessor = true;
         public static bool Evm = true;
+        public static bool EvmStack = true;
         public static bool State = true;
     }
 }
