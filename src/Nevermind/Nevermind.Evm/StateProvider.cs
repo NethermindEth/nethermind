@@ -19,14 +19,16 @@ namespace Nevermind.Evm
 
         private readonly List<Change> _keptInCache = new List<Change>();
         private readonly IProtocolSpecification _protocolSpecification;
+        private readonly ILogger _logger;
 
         private int _capacity = StartCapacity;
         private Change[] _changes = new Change[StartCapacity];
         private int _currentPosition = -1;
 
-        public StateProvider(StateTree stateTree, IProtocolSpecification protocolSpecification)
+        public StateProvider(StateTree stateTree, IProtocolSpecification protocolSpecification, ILogger logger)
         {
             _protocolSpecification = protocolSpecification;
+            _logger = logger;
             State = stateTree;
         }
 
@@ -61,10 +63,7 @@ namespace Nevermind.Evm
 
         public void UpdateCodeHash(Address address, Keccak codeHash)
         {
-            if (ShouldLog.State)
-            {
-                Console.WriteLine($"  SETTING CODE HASH of {address} to {codeHash}");
-            }
+            _logger?.Log($"  SETTING CODE HASH of {address} to {codeHash}");
 
             Account account = GetThroughCache(address);
             if (account.CodeHash != codeHash)
@@ -77,7 +76,7 @@ namespace Nevermind.Evm
         public void UpdateBalance(Address address, BigInteger balanceChange)
         {
             if (balanceChange == BigInteger.Zero && !_protocolSpecification.IsEip158Enabled)
-            {    
+            {
                 return;
             }
 
@@ -95,10 +94,7 @@ namespace Nevermind.Evm
                 }
 
                 Account changedAccount = account.WithChangedBalance(account.Balance + balanceChange);
-                if (ShouldLog.State)
-                {
-                    Console.WriteLine($"  UPDATE {address} B = {account.Balance + balanceChange} B_CHANGE = {balanceChange}");
-                }
+                _logger?.Log($"  UPDATE {address} B = {account.Balance + balanceChange} B_CHANGE = {balanceChange}");
 
                 PushUpdate(address, changedAccount);
             }
@@ -174,10 +170,7 @@ namespace Nevermind.Evm
 
         public void Restore(int snapshot)
         {
-            if (ShouldLog.State)
-            {
-                Console.WriteLine($"  RESTORING SNAPSHOT {snapshot}");
-            }
+            _logger?.Log($"  RESTORING SNAPSHOT {snapshot}");
 
             for (int i = 0; i < _currentPosition - snapshot; i++)
             {
@@ -217,10 +210,7 @@ namespace Nevermind.Evm
 
         public void CreateAccount(Address address, BigInteger balance)
         {
-            if (ShouldLog.State)
-            {
-                Console.WriteLine($"  CREATING ACCOUNT: {address} with balance {balance}");
-            }
+            _logger?.Log($"  CREATING ACCOUNT: {address} with balance {balance}");
 
             Account account = new Account();
             account.Balance = balance;
@@ -229,10 +219,7 @@ namespace Nevermind.Evm
 
         public void Commit()
         {
-            if (ShouldLog.State)
-            {
-                Console.WriteLine("  COMMITTING CHANGES");
-            }
+            _logger?.Log("  COMMITTING CHANGES");
 
             if (_currentPosition == -1)
             {
@@ -263,10 +250,7 @@ namespace Nevermind.Evm
                     }
                     case ChangeType.Update:
                     {
-                        if (ShouldLog.State)
-                        {
-                            Console.WriteLine($"  UPDATE {change.Address} B = {change.Account.Balance} N = {change.Account.Nonce}");
-                        }
+                        _logger?.Log($"  UPDATE {change.Address} B = {change.Account.Balance} N = {change.Account.Nonce}");
 
                         if (_protocolSpecification.IsEip158Enabled && change.Account.IsEmpty)
                         {
@@ -281,10 +265,7 @@ namespace Nevermind.Evm
                     }
                     case ChangeType.New:
                     {
-                        if (ShouldLog.State)
-                        {
-                            Console.WriteLine($"  CREATE {change.Address} B = {change.Account.Balance} N = {change.Account.Nonce}");
-                        }
+                        _logger?.Log($"  CREATE {change.Address} B = {change.Account.Balance} N = {change.Account.Nonce}");
 
                         if (!_protocolSpecification.IsEip158Enabled || !change.Account.IsEmpty)
                         {
@@ -295,10 +276,7 @@ namespace Nevermind.Evm
                     }
                     case ChangeType.Delete:
                     {
-                        if (ShouldLog.State)
-                        {
-                            Console.WriteLine($"  DELETE {change.Address}");
-                        }
+                        _logger?.Log($"  DELETE {change.Address}");
 
                         bool wasItCreatedNow = false;
                         while (_cache[change.Address].Count > 0)
@@ -318,7 +296,7 @@ namespace Nevermind.Evm
                         break;
                     }
                     default:
-                        throw new ArgumentOutOfRangeException();
+                    throw new ArgumentOutOfRangeException();
                 }
             }
 

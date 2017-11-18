@@ -2,7 +2,7 @@ using System;
 
 namespace Nevermind.Evm
 {
-    public class MemoryAccessException : Exception
+    public abstract class EvmException : Exception
     {
     }
 }

@@ -19,7 +19,8 @@ namespace Nevermind.Evm
         private static readonly BigInteger P256Int = P255Int * 2;
         private static readonly BigInteger P255 = P255Int;
         private static readonly BigInteger BigInt256 = 256;
-        private static readonly BigInteger BigInt32 = 32;
+        public static readonly BigInteger BigInt32 = 32;
+        public static readonly BigInteger BigIntMaxInt = int.MaxValue;
         private static readonly byte[] EmptyBytes = new byte[0];
         private static readonly byte[] BytesOne = { 1 };
         private static readonly byte[] BytesZero = { 0 };
@@ -135,7 +136,7 @@ namespace Nevermind.Evm
 
                     _logger?.Log($"END {previousState.ExecutionType} AT DEPTH {previousState.Env.CallDepth} (RESULT {Hex.FromBytes(previousCallResult ?? EmptyBytes, true)}) RETURNS ({previousCallOutputDestination} : {Hex.FromBytes(previousCallOutput, true)})");
                 }
-                catch (Exception ex) // TODO: catch EVM exceptions only
+                catch (EvmException ex)
                 {
                     _logger?.Log($"EXCEPTION ({ex.GetType().Name}) IN {currentState.ExecutionType} AT DEPTH {currentState.Env.CallDepth} - RESTORING SNAPSHOT");
 
@@ -286,7 +287,7 @@ namespace Nevermind.Evm
             void LogInstructionResult(Instruction instruction, ulong gasBefore)
             {
                 _logger?.Log(
-                    $"  END {env.CallDepth}_{instruction} GAS {gasAvailable} ({gasBefore - gasAvailable}) STACK {stackHead} MEMORY {evmState.ActiveWordsInMemory} PC {programCounter}");
+                    $"  END {env.CallDepth}_{instruction} GAS {gasAvailable} ({gasBefore - gasAvailable}) STACK {stackHead} MEMORY {evmState.Memory.Size / 32L} PC {programCounter}");
             }
 
             void PushBytes(byte[] value)
@@ -464,10 +465,10 @@ namespace Nevermind.Evm
 
             void UpdateMemoryCost(BigInteger position, BigInteger length)
             {
-                ulong newMemory = CalculateMemoryRequirements(evmState.ActiveWordsInMemory, position, length);
-                ulong newMemoryCost = CalculateMemoryCost(evmState.ActiveWordsInMemory, newMemory);
-                UpdateGas(newMemoryCost, ref gasAvailable);
-                evmState.ActiveWordsInMemory = newMemory;
+                ulong memoryCost = evmState.Memory.CalculateMemoryCost(position, length);
+                _logger?.Log($"  MEMORY COST {memoryCost}");
+
+                UpdateGas(memoryCost, ref gasAvailable);
             }
 
             void ValidateJump(int destination)
@@ -512,6 +513,8 @@ namespace Nevermind.Evm
                 UpdateMemoryCost(previousCallOutputDestination, previousCallOutput.Length);
                 evmState.Memory.Save(previousCallOutputDestination, previousCallOutput);
             }
+
+            BigInteger bigReg;
 
             while (programCounter < code.Length)
             {
@@ -1037,7 +1040,14 @@ namespace Nevermind.Evm
                     case Instruction.JUMP:
                     {
                         UpdateGas(GasCostOf.Mid, ref gasAvailable);
-                        int dest = (int)PopUInt();
+                        //int dest = (int)PopUInt();
+                        bigReg = PopUInt();
+                        if (bigReg > BigIntMaxInt)
+                        {
+                            throw new InvalidJumpDestinationException();
+                        }
+
+                        int dest = (int)bigReg;
                         ValidateJump(dest);
                         programCounter = dest;
                         break;
@@ -1045,7 +1055,14 @@ namespace Nevermind.Evm
                     case Instruction.JUMPI:
                     {
                         UpdateGas(GasCostOf.High, ref gasAvailable);
-                        int dest = (int)PopUInt();
+                        //int dest = (int)PopUInt();
+                        bigReg = PopUInt();
+                        if (bigReg > BigIntMaxInt)
+                        {
+                            throw new InvalidJumpDestinationException();
+                        }
+
+                        int dest = (int)bigReg;
                         BigInteger condition = PopUInt();
                         if (condition > BigInteger.Zero)
                         {
@@ -1064,7 +1081,7 @@ namespace Nevermind.Evm
                     case Instruction.MSIZE:
                     {
                         UpdateGas(GasCostOf.Base, ref gasAvailable);
-                        PushInt(evmState.ActiveWordsInMemory * 32UL);
+                        PushInt(evmState.Memory.Size);
                         break;
                     }
                     case Instruction.GAS:
@@ -1260,7 +1277,7 @@ namespace Nevermind.Evm
                         callEnv.ExecutingAccount = contractAddress;
                         callEnv.MachineCode = initCode;
                         ulong callGas = gasAvailable;
-                        UpdateGas(callGas, ref gasAvailable);
+                        UpdateGas(_protocolSpecification.IsEip150Enabled ? callGas - callGas / 64 : callGas, ref gasAvailable);
                         EvmState callState = new EvmState(
                             callGas,
                             callEnv,
@@ -1334,9 +1351,8 @@ namespace Nevermind.Evm
 
                         UpdateGas(_protocolSpecification.IsEip150Enabled ? GasCostOf.CallOrCallCodeEip150 : GasCostOf.CallOrCallCode, ref gasAvailable);
                         UpdateMemoryCost(dataOffset, dataLength);
-                        UpdateMemoryCost(outputOffset, outputLength);
-
                         byte[] callData = evmState.Memory.Load(dataOffset, dataLength);
+                        UpdateMemoryCost(outputLength, outputOffset);
 
                         UpdateGas(gasExtra, ref gasAvailable);
                         if (env.CallDepth >= MaxCallDepth) // TODO: fragile ordering / potential vulnerability for different clients
@@ -1352,7 +1368,6 @@ namespace Nevermind.Evm
 
                         if (!callValue.IsZero)
                         {
-
                             if (_stateProvider.GetBalance(env.ExecutingAccount) < callValue)
                             {
                                 RefundGas(GasCostOf.CallStipend, ref gasAvailable);
@@ -1376,7 +1391,8 @@ namespace Nevermind.Evm
                         }
 
                         ulong callGas = callValue.IsZero ? (ulong)gasLimit : (ulong)gasLimit + GasCostOf.CallStipend;
-                        UpdateGas(_protocolSpecification.IsEip150Enabled ? 0UL : (ulong)gasLimit, ref gasAvailable);
+
+                        UpdateGas((ulong)gasLimit, ref gasAvailable);
                         ExecutionEnvironment callEnv = new ExecutionEnvironment();
                         callEnv.CallDepth = env.CallDepth + 1;
                         callEnv.CurrentBlock = env.CurrentBlock;
@@ -1450,28 +1466,6 @@ namespace Nevermind.Evm
 
             UpdateCurrentState();
             return CallResult.Empty;
-        }
-
-        public static ulong CalculateMemoryRequirements(ulong initial, BigInteger position, BigInteger length)
-        {
-            if (length == 0)
-            {
-                return initial;
-            }
-
-            return Math.Max(initial, EvmMemory.Div32Ceiling(position + length));
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static ulong CalculateMemoryCost(ulong initial, ulong final)
-        {
-            if (final <= initial)
-            {
-                return 0UL;
-            }
-
-            return (ulong)((final - initial) * GasCostOf.Memory + BigInteger.Divide(BigInteger.Pow(final, 2), 512) -
-                           BigInteger.Divide(BigInteger.Pow(initial, 2), 512));
         }
 
         private class CallResult

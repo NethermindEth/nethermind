@@ -2,7 +2,7 @@ using System;
 
 namespace Nevermind.Evm
 {
-    public class StackUnderflowException : Exception
+    public class StackUnderflowException : EvmException
     {
     }
 }

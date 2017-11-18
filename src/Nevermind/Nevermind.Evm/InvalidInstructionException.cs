@@ -2,7 +2,7 @@ using System;
 
 namespace Nevermind.Evm
 {
-    public class InvalidInstructionException : Exception
+    public class InvalidInstructionException : EvmException
     {
         public byte Instruction1 { get; }
 

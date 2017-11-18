@@ -2,7 +2,7 @@ using System;
 
 namespace Nevermind.Evm
 {
-    public class CallDepthException : Exception
+    public class CallDepthException : EvmException
     {
     }
 }

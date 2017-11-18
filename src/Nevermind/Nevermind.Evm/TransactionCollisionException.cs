@@ -2,7 +2,7 @@ using System;
 
 namespace Nevermind.Evm
 {
-    public class TransactionCollisionException : Exception
+    public class TransactionCollisionException : EvmException
     {
     }
 }

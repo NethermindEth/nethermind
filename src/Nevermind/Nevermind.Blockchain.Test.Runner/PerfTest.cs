@@ -5,7 +5,7 @@ using Ethereum.Blockchain.Test;
 
 namespace Nevermind.Blockchain.Test.Runner
 {
-    public class PerfTest : BlockchainTestBase
+    public class PerfTest : BlockchainTestBase, ITestInRunner
     {
         public CategoryResult RunTests(string subset, int iterations = 1)
         {

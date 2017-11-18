@@ -127,7 +127,7 @@ namespace PerfTest
             stopwatch.Start();
             for (int i = 0; i < iterations; i++)
             {
-                Machine.Run(new EvmState(1_000_000_000L, env, ExecutionType.Transaction));
+                Machine.Run(new EvmState(1_000_000_000L, env, ExecutionType.Transaction, false));
             }
 
             stopwatch.Stop();

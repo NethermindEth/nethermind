@@ -63,12 +63,13 @@
     <Compile Include="BlockhashProvider.cs" />
     <Compile Include="BlockProcessor.cs" />
     <Compile Include="CallDepthException.cs" />
+    <Compile Include="EvmException.cs" />
     <Compile Include="EvmState.cs" />
     <Compile Include="ExecutionType.cs" />
+    <Compile Include="InsufficientBalanceException.cs" />
     <Compile Include="InvalidInstructionException.cs" />
     <Compile Include="InvalidJumpDestinationException.cs" />
     <Compile Include="IVirtualMachine.cs" />
-    <Compile Include="MemoryAccessException.cs" />
     <Compile Include="Precompiles\ECRecoverPrecompiledContract.cs" />
     <Compile Include="EvmMemory.cs" />
     <Compile Include="ExecutionEnvironment.cs" />
@@ -83,7 +84,6 @@
     <Compile Include="OutOfGasException.cs" />
     <Compile Include="Precompiles\Ripemd160PrecompiledContract.cs" />
     <Compile Include="Precompiles\Sha256PrecompiledContract.cs" />
-    <Compile Include="RecursiveCallException.cs" />
     <Compile Include="ShouldLog.cs" />
     <Compile Include="EvmStackOverflowException.cs" />
     <Compile Include="StackUnderflowException.cs" />

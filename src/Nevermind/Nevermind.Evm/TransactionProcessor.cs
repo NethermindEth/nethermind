@@ -216,7 +216,7 @@ namespace Nevermind.Evm
                     }
                 }
             }
-            catch (Exception e)
+            catch (EvmException e)
             {
                 _logger?.Log($"  EVM EXCEPTION: {e.GetType().Name}");
                 _stateProvider.Restore(snapshot);

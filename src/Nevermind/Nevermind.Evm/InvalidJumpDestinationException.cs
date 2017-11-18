@@ -2,7 +2,7 @@ using System;
 
 namespace Nevermind.Evm
 {
-    public class InvalidJumpDestinationException : Exception
+    public class InvalidJumpDestinationException : EvmException
     {
     }
 }

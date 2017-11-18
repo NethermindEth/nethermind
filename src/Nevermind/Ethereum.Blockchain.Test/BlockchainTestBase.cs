@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Numerics;
+using System.Text;
 using Ethereum.Test.Base;
 using Nevermind.Core;
 using Nevermind.Core.Encoding;
@@ -24,22 +25,29 @@ namespace Ethereum.Blockchain.Test
         private IStorageProvider _storageProvider;
         private Dictionary<EthereumNetwork, VirtualMachine> _virtualMachines;
         private Dictionary<EthereumNetwork, StateProvider> _stateProviders;
+        private ILogger _logger;
+
+        protected void Setup(ILogger logger)
+        {
+            _logger = logger;
+            _db = new InMemoryDb();
+            _storageProvider = new StorageProvider(ShouldLog.State ? logger : null);
+            _blockhashProvider = new TestBlockhashProvider();
+            _virtualMachines = new Dictionary<EthereumNetwork, VirtualMachine>();
+            _stateProviders = new Dictionary<EthereumNetwork, StateProvider>();
+            EthereumNetwork[] networks = { EthereumNetwork.Frontier, EthereumNetwork.Homestead, EthereumNetwork.Byzantium, EthereumNetwork.SpuriousDragon, EthereumNetwork.TangerineWhistle };
+            foreach (EthereumNetwork ethereumNetwork in networks)
+            {
+                IProtocolSpecification spec = _protocolSpecificationProvider.GetSpec(ethereumNetwork, 1);
+                _stateProviders[ethereumNetwork] = new StateProvider(new StateTree(_db), spec, ShouldLog.State ? logger : null);
+                _virtualMachines[ethereumNetwork] = new VirtualMachine(_blockhashProvider, _stateProviders[ethereumNetwork], _storageProvider, spec, ShouldLog.Evm ? logger : null);
+            }
+        }
 
         [SetUp]
         public void Setup()
         {
-            _db = new InMemoryDb();
-            _storageProvider = new StorageProvider();
-            _blockhashProvider = new TestBlockhashProvider();
-            _virtualMachines = new Dictionary<EthereumNetwork, VirtualMachine>();
-            _stateProviders = new Dictionary<EthereumNetwork, StateProvider>();
-            EthereumNetwork[] networks = {EthereumNetwork.Frontier, EthereumNetwork.Homestead, EthereumNetwork.Byzantium, EthereumNetwork.SpuriousDragon, EthereumNetwork.TangerineWhistle};
-            foreach (EthereumNetwork ethereumNetwork in networks)
-            {
-                IProtocolSpecification spec = _protocolSpecificationProvider.GetSpec(ethereumNetwork, 1);
-                _stateProviders[ethereumNetwork] = new StateProvider(new StateTree(_db), spec);
-                _virtualMachines[ethereumNetwork] = new VirtualMachine(_blockhashProvider, _stateProviders[ethereumNetwork], _storageProvider, spec, ShouldLog.Evm ? new ConsoleLogger() : null);
-            }
+            Setup(new ConsoleLogger());
         }
 
         public static IEnumerable<BlockchainTest> LoadTests(string testSet)
@@ -112,77 +120,133 @@ namespace Ethereum.Blockchain.Test
             return state;
         }
 
+        private class LoggingTraceListener : TraceListener
+        {
+            private readonly ILogger _logger;
+
+            public LoggingTraceListener(ILogger logger)
+            {
+                _logger = logger;
+            }
+
+            private StringBuilder _line = new StringBuilder();
+
+            public override void Write(string message)
+            {
+                _line.Append(message);
+            }
+
+            public override void WriteLine(string message)
+            {
+                Write(message);
+                _logger.Log(_line.ToString());
+                _line.Clear();
+            }
+        }
+
+        private class LoggingConsole : TextWriter
+        {
+            private readonly TraceListener _traceListener;
+
+            public LoggingConsole(TraceListener traceListener)
+            {
+                _traceListener = traceListener;
+            }
+
+            public override void Write(char value)
+            {
+                _traceListener.Write(value);
+            }
+
+            public override Encoding Encoding => Encoding.UTF8;
+        }
+
         protected void RunTest(BlockchainTest test, Stopwatch stopwatch = null)
         {
-            foreach (KeyValuePair<Address, AccountState> accountState in test.Pre)
+            LoggingTraceListener traceListener = new LoggingTraceListener(_logger);
+            Debug.Listeners.Clear();
+            Debug.Listeners.Add(traceListener);
+
+            TextWriter defaultWriter = Console.Out;
+            Console.SetOut(new LoggingConsole(traceListener));
+
+            try
+
             {
-                foreach (KeyValuePair<BigInteger, byte[]> storageItem in accountState.Value.Storage)
+                foreach (KeyValuePair<Address, AccountState> accountState in test.Pre)
                 {
-                    _storageProvider.Set(accountState.Key, storageItem.Key, storageItem.Value);
+                    foreach (KeyValuePair<BigInteger, byte[]> storageItem in accountState.Value.Storage)
+                    {
+                        _storageProvider.Set(accountState.Key, storageItem.Key, storageItem.Value);
+                    }
+
+                    _stateProviders[test.Network].CreateAccount(accountState.Key, accountState.Value.Balance);
+                    Keccak codeHash = _stateProviders[test.Network].UpdateCode(accountState.Value.Code);
+                    _stateProviders[test.Network].UpdateCodeHash(accountState.Key, codeHash);
+                    for (int i = 0; i < accountState.Value.Nonce; i++)
+                    {
+                        _stateProviders[test.Network].IncrementNonce(accountState.Key);
+                    }
                 }
 
-                _stateProviders[test.Network].CreateAccount(accountState.Key, accountState.Value.Balance);
-                Keccak codeHash = _stateProviders[test.Network].UpdateCode(accountState.Value.Code);
-                _stateProviders[test.Network].UpdateCodeHash(accountState.Key, codeHash);
-                for (int i = 0; i < accountState.Value.Nonce; i++)
+                _storageProvider.Commit(_stateProviders[test.Network]);
+                _stateProviders[test.Network].Commit();
+
+                IProtocolSpecification spec = _protocolSpecificationProvider.GetSpec(test.Network, 1);
+                TransactionProcessor processor = new TransactionProcessor(_virtualMachines[test.Network], _stateProviders[test.Network], _storageProvider, spec, ChainId.Mainnet, ShouldLog.TransactionProcessor ? _logger : null);
+
+                // TODO: handle multiple
+                BlockHeader header = BuildBlockHeader(test.Blocks[0].BlockHeader);
+                List<TransactionReceipt> receipts = new List<TransactionReceipt>();
+                List<Transaction> transactions = new List<Transaction>();
+
+                stopwatch?.Start();
+                BigInteger gasUsedSoFar = 0;
+                foreach (IncomingTransaction testTransaction in test.Blocks[0].Transactions)
                 {
-                    _stateProviders[test.Network].IncrementNonce(accountState.Key);
+                    Transaction transaction = new Transaction();
+                    transaction.To = testTransaction.To;
+                    transaction.Value = testTransaction.Value;
+                    transaction.GasLimit = testTransaction.GasLimit;
+                    transaction.GasPrice = testTransaction.GasPrice;
+                    transaction.Data = transaction.To == null ? null : testTransaction.Data;
+                    transaction.Init = transaction.To == null ? testTransaction.Data : null;
+                    transaction.Nonce = testTransaction.Nonce;
+                    transaction.Signature = new Signature(testTransaction.R, testTransaction.S, testTransaction.V);
+                    transactions.Add(transaction);
+
+                    TransactionReceipt receipt = processor.Execute(
+                        transaction,
+                        header,
+                        gasUsedSoFar
+                    );
+
+                    receipts.Add(receipt);
+                    gasUsedSoFar += receipt.GasUsed;
                 }
+
+                stopwatch?.Start();
+
+                BigInteger reward = spec.IsEip186Enabled ? 3.Ether() : 5.Ether();
+                if (!_stateProviders[test.Network].AccountExists(header.Beneficiary))
+                {
+                    _stateProviders[test.Network].CreateAccount(header.Beneficiary, reward);
+                }
+                else
+                {
+                    _stateProviders[test.Network].UpdateBalance(header.Beneficiary, reward);
+                }
+
+                _storageProvider.Commit(_stateProviders[test.Network]);
+                _stateProviders[test.Network].Commit();
+
+                RunAssertions(test, receipts, transactions);
+
             }
-
-            _storageProvider.Commit(_stateProviders[test.Network]);
-            _stateProviders[test.Network].Commit();
-
-            IProtocolSpecification spec = _protocolSpecificationProvider.GetSpec(test.Network, 1);
-            ConsoleLogger logger = ShouldLog.TransactionProcessor ? new ConsoleLogger() : null;
-            TransactionProcessor processor = new TransactionProcessor(_virtualMachines[test.Network], _stateProviders[test.Network], _storageProvider, spec, ChainId.Mainnet, logger);
-
-            // TODO: handle multiple
-            BlockHeader header = BuildBlockHeader(test.Blocks[0].BlockHeader);
-            List<TransactionReceipt> receipts = new List<TransactionReceipt>();
-            List<Transaction> transactions = new List<Transaction>();
-
-            stopwatch?.Start();
-            BigInteger gasUsedSoFar = 0;
-            foreach (IncomingTransaction testTransaction in test.Blocks[0].Transactions)
+            finally
             {
-                Transaction transaction = new Transaction();
-                transaction.To = testTransaction.To;
-                transaction.Value = testTransaction.Value;
-                transaction.GasLimit = testTransaction.GasLimit;
-                transaction.GasPrice = testTransaction.GasPrice;
-                transaction.Data = transaction.To == null ? null : testTransaction.Data;
-                transaction.Init = transaction.To == null ? testTransaction.Data : null;
-                transaction.Nonce = testTransaction.Nonce;
-                transaction.Signature = new Signature(testTransaction.R, testTransaction.S, testTransaction.V);
-                transactions.Add(transaction);
-
-                TransactionReceipt receipt = processor.Execute(
-                    transaction,
-                    header,
-                    gasUsedSoFar
-                );
-
-                receipts.Add(receipt);
-                gasUsedSoFar += receipt.GasUsed;
+                Console.SetOut(defaultWriter);
             }
-
-            stopwatch?.Start();
-
-            BigInteger reward = spec.IsEip186Enabled ? 3.Ether() : 5.Ether();
-            if (!_stateProviders[test.Network].AccountExists(header.Beneficiary))
-            {
-                _stateProviders[test.Network].CreateAccount(header.Beneficiary, reward);
-            }
-            else
-            {
-                _stateProviders[test.Network].UpdateBalance(header.Beneficiary, reward);
-            }
-
-            _storageProvider.Commit(_stateProviders[test.Network]);
-            _stateProviders[test.Network].Commit();
-
-            RunAssertions(test, receipts, transactions);
         }
 
         private void RunAssertions(BlockchainTest test, List<TransactionReceipt> receipts, List<Transaction> transactions)

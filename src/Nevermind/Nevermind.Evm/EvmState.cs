@@ -14,7 +14,6 @@ namespace Nevermind.Evm
         public readonly bool[] IntPositions = new bool[VirtualMachine.MaxStackSize];
         public readonly BigInteger[] IntsOnStack = new BigInteger[VirtualMachine.MaxStackSize];
 
-        private ulong _activeWordsInMemory;
         private HashSet<Address> _destroyList = new HashSet<Address>();
         private List<LogEntry> _logs = new List<LogEntry>();
         public int StackHead = 0;
@@ -50,24 +49,6 @@ namespace Nevermind.Evm
         public ExecutionEnvironment Env { get; }
         public ulong GasAvailable { get; set; }
         public BigInteger ProgramCounter { get; set; }
-
-        public ulong ActiveWordsInMemory
-        {
-            get => _activeWordsInMemory;
-            set
-            {
-                if (value != _activeWordsInMemory && ShouldLog.Evm)
-                {
-                    Console.WriteLine($"  MEMORY SIZE CHANGED FROM {_activeWordsInMemory} TO {value}");
-                }
-                if (ShouldLog.Evm)
-                {
-                    Console.WriteLine($"  MEMORY SIZE REMAINS {_activeWordsInMemory}");
-                }
-
-                _activeWordsInMemory = value;
-            }
-        }
 
         internal ExecutionType ExecutionType { get; }
         internal BigInteger OutputDestination { get; }

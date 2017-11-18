@@ -15,12 +15,18 @@ namespace Nevermind.Evm
         private readonly Dictionary<StorageAddress, Stack<int>> _cache = new Dictionary<StorageAddress, Stack<int>>();
 
         private readonly HashSet<StorageAddress> _committedThisRound = new HashSet<StorageAddress>();
+        private readonly ILogger _logger;
 
         private readonly Dictionary<Address, StorageTree> _storages = new Dictionary<Address, StorageTree>();
 
         private int _capacity = StartCapacity;
         private Change[] _changes = new Change[StartCapacity];
         private int _currentPosition = -1;
+
+        public StorageProvider(ILogger logger)
+        {
+            _logger = logger;
+        }
 
         public byte[] Get(Address address, BigInteger index)
         {
@@ -45,9 +51,8 @@ namespace Nevermind.Evm
 
         public void Restore(int snapshot)
         {
-            if (ShouldLog.State)
             {
-                Console.WriteLine($"  RESTORING SNAPSHOT {snapshot}");
+                _logger?.Log($"  RESTORING SNAPSHOT {snapshot}");
             }
 
             List<Change> keptInCache = new List<Change>();
@@ -89,9 +94,8 @@ namespace Nevermind.Evm
 
         public void Commit(IStateProvider stateProvider)
         {
-            if (ShouldLog.State)
             {
-                Console.WriteLine("  COMMITTING CHANGES");
+                _logger?.Log("  COMMITTING CHANGES");
             }
 
             if (_currentPosition == -1)
@@ -123,10 +127,10 @@ namespace Nevermind.Evm
                     case ChangeType.JustCache:
                         break;
                     case ChangeType.Update:
-                        if (ShouldLog.State)
-                        {
-                            Console.WriteLine($"  UPDATE {change.StorageAddress.Address}_{change.StorageAddress.Index} V = {Hex.FromBytes(change.Value, true)}");
-                        }
+
+                    {
+                        _logger?.Log($"  UPDATE {change.StorageAddress.Address}_{change.StorageAddress.Index} V = {Hex.FromBytes(change.Value, true)}");
+                    }
 
                         StorageTree tree = GetOrCreateStorage(change.StorageAddress.Address);
                         tree.Set(change.StorageAddress.Index, change.Value);
@@ -143,9 +147,9 @@ namespace Nevermind.Evm
                 {
                     Keccak root = GetRoot(address);
 
-                    if (ShouldLog.State)
+
                     {
-                        Console.WriteLine($"  UPDATE {address} STORAGE ROOT = {root}");
+                        _logger?.Log($"  UPDATE {address} STORAGE ROOT = {root}");
                     }
 
                     stateProvider.UpdateStorageRoot(address, root);

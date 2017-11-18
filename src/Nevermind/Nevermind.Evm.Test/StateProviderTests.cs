@@ -19,10 +19,10 @@ namespace Nevermind.Evm.Test
         public void Eip_158_zero_value_transfer_deletes()
         {
             StateTree tree = new StateTree(new InMemoryDb());
-            StateProvider frontierProvider = new StateProvider(tree, new FrontierProtocolSpecification());
+            StateProvider frontierProvider = new StateProvider(tree, new FrontierProtocolSpecification(), ShouldLog.State ? new ConsoleLogger() : null);
             frontierProvider.CreateAccount(_address1, 0);
             frontierProvider.Commit();
-            StateProvider provider = new StateProvider(tree, new SpuriousDragonProtocolSpecification());
+            StateProvider provider = new StateProvider(tree, new SpuriousDragonProtocolSpecification(), ShouldLog.State ? new ConsoleLogger() : null);
             provider.UpdateBalance(_address1, 0);
             provider.Commit();
             Assert.False(provider.AccountExists(_address1));
@@ -31,7 +31,7 @@ namespace Nevermind.Evm.Test
         [Test]
         public void Empty_commit_restore()
         {
-            StateProvider provider = new StateProvider(new StateTree(new InMemoryDb()), new FrontierProtocolSpecification());
+            StateProvider provider = new StateProvider(new StateTree(new InMemoryDb()), new FrontierProtocolSpecification(), ShouldLog.State ? new ConsoleLogger() : null);
             provider.Commit();
             provider.Restore(-1);
         }
@@ -39,7 +39,7 @@ namespace Nevermind.Evm.Test
         [Test]
         public void Is_empty_account()
         {
-            StateProvider provider = new StateProvider(new StateTree(new InMemoryDb()), new FrontierProtocolSpecification());
+            StateProvider provider = new StateProvider(new StateTree(new InMemoryDb()), new FrontierProtocolSpecification(), ShouldLog.State ? new ConsoleLogger() : null);
             provider.CreateAccount(_address1, 0);
             provider.Commit();
             Assert.True(provider.IsEmptyAccount(_address1));
@@ -48,7 +48,7 @@ namespace Nevermind.Evm.Test
         [Test]
         public void Restore_update_restore()
         {
-            StateProvider provider = new StateProvider(new StateTree(new InMemoryDb()), new FrontierProtocolSpecification());
+            StateProvider provider = new StateProvider(new StateTree(new InMemoryDb()), new FrontierProtocolSpecification(), ShouldLog.State ? new ConsoleLogger() : null);
             provider.CreateAccount(_address1, 0);
             provider.UpdateBalance(_address1, 1);
             provider.UpdateBalance(_address1, 1);
@@ -74,7 +74,7 @@ namespace Nevermind.Evm.Test
         [Test]
         public void Keep_in_cache()
         {
-            StateProvider provider = new StateProvider(new StateTree(new InMemoryDb()), new FrontierProtocolSpecification());
+            StateProvider provider = new StateProvider(new StateTree(new InMemoryDb()), new FrontierProtocolSpecification(), ShouldLog.State ? new ConsoleLogger() : null);
             provider.CreateAccount(_address1, 0);
             provider.Commit();
             provider.GetBalance(_address1);
@@ -92,7 +92,7 @@ namespace Nevermind.Evm.Test
         {
             byte[] code = new byte[] {1};
 
-            StateProvider provider = new StateProvider(new StateTree(new InMemoryDb()), new FrontierProtocolSpecification());
+            StateProvider provider = new StateProvider(new StateTree(new InMemoryDb()), new FrontierProtocolSpecification(), ShouldLog.State ? new ConsoleLogger() : null);
             provider.CreateAccount(_address1, 1);
             provider.UpdateBalance(_address1, 1);
             provider.IncrementNonce(_address1);

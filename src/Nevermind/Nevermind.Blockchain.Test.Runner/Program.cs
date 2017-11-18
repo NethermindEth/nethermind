@@ -8,13 +8,13 @@ namespace Nevermind.Blockchain.Test.Runner
     {
         private const int StandardIterations = 1;
 
-        private static readonly PerfTest PerfTest = new PerfTest();
         private static readonly List<string> AllFailingTests = new List<string>();
         private static long _totalMs;
 
-        private static void Run(string category, int iterations = StandardIterations)
+        private static void Run(ITestInRunner test, string category, int iterations = StandardIterations)
         {
-            CategoryResult result = PerfTest.RunTests(category, iterations);
+            CategoryResult result = test.RunTests(category, iterations);
+
             AllFailingTests.AddRange(result.FailingTests);
             _totalMs += result.TotalMs;
 
@@ -34,64 +34,82 @@ namespace Nevermind.Blockchain.Test.Runner
 
         private static void Main(string[] args)
         {
-            ShouldLog.Evm = false;
-            ShouldLog.TransactionProcessor = false;
-            ShouldLog.State = false;
+            while (true)
+            {
+                Console.WriteLine("P/B");
+                string r = Console.ReadLine();
 
-            Run("stAttackTest");
-            Run("stBadOpcode");
-            Run("stCallCodes");
-            Run("stCallCreateCallCodeTest");
-            Run("stCallDelegateCodesCallCodeHomestead");
-            Run("stCallDelegateCodesHomestead");
-            Run("stChangedEIP150");
-            Run("stCodeCopyTest");
-            Run("stCodeSizeLimit");
-            Run("stCreateTest");
-            Run("stDelegatecallTestHomestead");
-            Run("stEIP150singleCodeGasPrices");
-            Run("stEIP150Specific");
-            Run("stEIP158Specific");
-            Run("stExample");
-            Run("stHomesteadSpecific");
-            Run("stInitCodeTest");
-            Run("stLogTests");
-            Run("stMemExpandingEIP150Calls");
-            Run("stMemoryStressTest");
-            Run("stMemoryTest");
-            Run("stNonZeroCallsTest");
-            Run("stPreCompiledContracts");
-            Run("stPreCompiledContracts2");
-            Run("stQuadraticComplexityTest");
-            Run("stRandom");
-            Run("stRandom2");
-            Run("stRecursiveCreate");
-            Run("stRefundTest");
-            Run("stReturnDataTest");
-            Run("stRevertTest");
-            Run("stSolidityTest");
-            Run("stSpecialTest");
-            Run("stStackTests");
-            Run("stStaticCall");
-            Run("stSystemOperationsTest");
-            Run("stTransactionTest");
-            Run("stTransitionTest");
-            Run("stWalletTest");
-            Run("stZeroCallsRevert");
-            Run("stZeroCallsTest");
+                ShouldLog.Evm = false;
+                ShouldLog.State = false;
+                ShouldLog.TransactionProcessor = false;
+                if (r == "p")
+                {
+                    Run(new PerfTest());
+                }
+                else
+                {
+                    Run(new BugHunter());
+                }
+
+                Console.WriteLine($"FINISHED {_totalMs}ms, FAILURES {AllFailingTests.Count}");
+                foreach (string failingTest in AllFailingTests)
+                {
+                    ConsoleColor mem = Console.ForegroundColor;
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    Console.WriteLine($"  FAILED: {failingTest}");
+                    Console.ForegroundColor = mem;
+                }
+
+                Console.WriteLine("Press ENTER to continue");
+                Console.ReadLine();
+            }
+        }
+
+        private static void Run(ITestInRunner bugHunter)
+        {
+            Run(bugHunter, "stAttackTest");
+            Run(bugHunter, "stBadOpcode");
+            Run(bugHunter, "stCallCodes");
+            Run(bugHunter, "stCallCreateCallCodeTest");
+            Run(bugHunter, "stCallDelegateCodesCallCodeHomestead");
+            Run(bugHunter, "stCallDelegateCodesHomestead");
+            Run(bugHunter, "stChangedEIP150");
+            Run(bugHunter, "stCodeCopyTest");
+            Run(bugHunter, "stCodeSizeLimit");
+            Run(bugHunter, "stCreateTest");
+            Run(bugHunter, "stDelegatecallTestHomestead");
+            Run(bugHunter, "stEIP150singleCodeGasPrices");
+            Run(bugHunter, "stEIP150Specific");
+            Run(bugHunter, "stEIP158Specific");
+            Run(bugHunter, "stExample");
+            Run(bugHunter, "stHomesteadSpecific");
+            Run(bugHunter, "stInitCodeTest");
+            Run(bugHunter, "stLogTests");
+            Run(bugHunter, "stMemExpandingEIP150Calls");
+            Run(bugHunter, "stMemoryStressTest");
+            Run(bugHunter, "stMemoryTest");
+            Run(bugHunter, "stNonZeroCallsTest");
+            Run(bugHunter, "stPreCompiledContracts");
+            Run(bugHunter, "stPreCompiledContracts2");
+            Run(bugHunter, "stQuadraticComplexityTest");
+            Run(bugHunter, "stRandom");
+            Run(bugHunter, "stRandom2");
+            Run(bugHunter, "stRecursiveCreate");
+            Run(bugHunter, "stRefundTest");
+            Run(bugHunter, "stReturnDataTest");
+            Run(bugHunter, "stRevertTest");
+            Run(bugHunter, "stSolidityTest");
+            Run(bugHunter, "stSpecialTest");
+            Run(bugHunter, "stStackTests");
+            Run(bugHunter, "stStaticCall");
+            Run(bugHunter, "stSystemOperationsTest");
+            Run(bugHunter, "stTransactionTest");
+            Run(bugHunter, "stTransitionTest");
+            Run(bugHunter, "stWalletTest");
+            Run(bugHunter, "stZeroCallsRevert");
+            Run(bugHunter, "stZeroCallsTest");
             //Run("stZeroKnowledge");
             //Run("stZeroKnowledge2");
-
-            Console.WriteLine($"FINISHED {_totalMs}ms, FAILURES {AllFailingTests.Count}");
-            foreach (string failingTest in AllFailingTests)
-            {
-                ConsoleColor mem = Console.ForegroundColor;
-                Console.ForegroundColor = ConsoleColor.Red;
-                Console.WriteLine($"  FAILED: {failingTest}");
-                Console.ForegroundColor = mem;
-            }
-
-            Console.ReadLine();
         }
     }
 }

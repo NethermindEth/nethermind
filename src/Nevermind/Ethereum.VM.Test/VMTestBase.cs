@@ -26,9 +26,9 @@ namespace Ethereum.VM.Test
         public void Setup()
         {
             _db = new InMemoryDb();
-            _storageProvider = new StorageProvider();
+            _storageProvider = new StorageProvider(ShouldLog.State ? new ConsoleLogger() : null);
             _blockhashProvider = new TestBlockhashProvider();
-            _stateProvider = new StateProvider(new StateTree(_db), new FrontierProtocolSpecification());
+            _stateProvider = new StateProvider(new StateTree(_db), new FrontierProtocolSpecification(), ShouldLog.State ? new ConsoleLogger() : null);
         }
 
         public static IEnumerable<VirtualMachineTest> LoadTests(string testSet)
@@ -160,7 +160,7 @@ namespace Ethereum.VM.Test
                 }
             }
 
-            EvmState state = new EvmState((ulong)test.Execution.Gas, environment, ExecutionType.Transaction);
+            EvmState state = new EvmState((ulong)test.Execution.Gas, environment, ExecutionType.Transaction, false);
 
             if (test.Out == null)
             {

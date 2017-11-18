@@ -28,9 +28,9 @@ namespace Ethereum.GeneralState.Test
         public void Setup()
         {
             _db = new InMemoryDb();
-            _storageProvider = new StorageProvider();
+            _storageProvider = new StorageProvider(ShouldLog.State ? new ConsoleLogger() : null);
             _blockhashProvider = new TestBlockhashProvider();
-            _stateProvider = new StateProvider(new StateTree(_db), _protocolSpecification);
+            _stateProvider = new StateProvider(new StateTree(_db), _protocolSpecification, ShouldLog.State ? new ConsoleLogger() : null);
             _virtualMachine = new VirtualMachine(_blockhashProvider, _stateProvider, _storageProvider, _protocolSpecification, ShouldLog.Evm ? new ConsoleLogger() : null);
         }
 
