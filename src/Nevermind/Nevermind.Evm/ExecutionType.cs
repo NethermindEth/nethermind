@@ -1,5 +1,6 @@
 namespace Nevermind.Evm
 {
+    // TODO: refactor
     public enum ExecutionType
     {
         Transaction,
@@ -8,5 +9,6 @@ namespace Nevermind.Evm
         Create,
         Precompile,
         DirectPrecompile,
+        DirectCreate,
     }
 }

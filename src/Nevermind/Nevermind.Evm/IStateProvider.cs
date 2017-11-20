@@ -7,6 +7,8 @@ namespace Nevermind.Evm
 {
     public interface IStateProvider
     {
+        IProtocolSpecification ProtocolSpecification { get; set; }
+
         StateTree State { get; }
 
         void DeleteAccount(Address address);
@@ -14,6 +16,8 @@ namespace Nevermind.Evm
         void CreateAccount(Address address, BigInteger balance);
 
         bool AccountExists(Address address);
+
+        bool IsDeadAccount(Address address);
 
         bool IsEmptyAccount(Address address);
 

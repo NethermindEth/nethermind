@@ -88,11 +88,11 @@ namespace Ethereum.Blockchain.Test
                     {
                         namedTest.Value.EthereumNetwork = EthereumNetwork.TangerineWhistle;
                     }
-                    //else
-                    //if (namedTest.Key.Contains("EIP158"))
-                    //{
-                    //    namedTest.Value.EthereumNetwork = EthereumNetwork.SpuriousDragon;
-                    //}
+                    else
+                    if (namedTest.Key.Contains("EIP158"))
+                    {
+                        namedTest.Value.EthereumNetwork = EthereumNetwork.SpuriousDragon;
+                    }
                     //else
                     //if (namedTest.Key.Contains("Byzantium"))
                     //{
@@ -184,89 +184,76 @@ namespace Ethereum.Blockchain.Test
             Debug.Listeners.Clear();
             Debug.Listeners.Add(traceListener);
 
-            TextWriter defaultWriterError = Console.Error;
-            TextWriter defaultWriter = Console.Out;
-            //Console.SetError(new LoggingConsole(traceListener));
-            //Console.SetOut(new LoggingConsole(traceListener));
-
-            try
-
+            _stateProviders[test.Network].ProtocolSpecification = _protocolSpecificationProvider.GetSpec(EthereumNetwork.Frontier, 1);
+            foreach (KeyValuePair<Address, AccountState> accountState in test.Pre)
             {
-                foreach (KeyValuePair<Address, AccountState> accountState in test.Pre)
+                foreach (KeyValuePair<BigInteger, byte[]> storageItem in accountState.Value.Storage)
                 {
-                    foreach (KeyValuePair<BigInteger, byte[]> storageItem in accountState.Value.Storage)
-                    {
-                        _storageProvider.Set(accountState.Key, storageItem.Key, storageItem.Value);
-                    }
-
-                    _stateProviders[test.Network].CreateAccount(accountState.Key, accountState.Value.Balance);
-                    Keccak codeHash = _stateProviders[test.Network].UpdateCode(accountState.Value.Code);
-                    _stateProviders[test.Network].UpdateCodeHash(accountState.Key, codeHash);
-                    for (int i = 0; i < accountState.Value.Nonce; i++)
-                    {
-                        _stateProviders[test.Network].IncrementNonce(accountState.Key);
-                    }
+                    _storageProvider.Set(accountState.Key, storageItem.Key, storageItem.Value);
                 }
 
-                _storageProvider.Commit(_stateProviders[test.Network]);
-                _stateProviders[test.Network].Commit();
-
-                IProtocolSpecification spec = _protocolSpecificationProvider.GetSpec(test.Network, 1);
-                TransactionProcessor processor = new TransactionProcessor(_virtualMachines[test.Network], _stateProviders[test.Network], _storageProvider, spec, ChainId.Mainnet, ShouldLog.TransactionProcessor ? _logger : null);
-
-                // TODO: handle multiple
-                BlockHeader header = BuildBlockHeader(test.Blocks[0].BlockHeader);
-                List<TransactionReceipt> receipts = new List<TransactionReceipt>();
-                List<Transaction> transactions = new List<Transaction>();
-
-                stopwatch?.Start();
-                BigInteger gasUsedSoFar = 0;
-                foreach (IncomingTransaction testTransaction in test.Blocks[0].Transactions)
+                _stateProviders[test.Network].CreateAccount(accountState.Key, accountState.Value.Balance);
+                Keccak codeHash = _stateProviders[test.Network].UpdateCode(accountState.Value.Code);
+                _stateProviders[test.Network].UpdateCodeHash(accountState.Key, codeHash);
+                for (int i = 0; i < accountState.Value.Nonce; i++)
                 {
-                    Transaction transaction = new Transaction();
-                    transaction.To = testTransaction.To;
-                    transaction.Value = testTransaction.Value;
-                    transaction.GasLimit = testTransaction.GasLimit;
-                    transaction.GasPrice = testTransaction.GasPrice;
-                    transaction.Data = transaction.To == null ? null : testTransaction.Data;
-                    transaction.Init = transaction.To == null ? testTransaction.Data : null;
-                    transaction.Nonce = testTransaction.Nonce;
-                    transaction.Signature = new Signature(testTransaction.R, testTransaction.S, testTransaction.V);
-                    transactions.Add(transaction);
-
-                    TransactionReceipt receipt = processor.Execute(
-                        transaction,
-                        header,
-                        gasUsedSoFar
-                    );
-
-                    receipts.Add(receipt);
-                    gasUsedSoFar += receipt.GasUsed;
+                    _stateProviders[test.Network].IncrementNonce(accountState.Key);
                 }
-
-                stopwatch?.Start();
-
-                BigInteger reward = spec.IsEip186Enabled ? 3.Ether() : 5.Ether();
-                if (!_stateProviders[test.Network].AccountExists(header.Beneficiary))
-                {
-                    _stateProviders[test.Network].CreateAccount(header.Beneficiary, reward);
-                }
-                else
-                {
-                    _stateProviders[test.Network].UpdateBalance(header.Beneficiary, reward);
-                }
-
-                _storageProvider.Commit(_stateProviders[test.Network]);
-                _stateProviders[test.Network].Commit();
-
-                RunAssertions(test, receipts, transactions);
-
             }
-            finally
+
+            _storageProvider.Commit(_stateProviders[test.Network]);
+            _stateProviders[test.Network].Commit();
+            _stateProviders[test.Network].ProtocolSpecification = _protocolSpecificationProvider.GetSpec(test.Network, 1);
+
+            IProtocolSpecification spec = _protocolSpecificationProvider.GetSpec(test.Network, 1);
+            TransactionProcessor processor = new TransactionProcessor(_virtualMachines[test.Network], _stateProviders[test.Network], _storageProvider, spec, ChainId.Mainnet, ShouldLog.TransactionProcessor ? _logger : null);
+
+            // TODO: handle multiple
+            BlockHeader header = BuildBlockHeader(test.Blocks[0].BlockHeader);
+            List<TransactionReceipt> receipts = new List<TransactionReceipt>();
+            List<Transaction> transactions = new List<Transaction>();
+
+            stopwatch?.Start();
+            BigInteger gasUsedSoFar = 0;
+            foreach (IncomingTransaction testTransaction in test.Blocks[0].Transactions)
             {
-                Console.SetError(defaultWriterError);
-                Console.SetOut(defaultWriter);
+                Transaction transaction = new Transaction();
+                transaction.To = testTransaction.To;
+                transaction.Value = testTransaction.Value;
+                transaction.GasLimit = testTransaction.GasLimit;
+                transaction.GasPrice = testTransaction.GasPrice;
+                transaction.Data = transaction.To == null ? null : testTransaction.Data;
+                transaction.Init = transaction.To == null ? testTransaction.Data : null;
+                transaction.Nonce = testTransaction.Nonce;
+                transaction.Signature = new Signature(testTransaction.R, testTransaction.S, testTransaction.V);
+                transactions.Add(transaction);
+
+                TransactionReceipt receipt = processor.Execute(
+                    transaction,
+                    header,
+                    gasUsedSoFar
+                );
+
+                receipts.Add(receipt);
+                gasUsedSoFar += receipt.GasUsed;
             }
+
+            stopwatch?.Start();
+
+            BigInteger reward = spec.IsEip186Enabled ? 3.Ether() : 5.Ether();
+            if (!_stateProviders[test.Network].AccountExists(header.Beneficiary))
+            {
+                _stateProviders[test.Network].CreateAccount(header.Beneficiary, reward);
+            }
+            else
+            {
+                _stateProviders[test.Network].UpdateBalance(header.Beneficiary, reward);
+            }
+
+            _storageProvider.Commit(_stateProviders[test.Network]);
+            _stateProviders[test.Network].Commit();
+
+            RunAssertions(test, receipts, transactions);
         }
 
         private void RunAssertions(BlockchainTest test, List<TransactionReceipt> receipts, List<Transaction> transactions)
@@ -287,7 +274,7 @@ namespace Ethereum.Blockchain.Test
 
                 if (accountState.Value.Balance != balance)
                 {
-                    differences.Add($"{accountState.Key} balance exp: {accountState.Value.Balance}, actual: {balance}, diff: {accountState.Value.Balance - balance}");
+                    differences.Add($"{accountState.Key} balance exp: {accountState.Value.Balance}, actual: {balance}, diff: {balance - accountState.Value.Balance}");
                 }
 
                 if (accountState.Value.Nonce != nonce)

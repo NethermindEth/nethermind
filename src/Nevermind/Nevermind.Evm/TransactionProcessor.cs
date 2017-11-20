@@ -5,7 +5,6 @@ using Nevermind.Core;
 using Nevermind.Core.Encoding;
 using Nevermind.Core.Signing;
 using Nevermind.Core.Validators;
-using Nevermind.Store;
 
 namespace Nevermind.Evm
 {
@@ -171,14 +170,12 @@ namespace Nevermind.Evm
                     env.MachineCode = isPrecompile ? (byte[])recipient.Hex : machineCode ?? _stateProvider.GetCode(recipient);
                     env.Originator = sender;
 
-                    EvmState state = new EvmState(gasAvailable, env, isPrecompile ? ExecutionType.DirectPrecompile : ExecutionType.Transaction, false);
-
-                    if (_protocolSpecification.IsEip170Enabled
-                        && transaction.IsContractCreation
-                        && env.MachineCode.Length > 0x6000)
-                    {
-                        throw new OutOfGasException();
-                    }
+                    ExecutionType executionType = isPrecompile ?
+                        ExecutionType.DirectPrecompile
+                        : transaction.IsContractCreation ?
+                            ExecutionType.DirectCreate
+                            : ExecutionType.Transaction;
+                    EvmState state = new EvmState(gasAvailable, env, executionType, false);
 
                     (byte[] output, TransactionSubstate substate) = _virtualMachine.Run(state);
                     logEntries.AddRange(substate.Logs);
@@ -187,8 +184,13 @@ namespace Nevermind.Evm
 
                     if (transaction.IsContractCreation)
                     {
-                        ulong codeDepositGasCost = GasCostOf.CodeDeposit * (ulong)output.Length;
-                        if (gasAvailable < codeDepositGasCost && _protocolSpecification.IsEmptyCodeContractBugFixed)
+                        ulong codeDepositGasCost = (ulong)output.Length * GasCostOf.CodeDeposit;
+                        if (_protocolSpecification.IsEip170Enabled && (ulong)output.Length > 0x6000UL)
+                        {
+                            codeDepositGasCost = ulong.MaxValue;
+                        }
+
+                        if (gasAvailable < codeDepositGasCost && _protocolSpecification.IsEip2Enabled)
                         {
                             throw new OutOfGasException();
                         }

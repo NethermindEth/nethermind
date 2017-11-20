@@ -9,7 +9,7 @@ namespace Nevermind.Core
         public bool IsEip155Enabled => true;
         public bool IsEip158Enabled => true; // also called EIP-161
         public bool IsEip160Enabled => true;
-        public bool IsEip170Enabled => false;
+        public bool IsEip170Enabled => true;
         public bool IsEmptyCodeContractBugFixed => true; // ???
         public bool IsEip186Enabled => false;
     }

@@ -89,7 +89,7 @@ namespace Nevermind.Evm
                         }
                     }
 
-                    if (currentState.ExecutionType == ExecutionType.Transaction)
+                    if (currentState.ExecutionType == ExecutionType.Transaction || currentState.ExecutionType == ExecutionType.DirectCreate)
                     {
                         return (callResult.Output, new TransactionSubstate(currentState.Refund, currentState.DestroyList, currentState.Logs));
                     }
@@ -112,7 +112,7 @@ namespace Nevermind.Evm
                         currentState.Logs.Add(logEntry);
                     }
 
-                    if (previousState.ExecutionType == ExecutionType.Create)
+                    if (previousState.ExecutionType == ExecutionType.Create || previousState.ExecutionType == ExecutionType.DirectCreate)
                     {
                         previousCallResult = callCodeOwner.Hex;
                         previousCallOutput = EmptyBytes;
@@ -146,7 +146,7 @@ namespace Nevermind.Evm
                         _storageProvider.Restore(currentState.StorageSnapshot);
                     }
 
-                    if (currentState.ExecutionType == ExecutionType.Transaction || currentState.ExecutionType ==  ExecutionType.DirectPrecompile)
+                    if (currentState.ExecutionType == ExecutionType.Transaction || currentState.ExecutionType == ExecutionType.DirectPrecompile || currentState.ExecutionType == ExecutionType.DirectCreate)
                     {
                         throw;
                     }
@@ -184,8 +184,9 @@ namespace Nevermind.Evm
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void UpdateGas(ulong gasCost, ref ulong gasAvailable)
+        public void UpdateGas(ulong gasCost, ref ulong gasAvailable)
         {
+            _logger?.Log($"  UPDATE GAS (-{gasCost})");
             if (gasAvailable < gasCost)
             {
                 throw new OutOfGasException();
@@ -195,8 +196,9 @@ namespace Nevermind.Evm
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static void RefundGas(ulong refund, ref ulong gasAvailable)
+        public void RefundGas(ulong refund, ref ulong gasAvailable)
         {
+            _logger?.Log($"  UPDATE GAS (+{refund})");
             gasAvailable += refund;
         }
 
@@ -262,6 +264,11 @@ namespace Nevermind.Evm
                 else
                 {
                     _stateProvider.UpdateBalance(env.ExecutingAccount, env.TransferValue);
+                }
+
+                if ((evmState.ExecutionType == ExecutionType.Create || evmState.ExecutionType == ExecutionType.DirectCreate) && _protocolSpecification.IsEip158Enabled)
+                {
+                    _stateProvider.IncrementNonce(env.ExecutingAccount);
                 }
             }
 
@@ -1362,8 +1369,12 @@ namespace Nevermind.Evm
                             gasExtra += GasCostOf.CallValue;
                         }
 
-                        bool didAccountExist = _stateProvider.AccountExists(target);
-                        if (!didAccountExist && (!_protocolSpecification.IsEip158Enabled || callValue != 0))
+                        if (!_protocolSpecification.IsEip158Enabled && !_stateProvider.AccountExists(target))
+                        {
+                            gasExtra += GasCostOf.NewAccount;
+                        }
+
+                        if (_protocolSpecification.IsEip158Enabled && transferValue != 0 && _stateProvider.IsDeadAccount(target))
                         {
                             gasExtra += GasCostOf.NewAccount;
                         }
@@ -1458,20 +1469,25 @@ namespace Nevermind.Evm
                             evmState.DestroyList.Add(env.ExecutingAccount);
 
                             BigInteger ownerBalance = _stateProvider.GetBalance(env.ExecutingAccount);
-                            if (!_stateProvider.AccountExists(inheritor))
+                            bool inheritorAccountExists = _stateProvider.AccountExists(inheritor);
+
+                            if (!_protocolSpecification.IsEip158Enabled && !inheritorAccountExists && _protocolSpecification.IsEip150Enabled)
+                            {
+                                UpdateGas(GasCostOf.NewAccount, ref gasAvailable);
+                            }
+
+                            if (_protocolSpecification.IsEip158Enabled && ownerBalance != 0 && _stateProvider.IsDeadAccount(inheritor))
+                            {
+                                UpdateGas(GasCostOf.NewAccount, ref gasAvailable);
+                            }
+
+                            if (!inheritorAccountExists)
                             {
                                 _stateProvider.CreateAccount(inheritor, ownerBalance);
-                                if (_protocolSpecification.IsEip150Enabled && (!_protocolSpecification.IsEip158Enabled || ownerBalance != 0))
-                                {
-                                    UpdateGas(GasCostOf.NewAccount, ref gasAvailable);
-                                }
                             }
-                            else
+                            else if (!inheritor.Equals(env.ExecutingAccount))
                             {
-                                if (!inheritor.Equals(env.ExecutingAccount))
-                                {
-                                    _stateProvider.UpdateBalance(inheritor, ownerBalance);
-                                }
+                                _stateProvider.UpdateBalance(inheritor, ownerBalance);
                             }
 
                             _stateProvider.UpdateBalance(env.ExecutingAccount, -ownerBalance);

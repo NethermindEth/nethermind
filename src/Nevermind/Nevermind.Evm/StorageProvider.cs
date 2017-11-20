@@ -52,7 +52,7 @@ namespace Nevermind.Evm
         public void Restore(int snapshot)
         {
             {
-                _logger?.Log($"  RESTORING SNAPSHOT {snapshot}");
+                _logger?.Log($"  RESTORING STORAGE SNAPSHOT {snapshot}");
             }
 
             List<Change> keptInCache = new List<Change>();
@@ -95,7 +95,7 @@ namespace Nevermind.Evm
         public void Commit(IStateProvider stateProvider)
         {
             {
-                _logger?.Log("  COMMITTING CHANGES");
+                _logger?.Log("  COMMITTING STORAGE CHANGES");
             }
 
             if (_currentPosition == -1)
@@ -146,12 +146,6 @@ namespace Nevermind.Evm
                 if (stateProvider.AccountExists(address))
                 {
                     Keccak root = GetRoot(address);
-
-
-                    {
-                        _logger?.Log($"  UPDATE {address} STORAGE ROOT = {root}");
-                    }
-
                     stateProvider.UpdateStorageRoot(address, root);
                 }
             }

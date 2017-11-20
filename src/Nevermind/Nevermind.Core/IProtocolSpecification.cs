@@ -7,11 +7,13 @@ namespace Nevermind.Core
     {
         /// <summary>
         /// CREATE instruction cost set to 32000 (previously 0)
+        /// Failing init does not create an empty code contract
+        /// Difficulty adjustment changed
         /// </summary>
         bool IsEip2Enabled { get; }
 
         /// <summary>
-        /// DELEGATECALL insstruction added
+        /// DELEGATECALL instruction added
         /// </summary>
         bool IsEip7Enabled { get; }
 
@@ -39,11 +41,6 @@ namespace Nevermind.Core
         /// Code size limit
         /// </summary>
         bool IsEip170Enabled { get; }
-
-        /// <summary>
-        /// Code size limit
-        /// </summary>
-        bool IsEmptyCodeContractBugFixed { get; }
 
         /// <summary>
         /// Block reward decreased to 3 ETH

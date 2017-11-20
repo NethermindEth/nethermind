@@ -23,8 +23,7 @@ namespace Nevermind.Core
         public bool IsEmpty =>
             Balance == BigInteger.Zero &&
             Nonce == BigInteger.Zero &&
-            CodeHash == Keccak.OfAnEmptyString &&
-            StorageRoot == Keccak.EmptyTreeHash;
+            CodeHash == Keccak.OfAnEmptyString;
 
         public Account WithChangedBalance(BigInteger newBalance)
         {

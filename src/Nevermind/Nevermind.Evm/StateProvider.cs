@@ -18,7 +18,7 @@ namespace Nevermind.Evm
         private readonly HashSet<Address> _committedThisRound = new HashSet<Address>();
 
         private readonly List<Change> _keptInCache = new List<Change>();
-        private readonly IProtocolSpecification _protocolSpecification;
+        public IProtocolSpecification ProtocolSpecification { get; set; }
         private readonly ILogger _logger;
 
         private int _capacity = StartCapacity;
@@ -27,7 +27,7 @@ namespace Nevermind.Evm
 
         public StateProvider(StateTree stateTree, IProtocolSpecification protocolSpecification, ILogger logger)
         {
-            _protocolSpecification = protocolSpecification;
+            ProtocolSpecification = protocolSpecification;
             _logger = logger;
             State = stateTree;
         }
@@ -49,6 +49,12 @@ namespace Nevermind.Evm
             return GetThroughCache(address).IsEmpty;
         }
 
+        public bool IsDeadAccount(Address address)
+        {
+            Account account = GetThroughCache(address);
+            return account?.IsEmpty ?? true;
+        }
+
         public BigInteger GetNonce(Address address)
         {
             Account account = GetThroughCache(address);
@@ -63,53 +69,55 @@ namespace Nevermind.Evm
 
         public void UpdateCodeHash(Address address, Keccak codeHash)
         {
-            _logger?.Log($"  SETTING CODE HASH of {address} to {codeHash}");
-
             Account account = GetThroughCache(address);
             if (account.CodeHash != codeHash)
             {
+                _logger?.Log($"  UPDATE CODE HASH of {address} to {codeHash}");
                 Account changedAccount = account.WithChangedCodeHash(codeHash);
                 PushUpdate(address, changedAccount);
+            }
+            else if (ProtocolSpecification.IsEip158Enabled)
+            {
+                _logger?.Log($"  TOUCH {address} (code hash)");
+                Account touched = GetThroughCache(address);
+                PushTouch(address, touched);
             }
         }
 
         public void UpdateBalance(Address address, BigInteger balanceChange)
         {
-            if (balanceChange == BigInteger.Zero && !_protocolSpecification.IsEip158Enabled)
+            if (balanceChange == BigInteger.Zero)
             {
+                if (ProtocolSpecification.IsEip158Enabled)
+                {
+                    _logger?.Log($"  TOUCH {address} (balance)");
+                    Account touched = GetThroughCache(address);
+                    PushTouch(address, touched);
+                }
+
                 return;
             }
 
             Account account = GetThroughCache(address);
-            if (_protocolSpecification.IsEip158Enabled && balanceChange == BigInteger.Zero && account.IsEmpty)
-            {
-                PushDelete(address);
-            }
-            else
-            {
-                BigInteger newbalance = account.Balance + balanceChange;
-                if (newbalance < 0)
-                {
-                    throw new InsufficientBalanceException();
-                }
 
-                Account changedAccount = account.WithChangedBalance(account.Balance + balanceChange);
-                _logger?.Log($"  UPDATE {address} B = {account.Balance + balanceChange} B_CHANGE = {balanceChange}");
-
-                PushUpdate(address, changedAccount);
+            BigInteger newbalance = account.Balance + balanceChange;
+            if (newbalance < 0)
+            {
+                throw new InsufficientBalanceException();
             }
+
+            Account changedAccount = account.WithChangedBalance(account.Balance + balanceChange);
+            _logger?.Log($"  UPDATE {address} B = {account.Balance + balanceChange} B_CHANGE = {balanceChange}");
+
+            PushUpdate(address, changedAccount);
         }
 
         public void UpdateStorageRoot(Address address, Keccak storageRoot)
         {
             Account account = GetThroughCache(address);
-            if (account.StorageRoot == storageRoot)
+            if (account.StorageRoot != storageRoot)
             {
-                return;
-            }
-
-            if (account.StorageRoot != storageRoot) // TODO: will it ever be called? unnecessary comp
-            {
+                _logger?.Log($"  UPDATE {address} STORAGE ROOT = {storageRoot}");
                 Account changedAccount = account.WithChangedStorageRoot(storageRoot);
                 PushUpdate(address, changedAccount);
             }
@@ -170,7 +178,7 @@ namespace Nevermind.Evm
 
         public void Restore(int snapshot)
         {
-            _logger?.Log($"  RESTORING SNAPSHOT {snapshot}");
+            _logger?.Log($"  RESTORING STATE SNAPSHOT {snapshot}");
 
             for (int i = 0; i < _currentPosition - snapshot; i++)
             {
@@ -219,7 +227,7 @@ namespace Nevermind.Evm
 
         public void Commit()
         {
-            _logger?.Log("  COMMITTING CHANGES");
+            _logger?.Log("  COMMITTING STATE CHANGES");
 
             if (_currentPosition == -1)
             {
@@ -248,16 +256,17 @@ namespace Nevermind.Evm
                     {
                         break;
                     }
+                    case ChangeType.Touch:
                     case ChangeType.Update:
                     {
-                        _logger?.Log($"  UPDATE {change.Address} B = {change.Account.Balance} N = {change.Account.Nonce}");
-
-                        if (_protocolSpecification.IsEip158Enabled && change.Account.IsEmpty)
+                        if (ProtocolSpecification.IsEip158Enabled && change.Account.IsEmpty)
                         {
+                            _logger?.Log($"  DELETE EMPTY {change.Address} B = {change.Account.Balance} N = {change.Account.Nonce}");
                             State.Set(change.Address, null);
                         }
                         else
                         {
+                            _logger?.Log($"  UPDATE {change.Address} B = {change.Account.Balance} N = {change.Account.Nonce}");
                             State.Set(change.Address, Rlp.Encode(change.Account));
                         }
 
@@ -267,7 +276,7 @@ namespace Nevermind.Evm
                     {
                         _logger?.Log($"  CREATE {change.Address} B = {change.Account.Balance} N = {change.Account.Nonce}");
 
-                        if (!_protocolSpecification.IsEip158Enabled || !change.Account.IsEmpty)
+                        if (!ProtocolSpecification.IsEip158Enabled || !change.Account.IsEmpty)
                         {
                             State.Set(change.Address, Rlp.Encode(change.Account));
                         }
@@ -340,28 +349,32 @@ namespace Nevermind.Evm
             return account;
         }
 
-        private void PushJustCache(Address address, Account changedAccount)
+        private void PushJustCache(Address address, Account account)
         {
-            SetupCache(address);
-            IncrementPosition();
-            _cache[address].Push(_currentPosition);
-            _changes[_currentPosition] = new Change(ChangeType.JustCache, address, changedAccount);
+            Push(ChangeType.JustCache, address, account);
         }
 
-        private void PushUpdate(Address address, Account changedAccount)
+        private void PushUpdate(Address address, Account account)
         {
-            SetupCache(address);
-            IncrementPosition();
-            _cache[address].Push(_currentPosition);
-            _changes[_currentPosition] = new Change(ChangeType.Update, address, changedAccount);
+            Push(ChangeType.Update, address, account);
+        }
+
+        private void PushTouch(Address address, Account account)
+        {
+            Push(ChangeType.Touch, address, account);
         }
 
         private void PushDelete(Address address)
         {
+            Push(ChangeType.Delete, address, null);
+        }
+
+        private void Push(ChangeType changeType, Address address, Account touchedAccount)
+        {
             SetupCache(address);
             IncrementPosition();
             _cache[address].Push(_currentPosition);
-            _changes[_currentPosition] = new Change(ChangeType.Delete, address, null);
+            _changes[_currentPosition] = new Change(changeType, address, touchedAccount);
         }
 
         private void PushNew(Address address, Account account)
@@ -393,6 +406,7 @@ namespace Nevermind.Evm
         private enum ChangeType
         {
             JustCache,
+            Touch,
             Update,
             New,
             Delete
