@@ -18,9 +18,6 @@
         <FixtureName>Ethereum.Blockchain.Test.ZeroCallsTests</FixtureName>
       </FixtureTestSelector>
       <FixtureTestSelector>
-        <FixtureName>Ethereum.Blockchain.Test.StaticCallTests</FixtureName>
-      </FixtureTestSelector>
-      <FixtureTestSelector>
         <FixtureName>Ethereum.Blockchain.Test.StackTests</FixtureName>
       </FixtureTestSelector>
       <FixtureTestSelector>
@@ -58,9 +55,6 @@
       </FixtureTestSelector>
       <FixtureTestSelector>
         <FixtureName>Ethereum.Blockchain.Test.CodeCopyTests</FixtureName>
-      </FixtureTestSelector>
-      <FixtureTestSelector>
-        <FixtureName>Ethereum.Blockchain.Test.SystemOperationsTests</FixtureName>
       </FixtureTestSelector>
       <FixtureTestSelector>
         <FixtureName>Ethereum.Blockchain.Test.TransactionTests</FixtureName>
@@ -1053,9 +1047,6 @@
         <FixtureName>Ethereum.Blockchain.Test.SolidityTests</FixtureName>
       </FixtureTestSelector>
       <FixtureTestSelector>
-        <FixtureName>Ethereum.Blockchain.Test.CallCreateCallCodeTests</FixtureName>
-      </FixtureTestSelector>
-      <FixtureTestSelector>
         <FixtureName>Ethereum.Blockchain.Test.NonZeroCallTests</FixtureName>
       </FixtureTestSelector>
       <FixtureTestSelector>
@@ -1069,6 +1060,12 @@
       </FixtureTestSelector>
       <FixtureTestSelector>
         <FixtureName>Ethereum.Blockchain.Test.WalletTests</FixtureName>
+      </FixtureTestSelector>
+      <FixtureTestSelector>
+        <FixtureName>Ethereum.Blockchain.Test.CallCreateCallCodeTests</FixtureName>
+      </FixtureTestSelector>
+      <FixtureTestSelector>
+        <FixtureName>Ethereum.Blockchain.Test.StaticCallTests</FixtureName>
       </FixtureTestSelector>
     </IgnoredTests>
     <InstrumentOutputAssembly>False</InstrumentOutputAssembly>

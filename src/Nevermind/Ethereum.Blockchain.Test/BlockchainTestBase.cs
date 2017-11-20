@@ -83,11 +83,11 @@ namespace Ethereum.Blockchain.Test
                     {
                         namedTest.Value.EthereumNetwork = EthereumNetwork.Homestead;
                     }
-                    //else
-                    //if (namedTest.Key.Contains("EIP150"))
-                    //{
-                    //    namedTest.Value.EthereumNetwork = EthereumNetwork.TangerineWhistle;
-                    //}
+                    else
+                    if (namedTest.Key.Contains("EIP150"))
+                    {
+                        namedTest.Value.EthereumNetwork = EthereumNetwork.TangerineWhistle;
+                    }
                     //else
                     //if (namedTest.Key.Contains("EIP158"))
                     //{

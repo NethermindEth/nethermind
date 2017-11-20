@@ -1268,13 +1268,19 @@ namespace Nevermind.Evm
 
                         _stateProvider.IncrementNonce(env.ExecutingAccount);
 
+                        ulong callGas = _protocolSpecification.IsEip150Enabled ? gasAvailable - gasAvailable / 64UL : gasAvailable;
+                        UpdateGas(callGas, ref gasAvailable);
+
                         bool accountExists = _stateProvider.AccountExists(contractAddress);
                         if (accountExists && !_stateProvider.IsEmptyAccount(contractAddress))
                         {
                             // BigInteger balance = _stateProvider.GetBalance(contractAddress);
                             // _stateProvider.CreateAccount(contractAddress, balance);
                             // TODO: reset to blank instead, except for balance
-                            throw new TransactionCollisionException();
+
+                            PushInt(BigInteger.Zero);
+                            break;
+                            //throw new TransactionCollisionException();
                         }
 
                         int stateSnapshot = _stateProvider.TakeSnapshot();
@@ -1294,8 +1300,6 @@ namespace Nevermind.Evm
                         callEnv.InputData = initCode;
                         callEnv.ExecutingAccount = contractAddress;
                         callEnv.MachineCode = initCode;
-                        ulong callGas = gasAvailable;
-                        UpdateGas(_protocolSpecification.IsEip150Enabled ? callGas - callGas / 64 : callGas, ref gasAvailable);
                         EvmState callState = new EvmState(
                             callGas,
                             callEnv,
@@ -1364,7 +1368,7 @@ namespace Nevermind.Evm
                             gasExtra += GasCostOf.NewAccount;
                         }
 
-                        if (gasLimit > gasAvailable)
+                        if (!_protocolSpecification.IsEip150Enabled && gasLimit > gasAvailable)
                         {
                             throw new OutOfGasException(); // important to avoid casting
                         }
@@ -1404,15 +1408,17 @@ namespace Nevermind.Evm
 
                         if (_protocolSpecification.IsEip150Enabled)
                         {
+                            ///// https://github.com/ethereum/EIPs/blob/master/EIPS/eip-150.md
+                            //gasLimit = gasLimit > gasAvailable
+                            //    ? BigInteger.Min(gasAvailable - (gasAvailable) / 64UL, gasLimit)
+                            //    : gasLimit;
+
                             /// https://github.com/ethereum/EIPs/blob/master/EIPS/eip-150.md
-                            gasLimit = gasLimit + gasExtra > gasAvailable
-                                ? Math.Min(gasAvailable - gasExtra - (gasAvailable - gasExtra) / 64, (ulong)gasLimit)
-                                : (ulong)gasLimit;
+                            gasLimit = BigInteger.Min(gasAvailable - gasAvailable / 64UL, gasLimit);
                         }
 
-                        ulong callGas = transferValue.IsZero ? (ulong)gasLimit : (ulong)gasLimit + GasCostOf.CallStipend;
-
-                        UpdateGas((ulong)gasLimit, ref gasAvailable);
+                        ulong gasLimitUl = (ulong)gasLimit;
+                        UpdateGas(gasLimitUl, ref gasAvailable);
                         ExecutionEnvironment callEnv = new ExecutionEnvironment();
                         callEnv.CallDepth = env.CallDepth + 1;
                         callEnv.CurrentBlock = env.CurrentBlock;
@@ -1425,8 +1431,10 @@ namespace Nevermind.Evm
                         callEnv.InputData = callData;
                         callEnv.MachineCode = isPrecompile ? addressInt.ToBigEndianByteArray() : _stateProvider.GetCode(ToAddress(codeSource));
 
+                        BigInteger callGas = transferValue.IsZero ? gasLimitUl : gasLimitUl + GasCostOf.CallStipend;
+                        _logger?.Log($"  CALL_GAS {callGas}");
                         EvmState callState = new EvmState(
-                            callGas,
+                            (ulong)callGas,
                             callEnv,
                             isPrecompile ? ExecutionType.Precompile : (instruction == Instruction.CALL ? ExecutionType.Call : ExecutionType.Callcode),
                             stateSnapshot,
