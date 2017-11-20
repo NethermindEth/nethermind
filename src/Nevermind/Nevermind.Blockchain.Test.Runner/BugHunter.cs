@@ -47,6 +47,7 @@ namespace Nevermind.Blockchain.Test.Runner
     {
         public CategoryResult RunTests(string subset, int iterations = 1)
         {
+            ConsoleColor defaultColor = Console.ForegroundColor;
             List<string> failingTests = new List<string>();
 
             string directoryName = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Desktop), "FailingTests");
@@ -58,13 +59,17 @@ namespace Nevermind.Blockchain.Test.Runner
                 {
                     Console.Write($"{test.Name,-80} ");
                     RunTest(test);
+                    Console.ForegroundColor = ConsoleColor.Green;
                     Console.WriteLine("PASS");
+                    Console.ForegroundColor = defaultColor;
                 }
                 catch (Exception)
                 {
                     failingTests.Add(test.Name);
+                    Console.ForegroundColor = ConsoleColor.Red;
                     Console.WriteLine("FAIL");
-                    FileLogger logger = new FileLogger(Path.Combine(directoryName, string.Concat(test.Name, ".txt")));
+                    Console.ForegroundColor = defaultColor;
+                    FileLogger logger = new FileLogger(Path.Combine(directoryName, string.Concat(subset, "_", test.Name, ".txt")));
                     try
                     {
                         if (!Directory.Exists(directoryName))

@@ -51,7 +51,7 @@ namespace Nevermind.Blockchain.Test.Runner
                 {
                     ShouldLog.Evm = true;
                     ShouldLog.State = true;
-                    ShouldLog.EvmStack = true;
+                    ShouldLog.EvmStack = false;
                     ShouldLog.TransactionProcessor = true;
                     Run(new BugHunter());
                 }
@@ -72,31 +72,31 @@ namespace Nevermind.Blockchain.Test.Runner
 
         private static void Run(ITestInRunner bugHunter)
         {
-            //Run(bugHunter, "stAttackTest");
-            //Run(bugHunter, "stBadOpcode");
-            //Run(bugHunter, "stCallCodes");
-            //Run(bugHunter, "stCallCreateCallCodeTest");
-            //Run(bugHunter, "stCallDelegateCodesCallCodeHomestead");
-            //Run(bugHunter, "stCallDelegateCodesHomestead");
-            //Run(bugHunter, "stChangedEIP150");
-            //Run(bugHunter, "stCodeCopyTest");
-            //Run(bugHunter, "stCodeSizeLimit");
-            //Run(bugHunter, "stCreateTest");
-            //Run(bugHunter, "stDelegatecallTestHomestead");
-            //Run(bugHunter, "stEIP150singleCodeGasPrices");
-            //Run(bugHunter, "stEIP150Specific");
-            //Run(bugHunter, "stEIP158Specific");
-            //Run(bugHunter, "stExample");
-            //Run(bugHunter, "stHomesteadSpecific");
-            //Run(bugHunter, "stInitCodeTest");
-            //Run(bugHunter, "stLogTests");
-            //Run(bugHunter, "stMemExpandingEIP150Calls");
-            //Run(bugHunter, "stMemoryStressTest");
-            //Run(bugHunter, "stMemoryTest");
-            //Run(bugHunter, "stNonZeroCallsTest");
-            //Run(bugHunter, "stPreCompiledContracts");
-            //Run(bugHunter, "stPreCompiledContracts2");
-            //Run(bugHunter, "stQuadraticComplexityTest");
+            Run(bugHunter, "stAttackTest");
+            Run(bugHunter, "stBadOpcode");
+            Run(bugHunter, "stCallCodes");
+            Run(bugHunter, "stCallCreateCallCodeTest");
+            Run(bugHunter, "stCallDelegateCodesCallCodeHomestead");
+            Run(bugHunter, "stCallDelegateCodesHomestead");
+            Run(bugHunter, "stChangedEIP150");
+            Run(bugHunter, "stCodeCopyTest");
+            Run(bugHunter, "stCodeSizeLimit");
+            Run(bugHunter, "stCreateTest");
+            Run(bugHunter, "stDelegatecallTestHomestead");
+            Run(bugHunter, "stEIP150singleCodeGasPrices");
+            Run(bugHunter, "stEIP150Specific");
+            Run(bugHunter, "stEIP158Specific");
+            Run(bugHunter, "stExample");
+            Run(bugHunter, "stHomesteadSpecific");
+            Run(bugHunter, "stInitCodeTest");
+            Run(bugHunter, "stLogTests");
+            Run(bugHunter, "stMemExpandingEIP150Calls");
+            Run(bugHunter, "stMemoryStressTest");
+            Run(bugHunter, "stMemoryTest");
+            Run(bugHunter, "stNonZeroCallsTest");
+            Run(bugHunter, "stPreCompiledContracts");
+            Run(bugHunter, "stPreCompiledContracts2");
+            Run(bugHunter, "stQuadraticComplexityTest");
             Run(bugHunter, "stRandom");
             Run(bugHunter, "stRandom2");
             Run(bugHunter, "stRecursiveCreate");

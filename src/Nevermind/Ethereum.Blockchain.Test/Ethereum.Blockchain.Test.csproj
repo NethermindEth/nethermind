@@ -166,6 +166,24 @@
     </EmbeddedResource>
   </ItemGroup>
   <ItemGroup>
+    <EmbeddedResource Include="..\..\tests\BlockchainTests\GeneralStateTests\stCallDelegateCodesCallCodeHomestead*\*.*">
+      <Link>%(RecursiveDir)%(FileName)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </EmbeddedResource>
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\tests\BlockchainTests\GeneralStateTests\stCallDelegateCodesHomestead*\*.*">
+      <Link>%(RecursiveDir)%(FileName)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </EmbeddedResource>
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\tests\BlockchainTests\GeneralStateTests\stDelegatecallTestHomestead*\*.*">
+      <Link>%(RecursiveDir)%(FileName)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </EmbeddedResource>
+  </ItemGroup>
+  <ItemGroup>
     <EmbeddedResource Include="..\..\tests\BlockchainTests\GeneralStateTests\stStaticCall*\*.*">
       <Link>%(RecursiveDir)%(FileName)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
@@ -236,6 +254,8 @@
     <Compile Include="BadOpcodeTests.cs" />
     <Compile Include="BugTestsTests.cs" />
     <Compile Include="CallCreateCallCodeTests.cs" />
+    <Compile Include="CallDelegateCodesCallCodeHomesteadTests.cs" />
+    <Compile Include="CallDelegateCodesHomesteadTests.cs" />
     <Compile Include="CodeCopyTests.cs" />
     <Compile Include="CodeSizeLimitTests.cs" />
     <Compile Include="InitCodeTests.cs" />

@@ -203,7 +203,7 @@ namespace Nevermind.Evm
         private CallResult ExecutePrecompile(EvmState state)
         {
             byte[] callData = state.Env.InputData;
-            BigInteger value = state.Env.Value;
+            BigInteger transferValue = state.Env.TransferValue;
             ulong gasAvailable = state.GasAvailable;
 
             BigInteger precompileId = state.Env.MachineCode.ToUnsignedBigInteger();
@@ -217,11 +217,11 @@ namespace Nevermind.Evm
             if (!_stateProvider.AccountExists(state.Env.ExecutingAccount))
             {
                 //UpdateGas(GasCostOf.NewAccount, ref gasAvailable);
-                _stateProvider.CreateAccount(state.Env.ExecutingAccount, value);
+                _stateProvider.CreateAccount(state.Env.ExecutingAccount, transferValue);
             }
             else
             {
-                _stateProvider.UpdateBalance(state.Env.ExecutingAccount, value);
+                _stateProvider.UpdateBalance(state.Env.ExecutingAccount, transferValue);
             }
 
             UpdateGas(baseGasCost, ref gasAvailable);
@@ -257,11 +257,11 @@ namespace Nevermind.Evm
             {
                 if (!_stateProvider.AccountExists(env.ExecutingAccount))
                 {
-                    _stateProvider.CreateAccount(env.ExecutingAccount, env.Value);
+                    _stateProvider.CreateAccount(env.ExecutingAccount, env.TransferValue);
                 }
                 else
                 {
-                    _stateProvider.UpdateBalance(env.ExecutingAccount, env.Value);
+                    _stateProvider.UpdateBalance(env.ExecutingAccount, env.TransferValue);
                 }
             }
 
@@ -1271,6 +1271,8 @@ namespace Nevermind.Evm
                         bool accountExists = _stateProvider.AccountExists(contractAddress);
                         if (accountExists && !_stateProvider.IsEmptyAccount(contractAddress))
                         {
+                            // BigInteger balance = _stateProvider.GetBalance(contractAddress);
+                            // _stateProvider.CreateAccount(contractAddress, balance);
                             // TODO: reset to blank instead, except for balance
                             throw new TransactionCollisionException();
                         }
@@ -1282,6 +1284,7 @@ namespace Nevermind.Evm
                         _logger?.Log("  INIT: " + contractAddress);
 
                         ExecutionEnvironment callEnv = new ExecutionEnvironment();
+                        callEnv.TransferValue = value;
                         callEnv.Value = value;
                         callEnv.Sender = env.ExecutingAccount;
                         callEnv.Originator = env.Originator;
@@ -1332,6 +1335,7 @@ namespace Nevermind.Evm
                         BigInteger gasLimit = PopUInt();
                         byte[] codeSource = PopBytes();
                         BigInteger callValue = instruction == Instruction.DELEGATECALL ? env.Value : PopUInt();
+                        BigInteger transferValue = instruction == Instruction.DELEGATECALL ? BigInteger.Zero : callValue;
                         BigInteger dataOffset = PopUInt();
                         BigInteger dataLength = PopUInt();
                         BigInteger outputOffset = PopUInt();
@@ -1346,6 +1350,7 @@ namespace Nevermind.Evm
                         _logger?.Log($"  CODE SOURCE {ToAddress(codeSource)}");
                         _logger?.Log($"  TARGET {target}");
                         _logger?.Log($"  VALUE {callValue}");
+                        _logger?.Log($"  TRANSFER_VALUE {transferValue}");
 
                         ulong gasExtra = 0UL;
                         if (!callValue.IsZero && instruction != Instruction.DELEGATECALL)
@@ -1372,7 +1377,7 @@ namespace Nevermind.Evm
                         UpdateGas(gasExtra, ref gasAvailable);
                         if (env.CallDepth >= MaxCallDepth) // TODO: fragile ordering / potential vulnerability for different clients
                         {
-                            if (!callValue.IsZero)
+                            if (!transferValue.IsZero)
                             {
                                 RefundGas(GasCostOf.CallStipend, ref gasAvailable);
                             }
@@ -1383,7 +1388,7 @@ namespace Nevermind.Evm
 
                         if (!callValue.IsZero)
                         {
-                            if (_stateProvider.GetBalance(env.ExecutingAccount) < callValue)
+                            if (_stateProvider.GetBalance(env.ExecutingAccount) < transferValue)
                             {
                                 RefundGas(GasCostOf.CallStipend, ref gasAvailable);
                                 evmState.Memory.Save(outputOffset, new byte[(int)outputLength]);
@@ -1395,7 +1400,7 @@ namespace Nevermind.Evm
 
                         int stateSnapshot = _stateProvider.TakeSnapshot();
                         int storageSnapshot = _storageProvider.TakeSnapshot();
-                        _stateProvider.UpdateBalance(sender, -callValue);
+                        _stateProvider.UpdateBalance(sender, -transferValue);
 
                         if (_protocolSpecification.IsEip150Enabled)
                         {
@@ -1405,7 +1410,7 @@ namespace Nevermind.Evm
                                 : (ulong)gasLimit;
                         }
 
-                        ulong callGas = callValue.IsZero ? (ulong)gasLimit : (ulong)gasLimit + GasCostOf.CallStipend;
+                        ulong callGas = transferValue.IsZero ? (ulong)gasLimit : (ulong)gasLimit + GasCostOf.CallStipend;
 
                         UpdateGas((ulong)gasLimit, ref gasAvailable);
                         ExecutionEnvironment callEnv = new ExecutionEnvironment();
@@ -1415,7 +1420,8 @@ namespace Nevermind.Evm
                         callEnv.Originator = env.Originator;
                         callEnv.Sender = sender;
                         callEnv.ExecutingAccount = target;
-                        callEnv.Value = instruction == Instruction.DELEGATECALL ? env.Value : callValue;
+                        callEnv.TransferValue = transferValue;
+                        callEnv.Value = callValue;
                         callEnv.InputData = callData;
                         callEnv.MachineCode = isPrecompile ? addressInt.ToBigEndianByteArray() : _stateProvider.GetCode(ToAddress(codeSource));
 

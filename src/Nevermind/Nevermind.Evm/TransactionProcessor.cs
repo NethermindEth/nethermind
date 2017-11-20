@@ -135,6 +135,8 @@ namespace Nevermind.Evm
 
                     if (_stateProvider.AccountExists(recipient) && !_stateProvider.IsEmptyAccount(recipient))
                     {
+                        //BigInteger balance = _stateProvider.GetBalance(recipient);
+                        //_stateProvider.CreateAccount(recipient, balance);
                         throw new TransactionCollisionException();
                     }
 
@@ -160,6 +162,7 @@ namespace Nevermind.Evm
 
                     ExecutionEnvironment env = new ExecutionEnvironment();
                     env.Value = value;
+                    env.TransferValue = value;
                     env.Sender = sender;
                     env.ExecutingAccount = recipient;
                     env.CurrentBlock = block;
@@ -221,6 +224,8 @@ namespace Nevermind.Evm
             catch (EvmException e)
             {
                 _logger?.Log($"  EVM EXCEPTION: {e.GetType().Name}");
+                logEntries.Clear();
+                destroyedAccounts.Clear();
                 _stateProvider.Restore(snapshot);
                 _storageProvider.Restore(storageSnapshot);
 

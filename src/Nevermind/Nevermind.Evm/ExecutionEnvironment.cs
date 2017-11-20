@@ -15,6 +15,8 @@ namespace Nevermind.Evm
 
         public byte[] InputData { get; set; }
 
+        public BigInteger TransferValue { get; set; }
+
         public BigInteger Value { get; set; }
 
         public byte[] MachineCode { get; set; }

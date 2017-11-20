@@ -78,11 +78,11 @@ namespace Ethereum.Blockchain.Test
                     {
                         namedTest.Value.EthereumNetwork = EthereumNetwork.Frontier;
                     }
-                    //else
-                    //if (namedTest.Key.Contains("Homestead"))
-                    //{
-                    //    namedTest.Value.EthereumNetwork = EthereumNetwork.Homestead;
-                    //}
+                    else
+                    if (namedTest.Key.Contains("Homestead"))
+                    {
+                        namedTest.Value.EthereumNetwork = EthereumNetwork.Homestead;
+                    }
                     //else
                     //if (namedTest.Key.Contains("EIP150"))
                     //{
