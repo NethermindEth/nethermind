@@ -77,26 +77,26 @@ namespace Ethereum.Blockchain.Test
                 Dictionary<string, BlockchainTestJson> testsInFile = JsonConvert.DeserializeObject<Dictionary<string, BlockchainTestJson>>(json);
                 foreach (KeyValuePair<string, BlockchainTestJson> namedTest in testsInFile)
                 {
-                    //if (namedTest.Key.Contains("Frontier"))
-                    //{
-                    //    namedTest.Value.EthereumNetwork = EthereumNetwork.Frontier;
-                    //}
-                    //else
-                    //if (namedTest.Key.Contains("Homestead"))
-                    //{
-                    //    namedTest.Value.EthereumNetwork = EthereumNetwork.Homestead;
-                    //}
-                    //else
-                    //if (namedTest.Key.Contains("EIP150"))
-                    //{
-                    //    namedTest.Value.EthereumNetwork = EthereumNetwork.TangerineWhistle;
-                    //}
-                    //else
-                    //if (namedTest.Key.Contains("EIP158"))
-                    //{
-                    //    namedTest.Value.EthereumNetwork = EthereumNetwork.SpuriousDragon;
-                    //}
-                    //else
+                    if (namedTest.Key.Contains("Frontier"))
+                    {
+                        namedTest.Value.EthereumNetwork = EthereumNetwork.Frontier;
+                    }
+                    else
+                    if (namedTest.Key.Contains("Homestead"))
+                    {
+                        namedTest.Value.EthereumNetwork = EthereumNetwork.Homestead;
+                    }
+                    else
+                    if (namedTest.Key.Contains("EIP150"))
+                    {
+                        namedTest.Value.EthereumNetwork = EthereumNetwork.TangerineWhistle;
+                    }
+                    else
+                    if (namedTest.Key.Contains("EIP158"))
+                    {
+                        namedTest.Value.EthereumNetwork = EthereumNetwork.SpuriousDragon;
+                    }
+                    else
                     if (namedTest.Key.Contains("Byzantium"))
                     {
                         namedTest.Value.EthereumNetwork = EthereumNetwork.Byzantium;

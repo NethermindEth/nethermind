@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Numerics;
 using Nevermind.Core;
@@ -53,7 +54,7 @@ namespace Nevermind.Evm
             Address recipient = transaction.To;
             BigInteger value = transaction.Value;
             BigInteger gasPrice = transaction.GasPrice;
-            BigInteger gasLimit = transaction.GasLimit;
+            ulong gasLimit = (ulong)transaction.GasLimit;
             byte[] machineCode = transaction.Init;
             byte[] data = transaction.Data ?? new byte[0];
 
@@ -108,10 +109,11 @@ namespace Nevermind.Evm
             }
 
             _stateProvider.IncrementNonce(sender);
-            _stateProvider.UpdateBalance(sender, -gasLimit * gasPrice); // TODO: fail if not enough? or just revert?
+            _stateProvider.UpdateBalance(sender, -new BigInteger(gasLimit) * gasPrice);
+            _stateProvider.Commit();
 
-            ulong gasAvailable = (ulong)(gasLimit - intrinsicGas);
-            BigInteger gasSpent = gasLimit;
+            ulong unspentGas = gasLimit - intrinsicGas;
+            ulong spentGas = gasLimit;
             List<LogEntry> logEntries = new List<LogEntry>();
 
             if (transaction.IsContractCreation)
@@ -132,8 +134,6 @@ namespace Nevermind.Evm
             {
                 if (transaction.IsContractCreation)
                 {
-                    _logger?.Log("THIS IS CONTRACT CREATION");
-
                     if (_stateProvider.AccountExists(recipient) && !_stateProvider.IsEmptyAccount(recipient))
                     {
                         //BigInteger balance = _stateProvider.GetBalance(recipient);
@@ -143,12 +143,12 @@ namespace Nevermind.Evm
 
                     if (_protocolSpecification.IsEip2Enabled)
                     {
-                        if (gasAvailable < GasCostOf.Create)
+                        if (unspentGas < GasCostOf.Create)
                         {
                             throw new OutOfGasException();
                         }
 
-                        gasAvailable -= GasCostOf.Create;
+                        unspentGas -= GasCostOf.Create;
                     }
                 }
 
@@ -178,106 +178,125 @@ namespace Nevermind.Evm
                         : transaction.IsContractCreation ?
                             ExecutionType.DirectCreate
                             : ExecutionType.Transaction;
-                    EvmState state = new EvmState(gasAvailable, env, executionType, false);
+                    EvmState state = new EvmState(unspentGas, env, executionType, false);
 
                     (byte[] output, TransactionSubstate substate) = _virtualMachine.Run(state);
 
-                    gasAvailable = state.GasAvailable;
+                    unspentGas = state.GasAvailable;
 
-                    if (transaction.IsContractCreation)
+                    if (substate.ShouldRevert)
                     {
-                        ulong codeDepositGasCost = (ulong)output.Length * GasCostOf.CodeDeposit;
-                        if (_protocolSpecification.IsEip170Enabled && (ulong)output.Length > 0x6000UL)
-                        {
-                            codeDepositGasCost = ulong.MaxValue;
-                        }
+                        _logger?.Log("REVERTING");
 
-                        if (gasAvailable < codeDepositGasCost && _protocolSpecification.IsEip2Enabled)
-                        {
-                            throw new OutOfGasException();
-                        }
-
-                        if (gasAvailable >= codeDepositGasCost)
-                        {
-                            Keccak codeHash = _stateProvider.UpdateCode(output);
-                            _stateProvider.UpdateCodeHash(recipient, codeHash);
-                            gasAvailable -= codeDepositGasCost;
-                        }
-                    }
-
-                    // pre-final
-                    gasSpent = gasLimit - gasAvailable; // TODO: does refund use intrinsic value to calculate cap?
-                    BigInteger halfOfGasSpend = BigInteger.Divide(gasSpent, 2);
-
-                    ulong destroyRefund = (ulong)substate.DestroyList.Count * RefundOf.Destroy;
-                    BigInteger refund = BigInteger.Min(halfOfGasSpend, substate.Refund + destroyRefund);
-                    BigInteger gasUnused = gasAvailable + refund;
-                    _logger?.Log("REFUNDING UNUSED GAS OF " + gasUnused + " AND REFUND OF " + refund);
-                    _stateProvider.UpdateBalance(sender, gasUnused * gasPrice);
-
-                    gasSpent -= refund;
-
-                    // final
-                    if (!substate.ShouldRevert)
-                    {
-                        statusCode = StatusCode.Success;
-                        logEntries.AddRange(substate.Logs);
-                        foreach (Address toBeDestroyed in substate.DestroyList)
-                        {
-                            _stateProvider.DeleteAccount(toBeDestroyed);
-                            destroyedAccounts.Add(toBeDestroyed);
-                        }
-                    }
-                    else
-                    {
+                        logEntries.Clear();
+                        destroyedAccounts.Clear();
                         _stateProvider.Restore(snapshot);
                         _storageProvider.Restore(storageSnapshot);
                     }
+                    else
+                    {
+                        if (transaction.IsContractCreation)
+                        {
+                            ulong codeDepositGasCost = (ulong)output.Length * GasCostOf.CodeDeposit;
+                            if (_protocolSpecification.IsEip170Enabled && (ulong)output.Length > 0x6000UL)
+                            {
+                                codeDepositGasCost = ulong.MaxValue;
+                            }
+
+                            if (unspentGas < codeDepositGasCost && _protocolSpecification.IsEip2Enabled)
+                            {
+                                throw new OutOfGasException();
+                            }
+
+                            if (unspentGas >= codeDepositGasCost)
+                            {
+                                Keccak codeHash = _stateProvider.UpdateCode(output);
+                                _stateProvider.UpdateCodeHash(recipient, codeHash);
+                                unspentGas -= codeDepositGasCost;
+                            }
+                        }
+
+                        logEntries.AddRange(substate.Logs);
+                        foreach (Address toBeDestroyed in substate.DestroyList)
+                        {
+                            destroyedAccounts.Add(toBeDestroyed);
+                        }
+
+                        statusCode = StatusCode.Success;
+                    }
+
+                    spentGas = Refund(gasLimit, unspentGas, substate, sender, gasPrice);
                 }
             }
             catch (EvmException e)
             {
-                _logger?.Log($"  EVM EXCEPTION: {e.GetType().Name}");
+                _logger?.Log($"EVM EXCEPTION: {e.GetType().Name}");
+
                 logEntries.Clear();
                 destroyedAccounts.Clear();
                 _stateProvider.Restore(snapshot);
                 _storageProvider.Restore(storageSnapshot);
-
-                _logger?.Log("GAS SPENT: " + gasSpent);
             }
 
+            foreach (Address toBeDestroyed in destroyedAccounts)
+            {
+                _stateProvider.DeleteAccount(toBeDestroyed);
+            }
+
+            _logger?.Log("GAS SPENT: " + spentGas);
             if (!destroyedAccounts.Contains(block.Beneficiary))
             {
                 if (!_stateProvider.AccountExists(block.Beneficiary))
                 {
-                    _stateProvider.CreateAccount(block.Beneficiary, gasSpent * gasPrice);
+                    _stateProvider.CreateAccount(block.Beneficiary, spentGas * gasPrice);
                 }
                 else
                 {
-                    _stateProvider.UpdateBalance(block.Beneficiary, gasSpent * gasPrice);
+                    _stateProvider.UpdateBalance(block.Beneficiary, spentGas * gasPrice);
                 }
             }
 
             _storageProvider.Commit(_stateProvider);
             _stateProvider.Commit();
 
+            return BuildTransactionReceipt(block, statusCode, spentGas, logEntries);
+        }
+
+        private ulong Refund(ulong gasLimit, ulong unspentGas, TransactionSubstate substate, Address sender, BigInteger gasPrice)
+        {
+            ulong spentGas = gasLimit - unspentGas;
+            ulong refund = Math.Min(spentGas / 2UL, substate.Refund + (ulong)substate.DestroyList.Count * RefundOf.Destroy);
+            _logger?.Log("REFUNDING UNUSED GAS OF " + unspentGas + " AND REFUND OF " + refund);
+            _stateProvider.UpdateBalance(sender, (unspentGas + refund) * gasPrice);
+            spentGas -= refund;
+            return spentGas;
+        }
+
+        private TransactionReceipt BuildTransactionReceipt(BlockHeader block, byte statusCode, ulong spentGas, List<LogEntry> logEntries)
+        {
             TransactionReceipt transactionReceipt = new TransactionReceipt();
             transactionReceipt.Logs = logEntries.ToArray();
-            transactionReceipt.Bloom = new Bloom();
-            foreach (LogEntry logEntry in logEntries)
-            {
-                byte[] addressBytes = logEntry.LoggersAddress.Hex;
-                transactionReceipt.Bloom.Set(addressBytes);
-                foreach (Keccak entryTopic in logEntry.Topics)
-                {
-                    transactionReceipt.Bloom.Set(entryTopic.Bytes);
-                }
-            }
-
-            transactionReceipt.GasUsed = block.GasUsed + gasSpent;
+            transactionReceipt.Bloom = BuildBloom(logEntries);
+            transactionReceipt.GasUsed = block.GasUsed + spentGas;
             transactionReceipt.PostTransactionState = _stateProvider.State.RootHash;
             transactionReceipt.StatusCode = statusCode;
             return transactionReceipt;
+        }
+
+        private static Bloom BuildBloom(List<LogEntry> logEntries)
+        {
+            Bloom bloom = new Bloom();
+            foreach (LogEntry logEntry in logEntries)
+            {
+                byte[] addressBytes = logEntry.LoggersAddress.Hex;
+                bloom.Set(addressBytes);
+                foreach (Keccak topic in logEntry.Topics)
+                {
+                    bloom.Set(topic.Bytes);
+                }
+            }
+
+            return bloom;
         }
     }
 }

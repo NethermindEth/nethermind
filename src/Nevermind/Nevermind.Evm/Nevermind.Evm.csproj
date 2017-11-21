@@ -64,6 +64,7 @@
     <Compile Include="BlockhashProvider.cs" />
     <Compile Include="BlockProcessor.cs" />
     <Compile Include="CallDepthException.cs" />
+    <Compile Include="EvmAccessViolationException.cs" />
     <Compile Include="EvmException.cs" />
     <Compile Include="EvmState.cs" />
     <Compile Include="ExecutionType.cs" />

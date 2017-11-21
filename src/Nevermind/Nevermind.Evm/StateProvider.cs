@@ -173,11 +173,13 @@ namespace Nevermind.Evm
 
         public int TakeSnapshot()
         {
+            _logger?.Log($"  STATE SNAPSHOT {_currentPosition}");
             return _currentPosition;
         }
 
         public void Restore(int snapshot)
         {
+            Debug.Assert(snapshot <= _currentPosition, "INVALID SNAPSHOT");
             _logger?.Log($"  RESTORING STATE SNAPSHOT {snapshot}");
 
             for (int i = 0; i < _currentPosition - snapshot; i++)

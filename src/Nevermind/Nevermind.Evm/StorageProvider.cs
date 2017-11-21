@@ -46,14 +46,13 @@ namespace Nevermind.Evm
 
         public int TakeSnapshot()
         {
+            _logger?.Log($"  STORAGE SNAPSHOT {_currentPosition}");
             return _currentPosition;
         }
 
         public void Restore(int snapshot)
         {
-            {
-                _logger?.Log($"  RESTORING STORAGE SNAPSHOT {snapshot}");
-            }
+            _logger?.Log($"  RESTORING STORAGE SNAPSHOT {snapshot}");
 
             List<Change> keptInCache = new List<Change>();
 
@@ -94,9 +93,7 @@ namespace Nevermind.Evm
 
         public void Commit(IStateProvider stateProvider)
         {
-            {
-                _logger?.Log("  COMMITTING STORAGE CHANGES");
-            }
+            _logger?.Log("  COMMITTING STORAGE CHANGES");
 
             if (_currentPosition == -1)
             {
@@ -125,18 +122,16 @@ namespace Nevermind.Evm
                 switch (change.ChangeType)
                 {
                     case ChangeType.JustCache:
-                        break;
+                    break;
                     case ChangeType.Update:
 
-                    {
-                        _logger?.Log($"  UPDATE {change.StorageAddress.Address}_{change.StorageAddress.Index} V = {Hex.FromBytes(change.Value, true)}");
-                    }
+                    _logger?.Log($"  UPDATE {change.StorageAddress.Address}_{change.StorageAddress.Index} V = {Hex.FromBytes(change.Value, true)}");
 
-                        StorageTree tree = GetOrCreateStorage(change.StorageAddress.Address);
-                        tree.Set(change.StorageAddress.Index, change.Value);
-                        break;
+                    StorageTree tree = GetOrCreateStorage(change.StorageAddress.Address);
+                    tree.Set(change.StorageAddress.Index, change.Value);
+                    break;
                     default:
-                        throw new ArgumentOutOfRangeException();
+                    throw new ArgumentOutOfRangeException();
                 }
             }
 

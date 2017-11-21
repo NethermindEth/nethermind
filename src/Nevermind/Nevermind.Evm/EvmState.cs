@@ -58,7 +58,7 @@ namespace Nevermind.Evm
         public int StateSnapshot { get; }
         public int StorageSnapshot { get; }
 
-        public BigInteger Refund { get; set; } = BigInteger.Zero;
+        public ulong Refund { get; set; }
         public EvmMemory Memory { get; } = new EvmMemory();
 
         public HashSet<Address> DestroyList

@@ -45,6 +45,8 @@ namespace Nevermind.Evm
         GASPRICE = 0x3a,
         EXTCODESIZE = 0x3b,
         EXTCODECOPY = 0x3c,
+        RETURNDATASIZE = 0x3d,
+        RETURNDATACOPY = 0x3e,
 
         BLOCKHASH = 0x40,
         COINBASE = 0x41,

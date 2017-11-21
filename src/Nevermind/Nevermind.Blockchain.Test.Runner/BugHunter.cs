@@ -54,6 +54,11 @@ namespace Nevermind.Blockchain.Test.Runner
             IEnumerable<BlockchainTest> tests = LoadTests(subset);
             foreach (BlockchainTest test in tests)
             {
+                if (test.Name.Contains("modexp"))
+                {
+                    continue;
+                }
+
                 Setup(null);
                 try
                 {

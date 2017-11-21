@@ -1,8 +1,6 @@
-﻿using System;
-
-namespace Nevermind.Evm
+﻿namespace Nevermind.Evm
 {
-    public class StaticCallViolationException : Exception
+    public class StaticCallViolationException : EvmException
     {
     }
 }

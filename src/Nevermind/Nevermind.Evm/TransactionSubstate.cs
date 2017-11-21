@@ -1,5 +1,4 @@
 ﻿using System.Collections.Generic;
-using System.Numerics;
 using Nevermind.Core;
 
 namespace Nevermind.Evm
@@ -7,7 +6,7 @@ namespace Nevermind.Evm
     public class TransactionSubstate
     {
         public TransactionSubstate(
-            BigInteger refund,
+            ulong refund,
             IReadOnlyCollection<Address> destroyList,
             IReadOnlyCollection<LogEntry> logs,
             bool shouldRevert)
@@ -20,7 +19,7 @@ namespace Nevermind.Evm
 
         public bool ShouldRevert { get; }
 
-        public BigInteger Refund { get; }
+        public ulong Refund { get; }
 
         public IReadOnlyCollection<LogEntry> Logs { get; }
 
