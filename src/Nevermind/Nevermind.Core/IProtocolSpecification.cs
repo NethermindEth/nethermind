@@ -5,6 +5,8 @@ namespace Nevermind.Core
     /// </summary>
     public interface IProtocolSpecification
     {
+        bool AreJumpDestinationsUsed { get; }
+
         /// <summary>
         /// CREATE instruction cost set to 32000 (previously 0)
         /// Failing init does not create an empty code contract

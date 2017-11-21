@@ -2,6 +2,7 @@ namespace Nevermind.Core
 {
     public class FrontierProtocolSpecification : IProtocolSpecification
     {
+        public bool AreJumpDestinationsUsed => false;
         public bool IsEip2Enabled => false;
         public bool IsEip7Enabled => false;
         public bool IsEip100Enabled => false;

@@ -20,7 +20,7 @@ namespace Ethereum.VM.Test
         private IStorageProvider _storageProvider;
         private IBlockhashProvider _blockhashProvider;
         private IStateProvider _stateProvider;
-        private readonly IProtocolSpecification _protocolSpecification = new FrontierProtocolSpecification();
+        private readonly IProtocolSpecification _protocolSpecification = new OlympicProtocolSpecification();
 
         [SetUp]
         public void Setup()
@@ -28,7 +28,7 @@ namespace Ethereum.VM.Test
             _db = new InMemoryDb();
             _storageProvider = new StorageProvider(ShouldLog.State ? new ConsoleLogger() : null);
             _blockhashProvider = new TestBlockhashProvider();
-            _stateProvider = new StateProvider(new StateTree(_db), new FrontierProtocolSpecification(), ShouldLog.State ? new ConsoleLogger() : null);
+            _stateProvider = new StateProvider(new StateTree(_db), _protocolSpecification, ShouldLog.State ? new ConsoleLogger() : null);
         }
 
         public static IEnumerable<VirtualMachineTest> LoadTests(string testSet)

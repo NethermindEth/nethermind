@@ -1,19 +1,17 @@
 namespace Nevermind.Core
 {
-    public class HomesteadProtocolSpecification : IProtocolSpecification
+    public class OlympicProtocolSpecification : IProtocolSpecification
     {
-        public bool AreJumpDestinationsUsed => false;
-        public bool IsEip2Enabled => true;
-        public bool IsEip7Enabled => true;
+        public bool AreJumpDestinationsUsed => true;
+        public bool IsEip2Enabled => false;
+        public bool IsEip7Enabled => false;
         public bool IsEip100Enabled => false;
         public bool IsEip140Enabled => false;
-        public bool IsEip8Enabled => true;
         public bool IsEip150Enabled => false;
         public bool IsEip155Enabled => false;
         public bool IsEip158Enabled => false;
         public bool IsEip160Enabled => false;
         public bool IsEip170Enabled => false;
-        public bool IsEmptyCodeContractBugFixed => true; // ???
         public bool IsEip186Enabled => false;
         public bool IsEip196Enabled => false;
         public bool IsEip197Enabled => false;

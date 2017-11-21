@@ -2,6 +2,7 @@ namespace Nevermind.Core
 {
     public class TangerineWhistleProtocolSpecification : IProtocolSpecification
     {
+        public bool AreJumpDestinationsUsed => false;
         public bool IsEip2Enabled => true;
         public bool IsEip7Enabled => true;
         public bool IsEip100Enabled => false;

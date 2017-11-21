@@ -530,7 +530,7 @@ namespace Nevermind.Evm
                 while (index < code.Length)
                 {
                     Instruction instruction = (Instruction)code[index];
-                    jumpDestinations[index] = true;
+                    jumpDestinations[index] = !_protocolSpecification.AreJumpDestinationsUsed || instruction == Instruction.JUMPDEST;
                     if (instruction >= Instruction.PUSH1 && instruction <= Instruction.PUSH32)
                     {
                         index += instruction - Instruction.PUSH1 + 2;

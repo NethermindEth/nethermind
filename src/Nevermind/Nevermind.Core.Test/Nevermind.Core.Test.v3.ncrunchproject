@@ -1,9 +1,6 @@
 ﻿<ProjectConfiguration>
   <Settings>
     <AdditionalFilesToIncludeForProject />
-    <IgnoredTests>
-      <AllTestsSelector />
-    </IgnoredTests>
-    <IgnoreThisComponentCompletely>True</IgnoreThisComponentCompletely>
+    <IgnoreThisComponentCompletely>False</IgnoreThisComponentCompletely>
   </Settings>
 </ProjectConfiguration>
