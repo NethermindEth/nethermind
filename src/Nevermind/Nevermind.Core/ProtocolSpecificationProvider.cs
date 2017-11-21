@@ -30,6 +30,32 @@ namespace Nevermind.Core
                     {
                         return new ByzantiumProtocolSpecification();
                     }
+                case EthereumNetwork.Ropsten:
+                    if (blockNumber < 1150000)
+                    {
+                        return new SpuriousDragonProtocolSpecification();
+                    }
+                    else
+                    {
+                        return new ByzantiumProtocolSpecification();
+                    }
+                case EthereumNetwork.Morden:
+                    if (blockNumber < 494000)
+                    {
+                        return new FrontierProtocolSpecification();
+                    }
+                    else if (blockNumber < 0) // ???
+                    {
+                        return new HomesteadProtocolSpecification();
+                    }
+                    else if (blockNumber < 1885000) // ???
+                    {
+                        return new TangerineWhistleProtocolSpecification();
+                    }
+                    else
+                    {
+                        return new SpuriousDragonProtocolSpecification();
+                    }
                 case EthereumNetwork.Frontier:
                     return new FrontierProtocolSpecification();
                 case EthereumNetwork.Homestead:

@@ -29,10 +29,6 @@ namespace Nevermind.Store
         {
         }
 
-        public StorageTree(StateSnapshot stateSnapshot) : base(stateSnapshot)
-        {
-        }
-
         private byte[] GetKey(BigInteger index)
         {
             if (index < CacheSize)

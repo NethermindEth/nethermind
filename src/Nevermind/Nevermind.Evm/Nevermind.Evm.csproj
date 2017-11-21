@@ -35,6 +35,7 @@
       <HintPath>..\packages\BigRationalLibrary.1.0.0.0\lib\NETFramework40\BigRationalLibrary.dll</HintPath>
     </Reference>
     <Reference Include="System" />
+    <Reference Include="System.Collections" />
     <Reference Include="System.Core" />
     <Reference Include="System.Numerics" />
     <Reference Include="System.Xml.Linq" />
@@ -70,6 +71,8 @@
     <Compile Include="InvalidInstructionException.cs" />
     <Compile Include="InvalidJumpDestinationException.cs" />
     <Compile Include="IVirtualMachine.cs" />
+    <Compile Include="Precompiles\EcAddPrecompiledContract.cs" />
+    <Compile Include="Precompiles\EcMulPrecompiledContract.cs" />
     <Compile Include="Precompiles\ECRecoverPrecompiledContract.cs" />
     <Compile Include="EvmMemory.cs" />
     <Compile Include="ExecutionEnvironment.cs" />
@@ -82,11 +85,14 @@
     <Compile Include="IStorageProvider.cs" />
     <Compile Include="IStateProvider.cs" />
     <Compile Include="OutOfGasException.cs" />
+    <Compile Include="Precompiles\ModExpPrecompiledContract.cs" />
     <Compile Include="Precompiles\Ripemd160PrecompiledContract.cs" />
     <Compile Include="Precompiles\Sha256PrecompiledContract.cs" />
     <Compile Include="ShouldLog.cs" />
     <Compile Include="EvmStackOverflowException.cs" />
     <Compile Include="StackUnderflowException.cs" />
+    <Compile Include="StaticCallViolationException.cs" />
+    <Compile Include="StatusCode.cs" />
     <Compile Include="StorageProvider.cs" />
     <Compile Include="TransactionCollisionException.cs" />
     <Compile Include="TransactionProcessor.cs" />

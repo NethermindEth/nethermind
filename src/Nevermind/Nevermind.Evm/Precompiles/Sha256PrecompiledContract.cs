@@ -12,6 +12,7 @@ namespace Nevermind.Evm.Precompiles
         }
 
         public BigInteger Address => 2;
+
         public ulong BaseGasCost()
         {
             return 60UL;
@@ -24,8 +25,7 @@ namespace Nevermind.Evm.Precompiles
 
         public byte[] Run(byte[] inputData)
         {
-            byte[] result = Sha2.Compute(inputData);
-            return result;
+            return Sha2.Compute(inputData);
         }
     }
 }

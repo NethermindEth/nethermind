@@ -114,7 +114,7 @@ namespace Ethereum.VM.Test
 
         protected void RunTest(VirtualMachineTest test)
         {
-            VirtualMachine machine = new VirtualMachine(_blockhashProvider, _stateProvider, _storageProvider, _protocolSpecification, ShouldLog.Evm ? new ConsoleLogger() : null);
+            VirtualMachine machine = new VirtualMachine(_protocolSpecification, _stateProvider, _storageProvider, _blockhashProvider, ShouldLog.Evm ? new ConsoleLogger() : null);
             ExecutionEnvironment environment = new ExecutionEnvironment();
             environment.Value = test.Execution.Value;
             environment.CallDepth = 0;

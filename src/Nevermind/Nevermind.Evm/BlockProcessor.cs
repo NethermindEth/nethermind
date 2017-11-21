@@ -1,6 +1,7 @@
-using System;
+using System.Numerics;
 using Nevermind.Core;
 using Nevermind.Core.Encoding;
+using Nevermind.Core.Sugar;
 using Nevermind.Store;
 
 namespace Nevermind.Evm
@@ -8,19 +9,28 @@ namespace Nevermind.Evm
     // TODO: work in progress
     public class BlockProcessor
     {
-        public static Keccak GetReceiptsRoot(TransactionReceipt[] receipts)
+        private readonly IProtocolSpecification _protocolSpecification;
+        private readonly IStateProvider _stateProvider;
+
+        public BlockProcessor(IProtocolSpecification protocolSpecification, IStateProvider stateProvider)
+        {
+            _protocolSpecification = protocolSpecification;
+            _stateProvider = stateProvider;
+        }
+
+        public Keccak GetReceiptsRoot(TransactionReceipt[] receipts)
         {
             PatriciaTree receiptTree = new PatriciaTree(new InMemoryDb());
             for (int i = 0; i < receipts.Length; i++)
             {
-                Rlp receiptRlp = Rlp.Encode(receipts[i]);
+                Rlp receiptRlp = Rlp.Encode(receipts[i], _protocolSpecification.IsEip658Enabled);
                 receiptTree.Set(Rlp.Encode(0).Bytes, receiptRlp);
             }
 
             return receiptTree.RootHash;
         }
 
-        public static Keccak GetTransactionsRoot(Transaction[] transactions)
+        public Keccak GetTransactionsRoot(Transaction[] transactions)
         {
             PatriciaTree tranTree = new PatriciaTree(new InMemoryDb());
             for (int i = 0; i < transactions.Length; i++)
@@ -32,12 +42,19 @@ namespace Nevermind.Evm
             return tranTree.RootHash;
         }
 
-        public static void ApplyMinerReward()
+        public void ApplyMinerReward(Address beneficiary)
         {
-            throw new NotImplementedException();
-            //Account minerAccount = _stateProvider.GetAccount(header.Beneficiary);
-            //minerAccount.Balance += 5.Ether();
-            //_stateProvider.UpdateAccount(header.Beneficiary, minerAccount);
+            BigInteger reward = _protocolSpecification.IsEip186Enabled ? 3.Ether() : 5.Ether();
+            if (!_stateProvider.AccountExists(beneficiary))
+            {
+                _stateProvider.CreateAccount(beneficiary, reward);
+            }
+            else
+            {
+                _stateProvider.UpdateBalance(beneficiary, reward);
+            }
+
+            _stateProvider.Commit();
         }
     }
 }

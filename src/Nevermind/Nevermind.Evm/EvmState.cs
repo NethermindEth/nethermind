@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Numerics;
@@ -18,9 +17,8 @@ namespace Nevermind.Evm
         private List<LogEntry> _logs = new List<LogEntry>();
         public int StackHead = 0;
 
-        // TODO - snapshot 0, not -1 I guess
         public EvmState(ulong gasAvailable, ExecutionEnvironment env, ExecutionType executionType, bool isContinuation)
-            : this(gasAvailable, env, executionType, -1, -1, BigInteger.Zero, BigInteger.Zero, isContinuation)
+            : this(gasAvailable, env, executionType, -1, -1, BigInteger.Zero, BigInteger.Zero, false, isContinuation)
         {
             GasAvailable = gasAvailable;
             Env = env;
@@ -34,6 +32,7 @@ namespace Nevermind.Evm
             int storageSnapshot,
             BigInteger outputDestination,
             BigInteger outputLength,
+            bool isStatic,
             bool isContinuation)
         {
             GasAvailable = gasAvailable;
@@ -43,6 +42,7 @@ namespace Nevermind.Evm
             Env = env;
             OutputDestination = outputDestination;
             OutputLength = outputLength;
+            IsStatic = isStatic;
             IsContinuation = isContinuation;
         }
 
@@ -53,6 +53,7 @@ namespace Nevermind.Evm
         internal ExecutionType ExecutionType { get; }
         internal BigInteger OutputDestination { get; }
         internal BigInteger OutputLength { get; }
+        public bool IsStatic { get; }
         public bool IsContinuation { get; set; }
         public int StateSnapshot { get; }
         public int StorageSnapshot { get; }

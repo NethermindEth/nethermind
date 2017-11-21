@@ -13,6 +13,7 @@ namespace Nevermind.Evm.Precompiles
         }
 
         public BigInteger Address => 3;
+
         public ulong BaseGasCost()
         {
             return 600UL;
@@ -25,7 +26,7 @@ namespace Nevermind.Evm.Precompiles
 
         public byte[] Run(byte[] inputData)
         {
-            return Bytes.PadLeft(Ripemd.Compute(inputData), 32);
+            return Ripemd.Compute(inputData).PadLeft(32);
         }
     }
 }

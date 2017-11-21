@@ -338,16 +338,6 @@ namespace Ethereum.Trie.Test
         }
 
         [Test]
-        public void Empty_restore()
-        {
-            PatriciaTree tree = new PatriciaTree(new InMemoryDb());
-            Assert.AreEqual(tree.Root, null);
-            StateSnapshot snapshot = tree.TakeSnapshot();
-            tree.Restore(snapshot);
-            Assert.AreEqual(tree.Root, null);
-        }
-
-        [Test]
         public void Lookup_in_empty_tree()
         {
             PatriciaTree tree = new PatriciaTree(new InMemoryDb());

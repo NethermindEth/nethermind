@@ -62,13 +62,13 @@ namespace Nevermind.Core.Encoding
 
             if (prefix < 128)
             {
-                result.Add(new [] {prefix});
+                result.Add(new[] { prefix });
                 return CheckAndReturn(result, context);
             }
 
             if (prefix == 128)
             {
-                result.Add(new byte[] {});
+                result.Add(new byte[] { });
                 return CheckAndReturn(result, context);
             }
 
@@ -297,7 +297,7 @@ namespace Nevermind.Core.Encoding
 
             if (item is byte || item is short || item is int || item is ushort || item is uint)
             {
-                return Encode((object) Convert.ToInt64(item));
+                return Encode((object)Convert.ToInt64(item));
             }
 
             // can use serialize length here and wrap in the byte array serialization
@@ -408,7 +408,7 @@ namespace Nevermind.Core.Encoding
 
         public static readonly Rlp OfEmptyByteArray = new Rlp(128);
 
-        public static Rlp OfEmptySequence = Encode(new object[] {});
+        public static Rlp OfEmptySequence = Encode(new object[] { });
 
         private static readonly Dictionary<RuntimeTypeHandle, IRlpDecoder> Decoders =
             new Dictionary<RuntimeTypeHandle, IRlpDecoder>
@@ -495,8 +495,17 @@ namespace Nevermind.Core.Encoding
                 account.CodeHash);
         }
 
-        public static Rlp Encode(TransactionReceipt receipt)
+        public static Rlp Encode(TransactionReceipt receipt, bool isEip658Enabled)
         {
+            if (isEip658Enabled)
+            {
+                return Encode(
+                    receipt.StatusCode,
+                    receipt.GasUsed,
+                    receipt.Bloom,
+                    receipt.Logs);
+            }
+
             return Encode(
                 receipt.PostTransactionState,
                 receipt.GasUsed,

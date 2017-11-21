@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using System.Numerics;
 using Nevermind.Core;
@@ -42,6 +41,7 @@ namespace Nevermind.Evm
             transferReceipt.Bloom = new Bloom();
             transferReceipt.GasUsed = totalGasUsed;
             transferReceipt.PostTransactionState = _stateProvider.State.RootHash;
+            transferReceipt.StatusCode = StatusCode.Failure;
             return transferReceipt;
         }
 
@@ -93,6 +93,7 @@ namespace Nevermind.Evm
 
             if (!_stateProvider.AccountExists(sender))
             {
+                // TODO: sure of it?
                 return GetNullReceipt(block.GasUsed + gasLimit);
             }
 
@@ -123,6 +124,7 @@ namespace Nevermind.Evm
             int snapshot = _stateProvider.TakeSnapshot();
             int storageSnapshot = _storageProvider.TakeSnapshot();
             _stateProvider.UpdateBalance(sender, -value);
+            byte statusCode = StatusCode.Failure;
 
             HashSet<Address> destroyedAccounts = new HashSet<Address>();
             // TODO: can probably merge it with the inner loop in VM
@@ -154,6 +156,7 @@ namespace Nevermind.Evm
                 {
                     _stateProvider.UpdateBalance(sender, -value);
                     _stateProvider.UpdateBalance(recipient, value);
+                    statusCode = StatusCode.Success;
                 }
                 else
                 {
@@ -178,7 +181,6 @@ namespace Nevermind.Evm
                     EvmState state = new EvmState(gasAvailable, env, executionType, false);
 
                     (byte[] output, TransactionSubstate substate) = _virtualMachine.Run(state);
-                    logEntries.AddRange(substate.Logs);
 
                     gasAvailable = state.GasAvailable;
 
@@ -216,10 +218,20 @@ namespace Nevermind.Evm
                     gasSpent -= refund;
 
                     // final
-                    foreach (Address toBeDestroyed in substate.DestroyList)
+                    if (!substate.ShouldRevert)
                     {
-                        _stateProvider.DeleteAccount(toBeDestroyed);
-                        destroyedAccounts.Add(toBeDestroyed);
+                        statusCode = StatusCode.Success;
+                        logEntries.AddRange(substate.Logs);
+                        foreach (Address toBeDestroyed in substate.DestroyList)
+                        {
+                            _stateProvider.DeleteAccount(toBeDestroyed);
+                            destroyedAccounts.Add(toBeDestroyed);
+                        }
+                    }
+                    else
+                    {
+                        _stateProvider.Restore(snapshot);
+                        _storageProvider.Restore(storageSnapshot);
                     }
                 }
             }
@@ -249,22 +261,23 @@ namespace Nevermind.Evm
             _storageProvider.Commit(_stateProvider);
             _stateProvider.Commit();
 
-            TransactionReceipt transferReceipt = new TransactionReceipt();
-            transferReceipt.Logs = logEntries.ToArray();
-            transferReceipt.Bloom = new Bloom();
+            TransactionReceipt transactionReceipt = new TransactionReceipt();
+            transactionReceipt.Logs = logEntries.ToArray();
+            transactionReceipt.Bloom = new Bloom();
             foreach (LogEntry logEntry in logEntries)
             {
                 byte[] addressBytes = logEntry.LoggersAddress.Hex;
-                transferReceipt.Bloom.Set(addressBytes);
+                transactionReceipt.Bloom.Set(addressBytes);
                 foreach (Keccak entryTopic in logEntry.Topics)
                 {
-                    transferReceipt.Bloom.Set(entryTopic.Bytes);
+                    transactionReceipt.Bloom.Set(entryTopic.Bytes);
                 }
             }
 
-            transferReceipt.GasUsed = block.GasUsed + gasSpent;
-            transferReceipt.PostTransactionState = _stateProvider.State.RootHash;
-            return transferReceipt;
+            transactionReceipt.GasUsed = block.GasUsed + gasSpent;
+            transactionReceipt.PostTransactionState = _stateProvider.State.RootHash;
+            transactionReceipt.StatusCode = statusCode;
+            return transactionReceipt;
         }
     }
 }

@@ -1,5 +1,4 @@
-﻿using System;
-using Nevermind.Core;
+﻿using Nevermind.Core;
 using Nevermind.Core.Encoding;
 
 namespace Nevermind.Store

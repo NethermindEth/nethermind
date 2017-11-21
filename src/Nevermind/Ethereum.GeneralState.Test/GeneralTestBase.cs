@@ -31,7 +31,7 @@ namespace Ethereum.GeneralState.Test
             _storageProvider = new StorageProvider(ShouldLog.State ? new ConsoleLogger() : null);
             _blockhashProvider = new TestBlockhashProvider();
             _stateProvider = new StateProvider(new StateTree(_db), _protocolSpecification, ShouldLog.State ? new ConsoleLogger() : null);
-            _virtualMachine = new VirtualMachine(_blockhashProvider, _stateProvider, _storageProvider, _protocolSpecification, ShouldLog.Evm ? new ConsoleLogger() : null);
+            _virtualMachine = new VirtualMachine(_protocolSpecification, _stateProvider, _storageProvider, _blockhashProvider, ShouldLog.Evm ? new ConsoleLogger() : null);
         }
 
         public static IEnumerable<GenerateStateTest> LoadTests(string testSet)

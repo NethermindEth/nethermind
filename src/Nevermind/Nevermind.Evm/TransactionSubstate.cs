@@ -9,12 +9,16 @@ namespace Nevermind.Evm
         public TransactionSubstate(
             BigInteger refund,
             IReadOnlyCollection<Address> destroyList,
-            IReadOnlyCollection<LogEntry> logs)
+            IReadOnlyCollection<LogEntry> logs,
+            bool shouldRevert)
         {
             Refund = refund;
             DestroyList = destroyList;
             Logs = logs;
+            ShouldRevert = shouldRevert;
         }
+
+        public bool ShouldRevert { get; }
 
         public BigInteger Refund { get; }
 

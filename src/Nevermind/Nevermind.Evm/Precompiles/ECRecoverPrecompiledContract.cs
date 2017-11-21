@@ -18,12 +18,12 @@ namespace Nevermind.Evm.Precompiles
 
         public ulong DataGasCost(byte[] inputData)
         {
-            return 0;
+            return 0UL;
         }
 
         public ulong BaseGasCost()
         {
-            return 3000;
+            return 3000UL;
         }
 
         public byte[] Run(byte[] inputData)
@@ -52,7 +52,7 @@ namespace Nevermind.Evm.Precompiles
             }
 
             Signature signature = new Signature(r, s, v);
-            return ((byte[])Signer.RecoverSignerAddress(signature, hash).Hex).PadLeft(32); // change recovery code to return bytes?
+            return ((byte[])Signer.RecoverSignerAddress(signature, hash).Hex).PadLeft(32); // TODO: change recovery code to return bytes?
         }
     }
 }

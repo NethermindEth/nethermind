@@ -6,7 +6,7 @@ using Nevermind.Core.Sugar;
 
 namespace Nevermind.Store
 {
-    // I guess it is a very slow to Keccak-heavy implementation, the first one to pass tests
+    // I guess it is a very slow and Keccak-heavy implementation, the first one to pass tests
     [DebuggerDisplay("{RootHash}")]
     public class PatriciaTree
     {
@@ -27,26 +27,7 @@ namespace Nevermind.Store
         public PatriciaTree(Keccak rootHash, InMemoryDb db)
             : this(db)
         {
-            Restore(new StateSnapshot(db, rootHash));
-        }
-
-        public PatriciaTree(StateSnapshot snapshot)
-            : this((InMemoryDb)null)
-        {
-            Restore(snapshot);
-        }
-
-        public Keccak RootHash { get; internal set; } = EmptyTreeHash;
-
-        public StateSnapshot TakeSnapshot()
-        {
-            return new StateSnapshot(_db.TakeSnapshot(), RootHash);
-        }
-
-        public void Restore(StateSnapshot snapshot)
-        {
-            _db = snapshot.DbSnapshot;
-            RootHash = snapshot.RootHash;
+            RootHash = rootHash;
             if (RootHash == Keccak.EmptyTreeHash)
             {
                 Root = null;
@@ -57,6 +38,8 @@ namespace Nevermind.Store
                 Root = RlpDecode(rootRlp);
             }
         }
+
+        public Keccak RootHash { get; internal set; } = EmptyTreeHash;
 
         private static Rlp RlpEncode(KeccakOrRlp keccakOrRlp)
         {

@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Diagnostics;
+using System.Numerics;
 using Nevermind.Core.Encoding;
 
 namespace Nevermind.Core.Signing
@@ -10,6 +11,8 @@ namespace Nevermind.Core.Signing
     /// </summary>
     public static class Signer
     {
+        //public static BigInteger Secp256k1n = new BigInteger(115792_08923731_61954235_70985008_68790785_28375642_79074904_38260516_31415181_61494337);
+
         public static void Sign(Transaction transaction, PrivateKey privateKey, bool eip155 = false, ChainId chainId = 0)
         {
             int chainIdValue = (int)chainId;

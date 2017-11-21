@@ -26,6 +26,7 @@ namespace Ethereum.Blockchain.Test
         private IStorageProvider _storageProvider;
         private Dictionary<EthereumNetwork, VirtualMachine> _virtualMachines;
         private Dictionary<EthereumNetwork, StateProvider> _stateProviders;
+        private Dictionary<EthereumNetwork, BlockProcessor> _blockProcessors;
         private ILogger _logger;
 
         protected void Setup(ILogger logger)
@@ -36,12 +37,14 @@ namespace Ethereum.Blockchain.Test
             _blockhashProvider = new TestBlockhashProvider();
             _virtualMachines = new Dictionary<EthereumNetwork, VirtualMachine>();
             _stateProviders = new Dictionary<EthereumNetwork, StateProvider>();
+            _blockProcessors = new Dictionary<EthereumNetwork, BlockProcessor>();
             EthereumNetwork[] networks = { EthereumNetwork.Frontier, EthereumNetwork.Homestead, EthereumNetwork.Byzantium, EthereumNetwork.SpuriousDragon, EthereumNetwork.TangerineWhistle };
             foreach (EthereumNetwork ethereumNetwork in networks)
             {
                 IProtocolSpecification spec = _protocolSpecificationProvider.GetSpec(ethereumNetwork, 1);
                 _stateProviders[ethereumNetwork] = new StateProvider(new StateTree(_db), spec, ShouldLog.State ? logger : null);
-                _virtualMachines[ethereumNetwork] = new VirtualMachine(_blockhashProvider, _stateProviders[ethereumNetwork], _storageProvider, spec, ShouldLog.Evm ? logger : null);
+                _blockProcessors[ethereumNetwork] = new BlockProcessor(spec, _stateProviders[ethereumNetwork]);
+                _virtualMachines[ethereumNetwork] = new VirtualMachine(spec, _stateProviders[ethereumNetwork], _storageProvider, _blockhashProvider, ShouldLog.Evm ? logger : null);
             }
         }
 
@@ -74,30 +77,30 @@ namespace Ethereum.Blockchain.Test
                 Dictionary<string, BlockchainTestJson> testsInFile = JsonConvert.DeserializeObject<Dictionary<string, BlockchainTestJson>>(json);
                 foreach (KeyValuePair<string, BlockchainTestJson> namedTest in testsInFile)
                 {
-                    if (namedTest.Key.Contains("Frontier"))
-                    {
-                        namedTest.Value.EthereumNetwork = EthereumNetwork.Frontier;
-                    }
-                    else
-                    if (namedTest.Key.Contains("Homestead"))
-                    {
-                        namedTest.Value.EthereumNetwork = EthereumNetwork.Homestead;
-                    }
-                    else
-                    if (namedTest.Key.Contains("EIP150"))
-                    {
-                        namedTest.Value.EthereumNetwork = EthereumNetwork.TangerineWhistle;
-                    }
-                    else
-                    if (namedTest.Key.Contains("EIP158"))
-                    {
-                        namedTest.Value.EthereumNetwork = EthereumNetwork.SpuriousDragon;
-                    }
-                    //else
-                    //if (namedTest.Key.Contains("Byzantium"))
+                    //if (namedTest.Key.Contains("Frontier"))
                     //{
-                    //    namedTest.Value.EthereumNetwork = EthereumNetwork.Byzantium;
+                    //    namedTest.Value.EthereumNetwork = EthereumNetwork.Frontier;
                     //}
+                    //else
+                    //if (namedTest.Key.Contains("Homestead"))
+                    //{
+                    //    namedTest.Value.EthereumNetwork = EthereumNetwork.Homestead;
+                    //}
+                    //else
+                    //if (namedTest.Key.Contains("EIP150"))
+                    //{
+                    //    namedTest.Value.EthereumNetwork = EthereumNetwork.TangerineWhistle;
+                    //}
+                    //else
+                    //if (namedTest.Key.Contains("EIP158"))
+                    //{
+                    //    namedTest.Value.EthereumNetwork = EthereumNetwork.SpuriousDragon;
+                    //}
+                    //else
+                    if (namedTest.Key.Contains("Byzantium"))
+                    {
+                        namedTest.Value.EthereumNetwork = EthereumNetwork.Byzantium;
+                    }
                     else
                     {
                         continue;
@@ -184,7 +187,12 @@ namespace Ethereum.Blockchain.Test
             Debug.Listeners.Clear();
             Debug.Listeners.Add(traceListener);
 
-            _stateProviders[test.Network].ProtocolSpecification = _protocolSpecificationProvider.GetSpec(EthereumNetwork.Frontier, 1);
+            // TODO: handle multiple
+            BlockHeader header = BuildBlockHeader(test.Blocks[0].BlockHeader);
+            List<TransactionReceipt> receipts = new List<TransactionReceipt>();
+            List<Transaction> transactions = new List<Transaction>();
+
+            _stateProviders[test.Network].ProtocolSpecification = _protocolSpecificationProvider.GetSpec(EthereumNetwork.Frontier, header.Number);
             foreach (KeyValuePair<Address, AccountState> accountState in test.Pre)
             {
                 foreach (KeyValuePair<BigInteger, byte[]> storageItem in accountState.Value.Storage)
@@ -203,15 +211,10 @@ namespace Ethereum.Blockchain.Test
 
             _storageProvider.Commit(_stateProviders[test.Network]);
             _stateProviders[test.Network].Commit();
-            _stateProviders[test.Network].ProtocolSpecification = _protocolSpecificationProvider.GetSpec(test.Network, 1);
+            _stateProviders[test.Network].ProtocolSpecification = _protocolSpecificationProvider.GetSpec(test.Network, header.Number);
 
             IProtocolSpecification spec = _protocolSpecificationProvider.GetSpec(test.Network, 1);
             TransactionProcessor processor = new TransactionProcessor(_virtualMachines[test.Network], _stateProviders[test.Network], _storageProvider, spec, ChainId.Mainnet, ShouldLog.TransactionProcessor ? _logger : null);
-
-            // TODO: handle multiple
-            BlockHeader header = BuildBlockHeader(test.Blocks[0].BlockHeader);
-            List<TransactionReceipt> receipts = new List<TransactionReceipt>();
-            List<Transaction> transactions = new List<Transaction>();
 
             stopwatch?.Start();
             BigInteger gasUsedSoFar = 0;
@@ -240,18 +243,8 @@ namespace Ethereum.Blockchain.Test
 
             stopwatch?.Start();
 
-            BigInteger reward = spec.IsEip186Enabled ? 3.Ether() : 5.Ether();
-            if (!_stateProviders[test.Network].AccountExists(header.Beneficiary))
-            {
-                _stateProviders[test.Network].CreateAccount(header.Beneficiary, reward);
-            }
-            else
-            {
-                _stateProviders[test.Network].UpdateBalance(header.Beneficiary, reward);
-            }
-
-            _storageProvider.Commit(_stateProviders[test.Network]);
-            _stateProviders[test.Network].Commit();
+            BlockProcessor blockProcessor = new BlockProcessor(_protocolSpecificationProvider.GetSpec(test.Network, header.Number), _stateProviders[test.Network]);
+            blockProcessor.ApplyMinerReward(header.Beneficiary);
 
             RunAssertions(test, receipts, transactions);
         }
@@ -306,8 +299,8 @@ namespace Ethereum.Blockchain.Test
             Assert.Zero(differences.Count, "differences");
 
             Assert.AreEqual(testHeader.GasUsed, receipts.LastOrDefault()?.GasUsed ?? 0);
-            Keccak receiptsRoot = BlockProcessor.GetReceiptsRoot(receipts.ToArray());
-            Keccak transactionsRoot = BlockProcessor.GetTransactionsRoot(transactions.ToArray());
+            Keccak receiptsRoot = _blockProcessors[test.Network].GetReceiptsRoot(receipts.ToArray());
+            Keccak transactionsRoot = _blockProcessors[test.Network].GetTransactionsRoot(transactions.ToArray());
 
             if (receipts.Any())
             {

@@ -90,7 +90,7 @@ namespace PerfTest
                 //)
             };
 
-        private static readonly VirtualMachine Machine = new VirtualMachine(null, null, null, new FrontierProtocolSpecification(), null);
+        private static readonly VirtualMachine Machine = new VirtualMachine(new FrontierProtocolSpecification(), null, null, null, null);
 
         private static void Main(string[] args)
         {

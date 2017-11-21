@@ -9,9 +9,6 @@
         <FixtureName>Ethereum.Blockchain.Test.PreCompiledContractsTests</FixtureName>
       </FixtureTestSelector>
       <FixtureTestSelector>
-        <FixtureName>Ethereum.Blockchain.Test.BadOpcodeTests</FixtureName>
-      </FixtureTestSelector>
-      <FixtureTestSelector>
         <FixtureName>Ethereum.Blockchain.Test.ZeroCallsRevertTests</FixtureName>
       </FixtureTestSelector>
       <FixtureTestSelector>
@@ -1069,6 +1066,9 @@
       </FixtureTestSelector>
       <FixtureTestSelector>
         <FixtureName>Ethereum.Blockchain.Test.StackTests</FixtureName>
+      </FixtureTestSelector>
+      <FixtureTestSelector>
+        <FixtureName>Ethereum.Blockchain.Test.BadOpcodeTests</FixtureName>
       </FixtureTestSelector>
     </IgnoredTests>
     <InstrumentOutputAssembly>False</InstrumentOutputAssembly>
