@@ -79,6 +79,7 @@
     <Compile Include="Nibbles.cs" />
     <Compile Include="Difficulty\OlimpicDifficultyCalculator.cs" />
     <Compile Include="Difficulty\RopstenDifficultyCalculator.cs" />
+    <Compile Include="OlympicProtocolSpecification.cs" />
     <Compile Include="ProtocolSpecificationProvider.cs" />
     <Compile Include="RefundOf.cs" />
     <Compile Include="SpuriousDragonProtocolSpecification.cs" />
