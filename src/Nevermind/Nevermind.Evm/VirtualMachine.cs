@@ -84,7 +84,7 @@ namespace Nevermind.Evm
                         }
                     }
 
-                    if (currentState.ExecutionType == ExecutionType.Transaction || currentState.ExecutionType == ExecutionType.DirectCreate)
+                    if (currentState.ExecutionType == ExecutionType.Transaction || currentState.ExecutionType == ExecutionType.DirectCreate || currentState.ExecutionType == ExecutionType.DirectPrecompile)
                     {
                         return (callResult.Output, new TransactionSubstate(currentState.Refund, currentState.DestroyList, currentState.Logs, callResult.ShouldRevert));
                     }
@@ -1140,7 +1140,6 @@ namespace Nevermind.Evm
                     case Instruction.JUMP:
                     {
                         UpdateGas(GasCostOf.Mid, ref gasAvailable);
-                        //int dest = (int)PopUInt();
                         bigReg = PopUInt();
                         if (bigReg > BigIntMaxInt)
                         {
@@ -1155,7 +1154,6 @@ namespace Nevermind.Evm
                     case Instruction.JUMPI:
                     {
                         UpdateGas(GasCostOf.High, ref gasAvailable);
-                        //int dest = (int)PopUInt();
                         bigReg = PopUInt();
                         if (bigReg > BigIntMaxInt)
                         {
@@ -1370,14 +1368,9 @@ namespace Nevermind.Evm
                         bool accountExists = _stateProvider.AccountExists(contractAddress);
                         if (accountExists && !_stateProvider.IsEmptyAccount(contractAddress))
                         {
-                            _logger.Log($"  COLLISION AT CONTRACT ADDRESS {contractAddress}");
-                            BigInteger balance = _stateProvider.GetBalance(contractAddress);
-                            _stateProvider.CreateAccount(contractAddress, 0);
-                            // TODO: reset to blank instead, except for balance
-
-                            //PushInt(BigInteger.Zero);
-                            //break;
-                            //throw new TransactionCollisionException();
+                            // TODO: clients are not consistent here - following tests
+                            PushInt(BigInteger.Zero);
+                            break;
                         }
 
                         int stateSnapshot = _stateProvider.TakeSnapshot();
@@ -1533,12 +1526,6 @@ namespace Nevermind.Evm
 
                         if (_protocolSpecification.IsEip150Enabled)
                         {
-                            ///// https://github.com/ethereum/EIPs/blob/master/EIPS/eip-150.md
-                            //gasLimit = gasLimit > gasAvailable
-                            //    ? BigInteger.Min(gasAvailable - (gasAvailable) / 64UL, gasLimit)
-                            //    : gasLimit;
-
-                            /// https://github.com/ethereum/EIPs/blob/master/EIPS/eip-150.md
                             gasLimit = BigInteger.Min(gasAvailable - gasAvailable / 64UL, gasLimit);
                         }
 

@@ -1,48 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Text;
 using Ethereum.Blockchain.Test;
-using Nevermind.Core;
-using Nevermind.Evm;
 
 namespace Nevermind.Blockchain.Test.Runner
 {
-    internal class FileLogger : ILogger
-    {
-        private readonly string _filePath;
-
-        public FileLogger(string filePath)
-        {
-            _filePath = filePath;
-        }
-
-        private readonly StringBuilder _buffer = new StringBuilder();
-
-        public void Log(string text)
-        {
-            try
-            {
-                _buffer.AppendLine(text);
-                if (_buffer.Length > 1024 * 1024)
-                {
-                    Flush();
-                }
-            }
-            catch (Exception e)
-            {
-                Console.WriteLine(e);
-                throw;
-            }
-        }
-
-        public void Flush()
-        {
-            File.AppendAllText(_filePath, _buffer.ToString());
-            _buffer.Clear();
-        }
-    }
-
     public class BugHunter : BlockchainTestBase, ITestInRunner
     {
         public CategoryResult RunTests(string subset, int iterations = 1)
@@ -54,12 +16,8 @@ namespace Nevermind.Blockchain.Test.Runner
             IEnumerable<BlockchainTest> tests = LoadTests(subset);
             foreach (BlockchainTest test in tests)
             {
-                if (test.Name.Contains("modexp"))
-                {
-                    continue;
-                }
-
                 Setup(null);
+
                 try
                 {
                     Console.Write($"{test.Name,-80} ");

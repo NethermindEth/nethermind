@@ -69,6 +69,7 @@
     <Compile Include="EvmState.cs" />
     <Compile Include="ExecutionType.cs" />
     <Compile Include="InsufficientBalanceException.cs" />
+    <Compile Include="InvalidInputDataException.cs" />
     <Compile Include="InvalidInstructionException.cs" />
     <Compile Include="InvalidJumpDestinationException.cs" />
     <Compile Include="IVirtualMachine.cs" />

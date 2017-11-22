@@ -41,6 +41,7 @@
       <FixtureTestSelector>
         <FixtureName>Ethereum.VM.Test.SystemTests</FixtureName>
       </FixtureTestSelector>
+      <AllTestsSelector />
     </IgnoredTests>
     <IgnoreThisComponentCompletely>False</IgnoreThisComponentCompletely>
   </Settings>

@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections;
+using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using Nevermind.Core.Encoding;
@@ -18,6 +19,17 @@ namespace Nevermind.Core.Sugar
         public static bool GetBit(this byte b, int bitNumber)
         {
             return (b & (1 << (7 - bitNumber))) != 0;
+        }
+
+        public static int GetHighestSetBitIndex(this byte b)
+        {
+            if ((b & 128) == 128) return 7;
+            if ((b & 64) == 64) return 6;
+            if ((b & 32) == 32) return 5;
+            if ((b & 16) == 16) return 4;
+            if ((b & 8) == 8) return 3;
+            if ((b & 4) == 4) return 2;
+            return (b & 2) == 2 ? 1 : 0;
         }
 
         public static unsafe bool UnsafeCompare(byte[] a1, byte[] a2)
@@ -86,6 +98,19 @@ namespace Nevermind.Core.Sugar
             }
 
             return bytes.Length % 2 == 0 || bytes[bytes.Length / 2] == 0;
+        }
+
+        public static int LeadingZerosCount(this byte[] bytes, int startIndex = 0)
+        {
+            for (int i = startIndex; i < bytes.Length; i++)
+            {
+                if (bytes[i] != 0)
+                {
+                    return i - startIndex;
+                }
+            }
+
+            return bytes.Length - startIndex;
         }
 
         public static int TrailingZerosCount(this byte[] bytes)
@@ -223,12 +248,12 @@ namespace Nevermind.Core.Sugar
         ////    return new BigInteger(unsignedResult);
         ////}
 
-        public static BigInteger ToUnsignedBigInteger(this Hex hex, Endianness endianness = Endianness.Big, bool noReverse = false)
+        public static BigInteger ToUnsignedBigInteger(this Hex hex, Endianness endianness = Endianness.Big)
         {
             return ((byte[])hex).ToUnsignedBigInteger();
         }
 
-        public static BigInteger ToUnsignedBigInteger(this byte[] bytes, Endianness endianness = Endianness.Big, bool noReverse = false)
+        public static BigInteger ToUnsignedBigInteger(this byte[] bytes, Endianness endianness = Endianness.Big)
         {
             if (BitConverter.IsLittleEndian && endianness == Endianness.Big)
             {
@@ -242,6 +267,22 @@ namespace Nevermind.Core.Sugar
             }
 
             return new BigInteger(bytes);
+        }
+
+        public static int ToInt32(this byte[] bytes, Endianness endianness = Endianness.Big)
+        {
+            if (BitConverter.IsLittleEndian && endianness == Endianness.Big)
+            {
+                byte[] reverted = new byte[bytes.Length];
+                for (int i = 0; i < bytes.Length; i++)
+                {
+                    reverted[bytes.Length - i - 1] = bytes[i];
+                }
+
+                return BitConverter.ToInt32(reverted, 0);
+            }
+
+            return BitConverter.ToInt32(bytes, 0);
         }
 
         public static BigInteger ToSignedBigInteger(this byte[] bytes, Endianness endianness = Endianness.Big)

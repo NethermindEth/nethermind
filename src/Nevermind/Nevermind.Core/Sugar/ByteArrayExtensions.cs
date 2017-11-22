@@ -32,6 +32,23 @@ namespace Nevermind.Core.Sugar
             return slice;
         }
 
+        public static byte[] SliceWithZeroPadding(this byte[] bytes, int startIndex, int length)
+        {
+            if (length == 1)
+            {
+                return bytes.Length == 0 ? new byte[0] : new[] { bytes[startIndex] };
+            }
+            
+            byte[] slice = new byte[length];
+            if (startIndex > bytes.Length - 1)
+            {
+                return slice;
+            }
+
+            Buffer.BlockCopy(bytes, startIndex, slice, 0, Math.Min(bytes.Length - startIndex, length));
+            return slice;
+        }
+
         public static int GetXxHashCode(this byte[] bytes)
         {
             return BitConverter.ToInt32(XxHash.ComputeHash(bytes), 0);

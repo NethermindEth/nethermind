@@ -160,7 +160,7 @@ namespace Nevermind.Evm
                 }
                 else
                 {
-                    bool isPrecompile = recipient.IsPrecompiled();
+                    bool isPrecompile = recipient.IsPrecompiled(_protocolSpecification);
 
                     ExecutionEnvironment env = new ExecutionEnvironment();
                     env.Value = value;

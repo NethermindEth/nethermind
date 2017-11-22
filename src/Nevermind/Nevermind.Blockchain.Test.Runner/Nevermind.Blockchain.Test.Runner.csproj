@@ -45,6 +45,7 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="FileLogger.cs" />
     <Compile Include="ITestInRunner.cs" />
     <Compile Include="PerfTest.cs" />
     <Compile Include="CategoryResult.cs" />

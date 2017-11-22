@@ -6,9 +6,6 @@
     <DetectStackOverflow>False</DetectStackOverflow>
     <IgnoredTests>
       <FixtureTestSelector>
-        <FixtureName>Ethereum.Blockchain.Test.PreCompiledContractsTests</FixtureName>
-      </FixtureTestSelector>
-      <FixtureTestSelector>
         <FixtureName>Ethereum.Blockchain.Test.ZeroCallsRevertTests</FixtureName>
       </FixtureTestSelector>
       <FixtureTestSelector>
@@ -22,9 +19,6 @@
       </FixtureTestSelector>
       <FixtureTestSelector>
         <FixtureName>Ethereum.Blockchain.Test.RefundTests</FixtureName>
-      </FixtureTestSelector>
-      <FixtureTestSelector>
-        <FixtureName>Ethereum.Blockchain.Test.PreCompiledContracts2Tests</FixtureName>
       </FixtureTestSelector>
       <NamedTestSelector>
         <TestName>Ethereum.Blockchain.Test.RandomTests.Test(randomStatetest171_d0g0v0_Frontier)</TestName>
@@ -1432,6 +1426,12 @@
       </NamedTestSelector>
       <FixtureTestSelector>
         <FixtureName>Ethereum.Blockchain.Test.BadOpcodeTests</FixtureName>
+      </FixtureTestSelector>
+      <FixtureTestSelector>
+        <FixtureName>Ethereum.Blockchain.Test.PreCompiledContracts2Tests</FixtureName>
+      </FixtureTestSelector>
+      <FixtureTestSelector>
+        <FixtureName>Ethereum.Blockchain.Test.PreCompiledContractsTests</FixtureName>
       </FixtureTestSelector>
     </IgnoredTests>
     <InstrumentOutputAssembly>False</InstrumentOutputAssembly>
