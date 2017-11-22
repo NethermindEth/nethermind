@@ -6,9 +6,9 @@ namespace Ethereum.GeneralState.Test
     public class CodeCopyTests : GeneralTestBase
     {
         [TestCaseSource(nameof(LoadTests), new object[] { "CodeCopyTest" })]
-        public void Test(GenerateStateTest generateStateTest)
+        public void Test(GenerateStateTest test)
         {    
-            RunTest(generateStateTest);
+            RunTest(test);
         }
     }
 }

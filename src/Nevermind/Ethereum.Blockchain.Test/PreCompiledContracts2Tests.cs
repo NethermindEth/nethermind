@@ -5,10 +5,10 @@ namespace Ethereum.Blockchain.Test
     [TestFixture]
     public class PreCompiledContracts2Tests : BlockchainTestBase
     {
-        [TestCaseSource(nameof(LoadTests), new object[] { "PreCompiledContracts2" })]
-        public void Test(BlockchainTest generateStateTest)
+        [TestCaseSource(nameof(LoadTests), new object[] { "stPreCompiledContracts2" })]
+        public void Test(BlockchainTest test)
         {
-            RunTest(generateStateTest);
+            RunTest(test);
         }
     }
 }

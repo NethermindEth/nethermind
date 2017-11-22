@@ -5,10 +5,10 @@ namespace Ethereum.Blockchain.Test
     [TestFixture]
     public class MemoryStressTests : BlockchainTestBase
     {
-        [TestCaseSource(nameof(LoadTests), new object[] { "MemoryStressTest" })]
-        public void Test(BlockchainTest generateStateTest)
+        [TestCaseSource(nameof(LoadTests), new object[] { "stMemoryStressTest" })]
+        public void Test(BlockchainTest test)
         {
-            RunTest(generateStateTest);
+            RunTest(test);
         }
     }
 }

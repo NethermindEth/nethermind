@@ -5,10 +5,10 @@ namespace Ethereum.Blockchain.Test
     [TestFixture]
     public class StackTests : BlockchainTestBase
     {
-        [TestCaseSource(nameof(LoadTests), new object[] { "StackTests" })]
-        public void Test(BlockchainTest generateStateTest)
+        [TestCaseSource(nameof(LoadTests), new object[] { "stStackTests" })]
+        public void Test(BlockchainTest test)
         {    
-            RunTest(generateStateTest);
+            RunTest(test);
         }
     }
 }

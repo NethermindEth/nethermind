@@ -6,9 +6,9 @@ namespace Ethereum.GeneralState.Test
     public class ChangedEIP150Tests : GeneralTestBase
     {
         [TestCaseSource(nameof(LoadTests), new object[] { "ChangedEIP150" })]
-        public void Test(GenerateStateTest generateStateTest)
+        public void Test(GenerateStateTest test)
         {    
-            RunTest(generateStateTest);
+            RunTest(test);
         }
     }
 }

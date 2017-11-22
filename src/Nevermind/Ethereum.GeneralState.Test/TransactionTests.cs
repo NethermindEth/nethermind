@@ -6,9 +6,9 @@ namespace Ethereum.GeneralState.Test
     public class TransactionTests : GeneralTestBase
     {
         [TestCaseSource(nameof(LoadTests), new object[] { "TransactionTest" })]
-        public void Test(GenerateStateTest generateStateTest)
+        public void Test(GenerateStateTest test)
         {    
-            RunTest(generateStateTest);
+            RunTest(test);
         }
     }
 }

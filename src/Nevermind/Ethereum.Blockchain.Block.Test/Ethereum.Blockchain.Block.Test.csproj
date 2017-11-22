@@ -5,16 +5,16 @@
   <PropertyGroup>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
-    <ProjectGuid>{9308BD5B-CA67-401D-9E51-6B970327C03F}</ProjectGuid>
+    <ProjectGuid>{A905EE01-A79A-40E9-98C3-1914E0D0BF2B}</ProjectGuid>
     <OutputType>Library</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
-    <RootNamespace>Nevermind.Core.Test</RootNamespace>
-    <AssemblyName>Nevermind.Core.Test</AssemblyName>
+    <RootNamespace>Ethereum.Blockchain.Block.Test</RootNamespace>
+    <AssemblyName>Ethereum.Blockchain.Block.Test</AssemblyName>
     <TargetFrameworkVersion>v4.7</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
+    <TargetFrameworkProfile />
     <NuGetPackageImportStamp>
     </NuGetPackageImportStamp>
-    <TargetFrameworkProfile />
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <DebugSymbols>true</DebugSymbols>
@@ -34,12 +34,14 @@
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
   <ItemGroup>
+    <Reference Include="Newtonsoft.Json, Version=10.0.0.0, Culture=neutral, PublicKeyToken=30ad4fe6b2a6aeed, processorArchitecture=MSIL">
+      <HintPath>..\packages\Newtonsoft.Json.10.0.3\lib\net45\Newtonsoft.Json.dll</HintPath>
+    </Reference>
     <Reference Include="nunit.framework, Version=3.9.0.0, Culture=neutral, PublicKeyToken=2638cd05610744eb, processorArchitecture=MSIL">
       <HintPath>..\packages\NUnit.3.9.0\lib\net45\nunit.framework.dll</HintPath>
     </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core" />
-    <Reference Include="System.Numerics" />
     <Reference Include="System.Xml.Linq" />
     <Reference Include="System.Data.DataSetExtensions" />
     <Reference Include="Microsoft.CSharp" />
@@ -48,43 +50,35 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="AddressTests.cs" />
-    <Compile Include="BlockValidatorTests.cs" />
-    <Compile Include="BloomTests.cs" />
-    <Compile Include="BytesTests.cs" />
-    <Compile Include="HexPrefixTests.cs" />
-    <Compile Include="HexTests.cs" />
-    <Compile Include="KeccakTests.cs" />
-    <Compile Include="PrivateKeyTests.cs" />
+    <Compile Include="BlockGasLimitTest.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
-    <Compile Include="PublicKeyTests.cs" />
-    <Compile Include="RlpTests.cs" />
-    <Compile Include="RipemdTests.cs" />
-    <Compile Include="Sha2Tests.cs" />
-    <Compile Include="SignerTests.cs" />
-    <Compile Include="TimestampTests.cs" />
-    <Compile Include="TransactionTests.cs" />
-    <Compile Include="UnitTests.cs" />
-  </ItemGroup>
-  <ItemGroup>
-    <ProjectReference Include="..\HashLib\HashLib.csproj">
-      <Project>{31880fb6-5b86-42b8-ab92-864045b5d7a2}</Project>
-      <Name>HashLib</Name>
-    </ProjectReference>
-    <ProjectReference Include="..\Nevermind.Core\Nevermind.Core.csproj">
-      <Project>{051B3754-5FB6-4202-AF6E-D1764E2DED06}</Project>
-      <Name>Nevermind.Core</Name>
-    </ProjectReference>
-    <ProjectReference Include="..\Secp256k1.Proxy\Secp256k1.Proxy.csproj">
-      <Project>{2b187a68-ca55-4f29-ae07-61464b86ebda}</Project>
-      <Name>Secp256k1.Proxy</Name>
-    </ProjectReference>
-  </ItemGroup>
-  <ItemGroup>
-    <Service Include="{82A7F48D-3B50-4B1E-B82E-3ADA8210C358}" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\tests\BlockchainTests\bc*\*.*">
+      <Link>%(RecursiveDir)%(FileName)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </EmbeddedResource>
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Ethereum.Blockchain.Test\Ethereum.Blockchain.Test.csproj">
+      <Project>{F6A86097-CB14-4D78-B4DA-082B163219A8}</Project>
+      <Name>Ethereum.Blockchain.Test</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\Ethereum.Test.Base\Ethereum.Test.Base.csproj">
+      <Project>{72e80636-d6ca-42db-a49f-830cb9bad87d}</Project>
+      <Name>Ethereum.Test.Base</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\Nevermind.Core\Nevermind.Core.csproj">
+      <Project>{051b3754-5fb6-4202-af6e-d1764e2ded06}</Project>
+      <Name>Nevermind.Core</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\Nevermind.Evm\Nevermind.Evm.csproj">
+      <Project>{13911438-f79e-4da4-b3ff-0649c38d32b1}</Project>
+      <Name>Nevermind.Evm</Name>
+    </ProjectReference>
   </ItemGroup>
   <ItemGroup>
     <Content Include="..\Nevermind.Core\Secp256k1.x64.dll">

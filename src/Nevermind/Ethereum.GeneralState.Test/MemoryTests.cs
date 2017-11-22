@@ -6,9 +6,9 @@ namespace Ethereum.GeneralState.Test
     public class MemoryTest : GeneralTestBase
     {
         [TestCaseSource(nameof(LoadTests), new object[] { "MemoryTest" })]
-        public void Test(GenerateStateTest generateStateTest)
+        public void Test(GenerateStateTest test)
         {    
-            RunTest(generateStateTest);
+            RunTest(test);
         }
     }
 }

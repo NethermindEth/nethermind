@@ -31,8 +31,8 @@
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
   <ItemGroup>
-    <Reference Include="RocksDbSharp, Version=5.4.6.9, Culture=neutral, processorArchitecture=MSIL">
-      <HintPath>..\packages\RocksDbSharp.5.4.6.9\lib\net45\RocksDbSharp.dll</HintPath>
+    <Reference Include="RocksDbSharp, Version=5.4.6.10, Culture=neutral, processorArchitecture=MSIL">
+      <HintPath>..\packages\RocksDbSharp.5.4.6.10\lib\net45\RocksDbSharp.dll</HintPath>
     </Reference>
     <Reference Include="System" />
     <Reference Include="System.ComponentModel.Composition" />

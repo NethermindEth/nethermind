@@ -6,9 +6,9 @@ namespace Ethereum.GeneralState.Test
     public class ZeroKnowledge2Tests : GeneralTestBase
     {
         [TestCaseSource(nameof(LoadTests), new object[] { "ZeroKnowledge2" })]
-        public void Test(GenerateStateTest generateStateTest)
+        public void Test(GenerateStateTest test)
         {    
-            RunTest(generateStateTest);
+            RunTest(test);
         }
     }
 }

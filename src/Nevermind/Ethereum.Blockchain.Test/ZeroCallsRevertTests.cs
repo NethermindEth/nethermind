@@ -5,10 +5,10 @@ namespace Ethereum.Blockchain.Test
     [TestFixture]
     public class ZeroCallsRevertTests : BlockchainTestBase
     {
-        [TestCaseSource(nameof(LoadTests), new object[] { "ZeroCallsRevert" })]
-        public void Test(BlockchainTest generateStateTest)
+        [TestCaseSource(nameof(LoadTests), new object[] { "stZeroCallsRevert" })]
+        public void Test(BlockchainTest test)
         {
-            RunTest(generateStateTest);
+            RunTest(test);
         }
     }
 }

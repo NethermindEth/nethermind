@@ -1433,6 +1433,7 @@
       <FixtureTestSelector>
         <FixtureName>Ethereum.Blockchain.Test.PreCompiledContractsTests</FixtureName>
       </FixtureTestSelector>
+      <AllTestsSelector />
     </IgnoredTests>
     <InstrumentOutputAssembly>False</InstrumentOutputAssembly>
   </Settings>

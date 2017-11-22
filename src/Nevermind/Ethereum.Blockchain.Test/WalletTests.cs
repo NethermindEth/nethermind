@@ -6,9 +6,9 @@ namespace Ethereum.Blockchain.Test
     public class WalletTests : BlockchainTestBase
     {
         [TestCaseSource(nameof(LoadTests), new object[] { "WalletTest" })]
-        public void Test(BlockchainTest generateStateTest)
+        public void Test(BlockchainTest test)
         {
-            RunTest(generateStateTest);
+            RunTest(test);
         }
     }
 }

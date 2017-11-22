@@ -57,7 +57,7 @@ namespace Ethereum.Blockchain.Test
         public static IEnumerable<BlockchainTest> LoadTests(string testSet)
         {
             Directory.SetCurrentDirectory(AppDomain.CurrentDomain.BaseDirectory);
-            IEnumerable<string> testDirs = Directory.EnumerateDirectories(".", "st" + (testSet.StartsWith("st") ? testSet.Substring(2) : testSet));
+            IEnumerable<string> testDirs = Directory.EnumerateDirectories(".", testSet);
             Dictionary<string, Dictionary<string, BlockchainTestJson>> testJsons = new Dictionary<string, Dictionary<string, BlockchainTestJson>>();
             foreach (string testDir in testDirs)
             {

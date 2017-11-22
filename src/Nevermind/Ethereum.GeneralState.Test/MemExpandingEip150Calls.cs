@@ -6,9 +6,9 @@ namespace Ethereum.GeneralState.Test
     public class MemExpandingEip150CallsTests : GeneralTestBase
     {
         [TestCaseSource(nameof(LoadTests), new object[] { "MemExpandingEIP150Calls" })]
-        public void Test(GenerateStateTest generateStateTest)
+        public void Test(GenerateStateTest test)
         {    
-            RunTest(generateStateTest);
+            RunTest(test);
         }
     }
 }
