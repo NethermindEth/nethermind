@@ -1,5 +1,5 @@
 ﻿using System.Numerics;
-using Nevermind.Core.Encoding;
+using System.Security.Cryptography;
 using Nevermind.Core.Sugar;
 
 namespace Nevermind.Evm.Precompiles
@@ -8,8 +8,12 @@ namespace Nevermind.Evm.Precompiles
     {
         public static IPrecompiledContract Instance = new Ripemd160PrecompiledContract();
 
+        private static RIPEMD160 _ripemd;
+
         private Ripemd160PrecompiledContract()
         {
+            _ripemd = RIPEMD160.Create();
+            _ripemd.Initialize();
         }
 
         public BigInteger Address => 3;
@@ -26,7 +30,7 @@ namespace Nevermind.Evm.Precompiles
 
         public byte[] Run(byte[] inputData)
         {
-            return Ripemd.Compute(inputData).PadLeft(32);
+            return _ripemd.ComputeHash(inputData).PadLeft(32);
         }
     }
 }

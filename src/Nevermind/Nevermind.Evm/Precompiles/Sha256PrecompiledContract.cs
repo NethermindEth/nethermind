@@ -1,5 +1,5 @@
 ﻿using System.Numerics;
-using Nevermind.Core.Encoding;
+using System.Security.Cryptography;
 
 namespace Nevermind.Evm.Precompiles
 {
@@ -7,8 +7,12 @@ namespace Nevermind.Evm.Precompiles
     {
         public static IPrecompiledContract Instance = new Sha256PrecompiledContract();
 
+        private static SHA256 _sha256;
+
         private Sha256PrecompiledContract()
         {
+            _sha256 = SHA256.Create();
+            _sha256.Initialize();
         }
 
         public BigInteger Address => 2;
@@ -25,7 +29,7 @@ namespace Nevermind.Evm.Precompiles
 
         public byte[] Run(byte[] inputData)
         {
-            return Sha2.Compute(inputData);
+            return _sha256.ComputeHash(inputData);
         }
     }
 }
