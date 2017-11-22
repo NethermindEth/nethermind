@@ -4,9 +4,9 @@ using NUnit.Framework;
 namespace Ethereum.Blockchain.Block.Test
 {
     [TestFixture]
-    public class BlockGasLimitTest : BlockchainTestBase
+    public class ForkStressTest : BlockchainTestBase
     {
-        [TestCaseSource(nameof(LoadTests), new object[] { "bcBlockGasLimitTest" })]
+        [TestCaseSource(nameof(LoadTests), new object[] { "bcForkStressTest" })]
         public void Test(BlockchainTest test)
         {
             RunTest(test);

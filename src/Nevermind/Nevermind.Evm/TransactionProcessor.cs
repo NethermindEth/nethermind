@@ -94,8 +94,9 @@ namespace Nevermind.Evm
 
             if (!_stateProvider.AccountExists(sender))
             {
+                _stateProvider.CreateAccount(sender, 0);
                 // TODO: sure of it?
-                return GetNullReceipt(block.GasUsed + gasLimit);
+                //return GetNullReceipt(block.GasUsed + gasLimit);
             }
 
             if (intrinsicGas * gasPrice + value > _stateProvider.GetBalance(sender))
@@ -259,7 +260,7 @@ namespace Nevermind.Evm
             _storageProvider.Commit(_stateProvider);
             _stateProvider.Commit();
 
-            return BuildTransactionReceipt(block, statusCode, spentGas, logEntries);
+            return BuildTransactionReceipt(statusCode, spentGas, logEntries, blockGasUsedSoFar);
         }
 
         private ulong Refund(ulong gasLimit, ulong unspentGas, TransactionSubstate substate, Address sender, BigInteger gasPrice)
@@ -272,12 +273,12 @@ namespace Nevermind.Evm
             return spentGas;
         }
 
-        private TransactionReceipt BuildTransactionReceipt(BlockHeader block, byte statusCode, ulong spentGas, List<LogEntry> logEntries)
+        private TransactionReceipt BuildTransactionReceipt(byte statusCode, ulong spentGas, List<LogEntry> logEntries, BigInteger gasUsedSoFar)
         {
             TransactionReceipt transactionReceipt = new TransactionReceipt();
             transactionReceipt.Logs = logEntries.ToArray();
             transactionReceipt.Bloom = BuildBloom(logEntries);
-            transactionReceipt.GasUsed = block.GasUsed + spentGas;
+            transactionReceipt.GasUsed = gasUsedSoFar + spentGas;
             transactionReceipt.PostTransactionState = _stateProvider.State.RootHash;
             transactionReceipt.StatusCode = statusCode;
             return transactionReceipt;

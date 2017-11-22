@@ -2,6 +2,6 @@
 {
     public interface ITestInRunner
     {
-        CategoryResult RunTests(string subset, int iterations = 1);
+        CategoryResult RunTests(string subset, string testWildcard, int iterations = 1);
     }
 }

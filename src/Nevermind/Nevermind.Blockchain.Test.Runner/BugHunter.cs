@@ -7,7 +7,7 @@ namespace Nevermind.Blockchain.Test.Runner
 {
     public class BugHunter : BlockchainTestBase, ITestInRunner
     {
-        public CategoryResult RunTests(string subset, int iterations = 1)
+        public CategoryResult RunTests(string subset, string testWildcard, int iterations = 1)
         {
             ConsoleColor defaultColor = Console.ForegroundColor;
             List<string> failingTests = new List<string>();
@@ -16,6 +16,11 @@ namespace Nevermind.Blockchain.Test.Runner
             IEnumerable<BlockchainTest> tests = LoadTests(subset);
             foreach (BlockchainTest test in tests)
             {
+                if (testWildcard != null && !test.Name.Contains(testWildcard))
+                {
+                    continue;
+                }
+
                 Setup(null);
 
                 try
