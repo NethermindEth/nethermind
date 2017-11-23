@@ -1,8 +1,9 @@
 ﻿using System.Numerics;
 using System.Text;
 using Nevermind.Core;
+using Nevermind.Core.Crypto;
 using Nevermind.Core.Encoding;
-using Nevermind.Core.Sugar;
+using Nevermind.Core.Extensions;
 using Nevermind.Evm.Abi;
 using Numerics;
 using NUnit.Framework;

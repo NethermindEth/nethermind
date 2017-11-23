@@ -1,5 +1,5 @@
-﻿using System;
-using System.Numerics;
+﻿using System.Numerics;
+using Nevermind.Core.Crypto;
 using Nevermind.Core.Encoding;
 
 namespace Nevermind.Core
@@ -8,40 +8,35 @@ namespace Nevermind.Core
     {
         public const ulong GenesisBlockNumber = 0;
 
-        public BlockHeader()
+        public BlockHeader(Keccak parentHash, Keccak ommersHash, Address beneficiary, BigInteger difficulty, BigInteger number, long gasLimit, BigInteger timestamp, byte[] extraData)
         {
+            ParentHash = parentHash;
+            OmmersHash = ommersHash;
+            Beneficiary = beneficiary;
+            Difficulty = difficulty;
+            Number = number;
+            GasLimit = gasLimit;
+            Timestamp = timestamp;
+            ExtraData = extraData;
         }
 
-        public BlockHeader(BlockHeader parentBlockHeader, BlockHeader[] ommers, Transaction[] transactions)
-        {
-            if (parentBlockHeader == null)
-            {
-                return;
-            }
+        public Keccak ParentHash { get; }
+        public Keccak OmmersHash { get; }
+        public Address Beneficiary { get; }
 
-            Timestamp = Core.Timestamp.UtcNow;
-            throw new NotImplementedException();
-            //Difficulty = DifficultyCalculator.Calculate(this, parentBlockHeader);
-        }
-
-        public Keccak ParentHash { get; set; }
-        public Keccak OmmersHash { get; set; }
-        /// <summary>
-        /// CoinBase
-        /// </summary>
-        public Address Beneficiary { get; set; }
         public Keccak StateRoot { get; set; }
         public Keccak TransactionsRoot { get; set; }
         public Keccak ReceiptsRoot { get; set; }
-        public Bloom LogsBloom { get; set; }
-        public BigInteger Difficulty { get; set; }
-        public BigInteger Number { get; set; }
-        public BigInteger GasUsed { get; set; }
-        public BigInteger GasLimit { get; set; }
-        public BigInteger Timestamp { get; set; }
-        public byte[] ExtraData { get; set; }
+        public Bloom Bloom { get; set; }
+        public BigInteger Difficulty { get; }
+        public BigInteger Number { get; }
+        public long GasUsed { get; set; }
+        public long GasLimit { get; }
+        public BigInteger Timestamp { get; }
+        public byte[] ExtraData { get; }
         public Keccak MixHash { get; set; }
         public ulong Nonce { get; set; }
+        public Keccak Hash { get; private set; }
 
         ////static BlockHeader()
         ////{
@@ -66,6 +61,10 @@ namespace Nevermind.Core
         ////    Genesis.Nonce = Rlp.Encode(new byte[] {42}).Bytes.ToUInt64();
         ////}
 
-        public static BlockHeader Genesis { get; }
+//        public static BlockHeader Genesis { get; }
+        public void Close()
+        {
+            Hash = Keccak.Compute(Rlp.Encode(this));
+        }
     }
 }

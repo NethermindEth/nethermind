@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Numerics;
+using Nevermind.Core.Extensions;
 
 namespace Nevermind.Evm.Abi
 {
@@ -86,7 +87,7 @@ namespace Nevermind.Evm.Abi
                         i++;
                     }
 
-                    return Core.Sugar.Bytes.Concat(encodedItems);
+                    return Bytes.Concat(encodedItems);
                 }
                 else
                 {
@@ -97,7 +98,7 @@ namespace Nevermind.Evm.Abi
                         encodedItems[i++] = _elementType.Encode(o);
                     }
 
-                    return Core.Sugar.Bytes.Concat(encodedItems);
+                    return Bytes.Concat(encodedItems);
                 }
             }
 

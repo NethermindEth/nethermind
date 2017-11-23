@@ -5,9 +5,10 @@ using System.Linq;
 using System.Numerics;
 using Ethereum.Test.Base;
 using Nevermind.Core;
+using Nevermind.Core.Crypto;
 using Nevermind.Core.Encoding;
-using Nevermind.Core.Signing;
-using Nevermind.Core.Sugar;
+using Nevermind.Core.Extensions;
+using Nevermind.Core.Potocol;
 using Nevermind.Evm;
 using Nevermind.Store;
 using Newtonsoft.Json;
@@ -145,7 +146,7 @@ namespace Ethereum.GeneralState.Test
             }
 
             TransactionProcessor processor =
-                new TransactionProcessor(_virtualMachine, _stateProvider, _storageProvider, _protocolSpecification, ChainId.Mainnet, ShouldLog.TransactionProcessor ? new ConsoleLogger() : null);
+                new TransactionProcessor(_protocolSpecification, _stateProvider, _storageProvider, _virtualMachine, ChainId.Mainnet, ShouldLog.TransactionProcessor ? new ConsoleLogger() : null);
             Transaction transaction = new Transaction();
             transaction.To = test.IncomingTransaction.To;
             transaction.Value = test.IncomingTransaction.Value;
@@ -157,20 +158,20 @@ namespace Ethereum.GeneralState.Test
 
             Signer.Sign(transaction, test.IncomingTransaction.SecretKey, false, 0); // check EIP and chain id
 
-            Block block = new Block(null, new BlockHeader[0], new Transaction[0]);
-            BlockHeader header = new BlockHeader();
-            header.Number = test.Environment.CurrentNumber;
-            header.Difficulty = test.Environment.CurrentDifficulty;
-            header.Timestamp = test.Environment.CurrentTimestamp;
-            header.GasLimit = test.Environment.CurrentGasLimit;
-            header.Beneficiary = test.Environment.CurrentCoinbase;
-            block.Header = header;
+            BlockHeader header = new BlockHeader(
+                Keccak.OfAnEmptyString,
+                Keccak.OfAnEmptySequenceRlp,
+                test.Environment.CurrentCoinbase,
+                test.Environment.CurrentDifficulty,
+                test.Environment.CurrentNumber,
+                (long)test.Environment.CurrentGasLimit,
+                test.Environment.CurrentTimestamp,
+                Bytes.Empty
+                );
 
-            Address sender = test.IncomingTransaction.SecretKey.Address;
             TransactionReceipt receipt = processor.Execute(
                 transaction,
-                header,
-                BigInteger.Zero
+                header
             );
 
             Assert.AreEqual(test.Post["Frontier"][0].Hash, receipt.PostTransactionState);

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Nevermind.Core.Crypto;
 using Nevermind.Core.Encoding;
 
 namespace Nevermind.Store

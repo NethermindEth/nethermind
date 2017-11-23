@@ -2,9 +2,11 @@ using System;
 using System.Collections.Generic;
 using System.Numerics;
 using Nevermind.Core;
+using Nevermind.Core.Crypto;
 using Nevermind.Core.Encoding;
-using Nevermind.Core.Signing;
-using Nevermind.Core.Validators;
+using Nevermind.Core.Extensions;
+using Nevermind.Core.Potocol;
+using Nevermind.Store;
 
 namespace Nevermind.Evm
 {
@@ -17,13 +19,7 @@ namespace Nevermind.Evm
         private readonly IStorageProvider _storageProvider;
         private readonly IVirtualMachine _virtualMachine;
 
-        public TransactionProcessor(
-            IVirtualMachine virtualMachine,
-            IStateProvider stateProvider,
-            IStorageProvider storageProvider,
-            IProtocolSpecification protocolSpecification,
-            ChainId chainId,
-            ILogger logger)
+        public TransactionProcessor(IProtocolSpecification protocolSpecification, IStateProvider stateProvider, IStorageProvider storageProvider, IVirtualMachine virtualMachine, ChainId chainId, ILogger logger)
         {
             _virtualMachine = virtualMachine;
             _stateProvider = stateProvider;
@@ -35,26 +31,25 @@ namespace Nevermind.Evm
 
         public ChainId ChainId { get; }
 
-        private TransactionReceipt GetNullReceipt(BigInteger totalGasUsed)
+        private TransactionReceipt GetNullReceipt(long totalGasUsed)
         {
-            TransactionReceipt transferReceipt = new TransactionReceipt();
-            transferReceipt.Logs = new LogEntry[0];
-            transferReceipt.Bloom = new Bloom();
-            transferReceipt.GasUsed = totalGasUsed;
-            transferReceipt.PostTransactionState = _stateProvider.State.RootHash;
-            transferReceipt.StatusCode = StatusCode.Failure;
-            return transferReceipt;
+            TransactionReceipt transactionReceipt = new TransactionReceipt();
+            transactionReceipt.Logs = new LogEntry[0];
+            transactionReceipt.Bloom = new Bloom();
+            transactionReceipt.GasUsed = totalGasUsed;
+            transactionReceipt.PostTransactionState = _stateProvider.State.RootHash;
+            transactionReceipt.StatusCode = StatusCode.Failure;
+            return transactionReceipt;
         }
 
         public TransactionReceipt Execute(
             Transaction transaction,
-            BlockHeader block,
-            BigInteger blockGasUsedSoFar)
+            BlockHeader block)
         {
             Address recipient = transaction.To;
             BigInteger value = transaction.Value;
             BigInteger gasPrice = transaction.GasPrice;
-            ulong gasLimit = (ulong)transaction.GasLimit;
+            long gasLimit = (long)transaction.GasLimit;
             byte[] machineCode = transaction.Init;
             byte[] data = transaction.Data ?? new byte[0];
 
@@ -74,15 +69,10 @@ namespace Nevermind.Evm
                 return GetNullReceipt(block.GasUsed + gasLimit);
             }
 
-            if (!TransactionValidator.IsValid(transaction, sender, _protocolSpecification.IsEip155Enabled, (int)ChainId))
-            {
-                return GetNullReceipt(block.GasUsed + gasLimit);
-            }
-
-            ulong intrinsicGas = IntrinsicGasCalculator.Calculate(transaction, block.Number);
+            long intrinsicGas = IntrinsicGasCalculator.Calculate(_protocolSpecification, transaction);
             _logger?.Log("INTRINSIC GAS: " + intrinsicGas);
 
-            if (intrinsicGas > block.GasLimit - blockGasUsedSoFar)
+            if (intrinsicGas > block.GasLimit - block.GasUsed)
             {
                 return GetNullReceipt(block.GasUsed + gasLimit);
             }
@@ -90,13 +80,6 @@ namespace Nevermind.Evm
             if (gasLimit < intrinsicGas)
             {
                 return GetNullReceipt(block.GasUsed + gasLimit);
-            }
-
-            if (!_stateProvider.AccountExists(sender))
-            {
-                _stateProvider.CreateAccount(sender, 0);
-                // TODO: sure of it?
-                //return GetNullReceipt(block.GasUsed + gasLimit);
             }
 
             if (intrinsicGas * gasPrice + value > _stateProvider.GetBalance(sender))
@@ -108,13 +91,18 @@ namespace Nevermind.Evm
             {
                 return GetNullReceipt(block.GasUsed + gasLimit);
             }
+            
+            if (!_stateProvider.AccountExists(sender))
+            {
+                _stateProvider.CreateAccount(sender, 0);
+            }
 
             _stateProvider.IncrementNonce(sender);
             _stateProvider.UpdateBalance(sender, -new BigInteger(gasLimit) * gasPrice);
             _stateProvider.Commit();
 
-            ulong unspentGas = gasLimit - intrinsicGas;
-            ulong spentGas = gasLimit;
+            long unspentGas = gasLimit - intrinsicGas;
+            long spentGas = gasLimit;
             List<LogEntry> logEntries = new List<LogEntry>();
 
             if (transaction.IsContractCreation)
@@ -130,26 +118,14 @@ namespace Nevermind.Evm
             byte statusCode = StatusCode.Failure;
 
             HashSet<Address> destroyedAccounts = new HashSet<Address>();
-            // TODO: can probably merge it with the inner loop in VM
             try
             {
                 if (transaction.IsContractCreation)
                 {
                     if (_stateProvider.AccountExists(recipient) && !_stateProvider.IsEmptyAccount(recipient))
                     {
-                        //BigInteger balance = _stateProvider.GetBalance(recipient);
-                        //_stateProvider.CreateAccount(recipient, balance);
+                        // TODO: review
                         throw new TransactionCollisionException();
-                    }
-
-                    if (_protocolSpecification.IsEip2Enabled)
-                    {
-                        if (unspentGas < GasCostOf.Create)
-                        {
-                            throw new OutOfGasException();
-                        }
-
-                        unspentGas -= GasCostOf.Create;
                     }
                 }
 
@@ -198,10 +174,10 @@ namespace Nevermind.Evm
                     {
                         if (transaction.IsContractCreation)
                         {
-                            ulong codeDepositGasCost = (ulong)output.Length * GasCostOf.CodeDeposit;
-                            if (_protocolSpecification.IsEip170Enabled && (ulong)output.Length > 0x6000UL)
+                            long codeDepositGasCost = output.Length * GasCostOf.CodeDeposit;
+                            if (_protocolSpecification.IsEip170Enabled && output.Length > 0x6000)
                             {
-                                codeDepositGasCost = ulong.MaxValue;
+                                codeDepositGasCost = long.MaxValue;
                             }
 
                             if (unspentGas < codeDepositGasCost && _protocolSpecification.IsEip2Enabled)
@@ -260,25 +236,26 @@ namespace Nevermind.Evm
             _storageProvider.Commit(_stateProvider);
             _stateProvider.Commit();
 
-            return BuildTransactionReceipt(statusCode, spentGas, logEntries, blockGasUsedSoFar);
+            block.GasUsed += spentGas;
+            return BuildTransactionReceipt(statusCode, logEntries, block.GasUsed);
         }
 
-        private ulong Refund(ulong gasLimit, ulong unspentGas, TransactionSubstate substate, Address sender, BigInteger gasPrice)
+        private long Refund(long gasLimit, long unspentGas, TransactionSubstate substate, Address sender, BigInteger gasPrice)
         {
-            ulong spentGas = gasLimit - unspentGas;
-            ulong refund = Math.Min(spentGas / 2UL, substate.Refund + (ulong)substate.DestroyList.Count * RefundOf.Destroy);
+            long spentGas = gasLimit - unspentGas;
+            long refund = Math.Min(spentGas / 2L, substate.Refund + substate.DestroyList.Count * RefundOf.Destroy);
             _logger?.Log("REFUNDING UNUSED GAS OF " + unspentGas + " AND REFUND OF " + refund);
             _stateProvider.UpdateBalance(sender, (unspentGas + refund) * gasPrice);
             spentGas -= refund;
             return spentGas;
         }
 
-        private TransactionReceipt BuildTransactionReceipt(byte statusCode, ulong spentGas, List<LogEntry> logEntries, BigInteger gasUsedSoFar)
+        private TransactionReceipt BuildTransactionReceipt(byte statusCode, List<LogEntry> logEntries, long gasUsedSoFar)
         {
             TransactionReceipt transactionReceipt = new TransactionReceipt();
             transactionReceipt.Logs = logEntries.ToArray();
             transactionReceipt.Bloom = BuildBloom(logEntries);
-            transactionReceipt.GasUsed = gasUsedSoFar + spentGas;
+            transactionReceipt.GasUsed = gasUsedSoFar;
             transactionReceipt.PostTransactionState = _stateProvider.State.RootHash;
             transactionReceipt.StatusCode = statusCode;
             return transactionReceipt;

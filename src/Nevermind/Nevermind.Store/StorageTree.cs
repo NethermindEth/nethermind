@@ -1,7 +1,8 @@
 ﻿using System.Collections.Generic;
 using System.Numerics;
+using Nevermind.Core.Crypto;
 using Nevermind.Core.Encoding;
-using Nevermind.Core.Sugar;
+using Nevermind.Core.Extensions;
 
 namespace Nevermind.Store
 {

@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Linq;
 using Ethereum.Test.Base;
 using JetBrains.Annotations;
+using Nevermind.Core;
 using Nevermind.Core.Encoding;
 using NUnit.Framework;
 using Assert = NUnit.Framework.Assert;

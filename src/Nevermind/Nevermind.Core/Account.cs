@@ -1,4 +1,5 @@
 ﻿using System.Numerics;
+using Nevermind.Core.Crypto;
 using Nevermind.Core.Encoding;
 
 namespace Nevermind.Core

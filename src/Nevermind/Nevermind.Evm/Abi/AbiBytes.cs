@@ -1,6 +1,6 @@
 ﻿using System;
 using System.Text;
-using Nevermind.Core.Sugar;
+using Nevermind.Core.Extensions;
 
 namespace Nevermind.Evm.Abi
 {

@@ -1,14 +1,14 @@
 ﻿using System;
 using System.Numerics;
+using Nevermind.Core.Crypto;
 using Nevermind.Core.Encoding;
-using Nevermind.Core.Signing;
-using Nevermind.Core.Sugar;
+using Nevermind.Core.Extensions;
 
 namespace Nevermind.Evm.Precompiles
 {
     public class ECRecoverPrecompiledContract : IPrecompiledContract
     {
-        public static IPrecompiledContract Instance = new ECRecoverPrecompiledContract();
+        public static readonly IPrecompiledContract Instance = new ECRecoverPrecompiledContract();
 
         private ECRecoverPrecompiledContract()
         {
@@ -16,14 +16,14 @@ namespace Nevermind.Evm.Precompiles
 
         public BigInteger Address => 1;
 
-        public ulong DataGasCost(byte[] inputData)
+        public long DataGasCost(byte[] inputData)
         {
-            return 0UL;
+            return 0L;
         }
 
-        public ulong BaseGasCost()
+        public long BaseGasCost()
         {
-            return 3000UL;
+            return 3000L;
         }
 
         public byte[] Run(byte[] inputData)

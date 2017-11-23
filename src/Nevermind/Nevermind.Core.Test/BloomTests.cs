@@ -1,7 +1,8 @@
 ﻿using System.Collections;
 using System.Linq;
+using Nevermind.Core.Crypto;
 using Nevermind.Core.Encoding;
-using Nevermind.Core.Sugar;
+using Nevermind.Core.Extensions;
 using NUnit.Framework;
 
 namespace Nevermind.Core.Test

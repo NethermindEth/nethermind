@@ -13,12 +13,12 @@ namespace Nevermind.Evm.Precompiles
 
         public BigInteger Address => 7;
 
-        public ulong BaseGasCost()
+        public long BaseGasCost()
         {
             throw new NotImplementedException();
         }
 
-        public ulong DataGasCost(byte[] inputData)
+        public long DataGasCost(byte[] inputData)
         {
             throw new NotImplementedException();
         }

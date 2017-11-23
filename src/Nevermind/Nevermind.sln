@@ -45,6 +45,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nevermind.Blockchain.Test.R
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ethereum.Blockchain.Block.Test", "Ethereum.Blockchain.Block.Test\Ethereum.Blockchain.Block.Test.csproj", "{A905EE01-A79A-40E9-98C3-1914E0D0BF2B}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nevermind.Blockchain", "Nevermind.Blockchain\Nevermind.Blockchain.csproj", "{7472D4CE-27DF-4A8B-B86E-3BD0097842E3}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -307,6 +309,18 @@ Global
 		{A905EE01-A79A-40E9-98C3-1914E0D0BF2B}.Release|x64.Build.0 = Release|Any CPU
 		{A905EE01-A79A-40E9-98C3-1914E0D0BF2B}.Release|x86.ActiveCfg = Release|Any CPU
 		{A905EE01-A79A-40E9-98C3-1914E0D0BF2B}.Release|x86.Build.0 = Release|Any CPU
+		{7472D4CE-27DF-4A8B-B86E-3BD0097842E3}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7472D4CE-27DF-4A8B-B86E-3BD0097842E3}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7472D4CE-27DF-4A8B-B86E-3BD0097842E3}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{7472D4CE-27DF-4A8B-B86E-3BD0097842E3}.Debug|x64.Build.0 = Debug|Any CPU
+		{7472D4CE-27DF-4A8B-B86E-3BD0097842E3}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{7472D4CE-27DF-4A8B-B86E-3BD0097842E3}.Debug|x86.Build.0 = Debug|Any CPU
+		{7472D4CE-27DF-4A8B-B86E-3BD0097842E3}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7472D4CE-27DF-4A8B-B86E-3BD0097842E3}.Release|Any CPU.Build.0 = Release|Any CPU
+		{7472D4CE-27DF-4A8B-B86E-3BD0097842E3}.Release|x64.ActiveCfg = Release|Any CPU
+		{7472D4CE-27DF-4A8B-B86E-3BD0097842E3}.Release|x64.Build.0 = Release|Any CPU
+		{7472D4CE-27DF-4A8B-B86E-3BD0097842E3}.Release|x86.ActiveCfg = Release|Any CPU
+		{7472D4CE-27DF-4A8B-B86E-3BD0097842E3}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

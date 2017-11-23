@@ -1,5 +1,4 @@
-﻿using Nevermind.Core.Sugar;
-using NUnit.Framework;
+﻿using NUnit.Framework;
 
 namespace Nevermind.Core.Test
 {

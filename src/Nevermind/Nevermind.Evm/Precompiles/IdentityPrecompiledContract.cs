@@ -4,7 +4,7 @@ namespace Nevermind.Evm.Precompiles
 {
     public class IdentityPrecompiledContract : IPrecompiledContract
     {
-        public static IPrecompiledContract Instance = new IdentityPrecompiledContract();
+        public static readonly IPrecompiledContract Instance = new IdentityPrecompiledContract();
 
         private IdentityPrecompiledContract()
         {
@@ -12,14 +12,14 @@ namespace Nevermind.Evm.Precompiles
 
         public BigInteger Address => 4;
 
-        public ulong BaseGasCost()
+        public long BaseGasCost()
         {
-            return 15UL;
+            return 15L;
         }
 
-        public ulong DataGasCost(byte[] inputData)
+        public long DataGasCost(byte[] inputData)
         {
-            return 3UL * EvmMemory.Div32Ceiling(inputData.Length);
+            return 3L * EvmMemory.Div32Ceiling(inputData.Length);
         }
 
         public byte[] Run(byte[] inputData)

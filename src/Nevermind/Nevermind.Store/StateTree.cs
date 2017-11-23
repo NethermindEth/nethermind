@@ -1,4 +1,5 @@
 ﻿using Nevermind.Core;
+using Nevermind.Core.Crypto;
 using Nevermind.Core.Encoding;
 
 namespace Nevermind.Store

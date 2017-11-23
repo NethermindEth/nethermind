@@ -72,6 +72,10 @@
       <Project>{051B3754-5FB6-4202-AF6E-D1764E2DED06}</Project>
       <Name>Nevermind.Core</Name>
     </ProjectReference>
+    <ProjectReference Include="..\Nevermind.Store\Nevermind.Store.csproj">
+      <Project>{3a5b9092-c842-4efd-acc3-1c6cf57d09b0}</Project>
+      <Name>Nevermind.Store</Name>
+    </ProjectReference>
   </ItemGroup>
   <ItemGroup>
     <Service Include="{82A7F48D-3B50-4B1E-B82E-3ADA8210C358}" />

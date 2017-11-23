@@ -5,8 +5,10 @@ using System.Linq;
 using System.Numerics;
 using Ethereum.Test.Base;
 using Nevermind.Core;
+using Nevermind.Core.Crypto;
 using Nevermind.Core.Encoding;
-using Nevermind.Core.Sugar;
+using Nevermind.Core.Extensions;
+using Nevermind.Core.Potocol;
 using Nevermind.Evm;
 using Nevermind.Store;
 using Newtonsoft.Json;
@@ -121,15 +123,16 @@ namespace Ethereum.VM.Test
             environment.Sender = test.Execution.Caller;
             environment.ExecutingAccount = test.Execution.Address;
 
-            Block block = new Block(null, new BlockHeader[0], new Transaction[0]);
-            BlockHeader header = new BlockHeader();
-            header.Number = test.Environment.CurrentNumber;
-            header.Difficulty = test.Environment.CurrentDifficulty;
-            header.Timestamp = test.Environment.CurrentTimestamp;
-            header.GasLimit = test.Environment.CurrentGasLimit;
-            header.Beneficiary = test.Environment.CurrentCoinbase;
-            block.Header = header;
-
+            
+            BlockHeader header = new BlockHeader(
+                Keccak.OfAnEmptyString,
+                Keccak.OfAnEmptySequenceRlp,
+                test.Environment.CurrentCoinbase,
+                test.Environment.CurrentDifficulty,
+                test.Environment.CurrentNumber,
+                (long)test.Environment.CurrentGasLimit,
+                test.Environment.CurrentTimestamp, Bytes.Empty);
+            
             environment.CurrentBlock = header;
 
             environment.GasPrice = test.Execution.GasPrice;
@@ -160,7 +163,7 @@ namespace Ethereum.VM.Test
                 }
             }
 
-            EvmState state = new EvmState((ulong)test.Execution.Gas, environment, ExecutionType.Transaction, false);
+            EvmState state = new EvmState((long)test.Execution.Gas, environment, ExecutionType.Transaction, false);
 
             if (test.Out == null)
             {
@@ -175,7 +178,7 @@ namespace Ethereum.VM.Test
 
             Assert.True(Bytes.UnsafeCompare(test.Out, output),
                 $"Exp: {Hex.FromBytes(test.Out, true)} != Actual: {Hex.FromBytes(output, true)}");
-            Assert.AreEqual((ulong)test.Gas, state.GasAvailable);
+            Assert.AreEqual((long)test.Gas, state.GasAvailable);
             foreach (KeyValuePair<Address, AccountState> accountState in test.Post)
             {
                 bool accountExists = _stateProvider.AccountExists(accountState.Key);

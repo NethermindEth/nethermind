@@ -17,14 +17,14 @@ namespace Nevermind.Evm.Precompiles
 
         public BigInteger Address => 2;
 
-        public ulong BaseGasCost()
+        public long BaseGasCost()
         {
-            return 60UL;
+            return 60L;
         }
 
-        public ulong DataGasCost(byte[] inputData)
+        public long DataGasCost(byte[] inputData)
         {
-            return 12UL * EvmMemory.Div32Ceiling(inputData.Length);
+            return 12L * EvmMemory.Div32Ceiling(inputData.Length);
         }
 
         public byte[] Run(byte[] inputData)

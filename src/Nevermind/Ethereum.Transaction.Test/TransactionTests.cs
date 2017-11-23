@@ -3,11 +3,11 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Numerics;
+using Nevermind.Blockchain.Validators;
 using Nevermind.Core;
+using Nevermind.Core.Crypto;
 using Nevermind.Core.Encoding;
-using Nevermind.Core.Signing;
-using Nevermind.Core.Sugar;
-using Nevermind.Core.Validators;
+using Nevermind.Core.Extensions;
 using Newtonsoft.Json;
 using NUnit.Framework;
 
@@ -21,7 +21,7 @@ namespace Ethereum.Transaction.Test
             Directory.SetCurrentDirectory(AppDomain.CurrentDomain.BaseDirectory);
         }
 
-        public static IEnumerable<TransactionTest> LoadTests(string testSet)
+        private static IEnumerable<TransactionTest> LoadTests(string testSet)
         {
             Directory.SetCurrentDirectory(AppDomain.CurrentDomain.BaseDirectory);
             IEnumerable<string> testDirs = Directory.EnumerateDirectories(".", "tt" + testSet);
@@ -190,7 +190,7 @@ namespace Ethereum.Transaction.Test
 
                 if (!ignoreSignatures)
                 {
-                    Signature signature = new Signature(validTest.R, validTest.S, (byte)validTest.V);
+                    Signature signature = new Signature(validTest.R, validTest.S, validTest.V);
                     transaction.Signature = signature;
 
                     int chainIdValue =

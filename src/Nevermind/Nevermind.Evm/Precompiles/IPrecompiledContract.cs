@@ -6,9 +6,9 @@ namespace Nevermind.Evm.Precompiles
     {
         BigInteger Address { get; }
 
-        ulong BaseGasCost();
+        long BaseGasCost();
 
-        ulong DataGasCost(byte[] inputData);
+        long DataGasCost(byte[] inputData);
 
         byte[] Run(byte[] inputData);
     }

@@ -6,7 +6,7 @@ namespace Nevermind.Evm
     public class TransactionSubstate
     {
         public TransactionSubstate(
-            ulong refund,
+            long refund,
             IReadOnlyCollection<Address> destroyList,
             IReadOnlyCollection<LogEntry> logs,
             bool shouldRevert)
@@ -19,7 +19,7 @@ namespace Nevermind.Evm
 
         public bool ShouldRevert { get; }
 
-        public ulong Refund { get; }
+        public long Refund { get; }
 
         public IReadOnlyCollection<LogEntry> Logs { get; }
 

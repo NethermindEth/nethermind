@@ -1,6 +1,6 @@
 using System;
 using System.Numerics;
-using Nevermind.Core.Sugar;
+using Nevermind.Core.Extensions;
 
 namespace Nevermind.Evm.Precompiles
 {
@@ -17,12 +17,12 @@ namespace Nevermind.Evm.Precompiles
 
         public BigInteger Address => 5;
 
-        public ulong BaseGasCost()
+        public long BaseGasCost()
         {
-            return 0UL;
+            return 0L;
         }
 
-        public ulong DataGasCost(byte[] inputData)
+        public long DataGasCost(byte[] inputData)
         {
             try
             {
@@ -37,11 +37,11 @@ namespace Nevermind.Evm.Precompiles
                 BigInteger lengthOver32 = expLength <= VirtualMachine.BigInt32 ? 0 : expLength - 32;
                 BigInteger adjusted = AdjustedExponentLength(lengthOver32, expSignificantBytes);
                 BigInteger gas = complexity * BigInteger.Max(adjusted, BigInteger.One) / 20;
-                return (ulong)gas;
+                return (long)gas;
             }
             catch (OverflowException)
             {
-                return ulong.MaxValue;
+                return long.MaxValue;
             }
         }
 

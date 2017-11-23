@@ -1,5 +1,5 @@
 using System.Numerics;
-using Nevermind.Core.Signing;
+using Nevermind.Core.Crypto;
 
 namespace Nevermind.Core
 {
@@ -18,5 +18,6 @@ namespace Nevermind.Core
         public bool IsContractCreation => Init != null;
         public bool IsMessageCall => Data != null;
         public bool IsTransfer => !IsContractCreation && !IsMessageCall;
+        public bool IsValid { get; set; }
     }
 }

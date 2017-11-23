@@ -73,6 +73,10 @@
       <Project>{72e80636-d6ca-42db-a49f-830cb9bad87d}</Project>
       <Name>Ethereum.Test.Base</Name>
     </ProjectReference>
+    <ProjectReference Include="..\Nevermind.Blockchain\Nevermind.Blockchain.csproj">
+      <Project>{7472D4CE-27DF-4A8B-B86E-3BD0097842E3}</Project>
+      <Name>Nevermind.Blockchain</Name>
+    </ProjectReference>
     <ProjectReference Include="..\Nevermind.Core\Nevermind.Core.csproj">
       <Project>{051B3754-5FB6-4202-AF6E-D1764E2DED06}</Project>
       <Name>Nevermind.Core</Name>

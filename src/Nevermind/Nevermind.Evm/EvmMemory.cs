@@ -1,5 +1,4 @@
-﻿using System;
-using System.IO;
+﻿using System.IO;
 using System.Numerics;
 using Nevermind.Core;
 
@@ -36,7 +35,7 @@ namespace Nevermind.Evm
             UpdateSize();
         }
 
-        public static ulong Div32Ceiling(BigInteger length)
+        public static long Div32Ceiling(BigInteger length)
         {
             BigInteger result = BigInteger.DivRem(length, VirtualMachine.BigInt32, out BigInteger rem);
             BigInteger withCeiling = result + (rem > BigInteger.Zero ? BigInteger.One : BigInteger.Zero);
@@ -45,7 +44,7 @@ namespace Nevermind.Evm
                 throw new OutOfGasException();
             }
 
-            return (ulong)withCeiling;
+            return (long)withCeiling;
         }
 
         public void Save(BigInteger location, byte[] value)
@@ -95,7 +94,7 @@ namespace Nevermind.Evm
             long memoryLength = _memory.Position;
             if (memoryLength > Size)
             {
-                long remainder = (memoryLength) % 32;
+                long remainder = memoryLength % 32;
                 if (remainder != 0)
                 {
                     memoryLength += 32L - remainder;
@@ -103,17 +102,13 @@ namespace Nevermind.Evm
 
                 Size = memoryLength;
             }
-            else
-            {
-
-            }
         }
 
-        public ulong CalculateMemoryCost(BigInteger position, BigInteger length)
+        public long CalculateMemoryCost(BigInteger position, BigInteger length)
         {
-            if (length == 0)
+            if (length.IsZero)
             {
-                return 0;
+                return 0L;
             }
 
             BigInteger roughPosition = position + length;
@@ -124,13 +119,13 @@ namespace Nevermind.Evm
 
             if (roughPosition > Size)
             {
-                ulong newActiveWords = Div32Ceiling(roughPosition);
-                ulong activeWords = Div32Ceiling(Size);
+                long newActiveWords = Div32Ceiling(roughPosition);
+                long activeWords = Div32Ceiling(Size);
                 BigInteger cost = (newActiveWords - activeWords) * GasCostOf.Memory +
-                               BigInteger.Divide(BigInteger.Pow(newActiveWords, 2), 512) -
-                               BigInteger.Divide(BigInteger.Pow(activeWords, 2), 512);
+                                  BigInteger.Divide(BigInteger.Pow(newActiveWords, 2), 512) -
+                                  BigInteger.Divide(BigInteger.Pow(activeWords, 2), 512);
 
-                if (cost > ulong.MaxValue)
+                if (cost > long.MaxValue)
                 {
                     throw new OutOfGasException();
                 }
@@ -138,10 +133,10 @@ namespace Nevermind.Evm
                 _memory.Position = (long)roughPosition;
                 UpdateSize();
 
-                return (ulong)cost;
+                return (long)cost;
             }
 
-            return 0UL;
+            return 0L;
         }
     }
 }

@@ -1,5 +1,5 @@
 ﻿using Nevermind.Core;
-using Nevermind.Core.Encoding;
+using Nevermind.Core.Crypto;
 
 namespace Nevermind.Evm
 {

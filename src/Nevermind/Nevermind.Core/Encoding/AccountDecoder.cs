@@ -1,4 +1,5 @@
-using Nevermind.Core.Sugar;
+using Nevermind.Core.Crypto;
+using Nevermind.Core.Extensions;
 
 namespace Nevermind.Core.Encoding
 {

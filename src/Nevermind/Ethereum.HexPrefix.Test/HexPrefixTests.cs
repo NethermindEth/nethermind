@@ -2,6 +2,7 @@
 using System.Linq;
 using Ethereum.Test.Base;
 using JetBrains.Annotations;
+using Nevermind.Core;
 using Nevermind.Core.Encoding;
 using NUnit.Framework;
 
@@ -19,13 +20,13 @@ namespace Ethereum.HexPrefix.Test
         [TestCaseSource(nameof(LoadTests))]
         public void Test(HexPrefixTest test)
         {
-            Nevermind.Core.Encoding.HexPrefix result =
-                new Nevermind.Core.Encoding.HexPrefix(test.IsTerm, test.Sequence);
+            Nevermind.Store.HexPrefix result =
+                new Nevermind.Store.HexPrefix(test.IsTerm, test.Sequence);
             byte[] bytes = result.ToBytes();
             string resultHex = Hex.FromBytes(bytes, false);
             Assert.AreEqual(test.Output, resultHex);
 
-            Nevermind.Core.Encoding.HexPrefix check = Nevermind.Core.Encoding.HexPrefix.FromBytes(bytes);
+            Nevermind.Store.HexPrefix check = Nevermind.Store.HexPrefix.FromBytes(bytes);
             byte[] checkBytes = check.ToBytes();
             string checkHex = Hex.FromBytes(checkBytes, false);
             Assert.AreEqual(test.Output, checkHex);

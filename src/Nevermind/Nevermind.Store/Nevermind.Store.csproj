@@ -50,15 +50,22 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="BranchNode.cs" />
+    <Compile Include="HexPrefix.cs" />
     <Compile Include="InMemoryDb.cs" />
     <Compile Include="ExtensionNode.cs" />
+    <Compile Include="InsufficientBalanceException.cs" />
+    <Compile Include="IStateProvider.cs" />
+    <Compile Include="IStorageProvider.cs" />
     <Compile Include="KeccakOrRlp.cs" />
     <Compile Include="LeafNode.cs" />
     <Compile Include="Node.cs" />
     <Compile Include="PatriciaTree.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="SecurePatriciaTree.cs" />
+    <Compile Include="StateException.cs" />
+    <Compile Include="StateProvider.cs" />
     <Compile Include="StateTree.cs" />
+    <Compile Include="StorageProvider.cs" />
     <Compile Include="StorageTree.cs" />
     <Compile Include="TreeOperation.cs" />
   </ItemGroup>

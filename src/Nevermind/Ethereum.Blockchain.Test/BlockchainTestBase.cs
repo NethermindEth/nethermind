@@ -6,11 +6,14 @@ using System.Linq;
 using System.Numerics;
 using System.Text;
 using System.Threading.Tasks;
+using System.Xml.Serialization.Configuration;
 using Ethereum.Test.Base;
+using Nevermind.Blockchain;
 using Nevermind.Core;
+using Nevermind.Core.Crypto;
 using Nevermind.Core.Encoding;
-using Nevermind.Core.Signing;
-using Nevermind.Core.Sugar;
+using Nevermind.Core.Extensions;
+using Nevermind.Core.Potocol;
 using Nevermind.Evm;
 using Nevermind.Store;
 using Newtonsoft.Json;
@@ -26,7 +29,6 @@ namespace Ethereum.Blockchain.Test
         private IStorageProvider _storageProvider;
         private Dictionary<EthereumNetwork, VirtualMachine> _virtualMachines;
         private Dictionary<EthereumNetwork, StateProvider> _stateProviders;
-        private Dictionary<EthereumNetwork, BlockProcessor> _blockProcessors;
         private ILogger _logger;
 
         protected void Setup(ILogger logger)
@@ -37,13 +39,11 @@ namespace Ethereum.Blockchain.Test
             _blockhashProvider = new TestBlockhashProvider();
             _virtualMachines = new Dictionary<EthereumNetwork, VirtualMachine>();
             _stateProviders = new Dictionary<EthereumNetwork, StateProvider>();
-            _blockProcessors = new Dictionary<EthereumNetwork, BlockProcessor>();
             EthereumNetwork[] networks = { EthereumNetwork.Frontier, EthereumNetwork.Homestead, EthereumNetwork.Byzantium, EthereumNetwork.SpuriousDragon, EthereumNetwork.TangerineWhistle };
             foreach (EthereumNetwork ethereumNetwork in networks)
             {
                 IProtocolSpecification spec = _protocolSpecificationProvider.GetSpec(ethereumNetwork, 1);
                 _stateProviders[ethereumNetwork] = new StateProvider(new StateTree(_db), spec, ShouldLog.State ? logger : null);
-                _blockProcessors[ethereumNetwork] = new BlockProcessor(spec, _stateProviders[ethereumNetwork]);
                 _virtualMachines[ethereumNetwork] = new VirtualMachine(spec, _stateProviders[ethereumNetwork], _storageProvider, _blockhashProvider, ShouldLog.Evm ? logger : null);
             }
         }
@@ -181,6 +181,34 @@ namespace Ethereum.Blockchain.Test
             public override Encoding Encoding => Encoding.UTF8;
         }
 
+        private List<Block> ToBlocks(IEnumerable<TestBlock> testBlocks)
+        {
+            return new List<Block>();
+            
+            //            BigInteger gasUsedSoFar = 0;
+//            foreach (IncomingTransaction testTransaction in test.Blocks[0].Transactions)
+//            {
+//                Transaction transaction = new Transaction();
+//                transaction.To = testTransaction.To;
+//                transaction.Value = testTransaction.Value;
+//                transaction.GasLimit = testTransaction.GasLimit;
+//                transaction.GasPrice = testTransaction.GasPrice;
+//                transaction.Data = transaction.To == null ? null : testTransaction.Data;
+//                transaction.Init = transaction.To == null ? testTransaction.Data : null;
+//                transaction.Nonce = testTransaction.Nonce;
+//                transaction.Signature = new Signature(testTransaction.R, testTransaction.S, testTransaction.V);
+//                transactions.Add(transaction);
+//
+//                TransactionReceipt receipt = transactionProcessor.Execute(transaction, header);
+//
+//                receipts.Add(receipt);
+//                //receipt.GasUsed -= gasUsedSoFar;
+//                //gasUsedSoFar += receipt.GasUsed;
+//
+//                gasUsedSoFar = receipt.GasUsed;
+//            }
+        }
+        
         protected void RunTest(BlockchainTest test, Stopwatch stopwatch = null)
         {
             LoggingTraceListener traceListener = new LoggingTraceListener(_logger);
@@ -189,10 +217,26 @@ namespace Ethereum.Blockchain.Test
 
             // TODO: handle multiple
             BlockHeader header = BuildBlockHeader(test.Blocks[0].BlockHeader);
-            List<TransactionReceipt> receipts = new List<TransactionReceipt>();
-            List<Transaction> transactions = new List<Transaction>();
 
-            _stateProviders[test.Network].ProtocolSpecification = _protocolSpecificationProvider.GetSpec(EthereumNetwork.Frontier, header.Number);
+            InitializeTestState(test);
+
+            _stateProviders[test.Network].ProtocolSpecification = _protocolSpecificationProvider.GetSpec(test.Network, header.Number);
+
+            IProtocolSpecification spec = _protocolSpecificationProvider.GetSpec(test.Network, 1);
+            TransactionProcessor transactionProcessor = new TransactionProcessor(spec, _stateProviders[test.Network], _storageProvider, _virtualMachines[test.Network], ChainId.Mainnet, ShouldLog.TransactionProcessor ? _logger : null);
+            IBlockchainProcessor blockchain = new BlockchainProcessor(spec, new Block(), ChainId.Mainnet, _logger);
+
+            List<Block> blocks = ToBlocks(test.Blocks);
+            
+            stopwatch?.Start();
+            blockchain.ProcessBlocks(blocks);
+            stopwatch?.Start();
+            RunAssertions(test, blockchain.HeadBlock);
+        }
+
+        private void InitializeTestState(BlockchainTest test)
+        {
+            _stateProviders[test.Network].ProtocolSpecification = _protocolSpecificationProvider.GetSpec(EthereumNetwork.Frontier, test.Blocks[0].BlockHeader.Number);
             foreach (KeyValuePair<Address, AccountState> accountState in test.Pre)
             {
                 foreach (KeyValuePair<BigInteger, byte[]> storageItem in accountState.Value.Storage)
@@ -211,48 +255,9 @@ namespace Ethereum.Blockchain.Test
 
             _storageProvider.Commit(_stateProviders[test.Network]);
             _stateProviders[test.Network].Commit();
-            _stateProviders[test.Network].ProtocolSpecification = _protocolSpecificationProvider.GetSpec(test.Network, header.Number);
-
-            IProtocolSpecification spec = _protocolSpecificationProvider.GetSpec(test.Network, 1);
-            TransactionProcessor processor = new TransactionProcessor(_virtualMachines[test.Network], _stateProviders[test.Network], _storageProvider, spec, ChainId.Mainnet, ShouldLog.TransactionProcessor ? _logger : null);
-
-            stopwatch?.Start();
-            BigInteger gasUsedSoFar = 0;
-            foreach (IncomingTransaction testTransaction in test.Blocks[0].Transactions)
-            {
-                Transaction transaction = new Transaction();
-                transaction.To = testTransaction.To;
-                transaction.Value = testTransaction.Value;
-                transaction.GasLimit = testTransaction.GasLimit;
-                transaction.GasPrice = testTransaction.GasPrice;
-                transaction.Data = transaction.To == null ? null : testTransaction.Data;
-                transaction.Init = transaction.To == null ? testTransaction.Data : null;
-                transaction.Nonce = testTransaction.Nonce;
-                transaction.Signature = new Signature(testTransaction.R, testTransaction.S, testTransaction.V);
-                transactions.Add(transaction);
-
-                TransactionReceipt receipt = processor.Execute(
-                    transaction,
-                    header,
-                    gasUsedSoFar
-                );
-
-                receipts.Add(receipt);
-                //receipt.GasUsed -= gasUsedSoFar;
-                //gasUsedSoFar += receipt.GasUsed;
-
-                gasUsedSoFar = receipt.GasUsed;
-            }
-
-            stopwatch?.Start();
-
-            BlockProcessor blockProcessor = new BlockProcessor(_protocolSpecificationProvider.GetSpec(test.Network, header.Number), _stateProviders[test.Network]);
-            blockProcessor.ApplyMinerReward(header.Beneficiary);
-
-            RunAssertions(test, receipts, transactions);
         }
 
-        private void RunAssertions(BlockchainTest test, List<TransactionReceipt> receipts, List<Transaction> transactions)
+        private void RunAssertions(BlockchainTest test, Block headBlock)
         {
             TestBlockHeader testHeader = test.Blocks[0].BlockHeader;
             List<string> differences = new List<string>();
@@ -295,33 +300,30 @@ namespace Ethereum.Blockchain.Test
             }
 
 
-            BigInteger gasUsed = receipts.LastOrDefault()?.GasUsed ?? 0;
+            BigInteger gasUsed = headBlock.Header.GasUsed;
             if (testHeader.GasUsed != gasUsed)
             {
                 differences.Add($"GAS USED exp: {testHeader.GasUsed}, actual: {gasUsed}");
             }
 
-            if (receipts.Any() && testHeader.Bloom.ToString() != receipts.Last().Bloom.ToString())
+            if (headBlock.Transactions.Any() && testHeader.Bloom.ToString() != headBlock.Receipts.Last().Bloom.ToString())
             {
-                differences.Add($"BLOOM exp: {testHeader.Bloom}, actual: {receipts.Last().Bloom}");
+                differences.Add($"BLOOM exp: {testHeader.Bloom}, actual: {headBlock.Receipts.Last().Bloom}");
             }
-
-            Keccak receiptsRoot = _blockProcessors[test.Network].GetReceiptsRoot(receipts.ToArray());
-            Keccak transactionsRoot = _blockProcessors[test.Network].GetTransactionsRoot(transactions.ToArray());
 
             if (testHeader.StateRoot != _stateProviders[test.Network].State.RootHash)
             {
                 differences.Add($"STATE ROOT exp: {testHeader.StateRoot}, actual: {_stateProviders[test.Network].State.RootHash}");
             }
 
-            if (testHeader.TransactionsTrie != transactionsRoot)
+            if (testHeader.TransactionsTrie != headBlock.Header.TransactionsRoot)
             {
-                differences.Add($"TRANSACTIONS ROOT exp: {testHeader.TransactionsTrie}, actual: {transactionsRoot}");
+                differences.Add($"TRANSACTIONS ROOT exp: {testHeader.TransactionsTrie}, actual: {headBlock.Header.TransactionsRoot}");
             }
 
-            if (testHeader.ReceiptTrie != receiptsRoot)
+            if (testHeader.ReceiptTrie != headBlock.Header.ReceiptsRoot)
             {
-                differences.Add($"RECEIPT ROOT exp: {testHeader.ReceiptTrie}, actual: {receiptsRoot}");
+                differences.Add($"RECEIPT ROOT exp: {testHeader.ReceiptTrie}, actual: {headBlock.Header.ReceiptsRoot}");
             }
 
             foreach (string difference in differences)
@@ -334,21 +336,13 @@ namespace Ethereum.Blockchain.Test
 
         private static BlockHeader BuildBlockHeader(TestBlockHeader oneHeader)
         {
-            BlockHeader header = new BlockHeader();
-            header.Number = oneHeader.Number;
-            header.Difficulty = oneHeader.Difficulty;
-            header.Timestamp = oneHeader.Timestamp;
-            header.GasLimit = oneHeader.GasLimit;
-            header.Beneficiary = oneHeader.Coinbase;
-            header.GasUsed = 0;
+            BlockHeader header = new BlockHeader(oneHeader.ParentHash, oneHeader.UncleHash, oneHeader.Coinbase, oneHeader.Difficulty, oneHeader.Number, (long)oneHeader.GasLimit, oneHeader.Timestamp, oneHeader.ExtraData);
+            header.GasUsed = (long)oneHeader.GasUsed;
             header.MixHash = oneHeader.MixHash;
-            header.ParentHash = oneHeader.ParentHash;
-            header.OmmersHash = oneHeader.UncleHash;
             header.ReceiptsRoot = oneHeader.ReceiptTrie;
             header.TransactionsRoot = oneHeader.TransactionsTrie;
-            header.ExtraData = oneHeader.ExtraData;
             header.StateRoot = oneHeader.StateRoot;
-            header.LogsBloom = oneHeader.Bloom;
+            header.Bloom = oneHeader.Bloom;
             return header;
         }
 

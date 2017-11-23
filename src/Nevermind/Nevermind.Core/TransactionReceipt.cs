@@ -1,5 +1,4 @@
-using System.Numerics;
-using Nevermind.Core.Encoding;
+using Nevermind.Core.Crypto;
 
 namespace Nevermind.Core
 {
@@ -15,7 +14,7 @@ namespace Nevermind.Core
         /// </summary>
         public Keccak PostTransactionState { get; set; }
 
-        public BigInteger GasUsed { get; set; }
+        public long GasUsed { get; set; }
         public Bloom Bloom { get; set; }
         public LogEntry[] Logs { get; set; }
     }

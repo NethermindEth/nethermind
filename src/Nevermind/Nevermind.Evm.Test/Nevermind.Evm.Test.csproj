@@ -52,6 +52,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="AbiTests.cs" />
+    <Compile Include="HexPrefixTests.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="StateProviderTests.cs" />
     <Compile Include="StorageProviderTests.cs" />

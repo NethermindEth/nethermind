@@ -1,8 +1,9 @@
 ﻿using System.Collections.Generic;
 using System.Linq;
 using Ethereum.Test.Base;
+using Nevermind.Core;
 using Nevermind.Core.Encoding;
-using Nevermind.Core.Sugar;
+using Nevermind.Core.Extensions;
 using Nevermind.Evm.Abi;
 using NUnit.Framework;
 

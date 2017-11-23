@@ -3,8 +3,9 @@ using System.Linq;
 using System.Numerics;
 using Ethereum.Test.Base;
 using Nevermind.Core;
+using Nevermind.Core.Crypto;
 using Nevermind.Core.Encoding;
-using Nevermind.Core.Sugar;
+using Nevermind.Core.Extensions;
 using Nevermind.Store;
 using NUnit.Framework;
 
@@ -85,21 +86,12 @@ namespace Ethereum.Basic.Test
             Transaction[] transactions = { };
 
             // in RLP encoding order
-            BlockHeader header = new BlockHeader();
-            header.ParentHash = test.ParentHash;
-            // ReSharper disable once CoVariantArrayConversion
-            header.OmmersHash = Keccak.Compute(Rlp.Encode(ommers));
-            header.Beneficiary = test.Beneficiary;
+            BlockHeader header = new BlockHeader(test.ParentHash, Keccak.Compute(Rlp.Encode(ommers)), test.Beneficiary, test.Difficulty, BlockHeader.GenesisBlockNumber, (long)test.GasLimit, test.Timestamp, test.ExtraData);
             header.StateRoot = state.RootHash;
             header.TransactionsRoot = PatriciaTree.EmptyTreeHash;
             header.ReceiptsRoot = PatriciaTree.EmptyTreeHash;
-            header.LogsBloom = new Bloom();
-            header.Difficulty = test.Difficulty;
-            header.Number = BlockHeader.GenesisBlockNumber;
-            header.GasLimit = test.GasLimit;
+            header.Bloom = new Bloom();
             header.GasUsed = 0;
-            header.Timestamp = test.Timestamp;
-            header.ExtraData = test.ExtraData;
             header.MixHash = test.MixHash;
             header.Nonce = test.Nonce;
 

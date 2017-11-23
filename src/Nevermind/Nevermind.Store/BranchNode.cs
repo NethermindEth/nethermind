@@ -1,6 +1,6 @@
 using System;
 using System.Linq;
-using Nevermind.Core.Sugar;
+using Nevermind.Core.Extensions;
 
 namespace Nevermind.Store
 {

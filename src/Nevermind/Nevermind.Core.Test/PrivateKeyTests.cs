@@ -1,7 +1,7 @@
 ﻿using System;
 using System.IO;
+using Nevermind.Core.Crypto;
 using Nevermind.Core.Encoding;
-using Nevermind.Core.Signing;
 using NUnit.Framework;
 
 namespace Nevermind.Core.Test

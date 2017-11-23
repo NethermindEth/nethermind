@@ -1,5 +1,6 @@
 using System.Numerics;
-using Nevermind.Core.Sugar;
+using Nevermind.Core.Extensions;
+using Nevermind.Core.Potocol;
 
 namespace Nevermind.Core
 {

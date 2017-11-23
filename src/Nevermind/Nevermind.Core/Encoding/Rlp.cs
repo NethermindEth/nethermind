@@ -2,7 +2,8 @@
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
-using Nevermind.Core.Sugar;
+using Nevermind.Core.Crypto;
+using Nevermind.Core.Extensions;
 
 namespace Nevermind.Core.Encoding
 {
@@ -191,17 +192,17 @@ namespace Nevermind.Core.Encoding
             {
                 byte[] itemBytes = Encode(item).Bytes;
                 // do that at once (unnecessary objects creation here)
-                concatenation = Sugar.Bytes.Concat(concatenation, itemBytes);
+                concatenation = Extensions.Bytes.Concat(concatenation, itemBytes);
             }
 
             if (concatenation.Length < 56)
             {
-                return new Rlp(Sugar.Bytes.Concat((byte)(192 + concatenation.Length), concatenation));
+                return new Rlp(Extensions.Bytes.Concat((byte)(192 + concatenation.Length), concatenation));
             }
 
             byte[] serializedLength = SerializeLength(concatenation.Length);
             byte prefix = (byte)(247 + serializedLength.Length);
-            return new Rlp(Sugar.Bytes.Concat(prefix, serializedLength, concatenation));
+            return new Rlp(Extensions.Bytes.Concat(prefix, serializedLength, concatenation));
         }
 
         [SuppressMessage("ReSharper", "PossibleMultipleEnumeration")]
@@ -212,17 +213,17 @@ namespace Nevermind.Core.Encoding
             {
                 byte[] itemBytes = Encode(item).Bytes;
                 // do that at once (unnecessary objects creation here)
-                concatenation = Sugar.Bytes.Concat(concatenation, itemBytes);
+                concatenation = Extensions.Bytes.Concat(concatenation, itemBytes);
             }
 
             if (concatenation.Length < 56)
             {
-                return new Rlp(Sugar.Bytes.Concat((byte)(192 + concatenation.Length), concatenation));
+                return new Rlp(Extensions.Bytes.Concat((byte)(192 + concatenation.Length), concatenation));
             }
 
             byte[] serializedLength = SerializeLength(concatenation.Length);
             byte prefix = (byte)(247 + serializedLength.Length);
-            return new Rlp(Sugar.Bytes.Concat(prefix, serializedLength, concatenation));
+            return new Rlp(Extensions.Bytes.Concat(prefix, serializedLength, concatenation));
         }
 
         public static Rlp Encode(BigInteger bigInteger)
@@ -366,12 +367,12 @@ namespace Nevermind.Core.Encoding
             if (input.Length < 56)
             {
                 byte smallPrefix = (byte)(input.Length + 128);
-                return new Rlp(Sugar.Bytes.Concat(smallPrefix, input));
+                return new Rlp(Extensions.Bytes.Concat(smallPrefix, input));
             }
 
             byte[] serializedLength = SerializeLength(input.Length);
             byte prefix = (byte)(183 + serializedLength.Length);
-            return new Rlp(Sugar.Bytes.Concat(prefix, serializedLength, input));
+            return new Rlp(Extensions.Bytes.Concat(prefix, serializedLength, input));
         }
 
         public static byte[] SerializeLength(long value)
@@ -439,7 +440,7 @@ namespace Nevermind.Core.Encoding
                 return false;
             }
 
-            return Sugar.Bytes.UnsafeCompare(Bytes, other.Bytes);
+            return Extensions.Bytes.UnsafeCompare(Bytes, other.Bytes);
         }
 
         public static Rlp Encode(BlockHeader header)
@@ -451,7 +452,7 @@ namespace Nevermind.Core.Encoding
                 header.StateRoot,
                 header.TransactionsRoot,
                 header.ReceiptsRoot,
-                header.LogsBloom,
+                header.Bloom,
                 header.Difficulty,
                 header.Number,
                 header.GasLimit,

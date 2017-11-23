@@ -1,5 +1,5 @@
 ﻿using System;
-using Nevermind.Core.Signing;
+using Nevermind.Core.Crypto;
 using NUnit.Framework;
 
 namespace Nevermind.Core.Test

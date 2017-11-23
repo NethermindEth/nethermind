@@ -4,10 +4,11 @@ using System.Globalization;
 using System.Linq;
 using System.Numerics;
 using Ethereum.Test.Base;
+using Nevermind.Blockchain.Difficulty;
 using Nevermind.Core;
-using Nevermind.Core.Difficulty;
-using Nevermind.Core.Encoding;
-using Nevermind.Core.Sugar;
+using Nevermind.Core.Crypto;
+using Nevermind.Core.Extensions;
+using Nevermind.Core.Potocol;
 using NUnit.Framework;
 
 namespace Ethereum.Difficulty.Test
@@ -71,11 +72,10 @@ namespace Ethereum.Difficulty.Test
                 !string.IsNullOrWhiteSpace(json.ParentUncles) && new Keccak(json.ParentUncles) != noUnclesHash);
         }
 
-        private readonly DifficultyCalculatorFactory _factory = new DifficultyCalculatorFactory();
-
         protected void RunTest(DifficultyTest test, EthereumNetwork network)
         {
-            IDifficultyCalculator calculator = _factory.GetCalculator(network);
+            ProtocolSpecificationProvider specProvider = new ProtocolSpecificationProvider();
+            IDifficultyCalculator calculator = new ProtocolBasedDifficultyCalculator(specProvider.GetSpec(network, test.CurrentBlockNumber));
 
             BigInteger difficulty = calculator.Calculate(
                 test.ParentDifficulty,

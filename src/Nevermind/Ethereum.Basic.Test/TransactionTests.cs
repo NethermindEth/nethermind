@@ -7,8 +7,8 @@ using System.Numerics;
 using Ethereum.Test.Base;
 using JetBrains.Annotations;
 using Nevermind.Core;
+using Nevermind.Core.Crypto;
 using Nevermind.Core.Encoding;
-using Nevermind.Core.Signing;
 using NUnit.Framework;
 
 namespace Ethereum.Basic.Test

@@ -1,31 +1,33 @@
-﻿using System.Numerics;
+﻿using System.Collections.Generic;
+using System.Numerics;
+using Nevermind.Core.Crypto;
 using Nevermind.Core.Encoding;
 
 namespace Nevermind.Core
 {
     public class Block
     {
-        public Block(Block parentBlock, BlockHeader[] ommers, Transaction[] transactions)
+        // TODO: genesis
+        public Block()
         {
-            Header = parentBlock == null ? BlockHeader.Genesis : new BlockHeader(parentBlock.Header, ommers, transactions);
-            Parent = parentBlock;
+            
+        }
+        
+        public Block(BlockHeader blockHeader, Block parent, params BlockHeader[] ommers)
+        {
+            Header = blockHeader;
+            Parent = parent;
             Ommers = ommers;
-            Transactions = transactions;
+            Transactions = new List<Transaction>();
+            Receipts = new List<TransactionReceipt>();
         }
 
-        public BlockHeader Header { get; set; }
-        public Transaction[] Transactions { get; }
+        public BlockHeader Header { get; }
+        public List<Transaction> Transactions { get; set; }
+        public List<TransactionReceipt> Receipts { get; set; }
         public BlockHeader[] Ommers { get; }
-        public BigInteger TotalDifficulty => Header.Difficulty + (Parent?.TotalDifficulty ?? 0);
         public Block Parent { get; }
-
-        public Keccak Hash => Keccak.Compute(Rlp.Encode(Header));
-
-        static Block()
-        {
-            Genesis = new Block(null, new BlockHeader[] { }, new Transaction[] { });
-        }
-
-        public static Block Genesis { get; }
+        public BigInteger TotalDifficulty => Header.Difficulty + (Parent?.TotalDifficulty ?? 0);
+        public Keccak Hash => Keccak.Compute(Rlp.Encode((object)Header));
     }
 }

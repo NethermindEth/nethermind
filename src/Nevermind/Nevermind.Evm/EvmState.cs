@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Numerics;
 using System.Threading;
 using Nevermind.Core;
+using Nevermind.Core.Extensions;
 
 namespace Nevermind.Evm
 {
@@ -17,21 +18,21 @@ namespace Nevermind.Evm
         private List<LogEntry> _logs = new List<LogEntry>();
         public int StackHead = 0;
 
-        public EvmState(ulong gasAvailable, ExecutionEnvironment env, ExecutionType executionType, bool isContinuation)
-            : this(gasAvailable, env, executionType, -1, -1, BigInteger.Zero, BigInteger.Zero, false, isContinuation)
+        public EvmState(long gasAvailable, ExecutionEnvironment env, ExecutionType executionType, bool isContinuation)
+            : this(gasAvailable, env, executionType, -1, -1, 0L, 0L, false, isContinuation)
         {
             GasAvailable = gasAvailable;
             Env = env;
         }
 
         internal EvmState(
-            ulong gasAvailable,
+            long gasAvailable,
             ExecutionEnvironment env,
             ExecutionType executionType,
             int stateSnapshot,
             int storageSnapshot,
-            BigInteger outputDestination,
-            BigInteger outputLength,
+            long outputDestination,
+            long outputLength,
             bool isStatic,
             bool isContinuation)
         {
@@ -47,19 +48,20 @@ namespace Nevermind.Evm
         }
 
         public ExecutionEnvironment Env { get; }
-        public ulong GasAvailable { get; set; }
+        public long GasAvailable { get; set; }
         public BigInteger ProgramCounter { get; set; }
 
         internal ExecutionType ExecutionType { get; }
-        internal BigInteger OutputDestination { get; }
-        internal BigInteger OutputLength { get; }
+        internal long OutputDestination { get; }
+        internal long OutputLength { get; }
         public bool IsStatic { get; }
         public bool IsContinuation { get; set; }
         public int StateSnapshot { get; }
         public int StorageSnapshot { get; }
 
-        public ulong Refund { get; set; }
+        public long Refund { get; set; }
         public EvmMemory Memory { get; } = new EvmMemory();
+        public byte[] ReturnDataBuffer { get; set; } = Bytes.Empty;
 
         public HashSet<Address> DestroyList
         {

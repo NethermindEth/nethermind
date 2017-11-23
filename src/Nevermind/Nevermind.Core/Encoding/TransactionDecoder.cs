@@ -1,7 +1,7 @@
 using System;
 using System.Numerics;
-using Nevermind.Core.Signing;
-using Nevermind.Core.Sugar;
+using Nevermind.Core.Crypto;
+using Nevermind.Core.Extensions;
 
 namespace Nevermind.Core.Encoding
 {

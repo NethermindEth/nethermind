@@ -1,12 +1,12 @@
 ﻿using System.Numerics;
 using System.Security.Cryptography;
-using Nevermind.Core.Sugar;
+using Nevermind.Core.Extensions;
 
 namespace Nevermind.Evm.Precompiles
 {
     public class Ripemd160PrecompiledContract : IPrecompiledContract
     {
-        public static IPrecompiledContract Instance = new Ripemd160PrecompiledContract();
+        public static readonly IPrecompiledContract Instance = new Ripemd160PrecompiledContract();
 
         private static RIPEMD160 _ripemd;
 
@@ -18,14 +18,14 @@ namespace Nevermind.Evm.Precompiles
 
         public BigInteger Address => 3;
 
-        public ulong BaseGasCost()
+        public long BaseGasCost()
         {
-            return 600UL;
+            return 600L;
         }
 
-        public ulong DataGasCost(byte[] inputData)
+        public long DataGasCost(byte[] inputData)
         {
-            return 120UL * EvmMemory.Div32Ceiling(inputData.Length);
+            return 120L * EvmMemory.Div32Ceiling(inputData.Length);
         }
 
         public byte[] Run(byte[] inputData)

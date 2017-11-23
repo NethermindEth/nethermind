@@ -52,7 +52,6 @@
     <Compile Include="BlockValidatorTests.cs" />
     <Compile Include="BloomTests.cs" />
     <Compile Include="BytesTests.cs" />
-    <Compile Include="HexPrefixTests.cs" />
     <Compile Include="HexTests.cs" />
     <Compile Include="KeccakTests.cs" />
     <Compile Include="PrivateKeyTests.cs" />
