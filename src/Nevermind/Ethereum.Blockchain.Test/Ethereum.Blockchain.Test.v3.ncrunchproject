@@ -15,9 +15,6 @@
         <FixtureName>Ethereum.Blockchain.Test.SpecialTests</FixtureName>
       </FixtureTestSelector>
       <FixtureTestSelector>
-        <FixtureName>Ethereum.Blockchain.Test.ReturnDataTests</FixtureName>
-      </FixtureTestSelector>
-      <FixtureTestSelector>
         <FixtureName>Ethereum.Blockchain.Test.RefundTests</FixtureName>
       </FixtureTestSelector>
       <NamedTestSelector>
@@ -1072,6 +1069,9 @@
       </FixtureTestSelector>
       <FixtureTestSelector>
         <FixtureName>Ethereum.Blockchain.Test.TransactionTests</FixtureName>
+      </FixtureTestSelector>
+      <FixtureTestSelector>
+        <FixtureName>Ethereum.Blockchain.Test.ReturnDataTests</FixtureName>
       </FixtureTestSelector>
     </IgnoredTests>
     <InstrumentOutputAssembly>False</InstrumentOutputAssembly>

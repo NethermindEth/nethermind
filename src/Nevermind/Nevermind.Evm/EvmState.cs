@@ -61,7 +61,6 @@ namespace Nevermind.Evm
 
         public long Refund { get; set; }
         public EvmMemory Memory { get; } = new EvmMemory();
-        public byte[] ReturnDataBuffer { get; set; } = Bytes.Empty;
 
         public HashSet<Address> DestroyList
         {

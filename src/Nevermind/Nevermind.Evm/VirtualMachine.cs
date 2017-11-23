@@ -60,7 +60,7 @@ namespace Nevermind.Evm
             {
                 if (!currentState.IsContinuation)
                 {
-                    currentState.ReturnDataBuffer = Bytes.Empty;
+                    _returnDataBuffer = Bytes.Empty;
                 }
 
                 try
@@ -125,7 +125,7 @@ namespace Nevermind.Evm
                             previousCallResult = callCodeOwner.Hex;
                             previousCallOutput = Bytes.Empty;
                             previousCallOutputDestination = BigInteger.Zero;
-                            currentState.ReturnDataBuffer = Bytes.Empty;
+                            _returnDataBuffer = Bytes.Empty;
                         }
                         else
                         {
@@ -133,7 +133,7 @@ namespace Nevermind.Evm
                             // TODO: can remove the line below now after have the buffer
                             previousCallOutput = callResult.Output.SliceWithZeroPadding(0, Math.Min(callResult.Output.Length, (int)previousState.OutputLength));
                             previousCallOutputDestination = previousState.OutputDestination;
-                            currentState.ReturnDataBuffer = callResult.Output;
+                            _returnDataBuffer = callResult.Output;
                         }
 
                         _logger?.Log($"END {previousState.ExecutionType} AT DEPTH {previousState.Env.CallDepth} (RESULT {Hex.FromBytes(previousCallResult ?? Bytes.Empty, true)}) RETURNS ({previousCallOutputDestination} : {Hex.FromBytes(previousCallOutput, true)})");
@@ -146,7 +146,7 @@ namespace Nevermind.Evm
                         previousCallResult = StatusCode.FailureBytes;
                         previousCallOutput = callResult.Output.SliceWithZeroPadding(0, Math.Min(callResult.Output.Length, (int)previousState.OutputLength));
                         previousCallOutputDestination = previousState.OutputDestination;
-                        currentState.ReturnDataBuffer = callResult.Output;
+                        _returnDataBuffer = callResult.Output;
                     }
                 }
                 catch (Exception ex) when (ex is EvmException || ex is OverflowException)
@@ -163,7 +163,7 @@ namespace Nevermind.Evm
                     previousCallResult = StatusCode.FailureBytes;
                     previousCallOutput = Bytes.Empty;
                     previousCallOutputDestination = BigInteger.Zero;
-                    currentState.ReturnDataBuffer = Bytes.Empty;
+                    _returnDataBuffer = Bytes.Empty;
 
                     currentState = _stateStack.Pop();
                     currentState.IsContinuation = true;
