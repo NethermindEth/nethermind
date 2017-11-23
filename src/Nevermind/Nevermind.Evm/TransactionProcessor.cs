@@ -10,7 +10,7 @@ using Nevermind.Store;
 
 namespace Nevermind.Evm
 {
-    public class TransactionProcessor
+    public class TransactionProcessor : ITransactionProcessor
     {
         private static readonly IntrinsicGasCalculator IntrinsicGasCalculator = new IntrinsicGasCalculator();
         private readonly ILogger _logger;
@@ -72,17 +72,19 @@ namespace Nevermind.Evm
             long intrinsicGas = IntrinsicGasCalculator.Calculate(_protocolSpecification, transaction);
             _logger?.Log("INTRINSIC GAS: " + intrinsicGas);
 
-            if (intrinsicGas > block.GasLimit - block.GasUsed)
-            {
-                return GetNullReceipt(block.GasUsed + gasLimit);
-            }
-
             if (gasLimit < intrinsicGas)
             {
                 return GetNullReceipt(block.GasUsed + gasLimit);
             }
 
-            if (intrinsicGas * gasPrice + value > _stateProvider.GetBalance(sender))
+            if (gasLimit > block.GasLimit - block.GasUsed)
+            {
+                return GetNullReceipt(block.GasUsed + gasLimit);
+            }
+
+            BigInteger senderBalance = _stateProvider.GetBalance(sender);
+            _logger?.Log($"SENDER_BALANCE: {senderBalance}");
+            if (intrinsicGas * gasPrice + value > senderBalance)
             {
                 return GetNullReceipt(block.GasUsed + gasLimit);
             }
@@ -150,10 +152,10 @@ namespace Nevermind.Evm
                     env.MachineCode = isPrecompile ? (byte[])recipient.Hex : machineCode ?? _stateProvider.GetCode(recipient);
                     env.Originator = sender;
 
-                    ExecutionType executionType = isPrecompile ?
-                        ExecutionType.DirectPrecompile
-                        : transaction.IsContractCreation ?
-                            ExecutionType.DirectCreate
+                    ExecutionType executionType = isPrecompile
+                        ? ExecutionType.DirectPrecompile
+                        : transaction.IsContractCreation
+                            ? ExecutionType.DirectCreate
                             : ExecutionType.Transaction;
                     EvmState state = new EvmState(unspentGas, env, executionType, false);
 
@@ -205,9 +207,9 @@ namespace Nevermind.Evm
                     spentGas = Refund(gasLimit, unspentGas, substate, sender, gasPrice);
                 }
             }
-            catch (EvmException e)
+            catch (Exception ex) when (ex is EvmException || ex is OverflowException)
             {
-                _logger?.Log($"EVM EXCEPTION: {e.GetType().Name}");
+                _logger?.Log($"EVM EXCEPTION: {ex.GetType().Name}");
 
                 logEntries.Clear();
                 destroyedAccounts.Clear();

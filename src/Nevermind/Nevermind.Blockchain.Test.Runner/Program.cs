@@ -46,7 +46,7 @@ namespace Nevermind.Blockchain.Test.Runner
                     ShouldLog.Evm = false;
                     ShouldLog.State = false;
                     ShouldLog.EvmStack = false;
-                    ShouldLog.TransactionProcessor = false;
+                    ShouldLog.Processing = false;
                     Run(new PerfTest(), testWildcard);
                 }
                 else
@@ -54,7 +54,7 @@ namespace Nevermind.Blockchain.Test.Runner
                     ShouldLog.Evm = true;
                     ShouldLog.State = true;
                     ShouldLog.EvmStack = false;
-                    ShouldLog.TransactionProcessor = true;
+                    ShouldLog.Processing = true;
                     Run(new BugHunter(), testWildcard);
                 }
 
@@ -75,63 +75,63 @@ namespace Nevermind.Blockchain.Test.Runner
 
         private static void Run(ITestInRunner bugHunter, string testWildcard)
         {
-            //Run(bugHunter, "stAttackTest");
-            //Run(bugHunter, "stBadOpcode");
-            //Run(bugHunter, "stCallCodes");
-            //Run(bugHunter, "stCallCreateCallCodeTest");
-            //Run(bugHunter, "stCallDelegateCodesCallCodeHomestead");
-            //Run(bugHunter, "stCallDelegateCodesHomestead");
-            //Run(bugHunter, "stChangedEIP150");
-            //Run(bugHunter, "stCodeCopyTest");
-            //Run(bugHunter, "stCodeSizeLimit");
-            //Run(bugHunter, "stCreateTest");
-            //Run(bugHunter, "stDelegatecallTestHomestead");
-            //Run(bugHunter, "stEIP150singleCodeGasPrices");
-            //Run(bugHunter, "stEIP150Specific");
-            //Run(bugHunter, "stEIP158Specific");
-            //Run(bugHunter, "stExample");
-            //Run(bugHunter, "stHomesteadSpecific");
-            //Run(bugHunter, "stInitCodeTest");
-            //Run(bugHunter, "stLogTests");
-            //Run(bugHunter, "stMemExpandingEIP150Calls");
-            //Run(bugHunter, "stMemoryStressTest");
-            //Run(bugHunter, "stMemoryTest");
-            //Run(bugHunter, "stNonZeroCallsTest");
-            //Run(bugHunter, "stPreCompiledContracts");
-            //Run(bugHunter, "stPreCompiledContracts2");
-            //Run(bugHunter, "stQuadraticComplexityTest");
-            //Run(bugHunter, "stRandom");
-            //Run(bugHunter, "stRandom2");
-            //Run(bugHunter, "stRecursiveCreate");
-            //Run(bugHunter, "stRefundTest");
-            //Run(bugHunter, "stReturnDataTest");
-            //Run(bugHunter, "stRevertTest");
-            //Run(bugHunter, "stSolidityTest");
-            //Run(bugHunter, "stSpecialTest");
-            //Run(bugHunter, "stStackTests");
-            //Run(bugHunter, "stStaticCall");
-            //Run(bugHunter, "stSystemOperationsTest");
-            //Run(bugHunter, "stTransactionTest");
-            //Run(bugHunter, "stTransitionTest");
-            //Run(bugHunter, "stWalletTest");
-            //Run(bugHunter, "stZeroCallsRevert");
-            //Run(bugHunter, "stZeroCallsTest");
+            Run(bugHunter, "stAttackTest", testWildcard);
+            Run(bugHunter, "stBadOpcode", testWildcard);
+            Run(bugHunter, "stCallCodes", testWildcard);
+            Run(bugHunter, "stCallCreateCallCodeTest", testWildcard);
+            Run(bugHunter, "stCallDelegateCodesCallCodeHomestead", testWildcard);
+            Run(bugHunter, "stCallDelegateCodesHomestead", testWildcard);
+            Run(bugHunter, "stChangedEIP150", testWildcard);
+            Run(bugHunter, "stCodeCopyTest", testWildcard);
+            Run(bugHunter, "stCodeSizeLimit", testWildcard);
+            Run(bugHunter, "stCreateTest", testWildcard);
+            Run(bugHunter, "stDelegatecallTestHomestead", testWildcard);
+            Run(bugHunter, "stEIP150singleCodeGasPrices", testWildcard);
+            Run(bugHunter, "stEIP150Specific", testWildcard);
+            Run(bugHunter, "stEIP158Specific", testWildcard);
+            Run(bugHunter, "stExample", testWildcard);
+            Run(bugHunter, "stHomesteadSpecific", testWildcard);
+            Run(bugHunter, "stInitCodeTest", testWildcard);
+            Run(bugHunter, "stLogTests", testWildcard);
+            Run(bugHunter, "stMemExpandingEIP150Calls", testWildcard);
+            Run(bugHunter, "stMemoryStressTest", testWildcard);
+            Run(bugHunter, "stMemoryTest", testWildcard);
+            Run(bugHunter, "stNonZeroCallsTest", testWildcard);
+            Run(bugHunter, "stPreCompiledContracts", testWildcard);
+            Run(bugHunter, "stPreCompiledContracts2", testWildcard);
+            Run(bugHunter, "stQuadraticComplexityTest", testWildcard);
+            Run(bugHunter, "stRandom", testWildcard);
+            Run(bugHunter, "stRandom2", testWildcard);
+            Run(bugHunter, "stRecursiveCreate", testWildcard);
+            Run(bugHunter, "stRefundTest", testWildcard);
+            Run(bugHunter, "stReturnDataTest", testWildcard);
+            Run(bugHunter, "stRevertTest", testWildcard);
+            Run(bugHunter, "stSolidityTest", testWildcard);
+            Run(bugHunter, "stSpecialTest", testWildcard);
+            Run(bugHunter, "stStackTests", testWildcard);
+            Run(bugHunter, "stStaticCall", testWildcard);
+            Run(bugHunter, "stSystemOperationsTest", testWildcard);
+            Run(bugHunter, "stTransactionTest", testWildcard);
+            Run(bugHunter, "stTransitionTest", testWildcard);
+            Run(bugHunter, "stWalletTest", testWildcard);
+            Run(bugHunter, "stZeroCallsRevert", testWildcard);
+            Run(bugHunter, "stZeroCallsTest", testWildcard);
 
-            Run(bugHunter, "bcBlockGasLimitTest", testWildcard);
-            Run(bugHunter, "bcExploitTest", testWildcard);
-            Run(bugHunter, "bcForgedTest", testWildcard);
-            Run(bugHunter, "bcForkStressTest", testWildcard);
-            Run(bugHunter, "bcGasPricerTest", testWildcard);
-            Run(bugHunter, "bcInvalidHeaderTest", testWildcard);
-            Run(bugHunter, "bcMultiChainTestTest", testWildcard);
-            Run(bugHunter, "bcRandomBlockhashTest", testWildcard);
-            Run(bugHunter, "bcStateTests", testWildcard);
-            Run(bugHunter, "bcTotalDifficultyTest", testWildcard);
-            Run(bugHunter, "bcUncleHeaderValidity", testWildcard);
-            Run(bugHunter, "bcUncleTest", testWildcard);
-            Run(bugHunter, "bcValidBlockTest", testWildcard);
-            Run(bugHunter, "bcWalletTest", testWildcard);
-            
+            //Run(bugHunter, "bcBlockGasLimitTest", testWildcard);
+            //Run(bugHunter, "bcExploitTest", testWildcard);
+            //Run(bugHunter, "bcForgedTest", testWildcard);
+            //Run(bugHunter, "bcForkStressTest", testWildcard);
+            //Run(bugHunter, "bcGasPricerTest", testWildcard);
+            //Run(bugHunter, "bcInvalidHeaderTest", testWildcard);
+            //Run(bugHunter, "bcMultiChainTestTest", testWildcard);
+            //Run(bugHunter, "bcRandomBlockhashTest", testWildcard);
+            //Run(bugHunter, "bcStateTests", testWildcard);
+            //Run(bugHunter, "bcTotalDifficultyTest", testWildcard);
+            //Run(bugHunter, "bcUncleHeaderValidity", testWildcard);
+            //Run(bugHunter, "bcUncleTest", testWildcard);
+            //Run(bugHunter, "bcValidBlockTest", testWildcard);
+            //Run(bugHunter, "bcWalletTest", testWildcard);
+
             //Run("stZeroKnowledge");
             //Run("stZeroKnowledge2");
         }

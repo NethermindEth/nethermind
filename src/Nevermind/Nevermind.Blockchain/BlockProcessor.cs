@@ -14,20 +14,28 @@ namespace Nevermind.Blockchain
 {
     public class BlockProcessor : IBlockProcessor
     {
-        private readonly TransactionProcessor _transactionProcessor;
+        private readonly ITransactionProcessor _transactionProcessor;
         private readonly IStateProvider _stateProvider;
+        private readonly ILogger _logger;
 
         private readonly IDifficultyCalculator _difficultyCalculator;
 
         private readonly IRewardCalculator _rewardCalculator;
 
-        public BlockProcessor(IProtocolSpecification protocolSpecification, TransactionProcessor transactionProcessor, IStateProvider stateProvider, ILogger logger = null)
+        public BlockProcessor(
+            IProtocolSpecification protocolSpecification,
+            IDifficultyCalculator difficultyCalculator,
+            IRewardCalculator rewardCalculator,
+            ITransactionProcessor transactionProcessor,
+            IStateProvider stateProvider,
+            ILogger logger = null)
         {
+            _logger = logger;
             _protocolSpecification = protocolSpecification;
-            _transactionProcessor = transactionProcessor;
             _stateProvider = stateProvider;
-            _difficultyCalculator = new ProtocolBasedDifficultyCalculator(_protocolSpecification);
-            _rewardCalculator = new RewardCalculator(_protocolSpecification);
+            _difficultyCalculator = difficultyCalculator;
+            _rewardCalculator = rewardCalculator;
+            _transactionProcessor = transactionProcessor;
         }
 
         private readonly IProtocolSpecification _protocolSpecification;
@@ -39,7 +47,6 @@ namespace Nevermind.Blockchain
             {
                 TransactionReceipt receipt = _transactionProcessor.Execute(transactions[i], block.Header);
                 receipts.Add(receipt);
-                transactions.Add(transactions[i]);
             }
 
             SetReceipts(block, receipts);
@@ -48,7 +55,7 @@ namespace Nevermind.Blockchain
 
         private void SetReceipts(Block block, List<TransactionReceipt> receipts)
         {
-            PatriciaTree receiptTree = new PatriciaTree(new InMemoryDb());
+            PatriciaTree receiptTree = new PatriciaTree();
             for (int i = 0; i < receipts.Count; i++)
             {
                 Rlp receiptRlp = Rlp.Encode(receipts[i], _protocolSpecification.IsEip658Enabled);
@@ -57,12 +64,12 @@ namespace Nevermind.Blockchain
 
             block.Receipts = receipts;
             block.Header.ReceiptsRoot = receiptTree.RootHash;
-            block.Header.Bloom = receipts.LastOrDefault()?.Bloom ?? block.Parent.Header.Bloom;
+            block.Header.Bloom = receipts.LastOrDefault()?.Bloom ?? block.Header.Bloom;
         }
 
         private void SetTransactions(Block block, List<Transaction> transactions)
         {
-            PatriciaTree tranTree = new PatriciaTree(new InMemoryDb());
+            PatriciaTree tranTree = new PatriciaTree();
             for (int i = 0; i < transactions.Count; i++)
             {
                 Rlp transactionRlp = Rlp.Encode(transactions[i]);
@@ -73,18 +80,19 @@ namespace Nevermind.Blockchain
             block.Header.TransactionsRoot = tranTree.RootHash;
         }
 
-        public Block ProcessBlock(Block parent, BigInteger timestamp, Address beneficiary, long gasLimit, byte[] extraData, List<Transaction> transactions, params BlockHeader[] uncles)
+        public Block ProcessBlock(Block parent, BigInteger timestamp, Address beneficiary, long gasLimit, byte[] extraData, List<Transaction> transactions, Keccak mixHash, ulong nonce, params BlockHeader[] uncles)
         {
-            Keccak ommersHash = Keccak.Compute(Rlp.Encode(uncles.Cast<object>().ToList())); // TODO: refactor RLP here
+            Keccak ommersHash = Keccak.Compute(Rlp.Encode(uncles)); // TODO: refactor RLP here
             BigInteger blockNumber = parent.Header.Number + 1;
             BigInteger dificulty = _difficultyCalculator.Calculate(parent.Header.Difficulty, parent.Header.Timestamp, timestamp, blockNumber, uncles.Length > 0);
 
-            BlockHeader header = new BlockHeader(parent.Hash, ommersHash, beneficiary, dificulty, blockNumber, gasLimit, timestamp, extraData);
-            Block block = new Block(header, parent, uncles);
+            BlockHeader header = new BlockHeader(parent.Header.StateRoot, ommersHash, beneficiary, dificulty, blockNumber, gasLimit, timestamp, extraData);
+            header.MixHash = mixHash;
+            header.Nonce = nonce;
+            Block block = new Block(header, uncles);
             ProcessTransactions(block, transactions);
             ApplyMinerRewards(block);
-
-            header.Close();
+            header.StateRoot = _stateProvider.State.RootHash;
             return block;
         }
 

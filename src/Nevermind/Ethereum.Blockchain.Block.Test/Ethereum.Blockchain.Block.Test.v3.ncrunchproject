@@ -34,6 +34,9 @@
       <FixtureTestSelector>
         <FixtureName>Ethereum.Blockchain.Block.Test.StateTest</FixtureName>
       </FixtureTestSelector>
+      <FixtureTestSelector>
+        <FixtureName>Ethereum.Blockchain.Block.Test.GasPricerTest</FixtureName>
+      </FixtureTestSelector>
     </IgnoredTests>
   </Settings>
 </ProjectConfiguration>

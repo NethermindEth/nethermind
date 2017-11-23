@@ -6,9 +6,10 @@ using System.Linq;
 using System.Numerics;
 using System.Text;
 using System.Threading.Tasks;
-using System.Xml.Serialization.Configuration;
 using Ethereum.Test.Base;
 using Nevermind.Blockchain;
+using Nevermind.Blockchain.Difficulty;
+using Nevermind.Blockchain.Validators;
 using Nevermind.Core;
 using Nevermind.Core.Crypto;
 using Nevermind.Core.Encoding;
@@ -39,7 +40,7 @@ namespace Ethereum.Blockchain.Test
             _blockhashProvider = new TestBlockhashProvider();
             _virtualMachines = new Dictionary<EthereumNetwork, VirtualMachine>();
             _stateProviders = new Dictionary<EthereumNetwork, StateProvider>();
-            EthereumNetwork[] networks = { EthereumNetwork.Frontier, EthereumNetwork.Homestead, EthereumNetwork.Byzantium, EthereumNetwork.SpuriousDragon, EthereumNetwork.TangerineWhistle };
+            EthereumNetwork[] networks = {EthereumNetwork.Frontier, EthereumNetwork.Homestead, EthereumNetwork.Byzantium, EthereumNetwork.SpuriousDragon, EthereumNetwork.TangerineWhistle};
             foreach (EthereumNetwork ethereumNetwork in networks)
             {
                 IProtocolSpecification spec = _protocolSpecificationProvider.GetSpec(ethereumNetwork, 1);
@@ -81,23 +82,19 @@ namespace Ethereum.Blockchain.Test
                     {
                         namedTest.Value.EthereumNetwork = EthereumNetwork.Frontier;
                     }
-                    else
-                    if (namedTest.Key.Contains("Homestead"))
+                    else if (namedTest.Key.Contains("Homestead"))
                     {
                         namedTest.Value.EthereumNetwork = EthereumNetwork.Homestead;
                     }
-                    else
-                    if (namedTest.Key.Contains("EIP150"))
+                    else if (namedTest.Key.Contains("EIP150"))
                     {
                         namedTest.Value.EthereumNetwork = EthereumNetwork.TangerineWhistle;
                     }
-                    else
-                    if (namedTest.Key.Contains("EIP158"))
+                    else if (namedTest.Key.Contains("EIP158"))
                     {
                         namedTest.Value.EthereumNetwork = EthereumNetwork.SpuriousDragon;
                     }
-                    else
-                    if (namedTest.Key.Contains("Byzantium"))
+                    else if (namedTest.Key.Contains("Byzantium"))
                     {
                         namedTest.Value.EthereumNetwork = EthereumNetwork.Byzantium;
                     }
@@ -181,62 +178,44 @@ namespace Ethereum.Blockchain.Test
             public override Encoding Encoding => Encoding.UTF8;
         }
 
-        private List<Block> ToBlocks(IEnumerable<TestBlock> testBlocks)
-        {
-            return new List<Block>();
-            
-            //            BigInteger gasUsedSoFar = 0;
-//            foreach (IncomingTransaction testTransaction in test.Blocks[0].Transactions)
-//            {
-//                Transaction transaction = new Transaction();
-//                transaction.To = testTransaction.To;
-//                transaction.Value = testTransaction.Value;
-//                transaction.GasLimit = testTransaction.GasLimit;
-//                transaction.GasPrice = testTransaction.GasPrice;
-//                transaction.Data = transaction.To == null ? null : testTransaction.Data;
-//                transaction.Init = transaction.To == null ? testTransaction.Data : null;
-//                transaction.Nonce = testTransaction.Nonce;
-//                transaction.Signature = new Signature(testTransaction.R, testTransaction.S, testTransaction.V);
-//                transactions.Add(transaction);
-//
-//                TransactionReceipt receipt = transactionProcessor.Execute(transaction, header);
-//
-//                receipts.Add(receipt);
-//                //receipt.GasUsed -= gasUsedSoFar;
-//                //gasUsedSoFar += receipt.GasUsed;
-//
-//                gasUsedSoFar = receipt.GasUsed;
-//            }
-        }
-        
         protected void RunTest(BlockchainTest test, Stopwatch stopwatch = null)
         {
             LoggingTraceListener traceListener = new LoggingTraceListener(_logger);
             Debug.Listeners.Clear();
             Debug.Listeners.Add(traceListener);
 
-            // TODO: handle multiple
-            BlockHeader header = BuildBlockHeader(test.Blocks[0].BlockHeader);
-
             InitializeTestState(test);
 
-            _stateProviders[test.Network].ProtocolSpecification = _protocolSpecificationProvider.GetSpec(test.Network, header.Number);
+            // transition...
+            _stateProviders[test.Network].ProtocolSpecification = _protocolSpecificationProvider.GetSpec(test.Network, test.GenesisBlockHeader.Number);
 
             IProtocolSpecification spec = _protocolSpecificationProvider.GetSpec(test.Network, 1);
-            TransactionProcessor transactionProcessor = new TransactionProcessor(spec, _stateProviders[test.Network], _storageProvider, _virtualMachines[test.Network], ChainId.Mainnet, ShouldLog.TransactionProcessor ? _logger : null);
-            IBlockchainProcessor blockchain = new BlockchainProcessor(spec, new Block(), ChainId.Mainnet, _logger);
-
-            List<Block> blocks = ToBlocks(test.Blocks);
+            IBlockProcessor blockProcessor = new BlockProcessor(
+                spec,
+                new ProtocolBasedDifficultyCalculator(spec),
+                new RewardCalculator(spec),
+                new TransactionProcessor(spec, _stateProviders[test.Network], _storageProvider, _virtualMachines[test.Network], ChainId.Mainnet, _logger),
+                _stateProviders[test.Network],
+                _logger);
             
+            IBlockchainStore chain = new BlockchainStore();
+
+            IBlockchainProcessor blockchain = new BlockchainProcessor(
+                new Block(test.GenesisBlockHeader),
+                blockProcessor,
+                chain,
+                new BlockValidator(new BlockHeaderValidator(chain), new OmmersValidator(chain)),
+                _logger);
+
             stopwatch?.Start();
-            blockchain.ProcessBlocks(blocks);
+            blockchain.ProcessBlocks(test.Blocks.ToList());
             stopwatch?.Start();
             RunAssertions(test, blockchain.HeadBlock);
         }
 
         private void InitializeTestState(BlockchainTest test)
         {
-            _stateProviders[test.Network].ProtocolSpecification = _protocolSpecificationProvider.GetSpec(EthereumNetwork.Frontier, test.Blocks[0].BlockHeader.Number);
+            _stateProviders[test.Network].ProtocolSpecification = _protocolSpecificationProvider.GetSpec(EthereumNetwork.Frontier, test.Blocks[0].Header.Number);
             foreach (KeyValuePair<Address, AccountState> accountState in test.Pre)
             {
                 foreach (KeyValuePair<BigInteger, byte[]> storageItem in accountState.Value.Storage)
@@ -259,7 +238,7 @@ namespace Ethereum.Blockchain.Test
 
         private void RunAssertions(BlockchainTest test, Block headBlock)
         {
-            TestBlockHeader testHeader = test.Blocks[0].BlockHeader;
+            BlockHeader testHeader = test.Blocks[0].Header;
             List<string> differences = new List<string>();
             foreach (KeyValuePair<Address, AccountState> accountState in test.PostState)
             {
@@ -316,14 +295,14 @@ namespace Ethereum.Blockchain.Test
                 differences.Add($"STATE ROOT exp: {testHeader.StateRoot}, actual: {_stateProviders[test.Network].State.RootHash}");
             }
 
-            if (testHeader.TransactionsTrie != headBlock.Header.TransactionsRoot)
+            if (testHeader.TransactionsRoot != headBlock.Header.TransactionsRoot)
             {
-                differences.Add($"TRANSACTIONS ROOT exp: {testHeader.TransactionsTrie}, actual: {headBlock.Header.TransactionsRoot}");
+                differences.Add($"TRANSACTIONS ROOT exp: {testHeader.TransactionsRoot}, actual: {headBlock.Header.TransactionsRoot}");
             }
 
-            if (testHeader.ReceiptTrie != headBlock.Header.ReceiptsRoot)
+            if (testHeader.ReceiptsRoot!= headBlock.Header.ReceiptsRoot)
             {
-                differences.Add($"RECEIPT ROOT exp: {testHeader.ReceiptTrie}, actual: {headBlock.Header.ReceiptsRoot}");
+                differences.Add($"RECEIPT ROOT exp: {testHeader.ReceiptsRoot}, actual: {headBlock.Header.ReceiptsRoot}");
             }
 
             foreach (string difference in differences)
@@ -334,67 +313,62 @@ namespace Ethereum.Blockchain.Test
             Assert.Zero(differences.Count, "differences");
         }
 
-        private static BlockHeader BuildBlockHeader(TestBlockHeader oneHeader)
-        {
-            BlockHeader header = new BlockHeader(oneHeader.ParentHash, oneHeader.UncleHash, oneHeader.Coinbase, oneHeader.Difficulty, oneHeader.Number, (long)oneHeader.GasLimit, oneHeader.Timestamp, oneHeader.ExtraData);
-            header.GasUsed = (long)oneHeader.GasUsed;
-            header.MixHash = oneHeader.MixHash;
-            header.ReceiptsRoot = oneHeader.ReceiptTrie;
-            header.TransactionsRoot = oneHeader.TransactionsTrie;
-            header.StateRoot = oneHeader.StateRoot;
-            header.Bloom = oneHeader.Bloom;
-            return header;
-        }
-
-        private static TestBlockHeader Convert(TestBlockHeaderJson headerJson)
+        private static BlockHeader Convert(TestBlockHeaderJson headerJson)
         {
             if (headerJson == null)
             {
                 return null;
             }
 
-            TestBlockHeader header = new TestBlockHeader();
-            header.Coinbase = new Address(headerJson.Coinbase);
+            BlockHeader header = new BlockHeader(
+                new Keccak(headerJson.ParentHash),
+                new Keccak(headerJson.UncleHash),
+                new Address(headerJson.Coinbase),
+                Hex.ToBytes(headerJson.Difficulty).ToUnsignedBigInteger(),
+                Hex.ToBytes(headerJson.Number).ToUnsignedBigInteger(),
+                (long)Hex.ToBytes(headerJson.GasLimit).ToUnsignedBigInteger(),
+                Hex.ToBytes(headerJson.Timestamp).ToUnsignedBigInteger(),
+                Hex.ToBytes(headerJson.ExtraData)
+            );
+
             header.Bloom = new Bloom(Hex.ToBytes(headerJson.Bloom).ToBigEndianBitArray2048());
-            header.Difficulty = Hex.ToBytes(headerJson.Difficulty).ToUnsignedBigInteger();
-            header.ExtraData = Hex.ToBytes(headerJson.ExtraData);
-            header.GasLimit = Hex.ToBytes(headerJson.GasLimit).ToUnsignedBigInteger();
-            header.GasUsed = Hex.ToBytes(headerJson.GasUsed).ToUnsignedBigInteger();
+            header.GasUsed = (long)Hex.ToBytes(headerJson.GasUsed).ToUnsignedBigInteger();
             header.Hash = new Keccak(headerJson.Hash);
             header.MixHash = new Keccak(headerJson.MixHash);
-            header.Nonce = Hex.ToBytes(headerJson.Nonce).ToUnsignedBigInteger();
-            header.Number = Hex.ToBytes(headerJson.Number).ToUnsignedBigInteger();
-            header.ParentHash = new Keccak(headerJson.ParentHash);
-            header.ReceiptTrie = new Keccak(headerJson.ReceiptTrie);
+            header.Nonce = (ulong)Hex.ToBytes(headerJson.Nonce).ToUnsignedBigInteger();
+            header.ReceiptsRoot = new Keccak(headerJson.ReceiptTrie);
             header.StateRoot = new Keccak(headerJson.StateRoot);
-            header.Timestamp = Hex.ToBytes(headerJson.Timestamp).ToUnsignedBigInteger();
-            header.TransactionsTrie = new Keccak(headerJson.TransactionsTrie);
-            header.UncleHash = new Keccak(headerJson.UncleHash);
+            header.TransactionsRoot = new Keccak(headerJson.TransactionsTrie);
             return header;
         }
 
-        private static TestBlock Convert(TestBlockJson testBlockJson)
+        private static Block Convert(TestBlockJson testBlockJson)
         {
-            TestBlock block = new TestBlock();
-            block.BlockHeader = Convert(testBlockJson.BlockHeader);
-            block.UncleHeaders = testBlockJson.UncleHeaders?.Select(Convert).ToArray();
-            block.Transactions = testBlockJson.Transactions?.Select(Convert).ToArray();
+            BlockHeader header = Convert(testBlockJson.BlockHeader);
+            BlockHeader[] ommers = testBlockJson.UncleHeaders?.Select(Convert).ToArray() ?? new BlockHeader[0];
+            Block block = new Block(header, ommers);
+            block.Transactions = testBlockJson.Transactions?.Select(Convert).ToList();
             return block;
         }
 
-        private static IncomingTransaction Convert(TransactionJson transactionJson)
+        private static Transaction Convert(TransactionJson transactionJson)
         {
-            IncomingTransaction incomingTransaction = new IncomingTransaction();
-            incomingTransaction.Data = Hex.ToBytes(transactionJson.Data);
-            incomingTransaction.Value = Hex.ToBytes(transactionJson.Value).ToUnsignedBigInteger();
-            incomingTransaction.GasLimit = Hex.ToBytes(transactionJson.GasLimit).ToUnsignedBigInteger();
-            incomingTransaction.GasPrice = Hex.ToBytes(transactionJson.GasPrice).ToUnsignedBigInteger();
-            incomingTransaction.Nonce = Hex.ToBytes(transactionJson.Nonce).ToUnsignedBigInteger();
-            incomingTransaction.To = string.IsNullOrWhiteSpace(transactionJson.To) ? null : new Address(new Hex(transactionJson.To));
-            incomingTransaction.R = Hex.ToBytes(transactionJson.R).PadLeft(32);
-            incomingTransaction.S = Hex.ToBytes(transactionJson.S).PadLeft(32);
-            incomingTransaction.V = Hex.ToBytes(transactionJson.V)[0];
-            return incomingTransaction;
+            Transaction transaction = new Transaction();
+            transaction.ChainId = ChainId.Mainnet;
+            transaction.Value = Hex.ToBytes(transactionJson.Value).ToUnsignedBigInteger();
+            transaction.GasLimit = Hex.ToBytes(transactionJson.GasLimit).ToUnsignedBigInteger();
+            transaction.GasPrice = Hex.ToBytes(transactionJson.GasPrice).ToUnsignedBigInteger();
+            transaction.Nonce = Hex.ToBytes(transactionJson.Nonce).ToUnsignedBigInteger();
+            transaction.To = string.IsNullOrWhiteSpace(transactionJson.To) ? null : new Address(new Hex(transactionJson.To));
+            transaction.Data = transaction.To == null ? null : Hex.ToBytes(transactionJson.Data);
+            transaction.Init = transaction.To == null ? Hex.ToBytes(transactionJson.Data) : null;
+            Signature signature = new Signature(
+                Hex.ToBytes(transactionJson.R).PadLeft(32),
+                Hex.ToBytes(transactionJson.S).PadLeft(32),
+                Hex.ToBytes(transactionJson.V)[0]);
+            transaction.Signature = signature;
+            
+            return transaction;
         }
 
         private static BlockchainTest Convert(string name, BlockchainTestJson testJson)
@@ -530,8 +504,8 @@ namespace Ethereum.Blockchain.Test
             public Keccak LastBlockHash { get; set; }
             public Rlp GenesisRlp { get; set; }
 
-            public TestBlock[] Blocks { get; set; }
-            public TestBlockHeader GenesisBlockHeader { get; set; }
+            public Block[] Blocks { get; set; }
+            public BlockHeader GenesisBlockHeader { get; set; }
 
             public Dictionary<Address, AccountState> Pre { get; set; }
             public Dictionary<Address, AccountState> PostState { get; set; }

@@ -20,6 +20,11 @@ namespace Nevermind.Store
 
         internal Node Root;
 
+        public PatriciaTree()
+        {
+            _db = new InMemoryDb();
+        }
+        
         public PatriciaTree(InMemoryDb db)
         {
             _db = db;

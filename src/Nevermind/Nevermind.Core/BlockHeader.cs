@@ -36,7 +36,7 @@ namespace Nevermind.Core
         public byte[] ExtraData { get; }
         public Keccak MixHash { get; set; }
         public ulong Nonce { get; set; }
-        public Keccak Hash { get; private set; }
+        public Keccak Hash { get; set; }
 
         ////static BlockHeader()
         ////{
@@ -62,7 +62,7 @@ namespace Nevermind.Core
         ////}
 
 //        public static BlockHeader Genesis { get; }
-        public void Close()
+        public void RecomputeHash()
         {
             Hash = Keccak.Compute(Rlp.Encode(this));
         }

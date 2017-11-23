@@ -54,11 +54,16 @@ namespace Nevermind.Core.Crypto
 
         public override string ToString()
         {
-            return Hex.FromBytes(Bytes, true);
+            return ToString(true);
         }
 
         public string ToString(bool withZeroX)
         {
+            if (Bytes == null)
+            {
+                return "Keccak<uninitialized>";
+            }
+
             return Hex.FromBytes(Bytes, withZeroX);
         }
 

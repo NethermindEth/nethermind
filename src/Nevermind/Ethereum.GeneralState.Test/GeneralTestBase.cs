@@ -146,7 +146,7 @@ namespace Ethereum.GeneralState.Test
             }
 
             TransactionProcessor processor =
-                new TransactionProcessor(_protocolSpecification, _stateProvider, _storageProvider, _virtualMachine, ChainId.Mainnet, ShouldLog.TransactionProcessor ? new ConsoleLogger() : null);
+                new TransactionProcessor(_protocolSpecification, _stateProvider, _storageProvider, _virtualMachine, ChainId.Mainnet, ShouldLog.Processing ? new ConsoleLogger() : null);
             Transaction transaction = new Transaction();
             transaction.To = test.IncomingTransaction.To;
             transaction.Value = test.IncomingTransaction.Value;

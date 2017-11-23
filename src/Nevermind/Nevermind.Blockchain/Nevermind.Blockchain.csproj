@@ -42,19 +42,13 @@
   <ItemGroup>
     <Compile Include="Blockchain.cs" />
     <Compile Include="BlockchainException.cs" />
+    <Compile Include="BlockchainStore.cs" />
     <Compile Include="BlockNotInitializedException.cs" />
     <Compile Include="BlockProcessor.cs" />
-    <Compile Include="Difficulty\ByzantiumDifficultyCalculator.cs" />
-    <Compile Include="Difficulty\DifficultyCalculatorFactory.cs" />
-    <Compile Include="Difficulty\FrontierDifficultyCalculator.cs" />
-    <Compile Include="Difficulty\HomesteadDifficultyCalculator.cs" />
     <Compile Include="Difficulty\IDifficultyCalculator.cs" />
-    <Compile Include="Difficulty\MainNetworkDifficultyCalculator.cs" />
-    <Compile Include="Difficulty\MordenDifficultyCalculator.cs" />
-    <Compile Include="Difficulty\OlimpicDifficultyCalculator.cs" />
     <Compile Include="Difficulty\ProtocolBasedDifficultyCalculator.cs" />
-    <Compile Include="Difficulty\RopstenDifficultyCalculator.cs" />
     <Compile Include="IBlockchainProcessor.cs" />
+    <Compile Include="IBlockchainStore.cs" />
     <Compile Include="IBlockProcessor.cs" />
     <Compile Include="IRewardCalculator.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />

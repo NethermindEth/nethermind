@@ -149,7 +149,7 @@ namespace Nevermind.Evm
                         currentState.ReturnDataBuffer = callResult.Output;
                     }
                 }
-                catch (EvmException ex)
+                catch (Exception ex) when (ex is EvmException || ex is OverflowException)
                 {
                     _logger?.Log($"EXCEPTION ({ex.GetType().Name}) IN {currentState.ExecutionType} AT DEPTH {currentState.Env.CallDepth} - RESTORING SNAPSHOT");
                     _stateProvider.Restore(currentState.StateSnapshot);
@@ -900,8 +900,8 @@ namespace Nevermind.Evm
                     case Instruction.CALLDATALOAD:
                     {
                         UpdateGas(GasCostOf.VeryLow, ref gasAvailable);
-                        BigInteger a = PopUInt();
-                        PushBytes(env.InputData.SliceWithZeroPadding((int)a, 32));
+                        BigInteger src = PopUInt();
+                        PushBytes(env.InputData.SliceWithZeroPadding(src, 32));
                         break;
                     }
                     case Instruction.CALLDATASIZE:
@@ -919,7 +919,7 @@ namespace Nevermind.Evm
                             ref gasAvailable);
                         UpdateMemoryCost(dest, length);
 
-                        byte[] callDataSlice = env.InputData.SliceWithZeroPadding((int)src, (int)length);
+                        byte[] callDataSlice = env.InputData.SliceWithZeroPadding(src, (int)length);
                         evmState.Memory.Save(dest, callDataSlice);
                         break;
                     }
@@ -936,7 +936,7 @@ namespace Nevermind.Evm
                         BigInteger length = PopUInt();
                         UpdateGas(GasCostOf.VeryLow + GasCostOf.Memory * EvmMemory.Div32Ceiling(length), ref gasAvailable);
                         UpdateMemoryCost(dest, length);
-                        byte[] callDataSlice = code.SliceWithZeroPadding((int)src, (int)length);
+                        byte[] callDataSlice = code.SliceWithZeroPadding(src, (int)length);
                         evmState.Memory.Save(dest, callDataSlice);
                         break;
                     }
@@ -964,7 +964,7 @@ namespace Nevermind.Evm
                             ref gasAvailable);
                         UpdateMemoryCost(dest, length);
                         byte[] externalCode = _stateProvider.GetCode(address);
-                        byte[] callDataSlice = externalCode.SliceWithZeroPadding((int)src, (int)length);
+                        byte[] callDataSlice = externalCode.SliceWithZeroPadding(src, (int)length);
                         evmState.Memory.Save(dest, callDataSlice);
                         break;
                     }
@@ -997,7 +997,7 @@ namespace Nevermind.Evm
                             throw new EvmAccessViolationException();
                         }
 
-                        byte[] returnDataSlice = _returnDataBuffer.SliceWithZeroPadding((int)src, (int)length);
+                        byte[] returnDataSlice = _returnDataBuffer.SliceWithZeroPadding(src, (int)length);
                         evmState.Memory.Save(dest, returnDataSlice);
                         break;
                     }

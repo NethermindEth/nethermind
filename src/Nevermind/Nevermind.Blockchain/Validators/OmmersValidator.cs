@@ -4,11 +4,11 @@ namespace Nevermind.Blockchain.Validators
 {
     public class OmmersValidator
     {
-        private readonly IBlockchainProcessor _blockchainProcessor;
+        private readonly IBlockchainStore _blockchain;
 
-        public OmmersValidator(IBlockchainProcessor blockchainProcessor)
+        public OmmersValidator(IBlockchainStore blockchain)
         {
-            _blockchainProcessor = blockchainProcessor;
+            _blockchain = blockchain;
         }
         
         public bool ValidateOmmers(Block block)
@@ -20,7 +20,7 @@ namespace Nevermind.Blockchain.Validators
 
             foreach (BlockHeader ommerHeader in block.Ommers)
             {
-                if (!IsKin(block, _blockchainProcessor.GetBlock(ommerHeader.Hash), 6))
+                if (!IsKin(block, _blockchain.FindBlock(ommerHeader.Hash), 6))
                 {
                     return false;
                 }
@@ -36,7 +36,7 @@ namespace Nevermind.Blockchain.Validators
                 return false;
             }
 
-            if (block.Hash == ommer.Hash)
+            if (block.Header.Hash == ommer.Header.Hash)
             {
                 return false;
             }
@@ -46,7 +46,7 @@ namespace Nevermind.Blockchain.Validators
                 return true;
             }
 
-            return IsKin(block, _blockchainProcessor.GetBlock(ommer.Header.ParentHash), relationshipLevel - 1);
+            return IsKin(block, _blockchain.FindBlock(ommer.Header.ParentHash), relationshipLevel - 1);
         }
     }
 }

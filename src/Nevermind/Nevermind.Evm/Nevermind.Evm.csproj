@@ -75,6 +75,7 @@
     <Compile Include="InvalidInputDataException.cs" />
     <Compile Include="InvalidInstructionException.cs" />
     <Compile Include="InvalidJumpDestinationException.cs" />
+    <Compile Include="ITransactionProcessor.cs" />
     <Compile Include="IVirtualMachine.cs" />
     <Compile Include="Precompiles\EcAddPrecompiledContract.cs" />
     <Compile Include="Precompiles\EcMulPrecompiledContract.cs" />

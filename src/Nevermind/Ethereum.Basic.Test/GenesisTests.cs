@@ -22,7 +22,7 @@ namespace Ethereum.Basic.Test
             test.ExtraData = Hex.ToBytes(pair.Value.ExtraData);
             test.GasLimit = Hex.ToBytes(pair.Value.GasLimit).ToUnsignedBigInteger();
             test.MixHash = new Keccak(pair.Value.MixHash);
-            test.Nonce = Hex.ToBytes(pair.Value.Nonce).ToUInt64();
+            test.Nonce = (ulong)Hex.ToBytes(pair.Value.Nonce).ToUnsignedBigInteger();
             test.Result = new Rlp(Hex.ToBytes(pair.Value.Result));
             test.Timestamp = Hex.ToBytes(pair.Value.Timestamp).ToUnsignedBigInteger();
             foreach (KeyValuePair<string, AllocationJson> addressBalance in pair.Value.Alloc)

@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Data.HashFunction;
+using System.Numerics;
 
 namespace Nevermind.Core.Extensions
 {
@@ -31,11 +32,16 @@ namespace Nevermind.Core.Extensions
             return slice;
         }
 
-        public static byte[] SliceWithZeroPadding(this byte[] bytes, int startIndex, int length)
+        public static byte[] SliceWithZeroPadding(this byte[] bytes, BigInteger startIndex, int length)
         {
+            if (startIndex >= bytes.Length)
+            {
+                return new byte[length];
+            }
+
             if (length == 1)
             {
-                return bytes.Length == 0 ? new byte[0] : new[] { bytes[startIndex] };
+                return bytes.Length == 0 ? new byte[0] : new[] { bytes[(int)startIndex] };
             }
             
             byte[] slice = new byte[length];
@@ -44,7 +50,7 @@ namespace Nevermind.Core.Extensions
                 return slice;
             }
 
-            Buffer.BlockCopy(bytes, startIndex, slice, 0, Math.Min(bytes.Length - startIndex, length));
+            Buffer.BlockCopy(bytes, (int)startIndex, slice, 0, Math.Min(bytes.Length - (int)startIndex, length));
             return slice;
         }
 

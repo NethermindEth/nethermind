@@ -1,13 +1,13 @@
 using System.Collections.Generic;
+using System.Numerics;
 using Nevermind.Core;
-using Nevermind.Core.Crypto;
 
 namespace Nevermind.Blockchain
 {
     public interface IBlockchainProcessor
     {
         Block HeadBlock { get; }
-        void ProcessBlocks(List<Block> blocks);
-        Block GetBlock(Keccak hash);
+        BigInteger TotalDifficulty { get; }
+        void ProcessBlocks(List<Block> blocks);        
     }
 }
