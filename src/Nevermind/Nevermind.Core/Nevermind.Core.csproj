@@ -64,7 +64,9 @@
     <Compile Include="Crypto\Ripemd.cs" />
     <Compile Include="Crypto\Sha2.cs" />
     <Compile Include="Encoding\AccountDecoder.cs" />
+    <Compile Include="Encoding\BlockHeaderDecoder.cs" />
     <Compile Include="Encoding\IRlpDecoder.cs" />
+    <Compile Include="Encoding\BlockDecoder.cs" />
     <Compile Include="Encoding\TransactionDecoder.cs" />
     <Compile Include="EthereumNetwork.cs" />
     <Compile Include="EthereumNetworkExtensions.cs" />

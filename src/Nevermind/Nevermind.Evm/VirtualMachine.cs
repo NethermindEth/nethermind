@@ -1015,7 +1015,7 @@ namespace Nevermind.Evm
                         }
                         else
                         {
-                            PushBytes(_blockhashProvider.GetBlockhash(env.CurrentBlock, (int)a).Bytes);
+                            PushBytes(_blockhashProvider.GetBlockhash(env.CurrentBlock, (int)a)?.Bytes ?? BytesZero);
                         }
 
                         break;

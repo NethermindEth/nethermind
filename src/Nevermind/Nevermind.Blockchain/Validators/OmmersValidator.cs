@@ -4,11 +4,13 @@ namespace Nevermind.Blockchain.Validators
 {
     public class OmmersValidator
     {
-        private readonly IBlockchainStore _blockchain;
+        private readonly IBlockchainStore _chain;
+        private readonly BlockHeaderValidator _headerValidator;
 
-        public OmmersValidator(IBlockchainStore blockchain)
+        public OmmersValidator(IBlockchainStore chain, BlockHeaderValidator headerValidator)
         {
-            _blockchain = blockchain;
+            _chain = chain;
+            _headerValidator = headerValidator;
         }
         
         public bool ValidateOmmers(Block block)
@@ -20,7 +22,23 @@ namespace Nevermind.Blockchain.Validators
 
             foreach (BlockHeader ommerHeader in block.Ommers)
             {
-                if (!IsKin(block, _blockchain.FindBlock(ommerHeader.Hash), 6))
+                if (_chain.FindOmmer(ommerHeader.Hash) != null)
+                {
+                    return false;
+                }
+                
+                BlockHeader ommersParent = _chain.FindBlock(ommerHeader.ParentHash)?.Header;
+                if (ommersParent == null)
+                {
+                    return false;
+                }
+                
+                if (!IsKin(block, ommersParent, 6))
+                {
+                    return false;
+                }
+
+                if (!_headerValidator.IsValid(ommerHeader))
                 {
                     return false;
                 }
@@ -29,24 +47,30 @@ namespace Nevermind.Blockchain.Validators
             return true;
         }
 
-        private bool IsKin(Block block, Block ommer, int relationshipLevel)
+        private bool IsKin(Block block, BlockHeader ommersAncestor, int relationshipLevel)
         {
             if (relationshipLevel == 0)
             {
                 return false;
             }
 
-            if (block.Header.Hash == ommer.Header.Hash)
+            if (block.Header.Hash == ommersAncestor.Hash)
             {
                 return false;
             }
 
-            if (block.Header.ParentHash == ommer.Header.ParentHash)
+            if (block.Header.ParentHash == ommersAncestor.ParentHash)
             {
                 return true;
             }
 
-            return IsKin(block, _blockchain.FindBlock(ommer.Header.ParentHash), relationshipLevel - 1);
+            BlockHeader ommersParent = _chain.FindBlock(ommersAncestor.ParentHash)?.Header ?? _chain.FindOmmer(ommersAncestor.ParentHash);
+            if (ommersParent == null)
+            {
+                return false;
+            }
+            
+            return IsKin(block, ommersParent, relationshipLevel - 1);
         }
     }
 }

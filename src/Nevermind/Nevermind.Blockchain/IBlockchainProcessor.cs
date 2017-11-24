@@ -1,6 +1,6 @@
-using System.Collections.Generic;
 using System.Numerics;
 using Nevermind.Core;
+using Nevermind.Core.Encoding;
 
 namespace Nevermind.Blockchain
 {
@@ -8,6 +8,6 @@ namespace Nevermind.Blockchain
     {
         Block HeadBlock { get; }
         BigInteger TotalDifficulty { get; }
-        void ProcessBlocks(List<Block> blocks);        
+        Block Process(Rlp blockRlp);
     }
 }

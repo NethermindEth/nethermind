@@ -7,5 +7,7 @@ namespace Nevermind.Blockchain
     {
         void AddBlock(Block block);
         Block FindBlock(Keccak blockHash);
+        void AddOmmer(BlockHeader blockHeader);
+        BlockHeader FindOmmer(Keccak blockHash);
     }
 }

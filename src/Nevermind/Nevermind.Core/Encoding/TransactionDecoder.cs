@@ -7,10 +7,9 @@ namespace Nevermind.Core.Encoding
 {
     public class TransactionDecoder : IRlpDecoder<Transaction>
     {
-        public Transaction Decode(Rlp rlp)
+        internal Transaction Decode(object[] data)
         {
             Transaction transaction = new Transaction();
-            object[] data = (object[]) Rlp.Decode(rlp);
             transaction.Nonce = ((byte[]) data[0]).ToUnsignedBigInteger();
             transaction.GasPrice = ((byte[]) data[1]).ToUnsignedBigInteger();
             transaction.GasLimit = ((byte[]) data[2]).ToUnsignedBigInteger();
@@ -43,6 +42,12 @@ namespace Nevermind.Core.Encoding
             }
 
             return transaction;
+        }
+        
+        public Transaction Decode(Rlp rlp)
+        {
+            object[] data = (object[]) Rlp.Decode(rlp);
+            return Decode(data);
         }
     }
 }

@@ -1,23 +1,17 @@
-﻿using System;
-using Nevermind.Core;
+﻿using Nevermind.Core;
 
 namespace Nevermind.Blockchain.Validators
 {
     public class BlockValidator
     {
+        private readonly BlockHeaderValidator _blockHeaderValidator;
+
+        private readonly OmmersValidator _ommersValidator;
+
         public BlockValidator(BlockHeaderValidator blockHeaderValidator, OmmersValidator ommersValidator)
         {
             _ommersValidator = ommersValidator;
             _blockHeaderValidator = blockHeaderValidator;
-        }
-        
-        private readonly BlockHeaderValidator _blockHeaderValidator;
-        
-        private readonly OmmersValidator _ommersValidator;
-
-        public bool Finalize(Block block)
-        {
-            throw new NotImplementedException();
         }
 
         public bool IsValid(Block block)
@@ -35,7 +29,7 @@ namespace Nevermind.Blockchain.Validators
                 }
             }
 
-            return _blockHeaderValidator.IsValid(block);
+            return _blockHeaderValidator.IsValid(block.Header);
         }
     }
 }

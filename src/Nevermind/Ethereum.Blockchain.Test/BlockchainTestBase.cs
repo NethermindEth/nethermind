@@ -28,6 +28,10 @@ namespace Ethereum.Blockchain.Test
         private IBlockhashProvider _blockhashProvider;
         private InMemoryDb _db;
         private IStorageProvider _storageProvider;
+        private IBlockchainStore _chain;
+        private BlockHeaderValidator _headerValidator;
+        private BlockValidator _blockValidator;
+        private OmmersValidator _ommersValidator;   
         private Dictionary<EthereumNetwork, VirtualMachine> _virtualMachines;
         private Dictionary<EthereumNetwork, StateProvider> _stateProviders;
         private ILogger _logger;
@@ -36,8 +40,13 @@ namespace Ethereum.Blockchain.Test
         {
             _logger = logger;
             _db = new InMemoryDb();
+            _chain = new BlockchainStore();
+            _headerValidator = new BlockHeaderValidator(_chain);
+             _ommersValidator = new OmmersValidator(_chain, _headerValidator);
+            _blockValidator = new BlockValidator(_headerValidator, _ommersValidator);
+            
             _storageProvider = new StorageProvider(ShouldLog.State ? logger : null);
-            _blockhashProvider = new TestBlockhashProvider();
+            _blockhashProvider = new BlockhashProvider(_chain);
             _virtualMachines = new Dictionary<EthereumNetwork, VirtualMachine>();
             _stateProviders = new Dictionary<EthereumNetwork, StateProvider>();
             EthereumNetwork[] networks = {EthereumNetwork.Frontier, EthereumNetwork.Homestead, EthereumNetwork.Byzantium, EthereumNetwork.SpuriousDragon, EthereumNetwork.TangerineWhistle};
@@ -186,8 +195,8 @@ namespace Ethereum.Blockchain.Test
 
             InitializeTestState(test);
 
-            // transition...
-            _stateProviders[test.Network].ProtocolSpecification = _protocolSpecificationProvider.GetSpec(test.Network, test.GenesisBlockHeader.Number);
+            // TODO: transition...
+            _stateProviders[test.Network].ProtocolSpecification = _protocolSpecificationProvider.GetSpec(test.Network, 0);
 
             IProtocolSpecification spec = _protocolSpecificationProvider.GetSpec(test.Network, 1);
             IBlockProcessor blockProcessor = new BlockProcessor(
@@ -198,24 +207,39 @@ namespace Ethereum.Blockchain.Test
                 _stateProviders[test.Network],
                 _logger);
             
-            IBlockchainStore chain = new BlockchainStore();
-
             IBlockchainProcessor blockchain = new BlockchainProcessor(
-                new Block(test.GenesisBlockHeader),
+                new Block(Convert(test.GenesisBlockHeader)),
                 blockProcessor,
-                chain,
-                new BlockValidator(new BlockHeaderValidator(chain), new OmmersValidator(chain)),
+                _chain,
+                _blockValidator,
                 _logger);
 
-            stopwatch?.Start();
-            blockchain.ProcessBlocks(test.Blocks.ToList());
-            stopwatch?.Start();
+            var rlps = test.Blocks.Select(tb => new Rlp(Hex.ToBytes(tb.Rlp))).ToArray();
+            Block[] processedBlocks = new Block[rlps.Length];
+            for (int i = 0; i < rlps.Length; i++)
+            {
+                stopwatch?.Start();
+                try
+                {
+                    processedBlocks[i] = blockchain.Process(rlps[i]);
+                }
+                catch (InvalidBlockException)
+                {
+                    processedBlocks[i] = null;
+                    Console.WriteLine($"INVALID BLOCK {i} of TEST {test.Name}");
+                }
+                
+                stopwatch?.Stop();   
+            }
+            
+            // assert on blocks
+            
             RunAssertions(test, blockchain.HeadBlock);
         }
 
         private void InitializeTestState(BlockchainTest test)
         {
-            _stateProviders[test.Network].ProtocolSpecification = _protocolSpecificationProvider.GetSpec(EthereumNetwork.Frontier, test.Blocks[0].Header.Number);
+            _stateProviders[test.Network].ProtocolSpecification = _protocolSpecificationProvider.GetSpec(EthereumNetwork.Frontier, 0);
             foreach (KeyValuePair<Address, AccountState> accountState in test.Pre)
             {
                 foreach (KeyValuePair<BigInteger, byte[]> storageItem in accountState.Value.Storage)
@@ -238,7 +262,7 @@ namespace Ethereum.Blockchain.Test
 
         private void RunAssertions(BlockchainTest test, Block headBlock)
         {
-            BlockHeader testHeader = test.Blocks[0].Header;
+            BlockHeader testHeader = Convert(test.Blocks[0].BlockHeader ?? test.GenesisBlockHeader);
             List<string> differences = new List<string>();
             foreach (KeyValuePair<Address, AccountState> accountState in test.PostState)
             {
@@ -280,9 +304,9 @@ namespace Ethereum.Blockchain.Test
 
 
             BigInteger gasUsed = headBlock.Header.GasUsed;
-            if (testHeader.GasUsed != gasUsed)
+            if ((testHeader?.GasUsed ?? 0) != gasUsed)
             {
-                differences.Add($"GAS USED exp: {testHeader.GasUsed}, actual: {gasUsed}");
+                differences.Add($"GAS USED exp: {testHeader?.GasUsed ?? 0}, actual: {gasUsed}");
             }
 
             if (headBlock.Transactions.Any() && testHeader.Bloom.ToString() != headBlock.Receipts.Last().Bloom.ToString())
@@ -378,8 +402,8 @@ namespace Ethereum.Blockchain.Test
             test.Network = testJson.EthereumNetwork;
             test.LastBlockHash = new Keccak(testJson.LastBlockHash);
             test.GenesisRlp = new Rlp(Hex.ToBytes(testJson.GenesisRlp));
-            test.GenesisBlockHeader = Convert(testJson.GenesisBlockHeader);
-            test.Blocks = testJson.Blocks.Select(Convert).ToArray();
+            test.GenesisBlockHeader = testJson.GenesisBlockHeader;
+            test.Blocks = testJson.Blocks;
             test.PostState = testJson.PostState.ToDictionary(p => new Address(p.Key), p => Convert(p.Value));
             test.Pre = testJson.Pre.ToDictionary(p => new Address(p.Key), p => Convert(p.Value));
             return test;
@@ -504,8 +528,8 @@ namespace Ethereum.Blockchain.Test
             public Keccak LastBlockHash { get; set; }
             public Rlp GenesisRlp { get; set; }
 
-            public Block[] Blocks { get; set; }
-            public BlockHeader GenesisBlockHeader { get; set; }
+            public TestBlockJson[] Blocks { get; set; }
+            public TestBlockHeaderJson GenesisBlockHeader { get; set; }
 
             public Dictionary<Address, AccountState> Pre { get; set; }
             public Dictionary<Address, AccountState> PostState { get; set; }

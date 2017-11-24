@@ -31,7 +31,7 @@ namespace Nevermind.Blockchain.Test.Runner
                     Console.WriteLine("PASS");
                     Console.ForegroundColor = defaultColor;
                 }
-                catch (Exception)
+                catch (Exception ex)
                 {
                     failingTests.Add(test.Name);
                     Console.ForegroundColor = ConsoleColor.Red;
@@ -48,9 +48,9 @@ namespace Nevermind.Blockchain.Test.Runner
                         Setup(logger);
                         RunTest(test);
                     }
-                    catch (Exception ex)
+                    catch (Exception againEx)
                     {
-                        logger.Log(ex.ToString());
+                        logger.Log(againEx.ToString());
                         logger.Flush();
                     }
 

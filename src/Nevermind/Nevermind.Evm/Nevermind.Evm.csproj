@@ -61,7 +61,6 @@
     <Compile Include="Abi\AbiUFixed.cs" />
     <Compile Include="Abi\AbiUInt.cs" />
     <Compile Include="Abi\AbiAddress.cs" />
-    <Compile Include="BlockhashProvider.cs" />
     <Compile Include="CallDepthException.cs" />
     <Compile Include="EvmAccessViolationException.cs" />
     <Compile Include="EvmException.cs" />

@@ -57,13 +57,13 @@ namespace Nevermind.Core.Encoding
 
             if (prefix == 0)
             {
-                result.Add(new byte[] { 0 });
+                result.Add(new byte[] {0});
                 return CheckAndReturn(result, context);
             }
 
             if (prefix < 128)
             {
-                result.Add(new[] { prefix });
+                result.Add(new[] {prefix});
                 return CheckAndReturn(result, context);
             }
 
@@ -102,10 +102,11 @@ namespace Nevermind.Core.Encoding
                 }
 
                 byte[] data = context.Pop(length);
-                if (data[0] == 0)
-                {
-                    throw new InvalidOperationException();
-                }
+                // TODO: I had a check for data not to be zero in front but that did not work for Bloom
+//                if (data[0] == 0)
+//                {
+//                    throw new InvalidOperationException();
+//                }
 
                 result.Add(data);
                 return CheckAndReturn(result, context);
@@ -321,7 +322,7 @@ namespace Nevermind.Core.Encoding
                 if (value <= byte.MaxValue)
                 {
                     // ReSharper disable once PossibleInvalidCastException
-                    return Encode(new[] { Convert.ToByte(value) });
+                    return Encode(new[] {Convert.ToByte(value)});
                 }
 
                 if (value <= short.MaxValue)
@@ -415,12 +416,14 @@ namespace Nevermind.Core.Encoding
             new Dictionary<RuntimeTypeHandle, IRlpDecoder>
             {
                 [typeof(Transaction).TypeHandle] = new TransactionDecoder(),
-                [typeof(Account).TypeHandle] = new AccountDecoder()
+                [typeof(Account).TypeHandle] = new AccountDecoder(),
+                [typeof(Block).TypeHandle] = new BlockDecoder(),
+                [typeof(BlockHeader).TypeHandle] = new BlockHeaderDecoder()
             };
 
         public Rlp(byte singleByte)
         {
-            Bytes = new[] { singleByte };
+            Bytes = new[] {singleByte};
         }
 
         public Rlp(byte[] bytes)

@@ -117,20 +117,20 @@ namespace Nevermind.Blockchain.Test.Runner
 //            Run(bugHunter, "stZeroCallsRevert", testWildcard);
 //            Run(bugHunter, "stZeroCallsTest", testWildcard);
 
-            Run(bugHunter, "bcBlockGasLimitTest", testWildcard);
-            Run(bugHunter, "bcExploitTest", testWildcard);
-            Run(bugHunter, "bcForgedTest", testWildcard);
-            Run(bugHunter, "bcForkStressTest", testWildcard);
-            Run(bugHunter, "bcGasPricerTest", testWildcard);
-            Run(bugHunter, "bcInvalidHeaderTest", testWildcard);
-            Run(bugHunter, "bcMultiChainTestTest", testWildcard);
-            Run(bugHunter, "bcRandomBlockhashTest", testWildcard);
-            Run(bugHunter, "bcStateTests", testWildcard);
-            Run(bugHunter, "bcTotalDifficultyTest", testWildcard);
-            Run(bugHunter, "bcUncleHeaderValidity", testWildcard);
+//            Run(bugHunter, "bcBlockGasLimitTest", testWildcard);
+//            Run(bugHunter, "bcExploitTest", testWildcard);
+//            Run(bugHunter, "bcForgedTest", testWildcard);
+//            Run(bugHunter, "bcForkStressTest", testWildcard);
+//            Run(bugHunter, "bcGasPricerTest", testWildcard);
+//            Run(bugHunter, "bcInvalidHeaderTest", testWildcard);
+//            Run(bugHunter, "bcMultiChainTestTest", testWildcard);
+//            Run(bugHunter, "bcRandomBlockhashTest", testWildcard);
+//            Run(bugHunter, "bcStateTests", testWildcard);
+//            Run(bugHunter, "bcTotalDifficultyTest", testWildcard);
+//            Run(bugHunter, "bcUncleHeaderValidity", testWildcard);
             Run(bugHunter, "bcUncleTest", testWildcard);
-            Run(bugHunter, "bcValidBlockTest", testWildcard);
-            Run(bugHunter, "bcWalletTest", testWildcard);
+//            Run(bugHunter, "bcValidBlockTest", testWildcard);
+//            Run(bugHunter, "bcWalletTest", testWildcard);
 
             //Run("stZeroKnowledge");
             //Run("stZeroKnowledge2");

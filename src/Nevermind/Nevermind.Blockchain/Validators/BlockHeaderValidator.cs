@@ -13,10 +13,9 @@ namespace Nevermind.Blockchain.Validators
             _chain = chain;
         }
         
-        public bool IsValid(Block block)
+        public bool IsValid(BlockHeader header)
         {
-            Block parent = _chain.FindBlock(block.Header.ParentHash);
-            BlockHeader header = block.Header;
+            Block parent = _chain.FindBlock(header.ParentHash);            
             if (parent == null)
             {
                 return IsGenesisHeaderValid(header);
