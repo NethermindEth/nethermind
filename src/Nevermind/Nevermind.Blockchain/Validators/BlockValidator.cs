@@ -2,7 +2,7 @@
 
 namespace Nevermind.Blockchain.Validators
 {
-    public class BlockValidator
+    public class BlockValidator : IBlockValidator
     {
         private readonly BlockHeaderValidator _blockHeaderValidator;
 
@@ -14,9 +14,9 @@ namespace Nevermind.Blockchain.Validators
             _blockHeaderValidator = blockHeaderValidator;
         }
 
-        public bool IsValid(Block block)
+        public bool Validate(Block block)
         {
-            if (!_ommersValidator.ValidateOmmers(block))
+            if (!_ommersValidator.Validate(block.Header, block.Ommers))
             {
                 return false;
             }
@@ -29,7 +29,7 @@ namespace Nevermind.Blockchain.Validators
                 }
             }
 
-            return _blockHeaderValidator.IsValid(block.Header);
+            return _blockHeaderValidator.Validate(block.Header);
         }
     }
 }

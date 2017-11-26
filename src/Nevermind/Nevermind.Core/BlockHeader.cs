@@ -8,6 +8,10 @@ namespace Nevermind.Core
     {
         public const ulong GenesisBlockNumber = 0;
 
+        internal BlockHeader()
+        {
+        }
+        
         public BlockHeader(Keccak parentHash, Keccak ommersHash, Address beneficiary, BigInteger difficulty, BigInteger number, long gasLimit, BigInteger timestamp, byte[] extraData)
         {
             ParentHash = parentHash;
@@ -20,20 +24,20 @@ namespace Nevermind.Core
             ExtraData = extraData;
         }
 
-        public Keccak ParentHash { get; }
-        public Keccak OmmersHash { get; }
-        public Address Beneficiary { get; }
+        public Keccak ParentHash { get; internal set; }
+        public Keccak OmmersHash { get; internal set;}
+        public Address Beneficiary { get; internal set;}
 
         public Keccak StateRoot { get; set; }
         public Keccak TransactionsRoot { get; set; }
         public Keccak ReceiptsRoot { get; set; }
         public Bloom Bloom { get; set; }
-        public BigInteger Difficulty { get; }
-        public BigInteger Number { get; }
+        public BigInteger Difficulty { get; internal set;}
+        public BigInteger Number { get; internal set;}
         public long GasUsed { get; set; }
-        public long GasLimit { get; }
-        public BigInteger Timestamp { get; }
-        public byte[] ExtraData { get; }
+        public long GasLimit { get; internal set;}
+        public BigInteger Timestamp { get; internal set;}
+        public byte[] ExtraData { get; internal set;}
         public Keccak MixHash { get; set; }
         public ulong Nonce { get; set; }
         public Keccak Hash { get; set; }

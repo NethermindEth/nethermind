@@ -153,40 +153,7 @@ namespace Ethereum.Blockchain.Test
                 _line.Clear();
             }
         }
-
-        private class LoggingConsole : TextWriter
-        {
-            private readonly TraceListener _traceListener;
-
-            public LoggingConsole(TraceListener traceListener)
-            {
-                _traceListener = traceListener;
-            }
-
-            public override void Write(char value)
-            {
-                _traceListener.Write(value);
-            }
-
-            public override void WriteLine()
-            {
-                _traceListener.WriteLine("");
-            }
-
-            public override void WriteLine(string value)
-            {
-                _traceListener.WriteLine(value);
-            }
-
-            public override Task WriteAsync(char value)
-            {
-                _traceListener.Write(value);
-                return Task.CompletedTask;
-            }
-
-            public override Encoding Encoding => Encoding.UTF8;
-        }
-
+        
         protected void RunTest(BlockchainTest test, Stopwatch stopwatch = null)
         {
             LoggingTraceListener traceListener = new LoggingTraceListener(_logger);
@@ -262,7 +229,7 @@ namespace Ethereum.Blockchain.Test
 
         private void RunAssertions(BlockchainTest test, Block headBlock)
         {
-            BlockHeader testHeader = Convert(test.Blocks[0].BlockHeader ?? test.GenesisBlockHeader);
+            BlockHeader testHeader = Convert(test.Blocks.LastOrDefault(b => b.BlockHeader != null)?.BlockHeader ?? test.GenesisBlockHeader);
             List<string> differences = new List<string>();
             foreach (KeyValuePair<Address, AccountState> accountState in test.PostState)
             {

@@ -84,9 +84,9 @@ namespace Nevermind.Blockchain
         {
             Keccak ommersHash = Keccak.Compute(Rlp.Encode(uncles)); // TODO: refactor RLP here
             BigInteger blockNumber = parent.Header.Number + 1;
-            BigInteger dificulty = _difficultyCalculator.Calculate(parent.Header.Difficulty, parent.Header.Timestamp, timestamp, blockNumber, uncles.Length > 0);
+            BigInteger dificulty = _difficultyCalculator.Calculate(parent.Header.Difficulty, parent.Header.Timestamp, timestamp, blockNumber, parent.Ommers.Length > 0);
 
-            BlockHeader header = new BlockHeader(parent.Header.StateRoot, ommersHash, beneficiary, dificulty, blockNumber, gasLimit, timestamp, extraData);
+            BlockHeader header = new BlockHeader(parent.Header.Hash, ommersHash, beneficiary, dificulty, blockNumber, gasLimit, timestamp, extraData);
             header.MixHash = mixHash;
             header.Nonce = nonce;
             Block block = new Block(header, uncles);

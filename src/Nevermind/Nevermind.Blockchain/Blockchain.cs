@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Numerics;
 using Nevermind.Blockchain.Validators;
 using Nevermind.Core;
@@ -10,14 +11,14 @@ namespace Nevermind.Blockchain
     {
         private readonly IBlockchainStore _blockchainStore;
         private readonly IBlockProcessor _blockProcessor;
-        private readonly BlockValidator _blockValidator;
+        private readonly IBlockValidator _blockValidator;
         private readonly ILogger _logger;
 
         public BlockchainProcessor(
             Block genesisBlock,
             IBlockProcessor blockProcessor,
             IBlockchainStore blockchainStore,
-            BlockValidator blockValidator,
+            IBlockValidator blockValidator,
             ILogger logger)
         {
             _blockchainStore = blockchainStore;
@@ -25,7 +26,7 @@ namespace Nevermind.Blockchain
             _blockProcessor = blockProcessor;
             _logger = logger;
 
-            bool isValid = _blockValidator.IsValid(genesisBlock);
+            bool isValid = _blockValidator.Validate(genesisBlock);
             if (!isValid)
             {
                 throw new ArgumentException("Genesis block must be valid", nameof(genesisBlock));
@@ -60,18 +61,23 @@ namespace Nevermind.Blockchain
                 block.Header.MixHash,
                 block.Header.Nonce,
                 block.Ommers);
-            TotalDifficulty += HeadBlock.Header.Difficulty;
-
+            
             // TODO: validate everything else against the derlped block
 
+            AddToChain(processedBlock);
+            return processedBlock;
+        }
+
+        private void AddToChain(Block processedBlock)
+        {
+            processedBlock.Header.RecomputeHash();
             HeadBlock = processedBlock;
             _blockchainStore.AddBlock(HeadBlock);
+            TotalDifficulty += HeadBlock.Header.Difficulty;
             foreach (BlockHeader ommer in processedBlock.Ommers)
             {
-                _blockchainStore.AddOmmer(ommer);    
+                _blockchainStore.AddOmmer(ommer);
             }
-            
-            return processedBlock;
         }
 
         public Block Process(Rlp blockRlp)
@@ -79,9 +85,13 @@ namespace Nevermind.Blockchain
             try
             {
                 Block block = Rlp.Decode<Block>(blockRlp);
-                if (_blockValidator.IsValid(block))
+                block.Header.RecomputeHash();
+                
+                if (_blockValidator.Validate(block))
                 {
-                    return Process(block);
+                    Block processedBlock = Process(block);
+                    Debug.Assert(processedBlock.Header.Hash.Equals(block.Header.Hash));
+                    return processedBlock;
                 }
 
                 throw new InvalidBlockException(blockRlp);

@@ -4,7 +4,7 @@ using Nevermind.Core.Crypto;
 
 namespace Nevermind.Blockchain.Validators
 {
-    public class BlockHeaderValidator
+    public class BlockHeaderValidator : IBlockHeaderValidator
     {
         private readonly IBlockchainStore _chain;
 
@@ -12,10 +12,10 @@ namespace Nevermind.Blockchain.Validators
         {
             _chain = chain;
         }
-        
-        public bool IsValid(BlockHeader header)
+
+        public bool Validate(BlockHeader header)
         {
-            Block parent = _chain.FindBlock(header.ParentHash);            
+            Block parent = _chain.FindBlock(header.ParentHash);
             if (parent == null)
             {
                 return IsGenesisHeaderValid(header);
