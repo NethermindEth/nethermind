@@ -4,6 +4,7 @@ namespace Nevermind.Blockchain.Validators
 {
     public interface IBlockValidator
     {
-        bool Validate(Block block);
+        bool ValidateSuggestedBlock(Block suggestedBlock);
+        bool ValidateProcessedBlock(Block processedBlock, Block suggestedBlock);
     }
 }

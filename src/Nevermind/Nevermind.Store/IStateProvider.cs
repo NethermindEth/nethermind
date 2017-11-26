@@ -1,15 +1,11 @@
 using System.Numerics;
 using Nevermind.Core;
 using Nevermind.Core.Crypto;
-using Nevermind.Core.Encoding;
-using Nevermind.Core.Potocol;
 
 namespace Nevermind.Store
 {
     public interface IStateProvider
     {
-        IProtocolSpecification ProtocolSpecification { get; set; }
-
         StateTree State { get; }
 
         void DeleteAccount(Address address);
@@ -25,8 +21,6 @@ namespace Nevermind.Store
         BigInteger GetNonce(Address address);
 
         BigInteger GetBalance(Address address);
-
-        byte[] GetCode(Keccak codeHash);
 
         byte[] GetCode(Address address);
 

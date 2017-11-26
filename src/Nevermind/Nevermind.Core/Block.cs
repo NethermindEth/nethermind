@@ -12,6 +12,7 @@ namespace Nevermind.Core
             Receipts = new List<TransactionReceipt>();
         }
 
+        public bool IsGenesis => Header.Number == 0;
         public BlockHeader Header { get; }
         public List<Transaction> Transactions { get; set; }
         public List<TransactionReceipt> Receipts { get; set; }

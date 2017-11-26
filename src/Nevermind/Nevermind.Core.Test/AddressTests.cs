@@ -1,4 +1,4 @@
-﻿using Nevermind.Core.Encoding;
+﻿using Nevermind.Core.Crypto;
 using NUnit.Framework;
 
 namespace Nevermind.Core.Test
@@ -40,6 +40,49 @@ namespace Nevermind.Core.Test
             new System.Random(1).NextBytes(bytes);
             Address address = new Address(bytes);
             Assert.AreEqual(address.Hex, new Hex(bytes));
+        }
+
+        [Test]
+        public void Equals_works()
+        {
+            Address addressA = new Address(Keccak.Compute("a"));
+            Address addressA2 = new Address(Keccak.Compute("a"));
+            Address addressB = new Address(Keccak.Compute("b"));
+            Assert.True(addressA.Equals(addressA2));
+            // ReSharper disable once EqualExpressionComparison
+            Assert.True(addressA.Equals(addressA));
+            Assert.False(addressA.Equals(addressB));
+            Assert.False(addressA.Equals(null));
+        }
+        
+        [Test]
+        public void Equals_operator_works()
+        {
+            Address addressA = new Address(Keccak.Compute("a"));
+            Address addressA2 = new Address(Keccak.Compute("a"));
+            Address addressB = new Address(Keccak.Compute("b"));
+            Assert.True(addressA == addressA2);
+            // ReSharper disable once EqualExpressionComparison
+            Assert.True(addressA == addressA);
+            Assert.False(addressA == addressB);
+            Assert.False(addressA == null);
+            Assert.False(null == addressA);
+            Assert.True((Address)null == null);
+        }
+        
+        [Test]
+        public void Not_equals_operator_works()
+        {
+            Address addressA = new Address(Keccak.Compute("a"));
+            Address addressA2 = new Address(Keccak.Compute("a"));
+            Address addressB = new Address(Keccak.Compute("b"));
+            Assert.False(addressA != addressA2);
+            // ReSharper disable once EqualExpressionComparison
+            Assert.False(addressA != addressA);
+            Assert.True(addressA != addressB);
+            Assert.True(addressA == null);
+            Assert.True(null == addressA);
+            Assert.False((Address)null == null);
         }
     }
 }

@@ -40,7 +40,7 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Blockchain.cs" />
+    <Compile Include="BlockchainProcessor.cs" />
     <Compile Include="BlockchainException.cs" />
     <Compile Include="BlockchainStore.cs" />
     <Compile Include="BlockhashProvider.cs" />

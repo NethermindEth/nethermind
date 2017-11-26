@@ -168,17 +168,19 @@ namespace Ethereum.Blockchain.Test
             IProtocolSpecification spec = _protocolSpecificationProvider.GetSpec(test.Network, 1);
             IBlockProcessor blockProcessor = new BlockProcessor(
                 spec,
+                _chain,
+                _blockValidator,
                 new ProtocolBasedDifficultyCalculator(spec),
                 new RewardCalculator(spec),
                 new TransactionProcessor(spec, _stateProviders[test.Network], _storageProvider, _virtualMachines[test.Network], ChainId.Mainnet, _logger),
                 _stateProviders[test.Network],
+                _storageProvider,
                 _logger);
             
-            IBlockchainProcessor blockchain = new BlockchainProcessor(
-                new Block(Convert(test.GenesisBlockHeader)),
+            IBlockchainProcessor blockchainProcessor = new BlockchainProcessor(
+                test.GenesisRlp,
                 blockProcessor,
                 _chain,
-                _blockValidator,
                 _logger);
 
             var rlps = test.Blocks.Select(tb => new Rlp(Hex.ToBytes(tb.Rlp))).ToArray();
@@ -188,7 +190,7 @@ namespace Ethereum.Blockchain.Test
                 stopwatch?.Start();
                 try
                 {
-                    processedBlocks[i] = blockchain.Process(rlps[i]);
+                    processedBlocks[i] = blockchainProcessor.Process(rlps[i]);
                 }
                 catch (InvalidBlockException)
                 {
@@ -201,7 +203,7 @@ namespace Ethereum.Blockchain.Test
             
             // assert on blocks
             
-            RunAssertions(test, blockchain.HeadBlock);
+            RunAssertions(test, blockchainProcessor.HeadBlock);
         }
 
         private void InitializeTestState(BlockchainTest test)

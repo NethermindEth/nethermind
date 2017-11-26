@@ -80,5 +80,20 @@ namespace Nevermind.Core
         {
             return Hex.GetHashCode();
         }
+        
+        public static bool operator==(Address a, Address b)
+        {
+            if(ReferenceEquals(a, b))
+            {
+                return true;
+            }
+            
+            return a?.Equals(b) ?? false;
+        }
+        
+        public static bool operator!=(Address a, Address b)
+        {
+            return !(a == b);
+        }
     }
 }
