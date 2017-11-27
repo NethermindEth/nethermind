@@ -16,6 +16,7 @@ namespace Nevermind.Blockchain
     public class BlockProcessor : IBlockProcessor
     {
         private readonly ITransactionProcessor _transactionProcessor;
+        private readonly ISnapshotable _db;
         private readonly IStateProvider _stateProvider;
         private readonly IStorageProvider _storageProvider;
         private readonly ILogger _logger;
@@ -31,6 +32,7 @@ namespace Nevermind.Blockchain
             IDifficultyCalculator difficultyCalculator,
             IRewardCalculator rewardCalculator,
             ITransactionProcessor transactionProcessor,
+            ISnapshotable db,
             IStateProvider stateProvider,
             IStorageProvider storageProvider,
             ILogger logger = null)
@@ -44,6 +46,7 @@ namespace Nevermind.Blockchain
             _difficultyCalculator = difficultyCalculator;
             _rewardCalculator = rewardCalculator;
             _transactionProcessor = transactionProcessor;
+            _db = db;
         }
 
         private readonly IProtocolSpecification _protocolSpecification;
@@ -55,6 +58,7 @@ namespace Nevermind.Blockchain
             List<TransactionReceipt> receipts = new List<TransactionReceipt>(); // TODO: pool?
             for (int i = 0; i < transactions.Count; i++)
             {
+                _logger?.Log($"PROCESSING TRANSACTION {i}");
                 TransactionReceipt receipt = _transactionProcessor.Execute(transactions[i], block.Header);
                 receipts.Add(receipt);
             }
@@ -90,12 +94,12 @@ namespace Nevermind.Blockchain
 
         public Block Process(Rlp rlp)
         {
-            int stateSnapshot = _stateProvider.TakeSnapshot();
-            int storageSnapshot = _storageProvider.TakeSnapshot();
-
+            _logger?.Log("PROCESSING BLOCK");
+            int dbSnapshot = _db.TakeSnapshot();
             try
             {
                 Block suggestedBlock = Rlp.Decode<Block>(rlp);
+                _logger?.Log($"HASH {suggestedBlock.Header.Hash} NUMBER {suggestedBlock.Header.Number}");
                 if (!_blockValidator.ValidateSuggestedBlock(suggestedBlock))
                 {
                     throw new InvalidBlockException(rlp);
@@ -156,12 +160,16 @@ namespace Nevermind.Blockchain
                 // TODO: need to add CommitDB, RestoreDB, TakeDBSnapshot... sooo... two level snapshots, one restoring calls, one restoring blocks
                 // TODO: DB changes can be easily stored for each block, if we want to revert them
 
+                _logger?.Log("COMMITING BLOCK");
+                _db.Commit();
                 return processedBlock;
             }
             catch (InvalidBlockException) // TODO: which exception to catch here?
             {
-                _stateProvider.Restore(stateSnapshot);
-                _storageProvider.Restore(storageSnapshot);
+                _logger?.Log("REVERTING BLOCK");
+                _db.Restore(dbSnapshot);
+                _storageProvider.ClearCaches();
+                _stateProvider.ClearCaches();
                 throw;
             }
         }
@@ -191,6 +199,7 @@ namespace Nevermind.Blockchain
 
         private void ApplyMinerRewards(Block block)
         {
+            _logger?.Log("APPLYING MINER REWARDS");
             Dictionary<Address, BigInteger> rewards = _rewardCalculator.CalculateRewards(block);
             foreach ((Address address, BigInteger reward) in rewards)
             {
@@ -205,6 +214,8 @@ namespace Nevermind.Blockchain
 
                 _stateProvider.Commit();
             }
+            
+            _logger?.Log("DONE APPLYING MINER REWARDS");
         }
     }
 }

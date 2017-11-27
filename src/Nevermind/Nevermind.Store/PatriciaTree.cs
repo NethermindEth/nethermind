@@ -16,7 +16,7 @@ namespace Nevermind.Store
         /// </summary>
         public static readonly Keccak EmptyTreeHash = Keccak.EmptyTreeHash;
 
-        protected InMemoryDb _db;
+        private readonly IDb _db;
 
         internal Node Root;
 
@@ -25,12 +25,12 @@ namespace Nevermind.Store
             _db = new InMemoryDb();
         }
         
-        public PatriciaTree(InMemoryDb db)
+        public PatriciaTree(IDb db)
         {
             _db = db;
         }
 
-        public PatriciaTree(Keccak rootHash, InMemoryDb db)
+        public PatriciaTree(Keccak rootHash, IDb db)
             : this(db)
         {
             RootHash = rootHash;

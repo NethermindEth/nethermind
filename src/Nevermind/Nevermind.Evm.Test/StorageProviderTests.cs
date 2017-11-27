@@ -43,9 +43,16 @@ namespace Nevermind.Evm.Test
         [Test]
         public void Empty_commit_restore()
         {
-            StorageProvider provider = new StorageProvider(ShouldLog.State ? new ConsoleLogger() : null);
-            provider.Commit(_stateProvider);
+            StorageProvider provider = BuildStorageProvider();
+            provider.Commit();
             provider.Restore(-1);
+        }
+
+        private StorageProvider BuildStorageProvider()
+        {
+            ILogger stateLogger = ShouldLog.State ? new ConsoleLogger() : null;
+            StorageProvider provider = new StorageProvider(new MultiDb(stateLogger), _stateProvider, stateLogger);
+            return provider;
         }
 
         [TestCase(-1)]
@@ -54,7 +61,7 @@ namespace Nevermind.Evm.Test
         [TestCase(2)]
         public void Same_address_same_index_different_values_restore(int snapshot)
         {
-            StorageProvider provider = new StorageProvider(ShouldLog.State ? new ConsoleLogger() : null);
+            StorageProvider provider = BuildStorageProvider();
             provider.Set(_address1, 1, _values[1]);
             provider.Set(_address1, 1, _values[2]);
             provider.Set(_address1, 1, _values[3]);
@@ -66,9 +73,9 @@ namespace Nevermind.Evm.Test
         [Test]
         public void Keep_in_cache()
         {
-            StorageProvider provider = new StorageProvider(ShouldLog.State ? new ConsoleLogger() : null);
+            StorageProvider provider = BuildStorageProvider();
             provider.Set(_address1, 1, _values[1]);
-            provider.Commit(_stateProvider);
+            provider.Commit();
             provider.Get(_address1, 1);
             provider.Set(_address1, 1, _values[2]);
             provider.Restore(-1);
@@ -85,7 +92,7 @@ namespace Nevermind.Evm.Test
         [TestCase(2)]
         public void Same_address_different_index(int snapshot)
         {
-            StorageProvider provider = new StorageProvider(ShouldLog.State ? new ConsoleLogger() : null);
+            StorageProvider provider = BuildStorageProvider();
             provider.Set(_address1, 1, _values[1]);
             provider.Set(_address1, 2, _values[2]);
             provider.Set(_address1, 3, _values[3]);
@@ -97,23 +104,23 @@ namespace Nevermind.Evm.Test
         [Test]
         public void Commit_restore()
         {
-            StorageProvider provider = new StorageProvider(ShouldLog.State ? new ConsoleLogger() : null);
+            StorageProvider provider = BuildStorageProvider();
             provider.Set(_address1, 1, _values[1]);
             provider.Set(_address1, 2, _values[2]);
             provider.Set(_address1, 3, _values[3]);
-            provider.Commit(_stateProvider);
+            provider.Commit();
             provider.Set(_address2, 1, _values[4]);
             provider.Set(_address2, 2, _values[5]);
             provider.Set(_address2, 3, _values[6]);
-            provider.Commit(_stateProvider);
+            provider.Commit();
             provider.Set(_address1, 1, _values[7]);
             provider.Set(_address1, 2, _values[8]);
             provider.Set(_address1, 3, _values[9]);
-            provider.Commit(_stateProvider);
+            provider.Commit();
             provider.Set(_address2, 1, _values[10]);
             provider.Set(_address2, 2, _values[11]);
             provider.Set(_address2, 3, _values[12]);
-            provider.Commit(_stateProvider);
+            provider.Commit();
             provider.Restore(-1);
 
             Assert.AreEqual(_values[7], provider.Get(_address1, 1));
@@ -127,12 +134,12 @@ namespace Nevermind.Evm.Test
         [Test]
         public void Commit_no_changes()
         {
-            StorageProvider provider = new StorageProvider(ShouldLog.State ? new ConsoleLogger() : null);
+            StorageProvider provider = BuildStorageProvider();
             provider.Set(_address1, 1, _values[1]);
             provider.Set(_address1, 2, _values[2]);
             provider.Set(_address1, 3, _values[3]);
             provider.Restore(-1);
-            provider.Commit(_stateProvider);
+            provider.Commit();
 
             Assert.AreEqual(Keccak.EmptyTreeHash, provider.GetRoot(_address1));
         }
@@ -140,7 +147,7 @@ namespace Nevermind.Evm.Test
         [Test]
         public void Commit_no_changes_2()
         {
-            StorageProvider provider = new StorageProvider(ShouldLog.State ? new ConsoleLogger() : null);
+            StorageProvider provider = BuildStorageProvider();
             provider.Get(_address1, 1);
             provider.Get(_address1, 1);
             provider.Get(_address1, 1);
@@ -160,7 +167,7 @@ namespace Nevermind.Evm.Test
             provider.Get(_address1, 1);
             provider.Get(_address1, 1);
             provider.Get(_address1, 1);
-            provider.Commit(_stateProvider);
+            provider.Commit();
 
             Assert.AreEqual(Keccak.EmptyTreeHash, provider.GetRoot(_address1));
         }

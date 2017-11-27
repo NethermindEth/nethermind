@@ -22,11 +22,11 @@ namespace Nevermind.Store
             }
         }
 
-        public StorageTree(InMemoryDb db) : base(db)
+        public StorageTree(IDb db) : base(db)
         {
         }
 
-        public StorageTree(Keccak rootHash, InMemoryDb db) : base(rootHash, db)
+        public StorageTree(Keccak rootHash, IDb db) : base(rootHash, db)
         {
         }
 

@@ -235,7 +235,7 @@ namespace Nevermind.Evm
                 }
             }
 
-            _storageProvider.Commit(_stateProvider);
+            _storageProvider.Commit();
             _stateProvider.Commit();
 
             block.GasUsed += spentGas;

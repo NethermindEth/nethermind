@@ -15,6 +15,8 @@ namespace Nevermind.Store
         private readonly Dictionary<StorageAddress, Stack<int>> _cache = new Dictionary<StorageAddress, Stack<int>>();
 
         private readonly HashSet<StorageAddress> _committedThisRound = new HashSet<StorageAddress>();
+        private readonly IMultiDb _multiDb;
+        private readonly IStateProvider _stateProvider;
         private readonly ILogger _logger;
 
         private readonly Dictionary<Address, StorageTree> _storages = new Dictionary<Address, StorageTree>();
@@ -23,8 +25,10 @@ namespace Nevermind.Store
         private Change[] _changes = new Change[StartCapacity];
         private int _currentPosition = -1;
 
-        public StorageProvider(ILogger logger)
+        public StorageProvider(IMultiDb multiDb, IStateProvider stateProvider, ILogger logger)
         {
+            _multiDb = multiDb;
+            _stateProvider = stateProvider;
             _logger = logger;
         }
 
@@ -91,7 +95,7 @@ namespace Nevermind.Store
             }
         }
 
-        public void Commit(IStateProvider stateProvider)
+        public void Commit()
         {
             _logger?.Log("  COMMITTING STORAGE CHANGES");
 
@@ -138,10 +142,10 @@ namespace Nevermind.Store
             foreach (Address address in toUpdateRoots)
             {
                 // TODO: this is tricky... for EIP-158
-                if (stateProvider.AccountExists(address))
+                if (_stateProvider.AccountExists(address))
                 {
                     Keccak root = GetRoot(address);
-                    stateProvider.UpdateStorageRoot(address, root);
+                    _stateProvider.UpdateStorageRoot(address, root);
                 }
             }
 
@@ -156,7 +160,7 @@ namespace Nevermind.Store
         {
             if (!_storages.ContainsKey(address))
             {
-                _storages[address] = new StorageTree(new InMemoryDb());
+                _storages[address] = new StorageTree(_multiDb.CreateDb());
             }
 
             return GetStorage(address);
@@ -271,6 +275,16 @@ namespace Nevermind.Store
         {
             JustCache,
             Update
+        }
+
+        public void ClearCaches()
+        {
+            _logger?.Log("  CLEARING STORAGE PROVIDER CACHES");
+            
+            _cache.Clear();
+            _currentPosition = -1;
+            _committedThisRound.Clear();
+            _changes = new Change[_capacity];
         }
     }
 }

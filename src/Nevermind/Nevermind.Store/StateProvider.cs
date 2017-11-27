@@ -428,5 +428,15 @@ namespace Nevermind.Store
             public Address Address { get; }
             public Account Account { get; }
         }
+        
+        public void ClearCaches()
+        {
+            _logger?.Log("  CLEARING STATE PROVIDER CACHES");
+            
+            _cache.Clear();
+            _currentPosition = -1;
+            _committedThisRound.Clear();
+            _changes = new Change[_capacity];
+        }
     }
 }

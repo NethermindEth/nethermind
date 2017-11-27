@@ -80,9 +80,9 @@ namespace Nevermind.Core.Test
             // ReSharper disable once EqualExpressionComparison
             Assert.False(addressA != addressA);
             Assert.True(addressA != addressB);
-            Assert.True(addressA == null);
-            Assert.True(null == addressA);
-            Assert.False((Address)null == null);
+            Assert.True(addressA != null);
+            Assert.True(null != addressA);
+            Assert.False((Address)null != null);
         }
     }
 }

@@ -4,7 +4,7 @@ using Nevermind.Core.Crypto;
 
 namespace Nevermind.Store
 {
-    public interface IStateProvider
+    public interface IStateProvider : ISnapshotable
     {
         StateTree State { get; }
 
@@ -34,10 +34,6 @@ namespace Nevermind.Store
 
         Keccak UpdateCode(byte[] code);
 
-        int TakeSnapshot();
-
-        void Restore(int snapshot);
-
-        void Commit();
+        void ClearCaches(); // TODO: temp while designing DB <-> store interaction
     }
 }

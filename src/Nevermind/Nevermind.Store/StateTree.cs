@@ -6,11 +6,11 @@ namespace Nevermind.Store
 {
     public class StateTree : PatriciaTree
     {
-        public StateTree(InMemoryDb db) : base(db)
+        public StateTree(IDb db) : base(db)
         {
         }
 
-        public StateTree(Keccak rootHash, InMemoryDb db) : base(rootHash, db)
+        public StateTree(Keccak rootHash, IDb db) : base(rootHash, db)
         {
         }
 

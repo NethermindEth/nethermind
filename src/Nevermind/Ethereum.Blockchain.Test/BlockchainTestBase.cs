@@ -26,35 +26,41 @@ namespace Ethereum.Blockchain.Test
     {
         private readonly IProtocolSpecificationProvider _protocolSpecificationProvider = new ProtocolSpecificationProvider();
         private IBlockhashProvider _blockhashProvider;
-        private InMemoryDb _db;
-        private IStorageProvider _storageProvider;
+        private IMultiDb _multiDb;
         private IBlockchainStore _chain;
         private BlockHeaderValidator _headerValidator;
         private BlockValidator _blockValidator;
         private OmmersValidator _ommersValidator;   
-        private Dictionary<EthereumNetwork, VirtualMachine> _virtualMachines;
-        private Dictionary<EthereumNetwork, StateProvider> _stateProviders;
+        private Dictionary<EthereumNetwork, IVirtualMachine> _virtualMachines;
+        private Dictionary<EthereumNetwork, StateProvider> _stateProviders; // TODO: support transitions of protocol
+        private Dictionary<EthereumNetwork, IStorageProvider> _storageProviders;
         private ILogger _logger;
 
         protected void Setup(ILogger logger)
         {
             _logger = logger;
-            _db = new InMemoryDb();
+            _multiDb = new MultiDb(ShouldLog.State ? logger : null);                
             _chain = new BlockchainStore();
             _headerValidator = new BlockHeaderValidator(_chain);
              _ommersValidator = new OmmersValidator(_chain, _headerValidator);
             _blockValidator = new BlockValidator(_headerValidator, _ommersValidator);
             
-            _storageProvider = new StorageProvider(ShouldLog.State ? logger : null);
             _blockhashProvider = new BlockhashProvider(_chain);
-            _virtualMachines = new Dictionary<EthereumNetwork, VirtualMachine>();
+            _virtualMachines = new Dictionary<EthereumNetwork, IVirtualMachine>();
             _stateProviders = new Dictionary<EthereumNetwork, StateProvider>();
+            _storageProviders = new Dictionary<EthereumNetwork, IStorageProvider>();
             EthereumNetwork[] networks = {EthereumNetwork.Frontier, EthereumNetwork.Homestead, EthereumNetwork.Byzantium, EthereumNetwork.SpuriousDragon, EthereumNetwork.TangerineWhistle};
             foreach (EthereumNetwork ethereumNetwork in networks)
             {
                 IProtocolSpecification spec = _protocolSpecificationProvider.GetSpec(ethereumNetwork, 1);
-                _stateProviders[ethereumNetwork] = new StateProvider(new StateTree(_db), spec, ShouldLog.State ? logger : null);
-                _virtualMachines[ethereumNetwork] = new VirtualMachine(spec, _stateProviders[ethereumNetwork], _storageProvider, _blockhashProvider, ShouldLog.Evm ? logger : null);
+                _stateProviders[ethereumNetwork] = new StateProvider(new StateTree(_multiDb.CreateDb()), spec, ShouldLog.State ? logger : null);
+                _storageProviders[ethereumNetwork] = new StorageProvider(_multiDb, _stateProviders[ethereumNetwork], ShouldLog.State ? logger : null);
+                _virtualMachines[ethereumNetwork] = new VirtualMachine(
+                    spec,
+                    _stateProviders[ethereumNetwork],
+                    _storageProviders[ethereumNetwork],
+                    _blockhashProvider,
+                    ShouldLog.Evm ? logger : null);
             }
         }
 
@@ -172,9 +178,16 @@ namespace Ethereum.Blockchain.Test
                 _blockValidator,
                 new ProtocolBasedDifficultyCalculator(spec),
                 new RewardCalculator(spec),
-                new TransactionProcessor(spec, _stateProviders[test.Network], _storageProvider, _virtualMachines[test.Network], ChainId.Mainnet, _logger),
+                new TransactionProcessor(
+                    spec,
+                    _stateProviders[test.Network],
+                    _storageProviders[test.Network],
+                    _virtualMachines[test.Network],
+                    ChainId.Mainnet,
+                    _logger),
+                _multiDb,
                 _stateProviders[test.Network],
-                _storageProvider,
+                _storageProviders[test.Network],
                 _logger);
             
             IBlockchainProcessor blockchainProcessor = new BlockchainProcessor(
@@ -213,7 +226,7 @@ namespace Ethereum.Blockchain.Test
             {
                 foreach (KeyValuePair<BigInteger, byte[]> storageItem in accountState.Value.Storage)
                 {
-                    _storageProvider.Set(accountState.Key, storageItem.Key, storageItem.Value);
+                    _storageProviders[test.Network].Set(accountState.Key, storageItem.Key, storageItem.Value);
                 }
 
                 _stateProviders[test.Network].CreateAccount(accountState.Key, accountState.Value.Balance);
@@ -225,7 +238,7 @@ namespace Ethereum.Blockchain.Test
                 }
             }
 
-            _storageProvider.Commit(_stateProviders[test.Network]);
+            _storageProviders[test.Network].Commit();
             _stateProviders[test.Network].Commit();
         }
 
@@ -263,7 +276,7 @@ namespace Ethereum.Blockchain.Test
 
                 foreach (KeyValuePair<BigInteger, byte[]> storageItem in accountState.Value.Storage)
                 {
-                    byte[] value = _storageProvider.Get(accountState.Key, storageItem.Key) ?? new byte[0];
+                    byte[] value = _storageProviders[test.Network].Get(accountState.Key, storageItem.Key) ?? new byte[0];
                     if (!Bytes.UnsafeCompare(storageItem.Value, value))
                     {
                         differences.Add($"{accountState.Key} storage[{storageItem.Key}] exp: {Hex.FromBytes(storageItem.Value, true)}, actual: {Hex.FromBytes(value, true)}");

@@ -18,7 +18,7 @@ namespace Ethereum.VM.Test
 {
     public class VMTestBase
     {
-        private InMemoryDb _db;
+        private IMultiDb _multiDb;
         private IStorageProvider _storageProvider;
         private IBlockhashProvider _blockhashProvider;
         private IStateProvider _stateProvider;
@@ -27,10 +27,11 @@ namespace Ethereum.VM.Test
         [SetUp]
         public void Setup()
         {
-            _db = new InMemoryDb();
-            _storageProvider = new StorageProvider(ShouldLog.State ? new ConsoleLogger() : null);
+            ILogger stateLogger = ShouldLog.State ? new ConsoleLogger() : null;
+            _multiDb = new MultiDb(stateLogger);
             _blockhashProvider = new TestBlockhashProvider();
-            _stateProvider = new StateProvider(new StateTree(_db), _protocolSpecification, ShouldLog.State ? new ConsoleLogger() : null);
+            _stateProvider = new StateProvider(new StateTree(_multiDb.CreateDb()), _protocolSpecification, stateLogger);
+            _storageProvider = new StorageProvider(new MultiDb(stateLogger), _stateProvider, stateLogger);
         }
 
         public static IEnumerable<VirtualMachineTest> LoadTests(string testSet)
@@ -172,7 +173,7 @@ namespace Ethereum.VM.Test
             }
 
             _stateProvider.Commit();
-            _storageProvider.Commit(_stateProvider);
+            _storageProvider.Commit();
 
             (byte[] output, TransactionSubstate substate) = machine.Run(state);
 

@@ -5,18 +5,14 @@ using Nevermind.Core.Encoding;
 
 namespace Nevermind.Store
 {
-    public interface IStorageProvider
+    public interface IStorageProvider : ISnapshotable
     {
         byte[] Get(Address address, BigInteger index);
 
         void Set(Address address, BigInteger index, byte[] newValue);
 
         Keccak GetRoot(Address address);
-
-        int TakeSnapshot();
-
-        void Restore(int snapshot);
-
-        void Commit(IStateProvider stateProvider);
+        
+        void ClearCaches(); // TODO: temp while designing DB <-> store interaction
     }
 }

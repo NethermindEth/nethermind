@@ -64,6 +64,7 @@
     <Compile Include="BloomTests.cs" />
     <Compile Include="BytesTests.cs" />
     <Compile Include="HexTests.cs" />
+    <Compile Include="InMemoryDbTests.cs" />
     <Compile Include="KeccakTests.cs" />
     <Compile Include="OmmersValidatorTests.cs" />
     <Compile Include="PrivateKeyTests.cs" />
@@ -89,6 +90,10 @@
     <ProjectReference Include="..\Nevermind.Core\Nevermind.Core.csproj">
       <Project>{051B3754-5FB6-4202-AF6E-D1764E2DED06}</Project>
       <Name>Nevermind.Core</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\Nevermind.Store\Nevermind.Store.csproj">
+      <Project>{3A5B9092-C842-4EFD-ACC3-1C6CF57D09B0}</Project>
+      <Name>Nevermind.Store</Name>
     </ProjectReference>
     <ProjectReference Include="..\Secp256k1.Proxy\Secp256k1.Proxy.csproj">
       <Project>{2b187a68-ca55-4f29-ae07-61464b86ebda}</Project>
