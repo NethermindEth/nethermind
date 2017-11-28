@@ -1,10 +1,10 @@
-﻿using Nevermind.Core;
+﻿using System.Numerics;
 using Nevermind.Core.Crypto;
 
 namespace Nevermind.Evm
 {
     public interface IBlockhashProvider
     {
-        Keccak? GetBlockhash(BlockHeader header, int depth);
+        Keccak? GetBlockhash(Keccak blockHash, BigInteger number);
     }
 }

@@ -1,4 +1,5 @@
-﻿using System.Collections;
+﻿using System;
+using System.Collections;
 using System.Diagnostics;
 using System.Text;
 using Nevermind.Core.Crypto;
@@ -6,8 +7,10 @@ using Nevermind.Core.Extensions;
 
 namespace Nevermind.Core
 {
-    public class Bloom
+    public class Bloom : IEquatable<Bloom>
     {
+        public static readonly Bloom EmptyBloom = new Bloom();
+
         private readonly BitArray _bits;
 
         public Bloom()
@@ -44,6 +47,55 @@ namespace Nevermind.Core
             }
 
             return stringBuilder.ToString();
+        }
+
+        public static bool operator !=(Bloom a, Bloom b)
+        {
+            return !(a == b);
+        }
+        
+        public static bool operator==(Bloom a, Bloom b)
+        {
+            if(ReferenceEquals(a, b))
+            {
+                return true;
+            }
+            
+            return a?.Equals(b) ?? false;
+        }
+        
+        public bool Equals(Bloom other)
+        {
+            if (ReferenceEquals(null, other)) return false;
+            if (ReferenceEquals(this, other)) return true;
+
+            if (_bits.Length != other._bits.Length)
+            {
+                return false;
+            }
+            
+            for (int i = 0; i < _bits.Length; i++)
+            {
+                if (_bits[i] != other._bits[i])
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        public override bool Equals(object obj)
+        {
+            if (ReferenceEquals(null, obj)) return false;
+            if (ReferenceEquals(this, obj)) return true;
+            if (obj.GetType() != this.GetType()) return false;
+            return Equals((Bloom)obj);
+        }
+
+        public override int GetHashCode()
+        {
+            return (_bits != null ? _bits.GetHashCode() : 0);
         }
     }
 }

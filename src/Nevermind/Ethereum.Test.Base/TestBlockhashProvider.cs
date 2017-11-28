@@ -1,15 +1,14 @@
-using Nevermind.Core;
+using System.Numerics;
 using Nevermind.Core.Crypto;
-using Nevermind.Core.Encoding;
 using Nevermind.Evm;
 
 namespace Ethereum.Test.Base
 {
     public class TestBlockhashProvider : IBlockhashProvider
     {
-        public Keccak? GetBlockhash(BlockHeader header, int depth)
+        public Keccak? GetBlockhash(Keccak blockHash, BigInteger number)
         {
-            return Keccak.Compute(depth.ToString());
+            return Keccak.Compute(number.ToString());
         }
     }
 }

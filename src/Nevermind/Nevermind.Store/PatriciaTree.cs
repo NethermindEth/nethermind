@@ -21,6 +21,7 @@ namespace Nevermind.Store
         internal Node Root;
 
         public PatriciaTree()
+            : this(new InMemoryDb(), EmptyTreeHash)
         {
             _db = new InMemoryDb();
         }
@@ -34,7 +35,6 @@ namespace Nevermind.Store
         {
             _db = db;
             RootHash = rootHash;
-            
         }
 
         private Keccak _rootHash;
@@ -53,7 +53,7 @@ namespace Nevermind.Store
                 {
                     Rlp rootRlp = new Rlp(_db[_rootHash]);
                     Root = RlpDecode(rootRlp);
-                }    
+                }
             }
         }
 

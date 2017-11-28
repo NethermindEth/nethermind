@@ -68,16 +68,16 @@ namespace Nevermind.Blockchain
 
         private void SetReceipts(Block block, List<TransactionReceipt> receipts)
         {
-            PatriciaTree receiptTree = new PatriciaTree();
+            PatriciaTree receiptTree = receipts.Count > 0 ? new PatriciaTree() : null;
             for (int i = 0; i < receipts.Count; i++)
             {
-                Rlp receiptRlp = Rlp.Encode(receipts[i], _protocolSpecification.IsEip658Enabled);
+                Rlp receiptRlp = Rlp.Encode(receipts[i], _protocolSpecification.IsEip658Enabled);   
                 receiptTree.Set(Rlp.Encode(0).Bytes, receiptRlp);
             }
 
             block.Receipts = receipts;
-            block.Header.ReceiptsRoot = receiptTree.RootHash;
-            block.Header.Bloom = receipts.LastOrDefault()?.Bloom ?? block.Header.Bloom;
+            block.Header.ReceiptsRoot = receiptTree?.RootHash ?? PatriciaTree.EmptyTreeHash;
+            block.Header.Bloom = receipts.Count > 0 ? receipts.Last().Bloom : Bloom.EmptyBloom;
         }
 
         private Keccak GetTransactionsRoot(List<Transaction> transactions)
@@ -94,7 +94,8 @@ namespace Nevermind.Blockchain
 
         public Block Process(Rlp rlp)
         {
-            _logger?.Log("PROCESSING BLOCK");
+            _logger?.Log("-------------------------------------------------------------------------------------");
+            _logger?.Log($"PROCESSING BLOCK - STATE ROOT {_stateProvider.StateRoot}");
             int dbSnapshot = _db.TakeSnapshot();
             Keccak stateRoot = _stateProvider.StateRoot;
             try
@@ -130,6 +131,11 @@ namespace Nevermind.Blockchain
                     throw new InvalidBlockException(rlp);
                 }
                 
+                _logger?.Log($"BLOCK BENEFICIARY {suggestedBlock.Header.Beneficiary}");
+                _logger?.Log($"BLOCK GAS LIMIT {suggestedBlock.Header.GasLimit}");
+                _logger?.Log($"BLOCK GAS USED {suggestedBlock.Header.GasUsed}");
+                _logger?.Log($"BLOCK DIFFICULTY {suggestedBlock.Header.Difficulty}");
+                
                 Block processedBlock = ProcessBlock(
                     suggestedBlock.Header.ParentHash,
                     suggestedBlock.Header.Difficulty,
@@ -161,17 +167,18 @@ namespace Nevermind.Blockchain
                 // TODO: need to add CommitDB, RestoreDB, TakeDBSnapshot... sooo... two level snapshots, one restoring calls, one restoring blocks
                 // TODO: DB changes can be easily stored for each block, if we want to revert them
 
-                _logger?.Log("COMMITING BLOCK");
+                _logger?.Log($"COMMITING BLOCK - STATE ROOT {_stateProvider.StateRoot}");
                 _db.Commit();
                 return processedBlock;
             }
             catch (InvalidBlockException) // TODO: which exception to catch here?
             {
-                _logger?.Log("REVERTING BLOCK");
+                _logger?.Log($"REVERTING BLOCK - STATE ROOT {_stateProvider.StateRoot}");
                 _db.Restore(dbSnapshot);
                 _storageProvider.ClearCaches();
                 _stateProvider.ClearCaches();
                 _stateProvider.StateRoot = stateRoot;
+                _logger?.Log($"REVERTED BLOCK - STATE ROOT {_stateProvider.StateRoot}");
                 throw;
             }
         }

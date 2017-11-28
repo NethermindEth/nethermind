@@ -24,19 +24,28 @@ namespace Nevermind.Blockchain.Validators
             Keccak hash = header.Hash;
             header.RecomputeHash();
 
-            return
-                header.Nonce < BigInteger.Divide(BigInteger.Pow(2, 256), header.Difficulty) &&
-                // mix hash check
-                // proof of work check
-                // difficulty check
-                header.GasUsed < header.GasLimit &&
-                header.GasLimit < parent.Header.GasLimit + BigInteger.Divide(parent.Header.GasLimit, 1024) &&
-                header.GasLimit > parent.Header.GasLimit - BigInteger.Divide(parent.Header.GasLimit, 1024) &&
-                header.GasLimit > 125000 &&
-                header.Timestamp > parent.Header.Timestamp &&
-                header.Number == parent.Header.Number + 1 &&
-                header.ExtraData.Length <= 32 &&
-                header.Hash == hash;
+            bool isNonceValid = header.Nonce < BigInteger.Divide(BigInteger.Pow(2, 256), header.Difficulty);
+            // mix hash check
+            // proof of work check
+            // difficulty check
+            bool gasUsedBelowLimit = header.GasUsed <= header.GasLimit;
+            bool gasLimitNotTooHigh = header.GasLimit < parent.Header.GasLimit + BigInteger.Divide(parent.Header.GasLimit, 1024);
+            bool gasLimitNotTooLow = header.GasLimit > parent.Header.GasLimit - BigInteger.Divide(parent.Header.GasLimit, 1024);
+//            bool gasLimitAboveAbsoluteMinimum = header.GasLimit >= 125000; // TODO: tests are consistently not following this rule
+            bool timestampMoreThanAtParent = header.Timestamp > parent.Header.Timestamp;
+            bool numberIsParentPlusOne = header.Number == parent.Header.Number + 1;
+            bool extraDataNotTooLong = header.ExtraData.Length <= 32;
+            bool hashAsExpected = header.Hash == hash;
+
+            return isNonceValid &&
+                   gasUsedBelowLimit &&
+                   gasLimitNotTooLow &&
+                   gasLimitNotTooHigh &&
+//                   gasLimitAboveAbsoluteMinimum && // TODO: tests are consistently not following this rule
+                   timestampMoreThanAtParent &&
+                   numberIsParentPlusOne &&
+                   extraDataNotTooLong &&
+                   hashAsExpected;
         }
 
         private static bool IsGenesisHeaderValid(BlockHeader header)
@@ -47,7 +56,7 @@ namespace Nevermind.Blockchain.Validators
                 // proof of work check
                 // difficulty check
                 header.GasUsed < header.GasLimit &&
-                // header.GasLimit > 125000 && // TODO: not in tests :(
+                // header.GasLimit > 125000 && // TODO: tests are consistently not following this rule
                 header.Timestamp > 0 && // what here?
                 header.Number == 0 &&
                 header.ExtraData.Length <= 32;

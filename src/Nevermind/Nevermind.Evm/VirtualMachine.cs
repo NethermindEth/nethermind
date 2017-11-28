@@ -1005,19 +1005,7 @@ namespace Nevermind.Evm
                     {
                         UpdateGas(GasCostOf.BlockHash, ref gasAvailable);
                         BigInteger a = PopUInt();
-                        if (a > BigInt256)
-                        {
-                            PushInt(BigInteger.Zero);
-                        }
-                        else if (a == BigInteger.Zero)
-                        {
-                            PushInt(BigInteger.Zero);
-                        }
-                        else
-                        {
-                            PushBytes(_blockhashProvider.GetBlockhash(env.CurrentBlock, (int)a)?.Bytes ?? BytesZero);
-                        }
-
+                        PushBytes(_blockhashProvider.GetBlockhash(env.CurrentBlock.ParentHash, a)?.Bytes ?? BytesZero);
                         break;
                     }
                     case Instruction.COINBASE:

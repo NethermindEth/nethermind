@@ -1,4 +1,5 @@
-﻿using Nevermind.Core;
+﻿using System.Numerics;
+using Nevermind.Core;
 using Nevermind.Core.Crypto;
 using Nevermind.Evm;
 
@@ -13,20 +14,25 @@ namespace Nevermind.Blockchain
             _chain = chain;
         }
 
-        public Keccak? GetBlockhash(BlockHeader header, int depth)
-        {
-            if (depth <= 0 || depth > 255)
+        public Keccak? GetBlockhash(Keccak blockHash, BigInteger number)
+        {            
+            Block block = _chain.FindBlock(blockHash);
+            if (number > block.Header.Number)
             {
                 return null;
             }
             
-            BlockHeader thatBlock = header;
-            while (depth-- > 0)
+            for (int i = 0; i < 256; i++)
             {
-                thatBlock = _chain.FindBlock(thatBlock.ParentHash)?.Header;
+                if (number == block.Header.Number)
+                {
+                    return block.Header.Hash;
+                }
+                
+                block = _chain.FindBlock(block.Header.ParentHash);
             }
 
-            return thatBlock?.Hash;
+            return null;
         }
     }
 }

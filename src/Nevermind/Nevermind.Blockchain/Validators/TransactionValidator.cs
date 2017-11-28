@@ -27,7 +27,7 @@ namespace Nevermind.Blockchain.Validators
         {
             return Validator.IsInP256(transaction.Nonce) &&
                    Validator.IsInP256(transaction.GasPrice) &&
-                   Validator.IsInP256(transaction.GasLimit) &&
+                   transaction.GasLimit <= long.MaxValue &&
                    // ReSharper disable once IsExpressionAlwaysTrue
                    // ReSharper disable once ConditionIsAlwaysTrueOrFalse
                    transaction.To != null || transaction.Init != null && // TODO: check tests where this is the case and still state changes (is the gas substracted?)

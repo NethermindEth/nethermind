@@ -14,10 +14,9 @@ namespace Nevermind.Core.Test
         {
             IBlockchainStore blockchain = Substitute.For<IBlockchainStore>();
             
-            
             BlockHeaderValidator blockHeaderValidator = new BlockHeaderValidator(blockchain);
             OmmersValidator ommersValidator = new OmmersValidator(blockchain, blockHeaderValidator);
-            BlockValidator blockValidator = new BlockValidator(blockHeaderValidator, ommersValidator);
+            BlockValidator blockValidator = new BlockValidator(blockHeaderValidator, ommersValidator, null);
             
             
         }

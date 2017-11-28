@@ -39,11 +39,12 @@ namespace Ethereum.Blockchain.Test
         protected void Setup(ILogger logger)
         {
             _logger = logger;
-            _multiDb = new MultiDb(ShouldLog.State ? logger : null);                
+            ILogger stateLogger = ShouldLog.State ? _logger : null;
+            _multiDb = new MultiDb(stateLogger);                
             _chain = new BlockchainStore();
             _headerValidator = new BlockHeaderValidator(_chain);
              _ommersValidator = new OmmersValidator(_chain, _headerValidator);
-            _blockValidator = new BlockValidator(_headerValidator, _ommersValidator);
+            _blockValidator = new BlockValidator(_headerValidator, _ommersValidator, stateLogger);
             
             _blockhashProvider = new BlockhashProvider(_chain);
             _virtualMachines = new Dictionary<EthereumNetwork, IVirtualMachine>();
@@ -53,8 +54,8 @@ namespace Ethereum.Blockchain.Test
             foreach (EthereumNetwork ethereumNetwork in networks)
             {
                 IProtocolSpecification spec = _protocolSpecificationProvider.GetSpec(ethereumNetwork, 1);
-                _stateProviders[ethereumNetwork] = new StateProvider(new StateTree(_multiDb.CreateDb()), spec, ShouldLog.State ? logger : null);
-                _storageProviders[ethereumNetwork] = new StorageProvider(_multiDb, _stateProviders[ethereumNetwork], ShouldLog.State ? logger : null);
+                _stateProviders[ethereumNetwork] = new StateProvider(new StateTree(_multiDb.CreateDb()), spec, stateLogger);
+                _storageProviders[ethereumNetwork] = new StorageProvider(_multiDb, _stateProviders[ethereumNetwork], stateLogger);
                 _virtualMachines[ethereumNetwork] = new VirtualMachine(
                     spec,
                     _stateProviders[ethereumNetwork],
