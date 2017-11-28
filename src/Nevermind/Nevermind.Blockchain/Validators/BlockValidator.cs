@@ -39,7 +39,13 @@ namespace Nevermind.Blockchain.Validators
                 return false;
             }
 
-            return _blockHeaderValidator.Validate(suggestedBlock.Header);
+            bool blockHeaderValid = _blockHeaderValidator.Validate(suggestedBlock.Header);
+            if (!blockHeaderValid)
+            {
+                return false;
+            }
+
+            return true;
         }
 
         public bool ValidateProcessedBlock(Block processedBlock, Block suggestedBlock)

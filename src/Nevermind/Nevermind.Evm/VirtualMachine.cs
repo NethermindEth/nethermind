@@ -1447,7 +1447,7 @@ namespace Nevermind.Evm
                         _logger?.Log($"  TRANSFER_VALUE {transferValue}");
 
                         long gasExtra = 0L;
-                        if (!transferValue.IsZero)
+                        if (!transferValue.IsZero && !isPrecompile)
                         {
                             gasExtra += GasCostOf.CallValue;
                         }
@@ -1522,7 +1522,7 @@ namespace Nevermind.Evm
                         callEnv.InputData = callData;
                         callEnv.MachineCode = isPrecompile ? addressInt.ToBigEndianByteArray() : _stateProvider.GetCode(ToAddress(codeSource));
 
-                        BigInteger callGas = transferValue.IsZero ? gasLimitUl : gasLimitUl + GasCostOf.CallStipend;
+                        BigInteger callGas = (transferValue.IsZero || isPrecompile) ? gasLimitUl : gasLimitUl + GasCostOf.CallStipend;
                         _logger?.Log($"  CALL_GAS {callGas}");
 
                         EvmState callState = new EvmState(

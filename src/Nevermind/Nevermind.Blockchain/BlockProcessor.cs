@@ -72,7 +72,7 @@ namespace Nevermind.Blockchain
             for (int i = 0; i < receipts.Count; i++)
             {
                 Rlp receiptRlp = Rlp.Encode(receipts[i], _protocolSpecification.IsEip658Enabled);   
-                receiptTree.Set(Rlp.Encode(0).Bytes, receiptRlp);
+                receiptTree.Set(Rlp.Encode(i).Bytes, receiptRlp);
             }
 
             block.Receipts = receipts;
