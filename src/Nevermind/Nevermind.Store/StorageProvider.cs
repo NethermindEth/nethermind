@@ -4,7 +4,6 @@ using System.Diagnostics;
 using System.Numerics;
 using Nevermind.Core;
 using Nevermind.Core.Crypto;
-using Nevermind.Core.Encoding;
 
 namespace Nevermind.Store
 {
@@ -15,9 +14,11 @@ namespace Nevermind.Store
         private readonly Dictionary<StorageAddress, Stack<int>> _cache = new Dictionary<StorageAddress, Stack<int>>();
 
         private readonly HashSet<StorageAddress> _committedThisRound = new HashSet<StorageAddress>();
+
+        private readonly Dictionary<Address, IDb> _dbs = new Dictionary<Address, IDb>();
+        private readonly ILogger _logger;
         private readonly IMultiDb _multiDb;
         private readonly IStateProvider _stateProvider;
-        private readonly ILogger _logger;
 
         private readonly Dictionary<Address, StorageTree> _storages = new Dictionary<Address, StorageTree>();
 
@@ -126,16 +127,16 @@ namespace Nevermind.Store
                 switch (change.ChangeType)
                 {
                     case ChangeType.JustCache:
-                    break;
+                        break;
                     case ChangeType.Update:
 
-                    _logger?.Log($"  UPDATE {change.StorageAddress.Address}_{change.StorageAddress.Index} V = {Hex.FromBytes(change.Value, true)}");
+                        _logger?.Log($"  UPDATE {change.StorageAddress.Address}_{change.StorageAddress.Index} V = {Hex.FromBytes(change.Value, true)}");
 
-                    StorageTree tree = GetOrCreateStorage(change.StorageAddress.Address);
-                    tree.Set(change.StorageAddress.Index, change.Value);
-                    break;
+                        StorageTree tree = GetOrCreateStorage(change.StorageAddress.Address);
+                        tree.Set(change.StorageAddress.Index, change.Value);
+                        break;
                     default:
-                    throw new ArgumentOutOfRangeException();
+                        throw new ArgumentOutOfRangeException();
                 }
             }
 
@@ -156,11 +157,27 @@ namespace Nevermind.Store
             _cache.Clear();
         }
 
+        public void ClearCaches()
+        {
+            _logger?.Log("  CLEARING STORAGE PROVIDER CACHES");
+
+            _cache.Clear();
+            _currentPosition = -1;
+            _committedThisRound.Clear();
+            Array.Clear(_changes, 0, _changes.Length);
+            _storages.Clear();
+        }
+
         private StorageTree GetOrCreateStorage(Address address)
         {
             if (!_storages.ContainsKey(address))
             {
-                _storages[address] = new StorageTree(_multiDb.CreateDb());
+                if (!_dbs.ContainsKey(address))
+                {
+                    _dbs[address] = _multiDb.CreateDb();
+                }
+
+                _storages[address] = new StorageTree(_dbs[address], _stateProvider.GetStorageRoot(address));
             }
 
             return GetStorage(address);
@@ -275,16 +292,6 @@ namespace Nevermind.Store
         {
             JustCache,
             Update
-        }
-
-        public void ClearCaches()
-        {
-            _logger?.Log("  CLEARING STORAGE PROVIDER CACHES");
-            
-            _cache.Clear();
-            _currentPosition = -1;
-            _committedThisRound.Clear();
-            _changes = new Change[_capacity];
         }
     }
 }

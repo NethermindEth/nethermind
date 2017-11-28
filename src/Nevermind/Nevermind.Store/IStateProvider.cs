@@ -6,7 +6,7 @@ namespace Nevermind.Store
 {
     public interface IStateProvider : ISnapshotable
     {
-        StateTree State { get; }
+        Keccak StateRoot { get; set; }
 
         void DeleteAccount(Address address);
 
@@ -21,6 +21,8 @@ namespace Nevermind.Store
         BigInteger GetNonce(Address address);
 
         BigInteger GetBalance(Address address);
+        
+        Keccak GetStorageRoot(Address address);
 
         byte[] GetCode(Address address);
 

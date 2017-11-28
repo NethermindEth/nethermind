@@ -8,7 +8,7 @@ namespace Nevermind.Store
     public class SecurePatriciaTree : PatriciaTree
     {
         public SecurePatriciaTree(Keccak rootHash, InMemoryDb db)
-            : base(rootHash, db)
+            : base(db, rootHash)
         {
         }
 

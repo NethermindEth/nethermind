@@ -109,7 +109,7 @@ namespace Nevermind.Store
 
                 if (node is BranchNode branch)
                 {
-                    _tree.DeleteNode(branch.Nodes[parentOnStack.PathIndex], true);
+//                    _tree.DeleteNode(branch.Nodes[parentOnStack.PathIndex], true);
                     branch.Nodes[parentOnStack.PathIndex] = nextNodeHash;
                     if (branch.IsValid)
                     {
@@ -139,14 +139,14 @@ namespace Nevermind.Store
                             }
                             else if (childNode is ExtensionNode childExtension)
                             {
-                                _tree.DeleteNode(childNodeHash, true);
+//                                _tree.DeleteNode(childNodeHash, true);
                                 ExtensionNode extensionFromBranch = new ExtensionNode(new HexPrefix(false, Bytes.Concat((byte)childNodeIndex, childExtension.Path)), childExtension.NextNode);
                                 nextNodeHash = _tree.StoreNode(extensionFromBranch, isRoot);
                                 nextNode = extensionFromBranch;
                             }
                             else if (childNode is LeafNode childLeaf)
                             {
-                                _tree.DeleteNode(childNodeHash, true);
+//                                _tree.DeleteNode(childNodeHash, true);
                                 LeafNode leafFromBranch = new LeafNode(new HexPrefix(true, Bytes.Concat((byte)childNodeIndex, childLeaf.Path)), childLeaf.Value);
                                 nextNodeHash = _tree.StoreNode(leafFromBranch, isRoot);
                                 nextNode = leafFromBranch;
@@ -160,7 +160,7 @@ namespace Nevermind.Store
                 }
                 else if (node is ExtensionNode extension)
                 {
-                    _tree.DeleteNode(extension.NextNode, true);
+//                    _tree.DeleteNode(extension.NextNode, true);
                     if (nextNode is LeafNode childLeaf)
                     {
                         LeafNode leafFromExtension = new LeafNode(new HexPrefix(true, Bytes.Concat(extension.Path, childLeaf.Path)), childLeaf.Value);
@@ -190,7 +190,7 @@ namespace Nevermind.Store
                 }
             }
 
-            _tree.DeleteNode(new KeccakOrRlp(previousRootHash), true);
+//            _tree.DeleteNode(new KeccakOrRlp(previousRootHash), true);
         }
 
         private byte[] TraverseBranch(BranchNode node)

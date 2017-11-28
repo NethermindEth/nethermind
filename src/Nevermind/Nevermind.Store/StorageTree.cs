@@ -12,7 +12,7 @@ namespace Nevermind.Store
 
         private static readonly int CacheSizeInt = (int)CacheSize;
 
-        public static readonly Dictionary<BigInteger, byte[]> Cache = new Dictionary<BigInteger, byte[]>(CacheSizeInt);
+        private static readonly Dictionary<BigInteger, byte[]> Cache = new Dictionary<BigInteger, byte[]>(CacheSizeInt);
 
         static StorageTree()
         {
@@ -26,7 +26,7 @@ namespace Nevermind.Store
         {
         }
 
-        public StorageTree(Keccak rootHash, IDb db) : base(rootHash, db)
+        public StorageTree(IDb db, Keccak rootHash) : base(db, rootHash)
         {
         }
 

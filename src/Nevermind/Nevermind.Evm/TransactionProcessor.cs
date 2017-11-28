@@ -37,7 +37,7 @@ namespace Nevermind.Evm
             transactionReceipt.Logs = new LogEntry[0];
             transactionReceipt.Bloom = new Bloom();
             transactionReceipt.GasUsed = totalGasUsed;
-            transactionReceipt.PostTransactionState = _stateProvider.State.RootHash;
+            transactionReceipt.PostTransactionState = _stateProvider.StateRoot;
             transactionReceipt.StatusCode = StatusCode.Failure;
             return transactionReceipt;
         }
@@ -101,7 +101,7 @@ namespace Nevermind.Evm
 
             _stateProvider.IncrementNonce(sender);
             _stateProvider.UpdateBalance(sender, -new BigInteger(gasLimit) * gasPrice);
-            _stateProvider.Commit();
+            _stateProvider.Commit(); // TODO: can remove this commit
 
             long unspentGas = gasLimit - intrinsicGas;
             long spentGas = gasLimit;
@@ -258,7 +258,7 @@ namespace Nevermind.Evm
             transactionReceipt.Logs = logEntries.ToArray();
             transactionReceipt.Bloom = BuildBloom(logEntries);
             transactionReceipt.GasUsed = gasUsedSoFar;
-            transactionReceipt.PostTransactionState = _stateProvider.State.RootHash;
+            transactionReceipt.PostTransactionState = _stateProvider.StateRoot;
             transactionReceipt.StatusCode = statusCode;
             return transactionReceipt;
         }

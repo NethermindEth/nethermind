@@ -10,7 +10,7 @@ namespace Nevermind.Store
         {
         }
 
-        public StateTree(Keccak rootHash, IDb db) : base(rootHash, db)
+        public StateTree(Keccak rootHash, IDb db) : base(db, rootHash)
         {
         }
 

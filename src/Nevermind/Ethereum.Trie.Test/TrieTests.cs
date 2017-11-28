@@ -178,7 +178,7 @@ namespace Ethereum.Trie.Test
                 new byte[] { 0x01, 0x01, 0x02 },
                 Rlp.Encode(new object[] { "hello" }));
 
-            PatriciaTree another = new PatriciaTree(patriciaTree.RootHash, _db);
+            PatriciaTree another = new PatriciaTree(_db, patriciaTree.RootHash);
             Assert.AreEqual(((LeafNode)patriciaTree.Root).Key.ToString(), ((LeafNode)another.Root).Key.ToString());
             Assert.AreEqual(Keccak.Compute(((LeafNode)patriciaTree.Root).Value),
                 Keccak.Compute(((LeafNode)another.Root).Value));

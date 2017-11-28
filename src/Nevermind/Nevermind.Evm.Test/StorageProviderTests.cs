@@ -1,4 +1,5 @@
 ﻿using System;
+using System.ComponentModel.Design.Serialization;
 using Nevermind.Core;
 using Nevermind.Core.Crypto;
 using Nevermind.Core.Encoding;
@@ -21,6 +22,7 @@ namespace Nevermind.Evm.Test
         {
             _stateProvider.CreateAccount(_address1, 0);
             _stateProvider.CreateAccount(_address2, 0);
+            _stateProvider.Commit();
         }
 
         private readonly byte[][] _values =
@@ -170,6 +172,31 @@ namespace Nevermind.Evm.Test
             provider.Commit();
 
             Assert.AreEqual(Keccak.EmptyTreeHash, provider.GetRoot(_address1));
+        }
+        
+        [Test]
+        public void Commit_clear_caches_get_previous_root()
+        {
+            // block 1
+            StorageProvider storageProvider = BuildStorageProvider();
+            storageProvider.Set(_address1, 1, _values[1]);
+            storageProvider.Commit();
+            _stateProvider.Commit();
+            
+            // block 2
+            Keccak stateRoot = _stateProvider.StateRoot;
+            storageProvider.Set(_address1, 1, _values[2]);
+            storageProvider.Commit();
+            _stateProvider.Commit();
+            
+            // revert
+            _stateProvider.ClearCaches();
+            storageProvider.ClearCaches();
+            _stateProvider.StateRoot = stateRoot;
+            
+            byte[] valueAfter = storageProvider.Get(_address1, 1);
+            
+            Assert.AreEqual(_values[1], valueAfter);
         }
     }
 }

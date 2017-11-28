@@ -96,6 +96,7 @@ namespace Nevermind.Blockchain
         {
             _logger?.Log("PROCESSING BLOCK");
             int dbSnapshot = _db.TakeSnapshot();
+            Keccak stateRoot = _stateProvider.StateRoot;
             try
             {
                 Block suggestedBlock = Rlp.Decode<Block>(rlp);
@@ -170,6 +171,7 @@ namespace Nevermind.Blockchain
                 _db.Restore(dbSnapshot);
                 _storageProvider.ClearCaches();
                 _stateProvider.ClearCaches();
+                _stateProvider.StateRoot = stateRoot;
                 throw;
             }
         }
@@ -193,7 +195,7 @@ namespace Nevermind.Blockchain
             Block block = new Block(header, ommers);
             ProcessTransactions(block, transactions);
             ApplyMinerRewards(block);
-            header.StateRoot = _stateProvider.State.RootHash;
+            header.StateRoot = _stateProvider.StateRoot;
             return block;
         }
 
@@ -211,10 +213,9 @@ namespace Nevermind.Blockchain
                 {
                     _stateProvider.UpdateBalance(address, reward);
                 }
-
-                _stateProvider.Commit();
             }
             
+            _stateProvider.Commit();
             _logger?.Log("DONE APPLYING MINER REWARDS");
         }
     }

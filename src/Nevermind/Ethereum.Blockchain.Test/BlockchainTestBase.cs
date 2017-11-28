@@ -296,9 +296,9 @@ namespace Ethereum.Blockchain.Test
                 differences.Add($"BLOOM exp: {testHeader.Bloom}, actual: {headBlock.Receipts.Last().Bloom}");
             }
 
-            if (testHeader.StateRoot != _stateProviders[test.Network].State.RootHash)
+            if (testHeader.StateRoot != _stateProviders[test.Network].StateRoot)
             {
-                differences.Add($"STATE ROOT exp: {testHeader.StateRoot}, actual: {_stateProviders[test.Network].State.RootHash}");
+                differences.Add($"STATE ROOT exp: {testHeader.StateRoot}, actual: {_stateProviders[test.Network].StateRoot}");
             }
 
             if (testHeader.TransactionsRoot != headBlock.Header.TransactionsRoot)

@@ -24,35 +24,45 @@ namespace Nevermind.Store
         {
             _db = new InMemoryDb();
         }
-        
+
         public PatriciaTree(IDb db)
+            : this(db, EmptyTreeHash)
+        {
+        }
+
+        public PatriciaTree(IDb db, Keccak rootHash)
         {
             _db = db;
-        }
-
-        public PatriciaTree(Keccak rootHash, IDb db)
-            : this(db)
-        {
             RootHash = rootHash;
-            if (RootHash == Keccak.EmptyTreeHash)
-            {
-                Root = null;
-            }
-            else
-            {
-                Rlp rootRlp = new Rlp(_db[RootHash]);
-                Root = RlpDecode(rootRlp);
-            }
+            
         }
 
-        public Keccak RootHash { get; internal set; } = EmptyTreeHash;
+        private Keccak _rootHash;
+
+        public Keccak RootHash
+        {
+            get => _rootHash;
+            set
+            {
+                _rootHash = value;
+                if (_rootHash == Keccak.EmptyTreeHash)
+                {
+                    Root = null;
+                }
+                else
+                {
+                    Rlp rootRlp = new Rlp(_db[_rootHash]);
+                    Root = RlpDecode(rootRlp);
+                }    
+            }
+        }
 
         private static Rlp RlpEncode(KeccakOrRlp keccakOrRlp)
         {
             return keccakOrRlp == null ? Rlp.OfEmptyByteArray : keccakOrRlp.GetOrEncodeRlp();
         }
 
-        internal static Rlp RlpEncode(Node node)
+        private static Rlp RlpEncode(Node node)
         {
             if (node is LeafNode leaf)
             {
@@ -174,9 +184,7 @@ namespace Nevermind.Store
             Rlp rlp = null;
             try
             {
-
-            
-            rlp = new Rlp(keccakOrRlp.IsKeccak ? _db[keccakOrRlp.GetOrComputeKeccak()] : keccakOrRlp.Bytes);
+                rlp = new Rlp(keccakOrRlp.IsKeccak ? _db[keccakOrRlp.GetOrComputeKeccak()] : keccakOrRlp.Bytes);
             }
             catch (Exception e)
             {
@@ -185,43 +193,45 @@ namespace Nevermind.Store
             return RlpDecode(rlp);
         }
 
+        // TODO: this would only be needed with pruning?
         internal void DeleteNode(KeccakOrRlp hash, bool ignoreChildren = false)
         {
-            if (hash == null || !hash.IsKeccak)
-            {
-                return;
-            }
-
-            Keccak thisNodeKeccak = hash.GetOrComputeKeccak();
-            Node node = ignoreChildren ? null : RlpDecode(new Rlp(_db[thisNodeKeccak]));
-            _db.Delete(thisNodeKeccak);
-
-            if (ignoreChildren)
-            {
-                return;
-            }
-
-            if (node is ExtensionNode extension)
-            {
-                DeleteNode(extension.NextNode, true);
-                _db.Delete(hash.GetOrComputeKeccak());
-            }
-
-            if (node is BranchNode branch)
-            {
-                foreach (KeccakOrRlp subnode in branch.Nodes)
-                {
-                    DeleteNode(subnode, true);
-                }
-            }
+//            if (hash == null || !hash.IsKeccak)
+//            {
+//                return;
+//            }
+//
+//            Keccak thisNodeKeccak = hash.GetOrComputeKeccak();
+//            Node node = ignoreChildren ? null : RlpDecode(new Rlp(_db[thisNodeKeccak]));
+//            _db.Delete(thisNodeKeccak);
+//
+//            if (ignoreChildren)
+//            {
+//                return;
+//            }
+//
+//            if (node is ExtensionNode extension)
+//            {
+//                DeleteNode(extension.NextNode, true);
+//                _db.Delete(hash.GetOrComputeKeccak());
+//            }
+//
+//            if (node is BranchNode branch)
+//            {
+//                foreach (KeccakOrRlp subnode in branch.Nodes)
+//                {
+//                    DeleteNode(subnode, true);
+//                }
+//            }
         }
 
         internal KeccakOrRlp StoreNode(Node node, bool isRoot = false)
         {
             if (isRoot && node == null)
             {
+//                DeleteNode(new KeccakOrRlp(RootHash));
                 Root = null;
-                _db.Delete(RootHash);
+//                _db.Delete(RootHash);
                 RootHash = EmptyTreeHash;
                 return new KeccakOrRlp(EmptyTreeHash);
             }

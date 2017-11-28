@@ -30,10 +30,16 @@ namespace Nevermind.Store
         {
             ProtocolSpecification = protocolSpecification;
             _logger = logger;
-            State = stateTree;
+            _state = stateTree;
+        }
+        
+        public Keccak StateRoot
+        {
+            get => _state.RootHash;
+            set => _state.RootHash = value;
         }
 
-        public StateTree State { get; }
+        private readonly StateTree _state;
 
         public bool AccountExists(Address address)
         {
@@ -60,6 +66,12 @@ namespace Nevermind.Store
         {
             Account account = GetThroughCache(address);
             return account?.Nonce ?? BigInteger.Zero;
+        }
+        
+        public Keccak GetStorageRoot(Address address)
+        {
+            Account account = GetThroughCache(address);
+            return account.StorageRoot;
         }
 
         public BigInteger GetBalance(Address address)
@@ -265,12 +277,12 @@ namespace Nevermind.Store
                         if (ProtocolSpecification.IsEip158Enabled && change.Account.IsEmpty)
                         {
                             _logger?.Log($"  DELETE EMPTY {change.Address} B = {change.Account.Balance} N = {change.Account.Nonce}");
-                            State.Set(change.Address, null);
+                            _state.Set(change.Address, null);
                         }
                         else
                         {
                             _logger?.Log($"  UPDATE {change.Address} B = {change.Account.Balance} N = {change.Account.Nonce}");
-                            State.Set(change.Address, Rlp.Encode(change.Account));
+                            _state.Set(change.Address, Rlp.Encode(change.Account));
                         }
 
                         break;
@@ -281,7 +293,7 @@ namespace Nevermind.Store
 
                         if (!ProtocolSpecification.IsEip158Enabled || !change.Account.IsEmpty)
                         {
-                            State.Set(change.Address, Rlp.Encode(change.Account));
+                            _state.Set(change.Address, Rlp.Encode(change.Account));
                         }
 
                         break;
@@ -303,7 +315,7 @@ namespace Nevermind.Store
 
                         if (!wasItCreatedNow)
                         {
-                            State.Set(change.Address, null);
+                            _state.Set(change.Address, null);
                         }
                         break;
                     }
@@ -321,7 +333,7 @@ namespace Nevermind.Store
 
         private Account GetAccount(Address address)
         {
-            Rlp rlp = State.Get(address);
+            Rlp rlp = _state.Get(address);
             if (rlp.Bytes == null)
             {
                 return null;
@@ -436,7 +448,7 @@ namespace Nevermind.Store
             _cache.Clear();
             _currentPosition = -1;
             _committedThisRound.Clear();
-            _changes = new Change[_capacity];
+            Array.Clear(_changes, 0, _changes.Length);
         }
     }
 }
