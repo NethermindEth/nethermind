@@ -14,17 +14,17 @@ namespace Nevermind.Core.Test
         private readonly BlockHeader _grandparent;
         private readonly BlockHeader _parent;
         private readonly BlockHeader _header;
-        private IBlockchainStore _blockchainStore;
+        private IBlockStore _blockStore;
         private IBlockHeaderValidator _blockHeaderValidator;
 
         [SetUp]
         public void Setup()
         {
-            _blockchainStore = Substitute.For<IBlockchainStore>();
-            _blockchainStore.FindBlock(_grandgrandparent.Hash).Returns(new Block(_grandgrandparent));
-            _blockchainStore.FindBlock(_grandparent.Hash).Returns(new Block(_grandparent));
-            _blockchainStore.FindBlock(_parent.Hash).Returns(new Block(_parent));
-            _blockchainStore.FindBlock(_header.Hash).Returns(new Block(_header));
+            _blockStore = Substitute.For<IBlockStore>();
+            _blockStore.FindBlock(_grandgrandparent.Hash, false).Returns(new Block(_grandgrandparent));
+            _blockStore.FindBlock(_grandparent.Hash, false).Returns(new Block(_grandparent));
+            _blockStore.FindBlock(_parent.Hash, false).Returns(new Block(_parent));
+            _blockStore.FindBlock(_header.Hash, false).Returns(new Block(_header));
             
             _blockHeaderValidator = Substitute.For<IBlockHeaderValidator>();
             _blockHeaderValidator.Validate(Arg.Any<BlockHeader>()).Returns(true);
@@ -60,7 +60,7 @@ namespace Nevermind.Core.Test
 
             BlockHeader[] ommers = GetValidOmmers(3);
 
-            OmmersValidator ommersValidator = new OmmersValidator(_blockchainStore, blockHeaderValidator);
+            OmmersValidator ommersValidator = new OmmersValidator(_blockStore, blockHeaderValidator);
             Assert.False(ommersValidator.Validate(new BlockHeader(), ommers));
         }
 
@@ -73,7 +73,7 @@ namespace Nevermind.Core.Test
             BlockHeader[] ommers = new BlockHeader[1];
             ommers[0] = _header;
 
-            OmmersValidator ommersValidator = new OmmersValidator(_blockchainStore, blockHeaderValidator);
+            OmmersValidator ommersValidator = new OmmersValidator(_blockStore, blockHeaderValidator);
             Assert.False(ommersValidator.Validate(_header, ommers));
         }
 
@@ -85,7 +85,7 @@ namespace Nevermind.Core.Test
             ommers[0].ParentHash = _parent.Hash;
             ommers[0].Number = _header.Number;
 
-            OmmersValidator ommersValidator = new OmmersValidator(_blockchainStore, _blockHeaderValidator);
+            OmmersValidator ommersValidator = new OmmersValidator(_blockStore, _blockHeaderValidator);
             Assert.False(ommersValidator.Validate(_header, ommers));
         }
 
@@ -95,7 +95,7 @@ namespace Nevermind.Core.Test
             BlockHeader[] ommers = new BlockHeader[1];
             ommers[0] = _parent;
 
-            OmmersValidator ommersValidator = new OmmersValidator(_blockchainStore, _blockHeaderValidator);
+            OmmersValidator ommersValidator = new OmmersValidator(_blockStore, _blockHeaderValidator);
             Assert.False(ommersValidator.Validate(_header, ommers));
         }
 
@@ -103,9 +103,8 @@ namespace Nevermind.Core.Test
         public void When_ommer_was_already_included_return_false()
         {
             BlockHeader[] ommers = GetValidOmmers(1);
-            _blockchainStore.FindOmmer(ommers[0].Hash).Returns(ommers[0]);
 
-            OmmersValidator ommersValidator = new OmmersValidator(_blockchainStore, _blockHeaderValidator);
+            OmmersValidator ommersValidator = new OmmersValidator(_blockStore, _blockHeaderValidator);
             Assert.False(ommersValidator.Validate(_header, ommers));
         }
 
@@ -128,7 +127,7 @@ namespace Nevermind.Core.Test
         {
             BlockHeader[] ommers = GetValidOmmers(1);
 
-            OmmersValidator ommersValidator = new OmmersValidator(_blockchainStore, _blockHeaderValidator);
+            OmmersValidator ommersValidator = new OmmersValidator(_blockStore, _blockHeaderValidator);
             Assert.True(ommersValidator.Validate(_header, ommers));
         }
         
@@ -139,7 +138,7 @@ namespace Nevermind.Core.Test
             ommers[0].Number = _grandparent.Number;
             ommers[0].ParentHash = _grandgrandparent.Hash;
 
-            OmmersValidator ommersValidator = new OmmersValidator(_blockchainStore, _blockHeaderValidator);
+            OmmersValidator ommersValidator = new OmmersValidator(_blockStore, _blockHeaderValidator);
             Assert.True(ommersValidator.Validate(_header, ommers));
         }
 
@@ -148,7 +147,7 @@ namespace Nevermind.Core.Test
         {
             BlockHeader[] ommers = GetValidOmmers(1).Union(GetValidOmmers(1)).ToArray();
 
-            OmmersValidator ommersValidator = new OmmersValidator(_blockchainStore, _blockHeaderValidator);
+            OmmersValidator ommersValidator = new OmmersValidator(_blockStore, _blockHeaderValidator);
             Assert.False(ommersValidator.Validate(_header, ommers));
         }
     }

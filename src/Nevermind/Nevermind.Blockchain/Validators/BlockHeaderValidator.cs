@@ -6,16 +6,16 @@ namespace Nevermind.Blockchain.Validators
 {
     public class BlockHeaderValidator : IBlockHeaderValidator
     {
-        private readonly IBlockchainStore _chain;
+        private readonly IBlockStore _chain;
 
-        public BlockHeaderValidator(IBlockchainStore chain)
+        public BlockHeaderValidator(IBlockStore chain)
         {
             _chain = chain;
         }
 
         public bool Validate(BlockHeader header)
         {
-            Block parent = _chain.FindBlock(header.ParentHash);
+            Block parent = _chain.FindParent(header);
             if (parent == null)
             {
                 return IsGenesisHeaderValid(header);

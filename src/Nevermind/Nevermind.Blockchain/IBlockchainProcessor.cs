@@ -8,6 +8,6 @@ namespace Nevermind.Blockchain
     {
         Block HeadBlock { get; }
         BigInteger TotalDifficulty { get; }
-        Block Process(Rlp blockRlp); // TODO: potentially do not return anything
+        void Process(Rlp blockRlp); // TODO: potentially do not return anything
     }
 }

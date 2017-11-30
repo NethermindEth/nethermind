@@ -27,7 +27,7 @@ namespace Ethereum.Blockchain.Test
         private readonly IProtocolSpecificationProvider _protocolSpecificationProvider = new ProtocolSpecificationProvider();
         private IBlockhashProvider _blockhashProvider;
         private IMultiDb _multiDb;
-        private IBlockchainStore _chain;
+        private IBlockStore _chain;
         private BlockHeaderValidator _headerValidator;
         private BlockValidator _blockValidator;
         private OmmersValidator _ommersValidator;   
@@ -41,7 +41,7 @@ namespace Ethereum.Blockchain.Test
             _logger = logger;
             ILogger stateLogger = ShouldLog.State ? _logger : null;
             _multiDb = new MultiDb(stateLogger);                
-            _chain = new BlockchainStore();
+            _chain = new BlockStore();
             _headerValidator = new BlockHeaderValidator(_chain);
              _ommersValidator = new OmmersValidator(_chain, _headerValidator);
             _blockValidator = new BlockValidator(_headerValidator, _ommersValidator, stateLogger);
@@ -94,23 +94,23 @@ namespace Ethereum.Blockchain.Test
                 Dictionary<string, BlockchainTestJson> testsInFile = JsonConvert.DeserializeObject<Dictionary<string, BlockchainTestJson>>(json);
                 foreach (KeyValuePair<string, BlockchainTestJson> namedTest in testsInFile)
                 {
-                    if (namedTest.Key.Contains("Frontier"))
+                    if (namedTest.Key.EndsWith("Frontier"))
                     {
                         namedTest.Value.EthereumNetwork = EthereumNetwork.Frontier;
                     }
-                    else if (namedTest.Key.Contains("Homestead"))
+                    else if (namedTest.Key.EndsWith("Homestead"))
                     {
                         namedTest.Value.EthereumNetwork = EthereumNetwork.Homestead;
                     }
-                    else if (namedTest.Key.Contains("EIP150"))
+                    else if (namedTest.Key.EndsWith("EIP150"))
                     {
                         namedTest.Value.EthereumNetwork = EthereumNetwork.TangerineWhistle;
                     }
-                    else if (namedTest.Key.Contains("EIP158"))
+                    else if (namedTest.Key.EndsWith("EIP158"))
                     {
                         namedTest.Value.EthereumNetwork = EthereumNetwork.SpuriousDragon;
                     }
-                    else if (namedTest.Key.Contains("Byzantium"))
+                    else if (namedTest.Key.EndsWith("Byzantium"))
                     {
                         namedTest.Value.EthereumNetwork = EthereumNetwork.Byzantium;
                     }
@@ -198,24 +198,23 @@ namespace Ethereum.Blockchain.Test
                 _logger);
 
             var rlps = test.Blocks.Select(tb => new Rlp(Hex.ToBytes(tb.Rlp))).ToArray();
-            Block[] processedBlocks = new Block[rlps.Length];
             for (int i = 0; i < rlps.Length; i++)
             {
                 stopwatch?.Start();
                 try
                 {
-                    processedBlocks[i] = blockchainProcessor.Process(rlps[i]);
+                    blockchainProcessor.Process(rlps[i]);
                 }
-                catch (InvalidBlockException)
+                catch (InvalidBlockException ex)
                 {
-                    processedBlocks[i] = null;
-                    Console.WriteLine($"INVALID BLOCK {i} of TEST {test.Name}");
+                }
+                catch (Exception ex)
+                {
+                    _logger?.Log(ex.ToString());
                 }
                 
                 stopwatch?.Stop();   
             }
-            
-            // assert on blocks
             
             RunAssertions(test, blockchainProcessor.HeadBlock);
         }
@@ -245,7 +244,10 @@ namespace Ethereum.Blockchain.Test
 
         private void RunAssertions(BlockchainTest test, Block headBlock)
         {
-            BlockHeader testHeader = Convert(test.Blocks.LastOrDefault(b => b.BlockHeader != null)?.BlockHeader ?? test.GenesisBlockHeader);
+            TestBlockHeaderJson testHeaderJson = test.Blocks
+                                                     .Where(b => b.BlockHeader != null)
+                                                     .SingleOrDefault(b => new Keccak(b.BlockHeader.Hash) == headBlock.Hash)?.BlockHeader ?? test.GenesisBlockHeader; 
+            BlockHeader testHeader = Convert(testHeaderJson);
             List<string> differences = new List<string>();
             foreach (KeyValuePair<Address, AccountState> accountState in test.PostState)
             {

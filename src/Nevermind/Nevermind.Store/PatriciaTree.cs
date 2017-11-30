@@ -52,7 +52,7 @@ namespace Nevermind.Store
                 else
                 {
                     Rlp rootRlp = new Rlp(_db[_rootHash]);
-                    Root = RlpDecode(rootRlp);
+                    Root = RlpDecode(rootRlp); // TODO: needed?
                 }
             }
         }

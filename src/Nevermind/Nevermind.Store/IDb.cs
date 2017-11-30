@@ -11,7 +11,7 @@ namespace Nevermind.Store
             set;
         }
 
-        void Delete(Keccak key);
+//        void Delete(Keccak key); // TODO: pruning
 
         void Print(Action<string> printFunc);
     }

@@ -108,7 +108,7 @@ namespace Nevermind.Blockchain.Test.Runner
 //            Run(bugHunter, "stRevertTest", testWildcard);
 //            Run(bugHunter, "stSolidityTest", testWildcard);
 //            Run(bugHunter, "stSpecialTest", testWildcard);
-//            Run(bugHunter, "stStackTests", testWildcard);
+//            Run(bugHunter, "stStackTests", testWildcard);c
 //            Run(bugHunter, "stStaticCall", testWildcard);
 //            Run(bugHunter, "stSystemOperationsTest", testWildcard);
 //            Run(bugHunter, "stTransactionTest", testWildcard);

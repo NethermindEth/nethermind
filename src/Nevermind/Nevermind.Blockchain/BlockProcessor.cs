@@ -27,7 +27,7 @@ namespace Nevermind.Blockchain
 
         public BlockProcessor(
             IProtocolSpecification protocolSpecification,
-            IBlockchainStore blockchainStore,
+            IBlockStore blockStore,
             IBlockValidator blockValidator,
             IDifficultyCalculator difficultyCalculator,
             IRewardCalculator rewardCalculator,
@@ -39,7 +39,7 @@ namespace Nevermind.Blockchain
         {
             _logger = logger;
             _protocolSpecification = protocolSpecification;
-            _blockchainStore = blockchainStore;
+            _blockStore = blockStore;
             _blockValidator = blockValidator;
             _stateProvider = stateProvider;
             _storageProvider = storageProvider;
@@ -50,7 +50,7 @@ namespace Nevermind.Blockchain
         }
 
         private readonly IProtocolSpecification _protocolSpecification;
-        private readonly IBlockchainStore _blockchainStore;
+        private readonly IBlockStore _blockStore;
         private readonly IBlockValidator _blockValidator;
 
         private void ProcessTransactions(Block block, List<Transaction> transactions)
@@ -58,6 +58,11 @@ namespace Nevermind.Blockchain
             List<TransactionReceipt> receipts = new List<TransactionReceipt>(); // TODO: pool?
             for (int i = 0; i < transactions.Count; i++)
             {
+                if (block.Header.Number == 26)
+                {
+                    
+                }
+                
                 _logger?.Log($"PROCESSING TRANSACTION {i}");
                 TransactionReceipt receipt = _transactionProcessor.Execute(transactions[i], block.Header);
                 receipts.Add(receipt);
@@ -92,95 +97,103 @@ namespace Nevermind.Blockchain
             return tranTree.RootHash;
         }
 
-        public Block Process(Rlp rlp)
+        public Block[] Process(Keccak? branchStateRoot, Block[] suggestedBlocks)
         {
-            _logger?.Log("-------------------------------------------------------------------------------------");
-            _logger?.Log($"PROCESSING BLOCK - STATE ROOT {_stateProvider.StateRoot}");
             int dbSnapshot = _db.TakeSnapshot();
-            Keccak stateRoot = _stateProvider.StateRoot;
+            Keccak snapshotStateRoot = _stateProvider.StateRoot;
+            
+            if (branchStateRoot != null && _stateProvider.StateRoot != branchStateRoot)
+            {
+                // discarding one of the branches
+                _stateProvider.StateRoot = branchStateRoot.Value;
+            }
+
+            Block[] processedBlocks = new Block[suggestedBlocks.Length];
             try
             {
-                Block suggestedBlock = Rlp.Decode<Block>(rlp);
-                _logger?.Log($"HASH {suggestedBlock.Header.Hash} NUMBER {suggestedBlock.Header.Number}");
-                if (!_blockValidator.ValidateSuggestedBlock(suggestedBlock))
+                for (int i = 0; i < suggestedBlocks.Length; i++)
                 {
-                    throw new InvalidBlockException(rlp);
+                    processedBlocks[i] = ValidateAndProcessBlock(suggestedBlocks[i]);   
                 }
 
-                if (suggestedBlock.IsGenesis)
-                {
-                    return suggestedBlock; // TODO: genesis validation should probably be more strict
-                }
-
-                Block parent = _blockchainStore.FindBlock(suggestedBlock.Header.ParentHash);
-                if (parent == null)
-                {
-                    _logger?.Log($"DISCARDING BLOCK - COULD NOT FIND PARENT OF {suggestedBlock.Header.Hash} (child of {suggestedBlock.Header.ParentHash}) {suggestedBlock.Header.Number}");
-                    throw new InvalidBlockException(rlp);
-                }
-                
-                Keccak transactionsRoot = GetTransactionsRoot(suggestedBlock.Transactions);
-                BigInteger blockNumber = parent.Header.Number + 1;
-                BigInteger difficulty =  _difficultyCalculator.Calculate(parent.Header.Difficulty, parent.Header.Timestamp, suggestedBlock.Header.Timestamp, blockNumber, parent.Ommers.Length > 0);
-                Keccak ommersHash = Keccak.Compute(Rlp.Encode(suggestedBlock.Ommers)); // TODO: refactor RLP here
-                if (transactionsRoot != suggestedBlock.Header.TransactionsRoot ||
-                    blockNumber != suggestedBlock.Header.Number ||
-                    difficulty != suggestedBlock.Header.Difficulty ||
-                    ommersHash != suggestedBlock.Header.OmmersHash)
-                {
-                    throw new InvalidBlockException(rlp);
-                }
-                
-                _logger?.Log($"BLOCK BENEFICIARY {suggestedBlock.Header.Beneficiary}");
-                _logger?.Log($"BLOCK GAS LIMIT {suggestedBlock.Header.GasLimit}");
-                _logger?.Log($"BLOCK GAS USED {suggestedBlock.Header.GasUsed}");
-                _logger?.Log($"BLOCK DIFFICULTY {suggestedBlock.Header.Difficulty}");
-                
-                Block processedBlock = ProcessBlock(
-                    suggestedBlock.Header.ParentHash,
-                    suggestedBlock.Header.Difficulty,
-                    suggestedBlock.Header.Number,
-                    suggestedBlock.Header.Timestamp,
-                    suggestedBlock.Header.Beneficiary,
-                    suggestedBlock.Header.GasLimit,
-                    suggestedBlock.Header.ExtraData,
-                    suggestedBlock.Transactions,
-                    suggestedBlock.Header.MixHash,
-                    suggestedBlock.Header.Nonce,
-                    suggestedBlock.Header.OmmersHash,
-                    suggestedBlock.Ommers);
-                
-                // TODO: will need to validate again the list of transactions after processing instead
-                processedBlock.Transactions = suggestedBlock.Transactions;
-                processedBlock.Header.TransactionsRoot = suggestedBlock.Header.TransactionsRoot;
-                processedBlock.Header.RecomputeHash();
-                
-                if (!_blockValidator.ValidateProcessedBlock(processedBlock, suggestedBlock))
-                {
-                    throw new InvalidBlockException(rlp);
-                }
-
-                // TODO: at the moment I cannot calculate state root without committing...
-                // TODO: can I revert by assigning previous state root?
-                // TODO: how to clean DB in such case?
-                // TODO: can I calculate state root on the fly...?
-                // TODO: need to add CommitDB, RestoreDB, TakeDBSnapshot... sooo... two level snapshots, one restoring calls, one restoring blocks
-                // TODO: DB changes can be easily stored for each block, if we want to revert them
-
-                _logger?.Log($"COMMITING BLOCK - STATE ROOT {_stateProvider.StateRoot}");
-                _db.Commit();
-                return processedBlock;
+                return processedBlocks;
             }
             catch (InvalidBlockException) // TODO: which exception to catch here?
             {
-                _logger?.Log($"REVERTING BLOCK - STATE ROOT {_stateProvider.StateRoot}");
+                _logger?.Log($"REVERTING BLOCKS - STATE ROOT {_stateProvider.StateRoot}");
                 _db.Restore(dbSnapshot);
                 _storageProvider.ClearCaches();
                 _stateProvider.ClearCaches();
-                _stateProvider.StateRoot = stateRoot;
-                _logger?.Log($"REVERTED BLOCK - STATE ROOT {_stateProvider.StateRoot}");
+                _stateProvider.StateRoot = snapshotStateRoot;
+                _logger?.Log($"REVERTED BLOCKS - STATE ROOT {_stateProvider.StateRoot}");
                 throw;
             }
+        }
+
+        private Block ValidateAndProcessBlock(Block suggestedBlock) // TODO: refactor
+        {
+            _logger?.Log($"HASH {suggestedBlock.Header.Hash} NUMBER {suggestedBlock.Header.Number}");
+            if (!_blockValidator.ValidateSuggestedBlock(suggestedBlock))
+            {
+                throw new InvalidBlockException();
+            }
+
+            if (suggestedBlock.IsGenesis)
+            {
+                return suggestedBlock; // TODO: genesis validation should probably be more strict
+            }
+
+            Block parent = _blockStore.FindParent(suggestedBlock.Header);
+            if (parent == null)
+            {
+                _logger?.Log($"DISCARDING BLOCK - COULD NOT FIND PARENT OF {suggestedBlock.Header.Hash} (child of {suggestedBlock.Header.ParentHash}) {suggestedBlock.Header.Number}");
+                throw new InvalidBlockException();
+            }
+
+            Keccak transactionsRoot = GetTransactionsRoot(suggestedBlock.Transactions);
+            BigInteger blockNumber = parent.Header.Number + 1;
+            BigInteger difficulty = _difficultyCalculator.Calculate(parent.Header.Difficulty, parent.Header.Timestamp, suggestedBlock.Header.Timestamp, blockNumber, parent.Ommers.Length > 0);
+            Keccak ommersHash = Keccak.Compute(Rlp.Encode(suggestedBlock.Ommers)); // TODO: refactor RLP here
+            if (transactionsRoot != suggestedBlock.Header.TransactionsRoot ||
+                blockNumber != suggestedBlock.Header.Number ||
+                difficulty != suggestedBlock.Header.Difficulty ||
+                ommersHash != suggestedBlock.Header.OmmersHash)
+            {
+                throw new InvalidBlockException();
+            }
+
+            _logger?.Log($"BLOCK BENEFICIARY {suggestedBlock.Header.Beneficiary}");
+            _logger?.Log($"BLOCK GAS LIMIT {suggestedBlock.Header.GasLimit}");
+            _logger?.Log($"BLOCK GAS USED {suggestedBlock.Header.GasUsed}");
+            _logger?.Log($"BLOCK DIFFICULTY {suggestedBlock.Header.Difficulty}");
+
+            Block processedBlock = ProcessBlock(
+                suggestedBlock.Header.ParentHash,
+                suggestedBlock.Header.Difficulty,
+                suggestedBlock.Header.Number,
+                suggestedBlock.Header.Timestamp,
+                suggestedBlock.Header.Beneficiary,
+                suggestedBlock.Header.GasLimit,
+                suggestedBlock.Header.ExtraData,
+                suggestedBlock.Transactions,
+                suggestedBlock.Header.MixHash,
+                suggestedBlock.Header.Nonce,
+                suggestedBlock.Header.OmmersHash,
+                suggestedBlock.Ommers);
+
+            // TODO: will need to validate again the list of transactions after processing instead
+            processedBlock.Transactions = suggestedBlock.Transactions;
+            processedBlock.Header.TransactionsRoot = suggestedBlock.Header.TransactionsRoot;
+            processedBlock.Header.RecomputeHash();
+
+            if (!_blockValidator.ValidateProcessedBlock(processedBlock, suggestedBlock))
+            {
+                throw new InvalidBlockException();
+            }
+            
+            _logger?.Log($"COMMITING BLOCK - STATE ROOT {_stateProvider.StateRoot}");
+            _db.Commit();
+            return processedBlock;
         }
 
         private Block ProcessBlock(

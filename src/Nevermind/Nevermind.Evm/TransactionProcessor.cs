@@ -31,12 +31,13 @@ namespace Nevermind.Evm
 
         public ChainId ChainId { get; }
 
-        private TransactionReceipt GetNullReceipt(long totalGasUsed)
+        private TransactionReceipt GetNullReceipt(BlockHeader block, long gasUsed)
         {
+            block.GasUsed += gasUsed;
             TransactionReceipt transactionReceipt = new TransactionReceipt();
             transactionReceipt.Logs = new LogEntry[0];
             transactionReceipt.Bloom = new Bloom();
-            transactionReceipt.GasUsed = totalGasUsed;
+            transactionReceipt.GasUsed = block.GasUsed;
             transactionReceipt.PostTransactionState = _stateProvider.StateRoot;
             transactionReceipt.StatusCode = StatusCode.Failure;
             return transactionReceipt;
@@ -66,7 +67,7 @@ namespace Nevermind.Evm
 
             if (sender == null)
             {
-                return GetNullReceipt(block.GasUsed + gasLimit);
+                return GetNullReceipt(block, gasLimit);
             }
 
             long intrinsicGas = IntrinsicGasCalculator.Calculate(_protocolSpecification, transaction);
@@ -74,24 +75,24 @@ namespace Nevermind.Evm
 
             if (gasLimit < intrinsicGas)
             {
-                return GetNullReceipt(block.GasUsed + gasLimit);
+                return GetNullReceipt(block, gasLimit);
             }
 
             if (gasLimit > block.GasLimit - block.GasUsed)
             {
-                return GetNullReceipt(block.GasUsed + gasLimit);
+                return GetNullReceipt(block, gasLimit);
             }
 
             BigInteger senderBalance = _stateProvider.GetBalance(sender);
             _logger?.Log($"SENDER_BALANCE: {senderBalance}");
             if (intrinsicGas * gasPrice + value > senderBalance)
             {
-                return GetNullReceipt(block.GasUsed + gasLimit);
+                return GetNullReceipt(block, gasLimit);
             }
 
             if (transaction.Nonce != _stateProvider.GetNonce(sender))
             {
-                return GetNullReceipt(block.GasUsed + gasLimit);
+                return GetNullReceipt(block, gasLimit);
             }
             
             if (!_stateProvider.AccountExists(sender))

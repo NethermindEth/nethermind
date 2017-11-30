@@ -42,14 +42,14 @@
   <ItemGroup>
     <Compile Include="BlockchainProcessor.cs" />
     <Compile Include="BlockchainException.cs" />
-    <Compile Include="BlockchainStore.cs" />
+    <Compile Include="BlockStore.cs" />
     <Compile Include="BlockhashProvider.cs" />
     <Compile Include="BlockNotInitializedException.cs" />
     <Compile Include="BlockProcessor.cs" />
     <Compile Include="Difficulty\IDifficultyCalculator.cs" />
     <Compile Include="Difficulty\ProtocolBasedDifficultyCalculator.cs" />
     <Compile Include="IBlockchainProcessor.cs" />
-    <Compile Include="IBlockchainStore.cs" />
+    <Compile Include="IBlockStore.cs" />
     <Compile Include="IBlockProcessor.cs" />
     <Compile Include="InvalidBlockException.cs" />
     <Compile Include="IRewardCalculator.cs" />
@@ -58,6 +58,7 @@
     <Compile Include="Validators\AccountValidator.cs" />
     <Compile Include="Validators\BlockHeaderValidator.cs" />
     <Compile Include="Validators\BlockValidator.cs" />
+    <Compile Include="Validators\IBlockchainStoreExtensions.cs" />
     <Compile Include="Validators\IBlockHeaderValidator.cs" />
     <Compile Include="Validators\IBlockValidator.cs" />
     <Compile Include="Validators\IOmmersValidator.cs" />

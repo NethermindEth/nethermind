@@ -1,4 +1,5 @@
 ﻿using System.Collections.Generic;
+using Nevermind.Core.Crypto;
 
 namespace Nevermind.Core
 {
@@ -17,5 +18,6 @@ namespace Nevermind.Core
         public List<Transaction> Transactions { get; set; }
         public List<TransactionReceipt> Receipts { get; set; }
         public BlockHeader[] Ommers { get; }
+        public Keccak Hash => Header.Hash;
     }
 }

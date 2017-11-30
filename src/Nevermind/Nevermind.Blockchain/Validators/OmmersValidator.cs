@@ -1,13 +1,14 @@
-﻿using Nevermind.Core;
+﻿using System.Linq;
+using Nevermind.Core;
 
 namespace Nevermind.Blockchain.Validators
 {
     public class OmmersValidator : IOmmersValidator
     {
-        private readonly IBlockchainStore _chain;
+        private readonly IBlockStore _chain;
         private readonly IBlockHeaderValidator _headerValidator;
 
-        public OmmersValidator(IBlockchainStore chain, IBlockHeaderValidator headerValidator)
+        public OmmersValidator(IBlockStore chain, IBlockHeaderValidator headerValidator)
         {
             _chain = chain;
             _headerValidator = headerValidator;
@@ -26,8 +27,8 @@ namespace Nevermind.Blockchain.Validators
             }
 
             foreach (BlockHeader ommer in ommers)
-            {
-                if (_chain.FindOmmer(ommer.Hash) != null)
+            {   
+                if (!_headerValidator.Validate(ommer))
                 {
                     return false;
                 }
@@ -37,9 +38,20 @@ namespace Nevermind.Blockchain.Validators
                     return false;
                 }
 
-                if (!_headerValidator.Validate(ommer))
+                Block ancestor = _chain.FindParent(header);
+                for (int i = 0; i < 5; i++)
                 {
-                    return false;
+                    if (ancestor == null)
+                    {
+                        break;
+                    }
+                    
+                    if (ancestor.Ommers.Any(o => o.Hash == ommer.Hash))
+                    {
+                        return false;
+                    }
+                    
+                    ancestor = _chain.FindParent(ancestor.Header);
                 }
             }
 
@@ -58,7 +70,7 @@ namespace Nevermind.Blockchain.Validators
                 return false;
             }
             
-            BlockHeader parent = _chain.FindBlock(header.ParentHash)?.Header;
+            BlockHeader parent = _chain.FindParent(header)?.Header;
             if (parent == null)
             {
                 return false;

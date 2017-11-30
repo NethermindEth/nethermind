@@ -58,6 +58,8 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="AddressTests.cs" />
+    <Compile Include="BlockStoreTests.cs" />
+    <Compile Include="BlockchainProcessorTests.cs" />
     <Compile Include="BlockHeaderTests.cs" />
     <Compile Include="BlockHeaderValidatorTests.cs" />
     <Compile Include="BlockValidatorTests.cs" />
