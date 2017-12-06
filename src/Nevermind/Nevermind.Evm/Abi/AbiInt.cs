@@ -54,7 +54,7 @@ namespace Nevermind.Evm.Abi
         {
             if (arg is BigInteger input)
             {
-                return input.ToBigEndianByteArray(false, 32);
+                return input.ToBigEndianByteArray(32);
             }
 
             throw new AbiException(AbiEncodingExceptionMessage);

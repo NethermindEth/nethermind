@@ -52,7 +52,7 @@ namespace Nevermind.Core.Test
         }
 
         [Test]
-        public void HEx_is_stored_correctly()
+        public void Hex_is_stored_correctly()
         {
             byte[] bytes = new byte[32];
             new System.Random(12).NextBytes(bytes);

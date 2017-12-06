@@ -1,5 +1,7 @@
 ﻿<ProjectConfiguration>
   <Settings>
-    <IgnoreThisComponentCompletely>False</IgnoreThisComponentCompletely>
+    <IgnoredTests>
+      <AllTestsSelector />
+    </IgnoredTests>
   </Settings>
 </ProjectConfiguration>

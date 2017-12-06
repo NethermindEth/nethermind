@@ -640,7 +640,7 @@ namespace Nevermind.Evm
                         }
                         else
                         {
-                            PushBytes(BigInteger.Divide(a, b).ToBigEndianByteArray(true, 32));
+                            PushBytes(BigInteger.Divide(a, b).ToBigEndianByteArray(32));
                         }
 
                         break;
@@ -665,7 +665,7 @@ namespace Nevermind.Evm
                         else
                         {
                             PushBytes((a.Sign * BigInteger.Remainder(a.Abs(), b.Abs()))
-                                .ToBigEndianByteArray(true, 32));
+                                .ToBigEndianByteArray(32));
                         }
 
                         break;

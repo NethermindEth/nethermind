@@ -70,6 +70,7 @@
     <Compile Include="Encoding\TransactionDecoder.cs" />
     <Compile Include="EthereumNetwork.cs" />
     <Compile Include="EthereumNetworkExtensions.cs" />
+    <Compile Include="Extensions\KeyValuePairExtensions.cs" />
     <Compile Include="Hex.cs" />
     <Compile Include="ILogger.cs" />
     <Compile Include="LogEntry.cs" />
@@ -92,7 +93,6 @@
     <Compile Include="Extensions\UInt64Extensions.cs" />
     <Compile Include="Transaction.cs" />
     <Compile Include="TransactionReceipt.cs" />
-    <Compile Include="UInt256.cs" />
     <Compile Include="Address.cs" />
     <Compile Include="Extensions\IntExtensions.cs" />
     <Compile Include="Crypto\Keystore.cs" />

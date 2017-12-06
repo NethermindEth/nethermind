@@ -1,9 +1,10 @@
 ﻿using System;
 using System.Threading;
+using Nevermind.Core.Extensions;
 
 namespace Nevermind.Core.Crypto
 {
-    internal class PublicKey
+    public class PublicKey : IEquatable<PublicKey>
     {
         private const int PublicKeyWithPrefixLengthInBytes = 65;
         private const int PublicKeyLengthInBytes = 64;
@@ -32,7 +33,7 @@ namespace Nevermind.Core.Crypto
                 throw new ArgumentException($"Expected prefix of 0x04 for {PublicKeyWithPrefixLengthInBytes} bytes long {nameof(PublicKey)}");
             }
 
-            Buffer.BlockCopy(new byte[] { 0x04 }, 0, PrefixedBytes, 0, 1);
+            PrefixedBytes[0] = 0x04;
             Buffer.BlockCopy(bytes, bytes.Length - PublicKeyLengthInBytes, PrefixedBytes, 1, 64);
         }
 
@@ -50,7 +51,27 @@ namespace Nevermind.Core.Crypto
 
         public byte[] PrefixedBytes { get; } = new byte[65];
 
-        public byte[] CompressedBytes { get; }
+        private byte[] CompressedBytes { get; }
+
+        public bool Equals(PublicKey other)
+        {
+            if (other == null)
+            {
+                return false;
+            }
+            
+            return Bytes.UnsafeCompare(PrefixedBytes, other.PrefixedBytes);
+        }
+
+        public override bool Equals(object obj)
+        {
+            return Equals(obj as PublicKey);
+        }
+
+        public override int GetHashCode()
+        {
+            return PrefixedBytes.GetXxHashCode();
+        }
 
         public override string ToString()
         {
