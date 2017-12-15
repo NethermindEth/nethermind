@@ -98,11 +98,11 @@ namespace Ethereum.Rlp.Test
             Assert.AreEqual(Nevermind.Core.Encoding.Rlp.OfEmptyByteArray, Nevermind.Core.Encoding.Rlp.Encode(new byte[0]));
             Assert.AreEqual(Nevermind.Core.Encoding.Rlp.OfEmptySequence, Nevermind.Core.Encoding.Rlp.Encode(new object[] { }));
         }
-        
+
         [Test]
         public void TestCast()
         {
-            byte[] expected = new byte[] {1};
+            byte[] expected = new byte[] { 1 };
             Assert.AreEqual(expected, Nevermind.Core.Encoding.Rlp.Encode((byte)1).Bytes);
             Assert.AreEqual(expected, Nevermind.Core.Encoding.Rlp.Encode((short)1).Bytes);
             Assert.AreEqual(expected, Nevermind.Core.Encoding.Rlp.Encode((ushort)1).Bytes);
@@ -110,6 +110,13 @@ namespace Ethereum.Rlp.Test
             Assert.AreEqual(expected, Nevermind.Core.Encoding.Rlp.Encode(1U).Bytes);
             Assert.AreEqual(expected, Nevermind.Core.Encoding.Rlp.Encode(1L).Bytes);
             Assert.AreEqual(expected, Nevermind.Core.Encoding.Rlp.Encode(1UL).Bytes);
+        }
+
+        [Test]
+        public void TestNonce()
+        {
+            byte[] expected = { 136, 0, 0, 0, 0, 0, 0, 0, 42 };
+            Assert.AreEqual(expected, Nevermind.Core.Encoding.Rlp.Encode(42UL).Bytes);
         }
     }
 }

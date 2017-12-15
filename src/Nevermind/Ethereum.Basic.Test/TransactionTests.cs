@@ -62,7 +62,7 @@ namespace Ethereum.Basic.Test
             // confirm it is correct
 
             // can signature differ?
-            // Rlp signedRlp = Rlp.Encode(transaction);
+            // Rlp signedRlp = Rlp.EncodeBigInteger(transaction);
             // Assert.AreEqual(test.Signed, signedRlp, "signed");
         }
 

@@ -175,7 +175,7 @@ namespace Ethereum.Transaction.Test
                 transaction.Nonce = validTest.Nonce;
 
                 // signatures have zeroes trimmed in testing so not obtaining the same values
-                //Rlp testRlp = Rlp.Encode(transaction, false);
+                //Rlp testRlp = Rlp.EncodeBigInteger(transaction, false);
                 //Assert.AreEqual(rlp, testRlp);
 
                 Nevermind.Core.Transaction decodedTransaction = Rlp.Decode<Nevermind.Core.Transaction>(rlp);

@@ -10,7 +10,7 @@ namespace Nevermind.Core.Encoding
     /// <summary>
     /// https://github.com/ethereum/wiki/wiki/RLP
     /// </summary>
-    [DebuggerStepThrough]
+    //[DebuggerStepThrough]
     public class Rlp : IEquatable<Rlp>
     {
         public static readonly Rlp OfEmptyByteArray = new Rlp(128);
@@ -233,6 +233,70 @@ namespace Nevermind.Core.Encoding
             return Encode(rlpSequence);
         }
 
+        private static Rlp EncodeNumber(long item)
+        {
+            long value = item;
+
+            // check test bytestring00 and zero - here is some inconsistency in tests
+            if (value == 0L)
+            {
+                return OfEmptyByteArray;
+            }
+
+            if (value < 128L)
+            {
+                // ReSharper disable once PossibleInvalidCastException
+                return new Rlp(Convert.ToByte(value));
+            }
+
+            if (value <= byte.MaxValue)
+            {
+                return Encode(new[] { Convert.ToByte(value) });
+            }
+
+            if (value <= short.MaxValue)
+            {
+                return Encode(((short)value).ToBigEndianByteArray());
+            }
+
+            return Encode(new BigInteger(value));
+        }
+
+        public static Rlp Encode(byte value)
+        {
+            return EncodeNumber(value);
+        }
+
+        public static Rlp Encode(long value)
+        {
+            return EncodeNumber(value);
+        }
+
+        public static Rlp Encode(ulong value)
+        {
+            return Encode(value.ToBigEndianByteArray());
+        }
+
+        public static Rlp Encode(short value)
+        {
+            return EncodeNumber(value);
+        }
+
+        public static Rlp Encode(ushort value)
+        {
+            return EncodeNumber(value);
+        }
+
+        public static Rlp Encode(int value)
+        {
+            return EncodeNumber(value);
+        }
+
+        public static Rlp Encode(uint value)
+        {
+            return EncodeNumber(value);
+        }
+
         public static Rlp Encode(BigInteger bigInteger)
         {
             return bigInteger == 0 ? OfEmptyByteArray : Encode(bigInteger.ToBigEndianByteArray());
@@ -260,31 +324,7 @@ namespace Nevermind.Core.Encoding
                 case ushort _:
                 case uint _:
                 case long _:
-                    long value = (long)item;
-
-                    // check test bytestring00 and zero - here is some inconsistency in tests
-                    if (value == 0L)
-                    {
-                        return OfEmptyByteArray;
-                    }
-
-                    if (value < 128L)
-                    {
-                        // ReSharper disable once PossibleInvalidCastException
-                        return new Rlp(Convert.ToByte(value));
-                    }
-
-                    if (value <= byte.MaxValue)
-                    {
-                        return Encode(new[] {Convert.ToByte(value)});
-                    }
-
-                    if (value <= short.MaxValue)
-                    {
-                        return Encode(((short)value).ToBigEndianByteArray());
-                    }
-
-                    return Encode(new BigInteger(value));
+                    return EncodeNumber((long)item);
                 case null:
                     return OfEmptyByteArray;
                 case BigInteger bigInt:
