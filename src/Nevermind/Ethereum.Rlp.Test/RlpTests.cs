@@ -5,9 +5,7 @@ using System.Linq;
 using Ethereum.Test.Base;
 using JetBrains.Annotations;
 using Nevermind.Core;
-using Nevermind.Core.Encoding;
 using NUnit.Framework;
-using Assert = NUnit.Framework.Assert;
 
 namespace Ethereum.Rlp.Test
 {
@@ -41,11 +39,20 @@ namespace Ethereum.Rlp.Test
             }
         }
 
-        private static IEnumerable<RlpTest> LoadValidTests() => LoadTests("rlptest.json");
-    
-        private static IEnumerable<RlpTest> LoadRandomTests() => LoadTests("example.json");
+        private static IEnumerable<RlpTest> LoadValidTests()
+        {
+            return LoadTests("rlptest.json");
+        }
 
-        private static IEnumerable<RlpTest> LoadInvalidTests() => LoadTests("invalidRLPTest.json");
+        private static IEnumerable<RlpTest> LoadRandomTests()
+        {
+            return LoadTests("example.json");
+        }
+
+        private static IEnumerable<RlpTest> LoadInvalidTests()
+        {
+            return LoadTests("invalidRLPTest.json");
+        }
 
         private static IEnumerable<RlpTest> LoadTests(string testFileName)
         {
@@ -83,6 +90,13 @@ namespace Ethereum.Rlp.Test
         {
             Nevermind.Core.Encoding.Rlp validBytes = new Nevermind.Core.Encoding.Rlp(Hex.ToBytes(test.Output));
             Nevermind.Core.Encoding.Rlp.Decode(validBytes);
+        }
+
+        [Test]
+        public void TestEmpty()
+        {
+            Assert.AreEqual(Nevermind.Core.Encoding.Rlp.OfEmptyByteArray, Nevermind.Core.Encoding.Rlp.Encode(new byte[0]));
+            Assert.AreEqual(Nevermind.Core.Encoding.Rlp.OfEmptySequence, Nevermind.Core.Encoding.Rlp.Encode(new object[] { }));
         }
     }
 }
