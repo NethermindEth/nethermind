@@ -110,7 +110,9 @@ namespace Nevermind.Evm
 
             if (transaction.IsContractCreation)
             {
-                Rlp addressBaseRlp = Rlp.Encode(sender, _stateProvider.GetNonce(sender) - 1);
+                Rlp addressBaseRlp = Rlp.Encode(
+                    Rlp.Encode(sender),
+                    Rlp.Encode(_stateProvider.GetNonce(sender) - 1));
                 Keccak addressBaseKeccak = Keccak.Compute(addressBaseRlp);
                 recipient = new Address(addressBaseKeccak);
             }

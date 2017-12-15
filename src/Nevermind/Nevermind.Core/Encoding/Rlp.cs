@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using Nevermind.Core.Crypto;
 using Nevermind.Core.Extensions;
@@ -15,7 +14,7 @@ namespace Nevermind.Core.Encoding
     public class Rlp : IEquatable<Rlp>
     {
         public static readonly Rlp OfEmptyByteArray = new Rlp(128);
-        
+
         public static readonly Rlp OfEmptySequence = new Rlp(192);
 
         private static readonly Dictionary<RuntimeTypeHandle, IRlpDecoder> Decoders =
@@ -166,7 +165,7 @@ namespace Nevermind.Core.Encoding
         {
             const int size = sizeof(int);
             byte[] padded = new byte[size];
-            Array.Copy(bytes, 0, padded, size - bytes.Length, bytes.Length);
+            Buffer.BlockCopy(bytes, 0, padded, size - bytes.Length, bytes.Length);
             if (BitConverter.IsLittleEndian)
             {
                 Array.Reverse(padded);
@@ -175,7 +174,18 @@ namespace Nevermind.Core.Encoding
             return BitConverter.ToInt32(padded, 0);
         }
 
-        public static Rlp Encode(params Keccak[] sequence)
+        public static Rlp Encode<T>(List<T> sequence)
+        {
+            Rlp[] rlpSequence = new Rlp[sequence.Count];
+            for (int i = 0; i < sequence.Count; i++)
+            {
+                rlpSequence[i] = Encode(sequence[i]);
+            }
+
+            return Encode(rlpSequence);
+        }
+
+        public static Rlp Encode<T>(T[] sequence)
         {
             Rlp[] rlpSequence = new Rlp[sequence.Length];
             for (int i = 0; i < sequence.Length; i++)
@@ -232,7 +242,19 @@ namespace Nevermind.Core.Encoding
         {
             switch (item)
             {
-                case byte _:
+                case byte singleByte:
+                    if (singleByte == 0)
+                    {
+                        return OfEmptyByteArray;
+                    }
+                    else if (singleByte < 128)
+                    {
+                        return new Rlp(singleByte);
+                    }
+                    else
+                    {
+                        return Encode(new [] {singleByte});
+                    }
                 case short _:
                 case int _:
                 case ushort _:
@@ -300,7 +322,7 @@ namespace Nevermind.Core.Encoding
         {
             return Encode(System.Text.Encoding.ASCII.GetBytes(s));
         }
-        
+
         public static Rlp Encode(byte[] input)
         {
             if (input.Length == 0)
@@ -359,27 +381,30 @@ namespace Nevermind.Core.Encoding
         public static Rlp Encode(BlockHeader header)
         {
             return Encode(
-                header.ParentHash,
-                header.OmmersHash,
-                header.Beneficiary,
-                header.StateRoot,
-                header.TransactionsRoot,
-                header.ReceiptsRoot,
-                header.Bloom,
-                header.Difficulty,
-                header.Number,
-                header.GasLimit,
-                header.GasUsed,
-                header.Timestamp,
-                header.ExtraData,
-                header.MixHash,
-                header.Nonce
+                Encode(header.ParentHash),
+                Encode(header.OmmersHash),
+                Encode(header.Beneficiary),
+                Encode(header.StateRoot),
+                Encode(header.TransactionsRoot),
+                Encode(header.ReceiptsRoot),
+                Encode(header.Bloom),
+                Encode(header.Difficulty),
+                Encode(header.Number),
+                Encode(header.GasLimit),
+                Encode(header.GasUsed),
+                Encode(header.Timestamp),
+                Encode(header.ExtraData),
+                Encode(header.MixHash),
+                Encode(header.Nonce)
             );
         }
 
         public static Rlp Encode(Block block)
         {
-            return Encode(block.Header, block.Transactions, block.Ommers);
+            return Encode(
+                Encode(block.Header),
+                Encode(block.Transactions),
+                Encode(block.Ommers));
         }
 
         public static Rlp Encode(Bloom bloom)
@@ -396,36 +421,27 @@ namespace Nevermind.Core.Encoding
         {
             // TODO: can be slightly optimized in place
             return Encode(
-                logEntry.LoggersAddress,
-                logEntry.Topics,
-                logEntry.Data);
+                Encode(logEntry.LoggersAddress),
+                Encode(logEntry.Topics),
+                Encode(logEntry.Data));
         }
 
         public static Rlp Encode(Account account)
         {
             return Encode(
-                account.Nonce,
-                account.Balance,
-                account.StorageRoot,
-                account.CodeHash);
+                Encode(account.Nonce),
+                Encode(account.Balance),
+                Encode(account.StorageRoot),
+                Encode(account.CodeHash));
         }
 
         public static Rlp Encode(TransactionReceipt receipt, bool isEip658Enabled)
         {
-            if (isEip658Enabled)
-            {
-                return Encode(
-                    receipt.StatusCode,
-                    receipt.GasUsed,
-                    receipt.Bloom,
-                    receipt.Logs);
-            }
-
             return Encode(
-                receipt.PostTransactionState,
-                receipt.GasUsed,
-                receipt.Bloom,
-                receipt.Logs);
+                isEip658Enabled ? Encode(receipt.StatusCode) : Encode(receipt.PostTransactionState),
+                Encode(receipt.GasUsed),
+                Encode(receipt.Bloom),
+                Encode(receipt.Logs));
         }
 
         public static T Decode<T>(Rlp rlp)
@@ -440,28 +456,28 @@ namespace Nevermind.Core.Encoding
 
         public static Rlp Encode(Transaction transaction, bool forSigning, bool eip155 = false, int chainId = 0)
         {
-            object[] sequence = new object[forSigning && !eip155 ? 6 : 9];
-            sequence[0] = transaction.Nonce;
-            sequence[1] = transaction.GasPrice;
-            sequence[2] = transaction.GasLimit;
-            sequence[3] = transaction.To;
-            sequence[4] = transaction.Value;
-            sequence[5] = transaction.To == null ? transaction.Init : transaction.Data;
+            Rlp[] sequence = new Rlp[forSigning && !eip155 ? 6 : 9];
+            sequence[0] = Encode(transaction.Nonce);
+            sequence[1] = Encode(transaction.GasPrice);
+            sequence[2] = Encode(transaction.GasLimit);
+            sequence[3] = Encode(transaction.To);
+            sequence[4] = Encode(transaction.Value);
+            sequence[5] = Encode(transaction.To == null ? transaction.Init : transaction.Data);
 
             if (forSigning)
             {
                 if (eip155)
                 {
-                    sequence[6] = chainId;
-                    sequence[7] = BigInteger.Zero;
-                    sequence[8] = BigInteger.Zero;
+                    sequence[6] = Encode(chainId);
+                    sequence[7] = OfEmptyByteArray;
+                    sequence[8] = OfEmptyByteArray;
                 }
             }
             else
             {
-                sequence[6] = transaction.Signature?.V;
-                sequence[7] = transaction.Signature?.R.WithoutLeadingZeros(); // TODO: consider storing R and S differently
-                sequence[8] = transaction.Signature?.S.WithoutLeadingZeros(); // TODO: consider storing R and S differently
+                sequence[6] = Encode(transaction.Signature?.V);
+                sequence[7] = Encode(transaction.Signature?.R.WithoutLeadingZeros()); // TODO: consider storing R and S differently
+                sequence[8] = Encode(transaction.Signature?.S.WithoutLeadingZeros()); // TODO: consider storing R and S differently
             }
 
             return Encode(sequence);

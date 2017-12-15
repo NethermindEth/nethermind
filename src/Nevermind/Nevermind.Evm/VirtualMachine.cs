@@ -1328,9 +1328,11 @@ namespace Nevermind.Evm
                         UpdateMemoryCost(memoryPositionOfInitCode, initCodeLength);
 
                         byte[] initCode = evmState.Memory.Load(memoryPositionOfInitCode, initCodeLength);
-
                         Keccak contractAddressKeccak =
-                            Keccak.Compute(Rlp.Encode(env.ExecutingAccount, _stateProvider.GetNonce(env.ExecutingAccount)));
+                            Keccak.Compute(
+                                Rlp.Encode(
+                                    Rlp.Encode(env.ExecutingAccount),
+                                    Rlp.Encode(_stateProvider.GetNonce(env.ExecutingAccount))));
                         Address contractAddress = new Address(contractAddressKeccak);
 
                         if (value > _stateProvider.GetBalance(env.ExecutingAccount))

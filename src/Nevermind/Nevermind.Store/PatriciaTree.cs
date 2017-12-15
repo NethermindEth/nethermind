@@ -91,7 +91,7 @@ namespace Nevermind.Store
                     RlpEncode(branch.Nodes[0xd]),
                     RlpEncode(branch.Nodes[0xe]),
                     RlpEncode(branch.Nodes[0xf]),
-                    branch.Value ?? new byte[0]);
+                    Rlp.Encode(branch.Value ?? new byte[0]));
                 return result;
             }
 
