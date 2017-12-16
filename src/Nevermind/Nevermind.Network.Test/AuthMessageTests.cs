@@ -1,5 +1,7 @@
-﻿using Nevermind.Core.Crypto;
+﻿using Nevermind.Core;
+using Nevermind.Core.Crypto;
 using Nevermind.Core.Extensions;
+using Nevermind.Core.Potocol;
 using NUnit.Framework;
 using Random = System.Random;
 
@@ -14,11 +16,10 @@ namespace Nevermind.Network.Test
 
         private readonly PrivateKey _privateKey = new PrivateKey(TestPrivateKeyHex);
 
-        [Test]
-        public void Encode_decode()
+        private void TestEncodeDecode(Signer signer)
         {
             AuthMessage authMessage = new AuthMessage();
-            authMessage.Signature = Signer.Sign(_privateKey, Keccak.Compute("anything"));
+            authMessage.Signature = signer.Sign(_privateKey, Keccak.Compute("anything"));
             _random.NextBytes(authMessage.EphemeralPublicHash);
             authMessage.PublicKey = _privateKey.PublicKey;
             _random.NextBytes(authMessage.Nonce);
@@ -31,6 +32,27 @@ namespace Nevermind.Network.Test
             Assert.AreEqual(authMessage.PublicKey, after.PublicKey);
             Assert.True(Bytes.UnsafeCompare(authMessage.Nonce, after.Nonce));
             Assert.AreEqual(authMessage.IsTokenUsed, after.IsTokenUsed);
+        }
+
+        [TestCase(ChainId.Mainnet)]
+        [TestCase(ChainId.Morden)]
+        [TestCase(ChainId.RootstockMainnet)]
+        [TestCase(ChainId.DefaultGethPrivateChain)]
+        [TestCase(ChainId.EthereumClassicMainnet)]
+        [TestCase(ChainId.EthereumClassicTestnet)]
+        public void Encode_decode_before_eip155(ChainId chainId)
+        {
+            Signer signer = new Signer(new FrontierProtocolSpecification(), chainId);
+            TestEncodeDecode(signer);
+        }
+
+        [TestCase(ChainId.Mainnet)]
+        [TestCase(ChainId.Ropsten)]
+        [TestCase(ChainId.Kovan)]
+        public void Encode_decode_with_eip155(ChainId chainId)
+        {
+            Signer signer = new Signer(new ByzantiumProtocolSpecification(), chainId);
+            TestEncodeDecode(signer);
         }
     }
 }

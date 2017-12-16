@@ -1,8 +1,9 @@
 ﻿using System;
 using System.Numerics;
+using Nevermind.Core;
 using Nevermind.Core.Crypto;
-using Nevermind.Core.Encoding;
 using Nevermind.Core.Extensions;
+using Nevermind.Core.Potocol;
 
 namespace Nevermind.Evm.Precompiles
 {
@@ -28,6 +29,8 @@ namespace Nevermind.Evm.Precompiles
 
         public byte[] Run(byte[] inputData)
         {
+            Signer signer = new Signer(new OlympicProtocolSpecification(), ChainId.Mainnet);
+
             inputData = inputData.PadRight(128);
 
             Keccak hash = new Keccak(inputData.Slice(0, 32));
@@ -52,7 +55,7 @@ namespace Nevermind.Evm.Precompiles
             }
 
             Signature signature = new Signature(r, s, v);
-            return ((byte[])Signer.RecoverSignerAddress(signature, hash).Hex).PadLeft(32); // TODO: change recovery code to return bytes?
+            return ((byte[])signer.Recover(signature, hash).Hex).PadLeft(32); // TODO: change recovery code to return bytes?
         }
     }
 }

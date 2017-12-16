@@ -8,6 +8,7 @@ using Nevermind.Core;
 using Nevermind.Core.Crypto;
 using Nevermind.Core.Encoding;
 using Nevermind.Core.Extensions;
+using Nevermind.Core.Potocol;
 using Newtonsoft.Json;
 using NUnit.Framework;
 
@@ -59,7 +60,7 @@ namespace Ethereum.Transaction.Test
                     {
                         test = new ValidTransactionTest(byDir.Key, byName.Key, byName.Value.Rlp);
                         ValidTransactionTest validTest = (ValidTransactionTest)test;
-                        validTest.BlockNumber = byName.Value.BlockNumber;
+                        validTest.BlockNumber = Hex.ToBytes(byName.Value.BlockNumber).ToUnsignedBigInteger();
                         validTest.Data = Hex.ToBytes(transactionJson.Data);
                         validTest.GasLimit = Hex.ToBytes(transactionJson.GasLimit).ToUnsignedBigInteger();
                         validTest.GasPrice = Hex.ToBytes(transactionJson.GasPrice).ToUnsignedBigInteger();
@@ -86,70 +87,70 @@ namespace Ethereum.Transaction.Test
         [TestCaseSource(nameof(LoadTests), new object[] { "Constantinople" })]
         public void Test_constantinople(TransactionTest test)
         {
-            RunTest(test, true);
+            RunTest(test, new ByzantiumProtocolSpecification());
         }
 
         [TestCaseSource(nameof(LoadTests), new object[] { "Eip155VitaliksEip158" })]
         public void Test_eip155VitaliksEip158(TransactionTest test)
         {
-            RunTest(test, true);
+            RunTest(test, new SpuriousDragonProtocolSpecification());
         }
 
         [TestCaseSource(nameof(LoadTests), new object[] { "Eip155VitaliksHomesead" })]
         public void Test_eip155VitaliksHomesead(TransactionTest test)
         {
-            RunTest(test, true);
+            RunTest(test, new SpuriousDragonProtocolSpecification());
         }
 
         [TestCaseSource(nameof(LoadTests), new object[] { "Eip158" })]
         public void Test_eip158(TransactionTest test)
         {
-            RunTest(test);
+            RunTest(test, new SpuriousDragonProtocolSpecification());
         }
 
         [TestCaseSource(nameof(LoadTests), new object[] { "Frontier" })]
         public void Test_frontier(TransactionTest test)
         {
-            RunTest(test);
+            RunTest(test, new FrontierProtocolSpecification());
         }
 
         [TestCaseSource(nameof(LoadTests), new object[] { "Homestead" })]
         public void Test_homestead(TransactionTest test)
         {
-            RunTest(test);
+            RunTest(test, new HomesteadProtocolSpecification());
         }
 
         [TestCaseSource(nameof(LoadTests), new object[] { "SpecConstantinople" })]
         public void Test_spec_constantinople(TransactionTest test)
         {
-            RunTest(test, true, true);
+            RunTest(test, new ByzantiumProtocolSpecification(), true);
         }
 
         [TestCaseSource(nameof(LoadTests), new object[] { "VRuleEip158" })]
         public void Test_v_rule_eip158(TransactionTest test)
         {
-            RunTest(test, true);
+            RunTest(test, new SpuriousDragonProtocolSpecification(), true);
         }
 
         [TestCaseSource(nameof(LoadTests), new object[] { "WrongRLPFrontier" })]
         public void Test_wrong_rlp_frontier(TransactionTest test)
         {
-            RunTest(test);
+            RunTest(test, new FrontierProtocolSpecification());
         }
 
         [TestCaseSource(nameof(LoadTests), new object[] { "WrongRLPHomestead" })]
         public void Test_wrong_rlp_homestead(TransactionTest test)
         {
-            RunTest(test);
+            RunTest(test, new HomesteadProtocolSpecification());
         }
 
         [TestCaseSource(nameof(LoadTests), new object[] { "ZeroSigConstantinople" })]
         public void Test_zero_sig_constantinople(TransactionTest test)
         {
-            RunTest(test, true, true);
+            RunTest(test, new ByzantiumProtocolSpecification(), true);
         }
 
-        private void RunTest(TransactionTest test, bool eip155 = false, bool ignoreSignatures = false)
+        private void RunTest(TransactionTest test, IProtocolSpecification spec, bool ignoreSignatures = false)
         {
             TestContext.CurrentContext.Test.Properties.Set("Category", test.Network);
 
@@ -186,7 +187,7 @@ namespace Ethereum.Transaction.Test
                 Assert.AreEqual(transaction.Init, decodedTransaction.Init, "init");
                 Assert.AreEqual(transaction.Nonce, decodedTransaction.Nonce, "nonce");
                 Assert.AreEqual(transaction.To, decodedTransaction.To, "to");
-                //Assert.True(TransactionValidator.IsValid(transaction));
+                Assert.True(TransactionValidator.IsWellFormed(transaction));
 
                 if (!ignoreSignatures)
                 {
@@ -200,26 +201,30 @@ namespace Ethereum.Transaction.Test
                                 : (validTest.V - 36) / 2
                             : 1;
 
-                    bool useEip155Rule = eip155 && validTest.V > 28;
-
+                    bool useEip155Rule = spec.IsEip155Enabled && validTest.V > 28; // TODO: why the check for V > 28?
                     Assert.AreEqual(transaction.Signature, decodedTransaction.Signature, "signature");
 
-                    bool verfiied = Signer.Verify(
+                    ISigner signer = new Signer(useEip155Rule ? (IProtocolSpecification)new ByzantiumProtocolSpecification() : new HomesteadProtocolSpecification(), chainIdValue);
+                    bool verified = signer.Verify(
                         validTest.Sender,
-                        transaction,
-                        useEip155Rule,
-                        (ChainId)chainIdValue);
-                    Assert.True(verfiied);
+                        transaction);
+                    Assert.True(verified);
                 }
             }
             else
             {
-                Assert.Throws(Is.InstanceOf<Exception>(), () =>
+                Nevermind.Core.Transaction transaction;
+                try
                 {
                     Rlp rlp = new Rlp(Hex.ToBytes(test.Rlp));
-                    Nevermind.Core.Transaction transaction = Rlp.Decode<Nevermind.Core.Transaction>(rlp);
-                    Assert.True(TransactionValidator.IsWellFormed(transaction));
-                });
+                    transaction = Rlp.Decode<Nevermind.Core.Transaction>(rlp);
+                }
+                catch (Exception e)
+                {
+                    return;
+                }
+                
+                Assert.False(TransactionValidator.IsWellFormed(transaction));
             }
         }
 
@@ -259,7 +264,7 @@ namespace Ethereum.Transaction.Test
         {
             public string Rlp { get; set; }
             public string Sender { get; set; }
-            public ulong BlockNumber { get; set; }
+            public string BlockNumber { get; set; }
             public TransactionJson Transaction { get; set; }
         }
 

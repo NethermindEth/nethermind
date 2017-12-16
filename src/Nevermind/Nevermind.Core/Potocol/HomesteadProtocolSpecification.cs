@@ -1,7 +1,7 @@
 namespace Nevermind.Core.Potocol
 {
     public class HomesteadProtocolSpecification : IProtocolSpecification
-    {
+    {   
         public bool IsTimeAdjustmentPostOlympic => true;
         public bool AreJumpDestinationsUsed => false;
         public bool IsEip2Enabled => true;

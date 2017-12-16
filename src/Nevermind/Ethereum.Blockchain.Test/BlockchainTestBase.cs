@@ -173,6 +173,7 @@ namespace Ethereum.Blockchain.Test
             _stateProviders[test.Network].ProtocolSpecification = _protocolSpecificationProvider.GetSpec(test.Network, 0);
 
             IProtocolSpecification spec = _protocolSpecificationProvider.GetSpec(test.Network, 1);
+            ISigner signer = new Signer(spec, ChainId.Mainnet);
             IBlockProcessor blockProcessor = new BlockProcessor(
                 spec,
                 _chain,
@@ -184,7 +185,7 @@ namespace Ethereum.Blockchain.Test
                     _stateProviders[test.Network],
                     _storageProviders[test.Network],
                     _virtualMachines[test.Network],
-                    ChainId.Mainnet,
+                    signer,
                     _logger),
                 _multiDb,
                 _stateProviders[test.Network],

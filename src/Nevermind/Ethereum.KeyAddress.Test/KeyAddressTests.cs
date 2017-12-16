@@ -8,6 +8,7 @@ using JetBrains.Annotations;
 using Nevermind.Core;
 using Nevermind.Core.Crypto;
 using Nevermind.Core.Encoding;
+using Nevermind.Core.Potocol;
 using Newtonsoft.Json;
 using NUnit.Framework;
 
@@ -15,10 +16,13 @@ namespace Ethereum.KeyAddress.Test
 {
     public class KeyAddressTests
     {
+        private ISigner _signer;
+        
         [OneTimeSetUp]
         public void SetUp()
         {
             Directory.SetCurrentDirectory(AppDomain.CurrentDomain.BaseDirectory);
+            _signer = new Signer(new OlympicProtocolSpecification(), ChainId.Mainnet);
         }
 
         private static IEnumerable<KeyAddressTest> LoadTests()
@@ -40,7 +44,7 @@ namespace Ethereum.KeyAddress.Test
         {
             Keccak messageHash = Keccak.Compute(message);
             Signature sig = new Signature(sigHex);
-            Address recovered = Signer.RecoverSignerAddress(sig, messageHash);
+            Address recovered = _signer.Recover(sig, messageHash);
             Address address = new Address(addressHex);
 
             Assert.AreEqual(address, recovered);
@@ -52,7 +56,7 @@ namespace Ethereum.KeyAddress.Test
         {
             PrivateKey privateKey = new PrivateKey(test.Key);
             Address actualAddress = privateKey.Address;
-            Signature actualSig = Signer.Sign(privateKey, Keccak.OfAnEmptyString);
+            Signature actualSig = _signer.Sign(privateKey, Keccak.OfAnEmptyString);
             string actualSigHex = actualSig.ToString();
 
             Signature expectedSig = new Signature(test.R, test.S, test.V);
@@ -61,13 +65,13 @@ namespace Ethereum.KeyAddress.Test
 
             Assert.AreEqual(expectedAddress, actualAddress);
 
-            Address recoveredActualAddress = Signer.RecoverSignerAddress(actualSig, Keccak.OfAnEmptyString);
+            Address recoveredActualAddress = _signer.Recover(actualSig, Keccak.OfAnEmptyString);
             Assert.AreEqual(actualAddress, recoveredActualAddress);
 
             // it does not work
             Assert.AreEqual(expectedSigHex, actualSigHex);
 
-            Address recovered = Signer.RecoverSignerAddress(expectedSig, Keccak.OfAnEmptyString);
+            Address recovered = _signer.Recover(expectedSig, Keccak.OfAnEmptyString);
             Assert.AreEqual(expectedAddress, recovered);
         }
 
