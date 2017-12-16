@@ -56,11 +56,6 @@ namespace Nevermind.Core.Potocol
         bool IsEip170Enabled { get; }
 
         /// <summary>
-        /// Block reward decreased to 3 ETH
-        /// </summary>
-        bool IsEip186Enabled { get; }
-
-        /// <summary>
         /// Precompiled contracts for addition and scalar multiplication on the elliptic curve alt_bn128
         /// </summary>
         bool IsEip196Enabled { get; }
@@ -87,6 +82,7 @@ namespace Nevermind.Core.Potocol
 
         /// <summary>
         /// Difficulty Bomb Delay and Block Reward Reduction
+        /// Block reward reduced to 3ETH
         /// </summary>
         bool IsEip649Enabled { get; }
 

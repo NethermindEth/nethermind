@@ -494,9 +494,9 @@ namespace Nevermind.Core.Encoding
             throw new NotImplementedException();
         }
 
-        public static Rlp Encode(Transaction transaction, bool forSigning, bool eip155 = false, int chainId = 0)
+        public static Rlp Encode(Transaction transaction, bool forSigning, bool isEip155Enabled = false, int chainId = 0)
         {
-            Rlp[] sequence = new Rlp[forSigning && !eip155 ? 6 : 9];
+            Rlp[] sequence = new Rlp[forSigning && !isEip155Enabled ? 6 : 9];
             sequence[0] = Encode(transaction.Nonce);
             sequence[1] = Encode(transaction.GasPrice);
             sequence[2] = Encode(transaction.GasLimit);
@@ -506,7 +506,7 @@ namespace Nevermind.Core.Encoding
 
             if (forSigning)
             {
-                if (eip155)
+                if (isEip155Enabled)
                 {
                     sequence[6] = Encode(chainId);
                     sequence[7] = OfEmptyByteArray;

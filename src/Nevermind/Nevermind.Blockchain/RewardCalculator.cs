@@ -18,12 +18,10 @@ namespace Nevermind.Blockchain
         public Dictionary<Address, BigInteger> CalculateRewards(Block block)
         {
             BigInteger blockReward = 5.Ether();
-            if (_protocolSpecification.IsEip186Enabled)
+            if (_protocolSpecification.IsEip649Enabled)
             {
                 blockReward = 3.Ether();
             }
-            
-            // TODO: implement EIP-649
             
             BlockHeader blockHeader = block.Header;
             Dictionary<Address, BigInteger> rewards = new Dictionary<Address, BigInteger>();

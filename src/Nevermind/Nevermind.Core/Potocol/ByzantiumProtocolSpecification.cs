@@ -13,7 +13,6 @@ namespace Nevermind.Core.Potocol
         public bool IsEip158Enabled => true;
         public bool IsEip160Enabled => true;
         public bool IsEip170Enabled => true;
-        public bool IsEip186Enabled => true;
         public bool IsEip196Enabled => true;
         public bool IsEip197Enabled => true;
         public bool IsEip198Enabled => true;
