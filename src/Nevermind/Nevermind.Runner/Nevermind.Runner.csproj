@@ -93,6 +93,10 @@
       <Project>{5CF7C5C1-4A60-4672-B2B6-3E5539AE044E}</Project>
       <Name>Nevermind.JsonRpc</Name>
     </ProjectReference>
+    <ProjectReference Include="..\Nevermind.Json\Nevermind.Json.csproj">
+      <Project>{947DF8C4-6E2B-476B-8AE8-A629C21A0BA7}</Project>
+      <Name>Nevermind.Json</Name>
+    </ProjectReference>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
 </Project>

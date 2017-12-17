@@ -2,9 +2,9 @@
 using System.IO;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Nevermind.Core;
+using Nevermind.Json;
 using Nevermind.JsonRpc.DataModel;
 using Nevermind.JsonRpc.Module;
-using Newtonsoft.Json;
 
 namespace Nevermind.JsonRpc.Test
 {
@@ -19,8 +19,10 @@ namespace Nevermind.JsonRpc.Test
         public void Initialize()
         {
             _configurationProvider = new ConfigurationProvider();
-            _jsonSerializer = new JsonSerializer();
-            _jsonRpcService = new JsonRpcService(_configurationProvider, new NetModule(), new EthModule(), new Web3Module(), new ConsoleLogger(), _jsonSerializer);
+            
+            var logger = new ConsoleLogger();
+            _jsonSerializer = new JsonSerializer(logger);
+            //_jsonRpcService = new JsonRpcService(_configurationProvider, new NetModule(logger), new EthModule(), new Web3Module(logger), logger, _jsonSerializer);
         }
 
         [TestMethod]

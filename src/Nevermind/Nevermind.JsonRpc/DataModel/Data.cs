@@ -1,31 +1,31 @@
 ﻿using System;
 using System.Text;
+using Nevermind.Core;
 
 namespace Nevermind.JsonRpc.DataModel
 {
     public class Data : IJsonRpcResult, IJsonRpcRequest
     {
-        private const string Prefix = "0x";
+        public Hex Value { get; private set; }
 
-        public byte[] Value { get; set; }
+        public Data(string value)
+        {
+            Value = new Hex(value);
+        }
 
-        //TODO use Hex convertion
-        public string HexValue => "0x" + Value;
+        public Data(byte[] value)
+        {
+            Value = new Hex(value);
+        }
 
         public object ToJson()
         {
-            return HexValue;
+            return Value?.ToString(true, true);
         }
 
         public void FromJson(string jsonValue)
         {
-            var value = jsonValue?.Trim() ?? string.Empty;
-            if (!value.StartsWith(Prefix))
-            {
-                throw new Exception($"Incorrect parameter: {jsonValue ?? "null"}");
-            }
-            //TODO add Hex - encoding
-            Value = Encoding.Default.GetBytes(value.Substring(2));
+            Value = new Hex(jsonValue);
         }
     }
 }

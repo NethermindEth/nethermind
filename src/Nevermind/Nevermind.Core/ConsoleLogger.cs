@@ -8,5 +8,15 @@ namespace Nevermind.Core
         {
             Console.WriteLine(text);
         }
+
+        public void Debug(string text)
+        {
+            Log(text);
+        }
+
+        public void Error(string text, Exception ex = null)
+        {
+            Log(ex != null ? $"{text}, Exception: {ex}" : text);
+        }
     }
 }

@@ -22,5 +22,10 @@ namespace Nevermind.JsonRpc.DataModel
             BlockId = new Quantity();
             BlockId.FromJson(jsonValue);
         }
+
+        public override string ToString()
+        {
+            return $"{Type}, {BlockId.ToJson()}";
+        }
     }
 }

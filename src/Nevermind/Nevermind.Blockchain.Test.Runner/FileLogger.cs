@@ -33,6 +33,16 @@ namespace Nevermind.Blockchain.Test.Runner
             }
         }
 
+        public void Debug(string text)
+        {
+            Log(text);
+        }
+
+        public void Error(string text, Exception ex = null)
+        {
+            Log(ex != null ? $"{text}, Exception: {ex}" : text);
+        }
+
         public void Flush()
         {
             File.AppendAllText(_filePath, _buffer.ToString());

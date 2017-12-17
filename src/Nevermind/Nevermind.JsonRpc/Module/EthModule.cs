@@ -1,18 +1,39 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
+using System.Text;
+using Nevermind.Blockchain;
+using Nevermind.Core;
+using Nevermind.Core.Crypto;
+using Nevermind.Json;
 using Nevermind.JsonRpc.DataModel;
+using Nevermind.Store;
+using Block = Nevermind.JsonRpc.DataModel.Block;
+using Transaction = Nevermind.JsonRpc.DataModel.Transaction;
+using TransactionReceipt = Nevermind.JsonRpc.DataModel.TransactionReceipt;
 
 namespace Nevermind.JsonRpc.Module
 {
-    public class EthModule : IEthModule
+    public class EthModule : ModuleBase, IEthModule
     {
+        private readonly IJsonSerializer _jsonSerializer;
+        private readonly IBlockchainProcessor _blockchainProcessor;
+        private readonly IStateProvider _stateProvider;
+
+        public EthModule(ILogger logger, IJsonSerializer jsonSerializer, IBlockchainProcessor blockchainProcessor, IStateProvider stateProvider) : base(logger)
+        {
+            _jsonSerializer = jsonSerializer;
+            _blockchainProcessor = blockchainProcessor;
+            _stateProvider = stateProvider;
+        }
+
         public string eth_protocolVersion()
         {
-            throw new System.NotImplementedException();
+            return ((int)ProtocolVersion.EthereumMainnet).ToString();
         }
 
         public SynchingResult eth_syncing()
         {
-            throw new System.NotImplementedException();
+            return new SynchingResult(_jsonSerializer) {IsSynching = false};
         }
 
         public Data eth_coinbase()
@@ -42,12 +63,23 @@ namespace Nevermind.JsonRpc.Module
 
         public Quantity eth_blockNumber()
         {
-            throw new System.NotImplementedException();
+            if (_blockchainProcessor.HeadBlock?.Header == null)
+            {
+                Logger.Error($"Incorrect head block: {(_blockchainProcessor.HeadBlock != null ? "HeadBlock is null" : "HeadBlock header is null")}");
+                throw new Exception("Incorrect head block");
+            }
+            var number = _blockchainProcessor.HeadBlock.Header.Number;
+            Logger.Debug($"eth_blockNumber request, result: {number}");
+            return new Quantity(number);
         }
 
         public Quantity eth_getBalance(Data data, BlockParameter blockParameter)
         {
-            return new Quantity {Value = 1000};
+            //TODO support other options
+            var address = new Address(data.Value);
+            var balance = _stateProvider.GetBalance(address);
+            Logger.Debug($"eth_getBalance request {data.ToJson()}, {blockParameter}, result: {balance}");
+            return new Quantity(balance);
         }
 
         public Data eth_getStorageAt(Data address, Quantity positionIndex, BlockParameter blockParameter)
@@ -87,7 +119,14 @@ namespace Nevermind.JsonRpc.Module
 
         public Data eth_sign(Data address, Data message)
         {
-            throw new System.NotImplementedException();
+            //get private ket for signing
+            var code =_stateProvider.GetCode(new Address(address.Value));
+            var privateKey = new PrivateKey(new Hex(code));
+
+            var messageText = Encoding.UTF8.GetString(message.Value.ToBytes());
+            var signatureText = "\x19Ethereum Signed Message:\n" + messageText.Length + messageText;
+            var signature = Signer.Sign(privateKey, Keccak.Compute(signatureText));
+            return new Data(signature.Bytes);
         }
 
         public Data eth_sendTransaction(Transaction transaction)

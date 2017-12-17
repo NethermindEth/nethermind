@@ -1,4 +1,5 @@
 ﻿using Microsoft.VisualStudio.TestTools.UnitTesting;
+using Nevermind.Core;
 using Nevermind.JsonRpc.Module;
 
 namespace Nevermind.JsonRpc.Test
@@ -11,7 +12,7 @@ namespace Nevermind.JsonRpc.Test
         [TestInitialize]
         public void Initialize()
         {
-            _netModule = new NetModule();
+            _netModule = new NetModule(new ConsoleLogger());
         }
 
         [TestMethod]
