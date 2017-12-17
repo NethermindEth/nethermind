@@ -9,6 +9,7 @@ using JetBrains.Annotations;
 using Nevermind.Core;
 using Nevermind.Core.Crypto;
 using Nevermind.Core.Encoding;
+using Nevermind.Core.Potocol;
 using NUnit.Framework;
 
 namespace Ethereum.Basic.Test
@@ -31,6 +32,8 @@ namespace Ethereum.Basic.Test
         [TestCaseSource(nameof(LoadTests))]
         public void Test(TransactionTest test)
         {
+            Signer signer = new Signer(new ByzantiumProtocolSpecification(), ChainId.Mainnet);
+            
             Transaction transaction = new Transaction();
             transaction.Value = test.Value;
             
@@ -53,16 +56,16 @@ namespace Ethereum.Basic.Test
             Assert.AreEqual(test.Unsigned, unsignedRlp, "unsigned");
 
             TestContext.WriteLine("Unsigned is fine, testing signed...");
-            Signer.Sign(transaction, test.PrivateKey);
+            signer.Sign(test.PrivateKey, transaction);
            
-            Address address = Signer.Recover(transaction);
+            Address address = signer.Recover(transaction);
             Assert.AreEqual(test.PrivateKey.Address, address);
 
             // decode test rlp into transaction and recover address...
             // confirm it is correct
 
             // can signature differ?
-            // Rlp signedRlp = Rlp.Encode(transaction);
+            // Rlp signedRlp = Rlp.EncodeBigInteger(transaction);
             // Assert.AreEqual(test.Signed, signedRlp, "signed");
         }
 

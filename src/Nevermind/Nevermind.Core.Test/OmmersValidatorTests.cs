@@ -17,15 +17,20 @@ namespace Nevermind.Core.Test
         private IBlockStore _blockStore;
         private IBlockHeaderValidator _blockHeaderValidator;
 
+        private BlockHeader _duplicateOmmer;
+
         [SetUp]
         public void Setup()
         {
+            _duplicateOmmer = new BlockHeader();
+            _duplicateOmmer.Hash = Keccak.Compute("duplicate_ommer");
+
             _blockStore = Substitute.For<IBlockStore>();
-            _blockStore.FindBlock(_grandgrandparent.Hash, false).Returns(new Block(_grandgrandparent));
+            _blockStore.FindBlock(_grandgrandparent.Hash, false).Returns(new Block(_grandgrandparent, _duplicateOmmer));
             _blockStore.FindBlock(_grandparent.Hash, false).Returns(new Block(_grandparent));
             _blockStore.FindBlock(_parent.Hash, false).Returns(new Block(_parent));
             _blockStore.FindBlock(_header.Hash, false).Returns(new Block(_header));
-            
+
             _blockHeaderValidator = Substitute.For<IBlockHeaderValidator>();
             _blockHeaderValidator.Validate(Arg.Any<BlockHeader>()).Returns(true);
         }
@@ -35,7 +40,7 @@ namespace Nevermind.Core.Test
             _grandgrandparent = new BlockHeader();
             _grandgrandparent.Number = 1;
             _grandgrandparent.Hash = Keccak.Compute("grandgrandpa");
-            
+
             _grandparent = new BlockHeader();
             _grandparent.Number = _grandgrandparent.Number + 1;
             _grandparent.Hash = Keccak.Compute("grandpa");
@@ -102,14 +107,13 @@ namespace Nevermind.Core.Test
         [Test]
         public void When_ommer_was_already_included_return_false()
         {
-            BlockHeader[] ommers = GetValidOmmers(1);
-
             OmmersValidator ommersValidator = new OmmersValidator(_blockStore, _blockHeaderValidator);
-            Assert.False(ommersValidator.Validate(_header, ommers));
+            Assert.False(ommersValidator.Validate(_header, new [] { _duplicateOmmer }));
         }
 
         private BlockHeader[] GetValidOmmers(int count)
         {
+            // TODO: how these could be valid if they are obviously not valid?
             BlockHeader[] ommers = new BlockHeader[count];
             for (int i = 0; i < count; i++)
             {
@@ -130,7 +134,7 @@ namespace Nevermind.Core.Test
             OmmersValidator ommersValidator = new OmmersValidator(_blockStore, _blockHeaderValidator);
             Assert.True(ommersValidator.Validate(_header, ommers));
         }
-        
+
         [Test]
         public void Grandpas_brother_is_fine()
         {

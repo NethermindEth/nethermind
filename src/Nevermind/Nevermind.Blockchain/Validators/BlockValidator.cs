@@ -6,13 +6,14 @@ namespace Nevermind.Blockchain.Validators
 {
     public class BlockValidator : IBlockValidator
     {
-        private readonly BlockHeaderValidator _blockHeaderValidator;
-
-        private readonly OmmersValidator _ommersValidator;
+        private readonly IBlockHeaderValidator _blockHeaderValidator;
+        private readonly ITransactionValidator _transactionValidator;
+        private readonly IOmmersValidator _ommersValidator;
         private readonly ILogger _logger;
 
-        public BlockValidator(BlockHeaderValidator blockHeaderValidator, OmmersValidator ommersValidator, ILogger logger)
+        public BlockValidator(ITransactionValidator transactionValidator, IBlockHeaderValidator blockHeaderValidator, IOmmersValidator ommersValidator, ILogger logger)
         {
+            _transactionValidator = transactionValidator;
             _ommersValidator = ommersValidator;
             _logger = logger;
             _blockHeaderValidator = blockHeaderValidator;
@@ -27,7 +28,7 @@ namespace Nevermind.Blockchain.Validators
 
             foreach (Transaction transaction in suggestedBlock.Transactions)
             {
-                if (!TransactionValidator.IsWellFormed(transaction))
+                if (!_transactionValidator.IsWellFormed(transaction))
                 {
                     return false;
                 }

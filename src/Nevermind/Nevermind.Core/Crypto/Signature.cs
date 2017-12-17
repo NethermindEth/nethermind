@@ -5,7 +5,7 @@ using Nevermind.Core.Extensions;
 namespace Nevermind.Core.Crypto
 {
     /// <summary>
-    /// Can I mark it as a EIP155 signature? otherwise it should not be accepted with V > 28
+    /// TODO: can I mark it as a EIP155 signature? otherwise it should not be accepted with V > 28
     /// </summary>
     public class Signature : IEquatable<Signature>
     {
@@ -20,7 +20,7 @@ namespace Nevermind.Core.Crypto
             V = (byte)(recoveryId + 27);
         }
 
-        private Signature(byte[] bytes)
+        public Signature(byte[] bytes)
         {
             if (bytes.Length != 65)
             {
@@ -63,8 +63,8 @@ namespace Nevermind.Core.Crypto
             byte[] rBytes = r.ToBigEndianByteArray();
             byte[] sBytes = s.ToBigEndianByteArray();
 
-            Buffer.BlockCopy(Extensions.Bytes.PadLeft(rBytes, 32), 0, Bytes, 0, 32);
-            Buffer.BlockCopy(Extensions.Bytes.PadLeft(sBytes, 32), 0, Bytes, 32, 32);
+            Buffer.BlockCopy(rBytes.PadLeft(32), 0, Bytes, 0, 32);
+            Buffer.BlockCopy(sBytes.PadLeft(32), 0, Bytes, 32, 32);
             V = v;
         }
 

@@ -18,7 +18,7 @@ namespace Nevermind.Store
         {
             for (int i = 0; i < CacheSizeInt; i++)
             {
-                Cache[i] = Keccak.Compute(new BigInteger(i).ToBigEndianByteArray(true, 32)).Bytes;
+                Cache[i] = Keccak.Compute(new BigInteger(i).ToBigEndianByteArray(32)).Bytes;
             }
         }
 
@@ -37,7 +37,7 @@ namespace Nevermind.Store
                 return Cache[index];
             }
 
-            return Keccak.Compute(index.ToBigEndianByteArray(true, 32)).Bytes;
+            return Keccak.Compute(index.ToBigEndianByteArray(32)).Bytes;
         }
 
         public byte[] Get(BigInteger index)

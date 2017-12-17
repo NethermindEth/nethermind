@@ -12,6 +12,7 @@ namespace Nevermind.Core.Potocol
         /// Contract creation via transaction cost set to 21000 + 32000 (previously 21000)
         /// Failing init does not create an empty code contract
         /// Difficulty adjustment changed
+        /// Transaction signature uniqueness (s-value has to be less or equal than than secp256k1n/2)
         /// </summary>
         bool IsEip2Enabled { get; }
 
@@ -36,7 +37,7 @@ namespace Nevermind.Core.Potocol
         bool IsEip150Enabled { get; }
 
         /// <summary>
-        /// Chain ID in signatures
+        /// Chain ID in signatures (replay attack protection)
         /// </summary>
         bool IsEip155Enabled { get; }
 
@@ -54,11 +55,6 @@ namespace Nevermind.Core.Potocol
         /// Code size limit
         /// </summary>
         bool IsEip170Enabled { get; }
-
-        /// <summary>
-        /// Block reward decreased to 3 ETH
-        /// </summary>
-        bool IsEip186Enabled { get; }
 
         /// <summary>
         /// Precompiled contracts for addition and scalar multiplication on the elliptic curve alt_bn128
@@ -87,6 +83,7 @@ namespace Nevermind.Core.Potocol
 
         /// <summary>
         /// Difficulty Bomb Delay and Block Reward Reduction
+        /// Block reward reduced to 3ETH
         /// </summary>
         bool IsEip649Enabled { get; }
 

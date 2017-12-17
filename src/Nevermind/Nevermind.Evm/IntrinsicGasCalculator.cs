@@ -9,7 +9,6 @@ namespace Nevermind.Evm
         {
             long result = GasCostOf.Transaction;
 
-            // compare perf for BigInteger operations and ints
             if (transaction.Data != null)
             {
                 for (int i = 0; i < transaction.Data.Length; i++)

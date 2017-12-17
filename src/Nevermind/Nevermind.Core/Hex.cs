@@ -135,26 +135,7 @@ namespace Nevermind.Core
                 _bytes = ToBytes(_hexString);
             }
 
-            if (_bytes.Length == 0)
-            {
-                return 0;
-            }
-
-            unchecked
-            {
-                const int p = 16777619;
-                int hash = (int)2166136261;
-
-                hash = hash ^ _bytes[0] * p;
-                hash = hash ^ _bytes[_bytes.Length - 1] * p;
-
-                hash += hash << 13;
-                hash ^= hash >> 7;
-                hash += hash << 3;
-                hash ^= hash >> 17;
-                hash += hash << 5;
-                return hash;
-            }
+            return _bytes.GetXxHashCode();
         }
 
         private static uint[] CreateLookup32(string format)

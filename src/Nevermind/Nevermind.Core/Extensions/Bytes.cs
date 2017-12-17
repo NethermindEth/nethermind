@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections;
-using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 
@@ -8,15 +7,8 @@ namespace Nevermind.Core.Extensions
 {
     // TODO: move to ByteArrayExtensions and ByteExtensions
     public static class Bytes
-    {
-        // TODO: move
-        public static void Deconstruct<T1, T2>(this KeyValuePair<T1, T2> tuple, out T1 key, out T2 value)
-        {
-            key = tuple.Key;
-            value = tuple.Value;
-        }
-        
-        public static byte[] Empty = new byte[0]; // consider immutable 
+    {    
+        public static readonly byte[] Empty = new byte[0]; // consider immutable 
         
         public enum Endianness
         {
@@ -25,7 +17,7 @@ namespace Nevermind.Core.Extensions
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static bool GetBit(this byte b, int bitNumber)
+        private static bool GetBit(this byte b, int bitNumber)
         {
             return (b & (1 << (7 - bitNumber))) != 0;
         }
@@ -43,14 +35,16 @@ namespace Nevermind.Core.Extensions
 
         public static unsafe bool UnsafeCompare(byte[] a1, byte[] a2)
         {
-            if (a1 == a2)
+            if (ReferenceEquals(a1, a2))
             {
                 return true;
             }
+            
             if (a1 == null || a2 == null || a1.Length != a2.Length)
             {
                 return false;
             }
+            
             fixed (byte* p1 = a1, p2 = a2)
             {
                 byte* x1 = p1, x2 = p2;
@@ -278,6 +272,12 @@ namespace Nevermind.Core.Extensions
             return new BigInteger(bytes);
         }
 
+        /// <summary>
+        /// Not tested, possibly broken
+        /// </summary>
+        /// <param name="bytes"></param>
+        /// <param name="endianness"></param>
+        /// <returns></returns>
         public static int ToInt32(this byte[] bytes, Endianness endianness = Endianness.Big)
         {
             if (BitConverter.IsLittleEndian && endianness == Endianness.Big)

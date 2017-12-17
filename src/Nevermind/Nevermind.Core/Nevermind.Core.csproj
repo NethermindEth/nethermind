@@ -60,6 +60,7 @@
     <Compile Include="Bloom.cs" />
     <Compile Include="ChainId.cs" />
     <Compile Include="ConsoleLogger.cs" />
+    <Compile Include="Crypto\Secp256K1Curve.cs" />
     <Compile Include="Crypto\Keccak.cs" />
     <Compile Include="Crypto\Ripemd.cs" />
     <Compile Include="Crypto\Sha2.cs" />
@@ -67,9 +68,11 @@
     <Compile Include="Encoding\BlockHeaderDecoder.cs" />
     <Compile Include="Encoding\IRlpDecoder.cs" />
     <Compile Include="Encoding\BlockDecoder.cs" />
+    <Compile Include="Encoding\RlpException.cs" />
     <Compile Include="Encoding\TransactionDecoder.cs" />
     <Compile Include="EthereumNetwork.cs" />
     <Compile Include="EthereumNetworkExtensions.cs" />
+    <Compile Include="Extensions\KeyValuePairExtensions.cs" />
     <Compile Include="Hex.cs" />
     <Compile Include="ILogger.cs" />
     <Compile Include="LogEntry.cs" />
@@ -92,7 +95,6 @@
     <Compile Include="Extensions\UInt64Extensions.cs" />
     <Compile Include="Transaction.cs" />
     <Compile Include="TransactionReceipt.cs" />
-    <Compile Include="UInt256.cs" />
     <Compile Include="Address.cs" />
     <Compile Include="Extensions\IntExtensions.cs" />
     <Compile Include="Crypto\Keystore.cs" />

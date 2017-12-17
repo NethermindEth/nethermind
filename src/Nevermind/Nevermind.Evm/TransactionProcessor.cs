@@ -4,7 +4,6 @@ using System.Numerics;
 using Nevermind.Core;
 using Nevermind.Core.Crypto;
 using Nevermind.Core.Encoding;
-using Nevermind.Core.Extensions;
 using Nevermind.Core.Potocol;
 using Nevermind.Store;
 
@@ -18,18 +17,17 @@ namespace Nevermind.Evm
         private readonly IStateProvider _stateProvider;
         private readonly IStorageProvider _storageProvider;
         private readonly IVirtualMachine _virtualMachine;
+        private readonly ISigner _signer;
 
-        public TransactionProcessor(IProtocolSpecification protocolSpecification, IStateProvider stateProvider, IStorageProvider storageProvider, IVirtualMachine virtualMachine, ChainId chainId, ILogger logger)
+        public TransactionProcessor(IProtocolSpecification protocolSpecification, IStateProvider stateProvider, IStorageProvider storageProvider, IVirtualMachine virtualMachine, ISigner signer, ILogger logger)
         {
             _virtualMachine = virtualMachine;
+            _signer = signer;
             _stateProvider = stateProvider;
             _storageProvider = storageProvider;
             _protocolSpecification = protocolSpecification;
             _logger = logger;
-            ChainId = chainId;
         }
-
-        public ChainId ChainId { get; }
 
         private TransactionReceipt GetNullReceipt(BlockHeader block, long gasUsed)
         {
@@ -54,7 +52,7 @@ namespace Nevermind.Evm
             byte[] machineCode = transaction.Init;
             byte[] data = transaction.Data ?? new byte[0];
 
-            Address sender = Signer.Recover(transaction);
+            Address sender = _signer.Recover(transaction);
             _logger?.Log("IS_CONTRACT_CREATION: " + transaction.IsContractCreation);
             _logger?.Log("IS_MESSAGE_CALL: " + transaction.IsMessageCall);
             _logger?.Log("IS_TRANSFER: " + transaction.IsTransfer);
@@ -110,7 +108,9 @@ namespace Nevermind.Evm
 
             if (transaction.IsContractCreation)
             {
-                Rlp addressBaseRlp = Rlp.Encode(sender, _stateProvider.GetNonce(sender) - 1);
+                Rlp addressBaseRlp = Rlp.Encode(
+                    Rlp.Encode(sender),
+                    Rlp.Encode(_stateProvider.GetNonce(sender) - 1));
                 Keccak addressBaseKeccak = Keccak.Compute(addressBaseRlp);
                 recipient = new Address(addressBaseKeccak);
             }

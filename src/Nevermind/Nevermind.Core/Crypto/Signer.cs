@@ -1,41 +1,61 @@
 ﻿using System;
 using System.Diagnostics;
 using Nevermind.Core.Encoding;
+using Nevermind.Core.Potocol;
 
 namespace Nevermind.Core.Crypto
 {
+    public interface ISigner
+    {
+        Signature Sign(PrivateKey privateKey, byte[] bytes);
+        Signature Sign(PrivateKey privateKey, Keccak message);
+        void Sign(PrivateKey privateKey, Transaction transaction);
+        Address Recover(Signature signature, Keccak message);
+        bool Verify(Address sender, Transaction transaction);
+        Address Recover(Transaction transaction);
+    }
+
     /// <summary>
     ///     for signer tests
     ///     http://blog.enuma.io/update/2016/11/01/a-tale-of-two-curves-hardware-signing-for-ethereum.html
     /// </summary>
-    public static class Signer
+    public class Signer : ISigner
     {
-        //public static BigInteger Secp256k1n = new BigInteger(115792_08923731_61954235_70985008_68790785_28375642_79074904_38260516_31415181_61494337);
+        private readonly IProtocolSpecification _protocolSpecification;
 
-        public static void Sign(Transaction transaction, PrivateKey privateKey, bool eip155 = false, ChainId chainId = 0)
+        private readonly int _chainIdValue;
+
+        public Signer(IProtocolSpecification protocolSpecification, int chainIdValue)
         {
-            int chainIdValue = (int)chainId;
+            _protocolSpecification = protocolSpecification;
+            _chainIdValue = chainIdValue;
+        }
 
-            Keccak hash = Keccak.Compute(Rlp.Encode(transaction, true, eip155, chainIdValue));
+        public Signer(IProtocolSpecification protocolSpecification, ChainId chainId)
+            : this(protocolSpecification, (int)chainId)
+        {
+        }
+
+        public void Sign(PrivateKey privateKey, Transaction transaction)
+        {
+            Keccak hash = Keccak.Compute(Rlp.Encode(transaction, true, _protocolSpecification.IsEip155Enabled, _chainIdValue));
             transaction.Signature = Sign(privateKey, hash);
         }
 
-        public static bool Verify(Address sender, Transaction transaction, bool eip155 = false, ChainId chainId = 0)
+        public bool Verify(Address sender, Transaction transaction)
         {
-            int chainIdValue = (int)chainId;
-
-            Keccak hash = Keccak.Compute(Rlp.Encode(transaction, true, eip155, chainIdValue));
-            Address recovered = RecoverSignerAddress(transaction.Signature, hash);
+            Keccak hash = Keccak.Compute(Rlp.Encode(transaction, true, _protocolSpecification.IsEip155Enabled, _chainIdValue));
+            Address recovered = Recover(transaction.Signature, hash);
             return recovered.Equals(sender);
         }
 
-        public static Address Recover(Transaction transaction)
+        public Address Recover(Transaction transaction)
         {
             Keccak hash = Keccak.Compute(Rlp.Encode(transaction, true));
-            return RecoverSignerAddress(transaction.Signature, hash);
+            return Recover(transaction.Signature, hash);
         }
 
-        public static Signature Sign(PrivateKey privateKey, byte[] bytes)
+        public Signature Sign(PrivateKey privateKey, byte[] bytes)
         {
             if (!Secp256k1.Proxy.Proxy.VerifyPrivateKey(privateKey.Hex))
             {
@@ -48,7 +68,7 @@ namespace Nevermind.Core.Crypto
             return new Signature(signature, recoveryId);
         }
 
-        public static Signature Sign(PrivateKey privateKey, Keccak message)
+        public Signature Sign(PrivateKey privateKey, Keccak message)
         {
             if (!Secp256k1.Proxy.Proxy.VerifyPrivateKey(privateKey.Hex))
             {
@@ -61,15 +81,14 @@ namespace Nevermind.Core.Crypto
 
             Signature signature = new Signature(signatureBytes, recoveryId);
 #if DEBUG
-            Address address = RecoverSignerAddress(signature, message);
+            Address address = Recover(signature, message);
             Debug.Assert(address.Equals(privateKey.Address));
 #endif
 
             return signature;
-
         }
 
-        public static Address RecoverSignerAddress(Signature signature, Keccak message)
+        public Address Recover(Signature signature, Keccak message)
         {
             byte[] publicKey = Secp256k1.Proxy.Proxy.RecoverKeyFromCompact(message.Bytes, signature.Bytes, signature.RecoveryId, false);
             return new PublicKey(publicKey).Address;

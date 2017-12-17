@@ -6,6 +6,7 @@ using System.Linq;
 using System.Numerics;
 using System.Text;
 using System.Threading.Tasks;
+using System.Xml.Serialization.Configuration;
 using Ethereum.Test.Base;
 using Nevermind.Blockchain;
 using Nevermind.Blockchain.Difficulty;
@@ -28,12 +29,10 @@ namespace Ethereum.Blockchain.Test
         private IBlockhashProvider _blockhashProvider;
         private IMultiDb _multiDb;
         private IBlockStore _chain;
-        private BlockHeaderValidator _headerValidator;
-        private BlockValidator _blockValidator;
-        private OmmersValidator _ommersValidator;   
         private Dictionary<EthereumNetwork, IVirtualMachine> _virtualMachines;
         private Dictionary<EthereumNetwork, StateProvider> _stateProviders; // TODO: support transitions of protocol
         private Dictionary<EthereumNetwork, IStorageProvider> _storageProviders;
+        private Dictionary<EthereumNetwork, IBlockValidator> _blockValidators;
         private ILogger _logger;
 
         protected void Setup(ILogger logger)
@@ -42,18 +41,23 @@ namespace Ethereum.Blockchain.Test
             ILogger stateLogger = ShouldLog.State ? _logger : null;
             _multiDb = new MultiDb(stateLogger);                
             _chain = new BlockStore();
-            _headerValidator = new BlockHeaderValidator(_chain);
-             _ommersValidator = new OmmersValidator(_chain, _headerValidator);
-            _blockValidator = new BlockValidator(_headerValidator, _ommersValidator, stateLogger);
             
             _blockhashProvider = new BlockhashProvider(_chain);
             _virtualMachines = new Dictionary<EthereumNetwork, IVirtualMachine>();
             _stateProviders = new Dictionary<EthereumNetwork, StateProvider>();
             _storageProviders = new Dictionary<EthereumNetwork, IStorageProvider>();
+            _blockValidators = new Dictionary<EthereumNetwork, IBlockValidator>();
             EthereumNetwork[] networks = {EthereumNetwork.Frontier, EthereumNetwork.Homestead, EthereumNetwork.Byzantium, EthereumNetwork.SpuriousDragon, EthereumNetwork.TangerineWhistle};
             foreach (EthereumNetwork ethereumNetwork in networks)
             {
                 IProtocolSpecification spec = _protocolSpecificationProvider.GetSpec(ethereumNetwork, 1);
+                ISignatureValidator signatureValidator = new SignatureValidator(spec, ChainId.Mainnet);
+                ITransactionValidator transactionValidator = new TransactionValidator(spec, signatureValidator);
+                 IBlockHeaderValidator headerValidator = new BlockHeaderValidator(_chain);
+                IOmmersValidator ommersValidator = new OmmersValidator(_chain, headerValidator);
+                IBlockValidator blockValidator = new BlockValidator(transactionValidator, headerValidator, ommersValidator, stateLogger);
+
+                _blockValidators[ethereumNetwork] = blockValidator;
                 _stateProviders[ethereumNetwork] = new StateProvider(new StateTree(_multiDb.CreateDb()), spec, stateLogger);
                 _storageProviders[ethereumNetwork] = new StorageProvider(_multiDb, _stateProviders[ethereumNetwork], stateLogger);
                 _virtualMachines[ethereumNetwork] = new VirtualMachine(
@@ -173,10 +177,11 @@ namespace Ethereum.Blockchain.Test
             _stateProviders[test.Network].ProtocolSpecification = _protocolSpecificationProvider.GetSpec(test.Network, 0);
 
             IProtocolSpecification spec = _protocolSpecificationProvider.GetSpec(test.Network, 1);
+            ISigner signer = new Signer(spec, ChainId.Mainnet);
             IBlockProcessor blockProcessor = new BlockProcessor(
                 spec,
                 _chain,
-                _blockValidator,
+                _blockValidators[test.Network],
                 new ProtocolBasedDifficultyCalculator(spec),
                 new RewardCalculator(spec),
                 new TransactionProcessor(
@@ -184,7 +189,7 @@ namespace Ethereum.Blockchain.Test
                     _stateProviders[test.Network],
                     _storageProviders[test.Network],
                     _virtualMachines[test.Network],
-                    ChainId.Mainnet,
+                    signer,
                     _logger),
                 _multiDb,
                 _stateProviders[test.Network],

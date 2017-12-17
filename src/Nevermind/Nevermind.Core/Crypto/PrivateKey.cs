@@ -32,14 +32,14 @@ namespace Nevermind.Core.Crypto
             Id = id;
         }
 
-        public Hex Hex { get; set; }
+        public Hex Hex { get; }
 
         private PublicKey ComputePublicKey()
         {
             return new PublicKey(Secp256k1.Proxy.Proxy.GetPublicKey(Hex, false));
         }
 
-        internal PublicKey PublicKey => LazyInitializer.EnsureInitialized(ref _publicKey, ComputePublicKey);
+        public PublicKey PublicKey => LazyInitializer.EnsureInitialized(ref _publicKey, ComputePublicKey);
 
         public Address Address => PublicKey.Address;
 

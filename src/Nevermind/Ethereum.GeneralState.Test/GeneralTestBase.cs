@@ -6,7 +6,6 @@ using System.Numerics;
 using Ethereum.Test.Base;
 using Nevermind.Core;
 using Nevermind.Core.Crypto;
-using Nevermind.Core.Encoding;
 using Nevermind.Core.Extensions;
 using Nevermind.Core.Potocol;
 using Nevermind.Evm;
@@ -18,25 +17,27 @@ namespace Ethereum.GeneralState.Test
 {
     public class GeneralTestBase
     {
+        private readonly IProtocolSpecification _protocolSpecification = new FrontierProtocolSpecification();
         private IBlockhashProvider _blockhashProvider;
         private IMultiDb _multiDb;
+        private ISigner _signer;
         private IStateProvider _stateProvider;
         private IStorageProvider _storageProvider;
-        private readonly IProtocolSpecification _protocolSpecification = new FrontierProtocolSpecification();
         private IVirtualMachine _virtualMachine;
 
         [SetUp]
         public void Setup()
         {
             _multiDb = new MultiDb(ShouldLog.State ? new ConsoleLogger() : null);
-            
+
+            _signer = new Signer(new OlympicProtocolSpecification(), ChainId.Mainnet);
             _blockhashProvider = new TestBlockhashProvider();
             _stateProvider = new StateProvider(new StateTree(_multiDb.CreateDb()), _protocolSpecification, ShouldLog.State ? new ConsoleLogger() : null);
             _storageProvider = new StorageProvider(_multiDb, _stateProvider, ShouldLog.State ? new ConsoleLogger() : null);
             _virtualMachine = new VirtualMachine(_protocolSpecification, _stateProvider, _storageProvider, _blockhashProvider, ShouldLog.Evm ? new ConsoleLogger() : null);
         }
 
-        public static IEnumerable<GenerateStateTest> LoadTests(string testSet)
+        protected static IEnumerable<GenerateStateTest> LoadTests(string testSet)
         {
             Directory.SetCurrentDirectory(AppDomain.CurrentDomain.BaseDirectory);
             IEnumerable<string> testDirs = Directory.EnumerateDirectories(".\\Tests\\", "st" + testSet);
@@ -146,8 +147,9 @@ namespace Ethereum.GeneralState.Test
                 }
             }
 
+            ISigner signer = new Signer(_protocolSpecification, ChainId.Mainnet);
             TransactionProcessor processor =
-                new TransactionProcessor(_protocolSpecification, _stateProvider, _storageProvider, _virtualMachine, ChainId.Mainnet, ShouldLog.Processing ? new ConsoleLogger() : null);
+                new TransactionProcessor(_protocolSpecification, _stateProvider, _storageProvider, _virtualMachine, signer, ShouldLog.Processing ? new ConsoleLogger() : null);
             Transaction transaction = new Transaction();
             transaction.To = test.IncomingTransaction.To;
             transaction.Value = test.IncomingTransaction.Value;
@@ -157,7 +159,7 @@ namespace Ethereum.GeneralState.Test
             transaction.Init = null; // code here / create
             transaction.Nonce = test.IncomingTransaction.Nonce;
 
-            Signer.Sign(transaction, test.IncomingTransaction.SecretKey, false, 0); // check EIP and chain id
+            _signer.Sign(test.IncomingTransaction.SecretKey, transaction);
 
             BlockHeader header = new BlockHeader(
                 Keccak.OfAnEmptyString,
@@ -168,7 +170,7 @@ namespace Ethereum.GeneralState.Test
                 (long)test.Environment.CurrentGasLimit,
                 test.Environment.CurrentTimestamp,
                 Bytes.Empty
-                );
+            );
 
             TransactionReceipt receipt = processor.Execute(
                 transaction,

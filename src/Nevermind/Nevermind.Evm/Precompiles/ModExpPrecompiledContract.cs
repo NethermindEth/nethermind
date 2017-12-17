@@ -60,7 +60,7 @@ namespace Nevermind.Evm.Precompiles
                 throw new InvalidInputDataException();
             }
 
-            return BigInteger.ModPow(baseInt, expInt, modulusInt).ToBigEndianByteArray(true, modulusLength);
+            return BigInteger.ModPow(baseInt, expInt, modulusInt).ToBigEndianByteArray(modulusLength);
         }
 
         private BigInteger MultComplexity(BigInteger adjustedExponentLength)

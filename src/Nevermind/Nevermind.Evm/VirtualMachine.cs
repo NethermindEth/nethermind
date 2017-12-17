@@ -640,7 +640,7 @@ namespace Nevermind.Evm
                         }
                         else
                         {
-                            PushBytes(BigInteger.Divide(a, b).ToBigEndianByteArray(true, 32));
+                            PushBytes(BigInteger.Divide(a, b).ToBigEndianByteArray(32));
                         }
 
                         break;
@@ -665,7 +665,7 @@ namespace Nevermind.Evm
                         else
                         {
                             PushBytes((a.Sign * BigInteger.Remainder(a.Abs(), b.Abs()))
-                                .ToBigEndianByteArray(true, 32));
+                                .ToBigEndianByteArray(32));
                         }
 
                         break;
@@ -1328,9 +1328,11 @@ namespace Nevermind.Evm
                         UpdateMemoryCost(memoryPositionOfInitCode, initCodeLength);
 
                         byte[] initCode = evmState.Memory.Load(memoryPositionOfInitCode, initCodeLength);
-
                         Keccak contractAddressKeccak =
-                            Keccak.Compute(Rlp.Encode(env.ExecutingAccount, _stateProvider.GetNonce(env.ExecutingAccount)));
+                            Keccak.Compute(
+                                Rlp.Encode(
+                                    Rlp.Encode(env.ExecutingAccount),
+                                    Rlp.Encode(_stateProvider.GetNonce(env.ExecutingAccount))));
                         Address contractAddress = new Address(contractAddressKeccak);
 
                         if (value > _stateProvider.GetBalance(env.ExecutingAccount))
