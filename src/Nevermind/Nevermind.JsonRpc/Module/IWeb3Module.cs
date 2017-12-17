@@ -1,8 +1,10 @@
-﻿namespace Nevermind.JsonRpc.Module
+﻿using Nevermind.JsonRpc.DataModel;
+
+namespace Nevermind.JsonRpc.Module
 {
     public interface IWeb3Module : IModule
     {
         string web3_clientVersion();
-        string web3_sha3(string data);
+        Data web3_sha3(Data data);
     }
 }

@@ -1,4 +1,4 @@
-﻿namespace Nevermind.JsonRpc
+﻿namespace Nevermind.Json
 {
     public interface IJsonSerializer
     {

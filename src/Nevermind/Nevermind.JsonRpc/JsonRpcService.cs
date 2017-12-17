@@ -3,10 +3,10 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using Nevermind.Core;
+using Nevermind.Json;
 using Nevermind.JsonRpc.DataModel;
 using Nevermind.JsonRpc.Module;
 using Nevermind.Utils;
-using Newtonsoft.Json;
 
 namespace Nevermind.JsonRpc
 {
@@ -70,8 +70,7 @@ namespace Nevermind.JsonRpc
                 {
                     return GetErrorResponse(ErrorType.InvalidParams, $"Incorrect parameters for method: {rpcRequest.Method}", rpcRequest.Id);
                 }
-                var data = new Data();
-                data.FromJson(paramsRaw[0]);
+                var data = new Data(paramsRaw[0]);
                 var blockParameter = new BlockParameter();
                 blockParameter.FromJson(paramsRaw[1]);
 
