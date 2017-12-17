@@ -29,7 +29,7 @@ namespace Nevermind.Evm.Precompiles
 
         public byte[] Run(byte[] inputData)
         {
-            Signer signer = new Signer(new OlympicProtocolSpecification(), ChainId.Mainnet);
+            Signer signer = new Signer(Olympic.Instance, ChainId.Mainnet);
 
             inputData = inputData.PadRight(128);
 

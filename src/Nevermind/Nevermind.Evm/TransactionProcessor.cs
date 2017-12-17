@@ -13,19 +13,19 @@ namespace Nevermind.Evm
     {
         private static readonly IntrinsicGasCalculator IntrinsicGasCalculator = new IntrinsicGasCalculator();
         private readonly ILogger _logger;
-        private readonly IProtocolSpecification _protocolSpecification;
+        private readonly IEthereumRelease _ethereumRelease;
         private readonly IStateProvider _stateProvider;
         private readonly IStorageProvider _storageProvider;
         private readonly IVirtualMachine _virtualMachine;
         private readonly ISigner _signer;
 
-        public TransactionProcessor(IProtocolSpecification protocolSpecification, IStateProvider stateProvider, IStorageProvider storageProvider, IVirtualMachine virtualMachine, ISigner signer, ILogger logger)
+        public TransactionProcessor(IEthereumRelease ethereumRelease, IStateProvider stateProvider, IStorageProvider storageProvider, IVirtualMachine virtualMachine, ISigner signer, ILogger logger)
         {
             _virtualMachine = virtualMachine;
             _signer = signer;
             _stateProvider = stateProvider;
             _storageProvider = storageProvider;
-            _protocolSpecification = protocolSpecification;
+            _ethereumRelease = ethereumRelease;
             _logger = logger;
         }
 
@@ -68,7 +68,7 @@ namespace Nevermind.Evm
                 return GetNullReceipt(block, gasLimit);
             }
 
-            long intrinsicGas = IntrinsicGasCalculator.Calculate(_protocolSpecification, transaction);
+            long intrinsicGas = IntrinsicGasCalculator.Calculate(_ethereumRelease, transaction);
             _logger?.Log("INTRINSIC GAS: " + intrinsicGas);
 
             if (gasLimit < intrinsicGas)
@@ -140,7 +140,7 @@ namespace Nevermind.Evm
                 }
                 else
                 {
-                    bool isPrecompile = recipient.IsPrecompiled(_protocolSpecification);
+                    bool isPrecompile = recipient.IsPrecompiled(_ethereumRelease);
 
                     ExecutionEnvironment env = new ExecutionEnvironment();
                     env.Value = value;
@@ -178,12 +178,12 @@ namespace Nevermind.Evm
                         if (transaction.IsContractCreation)
                         {
                             long codeDepositGasCost = output.Length * GasCostOf.CodeDeposit;
-                            if (_protocolSpecification.IsEip170Enabled && output.Length > 0x6000)
+                            if (_ethereumRelease.IsEip170Enabled && output.Length > 0x6000)
                             {
                                 codeDepositGasCost = long.MaxValue;
                             }
 
-                            if (unspentGas < codeDepositGasCost && _protocolSpecification.IsEip2Enabled)
+                            if (unspentGas < codeDepositGasCost && _ethereumRelease.IsEip2Enabled)
                             {
                                 throw new OutOfGasException();
                             }

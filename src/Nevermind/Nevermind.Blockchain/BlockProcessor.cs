@@ -26,7 +26,7 @@ namespace Nevermind.Blockchain
         private readonly IRewardCalculator _rewardCalculator;
 
         public BlockProcessor(
-            IProtocolSpecification protocolSpecification,
+            IEthereumRelease ethereumRelease,
             IBlockStore blockStore,
             IBlockValidator blockValidator,
             IDifficultyCalculator difficultyCalculator,
@@ -38,7 +38,7 @@ namespace Nevermind.Blockchain
             ILogger logger = null)
         {
             _logger = logger;
-            _protocolSpecification = protocolSpecification;
+            _ethereumRelease = ethereumRelease;
             _blockStore = blockStore;
             _blockValidator = blockValidator;
             _stateProvider = stateProvider;
@@ -49,7 +49,7 @@ namespace Nevermind.Blockchain
             _db = db;
         }
 
-        private readonly IProtocolSpecification _protocolSpecification;
+        private readonly IEthereumRelease _ethereumRelease;
         private readonly IBlockStore _blockStore;
         private readonly IBlockValidator _blockValidator;
 
@@ -76,7 +76,7 @@ namespace Nevermind.Blockchain
             PatriciaTree receiptTree = receipts.Count > 0 ? new PatriciaTree() : null;
             for (int i = 0; i < receipts.Count; i++)
             {
-                Rlp receiptRlp = Rlp.Encode(receipts[i], _protocolSpecification.IsEip658Enabled);   
+                Rlp receiptRlp = Rlp.Encode(receipts[i], _ethereumRelease.IsEip658Enabled);   
                 receiptTree.Set(Rlp.Encode(i).Bytes, receiptRlp);
             }
 

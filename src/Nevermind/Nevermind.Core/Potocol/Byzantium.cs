@@ -1,7 +1,17 @@
+using System.Threading;
+
 namespace Nevermind.Core.Potocol
 {
-    public class ByzantiumProtocolSpecification : IProtocolSpecification
+    public class Byzantium : IEthereumRelease
     {
+        private static IEthereumRelease _instance;
+
+        private Byzantium()
+        {
+        }
+
+        public static IEthereumRelease Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new Byzantium());
+        
         public bool IsTimeAdjustmentPostOlympic => true;
         public bool AreJumpDestinationsUsed => false;
         public bool IsEip2Enabled => true;

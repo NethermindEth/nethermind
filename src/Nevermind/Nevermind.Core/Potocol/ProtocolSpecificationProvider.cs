@@ -5,67 +5,67 @@ namespace Nevermind.Core.Potocol
 {
     public class ProtocolSpecificationProvider : IProtocolSpecificationProvider
     {
-        public IProtocolSpecification GetSpec(EthereumNetwork network, BigInteger blockNumber)
+        public IEthereumRelease GetSpec(EthereumNetwork network, BigInteger blockNumber)
         {
             switch (network)
             {
                 case EthereumNetwork.Main:
                     if (blockNumber < 1150000)
                     {
-                        return new FrontierProtocolSpecification();
+                        return Frontier.Instance;
                     }
                     else if (blockNumber < 2463000)
                     {
-                        return new HomesteadProtocolSpecification();
+                        return Homestead.Instance;
                     }
                     else if (blockNumber < 2675000)
                     {
-                        return new TangerineWhistleProtocolSpecification();
+                        return TangerineWhistle.Instance;
                     }
                     else if (blockNumber < 4750000)
                     {
-                        return new SpuriousDragonProtocolSpecification();
+                        return SpuriousDragon.Instance;
                     }
                     else
                     {
-                        return new ByzantiumProtocolSpecification();
+                        return Byzantium.Instance;
                     }
                 case EthereumNetwork.Ropsten:
                     if (blockNumber < 1150000)
                     {
-                        return new SpuriousDragonProtocolSpecification();
+                        return SpuriousDragon.Instance;
                     }
                     else
                     {
-                        return new ByzantiumProtocolSpecification();
+                        return Byzantium.Instance;
                     }
                 case EthereumNetwork.Morden:
                     if (blockNumber < 494000)
                     {
-                        return new FrontierProtocolSpecification();
+                        return Frontier.Instance;
                     }
                     else if (blockNumber < 0) // ???
                     {
-                        return new HomesteadProtocolSpecification();
+                        return Homestead.Instance;
                     }
                     else if (blockNumber < 1885000) // ???
                     {
-                        return new TangerineWhistleProtocolSpecification();
+                        return TangerineWhistle.Instance;
                     }
                     else
                     {
-                        return new SpuriousDragonProtocolSpecification();
+                        return SpuriousDragon.Instance;
                     }
                 case EthereumNetwork.Frontier:
-                    return new FrontierProtocolSpecification();
+                    return Frontier.Instance;
                 case EthereumNetwork.Homestead:
-                    return new HomesteadProtocolSpecification();
+                    return Homestead.Instance;
                 case EthereumNetwork.SpuriousDragon:
-                    return new SpuriousDragonProtocolSpecification();
+                    return SpuriousDragon.Instance;
                 case EthereumNetwork.TangerineWhistle:
-                    return new TangerineWhistleProtocolSpecification();
+                    return TangerineWhistle.Instance;
                 case EthereumNetwork.Byzantium:
-                    return new ByzantiumProtocolSpecification();
+                    return Byzantium.Instance;
                 default:
                     throw new NotImplementedException();
             }

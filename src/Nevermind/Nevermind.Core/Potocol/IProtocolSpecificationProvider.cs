@@ -4,6 +4,6 @@ namespace Nevermind.Core.Potocol
 {
     public interface IProtocolSpecificationProvider
     {
-        IProtocolSpecification GetSpec(EthereumNetwork network, BigInteger blockNumber);
+        IEthereumRelease GetSpec(EthereumNetwork network, BigInteger blockNumber);
     }
 }

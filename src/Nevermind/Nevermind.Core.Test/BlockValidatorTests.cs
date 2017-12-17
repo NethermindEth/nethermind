@@ -13,7 +13,7 @@ namespace Nevermind.Core.Test
         [Test]
         public void Test()
         {
-            IProtocolSpecification spec = new OlympicProtocolSpecification();
+            IEthereumRelease spec = Olympic.Instance;
             IBlockStore blockchain = Substitute.For<IBlockStore>();
 
             BlockHeaderValidator blockHeaderValidator = new BlockHeaderValidator(blockchain);

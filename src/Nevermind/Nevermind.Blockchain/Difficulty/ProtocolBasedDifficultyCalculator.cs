@@ -6,11 +6,11 @@ namespace Nevermind.Blockchain.Difficulty
 {
     public class ProtocolBasedDifficultyCalculator : IDifficultyCalculator
     {
-        private readonly IProtocolSpecification _protocolSpecification;
+        private readonly IEthereumRelease _ethereumRelease;
 
-        public ProtocolBasedDifficultyCalculator(IProtocolSpecification protocolSpecification, long genesisBlockDiffculty = OfGenesisBlock)
+        public ProtocolBasedDifficultyCalculator(IEthereumRelease ethereumRelease, long genesisBlockDiffculty = OfGenesisBlock)
         {
-            _protocolSpecification = protocolSpecification;
+            _ethereumRelease = ethereumRelease;
         }
 
         private const long OfGenesisBlock = 131_072; // Olympic?
@@ -59,17 +59,17 @@ namespace Nevermind.Blockchain.Difficulty
             BigInteger difference = parentTimestamp - currentTimestamp;
 #endif
             
-            if (_protocolSpecification.IsEip100Enabled)
+            if (_ethereumRelease.IsEip100Enabled)
             {
                 return BigInteger.Max((parentHasUncles ? 2 : 1) - BigInteger.Divide(currentTimestamp - parentTimestamp, 9), -99);
             }
             
-            if(_protocolSpecification.IsEip2Enabled)
+            if(_ethereumRelease.IsEip2Enabled)
             {
                 return BigInteger.Max(1 - BigInteger.Divide(currentTimestamp - parentTimestamp, 10), -99);    
             }
             
-            if (_protocolSpecification.IsTimeAdjustmentPostOlympic)
+            if (_ethereumRelease.IsTimeAdjustmentPostOlympic)
             {
                 return currentTimestamp < parentTimestamp + 13 ? 1 : -1;                
             }
@@ -79,7 +79,7 @@ namespace Nevermind.Blockchain.Difficulty
 
         private BigInteger TimeBomb(BigInteger blockNumber)
         {
-            if (_protocolSpecification.IsEip649Enabled)
+            if (_ethereumRelease.IsEip649Enabled)
             {
                 blockNumber = blockNumber - 3000000;
             }

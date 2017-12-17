@@ -50,7 +50,7 @@ namespace Ethereum.Blockchain.Test
             EthereumNetwork[] networks = {EthereumNetwork.Frontier, EthereumNetwork.Homestead, EthereumNetwork.Byzantium, EthereumNetwork.SpuriousDragon, EthereumNetwork.TangerineWhistle};
             foreach (EthereumNetwork ethereumNetwork in networks)
             {
-                IProtocolSpecification spec = _protocolSpecificationProvider.GetSpec(ethereumNetwork, 1);
+                IEthereumRelease spec = _protocolSpecificationProvider.GetSpec(ethereumNetwork, 1);
                 ISignatureValidator signatureValidator = new SignatureValidator(spec, ChainId.Mainnet);
                 ITransactionValidator transactionValidator = new TransactionValidator(spec, signatureValidator);
                  IBlockHeaderValidator headerValidator = new BlockHeaderValidator(_chain);
@@ -174,9 +174,9 @@ namespace Ethereum.Blockchain.Test
             InitializeTestState(test);
 
             // TODO: transition...
-            _stateProviders[test.Network].ProtocolSpecification = _protocolSpecificationProvider.GetSpec(test.Network, 0);
+            _stateProviders[test.Network].EthereumRelease = _protocolSpecificationProvider.GetSpec(test.Network, 0);
 
-            IProtocolSpecification spec = _protocolSpecificationProvider.GetSpec(test.Network, 1);
+            IEthereumRelease spec = _protocolSpecificationProvider.GetSpec(test.Network, 1);
             ISigner signer = new Signer(spec, ChainId.Mainnet);
             IBlockProcessor blockProcessor = new BlockProcessor(
                 spec,
@@ -226,7 +226,7 @@ namespace Ethereum.Blockchain.Test
 
         private void InitializeTestState(BlockchainTest test)
         {
-            _stateProviders[test.Network].ProtocolSpecification = _protocolSpecificationProvider.GetSpec(EthereumNetwork.Frontier, 0);
+            _stateProviders[test.Network].EthereumRelease = _protocolSpecificationProvider.GetSpec(EthereumNetwork.Frontier, 0);
             foreach (KeyValuePair<Address, AccountState> accountState in test.Pre)
             {
                 foreach (KeyValuePair<BigInteger, byte[]> storageItem in accountState.Value.Storage)

@@ -21,30 +21,30 @@ namespace Nevermind.Core.Crypto
     /// </summary>
     public class Signer : ISigner
     {
-        private readonly IProtocolSpecification _protocolSpecification;
+        private readonly IEthereumRelease _ethereumRelease;
 
         private readonly int _chainIdValue;
 
-        public Signer(IProtocolSpecification protocolSpecification, int chainIdValue)
+        public Signer(IEthereumRelease ethereumRelease, int chainIdValue)
         {
-            _protocolSpecification = protocolSpecification;
+            _ethereumRelease = ethereumRelease;
             _chainIdValue = chainIdValue;
         }
 
-        public Signer(IProtocolSpecification protocolSpecification, ChainId chainId)
-            : this(protocolSpecification, (int)chainId)
+        public Signer(IEthereumRelease ethereumRelease, ChainId chainId)
+            : this(ethereumRelease, (int)chainId)
         {
         }
 
         public void Sign(PrivateKey privateKey, Transaction transaction)
         {
-            Keccak hash = Keccak.Compute(Rlp.Encode(transaction, true, _protocolSpecification.IsEip155Enabled, _chainIdValue));
+            Keccak hash = Keccak.Compute(Rlp.Encode(transaction, true, _ethereumRelease.IsEip155Enabled, _chainIdValue));
             transaction.Signature = Sign(privateKey, hash);
         }
 
         public bool Verify(Address sender, Transaction transaction)
         {
-            Keccak hash = Keccak.Compute(Rlp.Encode(transaction, true, _protocolSpecification.IsEip155Enabled, _chainIdValue));
+            Keccak hash = Keccak.Compute(Rlp.Encode(transaction, true, _ethereumRelease.IsEip155Enabled, _chainIdValue));
             Address recovered = Recover(transaction.Signature, hash);
             return recovered.Equals(sender);
         }

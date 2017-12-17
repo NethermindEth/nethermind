@@ -124,8 +124,8 @@ namespace Nevermind.Blockchain.Test.Runner
             Run(bugHunter, "bcValidBlockTest", testWildcard);
             Run(bugHunter, "bcWalletTest", testWildcard);
 
-            //Run("stZeroKnowledge");
-            //Run("stZeroKnowledge2");
+//            Run(bugHunter, "stZeroKnowledge", testWildcard);
+//            Run(bugHunter,"stZeroKnowledge2", testWildcard);
         }
     }
 }

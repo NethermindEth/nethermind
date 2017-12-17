@@ -32,7 +32,7 @@ namespace Ethereum.Basic.Test
         [TestCaseSource(nameof(LoadTests))]
         public void Test(TransactionTest test)
         {
-            Signer signer = new Signer(new ByzantiumProtocolSpecification(), ChainId.Mainnet);
+            Signer signer = new Signer(Byzantium.Instance, ChainId.Mainnet);
             
             Transaction transaction = new Transaction();
             transaction.Value = test.Value;
