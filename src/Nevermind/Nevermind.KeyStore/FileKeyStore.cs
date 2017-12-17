@@ -13,26 +13,28 @@ using Random = Nevermind.Core.Crypto.Random;
 namespace Nevermind.KeyStore
 {
     /// <summary>
-    ///     {"address":"c2d7cf95645d33006175b78989035c7c9061d3f9",
-    ///     "crypto":{
-    ///     "cipher":"aes-128-ctr",
-    ///     "ciphertext":"0f6d343b2a34fe571639235fc16250823c6fe3bc30525d98c41dfdf21a97aedb",
-    ///     "cipherparams":{
-    ///     "iv":"cabce7fb34e4881870a2419b93f6c796"
-    /// },
-    /// "kdf":"scrypt",
-    /// "kdfparams"{
-    /// "dklen":32,
-    /// "n":262144,
-    /// "p":1,
-    /// "r":8,
-    /// "salt":"1af9c4a44cf45fe6fb03dcc126fa56cb0f9e81463683dd6493fb4dc76edddd51"
-    /// },
-    /// "mac":"5cf4012fffd1fbe41b122386122350c3825a709619224961a16e908c2a366aa6"
-    /// },
-    /// "id":"eddd71dd-7ad6-4cd3-bc1a-11022f7db76c",
-    /// "version":3
-    /// }
+    ///{
+    ///    "Address": "0x812137fc063598c01e46c694dab2cb0c23f5c2a1",
+    ///    "Crypto": {
+    ///        "Cipher": "aes-128-cbc",
+    ///        "CipherText": "0xbe8562b251a5e1ddc8ce9d4b5401e4642bb296490521ba8b251fe491eaa8e343488670711cfe1fd5150a9cbc440bcc9b",
+    ///        "CipherParams": {
+    ///            "IV": "0x197b93a9ec21ffb7e883dbac56092195"
+    ///        },
+    ///        "KDF": "scrypt",
+    ///        "KDFParams": {
+    ///            "DkLen": 32,
+    ///            "N": 262144,
+    ///            "P": 1,
+    ///            "R": 8,
+    ///            "Salt": "0x981d779773978b52d2198ade820469703e8347ae55ddb36c3fb210fa1ad7c5ae"
+    ///        },
+    ///        "MAC": "0xc1b15ba69e4a43e8fab9f46afd329bd85fc98c8929f30c769081622938407c76",
+    ///        "Version": 1
+    ///    },
+    ///    "Id": "c970b4ea-9fc7-493b-9f82-93027aa3a6be",
+    ///    "Version": 3
+    ///}
     /// </summary>
     public class FileKeyStore : IKeyStore
     {
@@ -111,7 +113,7 @@ namespace Nevermind.KeyStore
 
             var encryptKey = Keccak.Compute(derivedKey.Take(16).ToArray()).Bytes.Take(16).ToArray();
             var encryptContent = key.Hex.ToBytes();
-            var iv = Random.GenerateRandomBytes(_configurationProvider.SymmetricEncrypterBlockSize);
+            var iv = Random.GenerateRandomBytes(_configurationProvider.IVSize);
 
             var cipher = _symmetricEncrypter.Encrypt(encryptContent, encryptKey, iv);
             if (cipher == null)

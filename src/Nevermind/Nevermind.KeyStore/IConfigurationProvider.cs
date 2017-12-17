@@ -17,5 +17,6 @@ namespace Nevermind.KeyStore
 
         int SymmetricEncrypterBlockSize { get; }
         int SymmetricEncrypterKeySize { get; }
+        int IVSize { get; }
     }
 }

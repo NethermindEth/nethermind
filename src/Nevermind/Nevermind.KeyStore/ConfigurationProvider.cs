@@ -13,7 +13,8 @@ namespace Nevermind.KeyStore
         public int KdfparamsP => 1;
         public int KdfparamsR => 8;
         public int KdfparamsSaltLen => 32;
-        public int SymmetricEncrypterBlockSize => 16;
+        public int SymmetricEncrypterBlockSize => 128;
         public int SymmetricEncrypterKeySize => 128;
+        public int IVSize => 16;
     }
 }
