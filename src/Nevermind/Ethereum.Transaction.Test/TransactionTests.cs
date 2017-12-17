@@ -99,7 +99,7 @@ namespace Ethereum.Transaction.Test
         [TestCaseSource(nameof(LoadTests), new object[] { "Eip155VitaliksHomesead" })]
         public void Test_eip155VitaliksHomesead(TransactionTest test)
         {
-            RunTest(test, new SpuriousDragonProtocolSpecification());
+            RunTest(test, new HomesteadProtocolSpecification());
         }
 
         [TestCaseSource(nameof(LoadTests), new object[] { "Eip158" })]
@@ -123,13 +123,13 @@ namespace Ethereum.Transaction.Test
         [TestCaseSource(nameof(LoadTests), new object[] { "SpecConstantinople" })]
         public void Test_spec_constantinople(TransactionTest test)
         {
-            RunTest(test, new ByzantiumProtocolSpecification(), true);
+            RunTest(test, new ByzantiumProtocolSpecification());
         }
 
         [TestCaseSource(nameof(LoadTests), new object[] { "VRuleEip158" })]
         public void Test_v_rule_eip158(TransactionTest test)
         {
-            RunTest(test, new SpuriousDragonProtocolSpecification(), true);
+            RunTest(test, new SpuriousDragonProtocolSpecification());
         }
 
         [TestCaseSource(nameof(LoadTests), new object[] { "WrongRLPFrontier" })]
@@ -147,84 +147,64 @@ namespace Ethereum.Transaction.Test
         [TestCaseSource(nameof(LoadTests), new object[] { "ZeroSigConstantinople" })]
         public void Test_zero_sig_constantinople(TransactionTest test)
         {
-            RunTest(test, new ByzantiumProtocolSpecification(), true);
+            RunTest(test, new ByzantiumProtocolSpecification());
         }
 
-        private void RunTest(TransactionTest test, IProtocolSpecification spec, bool ignoreSignatures = false)
+        private void RunTest(TransactionTest test, IProtocolSpecification spec)
         {
             TestContext.CurrentContext.Test.Properties.Set("Category", test.Network);
 
-            if (test is ValidTransactionTest validTest)
+            ValidTransactionTest validTest = test as ValidTransactionTest;
+            Nevermind.Core.Transaction transaction = null;
+            try
             {
-                Rlp rlp = new Rlp(Hex.ToBytes(validTest.Rlp));
-
-                Nevermind.Core.Transaction transaction = new Nevermind.Core.Transaction();
-                transaction.Value = validTest.Value;
-                transaction.GasLimit = validTest.GasLimit;
-                transaction.GasPrice = validTest.GasPrice;
-
-                if (validTest.To != null)
-                {
-                    transaction.Data = validTest.Data;
-                    transaction.To = validTest.To;
-                }
-                else
-                {
-                    transaction.Init = validTest.Data;
-                }
-
-                transaction.Nonce = validTest.Nonce;
-
-                // signatures have zeroes trimmed in testing so not obtaining the same values
-                //Rlp testRlp = Rlp.EncodeBigInteger(transaction, false);
-                //Assert.AreEqual(rlp, testRlp);
-
-                Nevermind.Core.Transaction decodedTransaction = Rlp.Decode<Nevermind.Core.Transaction>(rlp);
-                Assert.AreEqual(transaction.Value, decodedTransaction.Value, "value");
-                Assert.True(Bytes.UnsafeCompare(transaction.Data, decodedTransaction.Data), "date");
-                Assert.AreEqual(transaction.GasLimit, decodedTransaction.GasLimit, "gasLimit");
-                Assert.AreEqual(transaction.GasPrice, decodedTransaction.GasPrice, "gasPrice");
-                Assert.AreEqual(transaction.Init, decodedTransaction.Init, "init");
-                Assert.AreEqual(transaction.Nonce, decodedTransaction.Nonce, "nonce");
-                Assert.AreEqual(transaction.To, decodedTransaction.To, "to");
-                Assert.True(TransactionValidator.IsWellFormed(transaction));
-
-                if (!ignoreSignatures)
-                {
-                    Signature signature = new Signature(validTest.R, validTest.S, validTest.V);
-                    transaction.Signature = signature;
-
-                    int chainIdValue =
-                        validTest.V > 28
-                            ? validTest.V % 2 == 1
-                                ? (validTest.V - 35) / 2
-                                : (validTest.V - 36) / 2
-                            : 1;
-
-                    bool useEip155Rule = spec.IsEip155Enabled && validTest.V > 28; // TODO: why the check for V > 28?
-                    Assert.AreEqual(transaction.Signature, decodedTransaction.Signature, "signature");
-
-                    ISigner signer = new Signer(useEip155Rule ? (IProtocolSpecification)new ByzantiumProtocolSpecification() : new HomesteadProtocolSpecification(), chainIdValue);
-                    bool verified = signer.Verify(
-                        validTest.Sender,
-                        transaction);
-                    Assert.True(verified);
-                }
+                Rlp rlp = new Rlp(Hex.ToBytes(test.Rlp));
+                transaction = Rlp.Decode<Nevermind.Core.Transaction>(rlp);
             }
-            else
+            catch (Exception)
             {
-                Nevermind.Core.Transaction transaction;
-                try
-                {
-                    Rlp rlp = new Rlp(Hex.ToBytes(test.Rlp));
-                    transaction = Rlp.Decode<Nevermind.Core.Transaction>(rlp);
-                }
-                catch (Exception e)
+                if (validTest == null)
                 {
                     return;
                 }
-                
-                Assert.False(TransactionValidator.IsWellFormed(transaction));
+
+                throw;
+            }
+
+            int chainIdValue =
+                    transaction.Signature.V > 28
+                        ? transaction.Signature.V % 2 == 1
+                            ? (transaction.Signature.V - 35) / 2
+                            : (transaction.Signature.V - 36) / 2
+                        : 1;
+
+            SignatureValidator signatureValidator = new SignatureValidator(spec, chainIdValue);
+            TransactionValidator validator = new TransactionValidator(spec, signatureValidator);
+
+            if (validTest != null)
+            {
+                Assert.AreEqual(validTest.Value, transaction.Value, "value");
+                Assert.AreEqual(validTest.Data, transaction.Data ?? transaction.Init, "data");
+                Assert.AreEqual(validTest.GasLimit, transaction.GasLimit, "gasLimit");
+                Assert.AreEqual(validTest.GasPrice, transaction.GasPrice, "gasPrice");
+                Assert.AreEqual(validTest.Nonce, transaction.Nonce, "nonce");
+                Assert.AreEqual(validTest.To, transaction.To, "to");
+                Assert.True(validator.IsWellFormed(transaction));
+
+                Signature expectedSignature = new Signature(validTest.R, validTest.S, validTest.V);
+                Assert.AreEqual(expectedSignature, transaction.Signature, "signature");
+
+                bool useEip155Rule = spec.IsEip155Enabled && validTest.V > 28; // TODO: why the check for V > 28?
+
+                ISigner signer = new Signer(useEip155Rule ? (IProtocolSpecification)new ByzantiumProtocolSpecification() : new HomesteadProtocolSpecification(), chainIdValue);
+                bool verified = signer.Verify(
+                    validTest.Sender,
+                    transaction);
+                Assert.True(verified);
+            }
+            else
+            {
+                Assert.False(validator.IsWellFormed(transaction));
             }
         }
 

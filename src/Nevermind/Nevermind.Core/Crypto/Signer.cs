@@ -24,7 +24,6 @@ namespace Nevermind.Core.Crypto
         private readonly IProtocolSpecification _protocolSpecification;
 
         private readonly int _chainIdValue;
-        //public static BigInteger Secp256k1n = new BigInteger(115792_08923731_61954235_70985008_68790785_28375642_79074904_38260516_31415181_61494337);
 
         public Signer(IProtocolSpecification protocolSpecification, int chainIdValue)
         {

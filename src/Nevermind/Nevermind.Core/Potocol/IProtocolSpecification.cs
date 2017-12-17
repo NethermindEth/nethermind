@@ -12,6 +12,7 @@ namespace Nevermind.Core.Potocol
         /// Contract creation via transaction cost set to 21000 + 32000 (previously 21000)
         /// Failing init does not create an empty code contract
         /// Difficulty adjustment changed
+        /// Transaction signature uniqueness (s-value has to be less or equal than than secp256k1n/2)
         /// </summary>
         bool IsEip2Enabled { get; }
 
@@ -36,7 +37,7 @@ namespace Nevermind.Core.Potocol
         bool IsEip150Enabled { get; }
 
         /// <summary>
-        /// Chain ID in signatures
+        /// Chain ID in signatures (replay attack protection)
         /// </summary>
         bool IsEip155Enabled { get; }
 

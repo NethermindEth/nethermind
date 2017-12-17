@@ -62,7 +62,7 @@ namespace Nevermind.Core.Encoding
             {
                 if (check && contextToCheck.CurrentIndex != contextToCheck.MaxIndex)
                 {
-                    throw new InvalidOperationException();
+                    throw new RlpException("Invalid RLP length");
                 }
 
                 if (resultToCollapse.Count == 1)
@@ -101,7 +101,7 @@ namespace Nevermind.Core.Encoding
                 byte[] data = context.Pop(length);
                 if (data.Length == 1 && data[0] < 128)
                 {
-                    throw new InvalidOperationException();
+                    throw new RlpException($"Unexpected byte value {data[0]}");
                 }
 
                 result.Add(data);
@@ -114,13 +114,13 @@ namespace Nevermind.Core.Encoding
                 if (lengthOfLength > 4)
                 {
                     // strange but needed to pass tests -seems that spec gives int64 length and tests int32 length
-                    throw new InvalidOperationException();
+                    throw new RlpException("Expected length of lenth less or equal 4");
                 }
 
                 int length = DeserializeLength(context.Pop(lengthOfLength));
                 if (length < 56)
                 {
-                    throw new InvalidOperationException();
+                    throw new RlpException("Expected length greater or equal 56");
                 }
 
                 byte[] data = context.Pop(length);
@@ -139,13 +139,13 @@ namespace Nevermind.Core.Encoding
                 if (lengthOfConcatenationLength > 4)
                 {
                     // strange but needed to pass tests -seems that spec gives int64 length and tests int32 length
-                    throw new InvalidOperationException();
+                    throw new RlpException("Expected length of lenth less or equal 4");
                 }
 
                 concatenationLength = DeserializeLength(context.Pop(lengthOfConcatenationLength));
                 if (concatenationLength < 56)
                 {
-                    throw new InvalidOperationException();
+                    throw new RlpException("Expected length greater or equal 56");
                 }
             }
 
@@ -163,6 +163,11 @@ namespace Nevermind.Core.Encoding
 
         public static int DeserializeLength(byte[] bytes)
         {
+            if (bytes[0] == 0)
+            {
+                throw new RlpException("Length starts with 0");
+            }
+
             const int size = sizeof(int);
             byte[] padded = new byte[size];
             Buffer.BlockCopy(bytes, 0, padded, size - bytes.Length, bytes.Length);

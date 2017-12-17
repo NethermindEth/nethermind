@@ -4,7 +4,6 @@ using System.Numerics;
 using Nevermind.Core;
 using Nevermind.Core.Crypto;
 using Nevermind.Core.Encoding;
-using Nevermind.Core.Extensions;
 using Nevermind.Core.Potocol;
 using Nevermind.Store;
 

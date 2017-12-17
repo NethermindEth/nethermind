@@ -62,7 +62,10 @@
     <Compile Include="Validators\IBlockHeaderValidator.cs" />
     <Compile Include="Validators\IBlockValidator.cs" />
     <Compile Include="Validators\IOmmersValidator.cs" />
+    <Compile Include="Validators\ISignatureValidator.cs" />
+    <Compile Include="Validators\ITransactionValidator.cs" />
     <Compile Include="Validators\OmmersValidator.cs" />
+    <Compile Include="Validators\SignatureValidator.cs" />
     <Compile Include="Validators\TransactionValidator.cs" />
     <Compile Include="Validators\Validator.cs" />
   </ItemGroup>
