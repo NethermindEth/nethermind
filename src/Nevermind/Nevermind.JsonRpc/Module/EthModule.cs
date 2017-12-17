@@ -4,6 +4,7 @@ using System.Text;
 using Nevermind.Blockchain;
 using Nevermind.Core;
 using Nevermind.Core.Crypto;
+using Nevermind.Core.Potocol;
 using Nevermind.Json;
 using Nevermind.JsonRpc.DataModel;
 using Nevermind.Store;
@@ -125,7 +126,8 @@ namespace Nevermind.JsonRpc.Module
 
             var messageText = Encoding.UTF8.GetString(message.Value.ToBytes());
             var signatureText = "\x19Ethereum Signed Message:\n" + messageText.Length + messageText;
-            var signature = Signer.Sign(privateKey, Keccak.Compute(signatureText));
+            var signer = new Signer(new FrontierProtocolSpecification(), ChainId.DefaultGethPrivateChain);
+            var signature = signer.Sign(privateKey, Keccak.Compute(signatureText));
             return new Data(signature.Bytes);
         }
 
