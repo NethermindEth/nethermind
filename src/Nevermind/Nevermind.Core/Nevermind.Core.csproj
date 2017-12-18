@@ -60,6 +60,7 @@
     <Compile Include="Bloom.cs" />
     <Compile Include="ChainId.cs" />
     <Compile Include="ConsoleLogger.cs" />
+    <Compile Include="Crypto\ISigner.cs" />
     <Compile Include="Crypto\Secp256K1Curve.cs" />
     <Compile Include="Crypto\Keccak.cs" />
     <Compile Include="Crypto\Ripemd.cs" />

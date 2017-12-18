@@ -11,7 +11,7 @@ namespace Nevermind.Core.Encoding
         {
             if (data.Length != 6 && data.Length != 9)
             {
-                throw new RlpException($"{nameof(Transaction)} expected to have 6 ArgumentOutOfRangeException 9 elements");
+                throw new RlpException($"{nameof(Transaction)} expected to have 6 or 9 elements");
             }
 
             Transaction transaction = new Transaction();

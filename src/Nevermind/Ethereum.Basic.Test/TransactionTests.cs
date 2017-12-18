@@ -9,6 +9,7 @@ using JetBrains.Annotations;
 using Nevermind.Core;
 using Nevermind.Core.Crypto;
 using Nevermind.Core.Encoding;
+using Nevermind.Core.Extensions;
 using Nevermind.Core.Potocol;
 using NUnit.Framework;
 
@@ -32,41 +33,35 @@ namespace Ethereum.Basic.Test
         [TestCaseSource(nameof(LoadTests))]
         public void Test(TransactionTest test)
         {
-            Signer signer = new Signer(Byzantium.Instance, ChainId.Mainnet);
-            
-            Transaction transaction = new Transaction();
-            transaction.Value = test.Value;
-            
-            transaction.GasLimit = test.StartGas;
-            transaction.GasPrice = test.GasPrice;
-            if (test.To == null)
+            Signer signer = new Signer(Olympic.Instance, 0);
+            Transaction decodedUnsigned = Rlp.Decode<Transaction>(test.Unsigned);
+            Assert.AreEqual(test.Value, decodedUnsigned.Value);
+            Assert.AreEqual(test.GasPrice, decodedUnsigned.GasPrice);
+            Assert.AreEqual(test.StartGas, decodedUnsigned.GasLimit);
+            Assert.AreEqual(test.Data, decodedUnsigned.Data ?? decodedUnsigned.Init);
+            Assert.AreEqual(test.To, decodedUnsigned.To);
+            Assert.AreEqual(test.Nonce, decodedUnsigned.Nonce);
+
+            Transaction decodedSigned = Rlp.Decode<Transaction>(test.Signed);
+            signer.Sign(test.PrivateKey, decodedUnsigned);
+            Assert.AreEqual(decodedSigned.Signature.R, decodedUnsigned.Signature.R);
+            BigInteger expectedS = decodedSigned.Signature.S.ToUnsignedBigInteger();
+            BigInteger actualS = decodedUnsigned.Signature.S.ToUnsignedBigInteger();
+            BigInteger otherS = Signer.LowSTransform - actualS;
+
+            // test does not use normalized signature
+            if (otherS != expectedS && actualS != expectedS)
             {
-                transaction.Init = test.Data;
+                throw new Exception("S is wrong");
             }
-            else
+
+            int vToCompare = decodedUnsigned.Signature.V;
+            if (otherS == decodedSigned.Signature.S.ToUnsignedBigInteger())
             {
-                transaction.To = test.To;
-                transaction.Data = test.Data;
+                vToCompare = vToCompare == 27 ? 28 : 27;
             }
-            
-            transaction.Nonce = test.Nonce;
 
-            TestContext.WriteLine("Testing unsigned...");
-            Rlp unsignedRlp = Rlp.Encode(transaction);
-            Assert.AreEqual(test.Unsigned, unsignedRlp, "unsigned");
-
-            TestContext.WriteLine("Unsigned is fine, testing signed...");
-            signer.Sign(test.PrivateKey, transaction);
-           
-            Address address = signer.Recover(transaction);
-            Assert.AreEqual(test.PrivateKey.Address, address);
-
-            // decode test rlp into transaction and recover address...
-            // confirm it is correct
-
-            // can signature differ?
-            // Rlp signedRlp = Rlp.EncodeBigInteger(transaction);
-            // Assert.AreEqual(test.Signed, signedRlp, "signed");
+            Assert.AreEqual(decodedSigned.Signature.V, vToCompare);
         }
 
         private static TransactionTest Convert(TransactionTestJson testJson)
@@ -78,7 +73,17 @@ namespace Ethereum.Basic.Test
             test.PrivateKey = new PrivateKey(testJson.Key);
             test.Nonce = testJson.Nonce;
             test.Signed = new Rlp(Hex.ToBytes(testJson.Signed));
-            test.Unsigned = new Rlp(Hex.ToBytes(testJson.Unsigned));
+            byte[] unsigned = Hex.ToBytes(testJson.Unsigned);
+            if (unsigned[0] == 0xf8)
+            {
+                unsigned[1] -= 3;
+            }
+            else
+            {
+                unsigned[0] -= 3;
+            }
+
+            test.Unsigned = new Rlp(unsigned.Slice(0, unsigned.Length - 3));
             test.StartGas = testJson.StartGas;
             test.To = string.IsNullOrEmpty(testJson.To) ? null : new Address(testJson.To);
             return test;

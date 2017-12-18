@@ -51,7 +51,7 @@ namespace Ethereum.Blockchain.Test
             foreach (EthereumNetwork ethereumNetwork in networks)
             {
                 IEthereumRelease spec = _protocolSpecificationProvider.GetSpec(ethereumNetwork, 1);
-                ISignatureValidator signatureValidator = new SignatureValidator(spec, ChainId.Mainnet);
+                ISignatureValidator signatureValidator = new SignatureValidator(spec, ChainId.MainNet);
                 ITransactionValidator transactionValidator = new TransactionValidator(spec, signatureValidator);
                  IBlockHeaderValidator headerValidator = new BlockHeaderValidator(_chain);
                 IOmmersValidator ommersValidator = new OmmersValidator(_chain, headerValidator);
@@ -177,7 +177,7 @@ namespace Ethereum.Blockchain.Test
             _stateProviders[test.Network].EthereumRelease = _protocolSpecificationProvider.GetSpec(test.Network, 0);
 
             IEthereumRelease spec = _protocolSpecificationProvider.GetSpec(test.Network, 1);
-            ISigner signer = new Signer(spec, ChainId.Mainnet);
+            ISigner signer = new Signer(spec, ChainId.MainNet);
             IBlockProcessor blockProcessor = new BlockProcessor(
                 spec,
                 _chain,
@@ -368,7 +368,7 @@ namespace Ethereum.Blockchain.Test
         private static Transaction Convert(TransactionJson transactionJson)
         {
             Transaction transaction = new Transaction();
-            transaction.ChainId = ChainId.Mainnet;
+            transaction.ChainId = ChainId.MainNet;
             transaction.Value = Hex.ToBytes(transactionJson.Value).ToUnsignedBigInteger();
             transaction.GasLimit = Hex.ToBytes(transactionJson.GasLimit).ToUnsignedBigInteger();
             transaction.GasPrice = Hex.ToBytes(transactionJson.GasPrice).ToUnsignedBigInteger();

@@ -22,7 +22,7 @@ namespace Ethereum.KeyAddress.Test
         public void SetUp()
         {
             Directory.SetCurrentDirectory(AppDomain.CurrentDomain.BaseDirectory);
-            _signer = new Signer(Olympic.Instance, ChainId.Mainnet);
+            _signer = new Signer(Olympic.Instance, ChainId.MainNet);
         }
 
         private static IEnumerable<KeyAddressTest> LoadTests()

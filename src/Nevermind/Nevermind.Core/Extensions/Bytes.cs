@@ -288,10 +288,10 @@ namespace Nevermind.Core.Extensions
                     reverted[bytes.Length - i - 1] = bytes[i];
                 }
 
-                return BitConverter.ToInt32(reverted, 0);
+                return BitConverter.ToInt32(reverted.PadRight(4), 0);
             }
 
-            return BitConverter.ToInt32(bytes, 0);
+            return BitConverter.ToInt32(bytes.PadLeft(4), 0);
         }
 
         public static BigInteger ToSignedBigInteger(this byte[] bytes, Endianness endianness = Endianness.Big)

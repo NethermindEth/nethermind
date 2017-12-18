@@ -173,7 +173,7 @@ namespace Ethereum.Transaction.Test
 
             bool useChainId = transaction.Signature.V > 28;            
             
-            SignatureValidator signatureValidator = new SignatureValidator(spec, useChainId ? ChainId.Mainnet : 0);
+            SignatureValidator signatureValidator = new SignatureValidator(spec, useChainId ? ChainId.MainNet : 0);
             TransactionValidator validator = new TransactionValidator(spec, signatureValidator);
 
             if (validTest != null)
@@ -190,7 +190,7 @@ namespace Ethereum.Transaction.Test
                 Assert.AreEqual(expectedSignature, transaction.Signature, "signature");
 //                if(useChainId && spec.IsEip155Enabled)
 //                
-                ISigner signer = new Signer(spec, useChainId ? ChainId.Mainnet : 0);
+                ISigner signer = new Signer(spec, useChainId ? ChainId.MainNet : 0);
                 bool verified = signer.Verify(
                     validTest.Sender,
                     transaction);

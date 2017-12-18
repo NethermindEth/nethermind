@@ -6,11 +6,11 @@ namespace Nevermind.Network
 {
     public class AuthMessage
     {
-        private const int SigLength = 65;
-        private const int EphemeralHashLength = 32;
-        private const int PublicKeyLength = 64;
-        private const int NonceLength = 32;
-        private const int IsTokenUsedLength = 1;
+        public const int SigLength = 65;
+        public const int EphemeralHashLength = 32;
+        public const int PublicKeyLength = 64;
+        public const int NonceLength = 32;
+        public const int IsTokenUsedLength = 1;
 
         private const int AuthMessageLength =
             SigLength +
@@ -44,7 +44,8 @@ namespace Nevermind.Network
         public static byte[] Encode(AuthMessage authMessage)
         {
             byte[] data = new byte[AuthMessageLength];
-            Buffer.BlockCopy(authMessage.Signature.Bytes, 0, data, 0, SigLength);
+            Buffer.BlockCopy(authMessage.Signature.Bytes, 0, data, 0, SigLength - 1);
+            data[SigLength - 1] = authMessage.Signature.V; 
             Buffer.BlockCopy(authMessage.EphemeralPublicHash, 0, data, SigLength, EphemeralHashLength);
             Buffer.BlockCopy(authMessage.PublicKey.PrefixedBytes, 1, data, SigLength + EphemeralHashLength, PublicKeyLength);
             Buffer.BlockCopy(authMessage.Nonce, 0, data, SigLength + EphemeralHashLength + PublicKeyLength, NonceLength);

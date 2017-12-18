@@ -18,7 +18,7 @@ namespace Nevermind.Core.Test
 
             BlockHeaderValidator blockHeaderValidator = new BlockHeaderValidator(blockchain);
             OmmersValidator ommersValidator = new OmmersValidator(blockchain, blockHeaderValidator);
-            SignatureValidator signatureValidator = new SignatureValidator(spec, ChainId.Mainnet);
+            SignatureValidator signatureValidator = new SignatureValidator(spec, ChainId.MainNet);
             TransactionValidator transactionValidator = new TransactionValidator(spec, signatureValidator);
             BlockValidator blockValidator = new BlockValidator(transactionValidator, blockHeaderValidator, ommersValidator, null);
         }

@@ -29,7 +29,7 @@ namespace Ethereum.GeneralState.Test
         public void Setup()
         {
             _multiDb = new MultiDb(ShouldLog.State ? new ConsoleLogger() : null);
-            _signer = new Signer(Olympic.Instance, ChainId.Mainnet);
+            _signer = new Signer(Olympic.Instance, ChainId.MainNet);
             _blockhashProvider = new TestBlockhashProvider();
             _stateProvider = new StateProvider(new StateTree(_multiDb.CreateDb()), _ethereumRelease, ShouldLog.State ? new ConsoleLogger() : null);
             _storageProvider = new StorageProvider(_multiDb, _stateProvider, ShouldLog.State ? new ConsoleLogger() : null);
@@ -146,7 +146,7 @@ namespace Ethereum.GeneralState.Test
                 }
             }
 
-            ISigner signer = new Signer(_ethereumRelease, ChainId.Mainnet);
+            ISigner signer = new Signer(_ethereumRelease, ChainId.MainNet);
             TransactionProcessor processor =
                 new TransactionProcessor(_ethereumRelease, _stateProvider, _storageProvider, _virtualMachine, signer, ShouldLog.Processing ? new ConsoleLogger() : null);
             Transaction transaction = new Transaction();

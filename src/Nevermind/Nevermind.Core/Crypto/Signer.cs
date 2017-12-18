@@ -1,20 +1,12 @@
 ﻿using System;
 using System.Diagnostics;
+using System.Globalization;
+using System.Numerics;
 using Nevermind.Core.Encoding;
 using Nevermind.Core.Potocol;
 
 namespace Nevermind.Core.Crypto
 {
-    public interface ISigner
-    {
-        Signature Sign(PrivateKey privateKey, byte[] bytes);
-        Signature Sign(PrivateKey privateKey, Keccak message);
-        void Sign(PrivateKey privateKey, Transaction transaction);
-        Address Recover(Signature signature, Keccak message);
-        bool Verify(Address sender, Transaction transaction);
-        Address Recover(Transaction transaction);
-    }
-
     /// <summary>
     ///     for signer tests
     ///     http://blog.enuma.io/update/2016/11/01/a-tale-of-two-curves-hardware-signing-for-ethereum.html
@@ -55,18 +47,8 @@ namespace Nevermind.Core.Crypto
             return Recover(transaction.Signature, hash);
         }
 
-        public Signature Sign(PrivateKey privateKey, byte[] bytes)
-        {
-            if (!Secp256k1.Proxy.Proxy.VerifyPrivateKey(privateKey.Hex))
-            {
-                throw new ArgumentException("Invalid private key", nameof(privateKey));
-            }
-
-            int recoveryId;
-            byte[] signature = Secp256k1.Proxy.Proxy.SignCompact(bytes, privateKey.Hex, out recoveryId);
-
-            return new Signature(signature, recoveryId);
-        }
+        public static readonly BigInteger MaxLowS = BigInteger.Parse("7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF5D576E7357A4501DDFE92F46681B20A0", NumberStyles.HexNumber);
+        public static readonly BigInteger LowSTransform = BigInteger.Parse("00FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141", NumberStyles.HexNumber);
 
         public Signature Sign(PrivateKey privateKey, Keccak message)
         {
@@ -78,6 +60,19 @@ namespace Nevermind.Core.Crypto
             int recoveryId;
             byte[] signatureBytes = Secp256k1.Proxy.Proxy.SignCompact(message.Bytes, privateKey.Hex, out recoveryId);
 
+            //// https://bitcoin.stackexchange.com/questions/59820/sign-a-tx-with-low-s-value-using-openssl
+            
+            //byte[] sBytes = signatureBytes.Slice(32, 32);
+            //BigInteger s = sBytes.ToUnsignedBigInteger();
+            //if (s > MaxLowS)
+            //{
+            //    s = LowSTransform - s;
+            //    byte[] newSBytes = s.ToBigEndianByteArray();
+            //    for (int i = 0; i < 32; i++)
+            //    {
+            //        signatureBytes[32 + 1] = newSBytes[i];
+            //    }
+            //}
 
             Signature signature = new Signature(signatureBytes, recoveryId);
 #if DEBUG
