@@ -52,7 +52,6 @@
     <Compile Include="MessageCode.cs" />
     <Compile Include="Node.cs" />
     <Compile Include="NodeDistanceMetric.cs" />
-    <Compile Include="NodePublicKey.cs" />
     <Compile Include="P2PMessage.cs" />
     <Compile Include="P2PVersion.cs" />
     <Compile Include="PingMessage.cs" />

@@ -1,7 +1,5 @@
-using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
 using System.Numerics;
 using Nevermind.Blockchain.Validators;
 using Nevermind.Core;
@@ -41,10 +39,13 @@ namespace Nevermind.Blockchain
                 return block.Transactions.Count;
             }
 
-            // TODO: can I have orphans here?
             Block parent = _blockStore.FindParent(block.Header);
-            Debug.Assert(parent != null, "testing transactions count of an orphaned block");
+            if (parent == null)
+            {
+                return 0;
+            }
 
+            //Debug.Assert(parent != null, "testing transactions count of an orphaned block");  // ChainAtoChainB_BlockHash
             return block.Transactions.Count + GetTotalTransactions(parent);
         }
 
@@ -56,10 +57,13 @@ namespace Nevermind.Blockchain
                 return blockHeader.Difficulty;
             }
 
-            // TODO: can I have orphans here?
             Block parent = _blockStore.FindParent(blockHeader);
-            Debug.Assert(parent != null, "testing difficulty of an orphaned block");
+            if (parent == null)
+            {
+                return 0;
+            }
 
+            //Debug.Assert(parent != null, "testing difficulty of an orphaned block"); // ChainAtoChainB_BlockHash
             return blockHeader.Difficulty + GetTotalDifficulty(parent.Header);
         }
 
@@ -75,7 +79,6 @@ namespace Nevermind.Blockchain
                 _logger?.Log($"TOTAL TRANSACTIONS OF BLOCK {suggestedBlock.Header.Hash} ({suggestedBlock.Header.Number}) IS {totalTransactions}");
 
                 if (totalDifficulty > TotalDifficulty)
-//                    if (totalDifficulty > TotalDifficulty || totalDifficulty == TotalDifficulty && totalTransactions > TotalTransactions)
                 {
                     List<Block> blocksToBeAddedToMain = new List<Block>();
                     Block toBeProcessed = suggestedBlock;

@@ -20,9 +20,6 @@
         <FixtureName>Ethereum.Blockchain.Block.Test.ValidBlockTest</FixtureName>
       </FixtureTestSelector>
       <FixtureTestSelector>
-        <FixtureName>Ethereum.Blockchain.Block.Test.MultiChainTest</FixtureName>
-      </FixtureTestSelector>
-      <FixtureTestSelector>
         <FixtureName>Ethereum.Blockchain.Block.Test.WalletTest</FixtureName>
       </FixtureTestSelector>
       <FixtureTestSelector>

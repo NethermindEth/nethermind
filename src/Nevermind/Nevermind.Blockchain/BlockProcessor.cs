@@ -105,6 +105,8 @@ namespace Nevermind.Blockchain
             if (branchStateRoot != null && _stateProvider.StateRoot != branchStateRoot)
             {
                 // discarding one of the branches
+                _storageProvider.ClearCaches();
+                _stateProvider.ClearCaches();
                 _stateProvider.StateRoot = branchStateRoot.Value;
             }
 
