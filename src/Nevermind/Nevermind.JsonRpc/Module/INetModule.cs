@@ -4,8 +4,8 @@ namespace Nevermind.JsonRpc.Module
 {
     public interface INetModule : IModule
     {
-        string net_version();
-        bool net_listening();
-        Quantity net_peerCount();
+        ResultWrapper<string> net_version();
+        ResultWrapper<bool> net_listening();
+        ResultWrapper<Quantity> net_peerCount();
     }
 }

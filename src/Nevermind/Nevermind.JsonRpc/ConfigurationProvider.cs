@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using Nevermind.JsonRpc.DataModel;
 
 namespace Nevermind.JsonRpc
@@ -22,7 +23,8 @@ namespace Nevermind.JsonRpc
         };
 
         public string JsonRpcVersion => "2.0";
-
         public IEnumerable<ModuleType> EnabledModules { get; set; }
+        public Encoding MessageEncoding => Encoding.UTF8;
+        public string SignatureTemplate => "\x19Ethereum Signed Message:\n{0}{1}";
     }
 }

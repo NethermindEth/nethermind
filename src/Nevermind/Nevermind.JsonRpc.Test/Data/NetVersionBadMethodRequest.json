@@ -1,6 +1,0 @@
-﻿{
-  "jsonrpc": "2.0",
-  "method": "net_versionss",
-  "params": [],
-  "id": 67
-}

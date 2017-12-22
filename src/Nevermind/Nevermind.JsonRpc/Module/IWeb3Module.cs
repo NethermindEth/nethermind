@@ -4,7 +4,7 @@ namespace Nevermind.JsonRpc.Module
 {
     public interface IWeb3Module : IModule
     {
-        string web3_clientVersion();
-        Data web3_sha3(Data data);
+        ResultWrapper<string> web3_clientVersion();
+        ResultWrapper<Data> web3_sha3(Data data);
     }
 }

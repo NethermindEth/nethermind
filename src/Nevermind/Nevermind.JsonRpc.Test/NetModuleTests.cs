@@ -12,7 +12,7 @@ namespace Nevermind.JsonRpc.Test
         [TestInitialize]
         public void Initialize()
         {
-            _netModule = new NetModule(new ConsoleLogger());
+            _netModule = new NetModule(new ConsoleLogger(), new ConfigurationProvider());
         }
 
         [TestMethod]
