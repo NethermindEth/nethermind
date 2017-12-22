@@ -1,4 +1,5 @@
 ﻿using System.Collections.Generic;
+using System.Text;
 using Nevermind.JsonRpc.DataModel;
 
 namespace Nevermind.JsonRpc
@@ -8,5 +9,7 @@ namespace Nevermind.JsonRpc
         IDictionary<ErrorType, int> ErrorCodes { get; }
         string JsonRpcVersion { get; }
         IEnumerable<ModuleType> EnabledModules { get; set; }
+        Encoding MessageEncoding { get; }
+        string SignatureTemplate { get; }
     }
 }

@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -7,6 +8,7 @@ using Nevermind.Json;
 using Nevermind.JsonRpc.DataModel;
 using Nevermind.JsonRpc.Module;
 using Nevermind.Utils;
+using Nevermind.Utils.Model;
 
 namespace Nevermind.JsonRpc
 {
@@ -19,6 +21,10 @@ namespace Nevermind.JsonRpc
         private readonly IEthModule _ethModule;
         private readonly IWeb3Module _web3Module;
 
+        private IDictionary<string, MethodInfo> _netMethodDict;
+        private IDictionary<string, MethodInfo> _web3MethodDict;
+        private IDictionary<string, MethodInfo> _ethMethodDict;
+
         public JsonRpcService(IConfigurationProvider configurationProvider, INetModule netModule, IEthModule ethModule, IWeb3Module web3Module, ILogger logger, IJsonSerializer jsonSerializer)
         {
             _configurationProvider = configurationProvider;
@@ -27,6 +33,8 @@ namespace Nevermind.JsonRpc
             _web3Module = web3Module;
             _logger = logger;
             _jsonSerializer = jsonSerializer;
+
+            Initialize();
         }
 
         public string SendRequest(string request)
@@ -45,66 +53,142 @@ namespace Nevermind.JsonRpc
                 }
                 catch (Exception ex)
                 {
-                    _logger.Log($"Error during method execution: {ex}");
+                    _logger.Log($"Error during methodName execution: {ex}");
                     return GetErrorResponse(ErrorType.InternalError, "Internal error", rpcRequest.Id);
                 }
             }
             catch (Exception ex)
             {
-                _logger.Log($"Error during method parsing/validation: {ex}");
+                _logger.Log($"Error during methodName parsing/validation: {ex}");
                 return GetErrorResponse(ErrorType.ParseError, "Incorrect message", null);
             }         
         }
 
         private string ExecuteRequest(JsonRpcRequest rpcRequest)
         {
-            if (rpcRequest.Method.CompareIgnoreCase("net_version"))
+            var methodName = rpcRequest.Method.Trim().ToLower();
+            
+            if (_netMethodDict.ContainsKey(methodName))
             {
-                var result = _netModule.net_version();
-                return GetSuccessResponse(rpcRequest.Id, result);
+                return Execute(methodName, rpcRequest, _netMethodDict, _netModule);
             }
-            if (rpcRequest.Method.CompareIgnoreCase("eth_getBalance"))
-            {
-                var paramsRaw = rpcRequest.Params;
-                if (paramsRaw == null || paramsRaw.Length != 2)
-                {
-                    return GetErrorResponse(ErrorType.InvalidParams, $"Incorrect parameters for method: {rpcRequest.Method}", rpcRequest.Id);
-                }
-                var data = new Data(paramsRaw[0]);
-                var blockParameter = new BlockParameter();
-                blockParameter.FromJson(paramsRaw[1]);
 
-                var result = _ethModule.eth_getBalance(data, blockParameter);
-                if (result == null)
-                {
-                    return GetErrorResponse(ErrorType.ServerError, "Error during method execution", rpcRequest.Id);
-                }
-                var balanceResult = result.ToJson();
-                return GetSuccessResponse(rpcRequest.Id, balanceResult);
+            if (_web3MethodDict.ContainsKey(methodName))
+            {
+                return Execute(methodName, rpcRequest, _web3MethodDict, _web3Module);
             }
+
+            if (_ethMethodDict.ContainsKey(methodName))
+            {
+                return Execute(methodName, rpcRequest, _ethMethodDict, _ethModule);
+            }
+
             return GetErrorResponse(ErrorType.MethodNotFound, $"Method {rpcRequest.Method} is not supported", rpcRequest.Id);
-            
-            
-            //var type = _netModule.GetType();
-            //var method = type.GetMethod("net_version");
-            //var methodParameters = method.GetParameters();
-            //var parametersRaw = rpcRequest.Params;
-            //if (string.IsNullOrEmpty(parametersRaw))
-            //{
-                
-            //}
-
-            //foreach (var parameterInfo in parameters)
-            //{
-            //    var paramType = parameterInfo.ParameterType;
-            //    if (paramType.IsSubclassOf(typeof(IJsonRpcRequest)))
-            //    {
-            //        var requestParam = (IJsonRpcResult)Activator.CreateInstance(paramType, null);
-            //    }
-            //}
         }
 
-        private string GetSuccessResponse(string id, object result)
+        private string Execute(string methodName, JsonRpcRequest request, IDictionary<string, MethodInfo> methodDict, object module)
+        {
+            var method = methodDict[methodName];
+            var expectedParameters = method.GetParameters();
+            var providedParameters = request.Params;
+            if (expectedParameters.Length != (providedParameters?.Length ?? 0))
+            {
+                return GetErrorResponse(ErrorType.InvalidParams, $"Incorrect parameters count, expected: {expectedParameters.Length}", request.Id);
+            }
+
+            //prepare parameters
+            object[] parameters = null;
+            if (expectedParameters.Length > 0)
+            {
+                parameters = GetParameters(expectedParameters, providedParameters);
+                if (parameters == null)
+                {
+                    return GetErrorResponse(ErrorType.InvalidParams, "Incorrect parameters", request.Id);
+                }
+            }
+
+            //execute method
+            var result = method.Invoke(module, parameters);
+            var resultWrapper = result as IResultWrapper;
+            if (resultWrapper == null)
+            {
+                _logger.Error($"Method {methodName} execution result does not implement IResultWrapper");
+                return GetErrorResponse(ErrorType.InternalError, "Internal error", request.Id);
+            }
+            if (resultWrapper.GetResult() == null || resultWrapper.GetResult().ResultType == ResultType.Failure)
+            {
+                _logger.Error($"Error during method: {methodName} execution: {resultWrapper.GetResult()?.Error ?? "no result"}");
+                return GetErrorResponse(ErrorType.InternalError, "Internal error", request.Id);
+            }
+
+            //process response
+            var data = resultWrapper.GetData();
+            var collection = data as IEnumerable;
+            if (collection == null || data is string)
+            {
+                var json = GetDataObject(data);
+                return GetSuccessResponse(json, request.Id);        
+            }
+            var items = new List<object>();
+            foreach (var item in collection)
+            {
+                var jsonItem = GetDataObject(item);
+                items.Add(jsonItem);
+            }
+            return GetSuccessResponse(items, request.Id);
+        }
+
+        private object GetDataObject(object data)
+        {
+            return data is IJsonRpcResult rpcResult ? rpcResult.ToJson() : data.ToString();
+        }
+
+        private object[] GetParameters(ParameterInfo[] expectedParameters, string[] providedParameters)
+        {
+            try
+            {
+                var executionParameters = new List<object>();
+                var i = 0;
+                foreach (var providedParameter in providedParameters)
+                {
+                    var expectedParameter = expectedParameters[i];
+                    var paramType = expectedParameter.ParameterType;
+                    object executionParam;
+                    if (typeof(IJsonRpcRequest).IsAssignableFrom(paramType))
+                    {
+                        executionParam = Activator.CreateInstance(paramType);
+                        ((IJsonRpcRequest)executionParam).FromJson(providedParameter);
+                    }
+                    else
+                    {
+                        executionParam = Convert.ChangeType(providedParameter, paramType);
+                    }
+                    executionParameters.Add(executionParam);
+                    i++;
+                }
+                return executionParameters.ToArray();
+            }
+            catch (Exception e)
+            {
+                _logger.Error("Error while parsing parameters", e);
+                return null;
+            }
+        }
+
+        private void Initialize()
+        {
+            _netMethodDict = GetMethodDict(_netModule.GetType());
+            _web3MethodDict = GetMethodDict(_web3Module.GetType());
+            _ethMethodDict = GetMethodDict(_ethModule.GetType());
+        }
+
+        private IDictionary<string, MethodInfo> GetMethodDict(Type type)
+        {
+            var methods = type.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly);
+            return methods.ToDictionary(x => x.Name.Trim().ToLower());
+        }
+
+        private string GetSuccessResponse(object result, string id)
         {
             var response = new JsonRpcResponse
             {
@@ -132,6 +216,25 @@ namespace Nevermind.JsonRpc
 
         private string[] Validate(JsonRpcRequest rpcRequest)
         {
+            var methodName = rpcRequest.Method;
+            if (string.IsNullOrEmpty(methodName))
+            {
+                return new[] { "Method is required" };
+            }
+            methodName = methodName.Trim().ToLower();
+
+            if (_netMethodDict.ContainsKey(methodName) && !_configurationProvider.EnabledModules.Contains(ModuleType.Net))
+            {
+                return new[] { "Net Module is disabled" };
+            }
+            if (_web3MethodDict.ContainsKey(methodName) && !_configurationProvider.EnabledModules.Contains(ModuleType.Web3))
+            {
+                return new[] { "Web3 Module is disabled" };
+            }
+            if (_ethMethodDict.ContainsKey(methodName) && !_configurationProvider.EnabledModules.Contains(ModuleType.Eth))
+            {
+                return new[] { "Eth Module is disabled" };
+            }
             return null;
         }
     }

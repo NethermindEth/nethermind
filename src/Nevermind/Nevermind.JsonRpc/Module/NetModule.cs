@@ -5,26 +5,22 @@ namespace Nevermind.JsonRpc.Module
 {
     public class NetModule : ModuleBase, INetModule
     {
-        public NetModule(ILogger logger) : base(logger)
+        public NetModule(ILogger logger, IConfigurationProvider configurationProvider) : base(logger, configurationProvider)
         {
         }
 
-        public string net_version()
+        public ResultWrapper<string> net_version()
         {
-            return ((int) ProtocolVersion.EthereumMainnet).ToString();
+            var version = ((int) ProtocolVersion.EthereumMainnet).ToString();
+            return ResultWrapper<string>.Success(version);
         }
 
-        public bool net_listening()
+        public ResultWrapper<bool> net_listening()
         {
-            return true;
+            return ResultWrapper<bool>.Success(false);
         }
 
-        public Quantity net_peerCount()
-        {
-            return new Quantity(65);
-        }
-
-        public void Initialize()
+        public ResultWrapper<Quantity> net_peerCount()
         {
             throw new System.NotImplementedException();
         }

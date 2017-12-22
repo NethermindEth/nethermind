@@ -5,10 +5,12 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Nevermind.Core;
 using Nevermind.Json;
 using Nevermind.Utils.Model;
+using NUnit.Framework;
+using Assert = Microsoft.VisualStudio.TestTools.UnitTesting.Assert;
 
 namespace Nevermind.KeyStore.Test
 {
-    [TestClass]
+    [TestFixture]
     public class KeyStoreTests
     {
         private IKeyStore _store;
@@ -16,7 +18,7 @@ namespace Nevermind.KeyStore.Test
         private IConfigurationProvider _configurationProvider;
         private readonly string _testPass = "testpassword";
 
-        [TestInitialize]
+        [SetUp]
         public void Initialize()
         {
             _configurationProvider = new ConfigurationProvider();
@@ -25,7 +27,7 @@ namespace Nevermind.KeyStore.Test
             _store = new FileKeyStore(_configurationProvider, _serializer, new AesEncrypter(_configurationProvider, logger), logger);
         }
 
-        [TestMethod]
+        [Test]
         public void GenerateKeyTest()
         {
             //generate key
@@ -46,7 +48,7 @@ namespace Nevermind.KeyStore.Test
             Assert.AreEqual(deletedKey.Item2.ResultType, ResultType.Failure);
         }
 
-        [TestMethod]
+        [Test]
         public void GenerateKeyAddressesTest()
         {
             //generate keys
@@ -71,7 +73,7 @@ namespace Nevermind.KeyStore.Test
             Assert.AreEqual(result2.ResultType, ResultType.Success);
         }
 
-        [TestMethod]
+        [Test]
         public void WrongPasswordTest()
         {
             //generate key
@@ -93,7 +95,7 @@ namespace Nevermind.KeyStore.Test
             Assert.AreEqual(result.ResultType, ResultType.Success);
         }
 
-        [TestMethod]
+        [Test]
         public void KeyStoreVersionMismatchTest()
         {
             //generate key
@@ -116,7 +118,7 @@ namespace Nevermind.KeyStore.Test
             File.Delete(filePath);
         }
 
-        [TestMethod]
+        [Test]
         public void CryptoVersionMismatchTest()
         {
             //generate key

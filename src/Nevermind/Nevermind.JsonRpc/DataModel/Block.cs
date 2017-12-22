@@ -1,13 +1,14 @@
 ﻿using System;
-using System.Reflection;
 
 namespace Nevermind.JsonRpc.DataModel
 {
     public class Block : IJsonRpcResult
     {
+        public Quantity Number { get; set; }
+
         public object ToJson()
         {
-            throw new NotImplementedException();
+            return new {number = Number.ToJson()};
         }
     }
 }

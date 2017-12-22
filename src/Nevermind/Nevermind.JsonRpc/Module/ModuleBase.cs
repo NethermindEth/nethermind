@@ -7,10 +7,12 @@ namespace Nevermind.JsonRpc.Module
     public abstract class ModuleBase
     {
         protected readonly ILogger Logger;
+        protected readonly IConfigurationProvider ConfigurationProvider;
 
-        protected ModuleBase(ILogger logger)
+        protected ModuleBase(ILogger logger, IConfigurationProvider configurationProvider)
         {
             Logger = logger;
+            ConfigurationProvider = configurationProvider;
         }
 
         protected Data Sha3(Data data)
@@ -19,6 +21,10 @@ namespace Nevermind.JsonRpc.Module
             var keccak = Keccak.Compute(hexBytes);
             var keccakValue = keccak.ToString();
             return new Data(keccakValue);
+        }
+
+        public virtual void Initialize()
+        {
         }
     }
 }

@@ -8,27 +8,23 @@ namespace Nevermind.JsonRpc.Module
 {
     public class Web3Module : ModuleBase, IWeb3Module
     {
-        public Web3Module(ILogger logger) : base(logger)
+        public Web3Module(ILogger logger, IConfigurationProvider configurationProvider) : base(logger, configurationProvider)
         {
         }
 
-        public string web3_clientVersion()
+        public ResultWrapper<string> web3_clientVersion()
         {
             var version = Assembly.GetAssembly(typeof(IBlockchainProcessor)).GetName().Version;
             var clientVersion = $"EthereumNet v{version}";
             Logger.Debug($"web3_clientVersion request, result: {clientVersion}");
-            return clientVersion;
+            return ResultWrapper<string>.Success(clientVersion);
         }
 
-        public Data web3_sha3(Data data)
+        public ResultWrapper<Data> web3_sha3(Data data)
         {
             var keccak = Sha3(data);
             Logger.Debug($"web3_sha3 request, result: {keccak.ToJson()}");
-            return keccak;
-        }
-
-        public void Initialize()
-        {
+            return ResultWrapper<Data>.Success(keccak);
         }
     }
 }

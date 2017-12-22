@@ -53,10 +53,12 @@
     <Compile Include="DataModel\Error.cs" />
     <Compile Include="DataModel\ErrorType.cs" />
     <Compile Include="DataModel\Filter.cs" />
+    <Compile Include="DataModel\IResultWrapper.cs" />
     <Compile Include="DataModel\JsonRpcRequest.cs" />
     <Compile Include="DataModel\JsonRpcResponse.cs" />
     <Compile Include="DataModel\ModuleType.cs" />
     <Compile Include="DataModel\ProtocolVersion.cs" />
+    <Compile Include="DataModel\ResultWrapper.cs" />
     <Compile Include="IConfigurationProvider.cs" />
     <Compile Include="Module\EthModule.cs" />
     <Compile Include="Module\IEthModule.cs" />
@@ -92,6 +94,10 @@
     <ProjectReference Include="..\Nevermind.Json\Nevermind.Json.csproj">
       <Project>{947DF8C4-6E2B-476B-8AE8-A629C21A0BA7}</Project>
       <Name>Nevermind.Json</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\Nevermind.KeyStore\Nevermind.KeyStore.csproj">
+      <Project>{4E409915-E434-4E8B-9BF5-6CC623D23612}</Project>
+      <Name>Nevermind.KeyStore</Name>
     </ProjectReference>
     <ProjectReference Include="..\Nevermind.Store\Nevermind.Store.csproj">
       <Project>{3A5B9092-C842-4EFD-ACC3-1C6CF57D09B0}</Project>
