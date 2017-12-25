@@ -145,7 +145,7 @@ namespace Nevermind.JsonRpc.Module
             var messageText = ConfigurationProvider.MessageEncoding.GetString(message.Value.ToBytes());
             var signatureText = string.Format(ConfigurationProvider.SignatureTemplate, messageText.Length, messageText);
             //TODO how to select proper protocol, chainId
-            var signer = new Signer(new FrontierProtocolSpecification(), ChainId.DefaultGethPrivateChain);
+            var signer = new Signer(Frontier.Instance, ChainId.DefaultGethPrivateChain);
             var signature = signer.Sign(privateKey.Item1, Keccak.Compute(signatureText));
             Logger.Debug($"eth_sign request {address.ToJson()}, {message.ToJson()}, result: {signature}");
             return ResultWrapper<Data>.Success(new Data(signature.Bytes));
