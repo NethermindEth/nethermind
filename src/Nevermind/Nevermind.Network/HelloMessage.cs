@@ -1,4 +1,5 @@
 ﻿using System.Collections.Generic;
+using Nevermind.Core.Crypto;
 
 namespace Nevermind.Network
 {
@@ -8,7 +9,7 @@ namespace Nevermind.Network
         public string ClientId { get; set; }
         public Dictionary<Capability, int> Capabilities { get; set; }
         public int ListenPort { get; set; }
-        public NodePublicKey NodeId { get; set; }
+        public PublicKey NodeId { get; set; }
         public override int MessageId => MessageCode.Hello;
     }
 }

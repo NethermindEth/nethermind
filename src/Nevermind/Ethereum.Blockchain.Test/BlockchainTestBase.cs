@@ -50,8 +50,8 @@ namespace Ethereum.Blockchain.Test
             EthereumNetwork[] networks = {EthereumNetwork.Frontier, EthereumNetwork.Homestead, EthereumNetwork.Byzantium, EthereumNetwork.SpuriousDragon, EthereumNetwork.TangerineWhistle};
             foreach (EthereumNetwork ethereumNetwork in networks)
             {
-                IProtocolSpecification spec = _protocolSpecificationProvider.GetSpec(ethereumNetwork, 1);
-                ISignatureValidator signatureValidator = new SignatureValidator(spec, ChainId.Mainnet);
+                IEthereumRelease spec = _protocolSpecificationProvider.GetSpec(ethereumNetwork, 1);
+                ISignatureValidator signatureValidator = new SignatureValidator(spec, ChainId.MainNet);
                 ITransactionValidator transactionValidator = new TransactionValidator(spec, signatureValidator);
                  IBlockHeaderValidator headerValidator = new BlockHeaderValidator(_chain);
                 IOmmersValidator ommersValidator = new OmmersValidator(_chain, headerValidator);
@@ -174,10 +174,10 @@ namespace Ethereum.Blockchain.Test
             InitializeTestState(test);
 
             // TODO: transition...
-            _stateProviders[test.Network].ProtocolSpecification = _protocolSpecificationProvider.GetSpec(test.Network, 0);
+            _stateProviders[test.Network].EthereumRelease = _protocolSpecificationProvider.GetSpec(test.Network, 0);
 
-            IProtocolSpecification spec = _protocolSpecificationProvider.GetSpec(test.Network, 1);
-            ISigner signer = new Signer(spec, ChainId.Mainnet);
+            IEthereumRelease spec = _protocolSpecificationProvider.GetSpec(test.Network, 1);
+            ISigner signer = new Signer(spec, ChainId.MainNet);
             IBlockProcessor blockProcessor = new BlockProcessor(
                 spec,
                 _chain,
@@ -226,7 +226,7 @@ namespace Ethereum.Blockchain.Test
 
         private void InitializeTestState(BlockchainTest test)
         {
-            _stateProviders[test.Network].ProtocolSpecification = _protocolSpecificationProvider.GetSpec(EthereumNetwork.Frontier, 0);
+            _stateProviders[test.Network].EthereumRelease = _protocolSpecificationProvider.GetSpec(EthereumNetwork.Frontier, 0);
             foreach (KeyValuePair<Address, AccountState> accountState in test.Pre)
             {
                 foreach (KeyValuePair<BigInteger, byte[]> storageItem in accountState.Value.Storage)
@@ -368,7 +368,7 @@ namespace Ethereum.Blockchain.Test
         private static Transaction Convert(TransactionJson transactionJson)
         {
             Transaction transaction = new Transaction();
-            transaction.ChainId = ChainId.Mainnet;
+            transaction.ChainId = ChainId.MainNet;
             transaction.Value = Hex.ToBytes(transactionJson.Value).ToUnsignedBigInteger();
             transaction.GasLimit = Hex.ToBytes(transactionJson.GasLimit).ToUnsignedBigInteger();
             transaction.GasPrice = Hex.ToBytes(transactionJson.GasPrice).ToUnsignedBigInteger();

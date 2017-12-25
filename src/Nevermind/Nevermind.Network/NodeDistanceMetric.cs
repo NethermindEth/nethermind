@@ -12,7 +12,7 @@ namespace Nevermind.Network
         /// <param name="b"></param>
         /// <returns></returns>
         /// <exception cref="NotImplementedException"></exception>
-        public int GetDistance(NodePublicKey a, NodePublicKey b)
+        public int GetDistance(PublicKey a, PublicKey b)
         {
 //            Keccak hashA = Keccak.Compute(a);
 //            Keccak hashB = Keccak.Compute(b);

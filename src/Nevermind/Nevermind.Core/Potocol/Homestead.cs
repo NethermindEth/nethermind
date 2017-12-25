@@ -1,14 +1,24 @@
+using System.Threading;
+
 namespace Nevermind.Core.Potocol
 {
-    public class TangerineWhistleProtocolSpecification : IProtocolSpecification
-    {
+    public class Homestead : IEthereumRelease
+    {   
+        private static IEthereumRelease _instance;
+
+        private Homestead()
+        {
+        }
+
+        public static IEthereumRelease Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new Homestead());
+        
         public bool IsTimeAdjustmentPostOlympic => true;
         public bool AreJumpDestinationsUsed => false;
         public bool IsEip2Enabled => true;
         public bool IsEip7Enabled => true;
         public bool IsEip100Enabled => false;
         public bool IsEip140Enabled => false;
-        public bool IsEip150Enabled => true;
+        public bool IsEip150Enabled => false;
         public bool IsEip155Enabled => false;
         public bool IsEip158Enabled => false;
         public bool IsEip160Enabled => false;

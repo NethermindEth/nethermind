@@ -87,75 +87,75 @@ namespace Ethereum.Transaction.Test
         [TestCaseSource(nameof(LoadTests), new object[] { "Constantinople" })]
         public void Test_constantinople(TransactionTest test)
         {
-            RunTest(test, new ByzantiumProtocolSpecification());
+            RunTest(test, Byzantium.Instance);
         }
 
         [TestCaseSource(nameof(LoadTests), new object[] { "Eip155VitaliksEip158" })]
         public void Test_eip155VitaliksEip158(TransactionTest test)
         {
-            RunTest(test, new SpuriousDragonProtocolSpecification());
+            RunTest(test, SpuriousDragon.Instance);
         }
 
         [TestCaseSource(nameof(LoadTests), new object[] { "Eip155VitaliksHomesead" })]
         public void Test_eip155VitaliksHomesead(TransactionTest test)
         {
-            RunTest(test, new HomesteadProtocolSpecification());
+            RunTest(test, Homestead.Instance);
         }
 
         [TestCaseSource(nameof(LoadTests), new object[] { "Eip158" })]
         public void Test_eip158(TransactionTest test)
         {
-            RunTest(test, new SpuriousDragonProtocolSpecification());
+            RunTest(test, SpuriousDragon.Instance);
         }
 
         [TestCaseSource(nameof(LoadTests), new object[] { "Frontier" })]
         public void Test_frontier(TransactionTest test)
         {
-            RunTest(test, new FrontierProtocolSpecification());
+            RunTest(test, Frontier.Instance);
         }
 
         [TestCaseSource(nameof(LoadTests), new object[] { "Homestead" })]
         public void Test_homestead(TransactionTest test)
         {
-            RunTest(test, new HomesteadProtocolSpecification());
+            RunTest(test, Homestead.Instance);
         }
 
         [TestCaseSource(nameof(LoadTests), new object[] { "SpecConstantinople" })]
         public void Test_spec_constantinople(TransactionTest test)
         {
-            RunTest(test, new ByzantiumProtocolSpecification());
+            RunTest(test, Byzantium.Instance);
         }
 
         [TestCaseSource(nameof(LoadTests), new object[] { "VRuleEip158" })]
         public void Test_v_rule_eip158(TransactionTest test)
         {
-            RunTest(test, new SpuriousDragonProtocolSpecification());
+            RunTest(test, SpuriousDragon.Instance);
         }
 
         [TestCaseSource(nameof(LoadTests), new object[] { "WrongRLPFrontier" })]
         public void Test_wrong_rlp_frontier(TransactionTest test)
         {
-            RunTest(test, new FrontierProtocolSpecification());
+            RunTest(test, Frontier.Instance);
         }
 
         [TestCaseSource(nameof(LoadTests), new object[] { "WrongRLPHomestead" })]
         public void Test_wrong_rlp_homestead(TransactionTest test)
         {
-            RunTest(test, new HomesteadProtocolSpecification());
+            RunTest(test, Homestead.Instance);
         }
 
         [TestCaseSource(nameof(LoadTests), new object[] { "ZeroSigConstantinople" })]
         public void Test_zero_sig_constantinople(TransactionTest test)
         {
-            RunTest(test, new ByzantiumProtocolSpecification());
+            RunTest(test, Byzantium.Instance);
         }
 
-        private void RunTest(TransactionTest test, IProtocolSpecification spec)
+        private void RunTest(TransactionTest test, IEthereumRelease spec)
         {
             TestContext.CurrentContext.Test.Properties.Set("Category", test.Network);
 
             ValidTransactionTest validTest = test as ValidTransactionTest;
-            Nevermind.Core.Transaction transaction = null;
+            Nevermind.Core.Transaction transaction;
             try
             {
                 Rlp rlp = new Rlp(Hex.ToBytes(test.Rlp));
@@ -171,14 +171,9 @@ namespace Ethereum.Transaction.Test
                 throw;
             }
 
-            int chainIdValue =
-                    transaction.Signature.V > 28
-                        ? transaction.Signature.V % 2 == 1
-                            ? (transaction.Signature.V - 35) / 2
-                            : (transaction.Signature.V - 36) / 2
-                        : 1;
-
-            SignatureValidator signatureValidator = new SignatureValidator(spec, chainIdValue);
+            bool useChainId = transaction.Signature.V > 28;            
+            
+            SignatureValidator signatureValidator = new SignatureValidator(spec, useChainId ? ChainId.MainNet : 0);
             TransactionValidator validator = new TransactionValidator(spec, signatureValidator);
 
             if (validTest != null)
@@ -193,10 +188,9 @@ namespace Ethereum.Transaction.Test
 
                 Signature expectedSignature = new Signature(validTest.R, validTest.S, validTest.V);
                 Assert.AreEqual(expectedSignature, transaction.Signature, "signature");
-
-                bool useEip155Rule = spec.IsEip155Enabled && validTest.V > 28; // TODO: why the check for V > 28?
-
-                ISigner signer = new Signer(useEip155Rule ? (IProtocolSpecification)new ByzantiumProtocolSpecification() : new HomesteadProtocolSpecification(), chainIdValue);
+//                if(useChainId && spec.IsEip155Enabled)
+//                
+                ISigner signer = new Signer(spec, useChainId ? ChainId.MainNet : 0);
                 bool verified = signer.Verify(
                     validTest.Sender,
                     transaction);

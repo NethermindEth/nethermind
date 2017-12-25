@@ -17,7 +17,7 @@ namespace Ethereum.GeneralState.Test
 {
     public class GeneralTestBase
     {
-        private readonly IProtocolSpecification _protocolSpecification = new FrontierProtocolSpecification();
+        private readonly IEthereumRelease _ethereumRelease = Frontier.Instance;
         private IBlockhashProvider _blockhashProvider;
         private IMultiDb _multiDb;
         private ISigner _signer;
@@ -29,12 +29,11 @@ namespace Ethereum.GeneralState.Test
         public void Setup()
         {
             _multiDb = new MultiDb(ShouldLog.State ? new ConsoleLogger() : null);
-
-            _signer = new Signer(new OlympicProtocolSpecification(), ChainId.Mainnet);
+            _signer = new Signer(Olympic.Instance, ChainId.MainNet);
             _blockhashProvider = new TestBlockhashProvider();
-            _stateProvider = new StateProvider(new StateTree(_multiDb.CreateDb()), _protocolSpecification, ShouldLog.State ? new ConsoleLogger() : null);
+            _stateProvider = new StateProvider(new StateTree(_multiDb.CreateDb()), _ethereumRelease, ShouldLog.State ? new ConsoleLogger() : null);
             _storageProvider = new StorageProvider(_multiDb, _stateProvider, ShouldLog.State ? new ConsoleLogger() : null);
-            _virtualMachine = new VirtualMachine(_protocolSpecification, _stateProvider, _storageProvider, _blockhashProvider, ShouldLog.Evm ? new ConsoleLogger() : null);
+            _virtualMachine = new VirtualMachine(_ethereumRelease, _stateProvider, _storageProvider, _blockhashProvider, ShouldLog.Evm ? new ConsoleLogger() : null);
         }
 
         protected static IEnumerable<GenerateStateTest> LoadTests(string testSet)
@@ -147,9 +146,9 @@ namespace Ethereum.GeneralState.Test
                 }
             }
 
-            ISigner signer = new Signer(_protocolSpecification, ChainId.Mainnet);
+            ISigner signer = new Signer(_ethereumRelease, ChainId.MainNet);
             TransactionProcessor processor =
-                new TransactionProcessor(_protocolSpecification, _stateProvider, _storageProvider, _virtualMachine, signer, ShouldLog.Processing ? new ConsoleLogger() : null);
+                new TransactionProcessor(_ethereumRelease, _stateProvider, _storageProvider, _virtualMachine, signer, ShouldLog.Processing ? new ConsoleLogger() : null);
             Transaction transaction = new Transaction();
             transaction.To = test.IncomingTransaction.To;
             transaction.Value = test.IncomingTransaction.Value;

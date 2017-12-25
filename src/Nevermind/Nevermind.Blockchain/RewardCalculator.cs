@@ -8,17 +8,17 @@ namespace Nevermind.Blockchain
 {
     public class RewardCalculator : IRewardCalculator
     {
-        private readonly IProtocolSpecification _protocolSpecification;
+        private readonly IEthereumRelease _ethereumRelease;
 
-        public RewardCalculator(IProtocolSpecification protocolSpecification)
+        public RewardCalculator(IEthereumRelease ethereumRelease)
         {
-            _protocolSpecification = protocolSpecification;
+            _ethereumRelease = ethereumRelease;
         }
        
         public Dictionary<Address, BigInteger> CalculateRewards(Block block)
         {
             BigInteger blockReward = 5.Ether();
-            if (_protocolSpecification.IsEip649Enabled)
+            if (_ethereumRelease.IsEip649Enabled)
             {
                 blockReward = 3.Ether();
             }

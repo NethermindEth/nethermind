@@ -256,7 +256,7 @@ namespace Nevermind.Core.Encoding
 
             if (value <= byte.MaxValue)
             {
-                return Encode(new[] { Convert.ToByte(value) });
+                return Encode(new[] {Convert.ToByte(value)});
             }
 
             if (value <= short.MaxValue)
@@ -322,7 +322,7 @@ namespace Nevermind.Core.Encoding
                     }
                     else
                     {
-                        return Encode(new [] {singleByte});
+                        return Encode(new[] {singleByte});
                     }
                 case short _:
                 case int _:
@@ -501,7 +501,7 @@ namespace Nevermind.Core.Encoding
 
         public static Rlp Encode(Transaction transaction, bool forSigning, bool isEip155Enabled = false, int chainId = 0)
         {
-            Rlp[] sequence = new Rlp[forSigning && !isEip155Enabled ? 6 : 9];
+            Rlp[] sequence = new Rlp[forSigning && !(isEip155Enabled && chainId != 0) ? 6 : 9];
             sequence[0] = Encode(transaction.Nonce);
             sequence[1] = Encode(transaction.GasPrice);
             sequence[2] = Encode(transaction.GasLimit);
@@ -511,7 +511,7 @@ namespace Nevermind.Core.Encoding
 
             if (forSigning)
             {
-                if (isEip155Enabled)
+                if (isEip155Enabled && chainId != 0)
                 {
                     sequence[6] = Encode(chainId);
                     sequence[7] = OfEmptyByteArray;

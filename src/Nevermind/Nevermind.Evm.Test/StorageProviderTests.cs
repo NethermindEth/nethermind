@@ -15,7 +15,7 @@ namespace Nevermind.Evm.Test
         private readonly Address _address1 = new Address(Keccak.Compute("1"));
         private readonly Address _address2 = new Address(Keccak.Compute("2"));
 
-        private readonly IStateProvider _stateProvider = new StateProvider(new StateTree(new InMemoryDb()), new FrontierProtocolSpecification(), ShouldLog.State ? new ConsoleLogger() : null);
+        private readonly IStateProvider _stateProvider = new StateProvider(new StateTree(new InMemoryDb()), Frontier.Instance, ShouldLog.State ? new ConsoleLogger() : null);
 
         [SetUp]
         public void Setup()

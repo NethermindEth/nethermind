@@ -1,4 +1,6 @@
 ﻿using System;
+using System.Diagnostics;
+using System.IO;
 using System.Reflection;
 
 namespace Secp256k1.Proxy
@@ -6,13 +8,19 @@ namespace Secp256k1.Proxy
     public static class Proxy
     {
         static Type _signaturesType;
-        static Type SignaturesType
+
+        private static Type SignaturesType
         {
             get
             {
                 if (_signaturesType == null)
                 {
-                    Assembly secpAssembly = Assembly.LoadFrom("Secp256k1." + (IntPtr.Size == 4 ? "x86" : "x64") + ".dll");
+                    string codeBase = Path.GetDirectoryName(Assembly.GetCallingAssembly().CodeBase);
+                    Debug.Assert(codeBase != null, "Unexpected null value for calling assembly's code base");
+                    string assemblyName = "Secp256k1." + (IntPtr.Size == 4 ? "x86" : "x64") + ".dll";
+                    string path = Path.Combine(codeBase, assemblyName);
+                    path = path.Replace("file:\\", string.Empty);
+                    Assembly secpAssembly = Assembly.LoadFrom(path);
                     Version ver = secpAssembly.GetName().Version;
                     if (ver.Major < 1)
                         return null;

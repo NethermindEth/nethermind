@@ -5,7 +5,7 @@ namespace Nevermind.Evm
 {
     public class IntrinsicGasCalculator
     {
-        public long Calculate(IProtocolSpecification protocolSpecification, Transaction transaction)
+        public long Calculate(IEthereumRelease ethereumRelease, Transaction transaction)
         {
             long result = GasCostOf.Transaction;
 
@@ -24,7 +24,7 @@ namespace Nevermind.Evm
                 }
             }
 
-            if (transaction.IsContractCreation && protocolSpecification.IsEip2Enabled)
+            if (transaction.IsContractCreation && ethereumRelease.IsEip2Enabled)
             {
                 result += GasCostOf.TxCreate;
             }

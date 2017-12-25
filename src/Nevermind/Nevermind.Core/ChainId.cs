@@ -2,7 +2,7 @@
 {
     public enum ChainId
     {
-        Mainnet = 1,
+        MainNet = 1,
         Morden = 2,
         Ropsten = 3,
         Rinkeby = 4,

@@ -3,7 +3,7 @@ namespace Nevermind.Core.Potocol
     /// <summary>
     /// https://github.com/ethereum/EIPs
     /// </summary>
-    public interface IProtocolSpecification
+    public interface IEthereumRelease
     {
         bool IsTimeAdjustmentPostOlympic { get; }
         bool AreJumpDestinationsUsed { get; }

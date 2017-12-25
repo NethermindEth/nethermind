@@ -1,9 +1,19 @@
+using System.Threading;
+
 namespace Nevermind.Core.Potocol
 {
-    public class OlympicProtocolSpecification : IProtocolSpecification
+    public class Frontier : IEthereumRelease
     {
-        public bool IsTimeAdjustmentPostOlympic => false;
-        public bool AreJumpDestinationsUsed => true;
+        private static IEthereumRelease _instance;
+
+        private Frontier()
+        {
+        }
+
+        public static IEthereumRelease Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new Frontier());
+        
+        public bool IsTimeAdjustmentPostOlympic => true;
+        public bool AreJumpDestinationsUsed => false;
         public bool IsEip2Enabled => false;
         public bool IsEip7Enabled => false;
         public bool IsEip100Enabled => false;

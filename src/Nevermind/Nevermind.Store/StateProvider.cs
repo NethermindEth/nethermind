@@ -19,16 +19,16 @@ namespace Nevermind.Store
         private readonly HashSet<Address> _committedThisRound = new HashSet<Address>();
 
         private readonly List<Change> _keptInCache = new List<Change>();
-        public IProtocolSpecification ProtocolSpecification { get; set; }
+        public IEthereumRelease EthereumRelease { get; set; }
         private readonly ILogger _logger;
 
         private int _capacity = StartCapacity;
         private Change[] _changes = new Change[StartCapacity];
         private int _currentPosition = -1;
 
-        public StateProvider(StateTree stateTree, IProtocolSpecification protocolSpecification, ILogger logger)
+        public StateProvider(StateTree stateTree, IEthereumRelease ethereumRelease, ILogger logger)
         {
-            ProtocolSpecification = protocolSpecification;
+            EthereumRelease = ethereumRelease;
             _logger = logger;
             _state = stateTree;
         }
@@ -89,7 +89,7 @@ namespace Nevermind.Store
                 Account changedAccount = account.WithChangedCodeHash(codeHash);
                 PushUpdate(address, changedAccount);
             }
-            else if (ProtocolSpecification.IsEip158Enabled)
+            else if (EthereumRelease.IsEip158Enabled)
             {
                 _logger?.Log($"  TOUCH {address} (code hash)");
                 Account touched = GetThroughCache(address);
@@ -101,7 +101,7 @@ namespace Nevermind.Store
         {
             if (balanceChange == BigInteger.Zero)
             {
-                if (ProtocolSpecification.IsEip158Enabled)
+                if (EthereumRelease.IsEip158Enabled)
                 {
                     _logger?.Log($"  TOUCH {address} (balance)");
                     Account touched = GetThroughCache(address);
@@ -274,7 +274,7 @@ namespace Nevermind.Store
                     case ChangeType.Touch:
                     case ChangeType.Update:
                     {
-                        if (ProtocolSpecification.IsEip158Enabled && change.Account.IsEmpty)
+                        if (EthereumRelease.IsEip158Enabled && change.Account.IsEmpty)
                         {
                             _logger?.Log($"  DELETE EMPTY {change.Address} B = {change.Account.Balance} N = {change.Account.Nonce}");
                             _state.Set(change.Address, null);
@@ -291,7 +291,7 @@ namespace Nevermind.Store
                     {
                         _logger?.Log($"  CREATE {change.Address} B = {change.Account.Balance} N = {change.Account.Nonce}");
 
-                        if (!ProtocolSpecification.IsEip158Enabled || !change.Account.IsEmpty)
+                        if (!EthereumRelease.IsEip158Enabled || !change.Account.IsEmpty)
                         {
                             _state.Set(change.Address, Rlp.Encode(change.Account));
                         }

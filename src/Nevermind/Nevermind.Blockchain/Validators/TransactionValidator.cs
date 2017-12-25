@@ -6,13 +6,13 @@ namespace Nevermind.Blockchain.Validators
 {
     public class TransactionValidator : ITransactionValidator
     {
-        private readonly IProtocolSpecification _spec;
+        private readonly IEthereumRelease _spec;
         private readonly ISignatureValidator _signatureValidator;
 
         // TODO: this will be calculated twice, refactor
         private readonly IntrinsicGasCalculator _intrinsicGasCalculator = new IntrinsicGasCalculator();
 
-        public TransactionValidator(IProtocolSpecification spec, ISignatureValidator signatureValidator)
+        public TransactionValidator(IEthereumRelease spec, ISignatureValidator signatureValidator)
         {
             _spec = spec;
             _signatureValidator = signatureValidator;

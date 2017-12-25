@@ -19,7 +19,7 @@ namespace Nevermind.Core.Test
         [Test]
         public void Sign_and_recover()
         {
-            Signer signer = new Signer(new OlympicProtocolSpecification(), ChainId.Mainnet);
+            Signer signer = new Signer(Olympic.Instance, ChainId.MainNet);
             
             Keccak message = Keccak.Compute("Test message");
             PrivateKey privateKey = new PrivateKey();
