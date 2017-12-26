@@ -7,7 +7,6 @@ using Nevermind.Core;
 using Nevermind.Json;
 using Nevermind.JsonRpc.DataModel;
 using Nevermind.JsonRpc.Module;
-using Nevermind.Utils;
 using Nevermind.Utils.Model;
 
 namespace Nevermind.JsonRpc
@@ -17,24 +16,14 @@ namespace Nevermind.JsonRpc
         private readonly ILogger _logger; 
         private readonly IConfigurationProvider _configurationProvider;
         private readonly IJsonSerializer _jsonSerializer;
-        private readonly INetModule _netModule;
-        private readonly IEthModule _ethModule;
-        private readonly IWeb3Module _web3Module;
+        private readonly IModuleProvider _moduleProvider;
 
-        private IDictionary<string, MethodInfo> _netMethodDict;
-        private IDictionary<string, MethodInfo> _web3MethodDict;
-        private IDictionary<string, MethodInfo> _ethMethodDict;
-
-        public JsonRpcService(IConfigurationProvider configurationProvider, INetModule netModule, IEthModule ethModule, IWeb3Module web3Module, ILogger logger, IJsonSerializer jsonSerializer)
+        public JsonRpcService(IConfigurationProvider configurationProvider, ILogger logger, IJsonSerializer jsonSerializer, IModuleProvider moduleProvider)
         {
             _configurationProvider = configurationProvider;
-            _netModule = netModule;
-            _ethModule = ethModule;
-            _web3Module = web3Module;
             _logger = logger;
             _jsonSerializer = jsonSerializer;
-
-            Initialize();
+            _moduleProvider = moduleProvider;
         }
 
         public string SendRequest(string request)
@@ -42,10 +31,10 @@ namespace Nevermind.JsonRpc
             try
             {
                 var rpcRequest = _jsonSerializer.DeserializeObject<JsonRpcRequest>(request);
-                var validateResults = Validate(rpcRequest);
-                if (validateResults != null && validateResults.Any())
+                var validateResult = Validate(rpcRequest);
+                if (validateResult.Item1.HasValue)
                 {
-                    return GetErrorResponse(ErrorType.InvalidRequest, string.Join(", ", validateResults), rpcRequest.Id);
+                    return GetErrorResponse(validateResult.Item1.Value, validateResult.Item2, rpcRequest.Id);
                 }
                 try
                 {
@@ -53,13 +42,13 @@ namespace Nevermind.JsonRpc
                 }
                 catch (Exception ex)
                 {
-                    _logger.Log($"Error during methodName execution: {ex}");
+                    _logger.Error("Error during methodName execution", ex);
                     return GetErrorResponse(ErrorType.InternalError, "Internal error", rpcRequest.Id);
                 }
             }
             catch (Exception ex)
             {
-                _logger.Log($"Error during methodName parsing/validation: {ex}");
+                _logger.Error("Error during methodName parsing/validation", ex);
                 return GetErrorResponse(ErrorType.ParseError, "Incorrect message", null);
             }         
         }
@@ -68,19 +57,10 @@ namespace Nevermind.JsonRpc
         {
             var methodName = rpcRequest.Method.Trim().ToLower();
             
-            if (_netMethodDict.ContainsKey(methodName))
+            var module = _moduleProvider.GetEnabledModules().FirstOrDefault(x => x.MethodDictionary.ContainsKey(methodName));
+            if (module != null)
             {
-                return Execute(methodName, rpcRequest, _netMethodDict, _netModule);
-            }
-
-            if (_web3MethodDict.ContainsKey(methodName))
-            {
-                return Execute(methodName, rpcRequest, _web3MethodDict, _web3Module);
-            }
-
-            if (_ethMethodDict.ContainsKey(methodName))
-            {
-                return Execute(methodName, rpcRequest, _ethMethodDict, _ethModule);
+                return Execute(methodName, rpcRequest, module.MethodDictionary, module.ModuleObject);
             }
 
             return GetErrorResponse(ErrorType.MethodNotFound, $"Method {rpcRequest.Method} is not supported", rpcRequest.Id);
@@ -175,19 +155,6 @@ namespace Nevermind.JsonRpc
             }
         }
 
-        private void Initialize()
-        {
-            _netMethodDict = GetMethodDict(_netModule.GetType());
-            _web3MethodDict = GetMethodDict(_web3Module.GetType());
-            _ethMethodDict = GetMethodDict(_ethModule.GetType());
-        }
-
-        private IDictionary<string, MethodInfo> GetMethodDict(Type type)
-        {
-            var methods = type.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly);
-            return methods.ToDictionary(x => x.Name.Trim().ToLower());
-        }
-
         private string GetSuccessResponse(object result, string id)
         {
             var response = new JsonRpcResponse
@@ -214,28 +181,27 @@ namespace Nevermind.JsonRpc
             return _jsonSerializer.SerializeObject(response);
         }
 
-        private string[] Validate(JsonRpcRequest rpcRequest)
+        private (ErrorType?, string) Validate(JsonRpcRequest rpcRequest)
         {
             var methodName = rpcRequest.Method;
             if (string.IsNullOrEmpty(methodName))
             {
-                return new[] { "Method is required" };
+                return (ErrorType.InvalidRequest, "Method is required");
             }
             methodName = methodName.Trim().ToLower();
 
-            if (_netMethodDict.ContainsKey(methodName) && !_configurationProvider.EnabledModules.Contains(ModuleType.Net))
+            var module = _moduleProvider.GetAllModules().FirstOrDefault(x => x.MethodDictionary.ContainsKey(methodName));
+            if (module == null)
             {
-                return new[] { "Net Module is disabled" };
+                return (ErrorType.MethodNotFound, "Method is not supported");
             }
-            if (_web3MethodDict.ContainsKey(methodName) && !_configurationProvider.EnabledModules.Contains(ModuleType.Web3))
+
+            if (_moduleProvider.GetEnabledModules().All(x => x.ModuleType != module.ModuleType))
             {
-                return new[] { "Web3 Module is disabled" };
+                return (ErrorType.InvalidRequest, $"{module.ModuleType} Module is disabled");
             }
-            if (_ethMethodDict.ContainsKey(methodName) && !_configurationProvider.EnabledModules.Contains(ModuleType.Eth))
-            {
-                return new[] { "Eth Module is disabled" };
-            }
-            return null;
+
+            return (null, null);
         }
     }
 }

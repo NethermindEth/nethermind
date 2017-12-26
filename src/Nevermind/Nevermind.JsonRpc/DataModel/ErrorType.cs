@@ -7,6 +7,7 @@
         MethodNotFound,
         InvalidParams,
         InternalError,
-        ServerError
+        ServerError,
+        NotFound
     }
 }

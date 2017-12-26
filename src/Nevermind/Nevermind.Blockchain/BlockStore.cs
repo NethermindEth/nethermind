@@ -1,4 +1,6 @@
 using System.Collections.Generic;
+using System.Linq;
+using System.Numerics;
 using Nevermind.Core;
 using Nevermind.Core.Crypto;
 
@@ -31,6 +33,11 @@ namespace Nevermind.Blockchain
             }
 
             return block;
+        }
+
+        public Block FindBlock(BigInteger blockNumber)
+        {
+            return _mainChain.Values.FirstOrDefault(x => x.Header?.Number == blockNumber);
         }
 
         public bool IsMainChain(Keccak blockHash)

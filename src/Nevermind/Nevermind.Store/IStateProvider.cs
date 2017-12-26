@@ -26,6 +26,8 @@ namespace Nevermind.Store
 
         byte[] GetCode(Address address);
 
+        byte[] GetCode(Keccak codeHash);
+
         void UpdateCodeHash(Address address, Keccak codeHash);
 
         void UpdateBalance(Address address, BigInteger balanceChange);

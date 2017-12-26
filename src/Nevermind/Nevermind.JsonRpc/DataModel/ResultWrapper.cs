@@ -6,10 +6,16 @@ namespace Nevermind.JsonRpc.DataModel
     {
         public T Data { get; set; }
         public Result Result { get; set; }
+        public ErrorType ErrorType { get; set; }
 
         public static ResultWrapper<T> Fail(string error)
         {
-            return new ResultWrapper<T> { Result = Result.Fail(error)};
+            return new ResultWrapper<T> { Result = Result.Fail(error), ErrorType = ErrorType.InternalError};
+        }
+
+        public static ResultWrapper<T> Fail(string error, ErrorType errorType)
+        {
+            return new ResultWrapper<T> { Result = Result.Fail(error), ErrorType = errorType};
         }
 
         public static ResultWrapper<T> Success(T data)

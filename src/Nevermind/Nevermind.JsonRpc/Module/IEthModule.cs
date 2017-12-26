@@ -13,7 +13,7 @@ namespace Nevermind.JsonRpc.Module
         ResultWrapper<Quantity> eth_gasPrice();
         ResultWrapper<IEnumerable<Data>> eth_accounts();
         ResultWrapper<Quantity> eth_blockNumber();
-        ResultWrapper<Quantity> eth_getBalance(Data data, BlockParameter blockParameter);
+        ResultWrapper<Quantity> eth_getBalance(Data address, BlockParameter blockParameter);
         ResultWrapper<Data> eth_getStorageAt(Data address, Quantity positionIndex, BlockParameter blockParameter);
         ResultWrapper<Quantity> eth_getTransactionCount(Data address, BlockParameter blockParameter);
         ResultWrapper<Quantity> eth_getBlockTransactionCountByHash(Data blockHash);
