@@ -1,3 +1,5 @@
+using System.Linq;
+using System.Numerics;
 using Nevermind.Core;
 
 namespace Nevermind.Evm

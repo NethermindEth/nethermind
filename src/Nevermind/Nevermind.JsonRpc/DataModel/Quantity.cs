@@ -19,6 +19,11 @@ namespace Nevermind.JsonRpc.DataModel
             Value = new Hex(encodedValue);
         }
 
+        public Quantity(string value)
+        {
+            Value = new Hex(value);
+        }
+
         public BigInteger? GetValue()
         {
             return Value != null ? new BigInteger(Value.ToBytes()) : (BigInteger?)null;

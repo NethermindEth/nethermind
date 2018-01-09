@@ -240,7 +240,7 @@ namespace Nevermind.Evm
             _stateProvider.Commit();
 
             block.GasUsed += spentGas;
-            return BuildTransactionReceipt(statusCode, logEntries, block.GasUsed);
+            return BuildTransactionReceipt(statusCode, logEntries, block.GasUsed, recipient);
         }
 
         private long Refund(long gasLimit, long unspentGas, TransactionSubstate substate, Address sender, BigInteger gasPrice)
@@ -253,7 +253,7 @@ namespace Nevermind.Evm
             return spentGas;
         }
 
-        private TransactionReceipt BuildTransactionReceipt(byte statusCode, List<LogEntry> logEntries, long gasUsedSoFar)
+        private TransactionReceipt BuildTransactionReceipt(byte statusCode, List<LogEntry> logEntries, long gasUsedSoFar, Address recipient)
         {
             TransactionReceipt transactionReceipt = new TransactionReceipt();
             transactionReceipt.Logs = logEntries.ToArray();
@@ -261,6 +261,7 @@ namespace Nevermind.Evm
             transactionReceipt.GasUsed = gasUsedSoFar;
             transactionReceipt.PostTransactionState = _stateProvider.StateRoot;
             transactionReceipt.StatusCode = statusCode;
+            transactionReceipt.Recipient = recipient;
             return transactionReceipt;
         }
 

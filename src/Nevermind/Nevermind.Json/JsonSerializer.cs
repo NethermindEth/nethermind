@@ -13,6 +13,19 @@ namespace Nevermind.Json
             _logger = logger;
         }
 
+        public T DeserializeAnonymousType<T>(string json, T definition)
+        {
+            try
+            {
+                return JsonConvert.DeserializeAnonymousType<T>(json, definition);
+            }
+            catch (Exception e)
+            {
+                _logger.Error("Error during json deserialization", e);
+                return default(T);
+            }
+        }
+
         public T DeserializeObject<T>(string json)
         {
             try

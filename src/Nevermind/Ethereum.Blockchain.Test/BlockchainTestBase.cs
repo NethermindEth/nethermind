@@ -194,6 +194,7 @@ namespace Ethereum.Blockchain.Test
                 _multiDb,
                 _stateProviders[test.Network],
                 _storageProviders[test.Network],
+                new TransactionStore(),
                 _logger);
             
             IBlockchainProcessor blockchainProcessor = new BlockchainProcessor(

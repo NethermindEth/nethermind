@@ -9,6 +9,7 @@ using Nevermind.Core;
 using Nevermind.Core.Crypto;
 using Nevermind.Core.Encoding;
 using Nevermind.Core.Potocol;
+using Nevermind.Evm;
 using Nevermind.Json;
 using Nevermind.JsonRpc.DataModel;
 using Nevermind.KeyStore;
@@ -25,13 +26,14 @@ namespace Nevermind.JsonRpc.Module
         private readonly IJsonSerializer _jsonSerializer;
         private readonly IBlockchainProcessor _blockchainProcessor;
         private readonly IBlockStore _blockStore;
+        private readonly ITransactionStore _transactionStore;
         private readonly IDb _db;
         private readonly IStateProvider _stateProvider;
         private readonly IKeyStore _keyStore;
         private readonly IJsonRpcModelMapper _modelMapper;
         private readonly IEthereumRelease _ethereumRelease;
 
-        public EthModule(ILogger logger, IJsonSerializer jsonSerializer, IBlockchainProcessor blockchainProcessor, IStateProvider stateProvider, IKeyStore keyStore, IConfigurationProvider configurationProvider, IBlockStore blockStore, IDb db, IJsonRpcModelMapper modelMapper, IEthereumRelease ethereumRelease) : base(logger, configurationProvider)
+        public EthModule(ILogger logger, IJsonSerializer jsonSerializer, IBlockchainProcessor blockchainProcessor, IStateProvider stateProvider, IKeyStore keyStore, IConfigurationProvider configurationProvider, IBlockStore blockStore, IDb db, IJsonRpcModelMapper modelMapper, IEthereumRelease ethereumRelease, ITransactionStore transactionStore) : base(logger, configurationProvider)
         {
             _jsonSerializer = jsonSerializer;
             _blockchainProcessor = blockchainProcessor;
@@ -41,6 +43,7 @@ namespace Nevermind.JsonRpc.Module
             _db = db;
             _modelMapper = modelMapper;
             _ethereumRelease = ethereumRelease;
+            _transactionStore = transactionStore;
         }
 
         public ResultWrapper<string> eth_protocolVersion()
@@ -287,7 +290,25 @@ namespace Nevermind.JsonRpc.Module
 
         public ResultWrapper<Transaction> eth_getTransactionByHash(Data transactionHash)
         {
-            throw new NotImplementedException();
+            var transaction = _transactionStore.GetTransaction(new Keccak(transactionHash.Value));
+            if (transaction == null)
+            {
+                return ResultWrapper<Transaction>.Fail($"Cannot find transaction for hash: {transactionHash.Value}", ErrorType.NotFound);
+            }
+            var blockHash = _transactionStore.GetBlockHash(new Keccak(transactionHash.Value));
+            if (!blockHash.HasValue)
+            {
+                return ResultWrapper<Transaction>.Fail($"Cannot find block hash for transaction: {transactionHash.Value}", ErrorType.NotFound);
+            }
+            var block = _blockStore.FindBlock(blockHash.Value, false);
+            if (block == null)
+            {
+                return ResultWrapper<Transaction>.Fail($"Cannot find block for hash: {blockHash.Value}", ErrorType.NotFound);
+            }
+
+            var transactionModel = _modelMapper.MapTransaction(transaction, block);
+            Logger.Debug($"eth_getTransactionByHash request {transactionHash.ToJson()}, result: {GetJsonLog(transactionModel.ToJson())}");
+            return ResultWrapper<Transaction>.Success(transactionModel);
         }
 
         public ResultWrapper<Transaction> eth_getTransactionByBlockHashAndIndex(Data blockHash, Quantity positionIndex)
@@ -308,7 +329,7 @@ namespace Nevermind.JsonRpc.Module
             }
 
             var transaction = block.Transactions[(int)index.Value];
-            var transactionModel = _modelMapper.MapTransaction(transaction);
+            var transactionModel = _modelMapper.MapTransaction(transaction, block);
 
             Logger.Debug($"eth_getTransactionByBlockHashAndIndex request {blockHash.ToJson()}, index: {positionIndex.ToJson()}, result: {GetJsonLog(transactionModel.ToJson())}");
             return ResultWrapper<Transaction>.Success(transactionModel);
@@ -338,7 +359,7 @@ namespace Nevermind.JsonRpc.Module
             }
 
             var transaction = result.Data.Transactions[(int)index.Value];
-            var transactionModel = _modelMapper.MapTransaction(transaction);
+            var transactionModel = _modelMapper.MapTransaction(transaction, result.Data);
 
             Logger.Debug($"eth_getTransactionByBlockNumberAndIndex request {blockParameter}, index: {positionIndex.ToJson()}, result: {GetJsonLog(transactionModel.ToJson())}");
             return ResultWrapper<Transaction>.Success(transactionModel);
@@ -346,7 +367,30 @@ namespace Nevermind.JsonRpc.Module
 
         public ResultWrapper<TransactionReceipt> eth_getTransactionReceipt(Data transactionHash)
         {
-            throw new NotImplementedException();
+            var transactionReceipt = _transactionStore.GetTransactionReceipt(new Keccak(transactionHash.Value));
+            if (transactionReceipt == null)
+            {
+                return ResultWrapper<TransactionReceipt>.Fail($"Cannot find transactionReceipt for transaction hash: {transactionHash.Value}", ErrorType.NotFound);
+            }
+            var transaction = _transactionStore.GetTransaction(new Keccak(transactionHash.Value));
+            if (transaction == null)
+            {
+                return ResultWrapper<TransactionReceipt>.Fail($"Cannot find transaction for hash: {transactionHash.Value}", ErrorType.NotFound);
+            }
+            var blockHash = _transactionStore.GetBlockHash(new Keccak(transactionHash.Value));
+            if (!blockHash.HasValue)
+            {
+                return ResultWrapper<TransactionReceipt>.Fail($"Cannot find block hash for transaction: {transactionHash.Value}", ErrorType.NotFound);
+            }
+            var block = _blockStore.FindBlock(blockHash.Value, false);
+            if (block == null)
+            {
+                return ResultWrapper<TransactionReceipt>.Fail($"Cannot find block for hash: {blockHash.Value}", ErrorType.NotFound);
+            }
+
+            var transactionReceiptModel = _modelMapper.MapTransactionReceipt(transactionReceipt, transaction, block);
+            Logger.Debug($"eth_getTransactionReceipt request {transactionHash.ToJson()}, result: {GetJsonLog(transactionReceiptModel.ToJson())}");
+            return ResultWrapper<TransactionReceipt>.Success(transactionReceiptModel);
         }
 
         public ResultWrapper<Block> eth_getUncleByBlockHashAndIndex(Data blockHash, Quantity positionIndex)

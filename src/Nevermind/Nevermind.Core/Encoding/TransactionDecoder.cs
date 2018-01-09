@@ -60,6 +60,7 @@ namespace Nevermind.Core.Encoding
                 transaction.Signature = signature;
             }
 
+            transaction.RecomputeHash();
             return transaction;
         }
 

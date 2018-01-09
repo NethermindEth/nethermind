@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace Nevermind.JsonRpc.DataModel
 {
@@ -23,11 +24,33 @@ namespace Nevermind.JsonRpc.DataModel
         public Quantity GasUsed { get; set; }
         public Quantity Timestamp { get; set; }
         public IEnumerable<Transaction> Transactions { get; set; }
+        public IEnumerable<Data> TransactionHashes { get; set; }
         public IEnumerable<Data> Uncles { get; set; }
 
         public object ToJson()
         {
-            return new {number = Number.ToJson()};
+            return new
+            {
+                number = Number?.ToJson(),
+                hash = Hash?.ToJson(),
+                parentHash = ParentHash?.ToJson(),
+                nonce = Nonce?.ToJson(),
+                sha3Uncles = Sha3Uncles?.ToJson(),
+                logsBloom = LogsBloom?.ToJson(),
+                transactionsRoot = TransactionsRoot?.ToJson(),
+                stateRoot = StateRoot?.ToJson(),
+                receiptsRoot = ReceiptsRoot?.ToJson(),
+                miner = Miner?.ToJson(),
+                difficulty = Difficulty?.ToJson(),
+                totalDifficulty = TotalDifficulty?.ToJson(),
+                extraData = ExtraData?.ToJson(),
+                size = Size?.ToJson(),
+                gasLimit = GasLimit?.ToJson(),
+                gasUsed = GasUsed?.ToJson(),
+                timestamp = Timestamp?.ToJson(),
+                transactions = Transactions?.Select(x => x.ToJson()).ToArray() ?? TransactionHashes?.Select(x => x.ToJson()).ToArray(),
+                uncles = Uncles?.Select(x => x.ToJson()).ToArray()
+            };
         }
     }
 }

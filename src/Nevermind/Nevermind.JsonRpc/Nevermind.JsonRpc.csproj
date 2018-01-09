@@ -101,6 +101,10 @@
       <Project>{051B3754-5FB6-4202-AF6E-D1764E2DED06}</Project>
       <Name>Nevermind.Core</Name>
     </ProjectReference>
+    <ProjectReference Include="..\Nevermind.Evm\Nevermind.Evm.csproj">
+      <Project>{13911438-F79E-4DA4-B3FF-0649C38D32B1}</Project>
+      <Name>Nevermind.Evm</Name>
+    </ProjectReference>
     <ProjectReference Include="..\Nevermind.Json\Nevermind.Json.csproj">
       <Project>{947DF8C4-6E2B-476B-8AE8-A629C21A0BA7}</Project>
       <Name>Nevermind.Json</Name>
