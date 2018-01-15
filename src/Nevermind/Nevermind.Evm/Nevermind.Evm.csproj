@@ -75,6 +75,7 @@
     <Compile Include="InvalidInstructionException.cs" />
     <Compile Include="InvalidJumpDestinationException.cs" />
     <Compile Include="ITransactionProcessor.cs" />
+    <Compile Include="ITransactionStore.cs" />
     <Compile Include="IVirtualMachine.cs" />
     <Compile Include="Precompiles\EcAddPrecompiledContract.cs" />
     <Compile Include="Precompiles\EcMulPrecompiledContract.cs" />
@@ -98,6 +99,7 @@
     <Compile Include="StatusCode.cs" />
     <Compile Include="TransactionCollisionException.cs" />
     <Compile Include="TransactionProcessor.cs" />
+    <Compile Include="TransactionStore.cs" />
     <Compile Include="TransactionSubstate.cs" />
     <Compile Include="VirtualMachine.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />

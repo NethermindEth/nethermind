@@ -78,6 +78,11 @@ namespace Nevermind.Core
             return false;
         }
 
+        public byte[] ToBytes()
+        {
+            return _bytes ?? (_bytes = ToBytes(_hexString));
+        }
+
         public override string ToString()
         {
             return ToString(true);

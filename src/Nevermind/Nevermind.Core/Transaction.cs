@@ -18,6 +18,7 @@
 
 using System.Numerics;
 using Nevermind.Core.Crypto;
+using Nevermind.Core.Encoding;
 
 namespace Nevermind.Core
 {
@@ -37,5 +38,11 @@ namespace Nevermind.Core
         public bool IsMessageCall => Data != null;
         public bool IsTransfer => !IsContractCreation && !IsMessageCall;
         public bool IsValid { get; set; }
+        public Keccak Hash { get; set; }
+
+        public void RecomputeHash()
+        {
+            Hash = Keccak.Compute(Rlp.Encode(this));
+        }
     }
 }

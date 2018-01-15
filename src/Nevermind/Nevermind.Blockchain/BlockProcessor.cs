@@ -37,6 +37,7 @@ namespace Nevermind.Blockchain
         private readonly IStateProvider _stateProvider;
         private readonly IStorageProvider _storageProvider;
         private readonly ILogger _logger;
+        private readonly ITransactionStore _transactionStore;
 
         private readonly IDifficultyCalculator _difficultyCalculator;
 
@@ -51,8 +52,7 @@ namespace Nevermind.Blockchain
             ITransactionProcessor transactionProcessor,
             ISnapshotable db,
             IStateProvider stateProvider,
-            IStorageProvider storageProvider,
-            ILogger logger = null)
+            IStorageProvider storageProvider, ITransactionStore transactionStore, ILogger logger = null)
         {
             _logger = logger;
             _ethereumRelease = ethereumRelease;
@@ -60,6 +60,7 @@ namespace Nevermind.Blockchain
             _blockValidator = blockValidator;
             _stateProvider = stateProvider;
             _storageProvider = storageProvider;
+            _transactionStore = transactionStore;
             _difficultyCalculator = difficultyCalculator;
             _rewardCalculator = rewardCalculator;
             _transactionProcessor = transactionProcessor;
@@ -75,13 +76,16 @@ namespace Nevermind.Blockchain
             List<TransactionReceipt> receipts = new List<TransactionReceipt>(); // TODO: pool?
             for (int i = 0; i < transactions.Count; i++)
             {
+                var transaction = transactions[i];
                 if (block.Header.Number == 26)
                 {
                     
                 }
                 
                 _logger?.Log($"PROCESSING TRANSACTION {i}");
-                TransactionReceipt receipt = _transactionProcessor.Execute(transactions[i], block.Header);
+                _transactionStore.AddTransaction(transaction);
+                TransactionReceipt receipt = _transactionProcessor.Execute(transaction, block.Header);
+                _transactionStore.AddTransactionReceipt(transaction.Hash, receipt, block.Hash);
                 receipts.Add(receipt);
             }
 

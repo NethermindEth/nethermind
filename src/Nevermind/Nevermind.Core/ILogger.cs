@@ -1,3 +1,6 @@
+
+﻿using System;
+
 ﻿/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
@@ -21,5 +24,7 @@ namespace Nevermind.Core
     public interface ILogger
     {
         void Log(string text);
+        void Debug(string text);
+        void Error(string text, Exception ex = null);
     }
 }

@@ -1,3 +1,6 @@
+
+using System.Numerics;
+
 /*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
@@ -15,6 +18,7 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
+
 using Nevermind.Core;
 using Nevermind.Core.Crypto;
 
@@ -24,6 +28,7 @@ namespace Nevermind.Blockchain
     {
         void AddBlock(Block block, bool isMainChain);
         Block FindBlock(Keccak blockHash, bool mainChainOnly);
+        Block FindBlock(BigInteger blockNumber);
         bool IsMainChain(Keccak blockHash);
         void MoveToMain(Keccak blockHash);
         void MoveToBranch(Keccak blockHash);

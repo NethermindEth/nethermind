@@ -45,6 +45,7 @@ namespace Nevermind.Blockchain
         }
 
         public Block HeadBlock { get; private set; }
+        public Block SuggestedBlock { get; private set; }
         public BigInteger TotalDifficulty { get; private set; }
         public BigInteger TotalTransactions { get; private set; }
 
@@ -90,6 +91,7 @@ namespace Nevermind.Blockchain
             {
                 _logger?.Log("-------------------------------------------------------------------------------------");
                 Block suggestedBlock = Rlp.Decode<Block>(blockRlp);
+                SuggestedBlock = suggestedBlock;
                 BigInteger totalDifficulty = GetTotalDifficulty(suggestedBlock.Header);
                 BigInteger totalTransactions = GetTotalTransactions(suggestedBlock);
                 _logger?.Log($"TOTAL DIFFICULTY OF BLOCK {suggestedBlock.Header.Hash} ({suggestedBlock.Header.Number}) IS {totalDifficulty}");
@@ -172,9 +174,11 @@ namespace Nevermind.Blockchain
                     // lower difficulty branch
                     _blockStore.AddBlock(suggestedBlock, false);
                 }
+                SuggestedBlock = null;
             }
             catch (InvalidBlockException ex)
             {
+                SuggestedBlock = null;
                 throw;
             }
         }

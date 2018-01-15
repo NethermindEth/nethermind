@@ -26,12 +26,15 @@ namespace Nevermind.Core.Crypto
         private const int PrivateKeyLengthInBytes = 32;
         private PublicKey _publicKey;
 
-        public PrivateKey()
-            :this(Random.GeneratePrivateKey())
+        public PrivateKey() :this(Random.GeneratePrivateKey(), Guid.NewGuid())
         {
         }
 
-        public PrivateKey(Hex key)
+        public PrivateKey(Hex key) : this(key, Guid.NewGuid())
+        {
+        }
+
+        public PrivateKey(Hex key, Guid id)
         {
             if (key == null)
             {
@@ -44,6 +47,7 @@ namespace Nevermind.Core.Crypto
             }
 
             Hex = key;
+            Id = id;
         }
 
         public Hex Hex { get; }
@@ -56,6 +60,8 @@ namespace Nevermind.Core.Crypto
         public PublicKey PublicKey => LazyInitializer.EnsureInitialized(ref _publicKey, ComputePublicKey);
 
         public Address Address => PublicKey.Address;
+
+        public Guid Id { get; set; }
 
         public override string ToString()
         {

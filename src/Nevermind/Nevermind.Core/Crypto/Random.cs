@@ -24,7 +24,14 @@ namespace Nevermind.Core.Crypto
 
         public static byte[] GeneratePrivateKey()
         {
-            byte[] bytes = new byte[32];
+            var bytes = new byte[32];
+            SecureRandom.GetBytes(bytes);
+            return bytes;
+        }
+
+        public static byte[] GenerateRandomBytes(int lenght)
+        {
+            var bytes = new byte[lenght];
             SecureRandom.GetBytes(bytes);
             return bytes;
         }

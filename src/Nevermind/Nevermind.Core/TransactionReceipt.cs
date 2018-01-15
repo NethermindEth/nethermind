@@ -35,5 +35,6 @@ namespace Nevermind.Core
         public long GasUsed { get; set; }
         public Bloom Bloom { get; set; }
         public LogEntry[] Logs { get; set; }
+        public Address Recipient { get; set; }
     }
 }
