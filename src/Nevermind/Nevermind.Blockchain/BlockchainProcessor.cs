@@ -174,12 +174,10 @@ namespace Nevermind.Blockchain
                     // lower difficulty branch
                     _blockStore.AddBlock(suggestedBlock, false);
                 }
-                SuggestedBlock = null;
             }
-            catch (InvalidBlockException ex)
+            finally
             {
                 SuggestedBlock = null;
-                throw;
             }
         }
     }

@@ -17,8 +17,7 @@ namespace Nevermind.JsonRpc.Module
 
         protected Data Sha3(Data data)
         {
-            var hexBytes = data.Value.ToBytes();
-            var keccak = Keccak.Compute(hexBytes);
+            var keccak = Keccak.Compute((byte[])data.Value);
             var keccakValue = keccak.ToString();
             return new Data(keccakValue);
         }

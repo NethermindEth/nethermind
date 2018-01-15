@@ -16,10 +16,10 @@ namespace Nevermind.Evm
             _transactions[transaction.Hash] = transaction;
         }
 
-        public void AddTransactionReceipt(Keccak transactionHash, TransactionReceipt transactionReceipt, Keccak blockhash)
+        public void AddTransactionReceipt(Keccak transactionHash, TransactionReceipt transactionReceipt, Keccak blockHash)
         {
             _transactionRecepits[transactionHash] = transactionReceipt;
-            _blockHashes[transactionHash] = blockhash;
+            _blockHashes[transactionHash] = blockHash;
             _processedTransations.Add(transactionHash);
         }
 

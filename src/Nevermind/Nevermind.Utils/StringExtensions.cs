@@ -4,7 +4,7 @@ namespace Nevermind.Utils
 {
     public static class StringExtensions
     {
-        public static bool CompareIgnoreCase(this string value1, string value2)
+        public static bool CompareIgnoreCaseTrim(this string value1, string value2)
         {
             if (string.IsNullOrEmpty(value1) && string.IsNullOrEmpty(value2))
             {

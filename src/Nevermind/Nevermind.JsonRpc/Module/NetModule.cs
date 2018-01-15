@@ -11,8 +11,7 @@ namespace Nevermind.JsonRpc.Module
 
         public ResultWrapper<string> net_version()
         {
-            var version = ((int) ProtocolVersion.EthereumMainnet).ToString();
-            return ResultWrapper<string>.Success(version);
+            return ResultWrapper<string>.Success(EthereumNetwork.Main.GetNetworkId().ToString());
         }
 
         public ResultWrapper<bool> net_listening()

@@ -16,10 +16,10 @@ namespace Nevermind.JsonRpc
         public IDictionary<ErrorType, int> ErrorCodes => new Dictionary<ErrorType, int>
         {
             { ErrorType.ParseError, -32700 },
-            { ErrorType.InvalidRequest, -32700 },
-            { ErrorType.MethodNotFound, -32700 },
-            { ErrorType.InvalidParams, -32700 },
-            { ErrorType.InternalError, -32700 }
+            { ErrorType.InvalidRequest, -32600 },
+            { ErrorType.MethodNotFound, -32601 },
+            { ErrorType.InvalidParams, -32602 },
+            { ErrorType.InternalError, -32603 }
         };
 
         public string JsonRpcVersion => "2.0";

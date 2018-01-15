@@ -57,7 +57,6 @@
     <Compile Include="DataModel\JsonRpcRequest.cs" />
     <Compile Include="DataModel\JsonRpcResponse.cs" />
     <Compile Include="DataModel\ModuleType.cs" />
-    <Compile Include="DataModel\ProtocolVersion.cs" />
     <Compile Include="DataModel\ResultWrapper.cs" />
     <Compile Include="DataModel\WhisperFilter.cs" />
     <Compile Include="DataModel\WhisperMessage.cs" />

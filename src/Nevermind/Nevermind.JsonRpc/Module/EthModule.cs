@@ -48,7 +48,7 @@ namespace Nevermind.JsonRpc.Module
 
         public ResultWrapper<string> eth_protocolVersion()
         {
-            var version = ((int) ProtocolVersion.EthereumMainnet).ToString();
+            var version = EthereumNetwork.Main.GetNetworkId().ToString();
             Logger.Debug($"eth_protocolVersion request, result: {version}");
             return ResultWrapper<string>.Success(version);
         }
@@ -226,7 +226,7 @@ namespace Nevermind.JsonRpc.Module
                 return ResultWrapper<Data>.Fail("Incorrect address");
             }
 
-            var messageText = ConfigurationProvider.MessageEncoding.GetString(message.Value.ToBytes());
+            var messageText = ConfigurationProvider.MessageEncoding.GetString(message.Value);
             var signatureText = string.Format(ConfigurationProvider.SignatureTemplate, messageText.Length, messageText);
             //TODO how to select proper chainId
             var signer = new Signer(_ethereumRelease, ChainId.DefaultGethPrivateChain);

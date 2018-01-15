@@ -24,7 +24,7 @@ namespace Nevermind.Blockchain
     public interface IBlockchainProcessor
     {
         Block HeadBlock { get; }
-        //Currently processing block
+        ///Currently processing block
         Block SuggestedBlock { get; }
         BigInteger TotalDifficulty { get; }
         void Process(Rlp blockRlp); // TODO: potentially do not return anything

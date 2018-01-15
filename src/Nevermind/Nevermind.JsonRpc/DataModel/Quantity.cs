@@ -16,17 +16,17 @@ namespace Nevermind.JsonRpc.DataModel
         public Quantity(BigInteger value)
         {
             var encodedValue = value.ToBigEndianByteArray();
-            Value = new Hex(encodedValue);
+            Value = encodedValue;
         }
 
         public Quantity(string value)
         {
-            Value = new Hex(value);
+            Value = value;
         }
 
         public BigInteger? GetValue()
         {
-            return Value != null ? new BigInteger(Value.ToBytes()) : (BigInteger?)null;
+            return Value != null ? new BigInteger(Value) : (BigInteger?)null;
         }
 
         public object ToJson()
@@ -36,7 +36,7 @@ namespace Nevermind.JsonRpc.DataModel
 
         public void FromJson(string jsonValue)
         {
-            Value = new Hex(jsonValue);
+            Value = jsonValue;
         }
     }
 }

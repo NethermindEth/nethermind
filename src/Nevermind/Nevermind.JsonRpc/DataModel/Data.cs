@@ -13,12 +13,12 @@ namespace Nevermind.JsonRpc.DataModel
 
         public Data(string value)
         {
-            Value = new Hex(value);
+            Value = value;
         }
 
         public Data(byte[] value)
         {
-            Value = new Hex(value);
+            Value = value;
         }
 
         public Data(Hex value)
@@ -33,7 +33,7 @@ namespace Nevermind.JsonRpc.DataModel
 
         public void FromJson(string jsonValue)
         {
-            Value = new Hex(jsonValue);
+            Value = jsonValue;
         }
     }
 }

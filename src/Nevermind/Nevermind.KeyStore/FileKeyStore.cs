@@ -83,13 +83,13 @@ namespace Nevermind.KeyStore
             var passBytes = _configurationProvider.KeyStoreEncoding.GetBytes(password);
             var derivedKey = SCrypt.ComputeDerivedKey(passBytes, salt, kdfParams.N, kdfParams.R, kdfParams.P, null, kdfParams.DkLen);
 
-            var restoredMac = Keccak.Compute(derivedKey.Skip(kdfParams.DkLen - 16).Take(16).Concat(cipher.ToBytes()).ToArray()).Bytes;
+            var restoredMac = Keccak.Compute(derivedKey.Skip(kdfParams.DkLen - 16).Take(16).Concat((byte[])cipher).ToArray()).Bytes;
             if (!mac.Equals(new Hex(restoredMac)))
             {
                 return (null, Result.Fail("Incorrect MAC"));
             }
             var decryptKey = Keccak.Compute(derivedKey.Take(16).ToArray()).Bytes.Take(16).ToArray();
-            var key = _symmetricEncrypter.Decrypt(cipher.ToBytes(), decryptKey, iv.ToBytes());
+            var key = _symmetricEncrypter.Decrypt(cipher, decryptKey, iv);
             if (key == null)
             {
                 return (null, Result.Fail("Error during decryption"));
@@ -112,7 +112,7 @@ namespace Nevermind.KeyStore
             var derivedKey = SCrypt.ComputeDerivedKey(passBytes, salt, _configurationProvider.KdfparamsN, _configurationProvider.KdfparamsR, _configurationProvider.KdfparamsP, null, _configurationProvider.KdfparamsDklen);
 
             var encryptKey = Keccak.Compute(derivedKey.Take(16).ToArray()).Bytes.Take(16).ToArray();
-            var encryptContent = key.Hex.ToBytes();
+            var encryptContent = key.Hex;
             var iv = Random.GenerateRandomBytes(_configurationProvider.IVSize);
 
             var cipher = _symmetricEncrypter.Encrypt(encryptContent, encryptKey, iv);

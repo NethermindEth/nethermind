@@ -4,7 +4,7 @@ namespace Nevermind.JsonRpc.Module
 {
     public interface IModuleProvider
     {
-        IEnumerable<ModuleInfo> GetEnabledModules();
-        IEnumerable<ModuleInfo> GetAllModules();
+        IReadOnlyCollection<ModuleInfo> GetEnabledModules();
+        IReadOnlyCollection<ModuleInfo> GetAllModules();
     }
 }
