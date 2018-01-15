@@ -1,6 +1,8 @@
-The following was extracted from the secp256k1 c source, which is here:
-https://github.com/bitcoin/secp256k1
----
+﻿Secp256k1.Proxy from
+https://github.com/joshlang/Secp256k1.NET
+
+using https://github.com/bitcoin-core/secp256k1 on MIT license
+
 Copyright (c) 2013 Pieter Wuille
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
