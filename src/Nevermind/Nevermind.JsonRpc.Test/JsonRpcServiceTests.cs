@@ -1,4 +1,22 @@
-﻿using System.Collections.Generic;
+﻿/*
+ * Copyright (c) 2018 Demerzel Solutions Limited
+ * This file is part of the Nethermind library.
+ *
+ * The Nethermind library is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * The Nethermind library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using Nevermind.Core;
@@ -46,7 +64,7 @@ namespace Nevermind.JsonRpc.Test
 
             var requestJson = GetJsonRequest("net_peerCount", null); 
             var rawResponse = _jsonRpcService.SendRequest(requestJson);
-            var response = _jsonSerializer.DeserializeObject<JsonRpcResponse>(rawResponse);
+            var response = _jsonSerializer.Deserialize<JsonRpcResponse>(rawResponse);
             var quantity = new Quantity();
             quantity.FromJson(response.Result.ToString());
             Assert.AreEqual(quantity.GetValue(), new BigInteger(2));
@@ -68,7 +86,7 @@ namespace Nevermind.JsonRpc.Test
 
             var requestJson = GetJsonRequest("web3_sha3", new[] { "0x68656c6c6f20776f726c64" });
             var rawResponse = _jsonRpcService.SendRequest(requestJson);
-            var response = _jsonSerializer.DeserializeObject<JsonRpcResponse>(rawResponse);
+            var response = _jsonSerializer.Deserialize<JsonRpcResponse>(rawResponse);
             Assert.AreEqual(response.Result, "0xtest data");
         }
 
@@ -88,7 +106,7 @@ namespace Nevermind.JsonRpc.Test
 
             var requestJson = GetJsonRequest("eth_getBlockByNumber", new[] {"0x1b4", "true"});
             var rawResponse = _jsonRpcService.SendRequest(requestJson);
-            var response = _jsonSerializer.DeserializeObject<JsonRpcResponse>(rawResponse);
+            var response = _jsonSerializer.Deserialize<JsonRpcResponse>(rawResponse);
 
             Assert.IsTrue(response.Result.ToString().Contains("0x2"));
         }
@@ -109,7 +127,7 @@ namespace Nevermind.JsonRpc.Test
 
             var requestJson = GetJsonRequest("eth_getWork", null);
             var rawResponse = _jsonRpcService.SendRequest(requestJson);
-            var response = _jsonSerializer.DeserializeObject<JsonRpcResponse>(rawResponse);
+            var response = _jsonSerializer.Deserialize<JsonRpcResponse>(rawResponse);
 
             Assert.IsTrue(response.Result.ToString().Contains("0xt1"));
             Assert.IsTrue(response.Result.ToString().Contains("0xt2"));
@@ -132,8 +150,8 @@ namespace Nevermind.JsonRpc.Test
             var requestJson = GetJsonRequest("net_version", null);
             var rawResponse = _jsonRpcService.SendRequest(requestJson);
 
-            var request = _jsonSerializer.DeserializeObject<JsonRpcRequest>(requestJson);
-            var response = _jsonSerializer.DeserializeObject<JsonRpcResponse>(rawResponse);
+            var request = _jsonSerializer.Deserialize<JsonRpcRequest>(requestJson);
+            var response = _jsonSerializer.Deserialize<JsonRpcResponse>(rawResponse);
 
             Assert.AreEqual(response.Id, request.Id);
             Assert.AreEqual(response.Result, "1");
@@ -157,8 +175,8 @@ namespace Nevermind.JsonRpc.Test
             var requestJson = GetJsonRequest("incorrect_method", null);
             var rawResponse = _jsonRpcService.SendRequest(requestJson);
 
-            var request = _jsonSerializer.DeserializeObject<JsonRpcRequest>(requestJson);
-            var response = _jsonSerializer.DeserializeObject<JsonRpcResponse>(rawResponse);
+            var request = _jsonSerializer.Deserialize<JsonRpcRequest>(requestJson);
+            var response = _jsonSerializer.Deserialize<JsonRpcResponse>(rawResponse);
 
             Assert.AreEqual(response.Id, request.Id);
             Assert.AreEqual(response.Error.Code, _configurationProvider.ErrorCodes[ErrorType.MethodNotFound]);
@@ -181,7 +199,7 @@ namespace Nevermind.JsonRpc.Test
                 Params = parameters ?? Enumerable.Empty<object>(),
                 id = 67
             };
-            return _jsonSerializer.SerializeObject(request);
+            return _jsonSerializer.Serialize(request);
         }
     }
 }

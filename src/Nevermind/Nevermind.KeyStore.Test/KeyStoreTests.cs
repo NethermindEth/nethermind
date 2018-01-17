@@ -1,4 +1,22 @@
-﻿using System;
+﻿/*
+ * Copyright (c) 2018 Demerzel Solutions Limited
+ * This file is part of the Nethermind library.
+ *
+ * The Nethermind library is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * The Nethermind library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+using System;
 using System.IO;
 using System.Linq;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -104,9 +122,9 @@ namespace Nevermind.KeyStore.Test
 
             //replace version
             var filePath = Path.Combine(_configurationProvider.KeyStoreDirectory, key.Item1.Address.ToString());
-            var item = _serializer.DeserializeObject<KeyStoreItem>(File.ReadAllText(filePath));
+            var item = _serializer.Deserialize<KeyStoreItem>(File.ReadAllText(filePath));
             item.Version = 1;
-            var json = _serializer.SerializeObject(item);
+            var json = _serializer.Serialize(item);
             File.WriteAllText(filePath, json);
 
             //try to read
@@ -127,9 +145,9 @@ namespace Nevermind.KeyStore.Test
 
             //replace version
             var filePath = Path.Combine(_configurationProvider.KeyStoreDirectory, key.Item1.Address.ToString());
-            var item = _serializer.DeserializeObject<KeyStoreItem>(File.ReadAllText(filePath));
+            var item = _serializer.Deserialize<KeyStoreItem>(File.ReadAllText(filePath));
             item.Crypto.Version = 0;
-            var json = _serializer.SerializeObject(item);
+            var json = _serializer.Serialize(item);
             File.WriteAllText(filePath, json);
 
             //try to read

@@ -1,4 +1,22 @@
-﻿using System;
+﻿/*
+ * Copyright (c) 2018 Demerzel Solutions Limited
+ * This file is part of the Nethermind library.
+ *
+ * The Nethermind library is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * The Nethermind library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
@@ -30,7 +48,7 @@ namespace Nevermind.JsonRpc
         {
             try
             {
-                var rpcRequest = _jsonSerializer.DeserializeObject<JsonRpcRequest>(request);
+                var rpcRequest = _jsonSerializer.Deserialize<JsonRpcRequest>(request);
                 (ErrorType?, string) validateResult = Validate(rpcRequest);
                 if (validateResult.Item1.HasValue)
                 {
@@ -161,7 +179,7 @@ namespace Nevermind.JsonRpc
                 Id = id,
                 Result = result
             };
-            var serializedReponse = _jsonSerializer.SerializeObject(response);
+            var serializedReponse = _jsonSerializer.Serialize(response);
 
             _logger.Debug($"Successfull request processing, method: {methodName ?? "none"}, id: {id ?? "none"}, result: {serializedReponse}");
 
@@ -182,7 +200,7 @@ namespace Nevermind.JsonRpc
                     Message = message
                 }
             };
-            return _jsonSerializer.SerializeObject(response);
+            return _jsonSerializer.Serialize(response);
         }
 
         private (ErrorType?, string) Validate(JsonRpcRequest rpcRequest)
