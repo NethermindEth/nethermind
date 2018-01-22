@@ -13,13 +13,13 @@
             _bitsPerHoop = _configurationProvider.BitsPerHop;
         }
 
-        public int CalculateDistance(byte[] sourceId, byte[] targetId)
+        public int CalculateDistance(byte[] sourceId, byte[] destinationId)
         {
-            var hash = new byte[targetId.Length < sourceId.Length ? targetId.Length : sourceId.Length];
+            var hash = new byte[destinationId.Length < sourceId.Length ? destinationId.Length : sourceId.Length];
 
             for (var i = 0; i < hash.Length; i++)
             {
-                hash[i] = (byte)(targetId[i] ^ sourceId[i]);
+                hash[i] = (byte)(destinationId[i] ^ sourceId[i]);
             }
 
             var distance = _maxDistance;

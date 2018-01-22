@@ -40,6 +40,7 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="INodesLocator.cs" />
     <Compile Include="Messages\Message.cs" />
     <Compile Include="DiscoveryConfigurationProvider.cs" />
     <Compile Include="DiscoveryManager.cs" />
@@ -47,6 +48,7 @@
     <Compile Include="IDiscoveryConfigurationProvider.cs" />
     <Compile Include="IDiscoveryManager.cs" />
     <Compile Include="Encoders\IMessageEncoder.cs" />
+    <Compile Include="NodesLocator.cs" />
     <Compile Include="RoutingTable\INodeBucket.cs" />
     <Compile Include="RoutingTable\INodeBucketItem.cs" />
     <Compile Include="RoutingTable\INodeDistanceCalculator.cs" />

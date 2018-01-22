@@ -1,4 +1,6 @@
 ﻿using System;
+using System.Collections.Generic;
+using System.Linq;
 using Nevermind.Core;
 using Nevermind.KeyStore;
 using Nevermind.Utils.Model;
@@ -39,6 +41,29 @@ namespace Nevermind.Discovery.RoutingTable
             var distanceFromMaster = _nodeDistanceCalculator.CalculateDistance(MasterNode.IdHash, node.IdHash);
             var bucket = Buckets[distanceFromMaster];
             bucket.RemoveNode(node);
+        }
+
+        public Node[] GetClosestNodes()
+        {
+            var nodes = new List<NodeBucketItem>();
+            var bucketSize = _configurationProvider.BucketSize;
+            foreach (var nodeBucket in Buckets)
+            {
+                if (!nodeBucket.Items.Any())
+                {
+                    continue;
+                }
+
+                var availibleCount = bucketSize - nodes.Count;
+                if (nodeBucket.Items.Count >= availibleCount)
+                {
+                    nodes.AddRange(nodeBucket.Items.Take(availibleCount).ToArray());
+                    break;
+                }
+                nodes.AddRange(nodeBucket.Items.ToArray());
+            }
+
+            return nodes.Select(x => x.Node).ToArray();
         }
 
         private void Initialize()

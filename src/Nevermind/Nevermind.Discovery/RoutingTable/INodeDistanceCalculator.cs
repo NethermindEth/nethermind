@@ -2,6 +2,6 @@
 {
     public interface INodeDistanceCalculator
     {
-        int CalculateDistance(byte[] sourceId, byte[] targetId);
+        int CalculateDistance(byte[] sourceId, byte[] destinationId);
     }
 }

@@ -31,5 +31,20 @@
         /// Current Node port
         /// </summary>
         int MasterPort { get; }
+
+        /// <summary>
+        /// Max Discovery Rounds
+        /// </summary>
+        int MaxDiscoveryRounds { get; }
+
+        /// <summary>
+        /// Eviction check interval in ms
+        /// </summary>
+        int EvictionCheckInterval { get; }
+
+        /// <summary>
+        /// Request Timeout in ms
+        /// </summary>
+        int RequestTimeout { get; }
     }
 }
