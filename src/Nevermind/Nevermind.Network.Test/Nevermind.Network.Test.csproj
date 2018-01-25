@@ -42,8 +42,10 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="AuthResponseMessageTests.cs" />
     <Compile Include="AuthMessageTests.cs" />
     <Compile Include="AuthMessageV4Tests.cs" />
+    <Compile Include="AuthResponseMessageV4Tests.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>

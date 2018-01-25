@@ -18,7 +18,7 @@
 
 namespace Nevermind.Network
 {
-    public class ReceiverHandshake
+    public class ProtocolHandshake
     {    
     }
 }
