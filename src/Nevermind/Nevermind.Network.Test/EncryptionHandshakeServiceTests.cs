@@ -29,7 +29,7 @@ namespace Nevermind.Network.Test
             EncryptionHandshake handshake = new EncryptionHandshake();
             EncryptionHandshake remoteHandshake = new EncryptionHandshake();
 
-            AuthV4Message authMessage = _service.Init(handshake);
+            AuthV4Message authMessage = _service.InitV4(handshake, new PrivateKey(_cryptoRandom.GenerateRandomBytes(32)));
             AuthResponseV4Message responseMessage = _remoteService.Respond(remoteHandshake, authMessage);
             _service.HandleResponse(handshake, responseMessage);
 

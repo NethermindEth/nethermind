@@ -18,10 +18,12 @@
 
 namespace Nevermind.Core.Crypto
 {
+    // TODO: split general and Ethereum signers
     public interface ISigner
     {
         Signature Sign(PrivateKey privateKey, Keccak message);
         void Sign(PrivateKey privateKey, Transaction transaction);
+        PublicKey RecoverPublicKey(Signature signature, Keccak message);
         Address Recover(Signature signature, Keccak message);
         Address Recover(Transaction transaction);
         bool Verify(Address sender, Transaction transaction);

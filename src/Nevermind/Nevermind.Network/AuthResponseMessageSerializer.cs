@@ -32,13 +32,13 @@ namespace Nevermind.Network
         public const int IsTokenUsedOffset = NonceOffset + NonceLength;
         public const int TotalLength = IsTokenUsedOffset + IsTokenUsedLength;
 
-        public byte[] Serialize(AuthResponseMessage message)
+        public byte[] Serialize(AuthResponseMessage message, IMessagePad messagePad = null)
         {
             byte[] data = new byte[TotalLength];
             Buffer.BlockCopy(message.EphemeralPublicKey.PrefixedBytes, 1, data, EphemeralPublicKeyOffset, EphemeralPublicKeyLength);
             Buffer.BlockCopy(message.Nonce, 0, data, NonceOffset, NonceLength);
             data[IsTokenUsedOffset] = message.IsTokenUsed ? (byte)0x01 : (byte)0x00;
-            return data;
+            return messagePad?.Pad(data) ?? data;
         }
 
         public AuthResponseMessage Deserialize(byte[] bytes)

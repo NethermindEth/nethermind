@@ -23,7 +23,7 @@ namespace Nevermind.Network
     public class AuthMessage : MessageBase
     {
         public Signature Signature { get; set; }
-        public byte[] EphemeralPublicHash { get; set; }
+        public Keccak EphemeralPublicHash { get; set; }
         public PublicKey PublicKey { get; set; }
         public byte[] Nonce { get; set; }
         public bool IsTokenUsed { get; set; }

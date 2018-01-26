@@ -31,13 +31,15 @@ namespace Nevermind.Network
         public const int VersionOffset = NonceOffset + NonceLength;
         public const int TotalLength = EphemeralPublicKeyLength + NonceLength;
 
-        public byte[] Serialize(AuthResponseV4Message message)
+        public byte[] Serialize(AuthResponseV4Message message, IMessagePad messagePad = null)
         {
-            return Rlp.Encode(
+            byte[] data = Rlp.Encode(
                 Rlp.Encode(message.EphemeralPublicKey.PrefixedBytes.Slice(1, 64)),
                 Rlp.Encode(message.Nonce),
                 Rlp.Encode(message.Version)
             ).Bytes;
+
+            return messagePad?.Pad(data) ?? data;
         }
 
         public AuthResponseV4Message Deserialize(byte[] bytes)

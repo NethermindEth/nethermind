@@ -55,11 +55,13 @@
     <Compile Include="DisconnectReason.cs" />
     <Compile Include="Discovery.cs" />
     <Compile Include="DisconnectMessage.cs" />
+    <Compile Include="Eip8MessagePad.cs" />
     <Compile Include="EncryptionHandshake.cs" />
     <Compile Include="EncryptionSecrets.cs" />
     <Compile Include="EthNetworkException.cs" />
     <Compile Include="HelloMessage.cs" />
     <Compile Include="EncryptionHandshakeService.cs" />
+    <Compile Include="IMessagePad.cs" />
     <Compile Include="IEncryptionHandshakeService.cs" />
     <Compile Include="IMessageSerializationService.cs" />
     <Compile Include="IMessageSerializer.cs" />
@@ -68,6 +70,7 @@
     <Compile Include="MessageSerializationService.cs" />
     <Compile Include="Node.cs" />
     <Compile Include="NodeDistanceMetric.cs" />
+    <Compile Include="NoPad.cs" />
     <Compile Include="P2PMessage.cs" />
     <Compile Include="P2PVersion.cs" />
     <Compile Include="PingMessage.cs" />

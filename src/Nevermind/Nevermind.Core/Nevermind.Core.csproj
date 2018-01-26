@@ -65,6 +65,7 @@
     <Compile Include="Crypto\ICryptoRandom.cs" />
     <Compile Include="Crypto\IEciesCipher.cs" />
     <Compile Include="Crypto\ISigner.cs" />
+    <Compile Include="Crypto\KeyAgreement.cs" />
     <Compile Include="Crypto\Secp256K1Curve.cs" />
     <Compile Include="Crypto\Keccak.cs" />
     <Compile Include="Crypto\Ripemd.cs" />

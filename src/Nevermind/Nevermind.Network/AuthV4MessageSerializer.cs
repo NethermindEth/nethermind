@@ -25,14 +25,16 @@ namespace Nevermind.Network
 {
     public class AuthV4MessageSerializer : IMessageSerializer<AuthV4Message>
     {
-        public byte[] Serialize(AuthV4Message message)
+        public byte[] Serialize(AuthV4Message message, IMessagePad messagePad = null)
         {
-            return Rlp.Encode(
+            byte[] data = Rlp.Encode(
                 Rlp.Encode(Bytes.Concat(message.Signature.Bytes, message.Signature.V)),
                 Rlp.Encode(message.PublicKey.PrefixedBytes.Slice(1, 64)),
                 Rlp.Encode(message.Nonce),
                 Rlp.Encode(message.Version)
             ).Bytes;
+            
+            return messagePad?.Pad(data) ?? data;
         }
 
         public AuthV4Message Deserialize(byte[] data)

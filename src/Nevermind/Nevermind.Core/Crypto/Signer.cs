@@ -101,10 +101,15 @@ namespace Nevermind.Core.Crypto
             return signature;
         }
 
-        public Address Recover(Signature signature, Keccak message)
+        public PublicKey RecoverPublicKey(Signature signature, Keccak message)
         {
             byte[] publicKey = Secp256k1.Proxy.Proxy.RecoverKeyFromCompact(message.Bytes, signature.Bytes, signature.RecoveryId, false);
-            return new PublicKey(publicKey).Address;
+            return new PublicKey(publicKey);
+        }
+        
+        public Address Recover(Signature signature, Keccak message)
+        {
+            return RecoverPublicKey(signature, message).Address;
         }
     }
 }

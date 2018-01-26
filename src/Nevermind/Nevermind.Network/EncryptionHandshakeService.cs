@@ -33,40 +33,101 @@ namespace Nevermind.Network
             _signer = signer;
         }
 
-        public AuthV4Message Init(EncryptionHandshake handshake)
+        public AuthV4Message InitV4(EncryptionHandshake handshake, PrivateKey privateKey)
         {
-            throw new NotImplementedException();
+            byte[] nonce = _cryptoRandom.GenerateRandomBytes(32);
+            PrivateKey ephemeraPrivateKey = new PrivateKey(_cryptoRandom.GenerateRandomBytes(32));
+
+            handshake.InitiatorNonce = nonce;
+            handshake.EphemeralKey = ephemeraPrivateKey;
+
+            byte[] secret = new byte[32]; // TODO: token used?
+            byte[] forSigning = secret.Xor(nonce);
+
+            AuthV4Message authV4Message = new AuthV4Message();
+            authV4Message.Nonce = nonce;
+            authV4Message.PublicKey = privateKey.PublicKey;
+            authV4Message.Signature = _signer.Sign(privateKey, Keccak.Compute(forSigning));
+            return authV4Message;
         }
 
         public AuthResponseMessage Respond(EncryptionHandshake handshake, AuthMessage authMessage)
         {
-            throw new NotImplementedException();
+            handshake.InitiatorNonce = authMessage.Nonce;
+            handshake.RemotePublicKey = authMessage.PublicKey;
+
+            PrivateKey ephemeraPrivateKey = new PrivateKey(_cryptoRandom.GenerateRandomBytes(32));
+            handshake.EphemeralKey = ephemeraPrivateKey;
+            
+            byte[] nonce = _cryptoRandom.GenerateRandomBytes(32);
+            handshake.ResponderNonce = nonce;
+            
+            byte[] secret = new byte[32]; // TODO:
+            byte[] forSigning = secret.Xor(handshake.InitiatorNonce);
+            handshake.RemoteEphemeralKey = _signer.RecoverPublicKey(authMessage.Signature, Keccak.Compute(forSigning));            
+            
+            AuthResponseMessage responseMessage = new AuthResponseMessage();
+            responseMessage.EphemeralPublicKey = handshake.RemoteEphemeralKey;
+            responseMessage.IsTokenUsed = authMessage.IsTokenUsed;
+            responseMessage.Nonce = nonce;
+            return responseMessage;
         }
 
         public AuthResponseV4Message Respond(EncryptionHandshake handshake, AuthV4Message authMessage)
         {
-            throw new NotImplementedException();
+            // TODO: DRY, V4 looks same as previously
+            handshake.InitiatorNonce = authMessage.Nonce;
+            handshake.RemotePublicKey = authMessage.PublicKey;
+
+            PrivateKey ephemeraPrivateKey = new PrivateKey(_cryptoRandom.GenerateRandomBytes(32));
+            handshake.EphemeralKey = ephemeraPrivateKey;
+            
+            byte[] nonce = _cryptoRandom.GenerateRandomBytes(32);
+            handshake.ResponderNonce = nonce;
+            
+            byte[] secret = new byte[32]; // TODO:
+            byte[] forSigning = secret.Xor(handshake.InitiatorNonce);
+            handshake.RemoteEphemeralKey = _signer.RecoverPublicKey(authMessage.Signature, Keccak.Compute(forSigning));            
+            
+            AuthResponseV4Message responseMessage = new AuthResponseV4Message();
+            responseMessage.EphemeralPublicKey = handshake.RemoteEphemeralKey;            
+            responseMessage.Nonce = nonce;
+            return responseMessage;
         }
 
         public void HandleResponse(EncryptionHandshake handshake, AuthResponseMessage responseMessage)
         {
-            throw new NotImplementedException();
+            handshake.RemoteEphemeralKey = responseMessage.EphemeralPublicKey;
+            handshake.ResponderNonce = responseMessage.Nonce;
+            // TODO: calculate all secrets
         }
 
         public void HandleResponse(EncryptionHandshake handshake, AuthResponseV4Message responseMessage)
         {
-            throw new NotImplementedException();
+            // TODO: DRY
+            handshake.RemoteEphemeralKey = responseMessage.EphemeralPublicKey;
+            handshake.ResponderNonce = responseMessage.Nonce;
+            // TODO: calculate all secrets
         }
 
-        /// <summary>
-        ///     EIP-8
-        /// </summary>
-        /// <param name="message"></param>
-        /// <returns></returns>
-        private byte[] AddEip8Padding(byte[] message)
+        public AuthMessage Init(EncryptionHandshake handshake, PrivateKey privateKey)
         {
-            byte[] padding = _cryptoRandom.GenerateRandomBytes(100 + _cryptoRandom.NextInt(201));
-            return Bytes.Concat(message, padding);
+            byte[] nonce = _cryptoRandom.GenerateRandomBytes(32);
+            PrivateKey ephemeraPrivateKey = new PrivateKey(_cryptoRandom.GenerateRandomBytes(32));
+
+            handshake.InitiatorNonce = nonce;
+            handshake.EphemeralKey = ephemeraPrivateKey;
+
+            byte[] secret = new byte[32]; // TODO:
+            byte[] forSigning = secret.Xor(nonce);
+
+            AuthMessage authMessage = new AuthMessage();
+            authMessage.IsTokenUsed = false;
+            authMessage.Nonce = nonce;
+            authMessage.PublicKey = privateKey.PublicKey;
+            authMessage.Signature = _signer.Sign(privateKey, Keccak.Compute(forSigning));
+            authMessage.EphemeralPublicHash = Keccak.Compute(ephemeraPrivateKey.PublicKey.PrefixedBytes.Slice(1, 64));
+            return authMessage;
         }
     }
 }

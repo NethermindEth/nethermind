@@ -39,10 +39,10 @@ namespace Nevermind.Network.Test
         private void TestEncodeDecode(Signer signer)
         {
             AuthMessage authMessage = new AuthMessage();
-            authMessage.EphemeralPublicHash = new byte[AuthMessageSerializer.EphemeralHashLength];
+            authMessage.EphemeralPublicHash = new Keccak(new byte[AuthMessageSerializer.EphemeralHashLength]);
             authMessage.Nonce = new byte[AuthMessageSerializer.NonceLength];
             authMessage.Signature = signer.Sign(_privateKey, Keccak.Compute("anything"));
-            _random.NextBytes(authMessage.EphemeralPublicHash);
+            _random.NextBytes(authMessage.EphemeralPublicHash.Bytes);
             authMessage.PublicKey = _privateKey.PublicKey;
             _random.NextBytes(authMessage.Nonce);
             authMessage.IsTokenUsed = true;
@@ -50,7 +50,7 @@ namespace Nevermind.Network.Test
             AuthMessage after = _serializer.Deserialize(bytes);
 
             Assert.AreEqual(authMessage.Signature, after.Signature);
-            Assert.True(Bytes.UnsafeCompare(authMessage.EphemeralPublicHash, after.EphemeralPublicHash));
+            Assert.AreEqual(authMessage.EphemeralPublicHash, after.EphemeralPublicHash);
             Assert.AreEqual(authMessage.PublicKey, after.PublicKey);
             Assert.True(Bytes.UnsafeCompare(authMessage.Nonce, after.Nonce));
             Assert.AreEqual(authMessage.IsTokenUsed, after.IsTokenUsed);

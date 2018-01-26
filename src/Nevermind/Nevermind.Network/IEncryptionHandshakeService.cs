@@ -16,11 +16,13 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nevermind.Core.Crypto;
+
 namespace Nevermind.Network
 {
     public interface IEncryptionHandshakeService
     {
-        AuthV4Message Init(EncryptionHandshake handshake);
+        AuthV4Message InitV4(EncryptionHandshake handshake, PrivateKey privateKey);
         AuthResponseMessage Respond(EncryptionHandshake handshake, AuthMessage authMessage);
         AuthResponseV4Message Respond(EncryptionHandshake handshake, AuthV4Message authMessage);
         void HandleResponse(EncryptionHandshake handshake, AuthResponseV4Message responseMessage);

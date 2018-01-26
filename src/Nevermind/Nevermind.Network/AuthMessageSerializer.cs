@@ -36,16 +36,16 @@ namespace Nevermind.Network
         public const int IsTokenUsedOffset = NonceOffset + NonceLength;
         public const int Length = IsTokenUsedOffset + IsTokenUsedLength;
 
-        public byte[] Serialize(AuthMessage message)
+        public byte[] Serialize(AuthMessage message, IMessagePad messagePad = null)
         {
             byte[] data = new byte[Length];
             Buffer.BlockCopy(message.Signature.Bytes, 0, data, SigOffset, SigLength - 1);
             data[SigLength - 1] = message.Signature.V;
-            Buffer.BlockCopy(message.EphemeralPublicHash, 0, data, EphemeralHashOffset, EphemeralHashLength);
+            Buffer.BlockCopy(message.EphemeralPublicHash.Bytes, 0, data, EphemeralHashOffset, EphemeralHashLength);
             Buffer.BlockCopy(message.PublicKey.PrefixedBytes, 1, data, PublicKeyOffset, PublicKeyLength);
             Buffer.BlockCopy(message.Nonce, 0, data, NonceOffset, NonceLength);
             data[IsTokenUsedOffset] = message.IsTokenUsed ? (byte)0x01 : (byte)0x00;
-            return data;
+            return messagePad?.Pad(data) ?? data;
         }
 
         public AuthMessage Deserialize(byte[] bytes)
@@ -57,7 +57,7 @@ namespace Nevermind.Network
 
             AuthMessage authMessage = new AuthMessage();
             authMessage.Signature = new Signature(bytes.Slice(SigOffset, SigLength));
-            authMessage.EphemeralPublicHash = bytes.Slice(EphemeralHashOffset, EphemeralHashLength);
+            authMessage.EphemeralPublicHash = new Keccak(bytes.Slice(EphemeralHashOffset, EphemeralHashLength));
             authMessage.PublicKey = new PublicKey(bytes.Slice(PublicKeyOffset, PublicKeyLength));
             authMessage.Nonce = bytes.Slice(NonceOffset, NonceLength);
             authMessage.IsTokenUsed = bytes[IsTokenUsedOffset] == 0x01;

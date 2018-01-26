@@ -20,7 +20,7 @@ namespace Nevermind.Network
 {   
     public interface IMessageSerializer<T> where T : MessageBase
     {
-        byte[] Serialize(T message);
+        byte[] Serialize(T message, IMessagePad pad = null);
         T Deserialize(byte[] bytes);
     }
 }
