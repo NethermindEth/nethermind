@@ -18,6 +18,7 @@
 
 using System;
 using Nevermind.Core.Crypto;
+using Nevermind.Core.Extensions;
 
 namespace Nevermind.Network
 {
@@ -32,21 +33,40 @@ namespace Nevermind.Network
             _signer = signer;
         }
 
-        public IAuthMessage InitiateAuth(PrivateKey privateKey, string hostName, int port)
+        public AuthV4Message Init(EncryptionHandshake handshake)
         {
-            AuthMessage authMessage = new AuthMessage();
-            authMessage.IsTokenUsed = false;
-            authMessage.Nonce = _cryptoRandom.GenerateRandomBytes(AuthMessage.NonceLength);
-            authMessage.PublicKey = privateKey.PublicKey;
-
-//            authMessage.Signature = _signer.Sign();
-//            authMessage.EphemeralPublicHash =
-            return authMessage;
+            throw new NotImplementedException();
         }
 
-        public IAuthResponseMessage RespondToAuth(PrivateKey privateKey, IAuthMessage authMessage)
+        public AuthResponseMessage Respond(EncryptionHandshake handshake, AuthMessage authMessage)
         {
-            throw new NotImplementedException(); // TODO: always respond with V4??? 
+            throw new NotImplementedException();
+        }
+
+        public AuthResponseV4Message Respond(EncryptionHandshake handshake, AuthV4Message authMessage)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void HandleResponse(EncryptionHandshake handshake, AuthResponseMessage responseMessage)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void HandleResponse(EncryptionHandshake handshake, AuthResponseV4Message responseMessage)
+        {
+            throw new NotImplementedException();
+        }
+
+        /// <summary>
+        ///     EIP-8
+        /// </summary>
+        /// <param name="message"></param>
+        /// <returns></returns>
+        private byte[] AddEip8Padding(byte[] message)
+        {
+            byte[] padding = _cryptoRandom.GenerateRandomBytes(100 + _cryptoRandom.NextInt(201));
+            return Bytes.Concat(message, padding);
         }
     }
 }

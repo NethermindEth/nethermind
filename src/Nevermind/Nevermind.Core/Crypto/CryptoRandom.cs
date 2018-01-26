@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Security.Cryptography;
 
 namespace Nevermind.Core.Crypto
@@ -23,12 +24,18 @@ namespace Nevermind.Core.Crypto
     public class CryptoRandom : ICryptoRandom
     {
         private readonly RandomNumberGenerator _secureRandom = new RNGCryptoServiceProvider();
+        private readonly Random _random = new Random();
 
         public byte[] GenerateRandomBytes(int lenght)
         {
             byte[] bytes = new byte[lenght];
             _secureRandom.GetBytes(bytes);
             return bytes;
+        }
+
+        public int NextInt(int max)
+        {
+            return _random.Next(max);
         }
     }
 }

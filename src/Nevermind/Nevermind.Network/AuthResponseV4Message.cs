@@ -16,16 +16,16 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using Nevermind.Core.Crypto;
+using Nevermind.Core.Extensions;
 
 namespace Nevermind.Network
 {
-    public class AuthMessage : MessageBase
+    public class AuthResponseV4Message : MessageBase
     {
-        public Signature Signature { get; set; }
-        public byte[] EphemeralPublicHash { get; set; }
-        public PublicKey PublicKey { get; set; }
+        public PublicKey EphemeralPublicKey { get; set; }
         public byte[] Nonce { get; set; }
-        public bool IsTokenUsed { get; set; }
+        public byte Version { get; set; } = 0x04;
     }
 }

@@ -20,12 +20,14 @@ using Nevermind.Core.Crypto;
 
 namespace Nevermind.Network
 {
-    public class AuthMessage : MessageBase
+    public class EncryptionHandshake
     {
-        public Signature Signature { get; set; }
-        public byte[] EphemeralPublicHash { get; set; }
-        public PublicKey PublicKey { get; set; }
-        public byte[] Nonce { get; set; }
-        public bool IsTokenUsed { get; set; }
+        public Node Remote { get; set; }
+        public EncryptionSecrets Secrets { get; set; }
+        public byte[] InitiatorNonce { get; set; }
+        public byte[] ResponderNonce { get; set; }
+        public PublicKey RemotePublicKey { get; set; }
+        public PublicKey RemoteEphemeralKey { get; set; }
+        public PrivateKey EphemeralKey { get; set; }
     }
 }

@@ -61,7 +61,9 @@
     <Compile Include="ChainId.cs" />
     <Compile Include="ConsoleLogger.cs" />
     <Compile Include="Crypto\ConsoleUtils.cs" />
+    <Compile Include="Crypto\EciesCipher.cs" />
     <Compile Include="Crypto\ICryptoRandom.cs" />
+    <Compile Include="Crypto\IEciesCipher.cs" />
     <Compile Include="Crypto\ISigner.cs" />
     <Compile Include="Crypto\Secp256K1Curve.cs" />
     <Compile Include="Crypto\Keccak.cs" />

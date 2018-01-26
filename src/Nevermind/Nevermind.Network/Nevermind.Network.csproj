@@ -44,21 +44,28 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="AuthMessage.cs" />
-    <Compile Include="AuthMessageV4.cs" />
+    <Compile Include="AuthMessageSerializer.cs" />
+    <Compile Include="AuthV4Message.cs" />
+    <Compile Include="AuthV4MessageSerializer.cs" />
     <Compile Include="AuthResponseMessage.cs" />
-    <Compile Include="AuthResponseMessageV4.cs" />
+    <Compile Include="AuthResponseMessageSerializer.cs" />
+    <Compile Include="AuthResponseV4Message.cs" />
+    <Compile Include="AuthResponseV4MessageSerializer.cs" />
     <Compile Include="Capability.cs" />
     <Compile Include="DisconnectReason.cs" />
     <Compile Include="Discovery.cs" />
     <Compile Include="DisconnectMessage.cs" />
-    <Compile Include="EncryptionHandshakeServiceV4.cs" />
+    <Compile Include="EncryptionHandshake.cs" />
+    <Compile Include="EncryptionSecrets.cs" />
     <Compile Include="EthNetworkException.cs" />
     <Compile Include="HelloMessage.cs" />
     <Compile Include="EncryptionHandshakeService.cs" />
-    <Compile Include="IAuthMessage.cs" />
-    <Compile Include="IAuthResponseMessage.cs" />
     <Compile Include="IEncryptionHandshakeService.cs" />
+    <Compile Include="IMessageSerializationService.cs" />
+    <Compile Include="IMessageSerializer.cs" />
+    <Compile Include="MessageBase.cs" />
     <Compile Include="MessageCode.cs" />
+    <Compile Include="MessageSerializationService.cs" />
     <Compile Include="Node.cs" />
     <Compile Include="NodeDistanceMetric.cs" />
     <Compile Include="P2PMessage.cs" />
@@ -67,6 +74,7 @@
     <Compile Include="PongMessage.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="ProtocolHandshake.cs" />
+    <Compile Include="RlpxConnection.cs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Nevermind.Core\Nevermind.Core.csproj">

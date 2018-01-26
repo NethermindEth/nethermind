@@ -16,16 +16,9 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nevermind.Core.Crypto;
-
 namespace Nevermind.Network
 {
-    public class AuthMessage : MessageBase
+    public abstract class MessageBase
     {
-        public Signature Signature { get; set; }
-        public byte[] EphemeralPublicHash { get; set; }
-        public PublicKey PublicKey { get; set; }
-        public byte[] Nonce { get; set; }
-        public bool IsTokenUsed { get; set; }
     }
 }

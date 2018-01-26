@@ -16,10 +16,10 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using Nevermind.Core.Crypto;
 using Nevermind.Core.Extensions;
 using NUnit.Framework;
-using Random = System.Random;
 
 namespace Nevermind.Network.Test
 {
@@ -32,14 +32,16 @@ namespace Nevermind.Network.Test
 
         private readonly PrivateKey _privateKey = new PrivateKey(TestPrivateKeyHex);
 
+        private readonly AuthResponseV4MessageSerializer _serializer = new AuthResponseV4MessageSerializer();
+
         private void TestEncodeDecode()
         {
-            AuthResponseMessageV4 before = new AuthResponseMessageV4();
+            AuthResponseV4Message before = new AuthResponseV4Message();
             before.EphemeralPublicKey = _privateKey.PublicKey;
-            before.Nonce = new byte[AuthResponseMessageV4.NonceLength];
+            before.Nonce = new byte[AuthResponseV4MessageSerializer.NonceLength];
             _random.NextBytes(before.Nonce);
-            byte[] data = AuthResponseMessageV4.Encode(before);
-            AuthResponseMessageV4 after = AuthResponseMessageV4.Decode(data);
+            byte[] data = _serializer.Serialize(before);
+            AuthResponseV4Message after = _serializer.Deserialize(data);
 
             Assert.AreEqual(before.EphemeralPublicKey, after.EphemeralPublicKey);
             Assert.True(Bytes.UnsafeCompare(before.Nonce, after.Nonce));

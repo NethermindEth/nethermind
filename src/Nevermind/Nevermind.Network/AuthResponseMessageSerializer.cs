@@ -18,52 +18,41 @@
 
 using System;
 using Nevermind.Core.Crypto;
-using Nevermind.Core.Encoding;
 using Nevermind.Core.Extensions;
 
 namespace Nevermind.Network
 {
-    public class AuthResponseMessageV4 : IAuthResponseMessage
+    public class AuthResponseMessageSerializer : IMessageSerializer<AuthResponseMessage>
     {
         public const int EphemeralPublicKeyLength = 64;
         public const int EphemeralPublicKeyOffset = 0;
         public const int NonceLength = 32;
         public const int NonceOffset = EphemeralPublicKeyOffset + EphemeralPublicKeyLength;
-        public const int VersionOffset = NonceOffset + NonceLength;
-        private const int Length = EphemeralPublicKeyLength + NonceLength;
+        public const int IsTokenUsedLength = 1;
+        public const int IsTokenUsedOffset = NonceOffset + NonceLength;
+        public const int TotalLength = IsTokenUsedOffset + IsTokenUsedLength;
 
-        public PublicKey EphemeralPublicKey { get; set; }
-        public byte[] Nonce { get; set; }
-        public byte Version { get; set; } = 0x04;
-
-        public static AuthResponseMessageV4 Decode(byte[] data)
+        public byte[] Serialize(AuthResponseMessage message)
         {
-            Rlp rlp = new Rlp(data);
-            object[] decodedRaw = (object[])Rlp.Decode(rlp);
-
-            AuthResponseMessageV4 authMessage = new AuthResponseMessageV4();
-            authMessage.EphemeralPublicKey = new PublicKey((byte[])decodedRaw[0]);
-            authMessage.Nonce = (byte[])decodedRaw[1];
-            // TODO: check the version? /Postel
-            return authMessage;
-        }
-
-        public static byte[] Encode(AuthResponseMessageV4 message)
-        {
-            byte[] data = new byte[Length];
+            byte[] data = new byte[TotalLength];
             Buffer.BlockCopy(message.EphemeralPublicKey.PrefixedBytes, 1, data, EphemeralPublicKeyOffset, EphemeralPublicKeyLength);
             Buffer.BlockCopy(message.Nonce, 0, data, NonceOffset, NonceLength);
-            data[VersionOffset] = 0x04;
+            data[IsTokenUsedOffset] = message.IsTokenUsed ? (byte)0x01 : (byte)0x00;
             return data;
         }
 
-        public static byte[] Encode(AuthMessageV4 authMessage)
+        public AuthResponseMessage Deserialize(byte[] bytes)
         {
-            return Rlp.Encode(
-                Rlp.Encode(authMessage.PublicKey.PrefixedBytes.Slice(1, 64)),
-                Rlp.Encode(authMessage.Nonce),
-                Rlp.Encode(authMessage.Version)
-            ).Bytes;
+            if (bytes.Length != TotalLength)
+            {
+                throw new EthNetworkException($"Incorrect incoming {nameof(AuthResponseMessage)} length. Expected {TotalLength} but was {bytes.Length}");
+            }
+
+            AuthResponseMessage authMessage = new AuthResponseMessage();
+            authMessage.EphemeralPublicKey = new PublicKey(bytes.Slice(EphemeralPublicKeyOffset, EphemeralPublicKeyLength));
+            authMessage.Nonce = bytes.Slice(NonceOffset, NonceLength);
+            authMessage.IsTokenUsed = bytes[IsTokenUsedOffset] == 0x01;
+            return authMessage;
         }
     }
 }
