@@ -21,20 +21,13 @@ using System.Threading;
 
 namespace Nevermind.Core.Crypto
 {
+    // TODO: remove entirely and handle private key more securely
     public class PrivateKey
     {
         private const int PrivateKeyLengthInBytes = 32;
         private PublicKey _publicKey;
 
-        public PrivateKey() :this(Random.GeneratePrivateKey(), Guid.NewGuid())
-        {
-        }
-
-        public PrivateKey(Hex key) : this(key, Guid.NewGuid())
-        {
-        }
-
-        public PrivateKey(Hex key, Guid id)
+        public PrivateKey(Hex key)
         {
             if (key == null)
             {
@@ -47,7 +40,6 @@ namespace Nevermind.Core.Crypto
             }
 
             Hex = key;
-            Id = id;
         }
 
         public Hex Hex { get; }
@@ -60,8 +52,6 @@ namespace Nevermind.Core.Crypto
         public PublicKey PublicKey => LazyInitializer.EnsureInitialized(ref _publicKey, ComputePublicKey);
 
         public Address Address => PublicKey.Address;
-
-        public Guid Id { get; set; }
 
         public override string ToString()
         {

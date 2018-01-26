@@ -22,7 +22,12 @@ namespace Nevermind.KeyStore
 {
     public class ConfigurationProvider : IConfigurationProvider
     {
-        public string KeyStoreDirectory => "KeyStore";
+        public ConfigurationProvider(string keyStoreDirectory = "KeyStore")
+        {
+            KeyStoreDirectory = keyStoreDirectory;
+        }
+
+        public string KeyStoreDirectory { get; }
         public Encoding KeyStoreEncoding => Encoding.UTF8;
         public string Kdf => "scrypt";
         public string Cipher => "aes-128-cbc";

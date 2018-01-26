@@ -22,7 +22,7 @@ using Nevermind.Core.Extensions;
 
 namespace Nevermind.Network
 {
-    public class AuthMessageV4
+    public class AuthMessageV4 : IAuthMessage
     {
         public Signature Signature { get; set; }
         public PublicKey PublicKey { get; set; }

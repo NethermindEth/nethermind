@@ -16,9 +16,37 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
+using Nevermind.Core.Crypto;
+
 namespace Nevermind.Network
 {
-    public class InitiatorHandshake
-    {    
+    public class EncryptionHandshakeService : IEncryptionHandshakeService
+    {
+        private readonly ICryptoRandom _cryptoRandom;
+        private readonly ISigner _signer;
+
+        public EncryptionHandshakeService(ICryptoRandom cryptoRandom, ISigner signer)
+        {
+            _cryptoRandom = cryptoRandom;
+            _signer = signer;
+        }
+
+        public IAuthMessage InitiateAuth(PrivateKey privateKey, string hostName, int port)
+        {
+            AuthMessage authMessage = new AuthMessage();
+            authMessage.IsTokenUsed = false;
+            authMessage.Nonce = _cryptoRandom.GenerateRandomBytes(AuthMessage.NonceLength);
+            authMessage.PublicKey = privateKey.PublicKey;
+
+//            authMessage.Signature = _signer.Sign();
+//            authMessage.EphemeralPublicHash =
+            return authMessage;
+        }
+
+        public IAuthResponseMessage RespondToAuth(PrivateKey privateKey, IAuthMessage authMessage)
+        {
+            throw new NotImplementedException(); // TODO: always respond with V4??? 
+        }
     }
 }

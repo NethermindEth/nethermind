@@ -51,9 +51,13 @@
     <Compile Include="DisconnectReason.cs" />
     <Compile Include="Discovery.cs" />
     <Compile Include="DisconnectMessage.cs" />
+    <Compile Include="EncryptionHandshakeServiceV4.cs" />
     <Compile Include="EthNetworkException.cs" />
     <Compile Include="HelloMessage.cs" />
     <Compile Include="EncryptionHandshakeService.cs" />
+    <Compile Include="IAuthMessage.cs" />
+    <Compile Include="IAuthResponseMessage.cs" />
+    <Compile Include="IEncryptionHandshakeService.cs" />
     <Compile Include="MessageCode.cs" />
     <Compile Include="Node.cs" />
     <Compile Include="NodeDistanceMetric.cs" />

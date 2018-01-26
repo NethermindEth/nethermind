@@ -20,6 +20,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using System.Security;
 using System.Text;
 using Nevermind.Blockchain;
 using Nevermind.Blockchain.Validators;
@@ -238,7 +239,10 @@ namespace Nevermind.JsonRpc.Module
         public ResultWrapper<Data> eth_sign(Data address, Data message)
         {
             //TODO check how to deal with password
-            var privateKey = _keyStore.GetKey(new Address(address.Value), string.Empty);
+            SecureString secureString = new SecureString();
+            secureString.AppendChar('?');
+            
+            var privateKey = _keyStore.GetKey(new Address(address.Value), secureString);
             if (privateKey.Item2.ResultType == ResultType.Failure)
             {
                 return ResultWrapper<Data>.Fail("Incorrect address");

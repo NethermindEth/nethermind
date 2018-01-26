@@ -45,7 +45,7 @@ namespace Nevermind.Core
         }
 
         public int ByteLength => _bytes?.Length ?? _hexString.Length / 2;
-        public int StringLenght => _hexString?.Length ?? _bytes.Length * 2;
+        public int StringLength => _hexString?.Length ?? _bytes.Length * 2;
 
         public bool Equals(Hex obj)
         {

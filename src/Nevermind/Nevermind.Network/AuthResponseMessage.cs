@@ -22,7 +22,7 @@ using Nevermind.Core.Extensions;
 
 namespace Nevermind.Network
 {
-    public class AuthResponseMessage
+    public class AuthResponseMessage : IAuthResponseMessage
     {
         public const int EphemeralPublicKeyLength = 64;
         public const int EphemeralPublicKeyOffset = 0;

@@ -16,11 +16,12 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using Microsoft.VisualStudio.TestTools.UnitTesting;
+using System.Security;
 using Nevermind.Core;
+using Nevermind.Core.Crypto;
 using Nevermind.Json;
 using Nevermind.Utils.Model;
 using NUnit.Framework;
@@ -31,132 +32,154 @@ namespace Nevermind.KeyStore.Test
     [TestFixture]
     public class KeyStoreTests
     {
-        private IKeyStore _store;
-        private IJsonSerializer _serializer;
-        private IConfigurationProvider _configurationProvider;
-        private readonly string _testPass = "testpassword";
-
         [SetUp]
         public void Initialize()
         {
-            _configurationProvider = new ConfigurationProvider();
-            var logger = new ConsoleLogger();
+            _testPasswordSecured = new SecureString();
+            _wrongPasswordSecured = new SecureString();
+
+            for (int i = 0; i < _testPassword.Length; i++)
+            {
+                _testPasswordSecured.AppendChar(_testPassword[i]);
+                _wrongPasswordSecured.AppendChar('*');
+            }
+
+            _testPasswordSecured.MakeReadOnly();
+            _wrongPasswordSecured.MakeReadOnly();
+
+            _configurationProvider = new ConfigurationProvider(Path.GetDirectoryName(Path.Combine(Path.GetTempPath(), "KeyStore")));
+
+            ConsoleLogger logger = new ConsoleLogger();
             _serializer = new JsonSerializer(logger);
-            _store = new FileKeyStore(_configurationProvider, _serializer, new AesEncrypter(_configurationProvider, logger), logger);
+            _cryptoRandom = new CryptoRandom();
+            _store = new FileKeyStore(_configurationProvider, _serializer, new AesEncrypter(_configurationProvider, logger), _cryptoRandom, logger);
+        }
+
+        private IKeyStore _store;
+        private IJsonSerializer _serializer;
+        private IConfigurationProvider _configurationProvider;
+        private ICryptoRandom _cryptoRandom;
+        private SecureString _testPasswordSecured;
+        private SecureString _wrongPasswordSecured;
+        private readonly string _testPassword = "testpassword";
+
+        [Test]
+        public void CryptoVersionMismatchTest()
+        {
+            //generate key
+            (PrivateKey, Result) key = _store.GenerateKey(_testPasswordSecured);
+            Assert.AreEqual(ResultType.Success, key.Item2.ResultType);
+
+            //replace version
+            string filePath = Path.Combine(_configurationProvider.KeyStoreDirectory, key.Item1.Address.ToString());
+            KeyStoreItem item = _serializer.Deserialize<KeyStoreItem>(File.ReadAllText(filePath));
+            item.Crypto.Version = 0;
+            string json = _serializer.Serialize(item);
+            File.WriteAllText(filePath, json);
+
+            //try to read
+            (PrivateKey, Result) key2 = _store.GetKey(key.Item1.Address, _testPasswordSecured);
+            Assert.AreEqual(ResultType.Failure, key2.Item2.ResultType);
+            Assert.AreEqual("Crypto version mismatch", key2.Item2.Error);
+
+            //clean up
+            File.Delete(filePath);
+        }
+
+        [Test]
+        public void GenerateKeyAddressesTest()
+        {
+            Result result;
+            PrivateKey key1;
+            PrivateKey key2;
+
+            File.Create(Path.Combine(_configurationProvider.KeyStoreDirectory, "not_a_key"));
+            
+            (key1, result) = _store.GenerateKey(_testPasswordSecured);
+            Assert.AreEqual(ResultType.Success, result.ResultType, "generate key 1");
+
+            (key2, result) = _store.GenerateKey(_testPasswordSecured);
+            Assert.AreEqual(ResultType.Success, result.ResultType, "generate key 2");
+
+            //get key addreses
+            (IReadOnlyCollection<Address> addresses, Result getAllResult) = _store.GetKeyAddresses();
+            Assert.AreEqual(ResultType.Success, getAllResult.ResultType, "get key");
+            Assert.IsTrue(addresses.Count() >= 2);
+            Assert.IsNotNull(addresses.FirstOrDefault(x => x.Equals(key1.Address)), "key 1 not null");
+            Assert.IsNotNull(addresses.FirstOrDefault(x => x.Equals(key2.Address)), "key 2 not null");
+
+            //delete generated keys
+            result = _store.DeleteKey(key1.Address, _testPasswordSecured);
+            Assert.AreEqual(ResultType.Success, result.ResultType, "delete key 1");
+
+            result = _store.DeleteKey(key2.Address, _testPasswordSecured);
+            Assert.AreEqual(ResultType.Success, result.ResultType, "delete key 2");
         }
 
         [Test]
         public void GenerateKeyTest()
         {
             //generate key
-            var key = _store.GenerateKey(_testPass);
-            Assert.AreEqual(key.Item2.ResultType, ResultType.Success);
+            (PrivateKey, Result) key = _store.GenerateKey(_testPasswordSecured);
+            Assert.AreEqual(ResultType.Success, key.Item2.ResultType);
 
             //get persisted key, verify it matches generated key
-            var persistedKey = _store.GetKey(key.Item1.Address, _testPass);
-            Assert.AreEqual(persistedKey.Item2.ResultType, ResultType.Success);
+            (PrivateKey, Result) persistedKey = _store.GetKey(key.Item1.Address, _testPasswordSecured);
+            Assert.AreEqual(ResultType.Success, persistedKey.Item2.ResultType);
             Assert.IsTrue(key.Item1.Hex.Equals(persistedKey.Item1.Hex));
 
             //delete generated key
-            var result = _store.DeleteKey(key.Item1.Address, _testPass);
-            Assert.AreEqual(result.ResultType, ResultType.Success);
+            Result result = _store.DeleteKey(key.Item1.Address, _testPasswordSecured);
+            Assert.AreEqual(ResultType.Success, result.ResultType);
 
             //get created key, verify it does not exist anymore
-            var deletedKey = _store.GetKey(key.Item1.Address, _testPass);
-            Assert.AreEqual(deletedKey.Item2.ResultType, ResultType.Failure);
-        }
-
-        [Test]
-        public void GenerateKeyAddressesTest()
-        {
-            //generate keys
-            var key = _store.GenerateKey(_testPass);
-            Assert.AreEqual(key.Item2.ResultType, ResultType.Success);
-
-            var key2 = _store.GenerateKey(_testPass);
-            Assert.AreEqual(key2.Item2.ResultType, ResultType.Success);
-
-            //get key addreses
-            var addresses = _store.GetKeyAddresses();
-            Assert.AreEqual(addresses.Item2.ResultType, ResultType.Success);
-            Assert.IsTrue(addresses.Item1.Count() >= 2);
-            Assert.IsNotNull(addresses.Item1.FirstOrDefault(x => x.Equals(key.Item1.Address)));
-            Assert.IsNotNull(addresses.Item1.FirstOrDefault(x => x.Equals(key2.Item1.Address)));
-
-            //delete generated keys
-            var result = _store.DeleteKey(key.Item1.Address, _testPass);
-            Assert.AreEqual(result.ResultType, ResultType.Success);
-
-            var result2 = _store.DeleteKey(key2.Item1.Address, _testPass);
-            Assert.AreEqual(result2.ResultType, ResultType.Success);
-        }
-
-        [Test]
-        public void WrongPasswordTest()
-        {
-            //generate key
-            var key = _store.GenerateKey(_testPass);
-            Assert.AreEqual(key.Item2.ResultType, ResultType.Success);
-
-            //Get with right pass
-            var key2 = _store.GetKey(key.Item1.Address, _testPass);
-            Assert.AreEqual(key2.Item2.ResultType, ResultType.Success);
-            Assert.AreEqual(key2.Item1.Hex, key.Item1.Hex);
-
-            //Try to Get with wrong pass
-            var key3 = _store.GetKey(key.Item1.Address, "wrongpass");
-            Assert.AreEqual(key3.Item2.ResultType, ResultType.Failure);
-            Assert.AreEqual(key3.Item2.Error, "Incorrect MAC");
-
-            //delete generated key
-            var result = _store.DeleteKey(key.Item1.Address, _testPass);
-            Assert.AreEqual(result.ResultType, ResultType.Success);
+            (PrivateKey, Result) deletedKey = _store.GetKey(key.Item1.Address, _testPasswordSecured);
+            Assert.AreEqual(ResultType.Failure, deletedKey.Item2.ResultType);
         }
 
         [Test]
         public void KeyStoreVersionMismatchTest()
         {
             //generate key
-            var key = _store.GenerateKey(_testPass);
-            Assert.AreEqual(key.Item2.ResultType, ResultType.Success);
+            (PrivateKey, Result) key = _store.GenerateKey(_testPasswordSecured);
+            Assert.AreEqual(ResultType.Success, key.Item2.ResultType);
 
             //replace version
-            var filePath = Path.Combine(_configurationProvider.KeyStoreDirectory, key.Item1.Address.ToString());
-            var item = _serializer.Deserialize<KeyStoreItem>(File.ReadAllText(filePath));
+            string filePath = Path.Combine(_configurationProvider.KeyStoreDirectory, key.Item1.Address.ToString());
+            KeyStoreItem item = _serializer.Deserialize<KeyStoreItem>(File.ReadAllText(filePath));
             item.Version = 1;
-            var json = _serializer.Serialize(item);
+            string json = _serializer.Serialize(item);
             File.WriteAllText(filePath, json);
 
             //try to read
-            var key2 = _store.GetKey(key.Item1.Address, _testPass);
-            Assert.AreEqual(key2.Item2.ResultType, ResultType.Failure);
-            Assert.AreEqual(key2.Item2.Error, "KeyStore version mismatch");
+            (PrivateKey, Result) key2 = _store.GetKey(key.Item1.Address, _testPasswordSecured);
+            Assert.AreEqual(ResultType.Failure, key2.Item2.ResultType);
+            Assert.AreEqual("KeyStore version mismatch", key2.Item2.Error);
 
             //clean up
             File.Delete(filePath);
         }
 
         [Test]
-        public void CryptoVersionMismatchTest()
+        public void WrongPasswordTest()
         {
             //generate key
-            var key = _store.GenerateKey(_testPass);
-            Assert.AreEqual(key.Item2.ResultType, ResultType.Success);
+            (PrivateKey, Result) key = _store.GenerateKey(_testPasswordSecured);
+            Assert.AreEqual(ResultType.Success, key.Item2.ResultType);
 
-            //replace version
-            var filePath = Path.Combine(_configurationProvider.KeyStoreDirectory, key.Item1.Address.ToString());
-            var item = _serializer.Deserialize<KeyStoreItem>(File.ReadAllText(filePath));
-            item.Crypto.Version = 0;
-            var json = _serializer.Serialize(item);
-            File.WriteAllText(filePath, json);
+            //Get with right pass
+            (PrivateKey, Result) key2 = _store.GetKey(key.Item1.Address, _testPasswordSecured);
+            Assert.AreEqual(ResultType.Success, key2.Item2.ResultType);
+            Assert.AreEqual(key.Item1.Hex, key2.Item1.Hex);
 
-            //try to read
-            var key2 = _store.GetKey(key.Item1.Address, _testPass);
-            Assert.AreEqual(key2.Item2.ResultType, ResultType.Failure);
-            Assert.AreEqual(key2.Item2.Error, "Crypto version mismatch");
+            //Try to Get with wrong pass
+            (PrivateKey, Result) key3 = _store.GetKey(key.Item1.Address, _wrongPasswordSecured);
+            Assert.AreEqual(ResultType.Failure, key3.Item2.ResultType);
+            Assert.AreEqual("Incorrect MAC", key3.Item2.Error);
 
-            //clean up
-            File.Delete(filePath);
+            //delete generated key
+            Result result = _store.DeleteKey(key.Item1.Address, _testPasswordSecured);
+            Assert.AreEqual(ResultType.Success, result.ResultType);
         }
     }
 }

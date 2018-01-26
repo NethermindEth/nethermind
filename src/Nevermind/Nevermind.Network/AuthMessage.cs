@@ -22,7 +22,7 @@ using Nevermind.Core.Extensions;
 
 namespace Nevermind.Network
 {
-    public class AuthMessage
+    public class AuthMessage : IAuthMessage
     {
         public const int SigLength = 65;
         public const int SigOffset = 0;
