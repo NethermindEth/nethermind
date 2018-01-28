@@ -1,7 +1,27 @@
-﻿using System;
+﻿/*
+ * Copyright (c) 2018 Demerzel Solutions Limited
+ * This file is part of the Nethermind library.
+ *
+ * The Nethermind library is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * The Nethermind library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using Nevermind.Core;
+using Nevermind.Core.Crypto;
 using Nevermind.KeyStore;
 using Nevermind.Utils.Model;
 
@@ -14,6 +34,8 @@ namespace Nevermind.Discovery.RoutingTable
         private readonly IKeyStore _keyStore;
         private readonly ILogger _logger;
         private readonly INodeDistanceCalculator _nodeDistanceCalculator;
+
+        private readonly ConcurrentDictionary<string, Node> _nodes = new ConcurrentDictionary<string, Node>(); 
 
         public NodeTable(IDiscoveryConfigurationProvider configurationProvider, INodeFactory nodeFactory, IKeyStore keyStore, ILogger logger, INodeDistanceCalculator nodeDistanceCalculator)
         {
@@ -33,6 +55,7 @@ namespace Nevermind.Discovery.RoutingTable
         {
             var distanceFromMaster = _nodeDistanceCalculator.CalculateDistance(MasterNode.IdHash, node.IdHash);
             var bucket = Buckets[distanceFromMaster];
+            _nodes.AddOrUpdate(node.IdHashText, node, (x, y) => y);
             return bucket.AddNode(node);
         }
 
@@ -40,7 +63,23 @@ namespace Nevermind.Discovery.RoutingTable
         {
             var distanceFromMaster = _nodeDistanceCalculator.CalculateDistance(MasterNode.IdHash, node.IdHash);
             var bucket = Buckets[distanceFromMaster];
+            _nodes.TryRemove(node.IdHashText, out _);
             bucket.RemoveNode(node);
+        }
+
+        public void ReplaceNode(Node nodeToRemove, Node nodeToAdd)
+        {
+            var distanceFromMaster = _nodeDistanceCalculator.CalculateDistance(MasterNode.IdHash, nodeToAdd.IdHash);
+            var bucket = Buckets[distanceFromMaster];
+            _nodes.AddOrUpdate(nodeToAdd.IdHashText, nodeToAdd, (x, y) => y);
+            _nodes.TryRemove(nodeToRemove.IdHashText, out _);
+            bucket.ReplaceNode(nodeToRemove, nodeToAdd);
+        }
+
+        public Node GetNode(byte[] nodeId)
+        {
+            var key = Keccak.Compute(nodeId).ToString();
+            return _nodes.TryGetValue(key, out var node) ? node : null;
         }
 
         public Node[] GetClosestNodes()

@@ -16,14 +16,13 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nevermind.Discovery.RoutingTable
+namespace Nevermind.Discovery.Lifecycle
 {
-    public class NodeAddResult
+    public enum NodeLifecycleState
     {
-        public NodeAddResultType ResultType { get; set; }
-        public NodeBucketItem EvictionCandidate { get; set; }
-
-        public static NodeAddResult Added() { return new NodeAddResult{ResultType = NodeAddResultType.Added}; }
-        public static NodeAddResult Full(NodeBucketItem evictionCandidate) { return new NodeAddResult { ResultType = NodeAddResultType.Full, EvictionCandidate = evictionCandidate }; }
+        New,
+        Active,
+        EvictCandidate,
+        Unreachable
     }
 }

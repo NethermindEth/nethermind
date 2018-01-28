@@ -17,43 +17,33 @@
  */
 
 using System;
-using System.Linq;
+using Nevermind.Discovery.RoutingTable;
 
 namespace Nevermind.Discovery.Messages
 {
-    public abstract class Message
+    public class MessageFactory : IMessageFactory
     {
-        public byte[] Content { get; set; }
-
-        public byte[] Mdc { get; set; }
-        public byte[] Signature { get; set; }
-        public byte[] Type { get; set; }
-        public byte[] Data { get; set; }
-
-        public string Host { get; set; }
-        public int Port { get; set; }
-
-        public byte[] GetNodeId()
+        public Message CreateMessage(MessageType messageType, Node destination)
         {
-            //TODO recover public key from signature
-            return Signature;
-        }
-
-        public MessageType? MessageType => Type != null && Type.Any() ? GetMessageType() : (MessageType?)null;
-
-        public override string ToString()
-        {
-            return $"Type: {MessageType}, NodeId: {GetNodeId()}, Host: {Host}, Port: {Port}";
-        }
-
-        private MessageType? GetMessageType()
-        {
-            if (Enum.TryParse(Type[0].ToString(), out MessageType msgType))
+            switch (messageType)
             {
-                return msgType;
+                case MessageType.FindNode:
+                    return CreateFindNodeMessage(destination);
+                case MessageType.Ping:
+                    return CreatePingMessage(destination);
+                default:
+                    throw new Exception($"Unsupported message type: {messageType}");
             }
+        }
 
-            return null;
+        private Message CreateFindNodeMessage(Node destination)
+        {
+            return new FindNodeMessage();
+        }
+
+        private Message CreatePingMessage(Node destination)
+        {
+            return new PingMessage();
         }
     }
 }

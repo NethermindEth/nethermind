@@ -40,7 +40,14 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Lifecycle\EvictionManager.cs" />
+    <Compile Include="Lifecycle\EvictionPair.cs" />
+    <Compile Include="Lifecycle\IEvictionManager.cs" />
+    <Compile Include="Lifecycle\INodeLifecycleManager.cs" />
+    <Compile Include="Lifecycle\INodeLifecycleManagerFactory.cs" />
     <Compile Include="INodesLocator.cs" />
+    <Compile Include="Lifecycle\NodeLifecycleState.cs" />
+    <Compile Include="Messages\IMessageFactory.cs" />
     <Compile Include="Messages\Message.cs" />
     <Compile Include="DiscoveryConfigurationProvider.cs" />
     <Compile Include="DiscoveryManager.cs" />
@@ -48,6 +55,9 @@
     <Compile Include="IDiscoveryConfigurationProvider.cs" />
     <Compile Include="IDiscoveryManager.cs" />
     <Compile Include="Encoders\IMessageEncoder.cs" />
+    <Compile Include="Messages\MessageFactory.cs" />
+    <Compile Include="Lifecycle\NodeLifecycleManager.cs" />
+    <Compile Include="Lifecycle\NodeLifecycleManagerFactory.cs" />
     <Compile Include="NodesLocator.cs" />
     <Compile Include="RoutingTable\INodeBucket.cs" />
     <Compile Include="RoutingTable\INodeBucketItem.cs" />

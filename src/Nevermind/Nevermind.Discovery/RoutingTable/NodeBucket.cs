@@ -1,10 +1,31 @@
-﻿using System.Collections.Generic;
+﻿/*
+ * Copyright (c) 2018 Demerzel Solutions Limited
+ * This file is part of the Nethermind library.
+ *
+ * The Nethermind library is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * The Nethermind library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+using System;
+using System.Collections.Generic;
 using System.Linq;
 
 namespace Nevermind.Discovery.RoutingTable
 {
     public class NodeBucket : INodeBucket
     {
+        private readonly object _nodeBucketLock = new object();
+
         public NodeBucket(int distance, int bucketSize)
         {
             Items = new SortedSet<NodeBucketItem>(new LastContactTimeComparer());
@@ -21,26 +42,49 @@ namespace Nevermind.Discovery.RoutingTable
 
         public NodeAddResult AddNode(Node node)
         {
-            if (Items.Count < BucketSize)
+            lock (_nodeBucketLock)
             {
-                var item = new NodeBucketItem(node);
-                if (!Items.Contains(item))
+                if (Items.Count < BucketSize)
                 {
-                    Items.Add(item);
-                }                
-                return NodeAddResult.Added();
-            }
+                    var item = new NodeBucketItem(node);
+                    if (!Items.Contains(item))
+                    {
+                        Items.Add(item);
+                    }
+                    return NodeAddResult.Added();
+                }
 
-            var evictionCandidate = GetEvictionCandidate();
-            return NodeAddResult.Full(evictionCandidate);
+                var evictionCandidate = GetEvictionCandidate();
+                return NodeAddResult.Full(evictionCandidate);
+            }  
         }
 
         public void RemoveNode(Node node)
         {
-            var item = new NodeBucketItem(node);
-            if (Items.Contains(item))
+            lock (_nodeBucketLock)
             {
-                Items.Remove(item);
+                var item = new NodeBucketItem(node);
+                if (Items.Contains(item))
+                {
+                    Items.Remove(item);
+                }
+            }
+        }
+
+        public void ReplaceNode(Node nodeToRemove, Node nodeToAdd)
+        {
+            lock (_nodeBucketLock)
+            {
+                var item = new NodeBucketItem(nodeToRemove);
+                if (Items.Contains(item))
+                {
+                    Items.Remove(item);
+                }
+                item = new NodeBucketItem(nodeToAdd);
+                if (!Items.Contains(item))
+                {
+                    Items.Add(item);
+                }
             }
         }
 

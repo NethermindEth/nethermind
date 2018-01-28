@@ -1,7 +1,26 @@
-﻿using System.Collections.Generic;
+﻿/*
+ * Copyright (c) 2018 Demerzel Solutions Limited
+ * This file is part of the Nethermind library.
+ *
+ * The Nethermind library is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * The Nethermind library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Nevermind.Core;
+using Nevermind.Discovery.Messages;
 using Nevermind.Discovery.RoutingTable;
 using Nevermind.Utils.Model;
 
@@ -54,7 +73,7 @@ namespace Nevermind.Discovery
                     nodesTriedCount += nodesToSend.Length;
                     alreadyTriedNodes.AddRange(nodesToSend.Select(x => x.IdHashText));
 
-                    var results = await SendFineNode(nodesToSend);
+                    var results = await SendFindNode(nodesToSend);
                     
                     foreach (var result in results)
                     {
@@ -78,7 +97,7 @@ namespace Nevermind.Discovery
             _logger.Log($"Finished locating nodes, triedNodesCount: {alreadyTriedNodes.Count}");
         }
 
-        private async Task<Result[]> SendFineNode(Node[] nodesToSend)
+        private async Task<Result[]> SendFindNode(Node[] nodesToSend)
         {
             var sendFindNodeTasks = new List<Task<Result>>();
             foreach (var node in nodesToSend)
@@ -92,7 +111,19 @@ namespace Nevermind.Discovery
 
         public async Task<Result> SendFindNode(Node destinationNode)
         {
-            return await Task.Run(() => { return Result.Success(); });
+            return await Task.Run(() => SendFindNodeSync(destinationNode));
+        }
+
+        private Result SendFindNodeSync(Node destinationNode)
+        {
+            var nodeManager = _discoveryManager.GetNodeLifecycleManager(destinationNode);
+            nodeManager.SendFindNode(_masterNode);
+
+            if (_discoveryManager.WasMessageReceived(destinationNode.IdHashText, MessageType.Neighbors, _configurationProvider.SendNodeTimeout))
+            {
+                return Result.Success();
+            }
+            return Result.Fail($"Did not receive Neighbors reponse in time from: {destinationNode.Host}");
         }
     }
 }
