@@ -53,12 +53,15 @@
     <Compile Include="AuthResponseEip8MessageSerializer.cs" />
     <Compile Include="BouncyCrypto.cs" />
     <Compile Include="Capability.cs" />
+    <Compile Include="ConcatKdfBytesGenerator.cs" />
     <Compile Include="DisconnectReason.cs" />
     <Compile Include="Discovery.cs" />
     <Compile Include="DisconnectMessage.cs" />
+    <Compile Include="EciesCoder.cs" />
     <Compile Include="Eip8MessagePad.cs" />
     <Compile Include="EncryptionHandshake.cs" />
     <Compile Include="EncryptionSecrets.cs" />
+    <Compile Include="EthereumIesEngine.cs" />
     <Compile Include="EthNetworkException.cs" />
     <Compile Include="HelloMessage.cs" />
     <Compile Include="EncryptionHandshakeService.cs" />

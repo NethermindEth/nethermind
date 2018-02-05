@@ -52,6 +52,7 @@
     <Compile Include="AuthEip8MessageSerializerTests.cs" />
     <Compile Include="AuthResponseEip8MessageSerializerTests.cs" />
     <Compile Include="BouncyCryptoTests.cs" />
+    <Compile Include="EciesCoderTests.cs" />
     <Compile Include="Eip8MessagePadTests.cs" />
     <Compile Include="EncryptionHandshakeServiceTests.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />

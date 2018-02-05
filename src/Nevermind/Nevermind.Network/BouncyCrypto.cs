@@ -14,7 +14,7 @@ namespace Nevermind.Network
 {
     public static class BouncyCrypto
     {
-        private static readonly ECDomainParameters DomainParameters;
+        public static readonly ECDomainParameters DomainParameters;
         private static readonly SecureRandom SecureRandom = new SecureRandom();
         private static readonly ECKeyPairGenerator KeyPairGenerator;
 
@@ -32,7 +32,7 @@ namespace Nevermind.Network
             KeyPairGenerator = generator;
         }
 
-        private static (ECPrivateKeyParameters, ECPublicKeyParameters) GenerateKeyPair()
+        public static (ECPrivateKeyParameters, ECPublicKeyParameters) GenerateKeyPair()
         {
             AsymmetricCipherKeyPair keyPairParemeters = KeyPairGenerator.GenerateKeyPair();
             ECPrivateKeyParameters privateKeyParameters = (ECPrivateKeyParameters)keyPairParemeters.Private;
@@ -40,18 +40,18 @@ namespace Nevermind.Network
             return (privateKeyParameters, publicKeyParameters);
         }
 
-        private static (ECPrivateKeyParameters, ECPublicKeyParameters) WrapKeyPair(byte[] privateKey, byte[] publicKey)
+        public static (ECPrivateKeyParameters, ECPublicKeyParameters) WrapKeyPair(byte[] privateKey, byte[] publicKey)
         {
             return (WrapPrivateKey(privateKey), WrapPublicKey(publicKey));
         }
 
-        private static ECPrivateKeyParameters WrapPrivateKey(byte[] bytes)
+        public static ECPrivateKeyParameters WrapPrivateKey(byte[] bytes)
         {
             BigInteger d = new BigInteger(1, bytes);
             return new ECPrivateKeyParameters(d, DomainParameters);
         }
 
-        private static ECPublicKeyParameters WrapPublicKey(byte[] bytes)
+        public static ECPublicKeyParameters WrapPublicKey(byte[] bytes)
         {
             ECPoint point = DomainParameters.Curve.DecodePoint(bytes);
             return new ECPublicKeyParameters(point, DomainParameters);
