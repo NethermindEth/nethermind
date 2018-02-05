@@ -25,12 +25,20 @@ using Nevermind.Core.Extensions;
 
 namespace Nevermind.Core.Encoding
 {
+    [Flags]
+    public enum RlpBehaviors
+    {
+        None,
+        AllowExtraData,
+        All
+    }
+    
     /// <summary>
     /// https://github.com/ethereum/wiki/wiki/RLP
     /// </summary>
     //[DebuggerStepThrough]
     public class Rlp : IEquatable<Rlp>
-    {
+    {   
         public static readonly Rlp OfEmptyByteArray = new Rlp(128);
 
         public static readonly Rlp OfEmptySequence = new Rlp(192);
@@ -68,17 +76,17 @@ namespace Nevermind.Core.Encoding
 
             return Extensions.Bytes.UnsafeCompare(Bytes, other.Bytes);
         }
-
-        public static object Decode(Rlp rlp)
+        
+        public static object Decode(Rlp rlp, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            return Decode(new DecoderContext(rlp.Bytes));
+            return Decode(new DecoderContext(rlp.Bytes), rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraData));
         }
 
-        private static object Decode(DecoderContext context, bool check = true)
+        private static object Decode(DecoderContext context, bool allowExtraData)
         {
             object CheckAndReturn(List<object> resultToCollapse, DecoderContext contextToCheck)
             {
-                if (check && contextToCheck.CurrentIndex != contextToCheck.MaxIndex)
+                if (!allowExtraData && contextToCheck.CurrentIndex != contextToCheck.MaxIndex)
                 {
                     throw new RlpException("Invalid RLP length");
                 }
@@ -171,7 +179,7 @@ namespace Nevermind.Core.Encoding
             List<object> nestedList = new List<object>();
             while (context.CurrentIndex < startIndex + concatenationLength)
             {
-                nestedList.Add(Decode(context, false));
+                nestedList.Add(Decode(context, true));
             }
 
             result.Add(nestedList.ToArray());
