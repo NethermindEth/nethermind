@@ -27,7 +27,25 @@ namespace Nevermind.Network
             _cryptoRandom = cryptoRandom;
         }
 
-        public byte[] Decrypt(ECPoint ephem, BigInteger prv, byte[] IV, byte[] cipher, byte[] macData)
+        public byte[] Decrypt(ECPrivateKeyParameters privKey, byte[] cipher, byte[] macData = null)
+        {
+            MemoryStream inputStream = new MemoryStream(cipher);
+            int ephemBytesLength = 2 * ((BouncyCrypto.DomainParameters.Curve.FieldSize + 7) / 8) + 1;
+
+            byte[] ephemBytes = new byte[ephemBytesLength];
+            inputStream.Read(ephemBytes, 0, ephemBytesLength);
+            ECPoint ephem = BouncyCrypto.DomainParameters.Curve.DecodePoint(ephemBytes);
+            byte[] IV = new byte[KeySize / 8];
+            inputStream.Read(IV, 0, IV.Length);
+            byte[] cipherBody = new byte[inputStream.Length - inputStream.Position];
+            inputStream.Read(cipherBody, 0, cipherBody.Length);
+
+            byte[] plaintext = Decrypt(ephem, privKey, IV, cipherBody, macData);
+
+            return plaintext;
+        }
+
+        public byte[] Decrypt(ECPoint ephem, ECPrivateKeyParameters prv, byte[] IV, byte[] cipher, byte[] macData)
         {
             AesFastEngine aesFastEngine = new AesFastEngine();
 
@@ -46,7 +64,7 @@ namespace Nevermind.Network
             ParametersWithIV parametersWithIV =
                 new ParametersWithIV(p, IV);
 
-            iesEngine.Init(false, new ECPrivateKeyParameters(prv, BouncyCrypto.DomainParameters), new ECPublicKeyParameters(ephem, BouncyCrypto.DomainParameters), parametersWithIV);
+            iesEngine.Init(false, prv, new ECPublicKeyParameters(ephem, BouncyCrypto.DomainParameters), parametersWithIV);
 
             return iesEngine.ProcessBlock(cipher, 0, cipher.Length, macData);
         }

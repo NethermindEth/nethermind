@@ -24,17 +24,30 @@ namespace Nevermind.Network
 {
     public class AuthMessageSerializer : IMessageSerializer<AuthMessage>
     {
-        public const int SigLength = 65;
         public const int SigOffset = 0;
-        public const int EphemeralHashLength = 32;
+        public const int SigLength = 65;
         public const int EphemeralHashOffset = SigOffset + SigLength;
-        public const int PublicKeyLength = 64;
+        public const int EphemeralHashLength = 32;
         public const int PublicKeyOffset = EphemeralHashOffset + EphemeralHashLength;
+        public const int PublicKeyLength = 64;
+        public const int NonceOffset = PublicKeyOffset + PublicKeyLength;
         public const int NonceLength = 32;
-        public const int NonceOffset = PublicKeyOffset + PublicKeyOffset;
         public const int IsTokenUsedLength = 1;
         public const int IsTokenUsedOffset = NonceOffset + NonceLength;
         public const int Length = IsTokenUsedOffset + IsTokenUsedLength;
+        
+        //  65 (sig)
+        //  32 (ephem hash)
+        //  64 (pub)
+        //  32 (nonce)
+        //   1 (token used)
+        // =============
+        // 194 (content)
+        //  65 (pub)
+        //  16 (IV)
+        //  32 (MAC)
+        // =============
+        // 307 (total)
 
         public byte[] Serialize(AuthMessage message, IMessagePad messagePad = null)
         {
