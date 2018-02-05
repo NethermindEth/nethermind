@@ -28,11 +28,7 @@ namespace Nevermind.Core.Crypto
         private const int PublicKeyLengthInBytes = 64;
         private Address _address;
 
-        public PublicKey(byte[] bytes, byte[] compressedBytes)
-            : this(bytes)
-        {
-            CompressedBytes = compressedBytes;
-        }
+        private byte[] _prefixedBytes;
 
         public PublicKey(byte[] bytes)
         {
@@ -51,25 +47,17 @@ namespace Nevermind.Core.Crypto
                 throw new ArgumentException($"Expected prefix of 0x04 for {PublicKeyWithPrefixLengthInBytes} bytes long {nameof(PublicKey)}");
             }
 
-            PrefixedBytes[0] = 0x04;
-            Buffer.BlockCopy(bytes, bytes.Length - PublicKeyLengthInBytes, PrefixedBytes, 1, 64);
-        }
-
-        private Address ComputeAddress()
-        {
-            byte[] bytes = new byte[64];
-            Buffer.BlockCopy(PrefixedBytes, 1, bytes, 0, 64);
-            byte[] hash = Keccak.Compute(bytes).Bytes;
-            byte[] last160Bits = new byte[20];
-            Buffer.BlockCopy(hash, 12, last160Bits, 0, 20);
-            return new Address(last160Bits);
+            Bytes = bytes.Slice(bytes.Length - 64, 64);
         }
 
         public Address Address => LazyInitializer.EnsureInitialized(ref _address, ComputeAddress);
 
-        public byte[] PrefixedBytes { get; } = new byte[65];
+        public byte[] Bytes { get; }
 
-        private byte[] CompressedBytes { get; }
+        public byte[] PrefixedBytes
+        {
+            get { return LazyInitializer.EnsureInitialized(ref _prefixedBytes, () => Extensions.Bytes.Concat(0x04, Bytes)); }
+        }
 
         public bool Equals(PublicKey other)
         {
@@ -77,8 +65,16 @@ namespace Nevermind.Core.Crypto
             {
                 return false;
             }
-            
-            return Bytes.UnsafeCompare(PrefixedBytes, other.PrefixedBytes);
+
+            return Extensions.Bytes.UnsafeCompare(Bytes, other.Bytes);
+        }
+
+        private Address ComputeAddress()
+        {
+            byte[] hash = Keccak.Compute(Bytes).Bytes;
+            byte[] last160Bits = new byte[20];
+            Buffer.BlockCopy(hash, 12, last160Bits, 0, 20);
+            return new Address(last160Bits);
         }
 
         public override bool Equals(object obj)
@@ -88,12 +84,12 @@ namespace Nevermind.Core.Crypto
 
         public override int GetHashCode()
         {
-            return PrefixedBytes.GetXxHashCode();
+            return Bytes.GetXxHashCode();
         }
 
         public override string ToString()
         {
-            return Hex.FromBytes(PrefixedBytes, true);
+            return Hex.FromBytes(Bytes, true);
         }
     }
 }

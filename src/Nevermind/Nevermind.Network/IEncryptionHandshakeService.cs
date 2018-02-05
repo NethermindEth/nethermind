@@ -22,10 +22,10 @@ namespace Nevermind.Network
 {
     public interface IEncryptionHandshakeService
     {
-        AuthV4Message InitV4(EncryptionHandshake handshake, PrivateKey privateKey);
-        AuthResponseMessage Respond(EncryptionHandshake handshake, AuthMessage authMessage);
-        AuthResponseV4Message Respond(EncryptionHandshake handshake, AuthV4Message authMessage);
-        void HandleResponse(EncryptionHandshake handshake, AuthResponseV4Message responseMessage);
+        AuthEip8Message Init(EncryptionHandshake handshake, PrivateKey privateKey);
+        AuthResponseMessage Respond(EncryptionHandshake handshake, AuthMessage authMessage, PrivateKey privateKey);
+        AuthResponseEip8Message Respond(EncryptionHandshake handshake, AuthEip8Message authMessage, PrivateKey privateKey);
+        void HandleResponse(EncryptionHandshake handshake, AuthResponseEip8Message responseMessage);
         void HandleResponse(EncryptionHandshake handshake, AuthResponseMessage responseMessage);
     }
 }

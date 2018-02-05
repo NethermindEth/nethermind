@@ -26,9 +26,9 @@ namespace Nevermind.Core.Crypto
         private readonly RandomNumberGenerator _secureRandom = new RNGCryptoServiceProvider();
         private readonly Random _random = new Random();
 
-        public byte[] GenerateRandomBytes(int lenght)
+        public byte[] GenerateRandomBytes(int length)
         {
-            byte[] bytes = new byte[lenght];
+            byte[] bytes = new byte[length];
             _secureRandom.GetBytes(bytes);
             return bytes;
         }

@@ -45,12 +45,13 @@
   <ItemGroup>
     <Compile Include="AuthMessage.cs" />
     <Compile Include="AuthMessageSerializer.cs" />
-    <Compile Include="AuthV4Message.cs" />
-    <Compile Include="AuthV4MessageSerializer.cs" />
+    <Compile Include="AuthEip8Message.cs" />
+    <Compile Include="AuthEip8MessageSerializer.cs" />
     <Compile Include="AuthResponseMessage.cs" />
     <Compile Include="AuthResponseMessageSerializer.cs" />
-    <Compile Include="AuthResponseV4Message.cs" />
-    <Compile Include="AuthResponseV4MessageSerializer.cs" />
+    <Compile Include="AuthResponseEip8Message.cs" />
+    <Compile Include="AuthResponseEip8MessageSerializer.cs" />
+    <Compile Include="BouncyCrypto.cs" />
     <Compile Include="Capability.cs" />
     <Compile Include="DisconnectReason.cs" />
     <Compile Include="Discovery.cs" />

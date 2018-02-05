@@ -35,7 +35,7 @@ namespace Nevermind.Network
         public byte[] Serialize(AuthResponseMessage message, IMessagePad messagePad = null)
         {
             byte[] data = new byte[TotalLength];
-            Buffer.BlockCopy(message.EphemeralPublicKey.PrefixedBytes, 1, data, EphemeralPublicKeyOffset, EphemeralPublicKeyLength);
+            Buffer.BlockCopy(message.EphemeralPublicKey.Bytes, 0, data, EphemeralPublicKeyOffset, EphemeralPublicKeyLength);
             Buffer.BlockCopy(message.Nonce, 0, data, NonceOffset, NonceLength);
             data[IsTokenUsedOffset] = message.IsTokenUsed ? (byte)0x01 : (byte)0x00;
             return messagePad?.Pad(data) ?? data;

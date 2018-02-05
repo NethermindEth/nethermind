@@ -24,7 +24,7 @@ using NUnit.Framework;
 namespace Nevermind.Network.Test
 {
     [TestFixture]
-    public class AuthResponseMessageV4Tests
+    public class AuthResponseEip8MessageSerializerTests
     {
         private const string TestPrivateKeyHex = "0x3a1076bf45ab87712ad64ccb3b10217737f7faacbf2872e88fdd9a537d8fe266";
 
@@ -32,16 +32,16 @@ namespace Nevermind.Network.Test
 
         private readonly PrivateKey _privateKey = new PrivateKey(TestPrivateKeyHex);
 
-        private readonly AuthResponseV4MessageSerializer _serializer = new AuthResponseV4MessageSerializer();
+        private readonly AuthResponseEip8MessageSerializer _serializer = new AuthResponseEip8MessageSerializer();
 
         private void TestEncodeDecode()
         {
-            AuthResponseV4Message before = new AuthResponseV4Message();
+            AuthResponseEip8Message before = new AuthResponseEip8Message();
             before.EphemeralPublicKey = _privateKey.PublicKey;
-            before.Nonce = new byte[AuthResponseV4MessageSerializer.NonceLength];
+            before.Nonce = new byte[AuthResponseEip8MessageSerializer.NonceLength];
             _random.NextBytes(before.Nonce);
             byte[] data = _serializer.Serialize(before);
-            AuthResponseV4Message after = _serializer.Deserialize(data);
+            AuthResponseEip8Message after = _serializer.Deserialize(data);
 
             Assert.AreEqual(before.EphemeralPublicKey, after.EphemeralPublicKey);
             Assert.True(Bytes.UnsafeCompare(before.Nonce, after.Nonce));

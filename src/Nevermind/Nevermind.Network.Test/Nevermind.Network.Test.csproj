@@ -34,9 +34,14 @@
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
   <ItemGroup>
+    <Reference Include="BouncyCastle.Crypto, Version=1.8.1.0, Culture=neutral, PublicKeyToken=0e99375e54769942">
+      <HintPath>..\packages\BouncyCastle.1.8.1\lib\BouncyCastle.Crypto.dll</HintPath>
+    </Reference>
     <Reference Include="nunit.framework, Version=3.9.0.0, Culture=neutral, PublicKeyToken=2638cd05610744eb">
       <HintPath>..\packages\NUnit.3.9.0\lib\net45\nunit.framework.dll</HintPath>
     </Reference>
+    <Reference Include="System" />
+    <Reference Include="System.Collections" />
     <Reference Include="System.Core" />
     <Reference Include="System.Data" />
     <Reference Include="System.Xml" />
@@ -44,8 +49,10 @@
   <ItemGroup>
     <Compile Include="AuthResponseMessageSerializerTests.cs" />
     <Compile Include="AuthMessageSerializerTests.cs" />
-    <Compile Include="AuthV4MessageSerializerTests.cs" />
-    <Compile Include="AuthResponseV4MessageSerializerTests.cs" />
+    <Compile Include="AuthEip8MessageSerializerTests.cs" />
+    <Compile Include="AuthResponseEip8MessageSerializerTests.cs" />
+    <Compile Include="BouncyCryptoTests.cs" />
+    <Compile Include="Eip8MessagePadTests.cs" />
     <Compile Include="EncryptionHandshakeServiceTests.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>

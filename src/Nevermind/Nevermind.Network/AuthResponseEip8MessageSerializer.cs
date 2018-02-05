@@ -22,7 +22,7 @@ using Nevermind.Core.Extensions;
 
 namespace Nevermind.Network
 {
-    public class AuthResponseV4MessageSerializer : IMessageSerializer<AuthResponseV4Message>
+    public class AuthResponseEip8MessageSerializer : IMessageSerializer<AuthResponseEip8Message>
     {
         public const int EphemeralPublicKeyLength = 64;
         public const int EphemeralPublicKeyOffset = 0;
@@ -31,10 +31,10 @@ namespace Nevermind.Network
         public const int VersionOffset = NonceOffset + NonceLength;
         public const int TotalLength = EphemeralPublicKeyLength + NonceLength;
 
-        public byte[] Serialize(AuthResponseV4Message message, IMessagePad messagePad = null)
+        public byte[] Serialize(AuthResponseEip8Message message, IMessagePad messagePad = null)
         {
             byte[] data = Rlp.Encode(
-                Rlp.Encode(message.EphemeralPublicKey.PrefixedBytes.Slice(1, 64)),
+                Rlp.Encode(message.EphemeralPublicKey.Bytes),
                 Rlp.Encode(message.Nonce),
                 Rlp.Encode(message.Version)
             ).Bytes;
@@ -42,16 +42,16 @@ namespace Nevermind.Network
             return messagePad?.Pad(data) ?? data;
         }
 
-        public AuthResponseV4Message Deserialize(byte[] bytes)
+        public AuthResponseEip8Message Deserialize(byte[] bytes)
         {
             Rlp rlp = new Rlp(bytes);
             object[] decodedRaw = (object[])Rlp.Decode(rlp);
 
-            AuthResponseV4Message authV4Message = new AuthResponseV4Message();
-            authV4Message.EphemeralPublicKey = new PublicKey((byte[])decodedRaw[0]);
-            authV4Message.Nonce = (byte[])decodedRaw[1];
+            AuthResponseEip8Message authEip8Message = new AuthResponseEip8Message();
+            authEip8Message.EphemeralPublicKey = new PublicKey((byte[])decodedRaw[0]);
+            authEip8Message.Nonce = (byte[])decodedRaw[1];
             // TODO: check the version? /Postel
-            return authV4Message;
+            return authEip8Message;
         }
     }
 }

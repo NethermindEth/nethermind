@@ -42,7 +42,7 @@ namespace Nevermind.Network
             Buffer.BlockCopy(message.Signature.Bytes, 0, data, SigOffset, SigLength - 1);
             data[SigLength - 1] = message.Signature.V;
             Buffer.BlockCopy(message.EphemeralPublicHash.Bytes, 0, data, EphemeralHashOffset, EphemeralHashLength);
-            Buffer.BlockCopy(message.PublicKey.PrefixedBytes, 1, data, PublicKeyOffset, PublicKeyLength);
+            Buffer.BlockCopy(message.PublicKey.Bytes, 0, data, PublicKeyOffset, PublicKeyLength);
             Buffer.BlockCopy(message.Nonce, 0, data, NonceOffset, NonceLength);
             data[IsTokenUsedOffset] = message.IsTokenUsed ? (byte)0x01 : (byte)0x00;
             return messagePad?.Pad(data) ?? data;

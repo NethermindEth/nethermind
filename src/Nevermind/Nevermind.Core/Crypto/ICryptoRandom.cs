@@ -2,7 +2,7 @@
 {
     public interface ICryptoRandom
     {
-        byte[] GenerateRandomBytes(int lenght);
+        byte[] GenerateRandomBytes(int length);
         int NextInt(int max);
     }
 }

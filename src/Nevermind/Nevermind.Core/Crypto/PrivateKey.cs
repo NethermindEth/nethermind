@@ -18,6 +18,7 @@
 
 using System;
 using System.Threading;
+using Secp256k1.Proxy;
 
 namespace Nevermind.Core.Crypto
 {
@@ -44,14 +45,41 @@ namespace Nevermind.Core.Crypto
 
         public Hex Hex { get; }
 
-        private PublicKey ComputePublicKey()
-        {
-            return new PublicKey(Secp256k1.Proxy.Proxy.GetPublicKey(Hex, false));
-        }
-
         public PublicKey PublicKey => LazyInitializer.EnsureInitialized(ref _publicKey, ComputePublicKey);
 
         public Address Address => PublicKey.Address;
+
+        protected bool Equals(PrivateKey other)
+        {
+            return Hex.Equals(other.Hex);
+        }
+
+        public override bool Equals(object obj)
+        {
+            if (ReferenceEquals(null, obj))
+            {
+                return false;
+            }
+            if (ReferenceEquals(this, obj))
+            {
+                return true;
+            }
+            if (obj.GetType() != GetType())
+            {
+                return false;
+            }
+            return Equals((PrivateKey)obj);
+        }
+
+        public override int GetHashCode()
+        {
+            return Hex.GetHashCode();
+        }
+
+        private PublicKey ComputePublicKey()
+        {
+            return new PublicKey(Proxy.GetPublicKey(Hex, false));
+        }
 
         public override string ToString()
         {

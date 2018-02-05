@@ -23,13 +23,13 @@ using Nevermind.Core.Extensions;
 
 namespace Nevermind.Network
 {
-    public class AuthV4MessageSerializer : IMessageSerializer<AuthV4Message>
+    public class AuthEip8MessageSerializer : IMessageSerializer<AuthEip8Message>
     {
-        public byte[] Serialize(AuthV4Message message, IMessagePad messagePad = null)
+        public byte[] Serialize(AuthEip8Message message, IMessagePad messagePad = null)
         {
             byte[] data = Rlp.Encode(
                 Rlp.Encode(Bytes.Concat(message.Signature.Bytes, message.Signature.V)),
-                Rlp.Encode(message.PublicKey.PrefixedBytes.Slice(1, 64)),
+                Rlp.Encode(message.PublicKey.Bytes),
                 Rlp.Encode(message.Nonce),
                 Rlp.Encode(message.Version)
             ).Bytes;
@@ -37,16 +37,16 @@ namespace Nevermind.Network
             return messagePad?.Pad(data) ?? data;
         }
 
-        public AuthV4Message Deserialize(byte[] data)
+        public AuthEip8Message Deserialize(byte[] data)
         {
             Rlp rlp = new Rlp(data);
             object[] decodedRaw = (object[])Rlp.Decode(rlp);
-            AuthV4Message authMessage = new AuthV4Message();
+            AuthEip8Message authMessage = new AuthEip8Message();
             Signature signature = new Signature((byte[])decodedRaw[0]);
             authMessage.Signature = signature;
             authMessage.PublicKey = new PublicKey((byte[])decodedRaw[1]);
             authMessage.Nonce = (byte[])decodedRaw[2];
-            Debug.Assert(((byte[])decodedRaw[3]).ToInt32() == 4, $"Expected {nameof(AuthV4Message.Version)} to be 4");
+            Debug.Assert(((byte[])decodedRaw[3]).ToInt32() == 4, $"Expected {nameof(AuthEip8Message.Version)} to be 4");
             return authMessage;
         }
     }

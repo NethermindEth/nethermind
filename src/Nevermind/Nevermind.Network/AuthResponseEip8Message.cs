@@ -22,7 +22,7 @@ using Nevermind.Core.Extensions;
 
 namespace Nevermind.Network
 {
-    public class AuthResponseV4Message : MessageBase
+    public class AuthResponseEip8Message : MessageBase
     {
         public PublicKey EphemeralPublicKey { get; set; }
         public byte[] Nonce { get; set; }

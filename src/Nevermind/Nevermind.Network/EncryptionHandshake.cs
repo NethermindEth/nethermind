@@ -22,12 +22,11 @@ namespace Nevermind.Network
 {
     public class EncryptionHandshake
     {
-        public Node Remote { get; set; }
         public EncryptionSecrets Secrets { get; set; }
         public byte[] InitiatorNonce { get; set; }
         public byte[] ResponderNonce { get; set; }
         public PublicKey RemotePublicKey { get; set; }
-        public PublicKey RemoteEphemeralKey { get; set; }
-        public PrivateKey EphemeralKey { get; set; }
+        public PublicKey RemoteEphemeralPublicKey { get; set; }
+        public PrivateKey EphemeralPrivateKey { get; set; }
     }
 }

@@ -27,7 +27,7 @@ using NUnit.Framework;
 namespace Nevermind.Network.Test
 {
     [TestFixture]
-    public class AuthV4MessageSerializerTests
+    public class AuthEip8MessageSerializerTests
     {
         private const string TestPrivateKeyHex = "0x3a1076bf45ab87712ad64ccb3b10217737f7faacbf2872e88fdd9a537d8fe266";
 
@@ -35,17 +35,17 @@ namespace Nevermind.Network.Test
 
         private readonly PrivateKey _privateKey = new PrivateKey(TestPrivateKeyHex);
 
-        private readonly AuthV4MessageSerializer _serializer = new AuthV4MessageSerializer();
+        private readonly AuthEip8MessageSerializer _serializer = new AuthEip8MessageSerializer();
 
         private void TestEncodeDecode(Signer signer)
         {
-            AuthV4Message authMessage = new AuthV4Message();
+            AuthEip8Message authMessage = new AuthEip8Message();
             authMessage.Nonce = new byte[AuthMessageSerializer.NonceLength]; // sic!
             authMessage.Signature = signer.Sign(_privateKey, Keccak.Compute("anything"));
             authMessage.PublicKey = _privateKey.PublicKey;
             _random.NextBytes(authMessage.Nonce);
             byte[] data = _serializer.Serialize(authMessage);
-            AuthV4Message after = _serializer.Deserialize(data);
+            AuthEip8Message after = _serializer.Deserialize(data);
 
             Assert.AreEqual(authMessage.Signature, after.Signature);
             Assert.AreEqual(authMessage.PublicKey, after.PublicKey);
@@ -96,7 +96,7 @@ namespace Nevermind.Network.Test
             object helloRlp = Rlp.Decode(new Rlp(Hex.ToBytes(hello)));
 
 
-            AuthV4Message message = _serializer.Deserialize(Hex.ToBytes(auth));
+            AuthEip8Message message = _serializer.Deserialize(Hex.ToBytes(auth));
         }
     }
 }

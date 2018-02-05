@@ -20,7 +20,7 @@ using Nevermind.Core.Crypto;
 
 namespace Nevermind.Network
 {
-    public class AuthV4Message : MessageBase
+    public class AuthEip8Message : MessageBase
     {
         public Signature Signature { get; set; }
         public PublicKey PublicKey { get; set; }
