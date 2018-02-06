@@ -27,8 +27,6 @@ namespace Nevermind.Network
     /// </summary>
     public class EncryptionHandshakeService : IEncryptionHandshakeService
     {
-        // TODO: DRY with V4 here, review after sync finished
-
         private readonly ICryptoRandom _cryptoRandom;
         private readonly IEciesCipher _eciesCipher;
         private readonly IMessageSerializationService _messageSerializationService;
@@ -52,17 +50,14 @@ namespace Nevermind.Network
         public Packet Auth(PublicKey remoteNodePublicKey, EncryptionHandshake handshake)
         {
             handshake.RemotePublicKey = remoteNodePublicKey;
-
-            byte[] nonce = _cryptoRandom.GenerateRandomBytes(32);
-
+            handshake.InitiatorNonce = _cryptoRandom.GenerateRandomBytes(32);
             handshake.EphemeralPrivateKey = new PrivateKey(_cryptoRandom.GenerateRandomBytes(32));
-            handshake.InitiatorNonce = nonce;
 
             byte[] staticSharedSecret = BouncyCrypto.Agree(_privateKey, remoteNodePublicKey);
-            byte[] forSigning = staticSharedSecret.Xor(nonce);
+            byte[] forSigning = staticSharedSecret.Xor(handshake.InitiatorNonce);
 
             AuthEip8Message authMessage = new AuthEip8Message();
-            authMessage.Nonce = nonce;
+            authMessage.Nonce = handshake.InitiatorNonce;
             authMessage.PublicKey = _privateKey.PublicKey;
             authMessage.Signature = _signer.Sign(handshake.EphemeralPrivateKey, Keccak.Compute(forSigning));
 
@@ -82,30 +77,31 @@ namespace Nevermind.Network
         {
             handshake.AuthPacket = auth;
             
-            // handle MAC here
-            // try, retry
+            // TODO: try, retry (support old clients)
             byte[] sizeData = auth.Data.Slice(0, 2);
             byte[] plaintext = _eciesCipher.Decrypt(_privateKey, auth.Data.Slice(2), sizeData);
             AuthMessageBase authMessage = _messageSerializationService.Deserialize<AuthEip8Message>(plaintext);
 
             handshake.RemotePublicKey = authMessage.PublicKey;
-            handshake.EphemeralPrivateKey = new PrivateKey(_cryptoRandom.GenerateRandomBytes(32));
             handshake.RecipientNonce = _cryptoRandom.GenerateRandomBytes(32);
+            handshake.EphemeralPrivateKey = new PrivateKey(_cryptoRandom.GenerateRandomBytes(32));
 
+            handshake.InitiatorNonce = authMessage.Nonce;
             byte[] staticSharedSecret = BouncyCrypto.Agree(_privateKey, handshake.RemotePublicKey);
             byte[] forSigning = staticSharedSecret.Xor(handshake.InitiatorNonce);
             handshake.RemoteEphemeralPublicKey = _signer.RecoverPublicKey(authMessage.Signature, Keccak.Compute(forSigning));
-            handshake.InitiatorNonce = authMessage.Nonce;
 
-            // respond depending on the auth type
+            // TODO: respond depending on the auth type
             AckEip8Message ackMessage = new AckEip8Message();
             ackMessage.EphemeralPublicKey = handshake.EphemeralPrivateKey.PublicKey;
-//            responseMessage.IsTokenUsed = false; // TODO: need ot handle old clients with possible true values?
+//            responseMessage.IsTokenUsed = false;
             ackMessage.Nonce = handshake.RecipientNonce;
 
             byte[] ackData = _messageSerializationService.Serialize(ackMessage);
-            byte[] packetData = _eciesCipher.Encrypt(handshake.RemotePublicKey, ackData, null); // TODO: MAC
-            handshake.AckPacket = new Packet(packetData);
+            int size = ackData.Length + 32 + 16 + 65; // data + MAC + IV + pub
+            byte[] sizeBytes = size.ToBigEndianByteArray().Slice(2, 2);
+            byte[] packetData = _eciesCipher.Encrypt(handshake.RemotePublicKey, ackData, sizeBytes);
+            handshake.AckPacket = new Packet(Bytes.Concat(sizeBytes, packetData));
             SetSecrets(handshake, Role.Recipient);
             return handshake.AckPacket;
         }
@@ -114,8 +110,9 @@ namespace Nevermind.Network
         {
             handshake.AckPacket = ack;
 
-            // try
-            byte[] plaintext = _eciesCipher.Decrypt(_privateKey, ack.Data, null);
+            // TODO: try, retry (support old clients)
+            byte[] sizeData = ack.Data.Slice(0, 2);
+            byte[] plaintext = _eciesCipher.Decrypt(_privateKey, ack.Data.Slice(2), sizeData);
             AckEip8Message ackMessage = _messageSerializationService.Deserialize<AckEip8Message>(plaintext);
 
             handshake.RemoteEphemeralPublicKey = ackMessage.EphemeralPublicKey;

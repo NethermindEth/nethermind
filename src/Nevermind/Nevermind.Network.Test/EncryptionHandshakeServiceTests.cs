@@ -38,10 +38,11 @@ namespace Nevermind.Network.Test
 
             public TestRandom()
             {
-                _bytes.Enqueue(NetTestVectors.EphemeralKeyA.Hex);
+                // WARN: order reflects the internal implementation of the service (tests may fail after any refactoring)
                 _bytes.Enqueue(NetTestVectors.NonceA);
-                _bytes.Enqueue(NetTestVectors.EphemeralKeyB.Hex);
+                _bytes.Enqueue(NetTestVectors.EphemeralKeyA.Hex);
                 _bytes.Enqueue(NetTestVectors.NonceB);
+                _bytes.Enqueue(NetTestVectors.EphemeralKeyB.Hex);
             }
 
             public byte[] GenerateRandomBytes(int length)
