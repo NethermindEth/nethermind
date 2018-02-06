@@ -55,6 +55,7 @@
     <Compile Include="EciesCoderTests.cs" />
     <Compile Include="Eip8MessagePadTests.cs" />
     <Compile Include="EncryptionHandshakeServiceTests.cs" />
+    <Compile Include="FramingServiceTests.cs" />
     <Compile Include="NetTestVectors.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>

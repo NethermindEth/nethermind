@@ -351,9 +351,13 @@ namespace Nevermind.Core.Encoding
                         return Encode(new[] {singleByte});
                     }
                 case short _:
+                    return EncodeNumber((short)item);
                 case int _:
+                    return EncodeNumber((int)item);
                 case ushort _:
+                    return EncodeNumber((ushort)item);
                 case uint _:
+                    return EncodeNumber((uint)item);
                 case long _:
                     return EncodeNumber((long)item);
                 case null:
