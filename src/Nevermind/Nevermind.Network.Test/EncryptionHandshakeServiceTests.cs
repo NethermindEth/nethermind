@@ -22,8 +22,8 @@ namespace Nevermind.Network.Test
 
             _eciesCipher = new EciesCipher(new CryptoRandom()); // do not use TestRandom here (iv generation)
 
-            _initiatorService = new EncryptionHandshakeService(_messageSerializationService, _eciesCipher, _cryptoRandom, _signer, NetTestVectors.StaticKeyA);
-            _recipientService = new EncryptionHandshakeService(_messageSerializationService, _eciesCipher, _cryptoRandom, _signer, NetTestVectors.StaticKeyB);
+            _initiatorService = new EncryptionHandshakeService(_messageSerializationService, _eciesCipher, _cryptoRandom, _signer, NetTestVectors.StaticKeyA, NullLogger.Instance);
+            _recipientService = new EncryptionHandshakeService(_messageSerializationService, _eciesCipher, _cryptoRandom, _signer, NetTestVectors.StaticKeyB, NullLogger.Instance);
 
             _initiatorHandshake = new EncryptionHandshake();
             _recipientHandshake = new EncryptionHandshake();

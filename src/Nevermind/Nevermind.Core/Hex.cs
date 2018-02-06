@@ -27,7 +27,7 @@ namespace Nevermind.Core
     /// <summary>
     ///     https://stackoverflow.com/questions/311165/how-do-you-convert-a-byte-array-to-a-hexadecimal-string-and-vice-versa
     /// </summary>
-    // from performance / memory perspective probably better to remove this class entirely, experimental
+    // TODO: from performance / memory perspective probably better to remove this class entirely, experimental
     public class Hex : IEquatable<Hex>
     {
         private static readonly uint[] Lookup32 = CreateLookup32("x2");
@@ -170,7 +170,7 @@ namespace Nevermind.Core
             string hashHex = null;
             if (withEip55Checksum)
             {
-                // I guess it may be better (faster) than calling ToString here
+                // TOCDO: I guess it may be better (faster) than calling ToString here
                 hashHex = Keccak.Compute(new Hex(bytes).ToString(false)).ToString(false);
             }
 

@@ -82,6 +82,7 @@
     <Compile Include="ILogger.cs" />
     <Compile Include="LogEntry.cs" />
     <Compile Include="Nibbles.cs" />
+    <Compile Include="NullLogger.cs" />
     <Compile Include="Potocol\Byzantium.cs" />
     <Compile Include="Potocol\Frontier.cs" />
     <Compile Include="Potocol\Homestead.cs" />

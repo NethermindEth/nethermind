@@ -1,4 +1,22 @@
-﻿using System;
+﻿/*
+ * Copyright (c) 2018 Demerzel Solutions Limited
+ * This file is part of the Nethermind library.
+ *
+ * The Nethermind library is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * The Nethermind library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+using System;
 using System.Diagnostics;
 using Nevermind.Core.Extensions;
 using Org.BouncyCastle.Crypto;
@@ -6,11 +24,9 @@ using Org.BouncyCastle.Crypto.Parameters;
 
 namespace Nevermind.Network
 {
-    /**
- * Basic KDF generator for derived keys and ivs as defined by NIST SP 800-56A.
- */
     /// <summary>
-    ///     from EthereumJ
+    ///     Code adapted from ethereumJ (https://github.com/ethereum/ethereumj)
+    ///     Basic KDF generator for derived keys and ivs as defined by NIST SP 800-56A.
     /// </summary>
     public class ConcatKdfBytesGenerator : IDerivationFunction
     {
@@ -18,15 +34,6 @@ namespace Nevermind.Network
         private byte[] _iv;
         private byte[] _shared;
 
-        /**
-         * Construct a KDF Parameters generator.
-         * <p>
-         * 
-         * @param counterStart
-         *            value of counter.
-         * @param digest
-         *            the digest to be used as the source of derived keys.
-         */
         protected ConcatKdfBytesGenerator(int counterStart, IDigest digest)
         {
             _counterStart = counterStart;

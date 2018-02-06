@@ -17,6 +17,7 @@
  */
 
 using System;
+using Nevermind.Core;
 using Nevermind.Core.Crypto;
 using Nevermind.Core.Extensions;
 
@@ -38,7 +39,8 @@ namespace Nevermind.Network
             IEciesCipher eciesCipher,
             ICryptoRandom cryptoRandom,
             ISigner signer,
-            PrivateKey privateKey)
+            PrivateKey privateKey,
+            ILogger logger)
         {
             _messageSerializationService = messageSerializationService;
             _eciesCipher = eciesCipher;
