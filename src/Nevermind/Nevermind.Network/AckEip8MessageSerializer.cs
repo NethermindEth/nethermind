@@ -22,7 +22,7 @@ using Nevermind.Core.Extensions;
 
 namespace Nevermind.Network
 {
-    public class AuthResponseEip8MessageSerializer : IMessageSerializer<AuthResponseEip8Message>
+    public class AckEip8MessageSerializer : IMessageSerializer<AckEip8Message>
     {
         public const int EphemeralPublicKeyLength = 64;
         public const int EphemeralPublicKeyOffset = 0;
@@ -31,7 +31,7 @@ namespace Nevermind.Network
         public const int VersionOffset = NonceOffset + NonceLength;
         public const int TotalLength = EphemeralPublicKeyLength + NonceLength;
 
-        public byte[] Serialize(AuthResponseEip8Message message, IMessagePad messagePad = null)
+        public byte[] Serialize(AckEip8Message message, IMessagePad messagePad = null)
         {
             byte[] data = Rlp.Encode(
                 Rlp.Encode(message.EphemeralPublicKey.Bytes),
@@ -42,12 +42,12 @@ namespace Nevermind.Network
             return messagePad?.Pad(data) ?? data;
         }
 
-        public AuthResponseEip8Message Deserialize(byte[] bytes)
+        public AckEip8Message Deserialize(byte[] bytes)
         {
             Rlp rlp = new Rlp(bytes);
-            object[] decodedRaw = (object[])Rlp.Decode(rlp);
+            object[] decodedRaw = (object[])Rlp.Decode(rlp, RlpBehaviors.AllowExtraData);
 
-            AuthResponseEip8Message authEip8Message = new AuthResponseEip8Message();
+            AckEip8Message authEip8Message = new AckEip8Message();
             authEip8Message.EphemeralPublicKey = new PublicKey((byte[])decodedRaw[0]);
             authEip8Message.Nonce = (byte[])decodedRaw[1];
             // TODO: check the version? /Postel

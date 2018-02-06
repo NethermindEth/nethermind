@@ -20,7 +20,7 @@ using Nevermind.Core.Crypto;
 
 namespace Nevermind.Network
 {
-    public class AuthResponseMessage : MessageBase
+    public class AckMessage : MessageBase
     {
         public PublicKey EphemeralPublicKey { get; set; }
         public byte[] Nonce { get; set; }

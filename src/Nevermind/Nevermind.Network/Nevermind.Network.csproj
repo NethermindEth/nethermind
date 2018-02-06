@@ -44,20 +44,21 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="AuthMessage.cs" />
+    <Compile Include="AuthMessageBase.cs" />
     <Compile Include="AuthMessageSerializer.cs" />
     <Compile Include="AuthEip8Message.cs" />
     <Compile Include="AuthEip8MessageSerializer.cs" />
-    <Compile Include="AuthResponseMessage.cs" />
-    <Compile Include="AuthResponseMessageSerializer.cs" />
-    <Compile Include="AuthResponseEip8Message.cs" />
-    <Compile Include="AuthResponseEip8MessageSerializer.cs" />
+    <Compile Include="AckMessage.cs" />
+    <Compile Include="AckMessageSerializer.cs" />
+    <Compile Include="AckEip8Message.cs" />
+    <Compile Include="AckEip8MessageSerializer.cs" />
     <Compile Include="BouncyCrypto.cs" />
     <Compile Include="Capability.cs" />
     <Compile Include="ConcatKdfBytesGenerator.cs" />
     <Compile Include="DisconnectReason.cs" />
     <Compile Include="Discovery.cs" />
     <Compile Include="DisconnectMessage.cs" />
-    <Compile Include="EciesCoder.cs" />
+    <Compile Include="EciesCipher.cs" />
     <Compile Include="Eip8MessagePad.cs" />
     <Compile Include="EncryptionHandshake.cs" />
     <Compile Include="EncryptionSecrets.cs" />
@@ -65,6 +66,7 @@
     <Compile Include="EthNetworkException.cs" />
     <Compile Include="HelloMessage.cs" />
     <Compile Include="EncryptionHandshakeService.cs" />
+    <Compile Include="IEciesCipher.cs" />
     <Compile Include="IMessagePad.cs" />
     <Compile Include="IEncryptionHandshakeService.cs" />
     <Compile Include="IMessageSerializationService.cs" />
@@ -77,6 +79,7 @@
     <Compile Include="NoPad.cs" />
     <Compile Include="P2PMessage.cs" />
     <Compile Include="P2PVersion.cs" />
+    <Compile Include="Packet.cs" />
     <Compile Include="PingMessage.cs" />
     <Compile Include="PongMessage.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />

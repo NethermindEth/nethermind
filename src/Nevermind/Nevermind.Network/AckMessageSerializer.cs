@@ -22,7 +22,7 @@ using Nevermind.Core.Extensions;
 
 namespace Nevermind.Network
 {
-    public class AuthResponseMessageSerializer : IMessageSerializer<AuthResponseMessage>
+    public class AckMessageSerializer : IMessageSerializer<AckMessage>
     {
         public const int EphemeralPublicKeyLength = 64;
         public const int EphemeralPublicKeyOffset = 0;
@@ -32,7 +32,7 @@ namespace Nevermind.Network
         public const int IsTokenUsedOffset = NonceOffset + NonceLength;
         public const int TotalLength = IsTokenUsedOffset + IsTokenUsedLength;
 
-        public byte[] Serialize(AuthResponseMessage message, IMessagePad messagePad = null)
+        public byte[] Serialize(AckMessage message, IMessagePad messagePad = null)
         {
             byte[] data = new byte[TotalLength];
             Buffer.BlockCopy(message.EphemeralPublicKey.Bytes, 0, data, EphemeralPublicKeyOffset, EphemeralPublicKeyLength);
@@ -41,14 +41,14 @@ namespace Nevermind.Network
             return messagePad?.Pad(data) ?? data;
         }
 
-        public AuthResponseMessage Deserialize(byte[] bytes)
+        public AckMessage Deserialize(byte[] bytes)
         {
             if (bytes.Length != TotalLength)
             {
-                throw new EthNetworkException($"Incorrect incoming {nameof(AuthResponseMessage)} length. Expected {TotalLength} but was {bytes.Length}");
+                throw new EthNetworkException($"Incorrect incoming {nameof(AckMessage)} length. Expected {TotalLength} but was {bytes.Length}");
             }
 
-            AuthResponseMessage authMessage = new AuthResponseMessage();
+            AckMessage authMessage = new AckMessage();
             authMessage.EphemeralPublicKey = new PublicKey(bytes.Slice(EphemeralPublicKeyOffset, EphemeralPublicKeyLength));
             authMessage.Nonce = bytes.Slice(NonceOffset, NonceLength);
             authMessage.IsTokenUsed = bytes[IsTokenUsedOffset] == 0x01;

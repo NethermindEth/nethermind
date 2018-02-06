@@ -14,8 +14,22 @@ namespace Nevermind.Network.Test
         public void SetUp()
         {
             _cryptoRandom = new TestRandom();
-            _service = new EncryptionHandshakeService(_cryptoRandom, _signer);
-            _remoteService = new EncryptionHandshakeService(_cryptoRandom, _signer);
+            _messageSerializationService = new MessageSerializationService();
+            _messageSerializationService.Register(new AuthMessageSerializer());
+            _messageSerializationService.Register(new AuthEip8MessageSerializer());
+            _messageSerializationService.Register(new AckMessageSerializer());
+            _messageSerializationService.Register(new AckEip8MessageSerializer());
+
+            _eciesCipher = new EciesCipher(new CryptoRandom()); // do not use TestRandom here (iv generation)
+
+            _initiatorService = new EncryptionHandshakeService(_messageSerializationService, _eciesCipher, _cryptoRandom, _signer, NetTestVectors.StaticKeyA);
+            _recipientService = new EncryptionHandshakeService(_messageSerializationService, _eciesCipher, _cryptoRandom, _signer, NetTestVectors.StaticKeyB);
+
+            _initiatorHandshake = new EncryptionHandshake();
+            _recipientHandshake = new EncryptionHandshake();
+
+            _auth = null;
+            _ack = null;
         }
 
         private class TestRandom : ICryptoRandom
@@ -43,11 +57,36 @@ namespace Nevermind.Network.Test
 
         private readonly ISigner _signer = new Signer(Byzantium.Instance, ChainId.MainNet); // TODO: separate general crypto signer from Ethereum transaction signing
 
+        private IMessageSerializationService _messageSerializationService;
+
         private ICryptoRandom _cryptoRandom;
 
-        private IEncryptionHandshakeService _service;
+        private IEciesCipher _eciesCipher;
 
-        private IEncryptionHandshakeService _remoteService;
+        private IEncryptionHandshakeService _initiatorService;
+
+        private IEncryptionHandshakeService _recipientService;
+
+        private EncryptionHandshake _initiatorHandshake;
+        private EncryptionHandshake _recipientHandshake;
+
+        private Packet _auth;
+        private Packet _ack;
+
+        private void Auth()
+        {
+            _auth = _initiatorService.Auth(NetTestVectors.StaticKeyB.PublicKey, _initiatorHandshake);
+        }
+
+        private void Ack()
+        {
+            _ack = _recipientService.Ack(_recipientHandshake, _auth);
+        }
+
+        private void Agree()
+        {
+            _initiatorService.Agree(_initiatorHandshake, _ack);
+        }
 
         /// <summary>
         ///     https://github.com/ethereum/EIPs/blob/master/EIPS/eip-8.md
@@ -55,150 +94,135 @@ namespace Nevermind.Network.Test
         [Test]
         public void Aes_and_mac_secrets_as_in_test_vectors()
         {
-            EncryptionHandshake handshake = new EncryptionHandshake();
-            handshake.RemotePublicKey = NetTestVectors.StaticKeyB.PublicKey;
-            handshake.EphemeralPrivateKey = NetTestVectors.EphemeralKeyA;
-            handshake.InitiatorNonce = NetTestVectors.NonceA;
+            Packet auth = _initiatorService.Auth(NetTestVectors.StaticKeyB.PublicKey, _initiatorHandshake);
+            Packet ack = _recipientService.Ack(_recipientHandshake, auth);
+            _initiatorService.Agree(_initiatorHandshake, ack);
 
-            AuthResponseEip8Message responseMessage = new AuthResponseEip8Message();
-            responseMessage.EphemeralPublicKey = NetTestVectors.EphemeralKeyB.PublicKey;
-            responseMessage.Nonce = NetTestVectors.NonceB;
-
-            _service.HandleResponse(handshake, responseMessage);
-            Assert.AreEqual(NetTestVectors.AesSecret, handshake.Secrets.AesSecret, "AES");
-            Assert.AreEqual(NetTestVectors.MacSecret, handshake.Secrets.MacSecret, "MAC");
+            Assert.AreEqual(NetTestVectors.AesSecret, _initiatorHandshake.Secrets.AesSecret, "initiator AES");
+            Assert.AreEqual(NetTestVectors.AesSecret, _recipientHandshake.Secrets.AesSecret, "recipient AES");
+            Assert.AreEqual(NetTestVectors.MacSecret, _initiatorHandshake.Secrets.MacSecret, "initiator MAC");
+            Assert.AreEqual(NetTestVectors.MacSecret, _recipientHandshake.Secrets.MacSecret, "recipient MAC");
         }
 
         [Test]
-        public void Sets_ephemeral_key_on_init()
+        public void Agrees_on_secrets()
         {
-            EncryptionHandshake handshake = new EncryptionHandshake();
-            handshake.RemotePublicKey = NetTestVectors.StaticKeyB.PublicKey;
-            _service.Init(handshake, NetTestVectors.StaticKeyA);
-            Assert.AreEqual(NetTestVectors.EphemeralKeyA, handshake.EphemeralPrivateKey);
+            Auth();
+            Ack();
+            Agree();
+
+            Assert.AreEqual(_recipientHandshake.Secrets.Token, _initiatorHandshake.Secrets.Token, "Token");
+            Assert.AreEqual(_recipientHandshake.Secrets.AesSecret, _initiatorHandshake.Secrets.AesSecret, "AES");
+            Assert.AreEqual(_recipientHandshake.Secrets.MacSecret, _initiatorHandshake.Secrets.MacSecret, "MAC");
+            Assert.AreEqual(_recipientHandshake.Secrets.EgressMac, _initiatorHandshake.Secrets.IngressMac, "Egress");
+            Assert.AreEqual(_recipientHandshake.Secrets.IngressMac, _initiatorHandshake.Secrets.EgressMac, "Ingress");
         }
 
         [Test]
-        public void Sets_initiator_nonce_on_init()
+        public void Initiator_secrets_are_not_null()
         {
-            EncryptionHandshake handshake = new EncryptionHandshake();
-            handshake.RemotePublicKey = NetTestVectors.StaticKeyB.PublicKey;
-            _service.Init(handshake, NetTestVectors.StaticKeyA);
-            Assert.AreEqual(NetTestVectors.NonceA, handshake.InitiatorNonce);
+            Auth();
+            Ack();
+            Agree();
+
+            Assert.NotNull(_recipientHandshake.Secrets.Token, "Token");
+            Assert.NotNull(_initiatorHandshake.Secrets.AesSecret, "AES");
+            Assert.NotNull(_initiatorHandshake.Secrets.MacSecret, "MAC");
+            Assert.NotNull(_initiatorHandshake.Secrets.EgressMac, "Egress");
+            Assert.NotNull(_initiatorHandshake.Secrets.IngressMac, "Ingress");
         }
 
         [Test]
-        public void Sets_initiator_nonce_on_respond()
+        public void Recipient_secrets_are_not_null()
         {
-            EncryptionHandshake handshake = new EncryptionHandshake();
-            handshake.RemotePublicKey = NetTestVectors.StaticKeyB.PublicKey;
+            Auth();
+            Ack();
+            Agree();
 
-            AuthEip8Message authMessage = _service.Init(handshake, NetTestVectors.StaticKeyA);
-            _service.Respond(handshake, authMessage, NetTestVectors.StaticKeyB);
-
-            Assert.AreEqual(NetTestVectors.NonceA, handshake.InitiatorNonce);
+            Assert.NotNull(_recipientHandshake.Secrets.Token, "Token");
+            Assert.NotNull(_recipientHandshake.Secrets.AesSecret, "AES");
+            Assert.NotNull(_recipientHandshake.Secrets.MacSecret, "MAC");
+            Assert.NotNull(_recipientHandshake.Secrets.EgressMac, "Egress");
+            Assert.NotNull(_recipientHandshake.Secrets.IngressMac, "Ingress");
         }
 
         [Test]
-        public void Sets_remote_ephemeral_key_on_handle_response()
+        public void Sets_ephemeral_key_on_ack()
         {
-            EncryptionHandshake handshake = new EncryptionHandshake();
-            handshake.EphemeralPrivateKey = NetTestVectors.EphemeralKeyA;
-            handshake.InitiatorNonce = NetTestVectors.NonceA;
-
-            AuthResponseEip8Message responseMessage = new AuthResponseEip8Message();
-            responseMessage.EphemeralPublicKey = NetTestVectors.EphemeralKeyB.PublicKey;
-            responseMessage.Nonce = NetTestVectors.NonceB;
-
-            _service.HandleResponse(handshake, responseMessage);
-
-            Assert.AreEqual(handshake.RemoteEphemeralPublicKey, NetTestVectors.EphemeralKeyB.PublicKey);
+            Auth();
+            Ack();
+            Assert.AreEqual(NetTestVectors.EphemeralKeyB, _recipientHandshake.EphemeralPrivateKey);
         }
 
         [Test]
-        public void Sets_remote_ephemeral_key_on_respond()
+        public void Sets_ephemeral_key_on_auth()
         {
-            EncryptionHandshake handshake = new EncryptionHandshake();
-            handshake.RemotePublicKey = NetTestVectors.StaticKeyB.PublicKey;
-
-            EncryptionHandshake remoteHandshake = new EncryptionHandshake();
-
-            AuthEip8Message authMessage = _service.Init(handshake, NetTestVectors.StaticKeyA);
-            _remoteService.Respond(remoteHandshake, authMessage, NetTestVectors.StaticKeyB);
-
-            Signature sig = _signer.Sign(handshake.EphemeralPrivateKey, Keccak.Compute("asdadasasd"));
-            PublicKey pub = _signer.RecoverPublicKey(sig, Keccak.Compute("asdadasasd"));
-
-            Assert.AreEqual(handshake.EphemeralPrivateKey.PublicKey, pub, "debug");
-
-            Assert.AreEqual(handshake.EphemeralPrivateKey, NetTestVectors.EphemeralKeyA, "Private");
-            Assert.AreEqual(handshake.EphemeralPrivateKey.PublicKey, remoteHandshake.RemoteEphemeralPublicKey, "Public");
-        }
-
-        // TODO: need to decide how the handshake is initialized
-        [Test]
-        public void Sets_remote_public_key_on_init()
-        {
-            EncryptionHandshake handshake = new EncryptionHandshake();
-            handshake.RemotePublicKey = NetTestVectors.StaticKeyB.PublicKey;
-
-            _service.Init(handshake, NetTestVectors.StaticKeyA);
-
-            Assert.AreEqual(handshake.RemotePublicKey, NetTestVectors.StaticKeyB.PublicKey);
+            Auth();
+            Assert.AreEqual(NetTestVectors.EphemeralKeyA, _initiatorHandshake.EphemeralPrivateKey);
         }
 
         [Test]
-        public void Sets_remote_public_key_on_respond()
+        public void Sets_initiator_nonce_on_ack()
         {
-            EncryptionHandshake handshake = new EncryptionHandshake();
-            handshake.RemotePublicKey = NetTestVectors.StaticKeyB.PublicKey;
-
-            EncryptionHandshake remoteHandshake = new EncryptionHandshake();
-
-            AuthEip8Message authMessage = _service.Init(handshake, NetTestVectors.StaticKeyA);
-            _remoteService.Respond(remoteHandshake, authMessage, NetTestVectors.StaticKeyB);
-
-            Assert.AreEqual(remoteHandshake.RemotePublicKey, NetTestVectors.StaticKeyA.PublicKey);
+            Auth();
+            Ack();
+            Assert.AreEqual(NetTestVectors.NonceA, _recipientHandshake.InitiatorNonce);
         }
 
         [Test]
-        public void Sets_responder_nonce()
+        public void Sets_initiator_nonce_on_auth()
         {
-            EncryptionHandshake handshake = new EncryptionHandshake();
-            handshake.RemotePublicKey = NetTestVectors.StaticKeyB.PublicKey;
-            handshake.EphemeralPrivateKey = NetTestVectors.EphemeralKeyA;
-            handshake.InitiatorNonce = NetTestVectors.NonceA;
-
-            AuthResponseEip8Message responseMessage = new AuthResponseEip8Message();
-            responseMessage.EphemeralPublicKey = NetTestVectors.EphemeralKeyB.PublicKey;
-            responseMessage.Nonce = NetTestVectors.NonceB;
-
-            _service.HandleResponse(handshake, responseMessage);
-
-            Assert.AreEqual(handshake.ResponderNonce, NetTestVectors.NonceB);
+            Auth();
+            Assert.AreEqual(NetTestVectors.NonceA, _initiatorHandshake.InitiatorNonce);
         }
 
         [Test]
-        public void Test_key_exchange()
+        public void Sets_recipient_nonce_on_ack()
         {
-            EncryptionHandshake handshake = new EncryptionHandshake();
-            handshake.RemotePublicKey = NetTestVectors.StaticKeyB.PublicKey;
+            Auth();
+            Ack();
+            Assert.AreEqual(NetTestVectors.NonceB, _recipientHandshake.RecipientNonce);
+        }
 
-            EncryptionHandshake remoteHandshake = new EncryptionHandshake();
+        [Test]
+        public void Sets_recipient_nonce_on_agree()
+        {
+            Auth();
+            Ack();
+            Agree();
+            Assert.AreEqual(NetTestVectors.NonceB, _initiatorHandshake.RecipientNonce);
+        }
 
-            AuthEip8Message authMessage = _service.Init(handshake, NetTestVectors.StaticKeyA);
-            AuthResponseEip8Message responseMessage = _remoteService.Respond(remoteHandshake, authMessage, NetTestVectors.StaticKeyB);
-            _service.HandleResponse(handshake, responseMessage);
+        [Test]
+        public void Sets_remote_ephemeral_key_on_ack()
+        {
+            Auth();
+            Ack();
+            Assert.AreEqual(NetTestVectors.EphemeralKeyA.PublicKey, _recipientHandshake.RemoteEphemeralPublicKey);
+        }
 
-            Assert.AreEqual(handshake.Secrets.AesSecret, remoteHandshake.Secrets.AesSecret, "AES");
-            Assert.AreEqual(handshake.Secrets.MacSecret, remoteHandshake.Secrets.MacSecret, "MAC");
-            Assert.AreEqual(handshake.Secrets.EgressMac, remoteHandshake.Secrets.IngressMac, "Egress");
-            Assert.AreEqual(handshake.Secrets.IngressMac, remoteHandshake.Secrets.EgressMac, "Ingress");
+        [Test]
+        public void Sets_remote_ephemeral_key_on_agree()
+        {
+            Auth();
+            Ack();
+            Agree();
+            Assert.AreEqual(NetTestVectors.EphemeralKeyB.PublicKey, _initiatorHandshake.RemoteEphemeralPublicKey);
+        }
 
-            Assert.NotNull(handshake.Secrets.AesSecret, "AES null");
-            Assert.NotNull(handshake.Secrets.MacSecret, "MAC null");
-            Assert.NotNull(handshake.Secrets.EgressMac, "Egress null");
-            Assert.NotNull(handshake.Secrets.IngressMac, "Ingress null");
+        [Test]
+        public void Sets_remote_public_key_on_ack()
+        {
+            Auth();
+            Ack();
+            Assert.AreEqual(NetTestVectors.StaticKeyA.PublicKey, _recipientHandshake.RemotePublicKey);
+        }
+
+        [Test]
+        public void Sets_remote_public_key_on_auth()
+        {
+            Auth();
+            Assert.AreEqual(NetTestVectors.StaticKeyB.PublicKey, _initiatorHandshake.RemotePublicKey);
         }
     }
 }

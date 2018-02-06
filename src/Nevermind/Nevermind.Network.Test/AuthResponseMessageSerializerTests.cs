@@ -32,17 +32,17 @@ namespace Nevermind.Network.Test
 
         private readonly PrivateKey _privateKey = new PrivateKey(TestPrivateKeyHex);
 
-        private readonly AuthResponseMessageSerializer _serializer = new AuthResponseMessageSerializer();
+        private readonly AckMessageSerializer _serializer = new AckMessageSerializer();
 
         private void TestEncodeDecode()
         {
-            AuthResponseMessage before = new AuthResponseMessage();
+            AckMessage before = new AckMessage();
             before.EphemeralPublicKey = _privateKey.PublicKey;
-            before.Nonce = new byte[AuthResponseMessageSerializer.NonceLength];
+            before.Nonce = new byte[AckMessageSerializer.NonceLength];
             _random.NextBytes(before.Nonce);
             before.IsTokenUsed = true;
             byte[] data = _serializer.Serialize(before);
-            AuthResponseMessage after = _serializer.Deserialize(data);
+            AckMessage after = _serializer.Deserialize(data);
 
             Assert.AreEqual(before.EphemeralPublicKey, after.EphemeralPublicKey);
             Assert.True(Bytes.UnsafeCompare(before.Nonce, after.Nonce));

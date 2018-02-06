@@ -16,147 +16,142 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Diagnostics;
+using System;
 using Nevermind.Core.Crypto;
 using Nevermind.Core.Extensions;
-using ISigner = Nevermind.Core.Crypto.ISigner;
 
 namespace Nevermind.Network
 {
     /// <summary>
-    /// https://github.com/ethereum/devp2p/blob/master/rlpx.md
+    ///     https://github.com/ethereum/devp2p/blob/master/rlpx.md
     /// </summary>
     public class EncryptionHandshakeService : IEncryptionHandshakeService
     {
         // TODO: DRY with V4 here, review after sync finished
-        
+
         private readonly ICryptoRandom _cryptoRandom;
+        private readonly IEciesCipher _eciesCipher;
+        private readonly IMessageSerializationService _messageSerializationService;
+        private readonly PrivateKey _privateKey;
         private readonly ISigner _signer;
 
-        public EncryptionHandshakeService(ICryptoRandom cryptoRandom, ISigner signer)
+        public EncryptionHandshakeService(
+            IMessageSerializationService messageSerializationService,
+            IEciesCipher eciesCipher,
+            ICryptoRandom cryptoRandom,
+            ISigner signer,
+            PrivateKey privateKey)
         {
+            _messageSerializationService = messageSerializationService;
+            _eciesCipher = eciesCipher;
+            _privateKey = privateKey;
             _cryptoRandom = cryptoRandom;
             _signer = signer;
         }
 
-        public AuthEip8Message Init(EncryptionHandshake handshake, PrivateKey privateKey)
+        public Packet Auth(PublicKey remoteNodePublicKey, EncryptionHandshake handshake)
         {
-            Debug.Assert(handshake.RemotePublicKey != null, $"{nameof(handshake.RemotePublicKey)} has to be known");
-            
-            PrivateKey ephemeralPrivateKey = new PrivateKey(_cryptoRandom.GenerateRandomBytes(32));
+            handshake.RemotePublicKey = remoteNodePublicKey;
+
             byte[] nonce = _cryptoRandom.GenerateRandomBytes(32);
-            
-            handshake.EphemeralPrivateKey = ephemeralPrivateKey;
+
+            handshake.EphemeralPrivateKey = new PrivateKey(_cryptoRandom.GenerateRandomBytes(32));
             handshake.InitiatorNonce = nonce;
 
-            byte[] staticSharedSecret = BouncyCrypto.Agree(privateKey, handshake.RemotePublicKey);
+            byte[] staticSharedSecret = BouncyCrypto.Agree(_privateKey, remoteNodePublicKey);
             byte[] forSigning = staticSharedSecret.Xor(nonce);
 
-            AuthEip8Message authEip8Message = new AuthEip8Message();
-            authEip8Message.Nonce = nonce;
-            authEip8Message.PublicKey = privateKey.PublicKey;
-            authEip8Message.Signature = _signer.Sign(ephemeralPrivateKey, Keccak.Compute(forSigning));
-            return authEip8Message;
+            AuthEip8Message authMessage = new AuthEip8Message();
+            authMessage.Nonce = nonce;
+            authMessage.PublicKey = _privateKey.PublicKey;
+            authMessage.Signature = _signer.Sign(handshake.EphemeralPrivateKey, Keccak.Compute(forSigning));
+
+            byte[] authData = _messageSerializationService.Serialize(authMessage);
+            int size = authData.Length + 32 + 16 + 65; // data + MAC + IV + pub
+            byte[] sizeBytes = size.ToBigEndianByteArray().Slice(2, 2);
+            byte[] packetData = _eciesCipher.Encrypt(
+                remoteNodePublicKey,
+                authData,
+                sizeBytes);
+
+            handshake.AuthPacket = new Packet(Bytes.Concat(sizeBytes, packetData));    
+            return handshake.AuthPacket;
         }
-        
-        public AuthResponseMessage Respond(EncryptionHandshake handshake, AuthMessage authMessage, PrivateKey privateKey)
+
+        public Packet Ack(EncryptionHandshake handshake, Packet auth)
         {
+            handshake.AuthPacket = auth;
+            
+            // handle MAC here
+            // try, retry
+            byte[] sizeData = auth.Data.Slice(0, 2);
+            byte[] plaintext = _eciesCipher.Decrypt(_privateKey, auth.Data.Slice(2), sizeData);
+            AuthMessageBase authMessage = _messageSerializationService.Deserialize<AuthEip8Message>(plaintext);
+
             handshake.RemotePublicKey = authMessage.PublicKey;
-            handshake.InitiatorNonce = authMessage.Nonce;
+            handshake.EphemeralPrivateKey = new PrivateKey(_cryptoRandom.GenerateRandomBytes(32));
+            handshake.RecipientNonce = _cryptoRandom.GenerateRandomBytes(32);
 
-            PrivateKey ephemeraPrivateKey = new PrivateKey(_cryptoRandom.GenerateRandomBytes(32));
-            handshake.EphemeralPrivateKey = ephemeraPrivateKey;
-
-            byte[] nonce = _cryptoRandom.GenerateRandomBytes(32);
-            handshake.ResponderNonce = nonce;
-
-            byte[] staticSharedSecret = BouncyCrypto.Agree(privateKey, handshake.RemotePublicKey);
+            byte[] staticSharedSecret = BouncyCrypto.Agree(_privateKey, handshake.RemotePublicKey);
             byte[] forSigning = staticSharedSecret.Xor(handshake.InitiatorNonce);
             handshake.RemoteEphemeralPublicKey = _signer.RecoverPublicKey(authMessage.Signature, Keccak.Compute(forSigning));
-
-            SetSecrets(handshake);
-            
-            AuthResponseMessage responseMessage = new AuthResponseMessage();
-            responseMessage.EphemeralPublicKey = handshake.RemoteEphemeralPublicKey;
-            responseMessage.IsTokenUsed = authMessage.IsTokenUsed;
-            responseMessage.Nonce = nonce;
-            return responseMessage;
-        }
-
-        public AuthResponseEip8Message Respond(EncryptionHandshake handshake, AuthEip8Message authMessage, PrivateKey privateKey)
-        {
-            // TODO: DRY, V4 looks same as previously
-            handshake.RemotePublicKey = authMessage.PublicKey;
             handshake.InitiatorNonce = authMessage.Nonce;
 
-            PrivateKey ephemeraPrivateKey = new PrivateKey(_cryptoRandom.GenerateRandomBytes(32));
-            handshake.EphemeralPrivateKey = ephemeraPrivateKey;
+            // respond depending on the auth type
+            AckEip8Message ackMessage = new AckEip8Message();
+            ackMessage.EphemeralPublicKey = handshake.EphemeralPrivateKey.PublicKey;
+//            responseMessage.IsTokenUsed = false; // TODO: need ot handle old clients with possible true values?
+            ackMessage.Nonce = handshake.RecipientNonce;
 
-            byte[] nonce = _cryptoRandom.GenerateRandomBytes(32);
-            handshake.ResponderNonce = nonce;
-
-            byte[] staticSharedSecret = BouncyCrypto.Agree(privateKey, handshake.RemotePublicKey);
-            byte[] forSigning = staticSharedSecret.Xor(handshake.InitiatorNonce);
-            handshake.RemoteEphemeralPublicKey = _signer.RecoverPublicKey(authMessage.Signature, Keccak.Compute(forSigning));
-
-            SetSecrets(handshake);
-            
-            AuthResponseEip8Message responseMessage = new AuthResponseEip8Message();
-            responseMessage.EphemeralPublicKey = ephemeraPrivateKey.PublicKey;
-            responseMessage.Nonce = nonce;
-            return responseMessage;
+            byte[] ackData = _messageSerializationService.Serialize(ackMessage);
+            byte[] packetData = _eciesCipher.Encrypt(handshake.RemotePublicKey, ackData, null); // TODO: MAC
+            handshake.AckPacket = new Packet(packetData);
+            SetSecrets(handshake, Role.Recipient);
+            return handshake.AckPacket;
         }
 
-        public void HandleResponse(EncryptionHandshake handshake, AuthResponseMessage responseMessage)
+        public void Agree(EncryptionHandshake handshake, Packet ack)
         {
-            handshake.RemoteEphemeralPublicKey = responseMessage.EphemeralPublicKey;
-            handshake.ResponderNonce = responseMessage.Nonce;
-            
-            SetSecrets(handshake);
+            handshake.AckPacket = ack;
+
+            // try
+            byte[] plaintext = _eciesCipher.Decrypt(_privateKey, ack.Data, null);
+            AckEip8Message ackMessage = _messageSerializationService.Deserialize<AckEip8Message>(plaintext);
+
+            handshake.RemoteEphemeralPublicKey = ackMessage.EphemeralPublicKey;
+            handshake.RecipientNonce = ackMessage.Nonce;
+
+            SetSecrets(handshake, Role.Initiator);
         }
 
-        public void HandleResponse(EncryptionHandshake handshake, AuthResponseEip8Message responseMessage)
+        private static void SetSecrets(EncryptionHandshake handshake, Role role)
         {
-            // TODO: DRY
-            handshake.RemoteEphemeralPublicKey = responseMessage.EphemeralPublicKey;
-            handshake.ResponderNonce = responseMessage.Nonce;
-
-            SetSecrets(handshake);
-        }
-
-        private static void SetSecrets(EncryptionHandshake handshake)
-        {
-            // TODO: destroy shared / ephemeral
             byte[] ephemeralSharedSecret = BouncyCrypto.Agree(handshake.EphemeralPrivateKey, handshake.RemoteEphemeralPublicKey);
-            byte[] nonceHash = Keccak.Compute(Bytes.Concat(handshake.ResponderNonce, handshake.InitiatorNonce)).Bytes;
+            byte[] nonceHash = Keccak.Compute(Bytes.Concat(handshake.RecipientNonce, handshake.InitiatorNonce)).Bytes;
             byte[] sharedSecret = Keccak.Compute(Bytes.Concat(ephemeralSharedSecret, nonceHash)).Bytes;
             byte[] token = Keccak.Compute(sharedSecret).Bytes;
             byte[] aesSecret = Keccak.Compute(Bytes.Concat(ephemeralSharedSecret, sharedSecret)).Bytes;
+            Array.Clear(sharedSecret, 0, sharedSecret.Length); // TODO: it was passed in the concat for Keccak so not good enough
             byte[] macSecret = Keccak.Compute(Bytes.Concat(ephemeralSharedSecret, aesSecret)).Bytes;
+            Array.Clear(ephemeralSharedSecret, 0, ephemeralSharedSecret.Length); // TODO: it was passed in the concat for Keccak so not good enough
             handshake.Secrets = new EncryptionSecrets();
             handshake.Secrets.Token = token;
             handshake.Secrets.AesSecret = aesSecret;
             handshake.Secrets.MacSecret = macSecret;
+            handshake.Secrets.EgressMac = Keccak.Compute(
+                Bytes.Concat(
+                    macSecret.Xor(role == Role.Initiator ? handshake.RecipientNonce : handshake.InitiatorNonce),
+                    role == Role.Initiator ? handshake.AuthPacket.Data : handshake.AckPacket.Data)).Bytes;
+            handshake.Secrets.IngressMac = Keccak.Compute(
+                Bytes.Concat(
+                    macSecret.Xor(role == Role.Initiator ? handshake.InitiatorNonce : handshake.RecipientNonce),
+                    role == Role.Initiator ? handshake.AckPacket.Data : handshake.AuthPacket.Data)).Bytes;
         }
 
-//        public AuthMessage Init(EncryptionHandshake handshake, PrivateKey privateKey)
-//        {
-//            PrivateKey ephemeraPrivateKey = new PrivateKey(_cryptoRandom.GenerateRandomBytes(32));
-//            byte[] nonce = _cryptoRandom.GenerateRandomBytes(32);
-//
-//            handshake.InitiatorNonce = nonce;
-//            handshake.EphemeralPrivateKey = ephemeraPrivateKey;
-//
-//            byte[] staticSharedSecret = BouncyCrypto.Agree(privateKey, handshake.RemotePublicKey);
-//            byte[] forSigning = staticSharedSecret.Xor(nonce);
-//
-//            AuthMessage authMessage = new AuthMessage();
-//            authMessage.IsTokenUsed = false;
-//            authMessage.Nonce = nonce;
-//            authMessage.PublicKey = privateKey.PublicKey;
-//            authMessage.Signature = _signer.Sign(privateKey, Keccak.Compute(forSigning));
-//            authMessage.EphemeralPublicHash = Keccak.Compute(ephemeraPrivateKey.PublicKey.Bytes);
-//            return authMessage;
-//        }
+        private enum Role
+        {
+            Initiator,
+            Recipient
+        }
     }
 }

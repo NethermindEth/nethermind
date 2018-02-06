@@ -24,9 +24,12 @@ namespace Nevermind.Network
     {
         public EncryptionSecrets Secrets { get; set; }
         public byte[] InitiatorNonce { get; set; }
-        public byte[] ResponderNonce { get; set; }
+        public byte[] RecipientNonce { get; set; }
         public PublicKey RemotePublicKey { get; set; }
         public PublicKey RemoteEphemeralPublicKey { get; set; }
         public PrivateKey EphemeralPrivateKey { get; set; }
+        
+        public Packet AuthPacket { get; set; }
+        public Packet AckPacket { get; set; }
     }
 }

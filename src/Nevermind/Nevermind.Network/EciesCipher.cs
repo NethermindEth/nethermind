@@ -17,35 +17,34 @@ namespace Nevermind.Network
     /// <summary>
     ///     from EthereumJ
     /// </summary>
-    public class EciesCoder
+    public class EciesCipher : IEciesCipher
     {
         private const int KeySize = 128;
         private readonly ICryptoRandom _cryptoRandom;
 
-        public EciesCoder(ICryptoRandom cryptoRandom)
+        public EciesCipher(ICryptoRandom cryptoRandom)
         {
             _cryptoRandom = cryptoRandom;
         }
 
-        public byte[] Decrypt(ECPrivateKeyParameters privKey, byte[] cipher, byte[] macData = null)
+        public byte[] Decrypt(PrivateKey privateKey, byte[] ciphertextBody, byte[] macData = null)
         {
-            MemoryStream inputStream = new MemoryStream(cipher);
+            MemoryStream inputStream = new MemoryStream(ciphertextBody);
             int ephemBytesLength = 2 * ((BouncyCrypto.DomainParameters.Curve.FieldSize + 7) / 8) + 1;
 
             byte[] ephemBytes = new byte[ephemBytesLength];
             inputStream.Read(ephemBytes, 0, ephemBytesLength);
-            ECPoint ephem = BouncyCrypto.DomainParameters.Curve.DecodePoint(ephemBytes);
-            byte[] IV = new byte[KeySize / 8];
-            inputStream.Read(IV, 0, IV.Length);
+            byte[] iv = new byte[KeySize / 8];
+            inputStream.Read(iv, 0, iv.Length);
             byte[] cipherBody = new byte[inputStream.Length - inputStream.Position];
             inputStream.Read(cipherBody, 0, cipherBody.Length);
 
-            byte[] plaintext = Decrypt(ephem, privKey, IV, cipherBody, macData);
+            byte[] plaintext = Decrypt(new PublicKey(ephemBytes), privateKey, iv, cipherBody, macData);
 
             return plaintext;
         }
 
-        public byte[] Decrypt(ECPoint ephem, ECPrivateKeyParameters prv, byte[] IV, byte[] cipher, byte[] macData)
+        private byte[] Decrypt(PublicKey ephemeralPublicKey, PrivateKey privateKey, byte[] iv, byte[] ciphertextBody, byte[] macData)
         {
             AesFastEngine aesFastEngine = new AesFastEngine();
 
@@ -62,14 +61,16 @@ namespace Nevermind.Network
 
             IesParameters p = new IesWithCipherParameters(d, e, KeySize, KeySize);
             ParametersWithIV parametersWithIV =
-                new ParametersWithIV(p, IV);
+                new ParametersWithIV(p, iv);
 
-            iesEngine.Init(false, prv, new ECPublicKeyParameters(ephem, BouncyCrypto.DomainParameters), parametersWithIV);
+            ECPrivateKeyParameters privateKeyParameters = BouncyCrypto.WrapPrivateKey(privateKey);
+            ECPublicKeyParameters publicKeyParameters = BouncyCrypto.WrapPublicKey(ephemeralPublicKey);
+            iesEngine.Init(false, privateKeyParameters, publicKeyParameters, parametersWithIV);
 
-            return iesEngine.ProcessBlock(cipher, 0, cipher.Length, macData);
+            return iesEngine.ProcessBlock(ciphertextBody, 0, ciphertextBody.Length, macData);
         }
 
-        public byte[] Encrypt(ECPoint toPub, byte[] plaintext, byte[] macData)
+        public byte[] Encrypt(PublicKey recipientPublicKey, byte[] plaintext, byte[] macData)
         {
             ECKeyPairGenerator eGen = new ECKeyPairGenerator();
             SecureRandom random = new SecureRandom();
@@ -80,10 +81,10 @@ namespace Nevermind.Network
             byte[] iv = _cryptoRandom.GenerateRandomBytes(KeySize / 8);
 
             AsymmetricCipherKeyPair ephemPair = eGen.GenerateKeyPair();
-            BigInteger prv = ((ECPrivateKeyParameters)ephemPair.Private).D;
-            ECPoint pub = ((ECPublicKeyParameters)ephemPair.Public).Q;
-            EthereumIesEngine iesEngine = MakeIesEngine(true, toPub, prv, iv);
-
+            ECPublicKeyParameters publicKeyParameters = BouncyCrypto.WrapPublicKey(recipientPublicKey);
+            ECPrivateKeyParameters ephemeralPrivateKeyParameters = (ECPrivateKeyParameters)ephemPair.Private;
+            ECPublicKeyParameters ephemeralPublicKeyParameters = (ECPublicKeyParameters)ephemPair.Public;
+            EthereumIesEngine iesEngine = MakeIesEngine(true, publicKeyParameters.Q, ephemeralPrivateKeyParameters.D, iv);
 
             ECKeyGenerationParameters keygenParams = new ECKeyGenerationParameters(BouncyCrypto.DomainParameters, random);
             ECKeyPairGenerator generator = new ECKeyPairGenerator();
@@ -96,7 +97,7 @@ namespace Nevermind.Network
             {
                 byte[] cipher = iesEngine.ProcessBlock(plaintext, 0, plaintext.Length, macData);
                 MemoryStream bos = new MemoryStream();
-                byte[] pubBytes = pub.GetEncoded(false);
+                byte[] pubBytes = ephemeralPublicKeyParameters.Q.GetEncoded(false);
                 bos.Write(pubBytes, 0, pubBytes.Length);
                 bos.Write(iv, 0, iv.Length);
                 bos.Write(cipher, 0, cipher.Length);

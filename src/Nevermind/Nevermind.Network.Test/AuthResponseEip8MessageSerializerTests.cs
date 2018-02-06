@@ -32,16 +32,16 @@ namespace Nevermind.Network.Test
 
         private readonly PrivateKey _privateKey = new PrivateKey(TestPrivateKeyHex);
 
-        private readonly AuthResponseEip8MessageSerializer _serializer = new AuthResponseEip8MessageSerializer();
+        private readonly AckEip8MessageSerializer _serializer = new AckEip8MessageSerializer();
 
         private void TestEncodeDecode()
         {
-            AuthResponseEip8Message before = new AuthResponseEip8Message();
+            AckEip8Message before = new AckEip8Message();
             before.EphemeralPublicKey = _privateKey.PublicKey;
-            before.Nonce = new byte[AuthResponseEip8MessageSerializer.NonceLength];
+            before.Nonce = new byte[AckEip8MessageSerializer.NonceLength];
             _random.NextBytes(before.Nonce);
             byte[] data = _serializer.Serialize(before);
-            AuthResponseEip8Message after = _serializer.Deserialize(data);
+            AckEip8Message after = _serializer.Deserialize(data);
 
             Assert.AreEqual(before.EphemeralPublicKey, after.EphemeralPublicKey);
             Assert.True(Bytes.UnsafeCompare(before.Nonce, after.Nonce));

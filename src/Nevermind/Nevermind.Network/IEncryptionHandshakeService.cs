@@ -22,10 +22,8 @@ namespace Nevermind.Network
 {
     public interface IEncryptionHandshakeService
     {
-        AuthEip8Message Init(EncryptionHandshake handshake, PrivateKey privateKey);
-        AuthResponseMessage Respond(EncryptionHandshake handshake, AuthMessage authMessage, PrivateKey privateKey);
-        AuthResponseEip8Message Respond(EncryptionHandshake handshake, AuthEip8Message authMessage, PrivateKey privateKey);
-        void HandleResponse(EncryptionHandshake handshake, AuthResponseEip8Message responseMessage);
-        void HandleResponse(EncryptionHandshake handshake, AuthResponseMessage responseMessage);
+        Packet Auth(PublicKey remotePublicKey, EncryptionHandshake handshake);
+        Packet Ack(EncryptionHandshake handshake, Packet auth);
+        void Agree(EncryptionHandshake handshake, Packet ack);
     }
 }
