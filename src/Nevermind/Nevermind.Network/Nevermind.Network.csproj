@@ -65,11 +65,11 @@
     <Compile Include="EthereumIesEngine.cs" />
     <Compile Include="EthNetworkException.cs" />
     <Compile Include="FrameHeaderData.cs" />
-    <Compile Include="FramingService.cs" />
+    <Compile Include="FrameCodec.cs" />
     <Compile Include="HelloMessage.cs" />
     <Compile Include="EncryptionHandshakeService.cs" />
     <Compile Include="IEciesCipher.cs" />
-    <Compile Include="IFramingService.cs" />
+    <Compile Include="IFrameCodec.cs" />
     <Compile Include="IMessagePad.cs" />
     <Compile Include="IEncryptionHandshakeService.cs" />
     <Compile Include="IMessageSerializationService.cs" />

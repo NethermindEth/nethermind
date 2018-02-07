@@ -1,8 +1,8 @@
-﻿using Nevermind.Core;
+﻿using System;
+using Nevermind.Core;
 using Nevermind.Core.Crypto;
 using Nevermind.Core.Extensions;
 using NUnit.Framework;
-using Org.BouncyCastle.Crypto.Parameters;
 
 namespace Nevermind.Network.Test
 {
@@ -74,6 +74,15 @@ namespace Nevermind.Network.Test
             Assert.AreEqual(authMessage.Nonce, NetTestVectors.NonceA);
             Assert.AreEqual(authMessage.IsTokenUsed, false);
             Assert.NotNull(authMessage.Signature);
+            
+            // TODO: failing now (need to provide TestRandom for IV)
+            byte[] data = _messageSerializationService.Serialize(authMessage);
+            Array.Resize(ref data, deciphered.Length);
+            
+            Assert.AreEqual(deciphered, data, "serialization");
+            
+            byte[] reciphered = Bytes.Concat(_eciesCipher.Encrypt(NetTestVectors.StaticKeyB.PublicKey, data, null));
+            Assert.AreEqual((byte[])hex, reciphered, "encryption");
         }
 
         [Test]
@@ -104,6 +113,15 @@ namespace Nevermind.Network.Test
             Assert.AreEqual(authMessage.Nonce, NetTestVectors.NonceA);
             Assert.AreEqual(authMessage.Version, 4);
             Assert.NotNull(authMessage.Signature);
+            
+            // TODO: failing now (need to provide TestRandom for IV)
+            byte[] data = _messageSerializationService.Serialize(authMessage);
+            Array.Resize(ref data, deciphered.Length);
+            
+            Assert.AreEqual(deciphered, data, "serialization");
+            
+            byte[] reciphered = Bytes.Concat(sizeBytes, _eciesCipher.Encrypt(NetTestVectors.StaticKeyB.PublicKey, data, sizeBytes));
+            Assert.AreEqual(allBytes, reciphered, "encryption");
         }
 
         [Test]
@@ -122,6 +140,15 @@ namespace Nevermind.Network.Test
             Assert.AreEqual(ackMessage.EphemeralPublicKey, NetTestVectors.EphemeralKeyB.PublicKey);
             Assert.AreEqual(ackMessage.Nonce, NetTestVectors.NonceB);
             Assert.AreEqual(ackMessage.IsTokenUsed, false);
+            
+            // TODO: failing now (need to provide TestRandom for IV)
+            byte[] data = _messageSerializationService.Serialize(ackMessage);
+            Array.Resize(ref data, deciphered.Length);
+            
+            Assert.AreEqual(deciphered, data, "serialization");
+            
+            byte[] reciphered = Bytes.Concat(_eciesCipher.Encrypt(NetTestVectors.StaticKeyB.PublicKey, data, null));
+            Assert.AreEqual((byte[])hex, reciphered, "encryption");
         }
 
         [Test]
@@ -153,6 +180,15 @@ namespace Nevermind.Network.Test
             Assert.AreEqual(ackMessage.EphemeralPublicKey, NetTestVectors.EphemeralKeyB.PublicKey);
             Assert.AreEqual(ackMessage.Nonce, NetTestVectors.NonceB);
             Assert.AreEqual(ackMessage.Version, 4);
+            
+            // TODO: failing now (need to provide TestRandom for IV)
+            byte[] data = _messageSerializationService.Serialize(ackMessage);
+            Array.Resize(ref data, deciphered.Length);
+            
+            Assert.AreEqual(deciphered, data, "serialization");
+            
+            byte[] reciphered = Bytes.Concat(sizeBytes, _eciesCipher.Encrypt(NetTestVectors.StaticKeyB.PublicKey, data, sizeBytes));
+            Assert.AreEqual(allBytes, reciphered, "encryption");
         }
 
         [Test]
@@ -171,7 +207,7 @@ namespace Nevermind.Network.Test
                       "3011b7348c16cf58f66b9633906ba54a2ee803187344b394f75dd2e663a57b956cb830dd7a908d4f" +
                       "39a2336a61ef9fda549180d4ccde21514d117b6c6fd07a9102b5efe710a32af4eeacae2cb3b1dec0" +
                       "35b9593b48b9d3ca4c13d245d5f04169b0b1";
-            
+
             byte[] allBytes = hex;
             byte[] sizeBytes = allBytes.Slice(0, 2);
             int size = sizeBytes.ToInt32();

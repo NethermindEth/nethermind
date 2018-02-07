@@ -14,5 +14,7 @@ namespace Nevermind.Network.Test
 
         public static readonly byte[] AesSecret = new Hex("80e8632c05fed6fc2a13b0f8d31a3cf645366239170ea067065aba8e28bac487");
         public static readonly byte[] MacSecret = new Hex("2ea74ec5dae199227dff1af715362700e989d889d7a493cb0639691efb8e5f98");
+        
+        public static readonly byte[] BIngressMacFoo = new Hex("0c7ec6340062cc46f5e9f1e3cf86f8c8c403c5a0964f5df0ebd34a75ddc86db5");
     }
 }

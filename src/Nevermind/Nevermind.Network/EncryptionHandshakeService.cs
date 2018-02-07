@@ -17,9 +17,11 @@
  */
 
 using System;
+using System.Diagnostics;
 using Nevermind.Core;
 using Nevermind.Core.Crypto;
 using Nevermind.Core.Extensions;
+using Org.BouncyCastle.Crypto.Digests;
 
 namespace Nevermind.Network
 {
@@ -28,6 +30,8 @@ namespace Nevermind.Network
     /// </summary>
     public class EncryptionHandshakeService : IEncryptionHandshakeService
     {
+        private static int MacBitsSize = 256;
+
         private readonly ICryptoRandom _cryptoRandom;
         private readonly IEciesCipher _eciesCipher;
         private readonly IMessageSerializationService _messageSerializationService;
@@ -71,14 +75,14 @@ namespace Nevermind.Network
                 authData,
                 sizeBytes);
 
-            handshake.AuthPacket = new Packet(Bytes.Concat(sizeBytes, packetData));    
+            handshake.AuthPacket = new Packet(Bytes.Concat(sizeBytes, packetData));
             return handshake.AuthPacket;
         }
 
         public Packet Ack(EncryptionHandshake handshake, Packet auth)
         {
             handshake.AuthPacket = auth;
-            
+
             // TODO: try, retry (support old clients)
             byte[] sizeData = auth.Data.Slice(0, 2);
             byte[] plaintext = _eciesCipher.Decrypt(_privateKey, auth.Data.Slice(2), sizeData);
@@ -137,14 +141,44 @@ namespace Nevermind.Network
             handshake.Secrets.Token = token;
             handshake.Secrets.AesSecret = aesSecret;
             handshake.Secrets.MacSecret = macSecret;
-            handshake.Secrets.EgressMac = Keccak.Compute(
+
+            KeccakDigest mac1 = new KeccakDigest(MacBitsSize);
+            mac1.BlockUpdate(macSecret.Xor(handshake.RecipientNonce), 0, macSecret.Length);
+            mac1.BlockUpdate(handshake.AuthPacket.Data, 0, handshake.AuthPacket.Data.Length);
+
+            KeccakDigest mac2 = new KeccakDigest(MacBitsSize);
+            mac2.BlockUpdate(macSecret.Xor(handshake.InitiatorNonce), 0, macSecret.Length);
+            mac2.BlockUpdate(handshake.AckPacket.Data, 0, handshake.AckPacket.Data.Length);
+
+            if (role == Role.Initiator)
+            {
+                handshake.Secrets.EgressMac = mac1;
+                handshake.Secrets.IngressMac = mac2;
+            }
+            else
+            {
+                handshake.Secrets.EgressMac = mac2;
+                handshake.Secrets.IngressMac = mac1;
+            }
+
+            byte[] egress = Keccak.Compute(
                 Bytes.Concat(
                     macSecret.Xor(role == Role.Initiator ? handshake.RecipientNonce : handshake.InitiatorNonce),
                     role == Role.Initiator ? handshake.AuthPacket.Data : handshake.AckPacket.Data)).Bytes;
-            handshake.Secrets.IngressMac = Keccak.Compute(
+            byte[] ingress = Keccak.Compute(
                 Bytes.Concat(
                     macSecret.Xor(role == Role.Initiator ? handshake.InitiatorNonce : handshake.RecipientNonce),
                     role == Role.Initiator ? handshake.AckPacket.Data : handshake.AuthPacket.Data)).Bytes;
+
+            //// TODO: compare performance and memory utilization of the two methods
+
+            byte[] egressDigest = new byte[32];
+            byte[] ingressDigest = new byte[32];
+            handshake.Secrets.EgressMac.DoFinal(egressDigest, 0);
+            handshake.Secrets.IngressMac.DoFinal(ingressDigest, 0);
+
+            Debug.Assert(Bytes.UnsafeCompare(egressDigest, egress));
+            Debug.Assert(Bytes.UnsafeCompare(ingressDigest, ingress));
         }
 
         private enum Role

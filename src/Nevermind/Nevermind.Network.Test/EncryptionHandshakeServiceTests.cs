@@ -1,9 +1,11 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Text;
 using Nevermind.Core;
 using Nevermind.Core.Crypto;
 using Nevermind.Core.Potocol;
 using NUnit.Framework;
+using Org.BouncyCastle.Crypto.Digests;
 
 namespace Nevermind.Network.Test
 {
@@ -20,7 +22,7 @@ namespace Nevermind.Network.Test
             _messageSerializationService.Register(new AckMessageSerializer());
             _messageSerializationService.Register(new AckEip8MessageSerializer());
 
-            _eciesCipher = new EciesCipher(new CryptoRandom()); // do not use TestRandom here (iv generation)
+            _eciesCipher = new EciesCipher(new CryptoRandom()); // TODO: provide a separate test random with specific IV and epehemeral key for testing
 
             _initiatorService = new EncryptionHandshakeService(_messageSerializationService, _eciesCipher, _cryptoRandom, _signer, NetTestVectors.StaticKeyA, NullLogger.Instance);
             _recipientService = new EncryptionHandshakeService(_messageSerializationService, _eciesCipher, _cryptoRandom, _signer, NetTestVectors.StaticKeyB, NullLogger.Instance);
@@ -103,8 +105,17 @@ namespace Nevermind.Network.Test
             Assert.AreEqual(NetTestVectors.AesSecret, _recipientHandshake.Secrets.AesSecret, "recipient AES");
             Assert.AreEqual(NetTestVectors.MacSecret, _initiatorHandshake.Secrets.MacSecret, "initiator MAC");
             Assert.AreEqual(NetTestVectors.MacSecret, _recipientHandshake.Secrets.MacSecret, "recipient MAC");
-        }
 
+            // TODO: below failing, probably different format after serialization / during encryption (only tested decryption / deserialization in EciesCoder)
+            // ingress uses the auth packet which is encrypted with a random IV and ephemeral key - need to remove that randomness for tests
+            byte[] fooBytes = Encoding.ASCII.GetBytes("foo");
+            _recipientHandshake.Secrets.IngressMac.BlockUpdate(fooBytes, 0, fooBytes.Length);
+
+            byte[] ingressFooResult = new byte[32];
+            _recipientHandshake.Secrets.IngressMac.DoFinal(ingressFooResult, 0);
+            Assert.AreEqual(NetTestVectors.BIngressMacFoo, ingressFooResult, "recipient ingress foo");
+        }
+        
         [Test]
         public void Agrees_on_secrets()
         {
@@ -115,8 +126,21 @@ namespace Nevermind.Network.Test
             Assert.AreEqual(_recipientHandshake.Secrets.Token, _initiatorHandshake.Secrets.Token, "Token");
             Assert.AreEqual(_recipientHandshake.Secrets.AesSecret, _initiatorHandshake.Secrets.AesSecret, "AES");
             Assert.AreEqual(_recipientHandshake.Secrets.MacSecret, _initiatorHandshake.Secrets.MacSecret, "MAC");
-            Assert.AreEqual(_recipientHandshake.Secrets.EgressMac, _initiatorHandshake.Secrets.IngressMac, "Egress");
-            Assert.AreEqual(_recipientHandshake.Secrets.IngressMac, _initiatorHandshake.Secrets.EgressMac, "Ingress");
+
+            byte[] recipientEgress = new byte[32];
+            byte[] recipientIngress = new byte[32];
+            
+            byte[] initiatorEgress = new byte[32];
+            byte[] initiatorIngress = new byte[32];
+
+            _recipientHandshake.Secrets.EgressMac.DoFinal(recipientEgress, 0);
+            _recipientHandshake.Secrets.IngressMac.DoFinal(recipientIngress, 0);
+            
+            _initiatorHandshake.Secrets.EgressMac.DoFinal(initiatorEgress, 0);
+            _initiatorHandshake.Secrets.IngressMac.DoFinal(initiatorIngress, 0);
+            
+            Assert.AreEqual(initiatorEgress, recipientIngress, "Egress");
+            Assert.AreEqual(initiatorIngress, recipientIngress, "Ingress");
         }
 
         [Test]

@@ -16,12 +16,14 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Org.BouncyCastle.Crypto.Digests;
+
 namespace Nevermind.Network
 {
     public class EncryptionSecrets
     {
-        public byte[] EgressMac { get; set; }
-        public byte[] IngressMac { get; set; }
+        public KeccakDigest EgressMac { get; set; }
+        public KeccakDigest IngressMac { get; set; }
         public byte[] AesSecret { get; set; }
         public byte[] MacSecret { get; set; }
         public byte[] Token { get; set; }
