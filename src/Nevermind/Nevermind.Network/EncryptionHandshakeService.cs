@@ -65,7 +65,7 @@ namespace Nevermind.Network
             AuthEip8Message authMessage = new AuthEip8Message();
             authMessage.Nonce = handshake.InitiatorNonce;
             authMessage.PublicKey = _privateKey.PublicKey;
-            authMessage.Signature = _signer.Sign(handshake.EphemeralPrivateKey, Keccak.Compute(forSigning));
+            authMessage.Signature = _signer.Sign(handshake.EphemeralPrivateKey, new Keccak(forSigning));
 
             byte[] authData = _messageSerializationService.Serialize(authMessage);
             int size = authData.Length + 32 + 16 + 65; // data + MAC + IV + pub
@@ -95,14 +95,15 @@ namespace Nevermind.Network
             handshake.InitiatorNonce = authMessage.Nonce;
             byte[] staticSharedSecret = BouncyCrypto.Agree(_privateKey, handshake.RemotePublicKey);
             byte[] forSigning = staticSharedSecret.Xor(handshake.InitiatorNonce);
-            handshake.RemoteEphemeralPublicKey = _signer.RecoverPublicKey(authMessage.Signature, Keccak.Compute(forSigning));
+            
+            handshake.RemoteEphemeralPublicKey = _signer.RecoverPublicKey(authMessage.Signature, new Keccak(forSigning));
 
             // TODO: respond depending on the auth type
             AckEip8Message ackMessage = new AckEip8Message();
             ackMessage.EphemeralPublicKey = handshake.EphemeralPrivateKey.PublicKey;
 //            responseMessage.IsTokenUsed = false;
             ackMessage.Nonce = handshake.RecipientNonce;
-
+            
             byte[] ackData = _messageSerializationService.Serialize(ackMessage);
             int size = ackData.Length + 32 + 16 + 65; // data + MAC + IV + pub
             byte[] sizeBytes = size.ToBigEndianByteArray().Slice(2, 2);
@@ -160,25 +161,6 @@ namespace Nevermind.Network
                 handshake.Secrets.EgressMac = mac2;
                 handshake.Secrets.IngressMac = mac1;
             }
-
-            byte[] egress = Keccak.Compute(
-                Bytes.Concat(
-                    macSecret.Xor(role == Role.Initiator ? handshake.RecipientNonce : handshake.InitiatorNonce),
-                    role == Role.Initiator ? handshake.AuthPacket.Data : handshake.AckPacket.Data)).Bytes;
-            byte[] ingress = Keccak.Compute(
-                Bytes.Concat(
-                    macSecret.Xor(role == Role.Initiator ? handshake.InitiatorNonce : handshake.RecipientNonce),
-                    role == Role.Initiator ? handshake.AckPacket.Data : handshake.AuthPacket.Data)).Bytes;
-
-            //// TODO: compare performance and memory utilization of the two methods
-
-            byte[] egressDigest = new byte[32];
-            byte[] ingressDigest = new byte[32];
-            handshake.Secrets.EgressMac.DoFinal(egressDigest, 0);
-            handshake.Secrets.IngressMac.DoFinal(ingressDigest, 0);
-
-            Debug.Assert(Bytes.UnsafeCompare(egressDigest, egress));
-            Debug.Assert(Bytes.UnsafeCompare(ingressDigest, ingress));
         }
 
         private enum Role

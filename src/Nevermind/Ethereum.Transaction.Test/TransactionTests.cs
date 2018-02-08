@@ -208,7 +208,7 @@ namespace Ethereum.Transaction.Test
                 Assert.AreEqual(expectedSignature, transaction.Signature, "signature");
 //                if(useChainId && spec.IsEip155Enabled)
 //                
-                ISigner signer = new Signer(spec, useChainId ? ChainId.MainNet : 0);
+                IEthereumSigner signer = new EthereumSigner(spec, useChainId ? ChainId.MainNet : 0);
                 bool verified = signer.Verify(
                     validTest.Sender,
                     transaction);

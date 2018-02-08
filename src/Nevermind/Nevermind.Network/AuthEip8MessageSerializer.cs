@@ -28,7 +28,7 @@ namespace Nevermind.Network
         public byte[] Serialize(AuthEip8Message message, IMessagePad messagePad = null)
         {
             byte[] data = Rlp.Encode(
-                Rlp.Encode(Bytes.Concat(message.Signature.Bytes, message.Signature.V)),
+                Rlp.Encode(Bytes.Concat(message.Signature.Bytes, message.Signature.RecoveryId)),
                 Rlp.Encode(message.PublicKey.Bytes),
                 Rlp.Encode(message.Nonce),
                 Rlp.Encode(message.Version)
@@ -44,7 +44,8 @@ namespace Nevermind.Network
             Rlp rlp = new Rlp(data);
             object[] decodedRaw = (object[])Rlp.Decode(rlp, RlpBehaviors.AllowExtraData);
             AuthEip8Message authMessage = new AuthEip8Message();
-            Signature signature = new Signature((byte[])decodedRaw[0]);
+            byte[] sigAllbytes = (byte[])decodedRaw[0];
+            Signature signature = new Signature(sigAllbytes.Slice(0, 64), sigAllbytes[64]); // since Signature class is Ethereum style it expects V as the 64th byte, hence we use RecoveryID constructor
             authMessage.Signature = signature;
             authMessage.PublicKey = new PublicKey((byte[])decodedRaw[1]);
             authMessage.Nonce = (byte[])decodedRaw[2];

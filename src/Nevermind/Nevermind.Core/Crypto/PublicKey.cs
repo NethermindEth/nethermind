@@ -30,6 +30,7 @@ namespace Nevermind.Core.Crypto
 
         private byte[] _prefixedBytes;
 
+        // TODO: consider Hex here
         public PublicKey(byte[] bytes)
         {
             if (bytes == null)

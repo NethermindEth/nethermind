@@ -1,39 +1,18 @@
-﻿using System;
-using Nevermind.Core.Crypto;
-using NUnit.Framework;
+﻿using NUnit.Framework;
 
 namespace Nevermind.Network.Test
 {
     [TestFixture]
     public class Eip8MessagePadTests
     {
-        private class TestRandom : ICryptoRandom
-        {
-            private readonly Func<int, int> _nextIntFunc;
-
-            public TestRandom(Func<int, int> nextIntFunc)
-            {
-                _nextIntFunc = nextIntFunc;
-            }
-
-            public byte[] GenerateRandomBytes(int length)
-            {
-                return new byte[length];
-            }
-
-            public int NextInt(int max)
-            {
-                return _nextIntFunc(max);
-            }
-        }
-
         [Test]
         public void Adds_at_least_100_bytes()
         {
             byte[] message = {1};
             int lengthBeforePadding = message.Length;
 
-            ICryptoRandom testRandom = new TestRandom(i => 0);
+            TestRandom testRandom = new TestRandom(i => 0, i => new byte[i]);
+
             Eip8MessagePad pad = new Eip8MessagePad(testRandom);
             message = pad.Pad(message);
 
@@ -47,7 +26,8 @@ namespace Nevermind.Network.Test
             byte[] message = {1};
             int lengthBeforePadding = message.Length;
 
-            ICryptoRandom testRandom = new TestRandom(i => i - 1);
+            TestRandom testRandom = new TestRandom(i => i - 1, i => new byte[i]);
+
             Eip8MessagePad pad = new Eip8MessagePad(testRandom);
             message = pad.Pad(message);
 

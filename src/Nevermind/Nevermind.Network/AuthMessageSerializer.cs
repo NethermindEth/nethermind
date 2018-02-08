@@ -53,7 +53,7 @@ namespace Nevermind.Network
         {
             byte[] data = new byte[Length];
             Buffer.BlockCopy(message.Signature.Bytes, 0, data, SigOffset, SigLength - 1);
-            data[SigLength - 1] = message.Signature.V;
+            data[SigLength - 1] = message.Signature.RecoveryId;
             Buffer.BlockCopy(message.EphemeralPublicHash.Bytes, 0, data, EphemeralHashOffset, EphemeralHashLength);
             Buffer.BlockCopy(message.PublicKey.Bytes, 0, data, PublicKeyOffset, PublicKeyLength);
             Buffer.BlockCopy(message.Nonce, 0, data, NonceOffset, NonceLength);
@@ -69,7 +69,7 @@ namespace Nevermind.Network
             }
 
             AuthMessage authMessage = new AuthMessage();
-            authMessage.Signature = new Signature(bytes.Slice(SigOffset, SigLength));
+            authMessage.Signature = new Signature(bytes.Slice(SigOffset, SigLength - 1), bytes[64]);
             authMessage.EphemeralPublicHash = new Keccak(bytes.Slice(EphemeralHashOffset, EphemeralHashLength));
             authMessage.PublicKey = new PublicKey(bytes.Slice(PublicKeyOffset, PublicKeyLength));
             authMessage.Nonce = bytes.Slice(NonceOffset, NonceLength);

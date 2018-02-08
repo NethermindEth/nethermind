@@ -62,13 +62,14 @@
     <Compile Include="ConsoleLogger.cs" />
     <Compile Include="Crypto\ConsoleUtils.cs" />
     <Compile Include="Crypto\ICryptoRandom.cs" />
+    <Compile Include="Crypto\IEthereumSigner.cs" />
     <Compile Include="Crypto\ISigner.cs" />
-    <Compile Include="Crypto\KeyAgreement.cs" />
     <Compile Include="Crypto\Secp256K1Curve.cs" />
     <Compile Include="Crypto\Keccak.cs" />
     <Compile Include="Crypto\Ripemd.cs" />
     <Compile Include="Crypto\SecureStringExtensions.cs" />
     <Compile Include="Crypto\Sha2.cs" />
+    <Compile Include="Crypto\Signer.cs" />
     <Compile Include="Encoding\AccountDecoder.cs" />
     <Compile Include="Encoding\BlockHeaderDecoder.cs" />
     <Compile Include="Encoding\IRlpDecoder.cs" />
@@ -103,14 +104,13 @@
     <Compile Include="TransactionReceipt.cs" />
     <Compile Include="Address.cs" />
     <Compile Include="Extensions\IntExtensions.cs" />
-    <Compile Include="Crypto\Keystore.cs" />
     <Compile Include="Crypto\PrivateKey.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Crypto\PublicKey.cs" />
     <Compile Include="Crypto\CryptoRandom.cs" />
     <Compile Include="Encoding\Rlp.cs" />
     <Compile Include="Crypto\Signature.cs" />
-    <Compile Include="Crypto\Signer.cs" />
+    <Compile Include="Crypto\EthereumSigner.cs" />
     <Compile Include="TimeStamp.cs" />
     <Compile Include="Unit.cs" />
   </ItemGroup>

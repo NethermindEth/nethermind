@@ -29,8 +29,7 @@ namespace Nevermind.Network
         {
             _macSecret = secrets.MacSecret;
 
-            // EthereumJ suggest a block size of 32 bytes while AES should have a 16 bytes block size, I must have missed something
-            
+            // TODO: check, EthereumJ suggest a block size of 32 bytes while AES should have a 16 bytes block size
             _encryptionCipher = CipherUtilities.GetCipher("AES/CTR/NoPadding");
             _encryptionCipher.Init(true, new ParametersWithIV(ParameterUtilities.CreateKeyParameter("AES", secrets.AesSecret), new byte[16]));
 
@@ -92,16 +91,16 @@ namespace Nevermind.Network
                 Buffer.BlockCopy(headerDataBytes, 0, header, 3, headerDataBytes.Length);
 
                 _encryptionCipher.ProcessBytes(header, 0, 16, header, 0);
-                
+
                 // TODO: refactor UpdateMac
-                
+
                 // header-mac: right128 of egress-mac.update(aes(mac-secret,egress-mac) ^ header-ciphertext).digest
                 byte[] headerMac = new byte[16];
                 UpdateMac(_egressMac, header, 0, headerMac, 0, true);
 
                 _encryptionCipher.ProcessBytes(frame, frame.Length, 0, frame, 0);
                 _egressMac.BlockUpdate(frame, 0, frame.Length);
-                
+
                 // frame-mac: right128 of egress-mac.update(aes(mac-secret,egress-mac) ^ right128(egress-mac.update(frame-ciphertext).digest))
                 byte[] frameMac = new byte[_egressMac.GetDigestSize()];
                 DoFinalNoReset(_egressMac, frameMac); // fmacseed

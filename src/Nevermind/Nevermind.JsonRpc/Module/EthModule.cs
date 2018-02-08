@@ -251,7 +251,7 @@ namespace Nevermind.JsonRpc.Module
             var messageText = ConfigurationProvider.MessageEncoding.GetString(message.Value);
             var signatureText = string.Format(ConfigurationProvider.SignatureTemplate, messageText.Length, messageText);
             //TODO how to select proper chainId
-            var signer = new Signer(_ethereumRelease, ChainId.DefaultGethPrivateChain);
+            var signer = new EthereumSigner(_ethereumRelease, ChainId.DefaultGethPrivateChain);
             var signature = signer.Sign(privateKey.Item1, Keccak.Compute(signatureText));
             Logger.Debug($"eth_sign request {address.ToJson()}, {message.ToJson()}, result: {signature}");
             return ResultWrapper<Data>.Success(new Data(signature.Bytes));

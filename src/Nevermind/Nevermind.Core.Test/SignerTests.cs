@@ -47,12 +47,12 @@ namespace Nevermind.Core.Test
         [Test]
         public void Sign_and_recover()
         {
-            Signer signer = new Signer(Olympic.Instance, ChainId.MainNet);
+            EthereumSigner ethereumSigner = new EthereumSigner(Olympic.Instance, ChainId.MainNet);
 
             Keccak message = Keccak.Compute("Test message");
             PrivateKey privateKey = new PrivateKey(_cryptoRandom.GenerateRandomBytes(32));
-            Signature signature = signer.Sign(privateKey, message);
-            Assert.AreEqual(privateKey.Address, signer.Recover(signature, message));
+            Signature signature = ethereumSigner.Sign(privateKey, message);
+            Assert.AreEqual(privateKey.Address, ethereumSigner.Recover(signature, message));
         }
     }
 }

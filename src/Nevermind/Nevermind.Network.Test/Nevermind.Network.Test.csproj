@@ -58,6 +58,7 @@
     <Compile Include="FrameCodecTests.cs" />
     <Compile Include="NetTestVectors.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="TestRandom.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />

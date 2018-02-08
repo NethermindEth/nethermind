@@ -36,7 +36,7 @@ namespace Nevermind.Network.Test
 
         private readonly AuthMessageSerializer _serializer = new AuthMessageSerializer();
 
-        private void TestEncodeDecode(Signer signer)
+        private void TestEncodeDecode(IEthereumSigner signer)
         {
             AuthMessage authMessage = new AuthMessage();
             authMessage.EphemeralPublicHash = new Keccak(new byte[AuthMessageSerializer.EphemeralHashLength]);
@@ -64,7 +64,7 @@ namespace Nevermind.Network.Test
         [TestCase(ChainId.EthereumClassicTestnet)]
         public void Encode_decode_before_eip155(ChainId chainId)
         {
-            Signer signer = new Signer(Frontier.Instance, chainId);
+            EthereumSigner signer = new EthereumSigner(Frontier.Instance, chainId);
             TestEncodeDecode(signer);
         }
 
@@ -73,7 +73,7 @@ namespace Nevermind.Network.Test
         [TestCase(ChainId.Kovan)]
         public void Encode_decode_with_eip155(ChainId chainId)
         {
-            Signer signer = new Signer(Byzantium.Instance, chainId);
+            EthereumSigner signer = new EthereumSigner(Byzantium.Instance, chainId);
             TestEncodeDecode(signer);
         }
     }
