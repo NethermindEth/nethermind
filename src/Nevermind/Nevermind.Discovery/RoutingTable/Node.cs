@@ -27,8 +27,9 @@ namespace Nevermind.Discovery.RoutingTable
         public Node(byte[] id)
         {
             Id = id;
-            IdHash = Keccak.Compute(id).Bytes;
-            IdHashText = IdHash.ToString();
+            var hash = Keccak.Compute(id);
+            IdHash = hash.Bytes;
+            IdHashText = hash.ToString();
         }
 
         public byte[] Id { get; }

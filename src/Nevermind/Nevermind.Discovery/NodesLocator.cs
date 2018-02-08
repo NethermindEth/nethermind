@@ -109,7 +109,7 @@ namespace Nevermind.Discovery
             return await Task.WhenAll(sendFindNodeTasks);
         }
 
-        public async Task<Result> SendFindNode(Node destinationNode)
+        private async Task<Result> SendFindNode(Node destinationNode)
         {
             return await Task.Run(() => SendFindNodeSync(destinationNode));
         }

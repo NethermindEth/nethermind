@@ -22,9 +22,8 @@ using Nevermind.Discovery.RoutingTable;
 
 namespace Nevermind.Discovery
 {
-    public interface IDiscoveryManager
+    public interface IDiscoveryManager : IUdpListener
     {
-        void HandleIncomingMessage(Message message);
         INodeLifecycleManager GetNodeLifecycleManager(Node node);
         void SendMessage(Message message);
         bool WasMessageReceived(string senderAddressHash, MessageType messageType, int timeout);

@@ -54,7 +54,7 @@ namespace Nevermind.Discovery.RoutingTable
         public NodeAddResult AddNode(Node node)
         {
             var distanceFromMaster = _nodeDistanceCalculator.CalculateDistance(MasterNode.IdHash, node.IdHash);
-            var bucket = Buckets[distanceFromMaster];
+            var bucket = Buckets[distanceFromMaster > 0 ? distanceFromMaster - 1 : 0];
             _nodes.AddOrUpdate(node.IdHashText, node, (x, y) => y);
             return bucket.AddNode(node);
         }
@@ -107,7 +107,7 @@ namespace Nevermind.Discovery.RoutingTable
 
         private void Initialize()
         {
-            Buckets = new NodeBucket[_configurationProvider.BucketSize];
+            Buckets = new NodeBucket[_configurationProvider.BucketsCount];
             var key = _keyStore.GenerateKey("Test");
             if (key.Item2.ResultType == ResultType.Failure)
             {

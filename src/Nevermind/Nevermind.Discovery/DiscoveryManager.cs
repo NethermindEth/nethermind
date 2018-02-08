@@ -24,7 +24,6 @@ using Nevermind.Core;
 using Nevermind.Discovery.Lifecycle;
 using Nevermind.Discovery.Messages;
 using Nevermind.Discovery.RoutingTable;
-using Nevermind.Utils.Model;
 
 namespace Nevermind.Discovery
 {
@@ -34,23 +33,29 @@ namespace Nevermind.Discovery
         private readonly IDiscoveryConfigurationProvider _configurationProvider;
         private readonly INodeLifecycleManagerFactory _nodeLifecycleManagerFactory;
         private readonly INodeFactory _nodeFactory;
+        private readonly IMessageSerializer _messageSerializer;
+        private readonly IUdpClient _udpClient;
 
         private readonly ConcurrentDictionary<MessageTypeKey, ManualResetEvent> _waitingEvents = new ConcurrentDictionary<MessageTypeKey, ManualResetEvent>();
         private readonly ConcurrentDictionary<string, INodeLifecycleManager> _nodeLifecycleManagers = new ConcurrentDictionary<string, INodeLifecycleManager>();
 
-        public DiscoveryManager(ILogger logger, IDiscoveryConfigurationProvider configurationProvider, INodeLifecycleManagerFactory nodeLifecycleManagerFactory, INodeFactory nodeFactory)
+        public DiscoveryManager(ILogger logger, IDiscoveryConfigurationProvider configurationProvider, INodeLifecycleManagerFactory nodeLifecycleManagerFactory, INodeFactory nodeFactory, IMessageSerializer messageSerializer, IUdpClient udpClient)
         {
             _logger = logger;
             _configurationProvider = configurationProvider;
             _nodeLifecycleManagerFactory = nodeLifecycleManagerFactory;
             _nodeFactory = nodeFactory;
+            _messageSerializer = messageSerializer;
+            _udpClient = udpClient;
             _nodeLifecycleManagerFactory.DiscoveryManager = this;
+            _udpClient.SubribeForMessages(this);
         }
 
-        public void HandleIncomingMessage(Message message)
+        public void OnIncomingMessage(byte[] msg)
         {
             try
             {
+                var message = _messageSerializer.Deserialize(msg);
                 var msgType = message.MessageType;
                 if (!msgType.HasValue)
                 {
@@ -99,6 +104,8 @@ namespace Nevermind.Discovery
             {
                 var host = message.Host;
                 var port = message.Port;
+                var msg = _messageSerializer.Serialize(message);
+                _udpClient.SendMessage(host, port, msg);
             }
             catch (Exception e)
             {
@@ -109,7 +116,7 @@ namespace Nevermind.Discovery
         public bool WasMessageReceived(string senderAddressHash, MessageType messageType, int timeout)
         {
             var resetEvent = GetResetEvent(senderAddressHash, (int)messageType);
-            var result = resetEvent.WaitOne(_configurationProvider.SendNodeTimeout);
+            var result = resetEvent.WaitOne(timeout);
             if (result)
             {
                 resetEvent.Reset();

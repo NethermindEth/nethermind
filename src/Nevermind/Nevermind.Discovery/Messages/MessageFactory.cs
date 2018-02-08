@@ -31,6 +31,10 @@ namespace Nevermind.Discovery.Messages
                     return CreateFindNodeMessage(destination);
                 case MessageType.Ping:
                     return CreatePingMessage(destination);
+                case MessageType.Pong:
+                    return CreatePongMessage(destination);
+                case MessageType.Neighbors:
+                    return CreateNeighborsMessage(destination);
                 default:
                     throw new Exception($"Unsupported message type: {messageType}");
             }
@@ -38,12 +42,42 @@ namespace Nevermind.Discovery.Messages
 
         private Message CreateFindNodeMessage(Node destination)
         {
-            return new FindNodeMessage();
+            return new FindNodeMessage
+            {
+                Type = new[] {(byte)MessageType.FindNode},
+                Host = destination.Host,
+                Port = destination.Port
+            };
         }
 
         private Message CreatePingMessage(Node destination)
         {
-            return new PingMessage();
+            return new PingMessage
+            {
+                Type = new[] { (byte)MessageType.Ping },
+                Host = destination.Host,
+                Port = destination.Port
+            };
+        }
+
+        private Message CreatePongMessage(Node destination)
+        {
+            return new PongMessage
+            {
+                Type = new[] { (byte)MessageType.Pong },
+                Host = destination.Host,
+                Port = destination.Port
+            };
+        }
+
+        private Message CreateNeighborsMessage(Node destination)
+        {
+            return new NeighborsMessage
+            {
+                Type = new[] { (byte)MessageType.Neighbors },
+                Host = destination.Host,
+                Port = destination.Port
+            };
         }
     }
 }

@@ -18,23 +18,10 @@
 
 namespace Nevermind.Discovery
 {
-    public class DiscoveryConfigurationProvider : IDiscoveryConfigurationProvider
+    public interface IUdpClient
     {
-        public DiscoveryConfigurationProvider()
-        {
-            PongTimeout = 15000;
-        }
-
-        public int BucketSize => 16;
-        public int BucketsCount => 256;
-        public int Concurrency => 3;
-        public int BitsPerHop => 8;
-        public string MasterHost => "localhost";
-        public int MasterPort => 10000;
-        public int MaxDiscoveryRounds => 8;
-        public int EvictionCheckInterval => 75;
-        public int SendNodeTimeout => 300;
-        public int PongTimeout { get; set; }
-        public int PingRetryCount => 3;
+        void SendMessage(string host, int port, byte[] message);
+        void SubribeForMessages(IUdpListener listener);
+        void OnMessageReceived(byte[] message);
     }
 }

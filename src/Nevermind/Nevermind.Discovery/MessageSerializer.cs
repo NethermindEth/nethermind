@@ -16,25 +16,21 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
+using Nevermind.Discovery.Messages;
+
 namespace Nevermind.Discovery
 {
-    public class DiscoveryConfigurationProvider : IDiscoveryConfigurationProvider
+    public class MessageSerializer : IMessageSerializer
     {
-        public DiscoveryConfigurationProvider()
+        public byte[] Serialize(Message message)
         {
-            PongTimeout = 15000;
+            throw new NotImplementedException();
         }
 
-        public int BucketSize => 16;
-        public int BucketsCount => 256;
-        public int Concurrency => 3;
-        public int BitsPerHop => 8;
-        public string MasterHost => "localhost";
-        public int MasterPort => 10000;
-        public int MaxDiscoveryRounds => 8;
-        public int EvictionCheckInterval => 75;
-        public int SendNodeTimeout => 300;
-        public int PongTimeout { get; set; }
-        public int PingRetryCount => 3;
+        public Message Deserialize(byte[] message)
+        {
+            throw new NotImplementedException();
+        }
     }
 }

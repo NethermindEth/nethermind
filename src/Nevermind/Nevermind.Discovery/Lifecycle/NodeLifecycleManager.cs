@@ -93,6 +93,7 @@ namespace Nevermind.Discovery.Lifecycle
         {
             var msg = (FindNodeMessage)_messageFactory.CreateMessage(MessageType.FindNode, ManagedNode);
             msg.SearchedNode = searchedNode;
+            _isNeighborsExpected = true;
             _discoveryManager.SendMessage(msg);
         }
 
@@ -162,7 +163,7 @@ namespace Nevermind.Discovery.Lifecycle
                 }
                 else
                 {
-                    if (_pingRetryCount > 0)
+                    if (_pingRetryCount > 1)
                     {
                         _pingRetryCount = _pingRetryCount - 1;
                         SendPing();
