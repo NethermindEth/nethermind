@@ -20,6 +20,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Security;
 using Nevermind.Core;
 using Nevermind.Core.Crypto;
 using Nevermind.KeyStore;
@@ -108,7 +109,12 @@ namespace Nevermind.Discovery.RoutingTable
         private void Initialize()
         {
             Buckets = new NodeBucket[_configurationProvider.BucketsCount];
-            var key = _keyStore.GenerateKey("Test");
+            var pass = new SecureString();
+            var testPass = "TestPass";
+            testPass.ToList().ForEach(x => pass.AppendChar(x));
+            pass.MakeReadOnly();
+
+            var key = _keyStore.GenerateKey(pass);
             if (key.Item2.ResultType == ResultType.Failure)
             {
                 var msg = $"Cannot create key, error: {key.Item2.Error}";

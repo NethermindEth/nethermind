@@ -17,10 +17,12 @@
  */
 
 using System;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Threading;
 using Nevermind.Core;
+using Nevermind.Core.Crypto;
 using Nevermind.Discovery.Lifecycle;
 using Nevermind.Discovery.Messages;
 using Nevermind.Discovery.RoutingTable;
@@ -49,11 +51,11 @@ namespace Nevermind.Discovery.Test
         {
             var logger = new ConsoleLogger();
             var config = new DiscoveryConfigurationProvider { PongTimeout = 100 };
-            var configProvider = new ConfigurationProvider {KeyStoreDirectory = "."};
+            var configProvider = new ConfigurationProvider(Path.GetDirectoryName(Path.Combine(Path.GetTempPath(), "KeyStore")));
             _nodeFactory = new NodeFactory();
             var calculator = new NodeDistanceCalculator(config);
 
-            _nodeTable = new NodeTable(config, _nodeFactory, new FileKeyStore(configProvider, new JsonSerializer(logger), new AesEncrypter(configProvider, logger), logger), logger, calculator);
+            _nodeTable = new NodeTable(config, _nodeFactory, new FileKeyStore(configProvider, new JsonSerializer(logger), new AesEncrypter(configProvider, logger), new CryptoRandom(), logger), logger, calculator);
             var evictionManager = new EvictionManager(_nodeTable);
             var lifecycleFactory = new NodeLifecycleManagerFactory(_nodeFactory, _nodeTable, logger, config, new MessageFactory(), evictionManager);
 
