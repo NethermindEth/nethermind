@@ -16,25 +16,13 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nevermind.Core.Crypto;
-using NUnit.Framework;
+using System.Collections.Generic;
 
-namespace Nevermind.Network.Test
+namespace Nevermind.Network
 {
-    [TestFixture]
-    public class BouncyCryptoTests
+    public interface IMessageProcessor
     {
-        [Test]
-        public void Can_calculate_agreement()
-        {
-            CryptoRandom random = new CryptoRandom();
-            PrivateKey privateKey1 = new PrivateKey(random.GenerateRandomBytes(32));
-            PrivateKey privateKey2 = new PrivateKey(random.GenerateRandomBytes(32));
-
-            byte[] sharedSecret1 = BouncyCrypto.Agree(privateKey1, privateKey2.PublicKey);
-            byte[] sharedSecret2 = BouncyCrypto.Agree(privateKey2, privateKey1.PublicKey);
-
-            Assert.AreEqual(sharedSecret1, sharedSecret2);
-        }
+        void ToRightBase(object left, IList<object> right);
+        void ToLeftBase(object right, IList<object> left);
     }
 }

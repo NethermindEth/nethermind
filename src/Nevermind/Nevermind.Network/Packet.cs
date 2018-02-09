@@ -20,11 +20,20 @@ namespace Nevermind.Network
 {
     public class Packet
     {
+        public byte[] Data;
+
+        public Packet(int protocolType, int packetType, byte[] data)
+        {
+            Data = data;
+        }
+
         public Packet(byte[] data)
         {
             Data = data;
         }
 
-        public byte[] Data;
+        public int? PacketType { get; set; }
+
+        public int? ProtocolType { get; set; }
     }
 }

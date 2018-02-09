@@ -18,7 +18,7 @@
 
 namespace Nevermind.Network
 {
-    public abstract class P2PMessage
+    public abstract class P2PMessage : MessageBase
     {
         public abstract int MessageId { get; }
     }

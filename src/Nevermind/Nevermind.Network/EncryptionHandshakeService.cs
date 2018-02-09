@@ -109,7 +109,7 @@ namespace Nevermind.Network
             byte[] sizeBytes = size.ToBigEndianByteArray().Slice(2, 2);
             byte[] packetData = _eciesCipher.Encrypt(handshake.RemotePublicKey, ackData, sizeBytes);
             handshake.AckPacket = new Packet(Bytes.Concat(sizeBytes, packetData));
-            SetSecrets(handshake, Role.Recipient);
+            SetSecrets(handshake, EncryptionHandshakeRole.Recipient);
             return handshake.AckPacket;
         }
 
@@ -125,10 +125,10 @@ namespace Nevermind.Network
             handshake.RemoteEphemeralPublicKey = ackMessage.EphemeralPublicKey;
             handshake.RecipientNonce = ackMessage.Nonce;
 
-            SetSecrets(handshake, Role.Initiator);
+            SetSecrets(handshake, EncryptionHandshakeRole.Initiator);
         }
 
-        private static void SetSecrets(EncryptionHandshake handshake, Role role)
+        private static void SetSecrets(EncryptionHandshake handshake, EncryptionHandshakeRole encryptionHandshakeRole)
         {
             byte[] ephemeralSharedSecret = BouncyCrypto.Agree(handshake.EphemeralPrivateKey, handshake.RemoteEphemeralPublicKey);
             byte[] nonceHash = Keccak.Compute(Bytes.Concat(handshake.RecipientNonce, handshake.InitiatorNonce)).Bytes;
@@ -151,7 +151,7 @@ namespace Nevermind.Network
             mac2.BlockUpdate(macSecret.Xor(handshake.InitiatorNonce), 0, macSecret.Length);
             mac2.BlockUpdate(handshake.AckPacket.Data, 0, handshake.AckPacket.Data.Length);
 
-            if (role == Role.Initiator)
+            if (encryptionHandshakeRole == EncryptionHandshakeRole.Initiator)
             {
                 handshake.Secrets.EgressMac = mac1;
                 handshake.Secrets.IngressMac = mac2;
@@ -162,8 +162,8 @@ namespace Nevermind.Network
                 handshake.Secrets.IngressMac = mac1;
             }
         }
-
-        private enum Role
+        
+        public enum EncryptionHandshakeRole
         {
             Initiator,
             Recipient
