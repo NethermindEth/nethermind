@@ -17,6 +17,7 @@
  */
 
 using System.Collections.Concurrent;
+using Nevermind.Core;
 using Nevermind.Discovery.RoutingTable;
 
 namespace Nevermind.Discovery.Lifecycle
@@ -25,14 +26,18 @@ namespace Nevermind.Discovery.Lifecycle
     {
         private readonly ConcurrentDictionary<string, EvictionPair> _evictionPairs = new ConcurrentDictionary<string, EvictionPair>();
         private readonly INodeTable _nodeTable;
+        private readonly ILogger _logger;
 
-        public EvictionManager(INodeTable nodeTable)
+        public EvictionManager(INodeTable nodeTable, ILogger logger)
         {
             _nodeTable = nodeTable;
+            _logger = logger;
         }
 
         public void StartEvictionProcess(INodeLifecycleManager evictionCandidate, INodeLifecycleManager replacementCandidate)
         {
+            _logger.Log($"Starting eviction process, evictionCandidate: {evictionCandidate.ManagedNode}, replacementCandidate: {replacementCandidate.ManagedNode}");
+
             var newPair = new EvictionPair
             {
                 EvictionCandidate = evictionCandidate,
@@ -44,6 +49,7 @@ namespace Nevermind.Discovery.Lifecycle
             {
                 //existing eviction in process
                 //TODO add queue for further evictions
+                _logger.Log($"Existing eviction in process, evictionCandidate: {evictionCandidate.ManagedNode}, replacementCandidate: {replacementCandidate.ManagedNode}");
                 return;
             }
            
@@ -66,12 +72,14 @@ namespace Nevermind.Discovery.Lifecycle
             if (state == NodeLifecycleState.Active)
             {
                 //survived eviction
+                _logger.Log($"Survived eviction process, evictionCandidate: {evictionCandidate.ManagedNode}, replacementCandidate: {evictionPair.ReplacementCandidate.ManagedNode}");
                 CloseEvictionProcess(evictionCandidate);
             }
             else if (state == NodeLifecycleState.Unreachable)
             {
                 //lost eviction, being replaced in nodeTable
                 _nodeTable.ReplaceNode(evictionCandidate.ManagedNode, evictionPair.ReplacementCandidate.ManagedNode);
+                _logger.Log($"Lost eviction process, evictionCandidate: {evictionCandidate.ManagedNode}, replacementCandidate: {evictionPair.ReplacementCandidate.ManagedNode}");
                 CloseEvictionProcess(evictionCandidate);
             }
         }

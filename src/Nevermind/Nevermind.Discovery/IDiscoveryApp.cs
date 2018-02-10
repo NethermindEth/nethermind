@@ -16,39 +16,11 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
-
-namespace Nevermind.Discovery.RoutingTable
+namespace Nevermind.Discovery
 {
-    public class NodeBucketItem : INodeBucketItem
+    public interface IDiscoveryApp
     {
-        public NodeBucketItem(Node node)
-        {
-            Node = node;
-            LastContactTime = DateTime.UtcNow;
-        }
-
-        public Node Node { get; }
-        public DateTime LastContactTime { get; private set; }
-
-        public void OnPongReveived()
-        {
-            LastContactTime = DateTime.UtcNow;
-        }
-
-        public override bool Equals(object obj)
-        {
-            if (obj is NodeBucketItem item && Node != null)
-            {
-                return Node.IdHashText.Equals(item.Node?.IdHashText);
-            }
-
-            return base.Equals(obj);
-        }
-
-        public override int GetHashCode()
-        {
-            return Node.GetHashCode();
-        }
+        void Start();
+        void Stop();
     }
 }

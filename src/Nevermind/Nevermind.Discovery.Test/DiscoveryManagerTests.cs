@@ -56,7 +56,7 @@ namespace Nevermind.Discovery.Test
             var calculator = new NodeDistanceCalculator(config);
 
             _nodeTable = new NodeTable(config, _nodeFactory, new FileKeyStore(configProvider, new JsonSerializer(logger), new AesEncrypter(configProvider, logger), new CryptoRandom(), logger), logger, calculator);
-            var evictionManager = new EvictionManager(_nodeTable);
+            var evictionManager = new EvictionManager(_nodeTable, logger);
             var lifecycleFactory = new NodeLifecycleManagerFactory(_nodeFactory, _nodeTable, logger, config, new MessageFactory(), evictionManager);
 
             _udpClient = Substitute.For<IUdpClient>();

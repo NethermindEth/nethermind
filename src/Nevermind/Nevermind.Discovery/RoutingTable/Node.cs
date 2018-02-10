@@ -43,19 +43,19 @@ namespace Nevermind.Discovery.RoutingTable
         {
             if (obj is Node item)
             {
-                return Bytes.UnsafeCompare(IdHash, item.IdHash);
+                return string.Compare(IdHashText, item.IdHashText, StringComparison.InvariantCultureIgnoreCase) == 0;
             }
             return base.Equals(obj);
         }
 
         public override int GetHashCode()
         {
-            return IdHash.GetHashCode();
+            return IdHashText.GetHashCode();
         }
 
         public override string ToString()
         {
-            return $"Id: {Id}, Host: {Host}, Port: {Port}, IsDiscovery: {IsDicoveryNode}";
+            return $"Id: {IdHashText}, Host: {Host}, Port: {Port}, IsDiscovery: {IsDicoveryNode}";
         }
     }
 }

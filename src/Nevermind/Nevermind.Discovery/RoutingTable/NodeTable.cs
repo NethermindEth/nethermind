@@ -63,7 +63,7 @@ namespace Nevermind.Discovery.RoutingTable
         public void DeleteNode(Node node)
         {
             var distanceFromMaster = _nodeDistanceCalculator.CalculateDistance(MasterNode.IdHash, node.IdHash);
-            var bucket = Buckets[distanceFromMaster];
+            var bucket = Buckets[distanceFromMaster > 0 ? distanceFromMaster - 1 : 0];
             _nodes.TryRemove(node.IdHashText, out _);
             bucket.RemoveNode(node);
         }
@@ -71,7 +71,7 @@ namespace Nevermind.Discovery.RoutingTable
         public void ReplaceNode(Node nodeToRemove, Node nodeToAdd)
         {
             var distanceFromMaster = _nodeDistanceCalculator.CalculateDistance(MasterNode.IdHash, nodeToAdd.IdHash);
-            var bucket = Buckets[distanceFromMaster];
+            var bucket = Buckets[distanceFromMaster > 0 ? distanceFromMaster - 1 : 0];
             _nodes.AddOrUpdate(nodeToAdd.IdHashText, nodeToAdd, (x, y) => y);
             _nodes.TryRemove(nodeToRemove.IdHashText, out _);
             bucket.ReplaceNode(nodeToRemove, nodeToAdd);
@@ -87,8 +87,9 @@ namespace Nevermind.Discovery.RoutingTable
         {
             var nodes = new List<NodeBucketItem>();
             var bucketSize = _configurationProvider.BucketSize;
-            foreach (var nodeBucket in Buckets)
+            for (var i = 0; i < Buckets.Length; i++)
             {
+                var nodeBucket = Buckets[i];
                 if (!nodeBucket.Items.Any())
                 {
                     continue;
@@ -100,6 +101,7 @@ namespace Nevermind.Discovery.RoutingTable
                     nodes.AddRange(nodeBucket.Items.Take(availibleCount).ToArray());
                     break;
                 }
+
                 nodes.AddRange(nodeBucket.Items.ToArray());
             }
 
@@ -110,8 +112,11 @@ namespace Nevermind.Discovery.RoutingTable
         {
             Buckets = new NodeBucket[_configurationProvider.BucketsCount];
             var pass = new SecureString();
-            var testPass = "TestPass";
-            testPass.ToList().ForEach(x => pass.AppendChar(x));
+            var rawPass = _configurationProvider.KeyPass;
+            for (var i = 0; i < rawPass.Length; i++)
+            {
+                pass.AppendChar(rawPass[i]);
+            }
             pass.MakeReadOnly();
 
             var key = _keyStore.GenerateKey(pass);

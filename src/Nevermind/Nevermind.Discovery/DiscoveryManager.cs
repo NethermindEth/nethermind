@@ -113,9 +113,9 @@ namespace Nevermind.Discovery
             }    
         }
 
-        public bool WasMessageReceived(string senderAddressHash, MessageType messageType, int timeout)
+        public bool WasMessageReceived(string senderIdHash, MessageType messageType, int timeout)
         {
-            var resetEvent = GetResetEvent(senderAddressHash, (int)messageType);
+            var resetEvent = GetResetEvent(senderIdHash, (int)messageType);
             var result = resetEvent.WaitOne(timeout);
             if (result)
             {

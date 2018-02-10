@@ -131,7 +131,8 @@ namespace Nevermind.Discovery.Lifecycle
 
             if (newState == NodeLifecycleState.Active)
             {
-                if (State == NodeLifecycleState.New && !ManagedNode.IsDicoveryNode)
+                //TODO && !ManagedNode.IsDicoveryNode - should we exclude discovery nodes
+                if (State == NodeLifecycleState.New)
                 {
                     var result = _nodeTable.AddNode(ManagedNode);
                     if (result.ResultType == NodeAddResultType.Full)

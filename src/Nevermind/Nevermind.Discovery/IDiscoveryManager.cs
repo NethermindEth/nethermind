@@ -26,6 +26,6 @@ namespace Nevermind.Discovery
     {
         INodeLifecycleManager GetNodeLifecycleManager(Node node);
         void SendMessage(Message message);
-        bool WasMessageReceived(string senderAddressHash, MessageType messageType, int timeout);
+        bool WasMessageReceived(string senderIdHash, MessageType messageType, int timeout);
     }
 }

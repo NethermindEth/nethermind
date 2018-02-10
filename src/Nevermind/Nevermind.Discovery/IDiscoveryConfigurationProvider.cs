@@ -16,6 +16,8 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
+
 namespace Nevermind.Discovery
 {
     public interface IDiscoveryConfigurationProvider
@@ -71,8 +73,28 @@ namespace Nevermind.Discovery
         int PongTimeout { get; }
 
         /// <summary>
+        /// Boot Node Pong Timeout in ms
+        /// </summary>
+        int BootNodePongTimeout { get; }
+
+        /// <summary>
         /// Pong Timeout in ms
         /// </summary>
         int PingRetryCount { get; }
+
+        /// <summary>
+        /// Time between running dicovery processes in miliseconds
+        /// </summary>
+        int DiscoveryInterval { get; }
+
+        /// <summary>
+        /// Boot nodes connection details
+        /// </summary>
+        (string Host, int Port)[] BootNodes { get; }
+
+        /// <summary>
+        /// Key Pass
+        /// </summary>
+        string KeyPass { get; }
     }
 }

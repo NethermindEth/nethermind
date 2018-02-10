@@ -112,7 +112,25 @@ namespace Nevermind.Discovery.RoutingTable
                     return 1;
                 }
 
-                return x.LastContactTime.CompareTo(y.LastContactTime);
+                if (ReferenceEquals(x, y))
+                {
+                    return 0;
+                }
+
+                //checking if both objects are the same
+                if (x.Equals(y))
+                {
+                    return 0;
+                }
+
+                var timeComparison = x.LastContactTime.CompareTo(y.LastContactTime);
+                if (timeComparison == 0)
+                {
+                    //last contact time is the same, but items are not the same, selecting higher id as higher item
+                    return x.Node.GetHashCode() > y.Node.GetHashCode() ? 1 : -1;
+                }
+
+                return timeComparison;
             }
         }
     }

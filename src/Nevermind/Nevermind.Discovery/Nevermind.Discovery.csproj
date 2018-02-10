@@ -40,6 +40,8 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="DiscoveryApp.cs" />
+    <Compile Include="IDiscoveryApp.cs" />
     <Compile Include="IMessageSerializer.cs" />
     <Compile Include="IUdpClient.cs" />
     <Compile Include="IUdpListener.cs" />
