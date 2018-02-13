@@ -26,6 +26,35 @@ namespace Nevermind.Discovery
         public byte[] Serialize(Message message)
         {
             throw new NotImplementedException();
+            
+//            /* [1] Calc keccak - prepare for sig */
+//            byte[] payload = new byte[type.length + data.length];
+//            payload[0] = type[0];
+//            System.arraycopy(data, 0, payload, 1, data.length);
+//            byte[] forSig = sha3(payload);
+//
+//            /* [2] Crate signature*/
+//            ECKey.ECDSASignature signature = privKey.sign(forSig);
+//
+//            signature.v -= 27;
+//
+//            byte[] sigBytes =
+//                merge(BigIntegers.asUnsignedByteArray(32, signature.r),
+//                    BigIntegers.asUnsignedByteArray(32, signature.s), new byte[]{signature.v});
+//
+//            // [3] calculate MDC
+//            byte[] forSha = merge(sigBytes, type, data);
+//            byte[] mdc = sha3(forSha);
+//
+//            // wrap all the data in to the packet
+//            this.mdc = mdc;
+//            this.signature = sigBytes;
+//            this.type = type;
+//            this.data = data;
+//
+//            this.wire = merge(this.mdc, this.signature, this.type, this.data);
+//
+//            return this;
         }
 
         public Message Deserialize(byte[] message)

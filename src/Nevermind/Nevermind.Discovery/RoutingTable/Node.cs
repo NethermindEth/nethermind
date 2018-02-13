@@ -18,22 +18,20 @@
 
 using System;
 using Nevermind.Core.Crypto;
-using Nevermind.Core.Extensions;
 
 namespace Nevermind.Discovery.RoutingTable
 {
     public class Node
     {
-        public Node(byte[] id)
+        public Node(PublicKey id)
         {
             Id = id;
-            var hash = Keccak.Compute(id);
-            IdHash = hash.Bytes;
-            IdHashText = hash.ToString();
+            IdHash = Keccak.Compute(id.PrefixedBytes);
+            IdHashText = IdHash.ToString();
         }
 
-        public byte[] Id { get; }
-        public byte[] IdHash { get; }
+        public PublicKey Id { get; }
+        public Keccak IdHash { get; }
         public string IdHashText { get; }
         public string Host { get; set; }
         public int Port { get; set; }

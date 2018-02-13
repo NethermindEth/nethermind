@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nevermind.Core.Crypto;
 using Nevermind.Discovery.RoutingTable;
 
 namespace Nevermind.Discovery.Lifecycle
@@ -23,7 +24,7 @@ namespace Nevermind.Discovery.Lifecycle
     public interface INodeLifecycleManagerFactory
     {
         INodeLifecycleManager CreateNodeLifecycleManager(Node node);
-        INodeLifecycleManager CreateNodeLifecycleManager(byte[] id, string host, int port);
+        INodeLifecycleManager CreateNodeLifecycleManager(PublicKey publicKey, string host, int port);
         IDiscoveryManager DiscoveryManager { set; }
     }
 }

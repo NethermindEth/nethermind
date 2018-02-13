@@ -69,6 +69,7 @@
     <Compile Include="BytesTests.cs" />
     <Compile Include="HexTests.cs" />
     <Compile Include="InMemoryDbTests.cs" />
+    <Compile Include="Keccak512Tests.cs" />
     <Compile Include="KeccakTests.cs" />
     <Compile Include="OmmersValidatorTests.cs" />
     <Compile Include="Prepare.cs" />

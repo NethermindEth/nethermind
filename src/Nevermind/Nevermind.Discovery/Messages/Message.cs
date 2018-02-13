@@ -18,32 +18,24 @@
 
 using System;
 using System.Linq;
+using Nevermind.Core.Crypto;
 
 namespace Nevermind.Discovery.Messages
 {
     public abstract class Message
     {
-        public byte[] Content { get; set; }
-
-        public byte[] Mdc { get; set; }
-        public byte[] Signature { get; set; }
         public byte[] Type { get; set; }
-        public byte[] Data { get; set; }
+        public byte[] Payload { get; set; }
+        public Signature Signature { get; set; }
 
         public string Host { get; set; }
         public int Port { get; set; }
 
-        public byte[] GetNodeId()
-        {
-            //TODO recover public key from signature
-            return Signature;
-        }
-
-        public MessageType? MessageType => Type != null && Type.Any() ? GetMessageType() : (MessageType?)null;
+        public MessageType? MessageType => Type != null && Type.Any() ? GetMessageType() : null;
 
         public override string ToString()
         {
-            return $"Type: {MessageType}, NodeId: {GetNodeId()}, Host: {Host}, Port: {Port}";
+            return $"Type: {MessageType}, Host: {Host}, Port: {Port}";
         }
 
         private MessageType? GetMessageType()

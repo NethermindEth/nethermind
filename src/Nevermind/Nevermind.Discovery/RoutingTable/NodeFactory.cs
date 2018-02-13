@@ -23,7 +23,7 @@ namespace Nevermind.Discovery.RoutingTable
 {
     public class NodeFactory : INodeFactory
     {
-        public Node CreateNode(byte[] id, string host, int port)
+        public Node CreateNode(PublicKey id, string host, int port)
         {
             return new Node(id)
             {
@@ -35,7 +35,8 @@ namespace Nevermind.Discovery.RoutingTable
 
         public Node CreateNode(string host, int port)
         {
-            return new Node(new Hex(Keccak.Compute($"{host}:{port}").Bytes))
+            Keccak512 socketHash = Keccak512.Compute($"{host}:{port}"); 
+            return new Node(new PublicKey(socketHash.Bytes))
             {
                 Host = host,
                 Port = port,

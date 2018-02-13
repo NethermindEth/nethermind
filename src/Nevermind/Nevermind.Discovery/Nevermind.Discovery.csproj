@@ -54,6 +54,7 @@
     <Compile Include="Lifecycle\NodeLifecycleState.cs" />
     <Compile Include="MessageSerializer.cs" />
     <Compile Include="Messages\IMessageFactory.cs" />
+    <Compile Include="Messages\INodeIdResolver.cs" />
     <Compile Include="Messages\Message.cs" />
     <Compile Include="DiscoveryConfigurationProvider.cs" />
     <Compile Include="DiscoveryManager.cs" />
@@ -64,6 +65,7 @@
     <Compile Include="Messages\MessageFactory.cs" />
     <Compile Include="Lifecycle\NodeLifecycleManager.cs" />
     <Compile Include="Lifecycle\NodeLifecycleManagerFactory.cs" />
+    <Compile Include="Messages\NodeIdResolver.cs" />
     <Compile Include="NodesLocator.cs" />
     <Compile Include="RoutingTable\INodeBucket.cs" />
     <Compile Include="RoutingTable\INodeBucketItem.cs" />

@@ -18,6 +18,7 @@
 
 using System;
 using Nevermind.Core;
+using Nevermind.Core.Crypto;
 using Nevermind.Discovery.Messages;
 using Nevermind.Discovery.RoutingTable;
 
@@ -53,7 +54,7 @@ namespace Nevermind.Discovery.Lifecycle
             return new NodeLifecycleManager(node, DiscoveryManager, _nodeTable, _logger, _discoveryConfigurationProvider, _messageFactory, _evictionManager);
         }
 
-        public INodeLifecycleManager CreateNodeLifecycleManager(byte[] id, string host, int port)
+        public INodeLifecycleManager CreateNodeLifecycleManager(PublicKey id, string host, int port)
         {
             if (DiscoveryManager == null)
             {

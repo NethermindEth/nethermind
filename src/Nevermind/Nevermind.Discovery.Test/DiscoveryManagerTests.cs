@@ -37,6 +37,7 @@ namespace Nevermind.Discovery.Test
     [TestFixture]
     public class DiscoveryManagerTests
     {
+        private INodeIdResolver _nodeIdResolver;
         private IMessageSerializer _messageSerializer;
         private IDiscoveryManager _discoveryManager;
         private IUdpClient _udpClient;
@@ -52,6 +53,7 @@ namespace Nevermind.Discovery.Test
             var logger = new ConsoleLogger();
             var config = new DiscoveryConfigurationProvider { PongTimeout = 100 };
             var configProvider = new ConfigurationProvider(Path.GetDirectoryName(Path.Combine(Path.GetTempPath(), "KeyStore")));
+            _nodeIdResolver = Substitute.For<INodeIdResolver>();
             _nodeFactory = new NodeFactory();
             var calculator = new NodeDistanceCalculator(config);
 
@@ -97,7 +99,7 @@ namespace Nevermind.Discovery.Test
                 Host = _host
             });
 
-            _discoveryManager = new DiscoveryManager(logger, config, lifecycleFactory, _nodeFactory, _messageSerializer, _udpClient);
+            _discoveryManager = new DiscoveryManager(logger, config, lifecycleFactory, _nodeFactory, _messageSerializer, _udpClient, _nodeIdResolver);
         }
 
         [Test]

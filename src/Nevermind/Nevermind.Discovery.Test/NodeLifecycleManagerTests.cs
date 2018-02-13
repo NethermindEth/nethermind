@@ -36,11 +36,17 @@ namespace Nevermind.Discovery.Test
     [TestFixture]
     public class NodeLifecycleManagerTests
     {
+        private const int TestNodeCount = 4;
+        private Signature[] _signatureMocks;
+        private PublicKey[] _nodeIds;
+        private Dictionary<Signature, PublicKey> _signatureToNodeId;
+        
         private IMessageSerializer _messageSerializer;
         private IDiscoveryManager _discoveryManager;
         private IUdpClient _udpClient;
         private INodeTable _nodeTable;
         private INodeFactory _nodeFactory;
+        private INodeIdResolver _nodeIdResolver;
         private DiscoveryConfigurationProvider _configurationProvider;
         private int _port = 1;
         private string _host = "TestHost";
@@ -48,6 +54,8 @@ namespace Nevermind.Discovery.Test
         [SetUp]
         public void Initialize()
         {
+            SetupNodeIds();
+            
             var logger = new ConsoleLogger();
             //setting config to store 3 nodes in a bucket and for table to have one bucket//setting config to store 3 nodes in a bucket and for table to have one bucket
             _configurationProvider = new DiscoveryConfigurationProvider
@@ -70,7 +78,30 @@ namespace Nevermind.Discovery.Test
 
             _messageSerializer = Substitute.For<IMessageSerializer>();
             _messageSerializer.Serialize(Arg.Any<Message>()).Returns(x => new byte[] { });
-            _discoveryManager = new DiscoveryManager(logger, _configurationProvider, lifecycleFactory, _nodeFactory, _messageSerializer, _udpClient);
+            _discoveryManager = new DiscoveryManager(logger, _configurationProvider, lifecycleFactory, _nodeFactory, _messageSerializer, _udpClient, _nodeIdResolver);
+        }
+
+        private void SetupNodeIds()
+        {
+            _signatureToNodeId = new Dictionary<Signature, PublicKey>();
+            _signatureMocks = new Signature[TestNodeCount];
+            _nodeIds = new PublicKey[TestNodeCount];
+            
+            for (int i = 0; i < TestNodeCount; i++)
+            {
+                byte[] signatureBytes = new byte[65];
+                signatureBytes[64] = (byte)i;
+                _signatureMocks[i] = new Signature(signatureBytes);
+                
+                byte[] nodeIdBytes = new byte[64];
+                nodeIdBytes[63] = (byte)i;
+                _nodeIds[i] = new PublicKey(nodeIdBytes);
+                
+                _signatureToNodeId.Add(_signatureMocks[i], _nodeIds[i]);
+            }
+            
+            _nodeIdResolver = Substitute.For<INodeIdResolver>();
+            _nodeIdResolver.GetNodeId(Arg.Any<Message>()).Returns(info => _signatureToNodeId[info.Arg<Message>().Signature]);
         }
 
         [Test]
@@ -102,12 +133,10 @@ namespace Nevermind.Discovery.Test
         {
             //adding 3 active nodes
             var managers = new List<INodeLifecycleManager>();
-            IDictionary<string, byte[]> rawIds = new Dictionary<string, byte[]>();
-            for (var i = 0; i < 3; i++)
+            for (var i = 0; i < TestNodeCount - 1; i++)
             {
                 var host = _host + i;
-                rawIds[host] = Encoding.UTF8.GetBytes("TestId" + i);
-                var node = _nodeFactory.CreateNode(rawIds[host], host, _port);
+                var node = _nodeFactory.CreateNode(_nodeIds[i], host, _port);
                 var manager = _discoveryManager.GetNodeLifecycleManager(node);
                 managers.Add(manager);
                 Assert.AreEqual(NodeLifecycleState.New, manager.State);
@@ -117,7 +146,7 @@ namespace Nevermind.Discovery.Test
                     Type = new[] { (byte)MessageType.Pong },
                     Port = _port,
                     Host = host,
-                    Signature = rawIds[host]
+                    Signature = _signatureMocks[i]
                 });
                 _discoveryManager.OnIncomingMessage(new byte[1]);
 
@@ -131,8 +160,7 @@ namespace Nevermind.Discovery.Test
             Assert.IsTrue(closestNodes.Count(x => x.Host == managers[2].ManagedNode.Host) == 1);
 
             //adding 4th node - table can store only 3, eviction process should start
-            var candidateNodeId = Encoding.UTF8.GetBytes("TestId");
-            var candidateNode = _nodeFactory.CreateNode(candidateNodeId, _host, _port);
+            var candidateNode = _nodeFactory.CreateNode(_nodeIds[TestNodeCount - 1], _host, _port);
             var candidateManager = _discoveryManager.GetNodeLifecycleManager(candidateNode);
 
             Assert.AreEqual(NodeLifecycleState.New, candidateManager.State);
@@ -141,7 +169,7 @@ namespace Nevermind.Discovery.Test
                 Type = new[] { (byte)MessageType.Pong },
                 Port = _port,
                 Host = _host,
-                Signature = candidateNodeId
+                Signature = _signatureMocks[TestNodeCount - 1]
             });
             _discoveryManager.OnIncomingMessage(new byte[1]);
             Assert.AreEqual(NodeLifecycleState.Active, candidateManager.State);
@@ -153,7 +181,7 @@ namespace Nevermind.Discovery.Test
                 Type = new[] { (byte)MessageType.Pong },
                 Port = _port,
                 Host = evictionCandidate.ManagedNode.Host,
-                Signature = rawIds[evictionCandidate.ManagedNode.Host]
+                Signature = _signatureMocks[evictionCandidate.ManagedNode.Id.PrefixedBytes[64]]
             });
             _discoveryManager.OnIncomingMessage(new byte[1]);
 
@@ -174,11 +202,10 @@ namespace Nevermind.Discovery.Test
         {
             //adding 3 active nodes
             var managers = new List<INodeLifecycleManager>();
-            for (var i = 0; i < 3; i++)
+            for (var i = 0; i < TestNodeCount - 1; i++)
             {
                 var host = _host + i;
-                var rawId = Encoding.UTF8.GetBytes("TestId" + i);
-                var node = _nodeFactory.CreateNode(rawId, host, _port);
+                var node = _nodeFactory.CreateNode(_nodeIds[i], host, _port);
                 var manager = _discoveryManager.GetNodeLifecycleManager(node);
                 managers.Add(manager);
                 Assert.AreEqual(NodeLifecycleState.New, manager.State);
@@ -188,7 +215,7 @@ namespace Nevermind.Discovery.Test
                     Type = new[] { (byte)MessageType.Pong },
                     Port = _port,
                     Host = host,
-                    Signature = rawId
+                    Signature = _signatureMocks[i]
                 });
                 _discoveryManager.OnIncomingMessage(new byte[1]);
 
@@ -197,13 +224,13 @@ namespace Nevermind.Discovery.Test
 
             //table should contain 3 active nodes
             var closestNodes = _nodeTable.GetClosestNodes();
-            Assert.IsTrue(closestNodes.Count(x => x.Host == managers[0].ManagedNode.Host) == 1);
-            Assert.IsTrue(closestNodes.Count(x => x.Host == managers[1].ManagedNode.Host) == 1);
-            Assert.IsTrue(closestNodes.Count(x => x.Host == managers[2].ManagedNode.Host) == 1);
+            for (int i = 0; i < TestNodeCount; i++)
+            {
+                Assert.IsTrue(closestNodes.Count(x => x.Host == managers[0].ManagedNode.Host) == 1);    
+            }
 
             //adding 4th node - table can store only 3, eviction process should start
-            var candidateNodeId = Encoding.UTF8.GetBytes("TestId");
-            var candidateNode = _nodeFactory.CreateNode(candidateNodeId, _host, _port);
+            var candidateNode = _nodeFactory.CreateNode(_nodeIds[TestNodeCount - 1], _host, _port);
             var candidateManager = _discoveryManager.GetNodeLifecycleManager(candidateNode);
 
             Assert.AreEqual(NodeLifecycleState.New, candidateManager.State);
@@ -212,7 +239,7 @@ namespace Nevermind.Discovery.Test
                 Type = new[] { (byte)MessageType.Pong },
                 Port = _port,
                 Host = _host,
-                Signature = candidateNodeId
+                Signature = _signatureMocks[3]
             });
             _discoveryManager.OnIncomingMessage(new byte[1]);
             Thread.Sleep(10);

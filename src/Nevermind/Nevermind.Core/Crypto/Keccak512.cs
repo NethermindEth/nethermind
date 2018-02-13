@@ -23,52 +23,38 @@ using Nevermind.Core.Encoding;
 
 namespace Nevermind.Core.Crypto
 {
-    [DebuggerStepThrough]
-    public struct Keccak : IEquatable<Keccak>
+    public struct Keccak512 : IEquatable<Keccak512>
     {
-        private const int Size = 32;
-        
-        private static readonly IHash Hash = HashFactory.Crypto.SHA3.CreateKeccak256();
+        private const int Size = 64;
 
-        public Keccak(Hex hex)
+        private static readonly IHash Hash = HashFactory.Crypto.SHA3.CreateKeccak512();
+
+        public Keccak512(Hex hex)
         {
             if (hex.ByteLength != Size)
             {
-                throw new ArgumentException($"{nameof(Keccak)} must be {Size} bytes", nameof(hex));
+                throw new ArgumentException($"{nameof(Keccak512)} must be {Size} bytes", nameof(hex));
             }
 
             Bytes = hex;
         }
 
-        public Keccak(byte[] bytes)
+        public Keccak512(byte[] bytes)
         {
             if (bytes.Length != Size)
             {
-                throw new ArgumentException($"{nameof(Keccak)} must be {Size} bytes", nameof(bytes));
+                throw new ArgumentException($"{nameof(Keccak512)} must be {Size} bytes", nameof(bytes));
             }
 
             Bytes = bytes;
         }
 
-        /// <returns>
-        ///     <string>0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470</string>
-        /// </returns>
-        public static readonly Keccak OfAnEmptyString = InternalCompute(new byte[] { });
+        public static readonly Keccak512 OfAnEmptyString = InternalCompute(new byte[] { });
 
         /// <returns>
-        ///     <string>0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347</string>
+        ///     <string>0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000</string>
         /// </returns>
-        public static readonly Keccak OfAnEmptySequenceRlp = InternalCompute(new byte[] { 192 });
-
-        /// <summary>
-        ///     0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421
-        /// </summary>
-        public static Keccak EmptyTreeHash = InternalCompute(new byte[] { 128 });
-
-        /// <returns>
-        ///     <string>0x0000000000000000000000000000000000000000000000000000000000000000</string>
-        /// </returns>
-        public static Keccak Zero { get; } = new Keccak(new byte[Size]);
+        public static Keccak512 Zero { get; } = new Keccak512(new byte[Size]);
 
         public byte[] Bytes { get; }
 
@@ -87,30 +73,27 @@ namespace Nevermind.Core.Crypto
             return Hex.FromBytes(Bytes, withZeroX);
         }
 
-        [DebuggerStepThrough]
-        public static Keccak Compute(Rlp rlp)
+        public static Keccak512 Compute(Rlp rlp)
         {
-            return new Keccak(Hash.ComputeBytes(rlp.Bytes).GetBytes());
+            return new Keccak512(Hash.ComputeBytes(rlp.Bytes).GetBytes());
         }
 
-        [DebuggerStepThrough]
-        public static Keccak Compute(byte[] input)
+        public static Keccak512 Compute(byte[] input)
         {
             if (input == null || input.Length == 0)
             {
                 return OfAnEmptyString;
             }
 
-            return new Keccak(Hash.ComputeBytes(input).GetBytes());
+            return new Keccak512(Hash.ComputeBytes(input).GetBytes());
         }
 
-        private static Keccak InternalCompute(byte[] input)
+        private static Keccak512 InternalCompute(byte[] input)
         {
-            return new Keccak(Hash.ComputeBytes(input).GetBytes());
+            return new Keccak512(Hash.ComputeBytes(input).GetBytes());
         }
 
-        [DebuggerStepThrough]
-        public static Keccak Compute(string input)
+        public static Keccak512 Compute(string input)
         {
             if (string.IsNullOrWhiteSpace(input))
             {
@@ -120,14 +103,14 @@ namespace Nevermind.Core.Crypto
             return InternalCompute(System.Text.Encoding.UTF8.GetBytes(input));
         }
 
-        public bool Equals(Keccak other)
+        public bool Equals(Keccak512 other)
         {
             return Extensions.Bytes.UnsafeCompare(other.Bytes, Bytes);
         }
 
         public override bool Equals(object obj)
         {
-            return obj?.GetType() == typeof(Keccak) && Equals((Keccak)obj);
+            return obj?.GetType() == typeof(Keccak512) && Equals((Keccak512)obj);
         }
 
         public override int GetHashCode()
@@ -137,19 +120,19 @@ namespace Nevermind.Core.Crypto
                 const int p = 16777619;
                 int hash = (int)2166136261;
 
-                hash = hash ^ Bytes[0] * p;
-                hash = hash ^ Bytes[Size / 2] * p;
-                hash = hash ^ Bytes[31] * p;
+                hash = hash ^ (Bytes[0] * p);
+                hash = hash ^ (Bytes[Size / 2] * p);
+                hash = hash ^ (Bytes[Size - 1] * p);
                 return hash;
             }
         }
 
-        public static bool operator ==(Keccak a, Keccak b)
+        public static bool operator ==(Keccak512 a, Keccak512 b)
         {
             return Extensions.Bytes.UnsafeCompare(a.Bytes, b.Bytes);
         }
 
-        public static bool operator !=(Keccak a, Keccak b)
+        public static bool operator !=(Keccak512 a, Keccak512 b)
         {
             return !(a == b);
         }

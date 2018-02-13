@@ -54,7 +54,7 @@ namespace Nevermind.Discovery.RoutingTable
 
         public NodeAddResult AddNode(Node node)
         {
-            var distanceFromMaster = _nodeDistanceCalculator.CalculateDistance(MasterNode.IdHash, node.IdHash);
+            var distanceFromMaster = _nodeDistanceCalculator.CalculateDistance(MasterNode.IdHash.Bytes, node.IdHash.Bytes);
             var bucket = Buckets[distanceFromMaster > 0 ? distanceFromMaster - 1 : 0];
             _nodes.AddOrUpdate(node.IdHashText, node, (x, y) => y);
             return bucket.AddNode(node);
@@ -62,7 +62,7 @@ namespace Nevermind.Discovery.RoutingTable
 
         public void DeleteNode(Node node)
         {
-            var distanceFromMaster = _nodeDistanceCalculator.CalculateDistance(MasterNode.IdHash, node.IdHash);
+            var distanceFromMaster = _nodeDistanceCalculator.CalculateDistance(MasterNode.IdHash.Bytes, node.IdHash.Bytes);
             var bucket = Buckets[distanceFromMaster > 0 ? distanceFromMaster - 1 : 0];
             _nodes.TryRemove(node.IdHashText, out _);
             bucket.RemoveNode(node);
@@ -70,7 +70,7 @@ namespace Nevermind.Discovery.RoutingTable
 
         public void ReplaceNode(Node nodeToRemove, Node nodeToAdd)
         {
-            var distanceFromMaster = _nodeDistanceCalculator.CalculateDistance(MasterNode.IdHash, nodeToAdd.IdHash);
+            var distanceFromMaster = _nodeDistanceCalculator.CalculateDistance(MasterNode.IdHash.Bytes, nodeToAdd.IdHash.Bytes);
             var bucket = Buckets[distanceFromMaster > 0 ? distanceFromMaster - 1 : 0];
             _nodes.AddOrUpdate(nodeToAdd.IdHashText, nodeToAdd, (x, y) => y);
             _nodes.TryRemove(nodeToRemove.IdHashText, out _);
@@ -127,7 +127,7 @@ namespace Nevermind.Discovery.RoutingTable
                 throw new Exception(msg);
             }
 
-            MasterNode = _nodeFactory.CreateNode(key.Item1.PublicKey.PrefixedBytes, _configurationProvider.MasterHost, _configurationProvider.MasterPort);
+            MasterNode = _nodeFactory.CreateNode(key.Item1.PublicKey, _configurationProvider.MasterHost, _configurationProvider.MasterPort);
 
             for (var i = 0; i < Buckets.Length; i++)
             {

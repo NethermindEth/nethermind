@@ -26,7 +26,7 @@ namespace Nevermind.Discovery.Messages
 
         public override string ToString()
         {
-            return $"Type: {MessageType}, NodeId: {GetNodeId()}, Host: {Host}, Port: {Port}, SearchedNode: {SearchedNode?.Id}";
+            return $"Type: {MessageType}, Host: {Host}, Port: {Port}, SearchedNode: {SearchedNode?.Id}";
         }
     }
 }

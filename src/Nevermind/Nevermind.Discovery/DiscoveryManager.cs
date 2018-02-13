@@ -21,6 +21,7 @@ using System.Collections.Concurrent;
 using System.Linq;
 using System.Threading;
 using Nevermind.Core;
+using Nevermind.Core.Crypto;
 using Nevermind.Discovery.Lifecycle;
 using Nevermind.Discovery.Messages;
 using Nevermind.Discovery.RoutingTable;
@@ -35,11 +36,12 @@ namespace Nevermind.Discovery
         private readonly INodeFactory _nodeFactory;
         private readonly IMessageSerializer _messageSerializer;
         private readonly IUdpClient _udpClient;
+        private readonly INodeIdResolver _nodeIdResolver;
 
         private readonly ConcurrentDictionary<MessageTypeKey, ManualResetEvent> _waitingEvents = new ConcurrentDictionary<MessageTypeKey, ManualResetEvent>();
         private readonly ConcurrentDictionary<string, INodeLifecycleManager> _nodeLifecycleManagers = new ConcurrentDictionary<string, INodeLifecycleManager>();
 
-        public DiscoveryManager(ILogger logger, IDiscoveryConfigurationProvider configurationProvider, INodeLifecycleManagerFactory nodeLifecycleManagerFactory, INodeFactory nodeFactory, IMessageSerializer messageSerializer, IUdpClient udpClient)
+        public DiscoveryManager(ILogger logger, IDiscoveryConfigurationProvider configurationProvider, INodeLifecycleManagerFactory nodeLifecycleManagerFactory, INodeFactory nodeFactory, IMessageSerializer messageSerializer, IUdpClient udpClient, INodeIdResolver nodeIdResolver)
         {
             _logger = logger;
             _configurationProvider = configurationProvider;
@@ -47,6 +49,7 @@ namespace Nevermind.Discovery
             _nodeFactory = nodeFactory;
             _messageSerializer = messageSerializer;
             _udpClient = udpClient;
+            _nodeIdResolver = nodeIdResolver;
             _nodeLifecycleManagerFactory.DiscoveryManager = this;
             _udpClient.SubribeForMessages(this);
         }
@@ -63,7 +66,8 @@ namespace Nevermind.Discovery
                     return;
                 }
 
-                var node = _nodeFactory.CreateNode(message.GetNodeId(), message.Host, message.Port);
+                PublicKey nodeId = _nodeIdResolver.GetNodeId(message);
+                var node = _nodeFactory.CreateNode(nodeId, message.Host, message.Port);
                 var nodeManager = GetNodeLifecycleManager(node);
 
                 switch (msgType.Value)
