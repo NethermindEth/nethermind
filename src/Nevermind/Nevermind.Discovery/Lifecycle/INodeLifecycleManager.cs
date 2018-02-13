@@ -26,10 +26,10 @@ namespace Nevermind.Discovery.Lifecycle
     {
         Node ManagedNode { get; }
         NodeLifecycleState State { get; }
-        void ProcessPingMessage(PingMessage message);
-        void ProcessPongMessage(PongMessage message);
-        void ProcessNeighborsMessage(NeighborsMessage message);
-        void ProcessFindNodeMessage(FindNodeMessage message);
+        void ProcessPingMessage(PingMessage discoveryMessage);
+        void ProcessPongMessage(PongMessage discoveryMessage);
+        void ProcessNeighborsMessage(NeighborsMessage discoveryMessage);
+        void ProcessFindNodeMessage(FindNodeMessage discoveryMessage);
 
         void SendFindNode(Node searchedNode);
         void SendPing();

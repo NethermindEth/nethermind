@@ -16,36 +16,12 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
-using System.Linq;
-using Nevermind.Core.Crypto;
+using Nevermind.Discovery.Messages;
 
-namespace Nevermind.Discovery.Messages
+namespace Nevermind.Discovery
 {
-    public abstract class Message
+    public interface IDiscoveryListener
     {
-        public byte[] Type { get; set; }
-        public byte[] Payload { get; set; }
-        public Signature Signature { get; set; }
-
-        public string Host { get; set; }
-        public int Port { get; set; }
-
-        public MessageType? MessageType => Type != null && Type.Any() ? GetMessageType() : null;
-
-        public override string ToString()
-        {
-            return $"Type: {MessageType}, Host: {Host}, Port: {Port}";
-        }
-
-        private MessageType? GetMessageType()
-        {
-            if (Enum.TryParse(Type[0].ToString(), out MessageType msgType))
-            {
-                return msgType;
-            }
-
-            return null;
-        }
+        void OnIncomingMessage(DiscoveryMessage message);
     }
 }

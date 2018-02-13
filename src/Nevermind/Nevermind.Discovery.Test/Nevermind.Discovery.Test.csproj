@@ -57,6 +57,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="DiscoveryManagerTests.cs" />
+    <Compile Include="DiscoveryMessageSerializerTests.cs" />
     <Compile Include="NodeLifecycleManagerTests.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
@@ -79,6 +80,10 @@
     <ProjectReference Include="..\Nevermind.KeyStore\Nevermind.KeyStore.csproj">
       <Project>{4E409915-E434-4E8B-9BF5-6CC623D23612}</Project>
       <Name>Nevermind.KeyStore</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\Nevermind.Network\Nevermind.Network.csproj">
+      <Project>{79EBA5AB-1D7A-469A-8B81-501B6248F759}</Project>
+      <Name>Nevermind.Network</Name>
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>

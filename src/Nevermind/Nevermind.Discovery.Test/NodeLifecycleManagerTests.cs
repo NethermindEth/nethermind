@@ -19,7 +19,6 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Text;
 using System.Threading;
 using Nevermind.Core;
 using Nevermind.Core.Crypto;
@@ -30,20 +29,19 @@ using Nevermind.Json;
 using Nevermind.KeyStore;
 using NSubstitute;
 using NUnit.Framework;
+using PongMessage = Nevermind.Discovery.Messages.PongMessage;
 
 namespace Nevermind.Discovery.Test
 {
     [TestFixture]
     public class NodeLifecycleManagerTests
     {
-        private const int TestNodeCount = 4;
         private Signature[] _signatureMocks;
         private PublicKey[] _nodeIds;
         private Dictionary<Signature, PublicKey> _signatureToNodeId;
-        
-        private IMessageSerializer _messageSerializer;
+
         private IDiscoveryManager _discoveryManager;
-        private IUdpClient _udpClient;
+        private IMessageSender _udpClient;
         private INodeTable _nodeTable;
         private INodeFactory _nodeFactory;
         private INodeIdResolver _nodeIdResolver;
@@ -55,7 +53,7 @@ namespace Nevermind.Discovery.Test
         public void Initialize()
         {
             SetupNodeIds();
-            
+
             var logger = new ConsoleLogger();
             //setting config to store 3 nodes in a bucket and for table to have one bucket//setting config to store 3 nodes in a bucket and for table to have one bucket
             _configurationProvider = new DiscoveryConfigurationProvider
@@ -63,7 +61,7 @@ namespace Nevermind.Discovery.Test
                 PongTimeout = 100,
                 BucketSize = 3,
                 BucketsCount = 1
-            }; 
+            };
             var configProvider = new ConfigurationProvider(Path.GetDirectoryName(Path.Combine(Path.GetTempPath(), "KeyStore")));
             _nodeFactory = new NodeFactory();
             var calculator = new NodeDistanceCalculator(_configurationProvider);
@@ -72,36 +70,32 @@ namespace Nevermind.Discovery.Test
             var evictionManager = new EvictionManager(_nodeTable, logger);
             var lifecycleFactory = new NodeLifecycleManagerFactory(_nodeFactory, _nodeTable, logger, _configurationProvider, new MessageFactory(), evictionManager);
 
-            _udpClient = Substitute.For<IUdpClient>();
-            _udpClient.SubribeForMessages(Arg.Any<IUdpListener>());
-            _udpClient.SendMessage(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<byte[]>());
+            _udpClient = Substitute.For<IMessageSender>();
 
-            _messageSerializer = Substitute.For<IMessageSerializer>();
-            _messageSerializer.Serialize(Arg.Any<Message>()).Returns(x => new byte[] { });
-            _discoveryManager = new DiscoveryManager(logger, _configurationProvider, lifecycleFactory, _nodeFactory, _messageSerializer, _udpClient, _nodeIdResolver);
+            _discoveryManager = new DiscoveryManager(logger, _configurationProvider, lifecycleFactory, _nodeFactory, _udpClient, _nodeIdResolver);
         }
 
         private void SetupNodeIds()
         {
             _signatureToNodeId = new Dictionary<Signature, PublicKey>();
-            _signatureMocks = new Signature[TestNodeCount];
-            _nodeIds = new PublicKey[TestNodeCount];
-            
-            for (int i = 0; i < TestNodeCount; i++)
+            _signatureMocks = new Signature[4];
+            _nodeIds = new PublicKey[4];
+
+            for (int i = 0; i < 4; i++)
             {
                 byte[] signatureBytes = new byte[65];
                 signatureBytes[64] = (byte)i;
                 _signatureMocks[i] = new Signature(signatureBytes);
-                
+
                 byte[] nodeIdBytes = new byte[64];
                 nodeIdBytes[63] = (byte)i;
                 _nodeIds[i] = new PublicKey(nodeIdBytes);
-                
+
                 _signatureToNodeId.Add(_signatureMocks[i], _nodeIds[i]);
             }
-            
+
             _nodeIdResolver = Substitute.For<INodeIdResolver>();
-            _nodeIdResolver.GetNodeId(Arg.Any<Message>()).Returns(info => _signatureToNodeId[info.Arg<Message>().Signature]);
+            _nodeIdResolver.GetNodeId(Arg.Any<DiscoveryMessage>()).Returns(info => _signatureToNodeId[info.Arg<DiscoveryMessage>().Signature]);
         }
 
         [Test]
@@ -111,8 +105,8 @@ namespace Nevermind.Discovery.Test
             var manager = _discoveryManager.GetNodeLifecycleManager(node);
             Assert.AreEqual(NodeLifecycleState.New, manager.State);
 
-            manager.ProcessPongMessage(new PongMessage{Type = new []{(byte)MessageType.Pong}, Host = _host, Port = _port});
-            
+            manager.ProcessPongMessage(new PongMessage {Host = _host, Port = _port});
+
             Assert.AreEqual(NodeLifecycleState.Active, manager.State);
         }
 
@@ -133,7 +127,7 @@ namespace Nevermind.Discovery.Test
         {
             //adding 3 active nodes
             var managers = new List<INodeLifecycleManager>();
-            for (var i = 0; i < TestNodeCount - 1; i++)
+            for (var i = 0; i < 3; i++)
             {
                 var host = _host + i;
                 var node = _nodeFactory.CreateNode(_nodeIds[i], host, _port);
@@ -141,15 +135,7 @@ namespace Nevermind.Discovery.Test
                 managers.Add(manager);
                 Assert.AreEqual(NodeLifecycleState.New, manager.State);
 
-                _messageSerializer.Deserialize(Arg.Any<byte[]>()).Returns(new PongMessage
-                {
-                    Type = new[] { (byte)MessageType.Pong },
-                    Port = _port,
-                    Host = host,
-                    Signature = _signatureMocks[i]
-                });
-                _discoveryManager.OnIncomingMessage(new byte[1]);
-
+                _discoveryManager.OnIncomingMessage(new PongMessage {Port = _port, Host = _host, Signature = _signatureMocks[i]});
                 Assert.AreEqual(NodeLifecycleState.Active, manager.State);
             }
 
@@ -160,30 +146,17 @@ namespace Nevermind.Discovery.Test
             Assert.IsTrue(closestNodes.Count(x => x.Host == managers[2].ManagedNode.Host) == 1);
 
             //adding 4th node - table can store only 3, eviction process should start
-            var candidateNode = _nodeFactory.CreateNode(_nodeIds[TestNodeCount - 1], _host, _port);
+            var candidateNode = _nodeFactory.CreateNode(_nodeIds[3], _host, _port);
             var candidateManager = _discoveryManager.GetNodeLifecycleManager(candidateNode);
 
             Assert.AreEqual(NodeLifecycleState.New, candidateManager.State);
-            _messageSerializer.Deserialize(Arg.Any<byte[]>()).Returns(new PongMessage
-            {
-                Type = new[] { (byte)MessageType.Pong },
-                Port = _port,
-                Host = _host,
-                Signature = _signatureMocks[TestNodeCount - 1]
-            });
-            _discoveryManager.OnIncomingMessage(new byte[1]);
+
+            _discoveryManager.OnIncomingMessage(new PongMessage {Port = _port, Host = _host, Signature = _signatureMocks[3]});
             Assert.AreEqual(NodeLifecycleState.Active, candidateManager.State);
             var evictionCandidate = managers.First(x => x.State == NodeLifecycleState.EvictCandidate);
 
             //receiving pong for eviction candidate - should survive
-            _messageSerializer.Deserialize(Arg.Any<byte[]>()).Returns(new PongMessage
-            {
-                Type = new[] { (byte)MessageType.Pong },
-                Port = _port,
-                Host = evictionCandidate.ManagedNode.Host,
-                Signature = _signatureMocks[evictionCandidate.ManagedNode.Id.PrefixedBytes[64]]
-            });
-            _discoveryManager.OnIncomingMessage(new byte[1]);
+            _discoveryManager.OnIncomingMessage(new PongMessage {Port = _port, Host = evictionCandidate.ManagedNode.Host, Signature = _signatureMocks[evictionCandidate.ManagedNode.Id.PrefixedBytes[64]]});
 
             Thread.Sleep(1000);
 
@@ -202,7 +175,7 @@ namespace Nevermind.Discovery.Test
         {
             //adding 3 active nodes
             var managers = new List<INodeLifecycleManager>();
-            for (var i = 0; i < TestNodeCount - 1; i++)
+            for (var i = 0; i < 3; i++)
             {
                 var host = _host + i;
                 var node = _nodeFactory.CreateNode(_nodeIds[i], host, _port);
@@ -210,42 +183,32 @@ namespace Nevermind.Discovery.Test
                 managers.Add(manager);
                 Assert.AreEqual(NodeLifecycleState.New, manager.State);
 
-                _messageSerializer.Deserialize(Arg.Any<byte[]>()).Returns(new PongMessage
-                {
-                    Type = new[] { (byte)MessageType.Pong },
-                    Port = _port,
-                    Host = host,
-                    Signature = _signatureMocks[i]
-                });
-                _discoveryManager.OnIncomingMessage(new byte[1]);
+                _discoveryManager.OnIncomingMessage(new PongMessage {Port = _port, Host = _host, Signature = _signatureMocks[i]});
 
                 Assert.AreEqual(NodeLifecycleState.Active, manager.State);
             }
 
             //table should contain 3 active nodes
             var closestNodes = _nodeTable.GetClosestNodes();
-            for (int i = 0; i < TestNodeCount; i++)
+            for (int i = 0; i < 3; i++)
             {
-                Assert.IsTrue(closestNodes.Count(x => x.Host == managers[0].ManagedNode.Host) == 1);    
+                Assert.IsTrue(closestNodes.Count(x => x.Host == managers[0].ManagedNode.Host) == 1);
             }
 
             //adding 4th node - table can store only 3, eviction process should start
-            var candidateNode = _nodeFactory.CreateNode(_nodeIds[TestNodeCount - 1], _host, _port);
-            var candidateManager = _discoveryManager.GetNodeLifecycleManager(candidateNode);
+            var candidateNode = _nodeFactory.CreateNode(_nodeIds[3], _host, _port);
 
+            var candidateManager = _discoveryManager.GetNodeLifecycleManager(candidateNode);
             Assert.AreEqual(NodeLifecycleState.New, candidateManager.State);
-            _messageSerializer.Deserialize(Arg.Any<byte[]>()).Returns(new PongMessage
+            _discoveryManager.OnIncomingMessage(new PongMessage
             {
-                Type = new[] { (byte)MessageType.Pong },
                 Port = _port,
                 Host = _host,
                 Signature = _signatureMocks[3]
             });
-            _discoveryManager.OnIncomingMessage(new byte[1]);
             Thread.Sleep(10);
             Assert.AreEqual(NodeLifecycleState.Active, candidateManager.State);
             var evictionCandidate = managers.First(x => x.State == NodeLifecycleState.EvictCandidate);
-
             Thread.Sleep(1000);
 
             //3th node should be evicted, 4th node should be added to the table

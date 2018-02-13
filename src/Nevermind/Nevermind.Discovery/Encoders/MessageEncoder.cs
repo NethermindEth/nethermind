@@ -24,7 +24,7 @@ namespace Nevermind.Discovery.Encoders
 {
     public class MessageEncoder : IMessageEncoder
     {
-        public Message Decode(byte[] content)
+        public DiscoveryMessage Decode(byte[] content)
         {
             throw new NotImplementedException();
         }

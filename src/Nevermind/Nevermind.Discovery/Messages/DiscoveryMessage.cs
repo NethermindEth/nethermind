@@ -16,10 +16,27 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nevermind.Discovery
+using System;
+using System.Linq;
+using Nevermind.Core.Crypto;
+using Nevermind.Core.Extensions;
+using Nevermind.Network;
+
+namespace Nevermind.Discovery.Messages
 {
-    public interface IUdpListener
+    public abstract class DiscoveryMessage : MessageBase
     {
-        void OnIncomingMessage(byte[] msg);
+        public byte[] Payload { get; set; } = Bytes.Empty;
+        public Signature Signature { get; set; }
+
+        public string Host { get; set; }
+        public int Port { get; set; }
+
+        public override string ToString()
+        {
+            return $"Type: {MessageType}, Host: {Host}, Port: {Port}";
+        }
+
+        public abstract MessageType MessageType { get; }
     }
 }

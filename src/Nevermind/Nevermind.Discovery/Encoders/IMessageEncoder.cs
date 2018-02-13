@@ -23,7 +23,7 @@ namespace Nevermind.Discovery.Encoders
 {
     public interface IMessageEncoder
     {
-        Message Decode(byte[] content);
+        DiscoveryMessage Decode(byte[] content);
         byte[] Encode(MessageType type, byte[] data, PrivateKey privateKey);
     }
 }

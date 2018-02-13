@@ -22,6 +22,6 @@ namespace Nevermind.Discovery.Messages
 {
     public interface IMessageFactory
     {
-        Message CreateMessage(MessageType messageType, Node destination);
+        T CreateMessage<T>(Node destination) where T : DiscoveryMessage;
     }
 }

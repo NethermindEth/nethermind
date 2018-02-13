@@ -21,7 +21,7 @@ using Nevermind.Discovery.RoutingTable;
 
 namespace Nevermind.Discovery.Messages
 {
-    public class NeighborsMessage : Message
+    public class NeighborsMessage : DiscoveryMessage
     {
         public Node[] Nodes { get; set; }
 
@@ -29,5 +29,7 @@ namespace Nevermind.Discovery.Messages
         {
             return $"Type: {MessageType}, Host: {Host}, Port: {Port}, Nodes: {Nodes?.Select(x => x.Id)}";
         }
+        
+        public override MessageType MessageType => MessageType.Neighbors;
     }
 }

@@ -23,61 +23,12 @@ namespace Nevermind.Discovery.Messages
 {
     public class MessageFactory : IMessageFactory
     {
-        public Message CreateMessage(MessageType messageType, Node destination)
+        public T CreateMessage<T>(Node destination) where T : DiscoveryMessage
         {
-            switch (messageType)
-            {
-                case MessageType.FindNode:
-                    return CreateFindNodeMessage(destination);
-                case MessageType.Ping:
-                    return CreatePingMessage(destination);
-                case MessageType.Pong:
-                    return CreatePongMessage(destination);
-                case MessageType.Neighbors:
-                    return CreateNeighborsMessage(destination);
-                default:
-                    throw new Exception($"Unsupported message type: {messageType}");
-            }
-        }
-
-        private Message CreateFindNodeMessage(Node destination)
-        {
-            return new FindNodeMessage
-            {
-                Type = new[] {(byte)MessageType.FindNode},
-                Host = destination.Host,
-                Port = destination.Port
-            };
-        }
-
-        private Message CreatePingMessage(Node destination)
-        {
-            return new PingMessage
-            {
-                Type = new[] { (byte)MessageType.Ping },
-                Host = destination.Host,
-                Port = destination.Port
-            };
-        }
-
-        private Message CreatePongMessage(Node destination)
-        {
-            return new PongMessage
-            {
-                Type = new[] { (byte)MessageType.Pong },
-                Host = destination.Host,
-                Port = destination.Port
-            };
-        }
-
-        private Message CreateNeighborsMessage(Node destination)
-        {
-            return new NeighborsMessage
-            {
-                Type = new[] { (byte)MessageType.Neighbors },
-                Host = destination.Host,
-                Port = destination.Port
-            };
+            T message = Activator.CreateInstance<T>();
+            message.Host = destination.Host;
+            message.Port = destination.Port;
+            return message;
         }
     }
 }

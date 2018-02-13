@@ -41,10 +41,10 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="DiscoveryApp.cs" />
+    <Compile Include="DiscoveryMessageSerializer.cs" />
     <Compile Include="IDiscoveryApp.cs" />
-    <Compile Include="IMessageSerializer.cs" />
-    <Compile Include="IUdpClient.cs" />
-    <Compile Include="IUdpListener.cs" />
+    <Compile Include="IMessageSender.cs" />
+    <Compile Include="IDiscoveryListener.cs" />
     <Compile Include="Lifecycle\EvictionManager.cs" />
     <Compile Include="Lifecycle\EvictionPair.cs" />
     <Compile Include="Lifecycle\IEvictionManager.cs" />
@@ -52,10 +52,9 @@
     <Compile Include="Lifecycle\INodeLifecycleManagerFactory.cs" />
     <Compile Include="INodesLocator.cs" />
     <Compile Include="Lifecycle\NodeLifecycleState.cs" />
-    <Compile Include="MessageSerializer.cs" />
     <Compile Include="Messages\IMessageFactory.cs" />
     <Compile Include="Messages\INodeIdResolver.cs" />
-    <Compile Include="Messages\Message.cs" />
+    <Compile Include="Messages\DiscoveryMessage.cs" />
     <Compile Include="DiscoveryConfigurationProvider.cs" />
     <Compile Include="DiscoveryManager.cs" />
     <Compile Include="Messages\FindNodeMessage.cs" />
@@ -66,6 +65,7 @@
     <Compile Include="Lifecycle\NodeLifecycleManager.cs" />
     <Compile Include="Lifecycle\NodeLifecycleManagerFactory.cs" />
     <Compile Include="Messages\NodeIdResolver.cs" />
+    <Compile Include="NetworkingException.cs" />
     <Compile Include="NodesLocator.cs" />
     <Compile Include="RoutingTable\INodeBucket.cs" />
     <Compile Include="RoutingTable\INodeBucketItem.cs" />
@@ -86,7 +86,6 @@
     <Compile Include="Messages\PingMessage.cs" />
     <Compile Include="Messages\PongMessage.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
-    <Compile Include="UdpClient.cs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Nevermind.Core\Nevermind.Core.csproj">
@@ -96,6 +95,10 @@
     <ProjectReference Include="..\Nevermind.KeyStore\Nevermind.KeyStore.csproj">
       <Project>{4E409915-E434-4E8B-9BF5-6CC623D23612}</Project>
       <Name>Nevermind.KeyStore</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\Nevermind.Network\Nevermind.Network.csproj">
+      <Project>{79eba5ab-1d7a-469a-8b81-501b6248f759}</Project>
+      <Name>Nevermind.Network</Name>
     </ProjectReference>
     <ProjectReference Include="..\Nevermind.Utils\Nevermind.Utils.csproj">
       <Project>{11961D51-AB76-48FC-A723-0EEE53051AAB}</Project>

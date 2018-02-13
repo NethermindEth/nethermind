@@ -20,7 +20,7 @@ using Nevermind.Discovery.RoutingTable;
 
 namespace Nevermind.Discovery.Messages
 {
-    public class FindNodeMessage : Message
+    public class FindNodeMessage : DiscoveryMessage
     {
         public Node SearchedNode { get; set; }
 
@@ -28,5 +28,7 @@ namespace Nevermind.Discovery.Messages
         {
             return $"Type: {MessageType}, Host: {Host}, Port: {Port}, SearchedNode: {SearchedNode?.Id}";
         }
+
+        public override MessageType MessageType => MessageType.FindNode;
     }
 }

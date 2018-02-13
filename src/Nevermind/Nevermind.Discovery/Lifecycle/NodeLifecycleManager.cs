@@ -54,12 +54,12 @@ namespace Nevermind.Discovery.Lifecycle
         public NodeLifecycleState State { get; private set; }
         public event EventHandler<NodeLifecycleState> OnStateChanged;
 
-        public void ProcessPingMessage(PingMessage message)
+        public void ProcessPingMessage(PingMessage discoveryMessage)
         {
             SendPong();
         }
 
-        public void ProcessPongMessage(PongMessage message)
+        public void ProcessPongMessage(PongMessage discoveryMessage)
         {
             if (_isPongExpected)
             {
@@ -69,11 +69,11 @@ namespace Nevermind.Discovery.Lifecycle
             _isPongExpected = false;
         }
 
-        public void ProcessNeighborsMessage(NeighborsMessage message)
+        public void ProcessNeighborsMessage(NeighborsMessage discoveryMessage)
         {
             if (_isNeighborsExpected)
             {
-                foreach (var node in message.Nodes)
+                foreach (var node in discoveryMessage.Nodes)
                 {
                     //If node is new it will create a new nodeLifecycleManager and will update state to New, which will trigger Ping
                     _discoveryManager.GetNodeLifecycleManager(node);
@@ -83,7 +83,7 @@ namespace Nevermind.Discovery.Lifecycle
             _isNeighborsExpected = false;
         }
 
-        public void ProcessFindNodeMessage(FindNodeMessage message)
+        public void ProcessFindNodeMessage(FindNodeMessage discoveryMessage)
         {
             var nodes = _nodeTable.GetClosestNodes();
             SendNeighbors(nodes);
@@ -91,7 +91,7 @@ namespace Nevermind.Discovery.Lifecycle
 
         public void SendFindNode(Node searchedNode)
         {
-            var msg = (FindNodeMessage)_messageFactory.CreateMessage(MessageType.FindNode, ManagedNode);
+            var msg = _messageFactory.CreateMessage<FindNodeMessage>(ManagedNode);
             msg.SearchedNode = searchedNode;
             _isNeighborsExpected = true;
             _discoveryManager.SendMessage(msg);
@@ -105,13 +105,13 @@ namespace Nevermind.Discovery.Lifecycle
 
         public void SendPong()
         {
-            var msg = _messageFactory.CreateMessage(MessageType.Pong, ManagedNode);
+            var msg = _messageFactory.CreateMessage<PongMessage>(ManagedNode);
             _discoveryManager.SendMessage(msg);
         }
 
         public void SendNeighbors(Node[] nodes)
         {
-            var msg = (NeighborsMessage)_messageFactory.CreateMessage(MessageType.Neighbors, ManagedNode);
+            var msg = _messageFactory.CreateMessage<NeighborsMessage>(ManagedNode);
             msg.Nodes = nodes;
             _discoveryManager.SendMessage(msg);
         }
@@ -155,7 +155,7 @@ namespace Nevermind.Discovery.Lifecycle
         {
             try
             {
-                var msg = _messageFactory.CreateMessage(MessageType.Ping, ManagedNode);
+                var msg = _messageFactory.CreateMessage<PingMessage>(ManagedNode);
                 _discoveryManager.SendMessage(msg);
 
                 if (_discoveryManager.WasMessageReceived(ManagedNode.IdHashText, MessageType.Pong, _discoveryConfigurationProvider.PongTimeout))

@@ -12,9 +12,9 @@ namespace Nevermind.Discovery.Messages
             _signer = signer;
         }
 
-        public PublicKey GetNodeId(Message message)
+        public PublicKey GetNodeId(DiscoveryMessage discoveryMessage)
         {
-            return _signer.RecoverPublicKey(message.Signature, Keccak.Compute(Bytes.Concat(message.Type, message.Payload)));
+            return _signer.RecoverPublicKey(discoveryMessage.Signature, Keccak.Compute(Bytes.Concat(new[] {(byte)discoveryMessage.MessageType}, discoveryMessage.Payload)));
         }
     }
 }

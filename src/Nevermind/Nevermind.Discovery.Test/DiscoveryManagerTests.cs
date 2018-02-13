@@ -29,18 +29,19 @@ using Nevermind.Discovery.RoutingTable;
 using Nevermind.Json;
 using Nevermind.KeyStore;
 using NSubstitute;
-using NSubstitute.Core;
 using NUnit.Framework;
+using Node = Nevermind.Discovery.RoutingTable.Node;
+using PingMessage = Nevermind.Discovery.Messages.PingMessage;
+using PongMessage = Nevermind.Discovery.Messages.PongMessage;
 
 namespace Nevermind.Discovery.Test
-{
+{   
     [TestFixture]
     public class DiscoveryManagerTests
-    {
+    {   
         private INodeIdResolver _nodeIdResolver;
-        private IMessageSerializer _messageSerializer;
         private IDiscoveryManager _discoveryManager;
-        private IUdpClient _udpClient;
+        private IMessageSender _messageSender;
         private INodeTable _nodeTable;
         private INodeFactory _nodeFactory;
         private int _port = 1;
@@ -54,6 +55,14 @@ namespace Nevermind.Discovery.Test
             var config = new DiscoveryConfigurationProvider { PongTimeout = 100 };
             var configProvider = new ConfigurationProvider(Path.GetDirectoryName(Path.Combine(Path.GetTempPath(), "KeyStore")));
             _nodeIdResolver = Substitute.For<INodeIdResolver>();
+            _nodeIdResolver.GetNodeId(Arg.Any<DiscoveryMessage>()).Returns(info =>
+            {
+                byte[] hostBytes = Encoding.UTF8.GetBytes(info.Arg<DiscoveryMessage>().Host);
+                Array.Resize(ref hostBytes, 64);
+                return new PublicKey(hostBytes);
+            });
+            
+            _messageSender = Substitute.For<IMessageSender>();
             _nodeFactory = new NodeFactory();
             var calculator = new NodeDistanceCalculator(config);
 
@@ -61,66 +70,30 @@ namespace Nevermind.Discovery.Test
             var evictionManager = new EvictionManager(_nodeTable, logger);
             var lifecycleFactory = new NodeLifecycleManagerFactory(_nodeFactory, _nodeTable, logger, config, new MessageFactory(), evictionManager);
 
-            _udpClient = Substitute.For<IUdpClient>();
-            _udpClient.SubribeForMessages(Arg.Any<IUdpListener>());
-            _udpClient.SendMessage(Arg.Any<string>(), Arg.Any<int>(), Arg.Any<byte[]>());
-
-            _messageSerializer = Substitute.For<IMessageSerializer>();            
-            _messageSerializer.Serialize(Arg.Is<Message>(x => x.MessageType == MessageType.Ping)).Returns(new[] { (byte)MessageType.Ping });
-            _messageSerializer.Serialize(Arg.Is<Message>(x => x.MessageType == MessageType.Pong)).Returns(new[] { (byte)MessageType.Pong });
-            _messageSerializer.Serialize(Arg.Is<Message>(x => x.MessageType == MessageType.FindNode)).Returns(new[] { (byte)MessageType.FindNode });
-            _messageSerializer.Serialize(Arg.Is<Message>(x => x.MessageType == MessageType.Neighbors)).Returns(new[] { (byte)MessageType.Neighbors });
-
-            _messageSerializer.Deserialize(Arg.Is<byte[]>(x => x.First() == (byte)MessageType.Pong)).Returns(new PongMessage
-            {
-                Type = new[] { (byte)MessageType.Pong },
-                Port = _port,
-                Host = _host
-            });
-            _messageSerializer.Deserialize(Arg.Is<byte[]>(x => x.First() == (byte)MessageType.Ping)).Returns(new PingMessage
-            {
-                Type = new[] { (byte)MessageType.Ping },
-                Port = _port,
-                Host = _host
-            });
-            _messageSerializer.Deserialize(Arg.Is<byte[]>(x => x.First() == (byte)MessageType.FindNode)).Returns(new FindNodeMessage
-            {
-                Type = new[] { (byte)MessageType.FindNode },
-                Port = _port,
-                Host = _host
-            });
-
             _nodes = new[] { _nodeFactory.CreateNode("TestHost1", 1), _nodeFactory.CreateNode("TestHost2", 2) };
-            _messageSerializer.Deserialize(Arg.Is<byte[]>(x => x.First() == (byte)MessageType.Neighbors)).Returns(new NeighborsMessage
-            {
-                Type = new[] { (byte)MessageType.Neighbors },
-                Nodes = _nodes,
-                Port = _port,
-                Host = _host
-            });
 
-            _discoveryManager = new DiscoveryManager(logger, config, lifecycleFactory, _nodeFactory, _messageSerializer, _udpClient, _nodeIdResolver);
+            _discoveryManager = new DiscoveryManager(logger, config, lifecycleFactory, _nodeFactory, _messageSender, _nodeIdResolver);
         }
 
         [Test]
         public void OnPingMessageTest()
         {
             //receiving ping
-            _discoveryManager.OnIncomingMessage(new[]{ (byte)MessageType.Ping });
+            _discoveryManager.OnIncomingMessage(new PingMessage{Port = _port, Host = _host});
             Thread.Sleep(400);
 
             //expecting to send pong
-            _udpClient.Received(1).SendMessage(Arg.Is(_host), Arg.Is(_port), Arg.Is<byte[]>(x => x.First() == (byte)MessageType.Pong));
+            _messageSender.Received(1).SendMessage(Arg.Is<PongMessage>(m => m.Host == _host && m.Port == _port));
 
             //expecting to send 3 pings for every new node
-            _udpClient.Received(3).SendMessage(Arg.Is(_host), Arg.Is(_port), Arg.Is<byte[]>(x => x.First() == (byte)MessageType.Ping));
+            _messageSender.Received(3).SendMessage(Arg.Is<PingMessage>(m => m.Host == _host && m.Port == _port));
         }
 
         [Test]
         public void OnPongMessageTest()
         {
             //receiving pong
-            _discoveryManager.OnIncomingMessage(new[] { (byte)MessageType.Pong });
+            _discoveryManager.OnIncomingMessage(new PongMessage{Port = _port, Host = _host});
             
             //expecting to activate node as valid peer
             var nodes = _nodeTable.GetClosestNodes();
@@ -136,7 +109,7 @@ namespace Nevermind.Discovery.Test
         public void OnFindNodeMessageTest()
         {
             //receiving pong to have a node in the system
-            _discoveryManager.OnIncomingMessage(new[] { (byte)MessageType.Pong });
+            _discoveryManager.OnIncomingMessage(new PongMessage{Port = _port, Host = _host});
 
             //expecting to activate node as valid peer
             var nodes = _nodeTable.GetClosestNodes();
@@ -148,17 +121,17 @@ namespace Nevermind.Discovery.Test
             Assert.AreEqual(NodeLifecycleState.Active, manager.State);
 
             //receiving findNode
-            _discoveryManager.OnIncomingMessage(new[] { (byte)MessageType.FindNode });
+            _discoveryManager.OnIncomingMessage(new FindNodeMessage{Port = _port, Host = _host});
 
             //expecting to respond with sending Neighbors
-            _udpClient.Received(1).SendMessage(Arg.Is(_host), Arg.Is(_port), Arg.Is<byte[]>(x => x.First() == (byte)MessageType.Neighbors));
+            _messageSender.Received(1).SendMessage(Arg.Is<NeighborsMessage>(m => m.Host == _host && m.Port == _port));
         }
 
         [Test]
         public void OnNeighborsMessageTest()
         {
             //receiving pong to have a node in the system
-            _discoveryManager.OnIncomingMessage(new[] { (byte)MessageType.Pong });
+            _discoveryManager.OnIncomingMessage(new PongMessage{Port = _port, Host = _host});
 
             //expecting to activate node as valid peer
             var nodes = _nodeTable.GetClosestNodes();
@@ -171,15 +144,15 @@ namespace Nevermind.Discovery.Test
 
             //sending FindNode to expect Neighbors
             manager.SendFindNode(_nodeTable.MasterNode);
-            _udpClient.Received(1).SendMessage(Arg.Is(_host), Arg.Is(_port), Arg.Is<byte[]>(x => x.First() == (byte)MessageType.FindNode));
+            _messageSender.Received(1).SendMessage(Arg.Is<FindNodeMessage>(m => m.Host == _host && m.Port == _port));
 
             //receiving findNode
-            _discoveryManager.OnIncomingMessage(new[] { (byte)MessageType.Neighbors });
+            _discoveryManager.OnIncomingMessage(new NeighborsMessage{Port = _port, Host = _host, Nodes = _nodes});
 
             //expecting to send 3 pings to both nodes
             Thread.Sleep(400);
-            _udpClient.Received(3).SendMessage(Arg.Is(_nodes[0].Host), Arg.Is(_nodes[0].Port), Arg.Is<byte[]>(x => x.First() == (byte)MessageType.Ping));
-            _udpClient.Received(3).SendMessage(Arg.Is(_nodes[1].Host), Arg.Is(_nodes[1].Port), Arg.Is<byte[]>(x => x.First() == (byte)MessageType.Ping));
+            _messageSender.Received(3).SendMessage(Arg.Is<PingMessage>(m => m.Host == _nodes[0].Host && m.Port == _nodes[0].Port));
+            _messageSender.Received(3).SendMessage(Arg.Is<PingMessage>(m => m.Host == _nodes[1].Host && m.Port == _nodes[1].Port));
         }
     }
 }

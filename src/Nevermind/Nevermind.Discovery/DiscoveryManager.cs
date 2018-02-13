@@ -18,13 +18,15 @@
 
 using System;
 using System.Collections.Concurrent;
-using System.Linq;
 using System.Threading;
 using Nevermind.Core;
 using Nevermind.Core.Crypto;
 using Nevermind.Discovery.Lifecycle;
 using Nevermind.Discovery.Messages;
 using Nevermind.Discovery.RoutingTable;
+using Node = Nevermind.Discovery.RoutingTable.Node;
+using PingMessage = Nevermind.Discovery.Messages.PingMessage;
+using PongMessage = Nevermind.Discovery.Messages.PongMessage;
 
 namespace Nevermind.Discovery
 {
@@ -34,43 +36,40 @@ namespace Nevermind.Discovery
         private readonly IDiscoveryConfigurationProvider _configurationProvider;
         private readonly INodeLifecycleManagerFactory _nodeLifecycleManagerFactory;
         private readonly INodeFactory _nodeFactory;
-        private readonly IMessageSerializer _messageSerializer;
-        private readonly IUdpClient _udpClient;
+        private readonly IMessageSender _messageSender;
         private readonly INodeIdResolver _nodeIdResolver;
 
         private readonly ConcurrentDictionary<MessageTypeKey, ManualResetEvent> _waitingEvents = new ConcurrentDictionary<MessageTypeKey, ManualResetEvent>();
         private readonly ConcurrentDictionary<string, INodeLifecycleManager> _nodeLifecycleManagers = new ConcurrentDictionary<string, INodeLifecycleManager>();
 
-        public DiscoveryManager(ILogger logger, IDiscoveryConfigurationProvider configurationProvider, INodeLifecycleManagerFactory nodeLifecycleManagerFactory, INodeFactory nodeFactory, IMessageSerializer messageSerializer, IUdpClient udpClient, INodeIdResolver nodeIdResolver)
+        public DiscoveryManager(
+            ILogger logger,
+            IDiscoveryConfigurationProvider configurationProvider,
+            INodeLifecycleManagerFactory nodeLifecycleManagerFactory,
+            INodeFactory nodeFactory,
+            IMessageSender messageSender,
+            INodeIdResolver nodeIdResolver)
         {
             _logger = logger;
             _configurationProvider = configurationProvider;
             _nodeLifecycleManagerFactory = nodeLifecycleManagerFactory;
             _nodeFactory = nodeFactory;
-            _messageSerializer = messageSerializer;
-            _udpClient = udpClient;
+            _messageSender = messageSender;
             _nodeIdResolver = nodeIdResolver;
             _nodeLifecycleManagerFactory.DiscoveryManager = this;
-            _udpClient.SubribeForMessages(this);
         }
 
-        public void OnIncomingMessage(byte[] msg)
+        public void OnIncomingMessage(DiscoveryMessage message)
         {
             try
             {
-                var message = _messageSerializer.Deserialize(msg);
                 var msgType = message.MessageType;
-                if (!msgType.HasValue)
-                {
-                    _logger.Error($"Unknown msgType: {(message.Type != null && message.Type.Any() ? message.Type[0].ToString() : "none")}");
-                    return;
-                }
 
                 PublicKey nodeId = _nodeIdResolver.GetNodeId(message);
                 var node = _nodeFactory.CreateNode(nodeId, message.Host, message.Port);
                 var nodeManager = GetNodeLifecycleManager(node);
 
-                switch (msgType.Value)
+                switch (msgType)
                 {
                     case MessageType.Neighbors:
                         nodeManager.ProcessNeighborsMessage(message as NeighborsMessage);
@@ -85,11 +84,11 @@ namespace Nevermind.Discovery
                         nodeManager.ProcessFindNodeMessage(message as FindNodeMessage);
                         break;
                     default:
-                        _logger.Error($"Unsupported msgType: {msgType.Value}");
+                        _logger.Error($"Unsupported msgType: {msgType}");
                         return;
                 }
 
-                NotifySubscribers(msgType.Value, nodeManager.ManagedNode);
+                NotifySubscribers(msgType, nodeManager.ManagedNode);
             }
             catch (Exception e)
             {
@@ -102,18 +101,15 @@ namespace Nevermind.Discovery
             return _nodeLifecycleManagers.GetOrAdd(node.IdHashText, x => _nodeLifecycleManagerFactory.CreateNodeLifecycleManager(node));
         }
 
-        public void SendMessage(Message message)
+        public void SendMessage(DiscoveryMessage discoveryMessage)
         {
             try
             {
-                var host = message.Host;
-                var port = message.Port;
-                var msg = _messageSerializer.Serialize(message);
-                _udpClient.SendMessage(host, port, msg);
+                _messageSender.SendMessage(discoveryMessage);
             }
             catch (Exception e)
             {
-                _logger.Error($"Error during sending message: {message}", e);
+                _logger.Error($"Error during sending message: {discoveryMessage}", e);
             }    
         }
 

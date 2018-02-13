@@ -16,12 +16,10 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nevermind.Discovery.Messages;
-
 namespace Nevermind.Discovery.Messages
 {
-    public class PongMessage : Message
+    public class PongMessage : DiscoveryMessage
     {
-
+        public override MessageType MessageType => MessageType.Pong;
     }
 }
