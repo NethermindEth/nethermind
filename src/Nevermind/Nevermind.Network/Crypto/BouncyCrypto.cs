@@ -17,6 +17,7 @@
  */
 
 using Nevermind.Core.Crypto;
+using Nevermind.Core.Extensions;
 using Org.BouncyCastle.Asn1.Sec;
 using Org.BouncyCastle.Asn1.X9;
 using Org.BouncyCastle.Crypto.Agreement;
@@ -63,7 +64,8 @@ namespace Nevermind.Network.Crypto
             ECDHBasicAgreement agreement = new ECDHBasicAgreement();
             agreement.Init(privateKeyParameters);
 
-            return agreement.CalculateAgreement(publicKeyParameters).ToByteArray();
+            byte[] agreementBytes = agreement.CalculateAgreement(publicKeyParameters).ToByteArray();
+            return agreementBytes.Length > 32 ? agreementBytes.Slice(agreementBytes.Length - 32, 32) : agreementBytes;
         }
     }
 }

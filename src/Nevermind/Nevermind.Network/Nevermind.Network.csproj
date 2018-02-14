@@ -196,6 +196,7 @@
     <Compile Include="Rlpx\EncryptionSecrets.cs" />
     <Compile Include="Rlpx\FrameEncryptionProcessor.cs" />
     <Compile Include="Rlpx\FrameSplittingProcessor.cs" />
+    <Compile Include="Rlpx\NettyHandshakeHandler.cs" />
     <Compile Include="Rlpx\Handshake\AckEip8Message.cs" />
     <Compile Include="Rlpx\Handshake\AckEip8MessageSerializer.cs" />
     <Compile Include="Rlpx\Handshake\AckMessage.cs" />
@@ -208,6 +209,7 @@
     <Compile Include="Rlpx\Handshake\Eip8MessagePad.cs" />
     <Compile Include="Rlpx\Handshake\EncryptionHandshake.cs" />
     <Compile Include="Rlpx\Handshake\EncryptionHandshakeProcessor.cs" />
+    <Compile Include="Rlpx\Handshake\EncryptionHandshakeRole.cs" />
     <Compile Include="Rlpx\Handshake\EncryptionHandshakeService.cs" />
     <Compile Include="Rlpx\Handshake\IEncryptionHandshakeService.cs" />
     <Compile Include="Rlpx\IRlpxPeer.cs" />

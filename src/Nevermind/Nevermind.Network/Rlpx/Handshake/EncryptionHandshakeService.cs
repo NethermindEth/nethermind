@@ -162,11 +162,5 @@ namespace Nevermind.Network.Rlpx.Handshake
                 handshake.Secrets.IngressMac = mac1;
             }
         }
-        
-        public enum EncryptionHandshakeRole
-        {
-            Initiator,
-            Recipient
-        }
     }
 }

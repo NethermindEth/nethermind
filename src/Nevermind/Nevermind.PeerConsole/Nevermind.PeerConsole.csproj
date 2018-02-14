@@ -46,6 +46,10 @@
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\Nevermind.Core\Nevermind.Core.csproj">
+      <Project>{051B3754-5FB6-4202-AF6E-D1764E2DED06}</Project>
+      <Name>Nevermind.Core</Name>
+    </ProjectReference>
     <ProjectReference Include="..\Nevermind.Network\Nevermind.Network.csproj">
       <Project>{79eba5ab-1d7a-469a-8b81-501b6248f759}</Project>
       <Name>Nevermind.Network</Name>
