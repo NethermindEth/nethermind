@@ -17,25 +17,19 @@
  */
 
 using Nevermind.Core.Crypto;
-using Nevermind.Network.Crypto;
-using NUnit.Framework;
 
-namespace Nevermind.Network.Test
+namespace Nevermind.Network.Rlpx.Handshake
 {
-    [TestFixture]
-    public class BouncyCryptoTests
+    public class EncryptionHandshake
     {
-        [Test]
-        public void Can_calculate_agreement()
-        {
-            CryptoRandom random = new CryptoRandom();
-            PrivateKey privateKey1 = new PrivateKey(random.GenerateRandomBytes(32));
-            PrivateKey privateKey2 = new PrivateKey(random.GenerateRandomBytes(32));
-
-            byte[] sharedSecret1 = BouncyCrypto.Agree(privateKey1, privateKey2.PublicKey);
-            byte[] sharedSecret2 = BouncyCrypto.Agree(privateKey2, privateKey1.PublicKey);
-
-            Assert.AreEqual(sharedSecret1, sharedSecret2);
-        }
+        public EncryptionSecrets Secrets { get; set; }
+        public byte[] InitiatorNonce { get; set; }
+        public byte[] RecipientNonce { get; set; }
+        public PublicKey RemotePublicKey { get; set; }
+        public PublicKey RemoteEphemeralPublicKey { get; set; }
+        public PrivateKey EphemeralPrivateKey { get; set; }
+        
+        public Packet AuthPacket { get; set; }
+        public Packet AckPacket { get; set; }
     }
 }

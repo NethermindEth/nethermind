@@ -23,6 +23,7 @@ using Nevermind.Core.Encoding;
 
 namespace Nevermind.Core.Crypto
 {
+    // TODO: it is a copypasta from Keccak, consider later a similar structure to Hashlib but compare the perf first
     public struct Keccak512 : IEquatable<Keccak512>
     {
         private const int Size = 64;

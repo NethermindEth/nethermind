@@ -19,6 +19,7 @@
 using System;
 using Nevermind.Core.Crypto;
 using Nevermind.Core.Extensions;
+using Nevermind.Network.Rlpx.Handshake;
 using NUnit.Framework;
 
 namespace Nevermind.Network.Test

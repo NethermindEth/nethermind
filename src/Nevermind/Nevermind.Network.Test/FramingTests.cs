@@ -17,6 +17,8 @@
  */
 
 using Nevermind.Core.Extensions;
+using Nevermind.Network.P2P;
+using Nevermind.Network.Rlpx;
 using NUnit.Framework;
 using Org.BouncyCastle.Crypto.Digests;
 

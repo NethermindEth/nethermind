@@ -1,5 +1,5 @@
 
-﻿using System;
+ using System;
 
 ﻿/*
  * Copyright (c) 2018 Demerzel Solutions Limited

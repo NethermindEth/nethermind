@@ -20,6 +20,8 @@ using System.Collections.Generic;
 using Nevermind.Core;
 using Nevermind.Core.Crypto;
 using Nevermind.Core.Extensions;
+using Nevermind.Network.Rlpx;
+using Nevermind.Network.Rlpx.Handshake;
 using NSubstitute;
 using NUnit.Framework;
 

@@ -42,6 +42,7 @@
   <ItemGroup>
     <Compile Include="DiscoveryApp.cs" />
     <Compile Include="DiscoveryMessageSerializer.cs" />
+    <Compile Include="DiscoveryServer.cs" />
     <Compile Include="IDiscoveryApp.cs" />
     <Compile Include="IMessageSender.cs" />
     <Compile Include="IDiscoveryListener.cs" />

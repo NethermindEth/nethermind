@@ -16,26 +16,22 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nevermind.Core.Crypto;
-using Nevermind.Network.Crypto;
-using NUnit.Framework;
-
-namespace Nevermind.Network.Test
+namespace Nevermind.Network.P2P
 {
-    [TestFixture]
-    public class BouncyCryptoTests
+    public enum DisconnectReason
     {
-        [Test]
-        public void Can_calculate_agreement()
-        {
-            CryptoRandom random = new CryptoRandom();
-            PrivateKey privateKey1 = new PrivateKey(random.GenerateRandomBytes(32));
-            PrivateKey privateKey2 = new PrivateKey(random.GenerateRandomBytes(32));
-
-            byte[] sharedSecret1 = BouncyCrypto.Agree(privateKey1, privateKey2.PublicKey);
-            byte[] sharedSecret2 = BouncyCrypto.Agree(privateKey2, privateKey1.PublicKey);
-
-            Assert.AreEqual(sharedSecret1, sharedSecret2);
-        }
+        DisconnectRequested = 0x00,
+        TcpSubSystemError = 0x01,
+        BreachOfProtocol = 0x02,
+        UselessPeer = 0x03,
+        TooManyPeers = 0x04,
+        AlreadyConnected = 0x05,
+        IncompatibleP2PVersion = 0x06,
+        NullNodeIdentityReceived = 0x07,
+        ClientQuitting = 0x08,
+        UnexpectedIdentity = 0x09,
+        IdentitySameAsSelf = 0x0a,
+        ReceiveMessageTimeout = 0x0b,
+        Other = 0x10
     }
 }

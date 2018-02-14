@@ -16,26 +16,18 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Collections.Generic;
 using Nevermind.Core.Crypto;
-using Nevermind.Network.Crypto;
-using NUnit.Framework;
 
-namespace Nevermind.Network.Test
+namespace Nevermind.Network.P2P
 {
-    [TestFixture]
-    public class BouncyCryptoTests
+    public class HelloMessage : P2PMessage
     {
-        [Test]
-        public void Can_calculate_agreement()
-        {
-            CryptoRandom random = new CryptoRandom();
-            PrivateKey privateKey1 = new PrivateKey(random.GenerateRandomBytes(32));
-            PrivateKey privateKey2 = new PrivateKey(random.GenerateRandomBytes(32));
-
-            byte[] sharedSecret1 = BouncyCrypto.Agree(privateKey1, privateKey2.PublicKey);
-            byte[] sharedSecret2 = BouncyCrypto.Agree(privateKey2, privateKey1.PublicKey);
-
-            Assert.AreEqual(sharedSecret1, sharedSecret2);
-        }
+        public int P2PVersion { get; set; }
+        public string ClientId { get; set; }
+        public Dictionary<Capability, int> Capabilities { get; set; }
+        public int ListenPort { get; set; }
+        public PublicKey NodeId { get; set; }
+        public override int MessageId => MessageCode.Hello;
     }
 }

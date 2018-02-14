@@ -75,6 +75,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nevermind.Discovery", "Neve
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nevermind.Discovery.Test", "Nevermind.Discovery.Test\Nevermind.Discovery.Test.csproj", "{58B7C7B2-B87C-478C-A94F-9E693BF0AA84}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nevermind.PeerConsole", "Nevermind.PeerConsole\Nevermind.PeerConsole.csproj", "{62B45CC5-E9D0-4D94-9F95-2F9E49DBC0E3}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -481,6 +483,18 @@ Global
 		{58B7C7B2-B87C-478C-A94F-9E693BF0AA84}.Release|x64.Build.0 = Release|Any CPU
 		{58B7C7B2-B87C-478C-A94F-9E693BF0AA84}.Release|x86.ActiveCfg = Release|Any CPU
 		{58B7C7B2-B87C-478C-A94F-9E693BF0AA84}.Release|x86.Build.0 = Release|Any CPU
+		{62B45CC5-E9D0-4D94-9F95-2F9E49DBC0E3}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{62B45CC5-E9D0-4D94-9F95-2F9E49DBC0E3}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{62B45CC5-E9D0-4D94-9F95-2F9E49DBC0E3}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{62B45CC5-E9D0-4D94-9F95-2F9E49DBC0E3}.Debug|x64.Build.0 = Debug|Any CPU
+		{62B45CC5-E9D0-4D94-9F95-2F9E49DBC0E3}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{62B45CC5-E9D0-4D94-9F95-2F9E49DBC0E3}.Debug|x86.Build.0 = Debug|Any CPU
+		{62B45CC5-E9D0-4D94-9F95-2F9E49DBC0E3}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{62B45CC5-E9D0-4D94-9F95-2F9E49DBC0E3}.Release|Any CPU.Build.0 = Release|Any CPU
+		{62B45CC5-E9D0-4D94-9F95-2F9E49DBC0E3}.Release|x64.ActiveCfg = Release|Any CPU
+		{62B45CC5-E9D0-4D94-9F95-2F9E49DBC0E3}.Release|x64.Build.0 = Release|Any CPU
+		{62B45CC5-E9D0-4D94-9F95-2F9E49DBC0E3}.Release|x86.ActiveCfg = Release|Any CPU
+		{62B45CC5-E9D0-4D94-9F95-2F9E49DBC0E3}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

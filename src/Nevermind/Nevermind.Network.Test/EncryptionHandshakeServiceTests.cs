@@ -20,6 +20,9 @@ using System.Text;
 using Nevermind.Core;
 using Nevermind.Core.Crypto;
 using Nevermind.Core.Potocol;
+using Nevermind.Network.Crypto;
+using Nevermind.Network.Rlpx;
+using Nevermind.Network.Rlpx.Handshake;
 using NUnit.Framework;
 
 namespace Nevermind.Network.Test
