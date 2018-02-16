@@ -16,26 +16,30 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using DotNetty.Buffers;
+using DotNetty.Codecs;
+using DotNetty.Transport.Channels;
+
 namespace Nevermind.Network.Rlpx
 {
-    public class Packet
+    public class NettyFrameEncoder : MessageToByteEncoder<byte[]>
     {
-        public byte[] Data;
+        private readonly IFrameCipher _frameCipher;
+        private readonly IFrameMacProcessor _frameMacProcessor;
 
-        public Packet(int protocolType, int packetType, byte[] data)
+        public NettyFrameEncoder(IFrameCipher frameCipher, IFrameMacProcessor frameMacProcessor)
         {
-            Data = data;
-            ProtocolType = protocolType;
-            PacketType = packetType;
+            _frameCipher = frameCipher;
+            _frameMacProcessor = frameMacProcessor;
         }
 
-        public Packet(byte[] data)
+        protected override void Encode(IChannelHandlerContext context, byte[] message, IByteBuffer output)
         {
-            Data = data;
+            _frameCipher.Encrypt(message, 0, 16, message, 0);
+            _frameMacProcessor.AddMac(message, 0, 16, true);
+            _frameCipher.Encrypt(message, 32, message.Length - 48, message, 32);
+            _frameMacProcessor.AddMac(message, 32, message.Length - 48, false);
+            output.WriteBytes(message);
         }
-
-        public int? PacketType { get; set; }
-
-        public int? ProtocolType { get; set; }
     }
 }

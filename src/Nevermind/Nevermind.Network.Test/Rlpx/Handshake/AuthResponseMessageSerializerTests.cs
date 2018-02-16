@@ -22,7 +22,7 @@ using Nevermind.Core.Extensions;
 using Nevermind.Network.Rlpx.Handshake;
 using NUnit.Framework;
 
-namespace Nevermind.Network.Test
+namespace Nevermind.Network.Test.Rlpx.Handshake
 {
     [TestFixture]
     public class AuthResponseMessageSerializerTests

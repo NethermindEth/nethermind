@@ -173,9 +173,7 @@
     <Compile Include="IMessageSerializer.cs" />
     <Compile Include="IMessageProcessingPipeline.cs" />
     <Compile Include="MessageBase.cs" />
-    <Compile Include="MessageConsumerBase.cs" />
     <Compile Include="NettyLogger.cs" />
-    <Compile Include="MessageProcessorBase.cs" />
     <Compile Include="MessageSerializationService.cs" />
     <Compile Include="Node.cs" />
     <Compile Include="NoPad.cs" />
@@ -191,11 +189,15 @@
     <Compile Include="P2P\PingMessage.cs" />
     <Compile Include="P2P\PongMessage.cs" />
     <Compile Include="P2P\ProtocolHandshake.cs" />
-    <Compile Include="MessageProcessingPipeline.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Rlpx\EncryptionSecrets.cs" />
-    <Compile Include="Rlpx\FrameEncryptionProcessor.cs" />
-    <Compile Include="Rlpx\FrameSplittingProcessor.cs" />
+    <Compile Include="Rlpx\FrameCipher.cs" />
+    <Compile Include="Rlpx\FrameMacProcessor.cs" />
+    <Compile Include="Rlpx\IFrameCipher.cs" />
+    <Compile Include="Rlpx\NettyFrameDecoder.cs" />
+    <Compile Include="Rlpx\NettyFrameEncoder.cs" />
+    <Compile Include="Rlpx\IFrameMacProcessor.cs" />
+    <Compile Include="Rlpx\NettyFrameMerger.cs" />
     <Compile Include="Rlpx\NettyHandshakeHandler.cs" />
     <Compile Include="Rlpx\Handshake\AckEip8Message.cs" />
     <Compile Include="Rlpx\Handshake\AckEip8MessageSerializer.cs" />
@@ -208,11 +210,11 @@
     <Compile Include="Rlpx\Handshake\AuthMessageSerializer.cs" />
     <Compile Include="Rlpx\Handshake\Eip8MessagePad.cs" />
     <Compile Include="Rlpx\Handshake\EncryptionHandshake.cs" />
-    <Compile Include="Rlpx\Handshake\EncryptionHandshakeProcessor.cs" />
     <Compile Include="Rlpx\Handshake\EncryptionHandshakeRole.cs" />
     <Compile Include="Rlpx\Handshake\EncryptionHandshakeService.cs" />
     <Compile Include="Rlpx\Handshake\IEncryptionHandshakeService.cs" />
     <Compile Include="Rlpx\IRlpxPeer.cs" />
+    <Compile Include="Rlpx\NettyPacketSplitter.cs" />
     <Compile Include="Rlpx\Packet.cs" />
     <Compile Include="Rlpx\RlpxPeer.cs" />
   </ItemGroup>

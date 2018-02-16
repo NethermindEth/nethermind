@@ -75,6 +75,7 @@
     <Compile Include="Encoding\BlockHeaderDecoder.cs" />
     <Compile Include="Encoding\IRlpDecoder.cs" />
     <Compile Include="Encoding\BlockDecoder.cs" />
+    <Compile Include="Encoding\RlpBehaviors.cs" />
     <Compile Include="Encoding\RlpException.cs" />
     <Compile Include="Encoding\TransactionDecoder.cs" />
     <Compile Include="EthereumNetwork.cs" />

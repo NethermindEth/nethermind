@@ -24,10 +24,10 @@ using Nevermind.Core.Potocol;
 using Nevermind.Network.Rlpx.Handshake;
 using NUnit.Framework;
 
-namespace Nevermind.Network.Test
+namespace Nevermind.Network.Test.Rlpx.Handshake
 {
     [TestFixture]
-    public class AuthEip8MessageSerializerTests
+    public class AuthMessageSerializerTests
     {
         private const string TestPrivateKeyHex = "0x3a1076bf45ab87712ad64ccb3b10217737f7faacbf2872e88fdd9a537d8fe266";
 
@@ -35,22 +35,26 @@ namespace Nevermind.Network.Test
 
         private readonly PrivateKey _privateKey = new PrivateKey(TestPrivateKeyHex);
 
-        private readonly AuthEip8MessageSerializer _serializer = new AuthEip8MessageSerializer();
+        private readonly AuthMessageSerializer _serializer = new AuthMessageSerializer();
 
         private void TestEncodeDecode(IEthereumSigner signer)
         {
-            AuthEip8Message authMessage = new AuthEip8Message();
-            authMessage.Nonce = new byte[AuthMessageSerializer.NonceLength]; // sic!
+            AuthMessage authMessage = new AuthMessage();
+            authMessage.EphemeralPublicHash = new Keccak(new byte[AuthMessageSerializer.EphemeralHashLength]);
+            authMessage.Nonce = new byte[AuthMessageSerializer.NonceLength];
             authMessage.Signature = signer.Sign(_privateKey, Keccak.Compute("anything"));
+            _random.NextBytes(authMessage.EphemeralPublicHash.Bytes);
             authMessage.PublicKey = _privateKey.PublicKey;
             _random.NextBytes(authMessage.Nonce);
-            byte[] data = _serializer.Serialize(authMessage);
-            AuthEip8Message after = _serializer.Deserialize(data);
+            authMessage.IsTokenUsed = true;
+            byte[] bytes = _serializer.Serialize(authMessage);
+            AuthMessage after = _serializer.Deserialize(bytes);
 
             Assert.AreEqual(authMessage.Signature, after.Signature);
+            Assert.AreEqual(authMessage.EphemeralPublicHash, after.EphemeralPublicHash);
             Assert.AreEqual(authMessage.PublicKey, after.PublicKey);
             Assert.True(Bytes.UnsafeCompare(authMessage.Nonce, after.Nonce));
-            Assert.AreEqual(authMessage.Version, after.Version);
+            Assert.AreEqual(authMessage.IsTokenUsed, after.IsTokenUsed);
         }
 
         [TestCase(ChainId.MainNet)]

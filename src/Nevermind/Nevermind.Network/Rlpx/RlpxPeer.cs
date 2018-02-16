@@ -1,4 +1,22 @@
-﻿using System;
+﻿/*
+ * Copyright (c) 2018 Demerzel Solutions Limited
+ * This file is part of the Nethermind library.
+ *
+ * The Nethermind library is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * The Nethermind library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+using System;
 using System.Net;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
@@ -15,7 +33,8 @@ using Nevermind.Network.Rlpx.Handshake;
 
 namespace Nevermind.Network.Rlpx
 {
-    public class RlpxPeer
+    // TODO: integration tests for this one
+    public class RlpxPeer : IRlpxPeer
     {
         private const int PeerConnectionTimeout = 10000;
         private readonly IEncryptionHandshakeService _encryptionHandshakeService;
@@ -98,7 +117,7 @@ namespace Nevermind.Network.Rlpx
             IChannelPipeline pipeline = channel.Pipeline;
             pipeline.AddLast(new LoggingHandler(inOut, LogLevel.TRACE));
             pipeline.AddLast("enc-handshake-dec", new LengthFieldBasedFrameDecoder(ByteOrder.BigEndian, ushort.MaxValue, 0, 2, 0, 0, true));
-            pipeline.AddLast("enc-handshake-handler", new NettyHandshakeHandler(_encryptionHandshakeService, role, remoteId));
+            pipeline.AddLast("enc-handshake-handler", new NettyHandshakeHandler(_encryptionHandshakeService, role, remoteId, _logger));
         }
     }
 }

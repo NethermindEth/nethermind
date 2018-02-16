@@ -16,28 +16,11 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
-
-namespace Nevermind.Network.P2P
+namespace Nevermind.Network.Rlpx
 {
-    public class P2PMessageFactory : IMessageFactory<P2PMessage>
+    public interface IFrameMacProcessor
     {
-        private readonly IMessageSerializationService _serializationService;
-
-        public P2PMessageFactory(IMessageSerializationService serializationService)
-        {
-            _serializationService = serializationService;
-        }
-
-        public P2PMessage Create(int protocolType, int packetType, byte[] serializedData)
-        {
-            // TODO: continue below..
-            if (packetType == MessageCode.Ping)
-            {
-                _serializationService.Deserialize<PingMessage>(serializedData);
-            }
-
-            throw new NotImplementedException();
-        }
+        void AddMac(byte[] input, int offset, int length, bool isHeader);
+        void CheckMac(byte[] input, int offset, int length, bool isHeader);
     }
 }

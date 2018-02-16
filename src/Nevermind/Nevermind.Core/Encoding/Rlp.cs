@@ -25,14 +25,6 @@ using Nevermind.Core.Extensions;
 
 namespace Nevermind.Core.Encoding
 {
-    [Flags]
-    public enum RlpBehaviors
-    {
-        None,
-        AllowExtraData,
-        All
-    }
-    
     /// <summary>
     /// https://github.com/ethereum/wiki/wiki/RLP
     /// </summary>

@@ -18,11 +18,32 @@
 
 using Nevermind.Core;
 using Nevermind.Core.Crypto;
+using Nevermind.Core.Extensions;
+using Nevermind.Network.Rlpx;
+using Org.BouncyCastle.Crypto.Digests;
 
 namespace Nevermind.Network.Test
 {
     public static class NetTestVectors
     {
+        public static EncryptionSecrets BuildSecretsWithSameIngressAndEgress()
+        {
+            EncryptionSecrets secrets = new EncryptionSecrets();
+            secrets.AesSecret = AesSecret;
+            secrets.MacSecret = MacSecret;
+
+            byte[] bytes = AesSecret.Xor(MacSecret);
+
+            KeccakDigest egressMac = new KeccakDigest(256);
+            egressMac.BlockUpdate(bytes, 0, 32);
+            secrets.EgressMac = egressMac;
+
+            KeccakDigest ingressMac = new KeccakDigest(256);
+            ingressMac.BlockUpdate(bytes, 0, 32);
+            secrets.IngressMac = ingressMac;
+            return secrets;
+        }
+
         public static readonly PrivateKey StaticKeyA = new PrivateKey("49a7b37aa6f6645917e7b807e9d1c00d4fa71f18343b0d4122a4d2df64dd6fee");
         public static readonly PrivateKey StaticKeyB = new PrivateKey("b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291");
         public static readonly PrivateKey EphemeralKeyA = new PrivateKey("869d6ecf5211f1cc60418a13b9d870b22959d0c16f02bec714c960dd2298a32d");

@@ -1,28 +1,48 @@
-﻿using System;
+﻿/*
+ * Copyright (c) 2018 Demerzel Solutions Limited
+ * This file is part of the Nethermind library.
+ *
+ * The Nethermind library is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * The Nethermind library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+using System;
+using System.Diagnostics;
 using DotNetty.Buffers;
+using DotNetty.Codecs;
 using DotNetty.Transport.Channels;
 using Nevermind.Core;
 using Nevermind.Core.Crypto;
 using Nevermind.Network.Rlpx.Handshake;
-using Org.BouncyCastle.Crypto.Digests;
 
 namespace Nevermind.Network.Rlpx
 {
     public class NettyHandshakeHandler : ChannelHandlerAdapter
     {
-        private readonly IByteBuffer _buffer = Unpooled.Buffer(256);
+        private readonly IByteBuffer _buffer = Unpooled.Buffer(256); // TODO: analyze buffer size effect
+        private readonly EncryptionHandshake _handshake = new EncryptionHandshake();
+        private readonly ILogger _logger;
         private readonly PublicKey _remoteId;
         private readonly EncryptionHandshakeRole _role;
 
         private readonly IEncryptionHandshakeService _service;
-        private readonly EncryptionHandshake _handshake = new EncryptionHandshake();
 
-        // TODO: logger
-        public NettyHandshakeHandler(IEncryptionHandshakeService service, EncryptionHandshakeRole role, PublicKey remoteId)
+        public NettyHandshakeHandler(IEncryptionHandshakeService service, EncryptionHandshakeRole role, PublicKey remoteId, ILogger logger)
         {
             _handshake.RemotePublicKey = remoteId;
             _role = role;
             _remoteId = remoteId;
+            _logger = logger;
             _service = service;
         }
 
@@ -32,16 +52,15 @@ namespace Nevermind.Network.Rlpx
             {
                 Packet auth = _service.Auth(_remoteId, _handshake);
 
-                Console.WriteLine($"Sending AUTH ({auth.Data.Length})");
+                _logger.Log($"Sending AUTH to {_remoteId}");
                 _buffer.WriteBytes(auth.Data);
-                Console.WriteLine(new Hex(auth.Data));
                 context.WriteAndFlushAsync(_buffer);
             }
         }
 
         public override void ExceptionCaught(IChannelHandlerContext context, Exception exception)
         {
-            Console.WriteLine($"{exception}");
+            _logger.Error("Exception when processing encryption handshake", exception);
             base.ExceptionCaught(context, exception);
         }
 
@@ -52,59 +71,42 @@ namespace Nevermind.Network.Rlpx
 
         public override void ChannelRead(IChannelHandlerContext context, object message)
         {
-            Console.WriteLine($"Channel read on {context.Channel.LocalAddress}");
-
             if (message is IByteBuffer byteBuffer)
             {
                 if (_role == EncryptionHandshakeRole.Recipient)
                 {
-                    Console.WriteLine("AUTH received");
+                    _logger.Log($"AUTH received from {context.Channel.RemoteAddress}");
                     byte[] authData = new byte[byteBuffer.MaxCapacity];
                     byteBuffer.ReadBytes(authData);
-                    Console.WriteLine($"AUTH read ({authData.Length})");
-                    Console.WriteLine(new Hex(authData));
                     Packet ack = _service.Ack(_handshake, new Packet(authData));
-                    
-                    Console.WriteLine($"Sending ACK ({ack.Data.Length})");
-                    Console.WriteLine(new Hex(ack.Data));
+
+                    _logger.Log($"Sending ACK to {context.Channel.RemoteAddress}");
                     _buffer.WriteBytes(ack.Data);
                     context.WriteAndFlushAsync(_buffer);
-                    
-                    LogSecrets();
                 }
                 else
                 {
-                    Console.WriteLine("ACK received");
+                    _logger.Log($"Received ACK from {context.Channel.RemoteAddress}");
                     byte[] ackData = new byte[byteBuffer.MaxCapacity];
                     byteBuffer.ReadBytes(ackData);
-                    Console.WriteLine($"ACK read ({ackData.Length})");
-                    Console.WriteLine(new Hex(ackData));
                     _service.Agree(_handshake, new Packet(ackData));
-
-                    LogSecrets();
                     // TODO: clear pipeline, initiate protocol handshake (P2P)
                 }
+                
+                FrameCipher frameCipher = new FrameCipher(_handshake.Secrets.AesSecret);
+                FrameMacProcessor macProcessor = new FrameMacProcessor(_handshake.Secrets); 
+                
+                context.Channel.Pipeline.Remove(this);
+                context.Channel.Pipeline.Remove<LengthFieldBasedFrameDecoder>();
+                context.Channel.Pipeline.AddLast(new NettyFrameDecoder(frameCipher, macProcessor));
+                context.Channel.Pipeline.AddLast(new NettyFrameEncoder(frameCipher, macProcessor));
+                context.Channel.Pipeline.AddLast(new NettyFrameMerger());
+                context.Channel.Pipeline.AddLast(new NettyPacketSplitter());
             }
             else
             {
-                throw new NotImplementedException();
+                Debug.Assert(false, $"Always expecting {nameof(IByteBuffer)} as an input to {nameof(NettyHandshakeHandler)}");
             }
-        }
-
-        private void LogSecrets()
-        {
-            Console.WriteLine($"********* {_role} *********");
-            Console.WriteLine($"{_role} AES secret:\t" + new Hex(_handshake.Secrets.AesSecret));
-            Console.WriteLine($"{_role} MAC secret:\t" + new Hex(_handshake.Secrets.MacSecret));
-            Console.WriteLine($"{_role} Token:\t" + new Hex(_handshake.Secrets.Token));
-
-            byte[] ingressMac = new byte[32];
-            new KeccakDigest(_handshake.Secrets.IngressMac).DoFinal(ingressMac, 0);
-            Console.WriteLine($"{_role} Ingress MAC:\t" + new Hex(ingressMac));
-
-            byte[] egressMac = new byte[32];
-            new KeccakDigest(_handshake.Secrets.EgressMac).DoFinal(egressMac, 0);
-            Console.WriteLine($"{_role} Egress MAC:\t" + new Hex(egressMac));
         }
     }
 }
