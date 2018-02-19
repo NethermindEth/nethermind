@@ -32,20 +32,23 @@ namespace Nevermind.PeerConsole
     {
         private const int PortA = 8001;
         private const int PortB = 8002;
+        private const int PortC = 8003;
 
         private static PrivateKey _keyA;
         private static PrivateKey _keyB;
+        private static PrivateKey _keyC;
 
-        public static void Main(string[] args)
+        public static async Task Main(string[] args)
         {
-            Run();
+            await Run();
         }
 
-        private static async void Run()
+        private static async Task Run()
         {
             ICryptoRandom cryptoRandom = new CryptoRandom();
             _keyA = new PrivateKey(cryptoRandom.GenerateRandomBytes(32));
             _keyB = new PrivateKey(cryptoRandom.GenerateRandomBytes(32));
+            _keyC = new PrivateKey(cryptoRandom.GenerateRandomBytes(32));
 
             ISigner signer = new Signer();
             ILogger logger = new ConsoleLogger();
@@ -61,17 +64,21 @@ namespace Nevermind.PeerConsole
 
             IEncryptionHandshakeService encryptionHandshakeServiceA = new EncryptionHandshakeService(serializationService, eciesCipher, cryptoRandom, signer, _keyA, logger);
             IEncryptionHandshakeService encryptionHandshakeServiceB = new EncryptionHandshakeService(serializationService, eciesCipher, cryptoRandom, signer, _keyB, logger);
+            IEncryptionHandshakeService encryptionHandshakeServiceC = new EncryptionHandshakeService(serializationService, eciesCipher, cryptoRandom, signer, _keyC, logger);
 
             ISessionFactory sessionFactoryA = new P2PSessionFactory(_keyA.PublicKey, PortA);
             ISessionFactory sessionFactoryB = new P2PSessionFactory(_keyB.PublicKey, PortB);
+            ISessionFactory sessionFactoryC = new P2PSessionFactory(_keyC.PublicKey, PortC);
 
             Console.WriteLine("Initializing server...");
             RlpxPeer peerServerA = new RlpxPeer(serializationService, encryptionHandshakeServiceA, sessionFactoryA, logger);
             RlpxPeer peerServerB = new RlpxPeer(serializationService, encryptionHandshakeServiceB, sessionFactoryB, logger);
-            await Task.WhenAll(peerServerA.Init(PortA), peerServerB.Init(PortB));
+            RlpxPeer peerServerC = new RlpxPeer(serializationService, encryptionHandshakeServiceC, sessionFactoryC, logger);
+            await Task.WhenAll(peerServerA.Init(PortA), peerServerB.Init(PortB), peerServerC.Init(PortC));
             Console.WriteLine("Servers running...");
             Console.WriteLine("Connecting A to B...");
             await peerServerA.Connect(_keyB.PublicKey, "127.0.0.1", PortB);
+            await peerServerA.Connect(_keyC.PublicKey, "127.0.0.1", PortC);
             Console.WriteLine("A to B connected...");
 //            await peerServerB.Connect(_keyA.PublicKey, "localhost", PortA);
             Console.ReadLine();

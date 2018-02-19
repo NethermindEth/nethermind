@@ -17,7 +17,9 @@
  */
 
 using System;
+using System.Data.SqlClient;
 using System.Diagnostics;
+using System.Threading;
 using HashLib;
 using Nevermind.Core.Encoding;
 
@@ -27,8 +29,8 @@ namespace Nevermind.Core.Crypto
     public struct Keccak : IEquatable<Keccak>
     {
         private const int Size = 32;
-        
-        private static readonly IHash Hash = HashFactory.Crypto.SHA3.CreateKeccak256();
+
+        [ThreadStatic] private static IHash _hash;
 
         public Keccak(Hex hex)
         {
@@ -58,12 +60,12 @@ namespace Nevermind.Core.Crypto
         /// <returns>
         ///     <string>0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347</string>
         /// </returns>
-        public static readonly Keccak OfAnEmptySequenceRlp = InternalCompute(new byte[] { 192 });
+        public static readonly Keccak OfAnEmptySequenceRlp = InternalCompute(new byte[] {192});
 
         /// <summary>
         ///     0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421
         /// </summary>
-        public static Keccak EmptyTreeHash = InternalCompute(new byte[] { 128 });
+        public static Keccak EmptyTreeHash = InternalCompute(new byte[] {128});
 
         /// <returns>
         ///     <string>0x0000000000000000000000000000000000000000000000000000000000000000</string>
@@ -90,7 +92,7 @@ namespace Nevermind.Core.Crypto
         [DebuggerStepThrough]
         public static Keccak Compute(Rlp rlp)
         {
-            return new Keccak(Hash.ComputeBytes(rlp.Bytes).GetBytes());
+            return InternalCompute(rlp.Bytes);
         }
 
         [DebuggerStepThrough]
@@ -101,12 +103,18 @@ namespace Nevermind.Core.Crypto
                 return OfAnEmptyString;
             }
 
-            return new Keccak(Hash.ComputeBytes(input).GetBytes());
+            return InternalCompute(input);
         }
 
+        private static IHash Init()
+        {
+            return HashFactory.Crypto.SHA3.CreateKeccak256();
+        }
+        
         private static Keccak InternalCompute(byte[] input)
         {
-            return new Keccak(Hash.ComputeBytes(input).GetBytes());
+            LazyInitializer.EnsureInitialized(ref _hash, Init);
+            return new Keccak(_hash.ComputeBytes(input).GetBytes());
         }
 
         [DebuggerStepThrough]

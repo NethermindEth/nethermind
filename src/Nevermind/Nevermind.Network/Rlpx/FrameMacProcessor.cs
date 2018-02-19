@@ -75,7 +75,7 @@ namespace Nevermind.Network.Rlpx
             }
         }
 
-        
+
         /// <summary>
         /// adapted from ethereumJ
         /// </summary>
@@ -105,12 +105,18 @@ namespace Nevermind.Network.Rlpx
             }
             else
             {
+                bool isMacSame = true;
                 for (int i = 0; i < length; i++)
                 {
                     if (output[i + outOffset] != result[i])
                     {
-                        throw new IOException("MAC mismatch");
+                        isMacSame = false;
                     }
+                }
+
+                if (!isMacSame)
+                {
+                    throw new IOException("MAC mismatch");
                 }
             }
 

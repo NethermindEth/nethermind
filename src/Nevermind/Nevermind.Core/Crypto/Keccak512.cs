@@ -18,6 +18,7 @@
 
 using System;
 using System.Diagnostics;
+using System.Threading;
 using HashLib;
 using Nevermind.Core.Encoding;
 
@@ -28,7 +29,7 @@ namespace Nevermind.Core.Crypto
     {
         private const int Size = 64;
 
-        private static readonly IHash Hash = HashFactory.Crypto.SHA3.CreateKeccak512();
+        [ThreadStatic] private static IHash _hash;
 
         public Keccak512(Hex hex)
         {
@@ -76,7 +77,7 @@ namespace Nevermind.Core.Crypto
 
         public static Keccak512 Compute(Rlp rlp)
         {
-            return new Keccak512(Hash.ComputeBytes(rlp.Bytes).GetBytes());
+            return InternalCompute(rlp.Bytes);
         }
 
         public static Keccak512 Compute(byte[] input)
@@ -86,12 +87,18 @@ namespace Nevermind.Core.Crypto
                 return OfAnEmptyString;
             }
 
-            return new Keccak512(Hash.ComputeBytes(input).GetBytes());
+            return InternalCompute(input);
         }
 
+        private static IHash Init()
+        {
+            return HashFactory.Crypto.SHA3.CreateKeccak512();
+        }
+        
         private static Keccak512 InternalCompute(byte[] input)
         {
-            return new Keccak512(Hash.ComputeBytes(input).GetBytes());
+            LazyInitializer.EnsureInitialized(ref _hash, Init);
+            return new Keccak512(_hash.ComputeBytes(input).GetBytes());
         }
 
         public static Keccak512 Compute(string input)
