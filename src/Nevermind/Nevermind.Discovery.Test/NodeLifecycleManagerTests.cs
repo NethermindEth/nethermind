@@ -37,18 +37,19 @@ namespace Nevermind.Discovery.Test
     [TestFixture]
     public class NodeLifecycleManagerTests
     {
+        private const string TestPrivateKeyHex = "0x3a1076bf45ab87712ad64ccb3b10217737f7faacbf2872e88fdd9a537d8fe266";
+
         private Signature[] _signatureMocks;
         private PublicKey[] _nodeIds;
-        private Dictionary<Signature, PublicKey> _signatureToNodeId;
+        private Dictionary<string, PublicKey> _signatureToNodeId;
 
         private IDiscoveryManager _discoveryManager;
         private IMessageSender _udpClient;
         private INodeTable _nodeTable;
         private INodeFactory _nodeFactory;
-        private INodeIdResolver _nodeIdResolver;
         private DiscoveryConfigurationProvider _configurationProvider;
         private int _port = 1;
-        private string _host = "TestHost";
+        private string _host = "192.168.1.27";
 
         [SetUp]
         public void Initialize()
@@ -73,30 +74,7 @@ namespace Nevermind.Discovery.Test
 
             _udpClient = Substitute.For<IMessageSender>();
 
-            _discoveryManager = new DiscoveryManager(logger, _configurationProvider, lifecycleFactory, _nodeFactory, _udpClient, _nodeIdResolver);
-        }
-
-        private void SetupNodeIds()
-        {
-            _signatureToNodeId = new Dictionary<Signature, PublicKey>();
-            _signatureMocks = new Signature[4];
-            _nodeIds = new PublicKey[4];
-
-            for (int i = 0; i < 4; i++)
-            {
-                byte[] signatureBytes = new byte[65];
-                signatureBytes[64] = (byte)i;
-                _signatureMocks[i] = new Signature(signatureBytes);
-
-                byte[] nodeIdBytes = new byte[64];
-                nodeIdBytes[63] = (byte)i;
-                _nodeIds[i] = new PublicKey(nodeIdBytes);
-
-                _signatureToNodeId.Add(_signatureMocks[i], _nodeIds[i]);
-            }
-
-            _nodeIdResolver = Substitute.For<INodeIdResolver>();
-            _nodeIdResolver.GetNodeId(Arg.Any<byte[]>(), Arg.Any<byte[]>(), Arg.Any<byte[]>()).Returns(info => _signatureToNodeId[new Signature(info.ArgAt<byte[]>(0))]);
+            _discoveryManager = new DiscoveryManager(logger, _configurationProvider, lifecycleFactory, _nodeFactory, _udpClient, _nodeTable);
         }
 
         [Test]
@@ -106,7 +84,7 @@ namespace Nevermind.Discovery.Test
             var manager = _discoveryManager.GetNodeLifecycleManager(node);
             Assert.AreEqual(NodeLifecycleState.New, manager.State);
 
-            manager.ProcessPongMessage(new PongMessage {FarAddress = new IPEndPoint(IPAddress.Parse(_host), _port)});
+            manager.ProcessPongMessage(new PongMessage {FarAddress = new IPEndPoint(IPAddress.Parse(_host), _port), FarPublicKey = _nodeIds[0] });
 
             Assert.AreEqual(NodeLifecycleState.Active, manager.State);
         }
@@ -130,13 +108,13 @@ namespace Nevermind.Discovery.Test
             var managers = new List<INodeLifecycleManager>();
             for (var i = 0; i < 3; i++)
             {
-                var host = _host + i;
+                var host = "192.168.1." + i;
                 var node = _nodeFactory.CreateNode(_nodeIds[i], host, _port);
                 var manager = _discoveryManager.GetNodeLifecycleManager(node);
                 managers.Add(manager);
                 Assert.AreEqual(NodeLifecycleState.New, manager.State);
 
-                _discoveryManager.OnIncomingMessage(new PongMessage { FarAddress = new IPEndPoint(IPAddress.Parse(_host), _port) });
+                _discoveryManager.OnIncomingMessage(new PongMessage { FarAddress = new IPEndPoint(IPAddress.Parse(_host), _port), FarPublicKey = _nodeIds[i] });
                 Assert.AreEqual(NodeLifecycleState.Active, manager.State);
             }
 
@@ -152,12 +130,12 @@ namespace Nevermind.Discovery.Test
 
             Assert.AreEqual(NodeLifecycleState.New, candidateManager.State);
 
-            _discoveryManager.OnIncomingMessage(new PongMessage { FarAddress = new IPEndPoint(IPAddress.Parse(_host), _port) });
+            _discoveryManager.OnIncomingMessage(new PongMessage { FarAddress = new IPEndPoint(IPAddress.Parse(_host), _port), FarPublicKey = _nodeIds[3] });
             Assert.AreEqual(NodeLifecycleState.Active, candidateManager.State);
             var evictionCandidate = managers.First(x => x.State == NodeLifecycleState.EvictCandidate);
 
             //receiving pong for eviction candidate - should survive
-            _discoveryManager.OnIncomingMessage(new PongMessage { FarAddress = new IPEndPoint(IPAddress.Parse(evictionCandidate.ManagedNode.Host), _port)});
+            _discoveryManager.OnIncomingMessage(new PongMessage { FarAddress = new IPEndPoint(IPAddress.Parse(evictionCandidate.ManagedNode.Host), _port), FarPublicKey = evictionCandidate.ManagedNode.Id });
 
             Thread.Sleep(1000);
 
@@ -178,13 +156,13 @@ namespace Nevermind.Discovery.Test
             var managers = new List<INodeLifecycleManager>();
             for (var i = 0; i < 3; i++)
             {
-                var host = _host + i;
+                var host = "192.168.1." + i;
                 var node = _nodeFactory.CreateNode(_nodeIds[i], host, _port);
                 var manager = _discoveryManager.GetNodeLifecycleManager(node);
                 managers.Add(manager);
                 Assert.AreEqual(NodeLifecycleState.New, manager.State);
 
-                _discoveryManager.OnIncomingMessage(new PongMessage { FarAddress = new IPEndPoint(IPAddress.Parse(_host), _port)});
+                _discoveryManager.OnIncomingMessage(new PongMessage { FarAddress = new IPEndPoint(IPAddress.Parse(_host), _port), FarPublicKey = _nodeIds[i] });
 
                 Assert.AreEqual(NodeLifecycleState.Active, manager.State);
             }
@@ -203,7 +181,8 @@ namespace Nevermind.Discovery.Test
             Assert.AreEqual(NodeLifecycleState.New, candidateManager.State);
             _discoveryManager.OnIncomingMessage(new PongMessage
             {
-                FarAddress = new IPEndPoint(IPAddress.Parse(_host), _port)
+                FarAddress = new IPEndPoint(IPAddress.Parse(_host), _port),
+                FarPublicKey = _nodeIds[3]
             });
             Thread.Sleep(10);
             Assert.AreEqual(NodeLifecycleState.Active, candidateManager.State);
@@ -217,6 +196,26 @@ namespace Nevermind.Discovery.Test
             Assert.IsTrue(managers.Where(x => x.State == NodeLifecycleState.Active).All(x => closestNodes.Any(y => y.Host == x.ManagedNode.Host)));
             Assert.IsTrue(closestNodes.Count(x => x.Host == evictionCandidate.ManagedNode.Host) == 0);
             Assert.IsTrue(closestNodes.Count(x => x.Host == candidateNode.Host) == 1);
+        }
+
+        private void SetupNodeIds()
+        {
+            _signatureToNodeId = new Dictionary<string, PublicKey>();
+            _signatureMocks = new Signature[4];
+            _nodeIds = new PublicKey[4];
+
+            for (int i = 0; i < 4; i++)
+            {
+                byte[] signatureBytes = new byte[65];
+                signatureBytes[64] = (byte)i;
+                _signatureMocks[i] = new Signature(signatureBytes);
+
+                byte[] nodeIdBytes = new byte[64];
+                nodeIdBytes[63] = (byte)i;
+                _nodeIds[i] = new PublicKey(nodeIdBytes);
+
+                _signatureToNodeId.Add(_signatureMocks[i].ToString(), _nodeIds[i]);
+            }
         }
     }
 }

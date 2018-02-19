@@ -31,7 +31,7 @@ namespace Nevermind.Discovery.Messages
 
         public override string ToString()
         {
-            return base.ToString() + $", SourceAddress: {SourceAddress}, DestinationAddress: {DestinationAddress}, Version: {Version}, Mdc: {new Hex(Mdc)}";
+            return base.ToString() + $", SourceAddress: {SourceAddress?.ToString() ?? "empty"}, DestinationAddress: {DestinationAddress?.ToString() ?? "empty"}, Version: {Version}, Mdc: {(Mdc != null ? new Hex(Mdc).ToString() : "empty")}";
         }
 
         public override MessageType MessageType => MessageType.Ping;

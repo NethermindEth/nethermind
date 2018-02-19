@@ -17,6 +17,7 @@
  */
 
 using System;
+using Nevermind.Core;
 using Nevermind.Core.Crypto;
 using Nevermind.Discovery.RoutingTable;
 using Nevermind.Utils;
@@ -36,7 +37,7 @@ namespace Nevermind.Discovery.Messages
         {
             T message = Activator.CreateInstance<T>();
             message.FarAddress = destination.Address;
-            message.ExpirationTime = _discoveryConfigurationProvider.DiscoveryMsgExpiryTime + DateTimeUtils.CurrentTimeMillis();
+            message.ExpirationTime = _discoveryConfigurationProvider.DiscoveryMsgExpiryTime + Timestamp.UnixUtcUntilNowMilisecs;
             return message;
         }
 

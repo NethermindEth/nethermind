@@ -28,7 +28,7 @@ namespace Nevermind.Discovery.Messages
 
         public override string ToString()
         {
-            return base.ToString() + $", PingMdc: {new Hex(PingMdc)}";
+            return base.ToString() + $", PingMdc: {(PingMdc != null ? new Hex(PingMdc).ToString() : "empty")}";
         }
 
         public override MessageType MessageType => MessageType.Pong;

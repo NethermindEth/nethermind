@@ -17,7 +17,6 @@
  */
 
 using Nevermind.Core;
-using Nevermind.Discovery.RoutingTable;
 
 namespace Nevermind.Discovery.Messages
 {
@@ -27,7 +26,7 @@ namespace Nevermind.Discovery.Messages
 
         public override string ToString()
         {
-            return base.ToString() + $", SearchedNodeId: {new Hex(SearchedNodeId)}";
+            return base.ToString() + $", SearchedNodeId: {(SearchedNodeId != null ? new Hex(SearchedNodeId).ToString() : "empty")}";
         }
 
         public override MessageType MessageType => MessageType.FindNode;

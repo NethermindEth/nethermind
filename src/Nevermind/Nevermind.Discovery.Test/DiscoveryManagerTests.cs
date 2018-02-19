@@ -39,29 +39,26 @@ namespace Nevermind.Discovery.Test
 {   
     [TestFixture]
     public class DiscoveryManagerTests
-    {   
-        private INodeIdResolver _nodeIdResolver;
+    {
+        private const string TestPrivateKeyHex = "0x3a1076bf45ab87712ad64ccb3b10217737f7faacbf2872e88fdd9a537d8fe266";
+        
         private IDiscoveryManager _discoveryManager;
         private IMessageSender _messageSender;
         private INodeTable _nodeTable;
         private INodeFactory _nodeFactory;
         private int _port = 1;
-        private string _host = "TestHost";
+        private string _host = "192.168.1.17";
         private Node[] _nodes;
+        private PublicKey _publicKey;
 
         [SetUp]
         public void Initialize()
         {
+            var privateKey = new PrivateKey(new Hex(TestPrivateKeyHex));
+            _publicKey = privateKey.PublicKey;
             var logger = new ConsoleLogger();
             var config = new DiscoveryConfigurationProvider { PongTimeout = 100 };
             var configProvider = new ConfigurationProvider(Path.GetDirectoryName(Path.Combine(Path.GetTempPath(), "KeyStore")));
-            _nodeIdResolver = Substitute.For<INodeIdResolver>();
-            _nodeIdResolver.GetNodeId(Arg.Any<byte[]>(), Arg.Any<byte[]>(), Arg.Any<byte[]>()).Returns(info =>
-            {
-                byte[] hostBytes = Encoding.UTF8.GetBytes(info.Arg<DiscoveryMessage>().FarAddress.Address.ToString());
-                Array.Resize(ref hostBytes, 64);
-                return new PublicKey(hostBytes);
-            });
             
             _messageSender = Substitute.For<IMessageSender>();
             _nodeFactory = new NodeFactory();
@@ -71,16 +68,17 @@ namespace Nevermind.Discovery.Test
             var evictionManager = new EvictionManager(_nodeTable, logger);
             var lifecycleFactory = new NodeLifecycleManagerFactory(_nodeFactory, _nodeTable, logger, config, new DiscoveryMessageFactory(config), evictionManager);
 
-            _nodes = new[] { _nodeFactory.CreateNode("TestHost1", 1), _nodeFactory.CreateNode("TestHost2", 2) };
+            _nodes = new[] { _nodeFactory.CreateNode("192.168.1.18", 1), _nodeFactory.CreateNode("192.168.1.19", 2) };
 
-            _discoveryManager = new DiscoveryManager(logger, config, lifecycleFactory, _nodeFactory, _messageSender, _nodeIdResolver);
+            _discoveryManager = new DiscoveryManager(logger, config, lifecycleFactory, _nodeFactory, _messageSender, _nodeTable);
         }
 
         [Test]
         public void OnPingMessageTest()
         {
             //receiving ping
-            _discoveryManager.OnIncomingMessage(new PingMessage{ FarAddress = new IPEndPoint(IPAddress.Parse(_host), _port) });
+            var address = new IPEndPoint(IPAddress.Parse(_host), _port);
+            _discoveryManager.OnIncomingMessage(new PingMessage{ FarAddress = address, FarPublicKey = _publicKey, DestinationAddress = _nodeTable.MasterNode.Address, SourceAddress = address });
             Thread.Sleep(400);
 
             //expecting to send pong
@@ -94,7 +92,7 @@ namespace Nevermind.Discovery.Test
         public void OnPongMessageTest()
         {
             //receiving pong
-            _discoveryManager.OnIncomingMessage(new PongMessage{ FarAddress = new IPEndPoint(IPAddress.Parse(_host), _port) });
+            _discoveryManager.OnIncomingMessage(new PongMessage{ FarAddress = new IPEndPoint(IPAddress.Parse(_host), _port), FarPublicKey = _publicKey });
             
             //expecting to activate node as valid peer
             var nodes = _nodeTable.GetClosestNodes();
@@ -110,7 +108,7 @@ namespace Nevermind.Discovery.Test
         public void OnFindNodeMessageTest()
         {
             //receiving pong to have a node in the system
-            _discoveryManager.OnIncomingMessage(new PongMessage{ FarAddress = new IPEndPoint(IPAddress.Parse(_host), _port) });
+            _discoveryManager.OnIncomingMessage(new PongMessage{ FarAddress = new IPEndPoint(IPAddress.Parse(_host), _port), FarPublicKey = _publicKey });
 
             //expecting to activate node as valid peer
             var nodes = _nodeTable.GetClosestNodes();
@@ -122,7 +120,7 @@ namespace Nevermind.Discovery.Test
             Assert.AreEqual(NodeLifecycleState.Active, manager.State);
 
             //receiving findNode
-            _discoveryManager.OnIncomingMessage(new FindNodeMessage{ FarAddress = new IPEndPoint(IPAddress.Parse(_host), _port) });
+            _discoveryManager.OnIncomingMessage(new FindNodeMessage{ FarAddress = new IPEndPoint(IPAddress.Parse(_host), _port), FarPublicKey = _publicKey });
 
             //expecting to respond with sending Neighbors
             _messageSender.Received(1).SendMessage(Arg.Is<NeighborsMessage>(m => m.FarAddress.Address.ToString() == _host && m.FarAddress.Port == _port));
@@ -132,7 +130,7 @@ namespace Nevermind.Discovery.Test
         public void OnNeighborsMessageTest()
         {
             //receiving pong to have a node in the system
-            _discoveryManager.OnIncomingMessage(new PongMessage{ FarAddress = new IPEndPoint(IPAddress.Parse(_host), _port) });
+            _discoveryManager.OnIncomingMessage(new PongMessage{ FarAddress = new IPEndPoint(IPAddress.Parse(_host), _port), FarPublicKey = _publicKey });
 
             //expecting to activate node as valid peer
             var nodes = _nodeTable.GetClosestNodes();
@@ -148,7 +146,7 @@ namespace Nevermind.Discovery.Test
             _messageSender.Received(1).SendMessage(Arg.Is<FindNodeMessage>(m => m.FarAddress.Address.ToString() == _host && m.FarAddress.Port == _port));
 
             //receiving findNode
-            _discoveryManager.OnIncomingMessage(new NeighborsMessage{ FarAddress = new IPEndPoint(IPAddress.Parse(_host), _port), Nodes = _nodes});
+            _discoveryManager.OnIncomingMessage(new NeighborsMessage{ FarAddress = new IPEndPoint(IPAddress.Parse(_host), _port), FarPublicKey = _publicKey, Nodes = _nodes});
 
             //expecting to send 3 pings to both nodes
             Thread.Sleep(400);

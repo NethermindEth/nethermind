@@ -107,7 +107,6 @@ namespace Nevermind.Discovery.Lifecycle
         public void SendPong(PingMessage discoveryMessage)
         {
             var msg = _discoveryMessageFactory.CreateOutgoingMessage<PongMessage>(ManagedNode);
-            msg.ExpirationTime = _discoveryConfigurationProvider.DiscoveryMsgExpiryTime + DateTimeUtils.CurrentTimeMillis();
             msg.PingMdc = discoveryMessage.Mdc;
             _discoveryManager.SendMessage(msg);
         }

@@ -39,7 +39,7 @@ namespace Nevermind.Discovery
         private readonly INodeLifecycleManagerFactory _nodeLifecycleManagerFactory;
         private readonly INodeFactory _nodeFactory;
         private readonly IMessageSender _messageSender;
-        private readonly INodeIdResolver _nodeIdResolver;
+        private readonly INodeTable _nodeTable;
 
         private readonly ConcurrentDictionary<MessageTypeKey, ManualResetEvent> _waitingEvents = new ConcurrentDictionary<MessageTypeKey, ManualResetEvent>();
         private readonly ConcurrentDictionary<string, INodeLifecycleManager> _nodeLifecycleManagers = new ConcurrentDictionary<string, INodeLifecycleManager>();
@@ -49,15 +49,14 @@ namespace Nevermind.Discovery
             IDiscoveryConfigurationProvider configurationProvider,
             INodeLifecycleManagerFactory nodeLifecycleManagerFactory,
             INodeFactory nodeFactory,
-            IMessageSender messageSender,
-            INodeIdResolver nodeIdResolver)
+            IMessageSender messageSender, INodeTable nodeTable)
         {
             _logger = logger;
             _configurationProvider = configurationProvider;
             _nodeLifecycleManagerFactory = nodeLifecycleManagerFactory;
             _nodeFactory = nodeFactory;
             _messageSender = messageSender;
-            _nodeIdResolver = nodeIdResolver;
+            _nodeTable = nodeTable;
             _nodeLifecycleManagerFactory.DiscoveryManager = this;
         }
 
@@ -80,7 +79,7 @@ namespace Nevermind.Discovery
                         break;
                     case MessageType.Ping:
                         var ping = message as PingMessage;
-                        ValidateDestination(message.FarAddress, ping);
+                        ValidatePingAddress(ping);
                         nodeManager.ProcessPingMessage(ping);
                         break;
                     case MessageType.FindNode:
@@ -128,16 +127,27 @@ namespace Nevermind.Discovery
             return result;
         }
 
-        protected void ValidateDestination(IPEndPoint destination, PingMessage message)
+        protected void ValidatePingAddress(PingMessage message)
         {
-            if (!Bytes.UnsafeCompare(destination.Address.GetAddressBytes(), message.DestinationAddress.Address.GetAddressBytes()))
+            if (message.DestinationAddress == null || message.SourceAddress == null || message.FarAddress == null)
             {
-                throw new NetworkingException($"Received message with inccorect destination address: {destination.Address}, message: {message}");
+                throw new NetworkingException($"Received ping message with empty address, message: {message}");
             }
-
-            if (destination.Port != message.DestinationAddress.Port)
+            if (!Bytes.UnsafeCompare(_nodeTable.MasterNode.Address.Address.GetAddressBytes(), message.DestinationAddress.Address.GetAddressBytes()))
             {
-                throw new NetworkingException($"Received message with inccorect destination port: {destination.Port}, message: {message}");
+                throw new NetworkingException($"Received message with inccorect destination adress, message: {message}");
+            }
+            if (_nodeTable.MasterNode.Port != message.DestinationAddress.Port)
+            {
+                throw new NetworkingException($"Received message with inccorect destination port, message: {message}");
+            }
+            if (!Bytes.UnsafeCompare(message.FarAddress.Address.GetAddressBytes(), message.SourceAddress.Address.GetAddressBytes()))
+            {
+                throw new NetworkingException($"Received message with inccorect source adress, message: {message}");
+            }
+            if (message.FarAddress.Port != message.SourceAddress.Port)
+            {
+                throw new NetworkingException($"Received message with inccorect source port, message: {message}");
             }
         }
 

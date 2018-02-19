@@ -34,7 +34,7 @@ namespace Nevermind.Discovery
         public int BucketsCount { get; set; }
         public int Concurrency => 3;
         public int BitsPerHop => 8;
-        public string MasterHost => "localhost";
+        public string MasterHost => "127.0.0.1";
         public int MasterPort => 10000;
         public int MaxDiscoveryRounds => 8;
         public int EvictionCheckInterval => 75;
