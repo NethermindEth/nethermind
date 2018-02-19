@@ -19,6 +19,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Text;
 using System.Threading;
 using Nevermind.Core;
@@ -55,9 +56,9 @@ namespace Nevermind.Discovery.Test
             var config = new DiscoveryConfigurationProvider { PongTimeout = 100 };
             var configProvider = new ConfigurationProvider(Path.GetDirectoryName(Path.Combine(Path.GetTempPath(), "KeyStore")));
             _nodeIdResolver = Substitute.For<INodeIdResolver>();
-            _nodeIdResolver.GetNodeId(Arg.Any<DiscoveryMessage>()).Returns(info =>
+            _nodeIdResolver.GetNodeId(Arg.Any<byte[]>(), Arg.Any<byte[]>(), Arg.Any<byte[]>()).Returns(info =>
             {
-                byte[] hostBytes = Encoding.UTF8.GetBytes(info.Arg<DiscoveryMessage>().Host);
+                byte[] hostBytes = Encoding.UTF8.GetBytes(info.Arg<DiscoveryMessage>().FarAddress.Address.ToString());
                 Array.Resize(ref hostBytes, 64);
                 return new PublicKey(hostBytes);
             });
@@ -68,7 +69,7 @@ namespace Nevermind.Discovery.Test
 
             _nodeTable = new NodeTable(config, _nodeFactory, new FileKeyStore(configProvider, new JsonSerializer(logger), new AesEncrypter(configProvider, logger), new CryptoRandom(), logger), logger, calculator);
             var evictionManager = new EvictionManager(_nodeTable, logger);
-            var lifecycleFactory = new NodeLifecycleManagerFactory(_nodeFactory, _nodeTable, logger, config, new MessageFactory(), evictionManager);
+            var lifecycleFactory = new NodeLifecycleManagerFactory(_nodeFactory, _nodeTable, logger, config, new DiscoveryMessageFactory(config), evictionManager);
 
             _nodes = new[] { _nodeFactory.CreateNode("TestHost1", 1), _nodeFactory.CreateNode("TestHost2", 2) };
 
@@ -79,21 +80,21 @@ namespace Nevermind.Discovery.Test
         public void OnPingMessageTest()
         {
             //receiving ping
-            _discoveryManager.OnIncomingMessage(new PingMessage{Port = _port, Host = _host});
+            _discoveryManager.OnIncomingMessage(new PingMessage{ FarAddress = new IPEndPoint(IPAddress.Parse(_host), _port) });
             Thread.Sleep(400);
 
             //expecting to send pong
-            _messageSender.Received(1).SendMessage(Arg.Is<PongMessage>(m => m.Host == _host && m.Port == _port));
+            _messageSender.Received(1).SendMessage(Arg.Is<PongMessage>(m => m.FarAddress.Address.ToString() == _host && m.FarAddress.Port == _port));
 
             //expecting to send 3 pings for every new node
-            _messageSender.Received(3).SendMessage(Arg.Is<PingMessage>(m => m.Host == _host && m.Port == _port));
+            _messageSender.Received(3).SendMessage(Arg.Is<PingMessage>(m => m.FarAddress.Address.ToString() == _host && m.FarAddress.Port == _port));
         }
 
         [Test]
         public void OnPongMessageTest()
         {
             //receiving pong
-            _discoveryManager.OnIncomingMessage(new PongMessage{Port = _port, Host = _host});
+            _discoveryManager.OnIncomingMessage(new PongMessage{ FarAddress = new IPEndPoint(IPAddress.Parse(_host), _port) });
             
             //expecting to activate node as valid peer
             var nodes = _nodeTable.GetClosestNodes();
@@ -109,7 +110,7 @@ namespace Nevermind.Discovery.Test
         public void OnFindNodeMessageTest()
         {
             //receiving pong to have a node in the system
-            _discoveryManager.OnIncomingMessage(new PongMessage{Port = _port, Host = _host});
+            _discoveryManager.OnIncomingMessage(new PongMessage{ FarAddress = new IPEndPoint(IPAddress.Parse(_host), _port) });
 
             //expecting to activate node as valid peer
             var nodes = _nodeTable.GetClosestNodes();
@@ -121,17 +122,17 @@ namespace Nevermind.Discovery.Test
             Assert.AreEqual(NodeLifecycleState.Active, manager.State);
 
             //receiving findNode
-            _discoveryManager.OnIncomingMessage(new FindNodeMessage{Port = _port, Host = _host});
+            _discoveryManager.OnIncomingMessage(new FindNodeMessage{ FarAddress = new IPEndPoint(IPAddress.Parse(_host), _port) });
 
             //expecting to respond with sending Neighbors
-            _messageSender.Received(1).SendMessage(Arg.Is<NeighborsMessage>(m => m.Host == _host && m.Port == _port));
+            _messageSender.Received(1).SendMessage(Arg.Is<NeighborsMessage>(m => m.FarAddress.Address.ToString() == _host && m.FarAddress.Port == _port));
         }
 
         [Test]
         public void OnNeighborsMessageTest()
         {
             //receiving pong to have a node in the system
-            _discoveryManager.OnIncomingMessage(new PongMessage{Port = _port, Host = _host});
+            _discoveryManager.OnIncomingMessage(new PongMessage{ FarAddress = new IPEndPoint(IPAddress.Parse(_host), _port) });
 
             //expecting to activate node as valid peer
             var nodes = _nodeTable.GetClosestNodes();
@@ -144,15 +145,15 @@ namespace Nevermind.Discovery.Test
 
             //sending FindNode to expect Neighbors
             manager.SendFindNode(_nodeTable.MasterNode);
-            _messageSender.Received(1).SendMessage(Arg.Is<FindNodeMessage>(m => m.Host == _host && m.Port == _port));
+            _messageSender.Received(1).SendMessage(Arg.Is<FindNodeMessage>(m => m.FarAddress.Address.ToString() == _host && m.FarAddress.Port == _port));
 
             //receiving findNode
-            _discoveryManager.OnIncomingMessage(new NeighborsMessage{Port = _port, Host = _host, Nodes = _nodes});
+            _discoveryManager.OnIncomingMessage(new NeighborsMessage{ FarAddress = new IPEndPoint(IPAddress.Parse(_host), _port), Nodes = _nodes});
 
             //expecting to send 3 pings to both nodes
             Thread.Sleep(400);
-            _messageSender.Received(3).SendMessage(Arg.Is<PingMessage>(m => m.Host == _nodes[0].Host && m.Port == _nodes[0].Port));
-            _messageSender.Received(3).SendMessage(Arg.Is<PingMessage>(m => m.Host == _nodes[1].Host && m.Port == _nodes[1].Port));
+            _messageSender.Received(3).SendMessage(Arg.Is<PingMessage>(m => m.FarAddress.Address.ToString() == _nodes[0].Host && m.FarAddress.Port == _nodes[0].Port));
+            _messageSender.Received(3).SendMessage(Arg.Is<PingMessage>(m => m.FarAddress.Address.ToString() == _nodes[1].Host && m.FarAddress.Port == _nodes[1].Port));
         }
     }
 }

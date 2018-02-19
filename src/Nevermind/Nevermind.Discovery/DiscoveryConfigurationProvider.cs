@@ -50,5 +50,8 @@ namespace Nevermind.Discovery
             ("bootNodeHost3", 10000)
         };
         public string KeyPass => "TestPass";
+        public int UdpChannelCloseTimeout => 10000;
+        public int PingMessageVersion => 4;
+        public int DiscoveryMsgExpiryTime => 60 * 90;
     }
 }

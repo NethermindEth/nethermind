@@ -36,7 +36,12 @@ namespace Nevermind.PeerConsole
         private static PrivateKey _keyA;
         private static PrivateKey _keyB;
 
-        public static async Task Main(string[] args)
+        public static void Main(string[] args)
+        {
+            Run();
+        }
+
+        private static async void Run()
         {
             ICryptoRandom cryptoRandom = new CryptoRandom();
             _keyA = new PrivateKey(cryptoRandom.GenerateRandomBytes(32));

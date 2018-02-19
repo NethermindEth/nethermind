@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Net;
 using Nevermind.Core;
 using Nevermind.Core.Crypto;
 
@@ -23,25 +24,35 @@ namespace Nevermind.Discovery.RoutingTable
 {
     public class NodeFactory : INodeFactory
     {
-        public Node CreateNode(PublicKey id, string host, int port)
+        public Node CreateNode(PublicKey id, IPEndPoint address)
         {
-            return new Node(id)
+            var node = new Node(id)
             {
-                Host = host,
-                Port = port,
                 IsDicoveryNode = false
             };
+            node.InitializeAddress(address);
+            return node;
+        }
+
+        public Node CreateNode(PublicKey id, string host, int port)
+        {
+            var node = new Node(id)
+            {
+                IsDicoveryNode = false
+            };
+            node.InitializeAddress(host, port);
+            return node;
         }
 
         public Node CreateNode(string host, int port)
         {
             Keccak512 socketHash = Keccak512.Compute($"{host}:{port}"); 
-            return new Node(new PublicKey(socketHash.Bytes))
+            var node = new Node(new PublicKey(socketHash.Bytes))
             {
-                Host = host,
-                Port = port,
                 IsDicoveryNode = true
             };
+            node.InitializeAddress(host, port);
+            return node;
         }
     }
 }

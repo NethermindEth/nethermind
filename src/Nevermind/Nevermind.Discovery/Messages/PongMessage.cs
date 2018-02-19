@@ -16,10 +16,21 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
+using System.Net;
+using Nevermind.Core;
+
 namespace Nevermind.Discovery.Messages
 {
     public class PongMessage : DiscoveryMessage
     {
+        public byte[] PingMdc { get; set; }
+
+        public override string ToString()
+        {
+            return base.ToString() + $", PingMdc: {new Hex(PingMdc)}";
+        }
+
         public override MessageType MessageType => MessageType.Pong;
     }
 }

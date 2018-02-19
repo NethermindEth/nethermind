@@ -16,8 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
-using System.Linq;
+using System.Net;
 using Nevermind.Core.Crypto;
 using Nevermind.Core.Extensions;
 using Nevermind.Network;
@@ -26,15 +25,16 @@ namespace Nevermind.Discovery.Messages
 {
     public abstract class DiscoveryMessage : MessageBase
     {
-        public byte[] Payload { get; set; } = Bytes.Empty;
-        public Signature Signature { get; set; }
-
-        public string Host { get; set; }
-        public int Port { get; set; }
+        //public byte[] Payload { get; set; } = Bytes.Empty;
+        //public Signature Signature { get; set; }
+        public IPEndPoint FarAddress { get; set; }
+        public PublicKey FarPublicKey { get; set; }
+        //time in seconds x seconds from now
+        public long ExpirationTime { get; set; }     
 
         public override string ToString()
         {
-            return $"Type: {MessageType}, Host: {Host}, Port: {Port}";
+            return $"Type: {MessageType}, FarAddress: {FarAddress?.ToString() ?? "empty"}, FarPublicKey: {FarPublicKey?.ToString() ?? "empty"}, ExpirationTime: {ExpirationTime}";
         }
 
         public abstract MessageType MessageType { get; }

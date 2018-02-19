@@ -16,10 +16,24 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Net;
+using Nevermind.Core;
+
 namespace Nevermind.Discovery.Messages
 {
     public class PingMessage : DiscoveryMessage
     {
+        public IPEndPoint SourceAddress { get; set; }
+        public IPEndPoint DestinationAddress { get; set; }
+
+        public int Version { get; set; }
+        public byte[] Mdc { get; set; }
+
+        public override string ToString()
+        {
+            return base.ToString() + $", SourceAddress: {SourceAddress}, DestinationAddress: {DestinationAddress}, Version: {Version}, Mdc: {new Hex(Mdc)}";
+        }
+
         public override MessageType MessageType => MessageType.Ping;
     }
 }

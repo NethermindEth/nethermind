@@ -96,5 +96,20 @@ namespace Nevermind.Discovery
         /// Key Pass
         /// </summary>
         string KeyPass { get; }
+
+        /// <summary>
+        /// Timeout for closing UDP channel in miliseconds
+        /// </summary>
+        int UdpChannelCloseTimeout { get; }
+
+        /// <summary>
+        /// Version of the Ping message
+        /// </summary>
+        int PingMessageVersion { get; }
+
+        /// <summary>
+        /// Ping expiry time in seconds
+        /// </summary>
+        int DiscoveryMsgExpiryTime { get; }
     }
 }

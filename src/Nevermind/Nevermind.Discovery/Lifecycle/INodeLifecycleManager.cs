@@ -33,7 +33,7 @@ namespace Nevermind.Discovery.Lifecycle
 
         void SendFindNode(Node searchedNode);
         void SendPing();
-        void SendPong();
+        void SendPong(PingMessage discoveryMessage);
         void SendNeighbors(Node[] nodes);
 
         void StartEvictionProcess();

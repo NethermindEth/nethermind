@@ -4,6 +4,6 @@ namespace Nevermind.Discovery.Messages
 {
     public interface INodeIdResolver
     {
-        PublicKey GetNodeId(DiscoveryMessage discoveryMessage);
+        PublicKey GetNodeId(byte[] signature, byte[] messageType, byte[] data);
     }
 }

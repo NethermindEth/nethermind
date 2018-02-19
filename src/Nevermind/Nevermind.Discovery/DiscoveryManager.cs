@@ -18,9 +18,11 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Net;
 using System.Threading;
 using Nevermind.Core;
 using Nevermind.Core.Crypto;
+using Nevermind.Core.Extensions;
 using Nevermind.Discovery.Lifecycle;
 using Nevermind.Discovery.Messages;
 using Nevermind.Discovery.RoutingTable;
@@ -64,9 +66,8 @@ namespace Nevermind.Discovery
             try
             {
                 var msgType = message.MessageType;
-
-                PublicKey nodeId = _nodeIdResolver.GetNodeId(message);
-                var node = _nodeFactory.CreateNode(nodeId, message.Host, message.Port);
+               
+                var node = _nodeFactory.CreateNode(message.FarPublicKey, message.FarAddress);
                 var nodeManager = GetNodeLifecycleManager(node);
 
                 switch (msgType)
@@ -78,7 +79,9 @@ namespace Nevermind.Discovery
                         nodeManager.ProcessPongMessage(message as PongMessage);
                         break;
                     case MessageType.Ping:
-                        nodeManager.ProcessPingMessage(message as PingMessage);
+                        var ping = message as PingMessage;
+                        ValidateDestination(message.FarAddress, ping);
+                        nodeManager.ProcessPingMessage(ping);
                         break;
                     case MessageType.FindNode:
                         nodeManager.ProcessFindNodeMessage(message as FindNodeMessage);
@@ -123,6 +126,19 @@ namespace Nevermind.Discovery
             }
 
             return result;
+        }
+
+        protected void ValidateDestination(IPEndPoint destination, PingMessage message)
+        {
+            if (!Bytes.UnsafeCompare(destination.Address.GetAddressBytes(), message.DestinationAddress.Address.GetAddressBytes()))
+            {
+                throw new NetworkingException($"Received message with inccorect destination address: {destination.Address}, message: {message}");
+            }
+
+            if (destination.Port != message.DestinationAddress.Port)
+            {
+                throw new NetworkingException($"Received message with inccorect destination port: {destination.Port}, message: {message}");
+            }
         }
 
         private void NotifySubscribers(MessageType msgType, Node node)

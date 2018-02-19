@@ -16,19 +16,14 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
+using Nevermind.Core.Crypto;
 using Nevermind.Discovery.RoutingTable;
 
 namespace Nevermind.Discovery.Messages
 {
-    public class MessageFactory : IMessageFactory
+    public interface IDiscoveryMessageFactory
     {
-        public T CreateMessage<T>(Node destination) where T : DiscoveryMessage
-        {
-            T message = Activator.CreateInstance<T>();
-            message.Host = destination.Host;
-            message.Port = destination.Port;
-            return message;
-        }
+        T CreateOutgoingMessage<T>(Node destination) where T : DiscoveryMessage;
+        T CreateIncomingMessage<T>(PublicKey farPublicKey) where T : DiscoveryMessage;
     }
 }

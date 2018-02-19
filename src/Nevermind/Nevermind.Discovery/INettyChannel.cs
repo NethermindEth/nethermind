@@ -16,14 +16,12 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nevermind.Core.Crypto;
-using Nevermind.Discovery.Messages;
+using System;
 
-namespace Nevermind.Discovery.Encoders
+namespace Nevermind.Discovery
 {
-    public interface IMessageEncoder
+    public interface INettyChannel
     {
-        DiscoveryMessage Decode(byte[] content);
-        byte[] Encode(MessageType type, byte[] data, PrivateKey privateKey);
+        event EventHandler OnChannelActivated;
     }
 }

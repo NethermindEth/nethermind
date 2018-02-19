@@ -19,6 +19,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Threading;
 using Nevermind.Core;
 using Nevermind.Core.Crypto;
@@ -68,7 +69,7 @@ namespace Nevermind.Discovery.Test
 
             _nodeTable = new NodeTable(_configurationProvider, _nodeFactory, new FileKeyStore(configProvider, new JsonSerializer(logger), new AesEncrypter(configProvider, logger), new CryptoRandom(), logger), logger, calculator);
             var evictionManager = new EvictionManager(_nodeTable, logger);
-            var lifecycleFactory = new NodeLifecycleManagerFactory(_nodeFactory, _nodeTable, logger, _configurationProvider, new MessageFactory(), evictionManager);
+            var lifecycleFactory = new NodeLifecycleManagerFactory(_nodeFactory, _nodeTable, logger, _configurationProvider, new DiscoveryMessageFactory(_configurationProvider), evictionManager);
 
             _udpClient = Substitute.For<IMessageSender>();
 
@@ -95,7 +96,7 @@ namespace Nevermind.Discovery.Test
             }
 
             _nodeIdResolver = Substitute.For<INodeIdResolver>();
-            _nodeIdResolver.GetNodeId(Arg.Any<DiscoveryMessage>()).Returns(info => _signatureToNodeId[info.Arg<DiscoveryMessage>().Signature]);
+            _nodeIdResolver.GetNodeId(Arg.Any<byte[]>(), Arg.Any<byte[]>(), Arg.Any<byte[]>()).Returns(info => _signatureToNodeId[new Signature(info.ArgAt<byte[]>(0))]);
         }
 
         [Test]
@@ -105,7 +106,7 @@ namespace Nevermind.Discovery.Test
             var manager = _discoveryManager.GetNodeLifecycleManager(node);
             Assert.AreEqual(NodeLifecycleState.New, manager.State);
 
-            manager.ProcessPongMessage(new PongMessage {Host = _host, Port = _port});
+            manager.ProcessPongMessage(new PongMessage {FarAddress = new IPEndPoint(IPAddress.Parse(_host), _port)});
 
             Assert.AreEqual(NodeLifecycleState.Active, manager.State);
         }
@@ -135,7 +136,7 @@ namespace Nevermind.Discovery.Test
                 managers.Add(manager);
                 Assert.AreEqual(NodeLifecycleState.New, manager.State);
 
-                _discoveryManager.OnIncomingMessage(new PongMessage {Port = _port, Host = _host, Signature = _signatureMocks[i]});
+                _discoveryManager.OnIncomingMessage(new PongMessage { FarAddress = new IPEndPoint(IPAddress.Parse(_host), _port) });
                 Assert.AreEqual(NodeLifecycleState.Active, manager.State);
             }
 
@@ -151,12 +152,12 @@ namespace Nevermind.Discovery.Test
 
             Assert.AreEqual(NodeLifecycleState.New, candidateManager.State);
 
-            _discoveryManager.OnIncomingMessage(new PongMessage {Port = _port, Host = _host, Signature = _signatureMocks[3]});
+            _discoveryManager.OnIncomingMessage(new PongMessage { FarAddress = new IPEndPoint(IPAddress.Parse(_host), _port) });
             Assert.AreEqual(NodeLifecycleState.Active, candidateManager.State);
             var evictionCandidate = managers.First(x => x.State == NodeLifecycleState.EvictCandidate);
 
             //receiving pong for eviction candidate - should survive
-            _discoveryManager.OnIncomingMessage(new PongMessage {Port = _port, Host = evictionCandidate.ManagedNode.Host, Signature = _signatureMocks[evictionCandidate.ManagedNode.Id.PrefixedBytes[64]]});
+            _discoveryManager.OnIncomingMessage(new PongMessage { FarAddress = new IPEndPoint(IPAddress.Parse(evictionCandidate.ManagedNode.Host), _port)});
 
             Thread.Sleep(1000);
 
@@ -183,7 +184,7 @@ namespace Nevermind.Discovery.Test
                 managers.Add(manager);
                 Assert.AreEqual(NodeLifecycleState.New, manager.State);
 
-                _discoveryManager.OnIncomingMessage(new PongMessage {Port = _port, Host = _host, Signature = _signatureMocks[i]});
+                _discoveryManager.OnIncomingMessage(new PongMessage { FarAddress = new IPEndPoint(IPAddress.Parse(_host), _port)});
 
                 Assert.AreEqual(NodeLifecycleState.Active, manager.State);
             }
@@ -202,9 +203,7 @@ namespace Nevermind.Discovery.Test
             Assert.AreEqual(NodeLifecycleState.New, candidateManager.State);
             _discoveryManager.OnIncomingMessage(new PongMessage
             {
-                Port = _port,
-                Host = _host,
-                Signature = _signatureMocks[3]
+                FarAddress = new IPEndPoint(IPAddress.Parse(_host), _port)
             });
             Thread.Sleep(10);
             Assert.AreEqual(NodeLifecycleState.Active, candidateManager.State);

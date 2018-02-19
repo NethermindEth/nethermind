@@ -41,6 +41,7 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="DateTimeUtils.cs" />
     <Compile Include="Model\Result.cs" />
     <Compile Include="Model\ResultType.cs" />
     <Compile Include="StringExtensions.cs" />

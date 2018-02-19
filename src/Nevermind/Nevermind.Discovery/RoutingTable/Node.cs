@@ -17,6 +17,7 @@
  */
 
 using System;
+using System.Net;
 using Nevermind.Core.Crypto;
 
 namespace Nevermind.Discovery.RoutingTable
@@ -33,9 +34,24 @@ namespace Nevermind.Discovery.RoutingTable
         public PublicKey Id { get; }
         public Keccak IdHash { get; }
         public string IdHashText { get; }
-        public string Host { get; set; }
-        public int Port { get; set; }
+        public string Host { get; private set; }
+        public int Port { get; private set; }
+        public IPEndPoint Address { get; private set; }
         public bool IsDicoveryNode { get; set; }
+
+        public void InitializeAddress(IPEndPoint address)
+        {
+            Host = address.Address.ToString();
+            Port = address.Port;
+            Address = address;
+        }
+
+        public void InitializeAddress(string host, int port)
+        {
+            Host = host;
+            Port = port;
+            Address = new IPEndPoint(IPAddress.Parse(host), port);
+        }
 
         public override bool Equals(object obj)
         {

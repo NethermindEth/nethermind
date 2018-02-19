@@ -16,12 +16,14 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Net;
 using Nevermind.Core.Crypto;
 
 namespace Nevermind.Discovery.RoutingTable
 {
     public interface INodeFactory
     {
+        Node CreateNode(PublicKey id, IPEndPoint address);
         Node CreateNode(PublicKey id, string host, int port);
         Node CreateNode(string host, int port);
     }

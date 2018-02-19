@@ -21,6 +21,7 @@ using System.Threading.Tasks;
 using Nevermind.Core;
 using Nevermind.Discovery.Messages;
 using Nevermind.Discovery.RoutingTable;
+using Nevermind.Utils;
 
 namespace Nevermind.Discovery.Lifecycle
 {
@@ -30,20 +31,20 @@ namespace Nevermind.Discovery.Lifecycle
         private readonly INodeTable _nodeTable;
         private readonly ILogger _logger;
         private readonly IDiscoveryConfigurationProvider _discoveryConfigurationProvider;
-        private readonly IMessageFactory _messageFactory;
+        private readonly IDiscoveryMessageFactory _discoveryMessageFactory;
         private readonly IEvictionManager _evictionManager;
 
         private int _pingRetryCount;
         private bool _isPongExpected;
         private bool _isNeighborsExpected;
 
-        public NodeLifecycleManager(Node node, IDiscoveryManager discoveryManager, INodeTable nodeTable, ILogger logger, IDiscoveryConfigurationProvider discoveryConfigurationProvider, IMessageFactory messageFactory, IEvictionManager evictionManager)
+        public NodeLifecycleManager(Node node, IDiscoveryManager discoveryManager, INodeTable nodeTable, ILogger logger, IDiscoveryConfigurationProvider discoveryConfigurationProvider, IDiscoveryMessageFactory discoveryMessageFactory, IEvictionManager evictionManager)
         {
             _discoveryManager = discoveryManager;
             _nodeTable = nodeTable;
             _logger = logger;
             _discoveryConfigurationProvider = discoveryConfigurationProvider;
-            _messageFactory = messageFactory;
+            _discoveryMessageFactory = discoveryMessageFactory;
             _evictionManager = evictionManager;
             ManagedNode = node;
             _pingRetryCount = _discoveryConfigurationProvider.PingRetryCount;
@@ -56,7 +57,7 @@ namespace Nevermind.Discovery.Lifecycle
 
         public void ProcessPingMessage(PingMessage discoveryMessage)
         {
-            SendPong();
+            SendPong(discoveryMessage);
         }
 
         public void ProcessPongMessage(PongMessage discoveryMessage)
@@ -91,8 +92,8 @@ namespace Nevermind.Discovery.Lifecycle
 
         public void SendFindNode(Node searchedNode)
         {
-            var msg = _messageFactory.CreateMessage<FindNodeMessage>(ManagedNode);
-            msg.SearchedNode = searchedNode;
+            var msg = _discoveryMessageFactory.CreateOutgoingMessage<FindNodeMessage>(ManagedNode);
+            msg.SearchedNodeId = searchedNode.Id.Bytes;
             _isNeighborsExpected = true;
             _discoveryManager.SendMessage(msg);
         }
@@ -103,15 +104,17 @@ namespace Nevermind.Discovery.Lifecycle
             await Task.Run(() => SendPingSync());
         }
 
-        public void SendPong()
+        public void SendPong(PingMessage discoveryMessage)
         {
-            var msg = _messageFactory.CreateMessage<PongMessage>(ManagedNode);
+            var msg = _discoveryMessageFactory.CreateOutgoingMessage<PongMessage>(ManagedNode);
+            msg.ExpirationTime = _discoveryConfigurationProvider.DiscoveryMsgExpiryTime + DateTimeUtils.CurrentTimeMillis();
+            msg.PingMdc = discoveryMessage.Mdc;
             _discoveryManager.SendMessage(msg);
         }
 
         public void SendNeighbors(Node[] nodes)
         {
-            var msg = _messageFactory.CreateMessage<NeighborsMessage>(ManagedNode);
+            var msg = _discoveryMessageFactory.CreateOutgoingMessage<NeighborsMessage>(ManagedNode);
             msg.Nodes = nodes;
             _discoveryManager.SendMessage(msg);
         }
@@ -155,7 +158,8 @@ namespace Nevermind.Discovery.Lifecycle
         {
             try
             {
-                var msg = _messageFactory.CreateMessage<PingMessage>(ManagedNode);
+                var msg = _discoveryMessageFactory.CreateOutgoingMessage<PingMessage>(ManagedNode);         
+                msg.Version = _discoveryConfigurationProvider.PingMessageVersion;
                 _discoveryManager.SendMessage(msg);
 
                 if (_discoveryManager.WasMessageReceived(ManagedNode.IdHashText, MessageType.Pong, _discoveryConfigurationProvider.PongTimeout))

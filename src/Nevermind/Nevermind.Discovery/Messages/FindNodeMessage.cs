@@ -16,17 +16,18 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nevermind.Core;
 using Nevermind.Discovery.RoutingTable;
 
 namespace Nevermind.Discovery.Messages
 {
     public class FindNodeMessage : DiscoveryMessage
     {
-        public Node SearchedNode { get; set; }
+        public byte[] SearchedNodeId { get; set; }
 
         public override string ToString()
         {
-            return $"Type: {MessageType}, Host: {Host}, Port: {Port}, SearchedNode: {SearchedNode?.Id}";
+            return base.ToString() + $", SearchedNodeId: {new Hex(SearchedNodeId)}";
         }
 
         public override MessageType MessageType => MessageType.FindNode;

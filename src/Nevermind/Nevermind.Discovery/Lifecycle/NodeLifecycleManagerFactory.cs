@@ -30,16 +30,16 @@ namespace Nevermind.Discovery.Lifecycle
         private readonly INodeTable _nodeTable;
         private readonly ILogger _logger;
         private readonly IDiscoveryConfigurationProvider _discoveryConfigurationProvider;
-        private readonly IMessageFactory _messageFactory;
+        private readonly IDiscoveryMessageFactory _discoveryMessageFactory;
         private readonly IEvictionManager _evictionManager;
 
-        public NodeLifecycleManagerFactory(INodeFactory nodeFactory, INodeTable nodeTable, ILogger logger, IDiscoveryConfigurationProvider discoveryConfigurationProvider, IMessageFactory messageFactory, IEvictionManager evictionManager)
+        public NodeLifecycleManagerFactory(INodeFactory nodeFactory, INodeTable nodeTable, ILogger logger, IDiscoveryConfigurationProvider discoveryConfigurationProvider, IDiscoveryMessageFactory discoveryMessageFactory, IEvictionManager evictionManager)
         {
             _nodeFactory = nodeFactory;
             _nodeTable = nodeTable;
             _logger = logger;
             _discoveryConfigurationProvider = discoveryConfigurationProvider;
-            _messageFactory = messageFactory;
+            _discoveryMessageFactory = discoveryMessageFactory;
             _evictionManager = evictionManager;
         }
 
@@ -51,7 +51,7 @@ namespace Nevermind.Discovery.Lifecycle
             {
                 throw new Exception("DiscoveryManager has to be set");
             }
-            return new NodeLifecycleManager(node, DiscoveryManager, _nodeTable, _logger, _discoveryConfigurationProvider, _messageFactory, _evictionManager);
+            return new NodeLifecycleManager(node, DiscoveryManager, _nodeTable, _logger, _discoveryConfigurationProvider, _discoveryMessageFactory, _evictionManager);
         }
 
         public INodeLifecycleManager CreateNodeLifecycleManager(PublicKey id, string host, int port)
@@ -61,7 +61,7 @@ namespace Nevermind.Discovery.Lifecycle
                 throw new Exception("DiscoveryManager has to be set");
             }
             var node = _nodeFactory.CreateNode(id, host, port);
-            return new NodeLifecycleManager(node, DiscoveryManager, _nodeTable, _logger, _discoveryConfigurationProvider, _messageFactory, _evictionManager);
+            return new NodeLifecycleManager(node, DiscoveryManager, _nodeTable, _logger, _discoveryConfigurationProvider, _discoveryMessageFactory, _evictionManager);
         }
     }
 }

@@ -97,7 +97,7 @@ namespace Nevermind.Discovery.RoutingTable
         {
             public int Compare(NodeBucketItem x, NodeBucketItem y)
             {
-                if (x == null && y == null)
+                if (ReferenceEquals(x, y))
                 {
                     return 0;
                 }
@@ -110,12 +110,7 @@ namespace Nevermind.Discovery.RoutingTable
                 if (y == null)
                 {
                     return 1;
-                }
-
-                if (ReferenceEquals(x, y))
-                {
-                    return 0;
-                }
+                }                
 
                 //checking if both objects are the same
                 if (x.Equals(y))
