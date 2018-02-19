@@ -166,6 +166,9 @@
   <ItemGroup>
     <Compile Include="Crypto\BouncyCryptoTests.cs" />
     <Compile Include="NetTestVectors.cs" />
+    <Compile Include="P2P\HelloMessageSerializerTests.cs" />
+    <Compile Include="P2P\P2PSessionFactoryTests.cs" />
+    <Compile Include="P2P\P2PSessionTests.cs" />
     <Compile Include="PacketTests.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Rlpx\FrameCipherTests.cs" />

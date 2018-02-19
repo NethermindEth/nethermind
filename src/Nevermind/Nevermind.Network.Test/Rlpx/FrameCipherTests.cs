@@ -17,6 +17,7 @@
  */
 
 using System;
+using Nevermind.Core.Extensions;
 using Nevermind.Network.Rlpx;
 using NUnit.Framework;
 
@@ -54,6 +55,31 @@ namespace Nevermind.Network.Test.Rlpx
             Array.Clear(decrypted, 0, decrypted.Length);
             frameCipher.Encrypt(message, 0, 6, encrypted, 0);
             frameCipher.Decrypt(encrypted, 0, 6, decrypted, 0);
+            Assert.AreEqual(message, decrypted);
+        }
+        
+        [Test]
+        public void Can_run_twice_longer_message()
+        {
+            int length = 16;
+            
+            byte[] message = new byte[length * 2];
+            message[3] = 123;
+            message[4] = 123;
+            message[5] = 12;
+            
+            byte[] encrypted = new byte[length];
+            byte[] decrypted = new byte[2 * length];
+
+            FrameCipher frameCipher = new FrameCipher(NetTestVectors.AesSecret);
+            frameCipher.Encrypt(message, 0, length, encrypted, 0);
+            frameCipher.Decrypt(encrypted, 0, length, decrypted, 0);
+            Assert.AreEqual(message, decrypted);
+            
+            Array.Clear(encrypted, 0, encrypted.Length);
+            Array.Clear(decrypted, 0, decrypted.Length);
+            frameCipher.Encrypt(message, 0, length, encrypted, 0);
+            frameCipher.Decrypt(encrypted, 0, length, decrypted, 0);
             Assert.AreEqual(message, decrypted);
         }
         

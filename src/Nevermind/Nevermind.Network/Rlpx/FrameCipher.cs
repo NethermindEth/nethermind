@@ -16,7 +16,6 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
 using System.Diagnostics;
 using Org.BouncyCastle.Crypto;
 using Org.BouncyCastle.Crypto.Parameters;
@@ -47,17 +46,12 @@ namespace Nevermind.Network.Rlpx
 
         public void Encrypt(byte[] input, int offset, int length, byte[] output, int outputOffset)
         {
-            // TODO: find out the reason for ProcessBytes 
-            _encryptionCipher.ProcessBytes(input, offset, length);
-            byte[] enc = _encryptionCipher.DoFinal();
-            Buffer.BlockCopy(enc, 0, output, outputOffset, length);
+            _encryptionCipher.DoFinal(input, offset, length, output, outputOffset);
         }
 
         public void Decrypt(byte[] input, int offset, int length, byte[] output, int outputOffset)
         {
-            _decryptionCipher.ProcessBytes(input, offset, length);
-            byte[] dec = _decryptionCipher.DoFinal();
-            Buffer.BlockCopy(dec, 0, output, outputOffset, length);
+            _decryptionCipher.DoFinal(input, offset, length, output, outputOffset);
         }
     }
 }

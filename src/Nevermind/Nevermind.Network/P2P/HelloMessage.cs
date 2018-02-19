@@ -23,11 +23,12 @@ namespace Nevermind.Network.P2P
 {
     public class HelloMessage : P2PMessage
     {
-        public int P2PVersion { get; set; }
+        public byte P2PVersion { get; set; }
         public string ClientId { get; set; }
         public Dictionary<Capability, int> Capabilities { get; set; }
         public int ListenPort { get; set; }
         public PublicKey NodeId { get; set; }
-        public override int MessageId => MessageCode.Hello;
+        public override int Protocol => 0;
+        public override int PacketType => P2PMessageCode.Hello;
     }
 }

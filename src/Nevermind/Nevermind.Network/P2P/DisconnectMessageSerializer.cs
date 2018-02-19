@@ -16,9 +16,28 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nevermind.Core.Encoding;
+
 namespace Nevermind.Network.P2P
 {
-    public class ProtocolHandshake
-    {    
+    public class DisconnectMessageSerializer : IMessageSerializer<DisconnectMessage>
+    {
+        public byte[] Serialize(DisconnectMessage message, IMessagePad pad = null)
+        {
+            return Rlp.Encode(
+                new object[]
+                {
+                    Rlp.Encode((byte)message.Reason)
+                }
+            ).Bytes;
+        }
+
+        public DisconnectMessage Deserialize(byte[] bytes)
+        {
+            object[] decoded = (object[])Rlp.Decode(new Rlp(bytes));
+            DisconnectReason reason = ((byte[])decoded[0]).Length == 0 ? 0 : (DisconnectReason)((byte[])decoded[0])[0]; // TODO: improve RLP decoding API
+            DisconnectMessage disconnectMessage = new DisconnectMessage(reason);
+            return disconnectMessage;
+        }
     }
 }

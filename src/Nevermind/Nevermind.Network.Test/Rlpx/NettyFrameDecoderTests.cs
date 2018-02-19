@@ -16,9 +16,11 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Collections.Generic;
 using DotNetty.Buffers;
 using DotNetty.Transport.Channels;
+using Nevermind.Core;
 using Nevermind.Network.Rlpx;
 using NSubstitute;
 using NUnit.Framework;
@@ -28,17 +30,24 @@ namespace Nevermind.Network.Test.Rlpx
     [TestFixture]
     public class NettyFrameDecoderTests
     {
+        private const int LongFrameSize = 48;
+        private const int ShortFrameSize = 32;
+        
         [SetUp]
         public void Setup()
         {
             _frameCipher = Substitute.For<IFrameCipher>();
             _macProcessor = Substitute.For<IFrameMacProcessor>();
 
-            _frame = new byte[16 + 16 + 17 + 15 + 16]; // padded
-            _frame[2] = 17; // size   
+            _frame = new byte[16 + 16 + LongFrameSize + 16]; //  header | header MAC | packet type | data | padding | frame MAC
+            _frame[2] = LongFrameSize - 15; // size (total - padding)
+
+            _shortFrame = new byte[16 + 16 + 1 + ShortFrameSize + 15 + 16]; //  header | header MAC | packet type | data | padding | frame MAC
+            _shortFrame[2] = ShortFrameSize - 15; // size (total - padding)
         }
 
         private byte[] _frame;
+        private byte[] _shortFrame;
         private IFrameCipher _frameCipher;
         private IFrameMacProcessor _macProcessor;
 
@@ -46,7 +55,7 @@ namespace Nevermind.Network.Test.Rlpx
         {
             private readonly IChannelHandlerContext _context;
 
-            public UnderTest(IFrameCipher frameCipher, IFrameMacProcessor frameMacProcessor) : base(frameCipher, frameMacProcessor)
+            public UnderTest(IFrameCipher frameCipher, IFrameMacProcessor frameMacProcessor) : base(frameCipher, frameMacProcessor, Substitute.For<ILogger>())
             {
                 _context = Substitute.For<IChannelHandlerContext>();
             }
@@ -77,6 +86,28 @@ namespace Nevermind.Network.Test.Rlpx
         }
 
         [Test]
+        public void Can_decode_frame_after_frame()
+        {
+            IByteBuffer buffer = Unpooled.Buffer(256);
+            buffer.WriteBytes(_frame);
+            buffer.WriteBytes(_shortFrame);
+
+            UnderTest underTest = new UnderTest(_frameCipher, _macProcessor);
+            underTest.Decode(buffer);
+            underTest.Decode(buffer);
+
+            Received.InOrder(
+                () =>
+                {
+                    _macProcessor.Received().CheckMac(Arg.Any<byte[]>(), 0, LongFrameSize, false);
+                    _frameCipher.Received().Decrypt(Arg.Any<byte[]>(), 0, LongFrameSize, Arg.Any<byte[]>(), 0);
+                    _macProcessor.Received().CheckMac(Arg.Any<byte[]>(), 0, ShortFrameSize, false);
+                    _frameCipher.Received().Decrypt(Arg.Any<byte[]>(), 0, ShortFrameSize, Arg.Any<byte[]>(), 0);
+                }
+            );
+        }
+
+        [Test]
         public void Checks_payload_mac_then_decrypts_header_payload()
         {
             IByteBuffer buffer = Unpooled.Buffer(256);
@@ -88,8 +119,8 @@ namespace Nevermind.Network.Test.Rlpx
             Received.InOrder(
                 () =>
                 {
-                    _macProcessor.Received().CheckMac(Arg.Any<byte[]>(), 0, 32, false);
-                    _frameCipher.Received().Decrypt(Arg.Any<byte[]>(), 0, 32, Arg.Any<byte[]>(), 0);
+                    _macProcessor.Received().CheckMac(Arg.Any<byte[]>(), 0, LongFrameSize, false);
+                    _frameCipher.Received().Decrypt(Arg.Any<byte[]>(), 0, LongFrameSize, Arg.Any<byte[]>(), 0);
                 }
             );
         }

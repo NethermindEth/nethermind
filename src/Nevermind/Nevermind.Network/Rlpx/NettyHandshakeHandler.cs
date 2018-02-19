@@ -23,6 +23,7 @@ using DotNetty.Codecs;
 using DotNetty.Transport.Channels;
 using Nevermind.Core;
 using Nevermind.Core.Crypto;
+using Nevermind.Network.P2P;
 using Nevermind.Network.Rlpx.Handshake;
 
 namespace Nevermind.Network.Rlpx
@@ -32,18 +33,29 @@ namespace Nevermind.Network.Rlpx
         private readonly IByteBuffer _buffer = Unpooled.Buffer(256); // TODO: analyze buffer size effect
         private readonly EncryptionHandshake _handshake = new EncryptionHandshake();
         private readonly ILogger _logger;
-        private readonly PublicKey _remoteId;
         private readonly EncryptionHandshakeRole _role;
+        private readonly IMessageSerializationService _serializationService;
 
         private readonly IEncryptionHandshakeService _service;
+        private readonly ISessionFactory _sessionFactory;
+        private PublicKey _remoteId;
 
-        public NettyHandshakeHandler(IEncryptionHandshakeService service, EncryptionHandshakeRole role, PublicKey remoteId, ILogger logger)
+        public NettyHandshakeHandler(
+            IEncryptionHandshakeService service,
+            ISessionFactory sessionFactory,
+            IMessageSerializationService serializationService,
+            EncryptionHandshakeRole role,
+            PublicKey remoteId,
+            ILogger logger)
         {
             _handshake.RemotePublicKey = remoteId;
             _role = role;
             _remoteId = remoteId;
             _logger = logger;
             _service = service;
+            _sessionFactory = sessionFactory;
+
+            _serializationService = serializationService;
         }
 
         public override void ChannelActive(IChannelHandlerContext context)
@@ -52,7 +64,7 @@ namespace Nevermind.Network.Rlpx
             {
                 Packet auth = _service.Auth(_remoteId, _handshake);
 
-                _logger.Log($"Sending AUTH to {_remoteId}");
+                _logger.Log($"Sending AUTH to {_remoteId} @ {context.Channel.RemoteAddress}");
                 _buffer.WriteBytes(auth.Data);
                 context.WriteAndFlushAsync(_buffer);
             }
@@ -79,34 +91,55 @@ namespace Nevermind.Network.Rlpx
                     byte[] authData = new byte[byteBuffer.MaxCapacity];
                     byteBuffer.ReadBytes(authData);
                     Packet ack = _service.Ack(_handshake, new Packet(authData));
+                    _remoteId = _handshake.RemotePublicKey;
 
-                    _logger.Log($"Sending ACK to {context.Channel.RemoteAddress}");
+                    _logger.Log($"Sending ACK to {_remoteId} @ {context.Channel.RemoteAddress}");
                     _buffer.WriteBytes(ack.Data);
                     context.WriteAndFlushAsync(_buffer);
                 }
                 else
                 {
-                    _logger.Log($"Received ACK from {context.Channel.RemoteAddress}");
+                    _logger.Log($"Received ACK from {_remoteId} @ {context.Channel.RemoteAddress}");
                     byte[] ackData = new byte[byteBuffer.MaxCapacity];
                     byteBuffer.ReadBytes(ackData);
                     _service.Agree(_handshake, new Packet(ackData));
-                    // TODO: clear pipeline, initiate protocol handshake (P2P)
                 }
-                
+
                 FrameCipher frameCipher = new FrameCipher(_handshake.Secrets.AesSecret);
-                FrameMacProcessor macProcessor = new FrameMacProcessor(_handshake.Secrets); 
-                
+                FrameMacProcessor macProcessor = new FrameMacProcessor(_handshake.Secrets);
+
                 context.Channel.Pipeline.Remove(this);
                 context.Channel.Pipeline.Remove<LengthFieldBasedFrameDecoder>();
-                context.Channel.Pipeline.AddLast(new NettyFrameDecoder(frameCipher, macProcessor));
+
+                // TODO: base class for Netty handlers and codecs with instrumentations?
+                _logger.Log($"Registering {nameof(NettyFrameDecoder)} for {_remoteId} @ {context.Channel.RemoteAddress}");
+                context.Channel.Pipeline.AddLast(new NettyFrameDecoder(frameCipher, macProcessor, _logger));
+                _logger.Log($"Registering {nameof(NettyFrameEncoder)} for {_remoteId} @ {context.Channel.RemoteAddress}");
                 context.Channel.Pipeline.AddLast(new NettyFrameEncoder(frameCipher, macProcessor));
-                context.Channel.Pipeline.AddLast(new NettyFrameMerger());
+                _logger.Log($"Registering {nameof(NettyFrameMerger)} for {_remoteId} @ {context.Channel.RemoteAddress}");
+                context.Channel.Pipeline.AddLast(new NettyFrameMerger(_logger));
+                _logger.Log($"Registering {nameof(NettyPacketSplitter)} for {_remoteId} @ {context.Channel.RemoteAddress}");
                 context.Channel.Pipeline.AddLast(new NettyPacketSplitter());
+
+                Multiplexor multiplexor = new Multiplexor(_serializationService, _logger);
+                ISession session = _sessionFactory.Create(multiplexor);
+                _logger.Log($"Registering {nameof(NettyP2PHandler)} for {_remoteId} @ {context.Channel.RemoteAddress}");
+                context.Channel.Pipeline.AddLast(new NettyP2PHandler(session, _serializationService, _logger));
+                _logger.Log($"Registering {nameof(Multiplexor)} for {_remoteId} @ {context.Channel.RemoteAddress}");
+                context.Channel.Pipeline.AddLast(multiplexor);
+                session.InitOutbound();
+                session.Ping();
+                session.Disconnect(DisconnectReason.ClientQuitting);
             }
             else
             {
                 Debug.Assert(false, $"Always expecting {nameof(IByteBuffer)} as an input to {nameof(NettyHandshakeHandler)}");
             }
+        }
+
+        public override void HandlerRemoved(IChannelHandlerContext context)
+        {
+            _logger.Log($"Handshake complete. Removing {nameof(NettyHandshakeHandler)} for {_remoteId} @ {context.Channel.RemoteAddress} from the pipeline");
         }
     }
 }

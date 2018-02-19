@@ -115,6 +115,7 @@
     <Compile Include="Crypto\EthereumSigner.cs" />
     <Compile Include="TimeStamp.cs" />
     <Compile Include="Unit.cs" />
+    <Compile Include="Version.cs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\HashLib\HashLib.csproj">

@@ -18,6 +18,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 using DotNetty.Codecs;
 using DotNetty.Transport.Channels;
@@ -25,7 +26,7 @@ using Nevermind.Core.Encoding;
 using Nevermind.Core.Extensions;
 
 namespace Nevermind.Network.Rlpx
-{
+{   
     public class NettyPacketSplitter : MessageToMessageEncoder<Packet>
     {
         public const int FrameBoundary = 16;
@@ -37,50 +38,46 @@ namespace Nevermind.Network.Rlpx
         {
             Interlocked.Increment(ref _contextId);
 
-            byte[] padded = Pad16(message.Data);
-            int framesCount = padded.Length / MaxFrameSize + 1;
-
+            byte[] packetTypeData = Rlp.Encode(message.PacketType).Bytes; // TODO: check the 0 packet type
+            int packetTypeSize = packetTypeData.Length;
+            int totalPayloadSize = packetTypeSize + message.Data.Length;
+            
+            int framesCount = (totalPayloadSize - 1) / MaxFrameSize + 1;
             for (int i = 0; i < framesCount; i++)
             {
-                // TODO: rlp into existing array
-                byte[] packetTypeData = i == 0 ? Rlp.Encode(message.PacketType ?? 0).Bytes : Bytes.Empty; // TODO: check the 0 packet type
-                int packetTypeSize = packetTypeData.Length;
+                int totalPayloadOffset = MaxFrameSize * i;
+                int framePayloadSize = Math.Min(MaxFrameSize, totalPayloadSize - totalPayloadOffset);
+                int paddingSize = 0;
+                if (i == framesCount - 1)
+                {
+                    paddingSize = totalPayloadSize % 16 == 0 ? 0 : 16 - totalPayloadSize % 16;
+                }
 
-                int payloadOffset = MaxFrameSize * i;
-                int dataSize = Math.Min(MaxFrameSize, padded.Length - payloadOffset);
+                byte[] frame = new byte[16 + 16 + framePayloadSize + paddingSize + 16]; // header + header MAC + packet type + payload + frame MAC
 
-                byte[] frame = new byte[16 + 16 + packetTypeData.Length + dataSize + 16]; // header + header MAC + packet type + payload + frame MAC
-
-                frame[0] = (byte)((dataSize + packetTypeSize) >> 16);
-                frame[1] = (byte)((dataSize + packetTypeSize) >> 8);
-                frame[2] = (byte)(dataSize + packetTypeSize);
+                frame[0] = (byte)(framePayloadSize >> 16);
+                frame[1] = (byte)(framePayloadSize >> 8);
+                frame[2] = (byte)framePayloadSize;
                 List<object> headerDataItems = new List<object>();
-                headerDataItems.Add(message.ProtocolType ?? 0);
+                headerDataItems.Add(message.ProtocolType);
                 if (framesCount > 1)
                 {
                     headerDataItems.Add(_contextId);
                     if (i == 0)
                     {
-                        headerDataItems.Add(packetTypeData.Length + padded.Length);
+                        headerDataItems.Add(totalPayloadSize);
                     }
                 }
 
                 // TODO: rlp into existing array
+                int framePacketTypeSize = i == 0 ? packetTypeData.Length : 0;
                 byte[] headerDataBytes = Rlp.Encode(headerDataItems).Bytes;
-
                 Buffer.BlockCopy(headerDataBytes, 0, frame, 3, headerDataBytes.Length);
-                Buffer.BlockCopy(packetTypeData, 0, frame, 32, packetTypeSize);
-                Buffer.BlockCopy(padded, payloadOffset, frame, 32 + packetTypeSize, dataSize);
+                Buffer.BlockCopy(packetTypeData, 0, frame, 32, framePacketTypeSize);
+                Buffer.BlockCopy(message.Data, totalPayloadOffset - packetTypeSize + framePacketTypeSize, frame, 32 + framePacketTypeSize, framePayloadSize - framePacketTypeSize);
 
                 output.Add(frame);
             }
-        }
-
-        private static byte[] Pad16(byte[] data)
-        {
-            int paddingSize = 16 - data.Length % 16;
-            byte[] padded = paddingSize == 16 ? data : Bytes.Concat(data, new byte[paddingSize]);
-            return padded;
         }
     }
 }

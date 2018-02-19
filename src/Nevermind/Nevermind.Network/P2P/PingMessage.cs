@@ -20,12 +20,13 @@ namespace Nevermind.Network.P2P
 {
     public class PingMessage : P2PMessage
     {
-        public static PingMessage Instance = new PingMessage();
+        public static readonly PingMessage Instance = new PingMessage();
 
         private PingMessage()
         {
         }
 
-        public override int MessageId => MessageCode.Ping;
+        public override int Protocol => 0;
+        public override int PacketType => P2PMessageCode.Ping;
     }
 }

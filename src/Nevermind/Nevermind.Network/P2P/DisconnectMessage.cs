@@ -25,7 +25,8 @@ namespace Nevermind.Network.P2P
             Reason = reason;
         }
 
-        public override int MessageId => MessageCode.Disconnect;
+        public override int Protocol => 0;
+        public override int PacketType => P2PMessageCode.Disconnect;
         public DisconnectReason Reason { get; set; }
     }
 }

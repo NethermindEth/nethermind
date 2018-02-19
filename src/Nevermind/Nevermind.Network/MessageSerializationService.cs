@@ -48,7 +48,8 @@ namespace Nevermind.Network
             RuntimeTypeHandle typeHandle = typeof(T).TypeHandle;
             if (!_serializers.TryGetValue(typeHandle, out object serializerObject))
             {
-                throw new InvalidOperationException($"No {nameof(IMessageSerializer<T>)} registered.");
+                Type type = typeof(T);
+                throw new InvalidOperationException($"No {nameof(IMessageSerializer<T>)} registered for {type.Name}.");
             }
 
             IMessageSerializer<T> serializer = serializerObject as IMessageSerializer<T>;

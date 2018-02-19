@@ -19,6 +19,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using DotNetty.Transport.Channels;
+using Nevermind.Core;
 using Nevermind.Network.Rlpx;
 using NSubstitute;
 using NUnit.Framework;
@@ -30,6 +31,11 @@ namespace Nevermind.Network.Test.Rlpx
     {
         private class UnderTest : NettyFrameMerger
         {
+            public UnderTest()
+                : base(Substitute.For<ILogger>())
+            {
+            }
+
             private readonly IChannelHandlerContext _context = Substitute.For<IChannelHandlerContext>();
 
             public void Decode(byte[] message, List<object> output)
@@ -50,7 +56,6 @@ namespace Nevermind.Network.Test.Rlpx
 
         private static List<object> BuildFrames(int count)
         {
-            // TODO: hard code below for tests
             TestFrameHelper frameBuilder = new TestFrameHelper();
             Packet packet = new Packet(1, 2, new byte[(count - 1) * NettyPacketSplitter.MaxFrameSize + 1]);
             List<object> frames = new List<object>();
@@ -61,7 +66,6 @@ namespace Nevermind.Network.Test.Rlpx
         [Test]
         public void Handles_non_chunked_frames()
         {
-            // TODO: hard code below for tests
             object frame = BuildFrames(1).Single();
 
             List<object> output = new List<object>();
@@ -99,7 +103,22 @@ namespace Nevermind.Network.Test.Rlpx
             UnderTest underTest = new UnderTest();
             underTest.Decode((byte[])frame, output);
 
-            Assert.AreEqual(1 + 15, ((Packet)output[0]).Data.Length); // TODO: check padding
+            Assert.AreEqual(1, ((Packet)output[0]).Data.Length); // TODO: check padding
+        }
+        
+        [Test]
+        public void Sets_data_on_chunked_packets()
+        {
+            List<object> frames = BuildFrames(3);
+            
+            List<object> output = new List<object>();
+            UnderTest underTest = new UnderTest();
+            for (int i = 0; i < frames.Count; i++)
+            {
+                underTest.Decode((byte[])frames[i], output);
+            }
+
+            Assert.AreEqual(2049, ((Packet)output[0]).Data.Length); // TODO: check padding
         }
 
         [Test]
@@ -113,7 +132,7 @@ namespace Nevermind.Network.Test.Rlpx
 
             Assert.AreEqual(1, ((Packet)output[0]).ProtocolType);
         }
-        
+
         [Test]
         public void Sets_packet_type_on_non_chunked_packets()
         {

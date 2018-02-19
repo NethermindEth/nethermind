@@ -20,12 +20,13 @@ namespace Nevermind.Network.P2P
 {
     public class PongMessage : P2PMessage
     {
-        public static PongMessage Instance = new PongMessage();
+        public static readonly PongMessage Instance = new PongMessage();
 
         private PongMessage()
         {
         }
 
-        public override int MessageId => MessageCode.Pong;
+        public override int Protocol => 0;
+        public override int PacketType => P2PMessageCode.Pong;
     }
 }

@@ -29,7 +29,8 @@ namespace Nevermind.Core.Test
         public void Serialized_form_is_same_as_input_when_input_length_is_1_and_value_is_less_than_128()
         {
             Assert.AreEqual(0, Rlp.Encode(new byte[] {0})[0], "0");
-            Assert.AreEqual(127, Rlp.Encode(new byte[] {127})[0], "128");
+            Assert.AreEqual(127, Rlp.Encode(new byte[] {127})[0], "127");
+            Assert.AreEqual(128, Rlp.Encode(new byte[] {})[0], "128");
             Assert.AreEqual(1, Rlp.Encode(new byte[] {1})[0], "1");
         }
 

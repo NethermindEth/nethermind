@@ -16,13 +16,16 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Collections.Generic;
-
-namespace Nevermind.Network
+namespace Nevermind.Network.P2P
 {
-    public interface IMessageProcessor
+    public static class P2PMessageCode
     {
-        void ToRightBase(object left, IList<object> right);
-        void ToLeftBase(object right, IList<object> left);
+        public const int Hello = 0x00;
+        public const int Disconnect = 0x01;
+        public const int Ping = 0x02;
+        public const int Pong = 0x03;
+        public const int GetPeers = 0x04;
+        public const int Peers = 0x05;
+        public const int User = 0x0f;
     }
 }

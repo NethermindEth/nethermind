@@ -16,10 +16,12 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Collections.Generic;
 using DotNetty.Buffers;
 using DotNetty.Codecs;
 using DotNetty.Transport.Channels;
+using Nevermind.Core;
 using Nevermind.Core.Extensions;
 
 namespace Nevermind.Network.Rlpx
@@ -31,16 +33,18 @@ namespace Nevermind.Network.Rlpx
         private readonly IFrameCipher _frameCipher;
 
         private readonly IFrameMacProcessor _frameMacProcessor;
+        private readonly ILogger _logger;
 
         private readonly byte[] _headerBuffer = new byte[32];
 
         private FrameDecoderState _state = FrameDecoderState.WaitingForHeader;
         private int _totalBodySize;
 
-        public NettyFrameDecoder(IFrameCipher frameCipher, IFrameMacProcessor frameMacProcessor)
+        public NettyFrameDecoder(IFrameCipher frameCipher, IFrameMacProcessor frameMacProcessor, ILogger logger)
         {
             _frameCipher = frameCipher;
             _frameMacProcessor = frameMacProcessor;
+            _logger = logger;
         }
 
         protected override void Decode(IChannelHandlerContext context, IByteBuffer input, List<object> output)
@@ -71,6 +75,7 @@ namespace Nevermind.Network.Rlpx
                 {
                     paddingSize = 0;
                 }
+                
                 byte[] buffer = new byte[_totalBodySize + paddingSize + MacSize];
                 if (input.ReadableBytes >= buffer.Length)
                 {
@@ -86,9 +91,16 @@ namespace Nevermind.Network.Rlpx
                 _frameCipher.Decrypt(buffer, 0, frameSize, buffer, 0);
 
                 output.Add(Bytes.Concat(_headerBuffer, buffer));
+                _state = FrameDecoderState.WaitingForHeader;
             }
         }
 
+        public override void ExceptionCaught(IChannelHandlerContext context, Exception exception)
+        {
+            _logger.Error($"{GetType().Name} exception", exception);
+            base.ExceptionCaught(context, exception);
+        }
+        
         private enum FrameDecoderState
         {
             WaitingForHeader,

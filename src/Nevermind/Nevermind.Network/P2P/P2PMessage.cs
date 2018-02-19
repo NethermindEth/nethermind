@@ -20,6 +20,8 @@ namespace Nevermind.Network.P2P
 {
     public abstract class P2PMessage : MessageBase
     {
-        public abstract int MessageId { get; }
+        public abstract int PacketType { get; }
+        
+        public abstract int Protocol { get; }
     }
 }

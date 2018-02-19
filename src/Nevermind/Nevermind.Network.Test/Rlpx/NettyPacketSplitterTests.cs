@@ -62,5 +62,17 @@ namespace Nevermind.Network.Test.Rlpx
 
             Assert.AreEqual(2, output.Count);
         }
+        
+        [Test]
+        public void Padding_is_done_after_adding_packet_size()
+        {
+            Packet packet = new Packet(1, 2, new byte[NettyPacketSplitter.MaxFrameSize - 1]);
+            List<object> output = new List<object>();
+
+            UnderTest underTest = new UnderTest();
+            underTest.Encode(packet, output);
+
+            Assert.AreEqual(1, output.Count);
+        }
     }
 }

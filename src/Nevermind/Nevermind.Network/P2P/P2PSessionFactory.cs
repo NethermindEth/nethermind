@@ -16,10 +16,26 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nevermind.Network
+using Nevermind.Core.Crypto;
+using Nevermind.Network.Rlpx;
+
+namespace Nevermind.Network.P2P
 {
-    public interface IMessageFactory<out T> where T : MessageBase
+    public class P2PSessionFactory : ISessionFactory
     {
-        T Create(int protocolType, int packetType, byte[] serializedData);
+        private readonly int _listenPort;
+        private readonly PublicKey _localNodeId;
+
+        public P2PSessionFactory(PublicKey localNodeId, int listenPort)
+        {
+            _localNodeId = localNodeId;
+            _listenPort = listenPort;
+        }
+
+        public ISession Create(IMessageSender messageSender)
+        {
+            P2PSession p2PSession = new P2PSession(messageSender, _localNodeId, _listenPort);
+            return p2PSession;
+        }
     }
 }

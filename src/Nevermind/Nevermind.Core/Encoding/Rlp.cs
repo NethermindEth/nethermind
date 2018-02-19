@@ -74,6 +74,8 @@ namespace Nevermind.Core.Encoding
             return Decode(new DecoderContext(rlp.Bytes), rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraData));
         }
 
+        // TODO: optimize so the list is not created for every single call to Rlp.Decode()
+        // TODO: intorduce typed Encode / Decode
         private static object Decode(DecoderContext context, bool allowExtraData)
         {
             object CheckAndReturn(List<object> resultToCollapse, DecoderContext contextToCheck)
@@ -421,6 +423,7 @@ namespace Nevermind.Core.Encoding
             bytes[0] = (byte)(value >> 56);
             bytes[1] = (byte)(value >> 48);
             bytes[2] = (byte)(value >> 40);
+            bytes[3] = (byte)(value >> 32);
             bytes[3] = (byte)(value >> 32);
             bytes[4] = (byte)(value >> 24);
             bytes[5] = (byte)(value >> 16);
