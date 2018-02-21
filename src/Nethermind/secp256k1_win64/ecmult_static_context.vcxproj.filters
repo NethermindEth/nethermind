@@ -1,0 +1,17 @@
+﻿<?xml version="1.0" encoding="UTF-8"?>
+<Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <CustomBuild Include="C:\src\secp256k1_win\CMakeLists.txt" />
+    <CustomBuild Include="C:\src\nevermind\src\Nethermind\secp256k1_win64\CMakeFiles\e57defa2965ab0d5fcda541731e52d9c\ecmult_static_context.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="C:\src\nevermind\src\Nethermind\secp256k1_win64\CMakeFiles\ecmult_static_context" />
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="CMake Rules">
+      <UniqueIdentifier>{3017C275-2AAC-339A-80FC-E887F68A4716}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>
