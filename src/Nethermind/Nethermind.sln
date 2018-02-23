@@ -7,8 +7,6 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Core", "Nethermi
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.HashLib", "Nethermind.HashLib\Nethermind.HashLib.csproj", "{75B8BE8D-18B0-493C-8BA5-083D4B952BF9}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Secp256k1.Proxy", "Secp256k1.Proxy\Secp256k1.Proxy.csproj", "{931F4954-8C73-478D-8AB0-552AD34F03D6}"
-EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Blockchain", "Nethermind.Blockchain\Nethermind.Blockchain.csproj", "{B1C9CF07-F89B-4F92-B8A5-F6949B9D3DA5}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Evm", "Nethermind.Evm\Nethermind.Evm.csproj", "{E992EFB5-85F0-49B1-9C0B-6D3846A813A5}"
@@ -35,10 +33,6 @@ Global
 		{75B8BE8D-18B0-493C-8BA5-083D4B952BF9}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{75B8BE8D-18B0-493C-8BA5-083D4B952BF9}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{75B8BE8D-18B0-493C-8BA5-083D4B952BF9}.Release|Any CPU.Build.0 = Release|Any CPU
-		{931F4954-8C73-478D-8AB0-552AD34F03D6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{931F4954-8C73-478D-8AB0-552AD34F03D6}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{931F4954-8C73-478D-8AB0-552AD34F03D6}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{931F4954-8C73-478D-8AB0-552AD34F03D6}.Release|Any CPU.Build.0 = Release|Any CPU
 		{B1C9CF07-F89B-4F92-B8A5-F6949B9D3DA5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{B1C9CF07-F89B-4F92-B8A5-F6949B9D3DA5}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{B1C9CF07-F89B-4F92-B8A5-F6949B9D3DA5}.Release|Any CPU.ActiveCfg = Release|Any CPU

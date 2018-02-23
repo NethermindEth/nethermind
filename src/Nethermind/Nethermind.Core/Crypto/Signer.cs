@@ -22,6 +22,7 @@ using System.Globalization;
 using System.Numerics;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Potocol;
+using Nethermind.Secp256k1;
 
 namespace Nethermind.Core.Crypto
 {
@@ -70,13 +71,13 @@ namespace Nethermind.Core.Crypto
 
         public Signature Sign(PrivateKey privateKey, Keccak message)
         {
-            if (!Secp256k1.Proxy.Proxy.VerifyPrivateKey(privateKey.Hex))
+            if (!Proxy.VerifyPrivateKey(privateKey.Hex))
             {
                 throw new ArgumentException("Invalid private key", nameof(privateKey));
             }
 
             int recoveryId;
-            byte[] signatureBytes = Secp256k1.Proxy.Proxy.SignCompact(message.Bytes, privateKey.Hex, out recoveryId);
+            byte[] signatureBytes = Proxy.SignCompact(message.Bytes, privateKey.Hex, out recoveryId);
 
             //// https://bitcoin.stackexchange.com/questions/59820/sign-a-tx-with-low-s-value-using-openssl
             
@@ -103,7 +104,7 @@ namespace Nethermind.Core.Crypto
 
         public Address Recover(Signature signature, Keccak message)
         {
-            byte[] publicKey = Secp256k1.Proxy.Proxy.RecoverKeyFromCompact(message.Bytes, signature.Bytes, signature.RecoveryId, false);
+            byte[] publicKey = Proxy.RecoverKeyFromCompact(message.Bytes, signature.Bytes, signature.RecoveryId, false);
             return new PublicKey(publicKey).Address;
         }
     }

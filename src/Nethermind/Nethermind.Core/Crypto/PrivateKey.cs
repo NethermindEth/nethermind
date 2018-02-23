@@ -18,6 +18,7 @@
 
 using System;
 using System.Threading;
+using Nethermind.Secp256k1;
 
 namespace Nethermind.Core.Crypto
 {
@@ -54,7 +55,8 @@ namespace Nethermind.Core.Crypto
 
         private PublicKey ComputePublicKey()
         {
-            return new PublicKey(Secp256k1.Proxy.Proxy.GetPublicKey(Hex, false));
+            
+            return new PublicKey(Proxy.GetPublicKey(Hex, false));
         }
 
         public PublicKey PublicKey => LazyInitializer.EnsureInitialized(ref _publicKey, ComputePublicKey);
