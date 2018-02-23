@@ -35,8 +35,7 @@ namespace Nevermind.Core.Crypto
                 throw new ArgumentException("Invalid private key", nameof(privateKey));
             }
 
-            int recoveryId;
-            byte[] signatureBytes = Proxy.SignCompact(message.Bytes, privateKey.Hex, out recoveryId);
+            byte[] signatureBytes = Proxy.SignCompact(message.Bytes, privateKey.Hex, out int recoveryId);
 
             //// https://bitcoin.stackexchange.com/questions/59820/sign-a-tx-with-low-s-value-using-openssl
 

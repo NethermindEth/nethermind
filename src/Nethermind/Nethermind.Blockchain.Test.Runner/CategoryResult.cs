@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,13 +16,17 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.Evm
+namespace Nethermind.Blockchain.Test.Runner
 {
-    public static class ShouldLog
+    public class CategoryResult
     {
-        public static bool Processing = false;
-        public static bool Evm = false;
-        public static bool EvmStack = false;
-        public static bool State = false;
+        public CategoryResult(long totalMs, string[] failingTests)
+        {
+            TotalMs = totalMs;
+            FailingTests = failingTests;
+        }
+
+        public long TotalMs { get; set; }
+        public string[] FailingTests { get; set; }
     }
 }

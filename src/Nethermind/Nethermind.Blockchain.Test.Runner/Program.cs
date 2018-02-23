@@ -18,9 +18,9 @@
 
 using System;
 using System.Collections.Generic;
-using Nevermind.Evm;
+using Nethermind.Evm;
 
-namespace Nevermind.Blockchain.Test.Runner
+namespace Nethermind.Blockchain.Test.Runner
 {
     internal class Program
     {

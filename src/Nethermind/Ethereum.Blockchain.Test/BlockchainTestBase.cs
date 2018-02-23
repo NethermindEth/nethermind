@@ -23,16 +23,16 @@ using System.IO;
 using System.Linq;
 using System.Numerics;
 using System.Text;
-using Nevermind.Blockchain;
-using Nevermind.Blockchain.Difficulty;
-using Nevermind.Blockchain.Validators;
-using Nevermind.Core;
-using Nevermind.Core.Crypto;
-using Nevermind.Core.Encoding;
-using Nevermind.Core.Extensions;
-using Nevermind.Core.Potocol;
-using Nevermind.Evm;
-using Nevermind.Store;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Difficulty;
+using Nethermind.Blockchain.Validators;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Encoding;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Potocol;
+using Nethermind.Evm;
+using Nethermind.Store;
 using Newtonsoft.Json;
 using NUnit.Framework;
 
@@ -183,8 +183,9 @@ namespace Ethereum.Blockchain.Test
         protected void RunTest(BlockchainTest test, Stopwatch stopwatch = null)
         {
             LoggingTraceListener traceListener = new LoggingTraceListener(_logger);
-            Debug.Listeners.Clear();
-            Debug.Listeners.Add(traceListener);
+            // TODO: not supported in .NET Core, need to replace?
+//            Debug.Listeners.Clear();
+//            Debug.Listeners.Add(traceListener);
 
             InitializeTestState(test);
 
@@ -192,7 +193,7 @@ namespace Ethereum.Blockchain.Test
             _stateProviders[test.Network].EthereumRelease = _protocolSpecificationProvider.GetSpec(test.Network, 0);
 
             IEthereumRelease spec = _protocolSpecificationProvider.GetSpec(test.Network, 1);
-            IEthereumSigner signer = new EthereumSigner(spec, ChainId.MainNet);
+            ISigner signer = new Signer(spec, ChainId.MainNet);
             IBlockProcessor blockProcessor = new BlockProcessor(
                 spec,
                 _chain,

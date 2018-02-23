@@ -16,13 +16,17 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.Evm
+using NUnit.Framework;
+
+namespace Ethereum.Blockchain.Test
 {
-    public static class ShouldLog
+    [TestFixture]
+    public class QuadraticComplexityTests : BlockchainTestBase
     {
-        public static bool Processing = false;
-        public static bool Evm = false;
-        public static bool EvmStack = false;
-        public static bool State = false;
+        [TestCaseSource(nameof(LoadTests), new object[] { "stQuadraticComplexityTest" })]
+        public void Test(BlockchainTest test)
+        {
+            RunTest(test);
+        }
     }
 }
