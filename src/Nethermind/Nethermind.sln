@@ -25,6 +25,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Blockchain.Test.
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ethereum.Blockchain.Test", "Ethereum.Blockchain.Test\Ethereum.Blockchain.Test.csproj", "{BFFF2BF4-FE47-4F1F-8869-CB37E6990D3E}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Db", "Nethermind.Db\Nethermind.Db.csproj", "{0B52D472-A7B0-4AB6-AFE3-A644B90F53FC}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -75,6 +77,10 @@ Global
 		{BFFF2BF4-FE47-4F1F-8869-CB37E6990D3E}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{BFFF2BF4-FE47-4F1F-8869-CB37E6990D3E}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{BFFF2BF4-FE47-4F1F-8869-CB37E6990D3E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{0B52D472-A7B0-4AB6-AFE3-A644B90F53FC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{0B52D472-A7B0-4AB6-AFE3-A644B90F53FC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{0B52D472-A7B0-4AB6-AFE3-A644B90F53FC}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{0B52D472-A7B0-4AB6-AFE3-A644B90F53FC}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
