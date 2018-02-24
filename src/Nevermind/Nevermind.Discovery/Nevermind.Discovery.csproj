@@ -212,10 +212,6 @@
       <Project>{79eba5ab-1d7a-469a-8b81-501b6248f759}</Project>
       <Name>Nevermind.Network</Name>
     </ProjectReference>
-    <ProjectReference Include="..\Nevermind.Utils\Nevermind.Utils.csproj">
-      <Project>{11961D51-AB76-48FC-A723-0EEE53051AAB}</Project>
-      <Name>Nevermind.Utils</Name>
-    </ProjectReference>
   </ItemGroup>
   <ItemGroup>
     <None Include="app.config" />

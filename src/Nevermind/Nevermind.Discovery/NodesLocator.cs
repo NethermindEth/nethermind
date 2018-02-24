@@ -20,9 +20,9 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Nevermind.Core;
+using Nevermind.Core.Model;
 using Nevermind.Discovery.Messages;
 using Nevermind.Discovery.RoutingTable;
-using Nevermind.Utils.Model;
 
 namespace Nevermind.Discovery
 {

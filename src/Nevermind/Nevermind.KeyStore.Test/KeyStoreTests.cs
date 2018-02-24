@@ -22,8 +22,8 @@ using System.Linq;
 using System.Security;
 using Nevermind.Core;
 using Nevermind.Core.Crypto;
+using Nevermind.Core.Model;
 using Nevermind.Json;
-using Nevermind.Utils.Model;
 using NUnit.Framework;
 using Assert = Microsoft.VisualStudio.TestTools.UnitTesting.Assert;
 

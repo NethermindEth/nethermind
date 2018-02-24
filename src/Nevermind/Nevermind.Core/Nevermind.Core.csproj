@@ -81,9 +81,12 @@
     <Compile Include="EthereumNetwork.cs" />
     <Compile Include="EthereumNetworkExtensions.cs" />
     <Compile Include="Extensions\KeyValuePairExtensions.cs" />
+    <Compile Include="Extensions\StringExtensions.cs" />
     <Compile Include="Hex.cs" />
     <Compile Include="ILogger.cs" />
     <Compile Include="LogEntry.cs" />
+    <Compile Include="Model\Result.cs" />
+    <Compile Include="Model\ResultType.cs" />
     <Compile Include="Nibbles.cs" />
     <Compile Include="NullLogger.cs" />
     <Compile Include="Potocol\Byzantium.cs" />

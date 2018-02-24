@@ -20,7 +20,6 @@ using System;
 using Nevermind.Core;
 using Nevermind.Core.Crypto;
 using Nevermind.Discovery.RoutingTable;
-using Nevermind.Utils;
 
 namespace Nevermind.Discovery.Messages
 {

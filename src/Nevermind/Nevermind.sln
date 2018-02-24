@@ -53,8 +53,6 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nevermind.JsonRpc", "Neverm
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nevermind.JsonRpc.Test", "Nevermind.JsonRpc.Test\Nevermind.JsonRpc.Test.csproj", "{C998DE7D-B2C3-48A4-B5FB-7FD2650D2FFA}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nevermind.Utils", "Nevermind.Utils\Nevermind.Utils.csproj", "{11961D51-AB76-48FC-A723-0EEE53051AAB}"
-EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nevermind.KeyStore", "Nevermind.KeyStore\Nevermind.KeyStore.csproj", "{4E409915-E434-4E8B-9BF5-6CC623D23612}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nevermind.Json", "Nevermind.Json\Nevermind.Json.csproj", "{947DF8C4-6E2B-476B-8AE8-A629C21A0BA7}"
@@ -387,18 +385,6 @@ Global
 		{C998DE7D-B2C3-48A4-B5FB-7FD2650D2FFA}.Release|x64.Build.0 = Release|Any CPU
 		{C998DE7D-B2C3-48A4-B5FB-7FD2650D2FFA}.Release|x86.ActiveCfg = Release|Any CPU
 		{C998DE7D-B2C3-48A4-B5FB-7FD2650D2FFA}.Release|x86.Build.0 = Release|Any CPU
-		{11961D51-AB76-48FC-A723-0EEE53051AAB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{11961D51-AB76-48FC-A723-0EEE53051AAB}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{11961D51-AB76-48FC-A723-0EEE53051AAB}.Debug|x64.ActiveCfg = Debug|Any CPU
-		{11961D51-AB76-48FC-A723-0EEE53051AAB}.Debug|x64.Build.0 = Debug|Any CPU
-		{11961D51-AB76-48FC-A723-0EEE53051AAB}.Debug|x86.ActiveCfg = Debug|Any CPU
-		{11961D51-AB76-48FC-A723-0EEE53051AAB}.Debug|x86.Build.0 = Debug|Any CPU
-		{11961D51-AB76-48FC-A723-0EEE53051AAB}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{11961D51-AB76-48FC-A723-0EEE53051AAB}.Release|Any CPU.Build.0 = Release|Any CPU
-		{11961D51-AB76-48FC-A723-0EEE53051AAB}.Release|x64.ActiveCfg = Release|Any CPU
-		{11961D51-AB76-48FC-A723-0EEE53051AAB}.Release|x64.Build.0 = Release|Any CPU
-		{11961D51-AB76-48FC-A723-0EEE53051AAB}.Release|x86.ActiveCfg = Release|Any CPU
-		{11961D51-AB76-48FC-A723-0EEE53051AAB}.Release|x86.Build.0 = Release|Any CPU
 		{4E409915-E434-4E8B-9BF5-6CC623D23612}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{4E409915-E434-4E8B-9BF5-6CC623D23612}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{4E409915-E434-4E8B-9BF5-6CC623D23612}.Debug|x64.ActiveCfg = Debug|Any CPU

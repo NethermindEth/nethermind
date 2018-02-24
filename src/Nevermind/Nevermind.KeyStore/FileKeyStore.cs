@@ -25,8 +25,8 @@ using CryptSharp.Utility;
 using Nevermind.Core;
 using Nevermind.Core.Crypto;
 using Nevermind.Core.Extensions;
+using Nevermind.Core.Model;
 using Nevermind.Json;
-using Nevermind.Utils.Model;
 
 namespace Nevermind.KeyStore
 {

@@ -16,22 +16,21 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Collections.Generic;
-using System.Security;
-using Nevermind.Core;
-using Nevermind.Core.Crypto;
-using Nevermind.Core.Model;
-
-namespace Nevermind.KeyStore
+namespace Nevermind.Core.Model
 {
-    public interface IKeyStore
+    public class Result
     {
-        (PrivateKey, Result) GetKey(Address address, SecureString password);
-        (IReadOnlyCollection<Address>, Result) GetKeyAddresses();
-        (PrivateKey, Result) GenerateKey(SecureString password);
-        Result StoreKey(PrivateKey key, SecureString password);
-        Result DeleteKey(Address address, SecureString password);
-        int Version { get; }
-        int CryptoVersion { get; }
+        public ResultType ResultType { get; set; }
+        public string Error { get; set; }
+
+        public static Result Fail(string error)
+        {
+            return new Result {ResultType = ResultType.Failure, Error = error};
+        }
+
+        public static Result Success()
+        {
+            return new Result { ResultType = ResultType.Success };
+        }
     }
 }

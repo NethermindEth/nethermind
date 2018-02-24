@@ -23,8 +23,8 @@ using System.Linq;
 using System.Security;
 using Nevermind.Core;
 using Nevermind.Core.Crypto;
+using Nevermind.Core.Model;
 using Nevermind.KeyStore;
-using Nevermind.Utils.Model;
 
 namespace Nevermind.Discovery.RoutingTable
 {

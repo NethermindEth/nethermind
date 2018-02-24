@@ -16,7 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nevermind.Utils.Model;
+using Nevermind.Core.Model;
 
 namespace Nevermind.JsonRpc.DataModel
 {

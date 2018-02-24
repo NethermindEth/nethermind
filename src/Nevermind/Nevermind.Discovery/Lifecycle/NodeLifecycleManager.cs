@@ -21,7 +21,6 @@ using System.Threading.Tasks;
 using Nevermind.Core;
 using Nevermind.Discovery.Messages;
 using Nevermind.Discovery.RoutingTable;
-using Nevermind.Utils;
 
 namespace Nevermind.Discovery.Lifecycle
 {
