@@ -67,14 +67,14 @@ namespace Nevermind.Discovery.Serializers
                     var address = GetAddress((byte[])nodeRaw[0], (byte[])nodeRaw[1]);
                     //TODO confirm it is correct - based on EthereumJ
                     var idRaw = nodeRaw.Length > 3 ? nodeRaw[3] : nodeRaw[2];
-                    byte[] id = (byte[])Rlp.Decode(new Rlp((byte[])idRaw));
+                    byte[] id = (byte[])idRaw;
 
                     var node = NodeFactory.CreateNode(new PublicKey(id), address);
                     nodes.Add(node);
                 }
             }
 
-            var expireTime = ((byte[])Rlp.Decode(new Rlp((byte[])decodedRaw[1]))).ToInt64();
+            var expireTime = ((byte[])decodedRaw[1]).ToInt64();
             var message = results.Message;
             message.Nodes = nodes.ToArray();
             message.ExpirationTime = expireTime;

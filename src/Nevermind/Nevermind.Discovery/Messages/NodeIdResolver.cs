@@ -12,10 +12,10 @@ namespace Nevermind.Discovery.Messages
             _signer = signer;
         }
 
-        public PublicKey GetNodeId(byte[] signature, byte[] messageType, byte[] data)
+        public PublicKey GetNodeId(byte[] signature, int recoveryId, byte[] messageType, byte[] data)
         {
             //return _signer.RecoverPublicKey(discoveryMessage.Signature, Keccak.Compute(Bytes.Concat(new[] {(byte)discoveryMessage.MessageType}, discoveryMessage.Payload)));
-            return _signer.RecoverPublicKey(new Signature(signature), Keccak.Compute(Bytes.Concat(messageType, data)));
+            return _signer.RecoverPublicKey(new Signature(signature, recoveryId), Keccak.Compute(Bytes.Concat(messageType, data)));
         }
     }
 }

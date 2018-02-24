@@ -54,7 +54,7 @@ namespace Nevermind.Discovery.Serializers
             {
                 throw new NetworkingException("Invalid MDC");
             }
-            var nodeId = NodeIdResolver.GetNodeId(signature, type, data);
+            var nodeId = NodeIdResolver.GetNodeId(signature.Slice(0, 64), signature[64], type, data);
             var message = MessageFactory.CreateIncomingMessage<T>(nodeId);
             return (message, mdc, data);
         }
@@ -82,11 +82,9 @@ namespace Nevermind.Discovery.Serializers
             ).Bytes;
         }
 
-        protected IPEndPoint GetAddress(byte[] ipRaw, byte[] portRaw)
+        protected IPEndPoint GetAddress(byte[] ip, byte[] port)
         {
-            var ip = (byte[]) Rlp.Decode(new Rlp(ipRaw));
-            var port = ((byte[]) Rlp.Decode(new Rlp(portRaw))).ToInt32();
-            return new IPEndPoint(new IPAddress(ip), port);
+            return new IPEndPoint(new IPAddress(ip), port.ToInt32());
         }
     }
 }

@@ -19,9 +19,8 @@ namespace Nevermind.Discovery.Serializers
             byte[] sender = GetRlpAddress(message.FarAddress);
             byte[] token = Rlp.Encode(message.PingMdc).Bytes;
             byte[] data = Rlp.Encode(
-                Rlp.Encode(sender),
-                Rlp.Encode(token),
-                //verify if encoding is correct
+                sender,
+                token,
                 Rlp.Encode(message.ExpirationTime)
             ).Bytes;
 
@@ -36,8 +35,8 @@ namespace Nevermind.Discovery.Serializers
             var rlp = new Rlp(results.Data);
             var decodedRaw = (object[])Rlp.Decode(rlp, RlpBehaviors.AllowExtraData);
 
-            var token = (byte[])Rlp.Decode(new Rlp((byte[])decodedRaw[0]));
-            var expireTime = ((byte[])Rlp.Decode(new Rlp((byte[])decodedRaw[1]))).ToInt64();
+            var token = (byte[])Rlp.Decode(new Rlp((byte[])decodedRaw[1]));
+            var expireTime = ((byte[])decodedRaw[2]).ToInt64();
 
             var message = results.Message;
             message.PingMdc = token;

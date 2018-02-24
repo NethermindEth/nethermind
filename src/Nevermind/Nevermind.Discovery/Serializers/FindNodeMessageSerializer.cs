@@ -18,7 +18,7 @@ namespace Nevermind.Discovery.Serializers
             byte[] typeBytes = { (byte)message.MessageType };
             byte[] searchedNodeId = Rlp.Encode(message.SearchedNodeId).Bytes;
             byte[] data = Rlp.Encode(
-                Rlp.Encode(searchedNodeId),
+                searchedNodeId,
                 //verify if encoding is correct
                 Rlp.Encode(message.ExpirationTime)
             ).Bytes;
@@ -35,7 +35,7 @@ namespace Nevermind.Discovery.Serializers
             var decodedRaw = (object[])Rlp.Decode(rlp, RlpBehaviors.AllowExtraData);
 
             var searchedNodeId = (byte[])Rlp.Decode(new Rlp((byte[])decodedRaw[0]));
-            var expireTime = ((byte[])Rlp.Decode(new Rlp((byte[])decodedRaw[1]))).ToInt64();
+            var expireTime = ((byte[])decodedRaw[1]).ToInt64();
 
             var message = results.Message;
             message.SearchedNodeId = searchedNodeId;
