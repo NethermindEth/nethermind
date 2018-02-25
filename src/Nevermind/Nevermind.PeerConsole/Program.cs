@@ -38,9 +38,9 @@ namespace Nevermind.PeerConsole
         private static PrivateKey _keyB;
         private static PrivateKey _keyC;
 
-        public static async Task Main(string[] args)
+        public static void Main(string[] args)
         {
-            await Run();
+            Run();
         }
 
         private static async Task Run()
