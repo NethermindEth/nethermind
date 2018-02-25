@@ -22,6 +22,14 @@ namespace Nevermind.Discovery
 {
     public interface INodesLocator
     {
+        /// <summary>
+        /// locate nodes for master node
+        /// </summary>
         Task LocateNodes();
+
+        /// <summary>
+        /// locate nodes for specified node id
+        /// </summary>
+        Task LocateNodes(byte[] searchedNodeId);
     }
 }

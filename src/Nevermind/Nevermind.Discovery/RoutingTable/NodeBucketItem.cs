@@ -31,7 +31,7 @@ namespace Nevermind.Discovery.RoutingTable
         public Node Node { get; }
         public DateTime LastContactTime { get; private set; }
 
-        public void OnPongReveived()
+        public void OnContactReveived()
         {
             LastContactTime = DateTime.UtcNow;
         }

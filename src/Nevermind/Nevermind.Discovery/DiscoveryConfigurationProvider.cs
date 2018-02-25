@@ -43,6 +43,8 @@ namespace Nevermind.Discovery
         public int BootNodePongTimeout => 200;
         public int PingRetryCount => 3;
         public int DiscoveryInterval => 30000;
+        public int RefreshInterval => 7200;
+
         public (string Host, int Port)[] BootNodes => new[]
         {
             ("bootNodeHost1", 10000),
@@ -53,5 +55,7 @@ namespace Nevermind.Discovery
         public int UdpChannelCloseTimeout => 10000;
         public int PingMessageVersion => 4;
         public int DiscoveryMsgExpiryTime => 60 * 90;
+        public int MaxNodeLifecycleManagersCount => 2000;
+        public int NodeLifecycleManagersCleaupCount => 200;
     }
 }

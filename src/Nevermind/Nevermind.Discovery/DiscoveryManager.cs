@@ -18,6 +18,8 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Threading;
 using Nevermind.Core;
@@ -91,6 +93,7 @@ namespace Nevermind.Discovery
                 }
 
                 NotifySubscribers(msgType, nodeManager.ManagedNode);
+                CleanUpLifecycleManagers();
             }
             catch (Exception e)
             {
@@ -153,8 +156,8 @@ namespace Nevermind.Discovery
 
         private void NotifySubscribers(MessageType msgType, Node node)
         {
-            var resetEvent = GetResetEvent(node.IdHashText, (int)msgType);
-            resetEvent.Set();
+            var resetEvent = RemoveResetEvent(node.IdHashText, (int)msgType);
+            resetEvent?.Set();
         }
 
         private ManualResetEvent GetResetEvent(string senderAddressHash, int messageType)
@@ -162,6 +165,47 @@ namespace Nevermind.Discovery
             var key = new MessageTypeKey { SenderAddressHash = senderAddressHash, MessageType = messageType };
             var resetEvent = _waitingEvents.GetOrAdd(key, new ManualResetEvent(false));
             return resetEvent;
+        }
+
+        private ManualResetEvent RemoveResetEvent(string senderAddressHash, int messageType)
+        {
+            var key = new MessageTypeKey { SenderAddressHash = senderAddressHash, MessageType = messageType };
+            return _waitingEvents.TryRemove(key, out var resetEvent) ? resetEvent : null;
+        }
+
+        private void CleanUpLifecycleManagers()
+        {
+            if (_nodeLifecycleManagers.Count <= _configurationProvider.MaxNodeLifecycleManagersCount)
+            {
+                return;
+            }
+
+            var cleanupCount = _configurationProvider.NodeLifecycleManagersCleaupCount;
+            var activeExcluded = _nodeLifecycleManagers.Where(x => x.Value.State == NodeLifecycleState.ActiveExcluded).Take(cleanupCount).ToArray();
+            if (activeExcluded.Length == cleanupCount)
+            {
+                var removeCounter = RemoveManagers(activeExcluded, activeExcluded.Length);
+                _logger.Log($"Removed: {removeCounter} node lifecycle managers");
+                return;
+            }
+            var unreachable = _nodeLifecycleManagers.Where(x => x.Value.State == NodeLifecycleState.Unreachable).Take(cleanupCount - activeExcluded.Length).ToArray();
+            var removeCount = RemoveManagers(activeExcluded, activeExcluded.Length);
+            removeCount = removeCount + RemoveManagers(unreachable, unreachable.Length);
+            _logger.Log($"Removed: {removeCount} node lifecycle managers");
+        }
+
+        private int RemoveManagers(KeyValuePair<string, INodeLifecycleManager>[] items, int count)
+        {
+            var removeCount = 0;
+            for (var i = 0; i < count; i++)
+            {
+                if (_nodeLifecycleManagers.TryRemove(items[i].Key, out var _))
+                {
+                    removeCount++;
+                }
+            }
+
+            return removeCount;
         }
 
         private struct MessageTypeKey

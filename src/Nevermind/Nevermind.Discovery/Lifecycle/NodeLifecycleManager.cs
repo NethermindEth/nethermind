@@ -52,11 +52,13 @@ namespace Nevermind.Discovery.Lifecycle
 
         public Node ManagedNode { get; }
         public NodeLifecycleState State { get; private set; }
+
         public event EventHandler<NodeLifecycleState> OnStateChanged;
 
         public void ProcessPingMessage(PingMessage discoveryMessage)
         {
             SendPong(discoveryMessage);
+            RefreshNodeContactTime();
         }
 
         public void ProcessPongMessage(PongMessage discoveryMessage)
@@ -64,6 +66,7 @@ namespace Nevermind.Discovery.Lifecycle
             if (_isPongExpected)
             {
                 UpdateState(NodeLifecycleState.Active);
+                RefreshNodeContactTime();
             }
 
             _isPongExpected = false;
@@ -78,6 +81,8 @@ namespace Nevermind.Discovery.Lifecycle
                     //If node is new it will create a new nodeLifecycleManager and will update state to New, which will trigger Ping
                     _discoveryManager.GetNodeLifecycleManager(node);
                 }
+
+                RefreshNodeContactTime();
             }
 
             _isNeighborsExpected = false;
@@ -85,14 +90,15 @@ namespace Nevermind.Discovery.Lifecycle
 
         public void ProcessFindNodeMessage(FindNodeMessage discoveryMessage)
         {
-            var nodes = _nodeTable.GetClosestNodes();
+            var nodes = _nodeTable.GetClosestNodes(discoveryMessage.SearchedNodeId);
             SendNeighbors(nodes);
+            RefreshNodeContactTime();
         }
 
-        public void SendFindNode(Node searchedNode)
+        public void SendFindNode(byte[] searchedNodeId)
         {
             var msg = _discoveryMessageFactory.CreateOutgoingMessage<FindNodeMessage>(ManagedNode);
-            msg.SearchedNodeId = searchedNode.Id.Bytes;
+            msg.SearchedNodeId = searchedNodeId;
             _isNeighborsExpected = true;
             _discoveryManager.SendMessage(msg);
         }
@@ -122,6 +128,14 @@ namespace Nevermind.Discovery.Lifecycle
             UpdateState(NodeLifecycleState.EvictCandidate);
         }
 
+        public void LostEvictionProcess()
+        {
+            if (State == NodeLifecycleState.Active)
+            {
+                UpdateState(NodeLifecycleState.ActiveExcluded);
+            }
+        }
+
         private void UpdateState(NodeLifecycleState newState)
         {
             if (newState == NodeLifecycleState.New)
@@ -133,6 +147,7 @@ namespace Nevermind.Discovery.Lifecycle
             if (newState == NodeLifecycleState.Active)
             {
                 //TODO && !ManagedNode.IsDicoveryNode - should we exclude discovery nodes
+                //received pong first time
                 if (State == NodeLifecycleState.New)
                 {
                     var result = _nodeTable.AddNode(ManagedNode);
@@ -150,6 +165,14 @@ namespace Nevermind.Discovery.Lifecycle
 
             State = newState;
             OnStateChanged?.Invoke(this, State);
+        }
+
+        private void RefreshNodeContactTime()
+        {
+            if (State == NodeLifecycleState.Active)
+            {
+                _nodeTable.RefreshNode(ManagedNode);
+            }
         }
 
         private void SendPingSync()

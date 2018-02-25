@@ -77,6 +77,13 @@ namespace Nevermind.Discovery.RoutingTable
             bucket.ReplaceNode(nodeToRemove, nodeToAdd);
         }
 
+        public void RefreshNode(Node node)
+        {
+            var distanceFromMaster = _nodeDistanceCalculator.CalculateDistance(MasterNode.IdHash.Bytes, node.IdHash.Bytes);
+            var bucket = Buckets[distanceFromMaster > 0 ? distanceFromMaster - 1 : 0];
+            bucket.RefreshNode(node);
+        }
+
         public Node GetNode(byte[] nodeId)
         {
             var key = Keccak.Compute(nodeId).ToString();
@@ -90,22 +97,35 @@ namespace Nevermind.Discovery.RoutingTable
             for (var i = 0; i < Buckets.Length; i++)
             {
                 var nodeBucket = Buckets[i];
-                if (!nodeBucket.Items.Any())
+                var bucketItems = nodeBucket.Items;
+                if (!bucketItems.Any())
                 {
                     continue;
                 }
 
                 var availibleCount = bucketSize - nodes.Count;
-                if (nodeBucket.Items.Count >= availibleCount)
+                if (bucketItems.Count >= availibleCount)
                 {
-                    nodes.AddRange(nodeBucket.Items.Take(availibleCount).ToArray());
+                    nodes.AddRange(bucketItems.Take(availibleCount).ToArray());
                     break;
                 }
 
-                nodes.AddRange(nodeBucket.Items.ToArray());
+                nodes.AddRange(bucketItems.ToArray());
             }
 
             return nodes.Select(x => x.Node).ToArray();
+        }
+
+        public Node[] GetClosestNodes(byte[] nodeId)
+        {
+            var idHash = Keccak.Compute(nodeId);
+            var idHashText = idHash.ToString();
+            var allNodes = Buckets.SelectMany(x => x.Items).Where(x => x.Node.IdHashText != idHashText)
+                .Select(x => new {x.Node, Distance = _nodeDistanceCalculator.CalculateDistance(x.Node.Id.Bytes, nodeId)})
+                .OrderBy(x => x.Distance)
+                .Take(_configurationProvider.BucketSize)
+                .Select(x => x.Node).ToArray();
+            return allNodes;
         }
 
         private void Initialize()

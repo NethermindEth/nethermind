@@ -120,7 +120,7 @@ namespace Nevermind.Discovery.Test
             Assert.AreEqual(NodeLifecycleState.Active, manager.State);
 
             //receiving findNode
-            _discoveryManager.OnIncomingMessage(new FindNodeMessage{ FarAddress = new IPEndPoint(IPAddress.Parse(_host), _port), FarPublicKey = _publicKey });
+            _discoveryManager.OnIncomingMessage(new FindNodeMessage{ FarAddress = new IPEndPoint(IPAddress.Parse(_host), _port), FarPublicKey = _publicKey, SearchedNodeId = new PrivateKey(new CryptoRandom().GenerateRandomBytes(32)).PublicKey.Bytes});
 
             //expecting to respond with sending Neighbors
             _messageSender.Received(1).SendMessage(Arg.Is<NeighborsMessage>(m => m.FarAddress.Address.ToString() == _host && m.FarAddress.Port == _port));
@@ -142,7 +142,7 @@ namespace Nevermind.Discovery.Test
             Assert.AreEqual(NodeLifecycleState.Active, manager.State);
 
             //sending FindNode to expect Neighbors
-            manager.SendFindNode(_nodeTable.MasterNode);
+            manager.SendFindNode(_nodeTable.MasterNode.Id.Bytes);
             _messageSender.Received(1).SendMessage(Arg.Is<FindNodeMessage>(m => m.FarAddress.Address.ToString() == _host && m.FarAddress.Port == _port));
 
             //receiving findNode

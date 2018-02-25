@@ -24,6 +24,6 @@ namespace Nevermind.Discovery.RoutingTable
     {
         Node Node { get; }
         DateTime LastContactTime { get; }
-        void OnPongReveived();
+        void OnContactReveived();
     }
 }

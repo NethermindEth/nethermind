@@ -45,11 +45,19 @@ namespace Nevermind.Discovery
 
         public async Task LocateNodes()
         {
+            await LocateNodes(null);
+        }
+
+        public async Task LocateNodes(byte[] searchedNodeId)
+        {
             var alreadyTriedNodes = new List<string>();
             
+            _logger.Log($"Starting location process for node: {(searchedNodeId != null ? new Hex(searchedNodeId).ToString() : "masterNode: " + _masterNode.Id)}");
+
             for (var i = 0; i < _configurationProvider.MaxDiscoveryRounds; i++)
             {
-                var closestNodes = _nodeTable.GetClosestNodes();
+                //if searched node is not specified master node is used
+                var closestNodes = searchedNodeId != null ? _nodeTable.GetClosestNodes(searchedNodeId) : _nodeTable.GetClosestNodes();
                 var tryCandidates = closestNodes.Where(node => !alreadyTriedNodes.Contains(node.IdHashText)).ToArray();
                 if (!tryCandidates.Any())
                 {
@@ -73,7 +81,7 @@ namespace Nevermind.Discovery
                     nodesTriedCount += nodesToSend.Length;
                     alreadyTriedNodes.AddRange(nodesToSend.Select(x => x.IdHashText));
 
-                    var results = await SendFindNode(nodesToSend);
+                    var results = await SendFindNode(nodesToSend, searchedNodeId);
                     
                     foreach (var result in results)
                     {
@@ -97,27 +105,27 @@ namespace Nevermind.Discovery
             _logger.Log($"Finished locating nodes, triedNodesCount: {alreadyTriedNodes.Count}");
         }
 
-        private async Task<Result[]> SendFindNode(Node[] nodesToSend)
+        private async Task<Result[]> SendFindNode(Node[] nodesToSend, byte[] searchedNodeId)
         {
             var sendFindNodeTasks = new List<Task<Result>>();
             foreach (var node in nodesToSend)
             {
-                var task = SendFindNode(node);
+                var task = SendFindNode(node, searchedNodeId);
                 sendFindNodeTasks.Add(task);
             }
 
             return await Task.WhenAll(sendFindNodeTasks);
         }
 
-        private async Task<Result> SendFindNode(Node destinationNode)
+        private async Task<Result> SendFindNode(Node destinationNode, byte[] searchedNodeId)
         {
-            return await Task.Run(() => SendFindNodeSync(destinationNode));
+            return await Task.Run(() => SendFindNodeSync(destinationNode, searchedNodeId));
         }
 
-        private Result SendFindNodeSync(Node destinationNode)
+        private Result SendFindNodeSync(Node destinationNode, byte[] searchedNodeId)
         {
             var nodeManager = _discoveryManager.GetNodeLifecycleManager(destinationNode);
-            nodeManager.SendFindNode(_masterNode);
+            nodeManager.SendFindNode(searchedNodeId ?? _masterNode.Id.Bytes);
 
             if (_discoveryManager.WasMessageReceived(destinationNode.IdHashText, MessageType.Neighbors, _configurationProvider.SendNodeTimeout))
             {

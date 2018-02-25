@@ -23,6 +23,8 @@ namespace Nevermind.Discovery.Lifecycle
         New,
         Active,
         EvictCandidate,
-        Unreachable
+        Unreachable,
+        //Active, but not included in NodeTable
+        ActiveExcluded
     }
 }

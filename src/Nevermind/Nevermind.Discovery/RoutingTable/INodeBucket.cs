@@ -24,9 +24,10 @@ namespace Nevermind.Discovery.RoutingTable
     {
         int Distance { get; }
         int BucketSize { get; }
-        SortedSet<NodeBucketItem> Items { get; }
+        IReadOnlyCollection<NodeBucketItem> Items { get; }
         NodeAddResult AddNode(Node node);
         void RemoveNode(Node node);
         void ReplaceNode(Node nodeToRemove, Node nodeToAdd);
+        void RefreshNode(Node node);
     }
 }

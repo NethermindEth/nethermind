@@ -25,10 +25,11 @@ namespace Nevermind.Discovery.RoutingTable
     public class NodeBucket : INodeBucket
     {
         private readonly object _nodeBucketLock = new object();
+        private readonly SortedSet<NodeBucketItem> _items;
 
         public NodeBucket(int distance, int bucketSize)
         {
-            Items = new SortedSet<NodeBucketItem>(new LastContactTimeComparer());
+            _items = new SortedSet<NodeBucketItem>(new LastContactTimeComparer());
             Distance = distance;
             BucketSize = bucketSize;
         }
@@ -38,18 +39,28 @@ namespace Nevermind.Discovery.RoutingTable
         /// </summary>
         public int Distance { get; }
         public int BucketSize { get; }
-        public SortedSet<NodeBucketItem> Items { get; }
+
+        public IReadOnlyCollection<NodeBucketItem> Items
+        {
+            get
+            {
+                lock (_nodeBucketLock)
+                {
+                    return _items.ToArray();
+                }
+            }
+        }
 
         public NodeAddResult AddNode(Node node)
         {
             lock (_nodeBucketLock)
             {
-                if (Items.Count < BucketSize)
+                if (_items.Count < BucketSize)
                 {
                     var item = new NodeBucketItem(node);
-                    if (!Items.Contains(item))
+                    if (!_items.Contains(item))
                     {
-                        Items.Add(item);
+                        _items.Add(item);
                     }
                     return NodeAddResult.Added();
                 }
@@ -64,9 +75,9 @@ namespace Nevermind.Discovery.RoutingTable
             lock (_nodeBucketLock)
             {
                 var item = new NodeBucketItem(node);
-                if (Items.Contains(item))
+                if (_items.Contains(item))
                 {
-                    Items.Remove(item);
+                    _items.Remove(item);
                 }
             }
         }
@@ -76,21 +87,31 @@ namespace Nevermind.Discovery.RoutingTable
             lock (_nodeBucketLock)
             {
                 var item = new NodeBucketItem(nodeToRemove);
-                if (Items.Contains(item))
+                if (_items.Contains(item))
                 {
-                    Items.Remove(item);
+                    _items.Remove(item);
                 }
                 item = new NodeBucketItem(nodeToAdd);
-                if (!Items.Contains(item))
+                if (!_items.Contains(item))
                 {
-                    Items.Add(item);
+                    _items.Add(item);
                 }
+            }
+        }
+
+        public void RefreshNode(Node node)
+        {
+            lock (_nodeBucketLock)
+            {
+                var item = new NodeBucketItem(node);
+                var bucketItem = _items.FirstOrDefault(x => x.Equals(item));
+                bucketItem?.OnContactReveived();
             }
         }
 
         private NodeBucketItem GetEvictionCandidate()
         {
-            return Items.Last();
+            return _items.Last();
         }
 
         private class LastContactTimeComparer : IComparer<NodeBucketItem>

@@ -31,12 +31,13 @@ namespace Nevermind.Discovery.Lifecycle
         void ProcessNeighborsMessage(NeighborsMessage discoveryMessage);
         void ProcessFindNodeMessage(FindNodeMessage discoveryMessage);
 
-        void SendFindNode(Node searchedNode);
+        void SendFindNode(byte[] searchedNodeId);
         void SendPing();
         void SendPong(PingMessage discoveryMessage);
         void SendNeighbors(Node[] nodes);
 
         void StartEvictionProcess();
+        void LostEvictionProcess();
         event EventHandler<NodeLifecycleState> OnStateChanged;
     }
 }

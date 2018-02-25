@@ -73,6 +73,7 @@ namespace Nevermind.Discovery.Lifecycle
             {
                 //survived eviction
                 _logger.Log($"Survived eviction process, evictionCandidate: {evictionCandidate.ManagedNode}, replacementCandidate: {evictionPair.ReplacementCandidate.ManagedNode}");
+                evictionPair.ReplacementCandidate.LostEvictionProcess();
                 CloseEvictionProcess(evictionCandidate);
             }
             else if (state == NodeLifecycleState.Unreachable)

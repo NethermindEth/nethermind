@@ -140,7 +140,7 @@ namespace Nevermind.Discovery.Test
             Thread.Sleep(1000);
 
             //3th node should survive, 4th node should be active but not in the table
-            Assert.AreEqual(NodeLifecycleState.Active, candidateManager.State);
+            Assert.AreEqual(NodeLifecycleState.ActiveExcluded, candidateManager.State);
             Assert.AreEqual(NodeLifecycleState.Active, evictionCandidate.State);
             closestNodes = _nodeTable.GetClosestNodes();
             Assert.IsTrue(closestNodes.Count(x => x.Host == managers[0].ManagedNode.Host) == 1);

@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+
 namespace Nevermind.Discovery.RoutingTable
 {
     public interface INodeTable
@@ -26,10 +27,16 @@ namespace Nevermind.Discovery.RoutingTable
         void DeleteNode(Node node);
         void ReplaceNode(Node nodeToRemove, Node nodeToAdd);
         Node GetNode(byte[] nodeId);
+        void RefreshNode(Node node);
 
         /// <summary>
-        /// GetClosestNodesToMasterNode
+        /// GetClosestNodes to MasterNode
         /// </summary>
         Node[] GetClosestNodes();
+
+        /// <summary>
+        /// GetClosestNodes to provided Node
+        /// </summary>
+        Node[] GetClosestNodes(byte[] nodeId);
     }
 }

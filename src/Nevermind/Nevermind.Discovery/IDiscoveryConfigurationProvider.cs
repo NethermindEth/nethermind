@@ -88,6 +88,11 @@ namespace Nevermind.Discovery
         int DiscoveryInterval { get; }
 
         /// <summary>
+        /// Time between running refresh processes in miliseconds
+        /// </summary>
+        int RefreshInterval { get; }
+
+        /// <summary>
         /// Boot nodes connection details
         /// </summary>
         (string Host, int Port)[] BootNodes { get; }
@@ -111,5 +116,15 @@ namespace Nevermind.Discovery
         /// Ping expiry time in seconds
         /// </summary>
         int DiscoveryMsgExpiryTime { get; }
+
+        /// <summary>
+        /// Maximum count of NodeLifecycleManagers stored in memory
+        /// </summary>
+        int MaxNodeLifecycleManagersCount { get; }
+
+        /// <summary>
+        /// Count of NodeLifecycleManagers to remove in one cleanup cycle
+        /// </summary>
+        int NodeLifecycleManagersCleaupCount { get; }
     }
 }

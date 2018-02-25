@@ -17,7 +17,6 @@
  */
 
 using System;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Handlers.Logging;
@@ -25,10 +24,10 @@ using DotNetty.Transport.Bootstrapping;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
 using Nevermind.Core;
+using Nevermind.Core.Crypto;
 using Nevermind.Discovery.Lifecycle;
 using Nevermind.Discovery.RoutingTable;
 using Nevermind.Network;
-using Nevermind.Network.Rlpx.Handshake;
 using Timer = System.Timers.Timer;
 
 namespace Nevermind.Discovery
@@ -41,14 +40,17 @@ namespace Nevermind.Discovery
         private readonly INodeFactory _nodeFactory;
         private readonly INodeTable _nodeTable;
         private readonly ILogger _logger;
+        private readonly IMessageSerializationService _messageSerializationService;
+        private readonly ICryptoRandom _cryptoRandom;
+
         private Timer _discoveryTimer;
+        private Timer _refreshTimer;
         private bool _appShutdown;
         private IChannel _channel;
         private MultithreadEventLoopGroup _group;
-        private NettyDiscoveryHandler _discoveryHandler;
-        private readonly IMessageSerializationService _messageSerializationService;
+        private NettyDiscoveryHandler _discoveryHandler;      
 
-        public DiscoveryApp(IDiscoveryConfigurationProvider configurationProvider, INodesLocator nodesLocator, ILogger logger, IDiscoveryManager discoveryManager, INodeFactory nodeFactory, INodeTable nodeTable, IMessageSerializationService messageSerializationService)
+        public DiscoveryApp(IDiscoveryConfigurationProvider configurationProvider, INodesLocator nodesLocator, ILogger logger, IDiscoveryManager discoveryManager, INodeFactory nodeFactory, INodeTable nodeTable, IMessageSerializationService messageSerializationService, ICryptoRandom cryptoRandom)
         {
             _configurationProvider = configurationProvider;
             _nodesLocator = nodesLocator;
@@ -57,6 +59,7 @@ namespace Nevermind.Discovery
             _nodeFactory = nodeFactory;
             _nodeTable = nodeTable;
             _messageSerializationService = messageSerializationService;
+            _cryptoRandom = cryptoRandom;
         }
 
         public async void Start()
@@ -80,6 +83,7 @@ namespace Nevermind.Discovery
         {
             _appShutdown = true;
             StopDiscoveryTimer();
+            StopRefreshTimer();
             StopUdpChannel();
         }
 
@@ -127,6 +131,7 @@ namespace Nevermind.Discovery
         private void OnChannelActivated(object sender, EventArgs e)
         {
             InitializeDiscoveryTimer();
+            InitializeRefreshTimer();
         }
 
         private void InitializeDiscoveryTimer()
@@ -146,7 +151,28 @@ namespace Nevermind.Discovery
             }
             catch (Exception e)
             {
-                _logger.Error("Error during discovery app stop process", e);
+                _logger.Error("Error during discovery timer stop", e);
+            }
+        }
+
+        private void InitializeRefreshTimer()
+        {
+            _logger.Log("Starting refresh timer");
+            _refreshTimer = new Timer(_configurationProvider.RefreshInterval);
+            _refreshTimer.Elapsed += async (sender, e) => await RunRefresh();
+            _refreshTimer.Start();
+        }
+
+        private void StopRefreshTimer()
+        {
+            try
+            {
+                _logger.Log("Stopping refresh timer");
+                _refreshTimer?.Stop();
+            }
+            catch (Exception e)
+            {
+                _logger.Error("Error during refresh timer stop", e);
             }
         }
 
@@ -211,6 +237,13 @@ namespace Nevermind.Discovery
         {
             _logger.Log("Running discovery process.");
             await _nodesLocator.LocateNodes();
+        }
+
+        private async Task RunRefresh()
+        {
+            _logger.Log("Running refresh process.");
+            var randomId = _cryptoRandom.GenerateRandomBytes(64);
+            await _nodesLocator.LocateNodes(randomId);
         }
     }
 }
