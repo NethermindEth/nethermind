@@ -40,39 +40,48 @@ namespace Nethermind.Secp256k1
         }
 
         [SuppressUnmanagedCodeSecurity]
-        [DllImport("secp256k1.dll")]
+        //[DllImport("secp256k1.dll")]
+        [DllImport("libsecp256k1")]
         private static extern /* secp256k1_context */ IntPtr secp256k1_context_create(uint flags);
 
         [SuppressUnmanagedCodeSecurity]
-        [DllImport("secp256k1.dll")]
+        //[DllImport("secp256k1.dll")]
+        [DllImport("libsecp256k1")]
         private static extern /* void */ IntPtr secp256k1_context_destroy(IntPtr context);
 
         [SuppressUnmanagedCodeSecurity]
-        [DllImport("secp256k1.dll")]
+        //[DllImport("secp256k1.dll")]
+        [DllImport("libsecp256k1")]
         private static extern bool secp256k1_ec_seckey_verify( /* secp256k1_context */ IntPtr context, byte[] seckey);
 
         [SuppressUnmanagedCodeSecurity]
-        [DllImport("secp256k1.dll")]
+        //[DllImport("secp256k1.dll")]
+        [DllImport("libsecp256k1")]
         private static extern bool secp256k1_ec_pubkey_create( /* secp256k1_context */ IntPtr context, byte[] pubkey, byte[] seckey);
 
         [SuppressUnmanagedCodeSecurity]
-        [DllImport("secp256k1.dll")]
+        //[DllImport("secp256k1.dll")]
+        [DllImport("libsecp256k1")]
         private static extern bool secp256k1_ec_pubkey_serialize( /* secp256k1_context */ IntPtr context, byte[] serializedPublicKey, ref uint outputSize, byte[] publicKey, uint flags);
 
         [SuppressUnmanagedCodeSecurity]
-        [DllImport("secp256k1.dll")]
+        //[DllImport("secp256k1.dll")]
+        [DllImport("libsecp256k1")]
         private static extern bool secp256k1_ecdsa_sign_recoverable( /* secp256k1_context */ IntPtr context, byte[] signature, byte[] messageHash, byte[] privateKey, IntPtr nonceFunction, IntPtr nonceData);
 
-        [SuppressUnmanagedCodeSecurity]
-        [DllImport("secp256k1.dll")]
-        private static extern bool secp256k1_ecdsa_recoverable_signature_serialize_compact( /* secp256k1_context */ IntPtr context, byte[] compactSignature, out int recoveryId, byte[] signature);
+//        [SuppressUnmanagedCodeSecurity]
+        //[DllImport("secp256k1.dll")]
+        [DllImport("libsecp256k1")]
+        public static extern bool secp256k1_ecdsa_recoverable_signature_serialize_compact( /* secp256k1_context */ IntPtr context, byte[] compactSignature, out int recoveryId, byte[] signature);
 
         [SuppressUnmanagedCodeSecurity]
-        [DllImport("secp256k1.dll")]
+        //[DllImport("secp256k1.dll")]
+        [DllImport("libsecp256k1")]
         private static extern bool secp256k1_ecdsa_recoverable_signature_parse_compact( /* secp256k1_context */ IntPtr context, byte[] signature, byte[] compactSignature, int recoveryId);
 
         [SuppressUnmanagedCodeSecurity]
-        [DllImport("secp256k1.dll")]
+        //[DllImport("secp256k1.dll")]
+        [DllImport("libsecp256k1")]
         private static extern bool secp256k1_ecdsa_recover( /* secp256k1_context */ IntPtr context, byte[] publicKey, byte[] signature, byte[] message);
 
         public static bool VerifyPrivateKey(byte[] privateKey)
@@ -119,7 +128,7 @@ namespace Nethermind.Secp256k1
         }
 
         public static byte[] RecoverKeyFromCompact(byte[] messageHash, byte[] compactSignature, int recoveryId, bool compressed)
-        {
+        {            
             byte[] publicKey = new byte[64];
             byte[] serializedPublicKey = new byte[compressed ? 33 : 65];
             uint outputSize = (uint)serializedPublicKey.Length;
