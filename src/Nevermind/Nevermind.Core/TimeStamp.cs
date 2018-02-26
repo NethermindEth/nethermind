@@ -17,18 +17,28 @@
  */
 
 using System;
-using System.Numerics;
 
 namespace Nevermind.Core
 {
     public static class Timestamp
     {
-        public static BigInteger UtcNow
+        private static readonly DateTime Jan1St1970 = new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+
+        public static long UnixUtcUntilNowSecs
         {
             get
             {
-                ulong timestamp = (ulong) DateTime.UtcNow.Subtract(new DateTime(1970, 1, 1)).TotalSeconds;
-                return new BigInteger(timestamp);
+                var timestamp = (long)DateTime.UtcNow.Subtract(Jan1St1970).TotalSeconds;
+                return timestamp;
+            }
+        }
+
+        public static long UnixUtcUntilNowMilisecs
+        {
+            get
+            {
+                var timestamp = (long)DateTime.UtcNow.Subtract(Jan1St1970).TotalMilliseconds;
+                return timestamp;
             }
         }
     }

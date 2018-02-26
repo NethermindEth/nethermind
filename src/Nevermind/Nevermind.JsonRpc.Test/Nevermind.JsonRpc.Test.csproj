@@ -101,10 +101,6 @@
       <Project>{3A5B9092-C842-4EFD-ACC3-1C6CF57D09B0}</Project>
       <Name>Nevermind.Store</Name>
     </ProjectReference>
-    <ProjectReference Include="..\Nevermind.Utils\Nevermind.Utils.csproj">
-      <Project>{11961D51-AB76-48FC-A723-0EEE53051AAB}</Project>
-      <Name>Nevermind.Utils</Name>
-    </ProjectReference>
   </ItemGroup>
   <ItemGroup />
   <Import Project="$(VSToolsPath)\TeamTest\Microsoft.TestTools.targets" Condition="Exists('$(VSToolsPath)\TeamTest\Microsoft.TestTools.targets')" />

@@ -34,13 +34,13 @@ namespace Ethereum.KeyAddress.Test
 {
     public class KeyAddressTests
     {
-        private ISigner _signer;
+        private IEthereumSigner _signer;
         
         [OneTimeSetUp]
         public void SetUp()
         {
             Directory.SetCurrentDirectory(AppDomain.CurrentDomain.BaseDirectory);
-            _signer = new Signer(Olympic.Instance, ChainId.MainNet);
+            _signer = new EthereumSigner(Olympic.Instance, ChainId.MainNet);
         }
 
         private static IEnumerable<KeyAddressTest> LoadTests()

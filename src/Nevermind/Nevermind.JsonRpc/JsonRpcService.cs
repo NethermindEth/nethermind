@@ -22,10 +22,10 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using Nevermind.Core;
+using Nevermind.Core.Model;
 using Nevermind.Json;
 using Nevermind.JsonRpc.DataModel;
 using Nevermind.JsonRpc.Module;
-using Nevermind.Utils.Model;
 
 namespace Nevermind.JsonRpc
 {

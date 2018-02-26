@@ -19,7 +19,6 @@
 using System;
 using System.IO;
 using Nevermind.Core.Crypto;
-using Nevermind.Core.Encoding;
 using Nevermind.Core.Potocol;
 using NUnit.Framework;
 
@@ -28,21 +27,12 @@ namespace Nevermind.Core.Test
     [TestFixture]
     public class SignerTests
     {
+        private readonly ICryptoRandom _cryptoRandom = new CryptoRandom();
+
         [OneTimeSetUp]
         public void SetUp()
         {
             Directory.SetCurrentDirectory(AppDomain.CurrentDomain.BaseDirectory);
-        }
-
-        [Test]
-        public void Sign_and_recover()
-        {
-            Signer signer = new Signer(Olympic.Instance, ChainId.MainNet);
-            
-            Keccak message = Keccak.Compute("Test message");
-            PrivateKey privateKey = new PrivateKey();
-            Signature signature = signer.Sign(privateKey, message);
-            Assert.AreEqual(privateKey.Address, signer.Recover(signature, message));
         }
 
         [TestCase("0x9242685bf161793cc25603c231bc2f568eb630ea16aa137d2664ac80388256084f8ae3bd7535248d0bd448298cc2e2071e56992d0774dc340c368ae950852ada1c")]
@@ -52,6 +42,17 @@ namespace Nevermind.Core.Test
             Signature signature = new Signature(hexSignature);
             string hexAgain = signature.ToString();
             Assert.AreEqual(hexSignature, hexAgain);
+        }
+
+        [Test]
+        public void Sign_and_recover()
+        {
+            EthereumSigner ethereumSigner = new EthereumSigner(Olympic.Instance, ChainId.MainNet);
+
+            Keccak message = Keccak.Compute("Test message");
+            PrivateKey privateKey = new PrivateKey(_cryptoRandom.GenerateRandomBytes(32));
+            Signature signature = ethereumSigner.Sign(privateKey, message);
+            Assert.AreEqual(privateKey.Address, ethereumSigner.Recover(signature, message));
         }
     }
 }

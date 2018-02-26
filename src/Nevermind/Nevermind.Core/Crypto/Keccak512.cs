@@ -1,0 +1,148 @@
+﻿/*
+ * Copyright (c) 2018 Demerzel Solutions Limited
+ * This file is part of the Nethermind library.
+ *
+ * The Nethermind library is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * The Nethermind library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+using System;
+using System.Diagnostics;
+using System.Threading;
+using HashLib;
+using Nevermind.Core.Encoding;
+
+namespace Nevermind.Core.Crypto
+{
+    // TODO: it is a copypasta from Keccak, consider later a similar structure to Hashlib but compare the perf first
+    public struct Keccak512 : IEquatable<Keccak512>
+    {
+        private const int Size = 64;
+
+        [ThreadStatic] private static IHash _hash;
+
+        public Keccak512(Hex hex)
+        {
+            if (hex.ByteLength != Size)
+            {
+                throw new ArgumentException($"{nameof(Keccak512)} must be {Size} bytes", nameof(hex));
+            }
+
+            Bytes = hex;
+        }
+
+        public Keccak512(byte[] bytes)
+        {
+            if (bytes.Length != Size)
+            {
+                throw new ArgumentException($"{nameof(Keccak512)} must be {Size} bytes", nameof(bytes));
+            }
+
+            Bytes = bytes;
+        }
+
+        public static readonly Keccak512 OfAnEmptyString = InternalCompute(new byte[] { });
+
+        /// <returns>
+        ///     <string>0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000</string>
+        /// </returns>
+        public static Keccak512 Zero { get; } = new Keccak512(new byte[Size]);
+
+        public byte[] Bytes { get; }
+
+        public override string ToString()
+        {
+            return ToString(true);
+        }
+
+        public string ToString(bool withZeroX)
+        {
+            if (Bytes == null)
+            {
+                return "Keccak<uninitialized>";
+            }
+
+            return Hex.FromBytes(Bytes, withZeroX);
+        }
+
+        public static Keccak512 Compute(Rlp rlp)
+        {
+            return InternalCompute(rlp.Bytes);
+        }
+
+        public static Keccak512 Compute(byte[] input)
+        {
+            if (input == null || input.Length == 0)
+            {
+                return OfAnEmptyString;
+            }
+
+            return InternalCompute(input);
+        }
+
+        private static IHash Init()
+        {
+            return HashFactory.Crypto.SHA3.CreateKeccak512();
+        }
+        
+        private static Keccak512 InternalCompute(byte[] input)
+        {
+            LazyInitializer.EnsureInitialized(ref _hash, Init);
+            return new Keccak512(_hash.ComputeBytes(input).GetBytes());
+        }
+
+        public static Keccak512 Compute(string input)
+        {
+            if (string.IsNullOrWhiteSpace(input))
+            {
+                return OfAnEmptyString;
+            }
+
+            return InternalCompute(System.Text.Encoding.UTF8.GetBytes(input));
+        }
+
+        public bool Equals(Keccak512 other)
+        {
+            return Extensions.Bytes.UnsafeCompare(other.Bytes, Bytes);
+        }
+
+        public override bool Equals(object obj)
+        {
+            return obj?.GetType() == typeof(Keccak512) && Equals((Keccak512)obj);
+        }
+
+        public override int GetHashCode()
+        {
+            unchecked
+            {
+                const int p = 16777619;
+                int hash = (int)2166136261;
+
+                hash = hash ^ (Bytes[0] * p);
+                hash = hash ^ (Bytes[Size / 2] * p);
+                hash = hash ^ (Bytes[Size - 1] * p);
+                return hash;
+            }
+        }
+
+        public static bool operator ==(Keccak512 a, Keccak512 b)
+        {
+            return Extensions.Bytes.UnsafeCompare(a.Bytes, b.Bytes);
+        }
+
+        public static bool operator !=(Keccak512 a, Keccak512 b)
+        {
+            return !(a == b);
+        }
+    }
+}

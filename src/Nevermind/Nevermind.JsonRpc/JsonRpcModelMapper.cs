@@ -30,9 +30,9 @@ namespace Nevermind.JsonRpc
 {
     public class JsonRpcModelMapper : IJsonRpcModelMapper
     {
-        private readonly ISigner _signer;
+        private readonly IEthereumSigner _signer;
 
-        public JsonRpcModelMapper(ISigner signer)
+        public JsonRpcModelMapper(IEthereumSigner signer)
         {
             _signer = signer;
         }

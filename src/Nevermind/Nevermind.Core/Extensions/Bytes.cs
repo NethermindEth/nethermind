@@ -340,6 +340,18 @@ namespace Nevermind.Core.Extensions
             return result;
         }
 
+        public static long ToInt64(this byte[] bytes, Endianness endianness = Endianness.Big)
+        {
+            if (BitConverter.IsLittleEndian && endianness == Endianness.Big)
+            {
+                Array.Reverse(bytes);
+            }
+
+            bytes = PadRight(bytes, 8);
+            long result = BitConverter.ToInt64(bytes, 0);
+            return result;
+        }
+
         public static byte[] ToBytes(this BitArray bits)
         {
             if (bits.Length % 8 != 0)

@@ -47,7 +47,7 @@ namespace Nevermind.Evm.Precompiles
 
         public byte[] Run(byte[] inputData)
         {
-            Signer signer = new Signer(Olympic.Instance, ChainId.MainNet);
+            EthereumSigner ethereumSigner = new EthereumSigner(Olympic.Instance, ChainId.MainNet);
 
             inputData = inputData.PadRight(128);
 
@@ -73,7 +73,7 @@ namespace Nevermind.Evm.Precompiles
             }
 
             Signature signature = new Signature(r, s, v);
-            return ((byte[])signer.Recover(signature, hash).Hex).PadLeft(32); // TODO: change recovery code to return bytes?
+            return ((byte[])ethereumSigner.Recover(signature, hash).Hex).PadLeft(32); // TODO: change recovery code to return bytes?
         }
     }
 }

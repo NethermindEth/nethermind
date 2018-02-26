@@ -38,7 +38,7 @@ namespace Ethereum.GeneralState.Test
         private readonly IEthereumRelease _ethereumRelease = Frontier.Instance;
         private IBlockhashProvider _blockhashProvider;
         private IMultiDb _multiDb;
-        private ISigner _signer;
+        private IEthereumSigner _signer;
         private IStateProvider _stateProvider;
         private IStorageProvider _storageProvider;
         private IVirtualMachine _virtualMachine;
@@ -47,7 +47,7 @@ namespace Ethereum.GeneralState.Test
         public void Setup()
         {
             _multiDb = new MultiDb(ShouldLog.State ? new ConsoleLogger() : null);
-            _signer = new Signer(Olympic.Instance, ChainId.MainNet);
+            _signer = new EthereumSigner(Olympic.Instance, ChainId.MainNet);
             _blockhashProvider = new TestBlockhashProvider();
             _stateProvider = new StateProvider(new StateTree(_multiDb.CreateDb()), _ethereumRelease, ShouldLog.State ? new ConsoleLogger() : null);
             _storageProvider = new StorageProvider(_multiDb, _stateProvider, ShouldLog.State ? new ConsoleLogger() : null);
@@ -164,7 +164,7 @@ namespace Ethereum.GeneralState.Test
                 }
             }
 
-            ISigner signer = new Signer(_ethereumRelease, ChainId.MainNet);
+            IEthereumSigner signer = new EthereumSigner(_ethereumRelease, ChainId.MainNet);
             TransactionProcessor processor =
                 new TransactionProcessor(_ethereumRelease, _stateProvider, _storageProvider, _virtualMachine, signer, ShouldLog.Processing ? new ConsoleLogger() : null);
             Transaction transaction = new Transaction();

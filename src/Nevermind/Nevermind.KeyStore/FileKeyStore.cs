@@ -20,13 +20,13 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Text;
+using System.Security;
 using CryptSharp.Utility;
 using Nevermind.Core;
 using Nevermind.Core.Crypto;
+using Nevermind.Core.Extensions;
+using Nevermind.Core.Model;
 using Nevermind.Json;
-using Nevermind.Utils.Model;
-using Random = Nevermind.Core.Crypto.Random;
 
 namespace Nevermind.KeyStore
 {
@@ -59,20 +59,22 @@ namespace Nevermind.KeyStore
         private readonly IConfigurationProvider _configurationProvider;
         private readonly IJsonSerializer _jsonSerializer;
         private readonly ISymmetricEncrypter _symmetricEncrypter;
+        private readonly ICryptoRandom _cryptoRandom;
         private readonly ILogger _logger;
 
-        public FileKeyStore(IConfigurationProvider configurationProvider, IJsonSerializer jsonSerializer, ISymmetricEncrypter symmetricEncrypter, ILogger logger)
+        public FileKeyStore(IConfigurationProvider configurationProvider, IJsonSerializer jsonSerializer, ISymmetricEncrypter symmetricEncrypter, ICryptoRandom cryptoRandom, ILogger logger)
         {
             _configurationProvider = configurationProvider;
             _jsonSerializer = jsonSerializer;
             _symmetricEncrypter = symmetricEncrypter;
+            _cryptoRandom = cryptoRandom;
             _logger = logger;
         }
 
         public int Version => 3;
         public int CryptoVersion => 1;
 
-        public (PrivateKey, Result) GetKey(Address address, string password)
+        public (PrivateKey, Result) GetKey(Address address, SecureString password)
         {
             var serializedKey = ReadKey(address.ToString());
             if (serializedKey == null)
@@ -91,47 +93,49 @@ namespace Nevermind.KeyStore
                 return (null, validationResult);
             }
 
-            var id = new Guid(keyStoreItem.Id);
-            var mac = new Hex(Hex.ToBytes(keyStoreItem.Crypto.MAC));
-            var iv = new Hex(Hex.ToBytes(keyStoreItem.Crypto.CipherParams.IV));
-            var cipher = new Hex(Hex.ToBytes(keyStoreItem.Crypto.CipherText));
-            var salt = new Hex(Hex.ToBytes(keyStoreItem.Crypto.KDFParams.Salt));
+            Hex mac = keyStoreItem.Crypto.MAC;
+            Hex iv = keyStoreItem.Crypto.CipherParams.IV;
+            Hex cipher = keyStoreItem.Crypto.CipherText;
+            Hex salt = keyStoreItem.Crypto.KDFParams.Salt;
 
             var kdfParams = keyStoreItem.Crypto.KDFParams;
-            var passBytes = _configurationProvider.KeyStoreEncoding.GetBytes(password);
+            var passBytes = password.ToByteArray(_configurationProvider.KeyStoreEncoding);
             var derivedKey = SCrypt.ComputeDerivedKey(passBytes, salt, kdfParams.N, kdfParams.R, kdfParams.P, null, kdfParams.DkLen);
 
-            var restoredMac = Keccak.Compute(derivedKey.Skip(kdfParams.DkLen - 16).Take(16).Concat((byte[])cipher).ToArray()).Bytes;
+            var restoredMac = Keccak.Compute(derivedKey.Slice(kdfParams.DkLen - 16, 16).Concat((byte[])cipher).ToArray()).Bytes;
             if (!mac.Equals(new Hex(restoredMac)))
             {
                 return (null, Result.Fail("Incorrect MAC"));
             }
-            var decryptKey = Keccak.Compute(derivedKey.Take(16).ToArray()).Bytes.Take(16).ToArray();
-            var key = _symmetricEncrypter.Decrypt(cipher, decryptKey, iv);
+            
+            byte[] decryptKey = Keccak.Compute(derivedKey.Slice(0, 16)).Bytes.Slice(0, 16);
+            byte[] key = _symmetricEncrypter.Decrypt(cipher, decryptKey, iv);
             if (key == null)
             {
                 return (null, Result.Fail("Error during decryption"));
             }
-            return (new PrivateKey(new Hex(key), id), Result.Success());
+            
+            // TODO: maybe only allow to sign here so the key never leaves the area?
+            return (new PrivateKey(new Hex(key)), Result.Success());
         }
 
-        public (PrivateKey, Result) GenerateKey(string password)
+        public (PrivateKey, Result) GenerateKey(SecureString password)
         {
-            var privateKey = new PrivateKey();
+            var privateKey = new PrivateKey(_cryptoRandom.GenerateRandomBytes(32));
             var result = StoreKey(privateKey, password);
             return result.ResultType == ResultType.Success ? (privateKey, result) : (null, result);
         }
 
-        public Result StoreKey(PrivateKey key, string password)
+        public Result StoreKey(PrivateKey key, SecureString password)
         {
-            var salt = Random.GenerateRandomBytes(32);
-            var passBytes = _configurationProvider.KeyStoreEncoding.GetBytes(password);
+            var salt = _cryptoRandom.GenerateRandomBytes(32);
+            var passBytes = password.ToByteArray(_configurationProvider.KeyStoreEncoding);
 
             var derivedKey = SCrypt.ComputeDerivedKey(passBytes, salt, _configurationProvider.KdfparamsN, _configurationProvider.KdfparamsR, _configurationProvider.KdfparamsP, null, _configurationProvider.KdfparamsDklen);
 
             var encryptKey = Keccak.Compute(derivedKey.Take(16).ToArray()).Bytes.Take(16).ToArray();
             var encryptContent = key.Hex;
-            var iv = Random.GenerateRandomBytes(_configurationProvider.IVSize);
+            var iv = _cryptoRandom.GenerateRandomBytes(_configurationProvider.IVSize);
 
             var cipher = _symmetricEncrypter.Encrypt(encryptContent, encryptKey, iv);
             if (cipher == null)
@@ -165,23 +169,25 @@ namespace Nevermind.KeyStore
                     MAC = Hex.FromBytes(mac, true),
                     Version = CryptoVersion
                 },
-                Id = key.Id.ToString(),
+                Id = address,
                 Version = Version
             };
+            
             var serializedKey = _jsonSerializer.Serialize(keyStoreItem);
             if (serializedKey == null)
             {
                 return Result.Fail("Error during key serialization");
             }
+            
             return PersistKey(address, serializedKey);
         }
 
-        public (IEnumerable<Address>, Result) GetKeyAddresses()
+        public (IReadOnlyCollection<Address>, Result) GetKeyAddresses()
         {
             try
             {
                 var files = Directory.GetFiles(GetStoreDirectory());
-                var addresses = files.Select(x => new Address(new Hex(Path.GetFileName(x)))).ToArray();
+                var addresses = files.Select(Path.GetFileName).Where(x => Address.IsValidAddress(x, true)).Select(x => new Address(x)).ToArray();
                 return (addresses, new Result { ResultType = ResultType.Success });
             }
             catch (Exception e)
@@ -192,7 +198,7 @@ namespace Nevermind.KeyStore
             }
         }
 
-        public Result DeleteKey(Address address, string password)
+        public Result DeleteKey(Address address, SecureString password)
         {
             var key = GetKey(address, password);
             if (key.Item2.ResultType == ResultType.Failure)
@@ -226,6 +232,7 @@ namespace Nevermind.KeyStore
             {
                 Directory.CreateDirectory(directory);
             }
+            
             return directory;
         }
 

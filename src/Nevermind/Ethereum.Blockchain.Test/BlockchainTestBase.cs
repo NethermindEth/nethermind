@@ -192,7 +192,7 @@ namespace Ethereum.Blockchain.Test
             _stateProviders[test.Network].EthereumRelease = _protocolSpecificationProvider.GetSpec(test.Network, 0);
 
             IEthereumRelease spec = _protocolSpecificationProvider.GetSpec(test.Network, 1);
-            ISigner signer = new Signer(spec, ChainId.MainNet);
+            IEthereumSigner signer = new EthereumSigner(spec, ChainId.MainNet);
             IBlockProcessor blockProcessor = new BlockProcessor(
                 spec,
                 _chain,

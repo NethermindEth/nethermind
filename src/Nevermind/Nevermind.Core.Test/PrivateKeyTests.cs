@@ -28,19 +28,11 @@ namespace Nevermind.Core.Test
     public class PrivateKeyTests
     {
         private const string TestPrivateKeyHex = "0x3a1076bf45ab87712ad64ccb3b10217737f7faacbf2872e88fdd9a537d8fe266";
-
+        
         [OneTimeSetUp]
         public void SetUp()
         {
             Directory.SetCurrentDirectory(AppDomain.CurrentDomain.BaseDirectory);
-        }
-
-        [Test]
-        public void Can_generate_new_through_constructor()
-        {
-            PrivateKey privateKey = new PrivateKey();
-            PrivateKey zeroKey = new PrivateKey(new byte[32]);
-            Assert.AreNotEqual(privateKey.ToString(), zeroKey.ToString());
         }
 
         [TestCase(0)]

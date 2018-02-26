@@ -38,6 +38,7 @@ namespace Nevermind.Core.Crypto
             V = (byte)(recoveryId + 27);
         }
 
+        // TODO: here depending on whether it is Ethereum signature we may need to treat V differently
         public Signature(byte[] bytes)
         {
             if (bytes.Length != 65)

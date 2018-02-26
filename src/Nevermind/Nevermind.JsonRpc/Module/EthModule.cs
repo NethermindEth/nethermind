@@ -20,19 +20,20 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using System.Security;
 using System.Text;
 using Nevermind.Blockchain;
 using Nevermind.Blockchain.Validators;
 using Nevermind.Core;
 using Nevermind.Core.Crypto;
 using Nevermind.Core.Encoding;
+using Nevermind.Core.Model;
 using Nevermind.Core.Potocol;
 using Nevermind.Evm;
 using Nevermind.Json;
 using Nevermind.JsonRpc.DataModel;
 using Nevermind.KeyStore;
 using Nevermind.Store;
-using Nevermind.Utils.Model;
 using Block = Nevermind.JsonRpc.DataModel.Block;
 using Transaction = Nevermind.JsonRpc.DataModel.Transaction;
 using TransactionReceipt = Nevermind.JsonRpc.DataModel.TransactionReceipt;
@@ -238,7 +239,10 @@ namespace Nevermind.JsonRpc.Module
         public ResultWrapper<Data> eth_sign(Data address, Data message)
         {
             //TODO check how to deal with password
-            var privateKey = _keyStore.GetKey(new Address(address.Value), string.Empty);
+            SecureString secureString = new SecureString();
+            secureString.AppendChar('?');
+            
+            var privateKey = _keyStore.GetKey(new Address(address.Value), secureString);
             if (privateKey.Item2.ResultType == ResultType.Failure)
             {
                 return ResultWrapper<Data>.Fail("Incorrect address");
@@ -247,7 +251,7 @@ namespace Nevermind.JsonRpc.Module
             var messageText = ConfigurationProvider.MessageEncoding.GetString(message.Value);
             var signatureText = string.Format(ConfigurationProvider.SignatureTemplate, messageText.Length, messageText);
             //TODO how to select proper chainId
-            var signer = new Signer(_ethereumRelease, ChainId.DefaultGethPrivateChain);
+            var signer = new EthereumSigner(_ethereumRelease, ChainId.DefaultGethPrivateChain);
             var signature = signer.Sign(privateKey.Item1, Keccak.Compute(signatureText));
             Logger.Debug($"eth_sign request {address.ToJson()}, {message.ToJson()}, result: {signature}");
             return ResultWrapper<Data>.Success(new Data(signature.Bytes));

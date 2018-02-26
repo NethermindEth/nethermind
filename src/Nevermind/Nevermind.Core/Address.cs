@@ -35,6 +35,36 @@ namespace Nevermind.Core
         {
         }
 
+        public static bool IsValidAddress(string hexString, bool allowPrefix)
+        {
+            if (!(hexString.Length == 40 || allowPrefix && hexString.Length == 42))
+            {
+                return false;
+            }
+
+            bool hasPrefix = hexString.Length == 42;
+            if (hasPrefix)
+            {
+                if (hexString[0] != '0' || hexString[1] != 'x')
+                {
+                    return false;
+                }
+            }
+
+            for (int i = hasPrefix ? 2 : 0; i < hexString.Length; i++)
+            {
+                char c = hexString[i];
+                bool isHex = (c >= '0' && c <= '9') ||
+                             (c >= 'a' && c <= 'f') ||
+                             (c >= 'A' && c <= 'F');
+
+                if (!isHex)
+                    return false;
+            }
+
+            return true;
+        }
+
         public Address(Hex hex)
         {
             if (hex == null)
@@ -98,18 +128,18 @@ namespace Nevermind.Core
         {
             return Hex.GetHashCode();
         }
-        
-        public static bool operator==(Address a, Address b)
+
+        public static bool operator ==(Address a, Address b)
         {
-            if(ReferenceEquals(a, b))
+            if (ReferenceEquals(a, b))
             {
                 return true;
             }
-            
+
             return a?.Equals(b) ?? false;
         }
-        
-        public static bool operator!=(Address a, Address b)
+
+        public static bool operator !=(Address a, Address b)
         {
             return !(a == b);
         }

@@ -17,19 +17,20 @@
  */
 
 using System.Collections.Generic;
+using System.Security;
 using Nevermind.Core;
 using Nevermind.Core.Crypto;
-using Nevermind.Utils.Model;
+using Nevermind.Core.Model;
 
 namespace Nevermind.KeyStore
 {
     public interface IKeyStore
     {
-        (PrivateKey, Result) GetKey(Address address, string password);
-        (IEnumerable<Address>, Result) GetKeyAddresses();
-        (PrivateKey, Result) GenerateKey(string password);
-        Result StoreKey(PrivateKey key, string password);
-        Result DeleteKey(Address address, string password);
+        (PrivateKey, Result) GetKey(Address address, SecureString password);
+        (IReadOnlyCollection<Address>, Result) GetKeyAddresses();
+        (PrivateKey, Result) GenerateKey(SecureString password);
+        Result StoreKey(PrivateKey key, SecureString password);
+        Result DeleteKey(Address address, SecureString password);
         int Version { get; }
         int CryptoVersion { get; }
     }

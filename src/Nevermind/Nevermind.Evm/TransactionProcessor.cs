@@ -35,9 +35,9 @@ namespace Nevermind.Evm
         private readonly IStateProvider _stateProvider;
         private readonly IStorageProvider _storageProvider;
         private readonly IVirtualMachine _virtualMachine;
-        private readonly ISigner _signer;
+        private readonly IEthereumSigner _signer;
 
-        public TransactionProcessor(IEthereumRelease ethereumRelease, IStateProvider stateProvider, IStorageProvider storageProvider, IVirtualMachine virtualMachine, ISigner signer, ILogger logger)
+        public TransactionProcessor(IEthereumRelease ethereumRelease, IStateProvider stateProvider, IStorageProvider storageProvider, IVirtualMachine virtualMachine, IEthereumSigner signer, ILogger logger)
         {
             _virtualMachine = virtualMachine;
             _signer = signer;
