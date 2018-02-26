@@ -47,9 +47,9 @@ namespace Nevermind.Discovery
 
         public (string Host, int Port)[] BootNodes => new[]
         {
-            ("bootNodeHost1", 10000),
-            ("bootNodeHost2", 10000),
-            ("bootNodeHost3", 10000)
+            ("127.0.0.1", 10001),
+            ("127.0.0.1", 10002),
+            ("127.0.0.1", 10003)
         };
         public string KeyPass => "TestPass";
         public int UdpChannelCloseTimeout => 10000;

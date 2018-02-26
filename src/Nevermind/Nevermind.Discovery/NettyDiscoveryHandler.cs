@@ -58,12 +58,32 @@ namespace Nevermind.Discovery
             context.Flush();
         }
 
+        public async void SendMessage(DiscoveryMessage discoveryMessage)
+        {
+            byte[] message;
+
+            try
+            {
+                message = Seserialize(discoveryMessage);
+            }
+            catch (Exception e)
+            {
+                _logger.Error($"Error during serialization of the message: {discoveryMessage}", e);
+                return;
+            }
+            
+            IAddressedEnvelope<IByteBuffer> packet = new DatagramPacket(Unpooled.CopiedBuffer(message), discoveryMessage.FarAddress);
+            await _channel.WriteAndFlushAsync(packet);
+        }
+
+        public event EventHandler OnChannelActivated;
+
         protected override void ChannelRead0(IChannelHandlerContext ctx, DatagramPacket packet)
         {
             var content = packet.Content;
             var address = packet.Sender;
 
-            byte[] msg = new byte[content.MaxCapacity];
+            byte[] msg = new byte[content.ReadableBytes];
             content.ReadBytes(msg);
 
             if (msg.Length < 98)
@@ -72,7 +92,7 @@ namespace Nevermind.Discovery
                 return;
             }
             var typeRaw = msg[97];
-            if (!Enum.IsDefined(typeof(MessageType), typeRaw))
+            if (!Enum.IsDefined(typeof(MessageType), (int)typeRaw))
             {
                 _logger.Error($"Unsupported message type: {typeRaw}, sender: {address}");
                 return;
@@ -82,9 +102,8 @@ namespace Nevermind.Discovery
             DiscoveryMessage message;
 
             try
-            {              
+            {
                 message = Deserialize(type, msg);
-                //TODO check if this cast in correct
                 message.FarAddress = (IPEndPoint)address;
             }
             catch (Exception e)
@@ -100,7 +119,7 @@ namespace Nevermind.Discovery
             catch (Exception e)
             {
                 _logger.Error($"Error while processing message, type: {type}, sender: {address}, message: {message}", e);
-            } 
+            }
         }
 
         private DiscoveryMessage Deserialize(MessageType type, byte[] msg)
@@ -120,24 +139,21 @@ namespace Nevermind.Discovery
             }
         }
 
-        public async void SendMessage(DiscoveryMessage discoveryMessage)
+        private byte[] Seserialize(DiscoveryMessage message)
         {
-            byte[] message;
-
-            try
+            switch (message.MessageType)
             {
-                message = _messageSerializationService.Serialize(discoveryMessage);
+                case MessageType.Ping:
+                    return _messageSerializationService.Serialize((PingMessage)message);
+                case MessageType.Pong:
+                    return _messageSerializationService.Serialize((PongMessage)message);
+                case MessageType.FindNode:
+                    return _messageSerializationService.Serialize((FindNodeMessage)message);
+                case MessageType.Neighbors:
+                    return _messageSerializationService.Serialize((NeighborsMessage)message);
+                default:
+                    throw new Exception($"Unsupported messageType: {message.MessageType}");
             }
-            catch (Exception e)
-            {
-                _logger.Error($"Error during serialization of the message: {discoveryMessage}", e);
-                return;
-            }
-            
-            IAddressedEnvelope<IByteBuffer> packet = new DatagramPacket(Unpooled.CopiedBuffer(message), discoveryMessage.FarAddress);
-            await _channel.WriteAndFlushAsync(packet);
         }
-
-        public event EventHandler OnChannelActivated;
     }
 }

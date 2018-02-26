@@ -24,6 +24,7 @@ namespace Nevermind.Discovery
 {
     public interface IDiscoveryManager : IDiscoveryListener
     {
+        IMessageSender MessageSender { set; }
         INodeLifecycleManager GetNodeLifecycleManager(Node node);
         void SendMessage(DiscoveryMessage discoveryMessage);
         bool WasMessageReceived(string senderIdHash, MessageType messageType, int timeout);

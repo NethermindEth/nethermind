@@ -23,6 +23,7 @@
     <DefineConstants>DEBUG;TRACE</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
+    <PlatformTarget>AnyCPU</PlatformTarget>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
     <DebugType>pdbonly</DebugType>
@@ -165,6 +166,7 @@
   <ItemGroup>
     <Compile Include="DiscoveryManagerTests.cs" />
     <Compile Include="DiscoveryMessageSerializerTests.cs" />
+    <Compile Include="NettyDiscoveryHandlerTests.cs" />
     <Compile Include="NodeLifecycleManagerTests.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>

@@ -181,6 +181,8 @@ namespace Nevermind.Discovery.Lifecycle
             {
                 var msg = _discoveryMessageFactory.CreateOutgoingMessage<PingMessage>(ManagedNode);         
                 msg.Version = _discoveryConfigurationProvider.PingMessageVersion;
+                msg.SourceAddress = _nodeTable.MasterNode.Address;
+                msg.DestinationAddress = msg.FarAddress;
                 _discoveryManager.SendMessage(msg);
 
                 if (_discoveryManager.WasMessageReceived(ManagedNode.IdHashText, MessageType.Pong, _discoveryConfigurationProvider.PongTimeout))

@@ -66,9 +66,6 @@ namespace Nevermind.Discovery
         {
             try
             {
-                _logger.Log("Initializing bootNodes.");
-                InitializeBootNodes();
-
                 _logger.Log("Initializing UDP channel.");
                 await InitializeUdpChannel();
             }
@@ -122,6 +119,7 @@ namespace Nevermind.Discovery
         private void InitializeChannel(IDatagramChannel channel)
         {
             _discoveryHandler = new NettyDiscoveryHandler(_logger, _discoveryManager, channel, _messageSerializationService);
+            _discoveryManager.MessageSender = _discoveryHandler;
             _discoveryHandler.OnChannelActivated += OnChannelActivated;
             channel.Pipeline
                 .AddLast(new LoggingHandler(LogLevel.TRACE))
@@ -130,6 +128,9 @@ namespace Nevermind.Discovery
 
         private void OnChannelActivated(object sender, EventArgs e)
         {
+            _logger.Log("Initializing bootNodes.");
+            InitializeBootNodes();
+
             InitializeDiscoveryTimer();
             InitializeRefreshTimer();
         }

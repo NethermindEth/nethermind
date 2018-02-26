@@ -88,7 +88,7 @@ namespace Nevermind.Network.Rlpx
                 if (_role == EncryptionHandshakeRole.Recipient)
                 {
                     _logger.Log($"AUTH received from {context.Channel.RemoteAddress}");
-                    byte[] authData = new byte[byteBuffer.MaxCapacity];
+                    byte[] authData = new byte[byteBuffer.ReadableBytes];
                     byteBuffer.ReadBytes(authData);
                     Packet ack = _service.Ack(_handshake, new Packet(authData));
                     _remoteId = _handshake.RemotePublicKey;
@@ -100,7 +100,7 @@ namespace Nevermind.Network.Rlpx
                 else
                 {
                     _logger.Log($"Received ACK from {_remoteId} @ {context.Channel.RemoteAddress}");
-                    byte[] ackData = new byte[byteBuffer.MaxCapacity];
+                    byte[] ackData = new byte[byteBuffer.ReadableBytes];
                     byteBuffer.ReadBytes(ackData);
                     _service.Agree(_handshake, new Packet(ackData));
                 }

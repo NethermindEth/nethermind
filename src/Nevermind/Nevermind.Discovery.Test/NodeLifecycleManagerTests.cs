@@ -74,7 +74,8 @@ namespace Nevermind.Discovery.Test
 
             _udpClient = Substitute.For<IMessageSender>();
 
-            _discoveryManager = new DiscoveryManager(logger, _configurationProvider, lifecycleFactory, _nodeFactory, _udpClient, _nodeTable);
+            _discoveryManager = new DiscoveryManager(logger, _configurationProvider, lifecycleFactory, _nodeFactory, _nodeTable);
+            _discoveryManager.MessageSender = _udpClient;
         }
 
         [Test]

@@ -36,7 +36,7 @@ using PingMessage = Nevermind.Discovery.Messages.PingMessage;
 using PongMessage = Nevermind.Discovery.Messages.PongMessage;
 
 namespace Nevermind.Discovery.Test
-{   
+{
     [TestFixture]
     public class DiscoveryManagerTests
     {
@@ -70,7 +70,8 @@ namespace Nevermind.Discovery.Test
 
             _nodes = new[] { _nodeFactory.CreateNode("192.168.1.18", 1), _nodeFactory.CreateNode("192.168.1.19", 2) };
 
-            _discoveryManager = new DiscoveryManager(logger, config, lifecycleFactory, _nodeFactory, _messageSender, _nodeTable);
+            _discoveryManager = new DiscoveryManager(logger, config, lifecycleFactory, _nodeFactory, _nodeTable);
+            _discoveryManager.MessageSender = _messageSender;
         }
 
         [Test]

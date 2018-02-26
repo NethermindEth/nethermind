@@ -40,7 +40,7 @@ namespace Nevermind.Discovery
         private readonly IDiscoveryConfigurationProvider _configurationProvider;
         private readonly INodeLifecycleManagerFactory _nodeLifecycleManagerFactory;
         private readonly INodeFactory _nodeFactory;
-        private readonly IMessageSender _messageSender;
+        private IMessageSender _messageSender;
         private readonly INodeTable _nodeTable;
 
         private readonly ConcurrentDictionary<MessageTypeKey, ManualResetEvent> _waitingEvents = new ConcurrentDictionary<MessageTypeKey, ManualResetEvent>();
@@ -50,17 +50,17 @@ namespace Nevermind.Discovery
             ILogger logger,
             IDiscoveryConfigurationProvider configurationProvider,
             INodeLifecycleManagerFactory nodeLifecycleManagerFactory,
-            INodeFactory nodeFactory,
-            IMessageSender messageSender, INodeTable nodeTable)
+            INodeFactory nodeFactory, INodeTable nodeTable)
         {
             _logger = logger;
             _configurationProvider = configurationProvider;
             _nodeLifecycleManagerFactory = nodeLifecycleManagerFactory;
             _nodeFactory = nodeFactory;
-            _messageSender = messageSender;
             _nodeTable = nodeTable;
             _nodeLifecycleManagerFactory.DiscoveryManager = this;
         }
+
+        public IMessageSender MessageSender { set => _messageSender = value; }
 
         public void OnIncomingMessage(DiscoveryMessage message)
         {
