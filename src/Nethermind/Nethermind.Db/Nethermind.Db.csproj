@@ -1,0 +1,9 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>netcoreapp2.0</TargetFramework>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="RocksDbNative" Version="5.4.6.10" />
+    <PackageReference Include="RocksDbSharp" Version="5.4.6.10" />
+  </ItemGroup>
+</Project>

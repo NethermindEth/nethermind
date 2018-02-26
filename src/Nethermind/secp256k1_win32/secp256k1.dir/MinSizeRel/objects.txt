@@ -1,0 +1,1 @@
+C:/src/nevermind/src/Nethermind/secp256k1_win32/secp256k1.dir/MinSizeRel/secp256k1.obj
