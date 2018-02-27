@@ -16,6 +16,9 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Runtime.CompilerServices;
+[assembly: InternalsVisibleTo("Ethereum.Trie.Test")]
+
 namespace Nethermind.Store
 {
     internal abstract class Node

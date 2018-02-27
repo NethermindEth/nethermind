@@ -87,10 +87,12 @@ namespace Nethermind.Core
             {
                 return false;
             }
+            
             if (ReferenceEquals(this, other))
             {
                 return true;
             }
+            
             return Equals(Hex, other.Hex);
         }
 
