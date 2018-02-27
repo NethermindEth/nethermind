@@ -18,6 +18,7 @@
 
 using Nethermind.Core.Encoding;
 using NUnit.Framework;
+using System.Collections.Generic;
 
 namespace Nethermind.Core.Test
 {
@@ -28,7 +29,8 @@ namespace Nethermind.Core.Test
         public void Serialized_form_is_same_as_input_when_input_length_is_1_and_value_is_less_than_128()
         {
             Assert.AreEqual(0, Rlp.Encode(new byte[] {0})[0], "0");
-            Assert.AreEqual(127, Rlp.Encode(new byte[] {127})[0], "128");
+            Assert.AreEqual(127, Rlp.Encode(new byte[] {127})[0], "127");
+            Assert.AreEqual(128, Rlp.Encode(new byte[] {})[0], "128");
             Assert.AreEqual(1, Rlp.Encode(new byte[] {1})[0], "1");
         }
 
@@ -55,10 +57,10 @@ namespace Nethermind.Core.Test
             }
         }
 
-        [TestCase(128L, (byte) (1 + 183), (byte) 128)]
-        [TestCase(256L, (byte) (1 + 1 + 183), (byte) 1)]
-        [TestCase(256L * 256L, (byte) (1 + 2 + 183), (byte) 1)]
-        [TestCase(256L * 256L * 256L, (byte) (1 + 3 + 183), (byte) 1)]
+        [TestCase(128L, (byte)(1 + 183), (byte)128)]
+        [TestCase(256L, (byte)(1 + 1 + 183), (byte)1)]
+        [TestCase(256L * 256L, (byte)(1 + 2 + 183), (byte)1)]
+        [TestCase(256L * 256L * 256L, (byte)(1 + 3 + 183), (byte)1)]
         //[TestCase(256L * 256L * 256L * 256L, (byte)(1 + 4 + 183), (byte)1)]
         public void Serialized_form_is_input_prefixed_with_big_endian_length_and_prefixed_with_length_of_it_plus_183(
             long inputLength, byte expectedFirstByte, byte expectedSecondByte)
@@ -83,16 +85,29 @@ namespace Nethermind.Core.Test
         [Test]
         public void Serializing_sequences()
         {
-            Rlp output = Rlp.Encode(255L, new byte[] { 255 });
-            Assert.AreEqual(5, output.Length);
+            Rlp output = Rlp.Encode(255L, new byte[] {255});
+            Assert.AreEqual(new byte[] {196, 129, 255, 129, 255}, output.Bytes);
         }
 
         [Test]
         public void Serializing_empty_sequence()
         {
             Rlp output = Rlp.Encode(new object[0]);
-            Assert.AreEqual(1, output.Length);
-            Assert.AreEqual(192, output[0]);
+            Assert.AreEqual(new byte[] {192}, output.Bytes);
+        }
+
+        [Test]
+        public void Serializing_sequence_with_one_int_regression()
+        {
+            Rlp output = Rlp.Encode(new List<object> {1});
+            Assert.AreEqual(new byte[] {193, 1}, output.Bytes);
+        }
+
+        [Test]
+        public void Serializing_object_int_regression()
+        {
+            Rlp output = Rlp.Encode((object)1);
+            Assert.AreEqual(new byte[] {1}, output.Bytes);
         }
     }
 }

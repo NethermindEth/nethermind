@@ -18,21 +18,24 @@
 
 using System;
 using System.Diagnostics;
-using Nethermind.HashLib;
+using System.Threading;
 using Nethermind.Core.Encoding;
+using Nethermind.HashLib;
 
 namespace Nethermind.Core.Crypto
 {
     [DebuggerStepThrough]
     public struct Keccak : IEquatable<Keccak>
     {
-        private static readonly IHash Hash = HashFactory.Crypto.SHA3.CreateKeccak256();
+        private const int Size = 32;
+
+        [ThreadStatic] private static IHash _hash;
 
         public Keccak(Hex hex)
         {
-            if (hex.ByteLength != 32)
+            if (hex.ByteLength != Size)
             {
-                throw new ArgumentException("Keccak must be 32 bytes", nameof(hex));
+                throw new ArgumentException($"{nameof(Keccak)} must be {Size} bytes", nameof(hex));
             }
 
             Bytes = hex;
@@ -40,9 +43,9 @@ namespace Nethermind.Core.Crypto
 
         public Keccak(byte[] bytes)
         {
-            if (bytes.Length != 32)
+            if (bytes.Length != Size)
             {
-                throw new ArgumentException("Keccak must be 32 bytes", nameof(bytes));
+                throw new ArgumentException($"{nameof(Keccak)} must be {Size} bytes", nameof(bytes));
             }
 
             Bytes = bytes;
@@ -56,17 +59,17 @@ namespace Nethermind.Core.Crypto
         /// <returns>
         ///     <string>0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347</string>
         /// </returns>
-        public static readonly Keccak OfAnEmptySequenceRlp = InternalCompute(new byte[] { 192 });
+        public static readonly Keccak OfAnEmptySequenceRlp = InternalCompute(new byte[] {192});
 
         /// <summary>
         ///     0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421
         /// </summary>
-        public static Keccak EmptyTreeHash = InternalCompute(new byte[] { 128 });
+        public static Keccak EmptyTreeHash = InternalCompute(new byte[] {128});
 
         /// <returns>
         ///     <string>0x0000000000000000000000000000000000000000000000000000000000000000</string>
         /// </returns>
-        public static Keccak Zero { get; } = new Keccak(new byte[32]);
+        public static Keccak Zero { get; } = new Keccak(new byte[Size]);
 
         public byte[] Bytes { get; }
 
@@ -88,7 +91,7 @@ namespace Nethermind.Core.Crypto
         [DebuggerStepThrough]
         public static Keccak Compute(Rlp rlp)
         {
-            return new Keccak(Hash.ComputeBytes(rlp.Bytes).GetBytes());
+            return InternalCompute(rlp.Bytes);
         }
 
         [DebuggerStepThrough]
@@ -99,12 +102,18 @@ namespace Nethermind.Core.Crypto
                 return OfAnEmptyString;
             }
 
-            return new Keccak(Hash.ComputeBytes(input).GetBytes());
+            return InternalCompute(input);
         }
 
+        private static IHash Init()
+        {
+            return HashFactory.Crypto.SHA3.CreateKeccak256();
+        }
+        
         private static Keccak InternalCompute(byte[] input)
         {
-            return new Keccak(Hash.ComputeBytes(input).GetBytes());
+            LazyInitializer.EnsureInitialized(ref _hash, Init);
+            return new Keccak(_hash.ComputeBytes(input).GetBytes());
         }
 
         [DebuggerStepThrough]
@@ -136,7 +145,7 @@ namespace Nethermind.Core.Crypto
                 int hash = (int)2166136261;
 
                 hash = hash ^ Bytes[0] * p;
-                hash = hash ^ Bytes[16] * p;
+                hash = hash ^ Bytes[Size / 2] * p;
                 hash = hash ^ Bytes[31] * p;
                 return hash;
             }

@@ -17,6 +17,7 @@
  */
 
 using System;
+using System.Diagnostics;
 using System.Numerics;
 using System.Security.Cryptography;
 using Extensions.Data;
@@ -30,6 +31,18 @@ namespace Nethermind.Core.Extensions
         public static string ToHex(this byte[] bytes, bool withZeroX = true)
         {
             return Hex.FromBytes(bytes, withZeroX);
+        }
+
+        public static byte[] Xor(this byte[] bytes, byte[] otherBytes)
+        {
+            Debug.Assert(bytes.Length == otherBytes.Length, $"Expected same length when xoring but {nameof(bytes)}.Length == {bytes.Length} and {nameof(otherBytes)} == {otherBytes.Length}");
+            byte[] result = new byte[bytes.Length];
+            for (int i = 0; i < result.Length; i++)
+            {
+                result[i] = (byte)(bytes[i] ^ otherBytes[i]);
+            }
+
+            return result;
         }
 
         public static byte[] Slice(this byte[] bytes, int startIndex)
@@ -60,9 +73,9 @@ namespace Nethermind.Core.Extensions
 
             if (length == 1)
             {
-                return bytes.Length == 0 ? new byte[0] : new[] { bytes[(int)startIndex] };
+                return bytes.Length == 0 ? new byte[0] : new[] {bytes[(int)startIndex]};
             }
-            
+
             byte[] slice = new byte[length];
             if (startIndex > bytes.Length - 1)
             {

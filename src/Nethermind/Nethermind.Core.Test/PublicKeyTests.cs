@@ -26,6 +26,14 @@ namespace Nethermind.Core.Test
     public class PublicKeyTests
     {
         [Test]
+        public void Bytes_in_are_bytes_stored()
+        {
+            byte[] bytes = new byte[64];
+            PublicKey publicKey = new PublicKey(bytes);
+            Assert.AreEqual(bytes, publicKey.Bytes);
+        }
+        
+        [Test]
         public void Address_is_correct()
         {
             byte[] bytes = new byte[64];

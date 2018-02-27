@@ -17,7 +17,6 @@
  */
 
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Encoding;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test

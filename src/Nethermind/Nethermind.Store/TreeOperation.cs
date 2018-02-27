@@ -20,8 +20,6 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Store
@@ -106,7 +104,7 @@ namespace Nethermind.Store
 
         private void UpdateHashes(Node node)
         {
-            Keccak previousRootHash = _tree.RootHash;
+//            Keccak previousRootHash = _tree.RootHash;
 
             bool isRoot = _nodeStack.Count == 0;
             KeccakOrRlp nextNodeHash = _tree.StoreNode(node, isRoot);

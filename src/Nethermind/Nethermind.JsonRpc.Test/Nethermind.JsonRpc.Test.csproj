@@ -1,0 +1,19 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>netcoreapp2.0</TargetFramework>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="15.3.0-preview-20170628-02" />
+    <PackageReference Include="NSubstitute" Version="3.1.0" />
+    <PackageReference Include="NUnit" Version="3.9.0" />
+    <PackageReference Include="NUnit3TestAdapter" Version="3.9.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Nethermind.JsonRpc\Nethermind.JsonRpc.csproj">
+      <Project>{53D62515-72D1-4DEA-BC60-71BCC9C928E3}</Project>
+      <Name>Nethermind.JsonRpc</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\Nethermind.KeyStore\Nethermind.KeyStore.csproj" />
+  </ItemGroup>
+</Project>

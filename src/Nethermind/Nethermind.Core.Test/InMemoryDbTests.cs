@@ -26,12 +26,9 @@ namespace Nethermind.Core.Test
     public class InMemoryDbTests
     {
         private readonly Keccak _hash1 = Keccak.Compute("1");
-        private Keccak _hash2 = Keccak.Compute("1");
-        private Keccak _hash3 = Keccak.Compute("1");
 
         private byte[] _bytes1 = new byte[] {1};
         private byte[] _bytes2 = new byte[] {2};
-        private byte[] _bytes3 = new byte[] {3};
 
         [Test]
         public void Set_get()

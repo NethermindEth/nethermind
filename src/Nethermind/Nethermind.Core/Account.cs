@@ -18,7 +18,6 @@
 
 using System.Numerics;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Encoding;
 
 namespace Nethermind.Core
 {

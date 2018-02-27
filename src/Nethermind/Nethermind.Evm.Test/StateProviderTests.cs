@@ -32,7 +32,6 @@ namespace Nethermind.Evm.Test
         private static readonly Keccak Hash2 = Keccak.Compute("2");
 
         private readonly Address _address1 = new Address(Hash1);
-        private readonly Address _address2 = new Address(Hash2);
 
         [Test]
         public void Eip_158_zero_value_transfer_deletes()

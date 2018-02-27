@@ -35,9 +35,9 @@ namespace Nethermind.Evm
         private readonly IStateProvider _stateProvider;
         private readonly IStorageProvider _storageProvider;
         private readonly IVirtualMachine _virtualMachine;
-        private readonly ISigner _signer;
+        private readonly IEthereumSigner _signer;
 
-        public TransactionProcessor(IEthereumRelease ethereumRelease, IStateProvider stateProvider, IStorageProvider storageProvider, IVirtualMachine virtualMachine, ISigner signer, ILogger logger)
+        public TransactionProcessor(IEthereumRelease ethereumRelease, IStateProvider stateProvider, IStorageProvider storageProvider, IVirtualMachine virtualMachine, IEthereumSigner signer, ILogger logger)
         {
             _virtualMachine = virtualMachine;
             _signer = signer;
@@ -70,7 +70,7 @@ namespace Nethermind.Evm
             byte[] machineCode = transaction.Init;
             byte[] data = transaction.Data ?? new byte[0];
 
-            Address sender = _signer.Recover(transaction);
+            Address sender = _signer.RecoverAddress(transaction);
             _logger?.Log("IS_CONTRACT_CREATION: " + transaction.IsContractCreation);
             _logger?.Log("IS_MESSAGE_CALL: " + transaction.IsMessageCall);
             _logger?.Log("IS_TRANSFER: " + transaction.IsTransfer);

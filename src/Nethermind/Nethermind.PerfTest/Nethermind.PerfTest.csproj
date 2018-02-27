@@ -1,0 +1,12 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>netcoreapp2.0</TargetFramework>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Nethermind.Evm\Nethermind.Evm.csproj">
+      <Project>{E992EFB5-85F0-49B1-9C0B-6D3846A813A5}</Project>
+      <Name>Nethermind.Evm</Name>
+    </ProjectReference>
+  </ItemGroup>
+</Project>

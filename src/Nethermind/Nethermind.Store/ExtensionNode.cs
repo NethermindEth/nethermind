@@ -17,7 +17,6 @@
  */
 
 using System.Diagnostics;
-using Nethermind.Core.Encoding;
 
 namespace Nethermind.Store
 {

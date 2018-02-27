@@ -17,9 +17,7 @@
  */
 
 using System.Collections;
-using System.Linq;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
 using NUnit.Framework;
 

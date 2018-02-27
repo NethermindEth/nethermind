@@ -725,7 +725,7 @@ namespace Nethermind.Evm
                                 expSize++;
                             }
 
-                            UpdateGas((_ethereumRelease.IsEip160Enabled ? GasCostOf.ExpByteEip160 : GasCostOf.ExpByte) * (long)(1 + expSize), ref gasAvailable);
+                            UpdateGas((_ethereumRelease.IsEip160Enabled ? GasCostOf.ExpByteEip160 : GasCostOf.ExpByte) * (1L + expSize), ref gasAvailable);
                         }
 
                         if (baseInt == BigInteger.Zero)
@@ -1305,10 +1305,10 @@ namespace Nethermind.Evm
 
                         BigInteger memoryPos = PopUInt();
                         BigInteger length = PopUInt();
-                        int topicsCount = instruction - Instruction.LOG0;
+                        long topicsCount = instruction - Instruction.LOG0;
                         UpdateMemoryCost(memoryPos, length);
                         UpdateGas(
-                            GasCostOf.Log + (long)topicsCount * GasCostOf.LogTopic +
+                            GasCostOf.Log + topicsCount * GasCostOf.LogTopic +
                             (long)length * GasCostOf.LogData, ref gasAvailable);
 
                         byte[] data = evmState.Memory.Load(memoryPos, length);

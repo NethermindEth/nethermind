@@ -18,7 +18,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Numerics;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -30,7 +29,7 @@ namespace Nethermind.Core.Encoding
     /// </summary>
     //[DebuggerStepThrough]
     public class Rlp : IEquatable<Rlp>
-    {
+    {   
         public static readonly Rlp OfEmptyByteArray = new Rlp(128);
 
         public static readonly Rlp OfEmptySequence = new Rlp(192);
@@ -68,17 +67,19 @@ namespace Nethermind.Core.Encoding
 
             return Extensions.Bytes.UnsafeCompare(Bytes, other.Bytes);
         }
-
-        public static object Decode(Rlp rlp)
+        
+        public static object Decode(Rlp rlp, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            return Decode(new DecoderContext(rlp.Bytes));
+            return Decode(new DecoderContext(rlp.Bytes), rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraData));
         }
 
-        private static object Decode(DecoderContext context, bool check = true)
+        // TODO: optimize so the list is not created for every single call to Rlp.Decode()
+        // TODO: intorduce typed Encode / Decode
+        private static object Decode(DecoderContext context, bool allowExtraData)
         {
             object CheckAndReturn(List<object> resultToCollapse, DecoderContext contextToCheck)
             {
-                if (check && contextToCheck.CurrentIndex != contextToCheck.MaxIndex)
+                if (!allowExtraData && contextToCheck.CurrentIndex != contextToCheck.MaxIndex)
                 {
                     throw new RlpException("Invalid RLP length");
                 }
@@ -171,7 +172,7 @@ namespace Nethermind.Core.Encoding
             List<object> nestedList = new List<object>();
             while (context.CurrentIndex < startIndex + concatenationLength)
             {
-                nestedList.Add(Decode(context, false));
+                nestedList.Add(Decode(context, true));
             }
 
             result.Add(nestedList.ToArray());
@@ -343,9 +344,13 @@ namespace Nethermind.Core.Encoding
                         return Encode(new[] {singleByte});
                     }
                 case short _:
+                    return EncodeNumber((short)item);
                 case int _:
+                    return EncodeNumber((int)item);
                 case ushort _:
+                    return EncodeNumber((ushort)item);
                 case uint _:
+                    return EncodeNumber((uint)item);
                 case long _:
                     return EncodeNumber((long)item);
                 case null:
@@ -417,6 +422,7 @@ namespace Nethermind.Core.Encoding
             bytes[0] = (byte)(value >> 56);
             bytes[1] = (byte)(value >> 48);
             bytes[2] = (byte)(value >> 40);
+            bytes[3] = (byte)(value >> 32);
             bytes[3] = (byte)(value >> 32);
             bytes[4] = (byte)(value >> 24);
             bytes[5] = (byte)(value >> 16);
