@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Diagnostics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -13,7 +14,8 @@ namespace Nethermind.Evm
 
         public void AddTransaction(Transaction transaction)
         {
-            _transactions[transaction.Hash] = transaction;
+            Debug.Assert(transaction.Hash.HasValue, "expecting only signed transactions here");
+            _transactions[transaction.Hash.Value] = transaction;
         }
 
         public void AddTransactionReceipt(Keccak transactionHash, TransactionReceipt transactionReceipt, Keccak blockHash)

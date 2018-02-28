@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Numerics;
 using Nethermind.Blockchain.Difficulty;
@@ -85,7 +86,8 @@ namespace Nethermind.Blockchain
                 _logger?.Log($"PROCESSING TRANSACTION {i}");
                 _transactionStore.AddTransaction(transaction);
                 TransactionReceipt receipt = _transactionProcessor.Execute(transaction, block.Header);
-                _transactionStore.AddTransactionReceipt(transaction.Hash, receipt, block.Hash);
+                Debug.Assert(transaction.Hash.HasValue, "expecting only signed transactions here");
+                _transactionStore.AddTransactionReceipt(transaction.Hash.Value, receipt, block.Hash);
                 receipts.Add(receipt);
             }
 

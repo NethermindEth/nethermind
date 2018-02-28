@@ -172,8 +172,15 @@ namespace Ethereum.GeneralState.Test
             transaction.Value = test.IncomingTransaction.Value;
             transaction.GasLimit = test.IncomingTransaction.GasLimit;
             transaction.GasPrice = test.IncomingTransaction.GasPrice;
-            transaction.Data = test.IncomingTransaction.Data;
-            transaction.Init = null; // code here / create
+            if (transaction.To == null)
+            {
+                transaction.Init = test.IncomingTransaction.Data;
+            }
+            else
+            {
+                transaction.Data = test.IncomingTransaction.Data;    
+            }
+            
             transaction.Nonce = test.IncomingTransaction.Nonce;
 
             _signer.Sign(test.IncomingTransaction.SecretKey, transaction);

@@ -38,11 +38,11 @@ namespace Nethermind.Core
         public bool IsMessageCall => Data != null;
         public bool IsTransfer => !IsContractCreation && !IsMessageCall;
         public bool IsValid { get; set; }
-        public Keccak Hash { get; set; }
+        public Keccak? Hash { get; set; }
 
-        public void RecomputeHash()
+        public static Keccak CalculateHash(Transaction transaction)
         {
-            Hash = Keccak.Compute(Rlp.Encode(this));
+            return Keccak.Compute(Rlp.Encode(transaction));
         }
     }
 }

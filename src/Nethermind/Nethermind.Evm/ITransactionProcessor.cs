@@ -19,8 +19,6 @@
  */
 
 using Nethermind.Core;
-using System.Linq;
-using System.Numerics;
 
 namespace Nethermind.Evm
 {

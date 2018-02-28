@@ -18,10 +18,6 @@
 
 using System;
 using System.Diagnostics;
-using System.Globalization;
-using System.Numerics;
-using Nethermind.Core.Encoding;
-using Nethermind.Core.Potocol;
 using Nethermind.Secp256k1;
 
 namespace Nethermind.Core.Crypto
@@ -32,43 +28,6 @@ namespace Nethermind.Core.Crypto
     /// </summary>
     public class Signer : ISigner
     {
-        private readonly IEthereumRelease _ethereumRelease;
-
-        private readonly int _chainIdValue;
-
-        public Signer(IEthereumRelease ethereumRelease, int chainIdValue)
-        {
-            _ethereumRelease = ethereumRelease;
-            _chainIdValue = chainIdValue;
-        }
-
-        public Signer(IEthereumRelease ethereumRelease, ChainId chainId)
-            : this(ethereumRelease, (int)chainId)
-        {
-        }
-
-        public void Sign(PrivateKey privateKey, Transaction transaction)
-        {
-            Keccak hash = Keccak.Compute(Rlp.Encode(transaction, true, _ethereumRelease.IsEip155Enabled, _chainIdValue));
-            transaction.Signature = Sign(privateKey, hash);
-        }
-
-        public bool Verify(Address sender, Transaction transaction)
-        {
-            Keccak hash = Keccak.Compute(Rlp.Encode(transaction, true, _ethereumRelease.IsEip155Enabled, _chainIdValue));
-            Address recovered = Recover(transaction.Signature, hash);
-            return recovered.Equals(sender);
-        }
-
-        public Address Recover(Transaction transaction)
-        {
-            Keccak hash = Keccak.Compute(Rlp.Encode(transaction, true));
-            return Recover(transaction.Signature, hash);
-        }
-
-        public static readonly BigInteger MaxLowS = BigInteger.Parse("7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF5D576E7357A4501DDFE92F46681B20A0", NumberStyles.HexNumber);
-        public static readonly BigInteger LowSTransform = BigInteger.Parse("00FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141", NumberStyles.HexNumber);
-
         public Signature Sign(PrivateKey privateKey, Keccak message)
         {
             if (!Proxy.VerifyPrivateKey(privateKey.Hex))
@@ -76,11 +35,10 @@ namespace Nethermind.Core.Crypto
                 throw new ArgumentException("Invalid private key", nameof(privateKey));
             }
 
-            int recoveryId;
-            byte[] signatureBytes = Proxy.SignCompact(message.Bytes, privateKey.Hex, out recoveryId);
+            byte[] signatureBytes = Proxy.SignCompact(message.Bytes, privateKey.Hex, out int recoveryId);
 
             //// https://bitcoin.stackexchange.com/questions/59820/sign-a-tx-with-low-s-value-using-openssl
-            
+
             //byte[] sBytes = signatureBytes.Slice(32, 32);
             //BigInteger s = sBytes.ToUnsignedBigInteger();
             //if (s > MaxLowS)
@@ -94,18 +52,19 @@ namespace Nethermind.Core.Crypto
             //}
 
             Signature signature = new Signature(signatureBytes, recoveryId);
+
 #if DEBUG
-            Address address = Recover(signature, message);
-            Debug.Assert(address.Equals(privateKey.Address));
+            PublicKey address = RecoverPublicKey(signature, message);
+            Debug.Assert(address.Equals(privateKey.PublicKey));
 #endif
 
             return signature;
         }
 
-        public Address Recover(Signature signature, Keccak message)
+        public PublicKey RecoverPublicKey(Signature signature, Keccak message)
         {
             byte[] publicKey = Proxy.RecoverKeyFromCompact(message.Bytes, signature.Bytes, signature.RecoveryId, false);
-            return new PublicKey(publicKey).Address;
+            return new PublicKey(publicKey);
         }
     }
 }

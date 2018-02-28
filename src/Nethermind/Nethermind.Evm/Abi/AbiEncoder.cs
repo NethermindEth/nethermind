@@ -20,7 +20,6 @@ using System;
 using System.Collections.Generic;
 using System.Numerics;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Evm.Abi

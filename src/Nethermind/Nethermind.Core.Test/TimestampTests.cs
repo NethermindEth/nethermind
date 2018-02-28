@@ -26,7 +26,7 @@ namespace Nethermind.Core.Test
         [Test]
         public void Test()
         {
-            BigInteger stamp = Timestamp.UtcNow;
+            BigInteger stamp = Timestamp.UnixUtcUntilNowSecs;
             Assert.Greater(0, BigInteger.Compare(1507626119, stamp));
         }
     }

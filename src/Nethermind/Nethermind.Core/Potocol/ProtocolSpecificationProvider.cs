@@ -84,6 +84,8 @@ namespace Nethermind.Core.Potocol
                     return TangerineWhistle.Instance;
                 case EthereumNetwork.Byzantium:
                     return Byzantium.Instance;
+                case EthereumNetwork.Olympic:
+                    return Olympic.Instance;
                 default:
                     throw new NotImplementedException();
             }

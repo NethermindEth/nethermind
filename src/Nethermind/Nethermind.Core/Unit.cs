@@ -20,7 +20,7 @@ using System.Numerics;
 
 namespace Nethermind.Core
 {
-    public class Unit
+    public static class Unit
     {
         public static BigInteger Wei = 1;
         public static BigInteger Szabo = 1000000000000;

@@ -18,7 +18,6 @@
 
 using System.IO;
 using System.Numerics;
-using Nethermind.Core;
 
 namespace Nethermind.Evm
 {

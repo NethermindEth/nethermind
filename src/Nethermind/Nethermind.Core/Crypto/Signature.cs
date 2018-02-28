@@ -38,6 +38,7 @@ namespace Nethermind.Core.Crypto
             V = (byte)(recoveryId + 27);
         }
 
+        // TODO: here depending on whether it is Ethereum signature we may need to treat V differently
         public Signature(byte[] bytes)
         {
             if (bytes.Length != 65)
@@ -125,7 +126,7 @@ namespace Nethermind.Core.Crypto
         {
             if (ReferenceEquals(null, obj)) return false;
             if (ReferenceEquals(this, obj)) return true;
-            if (obj.GetType() != this.GetType()) return false;
+            if (obj.GetType() != GetType()) return false;
             return Equals((Signature)obj);
         }
 
