@@ -10,6 +10,6 @@
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="BigRationalLibrary" Version="1.0.0" />
+    <PackageReference Include="MathNet.Numerics.FSharp" Version="4.4.0" />
   </ItemGroup>
 </Project>

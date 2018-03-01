@@ -18,7 +18,7 @@
 
 using System;
 using System.Numerics;
-using Numerics;
+using MathNet.Numerics;
 
 namespace Nethermind.Evm.Abi
 {
@@ -78,7 +78,7 @@ namespace Nethermind.Evm.Abi
         public override (object, int) Decode(byte[] data, int position)
         {
             (BigInteger nominator, int newPosition) = Int.DecodeInt(data, position);
-            BigRational rational = new BigRational(nominator, BigInteger.Pow(10, Precision));
+            BigRational rational = BigRational.FromBigInt(nominator) * BigRational.Reciprocal(BigRational.Pow(BigRational.FromInt(10), Precision));
             return (rational, newPosition);
         }
 

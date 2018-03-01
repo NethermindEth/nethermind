@@ -18,11 +18,11 @@
 
 using System.Numerics;
 using System.Text;
+using MathNet.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.Abi;
-using Numerics;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
@@ -146,7 +146,7 @@ namespace Nethermind.Evm.Test
         public void Test_fixed()
         {
             AbiFixed type = AbiType.Fixed;
-            BigRational data = new BigRational(123456789, BigInteger.Pow(10, type.Precision));
+            BigRational data = BigRational.FromBigInt(123456789) * BigRational.Reciprocal(BigRational.Pow(BigRational.FromInt(10), type.Precision));
             AbiSignature signature = new AbiSignature("abc", type);
             byte[] encoded = _abiEncoder.Encode(signature, data);
             object[] arguments = _abiEncoder.Decode(signature, encoded);
@@ -220,7 +220,8 @@ namespace Nethermind.Evm.Test
         public void Test_ufixed()
         {
             AbiUFixed type = AbiType.UFixed;
-            BigRational data = new BigRational(-123456789, BigInteger.Pow(10, type.Precision));
+            
+            BigRational data = BigRational.FromBigInt(-123456789) * BigRational.Reciprocal(BigRational.Pow(BigRational.FromInt(10), type.Precision));
             AbiSignature signature = new AbiSignature("abc", type);
             byte[] encoded = _abiEncoder.Encode(signature, data);
             object[] arguments = _abiEncoder.Decode(signature, encoded);
