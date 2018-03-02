@@ -22,6 +22,7 @@ using System.Diagnostics;
 using System.Linq;
 using Ethereum.Test.Base;
 using Nethermind.Core;
+using Nethermind.Core.Encoding;
 using NUnit.Framework;
 
 namespace Ethereum.Rlp.Test
@@ -97,7 +98,7 @@ namespace Ethereum.Rlp.Test
         public void TestInvalid(RlpTest test)
         {
             Nethermind.Core.Encoding.Rlp invalidBytes = new Nethermind.Core.Encoding.Rlp(Hex.ToBytes(test.Output));
-            Assert.Throws<InvalidOperationException>(
+            Assert.Throws<RlpException>(
                 () => Nethermind.Core.Encoding.Rlp.Decode(invalidBytes));
         }
 
@@ -118,20 +119,22 @@ namespace Ethereum.Rlp.Test
         [Test]
         public void TestCast()
         {
-            byte[] expected = new byte[] { 1 };
+            byte[] expected = new byte[] {1};
             Assert.AreEqual(expected, Nethermind.Core.Encoding.Rlp.Encode((byte)1).Bytes, "byte");
             Assert.AreEqual(expected, Nethermind.Core.Encoding.Rlp.Encode((short)1).Bytes, "short");
             Assert.AreEqual(expected, Nethermind.Core.Encoding.Rlp.Encode((ushort)1).Bytes, "ushort");
             Assert.AreEqual(expected, Nethermind.Core.Encoding.Rlp.Encode(1).Bytes, "int");
             Assert.AreEqual(expected, Nethermind.Core.Encoding.Rlp.Encode(1U).Bytes, "uint bytes");
             Assert.AreEqual(expected, Nethermind.Core.Encoding.Rlp.Encode(1L).Bytes, "long bytes");
-            Assert.AreEqual(expected, Nethermind.Core.Encoding.Rlp.Encode(1UL).Bytes, "ulong bytes");
+
+            byte[] expectedUlong = new byte[] {136, 0, 0, 0, 0, 0, 0, 0, 1};
+            Assert.AreEqual(expectedUlong, Nethermind.Core.Encoding.Rlp.Encode(1UL).Bytes, "ulong bytes");
         }
 
         [Test]
         public void TestNonce()
         {
-            byte[] expected = { 136, 0, 0, 0, 0, 0, 0, 0, 42 };
+            byte[] expected = {136, 0, 0, 0, 0, 0, 0, 0, 42};
             Assert.AreEqual(expected, Nethermind.Core.Encoding.Rlp.Encode(42UL).Bytes);
         }
     }
