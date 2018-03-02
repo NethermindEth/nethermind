@@ -28,6 +28,7 @@ namespace Nethermind.Core.Potocol
             switch (network)
             {
                 case EthereumNetwork.Main:
+                    // 200000 Ice Age - ignoring this change for now as while it was introduced at block 200000 it never took effect until after Frontier
                     if (blockNumber < 1150000)
                     {
                         return Frontier.Instance;
@@ -36,11 +37,12 @@ namespace Nethermind.Core.Potocol
                     {
                         return Homestead.Instance;
                     }
+                    // DAO 1920000 - needs review and implementation
                     else if (blockNumber < 2675000)
                     {
                         return TangerineWhistle.Instance;
                     }
-                    else if (blockNumber < 4750000)
+                    else if (blockNumber < 4370000)
                     {
                         return SpuriousDragon.Instance;
                     }
@@ -49,7 +51,7 @@ namespace Nethermind.Core.Potocol
                         return Byzantium.Instance;
                     }
                 case EthereumNetwork.Ropsten:
-                    if (blockNumber < 1150000)
+                    if (blockNumber < 1700000)
                     {
                         return SpuriousDragon.Instance;
                     }
@@ -62,14 +64,15 @@ namespace Nethermind.Core.Potocol
                     {
                         return Frontier.Instance;
                     }
-                    else if (blockNumber < 0) // ???
+                    else if (blockNumber < 1885000)
                     {
                         return Homestead.Instance;
                     }
-                    else if (blockNumber < 1885000) // ???
-                    {
-                        return TangerineWhistle.Instance;
-                    }
+                    // cannot find info on TangerineWhistle fork on Morden
+//                    else if (blockNumber < 1885000)
+//                    {
+//                        return TangerineWhistle.Instance;
+//                    }
                     else
                     {
                         return SpuriousDragon.Instance;
