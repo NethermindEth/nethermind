@@ -33,6 +33,17 @@ namespace Nethermind.Core.Extensions
             return @this * Unit.Wei;
         }
 
+        public static byte[] ToByteArray(this int value, Bytes.Endianness endianness)
+        {
+            byte[] bytes = BitConverter.GetBytes(value);
+            if(BitConverter.IsLittleEndian && endianness != Bytes.Endianness.Little || !BitConverter.IsLittleEndian && endianness == Bytes.Endianness.Little)
+            {
+                Array.Reverse(bytes);
+            }
+
+            return bytes;
+        }
+        
         public static byte[] ToBigEndianByteArray(this int value)
         {
             byte[] bytes = BitConverter.GetBytes(value);

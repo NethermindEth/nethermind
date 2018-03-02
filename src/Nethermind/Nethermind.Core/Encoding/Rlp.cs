@@ -29,7 +29,7 @@ namespace Nethermind.Core.Encoding
     /// </summary>
     //[DebuggerStepThrough]
     public class Rlp : IEquatable<Rlp>
-    {   
+    {
         public static readonly Rlp OfEmptyByteArray = new Rlp(128);
 
         public static readonly Rlp OfEmptySequence = new Rlp(192);
@@ -67,7 +67,7 @@ namespace Nethermind.Core.Encoding
 
             return Extensions.Bytes.UnsafeCompare(Bytes, other.Bytes);
         }
-        
+
         public static object Decode(Rlp rlp, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             return Decode(new DecoderContext(rlp.Bytes), rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraData));
@@ -447,25 +447,30 @@ namespace Nethermind.Core.Encoding
             return result;
         }
 
-        public static Rlp Encode(BlockHeader header)
+        public static Rlp Encode(BlockHeader blockHeader, bool withMixHashAndNonce)
         {
-            return Encode(
-                Encode(header.ParentHash),
-                Encode(header.OmmersHash),
-                Encode(header.Beneficiary),
-                Encode(header.StateRoot),
-                Encode(header.TransactionsRoot),
-                Encode(header.ReceiptsRoot),
-                Encode(header.Bloom),
-                Encode(header.Difficulty),
-                Encode(header.Number),
-                Encode(header.GasLimit),
-                Encode(header.GasUsed),
-                Encode(header.Timestamp),
-                Encode(header.ExtraData),
-                Encode(header.MixHash),
-                Encode(header.Nonce)
-            );
+            int numberOfElements = withMixHashAndNonce ? 12 : 14;
+            Rlp[] elements = new Rlp[numberOfElements];
+            elements[0] = Encode(blockHeader.ParentHash);
+            elements[1] = Encode(blockHeader.OmmersHash);
+            elements[2] = Encode(blockHeader.Beneficiary);
+            elements[3] = Encode(blockHeader.StateRoot);
+            elements[4] = Encode(blockHeader.TransactionsRoot);
+            elements[5] = Encode(blockHeader.ReceiptsRoot);
+            elements[6] = Encode(blockHeader.Bloom);
+            elements[7] = Encode(blockHeader.Difficulty);
+            elements[8] = Encode(blockHeader.Number);
+            elements[9] = Encode(blockHeader.GasLimit);
+            elements[10] = Encode(blockHeader.GasUsed);
+            elements[11] = Encode(blockHeader.Timestamp);
+            elements[12] = Encode(blockHeader.ExtraData);
+            if (withMixHashAndNonce)
+            {
+                elements[13] = Encode(blockHeader.MixHash);
+                elements[14] = Encode(blockHeader.Nonce);
+            }
+
+            return Encode(elements);
         }
 
         public static Rlp Encode(Block block)

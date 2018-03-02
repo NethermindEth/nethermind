@@ -34,7 +34,7 @@ namespace Nethermind.Core.Crypto
         }
 
         public int NextInt(int max)
-        {
+        {   
             return _random.Next(max);
         }
     }

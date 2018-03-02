@@ -75,6 +75,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ethereum.Blockchain.Block.T
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ethereum.PoW.Test", "Ethereum.PoW.Test\Ethereum.PoW.Test.csproj", "{C7E3A120-D595-4A7F-B551-FCC04EF1A697}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Mining", "Nethermind.Mining\Nethermind.Mining.csproj", "{81CC021C-021C-427C-9CE1-2E521E7F2985}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Mining.Test", "Nethermind.Mining.Test\Nethermind.Mining.Test.csproj", "{658F7F8A-0314-4005-93E8-03B4EB367597}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -225,6 +229,14 @@ Global
 		{C7E3A120-D595-4A7F-B551-FCC04EF1A697}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{C7E3A120-D595-4A7F-B551-FCC04EF1A697}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{C7E3A120-D595-4A7F-B551-FCC04EF1A697}.Release|Any CPU.Build.0 = Release|Any CPU
+		{81CC021C-021C-427C-9CE1-2E521E7F2985}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{81CC021C-021C-427C-9CE1-2E521E7F2985}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{81CC021C-021C-427C-9CE1-2E521E7F2985}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{81CC021C-021C-427C-9CE1-2E521E7F2985}.Release|Any CPU.Build.0 = Release|Any CPU
+		{658F7F8A-0314-4005-93E8-03B4EB367597}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{658F7F8A-0314-4005-93E8-03B4EB367597}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{658F7F8A-0314-4005-93E8-03B4EB367597}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{658F7F8A-0314-4005-93E8-03B4EB367597}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

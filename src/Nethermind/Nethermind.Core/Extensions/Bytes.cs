@@ -276,7 +276,7 @@ namespace Nethermind.Core.Extensions
 
         public static BigInteger ToUnsignedBigInteger(this byte[] bytes, Endianness endianness = Endianness.Big)
         {
-            if (BitConverter.IsLittleEndian && endianness == Endianness.Big)
+            if (BitConverter.IsLittleEndian && endianness == Endianness.Big || !BitConverter.IsLittleEndian && endianness == Endianness.Little)
             {
                 byte[] unsignedResult = new byte[bytes.Length + 1];
                 for (int i = 0; i < bytes.Length; i++)
@@ -298,7 +298,7 @@ namespace Nethermind.Core.Extensions
         /// <returns></returns>
         public static int ToInt32(this byte[] bytes, Endianness endianness = Endianness.Big)
         {
-            if (BitConverter.IsLittleEndian && endianness == Endianness.Big)
+            if (BitConverter.IsLittleEndian && endianness == Endianness.Big || !BitConverter.IsLittleEndian && endianness == Endianness.Little)
             {
                 byte[] reverted = new byte[bytes.Length];
                 for (int i = 0; i < bytes.Length; i++)
@@ -311,10 +311,32 @@ namespace Nethermind.Core.Extensions
 
             return BitConverter.ToInt32(bytes.PadLeft(4), 0);
         }
+        
+        /// <summary>
+        /// Not tested, possibly broken
+        /// </summary>
+        /// <param name="bytes"></param>
+        /// <param name="endianness"></param>
+        /// <returns></returns>
+        public static uint ToUInt32(this byte[] bytes, Endianness endianness = Endianness.Big)
+        {
+            if (BitConverter.IsLittleEndian && endianness == Endianness.Big || !BitConverter.IsLittleEndian && endianness == Endianness.Little)
+            {
+                byte[] reverted = new byte[bytes.Length];
+                for (int i = 0; i < bytes.Length; i++)
+                {
+                    reverted[bytes.Length - i - 1] = bytes[i];
+                }
+
+                return BitConverter.ToUInt32(reverted.PadRight(4), 0);
+            }
+
+            return BitConverter.ToUInt32(bytes.PadLeft(4), 0);
+        }
 
         public static BigInteger ToSignedBigInteger(this byte[] bytes, Endianness endianness = Endianness.Big)
         {
-            if (BitConverter.IsLittleEndian && endianness == Endianness.Big)
+            if (BitConverter.IsLittleEndian && endianness == Endianness.Big || !BitConverter.IsLittleEndian && endianness == Endianness.Little)
             {
                 byte[] signedResult = new byte[bytes.Length];
                 for (int i = 0; i < bytes.Length; i++)
@@ -330,7 +352,7 @@ namespace Nethermind.Core.Extensions
 
         public static ulong ToUInt64(this byte[] bytes, Endianness endianness = Endianness.Big)
         {
-            if (BitConverter.IsLittleEndian && endianness == Endianness.Big)
+            if (BitConverter.IsLittleEndian && endianness == Endianness.Big || !BitConverter.IsLittleEndian && endianness == Endianness.Little)
             {
                 Array.Reverse(bytes);
             }
@@ -342,7 +364,7 @@ namespace Nethermind.Core.Extensions
 
         public static long ToInt64(this byte[] bytes, Endianness endianness = Endianness.Big)
         {
-            if (BitConverter.IsLittleEndian && endianness == Endianness.Big)
+            if (BitConverter.IsLittleEndian && endianness == Endianness.Big || !BitConverter.IsLittleEndian && endianness == Endianness.Little)
             {
                 Array.Reverse(bytes);
             }
