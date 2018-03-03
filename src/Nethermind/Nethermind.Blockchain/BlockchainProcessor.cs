@@ -90,7 +90,7 @@ namespace Nethermind.Blockchain
             {
                 _logger?.Log("-------------------------------------------------------------------------------------");
                 Block suggestedBlock = Rlp.Decode<Block>(blockRlp);
-                suggestedBlock.Header.RecomputeHash();
+                //suggestedBlock.Header.RecomputeHash();
                 
                 SuggestedBlock = suggestedBlock;
                 BigInteger totalDifficulty = GetTotalDifficulty(suggestedBlock.Header);

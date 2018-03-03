@@ -3,9 +3,7 @@ WORKDIR /app
 
 # copy sln and restore as distinct layers
 COPY Nethermind ./Nethermind/
-COPY tests/GeneralStateTests ./tests/GeneralStateTests/
-COPY tests/BlockchainTests ./tests/BlockchainTests/
-COPY tests/TransactionTests ./tests/TransactionTests/
+COPY tests ./tests/
 RUN dir
 RUN dir tests
 RUN dir Nethermind
