@@ -18,6 +18,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Numerics;
@@ -27,6 +28,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Potocol;
+using Nethermind.Mining;
 using Newtonsoft.Json;
 using NUnit.Framework;
 
@@ -68,7 +70,27 @@ namespace Ethereum.PoW.Test
         [TestCaseSource(nameof(LoadTests))]
         public void Test(EthashTest test)
         {
-            Assert.Fail("not implemented");
+            BlockHeader blockHeader = Rlp.Decode<BlockHeader>(new Rlp(test.Header));
+            
+            Keccak headerHash = Keccak.Compute(Rlp.Encode(blockHeader, false));
+            Assert.AreEqual(test.HeaderHash, headerHash, "header hash");
+            
+            Ethash ethash = new Ethash();
+            ulong cacheSize = ethash.GetCacheSize(blockHeader.Number);
+            Assert.AreEqual((ulong)test.CacheSize, cacheSize, "cache size requested");
+            
+            byte[][] cache = ethash.MakeCache(cacheSize, test.Seed.Bytes);
+            Assert.AreEqual((ulong)test.CacheSize, (ulong)(cache.Length * Ethash.HashBytes), "cache size returned");
+
+            ulong dataSetSize = ethash.GetDataSize(blockHeader.Number);
+            Assert.AreEqual((ulong)test.FullSize, dataSetSize, "data size requested");
+            
+            byte[][] dataSet = ethash.BuildDataSet(dataSetSize, cache);
+            Assert.AreEqual((ulong)test.FullSize, (ulong)(dataSet.Length * Ethash.HashBytes), "data size returned");
+
+            (byte[] cacheMix, byte[] result) = ethash.HashimotoFull((ulong)test.FullSize, dataSet, blockHeader, test.Nonce);
+            Assert.AreEqual(test.CacheHash, cacheMix, "cache mix");
+            Assert.AreEqual(test.Result, result, "result");
         }
 
         private class EthashTestJson

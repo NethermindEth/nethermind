@@ -59,7 +59,6 @@ namespace Nethermind.Core.Encoding
             blockHeader.GasUsed = (long)gasUsed;
             blockHeader.MixHash = mixHash;
             blockHeader.Nonce = (ulong)nonce;
-            blockHeader.RecomputeHash(); // TODO: why
             return blockHeader;
         }
         
