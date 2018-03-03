@@ -123,12 +123,12 @@ namespace Nethermind.Mining
 
             return nonce;
         }
-        
+
         public ulong MineFull(ulong fullSize, byte[][] dataSet, BlockHeader header, BigInteger difficulty)
         {
             return Mine(fullSize, dataSet, header, difficulty, HashimotoFull);
         }
-        
+
         public ulong MineLight(ulong fullSize, byte[][] cache, BlockHeader header, BigInteger difficulty)
         {
             return Mine(fullSize, cache, header, difficulty, HashimotoLight);
@@ -195,7 +195,7 @@ namespace Nethermind.Mining
         }
 
         public const uint FnvPrime = 0x01000193;
-        
+
         public const ulong FnvPrimeLong = 0x01000193;
 
         // TODO: optimize, check, work in progress
@@ -227,14 +227,28 @@ namespace Nethermind.Mining
             return bytes.Slice((int)offset, 4).ToUInt32(Bytes.Endianness.Little);
         }
 
-        public static ulong Fnv(ulong v1, ulong v2)
+        private static ulong Fnv(ulong v1, ulong v2)
         {
             return (v1 * FnvPrimeLong) ^ v2;
         }
 
-        public static uint Fnv(uint v1, uint v2)
+        private static uint Fnv(uint v1, uint v2)
         {
             return (v1 * FnvPrime) ^ v2;
+        }
+
+        public bool Validate(BlockHeader header)
+        {
+            ulong fullSize = GetDataSize(header.Number);
+            ulong cacheSize = GetCacheSize(header.Number);
+            Keccak seed = GetSeedHash(header.Number);
+            byte[][] cache = MakeCache(cacheSize, seed.Bytes); // TODO: load cache
+
+            (byte[] _, byte[] result) = HashimotoLight(fullSize, cache, header, header.Nonce);
+
+            BigInteger threshold = BigInteger.Divide(BigInteger.Pow(2, 256), header.Difficulty);
+            BigInteger resultAsInteger = result.ToUnsignedBigInteger();
+            return resultAsInteger < threshold;
         }
 
         private (byte[], byte[]) Hashimoto(ulong fullSize, BlockHeader header, ulong nonce, Func<uint, byte[]> getDataSetItem)

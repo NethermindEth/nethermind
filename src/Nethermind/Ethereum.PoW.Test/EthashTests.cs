@@ -76,6 +76,10 @@ namespace Ethereum.PoW.Test
             Assert.AreEqual(test.HeaderHash, headerHash, "header hash");
             
             Ethash ethash = new Ethash();
+            Assert.AreEqual(test.Seed, ethash.GetSeedHash(blockHeader.Number), "seed");
+            
+            Assert.True(ethash.Validate(blockHeader), "validation");
+            
             ulong cacheSize = ethash.GetCacheSize(blockHeader.Number);
             Assert.AreEqual((ulong)test.CacheSize, cacheSize, "cache size requested");
             

@@ -41,7 +41,9 @@ namespace Nethermind.Blockchain.Validators
             Keccak hash = header.Hash;
             header.RecomputeHash();
 
-            bool isNonceValid = header.Nonce < BigInteger.Divide(BigInteger.Pow(2, 256), header.Difficulty);
+//            bool isNonceValid = header.Nonce < BigInteger.Divide(BigInteger.Pow(2, 256), header.Difficulty); // should be mix hash
+            
+            
             // mix hash check
             // proof of work check
             // difficulty check
