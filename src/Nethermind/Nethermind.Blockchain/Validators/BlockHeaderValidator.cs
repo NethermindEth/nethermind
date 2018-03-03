@@ -56,7 +56,8 @@ namespace Nethermind.Blockchain.Validators
             bool extraDataNotTooLong = header.ExtraData.Length <= 32;
             bool hashAsExpected = header.Hash == hash;
 
-            return isNonceValid &&
+            return
+//                isNonceValid &&
                    gasUsedBelowLimit &&
                    gasLimitNotTooLow &&
                    gasLimitNotTooHigh &&
