@@ -25,9 +25,9 @@ namespace Nethermind.Core.Extensions
 {
     // TODO: move to ByteArrayExtensions and ByteExtensions
     public static class Bytes
-    {    
+    {
         public static readonly byte[] Empty = new byte[0]; // consider immutable 
-        
+
         public enum Endianness
         {
             Big,
@@ -57,12 +57,12 @@ namespace Nethermind.Core.Extensions
             {
                 return true;
             }
-            
+
             if (a1 == null || a2 == null || a1.Length != a2.Length)
             {
                 return false;
             }
-            
+
             fixed (byte* p1 = a1, p2 = a2)
             {
                 byte* x1 = p1, x2 = p2;
@@ -74,24 +74,29 @@ namespace Nethermind.Core.Extensions
                         return false;
                     }
                 }
+
                 if ((l & 4) != 0)
                 {
                     if (*((int*)x1) != *((int*)x2))
                     {
                         return false;
                     }
+
                     x1 += 4;
                     x2 += 4;
                 }
+
                 if ((l & 2) != 0)
                 {
                     if (*((short*)x1) != *((short*)x2))
                     {
                         return false;
                     }
+
                     x1 += 2;
                     x2 += 2;
                 }
+
                 if ((l & 1) != 0)
                 {
                     if (*x1 != *x2)
@@ -99,6 +104,7 @@ namespace Nethermind.Core.Extensions
                         return false;
                     }
                 }
+
                 return true;
             }
         }
@@ -157,7 +163,7 @@ namespace Nethermind.Core.Extensions
                 }
             }
 
-            return new byte[] { 0 };
+            return new byte[] {0};
         }
 
         public static byte[] Concat(byte prefix, byte[] bytes)
@@ -311,7 +317,7 @@ namespace Nethermind.Core.Extensions
 
             return BitConverter.ToInt32(bytes.PadLeft(4), 0);
         }
-        
+
         /// <summary>
         /// Not tested, possibly broken
         /// </summary>
@@ -331,7 +337,7 @@ namespace Nethermind.Core.Extensions
                 return BitConverter.ToUInt32(reverted.PadRight(4), 0);
             }
 
-            return BitConverter.ToUInt32(bytes.PadLeft(4), 0);
+            return BitConverter.ToUInt32(bytes.Length == 4 ? bytes : bytes.PadLeft(4), 0);
         }
 
         public static BigInteger ToSignedBigInteger(this byte[] bytes, Endianness endianness = Endianness.Big)

@@ -14,13 +14,13 @@ namespace Nethermind.Mining
         public const int WordBytes = 4; // bytes in word
         public ulong DatasetBytesInit = (ulong)BigInteger.Pow(2, 30); // bytes in dataset at genesis
         public ulong DatasetBytesGrowth = (ulong)BigInteger.Pow(2, 23); // dataset growth per epoch
-        public ulong CacheBytesInit = (ulong)BigInteger.Pow(2, 24); // bytes in cache at genesis
-        public ulong CacheBytesGrowth = (ulong)BigInteger.Pow(2, 17); // cache growth per epoch
+        public uint CacheBytesInit = (uint)BigInteger.Pow(2, 24); // bytes in cache at genesis
+        public uint CacheBytesGrowth = (uint)BigInteger.Pow(2, 17); // cache growth per epoch
         public const int CacheMultiplier = 1024; // Size of the DAG relative to the cache
-        public const ulong EpochLength = 30000; // blocks per epoch
+        public const uint EpochLength = 30000; // blocks per epoch
         public const uint MixBytes = 128; // width of mix
         public const uint HashBytes = 64; // hash length in bytes
-        public const int DatasetParents = 256; // number of parents of each dataset element
+        public const uint DatasetParents = 256; // number of parents of each dataset element
         public const int CacheRounds = 3; // number of rounds in cache production
         public const int Accesses = 64; // number of accesses in hashimoto loop
 
@@ -36,9 +36,9 @@ namespace Nethermind.Mining
             return size;
         }
 
-        public ulong GetCacheSize(BigInteger blockNumber)
+        public uint GetCacheSize(BigInteger blockNumber)
         {
-            ulong size = CacheBytesInit + CacheBytesGrowth * ((ulong)blockNumber / EpochLength);
+            uint size = CacheBytesInit + CacheBytesGrowth * ((uint)blockNumber / EpochLength);
             size -= HashBytes;
             while (!IsPrime(size / HashBytes))
             {
@@ -156,13 +156,13 @@ namespace Nethermind.Mining
         private byte[] CalcDataSetItem(uint index, byte[][] cache)
         {
             ulong r = HashBytes / WordBytes;
-            ulong cacheSize = (ulong)cache.Length;
+            uint cacheSize = (uint)cache.Length;
 
             byte[] mix = (byte[])cache[index % cacheSize].Clone();
             SetUInt(mix, 0, index ^ GetUInt(mix, 0));
             mix = Keccak512.Compute(mix).Bytes;
 
-            for (ulong i = 0; i < DatasetParents; i++)
+            for (uint i = 0; i < DatasetParents; i++)
             {
                 ulong cacheIndex = Fnv(index ^ i, mix[i % r]);
                 Fnv(mix, cache[cacheIndex % cacheSize]); // TODO: check
@@ -173,30 +173,37 @@ namespace Nethermind.Mining
         }
 
         // TODO: optimize, check, work in progress
-        public byte[][] MakeCache(ulong cacheSize, byte[] seed)
+        public byte[][] MakeCache(uint cacheSize, byte[] seed)
         {
-            byte[][] cache = new byte[cacheSize / HashBytes][];
+            uint cachePageCount = cacheSize / HashBytes;
+            byte[][] cache = new byte[cachePageCount][];
             cache[0] = Keccak512.Compute(seed).Bytes;
-            for (uint i = 1; i < cache.Length; i++)
+            for (uint i = 1; i < cachePageCount; i++)
             {
                 cache[i] = Keccak512.Compute(cache[i - 1]).Bytes;
             }
 
-            for (int i = 0; i < CacheRounds; i++)
+            // http://www.hashcash.org/papers/memohash.pdf
+            // RandMemoHash
+            for (int _ = 0; _ < CacheRounds; _++)
             {
-                for (int j = 0; j < cache.Length; j++)
+                for (int i = 0; i < cachePageCount; i++)
                 {
-                    int v = cache[j][0] % cache.Length;
-                    cache[j] = Keccak512.Compute(cache[(i - 1 + cache.Length) % cache.Length].Xor(cache[v])).Bytes;
+                    uint v = GetUInt(cache[i], 0) % cachePageCount;
+                    cache[i] = Keccak512.Compute(cache[(i - 1 + cachePageCount) % cachePageCount].Xor(cache[v])).Bytes;
                 }
             }
 
             return cache;
         }
 
+        // is this just a Java peculiarity?
+//        private static final long FNV_PRIME = 0x01000193;
+//        long fnv(long v1, long v2) {
+//            return ((v1 * FNV_PRIME) ^ v2) % (1L << 32);
+//        }
+        
         public const uint FnvPrime = 0x01000193;
-
-        public const ulong FnvPrimeLong = 0x01000193;
 
         // TODO: optimize, check, work in progress
         private static byte[] Fnv(byte[] b1, byte[] b2)
@@ -219,20 +226,15 @@ namespace Nethermind.Mining
         private static void SetUInt(byte[] bytes, uint offset, uint value)
         {
             byte[] valueBytes = value.ToByteArray(Bytes.Endianness.Little);
-            Buffer.BlockCopy(valueBytes, 0, bytes, (int)offset, 4);
+            Buffer.BlockCopy(valueBytes, 0, bytes, (int)offset * 4, 4);
         }
 
-        private static uint GetUInt(byte[] bytes, uint offset)
+        public static uint GetUInt(byte[] bytes, uint offset)
         {
             return bytes.Slice((int)offset, 4).ToUInt32(Bytes.Endianness.Little);
         }
 
-        private static ulong Fnv(ulong v1, ulong v2)
-        {
-            return (v1 * FnvPrimeLong) ^ v2;
-        }
-
-        private static uint Fnv(uint v1, uint v2)
+        public static uint Fnv(uint v1, uint v2)
         {
             return (v1 * FnvPrime) ^ v2;
         }
@@ -240,24 +242,25 @@ namespace Nethermind.Mining
         public bool Validate(BlockHeader header)
         {
             ulong fullSize = GetDataSize(header.Number);
-            ulong cacheSize = GetCacheSize(header.Number);
+            uint cacheSize = GetCacheSize(header.Number);
             Keccak seed = GetSeedHash(header.Number);
             byte[][] cache = MakeCache(cacheSize, seed.Bytes); // TODO: load cache
 
             (byte[] _, byte[] result) = HashimotoLight(fullSize, cache, header, header.Nonce);
 
             BigInteger threshold = BigInteger.Divide(BigInteger.Pow(2, 256), header.Difficulty);
-            BigInteger resultAsInteger = result.ToUnsignedBigInteger();
+//            BigInteger resultAsInteger = result.ToUnsignedBigInteger();
+            BigInteger resultAsInteger = result.ToUnsignedBigInteger(Bytes.Endianness.Little);
             return resultAsInteger < threshold;
         }
 
         private (byte[], byte[]) Hashimoto(ulong fullSize, BlockHeader header, ulong nonce, Func<uint, byte[]> getDataSetItem)
         {
             uint hashesInFull = (uint)(fullSize / HashBytes);
-            uint wordsInHash = MixBytes / WordBytes;
+            uint wordsInMix = MixBytes / WordBytes;
             uint hashesInMix = MixBytes / HashBytes;
-            byte[] headerHashed = Keccak.Compute(Rlp.Encode(header, false)).Bytes; // sic! Keccak here not Keccak512
-            byte[] headerAndNonceHashed = Keccak512.Compute(Bytes.Concat(headerHashed, nonce.ToBigEndianByteArray())).Bytes;
+            byte[] headerHashed = Keccak.Compute(Rlp.Encode(header, false)).Bytes; // sic! Keccak here not Keccak512  // this tests fine
+            byte[] headerAndNonceHashed = Keccak512.Compute(Bytes.Concat(headerHashed, nonce.ToByteArray(Bytes.Endianness.Little))).Bytes; // this tests fine
             byte[] mix = new byte[MixBytes];
             for (int i = 0; i < hashesInMix; i++)
             {
@@ -266,12 +269,13 @@ namespace Nethermind.Mining
 
             for (uint i = 0; i < Accesses; i++)
             {
-                uint p = Fnv(i ^ GetUInt(headerAndNonceHashed, 0), GetUInt(mix, i % wordsInHash)) % (hashesInFull / hashesInMix) * hashesInMix; // TODO: check as ethereumJ uses hashesInFullSize here but it seems that they got it wrong...
+//                uint p = Fnv(i ^ GetUInt(headerAndNonceHashed, 0), GetUInt(mix, i % wordsInMix)) % (hashesInFull / hashesInMix) * hashesInMix; // spec
+                uint p = Fnv(i ^ GetUInt(headerAndNonceHashed, 0), GetUInt(mix, i % wordsInMix)) % (uint)(fullSize / MixBytes); // ethereumJ
                 byte[] newData = new byte[MixBytes];
                 for (uint j = 0; j < hashesInMix; j++)
                 {
-                    byte[] item1 = getDataSetItem(p * hashesInMix + j);
-                    Buffer.BlockCopy(item1, 0, newData, (int)(j * item1.Length), item1.Length);
+                    byte[] item = getDataSetItem(p + j);
+                    Buffer.BlockCopy(item, 0, newData, (int)(j * item.Length), item.Length);
                 }
 
 //                mix = Fnv(mix, newData);
@@ -279,16 +283,14 @@ namespace Nethermind.Mining
             }
 
 
-            byte[] cmix = new byte[mix.Length / 4];
-            for (uint i = 0; i < mix.Length / 4; i += 4 /* ? */)
+            byte[] cmix = new byte[MixBytes / 4];
+            for (uint i = 0; i < MixBytes / 4; i += 4)
             {
-                uint fnv1 = Fnv(GetUInt(mix, i), GetUInt(mix, i + 1));
-                uint fnv2 = Fnv(fnv1, GetUInt(mix, i + 2));
-                uint fnv3 = Fnv(fnv2, GetUInt(mix, i + 3));
-                SetUInt(cmix, i / 4, fnv3);
+                uint fnv = Fnv(Fnv(Fnv(GetUInt(mix, i), GetUInt(mix, i + 1)), GetUInt(mix, i + 2)), GetUInt(mix, i + 3));
+                SetUInt(cmix, i / 4, fnv);
             }
 
-            return (cmix, Keccak.Compute(Bytes.Concat(headerAndNonceHashed, cmix)).Bytes);
+            return (cmix, Keccak.Compute(Bytes.Concat(headerAndNonceHashed, cmix)).Bytes); // this tests fine
         }
 
         public (byte[], byte[]) HashimotoLight(ulong fullSize, byte[][] cache, BlockHeader header, ulong nonce)

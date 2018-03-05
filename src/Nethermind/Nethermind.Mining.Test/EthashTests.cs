@@ -1,4 +1,5 @@
 ﻿using System.Numerics;
+using Nethermind.Core.Extensions;
 using NUnit.Framework;
 
 namespace Nethermind.Mining.Test
@@ -770,7 +771,18 @@ namespace Nethermind.Mining.Test
         {
             Assert.AreEqual(isPrime, Ethash.IsPrime(number));
         }
-        
+
+        [Test]
+        public void Aaa()
+        {
+            byte[] a = new byte[] {1, 0, 0, 0};
+            uint value = a.ToUInt32(Bytes.Endianness.Little);
+            byte[] b = value.ToByteArray(Bytes.Endianness.Little);
+            Assert.AreEqual(1U, value);
+            Assert.AreEqual(a, b);
+        }
+
+
         [Test]
         public void Test_data_size()
         {

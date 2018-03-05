@@ -22,6 +22,17 @@ namespace Nethermind.Core.Extensions
 {
     public static class UInt64Extensions
     {
+        public static byte[] ToByteArray(this ulong value, Bytes.Endianness endianness)
+        {
+            byte[] bytes = BitConverter.GetBytes(value);
+            if(BitConverter.IsLittleEndian && endianness != Bytes.Endianness.Little || !BitConverter.IsLittleEndian && endianness == Bytes.Endianness.Little)
+            {
+                Array.Reverse(bytes);
+            }
+
+            return bytes;
+        }
+        
         public static byte[] ToBigEndianByteArray(this ulong value)
         {
             byte[] bytes = BitConverter.GetBytes(value);
