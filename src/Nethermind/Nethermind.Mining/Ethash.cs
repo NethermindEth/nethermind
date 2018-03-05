@@ -108,7 +108,7 @@ namespace Nethermind.Mining
             throw new NotImplementedException();
         }
 
-        private ulong Mine(ulong fullSize, byte[][] dataSet, BlockHeader header, BigInteger difficulty, Func<ulong, byte[][], BlockHeader, ulong, (byte[], byte[])> hashimoto)
+        public ulong Mine(ulong fullSize, byte[][] dataSet, BlockHeader header, BigInteger difficulty, Func<ulong, byte[][], BlockHeader, ulong, (byte[], byte[])> hashimoto)
         {
             ulong nonce = GetRandomNonce();
             byte[] target = BigInteger.Divide(_2To256, difficulty).ToBigEndianByteArray();
@@ -152,21 +152,19 @@ namespace Nethermind.Mining
         }
 
         // TODO: optimize, check, work in progress
-        // this data set will be in GBs
-        private byte[] CalcDataSetItem(uint index, byte[][] cache)
+        private byte[] CalcDataSetItem(uint i, byte[][] cache)
         {
-            ulong r = HashBytes / WordBytes;
-            uint cacheSize = (uint)cache.Length;
+            uint n = (uint)cache.Length;
+            uint r = HashBytes / WordBytes;
 
-            byte[] mix = (byte[])cache[index % cacheSize].Clone();
-            SetUInt(mix, 0, index ^ GetUInt(mix, 0));
+            byte[] mix = (byte[])cache[i % n].Clone();
+            SetUInt(mix, 0, i ^ GetUInt(mix, 0));
             mix = Keccak512.Compute(mix).Bytes;
 
-            for (uint i = 0; i < DatasetParents; i++)
+            for (uint j = 0; j < DatasetParents; j++)
             {
-                ulong cacheIndex = Fnv(index ^ i, mix[i % r]);
-                Fnv(mix, cache[cacheIndex % cacheSize]); // TODO: check
-//                mix = Fnv(mix, cache[cacheIndex % cacheSize]); // TODO: check
+                ulong cacheIndex = Fnv(i ^ j, GetUInt(mix, j % r));
+                mix = Fnv(mix, cache[cacheIndex % n]); // TODO: check
             }
 
             return Keccak512.Compute(mix).Bytes;
@@ -190,51 +188,49 @@ namespace Nethermind.Mining
                 for (int i = 0; i < cachePageCount; i++)
                 {
                     uint v = GetUInt(cache[i], 0) % cachePageCount;
+                    if (!Bytes.UnsafeCompare(cache[v], cache[v]))
+                    {
+                        throw new Exception();
+                    }
                     cache[i] = Keccak512.Compute(cache[(i - 1 + cachePageCount) % cachePageCount].Xor(cache[v])).Bytes;
                 }
             }
 
             return cache;
         }
-
-        // is this just a Java peculiarity?
-//        private static final long FNV_PRIME = 0x01000193;
-//        long fnv(long v1, long v2) {
-//            return ((v1 * FNV_PRIME) ^ v2) % (1L << 32);
-//        }
         
-        public const uint FnvPrime = 0x01000193;
+        private const uint FnvPrime = 0x01000193;
 
         // TODO: optimize, check, work in progress
         private static byte[] Fnv(byte[] b1, byte[] b2)
         {
-//            Debug.Assert(b1.Length == b2.Length, "FNV expecting same length arrays");
-//            Debug.Assert(b1.Length % 4 == 0, "FNV expecting length to be a multiple of 4");
+            Debug.Assert(b1.Length == b2.Length, "FNV expecting same length arrays");
+            Debug.Assert(b1.Length % 4 == 0, "FNV expecting length to be a multiple of 4");
 
             // TODO: check this thing (in place calc)
-//            byte[] result = new byte[b1.Length];
+            byte[] result = new byte[b1.Length];
             for (uint i = 0; i < b1.Length / 4; i++)
             {
                 uint v1 = GetUInt(b1, i);
                 uint v2 = GetUInt(b2, i);
-                SetUInt(b1, i, Fnv(v1, v2));
+                SetUInt(result, i, Fnv(v1, v2));
             }
-
-            return b1;
+            
+            return result;
         }
-
+        
         private static void SetUInt(byte[] bytes, uint offset, uint value)
         {
             byte[] valueBytes = value.ToByteArray(Bytes.Endianness.Little);
             Buffer.BlockCopy(valueBytes, 0, bytes, (int)offset * 4, 4);
         }
-
-        public static uint GetUInt(byte[] bytes, uint offset)
+        
+        private static uint GetUInt(byte[] bytes, uint offset)
         {
-            return bytes.Slice((int)offset, 4).ToUInt32(Bytes.Endianness.Little);
+            return bytes.Slice((int)offset * 4, 4).ToUInt32(Bytes.Endianness.Little);
         }
 
-        public static uint Fnv(uint v1, uint v2)
+        private static uint Fnv(uint v1, uint v2)
         {
             return (v1 * FnvPrime) ^ v2;
         }
@@ -250,7 +246,7 @@ namespace Nethermind.Mining
 
             BigInteger threshold = BigInteger.Divide(BigInteger.Pow(2, 256), header.Difficulty);
 //            BigInteger resultAsInteger = result.ToUnsignedBigInteger();
-            BigInteger resultAsInteger = result.ToUnsignedBigInteger(Bytes.Endianness.Little);
+            BigInteger resultAsInteger = result.ToUnsignedBigInteger();
             return resultAsInteger < threshold;
         }
 
@@ -269,8 +265,7 @@ namespace Nethermind.Mining
 
             for (uint i = 0; i < Accesses; i++)
             {
-//                uint p = Fnv(i ^ GetUInt(headerAndNonceHashed, 0), GetUInt(mix, i % wordsInMix)) % (hashesInFull / hashesInMix) * hashesInMix; // spec
-                uint p = Fnv(i ^ GetUInt(headerAndNonceHashed, 0), GetUInt(mix, i % wordsInMix)) % (uint)(fullSize / MixBytes); // ethereumJ
+                uint p = Fnv(i ^ GetUInt(headerAndNonceHashed, 0), GetUInt(mix, i % wordsInMix)) % (hashesInFull / hashesInMix) * hashesInMix; // since we take 'hashesInMix' consecutive blocks we want only starting indices of such blocks
                 byte[] newData = new byte[MixBytes];
                 for (uint j = 0; j < hashesInMix; j++)
                 {
@@ -279,7 +274,7 @@ namespace Nethermind.Mining
                 }
 
 //                mix = Fnv(mix, newData);
-                Fnv(mix, newData);
+                mix = Fnv(mix, newData);
             }
 
 

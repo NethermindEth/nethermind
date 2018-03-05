@@ -70,8 +70,10 @@ namespace Ethereum.PoW.Test
         [TestCaseSource(nameof(LoadTests))]
         public void Test(EthashTest test)
         {
-            BlockHeader blockHeader = Rlp.Decode<BlockHeader>(new Rlp(test.Header));
-
+            BlockHeader blockHeader = Rlp.Decode<BlockHeader>(new Rlp(test.Header));          
+            Assert.AreEqual(test.Nonce, blockHeader.Nonce, "header nonce vs test nonce");
+            Assert.AreEqual(test.MixHash.Bytes, blockHeader.MixHash.Bytes, "header mix hash vs test mix hash");
+            
             Keccak headerHash = Keccak.Compute(Rlp.Encode(blockHeader, false));
             Assert.AreEqual(test.HeaderHash, headerHash, "header hash");
 
@@ -91,39 +93,17 @@ namespace Ethereum.PoW.Test
             byte[] resultHalfTest = Keccak.Compute(Bytes.Concat(headerAndNonceHashed, test.MixHash.Bytes)).Bytes;
             Assert.AreEqual(resultHalfTest, test.Result.Bytes, "half test");
 
+            // here we confirm that the whole mix hash calculation is fine
             (byte[] mixHash, byte[] result) = ethash.HashimotoLight((ulong)test.FullSize, cache, blockHeader, test.Nonce);
             Assert.AreEqual(test.MixHash.Bytes, mixHash, "mix hash");
             Assert.AreEqual(test.Result.Bytes, result, "result");
-            
-            BigInteger threshold = BigInteger.Divide(BigInteger.Pow(2, 256), blockHeader.Difficulty);
-            BigInteger resultAsIntegerA = test.Result.Bytes.ToUnsignedBigInteger(Bytes.Endianness.Big);
-            BigInteger resultAsIntegerB = test.Result.Bytes.ToSignedBigInteger(Bytes.Endianness.Big);
-            BigInteger resultAsIntegerC = test.Result.Bytes.ToUnsignedBigInteger(Bytes.Endianness.Little);
-            BigInteger resultAsIntegerD = test.Result.Bytes.ToSignedBigInteger(Bytes.Endianness.Little);
-            BigInteger resultAsIntegerE = new BigInteger(test.Result.Bytes);
-            Console.WriteLine("thres    " + threshold);
-            Console.WriteLine("A        " + resultAsIntegerA);
-            Console.WriteLine("B        " + resultAsIntegerB);
-            Console.WriteLine("C        " + resultAsIntegerC);
-            Console.WriteLine("D        " + resultAsIntegerD);
-            Console.WriteLine("E        " + resultAsIntegerD);
-            Assert.True(resultAsIntegerA < threshold
-                        || resultAsIntegerB < threshold
-                        || resultAsIntegerC < threshold
-                        || resultAsIntegerD < threshold,
-                "validation from test values");
 
-//            Assert.True(ethash.Validate(blockHeader), "validation");
+            // not that the test's result value suggests that the result of the PoW operation is not below difficulty / block is invalid...
+            // Assert.True(ethash.Validate(blockHeader), "validation");
+            // seems it is just testing the nonce and mix hash but not difficulty
 
             ulong dataSetSize = ethash.GetDataSize(blockHeader.Number);
             Assert.AreEqual((ulong)test.FullSize, dataSetSize, "data size requested");
-
-//            byte[][] dataSet = ethash.BuildDataSet(dataSetSize, cache);
-//            Assert.AreEqual((ulong)test.FullSize, (ulong)(dataSet.Length * Ethash.HashBytes), "data size returned");
-
-//            (byte[] cacheMix, byte[] result) = ethash.HashimotoFull((ulong)test.FullSize, dataSet, blockHeader, test.Nonce);
-//            Assert.AreEqual(test.CacheHash, cacheMix, "cache mix");
-//            Assert.AreEqual(test.Result, result, "result");
         }
 
         private class EthashTestJson
