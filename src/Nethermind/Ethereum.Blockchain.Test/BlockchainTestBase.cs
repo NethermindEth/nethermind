@@ -32,6 +32,7 @@ using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Potocol;
 using Nethermind.Evm;
+using Nethermind.Mining;
 using Nethermind.Store;
 using Newtonsoft.Json;
 using NUnit.Framework;
@@ -49,6 +50,7 @@ namespace Ethereum.Blockchain.Test
         private Dictionary<EthereumNetwork, IStorageProvider> _storageProviders;
         private Dictionary<EthereumNetwork, IBlockValidator> _blockValidators;
         private ILogger _logger;
+        private static readonly Ethash Ethash = new Ethash(); // temporarily keep reusing the same one as otherwise it would recreate cache for each test
 
         protected void Setup(ILogger logger)
         {
@@ -68,7 +70,7 @@ namespace Ethereum.Blockchain.Test
                 IEthereumRelease spec = _protocolSpecificationProvider.GetSpec(ethereumNetwork, 1);
                 ISignatureValidator signatureValidator = new SignatureValidator(spec, ChainId.MainNet);
                 ITransactionValidator transactionValidator = new TransactionValidator(spec, signatureValidator);
-                 IBlockHeaderValidator headerValidator = new BlockHeaderValidator(_chain);
+                IBlockHeaderValidator headerValidator = new BlockHeaderValidator(_chain, Ethash);
                 IOmmersValidator ommersValidator = new OmmersValidator(_chain, headerValidator);
                 IBlockValidator blockValidator = new BlockValidator(transactionValidator, headerValidator, ommersValidator, stateLogger);
 

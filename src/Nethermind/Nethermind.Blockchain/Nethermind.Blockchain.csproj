@@ -13,6 +13,10 @@
       <Project>{E992EFB5-85F0-49B1-9C0B-6D3846A813A5}</Project>
       <Name>Nethermind.Evm</Name>
     </ProjectReference>
+    <ProjectReference Include="..\Nethermind.Mining\Nethermind.Mining.csproj">
+      <Project>{81CC021C-021C-427C-9CE1-2E521E7F2985}</Project>
+      <Name>Nethermind.Mining</Name>
+    </ProjectReference>
     <ProjectReference Include="..\Nethermind.Store\Nethermind.Store.csproj">
       <Project>{8311E4F7-DB36-40F5-A496-7CE4FD486FEE}</Project>
       <Name>Nethermind.Store</Name>

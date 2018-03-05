@@ -18,16 +18,19 @@
 using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Mining;
 
 namespace Nethermind.Blockchain.Validators
 {
     public class BlockHeaderValidator : IBlockHeaderValidator
     {
+        private readonly IEthash _ethash;
         private readonly IBlockStore _chain;
 
-        public BlockHeaderValidator(IBlockStore chain)
+        public BlockHeaderValidator(IBlockStore chain, IEthash ethash)
         {
             _chain = chain;
+            _ethash = ethash;
         }
 
         public bool Validate(BlockHeader header)
@@ -40,12 +43,10 @@ namespace Nethermind.Blockchain.Validators
 
             Keccak hash = header.Hash;
             header.RecomputeHash();
-
-//            bool isNonceValid = header.Nonce < BigInteger.Divide(BigInteger.Pow(2, 256), header.Difficulty); // should be mix hash
             
+            _ethash.Validate(header);
             
             // mix hash check
-            // proof of work check
             // difficulty check
             bool gasUsedBelowLimit = header.GasUsed <= header.GasLimit;
             bool gasLimitNotTooHigh = header.GasLimit < parent.Header.GasLimit + BigInteger.Divide(parent.Header.GasLimit, 1024);

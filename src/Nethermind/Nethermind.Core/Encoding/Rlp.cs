@@ -447,7 +447,7 @@ namespace Nethermind.Core.Encoding
             return result;
         }
 
-        public static Rlp Encode(BlockHeader blockHeader, bool withMixHashAndNonce)
+        public static Rlp Encode(BlockHeader blockHeader, bool withMixHashAndNonce = true)
         {
             int numberOfElements = withMixHashAndNonce ? 15 : 13;
             Rlp[] elements = new Rlp[numberOfElements];

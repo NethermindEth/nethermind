@@ -1,6 +1,9 @@
 ﻿using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -9,24 +12,36 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.Mining
 {
-    public class Ethash
+    public class Ethash : IEthash
     {
+        public Ethash()
+        {
+            
+        }
+        
+        private readonly ConcurrentDictionary<ulong, byte[][]> _cacheCache = new ConcurrentDictionary<ulong, byte[][]>();
+
         public const int WordBytes = 4; // bytes in word
         public ulong DatasetBytesInit = (ulong)BigInteger.Pow(2, 30); // bytes in dataset at genesis
         public ulong DatasetBytesGrowth = (ulong)BigInteger.Pow(2, 23); // dataset growth per epoch
         public uint CacheBytesInit = (uint)BigInteger.Pow(2, 24); // bytes in cache at genesis
         public uint CacheBytesGrowth = (uint)BigInteger.Pow(2, 17); // cache growth per epoch
         public const int CacheMultiplier = 1024; // Size of the DAG relative to the cache
-        public const uint EpochLength = 30000; // blocks per epoch
+        public const ulong EpochLength = 30000; // blocks per epoch
         public const uint MixBytes = 128; // width of mix
         public const uint HashBytes = 64; // hash length in bytes
         public const uint DatasetParents = 256; // number of parents of each dataset element
         public const int CacheRounds = 3; // number of rounds in cache production
         public const int Accesses = 64; // number of accesses in hashimoto loop
 
+        public ulong GetEpoch(BigInteger blockNumber)
+        {
+            return (ulong)blockNumber / EpochLength;
+        }
+
         public ulong GetDataSize(BigInteger blockNumber)
         {
-            ulong size = DatasetBytesInit + DatasetBytesGrowth * ((ulong)blockNumber / EpochLength);
+            ulong size = DatasetBytesInit + DatasetBytesGrowth * GetEpoch(blockNumber);
             size -= MixBytes;
             while (!IsPrime(size / MixBytes))
             {
@@ -38,7 +53,7 @@ namespace Nethermind.Mining
 
         public uint GetCacheSize(BigInteger blockNumber)
         {
-            uint size = CacheBytesInit + CacheBytesGrowth * ((uint)blockNumber / EpochLength);
+            uint size = CacheBytesInit + CacheBytesGrowth * (uint)GetEpoch(blockNumber);
             size -= HashBytes;
             while (!IsPrime(size / HashBytes))
             {
@@ -172,7 +187,7 @@ namespace Nethermind.Mining
 
         // TODO: optimize, check, work in progress
         public byte[][] MakeCache(uint cacheSize, byte[] seed)
-        {
+        {   
             uint cachePageCount = cacheSize / HashBytes;
             byte[][] cache = new byte[cachePageCount][];
             cache[0] = Keccak512.Compute(seed).Bytes;
@@ -192,13 +207,14 @@ namespace Nethermind.Mining
                     {
                         throw new Exception();
                     }
+
                     cache[i] = Keccak512.Compute(cache[(i - 1 + cachePageCount) % cachePageCount].Xor(cache[v])).Bytes;
                 }
             }
 
             return cache;
         }
-        
+
         private const uint FnvPrime = 0x01000193;
 
         // TODO: optimize, check, work in progress
@@ -215,16 +231,16 @@ namespace Nethermind.Mining
                 uint v2 = GetUInt(b2, i);
                 SetUInt(result, i, Fnv(v1, v2));
             }
-            
+
             return result;
         }
-        
+
         private static void SetUInt(byte[] bytes, uint offset, uint value)
         {
             byte[] valueBytes = value.ToByteArray(Bytes.Endianness.Little);
             Buffer.BlockCopy(valueBytes, 0, bytes, (int)offset * 4, 4);
         }
-        
+
         private static uint GetUInt(byte[] bytes, uint offset)
         {
             return bytes.Slice((int)offset * 4, 4).ToUInt32(Bytes.Endianness.Little);
@@ -235,13 +251,45 @@ namespace Nethermind.Mining
             return (v1 * FnvPrime) ^ v2;
         }
 
+        private const int CacheCacheSizeLimit = 6;
+        
         public bool Validate(BlockHeader header)
-        {
-            ulong fullSize = GetDataSize(header.Number);
-            uint cacheSize = GetCacheSize(header.Number);
-            Keccak seed = GetSeedHash(header.Number);
-            byte[][] cache = MakeCache(cacheSize, seed.Bytes); // TODO: load cache
+        {   
+            ulong epoch = GetEpoch(header.Number);
+            
+            ulong? epochToRemove = null;
+            byte[][] cache = _cacheCache.GetOrAdd(epoch, e =>
+            {   
+                uint cacheSize = GetCacheSize(header.Number);
+                Keccak seed = GetSeedHash(header.Number);
 
+                // naive
+                if (_cacheCache.Count > CacheCacheSizeLimit)
+                {
+                    int indextToRemove = Random.Next(CacheCacheSizeLimit);
+                    {
+                        int index = 0;
+                        foreach (ulong epochInCache in _cacheCache.Keys)
+                        {
+                            if (index == indextToRemove)
+                            {
+                                epochToRemove = epochInCache;                                
+                            }
+                        }
+                    }
+                }
+                
+                Console.WriteLine($"Building cache for epoch {epoch}");
+                return MakeCache(cacheSize, seed.Bytes); // TODO: load cache
+            });
+
+            if (epochToRemove.HasValue)
+            {
+                Console.WriteLine($"Removing cache for epoch {epochToRemove}");
+                _cacheCache.TryRemove(epochToRemove.Value, out byte[][] removedItem);
+            }
+
+            ulong fullSize = GetDataSize(header.Number);
             (byte[] _, byte[] result) = HashimotoLight(fullSize, cache, header, header.Nonce);
 
             BigInteger threshold = BigInteger.Divide(BigInteger.Pow(2, 256), header.Difficulty);
@@ -285,6 +333,12 @@ namespace Nethermind.Mining
                 SetUInt(cmix, i / 4, fnv);
             }
 
+            if (header.MixHash != Keccak.Zero && !Bytes.UnsafeCompare(cmix, header.MixHash.Bytes))
+            {
+                // TODO: handle properly
+                throw new InvalidOperationException();
+            }
+            
             return (cmix, Keccak.Compute(Bytes.Concat(headerAndNonceHashed, cmix)).Bytes); // this tests fine
         }
 
