@@ -14,7 +14,7 @@ namespace Nethermind.Mining
 {
     public class Ethash : IEthash
     {
-        private readonly ConcurrentDictionary<ulong, IEthashDataSet<byte[]>> _cacheCache = new ConcurrentDictionary<ulong, IEthashDataSet<byte[]>>();
+        private readonly ConcurrentDictionary<ulong, IEthashDataSet> _cacheCache = new ConcurrentDictionary<ulong, IEthashDataSet>();
 
         public const int WordBytes = 4; // bytes in word
         public static ulong DatasetBytesInit = (ulong)BigInteger.Pow(2, 30); // bytes in dataset at genesis
@@ -118,7 +118,7 @@ namespace Nethermind.Mining
             throw new NotImplementedException();
         }
 
-        public ulong Mine(ulong fullSize, IEthashDataSet<byte[]> dataSet, BlockHeader header, BigInteger difficulty)
+        public ulong Mine(ulong fullSize, IEthashDataSet dataSet, BlockHeader header, BigInteger difficulty)
         {
             ulong nonce = GetRandomNonce();
             byte[] target = BigInteger.Divide(_2To256, difficulty).ToBigEndianByteArray();
@@ -169,12 +169,6 @@ namespace Nethermind.Mining
             return (v1 * FnvPrime) ^ v2;
         }
 
-//        internal static void SetUInt(byte[] bytes, uint offset, uint value)
-//        {
-//            byte[] valueBytes = value.ToByteArray(Bytes.Endianness.Little);
-//            Buffer.BlockCopy(valueBytes, 0, bytes, (int)offset * 4, 4);
-//        }
-
         internal static uint GetUInt(byte[] bytes, uint offset)
         {
             return BitConverter.ToUInt32(BitConverter.IsLittleEndian ? bytes : Bytes.Reverse(bytes), (int)offset * 4);
@@ -187,7 +181,7 @@ namespace Nethermind.Mining
             ulong epoch = GetEpoch(header.Number);
 
             ulong? epochToRemove = null;
-            IEthashDataSet<byte[]> cache = _cacheCache.GetOrAdd(epoch, e =>
+            IEthashDataSet cache = _cacheCache.GetOrAdd(epoch, e =>
             {
                 uint cacheSize = GetCacheSize(header.Number);
                 Keccak seed = GetSeedHash(header.Number);
@@ -215,7 +209,7 @@ namespace Nethermind.Mining
             if (epochToRemove.HasValue)
             {
                 Console.WriteLine($"Removing cache for epoch {epochToRemove}");
-                _cacheCache.TryRemove(epochToRemove.Value, out IEthashDataSet<byte[]> removedItem);
+                _cacheCache.TryRemove(epochToRemove.Value, out IEthashDataSet removedItem);
             }
 
             ulong fullSize = GetDataSize(header.Number);
@@ -233,7 +227,7 @@ namespace Nethermind.Mining
             return headerHashed;
         }
 
-        public (byte[], byte[]) Hashimoto(ulong fullSize, IEthashDataSet<byte[]> dataSet, Keccak headerHash, Keccak expectedMixHash, ulong nonce)
+        public (byte[], byte[]) Hashimoto(ulong fullSize, IEthashDataSet dataSet, Keccak headerHash, Keccak expectedMixHash, ulong nonce)
         {
             uint hashesInFull = (uint)(fullSize / HashBytes);
             const uint wordsInMix = MixBytes / WordBytes;

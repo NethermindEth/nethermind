@@ -2,13 +2,13 @@
 
 namespace Nethermind.Mining
 {
-    public class FullDataSet : IEthashDataSet<byte[]>
+    public class FullDataSet : IEthashDataSet
     {
         public uint[][] Data { get; set; }
         
         public uint Size => (uint)(Data.Length * Ethash.HashBytes);
 
-        public FullDataSet(ulong setSize, IEthashDataSet<byte[]> cache)
+        public FullDataSet(ulong setSize, IEthashDataSet cache)
         {
             Console.WriteLine($"building data set of length {setSize}"); // TODO: temp, remove
             Data = new uint[(uint)(setSize / Ethash.HashBytes)][];

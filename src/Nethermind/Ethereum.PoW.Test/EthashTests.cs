@@ -84,8 +84,8 @@ namespace Ethereum.PoW.Test
             uint cacheSize = Ethash.GetCacheSize(blockHeader.Number);
             Assert.AreEqual((ulong)test.CacheSize, cacheSize, "cache size requested");
 
-            IEthashDataSet<byte[]> cache = new EthashBytesCache(cacheSize, test.Seed.Bytes);
-            Assert.AreEqual((ulong)test.CacheSize, (ulong)(cache.Size), "cache size returned");
+            IEthashDataSet cache = new EthashCache(cacheSize, test.Seed.Bytes);
+            Assert.AreEqual((ulong)test.CacheSize, (ulong)cache.Size, "cache size returned");
 
             // below we confirm that headerAndNonceHashed is calculated correctly
             // & that the method for calculating the result from mix hash is correct

@@ -1,23 +1,22 @@
 ﻿using System;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 
 namespace Nethermind.Mining
 {
-    public class EthashBytesCache : IEthashDataSet<byte[]>
+    public class EthashCache : IEthashDataSet
     {
-        internal byte[][] Data { get; set; }
+        internal uint[][] Data { get; set; }
 
         public uint Size => (uint)(Data.Length * Ethash.HashBytes);
 
-        public EthashBytesCache(uint cacheSize, byte[] seed)
+        public EthashCache(uint cacheSize, byte[] seed)
         {
             uint cachePageCount = cacheSize / Ethash.HashBytes;
-            Data = new byte[cachePageCount][];
-            Data[0] = Keccak512.Compute(seed).Bytes;
+            Data = new uint[cachePageCount][];
+            Data[0] = Keccak512.ComputeToUInts(seed);
             for (uint i = 1; i < cachePageCount; i++)
             {
-                Data[i] = Keccak512.Compute(Data[i - 1]).Bytes;
+                Data[i] = Keccak512.ComputeUIntsToUInts(Data[i - 1]);
             }
 
             // http://www.hashcash.org/papers/memohash.pdf
@@ -25,9 +24,15 @@ namespace Nethermind.Mining
             for (int _ = 0; _ < Ethash.CacheRounds; _++)
             {
                 for (int i = 0; i < cachePageCount; i++)
-                {
-                    uint v = Ethash.GetUInt(Data[i], 0) % cachePageCount;
-                    Data[i] = Keccak512.Compute(Data[(i - 1 + cachePageCount) % cachePageCount].Xor(Data[v])).Bytes;
+                {                                      
+                    uint v = Data[i][0] % cachePageCount;
+                    long page = (i - 1 + cachePageCount) % cachePageCount;
+                    for (int j = 0; j < Data[i].Length; j++)
+                    {
+                        Data[i][j] = Data[page][j] ^ Data[v][j];
+                    }
+
+                    Data[i] = Keccak512.ComputeUIntsToUInts(Data[i]);
                 }
             }
         }
@@ -43,19 +48,14 @@ namespace Nethermind.Mining
             mixInts[0] = i ^ mixInts[0];
             mixInts = Keccak512.ComputeUIntsToUInts(mixInts);
 
-            uint[] dataInts = new uint[mixInts.Length];
             for (uint j = 0; j < Ethash.DatasetParents; j++)
             {
                 ulong cacheIndex = Ethash.Fnv(i ^ j, mixInts[j % r]);
-                Buffer.BlockCopy(Data[cacheIndex % n], 0, dataInts, 0, (int)Ethash.HashBytes);
-                Ethash.Fnv(mixInts, dataInts);
+                Ethash.Fnv(mixInts, Data[cacheIndex % n]);
             }
 
             mixInts = Keccak512.ComputeUIntsToUInts(mixInts);
             return mixInts;
-            //byte[] mix = new byte[Ethash.HashBytes];
-            //Buffer.BlockCopy(mixInts, 0, mix, 0, (int)Ethash.HashBytes);
-            //return mix;
         }
     }
 }

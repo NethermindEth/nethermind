@@ -807,46 +807,5 @@ namespace Nethermind.Mining.Test
                 Assert.AreEqual(size, _cacheSizes[i], i);
             }
         }
-
-        [Test]
-        public void Test_two_cache_creation_methods_give_same_results()
-        {
-            byte[] seed = new byte[32];
-            byte[] hash = Keccak512.Compute(seed).Bytes;
-            uint[] hashInts = Keccak512.ComputeToUInts(seed);
-
-            byte[] hashFromInts = new byte[64];
-            Buffer.BlockCopy(hashInts, 0, hashFromInts, 0, 64);
-            
-            Assert.AreEqual(hash, hashFromInts, "Keccak uints");
-
-            EthashBytesCache bytesCache = new EthashBytesCache(_cacheSizes[0], seed);
-            EthashIntCache intCache = new EthashIntCache(_cacheSizes[0], seed);
-
-            int itemsToCheck = 1000;
-            Assert.AreEqual(bytesCache.Size, intCache.Size, "cache size");
-            for (int i = 0; i < itemsToCheck; i++)
-            {
-                uint[] ints = intCache.Data[i];
-                byte[] bytes = bytesCache.Data[i];
-                
-                for (uint j = 0; j < ints.Length; j++)
-                {
-                    uint value = Ethash.GetUInt(bytes, j);
-                    Assert.AreEqual(value, ints[j], $"cache at index {i}, {j}");
-                }
-            }
-
-//            uint fullSize = (uint)(_dataSizes[0] / Ethash.HashBytes);
-            for (uint i = 0; i < itemsToCheck; i++)
-            {
-                uint[] ints = intCache.CalcDataSetItem(i);
-                uint[] ints2 = bytesCache.CalcDataSetItem(i);
-                for (uint j = 0; j < ints.Length; j++)
-                {
-                    Assert.AreEqual(ints2[j], ints[j], $"full at index {i}, {j}");
-                }
-            }
-        }
     }
 }
