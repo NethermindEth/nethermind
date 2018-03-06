@@ -3,6 +3,6 @@
     public interface IEthashDataSet<out T>
     {
         uint Size { get; }
-        T CalcDataSetItem(uint i);
+        uint[] CalcDataSetItem(uint i);
     }
 }

@@ -122,7 +122,8 @@ namespace Nethermind.Mining
         {
             ulong nonce = GetRandomNonce();
             byte[] target = BigInteger.Divide(_2To256, difficulty).ToBigEndianByteArray();
-            (byte[] _, byte[] result) = Hashimoto(fullSize, dataSet, header, nonce);
+            Keccak headerHashed = GetTruncatedHash(header);
+            (byte[] _, byte[] result) = Hashimoto(fullSize, dataSet, headerHashed, Keccak.Zero, nonce);
             while (IsGreaterThanTarget(result, target))
             {
                 unchecked
@@ -218,20 +219,26 @@ namespace Nethermind.Mining
             }
 
             ulong fullSize = GetDataSize(header.Number);
-            (byte[] _, byte[] result) = Hashimoto(fullSize, cache, header, header.Nonce);
+            Keccak headerHashed = GetTruncatedHash(header);
+            (byte[] _, byte[] result) = Hashimoto(fullSize, cache, headerHashed, header.MixHash, header.Nonce);
 
             BigInteger threshold = BigInteger.Divide(BigInteger.Pow(2, 256), header.Difficulty);
             BigInteger resultAsInteger = result.ToUnsignedBigInteger();
             return resultAsInteger < threshold;
         }
 
-        public (byte[], byte[]) Hashimoto(ulong fullSize, IEthashDataSet<byte[]> dataSet, BlockHeader header, ulong nonce)
+        private static Keccak GetTruncatedHash(BlockHeader header)
+        {
+            Keccak headerHashed = Keccak.Compute(Rlp.Encode(header, false)); // sic! Keccak here not Keccak512  // this tests fine
+            return headerHashed;
+        }
+
+        public (byte[], byte[]) Hashimoto(ulong fullSize, IEthashDataSet<byte[]> dataSet, Keccak headerHash, Keccak expectedMixHash, ulong nonce)
         {
             uint hashesInFull = (uint)(fullSize / HashBytes);
-            uint wordsInMix = MixBytes / WordBytes;
-            uint hashesInMix = MixBytes / HashBytes;
-            byte[] headerHashed = Keccak.Compute(Rlp.Encode(header, false)).Bytes; // sic! Keccak here not Keccak512  // this tests fine
-            byte[] headerAndNonceHashed = Keccak512.Compute(Bytes.Concat(headerHashed, nonce.ToByteArray(Bytes.Endianness.Little))).Bytes; // this tests fine
+            const uint wordsInMix = MixBytes / WordBytes;
+            const uint hashesInMix = MixBytes / HashBytes;
+            byte[] headerAndNonceHashed = Keccak512.Compute(Bytes.Concat(headerHash.Bytes, nonce.ToByteArray(Bytes.Endianness.Little))).Bytes; // this tests fine
             uint[] mixInts = new uint[MixBytes / WordBytes];
 
             for (int i = 0; i < hashesInMix; i++)
@@ -239,30 +246,30 @@ namespace Nethermind.Mining
                 Buffer.BlockCopy(headerAndNonceHashed, 0, mixInts, i * headerAndNonceHashed.Length, headerAndNonceHashed.Length);
             }
 
+            uint firstOfheaderAndNonce = GetUInt(headerAndNonceHashed, 0);
             for (uint i = 0; i < Accesses; i++)
             {
-                uint p = Fnv(i ^ GetUInt(headerAndNonceHashed, 0), mixInts[i % wordsInMix]) % (hashesInFull / hashesInMix) * hashesInMix; // since we take 'hashesInMix' consecutive blocks we want only starting indices of such blocks
-                uint[] newData = new uint[MixBytes / WordBytes];
+                uint p = Fnv(i ^ firstOfheaderAndNonce, mixInts[i % wordsInMix]) % (hashesInFull / hashesInMix) * hashesInMix; // since we take 'hashesInMix' consecutive blocks we want only starting indices of such blocks
+                uint[] newData = new uint[wordsInMix];
                 for (uint j = 0; j < hashesInMix; j++)
                 {
-                    byte[] item = dataSet.CalcDataSetItem(p + j);
-                    Buffer.BlockCopy(item, 0, newData, (int)(j * item.Length), item.Length);
+                    uint[] item = dataSet.CalcDataSetItem(p + j);
+                    Buffer.BlockCopy(item, 0, newData, (int)(j * item.Length * 4), item.Length * 4);
                 }
 
                 Fnv(mixInts, newData);
             }
             
-            byte[] cmix = new byte[MixBytes / WordBytes];
             uint[] cmixInts = new uint[MixBytes / WordBytes / 4];
-            
             for (uint i = 0; i < mixInts.Length; i += 4)
             {
                 cmixInts[i / 4] = Fnv(Fnv(Fnv(mixInts[i], mixInts[i+1]), mixInts[i + 2]), mixInts[i + 3]);
             }
-            
+
+            byte[] cmix = new byte[MixBytes / WordBytes];
             Buffer.BlockCopy(cmixInts, 0, cmix, 0, cmix.Length);
 
-            if (header.MixHash != Keccak.Zero && !Bytes.UnsafeCompare(cmix, header.MixHash.Bytes))
+            if (expectedMixHash != Keccak.Zero && !Bytes.UnsafeCompare(cmix, expectedMixHash.Bytes))
             {
                 // TODO: handle properly
                 throw new InvalidOperationException();

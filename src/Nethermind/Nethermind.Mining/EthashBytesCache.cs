@@ -32,7 +32,7 @@ namespace Nethermind.Mining
             }
         }
 
-        public byte[] CalcDataSetItem(uint i)
+        public uint[] CalcDataSetItem(uint i)
         {
             uint n = (uint)Data.Length;
             uint r = Ethash.HashBytes / Ethash.WordBytes;
@@ -52,10 +52,10 @@ namespace Nethermind.Mining
             }
 
             mixInts = Keccak512.ComputeUIntsToUInts(mixInts);
-            
-            byte[] mix = new byte[Ethash.HashBytes];
-            Buffer.BlockCopy(mixInts, 0, mix, 0, (int)Ethash.HashBytes);
-            return mix;
+            return mixInts;
+            //byte[] mix = new byte[Ethash.HashBytes];
+            //Buffer.BlockCopy(mixInts, 0, mix, 0, (int)Ethash.HashBytes);
+            //return mix;
         }
     }
 }

@@ -2,8 +2,6 @@
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
-using Nethermind.Core.Extensions;
-using Nethermind.HashLib;
 using NUnit.Framework;
 
 namespace Nethermind.Mining.Test
@@ -843,11 +841,10 @@ namespace Nethermind.Mining.Test
             for (uint i = 0; i < itemsToCheck; i++)
             {
                 uint[] ints = intCache.CalcDataSetItem(i);
-                byte[] bytes = bytesCache.CalcDataSetItem(i);
+                uint[] ints2 = bytesCache.CalcDataSetItem(i);
                 for (uint j = 0; j < ints.Length; j++)
                 {
-                    uint value = Ethash.GetUInt(bytes, j);
-                    Assert.AreEqual(value, ints[j], $"full at index {i}, {j}");
+                    Assert.AreEqual(ints2[j], ints[j], $"full at index {i}, {j}");
                 }
             }
         }

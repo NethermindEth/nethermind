@@ -4,14 +4,14 @@ namespace Nethermind.Mining
 {
     public class FullDataSet : IEthashDataSet<byte[]>
     {
-        public byte[][] Data { get; set; }
+        public uint[][] Data { get; set; }
         
         public uint Size => (uint)(Data.Length * Ethash.HashBytes);
 
         public FullDataSet(ulong setSize, IEthashDataSet<byte[]> cache)
         {
             Console.WriteLine($"building data set of length {setSize}"); // TODO: temp, remove
-            Data = new byte[(uint)(setSize / Ethash.HashBytes)][];
+            Data = new uint[(uint)(setSize / Ethash.HashBytes)][];
             for (uint i = 0; i < Data.Length; i++)
             {
                 if (i % 100000 == 0)
@@ -23,7 +23,7 @@ namespace Nethermind.Mining
             }
         }
 
-        public byte[] CalcDataSetItem(uint i)
+        public uint[] CalcDataSetItem(uint i)
         {
             return Data[i];
         }
