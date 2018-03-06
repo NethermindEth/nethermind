@@ -4,7 +4,7 @@ using System.Diagnostics;
 namespace Nethermind.HashLib
 {
     [DebuggerNonUserCode]
-    internal class HashBuffer 
+    public class HashBuffer 
     {
         private byte[] m_data;
         private int m_pos;

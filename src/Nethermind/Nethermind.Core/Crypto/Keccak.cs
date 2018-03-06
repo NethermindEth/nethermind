@@ -29,7 +29,7 @@ namespace Nethermind.Core.Crypto
     {
         private const int Size = 32;
 
-        [ThreadStatic] private static IHash _hash;
+        [ThreadStatic] private static HashLib.Crypto.SHA3.Keccak256 _hash;
 
         public Keccak(Hex hex)
         {
@@ -105,7 +105,7 @@ namespace Nethermind.Core.Crypto
             return InternalCompute(input);
         }
 
-        private static IHash Init()
+        private static HashLib.Crypto.SHA3.Keccak256 Init()
         {
             return HashFactory.Crypto.SHA3.CreateKeccak256();
         }

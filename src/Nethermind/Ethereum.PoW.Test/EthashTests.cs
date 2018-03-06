@@ -79,13 +79,13 @@ namespace Ethereum.PoW.Test
 
             // seed is correct
             Ethash ethash = new Ethash();
-            Assert.AreEqual(test.Seed, ethash.GetSeedHash(blockHeader.Number), "seed");
+            Assert.AreEqual(test.Seed, Ethash.GetSeedHash(blockHeader.Number), "seed");
 
-            uint cacheSize = ethash.GetCacheSize(blockHeader.Number);
+            uint cacheSize = Ethash.GetCacheSize(blockHeader.Number);
             Assert.AreEqual((ulong)test.CacheSize, cacheSize, "cache size requested");
 
-            byte[][] cache = ethash.MakeCache(cacheSize, test.Seed.Bytes);
-            Assert.AreEqual((ulong)test.CacheSize, (ulong)(cache.Length * Ethash.HashBytes), "cache size returned");
+            IEthashDataSet<byte[]> cache = new EthashBytesCache(cacheSize, test.Seed.Bytes);
+            Assert.AreEqual((ulong)test.CacheSize, (ulong)(cache.Size), "cache size returned");
 
             // below we confirm that headerAndNonceHashed is calculated correctly
             // & that the method for calculating the result from mix hash is correct
@@ -94,7 +94,7 @@ namespace Ethereum.PoW.Test
             Assert.AreEqual(resultHalfTest, test.Result.Bytes, "half test");
 
             // here we confirm that the whole mix hash calculation is fine
-            (byte[] mixHash, byte[] result) = ethash.HashimotoLight((ulong)test.FullSize, cache, blockHeader, test.Nonce);
+            (byte[] mixHash, byte[] result) = ethash.Hashimoto((ulong)test.FullSize, cache, blockHeader, test.Nonce);
             Assert.AreEqual(test.MixHash.Bytes, mixHash, "mix hash");
             Assert.AreEqual(test.Result.Bytes, result, "result");
 
@@ -102,7 +102,7 @@ namespace Ethereum.PoW.Test
             // Assert.True(ethash.Validate(blockHeader), "validation");
             // seems it is just testing the nonce and mix hash but not difficulty
 
-            ulong dataSetSize = ethash.GetDataSize(blockHeader.Number);
+            ulong dataSetSize = Ethash.GetDataSize(blockHeader.Number);
             Assert.AreEqual((ulong)test.FullSize, dataSetSize, "data size requested");
         }
 

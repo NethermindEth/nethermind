@@ -28,7 +28,7 @@ namespace Nethermind.Core.Crypto
     {
         private const int Size = 64;
 
-        [ThreadStatic] private static IHash _hash;
+        [ThreadStatic] private static HashLib.Crypto.SHA3.Keccak512 _hash;
 
         public Keccak512(Hex hex)
         {
@@ -89,7 +89,27 @@ namespace Nethermind.Core.Crypto
             return InternalCompute(input);
         }
 
-        private static IHash Init()
+        public static uint[] ComputeToUInts(byte[] input)
+        {
+            if (input == null || input.Length == 0)
+            {
+                throw new NotSupportedException();
+            }
+
+            return _hash.ComputeBytesToUint(input);
+        }
+
+        public static uint[] ComputeUIntsToUInts(uint[] input)
+        {
+            if (input == null || input.Length == 0)
+            {
+                throw new NotSupportedException();
+            }
+
+            return _hash.ComputeUIntsToUint(input);
+        }
+
+        private static HashLib.Crypto.SHA3.Keccak512 Init()
         {
             return HashFactory.Crypto.SHA3.CreateKeccak512();
         }

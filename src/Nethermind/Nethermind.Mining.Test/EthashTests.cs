@@ -1,9 +1,9 @@
 ﻿using System;
-using System.Linq;
-using System.Numerics;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
+using Nethermind.HashLib;
 using NUnit.Framework;
 
 namespace Nethermind.Mining.Test
@@ -11,7 +11,7 @@ namespace Nethermind.Mining.Test
     [TestFixture]
     public class EthashTests
     {
-        private readonly long[] _cacheSizes = new long[]
+        private readonly uint[] _cacheSizes = new uint[]
         {
             16776896, 16907456, 17039296, 17170112, 17301056, 17432512, 17563072,
             17693888, 17824192, 17955904, 18087488, 18218176, 18349504, 18481088,
@@ -793,10 +793,9 @@ namespace Nethermind.Mining.Test
         [Test]
         public void Test_data_size()
         {
-            Ethash ethash = new Ethash();
             for (int i = 0; i < _dataSizes.Length; i++)
             {
-                ulong size = ethash.GetDataSize((ulong)i * Ethash.EpochLength);
+                ulong size = Ethash.GetDataSize((ulong)i * Ethash.EpochLength);
                 Assert.AreEqual(size, _dataSizes[i], i);
             }
         }
@@ -804,11 +803,52 @@ namespace Nethermind.Mining.Test
         [Test]
         public void Test_cache_size()
         {
-            Ethash ethash = new Ethash();
             for (int i = 0; i < _cacheSizes.Length; i++)
             {
-                ulong size = ethash.GetCacheSize((ulong)i * Ethash.EpochLength);
+                ulong size = Ethash.GetCacheSize((ulong)i * Ethash.EpochLength);
                 Assert.AreEqual(size, _cacheSizes[i], i);
+            }
+        }
+
+        [Test]
+        public void Test_two_cache_creation_methods_give_same_results()
+        {
+            byte[] seed = new byte[32];
+            byte[] hash = Keccak512.Compute(seed).Bytes;
+            uint[] hashInts = Keccak512.ComputeToUInts(seed);
+
+            byte[] hashFromInts = new byte[64];
+            Buffer.BlockCopy(hashInts, 0, hashFromInts, 0, 64);
+            
+            Assert.AreEqual(hash, hashFromInts, "Keccak uints");
+
+            EthashBytesCache bytesCache = new EthashBytesCache(_cacheSizes[0], seed);
+            EthashIntCache intCache = new EthashIntCache(_cacheSizes[0], seed);
+
+            int itemsToCheck = 1000;
+            Assert.AreEqual(bytesCache.Size, intCache.Size, "cache size");
+            for (int i = 0; i < itemsToCheck; i++)
+            {
+                uint[] ints = intCache.Data[i];
+                byte[] bytes = bytesCache.Data[i];
+                
+                for (uint j = 0; j < ints.Length; j++)
+                {
+                    uint value = Ethash.GetUInt(bytes, j);
+                    Assert.AreEqual(value, ints[j], $"cache at index {i}, {j}");
+                }
+            }
+
+//            uint fullSize = (uint)(_dataSizes[0] / Ethash.HashBytes);
+            for (uint i = 0; i < itemsToCheck; i++)
+            {
+                uint[] ints = intCache.CalcDataSetItem(i);
+                byte[] bytes = bytesCache.CalcDataSetItem(i);
+                for (uint j = 0; j < ints.Length; j++)
+                {
+                    uint value = Ethash.GetUInt(bytes, j);
+                    Assert.AreEqual(value, ints[j], $"full at index {i}, {j}");
+                }
             }
         }
     }

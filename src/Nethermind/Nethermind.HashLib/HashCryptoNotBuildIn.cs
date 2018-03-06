@@ -1,14 +1,15 @@
-﻿using System.Diagnostics;
+﻿using System;
+using System.Diagnostics;
 
 namespace Nethermind.HashLib
 {
     [DebuggerNonUserCode]
-    internal abstract class BlockHash : Hash, IBlockHash
+    public abstract class BlockHash : Hash, IBlockHash
     {
         protected readonly HashBuffer m_buffer;
         protected ulong m_processed_bytes;
 
-        protected BlockHash(int a_hash_size, int a_block_size, int a_buffer_size = -1) 
+        protected BlockHash(int a_hash_size, int a_block_size, int a_buffer_size = -1)
             : base(a_hash_size, a_block_size)
         {
             if (a_buffer_size == -1)
@@ -62,6 +63,20 @@ namespace Nethermind.HashLib
             return new HashResult(result);
         }
 
+        public override uint[] TransformFinalUInts()
+        {
+            Finish();
+
+            Debug.Assert(m_buffer.IsEmpty);
+
+            uint[] result = GetResultUInts();
+
+            Debug.Assert(result.Length == HashSize / 4);
+
+            Initialize();
+            return result;
+        }
+
         protected void TransformBuffer()
         {
             Debug.Assert(m_buffer.IsFull);
@@ -72,5 +87,11 @@ namespace Nethermind.HashLib
         protected abstract void Finish();
         protected abstract void TransformBlock(byte[] a_data, int a_index);
         protected abstract byte[] GetResult();
+
+        protected virtual uint[] GetResultUInts()
+        {
+            throw new NotSupportedException();
+
+        }
     }
 }

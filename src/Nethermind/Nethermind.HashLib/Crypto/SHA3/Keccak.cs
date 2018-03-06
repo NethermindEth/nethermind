@@ -12,7 +12,7 @@ namespace Nethermind.HashLib.Crypto.SHA3
         }
     }
 
-    internal class Keccak256 : Keccak
+    public class Keccak256 : Keccak
     {
         public Keccak256()
             : base(HashLib.HashSize.HashSize256)
@@ -28,7 +28,7 @@ namespace Nethermind.HashLib.Crypto.SHA3
         }
     }
 
-    internal class Keccak512 : Keccak
+    public class Keccak512 : Keccak
     {
         public Keccak512()
             : base(HashLib.HashSize.HashSize512)
@@ -37,7 +37,7 @@ namespace Nethermind.HashLib.Crypto.SHA3
     }
 
     [DebuggerNonUserCode]
-    internal abstract class Keccak : BlockHash, ICryptoNotBuildIn
+    public abstract class Keccak : BlockHash, ICryptoNotBuildIn
     {
         private readonly ulong[] m_state = new ulong[25];
 
@@ -2694,6 +2694,18 @@ namespace Nethermind.HashLib.Crypto.SHA3
         protected override byte[] GetResult()
         {
             return Converters.ConvertULongsToBytes(m_state).SubArray(0, HashSize);
+        }
+
+        protected override uint[] GetResultUInts()
+        {
+            uint[] result = new uint[HashSize / 4];
+            for (int i = 0; i < result.Length / 2; i = i + 1)
+            {
+                result[i * 2] = (uint)m_state[i];
+                result[i * 2 + 1] = (uint)(m_state[i] >> 32);
+            }
+
+            return result;
         }
 
         public override void Initialize()

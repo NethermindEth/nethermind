@@ -8,7 +8,7 @@ using Nethermind.HashLib.Extensions;
 namespace Nethermind.HashLib
 {
     [DebuggerStepThrough]
-    internal abstract class Hash : IHash
+    public abstract class Hash : IHash
     {
         private readonly int m_block_size;
         private readonly int m_hash_size;
@@ -206,6 +206,24 @@ namespace Nethermind.HashLib
             Initialize();
             TransformBytes(a_data);
             HashResult result = TransformFinal();
+            Initialize();
+            return result;
+        }
+
+        public virtual uint[] ComputeBytesToUint(byte[] a_data)
+        {
+            Initialize();
+            TransformBytes(a_data);
+            uint[] result = TransformFinalUInts();
+            Initialize();
+            return result;
+        }
+
+        public virtual uint[] ComputeUIntsToUint(uint[] a_data)
+        {
+            Initialize();
+            TransformUInts(a_data);
+            uint[] result = TransformFinalUInts();
             Initialize();
             return result;
         }
@@ -510,5 +528,10 @@ namespace Nethermind.HashLib
         public abstract void Initialize();
         public abstract void TransformBytes(byte[] a_data, int a_index, int a_length);
         public abstract HashResult TransformFinal();
+
+        public virtual uint[] TransformFinalUInts()
+        {
+            throw new NotSupportedException();
+        }
     }
 }

@@ -1,4 +1,5 @@
 ﻿using System;
+using Nethermind.HashLib.Crypto.SHA3;
 
 namespace Nethermind.HashLib
 {
@@ -521,7 +522,7 @@ namespace Nethermind.HashLib
                     return new HashLib.Crypto.SHA3.Keccak224();
                 }
 
-                public static IHash CreateKeccak256()
+                public static Keccak256 CreateKeccak256()
                 {
                     return new HashLib.Crypto.SHA3.Keccak256();
                 }
@@ -531,7 +532,7 @@ namespace Nethermind.HashLib
                     return new HashLib.Crypto.SHA3.Keccak384();
                 }
 
-                public static IHash CreateKeccak512()
+                public static Keccak512 CreateKeccak512()
                 {
                     return new HashLib.Crypto.SHA3.Keccak512();
                 }
