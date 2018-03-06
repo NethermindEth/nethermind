@@ -203,7 +203,7 @@ namespace Nethermind.Mining
                 }
 
                 Console.WriteLine($"Building cache for epoch {epoch}");
-                return new EthashBytesCache(cacheSize, seed.Bytes);
+                return new EthashCache(cacheSize, seed.Bytes);
             });
 
             if (epochToRemove.HasValue)
