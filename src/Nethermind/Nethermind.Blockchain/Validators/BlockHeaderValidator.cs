@@ -44,7 +44,7 @@ namespace Nethermind.Blockchain.Validators
             Keccak hash = header.Hash;
             header.RecomputeHash();
             
-            _ethash.Validate(header);
+            bool isNonceValid = _ethash.Validate(header);
             
             // mix hash check
             // difficulty check
@@ -56,9 +56,13 @@ namespace Nethermind.Blockchain.Validators
             bool numberIsParentPlusOne = header.Number == parent.Header.Number + 1;
             bool extraDataNotTooLong = header.ExtraData.Length <= 32;
             bool hashAsExpected = header.Hash == hash;
+            if (!hashAsExpected)
+            {
+                
+            }
 
             return
-//                isNonceValid &&
+                   isNonceValid &&
                    gasUsedBelowLimit &&
                    gasLimitNotTooLow &&
                    gasLimitNotTooHigh &&
