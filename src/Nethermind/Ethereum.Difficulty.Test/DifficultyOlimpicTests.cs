@@ -31,7 +31,7 @@ namespace Ethereum.Difficulty.Test
         }
 
         [TestCaseSource(nameof(LoadOlimpicTests))]
-        public void Olimpic(DifficultyTests test)
+        public void Test(DifficultyTests test)
         {
             RunTest(test, EthereumNetwork.Olympic);
         }

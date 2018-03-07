@@ -31,7 +31,7 @@ namespace Ethereum.Difficulty.Test
         }
 
         [TestCaseSource(nameof(LoadHomesteadTests))]
-        public void Homestead2(DifficultyTests test)
+        public void Test(DifficultyTests test)
         {
             RunTest(test, EthereumNetwork.Homestead);
         }

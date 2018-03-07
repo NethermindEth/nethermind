@@ -31,7 +31,7 @@ namespace Ethereum.Difficulty.Test
         }
 
         [TestCaseSource(nameof(LoadMordenTests))]
-        public void Morden(DifficultyTests test)
+        public void Test(DifficultyTests test)
         {
             RunTest(test, EthereumNetwork.Morden);
         }

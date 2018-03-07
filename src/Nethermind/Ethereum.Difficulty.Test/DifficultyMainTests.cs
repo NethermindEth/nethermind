@@ -36,13 +36,13 @@ namespace Ethereum.Difficulty.Test
         }
 
         [TestCaseSource(nameof(LoadBasicTests))]
-        public void MainNetwork1(DifficultyTests test)
+        public void Test_basic(DifficultyTests test)
         {
             RunTest(test, EthereumNetwork.Main);
         }
 
         [TestCaseSource(nameof(LoadMainNetworkTests))]
-        public void MainNetwork3(DifficultyTests test)
+        public void Test_main(DifficultyTests test)
         {
             RunTest(test, EthereumNetwork.Main);
         }

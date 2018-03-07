@@ -32,9 +32,9 @@ namespace Ethereum.Difficulty.Test
         }
 
         [TestCaseSource(nameof(LoadFrontierTests))]
-        public void Frontier(DifficultyTests test)
+        public void Test(DifficultyTests test)
         {
-            RunTest(test, EthereumNetwork.Homestead);
+            RunTest(test, EthereumNetwork.Byzantium);
         }    
     }
 }

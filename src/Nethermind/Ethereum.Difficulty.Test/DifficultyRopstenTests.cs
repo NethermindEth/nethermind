@@ -31,7 +31,7 @@ namespace Ethereum.Difficulty.Test
         }
 
         [TestCaseSource(nameof(LoadRopstenTests))]
-        public void Ropsten(DifficultyTests test)
+        public void Test(DifficultyTests test)
         {
             RunTest(test, EthereumNetwork.Ropsten);
         }
