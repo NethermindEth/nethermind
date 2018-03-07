@@ -27,7 +27,7 @@ namespace Ethereum.Difficulty.Test
     {
         public static IEnumerable<DifficultyTests> LoadFrontierTests()
         {
-            return LoadHex("difficultyCustomMainNetworkTests.json");
+            return LoadHex("difficultyCustomMainNetwork.json");
         }
 
         [TestCaseSource(nameof(LoadFrontierTests))]
