@@ -8,13 +8,12 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="15.6.0" />
     <PackageReference Include="NUnit" Version="3.9.0" />
     <PackageReference Include="NUnit3TestAdapter" Version="3.9.0" />
-    <EmbeddedResource Include="..\..\tests\BlockchainTests\bc*\*.*">
+    <Content Include="..\..\tests\BlockchainTests\bc*\*.*">
       <Link>%(RecursiveDir)%(FileName)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </EmbeddedResource>
+    </Content>
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\Ethereum.Blockchain.Test\Ethereum.Blockchain.Test.csproj" />
     <ProjectReference Include="..\Ethereum.Test.Base\Ethereum.Test.Base.csproj" />
   </ItemGroup>
 </Project>

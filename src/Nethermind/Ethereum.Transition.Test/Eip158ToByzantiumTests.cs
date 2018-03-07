@@ -19,12 +19,12 @@
 using Ethereum.Test.Base;
 using NUnit.Framework;
 
-namespace Ethereum.Blockchain.Test
+namespace Ethereum.Transition.Test
 {
     [TestFixture]
-    public class Eip150SpecificTests : BlockchainTestBase
+    public class Eip158ToByzantiumTests : BlockchainTestBase
     {
-        [TestCaseSource(nameof(LoadTests), new object[] { "stEIP150Specific" })]
+        [TestCaseSource(nameof(LoadTests), new object[] { "bcEip158ToByzantium" })]
         public void Test(BlockchainTest test)
         {    
             RunTest(test);

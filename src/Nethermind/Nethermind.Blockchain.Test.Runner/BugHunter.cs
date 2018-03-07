@@ -19,7 +19,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using Ethereum.Blockchain.Test;
+using Ethereum.Test.Base;
 
 namespace Nethermind.Blockchain.Test.Runner
 {

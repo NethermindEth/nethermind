@@ -1,13 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFramework>netcoreapp2.0</TargetFramework>
-    <IsPackable>false</IsPackable>
   </PropertyGroup>
-  <ItemGroup>
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="15.6.0" />
-    <PackageReference Include="NUnit" Version="3.9.0" />
-    <PackageReference Include="NUnit3TestAdapter" Version="3.9.0" />
-  </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Blockchain\Nethermind.Blockchain.csproj">
       <Project>{B1C9CF07-F89B-4F92-B8A5-F6949B9D3DA5}</Project>
@@ -20,10 +14,6 @@
     <ProjectReference Include="..\Nethermind.Evm\Nethermind.Evm.csproj">
       <Project>{E992EFB5-85F0-49B1-9C0B-6D3846A813A5}</Project>
       <Name>Nethermind.Evm</Name>
-    </ProjectReference>
-    <ProjectReference Include="..\Nethermind.Mining\Nethermind.Mining.csproj">
-      <Project>{81CC021C-021C-427C-9CE1-2E521E7F2985}</Project>
-      <Name>Nethermind.Mining</Name>
     </ProjectReference>
   </ItemGroup>
 </Project>

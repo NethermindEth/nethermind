@@ -35,9 +35,8 @@ using Nethermind.Evm;
 using Nethermind.Mining;
 using Nethermind.Store;
 using Newtonsoft.Json;
-using NUnit.Framework;
 
-namespace Ethereum.Blockchain.Test
+namespace Ethereum.Blockchain.Test.Base
 {
     public class BlockchainTestBase
     {

@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Ethereum.Test.Base;
 using NUnit.Framework;
 
 namespace Ethereum.Blockchain.Test
