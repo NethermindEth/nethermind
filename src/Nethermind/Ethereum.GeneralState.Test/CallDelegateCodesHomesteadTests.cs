@@ -23,7 +23,7 @@ namespace Ethereum.GeneralState.Test
     [TestFixture]
     public class CallDelegateCodesHomesteadTests : GeneralTestBase
     {
-        [TestCaseSource(nameof(LoadTests), new object[] { "stCallDelegateCodesHomestead" })]
+        [TestCaseSource(nameof(LoadTests), new object[] { "CallDelegateCodesHomestead" })]
         public void Test(GenerateStateTest test)
         {    
             RunTest(test);

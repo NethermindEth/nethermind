@@ -20,9 +20,9 @@ namespace Nethermind.Evm
 {
     public static class ShouldLog
     {
-        public static bool Processing = false;
-        public static bool Evm = false;
+        public static bool Processing = true;
+        public static bool Evm = true;
         public static bool EvmStack = false;
-        public static bool State = false;
+        public static bool State = true;
     }
 }

@@ -83,7 +83,8 @@ namespace Nethermind.Evm
 
             if (sender == null)
             {
-                return GetNullReceipt(block, gasLimit);
+                _logger?.Log($"SENDER_NOT_SPECIFIED");
+                return GetNullReceipt(block, 0L);
             }
 
             long intrinsicGas = IntrinsicGasCalculator.Calculate(_ethereumRelease, transaction);
@@ -91,29 +92,33 @@ namespace Nethermind.Evm
 
             if (gasLimit < intrinsicGas)
             {
-                return GetNullReceipt(block, gasLimit);
+                _logger?.Log($"GAS_LIMIT_BELOW_INTRINSIC_GAS {gasLimit} < {intrinsicGas}");
+                return GetNullReceipt(block, 0L);
             }
 
             if (gasLimit > block.GasLimit - block.GasUsed)
             {
-                return GetNullReceipt(block, gasLimit);
+                _logger?.Log($"BLOCK_GAS_LIMIT_EXCEEDED {gasLimit} > {block.GasLimit} - {block.GasUsed}");
+                return GetNullReceipt(block, 0L);
+            }
+
+            if (!_stateProvider.AccountExists(sender))
+            {
+                _logger?.Log($"SENDER_ACCOUNT_DOES_NOT_EXIST {sender}");
+                _stateProvider.CreateAccount(sender, 0);
             }
 
             BigInteger senderBalance = _stateProvider.GetBalance(sender);
-            _logger?.Log($"SENDER_BALANCE: {senderBalance}");
             if (intrinsicGas * gasPrice + value > senderBalance)
             {
-                return GetNullReceipt(block, gasLimit);
+                _logger?.Log($"INSUFFICIENT_SENDER_BALANCE: ({sender})b = {senderBalance}");
+                return GetNullReceipt(block, 0L);
             }
 
             if (transaction.Nonce != _stateProvider.GetNonce(sender))
             {
-                return GetNullReceipt(block, gasLimit);
-            }
-            
-            if (!_stateProvider.AccountExists(sender))
-            {
-                _stateProvider.CreateAccount(sender, 0);
+                _logger?.Log($"WRONG_TRANSACTION_NONCE: {transaction.Nonce}");
+                return GetNullReceipt(block, 0L);
             }
 
             _stateProvider.IncrementNonce(sender);

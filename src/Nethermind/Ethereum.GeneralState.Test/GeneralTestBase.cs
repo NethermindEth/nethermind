@@ -35,7 +35,7 @@ namespace Ethereum.GeneralState.Test
 {
     public class GeneralTestBase
     {
-        private readonly IEthereumRelease _ethereumRelease = Frontier.Instance;
+        private readonly IEthereumRelease _ethereumRelease = Homestead.Instance;
         private IBlockhashProvider _blockhashProvider;
         private IMultiDb _multiDb;
         private IEthereumSigner _signer;
