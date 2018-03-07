@@ -21,11 +21,11 @@ using NUnit.Framework;
 namespace Ethereum.Blockchain.Test
 {
     [TestFixture]
-    public class NonZeroCallsTests : BlockchainTestBase
+    public class Eip158SpecificTests : BlockchainTestBase
     {
-        [TestCaseSource(nameof(LoadTests), new object[] { "stNonZeroCallsTest" })]
+        [TestCaseSource(nameof(LoadTests), new object[] { "stEIP158Specific" })]
         public void Test(BlockchainTest test)
-        {
+        {    
             RunTest(test);
         }
     }

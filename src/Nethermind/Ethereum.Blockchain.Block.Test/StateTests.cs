@@ -22,9 +22,9 @@ using NUnit.Framework;
 namespace Ethereum.Blockchain.Block.Test
 {
     [TestFixture]
-    public class ExploitTest : BlockchainTestBase
+    public class StateTests : BlockchainTestBase
     {
-        [TestCaseSource(nameof(LoadTests), new object[] { "bcExploitTest" })]
+        [TestCaseSource(nameof(LoadTests), new object[] { "bcStateTests" })]
         public void Test(BlockchainTest test)
         {
             RunTest(test);

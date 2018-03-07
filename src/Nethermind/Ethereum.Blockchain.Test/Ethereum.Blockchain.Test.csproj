@@ -9,30 +9,36 @@
     <PackageReference Include="NUnit3TestAdapter" Version="3.9.0" />
     <PackageReference Include="System.Diagnostics.TextWriterTraceListener" Version="4.3.0" />
   </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\tests\BlockchainTests\GeneralStateTests\**\*.*">
+      <Link>%(RecursiveDir)%(FileName)%(Extension)</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </EmbeddedResource>
+  </ItemGroup>
   <!--<ItemGroup>
     <EmbeddedResource Include="..\..\tests\BlockchainTests\GeneralStateTests\stBugs*\*.*">
       <Link>%(RecursiveDir)%(FileName)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </EmbeddedResource>
-  </ItemGroup>-->
-  <!--<ItemGroup>
+  </ItemGroup>
+  <ItemGroup>
     <EmbeddedResource Include="..\..\tests\BlockchainTests\GeneralStateTests\stQuadraticComplexityTest*\*.*">
       <Link>%(RecursiveDir)%(FileName)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </EmbeddedResource>
-  </ItemGroup>-->
+  </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="..\..\tests\BlockchainTests\GeneralStateTests\stCodeSizeLimit*\*.*">
       <Link>%(RecursiveDir)%(FileName)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </EmbeddedResource>
   </ItemGroup>
-  <!--<ItemGroup>
+  <ItemGroup>
     <EmbeddedResource Include="..\..\tests\BlockchainTests\GeneralStateTests\stAttackTest*\*.*">
       <Link>%(RecursiveDir)%(FileName)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </EmbeddedResource>
-  </ItemGroup>-->
+  </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="..\..\tests\BlockchainTests\GeneralStateTests\stTransactionTest*\*.*">
       <Link>%(RecursiveDir)%(FileName)%(Extension)</Link>
@@ -111,12 +117,12 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </EmbeddedResource>
   </ItemGroup>
-  <!--<ItemGroup>
+  <ItemGroup>
     <EmbeddedResource Include="..\..\tests\BlockchainTests\GeneralStateTests\stRecursiveCreate*\*.*">
       <Link>%(RecursiveDir)%(FileName)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </EmbeddedResource>
-  </ItemGroup>-->
+  </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="..\..\tests\BlockchainTests\GeneralStateTests\stCreate*\*.*">
       <Link>%(RecursiveDir)%(FileName)%(Extension)</Link>
@@ -206,7 +212,7 @@
       <Link>%(RecursiveDir)%(FileName)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </EmbeddedResource>
-  </ItemGroup>
+  </ItemGroup>-->
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Blockchain\Nethermind.Blockchain.csproj">
       <Project>{B1C9CF07-F89B-4F92-B8A5-F6949B9D3DA5}</Project>

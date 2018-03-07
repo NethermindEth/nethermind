@@ -42,7 +42,7 @@ namespace Nethermind.Mining
             for (int _ = 0; _ < Ethash.CacheRounds; _++)
             {
                 for (int i = 0; i < cachePageCount; i++)
-                {                                      
+                {      
                     uint v = Data[i][0] % cachePageCount;
                     long page = (i - 1 + cachePageCount) % cachePageCount;
                     for (int j = 0; j < Data[i].Length; j++)
@@ -58,10 +58,10 @@ namespace Nethermind.Mining
         public uint[] CalcDataSetItem(uint i)
         {
             uint n = (uint)Data.Length;
-            uint r = Ethash.HashBytes / Ethash.WordBytes;
+            int r = Ethash.HashBytes / Ethash.WordBytes;
 
             uint[] mixInts = new uint[Ethash.HashBytes / Ethash.WordBytes];
-            Buffer.BlockCopy(Data[i % n], 0, mixInts, 0, (int)Ethash.HashBytes);
+            Buffer.BlockCopy(Data[i % n], 0, mixInts, 0, Ethash.HashBytes);
 
             mixInts[0] = i ^ mixInts[0];
             mixInts = Keccak512.ComputeUIntsToUInts(mixInts);

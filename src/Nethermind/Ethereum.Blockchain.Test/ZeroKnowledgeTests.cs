@@ -16,15 +16,14 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Ethereum.Blockchain.Test;
 using NUnit.Framework;
 
-namespace Ethereum.Blockchain.Block.Test
+namespace Ethereum.Blockchain.Test
 {
     [TestFixture]
-    public class InvalidHeaderTest : BlockchainTestBase
+    public class ZeroKnowledgeTests : BlockchainTestBase
     {
-        [TestCaseSource(nameof(LoadTests), new object[] { "bcInvalidHeaderTest" })]
+        [TestCaseSource(nameof(LoadTests), new object[] { "stZeroKnowledge" })]
         public void Test(BlockchainTest test)
         {
             RunTest(test);

@@ -42,7 +42,7 @@ namespace Nethermind.Mining
         public const int CacheMultiplier = 1024; // Size of the DAG relative to the cache
         public const ulong EpochLength = 30000; // blocks per epoch
         public const uint MixBytes = 128; // width of mix
-        public const uint HashBytes = 64; // hash length in bytes
+        public const int HashBytes = 64; // hash length in bytes
         public const uint DatasetParents = 256; // number of parents of each dataset element
         public const int CacheRounds = 3; // number of rounds in cache production
         public const int Accesses = 64; // number of accesses in hashimoto loop

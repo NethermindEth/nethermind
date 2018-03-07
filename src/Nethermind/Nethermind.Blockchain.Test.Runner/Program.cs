@@ -142,8 +142,8 @@ namespace Nethermind.Blockchain.Test.Runner
             Run(bugHunter, "bcValidBlockTest", testWildcard);
             Run(bugHunter, "bcWalletTest", testWildcard);
 
-            //            Run(bugHunter, "stZeroKnowledge", testWildcard);
-            //            Run(bugHunter,"stZeroKnowledge2", testWildcard);
+            Run(bugHunter, "stZeroKnowledge", testWildcard);
+            Run(bugHunter,"stZeroKnowledge2", testWildcard);
         }
     }
 }

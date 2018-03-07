@@ -18,14 +18,14 @@
 
 using NUnit.Framework;
 
-namespace Ethereum.Blockchain.Test
+namespace Ethereum.GeneralState.Test
 {
     [TestFixture]
-    public class NonZeroCallsTests : BlockchainTestBase
+    public class Eip158SpecificTests : GeneralTestBase
     {
-        [TestCaseSource(nameof(LoadTests), new object[] { "stNonZeroCallsTest" })]
-        public void Test(BlockchainTest test)
-        {
+        [TestCaseSource(nameof(LoadTests), new object[] { "EIP158Specific" })]
+        public void Test(GenerateStateTest test)
+        {    
             RunTest(test);
         }
     }

@@ -16,17 +16,16 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Ethereum.Blockchain.Test;
 using NUnit.Framework;
 
-namespace Ethereum.Blockchain.Block.Test
+namespace Ethereum.Blockchain.Test
 {
     [TestFixture]
-    public class MultiChainTest : BlockchainTestBase
+    public class Eip150SingleCodeGasPricesTests : BlockchainTestBase
     {
-        [TestCaseSource(nameof(LoadTests), new object[] { "bcMultiChainTest" })]
+        [TestCaseSource(nameof(LoadTests), new object[] { "stEIP150singleCodeGasPrices" })]
         public void Test(BlockchainTest test)
-        {
+        {    
             RunTest(test);
         }
     }

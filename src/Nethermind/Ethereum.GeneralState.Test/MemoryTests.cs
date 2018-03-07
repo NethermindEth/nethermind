@@ -21,7 +21,7 @@ using NUnit.Framework;
 namespace Ethereum.GeneralState.Test
 {
     [TestFixture]
-    public class MemoryTest : GeneralTestBase
+    public class MemoryTests : GeneralTestBase
     {
         [TestCaseSource(nameof(LoadTests), new object[] { "MemoryTest" })]
         public void Test(GenerateStateTest test)
