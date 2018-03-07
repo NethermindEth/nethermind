@@ -1,85 +1,88 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio 2013
-VisualStudioVersion = 12.0.0.0
-MinimumVisualStudioVersion = 10.0.0.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Core", "Nethermind.Core\Nethermind.Core.csproj", "{5751C57B-9F2D-45DE-BCC2-42645B85E39E}"
+# Visual Studio 15
+VisualStudioVersion = 15.0.27428.1
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Core", "Nethermind.Core\Nethermind.Core.csproj", "{5751C57B-9F2D-45DE-BCC2-42645B85E39E}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.HashLib", "Nethermind.HashLib\Nethermind.HashLib.csproj", "{75B8BE8D-18B0-493C-8BA5-083D4B952BF9}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.HashLib", "Nethermind.HashLib\Nethermind.HashLib.csproj", "{75B8BE8D-18B0-493C-8BA5-083D4B952BF9}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Blockchain", "Nethermind.Blockchain\Nethermind.Blockchain.csproj", "{B1C9CF07-F89B-4F92-B8A5-F6949B9D3DA5}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Blockchain", "Nethermind.Blockchain\Nethermind.Blockchain.csproj", "{B1C9CF07-F89B-4F92-B8A5-F6949B9D3DA5}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Evm", "Nethermind.Evm\Nethermind.Evm.csproj", "{E992EFB5-85F0-49B1-9C0B-6D3846A813A5}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Evm", "Nethermind.Evm\Nethermind.Evm.csproj", "{E992EFB5-85F0-49B1-9C0B-6D3846A813A5}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Store", "Nethermind.Store\Nethermind.Store.csproj", "{8311E4F7-DB36-40F5-A496-7CE4FD486FEE}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Store", "Nethermind.Store\Nethermind.Store.csproj", "{8311E4F7-DB36-40F5-A496-7CE4FD486FEE}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Core.Test", "Nethermind.Core.Test\Nethermind.Core.Test.csproj", "{6BAD851C-B0A2-4DFE-A1F3-1C3A634C522B}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Core.Test", "Nethermind.Core.Test\Nethermind.Core.Test.csproj", "{6BAD851C-B0A2-4DFE-A1F3-1C3A634C522B}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Secp256k1", "Nethermind.Secp256k1\Nethermind.Secp256k1.csproj", "{233F90B7-8850-4E62-93F2-32E4676E8D22}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Secp256k1", "Nethermind.Secp256k1\Nethermind.Secp256k1.csproj", "{233F90B7-8850-4E62-93F2-32E4676E8D22}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Secp256k1.Test", "Nethermind.Secp256k1.Test\Nethermind.Secp256k1.Test.csproj", "{99176509-944E-4330-BCC0-B286A9E585E6}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Secp256k1.Test", "Nethermind.Secp256k1.Test\Nethermind.Secp256k1.Test.csproj", "{99176509-944E-4330-BCC0-B286A9E585E6}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Evm.Test", "Nethermind.Evm.Test\Nethermind.Evm.Test.csproj", "{44B0C68E-E3F0-4CAE-8C7C-4A3EAB62E7DD}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Evm.Test", "Nethermind.Evm.Test\Nethermind.Evm.Test.csproj", "{44B0C68E-E3F0-4CAE-8C7C-4A3EAB62E7DD}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Blockchain.Test.Runner", "Nethermind.Blockchain.Test.Runner\Nethermind.Blockchain.Test.Runner.csproj", "{8003010E-787B-42C8-8E7F-C17659910CE0}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Blockchain.Test.Runner", "Nethermind.Blockchain.Test.Runner\Nethermind.Blockchain.Test.Runner.csproj", "{8003010E-787B-42C8-8E7F-C17659910CE0}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ethereum.Blockchain.Test", "Ethereum.Blockchain.Test\Ethereum.Blockchain.Test.csproj", "{BFFF2BF4-FE47-4F1F-8869-CB37E6990D3E}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Ethereum.Blockchain.Test", "Ethereum.Blockchain.Test\Ethereum.Blockchain.Test.csproj", "{BFFF2BF4-FE47-4F1F-8869-CB37E6990D3E}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Db", "Nethermind.Db\Nethermind.Db.csproj", "{0B52D472-A7B0-4AB6-AFE3-A644B90F53FC}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Db", "Nethermind.Db\Nethermind.Db.csproj", "{0B52D472-A7B0-4AB6-AFE3-A644B90F53FC}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Network", "Nethermind.Network\Nethermind.Network.csproj", "{0997F167-C2C4-4F17-99A6-AB1676827DC5}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Network", "Nethermind.Network\Nethermind.Network.csproj", "{0997F167-C2C4-4F17-99A6-AB1676827DC5}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Discovery", "Nethermind.Discovery\Nethermind.Discovery.csproj", "{D1DB830A-0FF8-4A38-AFA2-9D6023BB41F9}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Discovery", "Nethermind.Discovery\Nethermind.Discovery.csproj", "{D1DB830A-0FF8-4A38-AFA2-9D6023BB41F9}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.KeyStore", "Nethermind.KeyStore\Nethermind.KeyStore.csproj", "{31AFB372-BE97-4804-B2B9-AD4C515924B6}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.KeyStore", "Nethermind.KeyStore\Nethermind.KeyStore.csproj", "{31AFB372-BE97-4804-B2B9-AD4C515924B6}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.JsonRpc", "Nethermind.JsonRpc\Nethermind.JsonRpc.csproj", "{53D62515-72D1-4DEA-BC60-71BCC9C928E3}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.JsonRpc", "Nethermind.JsonRpc\Nethermind.JsonRpc.csproj", "{53D62515-72D1-4DEA-BC60-71BCC9C928E3}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Discovery.Test", "Nethermind.Discovery.Test\Nethermind.Discovery.Test.csproj", "{BD940BB1-14E6-4A09-899E-3FD44EF7EDA1}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Discovery.Test", "Nethermind.Discovery.Test\Nethermind.Discovery.Test.csproj", "{BD940BB1-14E6-4A09-899E-3FD44EF7EDA1}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Network.Test", "Nethermind.Network.Test\Nethermind.Network.Test.csproj", "{F6FDB712-1670-4B62-B341-EC6804815991}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Network.Test", "Nethermind.Network.Test\Nethermind.Network.Test.csproj", "{F6FDB712-1670-4B62-B341-EC6804815991}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.JsonRpc.Test", "Nethermind.JsonRpc.Test\Nethermind.JsonRpc.Test.csproj", "{E9B7F7DC-7FE0-4EAC-B1C4-C9592B266A2A}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.JsonRpc.Test", "Nethermind.JsonRpc.Test\Nethermind.JsonRpc.Test.csproj", "{E9B7F7DC-7FE0-4EAC-B1C4-C9592B266A2A}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.KeyStore.Test", "Nethermind.KeyStore.Test\Nethermind.KeyStore.Test.csproj", "{2CE2C804-40B6-4ECA-AF81-556041FA03C6}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.KeyStore.Test", "Nethermind.KeyStore.Test\Nethermind.KeyStore.Test.csproj", "{2CE2C804-40B6-4ECA-AF81-556041FA03C6}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Discovery.Console", "Nethermind.Discovery.Console\Nethermind.Discovery.Console.csproj", "{815FE1CE-C3F0-47AA-A3A1-9188FB273A32}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Discovery.Console", "Nethermind.Discovery.Console\Nethermind.Discovery.Console.csproj", "{815FE1CE-C3F0-47AA-A3A1-9188FB273A32}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.PerfTest", "Nethermind.PerfTest\Nethermind.PerfTest.csproj", "{7798EC58-E66C-4C77-999E-4A0AD2321F4E}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.PerfTest", "Nethermind.PerfTest\Nethermind.PerfTest.csproj", "{7798EC58-E66C-4C77-999E-4A0AD2321F4E}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.PeerConsole", "Nethermind.PeerConsole\Nethermind.PeerConsole.csproj", "{5B4D8626-8B3D-49CC-A0E4-C91BF9A8289E}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.PeerConsole", "Nethermind.PeerConsole\Nethermind.PeerConsole.csproj", "{5B4D8626-8B3D-49CC-A0E4-C91BF9A8289E}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Runner", "Nethermind.Runner\Nethermind.Runner.csproj", "{33E2CCD2-0D52-477C-8EAC-D429F66BEAC0}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Runner", "Nethermind.Runner\Nethermind.Runner.csproj", "{33E2CCD2-0D52-477C-8EAC-D429F66BEAC0}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ethereum.Basic.Test", "Ethereum.Basic.Test\Ethereum.Basic.Test.csproj", "{12EE9DC4-2EE4-4EC0-859B-3FA335CE66CD}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Ethereum.Basic.Test", "Ethereum.Basic.Test\Ethereum.Basic.Test.csproj", "{12EE9DC4-2EE4-4EC0-859B-3FA335CE66CD}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ethereum.Difficulty.Test", "Ethereum.Difficulty.Test\Ethereum.Difficulty.Test.csproj", "{1803B10E-772B-4793-8216-39078A8DA1E0}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Ethereum.Difficulty.Test", "Ethereum.Difficulty.Test\Ethereum.Difficulty.Test.csproj", "{1803B10E-772B-4793-8216-39078A8DA1E0}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ethereum.HexPrefix.Test", "Ethereum.HexPrefix.Test\Ethereum.HexPrefix.Test.csproj", "{5818AB20-837F-46E4-A6BC-2158F30AF837}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Ethereum.HexPrefix.Test", "Ethereum.HexPrefix.Test\Ethereum.HexPrefix.Test.csproj", "{5818AB20-837F-46E4-A6BC-2158F30AF837}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ethereum.KeyAddress.Test", "Ethereum.KeyAddress.Test\Ethereum.KeyAddress.Test.csproj", "{93BD8E8C-5F3E-4AF5-B8A0-698C6A88CCAE}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Ethereum.KeyAddress.Test", "Ethereum.KeyAddress.Test\Ethereum.KeyAddress.Test.csproj", "{93BD8E8C-5F3E-4AF5-B8A0-698C6A88CCAE}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ethereum.Rlp.Test", "Ethereum.Rlp.Test\Ethereum.Rlp.Test.csproj", "{EAB56AFF-B2FB-41F8-A756-3FD8227CB406}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Ethereum.Rlp.Test", "Ethereum.Rlp.Test\Ethereum.Rlp.Test.csproj", "{EAB56AFF-B2FB-41F8-A756-3FD8227CB406}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ethereum.Test.Base", "Ethereum.Test.Base\Ethereum.Test.Base.csproj", "{968435E3-4245-4CE2-A720-7F334BBB46FA}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Ethereum.Test.Base", "Ethereum.Test.Base\Ethereum.Test.Base.csproj", "{968435E3-4245-4CE2-A720-7F334BBB46FA}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ethereum.Transaction.Test", "Ethereum.Transaction.Test\Ethereum.Transaction.Test.csproj", "{62041CDF-9C06-4454-ADF0-DFCCBF9BC080}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Ethereum.Transaction.Test", "Ethereum.Transaction.Test\Ethereum.Transaction.Test.csproj", "{62041CDF-9C06-4454-ADF0-DFCCBF9BC080}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ethereum.Trie.Test", "Ethereum.Trie.Test\Ethereum.Trie.Test.csproj", "{A92936E5-97E9-432D-A8A4-07067244D11B}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Ethereum.Trie.Test", "Ethereum.Trie.Test\Ethereum.Trie.Test.csproj", "{A92936E5-97E9-432D-A8A4-07067244D11B}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ethereum.VM.Test", "Ethereum.VM.Test\Ethereum.VM.Test.csproj", "{9FCC1CF8-62A9-4505-8DD6-E2FCEA2D79AF}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Ethereum.VM.Test", "Ethereum.VM.Test\Ethereum.VM.Test.csproj", "{9FCC1CF8-62A9-4505-8DD6-E2FCEA2D79AF}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ethereum.Blockchain.Block.Test", "Ethereum.Blockchain.Block.Test\Ethereum.Blockchain.Block.Test.csproj", "{80B96FFD-834F-4DD6-BDA3-A4980EEC7B99}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Ethereum.Blockchain.Block.Test", "Ethereum.Blockchain.Block.Test\Ethereum.Blockchain.Block.Test.csproj", "{80B96FFD-834F-4DD6-BDA3-A4980EEC7B99}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ethereum.PoW.Test", "Ethereum.PoW.Test\Ethereum.PoW.Test.csproj", "{C7E3A120-D595-4A7F-B551-FCC04EF1A697}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Ethereum.PoW.Test", "Ethereum.PoW.Test\Ethereum.PoW.Test.csproj", "{C7E3A120-D595-4A7F-B551-FCC04EF1A697}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Mining", "Nethermind.Mining\Nethermind.Mining.csproj", "{81CC021C-021C-427C-9CE1-2E521E7F2985}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Mining", "Nethermind.Mining\Nethermind.Mining.csproj", "{81CC021C-021C-427C-9CE1-2E521E7F2985}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Mining.Test", "Nethermind.Mining.Test\Nethermind.Mining.Test.csproj", "{658F7F8A-0314-4005-93E8-03B4EB367597}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Mining.Test", "Nethermind.Mining.Test\Nethermind.Mining.Test.csproj", "{658F7F8A-0314-4005-93E8-03B4EB367597}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Ethereum.Transition.Test", "Ethereum.Transition.Test\Ethereum.Transition.Test.csproj", "{AA36DA58-F349-44AF-94BF-E49396259A41}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Ethereum.Transition.Test", "Ethereum.Transition.Test\Ethereum.Transition.Test.csproj", "{AA36DA58-F349-44AF-94BF-E49396259A41}"
 EndProject
 Global
+	GlobalSection(Performance) = preSolution
+		HasPerformanceSessions = true
+	EndGlobalSection
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
 		Release|Any CPU = Release|Any CPU
@@ -240,5 +243,8 @@ Global
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {092CA5E3-6180-4ED7-A3CB-9B57FAC2AA85}
 	EndGlobalSection
 EndGlobal

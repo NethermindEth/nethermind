@@ -24,7 +24,7 @@ namespace Ethereum.Transition.Test
     [TestFixture]
     public class Eip158ToByzantiumTests : BlockchainTestBase
     {
-        [TestCaseSource(nameof(LoadTests), new object[] { "bcEip158ToByzantium" })]
+        [TestCaseSource(nameof(LoadTests), new object[] { "bcEIP158ToByzantium" })]
         public void Test(BlockchainTest test)
         {    
             RunTest(test);

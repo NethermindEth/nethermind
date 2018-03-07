@@ -24,7 +24,7 @@ namespace Ethereum.Transition.Test
     [TestFixture]
     public class HomesteadToEip150Tests : BlockchainTestBase
     {
-        [TestCaseSource(nameof(LoadTests), new object[] { "bcHomesteadToEip150" })]
+        [TestCaseSource(nameof(LoadTests), new object[] { "bcHomesteadToEIP150" })]
         public void Test(BlockchainTest test)
         {    
             RunTest(test);
