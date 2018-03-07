@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,17 +16,24 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Collections.Generic;
+using Nethermind.Core;
 using NUnit.Framework;
 
-namespace Ethereum.Blockchain.Test
+namespace Ethereum.Difficulty.Test
 {
-    [TestFixture]
-    public class MemExpandingEip150CallsTests : BlockchainTestBase
+    [Parallelizable(ParallelScope.None)]
+    public class DifficultyCustomHomesteadTests : TestsBase
     {
-        [TestCaseSource(nameof(LoadTests), new object[] { "stMemExpandingEIP150Calls" })]
-        public void Test(BlockchainTest test)
+        public static IEnumerable<DifficultyTests> LoadFrontierTests()
         {
-            RunTest(test);
+            return LoadHex("difficultyCustomHomestead.json");
         }
+
+        [TestCaseSource(nameof(LoadFrontierTests))]
+        public void Frontier(DifficultyTests test)
+        {
+            RunTest(test, EthereumNetwork.Homestead);
+        }    
     }
 }

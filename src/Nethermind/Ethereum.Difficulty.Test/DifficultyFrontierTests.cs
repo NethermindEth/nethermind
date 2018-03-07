@@ -23,17 +23,17 @@ using NUnit.Framework;
 namespace Ethereum.Difficulty.Test
 {
     [Parallelizable(ParallelScope.None)]
-    public class DifficultyTestsOlimpic : TestsBase
+    public class DifficultyFrontierTests : TestsBase
     {
-        public static IEnumerable<DifficultyTest> LoadOlimpicTests()
+        public static IEnumerable<DifficultyTests> LoadFrontierTests()
         {
-            return LoadHex("difficultyOlimpic.json");
+            return LoadHex("difficultyFrontier.json");
         }
 
-        [TestCaseSource(nameof(LoadOlimpicTests))]
-        public void Olimpic(DifficultyTest test)
+        [TestCaseSource(nameof(LoadFrontierTests))]
+        public void Frontier(DifficultyTests test)
         {
-            RunTest(test, EthereumNetwork.Olympic);
-        }
+            RunTest(test, EthereumNetwork.Frontier);
+        }    
     }
 }

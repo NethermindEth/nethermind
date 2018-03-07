@@ -23,39 +23,17 @@ using NUnit.Framework;
 namespace Ethereum.Difficulty.Test
 {
     [Parallelizable(ParallelScope.None)]
-    public class DifficultyTestsMain : TestsBase
+    public class DifficultyCustomMainNetworkTests : TestsBase
     {
-        public static IEnumerable<DifficultyTest> LoadBasicTests()
+        public static IEnumerable<DifficultyTests> LoadFrontierTests()
         {
-            return Load("difficulty.json");
+            return LoadHex("difficultyCustomMainNetworkTests.json");
         }
 
-        public static IEnumerable<DifficultyTest> LoadMainNetworkTests()
-        {
-            return LoadHex("difficultyMainNetwork.json");
-        }
-
-        public static IEnumerable<DifficultyTest> LoadCustomMainNetworkTests()
-        {
-            return LoadHex("difficultyCustomMainNetwork.json");
-        }
-
-        [TestCaseSource(nameof(LoadBasicTests))]
-        public void MainNetwork1(DifficultyTest test)
+        [TestCaseSource(nameof(LoadFrontierTests))]
+        public void Frontier(DifficultyTests test)
         {
             RunTest(test, EthereumNetwork.Main);
-        }
-
-        [TestCaseSource(nameof(LoadCustomMainNetworkTests))]
-        public void MainNetwork2(DifficultyTest test)
-        {
-            RunTest(test, EthereumNetwork.Main);
-        }
-
-        [TestCaseSource(nameof(LoadMainNetworkTests))]
-        public void MainNetwork3(DifficultyTest test)
-        {
-            RunTest(test, EthereumNetwork.Main);
-        }
+        }    
     }
 }

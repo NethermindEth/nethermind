@@ -23,26 +23,15 @@ using NUnit.Framework;
 namespace Ethereum.Difficulty.Test
 {
     [Parallelizable(ParallelScope.None)]
-    public class DifficultyTestsHomestead : TestsBase
+    public class DifficultyHomesteadTests : TestsBase
     {     
-        public static IEnumerable<DifficultyTest> LoadHomesteadTests()
+        public static IEnumerable<DifficultyTests> LoadHomesteadTests()
         {
             return LoadHex("difficultyHomestead.json");
         }
 
-        public static IEnumerable<DifficultyTest> LoadCustomHomesteadTests()
-        {
-            return LoadHex("difficultyCustomHomestead.json");
-        }
-
-        [TestCaseSource(nameof(LoadCustomHomesteadTests))]
-        public void Homestead1(DifficultyTest test)
-        {
-            RunTest(test, EthereumNetwork.Homestead);
-        }
-
         [TestCaseSource(nameof(LoadHomesteadTests))]
-        public void Homestead2(DifficultyTest test)
+        public void Homestead2(DifficultyTests test)
         {
             RunTest(test, EthereumNetwork.Homestead);
         }

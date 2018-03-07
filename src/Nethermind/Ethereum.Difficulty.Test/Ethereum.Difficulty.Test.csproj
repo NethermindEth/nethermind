@@ -21,40 +21,8 @@
       <Project>{5751C57B-9F2D-45DE-BCC2-42645B85E39E}</Project>
       <Name>Nethermind.Core</Name>
     </ProjectReference>
-    <EmbeddedResource Include="..\..\tests\BasicTests\difficulty.json">
-      <Link>difficulty.json</Link>
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </EmbeddedResource>
-    <EmbeddedResource Include="..\..\tests\BasicTests\difficultyCustomHomestead.json">
-      <Link>difficultyCustomHomestead.json</Link>
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </EmbeddedResource>
-    <EmbeddedResource Include="..\..\tests\BasicTests\difficultyCustomMainNetwork.json">
-      <Link>difficultyCustomMainNetwork.json</Link>
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </EmbeddedResource>
-    <EmbeddedResource Include="..\..\tests\BasicTests\difficultyFrontier.json">
-      <Link>difficultyFrontier.json</Link>
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </EmbeddedResource>
-    <EmbeddedResource Include="..\..\tests\BasicTests\difficultyHomestead.json">
-      <Link>difficultyHomestead.json</Link>
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </EmbeddedResource>
-    <EmbeddedResource Include="..\..\tests\BasicTests\difficultyMainNetwork.json">
-      <Link>difficultyMainNetwork.json</Link>
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </EmbeddedResource>
-    <EmbeddedResource Include="..\..\tests\BasicTests\difficultyMorden.json">
-      <Link>difficultyMorden.json</Link>
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </EmbeddedResource>
-    <EmbeddedResource Include="..\..\tests\BasicTests\difficultyOlimpic.json">
-      <Link>difficultyOlimpic.json</Link>
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </EmbeddedResource>
-    <EmbeddedResource Include="..\..\tests\BasicTests\difficultyRopsten.json">
-      <Link>difficultyRopsten.json</Link>
+    <EmbeddedResource Include="..\..\tests\BasicTests\difficulty*.json">
+      <Link>%(RecursiveDir)%(FileName)%(Extension)</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </EmbeddedResource>
   </ItemGroup>

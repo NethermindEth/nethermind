@@ -22,9 +22,9 @@ using System.Numerics;
 namespace Ethereum.Difficulty.Test
 {
     [DebuggerDisplay("{Name}")]
-    public class DifficultyTest
+    public class DifficultyTests
     {
-        public DifficultyTest(
+        public DifficultyTests(
             string fileName,
             string name,
             BigInteger parentTimestamp,

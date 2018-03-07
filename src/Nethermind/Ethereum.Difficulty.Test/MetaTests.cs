@@ -22,7 +22,7 @@ using System.IO;
 using System.Linq;
 using NUnit.Framework;
 
-namespace Ethereum.GeneralState.Test
+namespace Ethereum.Difficulty.Test
 {
     [TestFixture]
     public class MetaTests
@@ -30,8 +30,9 @@ namespace Ethereum.GeneralState.Test
         [Test]
         public void All_categories_are_tested()
         {
-            string[] directories = Directory.GetDirectories(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Tests"))
-                .Select(Path.GetFileName)
+            string[] directories = Directory.GetFiles(AppDomain.CurrentDomain.BaseDirectory)
+                .Select(Path.GetFileNameWithoutExtension)
+                .Where(f => f.StartsWith("difficulty"))
                 .ToArray();
             Type[] types = GetType().Assembly.GetTypes();
             List<string> missingCategories = new List<string>();
@@ -54,7 +55,7 @@ namespace Ethereum.GeneralState.Test
 
         private static string ExpectedTypeName(string directory)
         {
-            string expectedTypeName = directory.Remove(0, 2);
+            string expectedTypeName = directory;
             if (!expectedTypeName.EndsWith("Tests"))
             {
                 if (!expectedTypeName.EndsWith("Test"))
@@ -63,7 +64,7 @@ namespace Ethereum.GeneralState.Test
                 }
                 else
                 {
-                    expectedTypeName += "s";    
+                    expectedTypeName += "s";
                 }
             }
 

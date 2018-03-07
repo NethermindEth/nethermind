@@ -33,26 +33,26 @@ namespace Ethereum.Difficulty.Test
 {
     public abstract class TestsBase
     {
-        public static IEnumerable<DifficultyTest> Load(string fileName)
+        public static IEnumerable<DifficultyTests> Load(string fileName)
         {
-            return TestLoader.LoadFromFile<Dictionary<string, DifficultyTestJson>, DifficultyTest>(
+            return TestLoader.LoadFromFile<Dictionary<string, DifficultyTestJson>, DifficultyTests>(
                 fileName,
                 t => t.Select(dtj => ToTest(fileName, dtj.Key, dtj.Value)));
         }
 
-        public static IEnumerable<DifficultyTest> LoadHex(string fileName)
+        public static IEnumerable<DifficultyTests> LoadHex(string fileName)
         {
             Stopwatch watch = new Stopwatch();
-            IEnumerable<DifficultyTest> tests = TestLoader.LoadFromFile<Dictionary<string, DifficultyTestHexJson>, DifficultyTest>(
+            IEnumerable<DifficultyTests> tests = TestLoader.LoadFromFile<Dictionary<string, DifficultyTestHexJson>, DifficultyTests>(
                 fileName,
                 t => t.Select(dtj => ToTest(fileName, dtj.Key, dtj.Value))).ToList();
             watch.Stop();
             return tests;
         }
 
-        protected static DifficultyTest ToTest(string fileName, string name, DifficultyTestJson json)
+        protected static DifficultyTests ToTest(string fileName, string name, DifficultyTestJson json)
         {
-            return new DifficultyTest(
+            return new DifficultyTests(
                 fileName,
                 name,
                 json.ParentTimestamp,
@@ -75,11 +75,11 @@ namespace Ethereum.Difficulty.Test
             return bytes.ToUInt64();
         }
 
-        protected static DifficultyTest ToTest(string fileName, string name, DifficultyTestHexJson json)
+        protected static DifficultyTests ToTest(string fileName, string name, DifficultyTestHexJson json)
         {
             Keccak noUnclesHash = Keccak.OfAnEmptySequenceRlp;
 
-            return new DifficultyTest(
+            return new DifficultyTests(
                 fileName,
                 name,
                 ToBigInteger(json.ParentTimestamp),
@@ -90,7 +90,7 @@ namespace Ethereum.Difficulty.Test
                 !string.IsNullOrWhiteSpace(json.ParentUncles) && new Keccak(json.ParentUncles) != noUnclesHash);
         }
 
-        protected void RunTest(DifficultyTest test, EthereumNetwork network)
+        protected void RunTest(DifficultyTests test, EthereumNetwork network)
         {
             ProtocolSpecificationProvider specProvider = new ProtocolSpecificationProvider();
             IDifficultyCalculator calculator = new ProtocolBasedDifficultyCalculator(specProvider.GetSpec(network, test.CurrentBlockNumber));

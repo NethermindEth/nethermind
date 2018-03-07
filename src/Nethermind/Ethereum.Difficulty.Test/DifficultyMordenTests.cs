@@ -23,15 +23,15 @@ using NUnit.Framework;
 namespace Ethereum.Difficulty.Test
 {
     [Parallelizable(ParallelScope.None)]
-    public class DifficultyTestsMorden : TestsBase
+    public class DifficultyMordenTests : TestsBase
     {
-        public static IEnumerable<DifficultyTest> LoadMordenTests()
+        public static IEnumerable<DifficultyTests> LoadMordenTests()
         {
             return LoadHex("difficultyMorden.json");
         }
 
         [TestCaseSource(nameof(LoadMordenTests))]
-        public void Morden(DifficultyTest test)
+        public void Morden(DifficultyTests test)
         {
             RunTest(test, EthereumNetwork.Morden);
         }
