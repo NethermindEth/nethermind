@@ -16,7 +16,10 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Unity;
+using System.Linq;
+using LightInject;
+using Microsoft.AspNetCore.Server.Kestrel.Core;
+using Nethermind.Core;
 
 namespace Nethermind.Runner
 {
@@ -24,12 +27,8 @@ namespace Nethermind.Runner
     {
         static void Main(string[] args)
         {
-            var bootstraper = new Bootstraper();
-            var jsonRpcRunner = bootstraper.Container.Resolve<IJsonRpcRunner>();
-            jsonRpcRunner.Container = bootstraper.Container;
-            jsonRpcRunner.Start();
-
-            var ethereumRunner = bootstraper.Container.Resolve<IEthereumRunner>();
-        }
+            var runner = new RunnerApp(new ConsoleLogger());
+            runner.Start(args);
+        }       
     }
 }

@@ -82,7 +82,7 @@ namespace Nethermind.Blockchain.Validators
                 // difficulty check
                 header.GasUsed < header.GasLimit &&
                 // header.GasLimit > 125000 && // TODO: tests are consistently not following this rule
-                header.Timestamp > 0 && // what here?
+                //header.Timestamp > 0 && // what here?
                 header.Number == 0 &&
                 header.ExtraData.Length <= 32;
         }

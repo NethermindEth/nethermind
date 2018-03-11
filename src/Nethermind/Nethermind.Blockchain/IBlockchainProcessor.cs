@@ -23,6 +23,7 @@ namespace Nethermind.Blockchain
 {
     public interface IBlockchainProcessor
     {
+        void Initialize(Rlp genesisBlockRlp);
         Block HeadBlock { get; }
         ///Currently processing block
         Block SuggestedBlock { get; }

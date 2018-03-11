@@ -51,7 +51,7 @@ namespace Nethermind.Blockchain
             IDifficultyCalculator difficultyCalculator,
             IRewardCalculator rewardCalculator,
             ITransactionProcessor transactionProcessor,
-            ISnapshotable db,
+            IMultiDb db,
             IStateProvider stateProvider,
             IStorageProvider storageProvider, ITransactionStore transactionStore, ILogger logger = null)
         {

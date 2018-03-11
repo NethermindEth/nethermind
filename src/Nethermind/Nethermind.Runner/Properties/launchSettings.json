@@ -1,0 +1,14 @@
+{
+  "profiles": {
+    "Nethermind.Runner": {
+      "commandName": "Project",
+      "commandLineArgs": "-g f:\\IT\\projects\\Crypto\\deployments\\docker\\Tests\\genesis.json",
+      "launchBrowser": true,
+      "launchUrl": "api/values",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      },
+      "applicationUrl": "http://localhost:49244/"
+    }
+  }
+}

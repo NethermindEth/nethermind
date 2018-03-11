@@ -221,10 +221,11 @@ namespace Ethereum.Test.Base
                 ShouldLog.Processing ? _logger : null);
             
             IBlockchainProcessor blockchainProcessor = new BlockchainProcessor(
-                test.GenesisRlp,
                 blockProcessor,
                 _chain,
                 ShouldLog.Processing ? _logger : null);
+
+            blockchainProcessor.Initialize(test.GenesisRlp);
 
             var rlps = test.Blocks.Select(tb => new Rlp(Hex.ToBytes(tb.Rlp))).ToArray();
             for (int i = 0; i < rlps.Length; i++)

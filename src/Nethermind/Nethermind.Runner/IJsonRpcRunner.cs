@@ -17,15 +17,14 @@
  */
 
 using System.Collections.Generic;
+using Microsoft.AspNetCore.Hosting;
 using Nethermind.JsonRpc.DataModel;
-using Unity;
 
 namespace Nethermind.Runner
 {
     public interface IJsonRpcRunner
     {
-        void Start(IEnumerable<ModuleType> modules = null);
+        void Start(IWebHost webHost, IEnumerable<ModuleType> modules = null);
         void Stop(IEnumerable<ModuleType> modules = null);
-        IUnityContainer Container { set; }
     }
 }

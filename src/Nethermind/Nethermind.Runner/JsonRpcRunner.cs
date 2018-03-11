@@ -22,18 +22,15 @@ using System.Linq;
 using Nethermind.Core;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.DataModel;
-using Unity;
+using Microsoft.AspNetCore.Hosting;
 
 namespace Nethermind.Runner
 {
     public class JsonRpcRunner : IJsonRpcRunner
     {
         private readonly ILogger _logger;
-        //TODO: replace with something supported by .NET Core
-//        private UnityServiceHost _serviceHost;
         private readonly IConfigurationProvider _configurationProvider;
-
-        public IUnityContainer Container { private get; set; }
+        private IWebHost _webHost;
 
         public JsonRpcRunner(IConfigurationProvider configurationProvider, ILogger logger)
         {
@@ -41,7 +38,7 @@ namespace Nethermind.Runner
             _logger = logger;
         }
 
-        public void Start(IEnumerable<ModuleType> modules = null)
+        public void Start(IWebHost webHost, IEnumerable<ModuleType> modules = null)
         {
             if (modules != null && modules.Any())
             {
@@ -49,27 +46,15 @@ namespace Nethermind.Runner
             }
 
             _logger.Log($"Starting http service, modules: {string.Join(", ", _configurationProvider.EnabledModules.Select(x => x))}");
-
-            //TODO: replace with something supported by .NET Core
-//            _serviceHost = new UnityServiceHost(Container, typeof(JsonRpcService));
-//            _serviceHost.Open();
-
-            //TODO: replace with something supported by .NET Core
-//            foreach (var endpoint in _serviceHost.Description.Endpoints)
-//            {
-//                _logger.Log($"Opened service: {endpoint.Address}");
-//            }
+            _webHost = webHost;
+            _webHost.Run();
         }
 
-        public void Stop(IEnumerable<ModuleType> modules = null)
+        public async void Stop(IEnumerable<ModuleType> modules = null)
         {
             try
             {
-                //TODO: replace with something supported by .NET Core
-//                if (_serviceHost != null && _serviceHost.State != CommunicationState.Closed)
-//                {
-//                    _serviceHost.Close();
-//                }
+                await _webHost.StopAsync();
                 _logger.Log("Service stopped");
             }
             catch (Exception e)

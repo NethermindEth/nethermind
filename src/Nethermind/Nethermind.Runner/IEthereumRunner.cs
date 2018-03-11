@@ -20,7 +20,7 @@ namespace Nethermind.Runner
 {
     public interface IEthereumRunner
     {
-        void Start();
+        void Start(string bootNodeValue, int discoveryPort, string genesisFile);
         void Stop();
     }
 }
