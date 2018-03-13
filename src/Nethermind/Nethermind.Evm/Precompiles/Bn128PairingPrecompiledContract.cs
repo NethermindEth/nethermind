@@ -63,7 +63,7 @@ namespace Nethermind.Evm.Precompiles
             // fail if input len is not a multiple of PAIR_SIZE
             if (inputData.Length % PairSize > 0)
             {
-                throw new ArgumentException(); // TODO: check
+                return (Bytes.Empty, false);
             }
 
             PairingCheck check = PairingCheck.Create();
@@ -76,7 +76,7 @@ namespace Nethermind.Evm.Precompiles
                 // fail if decoding has failed
                 if (pair.Item1 == null || pair.Item2 == null)
                 {
-                    throw new ArgumentException();
+                    return (Bytes.Empty, false);
                 }
 
                 check.AddPair(pair.Item1, pair.Item2);
