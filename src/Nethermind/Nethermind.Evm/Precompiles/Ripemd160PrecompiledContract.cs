@@ -48,11 +48,11 @@ namespace Nethermind.Evm.Precompiles
             return 120L * EvmMemory.Div32Ceiling(inputData.Length);
         }
 
-        public byte[] Run(byte[] inputData)
+        public (byte[], bool) Run(byte[] inputData)
         {
             // missing in .NET Core
 //            return _ripemd.ComputeHash(inputData).PadLeft(32);
-            return Ripemd.Compute(inputData).PadLeft(32);
+            return (Ripemd.Compute(inputData).PadLeft(32), true);
         }
     }
 }

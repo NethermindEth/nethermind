@@ -63,7 +63,7 @@ namespace Nethermind.Evm.Precompiles
             }
         }
 
-        public byte[] Run(byte[] inputData)
+        public (byte[], bool) Run(byte[] inputData)
         {
             int baseLength = (int)inputData.SliceWithZeroPadding(0, 32).ToUnsignedBigInteger();
             int expLength = (int)inputData.SliceWithZeroPadding(32, 32).ToUnsignedBigInteger();
@@ -78,7 +78,7 @@ namespace Nethermind.Evm.Precompiles
                 throw new InvalidInputDataException();
             }
 
-            return BigInteger.ModPow(baseInt, expInt, modulusInt).ToBigEndianByteArray(modulusLength);
+            return (BigInteger.ModPow(baseInt, expInt, modulusInt).ToBigEndianByteArray(modulusLength), true);
         }
 
         private BigInteger MultComplexity(BigInteger adjustedExponentLength)

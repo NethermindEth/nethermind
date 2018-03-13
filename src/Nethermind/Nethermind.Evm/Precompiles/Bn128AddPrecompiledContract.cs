@@ -46,7 +46,7 @@ namespace Nethermind.Evm.Precompiles
             return 0L;
         }
 
-        public byte[] Run(byte[] inputData)
+        public (byte[], bool) Run(byte[] inputData)
         {  
             if (inputData == null)
             {
@@ -67,28 +67,28 @@ namespace Nethermind.Evm.Precompiles
             Bn128Fp p1 = Bn128Fp.Create(x1, y1);
             if (p1 == null)
             {
-                throw new ArgumentException(); // TODO: check the behaviour here
+                return (Bytes.Empty, false);
             }
 
             Bn128Fp p2 = Bn128Fp.Create(x2, y2);
             if (p2 == null)
             {
-                throw new ArgumentException(); // TODO: check the behaviour here
+                return (Bytes.Empty, false);
             }
 
             Bn128Fp res = p1.Add(p2).ToEthNotation();
 
-            return EncodeResult(res.X.GetBytes(), res.Y.GetBytes());
+            return (EncodeResult(res.X.GetBytes(), res.Y.GetBytes()), true);
         }
         
         private static byte[] EncodeResult(byte[] w1, byte[] w2) {
 
             byte[] result = new byte[64];
 
+            // TODO: do I need to strip leading zeros here?
             w1 = w1.WithoutLeadingZeros();
             w2 = w2.WithoutLeadingZeros();
-
-            // TODO: do I need to strip leading zeros here?
+            
             Buffer.BlockCopy(w1, 0, result, 32 - w1.Length, w1.Length);
             Buffer.BlockCopy(w2, 0, result, 64 - w2.Length, w2.Length);
 

@@ -28,6 +28,6 @@ namespace Nethermind.Evm.Precompiles
 
         long DataGasCost(byte[] inputData);
 
-        byte[] Run(byte[] inputData);
+        (byte[], bool) Run(byte[] inputData);
     }
 }

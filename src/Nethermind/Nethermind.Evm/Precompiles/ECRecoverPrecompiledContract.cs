@@ -45,7 +45,7 @@ namespace Nethermind.Evm.Precompiles
             return 3000L;
         }
 
-        public byte[] Run(byte[] inputData)
+        public (byte[], bool) Run(byte[] inputData)
         {
             EthereumSigner signer = new EthereumSigner(Olympic.Instance, ChainId.MainNet);
 
@@ -73,7 +73,7 @@ namespace Nethermind.Evm.Precompiles
             }
 
             Signature signature = new Signature(r, s, v);
-            return ((byte[])signer.RecoverAddress(signature, hash).Hex).PadLeft(32); // TODO: change recovery code to return bytes?
+            return (((byte[])signer.RecoverAddress(signature, hash).Hex).PadLeft(32), true); // TODO: change recovery code to return bytes?
         }
     }
 }

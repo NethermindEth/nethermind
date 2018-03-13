@@ -147,7 +147,7 @@ namespace Nethermind.Evm
                         }
                         else
                         {
-                            previousCallResult = StatusCode.SuccessBytes;
+                            previousCallResult = callResult.PrecompileSuccess.HasValue ? (callResult.PrecompileSuccess.Value ? StatusCode.SuccessBytes : StatusCode.FailureBytes) : StatusCode.SuccessBytes;
                             // TODO: can remove the line below now after have the buffer
                             previousCallOutput = callResult.Output.SliceWithZeroPadding(0, Math.Min(callResult.Output.Length, (int)previousState.OutputLength));
                             previousCallOutputDestination = previousState.OutputDestination;
@@ -275,12 +275,16 @@ namespace Nethermind.Evm
 
             try
             {
-                byte[] output = _precompiledContracts[precompileId].Run(callData);
-                return new CallResult(output);
+                (byte[] output, bool success) = _precompiledContracts[precompileId].Run(callData);
+                CallResult callResult = new CallResult(output);
+                callResult.PrecompileSuccess = success;
+                return callResult;
             }
             catch (Exception ex)
             {
-                return new CallResult(EmptyBytes);
+                CallResult callResult = new CallResult(EmptyBytes);
+                callResult.PrecompileSuccess = false; // TODO: temp approach
+                return callResult;
             }
         }
 
@@ -1646,6 +1650,7 @@ namespace Nethermind.Evm
     {
         public bool ShouldRevert { get; }
         public static readonly CallResult Empty = new CallResult();
+        public bool? PrecompileSuccess { get; set; } // TODO: check this behaviour as it seems it is required and previously that was not the case
 
         public CallResult(EvmState stateToExecute)
         {

@@ -45,9 +45,9 @@ namespace Nethermind.Evm.Precompiles
             return 12L * EvmMemory.Div32Ceiling(inputData.Length);
         }
 
-        public byte[] Run(byte[] inputData)
+        public (byte[],bool) Run(byte[] inputData)
         {
-            return _sha256.ComputeHash(inputData);
+            return (_sha256.ComputeHash(inputData), true);
         }
     }
 }

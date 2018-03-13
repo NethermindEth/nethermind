@@ -53,7 +53,7 @@ namespace Nethermind.Evm.Precompiles
             return 80000 * (inputData.Length / PairSize) + 100000;
         }
 
-        public byte[] Run(byte[] inputData)
+        public (byte[], bool) Run(byte[] inputData)
         {
             if (inputData == null)
             {
@@ -85,7 +85,7 @@ namespace Nethermind.Evm.Precompiles
             check.Run();
             BigInteger result = check.Result();
 
-            return result.ToBigEndianByteArray(32);
+            return (result.ToBigEndianByteArray(32), true);
         }
 
         private (Bn128Fp, Bn128Fp2) DecodePair(byte[] input, int offset)
