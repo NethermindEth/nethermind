@@ -53,18 +53,23 @@ namespace Nethermind.Evm.Precompiles
                 inputData = Bytes.Empty;
             }
 
+            if (inputData.Length < 96)
+            {
+                inputData = inputData.PadRight(96);
+            }
+            
             byte[] x = inputData.Slice(0, 32);
             byte[] y = inputData.Slice(32, 32);
             
             byte[] s = inputData.Slice(64, 32);
 
-            Bn128<Fp> p = Bn128Fp.Create(x, y);
+            Bn128Fp p = Bn128Fp.Create(x, y);
             if (p == null)
             {
                 throw new ArgumentException(); // TODO: check the behaviour here
             }
 
-            Bn128<Fp> res = p.Mul(s.ToUnsignedBigInteger()).ToEthNotation();
+            Bn128Fp res = p.Mul(s.ToUnsignedBigInteger()).ToEthNotation();
 
             return EncodeResult(res.X.GetBytes(), res.Y.GetBytes());
         }

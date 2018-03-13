@@ -71,7 +71,7 @@ namespace Nethermind.Evm.Precompiles
             // iterating over all pairs
             for (int offset = 0; offset < inputData.Length; offset += PairSize)
             {
-                (Bn128G1, Bn128G2) pair = DecodePair(inputData, offset);
+                (Bn128Fp, Bn128Fp2) pair = DecodePair(inputData, offset);
 
                 // fail if decoding has failed
                 if (pair.Item1 == null || pair.Item2 == null)
@@ -88,12 +88,12 @@ namespace Nethermind.Evm.Precompiles
             return result.ToBigEndianByteArray(32);
         }
 
-        private (Bn128G1, Bn128G2) DecodePair(byte[] input, int offset)
+        private (Bn128Fp, Bn128Fp2) DecodePair(byte[] input, int offset)
         {
             byte[] x = input.Slice(offset + 0, 32);
             byte[] y = input.Slice(offset + 32, 32);
 
-            Bn128G1 p1 = Bn128G1.Create(x, y);
+            Bn128Fp p1 = Bn128Fp.CreateInG1(x, y);
 
             // fail if point is invalid
             if (p1 == null)
@@ -109,7 +109,7 @@ namespace Nethermind.Evm.Precompiles
             byte[] d = input.Slice(offset + 128);
             byte[] c = input.Slice(offset + 160);
 
-            Bn128G2 p2 = Bn128G2.Create(a, b, c, d);
+            Bn128Fp2 p2 = Bn128Fp2.CreateInG2(a, b, c, d);
 
             // fail if point is invalid
             if (p2 == null)

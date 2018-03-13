@@ -1,11 +1,10 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Numerics;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Core.Crypto.ZkSnarks
 {
-    public abstract class Bn128<T> where T : Field<T>
+    public abstract class Bn128<T, TSelf> where T : Field<T> where TSelf : Bn128<T, TSelf>
     {
         public T X { get; }
         public T Y { get; }
@@ -18,10 +17,10 @@ namespace Nethermind.Core.Crypto.ZkSnarks
             Z = z;
         }
 
-        public abstract Bn128<T> Zero { get; }
-        protected abstract Bn128<T> New(T x, T y, T z);
-        protected abstract T B { get; }
-        protected abstract T One { get; }
+        public abstract TSelf Zero { get; }
+        public abstract TSelf New(T x, T y, T z);
+        public abstract T B { get; }
+        public abstract T One { get; }
 
         public bool IsZero()
         {
@@ -45,7 +44,7 @@ namespace Nethermind.Core.Crypto.ZkSnarks
             return true;
         }
 
-        public virtual Bn128<T> ToAffine()
+        public virtual TSelf ToAffine()
         {
             if (IsZero())
             {
@@ -66,9 +65,9 @@ namespace Nethermind.Core.Crypto.ZkSnarks
         /// Runs affine transformation and encodes point at infinity as (0; 0; 0)
         /// </summary>
         /// <returns></returns>
-        public Bn128<T> ToEthNotation()
+        public TSelf ToEthNotation()
         {
-            Bn128<T> affine = ToAffine();
+            TSelf affine = ToAffine();
             // affine zero is (0; 1; 0), convert to Ethereum zero: (0; 0; 0)
             return affine.IsZero() ? Zero : affine;
         }
@@ -87,7 +86,7 @@ namespace Nethermind.Core.Crypto.ZkSnarks
             return left.Equals(right); // avoid == here as this would call reference equality
         }
 
-        public Bn128<T> Add(Bn128<T> o)
+        public TSelf Add(TSelf o)
         {
             if (IsZero())
             {
@@ -96,7 +95,7 @@ namespace Nethermind.Core.Crypto.ZkSnarks
 
             if (o.IsZero())
             {
-                return this; // P + 0 = P
+                return (TSelf)this; // P + 0 = P
             }
 
             T x1 = X, y1 = Y, z1 = Z;
@@ -137,7 +136,7 @@ namespace Nethermind.Core.Crypto.ZkSnarks
             return New(x3, y3, z3);
         }
 
-        public Bn128<T> Mul(BigInteger s)
+        public TSelf Mul(BigInteger s)
         {
             if (s.IsZero) // P * 0 = 0
             {
@@ -146,10 +145,10 @@ namespace Nethermind.Core.Crypto.ZkSnarks
 
             if (IsZero())
             {
-                return this; // 0 * s = 0
+                return (TSelf)this; // 0 * s = 0
             }
 
-            Bn128<T> res = Zero;
+            TSelf res = Zero;
 
             for (int i = s.BitLength() - 1; i >= 0; i--)
             {
@@ -157,18 +156,18 @@ namespace Nethermind.Core.Crypto.ZkSnarks
 
                 if (s.TestBit(i))
                 {
-                    res = res.Add(this);
+                    res = res.Add((TSelf)this);
                 }
             }
 
             return res;
         }
 
-        private Bn128<T> Double()
+        private TSelf Double()
         {
             if (IsZero())
             {
-                return this;
+                return (TSelf)this;
             }
 
             // ported code is started from here
@@ -196,7 +195,7 @@ namespace Nethermind.Core.Crypto.ZkSnarks
                 return true;
             }
 
-            if (!(obj is Bn128<T> other))
+            if (!(obj is TSelf other))
             {
                 return false;
             }
@@ -204,7 +203,7 @@ namespace Nethermind.Core.Crypto.ZkSnarks
             return Equals(other);
         }
 
-        public bool Equals(Bn128<T> other)
+        public bool Equals(TSelf other)
         {
             if (ReferenceEquals(other, null))
             {
@@ -225,12 +224,12 @@ namespace Nethermind.Core.Crypto.ZkSnarks
             }
         }
 
-        public static bool operator ==(Bn128<T> a, Bn128<T> b)
+        public static bool operator ==(Bn128<T, TSelf> a, Bn128<T, TSelf> b)
         {
             return a?.Equals(b) ?? ReferenceEquals(b, null);
         }
 
-        public static bool operator !=(Bn128<T> a, Bn128<T> b)
+        public static bool operator !=(Bn128<T, TSelf> a, Bn128<T, TSelf> b)
         {
             return !(a == b);
         }

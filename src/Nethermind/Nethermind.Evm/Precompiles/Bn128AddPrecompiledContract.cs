@@ -47,10 +47,15 @@ namespace Nethermind.Evm.Precompiles
         }
 
         public byte[] Run(byte[] inputData)
-        {
+        {  
             if (inputData == null)
             {
                 inputData = Bytes.Empty;
+            }
+
+            if (inputData.Length < 128)
+            {
+                inputData = inputData.PadRight(128);
             }
 
             byte[] x1 = inputData.Slice(0, 32);
@@ -59,19 +64,19 @@ namespace Nethermind.Evm.Precompiles
             byte[] x2 = inputData.Slice(64, 32);
             byte[] y2 = inputData.Slice(96, 32);
 
-            Bn128<Fp> p1 = Bn128Fp.Create(x1, y1);
+            Bn128Fp p1 = Bn128Fp.Create(x1, y1);
             if (p1 == null)
             {
                 throw new ArgumentException(); // TODO: check the behaviour here
             }
 
-            Bn128<Fp> p2 = Bn128Fp.Create(x2, y2);
+            Bn128Fp p2 = Bn128Fp.Create(x2, y2);
             if (p2 == null)
             {
                 throw new ArgumentException(); // TODO: check the behaviour here
             }
 
-            Bn128<Fp> res = p1.Add(p2).ToEthNotation();
+            Bn128Fp res = p1.Add(p2).ToEthNotation();
 
             return EncodeResult(res.X.GetBytes(), res.Y.GetBytes());
         }

@@ -41,7 +41,7 @@ namespace Nethermind.Core.Crypto.ZkSnarks
             return new PairingCheck();
         }
 
-        public void AddPair(Bn128G1 g1, Bn128G2 g2)
+        public void AddPair(Bn128Fp g1, Bn128Fp2 g2)
         {
             _pairs.Add(new Pair(g1, g2));
         }
@@ -67,11 +67,11 @@ namespace Nethermind.Core.Crypto.ZkSnarks
             return _product.Equals(Fp12.One) ? BigInteger.One : BigInteger.Zero;
         }
 
-        private static Fp12 MillerLoop(Bn128G1 g1, Bn128G2 g2)
+        private static Fp12 MillerLoop(Bn128Fp g1, Bn128Fp2 g2)
         {
             // convert to affine coordinates
-            g1 = (Bn128G1)g1.ToAffine();
-            g2 = (Bn128G2)g2.ToAffine();
+            g1 = (Bn128Fp)g1.ToAffine();
+            g2 = (Bn128Fp2)g2.ToAffine();
 
             // calculate Ell coefficients
             List<EllCoeffs> coeffs = CalcEllCoeffs(g2);
@@ -102,11 +102,11 @@ namespace Nethermind.Core.Crypto.ZkSnarks
             return f;
         }
 
-        private static List<EllCoeffs> CalcEllCoeffs(Bn128G2 baseElement)
+        private static List<EllCoeffs> CalcEllCoeffs(Bn128Fp2 baseElement)
         {
             List<EllCoeffs> coeffs = new List<EllCoeffs>();
 
-            Bn128G2 addend = baseElement;
+            Bn128Fp2 addend = baseElement;
 
             // for each bit except most significant one
             for (int i = LoopCount.BitLength() - 2; i >= 0; i--)
@@ -124,10 +124,10 @@ namespace Nethermind.Core.Crypto.ZkSnarks
                 }
             }
 
-            Bn128G2 q1 = baseElement.MulByP();
-            Bn128G2 q2 = q1.MulByP();
+            Bn128Fp2 q1 = baseElement.MulByP();
+            Bn128Fp2 q2 = q1.MulByP();
 
-            q2 = new Bn128G2(q2.X, q2.Y.Negate(), q2.Z); // q2.y = -q2.y
+            q2 = new Bn128Fp2(q2.X, q2.Y.Negate(), q2.Z); // q2.y = -q2.y
 
             Precomputed addition = FlippedMillerLoopMixedAddition(q1, addend);
             addend = addition.G2;
@@ -139,7 +139,7 @@ namespace Nethermind.Core.Crypto.ZkSnarks
             return coeffs;
         }
 
-        private static Precomputed FlippedMillerLoopMixedAddition(Bn128G2 baseElement, Bn128G2 addend)
+        private static Precomputed FlippedMillerLoopMixedAddition(Bn128Fp2 baseElement, Bn128Fp2 addend)
         {
             Fp2 x1 = addend.X, y1 = addend.Y, z1 = addend.Z;
             Fp2 x2 = baseElement.X, y2 = baseElement.Y;
@@ -161,12 +161,12 @@ namespace Nethermind.Core.Crypto.ZkSnarks
             Fp2 ellVw = d; // ell_VW = d
 
             return new Precomputed(
-                new Bn128G2(x3, y3, z3),
+                new Bn128Fp2(x3, y3, z3),
                 new EllCoeffs(ell0, ellVw, ellVv)
             );
         }
 
-        private static Precomputed FlippedMillerLoopDoubling(Bn128G2 g2)
+        private static Precomputed FlippedMillerLoopDoubling(Bn128Fp2 g2)
         {
             Fp2 x = g2.X, y = g2.Y, z = g2.Z;
 
@@ -191,7 +191,7 @@ namespace Nethermind.Core.Crypto.ZkSnarks
             Fp2 ellVv = j.Add(j).Add(j); // ell_VV = 3 * j
 
             return new Precomputed(
-                new Bn128G2(rx, ry, rz),
+                new Bn128Fp2(rx, ry, rz),
                 new EllCoeffs(ell0, ellVw, ellVv)
             );
         }
@@ -234,10 +234,10 @@ namespace Nethermind.Core.Crypto.ZkSnarks
 
         private class Precomputed
         {
-            public Bn128G2 G2 { get; }
+            public Bn128Fp2 G2 { get; }
             public EllCoeffs Coeffs { get; }
 
-            public Precomputed(Bn128G2 g2, EllCoeffs coeffs)
+            public Precomputed(Bn128Fp2 g2, EllCoeffs coeffs)
             {
                 G2 = g2;
                 Coeffs = coeffs;
@@ -246,10 +246,10 @@ namespace Nethermind.Core.Crypto.ZkSnarks
 
         public class Pair
         {
-            private Bn128G1 G1 { get; }
-            private Bn128G2 G2 { get; }
+            private Bn128Fp G1 { get; }
+            private Bn128Fp2 G2 { get; }
 
-            public Pair(Bn128G1 g1, Bn128G2 g2)
+            public Pair(Bn128Fp g1, Bn128Fp2 g2)
             {
                 G1 = g1;
                 G2 = g2;

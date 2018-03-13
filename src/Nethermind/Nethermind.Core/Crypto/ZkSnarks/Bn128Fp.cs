@@ -21,25 +21,25 @@ namespace Nethermind.Core.Crypto.ZkSnarks
     /// <summary>
     ///     Code adapted from ethereumJ (https://github.com/ethereum/ethereumj)
     /// </summary>
-    public class Bn128Fp : Bn128<Fp>
+    public class Bn128Fp : Bn128<Fp, Bn128Fp>
     {
+        public static readonly Bn128Fp StaticZero = new Bn128Fp(Fp.Zero, Fp.Zero, Fp.Zero);
+        
         // the point at infinity
-        public override Bn128<Fp> Zero { get; } = StaticZero;
-
-        private static readonly Bn128Fp StaticZero = new Bn128Fp(Fp.Zero, Fp.Zero, Fp.Zero);
+        public override Bn128Fp Zero => StaticZero;
 
         public Bn128Fp(Fp x, Fp y, Fp z)
             : base(x, y, z)
         {
         }
 
-        protected override Bn128<Fp> New(Fp x, Fp y, Fp z)
+        public override Bn128Fp New(Fp x, Fp y, Fp z)
         {
             return new Bn128Fp(x, y, z);
         }
 
-        protected override Fp B { get; } = Parameters.FpB;
-        protected override Fp One { get; } = Fp.One;
+        public override Fp B { get; } = Parameters.FpB;
+        public override Fp One { get; } = Fp.One;
 
         /// <summary>
         /// Checks whether x and y belong to Fp,
@@ -50,7 +50,7 @@ namespace Nethermind.Core.Crypto.ZkSnarks
         /// <param name="xx"></param>
         /// <param name="yy"></param>
         /// <returns></returns>
-        public static Bn128<Fp> Create(byte[] xx, byte[] yy)
+        public static Bn128Fp Create(byte[] xx, byte[] yy)
         {
             Fp x = new Fp(xx);
             Fp y = new Fp(yy);
@@ -65,6 +65,36 @@ namespace Nethermind.Core.Crypto.ZkSnarks
 
             // check whether point is a valid one
             return p.IsValid() ? p : null;
+        }
+        
+        /// <summary>
+        /// Checks whether point is a member of subgroup,
+        /// returns a point if check has been passed and null otherwise
+        /// </summary>
+        /// <param name="x"></param>
+        /// <param name="y"></param>
+        /// <returns></returns>
+        public static Bn128Fp CreateInG1(byte[] x, byte[] y)
+        {
+            Bn128Fp p = Create(x, y);
+            if (p == null)
+            {
+                return null;
+            }
+
+            return !IsInG1(p) ? null : p;
+        }
+
+        /// <summary>
+        /// Formally we have to do this check
+        /// but in our domain it's not necessary,
+        /// thus always return true
+        /// </summary>
+        /// <param name="p"></param>
+        /// <returns></returns>
+        private static bool IsInG1(Bn128Fp p)
+        {
+            return true;
         }
     }
 }
