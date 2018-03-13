@@ -193,7 +193,7 @@ namespace Nethermind.Evm
         {
             _precompiledContracts = new Dictionary<BigInteger, IPrecompiledContract>
             {
-                [ECRecoverPrecompiledContract.Instance.Address] = ECRecoverPrecompiledContract.Instance,
+                [EcRecoverPrecompiledContract.Instance.Address] = EcRecoverPrecompiledContract.Instance,
                 [Sha256PrecompiledContract.Instance.Address] = Sha256PrecompiledContract.Instance,
                 [Ripemd160PrecompiledContract.Instance.Address] = Ripemd160PrecompiledContract.Instance,
                 [IdentityPrecompiledContract.Instance.Address] = IdentityPrecompiledContract.Instance
@@ -201,12 +201,13 @@ namespace Nethermind.Evm
 
             if (_ethereumRelease.IsEip196Enabled)
             {
-                _precompiledContracts[ModExpPrecompiledContract.Instance.Address] = ModExpPrecompiledContract.Instance;
+                _precompiledContracts[Bn128AddPrecompiledContract.Instance.Address] = Bn128AddPrecompiledContract.Instance;
+                _precompiledContracts[Bn128MulPrecompiledContract.Instance.Address] = Bn128MulPrecompiledContract.Instance;
             }
 
             if (_ethereumRelease.IsEip197Enabled)
             {
-                _precompiledContracts[ModExpPrecompiledContract.Instance.Address] = ModExpPrecompiledContract.Instance;
+                _precompiledContracts[Bn128PairingPrecompiledContract.Instance.Address] = Bn128PairingPrecompiledContract.Instance;
             }
 
             if (_ethereumRelease.IsEip198Enabled)

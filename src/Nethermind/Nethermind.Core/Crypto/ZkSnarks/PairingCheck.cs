@@ -62,9 +62,9 @@ namespace Nethermind.Core.Crypto.ZkSnarks
             _product = FinalExponentiation(_product);
         }
 
-        public int Result()
+        public BigInteger Result()
         {
-            return _product.Equals(Fp12.One) ? 1 : 0;
+            return _product.Equals(Fp12.One) ? BigInteger.One : BigInteger.Zero;
         }
 
         private static Fp12 MillerLoop(Bn128G1 g1, Bn128G2 g2)
@@ -244,7 +244,7 @@ namespace Nethermind.Core.Crypto.ZkSnarks
             }
         }
 
-        private class Pair
+        public class Pair
         {
             private Bn128G1 G1 { get; }
             private Bn128G2 G2 { get; }

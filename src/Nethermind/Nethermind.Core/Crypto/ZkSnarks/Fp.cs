@@ -161,5 +161,10 @@ namespace Nethermind.Core.Crypto.ZkSnarks
         {
             return !(a == b);
         }
+
+        public byte[] GetBytes()
+        {
+            return _value.ToBigEndianByteArray();
+        }
     }
 }

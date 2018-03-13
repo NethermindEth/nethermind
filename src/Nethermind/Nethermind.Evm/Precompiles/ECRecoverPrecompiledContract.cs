@@ -25,11 +25,11 @@ using Nethermind.Core.Potocol;
 
 namespace Nethermind.Evm.Precompiles
 {
-    public class ECRecoverPrecompiledContract : IPrecompiledContract
+    public class EcRecoverPrecompiledContract : IPrecompiledContract
     {
-        public static readonly IPrecompiledContract Instance = new ECRecoverPrecompiledContract();
+        public static readonly IPrecompiledContract Instance = new EcRecoverPrecompiledContract();
 
-        private ECRecoverPrecompiledContract()
+        private EcRecoverPrecompiledContract()
         {
         }
 
