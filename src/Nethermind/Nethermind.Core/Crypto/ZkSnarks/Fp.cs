@@ -38,11 +38,10 @@ namespace Nethermind.Core.Crypto.ZkSnarks
             _value = bytes.ToUnsignedBigInteger();
         }
 
-        public static readonly Fp InverseOf2 = new Fp(new BigInteger(2).ModInverse(Parameters.P));
-        
         public static readonly Fp Zero = new Fp(BigInteger.Zero);
         public static readonly Fp One = new Fp(BigInteger.One);
         public static readonly Fp NonResidue = new Fp(BigInteger.Parse("21888242871839275222246405745257275088696311157297823662689037894645226208582"));
+        public static readonly Fp InverseOf2 = new Fp(new BigInteger(2).ModInverse(Parameters.P));        
 
         public override Fp Add(Fp o)
         {
@@ -96,26 +95,76 @@ namespace Nethermind.Core.Crypto.ZkSnarks
 
         public static implicit operator Fp(int value)
         {
+            if (value == 0)
+            {
+                return Zero;
+            }
+            
+            if (value == 1)
+            {
+                return One;
+            }
+            
             return new Fp(value);
         }
 
         public static implicit operator Fp(uint value)
         {
+            if (value == 0U)
+            {
+                return Zero;
+            }
+            
+            if (value == 1U)
+            {
+                return One;
+            }
+            
             return new Fp(value);
         }
 
         public static implicit operator Fp(long value)
         {
+            if (value == 0L)
+            {
+                return Zero;
+            }
+            
+            if (value == 1L)
+            {
+                return One;
+            }
+            
             return new Fp(value);
         }
 
         public static implicit operator Fp(ulong value)
         {
+            if (value == 0UL)
+            {
+                return Zero;
+            }
+            
+            if (value == 1UL)
+            {
+                return One;
+            }
+            
             return new Fp(value);
         }
 
         public static implicit operator Fp(BigInteger value)
         {
+            if (value == BigInteger.Zero)
+            {
+                return Zero;
+            }
+            
+            if (value == BigInteger.One)
+            {
+                return One;
+            }
+            
             return new Fp(value);
         }
 
@@ -160,6 +209,21 @@ namespace Nethermind.Core.Crypto.ZkSnarks
         public static bool operator !=(Fp a, Fp b)
         {
             return !(a == b);
+        }
+        
+        public static Fp operator +(Fp a, Fp b)
+        {
+            return a.Add(b);
+        }
+        
+        public static Fp operator -(Fp a, Fp b)
+        {
+            return a.Sub(b);
+        }
+        
+        public static Fp operator *(Fp a, Fp b)
+        {
+            return a.Mul(b);
         }
 
         public byte[] GetBytes()

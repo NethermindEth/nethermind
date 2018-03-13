@@ -278,7 +278,7 @@ namespace Nethermind.Evm
                 byte[] output = _precompiledContracts[precompileId].Run(callData);
                 return new CallResult(output);
             }
-            catch (Exception)
+            catch (Exception ex)
             {
                 return new CallResult(EmptyBytes);
             }
