@@ -202,13 +202,7 @@ namespace Nethermind.Core.Crypto.ZkSnarks
 
         public static bool operator ==(Fp a, Fp b)
         {
-            if (ReferenceEquals(a, null) && !ReferenceEquals(b, null))
-            {
-                return false;
-            }
-            
-            // ReSharper disable once PossibleNullReferenceException
-            return a.Equals(b);
+            return a?.Equals(b) ?? ReferenceEquals(b, null);
         }
 
         public static bool operator !=(Fp a, Fp b)

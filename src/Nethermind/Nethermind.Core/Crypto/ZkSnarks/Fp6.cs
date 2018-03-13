@@ -178,13 +178,7 @@ namespace Nethermind.Core.Crypto.ZkSnarks
 
         public static bool operator ==(Fp6 a, Fp6 b)
         {
-            if (ReferenceEquals(a, null) && !ReferenceEquals(b, null))
-            {
-                return false;
-            }
-
-            // ReSharper disable once PossibleNullReferenceException
-            return a.Equals(b);
+            return a?.Equals(b) ?? ReferenceEquals(b, null);
         }
 
         public static bool operator !=(Fp6 a, Fp6 b)
@@ -254,5 +248,10 @@ namespace Nethermind.Core.Crypto.ZkSnarks
                 BigInteger.Parse("13981852324922362344252311234282257507216387789820983642040889267519694726527"),
                 BigInteger.Parse("7629828391165209371577384193250820201684255241773809077146787135900891633097"))
         };
+
+        public override string ToString()
+        {
+            return $"({A}, {B}, {C})";
+        }
     }
 }

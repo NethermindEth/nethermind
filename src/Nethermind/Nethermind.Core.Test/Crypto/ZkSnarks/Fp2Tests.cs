@@ -13,6 +13,14 @@ namespace Nethermind.Core.Test.Crypto.ZkSnarks
         }
 
         [Test]
+        public void FrobeniusCoefficientsB_initialize()
+        {
+            Fp[] _ = Fp2.FrobeniusCoefficientsB;
+            Assert.True(_[0] == Fp.One);
+            Assert.True(_[1] != Fp.One);
+        }
+        
+        [Test]
         public void Zero_initializes()
         {
             Fp2 _ = Fp2.Zero;
@@ -85,6 +93,30 @@ namespace Nethermind.Core.Test.Crypto.ZkSnarks
             Assert.AreEqual((Fp)9, result.A);
             Assert.AreEqual((Fp)1, result.B);
         }
+        
+        [Test]
+        public void MulByNonResidue_seems_fine()
+        {
+            Fp2 result = Fp2.One.MulByNonResidue();
+            Assert.AreEqual((Fp)9, result.A);
+            Assert.AreEqual((Fp)1, result.B);
+        }
+        
+        [Test]
+        public void Inverse_seems_fine()
+        {
+            Fp2 result = Fp2.One.Inverse();
+            Assert.AreEqual((Fp)1, result.A);
+            Assert.AreEqual((Fp)0, result.B);
+        }
+        
+        [Test]
+        public void FrobeniusMap_seems_fine()
+        {
+            Fp2 result = Fp2.NonResidue.FrobeniusMap(2);
+            Assert.AreEqual((Fp)9, result.A);
+            Assert.AreEqual((Fp)1, result.B);
+        }
 
         [Test]
         public void Double_seems_fine()
@@ -128,6 +160,7 @@ namespace Nethermind.Core.Test.Crypto.ZkSnarks
         {
             Assert.False(Fp2.Zero == null, "null to the right");
             Assert.False(null == Fp2.Zero, "null to the left");
+            Assert.True((Fp2)null == null, "null both sides");
         }
 
         [Test]
