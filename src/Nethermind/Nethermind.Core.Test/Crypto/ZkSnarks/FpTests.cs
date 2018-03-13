@@ -164,6 +164,13 @@ namespace Nethermind.Core.Test.Crypto.ZkSnarks
             Assert.True(((Fp)0).IsZero(), "true case");
             Assert.False(((Fp)1).IsZero(), "false case");
         }
+        
+        [Test]
+        public void Equals_handles_null()
+        {
+            Assert.False((Fp)0 == null, "null to the right");
+            Assert.False(null == (Fp)0, "null to the left");
+        }
 
         [Test]
         public void All_constructors_are_fine()

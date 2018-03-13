@@ -185,6 +185,11 @@ namespace Nethermind.Core.Crypto.ZkSnarks
 
         public override bool Equals(Fp other)
         {
+            if (ReferenceEquals(other, null))
+            {
+                return false;
+            }
+            
             // ReSharper disable once ImpureMethodCallOnReadonlyValueField
             return _value.Equals(other._value);
         }
@@ -229,6 +234,12 @@ namespace Nethermind.Core.Crypto.ZkSnarks
         public byte[] GetBytes()
         {
             return _value.ToBigEndianByteArray();
+        }
+
+        public override string ToString()
+        {
+            // ReSharper disable once ImpureMethodCallOnReadonlyValueField
+            return _value.ToString();
         }
     }
 }

@@ -206,6 +206,11 @@ namespace Nethermind.Core.Crypto.ZkSnarks
 
         public bool Equals(Bn128<T> other)
         {
+            if (ReferenceEquals(other, null))
+            {
+                return false;
+            }
+            
             return Equals(X, other.X) && Equals(Y, other.Y) && Equals(Z, other.Z);
         }
 

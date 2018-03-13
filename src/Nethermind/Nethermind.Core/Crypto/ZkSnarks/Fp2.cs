@@ -147,6 +147,11 @@ namespace Nethermind.Core.Crypto.ZkSnarks
 
         public override bool Equals(Fp2 other)
         {
+            if (ReferenceEquals(other, null))
+            {
+                return false;
+            }
+            
             return Equals(A, other.A) && Equals(B, other.B);
         }
 

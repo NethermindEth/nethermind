@@ -28,7 +28,7 @@ namespace Nethermind.Core.Crypto.ZkSnarks
 
         private static readonly Bn128Fp StaticZero = new Bn128Fp(Fp.Zero, Fp.Zero, Fp.Zero);
 
-        protected Bn128Fp(Fp x, Fp y, Fp z)
+        public Bn128Fp(Fp x, Fp y, Fp z)
             : base(x, y, z)
         {
         }
