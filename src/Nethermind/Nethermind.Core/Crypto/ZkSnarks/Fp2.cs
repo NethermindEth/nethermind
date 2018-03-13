@@ -24,20 +24,26 @@ namespace Nethermind.Core.Crypto.ZkSnarks
     /// <summary>
     ///     Code adapted from ethereumJ (https://github.com/ethereum/ethereumj)
     /// </summary>
-    public class Fp2 : Field<Fp2>, IEquatable<Fp2>
+    public class Fp2 : Field<Fp2>
     {
-        public static readonly Fp[] FrobeniusCoefficientsB = new Fp[] {
+        public static readonly Fp[] FrobeniusCoefficientsB = new Fp[]
+        {
             new Fp(BigInteger.One),
             new Fp(BigInteger.Parse("21888242871839275222246405745257275088696311157297823662689037894645226208582"))
         };
-        
+
         public static readonly Fp2 Zero = new Fp2(Fp.Zero, Fp.Zero);
-        public static readonly Fp2 One  = new Fp2(Fp.One, Fp.Zero);
+        public static readonly Fp2 One = new Fp2(Fp.One, Fp.Zero);
         public static readonly Fp2 NonResidue = new Fp2(9, 1);
-        
+
         public Fp A { get; }
         public Fp B { get; }
-        
+
+        public Fp2(byte[] aa, byte[] bb)
+            : this(new Fp(aa), new Fp(bb))
+        {
+        }
+
         public Fp2(Fp a, Fp b)
         {
             A = a;
@@ -48,15 +54,15 @@ namespace Nethermind.Core.Crypto.ZkSnarks
         {
             return NonResidue.Mul(this);
         }
-        
-        public Fp2 FrobeniusMap(int power) {
 
+        public Fp2 FrobeniusMap(int power)
+        {
             Fp ra = A;
             Fp rb = FrobeniusCoefficientsB[power % 2].Mul(B);
 
             return new Fp2(ra, rb);
         }
-        
+
         public override Fp2 Add(Fp2 o)
         {
             return new Fp2(A.Add(o.A), B.Add(o.B));
@@ -67,8 +73,8 @@ namespace Nethermind.Core.Crypto.ZkSnarks
             Fp aa = A.Mul(o.A);
             Fp bb = B.Mul(o.B);
 
-            Fp ra = bb.Mul(Fp.NonResidue).Add(aa);    // ra = a1 * a2 + NON_RESIDUE * b1 * b2
-            Fp rb = A.Add(B).Mul(o.A.Add(o.B)).Sub(aa).Sub(bb);     // rb = (a1 + b1)(a2 + b2) - a1 * a2 - b1 * b2
+            Fp ra = bb.Mul(Fp.NonResidue).Add(aa); // ra = a1 * a2 + NON_RESIDUE * b1 * b2
+            Fp rb = A.Add(B).Mul(o.A.Add(o.B)).Sub(aa).Sub(bb); // rb = (a1 + b1)(a2 + b2) - a1 * a2 - b1 * b2
 
             return new Fp2(ra, rb);
         }
@@ -103,7 +109,7 @@ namespace Nethermind.Core.Crypto.ZkSnarks
             Fp t2 = t0.Sub(Fp.NonResidue.Mul(t1));
             Fp t3 = t2.Inverse();
 
-            Fp ra = A.Mul(t3);          // ra = a * t3
+            Fp ra = A.Mul(t3); // ra = a * t3
             Fp rb = B.Mul(t3).Negate(); // rb = -(b * t3)
 
             return new Fp2(ra, rb);
@@ -139,7 +145,7 @@ namespace Nethermind.Core.Crypto.ZkSnarks
             return Equals(other);
         }
 
-        public bool Equals(Fp2 other)
+        public override bool Equals(Fp2 other)
         {
             return Equals(A, other.A) && Equals(B, other.B);
         }
@@ -158,7 +164,7 @@ namespace Nethermind.Core.Crypto.ZkSnarks
             {
                 return false;
             }
-            
+
             // ReSharper disable once PossibleNullReferenceException
             return a.Equals(b);
         }

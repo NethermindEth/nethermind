@@ -21,8 +21,50 @@ namespace Nethermind.Core.Crypto.ZkSnarks
     /// <summary>
     ///     Code adapted from ethereumJ (https://github.com/ethereum/ethereumj)
     /// </summary>
-    public class Bn128Fp
+    public class Bn128Fp : Bn128<Fp>
     {
-        
+        // the point at infinity
+        public override Bn128<Fp> Zero { get; } = StaticZero;
+
+        private static readonly Bn128Fp StaticZero = new Bn128Fp(Fp.Zero, Fp.Zero, Fp.Zero);
+
+        protected Bn128Fp(Fp x, Fp y, Fp z)
+            : base(x, y, z)
+        {
+        }
+
+        protected override Bn128<Fp> New(Fp x, Fp y, Fp z)
+        {
+            return new Bn128Fp(x, y, z);
+        }
+
+        protected override Fp B { get; } = Parameters.FpB;
+        protected override Fp One { get; } = Fp.One;
+
+        /// <summary>
+        /// Checks whether x and y belong to Fp,
+        /// then checks whether point with (x; y) coordinates lays on the curve.
+        /// Returns new point if all checks have been passed,
+        /// otherwise returns null
+        /// </summary>
+        /// <param name="xx"></param>
+        /// <param name="yy"></param>
+        /// <returns></returns>
+        public static Bn128<Fp> Create(byte[] xx, byte[] yy)
+        {
+            Fp x = new Fp(xx);
+            Fp y = new Fp(yy);
+
+            // check for point at infinity
+            if (x.IsZero() && y.IsZero())
+            {
+                return StaticZero;
+            }
+
+            Bn128Fp p = new Bn128Fp(x, y, Fp.One);
+
+            // check whether point is a valid one
+            return p.IsValid() ? p : null;
+        }
     }
 }

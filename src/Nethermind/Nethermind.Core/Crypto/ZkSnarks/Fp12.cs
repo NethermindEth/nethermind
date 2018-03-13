@@ -18,6 +18,7 @@
 
 using System;
 using System.Numerics;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Core.Crypto.ZkSnarks
 {
@@ -191,7 +192,7 @@ namespace Nethermind.Core.Crypto.ZkSnarks
             return Equals(other);
         }
 
-        public bool Equals(Fp12 other)
+        public override bool Equals(Fp12 other)
         {
             return Equals(A, other.A) && Equals(B, other.B);
         }
@@ -220,7 +221,7 @@ namespace Nethermind.Core.Crypto.ZkSnarks
             return !(a == b);
         }
 
-        public Fp12 CyclotomicSquared()
+        public Fp12 CyclotomicSquare()
         {
             Fp2 z0 = A.A;
             Fp2 z4 = A.B;
@@ -283,18 +284,17 @@ namespace Nethermind.Core.Crypto.ZkSnarks
 
         public Fp12 CyclotomicExp(BigInteger pow)
         {
-            throw new NotImplementedException();
-//            Fp12 res = One;
-//
-//            for (int i = pow.bitLength() - 1; i >=0; i--) {
-//                res = res.CyclotomicSquared();
-//
-//                if (pow.testBit(i)) {
-//                    res = res.mul(this);
-//                }
-//            }
-//
-//            return res;
+            Fp12 res = One;
+
+            for (int i = pow.BitLength() - 1; i >=0; i--) {
+                res = res.CyclotomicSquare();
+
+                if (pow.TestBit(i)) {
+                    res = res.Mul(this);
+                }
+            }
+
+            return res;
         }
         
         public Fp12 UnitaryInverse() {

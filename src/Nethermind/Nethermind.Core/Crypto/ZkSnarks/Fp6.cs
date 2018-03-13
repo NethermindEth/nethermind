@@ -155,7 +155,7 @@ namespace Nethermind.Core.Crypto.ZkSnarks
             return Equals(other);
         }
 
-        public bool Equals(Fp6 other)
+        public override bool Equals(Fp6 other)
         {
             return Equals(A, other.A) && Equals(B, other.B) && Equals(C, other.C);
         }
@@ -164,7 +164,10 @@ namespace Nethermind.Core.Crypto.ZkSnarks
         {
             unchecked
             {
-                return ((A != null ? A.GetHashCode() : 0) * 397) ^ (B != null ? B.GetHashCode() : 0);
+                int hashCode = (A != null ? A.GetHashCode() : 0);
+                hashCode = (hashCode * 397) ^ (B != null ? B.GetHashCode() : 0);
+                hashCode = (hashCode * 397) ^ (C != null ? C.GetHashCode() : 0);
+                return hashCode;
             }
         }
 

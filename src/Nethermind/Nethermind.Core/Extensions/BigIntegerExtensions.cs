@@ -85,5 +85,15 @@ namespace Nethermind.Core.Extensions
 
             return v;
         }
+        
+        public static int BitLength(this BigInteger a)
+        {
+            throw new NotImplementedException();
+        }
+        
+        public static bool TestBit(this BigInteger a, int i)
+        {
+            throw new NotImplementedException();
+        }
     }
 }

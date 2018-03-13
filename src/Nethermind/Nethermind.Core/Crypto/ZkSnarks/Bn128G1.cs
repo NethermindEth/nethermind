@@ -21,8 +21,46 @@ namespace Nethermind.Core.Crypto.ZkSnarks
     /// <summary>
     ///     Code adapted from ethereumJ (https://github.com/ethereum/ethereumj)
     /// </summary>
-    public class Bn128G1
+    public class Bn128G1 : Bn128Fp
     {
+        public Bn128G1(Bn128<Fp> p)
+            : base(p.X, p.Y, p.Z)
+        {
+        }
+
+        public override Bn128<Fp> ToAffine()
+        {
+            return new Bn128G1(base.ToAffine());
+        }
         
+        /// <summary>
+        /// Checks whether point is a member of subgroup,
+        /// returns a point if check has been passed and null otherwise
+        /// </summary>
+        /// <param name="x"></param>
+        /// <param name="y"></param>
+        /// <returns></returns>
+        public new static Bn128G1 Create(byte[] x, byte[] y)
+        {
+            Bn128<Fp> p = Bn128Fp.Create(x, y);
+
+            if (p == null) return null;
+
+            if (!IsGroupMember(p)) return null;
+
+            return new Bn128G1(p);
+        }
+
+        /// <summary>
+        /// Formally we have to do this check
+        /// but in our domain it's not necessary,
+        /// thus always return true
+        /// </summary>
+        /// <param name="p"></param>
+        /// <returns></returns>
+        private static bool IsGroupMember(Bn128<Fp> p)
+        {
+            return true;
+        }
     }
 }

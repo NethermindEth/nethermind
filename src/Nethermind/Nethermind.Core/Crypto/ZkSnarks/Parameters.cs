@@ -23,7 +23,7 @@ namespace Nethermind.Core.Crypto.ZkSnarks
  /// <summary>
  ///     Code adapted from ethereumJ (https://github.com/ethereum/ethereumj)
  /// </summary>
-    public class FieldParameters
+    public class Parameters
     {
         /**
          * "p" field parameter of F_p, F_p2, F_p6 and F_p12

@@ -16,12 +16,14 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
+
 namespace Nethermind.Core.Crypto.ZkSnarks
 {
     /// <summary>
     ///     Code adapted from ethereumJ (https://github.com/ethereum/ethereumj)
     /// </summary>
-    public abstract class Field<T>
+    public abstract class Field<T> : IEquatable<T>
     {
         public abstract T Add(T o);
         public abstract T Mul(T o);
@@ -32,5 +34,6 @@ namespace Nethermind.Core.Crypto.ZkSnarks
         public abstract T Negate();
         public abstract bool IsZero();
         public abstract bool IsValid();
+        public abstract bool Equals(T other);
     }
 }

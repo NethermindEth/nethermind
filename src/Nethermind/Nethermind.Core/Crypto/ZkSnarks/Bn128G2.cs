@@ -16,12 +16,70 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Numerics;
+
 namespace Nethermind.Core.Crypto.ZkSnarks
 {
     /// <summary>
     ///     Code adapted from ethereumJ (https://github.com/ethereum/ethereumj)
     /// </summary>
-    public class Bn128G2
+    public class Bn128G2 : Bn128Fp2
     {
+        public Bn128G2(Bn128<Fp2> p)
+            : base(p.X, p.Y, p.Z)
+        {
+        }
+
+        public Bn128G2(Fp2 x, Fp2 y, Fp2 z)
+            : base(y, y, z)
+        {
+        }
+
+        public override Bn128<Fp2> ToAffine()
+        {
+            return new Bn128G2(base.ToAffine());
+        }
+
+        /// <summary>
+        /// Checks whether provided data are coordinates of a point belonging to subgroup,
+        /// if check has been passed it returns a point, otherwise returns null
+        /// </summary>
+        /// <param name="a"></param>
+        /// <param name="b"></param>
+        /// <param name="c"></param>
+        /// <param name="d"></param>
+        /// <returns></returns>
+        public new static Bn128G2 Create(byte[] a, byte[] b, byte[] c, byte[] d)
+        {
+            Bn128<Fp2> p = Bn128Fp2.Create(a, b, c, d);
+
+            // fails if point is invalid
+            if (p == null)
+            {
+                return null;
+            }
+
+            // check whether point is a subgroup member
+            if (!IsGroupMember(p)) return null;
+
+            return new Bn128G2(p);
+        }
+
+        private static bool IsGroupMember(Bn128<Fp2> p)
+        {
+            Bn128<Fp2> left = p.Mul(FrNegOne).Add(p);
+            return left.IsZero(); // should satisfy condition: -1 * p + p == 0, where -1 belongs to F_r
+        }
+
+        private static readonly BigInteger FrNegOne = -BigInteger.One % Parameters.R;
+
+        public Bn128G2 MulByP()
+        {
+            Fp2 rx = Parameters.TwistMulByPx.Mul(X.FrobeniusMap(1));
+            Fp2 ry = Parameters.TwistMulByPy.Mul(Y.FrobeniusMap(1));
+            Fp2 rz = Z.FrobeniusMap(1);
+
+            return new Bn128G2(rx, ry, rz);
+        }
     }
 }

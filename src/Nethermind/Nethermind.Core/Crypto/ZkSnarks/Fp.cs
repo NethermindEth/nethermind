@@ -16,7 +16,6 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
 using System.Numerics;
 using Nethermind.Core.Extensions;
 
@@ -25,7 +24,7 @@ namespace Nethermind.Core.Crypto.ZkSnarks
     /// <summary>
     ///     Code adapted from ethereumJ (https://github.com/ethereum/ethereumj)
     /// </summary>
-    public class Fp : Field<Fp>, IEquatable<Fp>
+    public class Fp : Field<Fp>
     {
         private readonly BigInteger _value;
 
@@ -33,14 +32,21 @@ namespace Nethermind.Core.Crypto.ZkSnarks
         {
             _value = value;
         }
+        
+        public Fp(byte[] bytes)
+        {
+            _value = bytes.ToUnsignedBigInteger();
+        }
 
+        public static readonly Fp InverseOf2 = new Fp(new BigInteger(2).ModInverse(Parameters.P));
+        
         public static readonly Fp Zero = new Fp(BigInteger.Zero);
         public static readonly Fp One = new Fp(BigInteger.One);
         public static readonly Fp NonResidue = new Fp(BigInteger.Parse("21888242871839275222246405745257275088696311157297823662689037894645226208582"));
 
         public override Fp Add(Fp o)
         {
-            return _value + o._value % FieldParameters.P;
+            return _value + o._value % Parameters.P;
         }
 
         public Fp2 Mul(Fp2 fp2)
@@ -50,32 +56,32 @@ namespace Nethermind.Core.Crypto.ZkSnarks
 
         public override Fp Mul(Fp o)
         {
-            return _value * o._value % FieldParameters.P;
+            return _value * o._value % Parameters.P;
         }
 
         public override Fp Sub(Fp o)
         {
-            return _value - o._value % FieldParameters.P;
+            return _value - o._value % Parameters.P;
         }
 
         public override Fp Square()
         {
-            return _value * _value % FieldParameters.P;
+            return _value * _value % Parameters.P;
         }
 
         public override Fp Double()
         {
-            return _value + _value % FieldParameters.P;
+            return _value + _value % Parameters.P;
         }
 
         public override Fp Inverse()
         {
-            return _value.ModInverse(FieldParameters.P);
+            return _value.ModInverse(Parameters.P);
         }
 
         public override Fp Negate()
         {
-            return -_value % FieldParameters.P;
+            return -_value % Parameters.P;
         }
 
         public override bool IsZero()
@@ -85,7 +91,7 @@ namespace Nethermind.Core.Crypto.ZkSnarks
 
         public override bool IsValid()
         {
-            return _value <= FieldParameters.P;
+            return _value <= Parameters.P;
         }
 
         public static implicit operator Fp(int value)
@@ -128,7 +134,7 @@ namespace Nethermind.Core.Crypto.ZkSnarks
             return Equals(other);
         }
 
-        public bool Equals(Fp other)
+        public override bool Equals(Fp other)
         {
             // ReSharper disable once ImpureMethodCallOnReadonlyValueField
             return _value.Equals(other._value);
