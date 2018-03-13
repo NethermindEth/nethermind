@@ -43,12 +43,12 @@ namespace Nethermind.Core.Crypto.ZkSnarks
         public new static Bn128G1 Create(byte[] x, byte[] y)
         {
             Bn128<Fp> p = Bn128Fp.Create(x, y);
+            if (p == null)
+            {
+                return null;
+            }
 
-            if (p == null) return null;
-
-            if (!IsGroupMember(p)) return null;
-
-            return new Bn128G1(p);
+            return !IsGroupMember(p) ? null : new Bn128G1(p);
         }
 
         /// <summary>

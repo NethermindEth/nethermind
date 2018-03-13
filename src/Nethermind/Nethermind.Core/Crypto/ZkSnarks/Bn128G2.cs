@@ -60,9 +60,7 @@ namespace Nethermind.Core.Crypto.ZkSnarks
             }
 
             // check whether point is a subgroup member
-            if (!IsGroupMember(p)) return null;
-
-            return new Bn128G2(p);
+            return !IsGroupMember(p) ? null : new Bn128G2(p);
         }
 
         private static bool IsGroupMember(Bn128<Fp2> p)
