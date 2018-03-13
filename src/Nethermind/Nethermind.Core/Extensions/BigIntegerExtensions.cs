@@ -62,7 +62,7 @@ namespace Nethermind.Core.Extensions
 
             return result;
         }
-        
+
         // TODO: review, replace with optimal algorithm
         public static BigInteger ModInverse(this BigInteger a, BigInteger n)
         {
@@ -85,15 +85,23 @@ namespace Nethermind.Core.Extensions
 
             return v;
         }
-        
+
         public static int BitLength(this BigInteger a)
         {
-            throw new NotImplementedException();
+            int bitLength = 0;
+
+            while (a / 2 != 0)
+            {
+                a /= 2;
+                bitLength++;
+            }
+
+            return bitLength + 1;
         }
-        
+
         public static bool TestBit(this BigInteger a, int i)
         {
-            throw new NotImplementedException();
+            return (a & (1 << i)) != 0;
         }
     }
 }
