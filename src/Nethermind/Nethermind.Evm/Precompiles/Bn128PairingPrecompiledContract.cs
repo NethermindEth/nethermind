@@ -50,7 +50,7 @@ namespace Nethermind.Evm.Precompiles
                 return 0L;
             }
 
-            return 80000 * (inputData.Length / PairSize) + 100000;
+            return 80000 * (inputData.Length / PairSize);
         }
 
         public (byte[], bool) Run(byte[] inputData)
@@ -61,7 +61,7 @@ namespace Nethermind.Evm.Precompiles
             }
 
             // fail if input len is not a multiple of PAIR_SIZE
-            if (inputData.Length % PairSize > 0)
+            if (inputData.Length == 0 || inputData.Length % PairSize > 0)
             {
                 return (Bytes.Empty, false);
             }
