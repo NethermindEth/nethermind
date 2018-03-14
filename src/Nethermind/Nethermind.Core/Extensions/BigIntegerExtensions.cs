@@ -101,7 +101,7 @@ namespace Nethermind.Core.Extensions
 
         public static bool TestBit(this BigInteger a, int i)
         {
-            return (a & (1 << i)) != 0;
+            return (a & (BigInteger.One << i)) != 0;
         }
     }
 }
