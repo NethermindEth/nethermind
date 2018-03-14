@@ -45,7 +45,7 @@ namespace Nethermind.Core.Crypto.ZkSnarks
 
         public override Fp Add(Fp o)
         {
-            return _value + o._value % Parameters.P;
+            return (_value + o._value) % Parameters.P;
         }
 
         public Fp2 Mul(Fp2 fp2)
@@ -60,7 +60,8 @@ namespace Nethermind.Core.Crypto.ZkSnarks
 
         public override Fp Sub(Fp o)
         {
-            return _value - o._value % Parameters.P;
+            BigInteger subResult = (_value - o._value) % Parameters.P;
+            return subResult < 0 ? subResult + Parameters.P : subResult;
         }
 
         public override Fp Square()
@@ -70,7 +71,7 @@ namespace Nethermind.Core.Crypto.ZkSnarks
 
         public override Fp Double()
         {
-            return _value + _value % Parameters.P;
+            return (_value + _value) % Parameters.P;
         }
 
         public override Fp Inverse()
@@ -80,7 +81,8 @@ namespace Nethermind.Core.Crypto.ZkSnarks
 
         public override Fp Negate()
         {
-            return -_value % Parameters.P;
+            BigInteger negResult = -_value % Parameters.P;
+            return negResult < 0 ? negResult + Parameters.P : negResult;
         }
 
         public override bool IsZero()

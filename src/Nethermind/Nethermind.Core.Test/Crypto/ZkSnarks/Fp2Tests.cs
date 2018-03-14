@@ -138,8 +138,8 @@ namespace Nethermind.Core.Test.Crypto.ZkSnarks
         public void Negate_seems_fine()
         {
             Fp2 result = Fp2.NonResidue.Negate();
-            Assert.AreEqual((Fp)(-9), result.A);
-            Assert.AreEqual((Fp)(-1), result.B);
+            Assert.AreEqual((Fp)(Parameters.P - 9), result.A);
+            Assert.AreEqual((Fp)(Parameters.P - 1), result.B);
         }
 
         [Test]

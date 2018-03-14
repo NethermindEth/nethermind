@@ -149,7 +149,23 @@ namespace Nethermind.Core.Test.Crypto.ZkSnarks
         [Test]
         public void Negate_seems_fine()
         {
-            Assert.True(((Fp)1).Negate() == -1);
+            Assert.True(((Fp)1).Negate() == Parameters.P - 1);
+        }
+        
+        [Test]
+        public void Works_modulo()
+        {
+            Fp result = (Fp)1 - (Parameters.P - 1);
+            Assert.AreEqual((Fp)2, result, "sub");
+            
+            result = (Fp)1 + (Parameters.P - 1);
+            Assert.AreEqual((Fp)0, result, "add");
+            
+            result = ((Fp)Parameters.P - 1).Double();
+            Assert.AreEqual((Fp)BigInteger.Parse("21888242871839275222246405745257275088696311157297823662689037894645226208581"), result, "double");
+            
+            result = ((Fp)Parameters.P - 1).Negate();
+            Assert.AreEqual((Fp)1, result, "double");
         }
 
         [Test]
