@@ -24,7 +24,7 @@ namespace Nethermind.Core.Test
         [TestCase(2, 1, true)]
         [TestCase(2, 2, false)]
         [TestCase(1024, 10, true)]
-        public void Test_bit_is_calculated_properly(ulong value, int bitIndex, bool expectedResult)
+        public void Test_bit_is_calculated_properly(int value, int bitIndex, bool expectedResult)
         {
             Assert.AreEqual(expectedResult, new BigInteger(value).TestBit(bitIndex));
         }
