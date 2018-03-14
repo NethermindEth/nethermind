@@ -67,7 +67,7 @@ namespace Nethermind.Core.Crypto
 
         public Address RecoverAddress(Signature signature, Keccak message)
         {
-            return RecoverPublicKey(signature, message).Address;
+            return RecoverPublicKey(signature, message)?.Address;
         }
     }
 }

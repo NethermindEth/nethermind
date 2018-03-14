@@ -49,7 +49,7 @@ namespace Nethermind.Evm.Precompiles
         {
             EthereumSigner signer = new EthereumSigner(Olympic.Instance, ChainId.MainNet);
 
-            inputData = inputData.PadRight(128);
+            inputData = (inputData ?? Bytes.Empty).PadRight(128);
 
             Keccak hash = new Keccak(inputData.Slice(0, 32));
             byte[] vBytes = inputData.Slice(32, 32);
@@ -73,7 +73,13 @@ namespace Nethermind.Evm.Precompiles
             }
 
             Signature signature = new Signature(r, s, v);
-            return (((byte[])signer.RecoverAddress(signature, hash).Hex).PadLeft(32), true); // TODO: change recovery code to return bytes?
+            Address recovered = signer.RecoverAddress(signature, hash);
+            if (recovered == null)
+            {
+                return (Bytes.Empty, true);
+            }
+            
+            return (((byte[])recovered.Hex).PadLeft(32), true); // TODO: change recovery code to return bytes?
         }
     }
 }
