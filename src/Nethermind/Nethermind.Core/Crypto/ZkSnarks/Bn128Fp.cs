@@ -92,7 +92,7 @@ namespace Nethermind.Core.Crypto.ZkSnarks
         /// </summary>
         /// <param name="p"></param>
         /// <returns></returns>
-        private static bool IsInG1(Bn128Fp p)
+        public static bool IsInG1(Bn128Fp p)
         {
             return true;
         }

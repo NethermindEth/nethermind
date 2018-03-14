@@ -92,7 +92,7 @@ namespace Nethermind.Core.Crypto.ZkSnarks
 
         public override bool IsValid()
         {
-            return _value <= Parameters.P;
+            return _value < Parameters.P;
         }
 
         public static implicit operator Fp(int value)

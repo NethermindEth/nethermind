@@ -102,12 +102,12 @@ namespace Nethermind.Evm.Precompiles
             }
 
             // (b, a)
-            byte[] b = input.Slice(offset + 64);
-            byte[] a = input.Slice(offset + 96);
+            byte[] b = input.Slice(offset + 64, 32);
+            byte[] a = input.Slice(offset + 96, 32);
 
             // (d, c)
-            byte[] d = input.Slice(offset + 128);
-            byte[] c = input.Slice(offset + 160);
+            byte[] d = input.Slice(offset + 128, 32);
+            byte[] c = input.Slice(offset + 160, 32);
 
             Bn128Fp2 p2 = Bn128Fp2.CreateInG2(a, b, c, d);
 

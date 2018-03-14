@@ -67,7 +67,7 @@ namespace Nethermind.Core.Crypto.ZkSnarks
             // check for point at infinity
             if (x.IsZero() && y.IsZero())
             {
-                return (Bn128Fp2)StaticZero;
+                return StaticZero;
             }
 
             Bn128Fp2 p = new Bn128Fp2(x, y, Fp2.One);
@@ -99,13 +99,13 @@ namespace Nethermind.Core.Crypto.ZkSnarks
             return !IsInG2(p) ? null : p;
         }
         
-        private static bool IsInG2(Bn128Fp2 p)
+        public static bool IsInG2(Bn128Fp2 p)
         {
             Bn128Fp2 left = p.Mul(FrNegOne).Add(p);
             return left.IsZero(); // should satisfy condition: -1 * p + p == 0, where -1 belongs to F_r
         }
 
-        private static readonly BigInteger FrNegOne = -BigInteger.One % Parameters.R;
+        private static readonly BigInteger FrNegOne = -BigInteger.One + Parameters.R;
 
         public Bn128Fp2 MulByP()
         {
