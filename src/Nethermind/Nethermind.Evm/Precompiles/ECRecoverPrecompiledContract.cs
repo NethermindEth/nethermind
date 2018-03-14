@@ -62,14 +62,14 @@ namespace Nethermind.Evm.Precompiles
             {
                 if (vBytes[i] != 0)
                 {
-                    throw new ArgumentException();
+                    return (Bytes.Empty, true);
                 }
             }
 
             byte v = vBytes[31];
             if (v != 27 && v != 28)
             {
-                throw new ArgumentException();
+                return (Bytes.Empty, true);
             }
 
             Signature signature = new Signature(r, s, v);

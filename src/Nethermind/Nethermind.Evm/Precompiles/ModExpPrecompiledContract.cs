@@ -75,7 +75,7 @@ namespace Nethermind.Evm.Precompiles
 
             if (modulusInt.IsZero)
             {
-                throw new InvalidInputDataException();
+                return (Bytes.Empty, true);
             }
 
             return (BigInteger.ModPow(baseInt, expInt, modulusInt).ToBigEndianByteArray(modulusLength), true);
