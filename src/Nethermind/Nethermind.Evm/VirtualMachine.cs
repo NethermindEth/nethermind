@@ -93,6 +93,11 @@ namespace Nethermind.Evm
                     if (currentState.ExecutionType == ExecutionType.Precompile || currentState.ExecutionType == ExecutionType.DirectPrecompile)
                     {
                         callResult = ExecutePrecompile(currentState);
+                        if (!callResult.PrecompileSuccess.Value)
+                        {
+                            // TODO: testing it as it seems the way to pass zkSNARKs tests
+                            currentState.GasAvailable = 0;
+                        }
                     }
                     else
                     {
