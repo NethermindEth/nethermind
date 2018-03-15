@@ -13,7 +13,7 @@ namespace Nethermind.Core.Test.Crypto.ZkSnarks
         }
 
         [Test]
-        public void FrobeniusCoefficientsB_initialize()
+        public void FrobeniusCoefficientsB_initializes()
         {
             Fp[] _ = Fp2.FrobeniusCoefficientsB;
             Assert.True(_[0] == Fp.One);
@@ -129,7 +129,7 @@ namespace Nethermind.Core.Test.Crypto.ZkSnarks
         [Test]
         public void Square_seems_fine()
         {
-            Fp2 result = Fp2.One.Square();
+            Fp2 result = Fp2.One.Squared();
             Assert.AreEqual((Fp)1, result.A);
             Assert.AreEqual((Fp)0, result.B);
         }
@@ -171,6 +171,102 @@ namespace Nethermind.Core.Test.Crypto.ZkSnarks
             
             Assert.AreEqual(a, Fp2.One);
             Assert.AreEqual(b, Fp2.One);
+        }
+        
+        [Test]
+        public void Add_operator_check()
+        {
+            Fp2 a = new Fp2(Parameters.P / 2, Parameters.P / 4);
+            Fp2 b = new Fp2(Parameters.P / 2, Parameters.P / 4);
+            
+            Assert.AreEqual(a + b, a.Add(b));
+        }
+        
+        [Test]
+        public void Square_cross_check()
+        {
+            Fp2 a = new Fp2(Parameters.P / 2, Parameters.P / 4);
+            a.IsValid();
+            
+            Assert.AreEqual(a.Squared(), a * a);
+        }
+        
+        [Test]
+        public void Double_cross_check()
+        {
+            Fp2 a = new Fp2(Parameters.P / 2, Parameters.P / 4);
+            a.IsValid();
+            
+            Assert.AreEqual(a.Double(), a + a);
+        }
+        
+        [Test]
+        public void Mul_schoolbook_check()
+        {
+            Fp2 a = new Fp2(Parameters.P / 2, Parameters.P / 4);
+            Fp2 b = new Fp2(Parameters.P / 2, Parameters.P / 4);
+            
+            Assert.AreEqual(a * b, a.MulSchoolbook(b));
+        }
+        
+        [Test]
+        public void Mul_karatsuba_check()
+        {
+            Fp2 a = new Fp2(Parameters.P / 2, Parameters.P / 4);
+            Fp2 b = new Fp2(Parameters.P / 2, Parameters.P / 4);
+            
+            Assert.AreEqual(a * b, a.MulKaratsuba(b));
+        }
+        
+        [Test]
+        public void Mul_operator_check()
+        {
+            Fp2 a = new Fp2(Parameters.P / 2, Parameters.P / 4);
+            Fp2 b = new Fp2(Parameters.P / 2, Parameters.P / 4);
+            
+            Assert.AreEqual(a * b, a.Mul(b));
+        }
+        
+        [Test]
+        public void Squared_schoolbook_check()
+        {
+            Fp2 a = new Fp2(Parameters.P / 2, Parameters.P / 4);
+            Assert.AreEqual(a.Squared(), a.SquaredSchoolbook());
+        }
+        
+        [Test]
+        public void Squared_karatsuba_check()
+        {
+            Fp2 a = new Fp2(Parameters.P / 2, Parameters.P / 4);
+            Assert.AreEqual(a.Squared(), a.SquaredKaratsuba());
+        }
+        
+        [Test]
+        public void Squared_complex_check()
+        {
+            Fp2 a = new Fp2(Parameters.P / 2, Parameters.P / 4);
+            Assert.AreEqual(a.Squared(), a.SquaredComplex());
+        }
+        
+        [Test]
+        public void Inverse_inverse()
+        {
+            Fp2 a = new Fp2(Parameters.P / 2, Parameters.P / 4);
+            Assert.AreEqual(Fp2.One, a * a.Inverse());
+        }
+        
+        [Test]
+        public void Negate_negate()
+        {
+            Fp2 a = new Fp2(Parameters.P / 2, Parameters.P / 4);
+            Assert.AreEqual(a, a.Negate().Negate());
+        }
+        
+        [Test]
+        public void Negate_operator_check()
+        {
+            Fp2 a = new Fp2(Parameters.P / 2, Parameters.P / 4);
+            Assert.AreEqual(a.Negate(), -a);
         }
     }
 }

@@ -20,19 +20,20 @@ using System.Numerics;
 
 namespace Nethermind.Core.Crypto.ZkSnarks
 {
- /// <summary>
- ///     Code adapted from ethereumJ (https://github.com/ethereum/ethereumj)
- /// </summary>
+    /// <summary>
+    ///     Code adapted from ethereumJ (https://github.com/ethereum/ethereumj)
+    /// </summary>
     public class Parameters
     {
-        /**
-         * "p" field parameter of F_p, F_p2, F_p6 and F_p12
-         */
+        /// <summary>
+        /// p is a prime over which we form a basic field: 36u⁴+36u³+24u²+6u+1.
+        /// </summary>
         public static readonly BigInteger P = BigInteger.Parse("21888242871839275222246405745257275088696311157297823662689037894645226208583");
 
-        /**
-         * "r" order of {@link BN128G2} cyclic subgroup
-         */
+        /// <summary>
+        /// Order is the number of elements in both G₁ and G₂: 36u⁴+36u³+18u²+6u+1.
+        /// "r" order of BN128G2 cyclic subgroup
+        /// </summary>
         public static readonly BigInteger R = BigInteger.Parse("21888242871839275222246405745257275088548364400416034343698204186575808495617");
 
         /**
@@ -59,6 +60,9 @@ namespace Nethermind.Core.Crypto.ZkSnarks
             BigInteger.Parse("3505843767911556378687030309984248845540243509899259641013678093033130930403")
         );
 
+        /// <summary>
+        /// 1868033³
+        /// </summary>
         public static readonly BigInteger PairingFinalExponentZ = BigInteger.Parse("4965661367192848881");
     }
 }

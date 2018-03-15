@@ -75,15 +75,15 @@ namespace Nethermind.Core.Crypto.ZkSnarks
             return new Fp6(ra, rb, rc);
         }
 
-        public override Fp6 Square()
+        public override Fp6 Squared()
         {
-            Fp2 s0 = A.Square();
+            Fp2 s0 = A.Squared();
             Fp2 ab = A.Mul(B);
             Fp2 s1 = ab.Double();
-            Fp2 s2 = A.Sub(B).Add(C).Square();
+            Fp2 s2 = A.Sub(B).Add(C).Squared();
             Fp2 bc = B.Mul(C);
             Fp2 s3 = bc.Double();
-            Fp2 s4 = C.Square();
+            Fp2 s4 = C.Squared();
 
             Fp2 ra = s0.Add(s3.MulByNonResidue());
             Fp2 rb = s1.Add(s4.MulByNonResidue());
@@ -101,9 +101,9 @@ namespace Nethermind.Core.Crypto.ZkSnarks
         {
             /* From "High-Speed Software Implementation of the Optimal Ate Pairing over Barreto-Naehrig Curves"; Algorithm 17 */
 
-            Fp2 t0 = A.Square();
-            Fp2 t1 = B.Square();
-            Fp2 t2 = C.Square();
+            Fp2 t0 = A.Squared();
+            Fp2 t1 = B.Squared();
+            Fp2 t2 = C.Squared();
             Fp2 t3 = A.Mul(B);
             Fp2 t4 = A.Mul(C);
             Fp2 t5 = B.Mul(C);
@@ -136,7 +136,6 @@ namespace Nethermind.Core.Crypto.ZkSnarks
 
         public Fp6 MulByNonResidue()
         {
-
             return new Fp6(NonResidue.Mul(C), A, B);
         }
         
@@ -201,10 +200,12 @@ namespace Nethermind.Core.Crypto.ZkSnarks
                 BigInteger.One,
                 BigInteger.Zero),
 
+            // xiToPMinus1Over3 is ξ^((p-1)/3) where ξ = i+9.
             new Fp2(
                 BigInteger.Parse("21575463638280843010398324269430826099269044274347216827212613867836435027261"),
                 BigInteger.Parse("10307601595873709700152284273816112264069230130616436755625194854815875713954")),
 
+            // xiToPSquaredMinus1Over3 is ξ^((p²-1)/3) where ξ = i+9.
             new Fp2(
                 BigInteger.Parse("21888242871839275220042445260109153167277707414472061641714758635765020556616"),
                 BigInteger.Zero),
@@ -213,6 +214,7 @@ namespace Nethermind.Core.Crypto.ZkSnarks
                 BigInteger.Parse("3772000881919853776433695186713858239009073593817195771773381919316419345261"),
                 BigInteger.Parse("2236595495967245188281701248203181795121068902605861227855261137820944008926")),
 
+            // xiTo2PSquaredMinus2Over3 is ξ^((2p²-2)/3) where ξ = i+9 (a cubic root of unity, mod p).
             new Fp2(
                 BigInteger.Parse("2203960485148121921418603742825762020974279258880205651966"),
                 BigInteger.Zero),
@@ -228,10 +230,12 @@ namespace Nethermind.Core.Crypto.ZkSnarks
                 BigInteger.One,
                 BigInteger.Zero),
 
+            // xiTo2PMinus2Over3 is ξ^((2p-2)/3) where ξ = i+9.
             new Fp2(
                 BigInteger.Parse("2581911344467009335267311115468803099551665605076196740867805258568234346338"),
                 BigInteger.Parse("19937756971775647987995932169929341994314640652964949448313374472400716661030")),
 
+            // xiTo2PSquaredMinus2Over3 is ξ^((2p²-2)/3) where ξ = i+9 (a cubic root of unity, mod p).
             new Fp2(
                 BigInteger.Parse("2203960485148121921418603742825762020974279258880205651966"),
                 BigInteger.Zero),
@@ -240,6 +244,7 @@ namespace Nethermind.Core.Crypto.ZkSnarks
                 BigInteger.Parse("5324479202449903542726783395506214481928257762400643279780343368557297135718"),
                 BigInteger.Parse("16208900380737693084919495127334387981393726419856888799917914180988844123039")),
 
+            // xiToPSquaredMinus1Over3 is ξ^((p²-1)/3) where ξ = i+9.
             new Fp2(
                 BigInteger.Parse("21888242871839275220042445260109153167277707414472061641714758635765020556616"),
                 BigInteger.Zero),

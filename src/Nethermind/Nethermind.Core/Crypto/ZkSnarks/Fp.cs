@@ -64,7 +64,7 @@ namespace Nethermind.Core.Crypto.ZkSnarks
             return subResult < 0 ? subResult + Parameters.P : subResult;
         }
 
-        public override Fp Square()
+        public override Fp Squared()
         {
             return _value * _value % Parameters.P;
         }
@@ -225,6 +225,11 @@ namespace Nethermind.Core.Crypto.ZkSnarks
         public static Fp operator *(Fp a, Fp b)
         {
             return a.Mul(b);
+        }
+        
+        public static Fp operator -(Fp a)
+        {
+            return a.Negate();
         }
 
         public byte[] GetBytes()

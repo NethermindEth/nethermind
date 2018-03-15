@@ -143,13 +143,13 @@ namespace Nethermind.Core.Test.Crypto.ZkSnarks
         [Test]
         public void Square_seems_fine()
         {
-            Assert.True(((Fp)2).Square() == 4);
+            Assert.True(((Fp)2).Squared() == 4);
         }
 
         [Test]
         public void Negate_seems_fine()
         {
-            Assert.True(((Fp)1).Negate() == Parameters.P - 1);
+            Assert.True(-(Fp)1 == Parameters.P - 1);
         }
         
         [Test]

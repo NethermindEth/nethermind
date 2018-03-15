@@ -1,5 +1,6 @@
 ﻿using System.Numerics;
 using Nethermind.Core.Extensions;
+using Nethermind.Evm;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test
@@ -35,6 +36,28 @@ namespace Nethermind.Core.Test
             Assert.AreEqual(true, BigInteger.Pow(2, 128).TestBit(128), "128");
             Assert.AreEqual(false, BigInteger.Pow(2, 128).TestBit(95), "95");
             Assert.AreEqual(false, BigInteger.Pow(2, 128).TestBit(0), "0");
+        }
+        
+        [Test]
+        public void Bit_length_one_more_test()
+        {
+            Assert.AreEqual(65, BigInteger.Parse("29793968203157093288").BitLength());
+        }
+        
+        [TestCase(1, 11, 1)]
+        [TestCase(2, 11, 6)]
+        [TestCase(3, 11, 4)]
+        [TestCase(4, 11, 3)]
+        [TestCase(5, 11, 9)]
+        [TestCase(6, 11, 2)]
+        [TestCase(7, 11, 8)]
+        [TestCase(8, 11, 7)]
+        [TestCase(9, 11, 5)]
+        [TestCase(10, 11, 10)]
+        [TestCase(0, 11, 0)]
+        public void Mod_inverse_test(int a, int mod, int expected)
+        {
+            Assert.AreEqual(new BigInteger(expected), new BigInteger(a).ModInverse(mod));
         }
     }
 }

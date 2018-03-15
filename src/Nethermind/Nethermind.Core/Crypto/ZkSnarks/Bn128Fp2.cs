@@ -115,5 +115,10 @@ namespace Nethermind.Core.Crypto.ZkSnarks
 
             return new Bn128Fp2(rx, ry, rz);
         }
+        
+        public override string ToString()
+        {
+            return $"({X}, {Y})";
+        }
     }
 }

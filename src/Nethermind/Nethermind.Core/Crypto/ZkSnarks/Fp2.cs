@@ -23,6 +23,11 @@ namespace Nethermind.Core.Crypto.ZkSnarks
 {
     /// <summary>
     ///     Code adapted from ethereumJ (https://github.com/ethereum/ethereumj)
+    ///     also based on the paper linked below:
+    /// https://eprint.iacr.org/2006/471.pdf
+    /// We construct a quadratic extension as Fp2 = Fp[X]/(X2 − β), where β is a
+    /// quadratic non-residue in Fp. An element α ∈ Fp2 is represented as α0 + α1X,
+    /// where αi ∈ Fp
     /// </summary>
     public class Fp2 : Field<Fp2>
     {
@@ -67,34 +72,126 @@ namespace Nethermind.Core.Crypto.ZkSnarks
         {
             return new Fp2(A.Add(o.A), B.Add(o.B));
         }
-
-        public override Fp2 Mul(Fp2 o)
-        {
-            Fp aa = A.Mul(o.A);
-            Fp bb = B.Mul(o.B);
-
-            Fp ra = bb.Mul(Fp.NonResidue).Add(aa); // ra = a1 * a2 + NON_RESIDUE * b1 * b2
-            Fp rb = A.Add(B).Mul(o.A.Add(o.B)).Sub(aa).Sub(bb); // rb = (a1 + b1)(a2 + b2) - a1 * a2 - b1 * b2
-
-            return new Fp2(ra, rb);
-        }
-
+        
         public override Fp2 Sub(Fp2 o)
         {
             return new Fp2(A.Sub(o.A), B.Sub(o.B));
         }
 
-        public override Fp2 Square()
+        /// <summary>
+        /// The Schoolbook method computes the product c = ab as
+        /// c0 = a0b0 + βa1b1
+        /// c1 = a0b1 + a1b0,
+        /// which costs 4M + 2A + B
+        /// </summary>
+        /// <param name="o"></param>
+        /// <returns></returns>
+        internal Fp2 MulSchoolbook(Fp2 o)
         {
+            Fp a0 = A;
+            Fp a1 = B;
+            Fp b0 = o.A;
+            Fp b1 = o.B;
+
+            Fp c0 = a0 * b0 + Fp.NonResidue * a1 * b1;
+            Fp c1 = a0 * b1 + a1 * b0;
+            return new Fp2(c0, c1);
+        }
+
+        /// <summary>
+        /// https://eprint.iacr.org/2006/471.pdf
+        /// The Karatsuba method computes c = ab by first precomputing the values
+        /// v0 = a0b0
+        /// v1 = a1b1
+        /// Then the multiplication is performed as
+        /// c0 = v0 + βv1
+        /// c1 = (a0 + a1)(b0 + b1) − v0 − v1
+        /// which costs 3M + 5A + B
+        /// </summary>
+        /// <param name="o"></param>
+        /// <returns></returns>
+        public Fp2 MulKaratsuba(Fp2 o)
+        {
+            Fp a0 = A;
+            Fp a1 = B;
+            Fp b0 = o.A;
+            Fp b1 = o.B;
+
+            Fp v0 = a0 * b0;
+            Fp v1 = a1 * b1;
+
+            Fp c0 = v0 + v1 * Fp.NonResidue;
+            Fp c1 = (a0 + a1) * (b0 + b1) - v0 - v1;
+
+            return new Fp2(c0, c1);
+        }
+
+        public override Fp2 Mul(Fp2 o)
+        {
+            return MulKaratsuba(o);
+        }
+
+        /// <summary>
+        /// c0 = a0^2 + βa1^2
+        /// c1 = 2a0a1
+        /// M + 2S + 2A + B
+        /// </summary>
+        /// <returns></returns>
+        public Fp2 SquaredSchoolbook()
+        {
+            Fp a0 = A;
+            Fp a1 = B;
+
+            Fp c0 = a0.Squared() + Fp.NonResidue * a1.Squared();
+            Fp c1 = (a0 * a1).Double();
+
+            return new Fp2(c0, c1);
+        }
+
+        /// <summary>
+        /// v0 = a0^2, v1 = a1^2
+        /// c0 = v0 + βv1
+        /// c1 = (a0 + a1)^2 - v0 - v1
+        /// which costs 3S + 4A + B.
+        /// </summary>
+        /// <returns></returns>
+        public Fp2 SquaredKaratsuba()
+        {
+            Fp a0 = A;
+            Fp a1 = B;
+
+            Fp v0 = a0.Squared();
+            Fp v1 = a1.Squared();
+
+            Fp c0 = v0 + Fp.NonResidue * v1;
+            Fp c1 = (a0 + a1).Squared() - v0 - v1;
+            
+            return new Fp2(c0, c1);
+        }
+
+        /// <summary>
+        /// c0 = (a0 + a1)(a0 − a1)
+        /// c1 = 2a0a1
+        /// which takes 2M + 4A + 2B
+        /// </summary>
+        /// <returns></returns>
+        public Fp2 SquaredComplex()
+        {
+            Fp a0 = A;
+            Fp a1 = B;
+
+            Fp v0 = a0 * a1;
+
             // using Complex squaring
+            Fp c0 = (a0 + a1) * (a0 + Fp.NonResidue * a1) - v0 - Fp.NonResidue * v0;
+            Fp c1 = v0.Double();
 
-            Fp ab = A.Mul(B);
-
-            Fp ra = A.Add(B).Mul(B.Mul(Fp.NonResidue).Add(A))
-                .Sub(ab).Sub(ab.Mul(Fp.NonResidue)); // ra = (a + b)(a + NON_RESIDUE * b) - ab - NON_RESIDUE * b
-            Fp rb = ab.Double();
-
-            return new Fp2(ra, rb);
+            return new Fp2(c0, c1);
+        }
+        
+        public override Fp2 Squared()
+        {
+            return SquaredComplex();
         }
 
         public override Fp2 Double()
@@ -104,8 +201,8 @@ namespace Nethermind.Core.Crypto.ZkSnarks
 
         public override Fp2 Inverse()
         {
-            Fp t0 = A.Square();
-            Fp t1 = B.Square();
+            Fp t0 = A.Squared();
+            Fp t1 = B.Squared();
             Fp t2 = t0.Sub(Fp.NonResidue.Mul(t1));
             Fp t3 = t2.Inverse();
 
@@ -151,7 +248,7 @@ namespace Nethermind.Core.Crypto.ZkSnarks
             {
                 return false;
             }
-            
+
             return Equals(A, other.A) && Equals(B, other.B);
         }
 
@@ -171,6 +268,26 @@ namespace Nethermind.Core.Crypto.ZkSnarks
         public static bool operator !=(Fp2 a, Fp2 b)
         {
             return !(a == b);
+        }
+
+        public static Fp2 operator +(Fp2 a, Fp2 b)
+        {
+            return a.Add(b);
+        }
+
+        public static Fp2 operator -(Fp2 a, Fp2 b)
+        {
+            return a.Sub(b);
+        }
+
+        public static Fp2 operator *(Fp2 a, Fp2 b)
+        {
+            return a.Mul(b);
+        }
+        
+        public static Fp2 operator -(Fp2 a)
+        {
+            return a.Negate();
         }
 
         public override string ToString()

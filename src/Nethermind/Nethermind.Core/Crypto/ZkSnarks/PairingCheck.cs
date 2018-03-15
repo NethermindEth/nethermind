@@ -70,8 +70,8 @@ namespace Nethermind.Core.Crypto.ZkSnarks
         private static Fp12 MillerLoop(Bn128Fp g1, Bn128Fp2 g2)
         {
             // convert to affine coordinates
-            g1 = (Bn128Fp)g1.ToAffine();
-            g2 = (Bn128Fp2)g2.ToAffine();
+            g1 = g1.ToAffine();
+            g2 = g2.ToAffine();
 
             // calculate Ell coefficients
             List<EllCoeffs> coeffs = CalcEllCoeffs(g2);
@@ -83,7 +83,7 @@ namespace Nethermind.Core.Crypto.ZkSnarks
             for (int i = LoopCount.BitLength() - 2; i >= 0; i--)
             {
                 EllCoeffs cInLoop = coeffs[idx++];
-                f = f.Square();
+                f = f.Squared();
                 f = f.MulBy024(cInLoop.Ell0, g1.Y.Mul(cInLoop.EllVw), g1.X.Mul(cInLoop.EllVv));
 
                 if (LoopCount.TestBit(i))
@@ -146,8 +146,8 @@ namespace Nethermind.Core.Crypto.ZkSnarks
 
             Fp2 d = x1.Sub(x2.Mul(z1)); // d = x1 - x2 * z1
             Fp2 e = y1.Sub(y2.Mul(z1)); // e = y1 - y2 * z1
-            Fp2 f = d.Square(); // f = d^2
-            Fp2 g = e.Square(); // g = e^2
+            Fp2 f = d.Squared(); // f = d^2
+            Fp2 g = e.Squared(); // g = e^2
             Fp2 h = d.Mul(f); // h = d * f
             Fp2 i = x1.Mul(f); // i = x1 * f
             Fp2 j = h.Add(z1.Mul(g)).Sub(i.Double()); // j = h + z1 * g - 2 * i
@@ -171,19 +171,19 @@ namespace Nethermind.Core.Crypto.ZkSnarks
             Fp2 x = g2.X, y = g2.Y, z = g2.Z;
 
             Fp2 a = Fp.InverseOf2.Mul(x.Mul(y)); // a = x * y / 2
-            Fp2 b = y.Square(); // b = y^2
-            Fp2 c = z.Square(); // c = z^2
+            Fp2 b = y.Squared(); // b = y^2
+            Fp2 c = z.Squared(); // c = z^2
             Fp2 d = c.Add(c).Add(c); // d = 3 * c
             Fp2 e = Parameters.Fp2B.Mul(d); // e = twist_b * d
             Fp2 f = e.Add(e).Add(e); // f = 3 * e
             Fp2 g = Fp.InverseOf2.Mul(b.Add(f)); // g = (b + f) / 2
-            Fp2 h = y.Add(z).Square().Sub(b.Add(c)); // h = (y + z)^2 - (b + c)
+            Fp2 h = y.Add(z).Squared().Sub(b.Add(c)); // h = (y + z)^2 - (b + c)
             Fp2 i = e.Sub(b); // i = e - b
-            Fp2 j = x.Square(); // j = x^2
-            Fp2 e2 = e.Square(); // e2 = e^2
+            Fp2 j = x.Squared(); // j = x^2
+            Fp2 e2 = e.Squared(); // e2 = e^2
 
             Fp2 rx = a.Mul(b.Sub(f)); // rx = a * (b - f)
-            Fp2 ry = g.Square().Sub(e2.Add(e2).Add(e2)); // ry = g^2 - 3 * e^2
+            Fp2 ry = g.Squared().Sub(e2.Add(e2).Add(e2)); // ry = g^2 - 3 * e^2
             Fp2 rz = b.Mul(h); // rz = b * h
 
             Fp2 ell0 = Parameters.Twist.Mul(i); // ell_0 = twist * i

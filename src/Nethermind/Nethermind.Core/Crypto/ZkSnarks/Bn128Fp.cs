@@ -96,5 +96,10 @@ namespace Nethermind.Core.Crypto.ZkSnarks
         {
             return true;
         }
+
+        public override string ToString()
+        {
+            return $"({X}, {Y})";
+        }
     }
 }

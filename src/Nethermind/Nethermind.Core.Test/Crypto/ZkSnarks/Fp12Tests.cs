@@ -71,5 +71,16 @@ namespace Nethermind.Core.Test.Crypto.ZkSnarks
             Assert.AreEqual(Fp6.One, cyclotomicSquare.A, "A");
             Assert.AreEqual(Fp6.Zero, cyclotomicSquare.B, "B");
         }
+        
+        [Test]
+        public void Square_cross_check()
+        {
+            Fp2 a2 = new Fp2(Parameters.P / 2, Parameters.P / 4);
+            Fp6 a6 = new Fp6(a2, a2, a2);
+            Fp12 a12 = new Fp12(a6, a6);
+            Assert.True(a12.IsValid());
+            
+            Assert.AreEqual(a12.Squared(), a12 * a12);
+        }
     }
 }

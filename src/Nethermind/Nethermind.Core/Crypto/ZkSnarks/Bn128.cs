@@ -52,7 +52,7 @@ namespace Nethermind.Core.Crypto.ZkSnarks
             }
 
             T zInv = Z.Inverse();
-            T zInv2 = zInv.Square();
+            T zInv2 = zInv.Squared();
             T zInv3 = zInv2.Mul(zInv);
 
             T ax = X.Mul(zInv2);
@@ -79,10 +79,13 @@ namespace Nethermind.Core.Crypto.ZkSnarks
                 return true;
             }
 
-            T z6 = Z.Square().Mul(Z).Square();
+            // The M-type sextic twist curve is defined by equation y'^2 = x'^3 + b * s when elliptic curve E(F_p) is set to be y^2 = x^3 + b
+            // and represent of F_{p^12} is set to be F_{p^2}[u]/(u^6 - s), where s is in F_{p^2}^*.
+            // The corresponding map I: E'(F_{p^2}) -> E(F_{p^12}) is (x', y') -> (x' * s^{-1} * z^4, y' * s^{-1} * z^3), with z^6 = s.
+            T z6 = Z.Squared().Mul(Z).Squared();
 
-            T left = Y.Square(); // y^2
-            T right = X.Square().Mul(X).Add(B.Mul(z6)); // x^3 + b * z^6
+            T left = Y.Squared(); // y^2
+            T right = X.Squared().Mul(X).Add(B.Mul(z6)); // x^3 + b * z^6
             return left.Equals(right); // avoid == here as this would call reference equality
         }
 
@@ -104,8 +107,8 @@ namespace Nethermind.Core.Crypto.ZkSnarks
             // ported code is started from here
             // next calculations are done in Jacobian coordinates
 
-            T z1Z1 = z1.Square();
-            T z2Z2 = z2.Square();
+            T z1Z1 = z1.Squared();
+            T z2Z2 = z2.Squared();
 
             T u1 = x1.Mul(z2Z2);
             T u2 = x2.Mul(z1Z1);
@@ -122,14 +125,14 @@ namespace Nethermind.Core.Crypto.ZkSnarks
             }
 
             T h = u2.Sub(u1); // h = u2 - u1
-            T i = h.Double().Square(); // i = (2 * h)^2
+            T i = h.Double().Squared(); // i = (2 * h)^2
             T j = h.Mul(i); // j = h * i
             T r = s2.Sub(s1).Double(); // r = 2 * (s2 - s1)
             T v = u1.Mul(i); // v = u1 * i
-            T zz = z1.Add(z2).Square()
-                .Sub(z1.Square()).Sub(z2.Square());
+            T zz = z1.Add(z2).Squared()
+                .Sub(z1.Squared()).Sub(z2.Squared());
 
-            T x3 = r.Square().Sub(j).Sub(v.Double()); // x3 = r^2 - j - 2 * v
+            T x3 = r.Squared().Sub(j).Sub(v.Double()); // x3 = r^2 - j - 2 * v
             T y3 = v.Sub(x3).Mul(r).Sub(s1.Mul(j).Double()); // y3 = r * (v - x3) - 2 * (s1 * j)
             T z3 = zz.Mul(h); // z3 = ((z1+z2)^2 - z1^2 - z2^2) * h = zz * h
 
@@ -173,13 +176,13 @@ namespace Nethermind.Core.Crypto.ZkSnarks
             // ported code is started from here
             // next calculations are done in Jacobian coordinates with z = 1
 
-            T a = X.Square(); // a = x^2
-            T b = Y.Square(); // b = y^2
-            T c = b.Square(); // c = b^2
-            T d = X.Add(b).Square().Sub(a).Sub(c);
+            T a = X.Squared(); // a = x^2
+            T b = Y.Squared(); // b = y^2
+            T c = b.Squared(); // c = b^2
+            T d = X.Add(b).Squared().Sub(a).Sub(c);
             d = d.Add(d); // d = 2 * ((x + b)^2 - a - c)
             T e = a.Add(a).Add(a); // e = 3 * a
-            T f = e.Square(); // f = e^2
+            T f = e.Squared(); // f = e^2
 
             T x3 = f.Sub(d.Add(d)); // rx = f - 2 * d
             T y3 = e.Mul(d.Sub(x3)).Sub(c.Double().Double().Double()); // ry = e * (d - rx) - 8 * c

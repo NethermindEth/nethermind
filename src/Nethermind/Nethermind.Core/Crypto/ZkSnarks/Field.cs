@@ -28,7 +28,7 @@ namespace Nethermind.Core.Crypto.ZkSnarks
         public abstract T Add(T o);
         public abstract T Mul(T o);
         public abstract T Sub(T o);
-        public abstract T Square();
+        public abstract T Squared();
         public abstract T Double();
         public abstract T Inverse();
         public abstract T Negate();

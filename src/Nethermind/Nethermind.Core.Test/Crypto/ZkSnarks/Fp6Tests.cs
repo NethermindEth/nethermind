@@ -52,5 +52,25 @@ namespace Nethermind.Core.Test.Crypto.ZkSnarks
             // ReSharper disable once EqualExpressionComparison
             Assert.True(ReferenceEquals(Fp6.NonResidue, Fp6.NonResidue));
         }
+        
+        [Test]
+        public void Square_cross_check()
+        {
+            Fp2 a2 = new Fp2(Parameters.P / 2, Parameters.P / 4);
+            Fp6 a = new Fp6(a2, a2, a2);
+            Assert.True(a.IsValid());
+            
+            Assert.AreEqual(a2.Squared(), a2 * a2);
+        }
+        
+        [Test]
+        public void Double_cross_check()
+        {
+            Fp2 a2 = new Fp2(Parameters.P / 2, Parameters.P / 4);
+            Fp6 a = new Fp6(a2, a2, a2);
+            Assert.True(a.IsValid());
+            
+            Assert.AreEqual(a2.Double(), a2 + a2);
+        }
     }
 }
