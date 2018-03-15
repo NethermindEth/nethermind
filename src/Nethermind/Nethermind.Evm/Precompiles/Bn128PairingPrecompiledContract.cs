@@ -61,7 +61,7 @@ namespace Nethermind.Evm.Precompiles
             }
 
             // fail if input len is not a multiple of PAIR_SIZE
-            if (inputData.Length == 0 || inputData.Length % PairSize > 0)
+            if (inputData.Length % PairSize > 0)
             {
                 return (Bytes.Empty, false);
             }
