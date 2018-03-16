@@ -21,7 +21,9 @@ using System.Numerics;
 namespace Nethermind.Core.Crypto.ZkSnarks
 {
     /// <summary>
-    ///     Code adapted from ethereumJ (https://github.com/ethereum/ethereumj)
+    ///     Based on https://eprint.iacr.org/2010/354.pdf
+    ///     High-Speed Software Implementation of the Optimal Ate Pairing over Barreto–Naehrig Curves
+    ///     and ethereumJ (https://github.com/ethereum/ethereumj)
     /// </summary>
     public class Fp6 : IField<Fp6>
     {
@@ -76,7 +78,14 @@ namespace Nethermind.Core.Crypto.ZkSnarks
         /// <returns></returns>
         public Fp6 Mul(Fp2 b0)
         {
-            return new Fp6(A.Mul(b0), B.Mul(b0), C.Mul(b0));
+            Fp2 a0 = A;
+            Fp2 a1 = B;
+            Fp2 a2 = C;
+            
+            return new Fp6(
+                a0 * b0,
+                a1 * b0,
+                a2 * b0);
         }
 
         /// <summary>
@@ -150,21 +159,6 @@ namespace Nethermind.Core.Crypto.ZkSnarks
             c2 = c2 + c4 + c5 - c3;
 
             return new Fp6(c0, c1, c2);
-
-            // from EthereumJ
-//            Fp2 s0 = A.Squared();
-//            Fp2 ab = A.Mul(B);
-//            Fp2 s1 = ab.Double();
-//            Fp2 s2 = A.Sub(B).Add(C).Squared();
-//            Fp2 bc = B.Mul(C);
-//            Fp2 s3 = bc.Double();
-//            Fp2 s4 = C.Squared();
-//
-//            Fp2 ra = s0.Add(s3.MulByNonResidue());
-//            Fp2 rb = s1.Add(s4.MulByNonResidue());
-//            Fp2 rc = s1.Add(s2).Add(s3).Sub(s0).Sub(s4);
-//
-//            return new Fp6(ra, rb, rc);
         }
 
         public Fp6 Double()

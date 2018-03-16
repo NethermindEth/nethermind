@@ -26,7 +26,7 @@ namespace Nethermind.Core.Crypto.ZkSnarks
     public class Parameters
     {
         /// <summary>
-        /// p is a prime over which we form a basic field: 36u⁴+36u³+24u²+6u+1.
+        /// P is a prime over which we form a basic field: 36u⁴+36u³+24u²+6u+1.
         /// </summary>
         public static readonly BigInteger P = BigInteger.Parse("21888242871839275222246405745257275088696311157297823662689037894645226208583");
         
@@ -38,26 +38,29 @@ namespace Nethermind.Core.Crypto.ZkSnarks
 
         /// <summary>
         /// Order is the number of elements in both G₁ and G₂: 36u⁴+36u³+18u²+6u+1.
-        /// "r" order of BN128G2 cyclic subgroup
+        /// R order of the BN128G2 cyclic subgroup
         /// </summary>
         public static readonly BigInteger R = BigInteger.Parse("21888242871839275222246405745257275088548364400416034343698204186575808495617");
         
+        /// <summary>
+        /// embedding degree for group Gt (the smallest k so that r | p^k - 1)
+        /// </summary>
         // ReSharper disable once InconsistentNaming
-        public static readonly int k = 12; // embedding degree for group Gt
+        public static readonly int k = 12;
 
-        /**
-         * "b" curve parameter for {@link BN128Fp}
-         */
+        /// <summary>
+        /// 'b' curve parameter for <see cref="Bn128Fp"/>
+        /// </summary>
         public static readonly Fp FpB = new Fp(3);
 
-        /**
-         * Twist parameter for the curves
-         */
+        /// <summary>
+        /// Twist parameter for the curves
+        /// </summary>
         public static readonly Fp2 Twist = new Fp2(9, 1);
 
-        /**
-         * "b" curve parameter for {@link BN128Fp2}
-         */
+        /// <summary>
+        /// 'b' curve parameter for <see cref="Bn128Fp2"/>
+        /// </summary>
         public static readonly Fp2 Fp2B = FpB.Mul(Twist.Inverse());
 
         public static readonly Fp2 TwistMulByPx = new Fp2(
@@ -70,7 +73,7 @@ namespace Nethermind.Core.Crypto.ZkSnarks
         );
 
         /// <summary>
-        /// 1868033³
+        /// t so that p(t) and r(t) are prime
         /// </summary>
         public static readonly BigInteger PairingFinalExponentZ = BigInteger.Parse("4965661367192848881");
     }
