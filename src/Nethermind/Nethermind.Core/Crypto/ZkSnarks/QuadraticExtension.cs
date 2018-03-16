@@ -133,21 +133,23 @@ namespace Nethermind.Core.Crypto.ZkSnarks
         }
 
         /// <summary>
-        /// https://eprint.iacr.org/2010/354.pdf
-        /// Computational Costs of the Tower Extension Field Arithmetic
+        /// https://eprint.iacr.org/2010/354.pdf (algorithm 8)
         /// </summary>
         /// <returns></returns>
         public TExtension Inverse()
         {
-            TBase t0 = A.Squared();
-            TBase t1 = B.Squared();
-            TBase t2 = t0.Sub(t1.MulByNonResidue());
-            TBase t3 = t2.Inverse();
+            TBase a0 = A;
+            TBase a1 = B;
+            
+            TBase t0 = a0.Squared();
+            TBase t1 = a1.Squared();
+            t0 = t0.Sub(t1.MulByNonResidue());
+            t1 = t0.Inverse();
 
-            TBase ra = A.Mul(t3); // ra = a * t3
-            TBase rb = B.Mul(t3).Negate(); // rb = -(b * t3)
+            TBase c0 = a0.Mul(t1);
+            TBase c1 = a1.Mul(t1).Negate();
 
-            return new TExtension {A = ra, B = rb};
+            return new TExtension {A = c0, B = c1};
         }
 
         public TExtension Negate()

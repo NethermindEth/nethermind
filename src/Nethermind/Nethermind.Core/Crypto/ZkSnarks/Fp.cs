@@ -46,7 +46,7 @@ namespace Nethermind.Core.Crypto.ZkSnarks
 
         public static readonly Fp Zero = new Fp(BigInteger.Zero);
         public static readonly Fp One = new Fp(BigInteger.One);
-        public static readonly Fp NonResidue = new Fp(BigInteger.Parse("21888242871839275222246405745257275088696311157297823662689037894645226208582"));
+        public static readonly Fp NonResidue = new Fp(BigInteger.Parse("21888242871839275222246405745257275088696311157297823662689037894645226208582")); // root of unity
         public static readonly Fp InverseOf2 = new Fp(new BigInteger(2).ModInverse(Parameters.P));        
 
         public Fp Add(Fp o)

@@ -8,6 +8,16 @@ namespace Nethermind.Core.Test
     [TestFixture]
     public class BigIntegerTests
     {
+        [TestCase(0, 0)]
+        [TestCase(1, 1)]
+        [TestCase(2, 1)]
+        [TestCase(4, 2)]
+        [TestCase(1000, 31)]
+        public void Square_root(int n, int expectedValue)
+        {
+            Assert.AreEqual(new BigInteger(expectedValue), new BigInteger(n).SquareRoot());
+        }
+        
         [TestCase(0, 1)]
         [TestCase(1, 1)]
         [TestCase(2, 2)]

@@ -222,10 +222,21 @@ namespace Nethermind.Core.Test.Crypto.ZkSnarks
         }
 
         [Test]
+        public void Add_negate()
+        {
+            Fp2 a = new Fp2(Parameters.P / 2, Parameters.P / 4);
+            Assert.True(a.IsValid());
+            
+            Assert.AreEqual(Fp2.Zero, a.Add(a.Negate()));
+            Assert.AreEqual(Fp2.Zero, a.Negate().Add(a));
+        }
+
+        [Test]
         public void Inverse_mul_self()
         {
             Fp2 a = new Fp2(Parameters.P / 2, Parameters.P / 4);
             Assert.AreEqual(Fp2.One, a.Mul(a.Inverse()));
+            Assert.AreEqual(Fp2.One, a.Inverse().Mul(a));
         }
         
         [Test]

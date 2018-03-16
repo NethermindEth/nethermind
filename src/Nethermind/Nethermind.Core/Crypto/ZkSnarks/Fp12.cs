@@ -213,7 +213,8 @@ namespace Nethermind.Core.Crypto.ZkSnarks
 
             return new Fp12(ra, rb);
         }
-
+        
+        // https://github.com/scipr-lab/libff/blob/master/libff/algebra/curves/alt_bn128/alt_bn128_init.cpp
         public static readonly Fp2[] FrobeniusCoefficientsB =
         {
             new Fp2(

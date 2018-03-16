@@ -48,6 +48,13 @@ namespace Nethermind.Core.Test.Crypto.ZkSnarks
             // tr(t) = 6t^2 + 1,
             Assert.AreEqual(BigInteger.Zero, Parameters.FrobeniusTrace - (6 * BigInteger.Pow(Parameters.u, 2) + 1), "value correct assuming u correct");
         }
+        
+        [Test]
+        public void Hasse_bound()
+        {
+            // u <= 2 * sqrt(p(u))
+            Assert.LessOrEqual(Parameters.u, 2 * Parameters.P.SquareRoot());
+        }
 
         /// <summary>
         /// It is at 254 so probably similar to: https://crypto.stackexchange.com/questions/22331/isnt-the-security-of-ec-curve-25519-126-bits
@@ -65,7 +72,7 @@ namespace Nethermind.Core.Test.Crypto.ZkSnarks
         }
         
         /// <summary>
-        /// Probably somebody copied the value of v = 1868033 from 'New software speed records for cryptographic pairings' and included in the comment without checking.
+        /// Probably somebody copied the value of v = 1868033 from 'New software speed records for cryptographic pairings' and included in the comment without checking (which was later copied to geth, Clearmatics, ethereumJ and so on)
         /// v^3 is not 4965661367192848881, still 4965661367192848881 is accepted as an arbitrary number where P = p(t) and R = r(t) are prime.
         /// </summary>
         [Test]

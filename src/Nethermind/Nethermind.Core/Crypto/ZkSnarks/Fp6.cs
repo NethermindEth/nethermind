@@ -30,7 +30,7 @@ namespace Nethermind.Core.Crypto.ZkSnarks
             FieldParams<Fp6>.Zero = Zero;
             FieldParams<Fp6>.One = One;
         }
-        
+
         public static readonly Fp6 Zero = new Fp6(Fp2.Zero, Fp2.Zero, Fp2.Zero);
         public static readonly Fp6 One = new Fp6(Fp2.One, Fp2.Zero, Fp2.Zero);
         public static readonly Fp2 NonResidue = Fp2.NonResidue;
@@ -46,56 +46,125 @@ namespace Nethermind.Core.Crypto.ZkSnarks
             C = c;
         }
 
+        /// <summary>
+        /// https://eprint.iacr.org/2010/354.pdf
+        /// Algorithm 10
+        /// </summary>
+        /// <param name="o"></param>
+        /// <returns></returns>
         public Fp6 Add(Fp6 o)
         {
-            return new Fp6(A.Add(o.A), B.Add(o.B), C.Add(o.C));
+            Fp2 a0 = A;
+            Fp2 a1 = B;
+            Fp2 a2 = C;
+            Fp2 b0 = o.A;
+            Fp2 b1 = o.B;
+            Fp2 b2 = o.C;
+
+            Fp2 c0 = a0 + b0;
+            Fp2 c1 = a1 + b1;
+            Fp2 c2 = a2 + b2;
+
+            return new Fp6(c0, c1, c2);
         }
 
-        public Fp6 Mul(Fp2 o)
+        /// <summary>
+        /// https://eprint.iacr.org/2010/354.pdf
+        /// Algorithm 14
+        /// </summary>
+        /// <param name="b0"></param>
+        /// <returns></returns>
+        public Fp6 Mul(Fp2 b0)
         {
-            return new Fp6(A.Mul(o), B.Mul(o), C.Mul(o));
+            return new Fp6(A.Mul(b0), B.Mul(b0), C.Mul(b0));
         }
-        
+
+        /// <summary>
+        /// https://eprint.iacr.org/2010/354.pdf
+        /// Algorithm 13 
+        /// </summary>
+        /// <param name="o"></param>
+        /// <returns></returns>
         public Fp6 Mul(Fp6 o)
         {
-            Fp2 a1 = A, b1 = B, c1 = B;
-            Fp2 a2 = o.A, b2 = o.B, c2 = o.C;
+            Fp2 a0 = A;
+            Fp2 a1 = B;
+            Fp2 a2 = C;
+            Fp2 b0 = o.A;
+            Fp2 b1 = o.B;
+            Fp2 b2 = o.C;
 
-            Fp2 a1A2 = a1.Mul(a2);
-            Fp2 b1B2 = b1.Mul(b2);
-            Fp2 c1C2 = c1.Mul(c2);
+            Fp2 v0 = a0 * b0;
+            Fp2 v1 = a1 * b1;
+            Fp2 v2 = a2 * b2;
 
-            Fp2 ra = a1A2.Add(b1.Add(c1).Mul(b2.Add(c2)).Sub(b1B2).Sub(c1C2).MulByNonResidue());
-            Fp2 rb = a1.Add(b1).Mul(a2.Add(b2)).Sub(a1A2).Sub(b1B2).Add(c1C2.MulByNonResidue());
-            Fp2 rc = a1.Add(c1).Mul(a2.Add(c2)).Sub(a1A2).Add(b1B2).Sub(c1C2);
+            Fp2 c0 = v0 + ((a1 + a2) * (b1 + b2) - v1 - v2).MulByNonResidue();
+            Fp2 c1 = (a0 + a1) * (b0 + b1) - v0 - v1 + v2.MulByNonResidue();
+            Fp2 c2 = (a0 + a2) * (b0 + b2) - v0 + v1 - v2;
 
-            return new Fp6(ra, rb, rc);
+            return new Fp6(c0, c1, c2);
         }
 
+        /// <summary>
+        /// https://eprint.iacr.org/2010/354.pdf
+        /// Algorithm 11 
+        /// </summary>
+        /// <param name="o"></param>
+        /// <returns></returns>
         public Fp6 Sub(Fp6 o)
         {
-            Fp2 ra = A.Sub(o.A);
-            Fp2 rb = B.Sub(o.B);
-            Fp2 rc = C.Sub(o.C);
+            Fp2 a0 = A;
+            Fp2 a1 = B;
+            Fp2 a2 = C;
+            Fp2 b0 = o.A;
+            Fp2 b1 = o.B;
+            Fp2 b2 = o.C;
 
-            return new Fp6(ra, rb, rc);
+            Fp2 c0 = a0 - b0;
+            Fp2 c1 = a1 - b1;
+            Fp2 c2 = a2 - b2;
+
+            return new Fp6(c0, c1, c2);
         }
 
+        /// <summary>
+        /// https://eprint.iacr.org/2010/354.pdf
+        /// Algorithm 16 
+        /// </summary>
+        /// <returns></returns>
         public Fp6 Squared()
         {
-            Fp2 s0 = A.Squared();
-            Fp2 ab = A.Mul(B);
-            Fp2 s1 = ab.Double();
-            Fp2 s2 = A.Sub(B).Add(C).Squared();
-            Fp2 bc = B.Mul(C);
-            Fp2 s3 = bc.Double();
-            Fp2 s4 = C.Squared();
+            Fp2 a0 = A;
+            Fp2 a1 = B;
+            Fp2 a2 = C;
 
-            Fp2 ra = s0.Add(s3.MulByNonResidue());
-            Fp2 rb = s1.Add(s4.MulByNonResidue());
-            Fp2 rc = s1.Add(s2).Add(s3).Sub(s0).Sub(s4);
+            Fp2 c4 = (a0 * a1).Double();
+            Fp2 c5 = a2.Squared();
+            Fp2 c1 = c5.MulByNonResidue() + c4;
+            Fp2 c2 = c4 - c5;
+            Fp2 c3 = a0.Squared();
+            c4 = a0 - a1 + a2;
+            c5 = (a1 * a2).Double();
+            c4 = c4.Squared();
+            Fp2 c0 = c5.MulByNonResidue() + c3;
+            c2 = c2 + c4 + c5 - c3;
 
-            return new Fp6(ra, rb, rc);
+            return new Fp6(c0, c1, c2);
+
+            // from EthereumJ
+//            Fp2 s0 = A.Squared();
+//            Fp2 ab = A.Mul(B);
+//            Fp2 s1 = ab.Double();
+//            Fp2 s2 = A.Sub(B).Add(C).Squared();
+//            Fp2 bc = B.Mul(C);
+//            Fp2 s3 = bc.Double();
+//            Fp2 s4 = C.Squared();
+//
+//            Fp2 ra = s0.Add(s3.MulByNonResidue());
+//            Fp2 rb = s1.Add(s4.MulByNonResidue());
+//            Fp2 rc = s1.Add(s2).Add(s3).Sub(s0).Sub(s4);
+//
+//            return new Fp6(ra, rb, rc);
         }
 
         public Fp6 Double()
@@ -103,26 +172,36 @@ namespace Nethermind.Core.Crypto.ZkSnarks
             return Add(this);
         }
 
+        /// <summary>
+        /// https://eprint.iacr.org/2010/354.pdf
+        /// Algorithm 17
+        /// </summary>
+        /// <returns></returns>
         public Fp6 Inverse()
         {
-            /* From "High-Speed Software Implementation of the Optimal Ate Pairing over Barreto-Naehrig Curves"; Algorithm 17 */
+            Fp2 a0 = A;
+            Fp2 a1 = B;
+            Fp2 a2 = C;
 
-            Fp2 t0 = A.Squared();
-            Fp2 t1 = B.Squared();
-            Fp2 t2 = C.Squared();
-            Fp2 t3 = A.Mul(B);
-            Fp2 t4 = A.Mul(C);
-            Fp2 t5 = B.Mul(C);
-            Fp2 c0 = t0.Sub(t5.MulByNonResidue());
-            Fp2 c1 = t2.MulByNonResidue().Sub(t3);
-            Fp2 c2 = t1.Sub(t4); // typo in paper referenced above. should be "-" as per Scott, but is "*"
-            Fp2 t6 = A.Mul(c0).Add(C.Mul(c1).Add(B.Mul(c2)).MulByNonResidue()).Inverse();
+            Fp2 t0 = a0.Squared();
+            Fp2 t1 = a1.Squared();
+            Fp2 t2 = a2.Squared();
+            Fp2 t3 = a0 * a1;
+            Fp2 t4 = a0 * a2;
+            Fp2 t5 = a1 * a2; // typo (a2 * a3 in paper)?
+            Fp2 c0 = t0 - t5.MulByNonResidue();
+            Fp2 c1 = t2.MulByNonResidue() - t3;
+            Fp2 c2 = t1 - t4; // typo in paper referenced above. should be "-" as per Scott, but is "*"
+            Fp2 t6 = a0 * c0;
+            t6 = t6 + a2.MulByNonResidue() * c1;
+            t6 = t6 + a1.MulByNonResidue() * c2;
+            t6 = t6.Inverse();
 
-            Fp2 ra = t6.Mul(c0);
-            Fp2 rb = t6.Mul(c1);
-            Fp2 rc = t6.Mul(c2);
+            c0 = c0 * t6;
+            c1 = c1 * t6;
+            c2 = c2 * t6;
 
-            return new Fp6(ra, rb, rc);
+            return new Fp6(c0, c1, c2);
         }
 
         public Fp6 Negate()
@@ -144,7 +223,7 @@ namespace Nethermind.Core.Crypto.ZkSnarks
         {
             return new Fp6(NonResidue.Mul(C), A, B);
         }
-        
+
         public override bool Equals(object obj)
         {
             if (ReferenceEquals(this, obj))
@@ -166,7 +245,7 @@ namespace Nethermind.Core.Crypto.ZkSnarks
             {
                 return false;
             }
-            
+
             return Equals(A, other.A) && Equals(B, other.B) && Equals(C, other.C);
         }
 
@@ -181,25 +260,16 @@ namespace Nethermind.Core.Crypto.ZkSnarks
             }
         }
 
-        public static bool operator ==(Fp6 a, Fp6 b)
+        public Fp6 FrobeniusMap(int power)
         {
-            return a?.Equals(b) ?? ReferenceEquals(b, null);
-        }
-
-        public static bool operator !=(Fp6 a, Fp6 b)
-        {
-            return !(a == b);
-        }
-
-        public Fp6 FrobeniusMap(int power) {
-
             Fp2 ra = A.FrobeniusMap(power);
             Fp2 rb = FrobeniusCoefficientsB[power % 6].Mul(B.FrobeniusMap(power));
             Fp2 rc = FrobeniusCoefficientsC[power % 6].Mul(C.FrobeniusMap(power));
 
             return new Fp6(ra, rb, rc);
         }
-        
+
+        // https://github.com/scipr-lab/libff/blob/master/libff/algebra/curves/alt_bn128/alt_bn128_init.cpp
         public static readonly Fp2[] FrobeniusCoefficientsB =
         {
             new Fp2(
@@ -230,6 +300,7 @@ namespace Nethermind.Core.Crypto.ZkSnarks
                 BigInteger.Parse("9344045779998320333812420223237981029506012124075525679208581902008406485703"))
         };
 
+        // https://github.com/scipr-lab/libff/blob/master/libff/algebra/curves/alt_bn128/alt_bn128_init.cpp
         public static readonly Fp2[] FrobeniusCoefficientsC =
         {
             new Fp2(

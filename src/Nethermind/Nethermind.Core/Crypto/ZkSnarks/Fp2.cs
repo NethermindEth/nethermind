@@ -35,11 +35,12 @@ namespace Nethermind.Core.Crypto.ZkSnarks
             FieldParams<Fp2>.Zero = Zero;
             FieldParams<Fp2>.One = One;
         }
-        
+
         public static Fp2 Zero = new Fp2(Fp.Zero, Fp.Zero);
         public static Fp2 One = new Fp2(Fp.One, Fp.Zero);
         public static Fp2 NonResidue = new Fp2(9, 1);
-        
+
+        // https://github.com/scipr-lab/libff/blob/master/libff/algebra/curves/alt_bn128/alt_bn128_init.cpp
         public static readonly Fp[] FrobeniusCoefficientsB = new Fp[]
         {
             new Fp(BigInteger.One),
@@ -72,6 +73,26 @@ namespace Nethermind.Core.Crypto.ZkSnarks
         public override Fp2 MulByNonResidue()
         {
             return NonResidue.Mul(this);
+        }
+
+        public static Fp2 operator +(Fp2 a, Fp2 b)
+        {
+            return a.Add(b);
+        }
+        
+        public static Fp2 operator *(Fp2 a, Fp2 b)
+        {
+            return a.Mul(b);
+        }
+        
+        public static Fp2 operator -(Fp2 a, Fp2 b)
+        {
+            return a.Sub(b);
+        }
+        
+        public static Fp2 operator -(Fp2 a)
+        {
+            return a.Negate();
         }
     }
 }

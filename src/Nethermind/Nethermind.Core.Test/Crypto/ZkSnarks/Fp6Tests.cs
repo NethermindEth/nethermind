@@ -9,9 +9,7 @@ namespace Nethermind.Core.Test.Crypto.ZkSnarks
         [Test]
         public void Equals_works_with_nulls()
         {
-            Assert.False(Fp6.One == null, "null to the right");
-            Assert.False(null == Fp6.One, "null to the left");
-            Assert.True((Fp6)null == null, "null both sides");
+            Assert.False(Fp6.One.Equals(null), "null to the right");
         }
         
         [Test]
@@ -60,7 +58,7 @@ namespace Nethermind.Core.Test.Crypto.ZkSnarks
             Fp6 a = new Fp6(a2, a2, a2);
             Assert.True(a.IsValid());
             
-            Assert.AreEqual(a2.Squared(), a2.Mul(a2));
+            Assert.AreEqual(a.Squared(), a.Mul(a));
         }
         
         [Test]
@@ -70,7 +68,59 @@ namespace Nethermind.Core.Test.Crypto.ZkSnarks
             Fp6 a = new Fp6(a2, a2, a2);
             Assert.True(a.IsValid());
             
-            Assert.AreEqual(a2.Double(), a2.Add(a2));
+            Assert.AreEqual(a.Double(), a.Add(a));
+        }
+        
+        [Test]
+        public void Add_negate()
+        {
+            Fp2 a2 = new Fp2(Parameters.P / 2, Parameters.P / 4);
+            Fp6 a = new Fp6(a2, a2, a2);
+            Assert.True(a.IsValid());
+            
+            Assert.AreEqual(Fp6.Zero, a.Add(a.Negate()));
+            Assert.AreEqual(Fp6.Zero, a.Negate().Add(a));
+        }
+        
+        [Test]
+        public void Inverse_inverse()
+        {
+            Fp2 a2 = new Fp2(Parameters.P / 2, Parameters.P / 4);
+            Fp6 a = new Fp6(a2, a2, a2);
+            Assert.True(a.IsValid());
+            
+            Assert.AreEqual(a, a.Inverse().Inverse());
+        }
+        
+        [Test]
+        public void Inverse_mul_self()
+        {
+            Fp2 a2 = new Fp2(Parameters.P / 2, Parameters.P / 4);
+            Fp6 a = new Fp6(a2, a2, a2);
+            Assert.True(a.IsValid());
+            
+            Assert.AreEqual(Fp6.One, a.Mul(a.Inverse()));
+        }
+        
+        [Test]
+        public void Inverse_mul_self_is_commutative_regression()
+        {
+            Fp2 a2 = new Fp2(Parameters.P / 2, Parameters.P / 4);
+            Fp6 a = new Fp6(a2, a2, a2);
+            Assert.True(a.IsValid());
+
+            Fp6 inv = a.Inverse();
+            Assert.AreEqual(a.Mul(inv), inv.Mul(a));
+        }
+        
+        [Test]
+        public void Negate_negate()
+        {
+            Fp2 a2 = new Fp2(Parameters.P / 2, Parameters.P / 4);
+            Fp6 a = new Fp6(a2, a2, a2);
+            Assert.True(a.IsValid());
+            
+            Assert.AreEqual(a, a.Negate().Negate());
         }
     }
 }

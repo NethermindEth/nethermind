@@ -25,7 +25,7 @@ namespace Nethermind.Core.Extensions
     public static class BigIntegerExtensions
     {
         private static readonly RandomNumberGenerator Random = RandomNumberGenerator.Create();
-        
+
         public static BigInteger Abs(this BigInteger @this)
         {
             return BigInteger.Abs(@this);
@@ -102,14 +102,48 @@ namespace Nethermind.Core.Extensions
             return bitLength + 1;
         }
 
+        public static BigInteger SquareRoot(this BigInteger n)
+        {
+            if (n < 0)
+            {
+                throw new ArgumentException($"nameof(n) should be positive", nameof(n));
+            }
+            
+            if (n == 0)
+            {
+                return 0;
+            }
+
+            BigInteger a = (n >> 1) + 1;
+            BigInteger b = (a + n / a) >> 1;
+            while (b < a)
+            {
+                a = b;
+                b = (a + n / a) >> 1;
+            }
+
+            return a;
+        }
+
+//        Private Function SqrtN(ByVal N As BigInteger) As BigInteger
+//        If (0 = N) Then Return 0
+//        Dim n1 As BigInteger = (N >> 1) + 1
+//        Dim n2 As BigInteger = (n1 + (N / n1)) >> 1
+//        While (n2 < n1)
+//        n1 = n2
+//            n2 = (n1 + (N / n1)) >> 1
+//        End While
+//        Return n1
+//        End Function
+
         public static bool TestBit(this BigInteger a, int i)
         {
             return (a & (BigInteger.One << i)) != 0;
         }
-        
+
         // TODO: review this implementation / avoid in PROD code
         public static bool IsProbablePrime(this BigInteger source, int certainty)
-        {   
+        {
             if (source == 2 || source == 3)
             {
                 return true;
