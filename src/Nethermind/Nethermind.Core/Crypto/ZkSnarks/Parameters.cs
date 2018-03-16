@@ -29,12 +29,21 @@ namespace Nethermind.Core.Crypto.ZkSnarks
         /// p is a prime over which we form a basic field: 36u⁴+36u³+24u²+6u+1.
         /// </summary>
         public static readonly BigInteger P = BigInteger.Parse("21888242871839275222246405745257275088696311157297823662689037894645226208583");
+        
+        // ReSharper disable once InconsistentNaming
+        public static readonly BigInteger u = BigInteger.Parse("4965661367192848881");
+        
+        // ReSharper disable once InconsistentNaming
+        public static readonly BigInteger FrobeniusTrace = BigInteger.Parse("147946756881789318990833708069417712967");
 
         /// <summary>
         /// Order is the number of elements in both G₁ and G₂: 36u⁴+36u³+18u²+6u+1.
         /// "r" order of BN128G2 cyclic subgroup
         /// </summary>
         public static readonly BigInteger R = BigInteger.Parse("21888242871839275222246405745257275088548364400416034343698204186575808495617");
+        
+        // ReSharper disable once InconsistentNaming
+        public static readonly int k = 12; // embedding degree for group Gt
 
         /**
          * "b" curve parameter for {@link BN128Fp}

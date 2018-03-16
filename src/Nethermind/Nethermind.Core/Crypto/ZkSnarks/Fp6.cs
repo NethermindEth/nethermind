@@ -23,8 +23,14 @@ namespace Nethermind.Core.Crypto.ZkSnarks
     /// <summary>
     ///     Code adapted from ethereumJ (https://github.com/ethereum/ethereumj)
     /// </summary>
-    public class Fp6 : Field<Fp6>
+    public class Fp6 : IField<Fp6>
     {
+        static Fp6()
+        {
+            FieldParams<Fp6>.Zero = Zero;
+            FieldParams<Fp6>.One = One;
+        }
+        
         public static readonly Fp6 Zero = new Fp6(Fp2.Zero, Fp2.Zero, Fp2.Zero);
         public static readonly Fp6 One = new Fp6(Fp2.One, Fp2.Zero, Fp2.Zero);
         public static readonly Fp2 NonResidue = Fp2.NonResidue;
@@ -40,7 +46,7 @@ namespace Nethermind.Core.Crypto.ZkSnarks
             C = c;
         }
 
-        public override Fp6 Add(Fp6 o)
+        public Fp6 Add(Fp6 o)
         {
             return new Fp6(A.Add(o.A), B.Add(o.B), C.Add(o.C));
         }
@@ -50,7 +56,7 @@ namespace Nethermind.Core.Crypto.ZkSnarks
             return new Fp6(A.Mul(o), B.Mul(o), C.Mul(o));
         }
         
-        public override Fp6 Mul(Fp6 o)
+        public Fp6 Mul(Fp6 o)
         {
             Fp2 a1 = A, b1 = B, c1 = B;
             Fp2 a2 = o.A, b2 = o.B, c2 = o.C;
@@ -66,7 +72,7 @@ namespace Nethermind.Core.Crypto.ZkSnarks
             return new Fp6(ra, rb, rc);
         }
 
-        public override Fp6 Sub(Fp6 o)
+        public Fp6 Sub(Fp6 o)
         {
             Fp2 ra = A.Sub(o.A);
             Fp2 rb = B.Sub(o.B);
@@ -75,7 +81,7 @@ namespace Nethermind.Core.Crypto.ZkSnarks
             return new Fp6(ra, rb, rc);
         }
 
-        public override Fp6 Squared()
+        public Fp6 Squared()
         {
             Fp2 s0 = A.Squared();
             Fp2 ab = A.Mul(B);
@@ -92,12 +98,12 @@ namespace Nethermind.Core.Crypto.ZkSnarks
             return new Fp6(ra, rb, rc);
         }
 
-        public override Fp6 Double()
+        public Fp6 Double()
         {
             return Add(this);
         }
 
-        public override Fp6 Inverse()
+        public Fp6 Inverse()
         {
             /* From "High-Speed Software Implementation of the Optimal Ate Pairing over Barreto-Naehrig Curves"; Algorithm 17 */
 
@@ -119,17 +125,17 @@ namespace Nethermind.Core.Crypto.ZkSnarks
             return new Fp6(ra, rb, rc);
         }
 
-        public override Fp6 Negate()
+        public Fp6 Negate()
         {
             return new Fp6(A.Negate(), B.Negate(), C.Negate());
         }
 
-        public override bool IsZero()
+        public bool IsZero()
         {
             return Equals(Zero);
         }
 
-        public override bool IsValid()
+        public bool IsValid()
         {
             return A.IsValid() && B.IsValid() && C.IsValid();
         }
@@ -154,7 +160,7 @@ namespace Nethermind.Core.Crypto.ZkSnarks
             return Equals(other);
         }
 
-        public override bool Equals(Fp6 other)
+        public bool Equals(Fp6 other)
         {
             if (ReferenceEquals(other, null))
             {

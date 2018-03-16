@@ -24,8 +24,14 @@ namespace Nethermind.Core.Crypto.ZkSnarks
     /// <summary>
     ///     Code adapted from ethereumJ (https://github.com/ethereum/ethereumj)
     /// </summary>
-    public class Fp : Field<Fp>
+    public class Fp : IField<Fp>
     {
+        static Fp()
+        {
+            FieldParams<Fp>.Zero = Zero;
+            FieldParams<Fp>.One = One;
+        }
+        
         private readonly BigInteger _value;
 
         public Fp(BigInteger value)
@@ -43,7 +49,7 @@ namespace Nethermind.Core.Crypto.ZkSnarks
         public static readonly Fp NonResidue = new Fp(BigInteger.Parse("21888242871839275222246405745257275088696311157297823662689037894645226208582"));
         public static readonly Fp InverseOf2 = new Fp(new BigInteger(2).ModInverse(Parameters.P));        
 
-        public override Fp Add(Fp o)
+        public Fp Add(Fp o)
         {
             return (_value + o._value) % Parameters.P;
         }
@@ -53,44 +59,49 @@ namespace Nethermind.Core.Crypto.ZkSnarks
             return new Fp2(fp2.A.Mul(this), fp2.B.Mul(this));
         }
 
-        public override Fp Mul(Fp o)
+        public Fp Mul(Fp o)
         {
             return _value * o._value % Parameters.P;
         }
 
-        public override Fp Sub(Fp o)
+        public Fp MulByNonResidue()
+        {
+            return Mul(NonResidue);
+        }
+
+        public Fp Sub(Fp o)
         {
             BigInteger subResult = (_value - o._value) % Parameters.P;
             return subResult < 0 ? subResult + Parameters.P : subResult;
         }
 
-        public override Fp Squared()
+        public Fp Squared()
         {
             return _value * _value % Parameters.P;
         }
 
-        public override Fp Double()
+        public Fp Double()
         {
             return (_value + _value) % Parameters.P;
         }
 
-        public override Fp Inverse()
+        public Fp Inverse()
         {
             return _value.ModInverse(Parameters.P);
         }
 
-        public override Fp Negate()
+        public Fp Negate()
         {
             BigInteger negResult = -_value % Parameters.P;
             return negResult < 0 ? negResult + Parameters.P : negResult;
         }
 
-        public override bool IsZero()
+        public bool IsZero()
         {
             return _value.IsZero;
         }
 
-        public override bool IsValid()
+        public bool IsValid()
         {
             return _value < Parameters.P;
         }
@@ -185,7 +196,7 @@ namespace Nethermind.Core.Crypto.ZkSnarks
             return Equals(other);
         }
 
-        public override bool Equals(Fp other)
+        public bool Equals(Fp other)
         {
             if (ReferenceEquals(other, null))
             {

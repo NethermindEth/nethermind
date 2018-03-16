@@ -60,7 +60,7 @@ namespace Nethermind.Core.Test.Crypto.ZkSnarks
             Fp6 a = new Fp6(a2, a2, a2);
             Assert.True(a.IsValid());
             
-            Assert.AreEqual(a2.Squared(), a2 * a2);
+            Assert.AreEqual(a2.Squared(), a2.Mul(a2));
         }
         
         [Test]
@@ -70,7 +70,7 @@ namespace Nethermind.Core.Test.Crypto.ZkSnarks
             Fp6 a = new Fp6(a2, a2, a2);
             Assert.True(a.IsValid());
             
-            Assert.AreEqual(a2.Double(), a2 + a2);
+            Assert.AreEqual(a2.Double(), a2.Add(a2));
         }
     }
 }

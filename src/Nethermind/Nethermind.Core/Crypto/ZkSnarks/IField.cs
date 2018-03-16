@@ -23,17 +23,23 @@ namespace Nethermind.Core.Crypto.ZkSnarks
     /// <summary>
     ///     Code adapted from ethereumJ (https://github.com/ethereum/ethereumj)
     /// </summary>
-    public abstract class Field<T> : IEquatable<T>
+    public interface IField<T> : IEquatable<T>
     {
-        public abstract T Add(T o);
-        public abstract T Mul(T o);
-        public abstract T Sub(T o);
-        public abstract T Squared();
-        public abstract T Double();
-        public abstract T Inverse();
-        public abstract T Negate();
-        public abstract bool IsZero();
-        public abstract bool IsValid();
-        public abstract bool Equals(T other);
+        T Add(T o);
+        T Mul(T o);
+        T MulByNonResidue();
+        T Sub(T o);
+        T Squared();
+        T Double();
+        T Inverse();
+        T Negate();
+        bool IsZero();
+        bool IsValid();
+    }
+
+    public static class FieldParams<T>
+    {
+        public static T Zero { get; internal set; }
+        public static T One { get; internal set; }
     }
 }

@@ -80,7 +80,7 @@ namespace Nethermind.Core.Test.Crypto.ZkSnarks
             Fp12 a12 = new Fp12(a6, a6);
             Assert.True(a12.IsValid());
             
-            Assert.AreEqual(a12.Squared(), a12 * a12);
+            Assert.AreEqual(a12.Squared(), a12.Mul(a12));
         }
     }
 }

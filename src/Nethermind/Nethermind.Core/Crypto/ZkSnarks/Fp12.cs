@@ -25,37 +25,25 @@ namespace Nethermind.Core.Crypto.ZkSnarks
     /// <summary>
     ///     Code adapted from ethereumJ (https://github.com/ethereum/ethereumj)
     /// </summary>
-    public class Fp12 : Field<Fp12>
+    public class Fp12 : QuadraticExtension<Fp6, Fp12>
     {
-        public static readonly Fp12 Zero = new Fp12(Fp6.Zero, Fp6.Zero);
-        public static readonly Fp12 One = new Fp12(Fp6.One, Fp6.Zero);
+        static Fp12()
+        {
+            FieldParams<Fp12>.Zero = Zero;
+            FieldParams<Fp12>.One = One;
+        }
 
-        public Fp6 A { get; }
-        public Fp6 B { get; }
-
+        public static Fp12 Zero = new Fp12(Fp6.Zero, Fp6.Zero);
+        public static Fp12 One = new Fp12(Fp6.One, Fp6.Zero);
+        
+        public Fp12()
+        {
+        }
+        
         public Fp12(Fp6 a, Fp6 b)
         {
             A = a;
             B = b;
-        }
-
-        public override Fp12 Add(Fp12 o)
-        {
-            return new Fp12(A.Add(o.A), B.Add(o.B));
-        }
-
-        public override Fp12 Mul(Fp12 o)
-        {
-            Fp6 a2 = o.A, b2 = o.B;
-            Fp6 a1 = A, b1 = B;
-
-            Fp6 a1A2 = a1.Mul(a2);
-            Fp6 b1B2 = b1.Mul(b2);
-
-            Fp6 ra = a1A2.Add(b1B2.MulByNonResidue());
-            Fp6 rb = a1.Add(b1).Mul(a2.Add(b2)).Sub(a1A2).Sub(b1B2);
-
-            return new Fp12(ra, rb);
         }
         
         public Fp12 MulBy024(Fp2 ell0, Fp2 ellVw, Fp2 ellVv) {
@@ -128,113 +116,7 @@ namespace Nethermind.Core.Crypto.ZkSnarks
 
             return new Fp12(new Fp6(z0, z1, z2), new Fp6(z3, z4, z5));
         }
-
-        public override Fp12 Sub(Fp12 o)
-        {
-            return new Fp12(A.Sub(o.A), B.Sub(o.B));
-        }
-
-        public override Fp12 Squared()
-        {
-            Fp6 ab = A.Mul(B);
-
-            Fp6 ra = A.Add(B).Mul(A.Add(B.MulByNonResidue())).Sub(ab).Sub(ab.MulByNonResidue());
-            Fp6 rb = ab.Add(ab);
-
-            return new Fp12(ra, rb);
-        }
-
-        public override Fp12 Double()
-        {
-            throw new NotSupportedException();
-        }
-
-        public override Fp12 Inverse()
-        {
-            Fp6 t0 = A.Squared();
-            Fp6 t1 = B.Squared();
-            Fp6 t2 = t0.Sub(t1.MulByNonResidue());
-            Fp6 t3 = t2.Inverse();
-
-            Fp6 ra = A.Mul(t3);
-            Fp6 rb = B.Mul(t3).Negate();
-
-            return new Fp12(ra, rb);
-        }
-
-        public override Fp12 Negate()
-        {
-            return new Fp12(A.Negate(), B.Negate());
-        }
-
-        public override bool IsZero()
-        {
-            return Equals(Zero);
-        }
-
-        public override bool IsValid()
-        {
-            return A.IsValid() && B.IsValid();
-        }
-
-        public override bool Equals(object obj)
-        {
-            if (ReferenceEquals(this, obj))
-            {
-                return true;
-            }
-
-            if (!(obj is Fp12 other))
-            {
-                return false;
-            }
-
-            return Equals(other);
-        }
-
-        public override bool Equals(Fp12 other)
-        {
-            if (ReferenceEquals(other, null))
-            {
-                return false;
-            }
-            
-            return Equals(A, other.A) && Equals(B, other.B);
-        }
-
-        public override int GetHashCode()
-        {
-            unchecked
-            {
-                return ((A != null ? A.GetHashCode() : 0) * 397) ^ (B != null ? B.GetHashCode() : 0);
-            }
-        }
-
-        public static bool operator ==(Fp12 a, Fp12 b)
-        {
-            return a?.Equals(b) ?? ReferenceEquals(b, null);
-        }
-
-        public static bool operator !=(Fp12 a, Fp12 b)
-        {
-            return !(a == b);
-        }
         
-        public static Fp12 operator +(Fp12 a, Fp12 b)
-        {
-            return a.Add(b);
-        }
-        
-        public static Fp12 operator -(Fp12 a, Fp12 b)
-        {
-            return a.Sub(b);
-        }
-        
-        public static Fp12 operator *(Fp12 a, Fp12 b)
-        {
-            return a.Mul(b);
-        }
-
         public Fp12 CyclotomicSquare()
         {
             Fp2 z0 = A.A;
@@ -298,7 +180,7 @@ namespace Nethermind.Core.Crypto.ZkSnarks
 
         public Fp12 CyclotomicExp(BigInteger pow)
         {
-            Fp12 res = One;
+            Fp12 res = FieldParams<Fp12>.One;
 
             for (int i = pow.BitLength() - 1; i >=0; i--) {
                 res = res.CyclotomicSquare();
@@ -387,9 +269,9 @@ namespace Nethermind.Core.Crypto.ZkSnarks
                 BigInteger.Parse("16165975933942742336466353786298926857552937457188450663314217659523851788715"))
         };
 
-        public override string ToString()
+        public override Fp12 MulByNonResidue()
         {
-            return $"{A}, {B}";
+            throw new NotSupportedException();
         }
     }
 }

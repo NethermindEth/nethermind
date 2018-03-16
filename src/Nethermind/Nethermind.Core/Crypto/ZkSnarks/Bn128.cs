@@ -4,7 +4,7 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.Core.Crypto.ZkSnarks
 {
-    public abstract class Bn128<T, TSelf> where T : Field<T> where TSelf : Bn128<T, TSelf>
+    public abstract class Bn128<T, TSelf> where T : IField<T> where TSelf : Bn128<T, TSelf>
     {
         public T X { get; }
         public T Y { get; }
