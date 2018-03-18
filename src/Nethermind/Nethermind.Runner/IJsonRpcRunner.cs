@@ -17,6 +17,7 @@
  */
 
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using Microsoft.AspNetCore.Hosting;
 using Nethermind.JsonRpc.DataModel;
 

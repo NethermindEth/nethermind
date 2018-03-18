@@ -46,7 +46,7 @@ namespace Nethermind.JsonRpc.DataModel
 
         public object ToJson()
         {
-            return Value?.ToString(true, true);
+            return Value?.ToString(true);
         }
 
         public void FromJson(string jsonValue)

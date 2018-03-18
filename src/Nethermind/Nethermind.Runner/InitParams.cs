@@ -16,16 +16,23 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Core;
-
 namespace Nethermind.Runner
 {
-    class Program
+    public class InitParams
     {
-        static void Main(string[] args)
+        public string Host { get; set; }
+        public string BootNode { get; set; }
+        public int HttpPort { get; set; }
+        public int DiscoveryPort { get; set; }
+        public string GenesisFilePath { get; set; }
+        public string ChainFile { get; set; }
+        public string BlocksDir { get; set; }
+        public string KeysDir { get; set; }
+
+        public override string ToString()
         {
-            var runner = new RunnerApp(new ConsoleLogger());
-            runner.Start(args);
-        }       
+            return $"Host: {Host}, BootNode: {BootNode}, HttpPort: {HttpPort}, DiscoveryPort: {DiscoveryPort}, GenesisFilePath: {GenesisFilePath}, " +
+                   $"ChainFile: {ChainFile}, BlocksDir: {BlocksDir}, KeysDir: {KeysDir}";
+        }
     }
 }

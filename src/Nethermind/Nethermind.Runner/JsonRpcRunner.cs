@@ -19,6 +19,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.DataModel;
@@ -47,7 +48,7 @@ namespace Nethermind.Runner
 
             _logger.Log($"Starting http service, modules: {string.Join(", ", _configurationProvider.EnabledModules.Select(x => x))}");
             _webHost = webHost;
-            _webHost.Run();
+            _webHost.Start();
         }
 
         public async void Stop(IEnumerable<ModuleType> modules = null)

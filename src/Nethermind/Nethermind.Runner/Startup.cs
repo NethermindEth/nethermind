@@ -58,8 +58,8 @@ namespace Nethermind.Runner
         private void RegisterApplicationTypes(IServiceCollection services)
         {
             //based on configuration we will set it
-            var ethereumRelease = Byzantium.Instance;
-            var chainId = ChainId.Ropsten;
+            var ethereumRelease = Frontier.Instance;
+            var chainId = ChainId.MainNet;
 
             var signer = new EthereumSigner(ethereumRelease, chainId);
             var signatureValidator = new SignatureValidator(ethereumRelease, chainId);
@@ -108,7 +108,6 @@ namespace Nethermind.Runner
             services.AddSingleton<IJsonRpcService, JsonRpcService>();
             services.AddSingleton<IJsonRpcRunner, JsonRpcRunner>();
             services.AddSingleton<IEthereumRunner, EthereumRunner>();
-
 
             //var logger = new ConsoleLogger();
 

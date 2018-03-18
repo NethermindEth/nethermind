@@ -2,7 +2,7 @@
   "profiles": {
     "Nethermind.Runner": {
       "commandName": "Project",
-      "commandLineArgs": "-g f:\\IT\\projects\\Crypto\\deployments\\docker\\Tests\\genesis.json",
+      "commandLineArgs": "-gf f:\\IT\\projects\\Crypto\\deployments\\docker\\Tests\\genesis.json -cf f:\\IT\\projects\\Crypto\\deployments\\docker\\Tests\\chain.rlp -bd f:\\IT\\projects\\Crypto\\deployments\\docker\\Tests\\blocks -kd f:\\IT\\projects\\Crypto\\deployments\\docker\\Tests\\keys -ho localhost",
       "launchBrowser": true,
       "launchUrl": "api/values",
       "environmentVariables": {

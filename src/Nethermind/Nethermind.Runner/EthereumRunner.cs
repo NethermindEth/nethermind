@@ -18,12 +18,15 @@
 
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Numerics;
+using System.Text;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
+using Nethermind.KeyStore;
 using Nethermind.Store;
 
 namespace Nethermind.Runner
@@ -34,30 +37,97 @@ namespace Nethermind.Runner
         private readonly IBlockchainProcessor _blockchainProcessor;
         private readonly IStateProvider _stateProvider;
         private readonly IMultiDb _multiDb;
+        private readonly ILogger _logger;
+        private readonly IConfigurationProvider _configurationProvider;
 
-        public EthereumRunner(IJsonSerializer jsonSerializer, IBlockchainProcessor blockchainProcessor, IStateProvider stateProvider, IMultiDb multiDb)
+        public EthereumRunner(IJsonSerializer jsonSerializer, IBlockchainProcessor blockchainProcessor, IStateProvider stateProvider, IMultiDb multiDb, ILogger logger, IConfigurationProvider configurationProvider)
         {
             _jsonSerializer = jsonSerializer;
             _blockchainProcessor = blockchainProcessor;
             _stateProvider = stateProvider;
             _multiDb = multiDb;
+            _logger = logger;
+            _configurationProvider = configurationProvider;
         }
 
-        public void Start(string bootNodeValue, int discoveryPort, string genesisFile)
+        public void Start(InitParams initParams)
         {
-            var genesisBlockRaw = File.ReadAllText(genesisFile);
-            var blockJson = _jsonSerializer.Deserialize<TestGenesisJson>(genesisBlockRaw);
-            var block = Convert(blockJson);    
-            _blockchainProcessor.Initialize(Rlp.Encode(block));
-            InitializeAccounts(blockJson.Alloc);
+            InitializeKeys(initParams.KeysDir);
+            InitializeGenesis(initParams.GenesisFilePath);
+            InitializeChain(initParams.ChainFile);
+            InitializeBlocks(initParams.BlocksDir);
         }
 
         public void Stop()
-        {
-            
+        {           
         }
 
-        private static Block Convert(TestGenesisJson headerJson)
+        private void InitializeChain(string chainFile)
+        {
+            if (!File.Exists(chainFile))
+            {
+                _logger.Log($"Chain file does not exist: {chainFile}, skipping");
+                return;
+            }
+
+            var chainFileContent = File.ReadAllBytes(chainFile);
+
+            var blocks = Rlp.ExtractRplList(new Rlp(chainFileContent));
+            foreach (var block in blocks)
+            {
+                //Block suggestedBlocks = Rlp.Decode<Block>(block);
+                _blockchainProcessor.Process(block);
+            }
+        }
+
+        private void InitializeBlocks(string blocksDir)
+        {
+            if (!Directory.Exists(blocksDir))
+            {
+                _logger.Log($"Blocks dir does not exist: {blocksDir}, skipping");
+                return;
+            }
+
+            var files = Directory.GetFiles(blocksDir).OrderBy(x => x).ToArray();
+            foreach (var file in files)
+            {
+                _logger.Log($"Processing block file: {file}");
+                var fileContent = File.ReadAllBytes(file);
+                var blockRlp = new Rlp(fileContent);
+                _blockchainProcessor.Process(blockRlp);
+            }
+        }
+
+        private void InitializeKeys(string keysDir)
+        {
+            if (!Directory.Exists(keysDir))
+            {
+                _logger.Log($"Keys dir does not exist: {keysDir}, skipping");
+                return;
+            }
+
+            var keyStoreDir = GetStoreDirectory();
+            var files = Directory.GetFiles(keysDir);
+            foreach (var file in files)
+            {
+                _logger.Log($"Processing key file: {file}");
+                var fileContent = File.ReadAllText(file);
+                var keyStoreItem = _jsonSerializer.Deserialize<KeyStoreItem>(fileContent);
+                var filePath = Path.Combine(keyStoreDir, keyStoreItem.Address);
+                File.WriteAllText(filePath, fileContent, _configurationProvider.KeyStoreEncoding);
+            }
+        }
+
+        private void InitializeGenesis(string genesisFile)
+        {
+            var genesisBlockRaw = File.ReadAllText(genesisFile);
+            var blockJson = _jsonSerializer.Deserialize<TestGenesisJson>(genesisBlockRaw);
+            var stateRoot = InitializeAccounts(blockJson.Alloc);
+            var block = Convert(blockJson, stateRoot);
+            _blockchainProcessor.Initialize(Rlp.Encode(block));
+        }
+
+        private static Block Convert(TestGenesisJson headerJson, Keccak stateRoot)
         {
             if (headerJson == null)
             {
@@ -75,7 +145,7 @@ namespace Nethermind.Runner
                 Hex.ToBytes(headerJson.ExtraData)
             )
             {
-                Bloom = new Bloom(),
+                Bloom = Bloom.EmptyBloom,
                 MixHash = new Keccak(headerJson.MixHash),
                 Nonce = (ulong) Hex.ToBytes(headerJson.Nonce).ToUnsignedBigInteger(),               
                 ReceiptsRoot = Keccak.EmptyTreeHash,
@@ -83,19 +153,34 @@ namespace Nethermind.Runner
                 TransactionsRoot = Keccak.EmptyTreeHash
             };
 
+            header.StateRoot = stateRoot;
             header.RecomputeHash();
 
             var block = new Block(header);
             return block;
+            //0xbd008bffd224489523896ed37442e90b4a7a3218127dafdfed9d503d95e3e1f3
         }
 
-        private void InitializeAccounts(IDictionary<string, TestAccount> alloc)
+        private Keccak InitializeAccounts(IDictionary<string, TestAccount> alloc)
         {
             foreach (var account in alloc)
             {
                 _stateProvider.CreateAccount(new Address(new Hex(account.Key)), BigInteger.Parse(account.Value.Balance));
             }
+            _stateProvider.Commit();
             _multiDb.Commit();
+            return _stateProvider.StateRoot;
+        }
+
+        private string GetStoreDirectory()
+        {
+            var directory = _configurationProvider.KeyStoreDirectory;
+            if (!Directory.Exists(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+
+            return directory;
         }
     }
 }

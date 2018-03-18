@@ -18,6 +18,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -71,6 +72,86 @@ namespace Nethermind.Core.Encoding
         public static object Decode(Rlp rlp, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             return Decode(new DecoderContext(rlp.Bytes), rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraData));
+        }
+
+        public static Rlp[] ExtractRplList(Rlp rlp)
+        {
+            return ExtractRplList(new DecoderContext(rlp.Bytes));
+        }
+
+        private static Rlp[] ExtractRplList(DecoderContext context)
+        {
+            var result = new List<Rlp>();
+
+            while (context.CurrentIndex < context.MaxIndex)
+            {
+                byte prefix = context.Pop();
+                byte[] lenghtBytes = null;
+
+                int concatenationLength;
+
+                if (prefix == 0)
+                {
+                    result.Add(new Rlp(new byte[] { 0 }));
+                    continue;
+                }
+
+                if (prefix < 128)
+                {
+                    result.Add(new Rlp(new[] { prefix }));
+                    continue;
+                }
+
+                if (prefix == 128)
+                {
+                    result.Add(new Rlp(new byte[] { }));
+                    continue;
+                }
+
+                if (prefix <= 183)
+                {
+                    int length = prefix - 128;
+                    var content = context.Pop(length);
+                    if (content.Length == 1 && content[0] < 128)
+                    {
+                        throw new RlpException($"Unexpected byte value {content[0]}");
+                    }
+
+                    result.Add(new Rlp(new []{prefix}.Concat(content).ToArray()));
+                    continue;
+                }
+
+                if (prefix <= 247)
+                {
+                    concatenationLength = prefix - 192;
+                }
+                else
+                {
+                    int lengthOfConcatenationLength = prefix - 247;
+                    if (lengthOfConcatenationLength > 4)
+                    {
+                        // strange but needed to pass tests -seems that spec gives int64 length and tests int32 length
+                        throw new RlpException("Expected length of lenth less or equal 4");
+                    }
+
+                    lenghtBytes = context.Pop(lengthOfConcatenationLength);
+                    concatenationLength = DeserializeLength(lenghtBytes);
+                    if (concatenationLength < 56)
+                    {
+                        throw new RlpException("Expected length greater or equal 56");
+                    }
+                }
+                
+                var data = context.Pop(concatenationLength);
+                var itemBytes = new[] {prefix};
+                if (lenghtBytes != null)
+                {
+                    itemBytes = itemBytes.Concat(lenghtBytes).ToArray();
+                }
+                result.Add(new Rlp(itemBytes.Concat(data).ToArray()));
+            }
+
+            return result.ToArray();
         }
 
         // TODO: optimize so the list is not created for every single call to Rlp.Decode()
