@@ -63,12 +63,12 @@ namespace Nethermind.Core.Extensions
             Buffer.BlockCopy(bytes, startIndex, slice, 0, length);
             return slice;
         }
-
+        
         public static byte[] SliceWithZeroPadding(this byte[] bytes, BigInteger startIndex, int length)
         {
-            if (length == 0)
+            if (startIndex >= bytes.Length)
             {
-                return new byte[0];
+                return new byte[length];
             }
 
             if (length == 1)
