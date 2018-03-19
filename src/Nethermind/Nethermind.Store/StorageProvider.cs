@@ -27,7 +27,7 @@ namespace Nethermind.Store
 {
     public class StorageProvider : IStorageProvider
     {
-        private const int StartCapacity = 1024;
+        internal const int StartCapacity = 1024;
 
         private readonly Dictionary<StorageAddress, Stack<int>> _cache = new Dictionary<StorageAddress, Stack<int>>();
 
@@ -243,7 +243,7 @@ namespace Nethermind.Store
         private void IncrementPosition()
         {
             _currentPosition++;
-            if (_currentPosition > _capacity - 1)
+            if (_currentPosition >= _capacity - 1) // sometimes we ask about the _currentPosition + 1;
             {
                 _capacity *= 2;
                 Array.Resize(ref _changes, _capacity);

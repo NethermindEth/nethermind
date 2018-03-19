@@ -214,5 +214,22 @@ namespace Nethermind.Evm.Test
             
             Assert.AreEqual(_values[1], valueAfter);
         }
+        
+        [Test]
+        public void Can_commit_when_exactly_at_capacity_regression()
+        {
+            // block 1
+            StorageProvider storageProvider = BuildStorageProvider();
+            for (int i = 0; i < StorageProvider.StartCapacity; i++)
+            {
+                storageProvider.Set(_address1, 1, _values[i % 2]);
+            }
+            
+            storageProvider.Commit();
+            _stateProvider.Commit();
+            
+            byte[] valueAfter = storageProvider.Get(_address1, 1);
+            Assert.AreEqual(_values[(StorageProvider.StartCapacity + 1) % 2], valueAfter);
+        }
     }
 }
