@@ -1374,13 +1374,13 @@ namespace Nethermind.Evm
                         long callGas = _ethereumRelease.IsEip150Enabled ? gasAvailable - gasAvailable / 64L : gasAvailable;
                         UpdateGas(callGas, ref gasAvailable);
 
-                        bool accountExists = _stateProvider.AccountExists(contractAddress);
-                        if (accountExists && !_stateProvider.IsEmptyAccount(contractAddress))
-                        {
-                            // TODO: clients are not consistent here - following tests
-                            PushInt(BigInteger.Zero);
-                            break;
-                        }
+//                        bool accountExists = _stateProvider.AccountExists(contractAddress);
+//                        if (accountExists && !_stateProvider.IsEmptyAccount(contractAddress))
+//                        {
+//                            // TODO: clients are not consistent here - following tests
+//                            PushInt(BigInteger.Zero);
+//                            break;
+//                        }
 
                         int stateSnapshot = _stateProvider.TakeSnapshot();
                         int storageSnapshot = _storageProvider.TakeSnapshot();
