@@ -1363,8 +1363,10 @@ namespace Nethermind.Evm
                                     Rlp.Encode(_stateProvider.GetNonce(env.ExecutingAccount))));
                         Address contractAddress = new Address(contractAddressKeccak);
 
+                        BigInteger balance = _stateProvider.GetBalance(env.ExecutingAccount);
                         if (value > _stateProvider.GetBalance(env.ExecutingAccount))
                         {
+                            _logger?.Error($"Insufficient balance when calling create - value = {value} > {balance} = balance");
                             PushInt(BigInteger.Zero);
                             break;
                         }
@@ -1374,13 +1376,13 @@ namespace Nethermind.Evm
                         long callGas = _ethereumRelease.IsEip150Enabled ? gasAvailable - gasAvailable / 64L : gasAvailable;
                         UpdateGas(callGas, ref gasAvailable);
 
-//                        bool accountExists = _stateProvider.AccountExists(contractAddress);
-//                        if (accountExists && !_stateProvider.IsEmptyAccount(contractAddress))
-//                        {
-//                            // TODO: clients are not consistent here - following tests
-//                            PushInt(BigInteger.Zero);
-//                            break;
-//                        }
+                        bool accountExists = _stateProvider.AccountExists(contractAddress);
+                        if (accountExists && (_stateProvider.GetCode(contractAddress).Length != 0 || _stateProvider.GetNonce(contractAddress) != 0))
+                        {
+                            _logger?.Error($"Contract collision at {contractAddress}"); // the account already owns the contract with the code
+                            PushInt(BigInteger.Zero); // TODO: this push 0 approach should be replaced with some proper approach to call result
+                            break;
+                        }
 
                         int stateSnapshot = _stateProvider.TakeSnapshot();
                         int storageSnapshot = _storageProvider.TakeSnapshot();
