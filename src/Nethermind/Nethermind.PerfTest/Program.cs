@@ -1,9 +1,12 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Potocol;
 using Nethermind.Evm;
+using Nethermind.Store;
 
 namespace Nethermind.PerfTest
 {
@@ -90,8 +93,18 @@ namespace Nethermind.PerfTest
                 //)
             };
 
-        private static readonly VirtualMachine Machine = new VirtualMachine(Frontier.Instance, null, null, null, null);
+        private static readonly VirtualMachine Machine; 
 
+        static Program()
+        {
+            ILogger logger = new NullLogger();
+            IMultiDb db = new MultiDb(logger);
+            StateTree stateTree = new StateTree(db.CreateDb());
+            IStateProvider stateProvider = new StateProvider(stateTree, Byzantium.Instance, logger);
+            IBlockStore blockStore = new BlockStore();
+            Machine = new VirtualMachine(Frontier.Instance, stateProvider, new StorageProvider(db, stateProvider, logger), new BlockhashProvider(blockStore), null);
+        }
+        
         private static void Main(string[] args)
         {
             //ShouldLog.Evm = false;
@@ -103,7 +116,8 @@ namespace Nethermind.PerfTest
                 ExecutionEnvironment env = new ExecutionEnvironment();
                 env.MachineCode = Hex.ToBytes(testCase.Value.Code);
                 env.InputData = Hex.ToBytes(testCase.Value.Input);
-
+                env.ExecutingAccount = new Address(Keccak.Zero);
+                
                 RunTestCase(testCase.Key, env, testCase.Value.Iterations);
             }
 

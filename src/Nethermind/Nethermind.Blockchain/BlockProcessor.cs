@@ -77,12 +77,7 @@ namespace Nethermind.Blockchain
             List<TransactionReceipt> receipts = new List<TransactionReceipt>(); // TODO: pool?
             for (int i = 0; i < transactions.Count; i++)
             {
-                var transaction = transactions[i];
-                if (block.Header.Number == 26)
-                {
-                    
-                }
-                
+                var transaction = transactions[i];               
                 _logger?.Log($"PROCESSING TRANSACTION {i}");
                 _transactionStore.AddTransaction(transaction);
                 TransactionReceipt receipt = _transactionProcessor.Execute(transaction, block.Header);

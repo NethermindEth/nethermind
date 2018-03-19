@@ -231,7 +231,7 @@ namespace Nethermind.Evm
                     spentGas = Refund(gasLimit, unspentGas, substate, sender, gasPrice);
                 }
             }
-            catch (Exception ex) when (ex is EvmException || ex is OverflowException)
+            catch (Exception ex) when (ex is EvmException || ex is OverflowException) // TODO: OverflowException? still needed? hope not
             {
                 _logger?.Log($"EVM EXCEPTION: {ex.GetType().Name}");
 

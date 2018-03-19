@@ -73,7 +73,7 @@ namespace Nethermind.Blockchain.Validators
             {
                 if (processedBlock.Header.GasUsed != suggestedBlock.Header.GasUsed)
                 {
-                    _logger?.Log($"PROCESSED_GASUSED {processedBlock.Header.GasUsed} != SUGGESTED_GASUSED {suggestedBlock.Header.GasUsed}");
+                    _logger?.Log($"PROCESSED_GASUSED {processedBlock.Header.GasUsed} != SUGGESTED_GASUSED {suggestedBlock.Header.GasUsed} ({processedBlock.Header.GasUsed - suggestedBlock.Header.GasUsed} difference)");
                 }
                 
                 if (processedBlock.Header.Bloom != suggestedBlock.Header.Bloom)

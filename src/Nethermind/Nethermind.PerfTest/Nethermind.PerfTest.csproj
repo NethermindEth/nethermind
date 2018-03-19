@@ -4,6 +4,10 @@
     <TargetFramework>netcoreapp2.0</TargetFramework>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="..\Nethermind.Blockchain\Nethermind.Blockchain.csproj">
+      <Project>{B1C9CF07-F89B-4F92-B8A5-F6949B9D3DA5}</Project>
+      <Name>Nethermind.Blockchain</Name>
+    </ProjectReference>
     <ProjectReference Include="..\Nethermind.Evm\Nethermind.Evm.csproj">
       <Project>{E992EFB5-85F0-49B1-9C0B-6D3846A813A5}</Project>
       <Name>Nethermind.Evm</Name>
