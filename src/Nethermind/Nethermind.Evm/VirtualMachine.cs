@@ -1490,7 +1490,8 @@ namespace Nethermind.Evm
                         _logger?.Log($"  TRANSFER_VALUE {transferValue}");
 
                         long gasExtra = 0L;
-                        if (!transferValue.IsZero)
+                        bool shouldCallValueBeCharged = !transferValue.IsZero && !(isPrecompile && sender == target); // callcode on precompile when we are sending money to self 
+                        if (shouldCallValueBeCharged)
                         {
                             gasExtra += GasCostOf.CallValue;
                         }
@@ -1565,7 +1566,7 @@ namespace Nethermind.Evm
                         callEnv.InputData = callData;
                         callEnv.MachineCode = isPrecompile ? addressInt.ToBigEndianByteArray() : _stateProvider.GetCode(ToAddress(codeSource));
 
-                        BigInteger callGas = transferValue.IsZero ? gasLimitUl : gasLimitUl + GasCostOf.CallStipend;
+                        BigInteger callGas = (transferValue.IsZero || isPrecompile) ? gasLimitUl : gasLimitUl + GasCostOf.CallStipend;
                         _logger?.Log($"  CALL_GAS {callGas}");
 
                         EvmState callState = new EvmState(
