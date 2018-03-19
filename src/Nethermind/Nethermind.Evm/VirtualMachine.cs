@@ -347,6 +347,21 @@ namespace Nethermind.Evm
             {
                 _logger?.Log(
                     $"  END {env.CallDepth}_{instruction} GAS {gasAvailable} ({gasBefore - gasAvailable}) STACK {stackHead} MEMORY {evmState.Memory.Size / 32L} PC {programCounter}");
+                
+                if (ShouldLog.EvmStack)
+                {
+                    for (int i = 0; i < Math.Min(stackHead, 7); i++)
+                    {
+                        if (intPositions[stackHead - i - 1])
+                        {
+                            _logger?.Log($"  STACK{i} -> {intsOnStack[stackHead - i - 1]}");
+                        }
+                        else
+                        {
+                            _logger?.Log($"  STACK{i} -> {Hex.FromBytes(bytesOnStack[stackHead - i - 1], true)}");
+                        }
+                    }
+                }
             }
 
             void PushBytes(byte[] value)
@@ -511,7 +526,7 @@ namespace Nethermind.Evm
                     return intsOnStack[stackHead].ToBigEndianByteArray().ToSignedBigInteger();
                 }
 
-                _logger?.Log($"  POP {bytesOnStack[stackHead]}");
+                _logger?.Log($"  POP {Hex.FromBytes(bytesOnStack[stackHead], true)}");
 
                 return bytesOnStack[stackHead].ToSignedBigInteger();
             }
@@ -592,20 +607,6 @@ namespace Nethermind.Evm
                 programCounter++;
 
                 _logger?.Log($"{instruction} (0x{instruction:X})");
-                if (ShouldLog.EvmStack)
-                {
-                    for (int i = 0; i < Math.Min(stackHead, 7); i++)
-                    {
-                        if (intPositions[stackHead - i - 1])
-                        {
-                            _logger?.Log($"STACK{i} -> {intsOnStack[stackHead - i - 1]}");
-                        }
-                        else
-                        {
-                            _logger?.Log($"STACK{i} -> {Hex.FromBytes(bytesOnStack[stackHead - i - 1], true)}");
-                        }
-                    }
-                }
 
                 switch (instruction)
                 {
@@ -809,8 +810,8 @@ namespace Nethermind.Evm
                     case Instruction.EQ:
                     {
                         UpdateGas(GasCostOf.VeryLow, ref gasAvailable);
-                        BigInteger a = PopInt();
-                        BigInteger b = PopInt();
+                        BigInteger a = PopUInt();
+                        BigInteger b = PopUInt();
                         PushInt(a == b ? BigInteger.One : BigInteger.Zero);
                         break;
                     }
