@@ -1355,6 +1355,16 @@ namespace Nethermind.Evm
 
                         UpdateGas(GasCostOf.Create, ref gasAvailable);
                         UpdateMemoryCost(memoryPositionOfInitCode, initCodeLength);
+                        
+                        // TODO: copy pasted from CALL / DELEGATECALL, need to move it outside?
+                        if (env.CallDepth >= MaxCallDepth) // TODO: fragile ordering / potential vulnerability for different clients
+                        {
+                            // TODO: need a test for this
+                            _returnDataBuffer = EmptyBytes;
+                            PushInt(BigInteger.Zero);
+                            break;
+                        }
+                        
 
                         byte[] initCode = evmState.Memory.Load(memoryPositionOfInitCode, initCodeLength);
                         Keccak contractAddressKeccak =
