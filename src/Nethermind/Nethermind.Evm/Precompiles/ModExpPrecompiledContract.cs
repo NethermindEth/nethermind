@@ -44,13 +44,13 @@ namespace Nethermind.Evm.Precompiles
         {
             try
             {
-                BigInteger baseLength = inputData.SliceWithZeroPadding(0, 32).ToUnsignedBigInteger();
-                BigInteger expLength = inputData.SliceWithZeroPadding(32, 32).ToUnsignedBigInteger();
-                BigInteger modulusLength = inputData.SliceWithZeroPadding(64, 32).ToUnsignedBigInteger();
+                BigInteger baseLength = inputData.SliceWithZeroPaddingEmptyOnError(0, 32).ToUnsignedBigInteger();
+                BigInteger expLength = inputData.SliceWithZeroPaddingEmptyOnError(32, 32).ToUnsignedBigInteger();
+                BigInteger modulusLength = inputData.SliceWithZeroPaddingEmptyOnError(64, 32).ToUnsignedBigInteger();
 
                 BigInteger complexity = MultComplexity(BigInteger.Max(baseLength, modulusLength));
 
-                byte[] expSignificantBytes = inputData.SliceWithZeroPadding(96 + (int)baseLength, (int)BigInteger.Min(expLength, 32));
+                byte[] expSignificantBytes = inputData.SliceWithZeroPaddingEmptyOnError(96 + (int)baseLength, (int)BigInteger.Min(expLength, 32));
 
                 BigInteger lengthOver32 = expLength <= VirtualMachine.BigInt32 ? 0 : expLength - 32;
                 BigInteger adjusted = AdjustedExponentLength(lengthOver32, expSignificantBytes);
@@ -65,14 +65,14 @@ namespace Nethermind.Evm.Precompiles
 
         public (byte[], bool) Run(byte[] inputData)
         {
-            int baseLength = (int)inputData.SliceWithZeroPadding(0, 32).ToUnsignedBigInteger();
-            BigInteger expLengthBig = inputData.SliceWithZeroPadding(32, 32).ToUnsignedBigInteger();
+            int baseLength = (int)inputData.SliceWithZeroPaddingEmptyOnError(0, 32).ToUnsignedBigInteger();
+            BigInteger expLengthBig = inputData.SliceWithZeroPaddingEmptyOnError(32, 32).ToUnsignedBigInteger();
             int expLength = expLengthBig > int.MaxValue ? int.MaxValue : (int)expLengthBig;
-            int modulusLength = (int)inputData.SliceWithZeroPadding(64, 32).ToUnsignedBigInteger();
+            int modulusLength = (int)inputData.SliceWithZeroPaddingEmptyOnError(64, 32).ToUnsignedBigInteger();
 
-            BigInteger baseInt = inputData.SliceWithZeroPadding(96, baseLength).ToUnsignedBigInteger();
-            BigInteger expInt = inputData.SliceWithZeroPadding(96 + baseLength, expLength).ToUnsignedBigInteger();
-            BigInteger modulusInt = inputData.SliceWithZeroPadding(96 + baseLength + expLength, modulusLength).ToUnsignedBigInteger();
+            BigInteger baseInt = inputData.SliceWithZeroPaddingEmptyOnError(96, baseLength).ToUnsignedBigInteger();
+            BigInteger expInt = inputData.SliceWithZeroPaddingEmptyOnError(96 + baseLength, expLength).ToUnsignedBigInteger();
+            BigInteger modulusInt = inputData.SliceWithZeroPaddingEmptyOnError(96 + baseLength + expLength, modulusLength).ToUnsignedBigInteger();
 
             if (modulusInt.IsZero)
             {

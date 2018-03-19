@@ -97,7 +97,7 @@ namespace Nethermind.Evm
                         {
                             if (currentState.ExecutionType == ExecutionType.DirectPrecompile)
                             {
-                                // TODO: when direct / call are treated same we should not need such differentiation
+                                // TODO: when direct / calls are treated same we should not need such differentiation
                                 throw new PrecompileExecutionFailureException();
                             }
                             
