@@ -80,6 +80,9 @@ namespace Nethermind.Evm
                 {
                     _returnDataBuffer = Bytes.Empty;
                 }
+                else
+                {
+                }
 
                 try
                 {
@@ -89,35 +92,35 @@ namespace Nethermind.Evm
                         _logger?.Log($"{intro} {currentState.ExecutionType} AT DEPTH {currentState.Env.CallDepth} (at {currentState.Env.ExecutingAccount})");
                     }
 
+                    // *** FIRST CALL *** //
+                    
                     CallResult callResult;
                     if (currentState.ExecutionType == ExecutionType.Precompile || currentState.ExecutionType == ExecutionType.DirectPrecompile)
                     {
                         callResult = ExecutePrecompile(currentState);
-                        if (!callResult.PrecompileSuccess.Value)
-                        {
-                            if (currentState.ExecutionType == ExecutionType.DirectPrecompile)
-                            {
-                                // TODO: when direct / calls are treated same we should not need such differentiation
-                                throw new PrecompileExecutionFailureException();
-                            }
-                            
-                            // TODO: testing it as it seems the way to pass zkSNARKs tests
-                            currentState.GasAvailable = 0;
-                        }
                     }
                     else
                     {
                         callResult = ExecuteCall(currentState, previousCallResult, previousCallOutput, previousCallOutputDestination);
-                        if (!callResult.IsReturn)
+                        if (callResult.IsContinuation)
                         {
                             _stateStack.Push(currentState);
                             currentState = callResult.StateToExecute;
                             continue;
                         }
                     }
+                    
+                    // *** HANDLING FIRST CALL RESULT *** //
 
+                    // if that was directly from transaction processor then we go back to transaction processor or fail (will possibly integrate the two in the future)
                     if (currentState.ExecutionType == ExecutionType.Transaction || currentState.ExecutionType == ExecutionType.DirectCreate || currentState.ExecutionType == ExecutionType.DirectPrecompile)
                     {
+                        if (callResult.IsFailure)
+                        {
+                            // TODO: refactoring in progress, need to clean the mess below
+                            throw new CallFailureException();
+                        }
+
                         return (callResult.Output, new TransactionSubstate(currentState.Refund, currentState.DestroyList, currentState.Logs, callResult.ShouldRevert));
                     }
 
@@ -128,7 +131,7 @@ namespace Nethermind.Evm
                     currentState.GasAvailable += previousState.GasAvailable;
                     currentState.Refund += previousState.Refund;
 
-                    if (!callResult.ShouldRevert)
+                    if (callResult.IsSuccess)
                     {
                         foreach (Address address in previousState.DestroyList)
                         {
@@ -158,7 +161,7 @@ namespace Nethermind.Evm
                         }
                         else
                         {
-                            previousCallResult = callResult.PrecompileSuccess.HasValue ? (callResult.PrecompileSuccess.Value ? StatusCode.SuccessBytes : StatusCode.FailureBytes) : StatusCode.SuccessBytes;
+                            previousCallResult = StatusCode.SuccessBytes;
                             // TODO: can remove the line below now after have the buffer
                             previousCallOutput = callResult.Output.SliceWithZeroPadding(0, Math.Min(callResult.Output.Length, (int)previousState.OutputLength));
                             previousCallOutputDestination = previousState.OutputDestination;
@@ -178,7 +181,7 @@ namespace Nethermind.Evm
                         _returnDataBuffer = callResult.Output;
                     }
                 }
-                catch (Exception ex) when (ex is EvmException || ex is OverflowException)
+                catch (Exception ex) when (ex is EvmException || ex is OverflowException) // TODO: check why OverflowException is allowed here
                 {
                     _logger?.Log($"EXCEPTION ({ex.GetType().Name}) IN {currentState.ExecutionType} AT DEPTH {currentState.Env.CallDepth} - RESTORING SNAPSHOT");
                     _stateProvider.Restore(currentState.StateSnapshot);
@@ -286,16 +289,13 @@ namespace Nethermind.Evm
 
             try
             {
-                (byte[] output, bool success) = _precompiledContracts[precompileId].Run(callData);
-                CallResult callResult = new CallResult(output);
-                callResult.PrecompileSuccess = success;
-                return callResult;
+                (byte[] output, bool isSuccess) = _precompiledContracts[precompileId].Run(callData);
+                return isSuccess ? CallResult.SuccessWithReturnData(output) : CallResult.Failure;
             }
             catch (Exception ex)
             {
-                CallResult callResult = new CallResult(EmptyBytes);
-                callResult.PrecompileSuccess = false; // TODO: temp approach
-                return callResult;
+                // TODO: log
+                return CallResult.Failure;
             }
         }
 
@@ -619,7 +619,7 @@ namespace Nethermind.Evm
                     case Instruction.STOP:
                     {
                         UpdateCurrentState();
-                        return CallResult.Empty;
+                        return CallResult.Success;
                     }
                     case Instruction.ADD:
                     {
@@ -1365,10 +1365,9 @@ namespace Nethermind.Evm
                         // TODO: copy pasted from CALL / DELEGATECALL, need to move it outside?
                         if (env.CallDepth >= MaxCallDepth) // TODO: fragile ordering / potential vulnerability for different clients
                         {
-                            // TODO: need a test for this
-                            _returnDataBuffer = EmptyBytes;
-                            PushInt(BigInteger.Zero);
-                            break;
+                            _logger?.Error($"  FAIL - max call depth exceeded");
+                            UpdateCurrentState();
+                            return CallResult.Failure;
                         }
 
 
@@ -1383,9 +1382,9 @@ namespace Nethermind.Evm
                         BigInteger balance = _stateProvider.GetBalance(env.ExecutingAccount);
                         if (value > _stateProvider.GetBalance(env.ExecutingAccount))
                         {
-                            _logger?.Error($"Insufficient balance when calling create - value = {value} > {balance} = balance");
-                            PushInt(BigInteger.Zero);
-                            break;
+                            _logger?.Error($"  FAIL - Insufficient balance when calling create - value = {value} > {balance} = balance");
+                            UpdateCurrentState();
+                            return CallResult.Failure;
                         }
 
                         _stateProvider.IncrementNonce(env.ExecutingAccount);
@@ -1396,9 +1395,9 @@ namespace Nethermind.Evm
                         bool accountExists = _stateProvider.AccountExists(contractAddress);
                         if (accountExists && (_stateProvider.GetCode(contractAddress).Length != 0 || _stateProvider.GetNonce(contractAddress) != 0))
                         {
-                            _logger?.Error($"Contract collision at {contractAddress}"); // the account already owns the contract with the code
-                            PushInt(BigInteger.Zero); // TODO: this push 0 approach should be replaced with some proper approach to call result
-                            break;
+                            _logger?.Error($"  FAIL - Contract collision at {contractAddress}"); // the account already owns the contract with the code
+                            UpdateCurrentState();
+                            return CallResult.Failure;
                         }
 
                         int stateSnapshot = _stateProvider.TakeSnapshot();
@@ -1428,8 +1427,9 @@ namespace Nethermind.Evm
                             0L,
                             evmState.IsStatic,
                             false);
+
                         UpdateCurrentState();
-                        return new CallResult(callState);
+                        return CallResult.Continue(callState);
                     }
                     case Instruction.RETURN:
                     {
@@ -1444,7 +1444,7 @@ namespace Nethermind.Evm
                         LogInstructionResult(instruction, gasBefore);
 
                         UpdateCurrentState();
-                        return new CallResult(returnData);
+                        return CallResult.SuccessWithReturnData(returnData);
                     }
                     case Instruction.CALL:
                     case Instruction.CALLCODE:
@@ -1531,12 +1531,12 @@ namespace Nethermind.Evm
                                 RefundGas(GasCostOf.CallStipend, ref gasAvailable);
                             }
 
-                            // TODO: need a test for this, do we need to save memory output here as well?
-                            evmState.Memory.Save(outputOffset, new byte[(int)outputLength]);
-                            _returnDataBuffer = EmptyBytes;
-                            PushInt(BigInteger.Zero);
                             _logger?.Log("  FAIL - CALL DEPTH");
-                            break;
+
+                            // TODO: check the memory outputs after CallResult logic was refactored
+                            evmState.Memory.Save(outputOffset, new byte[(int)outputLength]);
+                            UpdateCurrentState();
+                            return CallResult.Failure;
                         }
 
                         // this is like inline full execution of the call
@@ -1544,11 +1544,13 @@ namespace Nethermind.Evm
                         if (!transferValue.IsZero && _stateProvider.GetBalance(env.ExecutingAccount) < transferValue)
                         {
                             RefundGas(GasCostOf.CallStipend, ref gasAvailable);
-                            evmState.Memory.Save(outputOffset, new byte[(int)outputLength]);
-                            _returnDataBuffer = EmptyBytes;
-                            PushInt(BigInteger.Zero);
+
                             _logger?.Log($"  {instruction} FAIL - NOT ENOUGH BALANCE");
-                            break;
+
+                            // TODO: check the memory outputs after CallResult logic was refactored
+                            evmState.Memory.Save(outputOffset, new byte[(int)outputLength]);
+                            UpdateCurrentState();
+                            return CallResult.Failure;
                         }
 
                         int stateSnapshot = _stateProvider.TakeSnapshot();
@@ -1587,8 +1589,9 @@ namespace Nethermind.Evm
                             (long)outputLength,
                             instruction == Instruction.STATICCALL || evmState.IsStatic,
                             false);
+
                         UpdateCurrentState();
-                        return new CallResult(callState);
+                        return CallResult.Continue(callState);
                     }
                     case Instruction.REVERT:
                     {
@@ -1608,16 +1611,18 @@ namespace Nethermind.Evm
                         LogInstructionResult(instruction, gasBefore);
 
                         UpdateCurrentState();
-                        return new CallResult(errorDetails, true);
+                        return CallResult.Revert(errorDetails);
                     }
                     case Instruction.INVALID:
                     {
+                        // TODO: maybe call result exception?
                         throw new InvalidInstructionException((byte)instruction);
                     }
                     case Instruction.SELFDESTRUCT:
                     {
                         if (evmState.IsStatic)
                         {
+                            // TODO: maybe call result exception?
                             throw new StaticCallViolationException();
                         }
 
@@ -1655,12 +1660,11 @@ namespace Nethermind.Evm
                         }
 
                         UpdateCurrentState();
-                        return CallResult.Empty;
+                        return CallResult.Success;
                     }
                     default:
                     {
-                        _logger?.Log("UNKNOWN INSTRUCTION");
-
+                        _logger?.Log($"UNKNOWN INSTRUCTION {instruction}");
                         throw new InvalidInstructionException((byte)instruction);
                     }
                 }
@@ -1669,17 +1673,34 @@ namespace Nethermind.Evm
             }
 
             UpdateCurrentState();
-            return CallResult.Empty;
+            return CallResult.Success;
         }
     }
 
     public class CallResult
     {
+        public byte StatusCode { get; private set; } = Evm.StatusCode.Success;
         public bool ShouldRevert { get; }
-        public static readonly CallResult Empty = new CallResult();
-        public bool? PrecompileSuccess { get; set; } // TODO: check this behaviour as it seems it is required and previously that was not the case
 
-        public CallResult(EvmState stateToExecute)
+        public static CallResult Failure { get; } = new CallResult {StatusCode = Evm.StatusCode.Failure};
+        public static CallResult Success { get; } = new CallResult {StatusCode = Evm.StatusCode.Success};
+
+        public static CallResult SuccessWithReturnData(byte[] output)
+        {
+            return new CallResult(output);
+        }
+
+        public static CallResult Continue(EvmState stateToExecute)
+        {
+            return new CallResult(stateToExecute);
+        }
+
+        public static CallResult Revert(byte[] errorDetails)
+        {
+            return new CallResult(errorDetails, true);
+        }
+
+        private CallResult(EvmState stateToExecute)
         {
             StateToExecute = stateToExecute;
         }
@@ -1688,7 +1709,7 @@ namespace Nethermind.Evm
         {
         }
 
-        public CallResult(byte[] output, bool shouldRevert = false)
+        private CallResult(byte[] output, bool shouldRevert = false)
         {
             ShouldRevert = shouldRevert;
             Output = output;
@@ -1697,5 +1718,8 @@ namespace Nethermind.Evm
         public EvmState StateToExecute { get; }
         public byte[] Output { get; } = Bytes.Empty;
         public bool IsReturn => StateToExecute == null;
+        public bool IsContinuation => StateToExecute != null;
+        public bool IsFailure => StatusCode == Evm.StatusCode.Failure;
+        public bool IsSuccess => StatusCode == Evm.StatusCode.Success;
     }
 }
