@@ -1415,9 +1415,9 @@ namespace Nethermind.Evm
                         callEnv.CallDepth = env.CallDepth + 1;
                         callEnv.CurrentBlock = env.CurrentBlock;
                         callEnv.GasPrice = env.GasPrice;
-                        callEnv.InputData = initCode;
                         callEnv.ExecutingAccount = contractAddress;
                         callEnv.MachineCode = initCode;
+                        callEnv.InputData = Bytes.Empty;
                         EvmState callState = new EvmState(
                             callGas,
                             callEnv,
