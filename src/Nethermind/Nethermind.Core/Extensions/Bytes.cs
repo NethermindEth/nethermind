@@ -216,6 +216,11 @@ namespace Nethermind.Core.Extensions
                 return (byte[])bytes.Clone();
             }
 
+            if (bytes.Length > length)
+            {
+                return bytes.Slice(0, length);
+            }
+            
             byte[] result = new byte[length];
             Buffer.BlockCopy(bytes, 0, result, 0, bytes.Length);
             return result;
