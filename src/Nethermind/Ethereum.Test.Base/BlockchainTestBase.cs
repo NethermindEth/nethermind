@@ -286,6 +286,8 @@ namespace Ethereum.Test.Base
             List<string> differences = new List<string>();
             foreach (KeyValuePair<Address, AccountState> accountState in test.PostState)
             {
+                int differencesBefore = differences.Count;
+                
                 if (differences.Count > 8)
                 {
                     Console.WriteLine("More than 8 differences...");
@@ -312,6 +314,10 @@ namespace Ethereum.Test.Base
                     differences.Add($"{accountState.Key} code exp: {accountState.Value.Code?.Length}, actual: {code?.Length}");
                 }
 
+                _logger?.Log(differences.Count == differencesBefore ? $"ACCOUNT STATE ({accountState.Key}) IS OK" : $"ACCOUNT STATE ({accountState.Key}) HAS DIFFERENCES");
+
+                differencesBefore = differences.Count;
+
                 foreach (KeyValuePair<BigInteger, byte[]> storageItem in accountState.Value.Storage)
                 {
                     byte[] value = _storageProviders[test.Network].Get(accountState.Key, storageItem.Key) ?? new byte[0];
@@ -320,6 +326,8 @@ namespace Ethereum.Test.Base
                         differences.Add($"{accountState.Key} storage[{storageItem.Key}] exp: {Hex.FromBytes(storageItem.Value, true)}, actual: {Hex.FromBytes(value, true)}");
                     }
                 }
+
+                _logger?.Log(differences.Count == differencesBefore ? $"ACCOUNT STORAGE ({accountState.Key}) IS OK" : $"ACCOUNT STORAGE ({accountState.Key}) HAS DIFFERENCES");
             }
 
 

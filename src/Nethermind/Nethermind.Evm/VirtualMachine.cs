@@ -266,10 +266,6 @@ namespace Nethermind.Evm
             BigInteger precompileId = state.Env.MachineCode.ToUnsignedBigInteger();
             long baseGasCost = _precompiledContracts[precompileId].BaseGasCost();
             long dataGasCost = _precompiledContracts[precompileId].DataGasCost(callData);
-            if (gasAvailable < dataGasCost + baseGasCost)
-            {
-                throw new OutOfGasException();
-            }
 
             if (!_stateProvider.AccountExists(state.Env.ExecutingAccount))
             {
@@ -278,6 +274,16 @@ namespace Nethermind.Evm
             else
             {
                 _stateProvider.UpdateBalance(state.Env.ExecutingAccount, transferValue);
+            }
+            
+            if (gasAvailable < dataGasCost + baseGasCost)
+            {
+                // notice below slightly different behaviour than expected - this is to support TOUCH on empty precompile accounts
+                // as tested by failed_tx_xcf416c53_d0g0v0_Byzantium
+                //// throw new OutOfGasException();
+                CallResult callResult = new CallResult(EmptyBytes);
+                callResult.PrecompileSuccess = false;
+                return callResult;
             }
 
             UpdateGas(baseGasCost, ref gasAvailable);
@@ -294,7 +300,7 @@ namespace Nethermind.Evm
             catch (Exception ex)
             {
                 CallResult callResult = new CallResult(EmptyBytes);
-                callResult.PrecompileSuccess = false; // TODO: temp approach
+                callResult.PrecompileSuccess = false;
                 return callResult;
             }
         }

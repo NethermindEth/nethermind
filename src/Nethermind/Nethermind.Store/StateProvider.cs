@@ -310,10 +310,9 @@ namespace Nethermind.Store
                     }
                     case ChangeType.New:
                     {
-                        _logger?.Log($"  CREATE {change.Address} B = {change.Account.Balance} N = {change.Account.Nonce}");
-
                         if (!EthereumRelease.IsEip158Enabled || !change.Account.IsEmpty)
                         {
+                            _logger?.Log($"  CREATE {change.Address} B = {change.Account.Balance} N = {change.Account.Nonce}");
                             _state.Set(change.Address, Rlp.Encode(change.Account));
                         }
 
