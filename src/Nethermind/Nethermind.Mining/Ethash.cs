@@ -155,25 +155,6 @@ namespace Nethermind.Mining
 
         internal const uint FnvPrime = 0x01000193;
 
-        internal static void Fnv(byte[] b1, byte[] b2)
-        {
-            Debug.Assert(b1.Length == b2.Length, "FNV expecting same length arrays");
-            Debug.Assert(b1.Length % 4 == 0, "FNV expecting length to be a multiple of 4");
-
-            uint[] b1Ints = new uint[b1.Length / 4];
-            uint[] b2Ints = new uint[b1.Length / 4];
-            Buffer.BlockCopy(b1, 0, b1Ints, 0, b1.Length);
-            Buffer.BlockCopy(b2, 0, b2Ints, 0, b2.Length);
-
-            // TODO: check this thing (in place calc)
-            for (uint i = 0; i < b1Ints.Length; i++)
-            {
-                b1Ints[i] = Fnv(b1Ints[i], b2Ints[i]);
-            }
-
-            Buffer.BlockCopy(b1Ints, 0, b1, 0, b1.Length);
-        }
-
         internal static void Fnv(uint[] b1, uint[] b2)
         {
             for (uint i = 0; i < b1.Length; i++)
