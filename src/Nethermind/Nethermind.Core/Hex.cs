@@ -100,7 +100,7 @@ namespace Nethermind.Core
             return withZeroX ? string.Concat("0x", trimmed) : trimmed;
         }
 
-        public static implicit operator byte[] (Hex hex)
+        public static implicit operator byte[](Hex hex)
         {
             return hex._bytes ?? (hex._bytes = ToBytes(hex._hexString));
         }
@@ -143,12 +143,19 @@ namespace Nethermind.Core
         [SuppressMessage("ReSharper", "NonReadonlyMemberInGetHashCode")]
         public override int GetHashCode()
         {
+            const int fnvPrime = 0x01000193;
+
             if (_bytes == null)
             {
                 _bytes = ToBytes(_hexString);
             }
 
-            return _bytes.GetXxHashCode();
+            if (_bytes.Length == 0)
+            {
+                return 0;
+            }
+
+            return (fnvPrime * (((fnvPrime * (_bytes[0] + 7)) ^ (_bytes[_bytes.Length - 1] + 23)) + 11)) ^ (_bytes[(_bytes.Length - 1) / 2] + 53);
         }
 
         private static uint[] CreateLookup32(string format)
@@ -159,6 +166,7 @@ namespace Nethermind.Core
                 string s = i.ToString(format);
                 result[i] = s[0] + ((uint)s[1] << 16);
             }
+
             return result;
         }
 
