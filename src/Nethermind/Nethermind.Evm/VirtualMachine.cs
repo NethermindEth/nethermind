@@ -55,6 +55,7 @@ namespace Nethermind.Evm
         private Dictionary<BigInteger, IPrecompiledContract> _precompiledContracts;
         private byte[] _returnDataBuffer = EmptyBytes;
         private readonly Stack<EvmState> _stateStack = new Stack<EvmState>();
+        private Address _parityTouchBugAccount = null;
 
         public VirtualMachine(IEthereumRelease ethereumRelease, IStateProvider stateProvider, IStorageProvider storageProvider, IBlockhashProvider blockhashProvider, ILogger logger)
         {
@@ -100,7 +101,7 @@ namespace Nethermind.Evm
                                 // TODO: when direct / calls are treated same we should not need such differentiation
                                 throw new PrecompileExecutionFailureException();
                             }
-                            
+
                             // TODO: testing it as it seems the way to pass zkSNARKs tests
                             currentState.GasAvailable = 0;
                         }
@@ -184,6 +185,12 @@ namespace Nethermind.Evm
                     _stateProvider.Restore(currentState.StateSnapshot);
                     _storageProvider.Restore(currentState.StorageSnapshot);
 
+                    if (_parityTouchBugAccount != null)
+                    {
+                        _stateProvider.UpdateBalance(_parityTouchBugAccount, BigInteger.Zero);
+                        _parityTouchBugAccount = null;
+                    }
+                    
                     if (currentState.ExecutionType == ExecutionType.Transaction || currentState.ExecutionType == ExecutionType.DirectPrecompile || currentState.ExecutionType == ExecutionType.DirectCreate)
                     {
                         throw;
@@ -267,23 +274,34 @@ namespace Nethermind.Evm
             long baseGasCost = _precompiledContracts[precompileId].BaseGasCost();
             long dataGasCost = _precompiledContracts[precompileId].DataGasCost(callData);
 
+            bool wasCreated = false;
             if (!_stateProvider.AccountExists(state.Env.ExecutingAccount))
             {
+                wasCreated = true;
                 _stateProvider.CreateAccount(state.Env.ExecutingAccount, transferValue);
             }
             else
             {
                 _stateProvider.UpdateBalance(state.Env.ExecutingAccount, transferValue);
             }
-            
+
             if (gasAvailable < dataGasCost + baseGasCost)
             {
-                // notice below slightly different behaviour than expected - this is to support TOUCH on empty precompile accounts
-                // as tested by failed_tx_xcf416c53_d0g0v0_Byzantium
-                //// throw new OutOfGasException();
-                CallResult callResult = new CallResult(EmptyBytes);
-                callResult.PrecompileSuccess = false;
-                return callResult;
+                // https://github.com/ethereum/EIPs/blob/master/EIPS/eip-161.md
+                // An additional issue was found in Parity,
+                // where the Parity client incorrectly failed
+                // to revert empty account deletions in a more limited set of contexts
+                // involving out-of-gas calls to precompiled contracts;
+                // the new Geth behavior matches Parity’s,
+                // and empty accounts will cease to be a source of concern in general
+                // in about one week once the state clearing process finishes.
+
+                if (!wasCreated && transferValue.IsZero && _ethereumRelease.IsEip158Enabled)
+                {
+                    _parityTouchBugAccount = state.Env.ExecutingAccount;
+                }
+                
+                throw new OutOfGasException();
             }
 
             UpdateGas(baseGasCost, ref gasAvailable);
@@ -1434,10 +1452,10 @@ namespace Nethermind.Evm
                             0L,
                             evmState.IsStatic,
                             false);
-                        
+
                         UpdateCurrentState();
                         LogInstructionResult(instruction, gasBefore);
-                        
+
                         return new CallResult(callState);
                     }
                     case Instruction.RETURN:
@@ -1452,7 +1470,7 @@ namespace Nethermind.Evm
 
                         UpdateCurrentState();
                         LogInstructionResult(instruction, gasBefore);
-                        
+
                         return new CallResult(returnData);
                     }
                     case Instruction.CALL:
@@ -1596,10 +1614,10 @@ namespace Nethermind.Evm
                             (long)outputLength,
                             instruction == Instruction.STATICCALL || evmState.IsStatic,
                             false);
-                        
+
                         UpdateCurrentState();
                         LogInstructionResult(instruction, gasBefore);
-                        
+
                         return new CallResult(callState);
                     }
                     case Instruction.REVERT:
@@ -1661,12 +1679,12 @@ namespace Nethermind.Evm
                                 _stateProvider.UpdateBalance(inheritor, ownerBalance);
                             }
 
-                            _stateProvider.UpdateBalance(env.ExecutingAccount, -ownerBalance);   
+                            _stateProvider.UpdateBalance(env.ExecutingAccount, -ownerBalance);
                         }
 
                         UpdateCurrentState();
                         LogInstructionResult(instruction, gasBefore);
-                        
+
                         return CallResult.Empty;
                     }
                     default:
