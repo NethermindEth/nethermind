@@ -529,12 +529,12 @@ namespace Nethermind.Evm
                 {
                     _logger?.Log($"  POP {intsOnStack[stackHead]}");
 
-                    return intsOnStack[stackHead].ToBigEndianByteArray().ToSignedBigInteger();
+                    return intsOnStack[stackHead].ToBigEndianByteArray().ToSignedBigInteger(32);
                 }
 
                 _logger?.Log($"  POP {Hex.FromBytes(bytesOnStack[stackHead], true)}");
 
-                return bytesOnStack[stackHead].ToSignedBigInteger();
+                return bytesOnStack[stackHead].ToSignedBigInteger(32);
             }
 
             // TODO: outside and inline?
@@ -1428,7 +1428,10 @@ namespace Nethermind.Evm
                             0L,
                             evmState.IsStatic,
                             false);
+                        
                         UpdateCurrentState();
+                        LogInstructionResult(instruction, gasBefore);
+                        
                         return new CallResult(callState);
                     }
                     case Instruction.RETURN:
@@ -1441,9 +1444,9 @@ namespace Nethermind.Evm
                         UpdateMemoryCost(memoryPos, length);
                         byte[] returnData = evmState.Memory.Load(memoryPos, length);
 
-                        LogInstructionResult(instruction, gasBefore);
-
                         UpdateCurrentState();
+                        LogInstructionResult(instruction, gasBefore);
+                        
                         return new CallResult(returnData);
                     }
                     case Instruction.CALL:
@@ -1458,8 +1461,8 @@ namespace Nethermind.Evm
                         }
 
                         BigInteger gasLimit = PopUInt();
-                        BigInteger callValue;
                         byte[] codeSource = PopBytes();
+                        BigInteger callValue;
                         switch (instruction)
                         {
                             case Instruction.STATICCALL:
@@ -1587,7 +1590,10 @@ namespace Nethermind.Evm
                             (long)outputLength,
                             instruction == Instruction.STATICCALL || evmState.IsStatic,
                             false);
+                        
                         UpdateCurrentState();
+                        LogInstructionResult(instruction, gasBefore);
+                        
                         return new CallResult(callState);
                     }
                     case Instruction.REVERT:
@@ -1605,9 +1611,9 @@ namespace Nethermind.Evm
                         UpdateMemoryCost(memoryPos, length);
                         byte[] errorDetails = evmState.Memory.Load(memoryPos, length);
 
+                        UpdateCurrentState();
                         LogInstructionResult(instruction, gasBefore);
 
-                        UpdateCurrentState();
                         return new CallResult(errorDetails, true);
                     }
                     case Instruction.INVALID:
@@ -1649,12 +1655,12 @@ namespace Nethermind.Evm
                                 _stateProvider.UpdateBalance(inheritor, ownerBalance);
                             }
 
-                            _stateProvider.UpdateBalance(env.ExecutingAccount, -ownerBalance);
-
-                            LogInstructionResult(instruction, gasBefore);
+                            _stateProvider.UpdateBalance(env.ExecutingAccount, -ownerBalance);   
                         }
 
                         UpdateCurrentState();
+                        LogInstructionResult(instruction, gasBefore);
+                        
                         return CallResult.Empty;
                     }
                     default:

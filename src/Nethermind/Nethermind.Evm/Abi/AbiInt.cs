@@ -60,7 +60,7 @@ namespace Nethermind.Evm.Abi
         public override (object, int) Decode(byte[] data, int position)
         {
             byte[] input = data.Slice(position, LengthInBytes);
-            return (input.ToSignedBigInteger(), position + LengthInBytes);
+            return (input.ToSignedBigInteger(LengthInBytes), position + LengthInBytes);
         }
 
         public (BigInteger, int) DecodeInt(byte[] data, int position)

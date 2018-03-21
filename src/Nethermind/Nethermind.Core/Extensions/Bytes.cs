@@ -18,6 +18,7 @@
 
 using System;
 using System.Collections;
+using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 
@@ -345,20 +346,28 @@ namespace Nethermind.Core.Extensions
             return BitConverter.ToUInt32(bytes.Length == 4 ? bytes : bytes.PadLeft(4), 0);
         }
 
-        public static BigInteger ToSignedBigInteger(this byte[] bytes, Endianness endianness = Endianness.Big)
+        public static BigInteger ToSignedBigInteger(this byte[] bytes, int byteLength, Endianness endianness = Endianness.Big)
         {
+            Debug.Assert(bytes.Length <= byteLength, $"{nameof(ToSignedBigInteger)} expects {nameof(byteLength)} parameter to be less than length of the {bytes}");
+            bool needToExpand = bytes.Length != byteLength;
+            byte[] bytesToUse = needToExpand ? new byte[byteLength] : bytes;
+            if (needToExpand)
+            {
+                Buffer.BlockCopy(bytes, 0, bytesToUse, byteLength - bytes.Length, bytes.Length);
+            }
+            
             if (BitConverter.IsLittleEndian && endianness == Endianness.Big || !BitConverter.IsLittleEndian && endianness == Endianness.Little)
             {
-                byte[] signedResult = new byte[bytes.Length];
-                for (int i = 0; i < bytes.Length; i++)
+                byte[] signedResult = new byte[byteLength];
+                for (int i = 0; i < byteLength; i++)
                 {
-                    signedResult[bytes.Length - i - 1] = bytes[i];
+                    signedResult[byteLength - i - 1] = bytesToUse[i];
                 }
 
                 return new BigInteger(signedResult);
             }
 
-            return new BigInteger(bytes);
+            return new BigInteger(bytesToUse);
         }
 
         public static ulong ToUInt64(this byte[] bytes, Endianness endianness = Endianness.Big)
