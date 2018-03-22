@@ -27,23 +27,24 @@ namespace Nethermind.Core
         ///     https://github.com/ethereum/EIPs/blob/master/EIPS/eip-606.md
         /// </summary>
         Homestead, // launched 14/03/2016 Block >= 1,150,000 on MainNet Block >= 494,000 on Morden
+        Dao, // launched 20/07/2016 Block >= 1,920,000 on MainNet Block >= ? on Morden
 
         /// <summary>
         ///     https://github.com/ethereum/EIPs/blob/master/EIPS/eip-608.md
         /// </summary>
-        TangerineWhistle, // launched 23/04/2017 ? Block >= 2,463,000 on MainNet
+        TangerineWhistle, // launched 18/10/2016 on MainNet Block >= 2,463,000 on MainNet
 
         /// <summary>
         ///     https://github.com/ethereum/EIPs/blob/master/EIPS/eip-607.md
         /// </summary>
-        SpuriousDragon, // launched 23/04/2017 ? Block >= 2,675,000 on MainNet Block >= 1,885,000 on Morden
+        SpuriousDragon, // launched 22/11/2016 on MainNet Block >= 2,675,000 on MainNet Block >= 1,885,000 on Morden
         Ropsten,
         Morden,
         Olympic, // launched May 2015
         Kovan,
         Rinkeby,
         Metropolis,
-        Byzantium, // launched 17/10/2017 ?
+        Byzantium, // launched 16/10/2017 on MainNet Block > 4730000
         Serenity
     }
 }

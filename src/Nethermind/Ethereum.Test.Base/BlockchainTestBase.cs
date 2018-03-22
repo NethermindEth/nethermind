@@ -56,9 +56,9 @@ namespace Ethereum.Test.Base
         {
             _logger = logger;
             ILogger stateLogger = ShouldLog.State ? _logger : null;
-            _multiDb = new MultiDb(stateLogger);                
+            _multiDb = new MultiDb(stateLogger);
             _chain = new BlockStore();
-            
+
             _blockhashProvider = new BlockhashProvider(_chain);
             _virtualMachines = new Dictionary<EthereumNetwork, IVirtualMachine>();
             _stateProviders = new Dictionary<EthereumNetwork, StateProvider>();
@@ -120,34 +120,26 @@ namespace Ethereum.Test.Base
                 Dictionary<string, BlockchainTestJson> testsInFile = JsonConvert.DeserializeObject<Dictionary<string, BlockchainTestJson>>(json);
                 foreach (KeyValuePair<string, BlockchainTestJson> namedTest in testsInFile)
                 {
-                    if (namedTest.Key.EndsWith("Frontier"))
+                    string[] transitionInfo = namedTest.Value.Network.Split("At");
+                    string[] networks = transitionInfo[0].Split("To");
+                    for (int i = 0; i < networks.Length; i++)
                     {
-                        namedTest.Value.EthereumNetwork = EthereumNetwork.Frontier;
+                        networks[i] = networks[i].Replace("EIP150", "TangerineWhistle");
+                        networks[i] = networks[i].Replace("EIP158", "SpuriousDragon");
+                        networks[i] = networks[i].Replace("DAO", "Dao");
                     }
-                    else if (namedTest.Key.EndsWith("Homestead"))
+
+                    namedTest.Value.EthereumNetwork = Enum.Parse<EthereumNetwork>(networks[0]);
+                    if (transitionInfo.Length > 1)
                     {
-                        namedTest.Value.EthereumNetwork = EthereumNetwork.Homestead;
-                    }
-                    else if (namedTest.Key.EndsWith("EIP150"))
-                    {
-                        namedTest.Value.EthereumNetwork = EthereumNetwork.TangerineWhistle;
-                    }
-                    else if (namedTest.Key.EndsWith("EIP158"))
-                    {
-                        namedTest.Value.EthereumNetwork = EthereumNetwork.SpuriousDragon;
-                    }
-                    else if (namedTest.Key.EndsWith("Byzantium"))
-                    {
-                        namedTest.Value.EthereumNetwork = EthereumNetwork.Byzantium;
-                    }
-                    else
-                    {
-                        continue;
+                        namedTest.Value.TransitionBlock = int.Parse(transitionInfo[1]);
+                        namedTest.Value.EthereumNetworkAfterTransition = Enum.Parse<EthereumNetwork>(networks[1]);
                     }
 
                     testsByName.Add(namedTest.Key, namedTest.Value);
                 }
             }
+
             return testsByName;
         }
 
@@ -155,9 +147,8 @@ namespace Ethereum.Test.Base
         {
             if (accountStateJson.Code.Contains("737db299e0885"))
             {
-                
             }
-            
+
             AccountState state = new AccountState();
             state.Balance = Hex.ToBytes(accountStateJson.Balance).ToUnsignedBigInteger();
             state.Code = Hex.ToBytes(accountStateJson.Code);
@@ -191,7 +182,7 @@ namespace Ethereum.Test.Base
                 _line.Clear();
             }
         }
-        
+
         protected void RunTest(BlockchainTest test, Stopwatch stopwatch = null)
         {
             LoggingTraceListener traceListener = new LoggingTraceListener(_logger);
@@ -224,7 +215,7 @@ namespace Ethereum.Test.Base
                 _storageProviders[test.Network],
                 new TransactionStore(),
                 ShouldLog.Processing ? _logger : null);
-            
+
             IBlockchainProcessor blockchainProcessor = new BlockchainProcessor(
                 blockProcessor,
                 _chain,
@@ -247,10 +238,10 @@ namespace Ethereum.Test.Base
                 {
                     _logger?.Log(ex.ToString());
                 }
-                
-                stopwatch?.Stop();   
+
+                stopwatch?.Stop();
             }
-            
+
             RunAssertions(test, blockchainProcessor.HeadBlock);
         }
 
@@ -281,13 +272,13 @@ namespace Ethereum.Test.Base
         {
             TestBlockHeaderJson testHeaderJson = test.Blocks
                                                      .Where(b => b.BlockHeader != null)
-                                                     .SingleOrDefault(b => new Keccak(b.BlockHeader.Hash) == headBlock.Hash)?.BlockHeader ?? test.GenesisBlockHeader; 
+                                                     .SingleOrDefault(b => new Keccak(b.BlockHeader.Hash) == headBlock.Hash)?.BlockHeader ?? test.GenesisBlockHeader;
             BlockHeader testHeader = Convert(testHeaderJson);
             List<string> differences = new List<string>();
             foreach (KeyValuePair<Address, AccountState> accountState in test.PostState)
             {
                 int differencesBefore = differences.Count;
-                
+
                 if (differences.Count > 8)
                 {
                     Console.WriteLine("More than 8 differences...");
@@ -352,9 +343,14 @@ namespace Ethereum.Test.Base
                 differences.Add($"TRANSACTIONS ROOT exp: {testHeader.TransactionsRoot}, actual: {headBlock.Header.TransactionsRoot}");
             }
 
-            if (testHeader.ReceiptsRoot!= headBlock.Header.ReceiptsRoot)
+            if (testHeader.ReceiptsRoot != headBlock.Header.ReceiptsRoot)
             {
                 differences.Add($"RECEIPT ROOT exp: {testHeader.ReceiptsRoot}, actual: {headBlock.Header.ReceiptsRoot}");
+            }
+
+            if (test.LastBlockHash != headBlock.Hash)
+            {
+                differences.Add($"LAST BLOCK HASH exp: {test.LastBlockHash}, actual: {headBlock.Hash}");
             }
 
             foreach (string difference in differences)
@@ -419,7 +415,7 @@ namespace Ethereum.Test.Base
                 Hex.ToBytes(transactionJson.S).PadLeft(32),
                 Hex.ToBytes(transactionJson.V)[0]);
             transaction.Signature = signature;
-            
+
             return transaction;
         }
 
@@ -539,6 +535,8 @@ namespace Ethereum.Test.Base
         {
             public string Network { get; set; }
             public EthereumNetwork EthereumNetwork { get; set; }
+            public EthereumNetwork EthereumNetworkAfterTransition { get; set; }
+            public int TransitionBlock { get; set; }
             public string LastBlockHash { get; set; }
             public string GenesisRlp { get; set; }
 

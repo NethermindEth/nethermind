@@ -43,7 +43,7 @@ namespace Nethermind.Blockchain.Test.Runner
                 stopwatch.Reset();
                 for (int i = 0; i < iterations; i++)
                 {
-                    Setup();
+                    Setup(null);
                     try
                     {
                         RunTest(test, stopwatch);

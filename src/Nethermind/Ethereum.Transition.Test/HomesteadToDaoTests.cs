@@ -24,7 +24,7 @@ namespace Ethereum.Transition.Test
     [TestFixture]
     public class HomesteadToDaoTests : BlockchainTestBase
     {
-        [TestCaseSource(nameof(LoadTests), new object[] { "bcHomesteadToDao" })]
+        [TestCaseSource(nameof(LoadTests), new object[] { "bcHomesteadToDao"  })]
         public void Test(BlockchainTest test)
         {    
             RunTest(test);
