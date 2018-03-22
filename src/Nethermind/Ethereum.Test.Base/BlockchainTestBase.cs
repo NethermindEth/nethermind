@@ -425,8 +425,8 @@ namespace Ethereum.Test.Base
             BlockchainTest test = new BlockchainTest();
             test.Name = name;
             test.Network = testJson.EthereumNetwork;
-            test.LastBlockHash = new Keccak(testJson.LastBlockHash);
-            test.GenesisRlp = new Rlp(Hex.ToBytes(testJson.GenesisRlp));
+            test.LastBlockHash = new Keccak(new Hex(testJson.LastBlockHash));
+            test.GenesisRlp = testJson.GenesisRlp == null ? null : new Rlp(Hex.ToBytes(testJson.GenesisRlp));
             test.GenesisBlockHeader = testJson.GenesisBlockHeader;
             test.Blocks = testJson.Blocks;
             test.PostState = testJson.PostState.ToDictionary(p => new Address(p.Key), p => Convert(p.Value));
