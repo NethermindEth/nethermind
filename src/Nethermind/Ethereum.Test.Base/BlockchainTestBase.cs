@@ -127,6 +127,7 @@ namespace Ethereum.Test.Base
                         networks[i] = networks[i].Replace("EIP150", "TangerineWhistle");
                         networks[i] = networks[i].Replace("EIP158", "SpuriousDragon");
                         networks[i] = networks[i].Replace("DAO", "Dao");
+                        networks[i] = networks[i].Replace("Constantinople", "Byzantium"); // TODO: check these
                     }
 
                     namedTest.Value.EthereumNetwork = Enum.Parse<EthereumNetwork>(networks[0]);
