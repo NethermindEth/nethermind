@@ -23,11 +23,11 @@ namespace Nethermind.Blockchain
 {
     public interface IBlockchainProcessor
     {
-        void Initialize(Rlp genesisBlockRlp);
+        void Initialize(Block genesisBlock);
         Block HeadBlock { get; }
         ///Currently processing block
         Block SuggestedBlock { get; }
         BigInteger TotalDifficulty { get; }
-        void Process(Rlp blockRlp); // TODO: potentially do not return anything
+        void Process(Block block);
     }
 }

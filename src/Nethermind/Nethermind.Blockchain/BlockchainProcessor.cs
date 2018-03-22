@@ -40,7 +40,7 @@ namespace Nethermind.Blockchain
             _logger = logger;    
         }
 
-        public void Initialize(Rlp genesisBlockRlp)
+        public void Initialize(Block genesisBlockRlp)
         {
             Process(genesisBlockRlp);
         }
@@ -86,12 +86,11 @@ namespace Nethermind.Blockchain
             return blockHeader.Difficulty + GetTotalDifficulty(parent.Header);
         }
 
-        public void Process(Rlp blockRlp)
+        public void Process(Block suggestedBlock)
         {
             try
             {
                 _logger?.Log("-------------------------------------------------------------------------------------");
-                Block suggestedBlock = Rlp.Decode<Block>(blockRlp);
                 suggestedBlock.Header.RecomputeHash();
                 foreach (BlockHeader ommerHeader in suggestedBlock.Ommers)
                 {

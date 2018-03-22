@@ -222,18 +222,37 @@ namespace Ethereum.Test.Base
                 _chain,
                 ShouldLog.Processing ? _logger : null);
 
-            blockchainProcessor.Initialize(test.GenesisRlp);
+            Rlp[] blockRlps = test.Blocks.Select(h => Hex.ToBytes(h.Rlp)).Where(b => b != null).Select(b => new Rlp(b)).ToArray();
+            List<Block> correctRlpsBlocks = new List<Block>();
+            for (int i = 0; i < blockRlps.Length; i++)
+            {
+                try
+                {   
+                    Block suggestedBlock = Rlp.Decode<Block>(blockRlps[i]);
+                    correctRlpsBlocks.Add(suggestedBlock);
+                }
+                catch (Exception e)
+                {
+                    Console.WriteLine($"Invalid RLP ({i})");
+                }
+            }
 
-            var rlps = test.Blocks.Select(tb => new Rlp(Hex.ToBytes(tb.Rlp))).ToArray();
-            for (int i = 0; i < rlps.Length; i++)
+            if (correctRlpsBlocks.Count == 0)
+            {
+                Assert.AreEqual(new Keccak(test.GenesisBlockHeader.Hash), test.LastBlockHash);
+                return;
+            }
+            
+            blockchainProcessor.Initialize(Rlp.Decode<Block>(test.GenesisRlp));
+            
+            // TODO: may need to add a better way of initializing genesis block since forge tests do not provide genesis RLP
+            
+            for (int i = 0; i < correctRlpsBlocks.Count; i++)
             {
                 stopwatch?.Start();
                 try
                 {
-                    blockchainProcessor.Process(rlps[i]);
-                }
-                catch (InvalidBlockException ex)
-                {
+                    blockchainProcessor.Process(correctRlpsBlocks[i]);
                 }
                 catch (Exception ex)
                 {
