@@ -16,12 +16,11 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
 using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Potocol;
+using Nethermind.Core.Releases;
 
 namespace Nethermind.Evm.Precompiles
 {
@@ -45,10 +44,10 @@ namespace Nethermind.Evm.Precompiles
             return 3000L;
         }
 
+        private readonly EthereumSigner _signer = new EthereumSigner(Olympic.Instance, ChainId.MainNet);
+        
         public (byte[], bool) Run(byte[] inputData)
         {
-            EthereumSigner signer = new EthereumSigner(Olympic.Instance, ChainId.MainNet);
-
             inputData = (inputData ?? Bytes.Empty).PadRight(128);
 
             Keccak hash = new Keccak(inputData.Slice(0, 32));
@@ -73,7 +72,7 @@ namespace Nethermind.Evm.Precompiles
             }
 
             Signature signature = new Signature(r, s, v);
-            Address recovered = signer.RecoverAddress(signature, hash);
+            Address recovered = _signer.RecoverAddress(signature, hash);
             if (recovered == null)
             {
                 return (Bytes.Empty, true);

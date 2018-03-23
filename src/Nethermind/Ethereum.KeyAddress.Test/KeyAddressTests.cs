@@ -24,7 +24,7 @@ using System.Numerics;
 using Ethereum.Test.Base;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Potocol;
+using Nethermind.Core.Releases;
 using Newtonsoft.Json;
 using NUnit.Framework;
 

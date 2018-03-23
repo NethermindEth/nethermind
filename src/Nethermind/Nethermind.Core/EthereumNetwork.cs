@@ -18,6 +18,9 @@
 
 namespace Nethermind.Core
 {
+    /// <summary>
+    /// There are 'fake' single release networks here for testing (like Byzantium) and also networks like Main or Morden which have multiple releases over time
+    /// </summary>
     public enum EthereumNetwork
     {
         Main,

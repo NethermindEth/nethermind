@@ -18,6 +18,7 @@
 
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Releases;
 using NUnit.Framework;
 
 namespace Ethereum.Difficulty.Test
@@ -38,13 +39,13 @@ namespace Ethereum.Difficulty.Test
         [TestCaseSource(nameof(LoadBasicTests))]
         public void Test_basic(DifficultyTests test)
         {
-            RunTest(test, EthereumNetwork.Main);
+            RunTest(test, new MainNetSpecProvider());
         }
 
         [TestCaseSource(nameof(LoadMainNetworkTests))]
         public void Test_main(DifficultyTests test)
         {
-            RunTest(test, EthereumNetwork.Main);
+            RunTest(test, new MainNetSpecProvider());
         }
     }
 }

@@ -26,7 +26,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Potocol;
+using Nethermind.Core.Releases;
 using Newtonsoft.Json;
 using NUnit.Framework;
 
@@ -168,7 +168,7 @@ namespace Ethereum.Transaction.Test
             RunTest(test, Byzantium.Instance);
         }
 
-        private void RunTest(TransactionTest test, IEthereumRelease spec)
+        private void RunTest(TransactionTest test, IReleaseSpec spec)
         {
             TestContext.CurrentContext.Test.Properties.Set("Category", test.Network);
 

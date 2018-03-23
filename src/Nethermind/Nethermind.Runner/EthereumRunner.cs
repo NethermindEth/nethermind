@@ -36,16 +36,16 @@ namespace Nethermind.Runner
         private readonly IJsonSerializer _jsonSerializer;
         private readonly IBlockchainProcessor _blockchainProcessor;
         private readonly IStateProvider _stateProvider;
-        private readonly IMultiDb _multiDb;
+        private readonly IDbProvider _dbProvider;
         private readonly ILogger _logger;
         private readonly IConfigurationProvider _configurationProvider;
 
-        public EthereumRunner(IJsonSerializer jsonSerializer, IBlockchainProcessor blockchainProcessor, IStateProvider stateProvider, IMultiDb multiDb, ILogger logger, IConfigurationProvider configurationProvider)
+        public EthereumRunner(IJsonSerializer jsonSerializer, IBlockchainProcessor blockchainProcessor, IStateProvider stateProvider, IDbProvider dbProvider, ILogger logger, IConfigurationProvider configurationProvider)
         {
             _jsonSerializer = jsonSerializer;
             _blockchainProcessor = blockchainProcessor;
             _stateProvider = stateProvider;
-            _multiDb = multiDb;
+            _dbProvider = dbProvider;
             _logger = logger;
             _configurationProvider = configurationProvider;
         }
@@ -170,7 +170,7 @@ namespace Nethermind.Runner
                 _stateProvider.CreateAccount(new Address(new Hex(account.Key)), BigInteger.Parse(account.Value.Balance));
             }
             _stateProvider.Commit();
-            _multiDb.Commit();
+            _dbProvider.Commit();
             return _stateProvider.StateRoot;
         }
 

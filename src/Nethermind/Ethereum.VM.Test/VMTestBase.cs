@@ -26,7 +26,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Potocol;
+using Nethermind.Core.Releases;
 using Nethermind.Evm;
 using Nethermind.Store;
 using Newtonsoft.Json;
@@ -36,20 +36,20 @@ namespace Ethereum.VM.Test
 {
     public class VMTestBase
     {
-        private IMultiDb _multiDb;
+        private IDbProvider _dbProvider;
         private IStorageProvider _storageProvider;
         private IBlockhashProvider _blockhashProvider;
         private IStateProvider _stateProvider;
-        private readonly IEthereumRelease _ethereumRelease = Olympic.Instance;
+        private readonly IReleaseSpec _releaseSpec = Olympic.Instance;
 
         [SetUp]
         public void Setup()
         {
             ILogger stateLogger = ShouldLog.State ? new ConsoleLogger() : null;
-            _multiDb = new MultiDb(stateLogger);
+            _dbProvider = new DbProvider(stateLogger);
             _blockhashProvider = new TestBlockhashProvider();
-            _stateProvider = new StateProvider(new StateTree(_multiDb.CreateDb()), _ethereumRelease, stateLogger, new CodeStore());
-            _storageProvider = new StorageProvider(new MultiDb(stateLogger), _stateProvider, stateLogger);
+            _stateProvider = new StateProvider(new StateTree(_dbProvider.GetOrCreateStateDb()), _releaseSpec, stateLogger, _dbProvider.GetOrCreateCodeDb());
+            _storageProvider = new StorageProvider(new DbProvider(stateLogger), _stateProvider, stateLogger);
         }
 
         public static IEnumerable<VirtualMachineTest> LoadTests(string testSet)
@@ -135,7 +135,7 @@ namespace Ethereum.VM.Test
 
         protected void RunTest(VirtualMachineTest test)
         {
-            VirtualMachine machine = new VirtualMachine(_ethereumRelease, _stateProvider, _storageProvider, _blockhashProvider, ShouldLog.Evm ? new ConsoleLogger() : null);
+            VirtualMachine machine = new VirtualMachine(_releaseSpec, _stateProvider, _storageProvider, _blockhashProvider, ShouldLog.Evm ? new ConsoleLogger() : null);
             ExecutionEnvironment environment = new ExecutionEnvironment();
             environment.Value = test.Execution.Value;
             environment.CallDepth = 0;

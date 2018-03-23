@@ -19,6 +19,7 @@
 
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Releases;
 using NUnit.Framework;
 
 namespace Ethereum.Difficulty.Test
@@ -34,7 +35,7 @@ namespace Ethereum.Difficulty.Test
         [TestCaseSource(nameof(LoadFrontierTests))]
         public void Test(DifficultyTests test)
         {
-            RunTest(test, EthereumNetwork.Byzantium);
+            RunTest(test, new SingleReleaseSpecProvider(Byzantium.Instance));
         }    
     }
 }

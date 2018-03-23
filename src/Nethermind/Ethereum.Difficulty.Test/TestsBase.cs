@@ -26,7 +26,7 @@ using Nethermind.Blockchain.Difficulty;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Potocol;
+using Nethermind.Core.Releases;
 using NUnit.Framework;
 
 namespace Ethereum.Difficulty.Test
@@ -90,10 +90,9 @@ namespace Ethereum.Difficulty.Test
                 !string.IsNullOrWhiteSpace(json.ParentUncles) && new Keccak(json.ParentUncles) != noUnclesHash);
         }
 
-        protected void RunTest(DifficultyTests test, EthereumNetwork network)
+        protected void RunTest(DifficultyTests test, ISpecProvider specProvider)
         {
-            ProtocolSpecificationProvider specProvider = new ProtocolSpecificationProvider();
-            IDifficultyCalculator calculator = new ProtocolBasedDifficultyCalculator(specProvider.GetSpec(network, test.CurrentBlockNumber));
+            IDifficultyCalculator calculator = new DifficultyCalculator(specProvider.GetSpec(test.CurrentBlockNumber));
 
             BigInteger difficulty = calculator.Calculate(
                 test.ParentDifficulty,

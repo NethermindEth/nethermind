@@ -24,7 +24,7 @@ using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
-using Nethermind.Core.Potocol;
+using Nethermind.Core.Releases;
 
 [assembly:InternalsVisibleTo("Nethermind.Evm.Test")]
 
@@ -40,7 +40,7 @@ namespace Nethermind.Store
         private readonly HashSet<Address> _committedThisRound = new HashSet<Address>();
 
         private readonly List<Change> _keptInCache = new List<Change>();
-        public IEthereumRelease EthereumRelease { get; set; }
+        private readonly IReleaseSpec _releaseSpec;
         private readonly ILogger _logger;
         private readonly IDb _codeDb;
 
@@ -48,9 +48,9 @@ namespace Nethermind.Store
         private Change[] _changes = new Change[StartCapacity];
         private int _currentPosition = -1;
 
-        public StateProvider(StateTree stateTree, IEthereumRelease ethereumRelease, ILogger logger, IDb codeDb)
+        public StateProvider(StateTree stateTree, IReleaseSpec releaseSpec, ILogger logger, IDb codeDb)
         {
-            EthereumRelease = ethereumRelease;
+            _releaseSpec = releaseSpec;
             _logger = logger;
             _codeDb = codeDb;
             _state = stateTree;
@@ -112,7 +112,7 @@ namespace Nethermind.Store
                 Account changedAccount = account.WithChangedCodeHash(codeHash);
                 PushUpdate(address, changedAccount);
             }
-            else if (EthereumRelease.IsEip158Enabled)
+            else if (_releaseSpec.IsEip158Enabled)
             {
                 _logger?.Log($"  TOUCH {address} (code hash)");
                 Account touched = GetThroughCache(address);
@@ -124,7 +124,7 @@ namespace Nethermind.Store
         {
             if (balanceChange == BigInteger.Zero)
             {
-                if (EthereumRelease.IsEip158Enabled)
+                if (_releaseSpec.IsEip158Enabled)
                 {
                     _logger?.Log($"  TOUCH {address} (balance)");
                     Account touched = GetThroughCache(address);
@@ -297,7 +297,7 @@ namespace Nethermind.Store
                     case ChangeType.Touch:
                     case ChangeType.Update:
                     {
-                        if (EthereumRelease.IsEip158Enabled && change.Account.IsEmpty)
+                        if (_releaseSpec.IsEip158Enabled && change.Account.IsEmpty)
                         {
                             _logger?.Log($"  DELETE EMPTY {change.Address} B = {change.Account.Balance} N = {change.Account.Nonce}");
                             _state.Set(change.Address, null);
@@ -312,7 +312,7 @@ namespace Nethermind.Store
                     }
                     case ChangeType.New:
                     {
-                        if (!EthereumRelease.IsEip158Enabled || !change.Account.IsEmpty)
+                        if (!_releaseSpec.IsEip158Enabled || !change.Account.IsEmpty)
                         {
                             _logger?.Log($"  CREATE {change.Address} B = {change.Account.Balance} N = {change.Account.Nonce}");
                             _state.Set(change.Address, Rlp.Encode(change.Account));

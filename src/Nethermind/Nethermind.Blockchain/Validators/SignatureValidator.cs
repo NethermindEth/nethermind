@@ -20,29 +20,28 @@ using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Potocol;
+using Nethermind.Core.Releases;
 
 namespace Nethermind.Blockchain.Validators
 {
     public class SignatureValidator : ISignatureValidator
     {
+        private readonly IReleaseSpec _releaseSpec;
         private readonly int _chainIdValue;
 
-        private readonly IEthereumRelease _spec;
-
-        public SignatureValidator(IEthereumRelease spec, int chainIdValue)
+        public SignatureValidator(IReleaseSpec releaseSpec, int chainIdValue)
         {
             if (chainIdValue < 0)
             {
                 throw new ArgumentException("Unexpected negative value", nameof(chainIdValue));
             }
-            
-            _spec = spec;
+
+            _releaseSpec = releaseSpec;
             _chainIdValue = chainIdValue;
         }
 
-        public SignatureValidator(IEthereumRelease spec, ChainId chainId)
-            : this(spec, (int)chainId)
+        public SignatureValidator(IReleaseSpec releaseSpec, ChainId chainId)
+            : this(releaseSpec, (int)chainId)
         {
         }
 
@@ -50,8 +49,8 @@ namespace Nethermind.Blockchain.Validators
         {
             BigInteger sValue = signature.S.ToUnsignedBigInteger();
             BigInteger rValue = signature.R.ToUnsignedBigInteger();
-
-            if (sValue.IsZero || sValue >= (_spec.IsEip2Enabled ? Secp256K1Curve.HalfN + 1 : Secp256K1Curve.N))
+            
+            if (sValue.IsZero || sValue >= (_releaseSpec.IsEip2Enabled ? Secp256K1Curve.HalfN + 1 : Secp256K1Curve.N))
             {
                 return false;
             }
@@ -61,7 +60,7 @@ namespace Nethermind.Blockchain.Validators
                 return false;
             }
 
-            if (!_spec.IsEip155Enabled)
+            if (!_releaseSpec.IsEip155Enabled)
             {
                 return signature.V == 27 || signature.V == 28;
             }

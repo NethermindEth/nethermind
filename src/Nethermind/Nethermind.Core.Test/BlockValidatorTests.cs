@@ -18,7 +18,7 @@
 
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Validators;
-using Nethermind.Core.Potocol;
+using Nethermind.Core.Releases;
 using Nethermind.Mining;
 using NSubstitute;
 using NUnit.Framework;
@@ -32,7 +32,7 @@ namespace Nethermind.Core.Test
         [Test]
         public void Test()
         {
-            IEthereumRelease spec = Olympic.Instance;
+            IReleaseSpec spec = Olympic.Instance;
             IBlockStore blockchain = Substitute.For<IBlockStore>();
 
             BlockHeaderValidator blockHeaderValidator = new BlockHeaderValidator(blockchain, new Ethash());

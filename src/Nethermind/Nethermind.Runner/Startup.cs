@@ -28,7 +28,7 @@ using Nethermind.Blockchain.Difficulty;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Potocol;
+using Nethermind.Core.Releases;
 using Nethermind.Evm;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Module;
@@ -79,7 +79,7 @@ namespace Nethermind.Runner
             services.AddSingleton<IDb, InMemoryDb>();
             services.AddSingleton<StateTree>();
             services.AddSingleton<IStateProvider, StateProvider>();
-            services.AddSingleton<IMultiDb, MultiDb>();
+            services.AddSingleton<IDbProvider, DbProvider>();
             services.AddSingleton<IStorageProvider, StorageProvider>();
 
             services.AddSingleton<IBlockhashProvider, BlockhashProvider>();
@@ -87,7 +87,7 @@ namespace Nethermind.Runner
             services.AddSingleton<ITransactionProcessor, TransactionProcessor>();
             services.AddSingleton<ITransactionStore, TransactionStore>();
 
-            services.AddSingleton<IDifficultyCalculator, ProtocolBasedDifficultyCalculator>();
+            services.AddSingleton<IDifficultyCalculator, DifficultyCalculator>();
             services.AddSingleton<IRewardCalculator, RewardCalculator>();
             services.AddSingleton<IBlockProcessor, BlockProcessor>();
             services.AddSingleton<IBlockchainProcessor, BlockchainProcessor>();

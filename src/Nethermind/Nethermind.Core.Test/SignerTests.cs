@@ -19,7 +19,7 @@
 using System;
 using System.IO;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Potocol;
+using Nethermind.Core.Releases;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test

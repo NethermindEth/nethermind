@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 using System.Numerics;
+using Nethermind.Core.Releases;
 
 namespace Nethermind.Blockchain.Difficulty
 {

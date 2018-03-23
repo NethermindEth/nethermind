@@ -19,7 +19,7 @@
 using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Potocol;
+using Nethermind.Core.Releases;
 using Nethermind.Store;
 using NSubstitute;
 using NUnit.Framework;

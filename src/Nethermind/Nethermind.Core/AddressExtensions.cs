@@ -18,13 +18,13 @@
 
 using System.Numerics;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Potocol;
+using Nethermind.Core.Releases;
 
 namespace Nethermind.Core
 {
     public static class AddressExtensions
     {
-        public static bool IsPrecompiled(this Address address, IEthereumRelease ethereumRelease)
+        public static bool IsPrecompiled(this Address address, IReleaseSpec releaseSpec)
         {
             BigInteger asInt = address.Hex.ToUnsignedBigInteger();
             if (asInt == 0 || asInt > 8)
@@ -39,15 +39,15 @@ namespace Nethermind.Core
 
             if (asInt == 5)
             {
-                return ethereumRelease.IsEip198Enabled;
+                return releaseSpec.IsEip198Enabled;
             }
 
             if (asInt == 6 || asInt == 7)
             {
-                return ethereumRelease.IsEip196Enabled;
+                return releaseSpec.IsEip196Enabled;
             }
 
-            return asInt == 8 && ethereumRelease.IsEip197Enabled;
+            return asInt == 8 && releaseSpec.IsEip197Enabled;
         }
     }
 }

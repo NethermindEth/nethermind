@@ -17,13 +17,20 @@
  */
 
 using Nethermind.Core;
-using Nethermind.Core.Potocol;
+using Nethermind.Core.Releases;
 
 namespace Nethermind.Evm
 {
     public class IntrinsicGasCalculator
     {
-        public long Calculate(IEthereumRelease ethereumRelease, Transaction transaction)
+        private readonly IReleaseSpec _releaseSpec;
+
+        public IntrinsicGasCalculator(IReleaseSpec releaseSpec)
+        {
+            _releaseSpec = releaseSpec;
+        }
+        
+        public long Calculate(Transaction transaction)
         {
             long result = GasCostOf.Transaction;
 
@@ -42,7 +49,7 @@ namespace Nethermind.Evm
                 }
             }
 
-            if (transaction.IsContractCreation && ethereumRelease.IsEip2Enabled)
+            if (transaction.IsContractCreation && _releaseSpec.IsEip2Enabled)
             {
                 result += GasCostOf.TxCreate;
             }

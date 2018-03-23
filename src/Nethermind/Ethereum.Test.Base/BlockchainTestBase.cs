@@ -30,7 +30,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Potocol;
+using Nethermind.Core.Releases;
 using Nethermind.Evm;
 using Nethermind.Mining;
 using Nethermind.Store;
@@ -41,52 +41,12 @@ namespace Ethereum.Test.Base
 {
     public class BlockchainTestBase
     {
-        private readonly IProtocolSpecificationProvider _protocolSpecificationProvider = new ProtocolSpecificationProvider();
-        private IBlockhashProvider _blockhashProvider;
-        private IDbProvider _dbProvider;
-        private IBlockStore _chain;
-        private Dictionary<EthereumNetwork, IVirtualMachine> _virtualMachines;
-        private Dictionary<EthereumNetwork, StateProvider> _stateProviders; // TODO: support transitions of protocol
-        private Dictionary<EthereumNetwork, IStorageProvider> _storageProviders;
-        private Dictionary<EthereumNetwork, IBlockValidator> _blockValidators;
         private ILogger _logger;
         private static readonly Ethash Ethash = new Ethash(); // temporarily keep reusing the same one as otherwise it would recreate cache for each test
 
-        protected void Setup(ILogger logger)
-        {
-            _logger = logger;
-            ILogger stateLogger = ShouldLog.State ? _logger : null;
-            _dbProvider = new DbProvider(stateLogger);
-            StateTree stateTree = new StateTree(_dbProvider.GetOrCreateStateDb());
-            
-            _chain = new BlockStore();
-
-            _blockhashProvider = new BlockhashProvider(_chain);
-            _virtualMachines = new Dictionary<EthereumNetwork, IVirtualMachine>();
-            _stateProviders = new Dictionary<EthereumNetwork, StateProvider>();
-            _storageProviders = new Dictionary<EthereumNetwork, IStorageProvider>();
-            _blockValidators = new Dictionary<EthereumNetwork, IBlockValidator>();
-            EthereumNetwork[] networks = {EthereumNetwork.Frontier, EthereumNetwork.Homestead, EthereumNetwork.Byzantium, EthereumNetwork.SpuriousDragon, EthereumNetwork.TangerineWhistle};
-            foreach (EthereumNetwork ethereumNetwork in networks)
-            {
-                IEthereumRelease spec = _protocolSpecificationProvider.GetSpec(ethereumNetwork, 1);
-                ISignatureValidator signatureValidator = new SignatureValidator(spec, ChainId.MainNet);
-                ITransactionValidator transactionValidator = new TransactionValidator(spec, signatureValidator);
-                IBlockHeaderValidator headerValidator = new BlockHeaderValidator(_chain, Ethash);
-                IOmmersValidator ommersValidator = new OmmersValidator(_chain, headerValidator);
-                IBlockValidator blockValidator = new BlockValidator(transactionValidator, headerValidator, ommersValidator, stateLogger);
-
-                _blockValidators[ethereumNetwork] = blockValidator;
-                _stateProviders[ethereumNetwork] = new StateProvider(stateTree, spec, stateLogger, _dbProvider.GetOrCreateCodeDb());
-                _storageProviders[ethereumNetwork] = new StorageProvider(_dbProvider, _stateProviders[ethereumNetwork], stateLogger);
-                _virtualMachines[ethereumNetwork] = new VirtualMachine(
-                    spec,
-                    _stateProviders[ethereumNetwork],
-                    _storageProviders[ethereumNetwork],
-                    _blockhashProvider,
-                    ShouldLog.Evm ? logger : null);
-            }
-        }
+        private IStateProvider _stateProvider;
+        private IStorageProvider _storageProvider;
+        private DynamicReleaseSpec _releaseSpec;
 
         [SetUp]
         public void Setup()
@@ -112,6 +72,33 @@ namespace Ethereum.Test.Base
             return testJsons.SelectMany(d => d.Value).Select(pair => Convert(pair.Key, pair.Value));
         }
 
+        private static IReleaseSpec ParseSpec(string network)
+        {
+            switch (network)
+            {
+                case "Frontier":
+                    return Frontier.Instance;
+                case "Homestead":
+                    return Homestead.Instance;
+                case "TangerineWhistle":
+                    return TangerineWhistle.Instance;
+                case "SpuriousDragon":
+                    return SpuriousDragon.Instance;
+                case "EIP150":
+                    return TangerineWhistle.Instance;
+                case "EIP158":
+                    return SpuriousDragon.Instance;
+                case "Dao":
+                    return Dao.Instance;
+                case "Constantinople":
+                    return Byzantium.Instance;
+                case "Byzantium":
+                    return Byzantium.Instance;
+                default:
+                    throw new NotSupportedException();
+            }
+        }
+
         private static Dictionary<string, BlockchainTestJson> LoadTestsFromDirectory(string testDir)
         {
             Dictionary<string, BlockchainTestJson> testsByName = new Dictionary<string, BlockchainTestJson>();
@@ -132,11 +119,11 @@ namespace Ethereum.Test.Base
                         networks[i] = networks[i].Replace("Constantinople", "Byzantium"); // TODO: check these
                     }
 
-                    namedTest.Value.EthereumNetwork = Enum.Parse<EthereumNetwork>(networks[0]);
+                    namedTest.Value.EthereumNetwork = ParseSpec(networks[0]);
                     if (transitionInfo.Length > 1)
                     {
                         namedTest.Value.TransitionBlockNumber = int.Parse(transitionInfo[1]);
-                        namedTest.Value.EthereumNetworkAfterTransition = Enum.Parse<EthereumNetwork>(networks[1]);
+                        namedTest.Value.EthereumNetworkAfterTransition = ParseSpec(networks[1]);
                     }
 
                     testsByName.Add(namedTest.Key, namedTest.Value);
@@ -186,35 +173,9 @@ namespace Ethereum.Test.Base
             }
         }
 
-        private IBlockchainProcessor BuildProcessor(EthereumNetwork network)
+        protected void Setup(ILogger logger)
         {
-            IEthereumRelease spec = _protocolSpecificationProvider.GetSpec(network, 0);
-            IEthereumSigner signer = new EthereumSigner(spec, ChainId.MainNet);
-            IBlockProcessor blockProcessor = new BlockProcessor(
-                spec,
-                _chain,
-                _blockValidators[network],
-                new ProtocolBasedDifficultyCalculator(spec),
-                new RewardCalculator(spec),
-                new TransactionProcessor(
-                    spec,
-                    _stateProviders[network],
-                    _storageProviders[network],
-                    _virtualMachines[network],
-                    signer,
-                    ShouldLog.Processing ? _logger : null),
-                _dbProvider,
-                _stateProviders[network],
-                _storageProviders[network],
-                new TransactionStore(),
-                ShouldLog.Processing ? _logger : null);
-
-            IBlockchainProcessor blockchainProcessor = new BlockchainProcessor(
-                blockProcessor,
-                _chain,
-                ShouldLog.Processing ? _logger : null);
-
-            return blockchainProcessor;
+            _logger = logger;
         }
 
         protected void RunTest(BlockchainTest test, Stopwatch stopwatch = null)
@@ -224,7 +185,67 @@ namespace Ethereum.Test.Base
 //            Debug.Listeners.Clear();
 //            Debug.Listeners.Add(traceListener);
 
-            InitializeTestState(test);
+            ILogger stateLogger = ShouldLog.State ? _logger : null;
+            IDbProvider dbProvider = new DbProvider(stateLogger);
+            StateTree stateTree = new StateTree(dbProvider.GetOrCreateStateDb());
+
+            IBlockStore chain = new BlockStore();
+
+            ISpecProvider specProvider;
+            if (test.NetworkAfterTransition != null)
+            {
+                specProvider = new CustomSpecProvider(
+                    (test.TransitionBlockNumber, test.Network),
+                    (BigInteger.MinusOne, test.NetworkAfterTransition));
+            }
+            else
+            {
+                specProvider = new SingleReleaseSpecProvider(test.Network);
+            }
+
+            _releaseSpec = new DynamicReleaseSpec(specProvider);
+
+            IBlockhashProvider blockhashProvider = new BlockhashProvider(chain);
+            ISignatureValidator signatureValidator = new SignatureValidator(_releaseSpec, ChainId.MainNet);
+            ITransactionValidator transactionValidator = new TransactionValidator(_releaseSpec, signatureValidator);
+            IBlockHeaderValidator headerValidator = new BlockHeaderValidator(chain, Ethash);
+            IOmmersValidator ommersValidator = new OmmersValidator(chain, headerValidator);
+            IBlockValidator blockValidator = new BlockValidator(transactionValidator, headerValidator, ommersValidator, stateLogger);
+            _stateProvider = new StateProvider(stateTree, _releaseSpec, stateLogger, dbProvider.GetOrCreateCodeDb());
+            _storageProvider = new StorageProvider(dbProvider, _stateProvider, stateLogger);
+            IVirtualMachine virtualMachine = new VirtualMachine(
+                _releaseSpec,
+                _stateProvider,
+                _storageProvider,
+                blockhashProvider,
+                ShouldLog.Evm ? _logger : null);
+
+            IEthereumSigner signer = new EthereumSigner(_releaseSpec, ChainId.MainNet);
+            IBlockProcessor blockProcessor = new BlockProcessor(
+                specProvider,
+                chain,
+                blockValidator,
+                new DifficultyCalculator(_releaseSpec),
+                new RewardCalculator(_releaseSpec),
+                new TransactionProcessor(
+                    _releaseSpec,
+                    _stateProvider,
+                    _storageProvider,
+                    virtualMachine,
+                    signer,
+                    ShouldLog.Processing ? _logger : null),
+                dbProvider,
+                _stateProvider,
+                _storageProvider,
+                new TransactionStore(),
+                ShouldLog.Processing ? _logger : null);
+
+            IBlockchainProcessor blockchainProcessor = new BlockchainProcessor(
+                blockProcessor,
+                chain,
+                ShouldLog.Processing ? _logger : null);
+
+            InitializeTestState(test, _stateProvider, _storageProvider);
 
             Rlp[] blockRlps = test.Blocks.Select(h => Hex.ToBytes(h.Rlp)).Where(b => b != null).Select(b => new Rlp(b)).ToArray();
             List<Block> correctRlpsBlocks = new List<Block>();
@@ -247,14 +268,7 @@ namespace Ethereum.Test.Base
                 return;
             }
 
-            IBlockchainProcessor blockchainProcessor = BuildProcessor(test.Network);
             blockchainProcessor.Initialize(Rlp.Decode<Block>(test.GenesisRlp));
-
-            IBlockchainProcessor postTransitionBlockchainprocessor = null;
-            if (test.NetworkAfterTransition != null)
-            {
-                postTransitionBlockchainprocessor = BuildProcessor(test.NetworkAfterTransition.Value);
-            }
 
             // TODO: may need to add a better way of initializing genesis block since forge tests do not provide genesis RLP
 
@@ -263,14 +277,8 @@ namespace Ethereum.Test.Base
                 stopwatch?.Start();
                 try
                 {
-                    if (correctRlpsBlocks[i].Header.Number < test.TransitionBlockNumber)
-                    {
-                        blockchainProcessor.Process(correctRlpsBlocks[i]);
-                    }
-                    else
-                    {
-                        postTransitionBlockchainprocessor?.Process(correctRlpsBlocks[i]);
-                    }
+                    _releaseSpec.CurrentBlockNumber = correctRlpsBlocks[i].Header.Number;
+                    blockchainProcessor.Process(correctRlpsBlocks[i]);
                 }
                 catch (Exception ex)
                 {
@@ -280,31 +288,29 @@ namespace Ethereum.Test.Base
                 stopwatch?.Stop();
             }
 
-            Block headBlock = postTransitionBlockchainprocessor == null ? blockchainProcessor.HeadBlock : postTransitionBlockchainprocessor.HeadBlock;
-            RunAssertions(test, headBlock);
+            RunAssertions(test, blockchainProcessor.HeadBlock);
         }
 
-        private void InitializeTestState(BlockchainTest test)
+        private void InitializeTestState(BlockchainTest test, IStateProvider stateProvider, IStorageProvider storageProvider)
         {
-            _stateProviders[test.Network].EthereumRelease = _protocolSpecificationProvider.GetSpec(EthereumNetwork.Frontier, 0);
             foreach (KeyValuePair<Address, AccountState> accountState in test.Pre)
             {
                 foreach (KeyValuePair<BigInteger, byte[]> storageItem in accountState.Value.Storage)
                 {
-                    _storageProviders[test.Network].Set(accountState.Key, storageItem.Key, storageItem.Value);
+                    storageProvider.Set(accountState.Key, storageItem.Key, storageItem.Value);
                 }
 
-                _stateProviders[test.Network].CreateAccount(accountState.Key, accountState.Value.Balance);
-                Keccak codeHash = _stateProviders[test.Network].UpdateCode(accountState.Value.Code);
-                _stateProviders[test.Network].UpdateCodeHash(accountState.Key, codeHash);
+                stateProvider.CreateAccount(accountState.Key, accountState.Value.Balance);
+                Keccak codeHash = stateProvider.UpdateCode(accountState.Value.Code);
+                stateProvider.UpdateCodeHash(accountState.Key, codeHash);
                 for (int i = 0; i < accountState.Value.Nonce; i++)
                 {
-                    _stateProviders[test.Network].IncrementNonce(accountState.Key);
+                    stateProvider.IncrementNonce(accountState.Key);
                 }
             }
 
-            _storageProviders[test.Network].Commit();
-            _stateProviders[test.Network].Commit();
+            storageProvider.Commit();
+            stateProvider.Commit();
         }
 
         private void RunAssertions(BlockchainTest test, Block headBlock)
@@ -324,9 +330,9 @@ namespace Ethereum.Test.Base
                     break;
                 }
 
-                bool accountExists = _stateProviders[test.Network].AccountExists(accountState.Key);
-                BigInteger? balance = accountExists ? _stateProviders[test.Network].GetBalance(accountState.Key) : (BigInteger?)null;
-                BigInteger? nonce = accountExists ? _stateProviders[test.Network].GetNonce(accountState.Key) : (BigInteger?)null;
+                bool accountExists = _stateProvider.AccountExists(accountState.Key);
+                BigInteger? balance = accountExists ? _stateProvider.GetBalance(accountState.Key) : (BigInteger?)null;
+                BigInteger? nonce = accountExists ? _stateProvider.GetNonce(accountState.Key) : (BigInteger?)null;
 
                 if (accountState.Value.Balance != balance)
                 {
@@ -338,7 +344,7 @@ namespace Ethereum.Test.Base
                     differences.Add($"{accountState.Key} nonce exp: {accountState.Value.Nonce}, actual: {nonce}");
                 }
 
-                byte[] code = accountExists ? _stateProviders[test.Network].GetCode(accountState.Key) : new byte[0];
+                byte[] code = accountExists ? _stateProvider.GetCode(accountState.Key) : new byte[0];
                 if (!Bytes.UnsafeCompare(accountState.Value.Code, code))
                 {
                     differences.Add($"{accountState.Key} code exp: {accountState.Value.Code?.Length}, actual: {code?.Length}");
@@ -350,7 +356,7 @@ namespace Ethereum.Test.Base
 
                 foreach (KeyValuePair<BigInteger, byte[]> storageItem in accountState.Value.Storage)
                 {
-                    byte[] value = _storageProviders[test.Network].Get(accountState.Key, storageItem.Key) ?? new byte[0];
+                    byte[] value = _storageProvider.Get(accountState.Key, storageItem.Key) ?? new byte[0];
                     if (!Bytes.UnsafeCompare(storageItem.Value, value))
                     {
                         differences.Add($"{accountState.Key} storage[{storageItem.Key}] exp: {Hex.FromBytes(storageItem.Value, true)}, actual: {Hex.FromBytes(value, true)}");
@@ -372,9 +378,9 @@ namespace Ethereum.Test.Base
                 differences.Add($"BLOOM exp: {testHeader.Bloom}, actual: {headBlock.Receipts.Last().Bloom}");
             }
 
-            if (testHeader.StateRoot != _stateProviders[test.Network].StateRoot)
+            if (testHeader.StateRoot != _stateProvider.StateRoot)
             {
-                differences.Add($"STATE ROOT exp: {testHeader.StateRoot}, actual: {_stateProviders[test.Network].StateRoot}");
+                differences.Add($"STATE ROOT exp: {testHeader.StateRoot}, actual: {_stateProvider.StateRoot}");
             }
 
             if (testHeader.TransactionsRoot != headBlock.Header.TransactionsRoot)
@@ -575,8 +581,8 @@ namespace Ethereum.Test.Base
         public class BlockchainTestJson
         {
             public string Network { get; set; }
-            public EthereumNetwork EthereumNetwork { get; set; }
-            public EthereumNetwork? EthereumNetworkAfterTransition { get; set; }
+            public IReleaseSpec EthereumNetwork { get; set; }
+            public IReleaseSpec EthereumNetworkAfterTransition { get; set; }
             public int TransitionBlockNumber { get; set; }
             public string LastBlockHash { get; set; }
             public string GenesisRlp { get; set; }
@@ -591,9 +597,9 @@ namespace Ethereum.Test.Base
         public class BlockchainTest
         {
             public string Name { get; set; }
-            public EthereumNetwork Network { get; set; }
-            public EthereumNetwork? NetworkAfterTransition { get; set; }
-            public int TransitionBlockNumber { get; set; }
+            public IReleaseSpec Network { get; set; }
+            public IReleaseSpec NetworkAfterTransition { get; set; }
+            public BigInteger TransitionBlockNumber { get; set; }
             public Keccak LastBlockHash { get; set; }
             public Rlp GenesisRlp { get; set; }
 

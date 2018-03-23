@@ -18,6 +18,7 @@
 using System.Collections.Generic;
 using System.Numerics;
 using Nethermind.Core;
+using Nethermind.Core.Releases;
 
 namespace Nethermind.Blockchain
 {

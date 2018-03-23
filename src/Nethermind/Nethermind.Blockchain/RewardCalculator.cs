@@ -19,23 +19,23 @@ using System.Collections.Generic;
 using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Potocol;
+using Nethermind.Core.Releases;
 
 namespace Nethermind.Blockchain
 {
     public class RewardCalculator : IRewardCalculator
     {
-        private readonly IEthereumRelease _ethereumRelease;
+        private readonly IReleaseSpec _releaseSpec;
 
-        public RewardCalculator(IEthereumRelease ethereumRelease)
+        public RewardCalculator(IReleaseSpec releaseSpec)
         {
-            _ethereumRelease = ethereumRelease;
+            _releaseSpec = releaseSpec;
         }
-       
+        
         public Dictionary<Address, BigInteger> CalculateRewards(Block block)
         {
             BigInteger blockReward = 5.Ether();
-            if (_ethereumRelease.IsEip649Enabled)
+            if (_releaseSpec.IsEip649Enabled)
             {
                 blockReward = 3.Ether();
             }

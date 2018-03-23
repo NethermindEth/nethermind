@@ -19,7 +19,7 @@
 using System.Globalization;
 using System.Numerics;
 using Nethermind.Core.Encoding;
-using Nethermind.Core.Potocol;
+using Nethermind.Core.Releases;
 
 namespace Nethermind.Core.Crypto
 {
@@ -33,28 +33,30 @@ namespace Nethermind.Core.Crypto
         public static readonly BigInteger LowSTransform = BigInteger.Parse("00FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141", NumberStyles.HexNumber);
 
         private readonly int _chainIdValue;
-        private readonly IEthereumRelease _ethereumRelease;
+        private readonly IReleaseSpec _releaseSpec;
 
-        public EthereumSigner(IEthereumRelease ethereumRelease, int chainIdValue)
+        public EthereumSigner(IReleaseSpec releaseSpec, int chainIdValue)
         {
-            _ethereumRelease = ethereumRelease;
+            _releaseSpec = releaseSpec;
             _chainIdValue = chainIdValue;
         }
 
-        public EthereumSigner(IEthereumRelease ethereumRelease, ChainId chainId)
-            : this(ethereumRelease, (int)chainId)
+        public EthereumSigner(IReleaseSpec releaseSpec, ChainId chainId)
+            : this(releaseSpec, (int)chainId)
         {
         }
 
         public void Sign(PrivateKey privateKey, Transaction transaction)
         {
-            Keccak hash = Keccak.Compute(Rlp.Encode(transaction, true, _ethereumRelease.IsEip155Enabled, _chainIdValue));
+            bool isEip155Enabled = _releaseSpec.IsEip155Enabled;
+            Keccak hash = Keccak.Compute(Rlp.Encode(transaction, true, isEip155Enabled, _chainIdValue));
             transaction.Signature = Sign(privateKey, hash);
         }
 
         public bool Verify(Address sender, Transaction transaction)
         {
-            Keccak hash = Keccak.Compute(Rlp.Encode(transaction, true, _ethereumRelease.IsEip155Enabled, _chainIdValue));
+            bool isEip155Enabled = _releaseSpec.IsEip155Enabled;
+            Keccak hash = Keccak.Compute(Rlp.Encode(transaction, true, isEip155Enabled, _chainIdValue));
             Address recovered = RecoverAddress(transaction.Signature, hash);
             return recovered.Equals(sender);
         }

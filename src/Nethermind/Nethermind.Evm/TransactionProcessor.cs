@@ -22,29 +22,30 @@ using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
-using Nethermind.Core.Potocol;
+using Nethermind.Core.Releases;
 using Nethermind.Store;
 
 namespace Nethermind.Evm
 {
     public class TransactionProcessor : ITransactionProcessor
     {
-        private static readonly IntrinsicGasCalculator IntrinsicGasCalculator = new IntrinsicGasCalculator();
+        private readonly IReleaseSpec _releaseSpec;
+        private readonly IntrinsicGasCalculator _intrinsicGasCalculator;
         private readonly ILogger _logger;
-        private readonly IEthereumRelease _ethereumRelease;
         private readonly IStateProvider _stateProvider;
         private readonly IStorageProvider _storageProvider;
         private readonly IVirtualMachine _virtualMachine;
         private readonly IEthereumSigner _signer;
 
-        public TransactionProcessor(IEthereumRelease ethereumRelease, IStateProvider stateProvider, IStorageProvider storageProvider, IVirtualMachine virtualMachine, IEthereumSigner signer, ILogger logger)
+        public TransactionProcessor(IReleaseSpec releaseSpec, IStateProvider stateProvider, IStorageProvider storageProvider, IVirtualMachine virtualMachine, IEthereumSigner signer, ILogger logger)
         {
+            _releaseSpec = releaseSpec;
             _virtualMachine = virtualMachine;
             _signer = signer;
             _stateProvider = stateProvider;
             _storageProvider = storageProvider;
-            _ethereumRelease = ethereumRelease;
             _logger = logger;
+            _intrinsicGasCalculator = new IntrinsicGasCalculator(_releaseSpec);
         }
 
         private TransactionReceipt GetNullReceipt(BlockHeader block, long gasUsed)
@@ -87,7 +88,7 @@ namespace Nethermind.Evm
                 return GetNullReceipt(block, 0L);
             }
 
-            long intrinsicGas = IntrinsicGasCalculator.Calculate(_ethereumRelease, transaction);
+            long intrinsicGas = _intrinsicGasCalculator.Calculate(transaction);
             _logger?.Log("INTRINSIC GAS: " + intrinsicGas);
 
             if (gasLimit < intrinsicGas)
@@ -163,7 +164,7 @@ namespace Nethermind.Evm
                 }
                 else
                 {
-                    bool isPrecompile = recipient.IsPrecompiled(_ethereumRelease);
+                    bool isPrecompile = recipient.IsPrecompiled(_releaseSpec);
 
                     ExecutionEnvironment env = new ExecutionEnvironment();
                     env.Value = value;
@@ -201,12 +202,12 @@ namespace Nethermind.Evm
                         if (transaction.IsContractCreation)
                         {
                             long codeDepositGasCost = output.Length * GasCostOf.CodeDeposit;
-                            if (_ethereumRelease.IsEip170Enabled && output.Length > 0x6000)
+                            if (_releaseSpec.IsEip170Enabled && output.Length > 0x6000)
                             {
                                 codeDepositGasCost = long.MaxValue;
                             }
 
-                            if (unspentGas < codeDepositGasCost && _ethereumRelease.IsEip2Enabled)
+                            if (unspentGas < codeDepositGasCost && _releaseSpec.IsEip2Enabled)
                             {
                                 throw new OutOfGasException();
                             }

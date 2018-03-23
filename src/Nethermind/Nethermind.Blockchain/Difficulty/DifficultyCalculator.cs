@@ -17,17 +17,17 @@
  */
 using System.Numerics;
 using Nethermind.Core;
-using Nethermind.Core.Potocol;
+using Nethermind.Core.Releases;
 
 namespace Nethermind.Blockchain.Difficulty
 {
-    public class ProtocolBasedDifficultyCalculator : IDifficultyCalculator
+    public class DifficultyCalculator : IDifficultyCalculator
     {
-        private readonly IEthereumRelease _ethereumRelease;
+        private readonly IReleaseSpec _releaseSpec;
 
-        public ProtocolBasedDifficultyCalculator(IEthereumRelease ethereumRelease, long genesisBlockDiffculty = OfGenesisBlock)
+        public DifficultyCalculator(IReleaseSpec releaseSpec, long genesisBlockDiffculty = OfGenesisBlock)
         {
-            _ethereumRelease = ethereumRelease;
+            _releaseSpec = releaseSpec;
         }
 
         private const long OfGenesisBlock = 131_072; // Olympic?
@@ -76,17 +76,17 @@ namespace Nethermind.Blockchain.Difficulty
             BigInteger difference = parentTimestamp - currentTimestamp;
 #endif
             
-            if (_ethereumRelease.IsEip100Enabled)
+            if (_releaseSpec.IsEip100Enabled)
             {
                 return BigInteger.Max((parentHasUncles ? 2 : 1) - BigInteger.Divide(currentTimestamp - parentTimestamp, 9), -99);
             }
             
-            if(_ethereumRelease.IsEip2Enabled)
+            if(_releaseSpec.IsEip2Enabled)
             {
                 return BigInteger.Max(1 - BigInteger.Divide(currentTimestamp - parentTimestamp, 10), -99);    
             }
             
-            if (_ethereumRelease.IsTimeAdjustmentPostOlympic)
+            if (_releaseSpec.IsTimeAdjustmentPostOlympic)
             {
                 return currentTimestamp < parentTimestamp + 13 ? 1 : -1;                
             }
@@ -96,7 +96,7 @@ namespace Nethermind.Blockchain.Difficulty
 
         private BigInteger TimeBomb(BigInteger blockNumber)
         {
-            if (_ethereumRelease.IsEip649Enabled)
+            if (_releaseSpec.IsEip649Enabled)
             {
                 blockNumber = blockNumber - 3000000;
             }

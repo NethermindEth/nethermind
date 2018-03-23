@@ -25,7 +25,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Potocol;
+using Nethermind.Core.Releases;
 using Nethermind.Evm;
 using Nethermind.Store;
 
@@ -37,6 +37,7 @@ namespace Nethermind.Blockchain
         private readonly IDbProvider _dbProvider;
         private readonly IStateProvider _stateProvider;
         private readonly IStorageProvider _storageProvider;
+        private readonly ISpecProvider _specProvider;
         private readonly ILogger _logger;
         private readonly ITransactionStore _transactionStore;
 
@@ -45,7 +46,7 @@ namespace Nethermind.Blockchain
         private readonly IRewardCalculator _rewardCalculator;
 
         public BlockProcessor(
-            IEthereumRelease ethereumRelease,
+            ISpecProvider specProvider,
             IBlockStore blockStore,
             IBlockValidator blockValidator,
             IDifficultyCalculator difficultyCalculator,
@@ -55,8 +56,8 @@ namespace Nethermind.Blockchain
             IStateProvider stateProvider,
             IStorageProvider storageProvider, ITransactionStore transactionStore, ILogger logger = null)
         {
+            _specProvider = specProvider;
             _logger = logger;
-            _ethereumRelease = ethereumRelease;
             _blockStore = blockStore;
             _blockValidator = blockValidator;
             _stateProvider = stateProvider;
@@ -68,7 +69,6 @@ namespace Nethermind.Blockchain
             _dbProvider = dbProvider;
         }
 
-        private readonly IEthereumRelease _ethereumRelease;
         private readonly IBlockStore _blockStore;
         private readonly IBlockValidator _blockValidator;
 
@@ -94,8 +94,8 @@ namespace Nethermind.Blockchain
             PatriciaTree receiptTree = receipts.Count > 0 ? new PatriciaTree() : null;
             for (int i = 0; i < receipts.Count; i++)
             {
-                Rlp receiptRlp = Rlp.Encode(receipts[i], _ethereumRelease.IsEip658Enabled);   
-                receiptTree.Set(Rlp.Encode(i).Bytes, receiptRlp);
+                Rlp receiptRlp = Rlp.Encode(receipts[i], _specProvider.GetSpec(block.Header.Number).IsEip658Enabled);   
+                receiptTree?.Set(Rlp.Encode(i).Bytes, receiptRlp);
             }
 
             block.Receipts = receipts;

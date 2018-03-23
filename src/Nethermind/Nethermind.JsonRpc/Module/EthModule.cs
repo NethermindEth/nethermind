@@ -26,7 +26,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Model;
-using Nethermind.Core.Potocol;
+using Nethermind.Core.Releases;
 using Nethermind.Evm;
 using Nethermind.JsonRpc.DataModel;
 using Nethermind.KeyStore;
@@ -47,9 +47,9 @@ namespace Nethermind.JsonRpc.Module
         private readonly IStateProvider _stateProvider;
         private readonly IKeyStore _keyStore;
         private readonly IJsonRpcModelMapper _modelMapper;
-        private readonly IEthereumRelease _ethereumRelease;
+        private readonly IReleaseSpec _releaseSpec;
 
-        public EthModule(ILogger logger, IJsonSerializer jsonSerializer, IBlockchainProcessor blockchainProcessor, IStateProvider stateProvider, IKeyStore keyStore, IConfigurationProvider configurationProvider, IBlockStore blockStore, IDb db, IJsonRpcModelMapper modelMapper, IEthereumRelease ethereumRelease, ITransactionStore transactionStore) : base(logger, configurationProvider)
+        public EthModule(ILogger logger, IJsonSerializer jsonSerializer, IBlockchainProcessor blockchainProcessor, IStateProvider stateProvider, IKeyStore keyStore, IConfigurationProvider configurationProvider, IBlockStore blockStore, IDb db, IJsonRpcModelMapper modelMapper, IReleaseSpec releaseSpec, ITransactionStore transactionStore) : base(logger, configurationProvider)
         {
             _jsonSerializer = jsonSerializer;
             _blockchainProcessor = blockchainProcessor;
@@ -58,7 +58,7 @@ namespace Nethermind.JsonRpc.Module
             _blockStore = blockStore;
             _db = db;
             _modelMapper = modelMapper;
-            _ethereumRelease = ethereumRelease;
+            _releaseSpec = releaseSpec;
             _transactionStore = transactionStore;
         }
 
@@ -248,7 +248,7 @@ namespace Nethermind.JsonRpc.Module
             var messageText = ConfigurationProvider.MessageEncoding.GetString(message.Value);
             var signatureText = string.Format(ConfigurationProvider.SignatureTemplate, messageText.Length, messageText);
             //TODO how to select proper chainId
-            var signer = new EthereumSigner(_ethereumRelease, ChainId.DefaultGethPrivateChain);
+            var signer = new EthereumSigner(_releaseSpec, ChainId.DefaultGethPrivateChain);
             var signature = signer.Sign(privateKey.Item1, Keccak.Compute(signatureText));
             Logger.Debug($"eth_sign request {address.ToJson()}, {message.ToJson()}, result: {signature}");
             return ResultWrapper<Data>.Success(new Data(signature.Bytes));

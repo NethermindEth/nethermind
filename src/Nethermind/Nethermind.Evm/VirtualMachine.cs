@@ -25,7 +25,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Potocol;
+using Nethermind.Core.Releases;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Store;
 
@@ -49,18 +49,18 @@ namespace Nethermind.Evm
         private static BitArray _bits2 = new BitArray(256);
         private readonly IBlockhashProvider _blockhashProvider;
         private readonly ILogger _logger;
-        private readonly IEthereumRelease _ethereumRelease;
         private readonly IStateProvider _stateProvider;
         private readonly IStorageProvider _storageProvider;
         private Dictionary<BigInteger, IPrecompiledContract> _precompiledContracts;
         private byte[] _returnDataBuffer = EmptyBytes;
         private readonly Stack<EvmState> _stateStack = new Stack<EvmState>();
-        private Address _parityTouchBugAccount = null;
-
-        public VirtualMachine(IEthereumRelease ethereumRelease, IStateProvider stateProvider, IStorageProvider storageProvider, IBlockhashProvider blockhashProvider, ILogger logger)
+        private Address _parityTouchBugAccount;
+        private IReleaseSpec _releaseSpec;
+        
+        public VirtualMachine(IReleaseSpec releaseSpec, IStateProvider stateProvider, IStorageProvider storageProvider, IBlockhashProvider blockhashProvider, ILogger logger)
         {
             _logger = logger;
-            _ethereumRelease = ethereumRelease;
+            _releaseSpec = releaseSpec;
             _stateProvider = stateProvider;
             _storageProvider = storageProvider;
             _blockhashProvider = blockhashProvider;
@@ -144,7 +144,7 @@ namespace Nethermind.Evm
                         if (previousState.ExecutionType == ExecutionType.Create || previousState.ExecutionType == ExecutionType.DirectCreate)
                         {
                             long codeDepositGasCost = GasCostOf.CodeDeposit * callResult.Output.Length;
-                            if (_ethereumRelease.IsEip2Enabled || currentState.GasAvailable > codeDepositGasCost)
+                            if (_releaseSpec.IsEip2Enabled || currentState.GasAvailable > codeDepositGasCost)
                             {
                                 Keccak codeHash = _stateProvider.UpdateCode(callResult.Output);
                                 _stateProvider.UpdateCodeHash(callCodeOwner, codeHash);
@@ -217,18 +217,18 @@ namespace Nethermind.Evm
                 [IdentityPrecompiledContract.Instance.Address] = IdentityPrecompiledContract.Instance
             };
 
-            if (_ethereumRelease.IsEip196Enabled)
+            if (_releaseSpec.IsEip196Enabled)
             {
                 _precompiledContracts[Bn128AddPrecompiledContract.Instance.Address] = Bn128AddPrecompiledContract.Instance;
                 _precompiledContracts[Bn128MulPrecompiledContract.Instance.Address] = Bn128MulPrecompiledContract.Instance;
             }
 
-            if (_ethereumRelease.IsEip197Enabled)
+            if (_releaseSpec.IsEip197Enabled)
             {
                 _precompiledContracts[Bn128PairingPrecompiledContract.Instance.Address] = Bn128PairingPrecompiledContract.Instance;
             }
 
-            if (_ethereumRelease.IsEip198Enabled)
+            if (_releaseSpec.IsEip198Enabled)
             {
                 _precompiledContracts[ModExpPrecompiledContract.Instance.Address] = ModExpPrecompiledContract.Instance;
             }
@@ -296,7 +296,7 @@ namespace Nethermind.Evm
                 // and empty accounts will cease to be a source of concern in general
                 // in about one week once the state clearing process finishes.
 
-                if (!wasCreated && transferValue.IsZero && _ethereumRelease.IsEip158Enabled)
+                if (!wasCreated && transferValue.IsZero && _releaseSpec.IsEip158Enabled)
                 {
                     _parityTouchBugAccount = state.Env.ExecutingAccount;
                 }
@@ -348,7 +348,7 @@ namespace Nethermind.Evm
                     _stateProvider.UpdateBalance(env.ExecutingAccount, env.TransferValue);
                 }
 
-                if ((evmState.ExecutionType == ExecutionType.Create || evmState.ExecutionType == ExecutionType.DirectCreate) && _ethereumRelease.IsEip158Enabled)
+                if ((evmState.ExecutionType == ExecutionType.Create || evmState.ExecutionType == ExecutionType.DirectCreate) && _releaseSpec.IsEip158Enabled)
                 {
                     _stateProvider.IncrementNonce(env.ExecutingAccount);
                 }
@@ -595,7 +595,7 @@ namespace Nethermind.Evm
                 while (index < code.Length)
                 {
                     Instruction instruction = (Instruction)code[index];
-                    jumpDestinations[index] = !_ethereumRelease.AreJumpDestinationsUsed || instruction == Instruction.JUMPDEST;
+                    jumpDestinations[index] = !_releaseSpec.AreJumpDestinationsUsed || instruction == Instruction.JUMPDEST;
                     if (instruction >= Instruction.PUSH1 && instruction <= Instruction.PUSH32)
                     {
                         index += instruction - Instruction.PUSH1 + 2;
@@ -766,7 +766,7 @@ namespace Nethermind.Evm
                                 expSize++;
                             }
 
-                            UpdateGas((_ethereumRelease.IsEip160Enabled ? GasCostOf.ExpByteEip160 : GasCostOf.ExpByte) * (1L + expSize), ref gasAvailable);
+                            UpdateGas((_releaseSpec.IsEip160Enabled ? GasCostOf.ExpByteEip160 : GasCostOf.ExpByte) * (1L + expSize), ref gasAvailable);
                         }
 
                         if (baseInt == BigInteger.Zero)
@@ -932,7 +932,7 @@ namespace Nethermind.Evm
                     }
                     case Instruction.BALANCE:
                     {
-                        UpdateGas(_ethereumRelease.IsEip150Enabled ? GasCostOf.BalanceEip150 : GasCostOf.Balance, ref gasAvailable);
+                        UpdateGas(_releaseSpec.IsEip150Enabled ? GasCostOf.BalanceEip150 : GasCostOf.Balance, ref gasAvailable);
                         Address address = PopAddress();
                         BigInteger balance = _stateProvider.GetBalance(address);
                         PushInt(balance);
@@ -1007,7 +1007,7 @@ namespace Nethermind.Evm
                     }
                     case Instruction.EXTCODESIZE:
                     {
-                        UpdateGas(_ethereumRelease.IsEip150Enabled ? GasCostOf.ExtCodeSizeEip150 : GasCostOf.ExtCodeSize, ref gasAvailable);
+                        UpdateGas(_releaseSpec.IsEip150Enabled ? GasCostOf.ExtCodeSizeEip150 : GasCostOf.ExtCodeSize, ref gasAvailable);
                         Address address = PopAddress();
                         byte[] accountCode = _stateProvider.GetCode(address);
                         PushInt(accountCode?.Length ?? BigInteger.Zero);
@@ -1019,7 +1019,7 @@ namespace Nethermind.Evm
                         BigInteger dest = PopUInt();
                         BigInteger src = PopUInt();
                         BigInteger length = PopUInt();
-                        UpdateGas((_ethereumRelease.IsEip150Enabled ? GasCostOf.ExtCodeEip150 : GasCostOf.ExtCode) + GasCostOf.Memory * EvmMemory.Div32Ceiling(length),
+                        UpdateGas((_releaseSpec.IsEip150Enabled ? GasCostOf.ExtCodeEip150 : GasCostOf.ExtCode) + GasCostOf.Memory * EvmMemory.Div32Ceiling(length),
                             ref gasAvailable);
                         UpdateMemoryCost(dest, length);
                         byte[] externalCode = _stateProvider.GetCode(address);
@@ -1029,7 +1029,7 @@ namespace Nethermind.Evm
                     }
                     case Instruction.RETURNDATASIZE:
                     {
-                        if (!_ethereumRelease.IsEip211Enabled)
+                        if (!_releaseSpec.IsEip211Enabled)
                         {
                             throw new InvalidInstructionException((byte)instruction);
                         }
@@ -1040,7 +1040,7 @@ namespace Nethermind.Evm
                     }
                     case Instruction.RETURNDATACOPY:
                     {
-                        if (!_ethereumRelease.IsEip211Enabled)
+                        if (!_releaseSpec.IsEip211Enabled)
                         {
                             throw new InvalidInstructionException((byte)instruction);
                         }
@@ -1132,7 +1132,7 @@ namespace Nethermind.Evm
                     }
                     case Instruction.SLOAD:
                     {
-                        UpdateGas(_ethereumRelease.IsEip150Enabled ? GasCostOf.SLoadEip150 : GasCostOf.SLoad, ref gasAvailable);
+                        UpdateGas(_releaseSpec.IsEip150Enabled ? GasCostOf.SLoadEip150 : GasCostOf.SLoad, ref gasAvailable);
                         BigInteger storageIndex = PopUInt();
                         byte[] value = _storageProvider.Get(env.ExecutingAccount, storageIndex);
                         PushBytes(value);
@@ -1414,7 +1414,7 @@ namespace Nethermind.Evm
 
                         _stateProvider.IncrementNonce(env.ExecutingAccount);
 
-                        long callGas = _ethereumRelease.IsEip150Enabled ? gasAvailable - gasAvailable / 64L : gasAvailable;
+                        long callGas = _releaseSpec.IsEip150Enabled ? gasAvailable - gasAvailable / 64L : gasAvailable;
                         UpdateGas(callGas, ref gasAvailable);
 
                         bool accountExists = _stateProvider.AccountExists(contractAddress);
@@ -1478,8 +1478,8 @@ namespace Nethermind.Evm
                     case Instruction.DELEGATECALL:
                     case Instruction.STATICCALL:
                     {
-                        if (instruction == Instruction.DELEGATECALL && !_ethereumRelease.IsEip7Enabled ||
-                            instruction == Instruction.STATICCALL && !_ethereumRelease.IsEip214Enabled)
+                        if (instruction == Instruction.DELEGATECALL && !_releaseSpec.IsEip7Enabled ||
+                            instruction == Instruction.STATICCALL && !_releaseSpec.IsEip214Enabled)
                         {
                             throw new InvalidInstructionException((byte)instruction);
                         }
@@ -1529,22 +1529,22 @@ namespace Nethermind.Evm
                             gasExtra += GasCostOf.CallValue;
                         }
 
-                        if (!_ethereumRelease.IsEip158Enabled && !_stateProvider.AccountExists(target))
+                        if (!_releaseSpec.IsEip158Enabled && !_stateProvider.AccountExists(target))
                         {
                             gasExtra += GasCostOf.NewAccount;
                         }
 
-                        if (_ethereumRelease.IsEip158Enabled && transferValue != 0 && _stateProvider.IsDeadAccount(target))
+                        if (_releaseSpec.IsEip158Enabled && transferValue != 0 && _stateProvider.IsDeadAccount(target))
                         {
                             gasExtra += GasCostOf.NewAccount;
                         }
 
-                        if (!_ethereumRelease.IsEip150Enabled && gasLimit > gasAvailable)
+                        if (!_releaseSpec.IsEip150Enabled && gasLimit > gasAvailable)
                         {
                             throw new OutOfGasException(); // important to avoid casting
                         }
 
-                        UpdateGas(_ethereumRelease.IsEip150Enabled ? GasCostOf.CallOrCallCodeEip150 : GasCostOf.CallOrCallCode, ref gasAvailable);
+                        UpdateGas(_releaseSpec.IsEip150Enabled ? GasCostOf.CallOrCallCodeEip150 : GasCostOf.CallOrCallCode, ref gasAvailable);
                         UpdateMemoryCost(dataOffset, dataLength);
                         byte[] callData = evmState.Memory.Load(dataOffset, dataLength);
                         UpdateMemoryCost(outputOffset, outputLength);
@@ -1582,7 +1582,7 @@ namespace Nethermind.Evm
                         int storageSnapshot = _storageProvider.TakeSnapshot();
                         _stateProvider.UpdateBalance(sender, -transferValue);
 
-                        if (_ethereumRelease.IsEip150Enabled)
+                        if (_releaseSpec.IsEip150Enabled)
                         {
                             gasLimit = BigInteger.Min(gasAvailable - gasAvailable / 64L, gasLimit);
                         }
@@ -1622,7 +1622,7 @@ namespace Nethermind.Evm
                     }
                     case Instruction.REVERT:
                     {
-                        if (!_ethereumRelease.IsEip140Enabled)
+                        if (!_releaseSpec.IsEip140Enabled)
                         {
                             throw new InvalidInstructionException((byte)instruction);
                         }
@@ -1651,7 +1651,7 @@ namespace Nethermind.Evm
                             throw new StaticCallViolationException();
                         }
 
-                        UpdateGas(_ethereumRelease.IsEip150Enabled ? GasCostOf.SelfDestructEip150 : GasCostOf.SelfDestruct, ref gasAvailable);
+                        UpdateGas(_releaseSpec.IsEip150Enabled ? GasCostOf.SelfDestructEip150 : GasCostOf.SelfDestruct, ref gasAvailable);
                         Address inheritor = PopAddress();
                         if (!evmState.DestroyList.Contains(env.ExecutingAccount))
                         {
@@ -1660,12 +1660,12 @@ namespace Nethermind.Evm
                             BigInteger ownerBalance = _stateProvider.GetBalance(env.ExecutingAccount);
                             bool inheritorAccountExists = _stateProvider.AccountExists(inheritor);
 
-                            if (!_ethereumRelease.IsEip158Enabled && !inheritorAccountExists && _ethereumRelease.IsEip150Enabled)
+                            if (!_releaseSpec.IsEip158Enabled && !inheritorAccountExists && _releaseSpec.IsEip150Enabled)
                             {
                                 UpdateGas(GasCostOf.NewAccount, ref gasAvailable);
                             }
 
-                            if (_ethereumRelease.IsEip158Enabled && ownerBalance != 0 && _stateProvider.IsDeadAccount(inheritor))
+                            if (_releaseSpec.IsEip158Enabled && ownerBalance != 0 && _stateProvider.IsDeadAccount(inheritor))
                             {
                                 UpdateGas(GasCostOf.NewAccount, ref gasAvailable);
                             }

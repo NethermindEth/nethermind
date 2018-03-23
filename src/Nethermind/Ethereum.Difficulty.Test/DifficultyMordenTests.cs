@@ -18,6 +18,7 @@
 
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Releases;
 using NUnit.Framework;
 
 namespace Ethereum.Difficulty.Test
@@ -33,7 +34,7 @@ namespace Ethereum.Difficulty.Test
         [TestCaseSource(nameof(LoadMordenTests))]
         public void Test(DifficultyTests test)
         {
-            RunTest(test, EthereumNetwork.Morden);
+            RunTest(test, new MordenSpecProvider());
         }
     }
 }

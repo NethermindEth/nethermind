@@ -16,23 +16,22 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 using Nethermind.Core;
-using Nethermind.Core.Potocol;
+using Nethermind.Core.Releases;
 using Nethermind.Evm;
 
 namespace Nethermind.Blockchain.Validators
 {
     public class TransactionValidator : ITransactionValidator
     {
-        private readonly IEthereumRelease _spec;
         private readonly ISignatureValidator _signatureValidator;
 
         // TODO: this will be calculated twice, refactor
-        private readonly IntrinsicGasCalculator _intrinsicGasCalculator = new IntrinsicGasCalculator();
+        private readonly IntrinsicGasCalculator _intrinsicGasCalculator;
 
-        public TransactionValidator(IEthereumRelease spec, ISignatureValidator signatureValidator)
+        public TransactionValidator(IReleaseSpec releaseSpec, ISignatureValidator signatureValidator)
         {
-            _spec = spec;
             _signatureValidator = signatureValidator;
+            _intrinsicGasCalculator = new IntrinsicGasCalculator(releaseSpec);
         }
 
         public bool IsWellFormed(Transaction transaction, bool ignoreSignature = false)
@@ -40,7 +39,7 @@ namespace Nethermind.Blockchain.Validators
             return Validator.IsInP256(transaction.Nonce) &&
                    Validator.IsInP256(transaction.GasPrice) &&
                    Validator.IsInP256(transaction.GasLimit) &&
-                   transaction.GasLimit >= _intrinsicGasCalculator.Calculate(_spec, transaction) &&
+                   transaction.GasLimit >= _intrinsicGasCalculator.Calculate(transaction) &&
                    (transaction.To != null || transaction.Init != null) && // TODO: check tests where this is the case and still state changes (is the gas substracted?)
                    Validator.IsInP256(transaction.Value) &&
                    // both null: transfer; data not null: message call; init not null: account creation
