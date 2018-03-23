@@ -16,7 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 using Nethermind.Core;
-using Nethermind.Core.Releases;
+using Nethermind.Core.Specs;
 using Nethermind.Evm;
 
 namespace Nethermind.Blockchain.Validators

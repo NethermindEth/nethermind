@@ -22,7 +22,7 @@ using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
-using Nethermind.Core.Releases;
+using Nethermind.Core.Specs;
 using Nethermind.Store;
 
 namespace Nethermind.Evm

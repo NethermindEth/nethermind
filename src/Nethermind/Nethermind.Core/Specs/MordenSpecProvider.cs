@@ -16,25 +16,30 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Collections.Generic;
-using Nethermind.Core;
-using Nethermind.Core.Specs;
-using NUnit.Framework;
+using System.Numerics;
 
-namespace Ethereum.Difficulty.Test
+namespace Nethermind.Core.Specs
 {
-    [Parallelizable(ParallelScope.None)]
-    public class DifficultyHomesteadTests : TestsBase
-    {     
-        public static IEnumerable<DifficultyTests> LoadHomesteadTests()
+    public class MordenSpecProvider : ISpecProvider
+    {
+        public IReleaseSpec GetSpec(BigInteger blockNumber)
         {
-            return LoadHex("difficultyHomestead.json");
-        }
+            if (blockNumber < 494000)
+            {
+                return Frontier.Instance;
+            }
 
-        [TestCaseSource(nameof(LoadHomesteadTests))]
-        public void Test(DifficultyTests test)
-        {
-            RunTest(test, new SingleReleaseSpecProvider(Homestead.Instance));
+            if (blockNumber < 1885000)
+            {
+                return Homestead.Instance;
+            }
+            // cannot find info on TangerineWhistle fork on Morden
+//                    else if (blockNumber < 1885000)
+//                    {
+//                        return TangerineWhistle.Instance;
+//                    }
+
+            return SpuriousDragon.Instance;
         }
     }
 }

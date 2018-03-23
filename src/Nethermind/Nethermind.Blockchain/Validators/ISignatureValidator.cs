@@ -17,7 +17,7 @@
  */
 
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Releases;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.Blockchain.Validators
 {

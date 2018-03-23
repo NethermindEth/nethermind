@@ -19,7 +19,7 @@
 using System.Globalization;
 using System.Numerics;
 using Nethermind.Core.Encoding;
-using Nethermind.Core.Releases;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.Core.Crypto
 {

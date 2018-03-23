@@ -4,7 +4,7 @@ using System.Diagnostics;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Releases;
+using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Store;
 

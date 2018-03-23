@@ -16,25 +16,31 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Collections.Generic;
-using Nethermind.Core;
-using Nethermind.Core.Specs;
-using NUnit.Framework;
+using System.Linq;
+using System.Numerics;
 
-namespace Ethereum.Difficulty.Test
+namespace Nethermind.Core.Specs
 {
-    [Parallelizable(ParallelScope.None)]
-    public class DifficultyHomesteadTests : TestsBase
-    {     
-        public static IEnumerable<DifficultyTests> LoadHomesteadTests()
+    public class CustomSpecProvider : ISpecProvider
+    {
+        private readonly (BigInteger BlockNumber, IReleaseSpec Release)[] _transitions;
+
+        public CustomSpecProvider(params (BigInteger BlockNumber, IReleaseSpec Release)[] transitions)
         {
-            return LoadHex("difficultyHomestead.json");
+            _transitions = transitions.OrderBy(r => r.BlockNumber).ToArray();
         }
 
-        [TestCaseSource(nameof(LoadHomesteadTests))]
-        public void Test(DifficultyTests test)
+        public IReleaseSpec GetSpec(BigInteger blockNumber)
         {
-            RunTest(test, new SingleReleaseSpecProvider(Homestead.Instance));
+            foreach ((BigInteger BlockNumber, IReleaseSpec Release) transition in _transitions)
+            {
+                if (transition.BlockNumber > blockNumber)
+                {
+                    return transition.Release;
+                }
+            }
+
+            return _transitions.Last().Release;
         }
     }
 }

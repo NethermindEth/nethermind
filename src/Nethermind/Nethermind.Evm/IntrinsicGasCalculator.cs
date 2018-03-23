@@ -17,7 +17,7 @@
  */
 
 using Nethermind.Core;
-using Nethermind.Core.Releases;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.Evm
 {

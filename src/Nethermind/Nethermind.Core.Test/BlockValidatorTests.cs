@@ -18,7 +18,7 @@
 
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Validators;
-using Nethermind.Core.Releases;
+using Nethermind.Core.Specs;
 using Nethermind.Mining;
 using NSubstitute;
 using NUnit.Framework;

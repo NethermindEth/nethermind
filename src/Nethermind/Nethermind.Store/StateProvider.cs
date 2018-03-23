@@ -24,7 +24,7 @@ using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
-using Nethermind.Core.Releases;
+using Nethermind.Core.Specs;
 
 [assembly:InternalsVisibleTo("Nethermind.Evm.Test")]
 

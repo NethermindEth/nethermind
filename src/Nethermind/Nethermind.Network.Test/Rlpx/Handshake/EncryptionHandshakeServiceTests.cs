@@ -19,7 +19,7 @@
 using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Releases;
+using Nethermind.Core.Specs;
 using Nethermind.Network.Crypto;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;

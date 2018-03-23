@@ -16,25 +16,20 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Collections.Generic;
-using Nethermind.Core;
-using Nethermind.Core.Specs;
-using NUnit.Framework;
+using System.Numerics;
 
-namespace Ethereum.Difficulty.Test
+namespace Nethermind.Core.Specs
 {
-    [Parallelizable(ParallelScope.None)]
-    public class DifficultyHomesteadTests : TestsBase
-    {     
-        public static IEnumerable<DifficultyTests> LoadHomesteadTests()
+    public class RopstenSpecProvider : ISpecProvider
+    {
+        public IReleaseSpec GetSpec(BigInteger blockNumber)
         {
-            return LoadHex("difficultyHomestead.json");
-        }
+            if (blockNumber < 1700000)
+            {
+                return SpuriousDragon.Instance;
+            }
 
-        [TestCaseSource(nameof(LoadHomesteadTests))]
-        public void Test(DifficultyTests test)
-        {
-            RunTest(test, new SingleReleaseSpecProvider(Homestead.Instance));
+            return Byzantium.Instance;
         }
     }
 }

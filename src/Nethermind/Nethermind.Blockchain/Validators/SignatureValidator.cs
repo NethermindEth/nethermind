@@ -20,7 +20,7 @@ using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Releases;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.Blockchain.Validators
 {
