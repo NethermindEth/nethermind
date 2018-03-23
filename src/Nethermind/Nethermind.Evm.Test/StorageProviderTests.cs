@@ -21,6 +21,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Potocol;
 using Nethermind.Store;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
@@ -31,7 +32,7 @@ namespace Nethermind.Evm.Test
         private readonly Address _address1 = new Address(Keccak.Compute("1"));
         private readonly Address _address2 = new Address(Keccak.Compute("2"));
 
-        private readonly IStateProvider _stateProvider = new StateProvider(new StateTree(new InMemoryDb()), Frontier.Instance, ShouldLog.State ? new ConsoleLogger() : null);
+        private readonly IStateProvider _stateProvider = new StateProvider(new StateTree(new InMemoryDb()), Frontier.Instance, ShouldLog.State ? new ConsoleLogger() : null, Substitute.For<IDb>());
 
         [SetUp]
         public void Setup()
@@ -69,7 +70,7 @@ namespace Nethermind.Evm.Test
         private StorageProvider BuildStorageProvider()
         {
             ILogger stateLogger = ShouldLog.State ? new ConsoleLogger() : null;
-            StorageProvider provider = new StorageProvider(new MultiDb(stateLogger), _stateProvider, stateLogger);
+            StorageProvider provider = new StorageProvider(new DbProvider(stateLogger), _stateProvider, stateLogger);
             return provider;
         }
 

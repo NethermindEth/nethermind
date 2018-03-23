@@ -43,7 +43,7 @@ namespace Ethereum.Test.Base
     {
         private readonly IProtocolSpecificationProvider _protocolSpecificationProvider = new ProtocolSpecificationProvider();
         private IBlockhashProvider _blockhashProvider;
-        private IMultiDb _multiDb;
+        private IDbProvider _dbProvider;
         private IBlockStore _chain;
         private Dictionary<EthereumNetwork, IVirtualMachine> _virtualMachines;
         private Dictionary<EthereumNetwork, StateProvider> _stateProviders; // TODO: support transitions of protocol
@@ -56,7 +56,9 @@ namespace Ethereum.Test.Base
         {
             _logger = logger;
             ILogger stateLogger = ShouldLog.State ? _logger : null;
-            _multiDb = new MultiDb(stateLogger);
+            _dbProvider = new DbProvider(stateLogger);
+            StateTree stateTree = new StateTree(_dbProvider.GetOrCreateStateDb());
+            
             _chain = new BlockStore();
 
             _blockhashProvider = new BlockhashProvider(_chain);
@@ -75,8 +77,8 @@ namespace Ethereum.Test.Base
                 IBlockValidator blockValidator = new BlockValidator(transactionValidator, headerValidator, ommersValidator, stateLogger);
 
                 _blockValidators[ethereumNetwork] = blockValidator;
-                _stateProviders[ethereumNetwork] = new StateProvider(new StateTree(_multiDb.CreateDb()), spec, stateLogger);
-                _storageProviders[ethereumNetwork] = new StorageProvider(_multiDb, _stateProviders[ethereumNetwork], stateLogger);
+                _stateProviders[ethereumNetwork] = new StateProvider(stateTree, spec, stateLogger, _dbProvider.GetOrCreateCodeDb());
+                _storageProviders[ethereumNetwork] = new StorageProvider(_dbProvider, _stateProviders[ethereumNetwork], stateLogger);
                 _virtualMachines[ethereumNetwork] = new VirtualMachine(
                     spec,
                     _stateProviders[ethereumNetwork],
@@ -133,7 +135,7 @@ namespace Ethereum.Test.Base
                     namedTest.Value.EthereumNetwork = Enum.Parse<EthereumNetwork>(networks[0]);
                     if (transitionInfo.Length > 1)
                     {
-                        namedTest.Value.TransitionBlock = int.Parse(transitionInfo[1]);
+                        namedTest.Value.TransitionBlockNumber = int.Parse(transitionInfo[1]);
                         namedTest.Value.EthereumNetworkAfterTransition = Enum.Parse<EthereumNetwork>(networks[1]);
                     }
 
@@ -184,6 +186,37 @@ namespace Ethereum.Test.Base
             }
         }
 
+        private IBlockchainProcessor BuildProcessor(EthereumNetwork network)
+        {
+            IEthereumRelease spec = _protocolSpecificationProvider.GetSpec(network, 0);
+            IEthereumSigner signer = new EthereumSigner(spec, ChainId.MainNet);
+            IBlockProcessor blockProcessor = new BlockProcessor(
+                spec,
+                _chain,
+                _blockValidators[network],
+                new ProtocolBasedDifficultyCalculator(spec),
+                new RewardCalculator(spec),
+                new TransactionProcessor(
+                    spec,
+                    _stateProviders[network],
+                    _storageProviders[network],
+                    _virtualMachines[network],
+                    signer,
+                    ShouldLog.Processing ? _logger : null),
+                _dbProvider,
+                _stateProviders[network],
+                _storageProviders[network],
+                new TransactionStore(),
+                ShouldLog.Processing ? _logger : null);
+
+            IBlockchainProcessor blockchainProcessor = new BlockchainProcessor(
+                blockProcessor,
+                _chain,
+                ShouldLog.Processing ? _logger : null);
+
+            return blockchainProcessor;
+        }
+
         protected void RunTest(BlockchainTest test, Stopwatch stopwatch = null)
         {
             LoggingTraceListener traceListener = new LoggingTraceListener(_logger);
@@ -193,41 +226,12 @@ namespace Ethereum.Test.Base
 
             InitializeTestState(test);
 
-            // TODO: transition...
-            _stateProviders[test.Network].EthereumRelease = _protocolSpecificationProvider.GetSpec(test.Network, 0);
-
-            IEthereumRelease spec = _protocolSpecificationProvider.GetSpec(test.Network, 1);
-            IEthereumSigner signer = new EthereumSigner(spec, ChainId.MainNet);
-            IBlockProcessor blockProcessor = new BlockProcessor(
-                spec,
-                _chain,
-                _blockValidators[test.Network],
-                new ProtocolBasedDifficultyCalculator(spec),
-                new RewardCalculator(spec),
-                new TransactionProcessor(
-                    spec,
-                    _stateProviders[test.Network],
-                    _storageProviders[test.Network],
-                    _virtualMachines[test.Network],
-                    signer,
-                    ShouldLog.Processing ? _logger : null),
-                _multiDb,
-                _stateProviders[test.Network],
-                _storageProviders[test.Network],
-                new TransactionStore(),
-                ShouldLog.Processing ? _logger : null);
-
-            IBlockchainProcessor blockchainProcessor = new BlockchainProcessor(
-                blockProcessor,
-                _chain,
-                ShouldLog.Processing ? _logger : null);
-
             Rlp[] blockRlps = test.Blocks.Select(h => Hex.ToBytes(h.Rlp)).Where(b => b != null).Select(b => new Rlp(b)).ToArray();
             List<Block> correctRlpsBlocks = new List<Block>();
             for (int i = 0; i < blockRlps.Length; i++)
             {
                 try
-                {   
+                {
                     Block suggestedBlock = Rlp.Decode<Block>(blockRlps[i]);
                     correctRlpsBlocks.Add(suggestedBlock);
                 }
@@ -242,17 +246,31 @@ namespace Ethereum.Test.Base
                 Assert.AreEqual(new Keccak(test.GenesisBlockHeader.Hash), test.LastBlockHash);
                 return;
             }
-            
+
+            IBlockchainProcessor blockchainProcessor = BuildProcessor(test.Network);
             blockchainProcessor.Initialize(Rlp.Decode<Block>(test.GenesisRlp));
-            
+
+            IBlockchainProcessor postTransitionBlockchainprocessor = null;
+            if (test.NetworkAfterTransition != null)
+            {
+                postTransitionBlockchainprocessor = BuildProcessor(test.NetworkAfterTransition.Value);
+            }
+
             // TODO: may need to add a better way of initializing genesis block since forge tests do not provide genesis RLP
-            
+
             for (int i = 0; i < correctRlpsBlocks.Count; i++)
             {
                 stopwatch?.Start();
                 try
                 {
-                    blockchainProcessor.Process(correctRlpsBlocks[i]);
+                    if (correctRlpsBlocks[i].Header.Number < test.TransitionBlockNumber)
+                    {
+                        blockchainProcessor.Process(correctRlpsBlocks[i]);
+                    }
+                    else
+                    {
+                        postTransitionBlockchainprocessor?.Process(correctRlpsBlocks[i]);
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -262,7 +280,8 @@ namespace Ethereum.Test.Base
                 stopwatch?.Stop();
             }
 
-            RunAssertions(test, blockchainProcessor.HeadBlock);
+            Block headBlock = postTransitionBlockchainprocessor == null ? blockchainProcessor.HeadBlock : postTransitionBlockchainprocessor.HeadBlock;
+            RunAssertions(test, headBlock);
         }
 
         private void InitializeTestState(BlockchainTest test)
@@ -444,6 +463,8 @@ namespace Ethereum.Test.Base
             BlockchainTest test = new BlockchainTest();
             test.Name = name;
             test.Network = testJson.EthereumNetwork;
+            test.NetworkAfterTransition = testJson.EthereumNetworkAfterTransition;
+            test.TransitionBlockNumber = testJson.TransitionBlockNumber;
             test.LastBlockHash = new Keccak(new Hex(testJson.LastBlockHash));
             test.GenesisRlp = testJson.GenesisRlp == null ? null : new Rlp(Hex.ToBytes(testJson.GenesisRlp));
             test.GenesisBlockHeader = testJson.GenesisBlockHeader;
@@ -555,8 +576,8 @@ namespace Ethereum.Test.Base
         {
             public string Network { get; set; }
             public EthereumNetwork EthereumNetwork { get; set; }
-            public EthereumNetwork EthereumNetworkAfterTransition { get; set; }
-            public int TransitionBlock { get; set; }
+            public EthereumNetwork? EthereumNetworkAfterTransition { get; set; }
+            public int TransitionBlockNumber { get; set; }
             public string LastBlockHash { get; set; }
             public string GenesisRlp { get; set; }
 
@@ -571,6 +592,8 @@ namespace Ethereum.Test.Base
         {
             public string Name { get; set; }
             public EthereumNetwork Network { get; set; }
+            public EthereumNetwork? NetworkAfterTransition { get; set; }
+            public int TransitionBlockNumber { get; set; }
             public Keccak LastBlockHash { get; set; }
             public Rlp GenesisRlp { get; set; }
 

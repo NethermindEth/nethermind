@@ -30,27 +30,29 @@ using Nethermind.Core.Potocol;
 
 namespace Nethermind.Store
 {
+    // TODO: separate CodeProvider out
     public class StateProvider : IStateProvider
     {
         private const int StartCapacity = 1024;
 
         private readonly Dictionary<Address, Stack<int>> _cache = new Dictionary<Address, Stack<int>>();
-        private readonly Dictionary<Keccak, byte[]> _code = new Dictionary<Keccak, byte[]>();
 
         private readonly HashSet<Address> _committedThisRound = new HashSet<Address>();
 
         private readonly List<Change> _keptInCache = new List<Change>();
         public IEthereumRelease EthereumRelease { get; set; }
         private readonly ILogger _logger;
+        private readonly IDb _codeDb;
 
         private int _capacity = StartCapacity;
         private Change[] _changes = new Change[StartCapacity];
         private int _currentPosition = -1;
 
-        public StateProvider(StateTree stateTree, IEthereumRelease ethereumRelease, ILogger logger)
+        public StateProvider(StateTree stateTree, IEthereumRelease ethereumRelease, ILogger logger, IDb codeDb)
         {
             EthereumRelease = ethereumRelease;
             _logger = logger;
+            _codeDb = codeDb;
             _state = stateTree;
         }
         
@@ -174,7 +176,7 @@ namespace Nethermind.Store
             }
 
             Keccak codeHash = Keccak.Compute(code);
-            _code[codeHash] = code;
+            _codeDb[codeHash] = code;
 
             return codeHash;
         }
@@ -186,7 +188,7 @@ namespace Nethermind.Store
                 return new byte[0];
             }
 
-            return _code[codeHash];
+            return _codeDb[codeHash];
         }
 
         public byte[] GetCode(Address address)

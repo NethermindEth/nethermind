@@ -1,34 +1,51 @@
-/*
- * Copyright (c) 2018 Demerzel Solutions Limited
- * This file is part of the Nethermind library.
- *
- * The Nethermind library is free software: you can redistribute it and/or modify
- * it under the terms of the GNU Lesser General Public License as published by
- * the Free Software Foundation, either version 3 of the License, or
- * (at your option) any later version.
- *
- * The Nethermind library is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU Lesser General Public License for more details.
- *
- * You should have received a copy of the GNU Lesser General Public License
- * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
- */
-
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using Nethermind.Core;
 
 namespace Nethermind.Store
 {
-    public class MultiDb : IMultiDb
+    public class DbProvider : IDbProvider
     {
-        private readonly List<IDb> _dbs = new List<IDb>();
+        private readonly IDb _stateDb = new InMemoryDb();
+        private readonly IDb _codeDb = new InMemoryDb();
+        private readonly Dictionary<Address, IDb> _storageDbs = new Dictionary<Address, IDb>();
+        private IEnumerable<IDb> AllDbs
+        {
+            get
+            {
+                yield return _stateDb;
+                yield return _codeDb;
+                foreach (IDb storageDb in _storageDbs.Values)
+                {
+                    yield return storageDb;
+                }
+            }
+        }
+        
+        public IDb GetOrCreateStateDb()
+        {
+            return _stateDb;
+        }
+
+        public IDb GetOrCreateStorageDb(Address address)
+        {
+            if (!_storageDbs.ContainsKey(address))
+            {
+                _storageDbs[address] = new InMemoryDb();
+            }
+
+            return _storageDbs[address];
+        }
+
+        public IDb GetOrCreateCodeDb()
+        {
+            return _codeDb;
+        }
+        
         private readonly ILogger _logger;
 
         private readonly Stack<Dictionary<IDb, int>> _snapshots = new Stack<Dictionary<IDb, int>>();
 
-        public MultiDb(ILogger logger)
+        public DbProvider(ILogger logger)
         {
             _logger = logger;
             _snapshots.Push(new Dictionary<IDb, int>());
@@ -44,7 +61,7 @@ namespace Nethermind.Store
             }
 
             Dictionary<IDb, int> dbSnapshots = _snapshots.Peek();
-            foreach (IDb db in _dbs)
+            foreach (IDb db in AllDbs)
             {
                 db.Restore(dbSnapshots.ContainsKey(db) ? dbSnapshots[db] : -1);
             }
@@ -54,7 +71,7 @@ namespace Nethermind.Store
         {
             _logger?.Log("COMMITING ALL DBS");
 
-            foreach (IDb db in _dbs)
+            foreach (IDb db in AllDbs)
             {
                 db.Commit();
             }
@@ -63,7 +80,7 @@ namespace Nethermind.Store
         public int TakeSnapshot()
         {
             Dictionary<IDb, int> dbSnapshots = new Dictionary<IDb, int>();
-            foreach (IDb db in _dbs)
+            foreach (IDb db in AllDbs)
             {
                 dbSnapshots.Add(db, db.TakeSnapshot());
             }
@@ -73,13 +90,6 @@ namespace Nethermind.Store
             int snapshot = _snapshots.Count - 2;
             _logger?.Log($"TAKING DBS SNAPSHOT AT {snapshot}");
             return snapshot;
-        }
-
-        public IDb CreateDb()
-        {
-            IDb db = new InMemoryDb();
-            _dbs.Add(db);
-            return db;
         }
     }
 }

@@ -48,7 +48,7 @@ namespace Ethereum.VM.Test
             ILogger stateLogger = ShouldLog.State ? new ConsoleLogger() : null;
             _multiDb = new MultiDb(stateLogger);
             _blockhashProvider = new TestBlockhashProvider();
-            _stateProvider = new StateProvider(new StateTree(_multiDb.CreateDb()), _ethereumRelease, stateLogger);
+            _stateProvider = new StateProvider(new StateTree(_multiDb.CreateDb()), _ethereumRelease, stateLogger, new CodeStore());
             _storageProvider = new StorageProvider(new MultiDb(stateLogger), _stateProvider, stateLogger);
         }
 

@@ -98,11 +98,11 @@ namespace Nethermind.PerfTest
         static Program()
         {
             ILogger logger = new NullLogger();
-            IMultiDb db = new MultiDb(logger);
-            StateTree stateTree = new StateTree(db.CreateDb());
-            IStateProvider stateProvider = new StateProvider(stateTree, Byzantium.Instance, logger);
+            DbProvider dbProvider = new DbProvider(logger);
+            StateTree stateTree = new StateTree(dbProvider.GetOrCreateStateDb());
+            IStateProvider stateProvider = new StateProvider(stateTree, Byzantium.Instance, logger, dbProvider.GetOrCreateCodeDb());
             IBlockStore blockStore = new BlockStore();
-            Machine = new VirtualMachine(Frontier.Instance, stateProvider, new StorageProvider(db, stateProvider, logger), new BlockhashProvider(blockStore), null);
+            Machine = new VirtualMachine(Frontier.Instance, stateProvider, new StorageProvider(dbProvider, stateProvider, logger), new BlockhashProvider(blockStore), null);
         }
         
         private static void Main(string[] args)

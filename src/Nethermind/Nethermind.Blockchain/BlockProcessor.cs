@@ -34,7 +34,7 @@ namespace Nethermind.Blockchain
     public class BlockProcessor : IBlockProcessor
     {
         private readonly ITransactionProcessor _transactionProcessor;
-        private readonly ISnapshotable _db;
+        private readonly IDbProvider _dbProvider;
         private readonly IStateProvider _stateProvider;
         private readonly IStorageProvider _storageProvider;
         private readonly ILogger _logger;
@@ -51,7 +51,7 @@ namespace Nethermind.Blockchain
             IDifficultyCalculator difficultyCalculator,
             IRewardCalculator rewardCalculator,
             ITransactionProcessor transactionProcessor,
-            IMultiDb db,
+            IDbProvider dbProvider,
             IStateProvider stateProvider,
             IStorageProvider storageProvider, ITransactionStore transactionStore, ILogger logger = null)
         {
@@ -65,7 +65,7 @@ namespace Nethermind.Blockchain
             _difficultyCalculator = difficultyCalculator;
             _rewardCalculator = rewardCalculator;
             _transactionProcessor = transactionProcessor;
-            _db = db;
+            _dbProvider = dbProvider;
         }
 
         private readonly IEthereumRelease _ethereumRelease;
@@ -117,7 +117,7 @@ namespace Nethermind.Blockchain
 
         public Block[] Process(Keccak? branchStateRoot, Block[] suggestedBlocks)
         {
-            int dbSnapshot = _db.TakeSnapshot();
+            int dbSnapshot = _dbProvider.TakeSnapshot();
             Keccak snapshotStateRoot = _stateProvider.StateRoot;
             
             if (branchStateRoot != null && _stateProvider.StateRoot != branchStateRoot)
@@ -141,7 +141,7 @@ namespace Nethermind.Blockchain
             catch (InvalidBlockException) // TODO: which exception to catch here?
             {
                 _logger?.Log($"REVERTING BLOCKS - STATE ROOT {_stateProvider.StateRoot}");
-                _db.Restore(dbSnapshot);
+                _dbProvider.Restore(dbSnapshot);
                 _storageProvider.ClearCaches();
                 _stateProvider.ClearCaches();
                 _stateProvider.StateRoot = snapshotStateRoot;
@@ -212,7 +212,7 @@ namespace Nethermind.Blockchain
             }
             
             _logger?.Log($"COMMITING BLOCK - STATE ROOT {_stateProvider.StateRoot}");
-            _db.Commit();
+            _dbProvider.Commit();
             return processedBlock;
         }
 

@@ -21,6 +21,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Potocol;
 using Nethermind.Store;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
@@ -37,10 +38,10 @@ namespace Nethermind.Evm.Test
         public void Eip_158_zero_value_transfer_deletes()
         {
             StateTree tree = new StateTree(new InMemoryDb());
-            StateProvider frontierProvider = new StateProvider(tree, Frontier.Instance, ShouldLog.State ? new ConsoleLogger() : null);
+            StateProvider frontierProvider = new StateProvider(tree, Frontier.Instance, ShouldLog.State ? new ConsoleLogger() : null, Substitute.For<IDb>());
             frontierProvider.CreateAccount(_address1, 0);
             frontierProvider.Commit();
-            StateProvider provider = new StateProvider(tree, SpuriousDragon.Instance, ShouldLog.State ? new ConsoleLogger() : null);
+            StateProvider provider = new StateProvider(tree, SpuriousDragon.Instance, ShouldLog.State ? new ConsoleLogger() : null, Substitute.For<IDb>());
             provider.UpdateBalance(_address1, 0);
             provider.Commit();
             Assert.False(provider.AccountExists(_address1));
@@ -49,7 +50,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Empty_commit_restore()
         {
-            StateProvider provider = new StateProvider(new StateTree(new InMemoryDb()), Frontier.Instance, ShouldLog.State ? new ConsoleLogger() : null);
+            StateProvider provider = new StateProvider(new StateTree(new InMemoryDb()), Frontier.Instance, ShouldLog.State ? new ConsoleLogger() : null, Substitute.For<IDb>());
             provider.Commit();
             provider.Restore(-1);
         }
@@ -57,7 +58,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Is_empty_account()
         {
-            StateProvider provider = new StateProvider(new StateTree(new InMemoryDb()), Frontier.Instance, ShouldLog.State ? new ConsoleLogger() : null);
+            StateProvider provider = new StateProvider(new StateTree(new InMemoryDb()), Frontier.Instance, ShouldLog.State ? new ConsoleLogger() : null, Substitute.For<IDb>());
             provider.CreateAccount(_address1, 0);
             provider.Commit();
             Assert.True(provider.IsEmptyAccount(_address1));
@@ -66,7 +67,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Restore_update_restore()
         {
-            StateProvider provider = new StateProvider(new StateTree(new InMemoryDb()), Frontier.Instance, ShouldLog.State ? new ConsoleLogger() : null);
+            StateProvider provider = new StateProvider(new StateTree(new InMemoryDb()), Frontier.Instance, ShouldLog.State ? new ConsoleLogger() : null, Substitute.For<IDb>());
             provider.CreateAccount(_address1, 0);
             provider.UpdateBalance(_address1, 1);
             provider.UpdateBalance(_address1, 1);
@@ -92,7 +93,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Keep_in_cache()
         {
-            StateProvider provider = new StateProvider(new StateTree(new InMemoryDb()), Frontier.Instance, ShouldLog.State ? new ConsoleLogger() : null);
+            StateProvider provider = new StateProvider(new StateTree(new InMemoryDb()), Frontier.Instance, ShouldLog.State ? new ConsoleLogger() : null, Substitute.For<IDb>());
             provider.CreateAccount(_address1, 0);
             provider.Commit();
             provider.GetBalance(_address1);
@@ -110,7 +111,7 @@ namespace Nethermind.Evm.Test
         {
             byte[] code = new byte[] {1};
 
-            StateProvider provider = new StateProvider(new StateTree(new InMemoryDb()), Frontier.Instance, ShouldLog.State ? new ConsoleLogger() : null);
+            StateProvider provider = new StateProvider(new StateTree(new InMemoryDb()), Frontier.Instance, ShouldLog.State ? new ConsoleLogger() : null, Substitute.For<IDb>());
             provider.CreateAccount(_address1, 1);
             provider.UpdateBalance(_address1, 1);
             provider.IncrementNonce(_address1);

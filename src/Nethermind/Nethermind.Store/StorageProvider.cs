@@ -33,9 +33,8 @@ namespace Nethermind.Store
 
         private readonly HashSet<StorageAddress> _committedThisRound = new HashSet<StorageAddress>();
 
-        private readonly Dictionary<Address, IDb> _dbs = new Dictionary<Address, IDb>();
         private readonly ILogger _logger;
-        private readonly IMultiDb _multiDb;
+        private readonly IDbProvider _dbProvider;
         private readonly IStateProvider _stateProvider;
 
         private readonly Dictionary<Address, StorageTree> _storages = new Dictionary<Address, StorageTree>();
@@ -44,9 +43,9 @@ namespace Nethermind.Store
         private Change[] _changes = new Change[StartCapacity];
         private int _currentPosition = -1;
 
-        public StorageProvider(IMultiDb multiDb, IStateProvider stateProvider, ILogger logger)
+        public StorageProvider(IDbProvider dbProvider, IStateProvider stateProvider, ILogger logger)
         {
-            _multiDb = multiDb;
+            _dbProvider = dbProvider;
             _stateProvider = stateProvider;
             _logger = logger;
         }
@@ -190,12 +189,7 @@ namespace Nethermind.Store
         {
             if (!_storages.ContainsKey(address))
             {
-                if (!_dbs.ContainsKey(address))
-                {
-                    _dbs[address] = _multiDb.CreateDb();
-                }
-
-                _storages[address] = new StorageTree(_dbs[address], _stateProvider.GetStorageRoot(address));
+                _storages[address] = new StorageTree(_dbProvider.GetOrCreateStorageDb(address), _stateProvider.GetStorageRoot(address));
             }
 
             return GetStorage(address);
