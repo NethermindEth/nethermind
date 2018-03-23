@@ -32,7 +32,7 @@ namespace Nethermind.Core
                 return false;
             }
 
-            if (asInt > 0 && asInt < 4)
+            if (asInt > 0 && asInt <= 4)
             {
                 return true;
             }

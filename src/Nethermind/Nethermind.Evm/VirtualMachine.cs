@@ -56,7 +56,7 @@ namespace Nethermind.Evm
         private readonly Stack<EvmState> _stateStack = new Stack<EvmState>();
         private Address _parityTouchBugAccount;
         private IReleaseSpec _releaseSpec;
-        
+
         public VirtualMachine(IReleaseSpec releaseSpec, IStateProvider stateProvider, IStorageProvider storageProvider, IBlockhashProvider blockhashProvider, ILogger logger)
         {
             _logger = logger;
@@ -190,7 +190,7 @@ namespace Nethermind.Evm
                         _stateProvider.UpdateBalance(_parityTouchBugAccount, BigInteger.Zero);
                         _parityTouchBugAccount = null;
                     }
-                    
+
                     if (currentState.ExecutionType == ExecutionType.Transaction || currentState.ExecutionType == ExecutionType.DirectPrecompile || currentState.ExecutionType == ExecutionType.DirectCreate)
                     {
                         throw;
@@ -214,24 +214,12 @@ namespace Nethermind.Evm
                 [EcRecoverPrecompiledContract.Instance.Address] = EcRecoverPrecompiledContract.Instance,
                 [Sha256PrecompiledContract.Instance.Address] = Sha256PrecompiledContract.Instance,
                 [Ripemd160PrecompiledContract.Instance.Address] = Ripemd160PrecompiledContract.Instance,
-                [IdentityPrecompiledContract.Instance.Address] = IdentityPrecompiledContract.Instance
+                [IdentityPrecompiledContract.Instance.Address] = IdentityPrecompiledContract.Instance,
+                [Bn128AddPrecompiledContract.Instance.Address] = Bn128AddPrecompiledContract.Instance,
+                [Bn128MulPrecompiledContract.Instance.Address] = Bn128MulPrecompiledContract.Instance,
+                [Bn128PairingPrecompiledContract.Instance.Address] = Bn128PairingPrecompiledContract.Instance,
+                [ModExpPrecompiledContract.Instance.Address] = ModExpPrecompiledContract.Instance
             };
-
-            if (_releaseSpec.IsEip196Enabled)
-            {
-                _precompiledContracts[Bn128AddPrecompiledContract.Instance.Address] = Bn128AddPrecompiledContract.Instance;
-                _precompiledContracts[Bn128MulPrecompiledContract.Instance.Address] = Bn128MulPrecompiledContract.Instance;
-            }
-
-            if (_releaseSpec.IsEip197Enabled)
-            {
-                _precompiledContracts[Bn128PairingPrecompiledContract.Instance.Address] = Bn128PairingPrecompiledContract.Instance;
-            }
-
-            if (_releaseSpec.IsEip198Enabled)
-            {
-                _precompiledContracts[ModExpPrecompiledContract.Instance.Address] = ModExpPrecompiledContract.Instance;
-            }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -300,7 +288,7 @@ namespace Nethermind.Evm
                 {
                     _parityTouchBugAccount = state.Env.ExecutingAccount;
                 }
-                
+
                 throw new OutOfGasException();
             }
 
@@ -1485,7 +1473,7 @@ namespace Nethermind.Evm
                         }
 
                         BigInteger gasLimit = PopUInt();
-                        byte[] codeSource = PopBytes();
+                        Address codeSource = PopAddress();
                         BigInteger callValue;
                         switch (instruction)
                         {
@@ -1511,13 +1499,12 @@ namespace Nethermind.Evm
                             throw new StaticCallViolationException();
                         }
 
-                        BigInteger addressInt = codeSource.ToUnsignedBigInteger();
-                        bool isPrecompile = _precompiledContracts.ContainsKey(addressInt);
+                        bool isPrecompile = codeSource.IsPrecompiled(_releaseSpec);
                         Address sender = instruction == Instruction.DELEGATECALL ? env.Sender : env.ExecutingAccount;
-                        Address target = instruction == Instruction.CALL || instruction == Instruction.STATICCALL ? ToAddress(codeSource) : env.ExecutingAccount;
+                        Address target = instruction == Instruction.CALL || instruction == Instruction.STATICCALL ? codeSource : env.ExecutingAccount;
 
                         _logger?.Log($"  SENDER {sender}");
-                        _logger?.Log($"  CODE SOURCE {ToAddress(codeSource)}");
+                        _logger?.Log($"  CODE SOURCE {codeSource}");
                         _logger?.Log($"  TARGET {target}");
                         _logger?.Log($"  VALUE {callValue}");
                         _logger?.Log($"  TRANSFER_VALUE {transferValue}");
@@ -1599,7 +1586,7 @@ namespace Nethermind.Evm
                         callEnv.TransferValue = transferValue;
                         callEnv.Value = callValue;
                         callEnv.InputData = callData;
-                        callEnv.MachineCode = isPrecompile ? addressInt.ToBigEndianByteArray() : _stateProvider.GetCode(ToAddress(codeSource));
+                        callEnv.MachineCode = isPrecompile ? ((byte[])codeSource.Hex) : _stateProvider.GetCode(codeSource);
 
                         BigInteger callGas = transferValue.IsZero ? gasLimitUl : gasLimitUl + GasCostOf.CallStipend;
                         _logger?.Log($"  CALL_GAS {callGas}");

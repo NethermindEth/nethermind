@@ -17,6 +17,7 @@
  */
 
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test
@@ -51,7 +52,7 @@ namespace Nethermind.Core.Test
             string addressString = address.ToString(true);
             Assert.AreEqual(expected, addressString);
         }
-        
+
         [TestCase("0x52908400098527886E0F7030069857D2E4169EE7", true, true)]
         [TestCase("52908400098527886E0F7030069857D2E4169EE7", true, true)]
         [TestCase("0x52908400098527886E0F7030069857D2E4169EE7", false, false)]
@@ -61,7 +62,8 @@ namespace Nethermind.Core.Test
             Assert.AreEqual(expectedResult, Address.IsValidAddress(addressHex, allowPrefix));
         }
 
-        [Test] public void Hex_is_correctly_assigned()
+        [Test]
+        public void Hex_is_correctly_assigned()
         {
             byte[] bytes = new byte[20];
             new System.Random(1).NextBytes(bytes);
@@ -81,7 +83,7 @@ namespace Nethermind.Core.Test
             Assert.False(addressA.Equals(addressB));
             Assert.False(addressA.Equals(null));
         }
-        
+
         [Test]
         public void Equals_operator_works()
         {
@@ -96,7 +98,7 @@ namespace Nethermind.Core.Test
             Assert.False(null == addressA);
             Assert.True((Address)null == null);
         }
-        
+
         [Test]
         public void Not_equals_operator_works()
         {
@@ -110,6 +112,51 @@ namespace Nethermind.Core.Test
             Assert.True(addressA != null);
             Assert.True(null != addressA);
             Assert.False((Address)null != null);
+        }
+
+        [Test]
+        public void Is_precompiled_1()
+        {
+            byte[] addressBytes = new byte[20];
+            addressBytes[19] = 1;
+            Address address = new Address(addressBytes);
+            Assert.True(address.IsPrecompiled(Frontier.Instance));
+        }
+        
+        [Test]
+        public void Is_precompiled_4_regression()
+        {
+            byte[] addressBytes = new byte[20];
+            addressBytes[19] = 4;
+            Address address = new Address(addressBytes);
+            Assert.True(address.IsPrecompiled(Frontier.Instance));
+        }
+        
+        [Test]
+        public void Is_precompiled_5_frontier()
+        {
+            byte[] addressBytes = new byte[20];
+            addressBytes[19] = 5;
+            Address address = new Address(addressBytes);
+            Assert.False(address.IsPrecompiled(Frontier.Instance));
+        }
+        
+        [Test]
+        public void Is_precompiled_5_byzantium()
+        {
+            byte[] addressBytes = new byte[20];
+            addressBytes[19] = 5;
+            Address address = new Address(addressBytes);
+            Assert.True(address.IsPrecompiled(Byzantium.Instance));
+        }
+        
+        [Test]
+        public void Is_precompiled_9_byzantium()
+        {
+            byte[] addressBytes = new byte[20];
+            addressBytes[19] = 9;
+            Address address = new Address(addressBytes);
+            Assert.False(address.IsPrecompiled(Byzantium.Instance));
         }
     }
 }
