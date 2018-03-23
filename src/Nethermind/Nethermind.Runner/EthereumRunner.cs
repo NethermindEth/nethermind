@@ -72,10 +72,11 @@ namespace Nethermind.Runner
 
             var chainFileContent = File.ReadAllBytes(chainFile);
 
-            var blocks = Rlp.ExtractRplList(new Rlp(chainFileContent));
-            foreach (var block in blocks)
+            var blocksRlps = Rlp.ExtractRplList(new Rlp(chainFileContent));
+            foreach (var blockRlp in blocksRlps)
             {
                 //Block suggestedBlocks = Rlp.Decode<Block>(block);
+                Block block = Rlp.Decode<Block>(blockRlp);
                 _blockchainProcessor.Process(block);
             }
         }
@@ -94,7 +95,8 @@ namespace Nethermind.Runner
                 _logger.Log($"Processing block file: {file}");
                 var fileContent = File.ReadAllBytes(file);
                 var blockRlp = new Rlp(fileContent);
-                _blockchainProcessor.Process(blockRlp);
+                Block block = Rlp.Decode<Block>(blockRlp);
+                _blockchainProcessor.Process(block);
             }
         }
 
@@ -124,7 +126,7 @@ namespace Nethermind.Runner
             var blockJson = _jsonSerializer.Deserialize<TestGenesisJson>(genesisBlockRaw);
             var stateRoot = InitializeAccounts(blockJson.Alloc);
             var block = Convert(blockJson, stateRoot);
-            _blockchainProcessor.Initialize(Rlp.Encode(block));
+            _blockchainProcessor.Initialize(block);
         }
 
         private static Block Convert(TestGenesisJson headerJson, Keccak stateRoot)
