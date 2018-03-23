@@ -195,12 +195,15 @@ namespace Ethereum.Test.Base
             if (test.NetworkAfterTransition != null)
             {
                 specProvider = new CustomSpecProvider(
+                    (1, Frontier.Instance),
                     (test.TransitionBlockNumber, test.Network),
                     (int.MaxValue, test.NetworkAfterTransition));
             }
             else
             {
-                specProvider = new SingleReleaseSpecProvider(test.Network);
+                specProvider = new CustomSpecProvider(
+                    (1, Frontier.Instance), // TODO: this thing took a lot of time to find after it was removed!, genesis block is always initialized with Frontier
+                    (int.MaxValue, test.Network));
             }
 
             _releaseSpec = new DynamicReleaseSpec(specProvider);
@@ -272,8 +275,10 @@ namespace Ethereum.Test.Base
             {
                 test.GenesisRlp = Rlp.Encode(new Block(Convert(test.GenesisBlockHeader)));
             }
-            
-            blockchainProcessor.Initialize(Rlp.Decode<Block>(test.GenesisRlp));
+
+            Block genesisBlock = Rlp.Decode<Block>(test.GenesisRlp);
+            blockchainProcessor.Initialize(genesisBlock);
+            Assert.AreEqual(genesisBlock.Header.StateRoot, stateTree.RootHash);
 
             // TODO: may need to add a better way of initializing genesis block since forge tests do not provide genesis RLP
 
@@ -284,6 +289,9 @@ namespace Ethereum.Test.Base
                 {
                     _releaseSpec.CurrentBlockNumber = correctRlpsBlocks[i].Header.Number;
                     blockchainProcessor.Process(correctRlpsBlocks[i]);
+                }
+                catch (InvalidBlockException ex)
+                {
                 }
                 catch (Exception ex)
                 {
