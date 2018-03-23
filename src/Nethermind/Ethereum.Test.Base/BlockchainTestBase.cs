@@ -196,7 +196,7 @@ namespace Ethereum.Test.Base
             {
                 specProvider = new CustomSpecProvider(
                     (test.TransitionBlockNumber, test.Network),
-                    (BigInteger.MinusOne, test.NetworkAfterTransition));
+                    (int.MaxValue, test.NetworkAfterTransition));
             }
             else
             {
