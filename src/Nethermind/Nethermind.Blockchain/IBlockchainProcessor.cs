@@ -15,9 +15,9 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
+
 using System.Numerics;
 using Nethermind.Core;
-using Nethermind.Core.Encoding;
 
 namespace Nethermind.Blockchain
 {
@@ -25,7 +25,6 @@ namespace Nethermind.Blockchain
     {
         void Initialize(Block genesisBlock);
         Block HeadBlock { get; }
-        ///Currently processing block
         Block SuggestedBlock { get; }
         BigInteger TotalDifficulty { get; }
         void Process(Block block);

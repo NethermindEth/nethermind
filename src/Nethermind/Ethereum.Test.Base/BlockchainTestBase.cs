@@ -247,13 +247,13 @@ namespace Ethereum.Test.Base
 
             InitializeTestState(test, _stateProvider, _storageProvider);
 
-            Rlp[] blockRlps = test.Blocks.Select(h => Hex.ToBytes(h.Rlp)).Where(b => b != null).Select(b => new Rlp(b)).ToArray();
             List<Block> correctRlpsBlocks = new List<Block>();
-            for (int i = 0; i < blockRlps.Length; i++)
+            for (int i = 0; i < test.Blocks.Length; i++)
             {
                 try
                 {
-                    Block suggestedBlock = Rlp.Decode<Block>(blockRlps[i]);
+                    Rlp rlp = new Rlp(Hex.ToBytes(test.Blocks[i].Rlp));
+                    Block suggestedBlock = Rlp.Decode<Block>(rlp);
                     correctRlpsBlocks.Add(suggestedBlock);
                 }
                 catch (Exception e)
@@ -268,6 +268,11 @@ namespace Ethereum.Test.Base
                 return;
             }
 
+            if (test.GenesisRlp == null)
+            {
+                test.GenesisRlp = Rlp.Encode(new Block(Convert(test.GenesisBlockHeader)));
+            }
+            
             blockchainProcessor.Initialize(Rlp.Decode<Block>(test.GenesisRlp));
 
             // TODO: may need to add a better way of initializing genesis block since forge tests do not provide genesis RLP

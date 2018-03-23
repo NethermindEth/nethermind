@@ -129,7 +129,7 @@ namespace Nethermind.Blockchain.Test.Runner
 //
 //            Run(bugHunter, "bcBlockGasLimitTest", testWildcard);
 //            Run(bugHunter, "bcExploitTest", testWildcard);
-//            Run(bugHunter, "bcForgedTest", testWildcard);
+            Run(bugHunter, "bcForgedTest", testWildcard);
 //            Run(bugHunter, "bcForkStressTest", testWildcard);
 //            Run(bugHunter, "bcGasPricerTest", testWildcard);
 //            Run(bugHunter, "bcInvalidHeaderTest", testWildcard);
@@ -146,10 +146,10 @@ namespace Nethermind.Blockchain.Test.Runner
 //            Run(bugHunter,"stZeroKnowledge2", testWildcard);
 //            
 //            /* transition tests */
-            Run(bugHunter,"bcEIP158ToByzantium", testWildcard);
-            Run(bugHunter,"bcFrontierToHomestead", testWildcard);
-            Run(bugHunter,"bcHomesteadToDao", testWildcard);
-            Run(bugHunter,"bcHomesteadToEIP150", testWildcard);
+//            Run(bugHunter,"bcEIP158ToByzantium", testWildcard);
+//            Run(bugHunter,"bcFrontierToHomestead", testWildcard);
+//            Run(bugHunter,"bcHomesteadToDao", testWildcard);
+//            Run(bugHunter,"bcHomesteadToEIP150", testWildcard);
            
         }
     }
