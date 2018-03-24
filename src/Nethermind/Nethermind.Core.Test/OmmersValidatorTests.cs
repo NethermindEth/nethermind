@@ -50,7 +50,7 @@ namespace Nethermind.Core.Test
             _blockStore.FindBlock(_header.Hash, false).Returns(new Block(_header));
 
             _blockHeaderValidator = Substitute.For<IBlockHeaderValidator>();
-            _blockHeaderValidator.Validate(Arg.Any<BlockHeader>()).Returns(true);
+            _blockHeaderValidator.Validate(Arg.Any<BlockHeader>(), true).Returns(true);
         }
 
         public OmmersValidatorTests()
@@ -78,25 +78,19 @@ namespace Nethermind.Core.Test
         [Test]
         public void When_more_than_two_ommers_returns_false()
         {
-            IBlockHeaderValidator blockHeaderValidator = Substitute.For<IBlockHeaderValidator>();
-            blockHeaderValidator.Validate(Arg.Any<BlockHeader>()).Returns(true);
-
             BlockHeader[] ommers = GetValidOmmers(3);
 
-            OmmersValidator ommersValidator = new OmmersValidator(_blockStore, blockHeaderValidator, new NullLogger());
+            OmmersValidator ommersValidator = new OmmersValidator(_blockStore, _blockHeaderValidator, new NullLogger());
             Assert.False(ommersValidator.Validate(new BlockHeader(), ommers));
         }
 
         [Test]
         public void When_ommer_is_self_returns_false()
         {
-            IBlockHeaderValidator blockHeaderValidator = Substitute.For<IBlockHeaderValidator>();
-            blockHeaderValidator.Validate(Arg.Any<BlockHeader>()).Returns(true);
-
             BlockHeader[] ommers = new BlockHeader[1];
             ommers[0] = _header;
 
-            OmmersValidator ommersValidator = new OmmersValidator(_blockStore, blockHeaderValidator, new NullLogger());
+            OmmersValidator ommersValidator = new OmmersValidator(_blockStore, _blockHeaderValidator, new NullLogger());
             Assert.False(ommersValidator.Validate(_header, ommers));
         }
 
