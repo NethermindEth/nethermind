@@ -69,8 +69,6 @@ namespace Ethereum.KeyAddress.Test
             Address address = new Address(addressHex);
 
             // TODO: check - at the moment they are failing when running in the test mode but not in Debug
-            bool areEqaul = address.Equals(recovered);
-            Assert.True(areEqaul);
             Assert.AreEqual(address, recovered);
         }
 

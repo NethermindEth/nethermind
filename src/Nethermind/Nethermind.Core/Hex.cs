@@ -54,41 +54,35 @@ namespace Nethermind.Core
                 return false;
             }
 
-            if (_bytes != null && obj._bytes != null)
+            if (_bytes == null)
             {
-                return Bytes.UnsafeCompare(_bytes, obj._bytes);
+                _bytes = ToBytes(_hexString);
             }
-
-            if (_hexString != null && obj._hexString != null)
+            
+            if (obj._bytes == null)
             {
-                return _hexString == obj;
+                obj._bytes = ToBytes(obj._hexString);
             }
-
-            if (_hexString != null && obj._hexString == null)
-            {
-                return _hexString == obj;
-            }
-
-            if (_hexString == null && obj._hexString != null)
-            {
-                return this == obj._hexString;
-            }
-
-            Debug.Assert(false, "one of the conditions should be true");
-            return false;
+            
+            return Bytes.UnsafeCompare(_bytes, obj._bytes);
         }
 
         public override string ToString()
         {
             return ToString(true);
         }
-
-        public string ToString(bool withZeroX, bool noLeadingZeros = false)
+        
+        private void FillString()
         {
             if (_hexString == null)
             {
                 _hexString = FromBytes(_bytes, false, false);
             }
+        }
+        
+        public string ToString(bool withZeroX, bool noLeadingZeros = false)
+        {
+            FillString();
 
             // this actually depends on whether it is quantity or byte data...
             string trimmed = noLeadingZeros ? _hexString.TrimStart('0') : _hexString;
