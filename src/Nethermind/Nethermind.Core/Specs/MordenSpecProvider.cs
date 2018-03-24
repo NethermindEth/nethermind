@@ -41,5 +41,9 @@ namespace Nethermind.Core.Specs
 
             return SpuriousDragon.Instance;
         }
+        
+        public BigInteger? DaoBlockNumber { get; } = null;
+
+        public int NetworkId => 2;
     }
 }

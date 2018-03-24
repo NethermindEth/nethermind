@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Linq;
 using System.Numerics;
 
@@ -27,20 +28,46 @@ namespace Nethermind.Core.Specs
 
         public CustomSpecProvider(params (BigInteger BlockNumber, IReleaseSpec Release)[] transitions)
         {
+            if (transitions.Length == 0)
+            {
+                throw new ArgumentException($"There must be at least one release specified when instantiating {nameof(CustomSpecProvider)}", $"{nameof(transitions)}");
+            }
+
             _transitions = transitions.OrderBy(r => r.BlockNumber).ToArray();
+
+            if (transitions[0].BlockNumber != BigInteger.Zero)
+            {
+                throw new ArgumentException($"First release specified when instantiating {nameof(CustomSpecProvider)} should be at genesis block (0)", $"{nameof(transitions)}");
+            }
         }
 
         public IReleaseSpec GetSpec(BigInteger blockNumber)
         {
-            foreach ((BigInteger BlockNumber, IReleaseSpec Release) transition in _transitions)
+            IReleaseSpec spec = _transitions[0].Release;
+            for (int i = 1; i < _transitions.Length; i++)
             {
-                if (transition.BlockNumber > blockNumber)
+                if (blockNumber >= _transitions[i].BlockNumber)
                 {
-                    return transition.Release;
+                    spec = _transitions[i].Release;
+                }
+                else
+                {
+                    break;    
                 }
             }
 
-            return _transitions.Last().Release;
+            return spec;
         }
+
+        public BigInteger? DaoBlockNumber
+        {
+            get
+            {
+                (BigInteger blockNumber, IReleaseSpec daoRelease) = _transitions.SingleOrDefault(t => t.Release == Dao.Instance);
+                return daoRelease != null ? blockNumber : (BigInteger?)null;
+            }
+        }
+
+        public int NetworkId => 0;
     }
 }

@@ -195,15 +195,15 @@ namespace Ethereum.Test.Base
             if (test.NetworkAfterTransition != null)
             {
                 specProvider = new CustomSpecProvider(
-                    (1, Frontier.Instance),
-                    (test.TransitionBlockNumber, test.Network),
-                    (int.MaxValue, test.NetworkAfterTransition));
+                    (0, Frontier.Instance),
+                    (1, test.Network),
+                    (test.TransitionBlockNumber, test.NetworkAfterTransition));
             }
             else
             {
                 specProvider = new CustomSpecProvider(
-                    (1, Frontier.Instance), // TODO: this thing took a lot of time to find after it was removed!, genesis block is always initialized with Frontier
-                    (int.MaxValue, test.Network));
+                    (0, Frontier.Instance), // TODO: this thing took a lot of time to find after it was removed!, genesis block is always initialized with Frontier
+                    (1, test.Network));
             }
 
             _releaseSpec = new DynamicReleaseSpec(specProvider);
@@ -211,8 +211,8 @@ namespace Ethereum.Test.Base
             IBlockhashProvider blockhashProvider = new BlockhashProvider(chain);
             ISignatureValidator signatureValidator = new SignatureValidator(_releaseSpec, ChainId.MainNet);
             ITransactionValidator transactionValidator = new TransactionValidator(_releaseSpec, signatureValidator);
-            IBlockHeaderValidator headerValidator = new BlockHeaderValidator(chain, Ethash);
-            IOmmersValidator ommersValidator = new OmmersValidator(chain, headerValidator);
+            IBlockHeaderValidator headerValidator = new BlockHeaderValidator(chain, Ethash, specProvider.DaoBlockNumber, stateLogger);
+            IOmmersValidator ommersValidator = new OmmersValidator(chain, headerValidator, stateLogger);
             IBlockValidator blockValidator = new BlockValidator(transactionValidator, headerValidator, ommersValidator, stateLogger);
             _stateProvider = new StateProvider(stateTree, _releaseSpec, stateLogger, dbProvider.GetOrCreateCodeDb());
             _storageProvider = new StorageProvider(dbProvider, _stateProvider, stateLogger);
@@ -250,14 +250,15 @@ namespace Ethereum.Test.Base
 
             InitializeTestState(test, _stateProvider, _storageProvider);
 
-            List<Block> correctRlpsBlocks = new List<Block>();
+            List<(Block, string)> correctRlpsBlocks = new List<(Block, string)>();
             for (int i = 0; i < test.Blocks.Length; i++)
             {
                 try
                 {
-                    Rlp rlp = new Rlp(Hex.ToBytes(test.Blocks[i].Rlp));
+                    TestBlockJson testBlockJson = test.Blocks[i];
+                    Rlp rlp = new Rlp(Hex.ToBytes(testBlockJson.Rlp));
                     Block suggestedBlock = Rlp.Decode<Block>(rlp);
-                    correctRlpsBlocks.Add(suggestedBlock);
+                    correctRlpsBlocks.Add((suggestedBlock, testBlockJson.ExpectedException));
                 }
                 catch (Exception e)
                 {
@@ -287,8 +288,13 @@ namespace Ethereum.Test.Base
                 stopwatch?.Start();
                 try
                 {
-                    _releaseSpec.CurrentBlockNumber = correctRlpsBlocks[i].Header.Number;
-                    blockchainProcessor.Process(correctRlpsBlocks[i]);
+                    _releaseSpec.CurrentBlockNumber = correctRlpsBlocks[i].Item1.Header.Number;
+                    if (correctRlpsBlocks[i].Item2 != null)
+                    {
+                        _logger.Log($"Expecting block exception: {correctRlpsBlocks[i].Item2}");    
+                    }
+                    
+                    blockchainProcessor.Process(correctRlpsBlocks[i].Item1);
                 }
                 catch (InvalidBlockException ex)
                 {
@@ -539,6 +545,8 @@ namespace Ethereum.Test.Base
             public TestBlockHeaderJson[] UncleHeaders { get; set; }
             public string Rlp { get; set; }
             public TransactionJson[] Transactions { get; set; }
+            [JsonProperty("expectExceptionALL")]
+            public string ExpectedException { get; set; }
         }
 
         public class TestBlock
@@ -547,6 +555,7 @@ namespace Ethereum.Test.Base
             public TestBlockHeader[] UncleHeaders { get; set; }
             public string Rlp { get; set; }
             public IncomingTransaction[] Transactions { get; set; }
+            public string ExpectedException { get; set; }
         }
 
         public class AccountState

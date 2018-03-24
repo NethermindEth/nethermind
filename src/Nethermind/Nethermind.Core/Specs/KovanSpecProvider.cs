@@ -16,31 +16,21 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+
+using System;
 using System.Numerics;
 
 namespace Nethermind.Core.Specs
 {
-    public class SingleReleaseSpecProvider : ISpecProvider
+    public class KovanSpecProvider : ISpecProvider
     {
-        public int NetworkId { get; }
-        
-        private readonly IReleaseSpec _releaseSpec;
-
-        public SingleReleaseSpecProvider(IReleaseSpec releaseSpec, int networkId)
-        {
-            NetworkId = networkId;
-            _releaseSpec = releaseSpec;
-            if (_releaseSpec == Dao.Instance)
-            {
-                DaoBlockNumber = 0;
-            }
-        }
-        
         public IReleaseSpec GetSpec(BigInteger blockNumber)
         {
-            return _releaseSpec;
+            throw new NotImplementedException();
         }
+
+        public BigInteger? DaoBlockNumber { get; } = null;
         
-        public BigInteger? DaoBlockNumber { get; }
+        public int NetworkId => 42;
     }
 }

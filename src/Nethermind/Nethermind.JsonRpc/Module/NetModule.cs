@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using Nethermind.Core;
 using Nethermind.JsonRpc.DataModel;
 
@@ -29,7 +30,8 @@ namespace Nethermind.JsonRpc.Module
 
         public ResultWrapper<string> net_version()
         {
-            return ResultWrapper<string>.Success(EthereumNetwork.Main.GetNetworkId().ToString());
+            throw new NotImplementedException();
+//            return ResultWrapper<string>.Success(EthereumNetwork.Main.GetNetworkId().ToString());
         }
 
         public ResultWrapper<bool> net_listening()

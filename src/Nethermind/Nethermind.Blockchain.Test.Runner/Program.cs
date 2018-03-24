@@ -107,7 +107,7 @@ namespace Nethermind.Blockchain.Test.Runner
 //            Run(bugHunter, "stMemoryStressTest", testWildcard);
 //            Run(bugHunter, "stMemoryTest", testWildcard);
 //            Run(bugHunter, "stNonZeroCallsTest", testWildcard);
-            Run(bugHunter, "stPreCompiledContracts", testWildcard);
+//            Run(bugHunter, "stPreCompiledContracts", testWildcard);
 //            Run(bugHunter, "stPreCompiledContracts2", testWildcard);
 //            Run(bugHunter, "stQuadraticComplexityTest", testWildcard);
 //            Run(bugHunter, "stRandom", testWildcard);
@@ -144,12 +144,12 @@ namespace Nethermind.Blockchain.Test.Runner
 //
 //            Run(bugHunter, "stZeroKnowledge", testWildcard);
 //            Run(bugHunter, "stZeroKnowledge2", testWildcard);
-//
-//            //            /* transition tests */
-//            Run(bugHunter,"bcEIP158ToByzantium", testWildcard);
-//            Run(bugHunter,"bcFrontierToHomestead", testWildcard);
-//            Run(bugHunter,"bcHomesteadToDao", testWildcard);
-//            Run(bugHunter,"bcHomesteadToEIP150", testWildcard);
+
+            //            /* transition tests */
+            Run(bugHunter,"bcEIP158ToByzantium", testWildcard);
+            Run(bugHunter,"bcFrontierToHomestead", testWildcard);
+            Run(bugHunter,"bcHomesteadToDao", testWildcard);
+            Run(bugHunter,"bcHomesteadToEIP150", testWildcard);
            
         }
     }

@@ -21,16 +21,22 @@ using Nethermind.Core.Crypto;
 using Nethermind.Mining;
 
 namespace Nethermind.Blockchain.Validators
-{
+{   
     public class BlockHeaderValidator : IBlockHeaderValidator
     {
+        private static readonly Hex DaoExtraData = new Hex("0x64616f2d686172642d666f726b");
+        
         private readonly IEthash _ethash;
+        private readonly BigInteger? _daoBlockNumber;
+        private readonly ILogger _logger;
         private readonly IBlockStore _chain;
 
-        public BlockHeaderValidator(IBlockStore chain, IEthash ethash)
+        public BlockHeaderValidator(IBlockStore chain, IEthash ethash, BigInteger? daoBlockNumber, ILogger logger)
         {
             _chain = chain;
             _ethash = ethash;
+            _daoBlockNumber = daoBlockNumber;
+            _logger = logger;
         }
 
         public bool Validate(BlockHeader header)
@@ -40,29 +46,70 @@ namespace Nethermind.Blockchain.Validators
             {
                 return IsGenesisHeaderValid(header);
             }
+            
+            bool areNonceValidAndMixHashValid = _ethash.Validate(header);
+            if (!areNonceValidAndMixHashValid)
+            {
+                _logger.Log($"Invalid block header ({header.Hash}) - invalid mix hash / nonce");
+            }
 
-            Keccak hash = header.Hash;
-            header.RecomputeHash();
-            
-            bool isNonceValid = _ethash.Validate(header);
-            
-            // mix hash check
             // difficulty check
             bool gasUsedBelowLimit = header.GasUsed <= header.GasLimit;
+            if (!gasUsedBelowLimit)
+            {
+                _logger.Log($"Invalid block header ({header.Hash}) - gas used above gas limit");
+            }
+
             bool gasLimitNotTooHigh = header.GasLimit < parent.Header.GasLimit + BigInteger.Divide(parent.Header.GasLimit, 1024);
+            if (!gasLimitNotTooHigh)
+            {
+                _logger.Log($"Invalid block header ({header.Hash}) - gas limit too high");
+            }
+            
             bool gasLimitNotTooLow = header.GasLimit > parent.Header.GasLimit - BigInteger.Divide(parent.Header.GasLimit, 1024);
+            if (!gasLimitNotTooLow)
+            {
+                _logger.Log($"Invalid block header ({header.Hash}) - invalid mix hash / nonce");
+            }
+
 //            bool gasLimitAboveAbsoluteMinimum = header.GasLimit >= 125000; // TODO: tests are consistently not following this rule
             bool timestampMoreThanAtParent = header.Timestamp > parent.Header.Timestamp;
+            if (!timestampMoreThanAtParent)
+            {
+                _logger.Log($"Invalid block header ({header.Hash}) - timestamp before parent");
+            }
+            
             bool numberIsParentPlusOne = header.Number == parent.Header.Number + 1;
+            if (!numberIsParentPlusOne)
+            {
+                _logger.Log($"Invalid block header ({header.Hash}) - block number is not parent + 1");
+            }
+            
             bool extraDataNotTooLong = header.ExtraData.Length <= 32;
+            if (!extraDataNotTooLong)
+            {
+                _logger.Log($"Invalid block header ({header.Hash}) - extra data too long");
+            }
+            
+            Keccak hash = header.Hash;
+            header.RecomputeHash();
             bool hashAsExpected = header.Hash == hash;
             if (!hashAsExpected)
             {
-                
+                _logger.Log($"Invalid block header ({header.Hash}) - invalid block hash");
             }
-
+            
+            bool extraDataValid = _daoBlockNumber == null
+                                  || header.Number < _daoBlockNumber
+                                  || header.Number > _daoBlockNumber + 10
+                                  || new Hex(header.ExtraData).Equals(DaoExtraData);
+            if (!extraDataValid)
+            {
+                _logger.Log($"Invalid block header ({header.Hash}) - DAO extra data not valid");
+            }
+            
             return
-                   isNonceValid &&
+                   areNonceValidAndMixHashValid &&
                    gasUsedBelowLimit &&
                    gasLimitNotTooLow &&
                    gasLimitNotTooHigh &&
@@ -70,7 +117,8 @@ namespace Nethermind.Blockchain.Validators
                    timestampMoreThanAtParent &&
                    numberIsParentPlusOne &&
                    extraDataNotTooLong &&
-                   hashAsExpected;
+                   hashAsExpected &&
+                   extraDataValid;
         }
 
         private static bool IsGenesisHeaderValid(BlockHeader header)
