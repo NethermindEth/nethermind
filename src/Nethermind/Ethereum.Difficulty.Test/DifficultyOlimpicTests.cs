@@ -34,7 +34,7 @@ namespace Ethereum.Difficulty.Test
         [TestCaseSource(nameof(LoadOlimpicTests))]
         public void Test(DifficultyTests test)
         {
-            RunTest(test, new SingleReleaseSpecProvider(Olympic.Instance));
+            RunTest(test, new SingleReleaseSpecProvider(Olympic.Instance, 0));
         }
     }
 }

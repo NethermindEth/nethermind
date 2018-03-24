@@ -36,7 +36,7 @@ namespace Nethermind.Core.Test
             IBlockStore blockchain = Substitute.For<IBlockStore>();
 
             BlockHeaderValidator blockHeaderValidator = new BlockHeaderValidator(blockchain, new Ethash(), null, null);
-            OmmersValidator ommersValidator = new OmmersValidator(blockchain, blockHeaderValidator);
+            OmmersValidator ommersValidator = new OmmersValidator(blockchain, blockHeaderValidator, null);
             SignatureValidator signatureValidator = new SignatureValidator(spec, ChainId.MainNet);
             TransactionValidator transactionValidator = new TransactionValidator(spec, signatureValidator);
             BlockValidator blockValidator = new BlockValidator(transactionValidator, blockHeaderValidator, ommersValidator, null);

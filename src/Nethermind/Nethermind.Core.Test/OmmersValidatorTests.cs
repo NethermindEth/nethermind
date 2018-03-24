@@ -83,7 +83,7 @@ namespace Nethermind.Core.Test
 
             BlockHeader[] ommers = GetValidOmmers(3);
 
-            OmmersValidator ommersValidator = new OmmersValidator(_blockStore, blockHeaderValidator);
+            OmmersValidator ommersValidator = new OmmersValidator(_blockStore, blockHeaderValidator, new NullLogger());
             Assert.False(ommersValidator.Validate(new BlockHeader(), ommers));
         }
 
@@ -96,7 +96,7 @@ namespace Nethermind.Core.Test
             BlockHeader[] ommers = new BlockHeader[1];
             ommers[0] = _header;
 
-            OmmersValidator ommersValidator = new OmmersValidator(_blockStore, blockHeaderValidator);
+            OmmersValidator ommersValidator = new OmmersValidator(_blockStore, blockHeaderValidator, new NullLogger());
             Assert.False(ommersValidator.Validate(_header, ommers));
         }
 
@@ -108,7 +108,7 @@ namespace Nethermind.Core.Test
             ommers[0].ParentHash = _parent.Hash;
             ommers[0].Number = _header.Number;
 
-            OmmersValidator ommersValidator = new OmmersValidator(_blockStore, _blockHeaderValidator);
+            OmmersValidator ommersValidator = new OmmersValidator(_blockStore, _blockHeaderValidator, new NullLogger());
             Assert.False(ommersValidator.Validate(_header, ommers));
         }
 
@@ -118,14 +118,14 @@ namespace Nethermind.Core.Test
             BlockHeader[] ommers = new BlockHeader[1];
             ommers[0] = _parent;
 
-            OmmersValidator ommersValidator = new OmmersValidator(_blockStore, _blockHeaderValidator);
+            OmmersValidator ommersValidator = new OmmersValidator(_blockStore, _blockHeaderValidator, new NullLogger());
             Assert.False(ommersValidator.Validate(_header, ommers));
         }
 
         [Test]
         public void When_ommer_was_already_included_return_false()
         {
-            OmmersValidator ommersValidator = new OmmersValidator(_blockStore, _blockHeaderValidator);
+            OmmersValidator ommersValidator = new OmmersValidator(_blockStore, _blockHeaderValidator, new NullLogger());
             Assert.False(ommersValidator.Validate(_header, new [] { _duplicateOmmer }));
         }
 
@@ -149,7 +149,7 @@ namespace Nethermind.Core.Test
         {
             BlockHeader[] ommers = GetValidOmmers(1);
 
-            OmmersValidator ommersValidator = new OmmersValidator(_blockStore, _blockHeaderValidator);
+            OmmersValidator ommersValidator = new OmmersValidator(_blockStore, _blockHeaderValidator, new NullLogger());
             Assert.True(ommersValidator.Validate(_header, ommers));
         }
 
@@ -160,7 +160,7 @@ namespace Nethermind.Core.Test
             ommers[0].Number = _grandparent.Number;
             ommers[0].ParentHash = _grandgrandparent.Hash;
 
-            OmmersValidator ommersValidator = new OmmersValidator(_blockStore, _blockHeaderValidator);
+            OmmersValidator ommersValidator = new OmmersValidator(_blockStore, _blockHeaderValidator, new NullLogger());
             Assert.True(ommersValidator.Validate(_header, ommers));
         }
 
@@ -169,7 +169,7 @@ namespace Nethermind.Core.Test
         {
             BlockHeader[] ommers = GetValidOmmers(1).Union(GetValidOmmers(1)).ToArray();
 
-            OmmersValidator ommersValidator = new OmmersValidator(_blockStore, _blockHeaderValidator);
+            OmmersValidator ommersValidator = new OmmersValidator(_blockStore, _blockHeaderValidator, new NullLogger());
             Assert.False(ommersValidator.Validate(_header, ommers));
         }
     }

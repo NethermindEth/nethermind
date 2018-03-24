@@ -34,7 +34,7 @@ namespace Ethereum.Difficulty.Test
         [TestCaseSource(nameof(LoadFrontierTests))]
         public void Test(DifficultyTests test)
         {
-            RunTest(test, new SingleReleaseSpecProvider(Homestead.Instance));
+            RunTest(test, new SingleReleaseSpecProvider(Homestead.Instance, 1));
         }    
     }
 }
