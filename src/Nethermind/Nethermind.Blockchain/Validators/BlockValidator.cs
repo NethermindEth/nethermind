@@ -40,7 +40,7 @@ namespace Nethermind.Blockchain.Validators
         {
             if (!_ommersValidator.Validate(suggestedBlock.Header, suggestedBlock.Ommers))
             {
-                _logger.Log($"Invalid block ({suggestedBlock.Hash}) - invalid ommers");
+                _logger?.Log($"Invalid block ({suggestedBlock.Hash}) - invalid ommers");
                 return false;
             }
 
@@ -48,7 +48,7 @@ namespace Nethermind.Blockchain.Validators
             {
                 if (!_transactionValidator.IsWellFormed(transaction))
                 {
-                    _logger.Log($"Invalid block ({suggestedBlock.Hash}) - invalid transaction ({transaction.Hash})");
+                    _logger?.Log($"Invalid block ({suggestedBlock.Hash}) - invalid transaction ({transaction.Hash})");
                     return false;
                 }
             }
@@ -56,14 +56,14 @@ namespace Nethermind.Blockchain.Validators
             // TODO it may not be needed here (computing twice?)
             if (suggestedBlock.Header.OmmersHash != Keccak.Compute(Rlp.Encode(suggestedBlock.Ommers)))
             {
-                _logger.Log($"Invalid block ({suggestedBlock.Hash}) - invalid ommers hash");
+                _logger?.Log($"Invalid block ({suggestedBlock.Hash}) - invalid ommers hash");
                 return false;
             }
 
             bool blockHeaderValid = _blockHeaderValidator.Validate(suggestedBlock.Header);
             if (!blockHeaderValid)
             {
-                _logger.Log($"Invalid block ({suggestedBlock.Hash}) - invalid header");
+                _logger?.Log($"Invalid block ({suggestedBlock.Hash}) - invalid header");
                 return false;
             }
 

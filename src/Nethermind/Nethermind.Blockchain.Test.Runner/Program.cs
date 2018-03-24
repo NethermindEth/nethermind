@@ -129,7 +129,7 @@ namespace Nethermind.Blockchain.Test.Runner
 //
 //            Run(bugHunter, "bcBlockGasLimitTest", testWildcard);
 //            Run(bugHunter, "bcExploitTest", testWildcard);
-//            Run(bugHunter, "bcForgedTest", testWildcard);
+            Run(bugHunter, "bcForgedTest", testWildcard);
 //            Run(bugHunter, "bcForkStressTest", testWildcard);
 //            Run(bugHunter, "bcGasPricerTest", testWildcard);
 //            Run(bugHunter, "bcInvalidHeaderTest", testWildcard);

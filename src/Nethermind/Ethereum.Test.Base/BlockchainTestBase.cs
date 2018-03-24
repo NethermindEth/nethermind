@@ -262,7 +262,7 @@ namespace Ethereum.Test.Base
                 }
                 catch (Exception e)
                 {
-                    Console.WriteLine($"Invalid RLP ({i})");
+                    _logger?.Log($"Invalid RLP ({i})");
                 }
             }
 
@@ -279,9 +279,7 @@ namespace Ethereum.Test.Base
 
             Block genesisBlock = Rlp.Decode<Block>(test.GenesisRlp);
             blockchainProcessor.Initialize(genesisBlock);
-            Assert.AreEqual(genesisBlock.Header.StateRoot, stateTree.RootHash);
-
-            // TODO: may need to add a better way of initializing genesis block since forge tests do not provide genesis RLP
+            Assert.AreEqual(genesisBlock.Header.StateRoot, stateTree.RootHash, "genesis state root");
 
             for (int i = 0; i < correctRlpsBlocks.Count; i++)
             {
@@ -497,144 +495,6 @@ namespace Ethereum.Test.Base
             test.PostState = testJson.PostState.ToDictionary(p => new Address(p.Key), p => Convert(p.Value));
             test.Pre = testJson.Pre.ToDictionary(p => new Address(p.Key), p => Convert(p.Value));
             return test;
-        }
-
-        public class TestBlockHeaderJson
-        {
-            public string Bloom { get; set; }
-            public string Coinbase { get; set; }
-            public string Difficulty { get; set; }
-            public string ExtraData { get; set; }
-            public string GasLimit { get; set; }
-            public string GasUsed { get; set; }
-            public string Hash { get; set; }
-            public string MixHash { get; set; }
-            public string Nonce { get; set; }
-            public string Number { get; set; }
-            public string ParentHash { get; set; }
-            public string ReceiptTrie { get; set; }
-            public string StateRoot { get; set; }
-            public string Timestamp { get; set; }
-            public string TransactionsTrie { get; set; }
-            public string UncleHash { get; set; }
-        }
-
-        public class TestBlockHeader
-        {
-            public Bloom Bloom { get; set; }
-            public Address Coinbase { get; set; }
-            public BigInteger Difficulty { get; set; }
-            public byte[] ExtraData { get; set; }
-            public BigInteger GasLimit { get; set; }
-            public BigInteger GasUsed { get; set; }
-            public Keccak Hash { get; set; }
-            public Keccak MixHash { get; set; }
-            public BigInteger Nonce { get; set; }
-            public BigInteger Number { get; set; }
-            public Keccak ParentHash { get; set; }
-            public Keccak ReceiptTrie { get; set; }
-            public Keccak StateRoot { get; set; }
-            public BigInteger Timestamp { get; set; }
-            public Keccak TransactionsTrie { get; set; }
-            public Keccak UncleHash { get; set; }
-        }
-
-        public class TestBlockJson
-        {
-            public TestBlockHeaderJson BlockHeader { get; set; }
-            public TestBlockHeaderJson[] UncleHeaders { get; set; }
-            public string Rlp { get; set; }
-            public TransactionJson[] Transactions { get; set; }
-            [JsonProperty("expectExceptionALL")]
-            public string ExpectedException { get; set; }
-        }
-
-        public class TestBlock
-        {
-            public TestBlockHeader BlockHeader { get; set; }
-            public TestBlockHeader[] UncleHeaders { get; set; }
-            public string Rlp { get; set; }
-            public IncomingTransaction[] Transactions { get; set; }
-            public string ExpectedException { get; set; }
-        }
-
-        public class AccountState
-        {
-            public BigInteger Balance { get; set; }
-            public byte[] Code { get; set; }
-            public BigInteger Nonce { get; set; }
-            public Dictionary<BigInteger, byte[]> Storage { get; set; }
-        }
-
-        public class AccountStateJson
-        {
-            public string Balance { get; set; }
-            public string Code { get; set; }
-            public string Nonce { get; set; }
-            public Dictionary<string, string> Storage { get; set; }
-        }
-
-        public class TransactionJson
-        {
-            public string Data { get; set; }
-            public string GasLimit { get; set; }
-            public string GasPrice { get; set; }
-            public string Nonce { get; set; }
-            public string To { get; set; }
-            public string Value { get; set; }
-            public string R { get; set; }
-            public string S { get; set; }
-            public string V { get; set; }
-        }
-
-        public class IncomingTransaction
-        {
-            public byte[] Data { get; set; }
-            public BigInteger GasLimit { get; set; }
-            public BigInteger GasPrice { get; set; }
-            public BigInteger Nonce { get; set; }
-            public Address To { get; set; }
-            public BigInteger Value { get; set; }
-            public byte[] R { get; set; }
-            public byte[] S { get; set; }
-            public byte V { get; set; }
-        }
-
-        public class BlockchainTestJson
-        {
-            public string Network { get; set; }
-            public IReleaseSpec EthereumNetwork { get; set; }
-            public IReleaseSpec EthereumNetworkAfterTransition { get; set; }
-            public int TransitionBlockNumber { get; set; }
-            public string LastBlockHash { get; set; }
-            public string GenesisRlp { get; set; }
-
-            public TestBlockJson[] Blocks { get; set; }
-            public TestBlockHeaderJson GenesisBlockHeader { get; set; }
-
-            public Dictionary<string, AccountStateJson> Pre { get; set; }
-            public Dictionary<string, AccountStateJson> PostState { get; set; }
-        }
-
-        public class BlockchainTest
-        {
-            public string Name { get; set; }
-            public IReleaseSpec Network { get; set; }
-            public IReleaseSpec NetworkAfterTransition { get; set; }
-            public BigInteger TransitionBlockNumber { get; set; }
-            public Keccak LastBlockHash { get; set; }
-            public Rlp GenesisRlp { get; set; }
-
-            public TestBlockJson[] Blocks { get; set; }
-            public TestBlockHeaderJson GenesisBlockHeader { get; set; }
-
-            public Dictionary<Address, AccountState> Pre { get; set; }
-            public Dictionary<Address, AccountState> PostState { get; set; }
-
-            public override string ToString()
-            {
-                return Name;
-            }
         }
     }
 }

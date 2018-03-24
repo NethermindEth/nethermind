@@ -50,45 +50,45 @@ namespace Nethermind.Blockchain.Validators
             bool areNonceValidAndMixHashValid = _ethash.Validate(header);
             if (!areNonceValidAndMixHashValid)
             {
-                _logger.Log($"Invalid block header ({header.Hash}) - invalid mix hash / nonce");
+                _logger?.Log($"Invalid block header ({header.Hash}) - invalid mix hash / nonce");
             }
 
             // difficulty check
             bool gasUsedBelowLimit = header.GasUsed <= header.GasLimit;
             if (!gasUsedBelowLimit)
             {
-                _logger.Log($"Invalid block header ({header.Hash}) - gas used above gas limit");
+                _logger?.Log($"Invalid block header ({header.Hash}) - gas used above gas limit");
             }
 
             bool gasLimitNotTooHigh = header.GasLimit < parent.Header.GasLimit + BigInteger.Divide(parent.Header.GasLimit, 1024);
             if (!gasLimitNotTooHigh)
             {
-                _logger.Log($"Invalid block header ({header.Hash}) - gas limit too high");
+                _logger?.Log($"Invalid block header ({header.Hash}) - gas limit too high");
             }
             
             bool gasLimitNotTooLow = header.GasLimit > parent.Header.GasLimit - BigInteger.Divide(parent.Header.GasLimit, 1024);
             if (!gasLimitNotTooLow)
             {
-                _logger.Log($"Invalid block header ({header.Hash}) - invalid mix hash / nonce");
+                _logger?.Log($"Invalid block header ({header.Hash}) - invalid mix hash / nonce");
             }
 
 //            bool gasLimitAboveAbsoluteMinimum = header.GasLimit >= 125000; // TODO: tests are consistently not following this rule
             bool timestampMoreThanAtParent = header.Timestamp > parent.Header.Timestamp;
             if (!timestampMoreThanAtParent)
             {
-                _logger.Log($"Invalid block header ({header.Hash}) - timestamp before parent");
+                _logger?.Log($"Invalid block header ({header.Hash}) - timestamp before parent");
             }
             
             bool numberIsParentPlusOne = header.Number == parent.Header.Number + 1;
             if (!numberIsParentPlusOne)
             {
-                _logger.Log($"Invalid block header ({header.Hash}) - block number is not parent + 1");
+                _logger?.Log($"Invalid block header ({header.Hash}) - block number is not parent + 1");
             }
             
             bool extraDataNotTooLong = header.ExtraData.Length <= 32;
             if (!extraDataNotTooLong)
             {
-                _logger.Log($"Invalid block header ({header.Hash}) - extra data too long");
+                _logger?.Log($"Invalid block header ({header.Hash}) - extra data too long");
             }
             
             Keccak hash = header.Hash;
@@ -96,7 +96,7 @@ namespace Nethermind.Blockchain.Validators
             bool hashAsExpected = header.Hash == hash;
             if (!hashAsExpected)
             {
-                _logger.Log($"Invalid block header ({header.Hash}) - invalid block hash");
+                _logger?.Log($"Invalid block header ({header.Hash}) - invalid block hash");
             }
             
             bool extraDataValid = _daoBlockNumber == null
@@ -105,7 +105,7 @@ namespace Nethermind.Blockchain.Validators
                                   || new Hex(header.ExtraData).Equals(DaoExtraData);
             if (!extraDataValid)
             {
-                _logger.Log($"Invalid block header ({header.Hash}) - DAO extra data not valid");
+                _logger?.Log($"Invalid block header ({header.Hash}) - DAO extra data not valid");
             }
             
             return
