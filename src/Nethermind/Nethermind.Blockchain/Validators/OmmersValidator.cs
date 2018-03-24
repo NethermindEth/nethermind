@@ -49,7 +49,7 @@ namespace Nethermind.Blockchain.Validators
 
             foreach (BlockHeader ommer in ommers)
             {   
-                if (!_headerValidator.Validate(ommer))
+                if (!_headerValidator.Validate(ommer, true))
                 {
                     _logger?.Log($"Invalid block ({header.Hash}) - ommer's header invalid");
                     return false;

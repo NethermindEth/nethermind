@@ -15,17 +15,18 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
+
 using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Mining;
 
 namespace Nethermind.Blockchain.Validators
-{   
+{
     public class BlockHeaderValidator : IBlockHeaderValidator
     {
         private static readonly Hex DaoExtraData = new Hex("0x64616f2d686172642d666f726b");
-        
+
         private readonly IEthash _ethash;
         private readonly BigInteger? _daoBlockNumber;
         private readonly ILogger _logger;
@@ -39,14 +40,14 @@ namespace Nethermind.Blockchain.Validators
             _logger = logger;
         }
 
-        public bool Validate(BlockHeader header)
+        public bool Validate(BlockHeader header, bool isOmmer = false)
         {
             Block parent = _chain.FindParent(header);
             if (parent == null)
             {
                 return IsGenesisHeaderValid(header);
             }
-            
+
             bool areNonceValidAndMixHashValid = _ethash.Validate(header);
             if (!areNonceValidAndMixHashValid)
             {
@@ -65,7 +66,7 @@ namespace Nethermind.Blockchain.Validators
             {
                 _logger?.Log($"Invalid block header ({header.Hash}) - gas limit too high");
             }
-            
+
             bool gasLimitNotTooLow = header.GasLimit > parent.Header.GasLimit - BigInteger.Divide(parent.Header.GasLimit, 1024);
             if (!gasLimitNotTooLow)
             {
@@ -78,19 +79,19 @@ namespace Nethermind.Blockchain.Validators
             {
                 _logger?.Log($"Invalid block header ({header.Hash}) - timestamp before parent");
             }
-            
+
             bool numberIsParentPlusOne = header.Number == parent.Header.Number + 1;
             if (!numberIsParentPlusOne)
             {
                 _logger?.Log($"Invalid block header ({header.Hash}) - block number is not parent + 1");
             }
-            
+
             bool extraDataNotTooLong = header.ExtraData.Length <= 32;
             if (!extraDataNotTooLong)
             {
                 _logger?.Log($"Invalid block header ({header.Hash}) - extra data too long");
             }
-            
+
             Keccak hash = header.Hash;
             header.RecomputeHash();
             bool hashAsExpected = header.Hash == hash;
@@ -98,8 +99,10 @@ namespace Nethermind.Blockchain.Validators
             {
                 _logger?.Log($"Invalid block header ({header.Hash}) - invalid block hash");
             }
-            
-            bool extraDataValid = _daoBlockNumber == null
+
+            _logger?.Log($"Validating block {header.Hash} ({header.Number}) - DAO block {_daoBlockNumber}, extraData {new Hex(header.ExtraData)}");
+            bool extraDataValid = isOmmer
+                                  || _daoBlockNumber == null
                                   || header.Number < _daoBlockNumber
                                   || header.Number > _daoBlockNumber + 10
                                   || new Hex(header.ExtraData).Equals(DaoExtraData);
@@ -107,18 +110,18 @@ namespace Nethermind.Blockchain.Validators
             {
                 _logger?.Log($"Invalid block header ({header.Hash}) - DAO extra data not valid");
             }
-            
+
             return
-                   areNonceValidAndMixHashValid &&
-                   gasUsedBelowLimit &&
-                   gasLimitNotTooLow &&
-                   gasLimitNotTooHigh &&
+                areNonceValidAndMixHashValid &&
+                gasUsedBelowLimit &&
+                gasLimitNotTooLow &&
+                gasLimitNotTooHigh &&
 //                   gasLimitAboveAbsoluteMinimum && // TODO: tests are consistently not following this rule
-                   timestampMoreThanAtParent &&
-                   numberIsParentPlusOne &&
-                   extraDataNotTooLong &&
-                   hashAsExpected &&
-                   extraDataValid;
+                timestampMoreThanAtParent &&
+                numberIsParentPlusOne &&
+                extraDataNotTooLong &&
+                hashAsExpected &&
+                extraDataValid;
         }
 
         private static bool IsGenesisHeaderValid(BlockHeader header)

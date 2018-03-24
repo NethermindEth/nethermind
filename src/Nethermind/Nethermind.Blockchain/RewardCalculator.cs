@@ -15,6 +15,7 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
+
 using System.Collections.Generic;
 using System.Numerics;
 using Nethermind.Core;
@@ -31,7 +32,7 @@ namespace Nethermind.Blockchain
         {
             _releaseSpec = releaseSpec;
         }
-        
+
         public Dictionary<Address, BigInteger> CalculateRewards(Block block)
         {
             BigInteger blockReward = 5.Ether();
@@ -39,14 +40,18 @@ namespace Nethermind.Blockchain
             {
                 blockReward = 3.Ether();
             }
-            
+
             BlockHeader blockHeader = block.Header;
             Dictionary<Address, BigInteger> rewards = new Dictionary<Address, BigInteger>();
             rewards[blockHeader.Beneficiary] = blockReward + block.Ommers.Length * blockReward / 32;
             foreach (BlockHeader ommerHeader in block.Ommers)
             {
-                rewards[ommerHeader.Beneficiary] =
-                    blockReward + (ommerHeader.Number - blockHeader.Number) * blockReward / 8;
+                if (!rewards.ContainsKey(ommerHeader.Beneficiary))
+                {
+                    rewards[ommerHeader.Beneficiary] = 0;
+                }
+
+                rewards[ommerHeader.Beneficiary] += blockReward + (ommerHeader.Number - blockHeader.Number) * blockReward / 8;
             }
 
             return rewards;
