@@ -83,20 +83,16 @@ namespace Nethermind.Core
 
         public bool Equals(Address other)
         {
-            Console.WriteLine("equals");
             if (ReferenceEquals(null, other))
             {
-                Console.WriteLine("null left");
                 return false;
             }
             
             if (ReferenceEquals(this, other))
             {
-                Console.WriteLine("reference equals");
                 return true;
             }
             
-            Console.WriteLine("hex");
             return Hex.Equals(other.Hex);
         }
 
