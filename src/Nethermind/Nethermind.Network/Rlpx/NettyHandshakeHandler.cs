@@ -133,7 +133,8 @@ namespace Nethermind.Network.Rlpx
             }
             else
             {
-                Debug.Assert(false, $"Always expecting {nameof(IByteBuffer)} as an input to {nameof(NettyHandshakeHandler)}");
+                // TODO: add loggers for networking
+//                Debug.Assert(false, $"Always expecting {nameof(IByteBuffer)} as an input to {nameof(NettyHandshakeHandler)}");
             }
         }
 
