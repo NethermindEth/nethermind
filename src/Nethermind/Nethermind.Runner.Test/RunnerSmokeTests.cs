@@ -31,6 +31,8 @@ namespace Nethermind.Runner.Test
         {
             var host = "http://localhost:100012";
 
+            RunnerApp.InitParams = new InitParams();
+
             var webHost = WebHost.CreateDefaultBuilder()
                 .UseStartup<Startup>()
                 .UseUrls(host)

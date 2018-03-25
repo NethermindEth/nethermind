@@ -97,7 +97,7 @@ namespace Nethermind.JsonRpc.Module
 
         public ResultWrapper<Quantity> eth_gasPrice()
         {
-            throw new NotImplementedException();
+            return ResultWrapper<Quantity>.Success(new Quantity(1));
         }
 
         public ResultWrapper<IEnumerable<Data>> eth_accounts()

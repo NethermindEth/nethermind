@@ -76,8 +76,8 @@ namespace Nethermind.Runner
             var blocksRlps = Rlp.ExtractRplList(new Rlp(chainFileContent));
             foreach (var blockRlp in blocksRlps)
             {
-                //Block suggestedBlocks = Rlp.Decode<Block>(block);
-                ProcessBlock(blockRlp);
+                Block block = Rlp.Decode<Block>(blockRlp);
+                ProcessBlock(block);
             }
         }
 
@@ -90,18 +90,24 @@ namespace Nethermind.Runner
             }
 
             var files = Directory.GetFiles(blocksDir).OrderBy(x => x).ToArray();
-            foreach (var file in files)
+            var blocks = files.Select(x => new { File = x, Block = DecodeBlock(x) }).OrderBy(x => x.Block.Header.Number).ToArray();
+            foreach (var block in blocks)
             {
-                _logger.Log($"Processing block file: {file}");
-                var fileContent = File.ReadAllBytes(file);
-                var blockRlp = new Rlp(fileContent);
-                ProcessBlock(blockRlp);
+                _logger.Log($"Processing block file: {block.File}, blockNumber: {block.Block.Header.Number}");
+                ProcessBlock(block.Block);
             }
         }
 
-        private void ProcessBlock(Rlp blockRlp)
+        private Block DecodeBlock(string file)
         {
+            var fileContent = File.ReadAllBytes(file);
+            var blockRlp = new Rlp(fileContent);
             Block block = Rlp.Decode<Block>(blockRlp);
+            return block;
+        }
+
+        private void ProcessBlock(Block block)
+        {
             try
             {
                 _blockchainProcessor.Process(block);
