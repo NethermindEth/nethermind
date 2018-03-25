@@ -58,12 +58,14 @@ namespace Nethermind.Runner
         private void RegisterApplicationTypes(IServiceCollection services)
         {
             //based on configuration we will set it
-            var ethereumRelease = Frontier.Instance;
+            var specProvider = new MainNetSpecProvider();
+            var ethereumRelease = specProvider.GetSpec(1);
             var chainId = ChainId.MainNet;
 
             var signer = new EthereumSigner(ethereumRelease, chainId);
             var signatureValidator = new SignatureValidator(ethereumRelease, chainId);
 
+            services.AddSingleton<ISpecProvider>(specProvider);
             services.AddTransient<ILogger, ConsoleLogger>();
             services.AddSingleton<IBlockStore, BlockStore>();
             services.AddSingleton(ethereumRelease);

@@ -19,6 +19,7 @@
 using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Mining;
 
 namespace Nethermind.Blockchain.Validators
@@ -32,11 +33,11 @@ namespace Nethermind.Blockchain.Validators
         private readonly ILogger _logger;
         private readonly IBlockStore _chain;
 
-        public BlockHeaderValidator(IBlockStore chain, IEthash ethash, BigInteger? daoBlockNumber, ILogger logger)
+        public BlockHeaderValidator(IBlockStore chain, IEthash ethash, ISpecProvider specProvider, ILogger logger)
         {
             _chain = chain;
             _ethash = ethash;
-            _daoBlockNumber = daoBlockNumber;
+            _daoBlockNumber = specProvider?.DaoBlockNumber;
             _logger = logger;
         }
 
