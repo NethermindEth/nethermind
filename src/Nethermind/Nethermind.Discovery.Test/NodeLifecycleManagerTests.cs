@@ -96,9 +96,10 @@ namespace Nethermind.Discovery.Test
             var manager = _discoveryManager.GetNodeLifecycleManager(node);
             Assert.AreEqual(NodeLifecycleState.New, manager.State);
 
-            Thread.Sleep(500);
+            //Thread.Sleep(500);
 
-            Assert.AreEqual(NodeLifecycleState.Unreachable, manager.State);
+            Assert.That(() => manager.State, Is.EqualTo(NodeLifecycleState.Unreachable).After(500, 50));
+            //Assert.AreEqual(NodeLifecycleState.Unreachable, manager.State);
         }
 
         [Test]
@@ -137,16 +138,24 @@ namespace Nethermind.Discovery.Test
             //receiving pong for eviction candidate - should survive
             _discoveryManager.OnIncomingMessage(new PongMessage { FarAddress = new IPEndPoint(IPAddress.Parse(evictionCandidate.ManagedNode.Host), _port), FarPublicKey = evictionCandidate.ManagedNode.Id });
 
-            Thread.Sleep(100);
+            //Thread.Sleep(100);
 
             //3th node should survive, 4th node should be active but not in the table
-            Assert.AreEqual(NodeLifecycleState.ActiveExcluded, candidateManager.State);
-            Assert.AreEqual(NodeLifecycleState.Active, evictionCandidate.State);
+            Assert.That(() => candidateManager.State, Is.EqualTo(NodeLifecycleState.ActiveExcluded).After(100, 50));
+            Assert.That(() => evictionCandidate.State, Is.EqualTo(NodeLifecycleState.Active).After(100, 50));
+
+            //Assert.AreEqual(NodeLifecycleState.ActiveExcluded, candidateManager.State);
+            //Assert.AreEqual(NodeLifecycleState.Active, evictionCandidate.State);
             closestNodes = _nodeTable.GetClosestNodes();
-            Assert.IsTrue(closestNodes.Count(x => x.Host == managers[0].ManagedNode.Host) == 1);
-            Assert.IsTrue(closestNodes.Count(x => x.Host == managers[1].ManagedNode.Host) == 1);
-            Assert.IsTrue(closestNodes.Count(x => x.Host == managers[2].ManagedNode.Host) == 1);
-            Assert.IsTrue(closestNodes.Count(x => x.Host == candidateNode.Host) == 0);
+            Assert.That(() => closestNodes.Count(x => x.Host == managers[0].ManagedNode.Host) == 1, Is.True.After(100, 50));
+            Assert.That(() => closestNodes.Count(x => x.Host == managers[1].ManagedNode.Host) == 1, Is.True.After(100, 50));
+            Assert.That(() => closestNodes.Count(x => x.Host == managers[2].ManagedNode.Host) == 1, Is.True.After(100, 50));
+            Assert.That(() => closestNodes.Count(x => x.Host == candidateNode.Host) == 0, Is.True.After(100, 50));
+            
+            //Assert.IsTrue(closestNodes.Count(x => x.Host == managers[0].ManagedNode.Host) == 1);
+            //Assert.IsTrue(closestNodes.Count(x => x.Host == managers[1].ManagedNode.Host) == 1);
+            //Assert.IsTrue(closestNodes.Count(x => x.Host == managers[2].ManagedNode.Host) == 1);
+            //Assert.IsTrue(closestNodes.Count(x => x.Host == candidateNode.Host) == 0);
         }
 
         [Test]
@@ -185,18 +194,27 @@ namespace Nethermind.Discovery.Test
                 FarPublicKey = _nodeIds[3]
             });
 
-            Thread.Sleep(10);
-            Assert.AreEqual(NodeLifecycleState.Active, candidateManager.State);
+            //Thread.Sleep(10);
+            Assert.That(() => candidateManager.State, Is.EqualTo(NodeLifecycleState.Active).After(10, 5));
+            //Assert.AreEqual(NodeLifecycleState.Active, candidateManager.State);
+
             var evictionCandidate = managers.First(x => x.State == NodeLifecycleState.EvictCandidate);
-            Thread.Sleep(300);
+            //Thread.Sleep(300);
 
             //3th node should be evicted, 4th node should be added to the table
-            Assert.AreEqual(NodeLifecycleState.Active, candidateManager.State);
-            Assert.AreEqual(NodeLifecycleState.Unreachable, evictionCandidate.State);
+            //Assert.AreEqual(NodeLifecycleState.Active, candidateManager.State);
+            Assert.That(() => candidateManager.State, Is.EqualTo(NodeLifecycleState.Active).After(300, 50));
+            //Assert.AreEqual(NodeLifecycleState.Unreachable, evictionCandidate.State);
+            Assert.That(() => evictionCandidate.State, Is.EqualTo(NodeLifecycleState.Unreachable).After(300, 50));
+
             closestNodes = _nodeTable.GetClosestNodes();
-            Assert.IsTrue(managers.Where(x => x.State == NodeLifecycleState.Active).All(x => closestNodes.Any(y => y.Host == x.ManagedNode.Host)));
-            Assert.IsTrue(closestNodes.Count(x => x.Host == evictionCandidate.ManagedNode.Host) == 0);
-            Assert.IsTrue(closestNodes.Count(x => x.Host == candidateNode.Host) == 1);
+            Assert.That(() => managers.Where(x => x.State == NodeLifecycleState.Active).All(x => closestNodes.Any(y => y.Host == x.ManagedNode.Host)), Is.True.After(300, 50));
+            Assert.That(() => closestNodes.Count(x => x.Host == evictionCandidate.ManagedNode.Host) == 0, Is.True.After(300, 50));
+            Assert.That(() => closestNodes.Count(x => x.Host == candidateNode.Host) == 1, Is.True.After(300, 50));
+
+            //Assert.IsTrue(managers.Where(x => x.State == NodeLifecycleState.Active).All(x => closestNodes.Any(y => y.Host == x.ManagedNode.Host)));
+            //Assert.IsTrue(closestNodes.Count(x => x.Host == evictionCandidate.ManagedNode.Host) == 0);
+            //Assert.IsTrue(closestNodes.Count(x => x.Host == candidateNode.Host) == 1);
         }
 
         private void SetupNodeIds()
