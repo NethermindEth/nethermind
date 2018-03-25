@@ -137,7 +137,7 @@ namespace Nethermind.Discovery.Test
             //receiving pong for eviction candidate - should survive
             _discoveryManager.OnIncomingMessage(new PongMessage { FarAddress = new IPEndPoint(IPAddress.Parse(evictionCandidate.ManagedNode.Host), _port), FarPublicKey = evictionCandidate.ManagedNode.Id });
 
-            Thread.Sleep(1000);
+            Thread.Sleep(100);
 
             //3th node should survive, 4th node should be active but not in the table
             Assert.AreEqual(NodeLifecycleState.ActiveExcluded, candidateManager.State);

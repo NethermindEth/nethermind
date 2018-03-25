@@ -64,8 +64,10 @@ namespace Nethermind.JsonRpc.Module
 
         public ResultWrapper<string> eth_protocolVersion()
         {
+            //TODO implement properly
+            return ResultWrapper<string>.Success("1");
             // TODO: this was inccorrect anyway
-            throw new NotImplementedException();
+//           throw new NotImplementedException();
 //            var version = EthereumNetwork.Main.GetNetworkId().ToString();
 //            Logger.Debug($"eth_protocolVersion request, result: {version}");
 //            return ResultWrapper<string>.Success(version);

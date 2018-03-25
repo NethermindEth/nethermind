@@ -30,6 +30,8 @@ namespace Nethermind.JsonRpc.Module
 
         public ResultWrapper<string> net_version()
         {
+            //TODO implement properly
+            return ResultWrapper<string>.Success("1");
             throw new NotImplementedException();
 //            return ResultWrapper<string>.Success(EthereumNetwork.Main.GetNetworkId().ToString());
         }

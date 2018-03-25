@@ -106,7 +106,7 @@ namespace Nethermind.JsonRpc.Test
             var rawResponse = _jsonRpcService.SendRequest(requestJson);
             var response = _jsonSerializer.Deserialize<JsonRpcResponse>(rawResponse);
 
-            Assert.IsTrue(response.Result.ToString().Contains("0x2"));
+            Assert.IsTrue(response.Result.ToString().Contains("0x02"));
         }
 
         [Test]
