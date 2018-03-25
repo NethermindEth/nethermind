@@ -58,12 +58,19 @@ namespace Nethermind.Runner
         private void RegisterApplicationTypes(IServiceCollection services)
         {
             //based on configuration we will set it
-            var specProvider = new MainNetSpecProvider();
+            //var specProvider = new MainNetSpecProvider();
+            var homesteadBlockNr = RunnerApp.InitParams.HomesteadBlockNr;
+            
+            var specProvider = homesteadBlockNr.HasValue 
+                ? (ISpecProvider)new CustomSpecProvider((0, Frontier.Instance), (homesteadBlockNr.Value, Homestead.Instance)) 
+                : new MainNetSpecProvider();
+
             var ethereumRelease = specProvider.GetSpec(1);
             var chainId = ChainId.MainNet;
 
-            var signer = new EthereumSigner(ethereumRelease, chainId);
-            var signatureValidator = new SignatureValidator(ethereumRelease, chainId);
+            var dynamicReleaseSpec = new DynamicReleaseSpec(specProvider);
+            var signer = new EthereumSigner(dynamicReleaseSpec, chainId);
+            var signatureValidator = new SignatureValidator(dynamicReleaseSpec, chainId);
 
             services.AddSingleton<ISpecProvider>(specProvider);
             services.AddTransient<ILogger, ConsoleLogger>();

@@ -46,7 +46,17 @@ namespace Nethermind.Blockchain.Validators
             Block parent = _chain.FindParent(header);
             if (parent == null)
             {
-                return IsGenesisHeaderValid(header);
+                if (header.Number == 0)
+                {
+                    var isGenesisValid = IsGenesisHeaderValid(header);;
+                    if (!isGenesisValid)
+                    {
+                        _logger?.Log($"Invalid genesis block header ({header.Hash})");
+                    }
+                    return isGenesisValid;
+                }
+                _logger?.Log($"Orphan block, could not find parent ({header.Hash})");
+                return false;
             }
 
             bool areNonceValidAndMixHashValid = _ethash.Validate(header);

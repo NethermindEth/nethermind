@@ -59,7 +59,7 @@ namespace Nethermind.Discovery.Test
             //setting config to store 3 nodes in a bucket and for table to have one bucket//setting config to store 3 nodes in a bucket and for table to have one bucket
             _configurationProvider = new DiscoveryConfigurationProvider
             {
-                PongTimeout = 100,
+                PongTimeout = 50,
                 BucketSize = 3,
                 BucketsCount = 1
             };
@@ -184,10 +184,11 @@ namespace Nethermind.Discovery.Test
                 FarAddress = new IPEndPoint(IPAddress.Parse(_host), _port),
                 FarPublicKey = _nodeIds[3]
             });
+
             Thread.Sleep(10);
             Assert.AreEqual(NodeLifecycleState.Active, candidateManager.State);
             var evictionCandidate = managers.First(x => x.State == NodeLifecycleState.EvictCandidate);
-            Thread.Sleep(1000);
+            Thread.Sleep(300);
 
             //3th node should be evicted, 4th node should be added to the table
             Assert.AreEqual(NodeLifecycleState.Active, candidateManager.State);

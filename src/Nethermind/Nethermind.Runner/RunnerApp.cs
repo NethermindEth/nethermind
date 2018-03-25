@@ -17,6 +17,7 @@
  */
 
 using System;
+using System.Numerics;
 using System.Threading;
 using Microsoft.AspNetCore;
 using Microsoft.AspNetCore.Hosting;
@@ -31,6 +32,8 @@ namespace Nethermind.Runner
     {
         private readonly ILogger _logger;
 
+        //TODO temp solution - fix it
+        public static InitParams InitParams;
 
         private string _host = "0.0.0.0";
         private string _bootNode = "localhost";
@@ -59,6 +62,7 @@ namespace Nethermind.Runner
             var chainFile = app.Option("-cf|--chainFile <chainFile>", "chain file path", CommandOptionType.SingleValue);
             var blocksDir = app.Option("-bd|--blocksDir <blocksDir>", "blocks directory path", CommandOptionType.SingleValue);
             var keysDir = app.Option("-kd|--keysDir <keysDir>", "keys directory path", CommandOptionType.SingleValue);
+            var homesteadBlockNr = app.Option("-fh|--homesteadBlockNr <homesteadBlockNr>", "the block number of the Ethereum Homestead transition", CommandOptionType.SingleValue);
 
             app.OnExecute(() => {
                 
@@ -71,10 +75,12 @@ namespace Nethermind.Runner
                     GenesisFilePath = genesisFile.HasValue() ? genesisFile.Value() : _genesisFile,
                     ChainFile = chainFile.HasValue() ? chainFile.Value() : _chainFile,
                     BlocksDir = blocksDir.HasValue() ? blocksDir.Value() : _blocksDir,
-                    KeysDir = keysDir.HasValue() ? keysDir.Value() : _keysDir
+                    KeysDir = keysDir.HasValue() ? keysDir.Value() : _keysDir,
+                    HomesteadBlockNr = homesteadBlockNr.HasValue() ? GetBigIntValue(homesteadBlockNr.Value(), "homesteadBlockNr") : (BigInteger?)null
                 };
 
                 Console.WriteLine($"Running Nethermind Runner, parameters: {initParams}");
+                InitParams = initParams;
 
                 Run(initParams);
                 return 0;
@@ -134,6 +140,16 @@ namespace Nethermind.Runner
         private int GetIntValue(string rawValue, string argName)
         {
             if (int.TryParse(rawValue, out var value))
+            {
+                return value;
+            }
+
+            throw new Exception($"Incorrect argument value, arg: {argName}, value: {rawValue}");
+        }
+
+        private BigInteger GetBigIntValue(string rawValue, string argName)
+        {
+            if (BigInteger.TryParse(rawValue, out var value))
             {
                 return value;
             }

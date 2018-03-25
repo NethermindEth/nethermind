@@ -16,6 +16,8 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Numerics;
+
 namespace Nethermind.Runner
 {
     public class InitParams
@@ -28,11 +30,12 @@ namespace Nethermind.Runner
         public string ChainFile { get; set; }
         public string BlocksDir { get; set; }
         public string KeysDir { get; set; }
+        public BigInteger? HomesteadBlockNr { get; set; }
 
         public override string ToString()
         {
             return $"Host: {Host}, BootNode: {BootNode}, HttpPort: {HttpPort}, DiscoveryPort: {DiscoveryPort}, GenesisFilePath: {GenesisFilePath}, " +
-                   $"ChainFile: {ChainFile}, BlocksDir: {BlocksDir}, KeysDir: {KeysDir}";
+                   $"ChainFile: {ChainFile}, BlocksDir: {BlocksDir}, KeysDir: {KeysDir}, HomesteadBlockNr: {HomesteadBlockNr}";
         }
     }
 }

@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -76,8 +77,7 @@ namespace Nethermind.Runner
             foreach (var blockRlp in blocksRlps)
             {
                 //Block suggestedBlocks = Rlp.Decode<Block>(block);
-                Block block = Rlp.Decode<Block>(blockRlp);
-                _blockchainProcessor.Process(block);
+                ProcessBlock(blockRlp);
             }
         }
 
@@ -95,8 +95,20 @@ namespace Nethermind.Runner
                 _logger.Log($"Processing block file: {file}");
                 var fileContent = File.ReadAllBytes(file);
                 var blockRlp = new Rlp(fileContent);
-                Block block = Rlp.Decode<Block>(blockRlp);
+                ProcessBlock(blockRlp);
+            }
+        }
+
+        private void ProcessBlock(Rlp blockRlp)
+        {
+            Block block = Rlp.Decode<Block>(blockRlp);
+            try
+            {
                 _blockchainProcessor.Process(block);
+            }
+            catch (InvalidBlockException e)
+            {
+                _logger.Error($"Invalid block: {block.Hash}, ignoring", e);
             }
         }
 
@@ -167,7 +179,8 @@ namespace Nethermind.Runner
         {
             foreach (var account in alloc)
             {
-                _stateProvider.CreateAccount(new Address(new Hex(account.Key)), BigInteger.Parse(account.Value.Balance));
+                _stateProvider.CreateAccount(new Address(new Hex(account.Key)), account.Value.Balance.StartsWith("0x") 
+                    ? new BigInteger(new Hex(account.Value.Balance)) : BigInteger.Parse(account.Value.Balance));
             }
             _stateProvider.Commit();
             _dbProvider.Commit();
