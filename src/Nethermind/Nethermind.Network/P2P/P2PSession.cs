@@ -25,10 +25,10 @@ namespace Nethermind.Network.P2P
 {
     public class P2PSession : ISession
     {
-        private const int P2PVersion = 1;
         private readonly IMessageSender _messageSender;
         private readonly ILogger _logger;
 
+        // TODO: initialize with capabilities and version
         public P2PSession(IMessageSender messageSender, PublicKey localNodeId, int listenPort, ILogger logger)
         {
             _messageSender = messageSender;
@@ -44,25 +44,24 @@ namespace Nethermind.Network.P2P
         public int RemoteListenPort { get; private set; }
         
         public PublicKey RemoteNodeId { get; private set; }
+        
+        public string RemoteClientId { get; private set; }
 
         public void InitInbound(HelloMessage hello)
         {
-            if (hello.P2PVersion != NettyP2PHandler.Version)
-            {
-                Disconnect(DisconnectReason.IncompatibleP2PVersion);
-                return;
-            }
-            
-            RemoteNodeId = hello.NodeId;
-            RemoteListenPort = hello.ListenPort;
-            if (!hello.Capabilities.ContainsKey(Capability.Eth))
-            {
-                Disconnect(DisconnectReason.Other);
-            }
+            _logger.Log($"P2P initiating inbound session from {hello.NodeId}:{hello.ListenPort} ({hello.ClientId})");
+            HandleHello(hello);
         }
 
-        public void InitOutbound()
+        public void InitOutbound() // TODO: remote node details here?
         {
+            _logger.Log($"P2P initiating outbound session");
+            SendHello();
+        }
+
+        private void SendHello()
+        {
+            _logger.Log($"P2P sending hello");
             HelloMessage helloMessage = new HelloMessage
             {
                 Capabilities = new Dictionary<Capability, int>
@@ -72,36 +71,58 @@ namespace Nethermind.Network.P2P
                 ClientId = ClientVersion.Description,
                 NodeId = LocalNodeId,
                 ListenPort = ListenPort,
-                P2PVersion = P2PVersion
+                P2PVersion = NettyP2PHandler.Version
             };
 
             _messageSender.Enqueue(helloMessage);
         }
 
+        private void HandleHello(HelloMessage hello)
+        {
+            RemoteNodeId = hello.NodeId;
+            RemoteListenPort = hello.ListenPort;
+            RemoteClientId = hello.ClientId;
+            _logger.Log($"P2P received hello from {RemoteNodeId}:{RemoteListenPort} ({RemoteClientId})");
+            
+            if (hello.P2PVersion != NettyP2PHandler.Version)
+            {
+                Disconnect(DisconnectReason.IncompatibleP2PVersion);
+                return;
+            }
+            
+            if (!hello.Capabilities.ContainsKey(Capability.Eth))
+            {
+                Disconnect(DisconnectReason.Other);
+            }
+        }
+
         public void HandlePing()
         {
+            _logger.Log($"P2P responding to ping from {RemoteNodeId}:{RemoteListenPort} ({RemoteClientId})");
             _messageSender.Enqueue(PongMessage.Instance);
         }
 
         public void Disconnect(DisconnectReason disconnectReason)
         {
-            // TODO: advertise disconnect up the stack so we actually disconnect
-            
-            _logger.Log($"Disconnecting from ({RemoteNodeId}:{RemoteListenPort}) - useless peer");
+            // TODO: advertise disconnect up the stack so we actually disconnect   
+            _logger.Log($"P2P disconnecting from {RemoteNodeId}:{RemoteListenPort} ({RemoteClientId}) [{disconnectReason}]");
             DisconnectMessage message = new DisconnectMessage(disconnectReason);
             _messageSender.Enqueue(message);
         }
 
         public void Close(DisconnectReason disconnectReason)
         {
+            _logger.Log($"P2P received disconnect from {RemoteNodeId}:{RemoteListenPort} ({RemoteClientId}) [{disconnectReason}]");
         }
 
         public void HandlePong()
         {
+            _logger.Log($"P2P pong from {RemoteNodeId}:{RemoteListenPort} ({RemoteClientId})");
         }
 
         public void Ping()
         {
+            _logger.Log($"P2P sending ping to {RemoteNodeId}:{RemoteListenPort} ({RemoteClientId})");
             // TODO: timers
             _messageSender.Enqueue(PingMessage.Instance);
         }

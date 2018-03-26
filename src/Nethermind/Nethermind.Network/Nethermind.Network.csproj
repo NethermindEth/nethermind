@@ -14,4 +14,8 @@
     <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="2.1.0-preview1-final" />
     <PackageReference Include="Portable.BouncyCastle" Version="1.8.1.4" />
   </ItemGroup>
+  <ItemGroup>
+    <Folder Include="Swarm" />
+    <Folder Include="Whisper" />
+  </ItemGroup>
 </Project>
