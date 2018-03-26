@@ -25,6 +25,8 @@ namespace Nethermind.Network.P2P
 {
     public class NettyP2PHandler : SimpleChannelInboundHandler<Packet>
     {
+        public static int Version = 5; // TODO: move somewhere else
+        
         private readonly ILogger _logger;
         private readonly IMessageSerializationService _serializationService;
         private readonly ISession _session;

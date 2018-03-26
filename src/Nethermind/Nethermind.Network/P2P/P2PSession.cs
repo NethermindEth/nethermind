@@ -27,20 +27,38 @@ namespace Nethermind.Network.P2P
     {
         private const int P2PVersion = 1;
         private readonly IMessageSender _messageSender;
+        private readonly ILogger _logger;
 
-        public P2PSession(IMessageSender messageSender, PublicKey localNodeId, int listenPort)
+        public P2PSession(IMessageSender messageSender, PublicKey localNodeId, int listenPort, ILogger logger)
         {
             _messageSender = messageSender;
+            _logger = logger;
             LocalNodeId = localNodeId;
             ListenPort = listenPort;
         }
-
+        
         public int ListenPort { get; }
 
         public PublicKey LocalNodeId { get; }
+        
+        public int RemoteListenPort { get; private set; }
+        
+        public PublicKey RemoteNodeId { get; private set; }
 
         public void InitInbound(HelloMessage hello)
         {
+            if (hello.P2PVersion != NettyP2PHandler.Version)
+            {
+                Disconnect(DisconnectReason.IncompatibleP2PVersion);
+                return;
+            }
+            
+            RemoteNodeId = hello.NodeId;
+            RemoteListenPort = hello.ListenPort;
+            if (!hello.Capabilities.ContainsKey(Capability.Eth))
+            {
+                Disconnect(DisconnectReason.Other);
+            }
         }
 
         public void InitOutbound()
@@ -49,7 +67,7 @@ namespace Nethermind.Network.P2P
             {
                 Capabilities = new Dictionary<Capability, int>
                 {
-                    {Capability.Eth, 0}
+//                    {Capability.Eth, 0}
                 },
                 ClientId = ClientVersion.Description,
                 NodeId = LocalNodeId,
@@ -67,6 +85,9 @@ namespace Nethermind.Network.P2P
 
         public void Disconnect(DisconnectReason disconnectReason)
         {
+            // TODO: advertise disconnect up the stack so we actually disconnect
+            
+            _logger.Log($"Disconnecting from ({RemoteNodeId}:{RemoteListenPort}) - useless peer");
             DisconnectMessage message = new DisconnectMessage(disconnectReason);
             _messageSender.Enqueue(message);
         }

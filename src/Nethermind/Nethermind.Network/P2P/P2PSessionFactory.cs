@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Network.Rlpx;
 
@@ -24,17 +25,19 @@ namespace Nethermind.Network.P2P
     public class P2PSessionFactory : ISessionFactory
     {
         private readonly int _listenPort;
+        private readonly ILogger _logger;
         private readonly PublicKey _localNodeId;
 
-        public P2PSessionFactory(PublicKey localNodeId, int listenPort)
+        public P2PSessionFactory(PublicKey localNodeId, int listenPort, ILogger logger)
         {
             _localNodeId = localNodeId;
             _listenPort = listenPort;
+            _logger = logger;
         }
 
         public ISession Create(IMessageSender messageSender)
         {
-            P2PSession p2PSession = new P2PSession(messageSender, _localNodeId, _listenPort);
+            P2PSession p2PSession = new P2PSession(messageSender, _localNodeId, _listenPort, _logger);
             return p2PSession;
         }
     }

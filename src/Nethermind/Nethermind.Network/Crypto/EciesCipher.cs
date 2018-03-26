@@ -87,7 +87,7 @@ namespace Nethermind.Network.Crypto
 
         private byte[] Decrypt(PublicKey ephemeralPublicKey, PrivateKey privateKey, byte[] iv, byte[] ciphertextBody, byte[] macData)
         {
-            AesFastEngine aesFastEngine = new AesFastEngine();
+            AesEngine aesFastEngine = new AesEngine();
 
             EthereumIesEngine iesEngine = new EthereumIesEngine(
                 new ECDHBasicAgreement(),
@@ -108,7 +108,7 @@ namespace Nethermind.Network.Crypto
 
         private static EthereumIesEngine MakeIesEngine(bool isEncrypt, ECPublicKeyParameters pub, ECPrivateKeyParameters prv, byte[] iv)
         {
-            AesFastEngine aesFastEngine = new AesFastEngine();
+            AesEngine aesFastEngine = new AesEngine();
 
             EthereumIesEngine iesEngine = new EthereumIesEngine(
                 new ECDHBasicAgreement(),

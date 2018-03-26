@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.Core;
 using Nethermind.Network.P2P;
 using Nethermind.Network.Rlpx;
 using NSubstitute;
@@ -31,7 +32,7 @@ namespace Nethermind.Network.Test.P2P
         [Test]
         public void Sets_listen_port()
         {
-            P2PSessionFactory factory = new P2PSessionFactory(NetTestVectors.StaticKeyA.PublicKey, ListenPort);
+            P2PSessionFactory factory = new P2PSessionFactory(NetTestVectors.StaticKeyA.PublicKey, ListenPort, new NullLogger());
             ISession session = factory.Create(Substitute.For<IMessageSender>());
             Assert.AreEqual(ListenPort, session.ListenPort);
         }
@@ -39,7 +40,7 @@ namespace Nethermind.Network.Test.P2P
         [Test]
         public void Sets_local_node_id()
         {
-            P2PSessionFactory factory = new P2PSessionFactory(NetTestVectors.StaticKeyA.PublicKey, ListenPort);
+            P2PSessionFactory factory = new P2PSessionFactory(NetTestVectors.StaticKeyA.PublicKey, ListenPort, new NullLogger());
             ISession session = factory.Create(Substitute.For<IMessageSender>());
             Assert.AreEqual(NetTestVectors.StaticKeyA.PublicKey, session.LocalNodeId);
         }

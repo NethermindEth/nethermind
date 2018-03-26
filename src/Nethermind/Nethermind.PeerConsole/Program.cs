@@ -66,9 +66,9 @@ namespace Nethermind.PeerConsole
             IEncryptionHandshakeService encryptionHandshakeServiceB = new EncryptionHandshakeService(serializationService, eciesCipher, cryptoRandom, signer, _keyB, logger);
             IEncryptionHandshakeService encryptionHandshakeServiceC = new EncryptionHandshakeService(serializationService, eciesCipher, cryptoRandom, signer, _keyC, logger);
 
-            ISessionFactory sessionFactoryA = new P2PSessionFactory(_keyA.PublicKey, PortA);
-            ISessionFactory sessionFactoryB = new P2PSessionFactory(_keyB.PublicKey, PortB);
-            ISessionFactory sessionFactoryC = new P2PSessionFactory(_keyC.PublicKey, PortC);
+            ISessionFactory sessionFactoryA = new P2PSessionFactory(_keyA.PublicKey, PortA, logger);
+            ISessionFactory sessionFactoryB = new P2PSessionFactory(_keyB.PublicKey, PortB, logger);
+            ISessionFactory sessionFactoryC = new P2PSessionFactory(_keyC.PublicKey, PortC, logger);
 
             Console.WriteLine("Initializing server...");
             RlpxPeer peerServerA = new RlpxPeer(serializationService, encryptionHandshakeServiceA, sessionFactoryA, logger);

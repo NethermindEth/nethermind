@@ -128,7 +128,6 @@ namespace Nethermind.Network.Rlpx
                 context.Channel.Pipeline.AddLast(multiplexor);
                 session.InitOutbound();
                 session.Ping();
-                session.Disconnect(DisconnectReason.ClientQuitting);
             }
             else
             {
