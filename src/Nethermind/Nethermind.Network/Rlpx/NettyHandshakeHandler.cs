@@ -17,7 +17,6 @@
  */
 
 using System;
-using System.Diagnostics;
 using DotNetty.Buffers;
 using DotNetty.Codecs;
 using DotNetty.Transport.Channels;
