@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -241,16 +242,23 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
         [Test]
         public void Sets_recipient_nonce_on_agree()
         {
+            
+            Console.WriteLine("NOW AUTH");
             Auth();
+            Console.WriteLine("NOW ACK");
             Ack();
+            Console.WriteLine("NOW AGREE");
             Agree();
+            Console.WriteLine("NOW ASSERT");
             Assert.AreEqual(NetTestVectors.NonceB, _initiatorHandshake.RecipientNonce);
         }
 
         [Test]
         public void Sets_remote_ephemeral_key_on_ack()
         {
+            Console.WriteLine("NOW AUTH");
             Auth();
+            Console.WriteLine("NOW ACK");
             Ack();
             Assert.AreEqual(NetTestVectors.EphemeralKeyA.PublicKey, _recipientHandshake.RemoteEphemeralPublicKey);
         }
@@ -258,8 +266,11 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
         [Test]
         public void Sets_remote_ephemeral_key_on_agree()
         {
+            Console.WriteLine("NOW AUTH");
             Auth();
+            Console.WriteLine("NOW ACK");
             Ack();
+            Console.WriteLine("NOW AGREE");
             Agree();
             Assert.AreEqual(NetTestVectors.EphemeralKeyB.PublicKey, _initiatorHandshake.RemoteEphemeralPublicKey);
         }
