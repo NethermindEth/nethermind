@@ -182,6 +182,33 @@ namespace Nethermind.JsonRpc.Test
             Assert.AreEqual(response.Jsonrpc, _configurationProvider.JsonRpcVersion);
         }
 
+        [Test]
+        public void RequestCollectionTest()
+        {
+            var netModule = Substitute.For<INetModule>();
+            var ethModule = Substitute.For<IEthModule>();
+            var web3Module = Substitute.For<IWeb3Module>();
+            netModule.net_version().ReturnsForAnyArgs(x => new ResultWrapper<string> { Result = new Result { ResultType = ResultType.Success }, Data = "1" });
+            ethModule.eth_protocolVersion().ReturnsForAnyArgs(x => new ResultWrapper<string> { Result = new Result { ResultType = ResultType.Success }, Data = "1" });
+            var shhModule = Substitute.For<IShhModule>();
+
+            var moduleProvider = new ModuleProvider(_configurationProvider, netModule, ethModule, web3Module, shhModule);
+
+            _jsonSerializer = new JsonSerializer(_logger);
+            _jsonRpcService = new JsonRpcService(_configurationProvider, _logger, _jsonSerializer, moduleProvider);
+
+            var netRequestJson = GetJsonRequest("net_version", null);
+            var ethRequestJson = GetJsonRequest("eth_protocolVersion", null);
+
+            var jsonRequest = $"[{netRequestJson},{ethRequestJson}]";
+            var rawResponse = _jsonRpcService.SendRequest(jsonRequest);         
+            var response = _jsonSerializer.DeserializeObjectOrArray<JsonRpcResponse>(rawResponse);
+
+            Assert.IsNotNull(response);
+            Assert.IsNotNull(response.Collection);
+            Assert.IsNull(response.Model);
+        }
+
         //{
         //    "jsonrpc": "2.0",
         //    "method": "eth_getBlockByNumber",

@@ -17,7 +17,9 @@
  */
 
 using System;
+using System.Collections.Generic;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 namespace Nethermind.Core
 {
@@ -54,6 +56,25 @@ namespace Nethermind.Core
                 _logger.Error("Error during json deserialization", e);
                 return default(T);
             }           
+        }
+
+        public (T Model, IEnumerable<T> Collection) DeserializeObjectOrArray<T>(string json)
+        {
+            try
+            {
+                var token = JToken.Parse(json);
+                if (token is JArray)
+                {
+                    return (default, token.ToObject<List<T>>());
+                }
+                return (token.ToObject<T>(), null);
+
+            }
+            catch (Exception e)
+            {
+                _logger.Error("Error during json deserialization", e);
+                return (default, null);
+            }
         }
 
         public string Serialize<T>(T value)

@@ -16,12 +16,15 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Collections.Generic;
+
 namespace Nethermind.Core
 {
     public interface IJsonSerializer
     {
         T DeserializeAnonymousType<T>(string json, T definition);
         T Deserialize<T>(string json);
+        (T Model, IEnumerable<T> Collection) DeserializeObjectOrArray<T>(string json);
         string Serialize<T>(T value);
     }
 }

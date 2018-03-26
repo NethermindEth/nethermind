@@ -47,7 +47,38 @@ namespace Nethermind.JsonRpc
         {
             try
             {
-                var rpcRequest = _jsonSerializer.Deserialize<JsonRpcRequest>(request);
+                var rpcRequest = _jsonSerializer.DeserializeObjectOrArray<JsonRpcRequest>(request);
+                if (rpcRequest.Model == null && rpcRequest.Collection == null)
+                {
+                    var reponse = GetErrorResponse(ErrorType.InvalidRequest, "Invalid request", null, null);
+                    return _jsonSerializer.Serialize(reponse);
+                }
+
+                if (rpcRequest.Model != null)
+                {
+                    var response = SendRequest(rpcRequest.Model, request);
+                    var serializedReponse = _jsonSerializer.Serialize(response);
+
+                    _logger.Debug($"Successfull request processing, method: {rpcRequest.Model.Method ?? "none"}, id: {rpcRequest.Model.Id ?? "none"}, result: {serializedReponse}");
+                    return serializedReponse;
+                }
+
+                var responses = rpcRequest.Collection.Select(x => SendRequest(x, request)).ToArray();
+                return _jsonSerializer.Serialize(responses);
+
+            }
+            catch (Exception ex)
+            {
+                _logger.Error($"Error during parsing/validation, request: {request}", ex);
+                var response = GetErrorResponse(ErrorType.ParseError, "Incorrect message", null, null);
+                return _jsonSerializer.Serialize(response);
+            }
+        }
+
+        private JsonRpcResponse SendRequest(JsonRpcRequest rpcRequest, string rawRequest)
+        {
+            try
+            {
                 (ErrorType?, string) validateResult = Validate(rpcRequest);
                 if (validateResult.Item1.HasValue)
                 {
@@ -59,18 +90,18 @@ namespace Nethermind.JsonRpc
                 }
                 catch (Exception ex)
                 {
-                    _logger.Error($"Error during method execution, request: {request}", ex);
+                    _logger.Error($"Error during method execution, request: {rawRequest}", ex);
                     return GetErrorResponse(ErrorType.InternalError, "Internal error", rpcRequest?.Id, rpcRequest?.Method);
                 }
             }
             catch (Exception ex)
             {
-                _logger.Error($"Error during parsing/validation, request: {request}", ex);
+                _logger.Error($"Error during parsing/validation, request: {rawRequest}", ex);
                 return GetErrorResponse(ErrorType.ParseError, "Incorrect message", null, null);
             }         
         }
 
-        private string ExecuteRequest(JsonRpcRequest rpcRequest)
+        private JsonRpcResponse ExecuteRequest(JsonRpcRequest rpcRequest)
         {
             var methodName = rpcRequest.Method.Trim().ToLower();
             
@@ -83,7 +114,7 @@ namespace Nethermind.JsonRpc
             return GetErrorResponse(ErrorType.MethodNotFound, $"Method {rpcRequest.Method} is not supported", rpcRequest.Id, methodName);
         }
 
-        private string Execute(JsonRpcRequest request, string methodName, MethodInfo method, object module)
+        private JsonRpcResponse Execute(JsonRpcRequest request, string methodName, MethodInfo method, object module)
         {
             var expectedParameters = method.GetParameters();
             var providedParameters = request.Params;
@@ -170,7 +201,7 @@ namespace Nethermind.JsonRpc
             }
         }
 
-        private string GetSuccessResponse(object result, string id, string methodName)
+        private JsonRpcResponse GetSuccessResponse(object result, string id, string methodName)
         {
             var response = new JsonRpcResponse
             {
@@ -178,14 +209,11 @@ namespace Nethermind.JsonRpc
                 Id = id,
                 Result = result
             };
-            var serializedReponse = _jsonSerializer.Serialize(response);
 
-            _logger.Debug($"Successfull request processing, method: {methodName ?? "none"}, id: {id ?? "none"}, result: {serializedReponse}");
-
-            return serializedReponse;
+            return response;
         }
 
-        private string GetErrorResponse(ErrorType errorType, string message, string id, string methodName)
+        private JsonRpcResponse GetErrorResponse(ErrorType errorType, string message, string id, string methodName)
         {
             _logger.Error($"Error during processing the request, method: {methodName ?? "none"}, id: {id ?? "none"}, errorType: {errorType}, message: {message}");
 
@@ -199,7 +227,8 @@ namespace Nethermind.JsonRpc
                     Message = message
                 }
             };
-            return _jsonSerializer.Serialize(response);
+            return response;
+            //return _jsonSerializer.Serialize(response);
         }
 
         private (ErrorType?, string) Validate(JsonRpcRequest rpcRequest)
