@@ -44,10 +44,10 @@ namespace Nethermind.Network.Rlpx
 
         protected override void Decode(IChannelHandlerContext context, byte[] input, List<object> output)
         {
-            object[] headerBodyItems = (object[])Rlp.Decode(new Rlp(input.Slice(3, 13)), RlpBehaviors.AllowExtraData);
-            int protocolType = ((byte[])headerBodyItems[0]).ToInt32();
-            int? contextId = headerBodyItems.Length > 1 ? ((byte[])headerBodyItems[1]).ToInt32() : (int?)null;
-            int? totalPacketSize = headerBodyItems.Length > 2 ? ((byte[])headerBodyItems[2]).ToInt32() : (int?)null;
+            DecodedRlp headerBodyItems = Rlp.Decode(new Rlp(input.Slice(3, 13)), RlpBehaviors.AllowExtraData);
+            int protocolType = headerBodyItems.GetInt(0);
+            int? contextId = headerBodyItems.Length > 1 ? headerBodyItems.GetInt(1) : (int?)null;
+            int? totalPacketSize = headerBodyItems.Length > 2 ? headerBodyItems.GetInt(2) : (int?)null;
 
             bool isChunked = totalPacketSize.HasValue
                              || contextId.HasValue && _currentSizes.ContainsKey(contextId.Value);
@@ -104,7 +104,7 @@ namespace Nethermind.Network.Rlpx
         private static int GetPacketType(byte[] input)
         {
             Rlp packetTypeRlp = new Rlp(input.Slice(32, 1));
-            int packetType = ((byte[])Rlp.Decode(packetTypeRlp)).ToInt32();
+            int packetType = Rlp.Decode<byte[]>(packetTypeRlp).ToInt32();
             return packetType;
         }
     }

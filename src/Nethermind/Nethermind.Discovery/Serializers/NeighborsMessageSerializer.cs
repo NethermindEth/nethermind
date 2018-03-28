@@ -52,29 +52,29 @@ namespace Nethermind.Discovery.Serializers
         {
             var results = Deserialize<NeighborsMessage>(msg);
 
-            var rlp = new Rlp(results.Data);
-            var decodedRaw = (object[])Rlp.Decode(rlp, RlpBehaviors.AllowExtraData);
+            Rlp rlp = new Rlp(results.Data);
+            DecodedRlp decodedRaw = Rlp.Decode(rlp, RlpBehaviors.AllowExtraData);
 
-            var serializedNodes = (object[])Rlp.Decode(new Rlp((byte[])decodedRaw[0]));
+            var serializedNodes = Rlp.Decode(new Rlp(decodedRaw.GetBytes(0)));
 
             var nodes = new List<Node>();
-            if (serializedNodes != null && serializedNodes.Length > 0 && (serializedNodes.Length != 1 || ((byte[])serializedNodes[0])[1] != OffsetShortList))
+            if (serializedNodes != null && serializedNodes.Length > 0 && (serializedNodes.Length != 1 || serializedNodes.GetBytes(0)[1] != OffsetShortList))
             {
                 for (var i = 0; i < serializedNodes.Length; i++)
                 {
-                    var serializedNode = (byte[])serializedNodes[i];
-                    var nodeRaw = (object[])Rlp.Decode(new Rlp(serializedNode));
-                    var address = GetAddress((byte[])nodeRaw[0], (byte[])nodeRaw[1]);
+                    var serializedNode = serializedNodes.GetBytes(i);
+                    DecodedRlp nodeRaw = Rlp.Decode(new Rlp(serializedNode));
+                    var address = GetAddress(nodeRaw.GetBytes(0), nodeRaw.GetBytes(1));
                     //TODO confirm it is correct - based on EthereumJ
-                    var idRaw = nodeRaw.Length > 3 ? nodeRaw[3] : nodeRaw[2];
-                    byte[] id = (byte[])idRaw;
+                    var idRaw = nodeRaw.Length > 3 ? nodeRaw.GetBytes(3) : nodeRaw.GetBytes(2);
+                    byte[] id = idRaw;
 
                     var node = NodeFactory.CreateNode(new PublicKey(id), address);
                     nodes.Add(node);
                 }
             }
 
-            var expireTime = ((byte[])decodedRaw[1]).ToInt64();
+            var expireTime = decodedRaw.GetBytes(1).ToInt64();
             var message = results.Message;
             message.Nodes = nodes.ToArray();
             message.ExpirationTime = expireTime;

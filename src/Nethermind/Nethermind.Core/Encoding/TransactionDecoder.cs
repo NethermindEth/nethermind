@@ -25,7 +25,7 @@ namespace Nethermind.Core.Encoding
 {
     public class TransactionDecoder : IRlpDecoder<Transaction>
     {
-        internal Transaction Decode(object[] data)
+        internal Transaction Decode(DecodedRlp data)
         {
             if (data.Length != 6 && data.Length != 9)
             {
@@ -33,27 +33,26 @@ namespace Nethermind.Core.Encoding
             }
 
             Transaction transaction = new Transaction();
-            transaction.Nonce = ((byte[])data[0]).ToUnsignedBigInteger();
-            transaction.GasPrice = ((byte[])data[1]).ToUnsignedBigInteger();
-            transaction.GasLimit = ((byte[])data[2]).ToUnsignedBigInteger();
-            byte[] toData = (byte[])data[3];
-            transaction.To = toData.Length == 0 ? null : new Address(toData);
-            transaction.Value = ((byte[])data[4]).ToUnsignedBigInteger();
+            transaction.Nonce = data.GetUnsignedBigInteger(0);
+            transaction.GasPrice =data.GetUnsignedBigInteger(1);
+            transaction.GasLimit = data.GetUnsignedBigInteger(2);
+            transaction.To = data.GetAddress(3);
+            transaction.Value = data.GetUnsignedBigInteger(4);
             if (transaction.To == null)
             {
-                transaction.Init = (byte[])data[5];
+                transaction.Init = data.GetBytes(5);
             }
             else
             {
-                transaction.Data = (byte[])data[5];
+                transaction.Data = data.GetBytes(5);
             }
 
             if (data.Length > 6)
             {
                 // either eip155 or signed
-                byte[] vBytes = (byte[])data[6];
-                byte[] rBytes = (byte[])data[7];
-                byte[] sBytes = (byte[])data[8];
+                byte[] vBytes = data.GetBytes(6);
+                byte[] rBytes = data.GetBytes(7);
+                byte[] sBytes = data.GetBytes(8);
 
                 if (vBytes[0] == 0 || rBytes[0] == 0 || sBytes[0] == 0)
                 {
@@ -84,7 +83,7 @@ namespace Nethermind.Core.Encoding
 
         public Transaction Decode(Rlp rlp)
         {
-            object[] data = (object[])Rlp.Decode(rlp);
+            DecodedRlp data = Rlp.Decode(rlp);
             return Decode(data);
         }
     }

@@ -123,7 +123,7 @@ namespace Nethermind.Network.Rlpx
                 Multiplexor multiplexor = new Multiplexor(_serializationService, _logger);
                 ISession session = _sessionFactory.Create(multiplexor);
                 _logger.Log($"Registering {nameof(NettyP2PHandler)} for {_remoteId} @ {context.Channel.RemoteAddress}");
-                context.Channel.Pipeline.AddLast(new NettyP2PHandler(session, _serializationService, _logger));
+                context.Channel.Pipeline.AddLast(new NettyP2PHandler(multiplexor, session, _serializationService, _logger));
                 _logger.Log($"Registering {nameof(Multiplexor)} for {_remoteId} @ {context.Channel.RemoteAddress}");
                 context.Channel.Pipeline.AddLast(multiplexor);
                 session.InitOutbound();

@@ -73,7 +73,7 @@ namespace Nethermind.Runner
 
             var chainFileContent = File.ReadAllBytes(chainFile);
 
-            var blocksRlps = Rlp.ExtractRplList(new Rlp(chainFileContent));
+            var blocksRlps = Rlp.ExtractRlpList(new Rlp(chainFileContent));
             foreach (var blockRlp in blocksRlps)
             {
                 Block block = Rlp.Decode<Block>(blockRlp);

@@ -27,6 +27,7 @@ namespace Nethermind.Network.P2P
     {
         private readonly IMessageSender _messageSender;
         private readonly ILogger _logger;
+        private bool _sentHello;
 
         // TODO: initialize with capabilities and version
         public P2PSession(IMessageSender messageSender, PublicKey localNodeId, int listenPort, ILogger logger)
@@ -35,10 +36,13 @@ namespace Nethermind.Network.P2P
             _logger = logger;
             LocalNodeId = localNodeId;
             ListenPort = listenPort;
+            AgreedCapabilities = new Dictionary<Capability, int>();
         }
         
         public int ListenPort { get; }
 
+        public Dictionary<Capability, int> AgreedCapabilities { get; }
+        
         public PublicKey LocalNodeId { get; }
         
         public int RemoteListenPort { get; private set; }
@@ -47,10 +51,36 @@ namespace Nethermind.Network.P2P
         
         public string RemoteClientId { get; private set; }
 
-        public void InitInbound(HelloMessage hello)
+        public void HandleHello(HelloMessage hello)
         {
-            _logger.Log($"P2P initiating inbound session from {hello.NodeId}:{hello.ListenPort} ({hello.ClientId})");
-            HandleHello(hello);
+            _logger.Log($"P2P received hello from {RemoteNodeId}:{RemoteListenPort} ({RemoteClientId})");
+            RemoteNodeId = hello.NodeId;
+            RemoteListenPort = hello.ListenPort;
+            RemoteClientId = hello.ClientId;
+            
+            if (!_sentHello)
+            {   
+                _logger.Log($"P2P initiating inbound session from {hello.NodeId}:{hello.ListenPort} ({hello.ClientId})");       
+            }
+            
+            // TODO: temp
+            if (hello.P2PVersion != NettyP2PHandler.Version)
+            {
+                Disconnect(DisconnectReason.IncompatibleP2PVersion);
+                return;
+            }
+            
+            if (!hello.Capabilities.ContainsKey(Capability.Eth))
+            {
+                Disconnect(DisconnectReason.Other);
+            }
+
+            if (hello.Capabilities[Capability.Eth] != 62)
+            {
+                Disconnect(DisconnectReason.Other);
+            }
+                
+            AgreedCapabilities.Add(Capability.Eth, 62);
         }
 
         public void InitOutbound() // TODO: remote node details here?
@@ -74,26 +104,8 @@ namespace Nethermind.Network.P2P
                 P2PVersion = NettyP2PHandler.Version
             };
 
+            _sentHello = true;
             _messageSender.Enqueue(helloMessage);
-        }
-
-        private void HandleHello(HelloMessage hello)
-        {
-            RemoteNodeId = hello.NodeId;
-            RemoteListenPort = hello.ListenPort;
-            RemoteClientId = hello.ClientId;
-            _logger.Log($"P2P received hello from {RemoteNodeId}:{RemoteListenPort} ({RemoteClientId})");
-            
-            if (hello.P2PVersion != NettyP2PHandler.Version)
-            {
-                Disconnect(DisconnectReason.IncompatibleP2PVersion);
-                return;
-            }
-            
-            if (!hello.Capabilities.ContainsKey(Capability.Eth))
-            {
-                Disconnect(DisconnectReason.Other);
-            }
         }
 
         public void HandlePing()

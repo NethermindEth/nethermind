@@ -69,17 +69,27 @@ namespace Nethermind.Core.Encoding
             return Extensions.Bytes.UnsafeCompare(Bytes, other.Bytes);
         }
 
-        public static object Decode(Rlp rlp, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public static DecodedRlp Decode(Rlp rlp, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             return Decode(new DecoderContext(rlp.Bytes), rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraData));
         }
 
-        public static Rlp[] ExtractRplList(Rlp rlp)
+        public static T Decode<T>(Rlp rlp, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            return ExtractRplList(new DecoderContext(rlp.Bytes));
+            if (Decoders.ContainsKey(typeof(T).TypeHandle))
+            {
+                return ((IRlpDecoder<T>)Decoders[typeof(T).TypeHandle]).Decode(rlp);
+            }
+
+            return Decode(new DecoderContext(rlp.Bytes), rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraData)).As<T>();
         }
 
-        private static Rlp[] ExtractRplList(DecoderContext context)
+        public static Rlp[] ExtractRlpList(Rlp rlp)
+        {
+            return ExtractRlpList(new DecoderContext(rlp.Bytes));
+        }
+
+        private static Rlp[] ExtractRlpList(DecoderContext context)
         {
             var result = new List<Rlp>();
 
@@ -92,13 +102,13 @@ namespace Nethermind.Core.Encoding
 
                 if (prefix == 0)
                 {
-                    result.Add(new Rlp(new byte[] { 0 }));
+                    result.Add(new Rlp(new byte[] {0}));
                     continue;
                 }
 
                 if (prefix < 128)
                 {
-                    result.Add(new Rlp(new[] { prefix }));
+                    result.Add(new Rlp(new[] {prefix}));
                     continue;
                 }
 
@@ -117,7 +127,7 @@ namespace Nethermind.Core.Encoding
                         throw new RlpException($"Unexpected byte value {content[0]}");
                     }
 
-                    result.Add(new Rlp(new []{prefix}.Concat(content).ToArray()));
+                    result.Add(new Rlp(new[] {prefix}.Concat(content).ToArray()));
                     continue;
                 }
 
@@ -141,13 +151,14 @@ namespace Nethermind.Core.Encoding
                         throw new RlpException("Expected length greater or equal 56");
                     }
                 }
-                
+
                 var data = context.Pop(concatenationLength);
                 var itemBytes = new[] {prefix};
                 if (lenghtBytes != null)
                 {
                     itemBytes = itemBytes.Concat(lenghtBytes).ToArray();
                 }
+
                 result.Add(new Rlp(itemBytes.Concat(data).ToArray()));
             }
 
@@ -156,43 +167,44 @@ namespace Nethermind.Core.Encoding
 
         // TODO: optimize so the list is not created for every single call to Rlp.Decode()
         // TODO: intorduce typed Encode / Decode
-        private static object Decode(DecoderContext context, bool allowExtraData)
+
+        private static DecodedRlp Decode(DecoderContext context, bool allowExtraData)
         {
-            object CheckAndReturn(List<object> resultToCollapse, DecoderContext contextToCheck)
+            DecodedRlp CheckAndReturnSingle(object singleItem, DecoderContext contextToCheck)
             {
                 if (!allowExtraData && contextToCheck.CurrentIndex != contextToCheck.MaxIndex)
                 {
                     throw new RlpException("Invalid RLP length");
                 }
 
-                if (resultToCollapse.Count == 1)
-                {
-                    return resultToCollapse[0];
-                }
-
-                return resultToCollapse.ToArray();
+                return new DecodedRlp(singleItem);
             }
 
-            List<object> result = new List<object>();
+            DecodedRlp CheckAndReturn(List<object> resultToCollapse, DecoderContext contextToCheck)
+            {
+                if (!allowExtraData && contextToCheck.CurrentIndex != contextToCheck.MaxIndex)
+                {
+                    throw new RlpException("Invalid RLP length");
+                }
+
+                return new DecodedRlp(resultToCollapse);
+            }
 
             byte prefix = context.Pop();
 
             if (prefix == 0)
             {
-                result.Add(new byte[] {0});
-                return CheckAndReturn(result, context);
+                return CheckAndReturnSingle(new byte[] {0}, context);
             }
 
             if (prefix < 128)
             {
-                result.Add(new[] {prefix});
-                return CheckAndReturn(result, context);
+                return CheckAndReturnSingle(new[] {prefix}, context);
             }
 
             if (prefix == 128)
             {
-                result.Add(new byte[] { });
-                return CheckAndReturn(result, context);
+                return CheckAndReturnSingle(new byte[] { }, context);
             }
 
             if (prefix <= 183)
@@ -204,8 +216,7 @@ namespace Nethermind.Core.Encoding
                     throw new RlpException($"Unexpected byte value {data[0]}");
                 }
 
-                result.Add(data);
-                return CheckAndReturn(result, context);
+                return CheckAndReturnSingle(data, context);
             }
 
             if (prefix < 192)
@@ -224,8 +235,7 @@ namespace Nethermind.Core.Encoding
                 }
 
                 byte[] data = context.Pop(length);
-                result.Add(data);
-                return CheckAndReturn(result, context);
+                return CheckAndReturnSingle(data, context);
             }
 
             int concatenationLength;
@@ -253,12 +263,11 @@ namespace Nethermind.Core.Encoding
             List<object> nestedList = new List<object>();
             while (context.CurrentIndex < startIndex + concatenationLength)
             {
-                nestedList.Add(Decode(context, true));
+                DecodedRlp decodedRlp = Decode(context, true);
+                nestedList.Add(decodedRlp.IsSequence ? decodedRlp : decodedRlp.SingleItem);
             }
 
-            result.Add(nestedList.ToArray());
-
-            return CheckAndReturn(result, context);
+            return CheckAndReturn(nestedList, context);
         }
 
         public static int DeserializeLength(byte[] bytes)
@@ -406,9 +415,15 @@ namespace Nethermind.Core.Encoding
         {
             return bigInteger == 0 ? OfEmptyByteArray : Encode(bigInteger.ToBigEndianByteArray());
         }
+        
+        public static Rlp Encode(DecodedRlp decodedRlp)
+        {
+            return Encode(decodedRlp.IsSequence ? decodedRlp.Items.ToArray() : decodedRlp.SingleItem);
+        }
 
         public static Rlp Encode(object item)
         {
+            // TODO: review this nonsense later, can it be removed now?
             switch (item)
             {
                 case byte singleByte:
@@ -462,6 +477,8 @@ namespace Nethermind.Core.Encoding
                     return Encode(header);
                 case Bloom bloom:
                     return Encode(bloom);
+                case DecodedRlp decoded:
+                    return Encode(decoded);
             }
 
             throw new NotSupportedException($"RLP does not support items of type {item.GetType().Name}");
@@ -597,16 +614,6 @@ namespace Nethermind.Core.Encoding
                 Encode(receipt.GasUsed),
                 Encode(receipt.Bloom),
                 Encode(receipt.Logs));
-        }
-
-        public static T Decode<T>(Rlp rlp)
-        {
-            if (Decoders.ContainsKey(typeof(T).TypeHandle))
-            {
-                return ((IRlpDecoder<T>)Decoders[typeof(T).TypeHandle]).Decode(rlp);
-            }
-
-            throw new NotImplementedException();
         }
 
         public static Rlp Encode(Transaction transaction, bool forSigning, bool isEip155Enabled = false, int chainId = 0)

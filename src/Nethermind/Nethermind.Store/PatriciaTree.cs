@@ -123,34 +123,34 @@ namespace Nethermind.Store
 
         internal static Node RlpDecode(Rlp bytes)
         {
-            object[] decoded = (object[])Rlp.Decode(bytes);
+            DecodedRlp decoded = Rlp.Decode(bytes);
             if (decoded.Length == 17)
             {
                 BranchNode branch = new BranchNode();
                 for (int i = 0; i < 16; i++)
                 {
-                    branch.Nodes[i] = DecodeChildNode(decoded[i]);
+                    branch.Nodes[i] = DecodeChildNode(decoded.GetObject(i));
                 }
 
-                branch.Value = (byte[])decoded[16];
+                branch.Value = decoded.GetBytes(16);
                 return branch;
             }
 
             if (decoded.Length == 2)
             {
-                HexPrefix key = HexPrefix.FromBytes((byte[])decoded[0]);
+                HexPrefix key = HexPrefix.FromBytes(decoded.GetBytes(0));
                 bool isExtension = key.IsExtension;
                 if (isExtension)
                 {
                     ExtensionNode extension = new ExtensionNode();
                     extension.Key = key;
-                    extension.NextNode = DecodeChildNode(decoded[1]);
+                    extension.NextNode = DecodeChildNode(decoded.GetObject(1));
                     return extension;
                 }
 
                 LeafNode leaf = new LeafNode();
                 leaf.Key = key;
-                leaf.Value = (byte[])decoded[1];
+                leaf.Value = decoded.GetBytes(1);
                 return leaf;
             }
 
@@ -159,9 +159,9 @@ namespace Nethermind.Store
 
         private static KeccakOrRlp DecodeChildNode(object deserialized)
         {
-            if (deserialized is object[] nodeSequence)
+            if (deserialized is DecodedRlp nodeSequence)
             {
-                return new KeccakOrRlp(Rlp.Encode(nodeSequence));
+                return new KeccakOrRlp(Rlp.Encode(nodeSequence.Items));
             }
 
             if (deserialized is byte[] bytes)

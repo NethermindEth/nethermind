@@ -42,14 +42,15 @@ namespace Nethermind.Network.Rlpx.Handshake
             // TODO: support rlp without checking length?
             // TODO: this would not be compatible with future versions... ? if the length of prefixes changes
             Rlp rlp = new Rlp(data);
-            object[] decodedRaw = (object[])Rlp.Decode(rlp, RlpBehaviors.AllowExtraData);
+            DecodedRlp decodedRaw = Rlp.Decode(rlp, RlpBehaviors.AllowExtraData);
             AuthEip8Message authMessage = new AuthEip8Message();
-            byte[] sigAllbytes = (byte[])decodedRaw[0];
+            byte[] sigAllbytes = decodedRaw.GetBytes(0);
             Signature signature = new Signature(sigAllbytes.Slice(0, 64), sigAllbytes[64]); // since Signature class is Ethereum style it expects V as the 64th byte, hence we use RecoveryID constructor
             authMessage.Signature = signature;
-            authMessage.PublicKey = new PublicKey((byte[])decodedRaw[1]);
-            authMessage.Nonce = (byte[])decodedRaw[2];
-            Debug.Assert(((byte[])decodedRaw[3]).ToInt32() >= 4, $"Expected {nameof(AuthEip8Message.Version)} to be greater than 4");
+            authMessage.PublicKey = new PublicKey(decodedRaw.GetBytes(1));
+            authMessage.Nonce = decodedRaw.GetBytes(2);
+            int version = decodedRaw.GetInt(3);
+            Debug.Assert(version >= 4, $"Expected {nameof(AuthEip8Message.Version)} to be greater than 4");
             return authMessage;
         }
     }

@@ -24,23 +24,23 @@ namespace Nethermind.Core.Encoding
 {
     public class BlockHeaderDecoder : IRlpDecoder<BlockHeader>
     {
-        internal BlockHeader Decode(object[] data)
+        internal BlockHeader Decode(DecodedRlp data)
         {
-            Keccak parentHash = new Keccak((byte[])data[0]);
-            Keccak ommersHash = new Keccak((byte[])data[1]);
-            Address beneficiary = new Address((byte[])data[2]);
-            Keccak stateRoot = new Keccak((byte[])data[3]);
-            Keccak transactionsRoot = new Keccak((byte[])data[4]);
-            Keccak receiptsRoot = new Keccak((byte[])data[5]);
-            Bloom bloom = new Bloom(((byte[])data[6]).ToBigEndianBitArray2048());
-            BigInteger difficulty = ((byte[])data[7]).ToUnsignedBigInteger();
-            BigInteger number = ((byte[])data[8]).ToUnsignedBigInteger();
-            BigInteger gasLimit = ((byte[])data[9]).ToUnsignedBigInteger();
-            BigInteger gasUsed = ((byte[])data[10]).ToUnsignedBigInteger();
-            BigInteger timestamp = ((byte[])data[11]).ToUnsignedBigInteger();
-            byte[] extraData = (byte[])data[12];
-            Keccak mixHash = new Keccak((byte[])data[13]);
-            BigInteger nonce = ((byte[])data[14]).ToUnsignedBigInteger();
+            Keccak parentHash = data.GetKeccak(0);
+            Keccak ommersHash = data.GetKeccak(1);
+            Address beneficiary = data.GetAddress(2);
+            Keccak stateRoot = data.GetKeccak(3);
+            Keccak transactionsRoot = data.GetKeccak(4);
+            Keccak receiptsRoot = data.GetKeccak(5);
+            Bloom bloom = new Bloom(data.GetBytes(6).ToBigEndianBitArray2048());
+            BigInteger difficulty = data.GetUnsignedBigInteger(7);
+            BigInteger number = data.GetUnsignedBigInteger(8);
+            BigInteger gasLimit = data.GetUnsignedBigInteger(9);
+            BigInteger gasUsed = data.GetUnsignedBigInteger(10);
+            BigInteger timestamp = data.GetUnsignedBigInteger(11);
+            byte[] extraData = data.GetBytes(12);
+            Keccak mixHash = data.GetKeccak(13);
+            BigInteger nonce = data.GetUnsignedBigInteger(14);
 
             BlockHeader blockHeader = new BlockHeader(
                 parentHash,
@@ -61,10 +61,10 @@ namespace Nethermind.Core.Encoding
             blockHeader.Nonce = (ulong)nonce;
             return blockHeader;
         }
-        
+
         public BlockHeader Decode(Rlp rlp)
         {
-            object[] header = (object[])Rlp.Decode(rlp);
+            DecodedRlp header = Rlp.Decode(rlp);
             return Decode(header);
         }
     }

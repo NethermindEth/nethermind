@@ -41,23 +41,22 @@ namespace Nethermind.Network.P2P
 
         public HelloMessage Deserialize(byte[] bytes)
         {
-            object[] decoded = (object[])Rlp.Decode(new Rlp(bytes));
+            DecodedRlp decoded = Rlp.Decode(new Rlp(bytes));
             HelloMessage helloMessage = new HelloMessage();
-            helloMessage.P2PVersion = ((byte[])decoded[0]).Length == 0 ? (byte)0 : ((byte[])decoded[0])[0]; // TODO: improve RLP decoding API
-            helloMessage.ClientId = Encoding.UTF8.GetString((byte[])decoded[1]);
+            helloMessage.P2PVersion = decoded.GetByte(0);
+            helloMessage.ClientId = decoded.GetString(1);
             helloMessage.Capabilities = new Dictionary<Capability, int>();
-            object[] decodedCapabilities = (object[])decoded[2];
+            DecodedRlp decodedCapabilities = decoded.GetSequence(2);
             for (int i = 0; i < decodedCapabilities.Length; i++)
             {
-                byte[] nameBytes = (byte[])((object[])decodedCapabilities[i])[0];
-                byte[] versionBytes = (byte[])((object[])decodedCapabilities[i])[1];
-                string name = Encoding.UTF8.GetString(nameBytes);
-                int version = versionBytes.Length == 0 ? 0 : versionBytes[0];
+                DecodedRlp capability = decodedCapabilities.GetSequence(i);
+                string name = capability.GetString(0);
+                int version = capability.GetByte(1);
                 helloMessage.Capabilities.Add((Capability)Enum.Parse(typeof(Capability), name), version);
             }
             // TODO: capabilities
-            helloMessage.ListenPort = ((byte[])decoded[3]).Length == 0 ? 0 : ((byte[])decoded[3]).ToInt32();
-            helloMessage.NodeId = new PublicKey((byte[])decoded[4]);
+            helloMessage.ListenPort = decoded.GetInt(3);
+            helloMessage.NodeId = new PublicKey(decoded.GetBytes(4));
             return helloMessage;
         }
     }

@@ -27,23 +27,23 @@ namespace Nethermind.Core.Encoding
         
         public Block Decode(Rlp rlp)
         {
-            object[] data = (object[])Rlp.Decode(rlp);
-            object[] headerData = (object[])data[0];
-            object[] transactionsData = (object[])data[1];
-            object[] ommersData = (object[])data[2];
+            DecodedRlp data = Rlp.Decode(rlp);
+            DecodedRlp headerData = data.GetSequence(0);
+            DecodedRlp transactionsData = data.GetSequence(1);
+            DecodedRlp ommersData = data.GetSequence(2);
 
             BlockHeader blockHeader = _blockHeaderDecoder.Decode(headerData); 
             
             List<Transaction> transactions = new List<Transaction>();
-            foreach (object transactionData in transactionsData)
+            foreach (DecodedRlp transactionData in transactionsData.Items)
             {
-                transactions.Add(_transactionDecoder.Decode((object[])transactionData));
+                transactions.Add(_transactionDecoder.Decode(transactionData));
             }
             
             BlockHeader[] ommers = new BlockHeader[ommersData.Length];
             for (int i = 0; i < ommersData.Length; i++)
             {
-                ommers[i] = _blockHeaderDecoder.Decode((object[])ommersData[i]);   
+                ommers[i] = _blockHeaderDecoder.Decode(ommersData.GetSequence(i));   
             }
             
             Block block = new Block(blockHeader, ommers);

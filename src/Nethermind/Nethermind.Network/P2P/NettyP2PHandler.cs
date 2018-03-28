@@ -17,8 +17,10 @@
  */
 
 using System;
+using System.Collections.Generic;
 using DotNetty.Transport.Channels;
 using Nethermind.Core;
+using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.Rlpx;
 
 namespace Nethermind.Network.P2P
@@ -26,25 +28,51 @@ namespace Nethermind.Network.P2P
     public class NettyP2PHandler : SimpleChannelInboundHandler<Packet>
     {
         public static byte Version = 5; // TODO: move somewhere else
-        
+
         private readonly ILogger _logger;
         private readonly IMessageSerializationService _serializationService;
+        private readonly IMessageSender _messageSender;
         private readonly ISession _session;
 
-        public NettyP2PHandler(ISession session, IMessageSerializationService serializationService, ILogger logger)
+        public NettyP2PHandler(IMessageSender messageSender, ISession session, IMessageSerializationService serializationService, ILogger logger)
         {
+            _messageSender = messageSender;
             _session = session;
             _serializationService = serializationService;
             _logger = logger;
         }
 
+        private readonly Dictionary<int, IP2PSubprotocolHandler> _subprotocolHandlers = new Dictionary<int, IP2PSubprotocolHandler>();
+
         protected override void ChannelRead0(IChannelHandlerContext ctx, Packet msg)
+        {
+            if (msg.ProtocolType == 0)
+            {
+                HandleP2PMessage(ctx, msg);
+            }
+            else if (_subprotocolHandlers.ContainsKey(msg.ProtocolType))
+            {
+                IP2PSubprotocolHandler handler = _subprotocolHandlers[msg.ProtocolType];
+                handler.HandleMessage(msg);
+            }
+            else
+            {
+                throw new InvalidProtocolException(msg.ProtocolType);
+            }
+        }
+
+        // TODO: possibly move to its own class
+        private void HandleP2PMessage(IChannelHandlerContext ctx, Packet msg)
         {
             if (msg.PacketType == P2PMessageCode.Hello)
             {
                 HelloMessage helloMessage = _serializationService.Deserialize<HelloMessage>(msg.Data);
                 _logger.Log($"Received hello from {helloMessage.NodeId} @ {ctx.Channel.RemoteAddress} ({helloMessage.ClientId})");
-                _session.InitInbound(helloMessage);
+                _session.HandleHello(helloMessage);
+                if (_session.AgreedCapabilities.ContainsKey(Capability.Eth))
+                {
+                    _subprotocolHandlers.Add(1, new EthHandler(_messageSender));
+                }
             }
             else if (msg.PacketType == P2PMessageCode.Disconnect)
             {

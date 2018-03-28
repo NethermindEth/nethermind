@@ -26,11 +26,11 @@ namespace Nethermind.Core.Encoding
         public Account Decode(Rlp rlp)
         {
             Account account = new Account();
-            object[] data = (object[]) Rlp.Decode(rlp);
-            account.Nonce = ((byte[])data[0]).ToUnsignedBigInteger();
-            account.Balance = ((byte[]) data[1]).ToUnsignedBigInteger();
-            account.StorageRoot = new Keccak((byte[])data[2]);
-            account.CodeHash = new Keccak((byte[]) data[3]);
+            DecodedRlp data = Rlp.Decode(rlp);
+            account.Nonce = data.GetUnsignedBigInteger(0);
+            account.Balance = data.GetUnsignedBigInteger(1);
+            account.StorageRoot = data.GetKeccak(2);
+            account.CodeHash = data.GetKeccak(3);
             return account;
         }
     }

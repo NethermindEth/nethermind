@@ -32,10 +32,10 @@ namespace Nethermind.Discovery.Serializers
             var results = Deserialize<FindNodeMessage>(msg);
 
             var rlp = new Rlp(results.Data);
-            var decodedRaw = (object[])Rlp.Decode(rlp, RlpBehaviors.AllowExtraData);
+            DecodedRlp raw = Rlp.Decode(rlp, RlpBehaviors.AllowExtraData);
 
-            var searchedNodeId = (byte[])Rlp.Decode(new Rlp((byte[])decodedRaw[0]));
-            var expireTime = ((byte[])decodedRaw[1]).ToInt64();
+            var searchedNodeId = Rlp.Decode<byte[]>(new Rlp(raw.GetBytes(0)));
+            var expireTime = raw.GetBytes(1).ToInt64();
 
             var message = results.Message;
             message.SearchedNodeId = searchedNodeId;

@@ -33,10 +33,10 @@ namespace Nethermind.Discovery.Serializers
             var results = Deserialize<PongMessage>(msg);
 
             var rlp = new Rlp(results.Data);
-            var decodedRaw = (object[])Rlp.Decode(rlp, RlpBehaviors.AllowExtraData);
+            var decodedRaw = Rlp.Decode(rlp, RlpBehaviors.AllowExtraData);
 
-            var token = (byte[])Rlp.Decode(new Rlp((byte[])decodedRaw[1]));
-            var expireTime = ((byte[])decodedRaw[2]).ToInt64();
+            var token = Rlp.Decode<byte[]>(new Rlp(decodedRaw.GetBytes(1)));
+            var expireTime = decodedRaw.GetBytes(2).ToInt64();
 
             var message = results.Message;
             message.PingMdc = token;

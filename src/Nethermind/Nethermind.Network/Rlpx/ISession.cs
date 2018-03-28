@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Collections.Generic;
 using Nethermind.Core.Crypto;
 using Nethermind.Network.P2P;
 
@@ -23,9 +24,10 @@ namespace Nethermind.Network.Rlpx
 {
     public interface ISession
     {
+        Dictionary<Capability, int>  AgreedCapabilities { get; }
         PublicKey LocalNodeId { get; }
         int ListenPort { get; }
-        void InitInbound(HelloMessage helloMessage);
+        void HandleHello(HelloMessage helloMessage);
         void InitOutbound();
         void HandlePing();
         void Disconnect(DisconnectReason disconnectReason);

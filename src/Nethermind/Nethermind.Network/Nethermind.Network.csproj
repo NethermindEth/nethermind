@@ -15,7 +15,26 @@
     <PackageReference Include="Portable.BouncyCastle" Version="1.8.1.4" />
   </ItemGroup>
   <ItemGroup>
-    <Folder Include="Swarm" />
-    <Folder Include="Whisper" />
+    <Compile Remove="Swarm\**" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Remove="Swarm\**" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Remove="Swarm\**" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Remove="Whisper\**" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Remove="Whisper\**" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Remove="Whisper\**" />
+  </ItemGroup>
+  <ItemGroup>
+    <Folder Include="P2P\Subprotocols\Bzz" />
+    <Folder Include="P2P\Subprotocols\Les" />
+    <Folder Include="P2P\Subprotocols\Shh" />
   </ItemGroup>
 </Project>
