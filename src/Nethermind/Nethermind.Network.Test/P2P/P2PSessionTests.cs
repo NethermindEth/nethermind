@@ -18,6 +18,7 @@
 
 using Nethermind.Core;
 using Nethermind.Network.P2P;
+using Nethermind.Network.Rlpx;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -29,48 +30,61 @@ namespace Nethermind.Network.Test.P2P
         [SetUp]
         public void Setup()
         {
-            _messageSender = Substitute.For<IMessageSender>();
+            _packetSender = Substitute.For<IPacketSender>();
+            _sessionManager = Substitute.For<ISessionManager>();
+            _serializer = Substitute.For<IMessageSerializationService>();
         }
 
-        private IMessageSender _messageSender;
+        private IPacketSender _packetSender;
+        private ISessionManager _sessionManager;
+        private IMessageSerializationService _serializer;
 
-        [Test]
-        public void Can_ping()
+        private Packet CreatePacket(P2PMessage message)
         {
-            P2PSession session = new P2PSession(_messageSender, NetTestVectors.StaticKeyA.PublicKey, 8002, new NullLogger());
-            session.Ping();
-            _messageSender.Received(1).Enqueue(Arg.Any<PingMessage>());
+            return new Packet(message.Protocol, message.PacketType, _serializer.Serialize(message));
         }
 
         [Test]
-        public void On_init_outbound_sends_a_hello_message()
+        public void On_init_sends_a_hello_message()
         {
-            P2PSession session = new P2PSession(_messageSender, NetTestVectors.StaticKeyA.PublicKey, 8002, new NullLogger());
-            session.InitOutbound();
+            P2PSession p2PSession = CreateSession();
+            p2PSession.Init();
 
-            _messageSender.Received(1).Enqueue(Arg.Any<HelloMessage>());
+            _packetSender.Received(1).Enqueue(Arg.Is<Packet>(p => p.PacketType == P2PMessageCode.Hello));
         }
 
         [Test]
         public void Pongs_to_ping()
         {
-            P2PSession session = new P2PSession(_messageSender, NetTestVectors.StaticKeyA.PublicKey, 8002, new NullLogger());
-            session.HandlePing();
-            _messageSender.Received(1).Enqueue(Arg.Any<PongMessage>());
+            P2PSession p2PSession = CreateSession();
+            p2PSession.HandleMessage(CreatePacket(PingMessage.Instance));
+            _packetSender.Received(1).Enqueue(Arg.Is<Packet>(p => p.PacketType == P2PMessageCode.Pong));
         }
 
         [Test]
         public void Sets_local_node_id_from_constructor()
         {
-            P2PSession session = new P2PSession(_messageSender, NetTestVectors.StaticKeyA.PublicKey, 8002, new NullLogger());
-            Assert.AreEqual(session.LocalNodeId, NetTestVectors.StaticKeyA.PublicKey);
+            P2PSession p2PSession = CreateSession();
+            Assert.AreEqual(p2PSession.LocalNodeId, NetTestVectors.StaticKeyA.PublicKey);
         }
 
         [Test]
         public void Sets_port_from_constructor()
         {
-            P2PSession session = new P2PSession(_messageSender, NetTestVectors.StaticKeyA.PublicKey, 8002, new NullLogger());
-            Assert.AreEqual(session.ListenPort, 8002);
+            P2PSession p2PSession = CreateSession();
+            Assert.AreEqual(p2PSession.ListenPort, 8002);
+        }
+
+        private P2PSession CreateSession()
+        {
+            return new P2PSession(
+                _sessionManager,
+                _serializer,
+                _packetSender,
+                NetTestVectors.StaticKeyA.PublicKey,
+                8002,
+                NetTestVectors.StaticKeyB.PublicKey,
+                new NullLogger());
         }
     }
 }

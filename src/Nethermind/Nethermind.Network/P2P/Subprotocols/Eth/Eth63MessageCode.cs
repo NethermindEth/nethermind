@@ -16,29 +16,13 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Network.Rlpx;
-
-namespace Nethermind.Network.P2P
+namespace Nethermind.Network.P2P.Subprotocols.Eth
 {
-    public class P2PSessionFactory : ISessionFactory
+    public static class Eth63MessageCode
     {
-        private readonly int _listenPort;
-        private readonly ILogger _logger;
-        private readonly PublicKey _localNodeId;
-
-        public P2PSessionFactory(PublicKey localNodeId, int listenPort, ILogger logger)
-        {
-            _localNodeId = localNodeId;
-            _listenPort = listenPort;
-            _logger = logger;
-        }
-
-        public ISession Create(IMessageSender messageSender)
-        {
-            P2PSession p2PSession = new P2PSession(messageSender, _localNodeId, _listenPort, _logger);
-            return p2PSession;
-        }
+        public const int GetNodeData = 0x0d;
+        public const int NodeData = 0x0e;
+        public const int GetReceipts = 0x0f;
+        public const int Receipts = 0x10;
     }
 }

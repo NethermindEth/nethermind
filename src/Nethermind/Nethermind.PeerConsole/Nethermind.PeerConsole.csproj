@@ -5,6 +5,10 @@
     <LangVersion>7.1</LangVersion>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="..\Nethermind.Blockchain\Nethermind.Blockchain.csproj">
+      <Project>{B1C9CF07-F89B-4F92-B8A5-F6949B9D3DA5}</Project>
+      <Name>Nethermind.Blockchain</Name>
+    </ProjectReference>
     <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj">
       <Project>{5751C57B-9F2D-45DE-BCC2-42645B85E39E}</Project>
       <Name>Nethermind.Core</Name>
@@ -13,5 +17,13 @@
       <Project>{0997F167-C2C4-4F17-99A6-AB1676827DC5}</Project>
       <Name>Nethermind.Network</Name>
     </ProjectReference>
+  </ItemGroup>
+  <ItemGroup>
+    <Reference Include="NSubstitute, Version=3.1.0.0, Culture=neutral, PublicKeyToken=92dd2e9066daa5ca">
+      <HintPath>..\..\..\..\..\Users\tksta\.nuget\packages\nsubstitute\3.1.0\lib\netstandard1.3\NSubstitute.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="NSubstitute" Version="3.1.0" />
   </ItemGroup>
 </Project>

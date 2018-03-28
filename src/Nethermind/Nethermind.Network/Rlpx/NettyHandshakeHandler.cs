@@ -17,6 +17,7 @@
  */
 
 using System;
+using System.Net;
 using DotNetty.Buffers;
 using DotNetty.Codecs;
 using DotNetty.Transport.Channels;
@@ -33,16 +34,14 @@ namespace Nethermind.Network.Rlpx
         private readonly EncryptionHandshake _handshake = new EncryptionHandshake();
         private readonly ILogger _logger;
         private readonly EncryptionHandshakeRole _role;
-        private readonly IMessageSerializationService _serializationService;
 
         private readonly IEncryptionHandshakeService _service;
-        private readonly ISessionFactory _sessionFactory;
+        private readonly ISessionManager _sessionManager;
         private PublicKey _remoteId;
 
         public NettyHandshakeHandler(
             IEncryptionHandshakeService service,
-            ISessionFactory sessionFactory,
-            IMessageSerializationService serializationService,
+            ISessionManager sessionManager,
             EncryptionHandshakeRole role,
             PublicKey remoteId,
             ILogger logger)
@@ -52,9 +51,7 @@ namespace Nethermind.Network.Rlpx
             _remoteId = remoteId;
             _logger = logger;
             _service = service;
-            _sessionFactory = sessionFactory;
-
-            _serializationService = serializationService;
+            _sessionManager = sessionManager;
         }
 
         public override void ChannelActive(IChannelHandlerContext context)
@@ -120,14 +117,14 @@ namespace Nethermind.Network.Rlpx
                 _logger.Log($"Registering {nameof(NettyPacketSplitter)} for {_remoteId} @ {context.Channel.RemoteAddress}");
                 context.Channel.Pipeline.AddLast(new NettyPacketSplitter());
 
-                Multiplexor multiplexor = new Multiplexor(_serializationService, _logger);
-                ISession session = _sessionFactory.Create(multiplexor);
+                Multiplexor multiplexor = new Multiplexor(_logger);
                 _logger.Log($"Registering {nameof(NettyP2PHandler)} for {_remoteId} @ {context.Channel.RemoteAddress}");
-                context.Channel.Pipeline.AddLast(new NettyP2PHandler(multiplexor, session, _serializationService, _logger));
+                int remotePort = ((IPEndPoint)context.Channel.RemoteAddress).Port;
+                NettyP2PHandler handler = new NettyP2PHandler(_sessionManager, multiplexor, _logger, _remoteId, remotePort);
+                context.Channel.Pipeline.AddLast(handler);
                 _logger.Log($"Registering {nameof(Multiplexor)} for {_remoteId} @ {context.Channel.RemoteAddress}");
                 context.Channel.Pipeline.AddLast(multiplexor);
-                session.InitOutbound();
-                session.Ping();
+                handler.Init();
             }
             else
             {

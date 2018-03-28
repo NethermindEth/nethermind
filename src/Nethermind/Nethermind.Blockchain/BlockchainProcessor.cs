@@ -118,7 +118,7 @@ namespace Nethermind.Blockchain
                     } while (!_blockStore.IsMainChain(toBeProcessed.Hash));
 
                     Block branchingPoint = toBeProcessed;
-                    Keccak? stateRoot = branchingPoint?.Header.StateRoot;
+                    Keccak stateRoot = branchingPoint?.Header.StateRoot;
                     _logger?.Log($"STATE ROOT LOOKUP: {stateRoot}");
                     List<Block> unprocessedBlocksToBeAddedToMain = new List<Block>();
 

@@ -39,8 +39,7 @@ namespace Nethermind.Network.Rlpx
     {
         private const int PeerConnectionTimeout = 10000;
         private readonly IEncryptionHandshakeService _encryptionHandshakeService;
-        private readonly IMessageSerializationService _serializationService; // TODO: discover serializers in the assembly
-        private readonly ISessionFactory _sessionFactory;
+        private readonly ISessionManager _sessionManager;
         private readonly ILogger _logger;
         private IChannel _bootstrapChannel;
         private IEventLoopGroup _bossGroup;
@@ -48,11 +47,10 @@ namespace Nethermind.Network.Rlpx
         private bool _isInitialized;
         private IEventLoopGroup _workerGroup;
 
-        public RlpxPeer(IMessageSerializationService serializationService, IEncryptionHandshakeService encryptionHandshakeService, ISessionFactory sessionFactory, ILogger logger)
+        public RlpxPeer(IEncryptionHandshakeService encryptionHandshakeService, ISessionManager sessionManager, ILogger logger)
         {
-            _serializationService = serializationService;
             _encryptionHandshakeService = encryptionHandshakeService;
-            _sessionFactory = sessionFactory;
+            _sessionManager = sessionManager;
             _logger = logger;
         }
 
@@ -122,7 +120,7 @@ namespace Nethermind.Network.Rlpx
             IChannelPipeline pipeline = channel.Pipeline;
             pipeline.AddLast(new LoggingHandler(inOut, LogLevel.TRACE));
             pipeline.AddLast("enc-handshake-dec", new LengthFieldBasedFrameDecoder(ByteOrder.BigEndian, ushort.MaxValue, 0, 2, 0, 0, true));
-            pipeline.AddLast("enc-handshake-handler", new NettyHandshakeHandler(_encryptionHandshakeService, _sessionFactory, _serializationService, role, remoteId, _logger));
+            pipeline.AddLast("enc-handshake-handler", new NettyHandshakeHandler(_encryptionHandshakeService, _sessionManager, role, remoteId, _logger));
         }
     }
 }

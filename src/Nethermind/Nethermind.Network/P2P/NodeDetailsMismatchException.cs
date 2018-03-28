@@ -16,12 +16,11 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Network.Rlpx;
+using System;
 
 namespace Nethermind.Network.P2P
 {
-    public interface ISessionFactory
+    public class NodeDetailsMismatchException : Exception
     {
-        ISession Create(IMessageSender messageSender);
     }
 }

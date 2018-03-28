@@ -39,7 +39,8 @@ namespace Nethermind.Core.Encoding
 
         public Keccak GetKeccak(int index)
         {
-            return new Keccak((byte[])Items[index]);
+            byte[] bytes = (byte[])Items[index];
+            return bytes.Length == 0 ? null : new Keccak(bytes);
         }
         
         public Address GetAddress(int index)

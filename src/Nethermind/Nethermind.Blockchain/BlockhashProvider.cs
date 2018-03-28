@@ -32,7 +32,7 @@ namespace Nethermind.Blockchain
             _chain = chain;
         }
 
-        public Keccak? GetBlockhash(Keccak blockHash, BigInteger number)
+        public Keccak GetBlockhash(Keccak blockHash, BigInteger number)
         {
             Block block = _chain.FindBlock(blockHash, false);
             if (number > block.Header.Number)

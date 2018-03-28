@@ -38,7 +38,7 @@ namespace Nethermind.Core
         public bool IsMessageCall => Data != null;
         public bool IsTransfer => !IsContractCreation && !IsMessageCall;
         public bool IsValid { get; set; }
-        public Keccak? Hash { get; set; }
+        public Keccak Hash { get; set; }
 
         public static Keccak CalculateHash(Transaction transaction)
         {

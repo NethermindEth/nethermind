@@ -459,14 +459,14 @@ namespace Nethermind.Core.Encoding
                     return rlp;
                 case ulong ulongNumber:
                     return Encode(ulongNumber.ToBigEndianByteArray());
-                case object[] objects:
-                    return Encode(objects);
                 case byte[] byteArray:
                     return Encode(byteArray);
                 case Keccak keccak:
                     return Encode(keccak);
                 case Keccak[] keccakArray:
                     return Encode(keccakArray);
+                case object[] objects:
+                    return Encode(objects);
                 case Address address:
                     return Encode(address);
                 case LogEntry logEntry:
@@ -581,6 +581,11 @@ namespace Nethermind.Core.Encoding
 
         public static Rlp Encode(Bloom bloom)
         {
+            if (bloom == null)
+            {
+                return OfEmptyByteArray;
+            }
+            
             byte[] result = new byte[259];
             result[0] = 185;
             result[1] = 1;
@@ -652,6 +657,11 @@ namespace Nethermind.Core.Encoding
 
         public static Rlp Encode(Keccak keccak)
         {
+            if (keccak == null)
+            {
+                return OfEmptyByteArray;
+            }
+            
             byte[] result = new byte[33];
             result[0] = 160;
             Buffer.BlockCopy(keccak.Bytes, 0, result, 1, 32);

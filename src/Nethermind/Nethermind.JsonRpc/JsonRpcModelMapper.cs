@@ -44,7 +44,7 @@ namespace Nethermind.JsonRpc
                 Hash = new Data(block.Hash.Bytes),               
                 Uncles = block.Ommers?.Select(x => new Data(x.Hash.Bytes)).ToArray(),
                 Transactions = returnFullTransactionObjects ? block.Transactions?.Select(x => MapTransaction(x, block)).ToArray() : null,
-                TransactionHashes = !returnFullTransactionObjects ? block.Transactions?.Select(x => new Data(x.Hash.Value.Bytes)).ToArray() : null
+                TransactionHashes = !returnFullTransactionObjects ? block.Transactions?.Select(x => new Data(x.Hash.Bytes)).ToArray() : null
             };
 
             if (block.Header == null)
@@ -76,7 +76,7 @@ namespace Nethermind.JsonRpc
         {
             return new Transaction
             {
-                Hash = new Data(transaction.Hash.Value.Bytes),
+                Hash = new Data(transaction.Hash.Bytes),
                 Nonce = new Quantity(transaction.Nonce),
                 BlockHash = block != null ? new Data(block.Hash.Bytes) : null,
                 BlockNumber = block?.Header != null ? new Quantity(block.Header.Number) : null,
@@ -94,7 +94,7 @@ namespace Nethermind.JsonRpc
         {
             return new TransactionReceipt
             {
-                TransactionHash = new Data(transaction.Hash.Value.Bytes),
+                TransactionHash = new Data(transaction.Hash.Bytes),
                 TransactionIndex = block?.Transactions != null ? new Quantity(GetTransactionIndex(transaction, block)) : null,
                 BlockHash = block != null ? new Data(block.Hash.Bytes) : null,
                 BlockNumber = block?.Header != null ? new Quantity(block.Header.Number) : null,

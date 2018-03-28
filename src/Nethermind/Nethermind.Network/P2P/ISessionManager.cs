@@ -16,23 +16,15 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Collections.Generic;
 using Nethermind.Core.Crypto;
-using Nethermind.Network.P2P;
+using Nethermind.Network.Rlpx;
 
-namespace Nethermind.Network.Rlpx
+namespace Nethermind.Network.P2P
 {
-    public interface ISession
+    public interface ISessionManager
     {
-        Dictionary<Capability, int>  AgreedCapabilities { get; }
-        PublicKey LocalNodeId { get; }
-        int ListenPort { get; }
-        void HandleHello(HelloMessage helloMessage);
-        void InitOutbound();
-        void HandlePing();
-        void Disconnect(DisconnectReason disconnectReason);
-        void Close(DisconnectReason disconnectReason);
-        void HandlePong();
-        void Ping();
+        void DeliverMessage(Packet packet);
+        void Start(int protocolType, int version, IPacketSender packetSender, PublicKey remoteNodeId, int remotePort);
+        void Close(int protocolType);
     }
 }

@@ -14,8 +14,8 @@ namespace Nethermind.Evm
 
         public void AddTransaction(Transaction transaction)
         {
-            Debug.Assert(transaction.Hash.HasValue, "expecting only signed transactions here");
-            _transactions[transaction.Hash.Value] = transaction;
+            Debug.Assert(transaction.Hash != null, "expecting only signed transactions here");
+            _transactions[transaction.Hash] = transaction;
         }
 
         public void AddTransactionReceipt(Keccak transactionHash, TransactionReceipt transactionReceipt, Keccak blockHash)
@@ -40,9 +40,9 @@ namespace Nethermind.Evm
             return _processedTransations.Contains(transactionHash);
         }
 
-        public Keccak? GetBlockHash(Keccak transactionHash)
+        public Keccak GetBlockHash(Keccak transactionHash)
         {
-            return _blockHashes.TryGetValue(transactionHash, out var blockHash) ? blockHash : (Keccak?)null;
+            return _blockHashes.TryGetValue(transactionHash, out var blockHash) ? blockHash : null;
         }
     }
 }

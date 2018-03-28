@@ -11,6 +11,6 @@ namespace Nethermind.Evm
         TransactionReceipt GetTransactionReceipt(Keccak transactionHash);
         bool WasProcessed(Keccak transactionHash);
         ///get hash of the block transaction was in
-        Keccak? GetBlockHash(Keccak transactionHash);
+        Keccak GetBlockHash(Keccak transactionHash);
     }
 }

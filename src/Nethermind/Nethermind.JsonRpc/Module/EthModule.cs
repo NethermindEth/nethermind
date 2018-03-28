@@ -319,14 +319,14 @@ namespace Nethermind.JsonRpc.Module
                 return ResultWrapper<Transaction>.Fail($"Cannot find transaction for hash: {transactionHash.Value}", ErrorType.NotFound);
             }
             var blockHash = _transactionStore.GetBlockHash(new Keccak(transactionHash.Value));
-            if (!blockHash.HasValue)
+            if (blockHash == null)
             {
                 return ResultWrapper<Transaction>.Fail($"Cannot find block hash for transaction: {transactionHash.Value}", ErrorType.NotFound);
             }
-            var block = _blockStore.FindBlock(blockHash.Value, false);
+            var block = _blockStore.FindBlock(blockHash, false);
             if (block == null)
             {
-                return ResultWrapper<Transaction>.Fail($"Cannot find block for hash: {blockHash.Value}", ErrorType.NotFound);
+                return ResultWrapper<Transaction>.Fail($"Cannot find block for hash: {blockHash}", ErrorType.NotFound);
             }
 
             var transactionModel = _modelMapper.MapTransaction(transaction, block);
@@ -401,14 +401,14 @@ namespace Nethermind.JsonRpc.Module
                 return ResultWrapper<TransactionReceipt>.Fail($"Cannot find transaction for hash: {transactionHash.Value}", ErrorType.NotFound);
             }
             var blockHash = _transactionStore.GetBlockHash(new Keccak(transactionHash.Value));
-            if (!blockHash.HasValue)
+            if (blockHash == null)
             {
                 return ResultWrapper<TransactionReceipt>.Fail($"Cannot find block hash for transaction: {transactionHash.Value}", ErrorType.NotFound);
             }
-            var block = _blockStore.FindBlock(blockHash.Value, false);
+            var block = _blockStore.FindBlock(blockHash, false);
             if (block == null)
             {
-                return ResultWrapper<TransactionReceipt>.Fail($"Cannot find block for hash: {blockHash.Value}", ErrorType.NotFound);
+                return ResultWrapper<TransactionReceipt>.Fail($"Cannot find block for hash: {blockHash}", ErrorType.NotFound);
             }
 
             var transactionReceiptModel = _modelMapper.MapTransactionReceipt(transactionReceipt, transaction, block);

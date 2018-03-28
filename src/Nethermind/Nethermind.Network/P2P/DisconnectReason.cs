@@ -18,7 +18,7 @@
 
 namespace Nethermind.Network.P2P
 {
-    public enum DisconnectReason
+    public enum DisconnectReason : byte
     {
         DisconnectRequested = 0x00,
         TcpSubSystemError = 0x01,

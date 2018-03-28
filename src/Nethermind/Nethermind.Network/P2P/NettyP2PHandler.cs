@@ -17,10 +17,9 @@
  */
 
 using System;
-using System.Collections.Generic;
 using DotNetty.Transport.Channels;
 using Nethermind.Core;
-using Nethermind.Network.P2P.Subprotocols.Eth;
+using Nethermind.Core.Crypto;
 using Nethermind.Network.Rlpx;
 
 namespace Nethermind.Network.P2P
@@ -29,71 +28,29 @@ namespace Nethermind.Network.P2P
     {
         public static byte Version = 5; // TODO: move somewhere else
 
+        private readonly ISessionManager _sessionManager;
+        private readonly IPacketSender _packetSender;
         private readonly ILogger _logger;
-        private readonly IMessageSerializationService _serializationService;
-        private readonly IMessageSender _messageSender;
-        private readonly ISession _session;
+        private readonly PublicKey _remoteNodeId;
+        private readonly int _remotePort;
 
-        public NettyP2PHandler(IMessageSender messageSender, ISession session, IMessageSerializationService serializationService, ILogger logger)
+        public NettyP2PHandler(ISessionManager sessionManager, IPacketSender packetSender, ILogger logger, PublicKey remoteNodeId, int remotePort)
         {
-            _messageSender = messageSender;
-            _session = session;
-            _serializationService = serializationService;
+            _sessionManager = sessionManager;
+            _packetSender = packetSender;
             _logger = logger;
+            _remoteNodeId = remoteNodeId;
+            _remotePort = remotePort;
         }
 
-        private readonly Dictionary<int, IP2PSubprotocolHandler> _subprotocolHandlers = new Dictionary<int, IP2PSubprotocolHandler>();
-
+        public void Init()
+        {
+            _sessionManager.Start(0, 5, _packetSender, _remoteNodeId, _remotePort);
+        }
+        
         protected override void ChannelRead0(IChannelHandlerContext ctx, Packet msg)
         {
-            if (msg.ProtocolType == 0)
-            {
-                HandleP2PMessage(ctx, msg);
-            }
-            else if (_subprotocolHandlers.ContainsKey(msg.ProtocolType))
-            {
-                IP2PSubprotocolHandler handler = _subprotocolHandlers[msg.ProtocolType];
-                handler.HandleMessage(msg);
-            }
-            else
-            {
-                throw new InvalidProtocolException(msg.ProtocolType);
-            }
-        }
-
-        // TODO: possibly move to its own class
-        private void HandleP2PMessage(IChannelHandlerContext ctx, Packet msg)
-        {
-            if (msg.PacketType == P2PMessageCode.Hello)
-            {
-                HelloMessage helloMessage = _serializationService.Deserialize<HelloMessage>(msg.Data);
-                _logger.Log($"Received hello from {helloMessage.NodeId} @ {ctx.Channel.RemoteAddress} ({helloMessage.ClientId})");
-                _session.HandleHello(helloMessage);
-                if (_session.AgreedCapabilities.ContainsKey(Capability.Eth))
-                {
-                    _subprotocolHandlers.Add(1, new EthHandler(_messageSender));
-                }
-            }
-            else if (msg.PacketType == P2PMessageCode.Disconnect)
-            {
-                DisconnectMessage disconnectMessage = _serializationService.Deserialize<DisconnectMessage>(msg.Data);
-                _logger.Log($"Received disconnect ({disconnectMessage.Reason}) from {ctx.Channel.RemoteAddress}");
-                _session.Close(disconnectMessage.Reason);
-            }
-            else if (msg.PacketType == P2PMessageCode.Ping)
-            {
-                _logger.Log($"Received PING from {ctx.Channel.RemoteAddress}");
-                _session.HandlePing();
-            }
-            else if (msg.PacketType == P2PMessageCode.Pong)
-            {
-                _logger.Log($"Received PONG from {ctx.Channel.RemoteAddress}");
-                _session.HandlePong();
-            }
-            else
-            {
-                _logger.Error($"Unhandled packet type: {msg.PacketType}");
-            }
+            _sessionManager.DeliverMessage(msg);
         }
 
         public override void ExceptionCaught(IChannelHandlerContext context, Exception exception)

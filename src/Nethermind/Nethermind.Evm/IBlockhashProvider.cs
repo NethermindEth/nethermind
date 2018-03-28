@@ -23,6 +23,6 @@ namespace Nethermind.Evm
 {
     public interface IBlockhashProvider
     {
-        Keccak? GetBlockhash(Keccak blockHash, BigInteger number);
+        Keccak GetBlockhash(Keccak blockHash, BigInteger number);
     }
 }

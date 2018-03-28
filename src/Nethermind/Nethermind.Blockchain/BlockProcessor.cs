@@ -82,8 +82,8 @@ namespace Nethermind.Blockchain
                 _logger?.Log($"PROCESSING TRANSACTION {i}");
                 _transactionStore.AddTransaction(transaction);
                 TransactionReceipt receipt = _transactionProcessor.Execute(transaction, block.Header);
-                Debug.Assert(transaction.Hash.HasValue, "expecting only signed transactions here");
-                _transactionStore.AddTransactionReceipt(transaction.Hash.Value, receipt, block.Hash);
+                Debug.Assert(transaction.Hash != null, "expecting only signed transactions here");
+                _transactionStore.AddTransactionReceipt(transaction.Hash, receipt, block.Hash);
                 receipts.Add(receipt);
             }
 
@@ -116,7 +116,7 @@ namespace Nethermind.Blockchain
             return tranTree.RootHash;
         }
 
-        public Block[] Process(Keccak? branchStateRoot, Block[] suggestedBlocks)
+        public Block[] Process(Keccak branchStateRoot, Block[] suggestedBlocks)
         {
             int dbSnapshot = _dbProvider.TakeSnapshot();
             Keccak snapshotStateRoot = _stateProvider.StateRoot;
@@ -126,7 +126,7 @@ namespace Nethermind.Blockchain
                 // discarding one of the branches
                 _storageProvider.ClearCaches();
                 _stateProvider.ClearCaches();
-                _stateProvider.StateRoot = branchStateRoot.Value;
+                _stateProvider.StateRoot = branchStateRoot;
             }
 
             Block[] processedBlocks = new Block[suggestedBlocks.Length];

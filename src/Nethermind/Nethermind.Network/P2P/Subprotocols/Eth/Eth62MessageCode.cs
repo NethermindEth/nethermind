@@ -16,10 +16,16 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.Network.P2P
+namespace Nethermind.Network.P2P.Subprotocols.Eth
 {
-    public interface IMessageSender
+    public static class Eth62MessageCode
     {
-        void Enqueue<T>(T message, bool priority = false) where T : P2PMessage;
+        public const int Status = 0x00;
+        public const int NewBlockHashes = 0x01;
+        public const int Transactions = 0x02;
+        public const int GetBlockHeaders = 0x03;
+        public const int BlockHeaders = 0x04;
+        public const int GetBlockBodies = 0x05;
+        public const int BlockBodies = 0x06;
     }
 }

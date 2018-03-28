@@ -25,24 +25,22 @@ using NUnit.Framework;
 namespace Nethermind.Network.Test.P2P
 {
     [TestFixture]
-    public class P2PSessionFactoryTests
+    public class SessionManagerTests
     {
         private const int ListenPort = 8002;
 
         [Test]
-        public void Sets_listen_port()
+        public void Can_start_p2p_session()
         {
-            P2PSessionFactory factory = new P2PSessionFactory(NetTestVectors.StaticKeyA.PublicKey, ListenPort, new NullLogger());
-            ISession session = factory.Create(Substitute.For<IMessageSender>());
-            Assert.AreEqual(ListenPort, session.ListenPort);
+            SessionManager factory = new SessionManager(Substitute.For<IMessageSerializationService>(), NetTestVectors.StaticKeyA.PublicKey, ListenPort, new NullLogger());
+            factory.Start(0, 5, Substitute.For<IPacketSender>(), NetTestVectors.StaticKeyB.PublicKey, 8003);
         }
 
         [Test]
-        public void Sets_local_node_id()
+        public void Can_start_eth_session()
         {
-            P2PSessionFactory factory = new P2PSessionFactory(NetTestVectors.StaticKeyA.PublicKey, ListenPort, new NullLogger());
-            ISession session = factory.Create(Substitute.For<IMessageSender>());
-            Assert.AreEqual(NetTestVectors.StaticKeyA.PublicKey, session.LocalNodeId);
+            SessionManager factory = new SessionManager(Substitute.For<IMessageSerializationService>(), NetTestVectors.StaticKeyA.PublicKey, ListenPort, new NullLogger());
+            factory.Start(1, 62, Substitute.For<IPacketSender>(), NetTestVectors.StaticKeyB.PublicKey, 8003);
         }
     }
 }

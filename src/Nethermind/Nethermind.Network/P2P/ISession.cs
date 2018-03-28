@@ -16,12 +16,18 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.Core.Crypto;
+using Nethermind.Network.Rlpx;
+
 namespace Nethermind.Network.P2P
 {
-    public enum P2PVersion
+    public interface ISession
     {
-        Eth61 = 0x61,
-        Eth62 = 0x62,
-        Eth63 = 0x63,
+        int ProtocolType { get; }
+        PublicKey RemoteNodeId { get; }
+        int RemotePort { get; }
+        void HandleMessage(Packet packet);
+        void Init();
+        void Close();
     }
 }

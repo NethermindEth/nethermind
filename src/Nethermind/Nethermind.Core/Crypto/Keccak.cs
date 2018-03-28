@@ -25,7 +25,7 @@ using Nethermind.HashLib;
 namespace Nethermind.Core.Crypto
 {
     [DebuggerStepThrough]
-    public struct Keccak : IEquatable<Keccak>
+    public class Keccak : IEquatable<Keccak>
     {
         private const int Size = 32;
 
@@ -129,6 +129,11 @@ namespace Nethermind.Core.Crypto
 
         public bool Equals(Keccak other)
         {
+            if (ReferenceEquals(other, null))
+            {
+                return false;
+            }
+            
             return Extensions.Bytes.UnsafeCompare(other.Bytes, Bytes);
         }
 
@@ -153,6 +158,16 @@ namespace Nethermind.Core.Crypto
 
         public static bool operator ==(Keccak a, Keccak b)
         {
+            if (ReferenceEquals(a, null))
+            {
+                return ReferenceEquals(b, null);
+            }
+
+            if (ReferenceEquals(b, null))
+            {
+                return false;
+            }
+            
             return Extensions.Bytes.UnsafeCompare(a.Bytes, b.Bytes);
         }
 

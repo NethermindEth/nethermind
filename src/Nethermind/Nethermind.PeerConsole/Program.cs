@@ -18,13 +18,16 @@
 
 using System;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Network;
 using Nethermind.Network.Crypto;
 using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
+using NSubstitute;
 
 namespace Nethermind.PeerConsole
 {
@@ -61,25 +64,37 @@ namespace Nethermind.PeerConsole
             serializationService.Register(new DisconnectMessageSerializer());
             serializationService.Register(new PingMessageSerializer());
             serializationService.Register(new PongMessageSerializer());
+            serializationService.Register(new StatusMessageSerializer());
+
+            BlockStore blockStore = new BlockStore();
+            Block block = new Block(new BlockHeader(Keccak.Zero, Keccak.OfAnEmptySequenceRlp, Address.Zero, 131200, 1, 100, 1, new byte[0]));
+            block.Header.RecomputeHash();
+            IBlockProcessor blockProcessor = Substitute.For<IBlockProcessor>();
+            BlockchainProcessor blockchainProcessor = new BlockchainProcessor(blockProcessor, blockStore, logger);
+            blockStore.AddBlock(block, true);
 
             IEncryptionHandshakeService encryptionHandshakeServiceA = new EncryptionHandshakeService(serializationService, eciesCipher, cryptoRandom, signer, _keyA, logger);
             IEncryptionHandshakeService encryptionHandshakeServiceB = new EncryptionHandshakeService(serializationService, eciesCipher, cryptoRandom, signer, _keyB, logger);
-            IEncryptionHandshakeService encryptionHandshakeServiceC = new EncryptionHandshakeService(serializationService, eciesCipher, cryptoRandom, signer, _keyC, logger);
+//            IEncryptionHandshakeService encryptionHandshakeServiceC = new EncryptionHandshakeService(serializationService, eciesCipher, cryptoRandom, signer, _keyC, logger);
 
-            ISessionFactory sessionFactoryA = new P2PSessionFactory(_keyA.PublicKey, PortA, logger);
-            ISessionFactory sessionFactoryB = new P2PSessionFactory(_keyB.PublicKey, PortB, logger);
-            ISessionFactory sessionFactoryC = new P2PSessionFactory(_keyC.PublicKey, PortC, logger);
+            ISessionManager sessionManagerA = new SessionManager(serializationService, _keyA.PublicKey, PortA, logger);
+            ISessionManager sessionManagerB = new SessionManager(serializationService, _keyB.PublicKey, PortB, logger);
+            ISessionManager sessionManagerC = new SessionManager(serializationService, _keyC.PublicKey, PortC, logger);
 
             Console.WriteLine("Initializing server...");
-            RlpxPeer peerServerA = new RlpxPeer(serializationService, encryptionHandshakeServiceA, sessionFactoryA, logger);
-            RlpxPeer peerServerB = new RlpxPeer(serializationService, encryptionHandshakeServiceB, sessionFactoryB, logger);
-            RlpxPeer peerServerC = new RlpxPeer(serializationService, encryptionHandshakeServiceC, sessionFactoryC, logger);
-            await Task.WhenAll(peerServerA.Init(PortA), peerServerB.Init(PortB), peerServerC.Init(PortC));
+            RlpxPeer peerServerA = new RlpxPeer(encryptionHandshakeServiceA, sessionManagerA, logger);
+            RlpxPeer peerServerB = new RlpxPeer(encryptionHandshakeServiceB, sessionManagerB, logger);
+//            RlpxPeer peerServerC = new RlpxPeer(serializationService, encryptionHandshakeServiceC, sessionFactoryC, logger);
+//            await Task.WhenAll(peerServerA.Init(PortA), peerServerB.Init(PortB), peerServerC.Init(PortC));
+            //            await Task.WhenAll(peerServerA.Init(PortA), peerServerB.Init(PortB), peerServerC.Init(PortC));
+            await Task.WhenAll(peerServerA.Init(PortA), peerServerB.Init(PortB));
             Console.WriteLine("Servers running...");
             Console.WriteLine("Connecting A to B...");
             await peerServerA.Connect(_keyB.PublicKey, "127.0.0.1", PortB);
-            await peerServerA.Connect(_keyC.PublicKey, "127.0.0.1", PortC);
             Console.WriteLine("A to B connected...");
+//            Console.WriteLine("Connecting A to C...");
+//            await peerServerA.Connect(_keyC.PublicKey, "127.0.0.1", PortC);
+//            Console.WriteLine("A to C connected...");
 //            await peerServerB.Connect(_keyA.PublicKey, "localhost", PortA);
             Console.ReadLine();
             Console.WriteLine("Shutting down...");
