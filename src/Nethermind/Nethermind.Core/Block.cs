@@ -17,18 +17,24 @@
  */
 
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Core
 {
     public class Block
     {
-        public Block(BlockHeader blockHeader, params BlockHeader[] ommers)
+        public Block(BlockHeader blockHeader, IEnumerable<Transaction> transactions, IEnumerable<BlockHeader> ommers)
         {
             Header = blockHeader;
-            Ommers = ommers;
-            Transactions = new List<Transaction>();
+            Ommers = ommers.ToArray();
+            Transactions = transactions.ToList();
             Receipts = new List<TransactionReceipt>();
+        }
+
+        public Block(BlockHeader blockHeader, params BlockHeader[] ommers)
+            : this(blockHeader, Enumerable.Empty<Transaction>(), ommers)
+        {
         }
 
         public bool IsGenesis => Header.Number == 0;

@@ -15,12 +15,12 @@ namespace Nethermind.Core.Encoding
         public int Length => Items.Count;
 
         public bool IsSequence => Items != null;
-        
+
         public DecodedRlp(object item)
         {
             SingleItem = item;
         }
-        
+
         public DecodedRlp(List<object> items)
         {
             Items = items;
@@ -32,7 +32,7 @@ namespace Nethermind.Core.Encoding
             {
                 return (T)SingleItem;
             }
-            
+
             Debug.Assert(Items.Count == 0, $"Expected exactly one item in {nameof(DecodedRlp)}");
             return (T)Items[0];
         }
@@ -42,7 +42,7 @@ namespace Nethermind.Core.Encoding
             byte[] bytes = (byte[])Items[index];
             return bytes.Length == 0 ? null : new Keccak(bytes);
         }
-        
+
         public Address GetAddress(int index)
         {
             byte[] bytes = (byte[])Items[index];
@@ -64,12 +64,12 @@ namespace Nethermind.Core.Encoding
             byte[] bytes = (byte[])Items[index];
             return bytes.Length == 0 ? (byte)0 : bytes[0];
         }
-        
+
         public object GetObject(int index)
         {
             return Items[index];
         }
-        
+
         public int GetInt(int index)
         {
             byte[] bytes = (byte[])Items[index];
@@ -85,15 +85,20 @@ namespace Nethermind.Core.Encoding
         {
             return System.Text.Encoding.UTF8.GetString((byte[])Items[index]);
         }
-        
+
         public T GetEnum<T>(int index)
         {
             byte[] bytes = (byte[])Items[index];
             return bytes.Length == 0 ? (T)(object)0 : (T)(object)bytes[0];
         }
-        
+
         public DecodedRlp GetSequence(int index)
         {
+            if (Items[index] is byte[])
+            {
+                return null;
+            }
+
             return (DecodedRlp)Items[index];
         }
     }

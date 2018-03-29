@@ -16,11 +16,17 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Numerics;
+using Nethermind.Core;
+
 namespace Nethermind.Network.P2P.Subprotocols.Eth
 {
     public class NewBlockMessage : P2PMessage
     {
         public override int PacketType { get; } = 5;
         public override int Protocol { get; } = 1;
+
+        public Block Block { get; set; }
+        public BigInteger TotalDifficulty { get; set; }
     }
 }

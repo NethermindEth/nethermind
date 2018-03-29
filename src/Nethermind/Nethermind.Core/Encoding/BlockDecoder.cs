@@ -33,6 +33,11 @@ namespace Nethermind.Core.Encoding
 
         public Block Decode(DecodedRlp data)
         {
+            if (data == null)
+            {
+                return null;
+            }
+            
             DecodedRlp headerData = data.GetSequence(0);
             DecodedRlp transactionsData = data.GetSequence(1);
             DecodedRlp ommersData = data.GetSequence(2);

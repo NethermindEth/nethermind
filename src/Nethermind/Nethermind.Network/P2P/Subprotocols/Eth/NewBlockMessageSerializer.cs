@@ -16,18 +16,25 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.Core;
+using Nethermind.Core.Encoding;
+
 namespace Nethermind.Network.P2P.Subprotocols.Eth
 {
     public class NewBlockMessageSerializer : IMessageSerializer<NewBlockMessage>
     {
         public byte[] Serialize(NewBlockMessage message)
         {
-            throw new System.NotImplementedException();
+            return Rlp.Encode(message.Block, message.TotalDifficulty).Bytes;
         }
 
         public NewBlockMessage Deserialize(byte[] bytes)
         {
-            throw new System.NotImplementedException();
+            DecodedRlp decodedRlp = Rlp.Decode(new Rlp(bytes));
+            NewBlockMessage message = new NewBlockMessage();
+            message.Block = Rlp.Decode<Block>(decodedRlp.GetSequence(0));
+            message.TotalDifficulty = decodedRlp.GetUnsignedBigInteger(1);
+            return message;
         }
     }
 }

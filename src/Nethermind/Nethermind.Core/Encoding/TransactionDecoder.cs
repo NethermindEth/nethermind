@@ -27,6 +27,11 @@ namespace Nethermind.Core.Encoding
     {
         public Transaction Decode(DecodedRlp data)
         {
+            if (data == null)
+            {
+                return null;
+            }
+            
             if (data.Length != 6 && data.Length != 9)
             {
                 throw new RlpException($"{nameof(Transaction)} expected to have 6 or 9 elements");

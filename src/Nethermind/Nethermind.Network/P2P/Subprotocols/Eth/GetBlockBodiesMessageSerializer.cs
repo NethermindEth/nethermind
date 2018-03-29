@@ -16,18 +16,28 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Encoding;
+
 namespace Nethermind.Network.P2P.Subprotocols.Eth
 {
     public class GetBlockBodiesMessageSerializer : IMessageSerializer<GetBlockBodiesMessage>
     {
         public byte[] Serialize(GetBlockBodiesMessage message)
         {
-            throw new System.NotImplementedException();
+            return Rlp.Encode(message.BlockHashes).Bytes;
         }
 
         public GetBlockBodiesMessage Deserialize(byte[] bytes)
         {
-            throw new System.NotImplementedException();
+            DecodedRlp decodedRlp = Rlp.Decode(new Rlp(bytes));
+            Keccak[] hashes = new Keccak[decodedRlp.Length];
+            for (int i = 0; i < hashes.Length; i++)
+            {
+                hashes[i] = decodedRlp.GetKeccak(i);
+            }
+            
+            return new GetBlockBodiesMessage(hashes);
         }
     }
 }

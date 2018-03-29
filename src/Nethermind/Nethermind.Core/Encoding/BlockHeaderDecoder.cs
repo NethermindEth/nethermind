@@ -26,6 +26,11 @@ namespace Nethermind.Core.Encoding
     {
         public BlockHeader Decode(DecodedRlp data)
         {
+            if (data == null)
+            {
+                return null;
+            }
+            
             Keccak parentHash = data.GetKeccak(0);
             Keccak ommersHash = data.GetKeccak(1);
             Address beneficiary = data.GetAddress(2);
