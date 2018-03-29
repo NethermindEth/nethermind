@@ -34,23 +34,27 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
         [SetUp]
         public void SetUp()
         {
+            _trueCryptoRandom = new CryptoRandom();
+            
             // WARN: order reflects the internal implementation of the service (tests may fail after any refactoring)
-            _cryptoRandom = new TestRandom(
+            _testRandom = new TestRandom(
                 NetTestVectors.NonceA,
                 NetTestVectors.EphemeralKeyA.Hex,
+                _trueCryptoRandom.GenerateRandomBytes(100),
                 NetTestVectors.NonceB,
-                NetTestVectors.EphemeralKeyB.Hex);
+                NetTestVectors.EphemeralKeyB.Hex,
+                _trueCryptoRandom.GenerateRandomBytes(100));
 
             _messageSerializationService = new MessageSerializationService();
             _messageSerializationService.Register(new AuthMessageSerializer());
-            _messageSerializationService.Register(new AuthEip8MessageSerializer(new Eip8MessagePad(_cryptoRandom)));
+            _messageSerializationService.Register(new AuthEip8MessageSerializer(new Eip8MessagePad(_testRandom)));
             _messageSerializationService.Register(new AckMessageSerializer());
-            _messageSerializationService.Register(new AckEip8MessageSerializer(new Eip8MessagePad(_cryptoRandom)));
+            _messageSerializationService.Register(new AckEip8MessageSerializer(new Eip8MessagePad(_testRandom)));
 
-            _eciesCipher = new EciesCipher(new CryptoRandom()); // TODO: provide a separate test random with specific IV and epehemeral key for testing
+            _eciesCipher = new EciesCipher(_trueCryptoRandom); // TODO: provide a separate test random with specific IV and epehemeral key for testing
 
-            _initiatorService = new EncryptionHandshakeService(_messageSerializationService, _eciesCipher, _cryptoRandom, _signer, NetTestVectors.StaticKeyA, NullLogger.Instance);
-            _recipientService = new EncryptionHandshakeService(_messageSerializationService, _eciesCipher, _cryptoRandom, _signer, NetTestVectors.StaticKeyB, NullLogger.Instance);
+            _initiatorService = new EncryptionHandshakeService(_messageSerializationService, _eciesCipher, _testRandom, _signer, NetTestVectors.StaticKeyA, NullLogger.Instance);
+            _recipientService = new EncryptionHandshakeService(_messageSerializationService, _eciesCipher, _testRandom, _signer, NetTestVectors.StaticKeyB, NullLogger.Instance);
 
             _initiatorHandshake = new EncryptionHandshake();
             _recipientHandshake = new EncryptionHandshake();
@@ -63,7 +67,9 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
 
         private IMessageSerializationService _messageSerializationService;
 
-        private ICryptoRandom _cryptoRandom;
+        private ICryptoRandom _testRandom;
+
+        private ICryptoRandom _trueCryptoRandom;
 
         private IEciesCipher _eciesCipher;
 
