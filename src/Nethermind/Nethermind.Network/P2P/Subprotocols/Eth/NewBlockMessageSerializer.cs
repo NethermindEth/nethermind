@@ -2,7 +2,7 @@
 {
     public class NewBlockMessageSerializer : IMessageSerializer<NewBlockMessage>
     {
-        public byte[] Serialize(NewBlockMessage message, IMessagePad pad = null)
+        public byte[] Serialize(NewBlockMessage message)
         {
             throw new System.NotImplementedException();
         }

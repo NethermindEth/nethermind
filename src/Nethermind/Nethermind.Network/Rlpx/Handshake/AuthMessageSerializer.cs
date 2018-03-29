@@ -49,7 +49,7 @@ namespace Nethermind.Network.Rlpx.Handshake
         // =============
         // 307 (total)
 
-        public byte[] Serialize(AuthMessage message, IMessagePad messagePad = null)
+        public byte[] Serialize(AuthMessage message)
         {
             byte[] data = new byte[Length];
             Buffer.BlockCopy(message.Signature.Bytes, 0, data, SigOffset, SigLength - 1);
@@ -58,7 +58,7 @@ namespace Nethermind.Network.Rlpx.Handshake
             Buffer.BlockCopy(message.PublicKey.Bytes, 0, data, PublicKeyOffset, PublicKeyLength);
             Buffer.BlockCopy(message.Nonce, 0, data, NonceOffset, NonceLength);
             data[IsTokenUsedOffset] = message.IsTokenUsed ? (byte)0x01 : (byte)0x00;
-            return messagePad?.Pad(data) ?? data;
+            return data;
         }
 
         public AuthMessage Deserialize(byte[] bytes)

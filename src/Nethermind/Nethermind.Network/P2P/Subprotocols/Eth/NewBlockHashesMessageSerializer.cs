@@ -26,7 +26,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 {
     public class NewBlockHashesMessageSerializer : IMessageSerializer<NewBlockHashesMessage>
     {
-        public byte[] Serialize(NewBlockHashesMessage message, IMessagePad pad = null)
+        public byte[] Serialize(NewBlockHashesMessage message)
         {
             return Rlp.Encode(
                 message.BlockHashes.Select(bh =>

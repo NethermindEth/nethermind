@@ -2,7 +2,7 @@
 {
     public class GetBlockHeadersMessageSerializer : IMessageSerializer<GetBlockHeadersMessage>
     {
-        public byte[] Serialize(GetBlockHeadersMessage message, IMessagePad pad = null)
+        public byte[] Serialize(GetBlockHeadersMessage message)
         {
             throw new System.NotImplementedException();
         }

@@ -22,7 +22,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 {
     public class StatusMessageSerializer : IMessageSerializer<StatusMessage>
     {
-        public byte[] Serialize(StatusMessage message, IMessagePad pad = null)
+        public byte[] Serialize(StatusMessage message)
         {
             return Rlp.Encode(
                 Rlp.Encode(message.ProtocolVersion),

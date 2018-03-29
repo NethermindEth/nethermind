@@ -22,7 +22,7 @@ namespace Nethermind.Network.P2P
 {
     public class DisconnectMessageSerializer : IMessageSerializer<DisconnectMessage>
     {
-        public byte[] Serialize(DisconnectMessage message, IMessagePad pad = null)
+        public byte[] Serialize(DisconnectMessage message)
         {
             return Rlp.Encode(
                 new object[]

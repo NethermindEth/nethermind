@@ -13,7 +13,7 @@ namespace Nethermind.Discovery.Serializers
         {
         }
 
-        public byte[] Serialize(FindNodeMessage message, IMessagePad pad = null)
+        public byte[] Serialize(FindNodeMessage message)
         {
             byte[] typeBytes = { (byte)message.MessageType };
             byte[] searchedNodeId = Rlp.Encode(message.SearchedNodeId).Bytes;
@@ -23,7 +23,7 @@ namespace Nethermind.Discovery.Serializers
                 Rlp.Encode(message.ExpirationTime)
             ).Bytes;
 
-            byte[] serializedMsg = Serialize(typeBytes, data, pad);
+            byte[] serializedMsg = Serialize(typeBytes, data);
             return serializedMsg;
         }
 

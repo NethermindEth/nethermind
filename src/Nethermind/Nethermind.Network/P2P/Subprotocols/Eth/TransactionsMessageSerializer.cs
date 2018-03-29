@@ -6,7 +6,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 {
     public class TransactionsMessageSerializer : IMessageSerializer<TransactionsMessage>
     {
-        public byte[] Serialize(TransactionsMessage message, IMessagePad pad = null)
+        public byte[] Serialize(TransactionsMessage message)
         {
             return Rlp.Encode(
                 message.Transactions.Select(Rlp.Encode).ToArray()

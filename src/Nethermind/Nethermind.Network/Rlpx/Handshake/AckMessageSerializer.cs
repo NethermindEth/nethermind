@@ -31,14 +31,14 @@ namespace Nethermind.Network.Rlpx.Handshake
         public const int IsTokenUsedLength = 1;
         public const int IsTokenUsedOffset = NonceOffset + NonceLength;
         public const int TotalLength = IsTokenUsedOffset + IsTokenUsedLength;
-
-        public byte[] Serialize(AckMessage message, IMessagePad messagePad = null)
+        
+        public byte[] Serialize(AckMessage message)
         {
             byte[] data = new byte[TotalLength];
             Buffer.BlockCopy(message.EphemeralPublicKey.Bytes, 0, data, EphemeralPublicKeyOffset, EphemeralPublicKeyLength);
             Buffer.BlockCopy(message.Nonce, 0, data, NonceOffset, NonceLength);
             data[IsTokenUsedOffset] = message.IsTokenUsed ? (byte)0x01 : (byte)0x00;
-            return messagePad?.Pad(data) ?? data;
+            return data;
         }
 
         public AckMessage Deserialize(byte[] bytes)

@@ -26,7 +26,7 @@ namespace Nethermind.Discovery.Serializers
             NodeFactory = nodeFactory;
         }
 
-        protected byte[] Serialize(byte[] type, byte[] data, IMessagePad pad = null)
+        protected byte[] Serialize(byte[] type, byte[] data)
         {
             byte[] payload = Bytes.Concat(type[0], data);
             Keccak toSign = Keccak.Compute(payload);

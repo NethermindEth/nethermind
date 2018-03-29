@@ -25,7 +25,14 @@ namespace Nethermind.Network.Rlpx.Handshake
 {
     public class AuthEip8MessageSerializer : IMessageSerializer<AuthEip8Message>
     {
-        public byte[] Serialize(AuthEip8Message message, IMessagePad messagePad = null)
+        private readonly IMessagePad _messagePad;
+
+        public AuthEip8MessageSerializer(IMessagePad messagePad)
+        {
+            _messagePad = messagePad;
+        }
+        
+        public byte[] Serialize(AuthEip8Message message)
         {
             byte[] data = Rlp.Encode(
                 Rlp.Encode(Bytes.Concat(message.Signature.Bytes, message.Signature.RecoveryId)),
@@ -34,7 +41,7 @@ namespace Nethermind.Network.Rlpx.Handshake
                 Rlp.Encode(message.Version)
             ).Bytes;
 
-            return messagePad?.Pad(data) ?? data;
+            return _messagePad?.Pad(data) ?? data;
         }
 
         public AuthEip8Message Deserialize(byte[] data)

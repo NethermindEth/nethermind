@@ -43,9 +43,9 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
 
             _messageSerializationService = new MessageSerializationService();
             _messageSerializationService.Register(new AuthMessageSerializer());
-            _messageSerializationService.Register(new AuthEip8MessageSerializer());
+            _messageSerializationService.Register(new AuthEip8MessageSerializer(new Eip8MessagePad(_cryptoRandom)));
             _messageSerializationService.Register(new AckMessageSerializer());
-            _messageSerializationService.Register(new AckEip8MessageSerializer());
+            _messageSerializationService.Register(new AckEip8MessageSerializer(new Eip8MessagePad(_cryptoRandom)));
 
             _eciesCipher = new EciesCipher(new CryptoRandom()); // TODO: provide a separate test random with specific IV and epehemeral key for testing
 

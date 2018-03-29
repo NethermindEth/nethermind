@@ -55,6 +55,7 @@ namespace Nethermind.Network.P2P
         {
             int dynamicMessageCode = packet.PacketType;
             (string protocol, int messageId) = ResolveMessageCode(dynamicMessageCode);
+            _logger.Log($"Session Manager received a message (dynamic ID {dynamicMessageCode}. Resolved to {protocol}.{messageId}");
 
             if (protocol == null)
             {

@@ -35,7 +35,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
 
         private readonly PrivateKey _privateKey = new PrivateKey(TestPrivateKeyHex);
 
-        private readonly AuthEip8MessageSerializer _serializer = new AuthEip8MessageSerializer();
+        private readonly AuthEip8MessageSerializer _serializer = new AuthEip8MessageSerializer(new Eip8MessagePad(new CryptoRandom()));
 
         private void TestEncodeDecode(IEthereumSigner signer)
         {

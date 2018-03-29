@@ -23,6 +23,7 @@ namespace Nethermind.Network.Rlpx.Handshake
 {
     public class AckEip8MessageSerializer : IMessageSerializer<AckEip8Message>
     {
+        private readonly IMessagePad _messagePad;
         public const int EphemeralPublicKeyLength = 64;
         public const int EphemeralPublicKeyOffset = 0;
         public const int NonceLength = 32;
@@ -30,7 +31,12 @@ namespace Nethermind.Network.Rlpx.Handshake
         public const int VersionOffset = NonceOffset + NonceLength;
         public const int TotalLength = EphemeralPublicKeyLength + NonceLength;
 
-        public byte[] Serialize(AckEip8Message message, IMessagePad messagePad = null)
+        public AckEip8MessageSerializer(IMessagePad messagePad)
+        {
+            _messagePad = messagePad;
+        }
+        
+        public byte[] Serialize(AckEip8Message message)
         {
             byte[] data = Rlp.Encode(
                 Rlp.Encode(message.EphemeralPublicKey.Bytes),
@@ -38,7 +44,7 @@ namespace Nethermind.Network.Rlpx.Handshake
                 Rlp.Encode(message.Version)
             ).Bytes;
 
-            return messagePad?.Pad(data) ?? data;
+            return _messagePad?.Pad(data) ?? data;
         }
 
         public AckEip8Message Deserialize(byte[] bytes)

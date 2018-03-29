@@ -7,6 +7,8 @@ namespace Nethermind.Network.Test
 {
     public class TestRandom : ICryptoRandom
     {
+        private static readonly CryptoRandom CryptoRandom = new CryptoRandom();
+        
         private readonly Func<int, int> _nextIntFunc;
 
         private readonly Func<int, byte[]> _nextRandomBytesFunc;
@@ -14,12 +16,12 @@ namespace Nethermind.Network.Test
         private readonly Queue<byte[]> _nextRandomBytesQueue = new Queue<byte[]>();
 
         public TestRandom()
-            : this(i => throw new NotImplementedException(), (Func<int, byte[]>)null)
+            : this(i => CryptoRandom.NextInt(i), (Func<int, byte[]>)null)
         {
         }
 
         public TestRandom(params byte[][] randomBytesInQueue)
-            : this(i => throw new NotImplementedException(), randomBytesInQueue)
+            : this(i => CryptoRandom.NextInt(i), randomBytesInQueue)
         {
         }
 

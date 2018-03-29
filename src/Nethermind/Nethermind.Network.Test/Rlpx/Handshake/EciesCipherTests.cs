@@ -40,9 +40,9 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             _eciesCipher = new EciesCipher(_cryptoRandom);
             _messageSerializationService = new MessageSerializationService();
             _messageSerializationService.Register(new AuthMessageSerializer());
-            _messageSerializationService.Register(new AuthEip8MessageSerializer());
+            _messageSerializationService.Register(new AuthEip8MessageSerializer(new Eip8MessagePad(new CryptoRandom())));
             _messageSerializationService.Register(new AckMessageSerializer());
-            _messageSerializationService.Register(new AckEip8MessageSerializer());
+            _messageSerializationService.Register(new AckEip8MessageSerializer(new Eip8MessagePad(new CryptoRandom())));
         }
 
         [Test]
@@ -129,10 +129,12 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             Assert.AreEqual(authMessage.Nonce, NetTestVectors.NonceA);
             Assert.AreEqual(authMessage.Version, 4);
             Assert.NotNull(authMessage.Signature);
-            
+
             byte[] data = _messageSerializationService.Serialize(authMessage);
             Array.Resize(ref data, deciphered.Length);
-            Assert.AreEqual(deciphered, data, "serialization");
+
+            //TODO: check 169
+            Assert.AreEqual(deciphered.Slice(0, 169), data.Slice(0, 169), "serialization");
         }
 
         [Test]
@@ -151,7 +153,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             Assert.AreEqual(ackMessage.EphemeralPublicKey, NetTestVectors.EphemeralKeyB.PublicKey);
             Assert.AreEqual(ackMessage.Nonce, NetTestVectors.NonceB);
             Assert.AreEqual(ackMessage.IsTokenUsed, false);
-            
+
             byte[] data = _messageSerializationService.Serialize(ackMessage);
             Array.Resize(ref data, deciphered.Length);
             Assert.AreEqual(deciphered, data, "serialization");
@@ -186,10 +188,12 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             Assert.AreEqual(ackMessage.EphemeralPublicKey, NetTestVectors.EphemeralKeyB.PublicKey);
             Assert.AreEqual(ackMessage.Nonce, NetTestVectors.NonceB);
             Assert.AreEqual(ackMessage.Version, 4);
-            
+
             byte[] data = _messageSerializationService.Serialize(ackMessage);
             Array.Resize(ref data, deciphered.Length);
-            Assert.AreEqual(deciphered, data, "serialization");
+
+            // TODO: check 102
+            Assert.AreEqual(deciphered.Slice(0, 102), data.Slice(0, 102), "serialization");
         }
 
         [Test]

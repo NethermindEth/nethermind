@@ -13,7 +13,7 @@ namespace Nethermind.Discovery.Serializers
         {
         }
 
-        public byte[] Serialize(PongMessage message, IMessagePad pad = null)
+        public byte[] Serialize(PongMessage message)
         {
             byte[] typeBytes = { (byte)message.MessageType };
             byte[] sender = GetRlpAddress(message.FarAddress);
@@ -24,7 +24,7 @@ namespace Nethermind.Discovery.Serializers
                 Rlp.Encode(message.ExpirationTime)
             ).Bytes;
 
-            byte[] serializedMsg = Serialize(typeBytes, data, pad);
+            byte[] serializedMsg = Serialize(typeBytes, data);
             return serializedMsg;
         }
 

@@ -20,7 +20,7 @@ namespace Nethermind.Network
 {   
     public interface IMessageSerializer<T> where T : MessageBase
     {
-        byte[] Serialize(T message, IMessagePad pad = null);
+        byte[] Serialize(T message);
         T Deserialize(byte[] bytes);
     }
 }

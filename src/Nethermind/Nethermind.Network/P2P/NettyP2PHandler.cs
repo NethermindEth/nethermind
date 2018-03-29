@@ -50,6 +50,7 @@ namespace Nethermind.Network.P2P
 
         protected override void ChannelRead0(IChannelHandlerContext ctx, Packet msg)
         {
+            _logger.Log($"Channel read... data length {msg.Data.Length}");
             _sessionManager.ReceiveMessage(msg);
         }
 

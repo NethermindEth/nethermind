@@ -28,7 +28,7 @@ namespace Nethermind.Network.P2P
 {
     public class HelloMessageSerializer : IMessageSerializer<HelloMessage>
     {
-        public byte[] Serialize(HelloMessage message, IMessagePad pad = null)
+        public byte[] Serialize(HelloMessage message)
         {
             return Rlp.Encode(
                 Rlp.Encode(message.P2PVersion),

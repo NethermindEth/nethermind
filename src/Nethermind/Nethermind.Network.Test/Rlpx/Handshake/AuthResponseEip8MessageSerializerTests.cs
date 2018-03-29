@@ -33,7 +33,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
 
         private readonly PrivateKey _privateKey = new PrivateKey(TestPrivateKeyHex);
 
-        private readonly AckEip8MessageSerializer _serializer = new AckEip8MessageSerializer();
+        private readonly AckEip8MessageSerializer _serializer = new AckEip8MessageSerializer(new Eip8MessagePad(new CryptoRandom()));
 
         private void TestEncodeDecode()
         {

@@ -22,7 +22,7 @@ namespace Nethermind.Network.P2P
 {
     public class PongMessageSerializer : IMessageSerializer<PongMessage>
     {
-        public byte[] Serialize(PongMessage message, IMessagePad pad = null)
+        public byte[] Serialize(PongMessage message)
         {
             return Rlp.OfEmptySequence.Bytes;
         }
