@@ -16,7 +16,6 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Encoding;
 
@@ -26,9 +25,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
     {
         public byte[] Serialize(TransactionsMessage message)
         {
-            return Rlp.Encode(
-                message.Transactions.Select(Rlp.Encode).ToArray()
-            ).Bytes;
+            return Rlp.Encode(message.Transactions).Bytes;
         }
 
         public TransactionsMessage Deserialize(byte[] bytes)
@@ -41,7 +38,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 transactions[i] = Rlp.Decode<Transaction>(transactionRlp);
             }
             
-            return new TransactionsMessage(transactions);
+            TransactionsMessage message = new TransactionsMessage();
+            message.Transactions = transactions;
+            return message;
         }
     }
 }

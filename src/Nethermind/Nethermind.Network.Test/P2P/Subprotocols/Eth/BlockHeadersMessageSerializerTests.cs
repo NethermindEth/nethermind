@@ -17,14 +17,24 @@
  */
 
 using Nethermind.Core;
+using Nethermind.Network.P2P.Subprotocols.Eth;
+using NUnit.Framework;
 
-namespace Nethermind.Network.P2P.Subprotocols.Eth
+namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
 {
-    public class BlockBodiesMessage : P2PMessage
+    [TestFixture]
+    public class BlockHeadersMessageSerializerTests
     {
-        public override int PacketType { get; } = 5;
-        public override int Protocol { get; } = 1;
-
-        public (Transaction[] Transactions, BlockHeader[] Ommers)[] Bodies { get; set; }
+        [Test]
+        public void Roundtrip()
+        {
+            BlockHeadersMessage message = new BlockHeadersMessage();
+            message.BlockHeaders = new BlockHeader[0];
+            
+            BlockHeadersMessageSerializer serializer = new BlockHeadersMessageSerializer();
+            byte[] bytes = serializer.Serialize(message);
+            BlockHeadersMessage deserialized = serializer.Deserialize(bytes);
+            Assert.AreEqual(message.BlockHeaders.Length, deserialized.BlockHeaders.Length, "length");
+        }
     }
 }

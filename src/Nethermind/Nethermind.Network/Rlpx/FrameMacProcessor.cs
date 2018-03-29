@@ -128,9 +128,9 @@ namespace Nethermind.Network.Rlpx
             new KeccakDigest(mac).DoFinal(output, offset);
         }
 
-        private AesFastEngine MakeMacCipher()
+        private AesEngine MakeMacCipher()
         {
-            AesFastEngine aesFastEngine = new AesFastEngine();
+            AesEngine aesFastEngine = new AesEngine();
             aesFastEngine.Init(true, new KeyParameter(_macSecret));
             return aesFastEngine;
         }

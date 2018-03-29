@@ -16,11 +16,24 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.Core;
+
 namespace Nethermind.Network.P2P.Subprotocols.Eth
 {
     public class BlockHeadersMessage : P2PMessage
     {
         public override int PacketType { get; } = 4;
         public override int Protocol { get; } = 1;
+
+        public BlockHeader[] BlockHeaders { get; set; }
+
+        public BlockHeadersMessage()
+        {
+        }
+
+        public BlockHeadersMessage(BlockHeader[] blockHeaders)
+        {
+            BlockHeaders = blockHeaders;
+        }
     }
 }

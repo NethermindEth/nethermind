@@ -79,7 +79,7 @@ namespace Nethermind.Core.Encoding
             DecodedRlp decodedRlp = Rlp.Decode(rlp);
             return Decode<T>(decodedRlp, rlpBehaviors);
         }
-        
+
         public static T Decode<T>(DecodedRlp rlp, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (Decoders.ContainsKey(typeof(T).TypeHandle))
@@ -421,7 +421,7 @@ namespace Nethermind.Core.Encoding
         {
             return bigInteger == 0 ? OfEmptyByteArray : Encode(bigInteger.ToBigEndianByteArray());
         }
-        
+
         public static Rlp Encode(DecodedRlp decodedRlp)
         {
             return Encode(decodedRlp.IsSequence ? decodedRlp.Items.ToArray() : decodedRlp.SingleItem);
@@ -483,6 +483,8 @@ namespace Nethermind.Core.Encoding
                     return Encode(header);
                 case Bloom bloom:
                     return Encode(bloom);
+                case Transaction transaction:
+                    return Encode(transaction);
                 case DecodedRlp decoded:
                     return Encode(decoded);
             }
@@ -591,7 +593,7 @@ namespace Nethermind.Core.Encoding
             {
                 return OfEmptyByteArray;
             }
-            
+
             byte[] result = new byte[259];
             result[0] = 185;
             result[1] = 1;
@@ -627,6 +629,11 @@ namespace Nethermind.Core.Encoding
                 Encode(receipt.Logs));
         }
 
+        public static Rlp Encode(Transaction transaction)
+        {
+            return Encode(transaction, false);
+        }
+
         public static Rlp Encode(Transaction transaction, bool forSigning, bool isEip155Enabled = false, int chainId = 0)
         {
             Rlp[] sequence = new Rlp[forSigning && !(isEip155Enabled && chainId != 0) ? 6 : 9];
@@ -656,18 +663,13 @@ namespace Nethermind.Core.Encoding
             return Encode(sequence);
         }
 
-        public static Rlp Encode(Transaction transaction)
-        {
-            return Encode(transaction, false);
-        }
-
         public static Rlp Encode(Keccak keccak)
         {
             if (keccak == null)
             {
                 return OfEmptyByteArray;
             }
-            
+
             byte[] result = new byte[33];
             result[0] = 160;
             Buffer.BlockCopy(keccak.Bytes, 0, result, 1, 32);

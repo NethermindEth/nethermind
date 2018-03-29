@@ -16,18 +16,49 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Linq;
+using Nethermind.Core;
+using Nethermind.Core.Encoding;
+
 namespace Nethermind.Network.P2P.Subprotocols.Eth
 {
     public class BlockBodiesMessageSerializer : IMessageSerializer<BlockBodiesMessage>
     {
         public byte[] Serialize(BlockBodiesMessage message)
         {
-            throw new System.NotImplementedException();
+            return Rlp.Encode(message.Bodies.Select(b => Rlp.Encode(b.Transactions, b.Ommers)).ToArray()).Bytes;
         }
 
         public BlockBodiesMessage Deserialize(byte[] bytes)
         {
-            throw new System.NotImplementedException();
+            DecodedRlp decodedRlp = Rlp.Decode(new Rlp(bytes));
+            (Transaction[] Transactions, BlockHeader[] Ommers)[] bodies = new (Transaction[] Transactions, BlockHeader[] Ommers)[decodedRlp.Length];
+            for (int i = 0; i < bodies.Length; i++)
+            {
+                DecodedRlp bodyRlp = decodedRlp.GetSequence(i);
+                DecodedRlp transactionsRlp = bodyRlp.GetSequence(0);
+                DecodedRlp ommersRlp = bodyRlp.GetSequence(1);
+                
+                Transaction[] transactions = new Transaction[transactionsRlp.Length];
+                BlockHeader[] ommers = new BlockHeader[ommersRlp.Length];
+
+                for (int j = 0; j < transactions.Length; j++)
+                {
+                    transactions[j] = Rlp.Decode<Transaction>(transactionsRlp.GetSequence(j));
+                }
+                
+                for (int j = 0; j < ommers.Length; j++)
+                {
+                    ommers[j] = Rlp.Decode<BlockHeader>(ommersRlp.GetSequence(j));
+                }
+
+                bodies[i].Transactions = transactions;
+                bodies[i].Ommers = ommers;
+            }
+            
+            BlockBodiesMessage message = new BlockBodiesMessage();
+            message.Bodies = bodies;
+            return message;
         }
     }
 }
