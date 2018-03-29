@@ -31,11 +31,11 @@ namespace Nethermind.Network.P2P
         public byte[] Serialize(HelloMessage message)
         {
             return Rlp.Encode(
-                Rlp.Encode(message.P2PVersion),
-                Rlp.Encode(message.ClientId),
-                Rlp.Encode(message.Capabilities.Select(c => Rlp.Encode(c.Key.ToString(), c.Value)).ToArray()),
-                Rlp.Encode(message.ListenPort),
-                Rlp.Encode(message.NodeId.PrefixedBytes)
+                message.P2PVersion,
+                message.ClientId,
+                message.Capabilities.Select(c => Rlp.Encode(c.Key.ToString().ToLowerInvariant(), c.Value)).ToArray(),
+                message.ListenPort,
+                message.NodeId.PrefixedBytes
             ).Bytes;
         }
 
@@ -52,9 +52,9 @@ namespace Nethermind.Network.P2P
                 DecodedRlp capability = decodedCapabilities.GetSequence(i);
                 string name = capability.GetString(0);
                 int version = capability.GetByte(1);
-                helloMessage.Capabilities.Add((Capability)Enum.Parse(typeof(Capability), name), version);
+                helloMessage.Capabilities.Add(Enum.Parse<Capability>(name, true), version);
             }
-            // TODO: capabilities
+            
             helloMessage.ListenPort = decoded.GetInt(3);
             helloMessage.NodeId = new PublicKey(decoded.GetBytes(4));
             return helloMessage;

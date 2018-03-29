@@ -27,7 +27,7 @@ namespace Nethermind.Network.P2P
             return Rlp.Encode(
                 new object[]
                 {
-                    Rlp.Encode((byte)message.Reason)
+                    (byte)message.Reason
                 }
             ).Bytes;
         }

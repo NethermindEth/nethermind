@@ -17,6 +17,8 @@
  */
 
 using System.Collections.Generic;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Network.P2P;
 using NUnit.Framework;
 
@@ -46,6 +48,21 @@ namespace Nethermind.Network.Test.P2P
             Assert.AreEqual(helloMessage.ListenPort, deserialized.ListenPort);
             Assert.AreEqual(helloMessage.Capabilities.Count, deserialized.Capabilities.Count);
             Assert.AreEqual(helloMessage.Capabilities[Capability.Eth], deserialized.Capabilities[Capability.Eth]);
+        }
+        
+        [Test]
+        public void Can_deserialize_sample_from_ethereumJ()
+        {
+            Hex helloMessageRaw = "f87902a5457468657265756d282b2b292f76302e372e392f52656c656173652f4c696e75782f672b2bccc58365746827c583736868018203e0b8401fbf1e41f08078918c9f7b6734594ee56d7f538614f602c71194db0a1af5a77f9b86eb14669fe7a8a46a2dd1b7d070b94e463f4ecd5b337c8b4d31bbf8dd5646";
+            HelloMessageSerializer serializer = new HelloMessageSerializer();
+            HelloMessage helloMessage = serializer.Deserialize(helloMessageRaw);
+            Assert.AreEqual("Ethereum(++)/v0.7.9/Release/Linux/g++", helloMessage.ClientId, $"{nameof(HelloMessage.ClientId)}");
+            Assert.AreEqual(992, helloMessage.ListenPort, $"{nameof(HelloMessage.ListenPort)}");
+            Assert.AreEqual(2, helloMessage.P2PVersion, $"{nameof(HelloMessage.P2PVersion)}");
+            Assert.AreEqual(2, helloMessage.Capabilities.Count, $"{nameof(helloMessage.Capabilities.Count)}");
+            Assert.AreEqual(
+                new PublicKey(new Hex("1fbf1e41f08078918c9f7b6734594ee56d7f538614f602c71194db0a1af5a77f9b86eb14669fe7a8a46a2dd1b7d070b94e463f4ecd5b337c8b4d31bbf8dd5646")),
+                helloMessage.NodeId, $"{nameof(HelloMessage.NodeId)}");
         }
     }
 }

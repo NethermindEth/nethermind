@@ -25,11 +25,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         public byte[] Serialize(StatusMessage message)
         {
             return Rlp.Encode(
-                Rlp.Encode(message.ProtocolVersion),
-                Rlp.Encode(message.NetworkId),
-                Rlp.Encode(message.TotalDifficulty),
-                Rlp.Encode(message.BestHash),
-                Rlp.Encode(message.GenesisHash)
+                message.ProtocolVersion,
+                message.NetworkId,
+                message.TotalDifficulty,
+                message.BestHash,
+                message.GenesisHash
             ).Bytes;
         }
 
