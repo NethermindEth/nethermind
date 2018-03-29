@@ -3,7 +3,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Network.Rlpx;
 
-namespace Nethermind.Network.P2P.Subprotocols.Eth
+namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 {
     public class Eth63Session : Eth62Session
     {

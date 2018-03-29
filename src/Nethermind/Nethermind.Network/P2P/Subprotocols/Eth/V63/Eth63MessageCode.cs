@@ -16,7 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.Network.P2P.Subprotocols.Eth
+namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 {
     public static class Eth63MessageCode
     {

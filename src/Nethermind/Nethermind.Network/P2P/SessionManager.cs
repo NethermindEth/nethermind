@@ -23,6 +23,7 @@ using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Network.P2P.Subprotocols.Eth;
+using Nethermind.Network.P2P.Subprotocols.Eth.V63;
 using Nethermind.Network.Rlpx;
 
 namespace Nethermind.Network.P2P
