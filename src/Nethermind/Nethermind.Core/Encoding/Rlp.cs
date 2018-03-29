@@ -76,12 +76,18 @@ namespace Nethermind.Core.Encoding
 
         public static T Decode<T>(Rlp rlp, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
+            DecodedRlp decodedRlp = Rlp.Decode(rlp);
+            return Decode<T>(decodedRlp, rlpBehaviors);
+        }
+        
+        public static T Decode<T>(DecodedRlp rlp, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
             if (Decoders.ContainsKey(typeof(T).TypeHandle))
             {
                 return ((IRlpDecoder<T>)Decoders[typeof(T).TypeHandle]).Decode(rlp);
             }
 
-            return Decode(new DecoderContext(rlp.Bytes), rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraData)).As<T>();
+            return rlp.As<T>();
         }
 
         public static Rlp[] ExtractRlpList(Rlp rlp)

@@ -12,7 +12,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
         {
             NewBlockHashesMessage message = new NewBlockHashesMessage((Keccak.Compute("1"), 1), (Keccak.Compute("2"), 2)); 
             
-            NewBlockHasheshMessageSerializer serializer = new NewBlockHasheshMessageSerializer();
+            NewBlockHashesMessageSerializer serializer = new NewBlockHashesMessageSerializer();
             byte[] bytes = serializer.Serialize(message);
             NewBlockHashesMessage deserialized = serializer.Deserialize(bytes);
             Assert.AreEqual(message.PacketType, deserialized.PacketType, $"{nameof(message.PacketType)}");

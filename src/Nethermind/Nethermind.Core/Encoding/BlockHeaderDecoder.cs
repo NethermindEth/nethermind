@@ -24,7 +24,7 @@ namespace Nethermind.Core.Encoding
 {
     public class BlockHeaderDecoder : IRlpDecoder<BlockHeader>
     {
-        internal BlockHeader Decode(DecodedRlp data)
+        public BlockHeader Decode(DecodedRlp data)
         {
             Keccak parentHash = data.GetKeccak(0);
             Keccak ommersHash = data.GetKeccak(1);

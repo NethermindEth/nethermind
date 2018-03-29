@@ -24,6 +24,6 @@ namespace Nethermind.Core.Encoding
 
     public interface IRlpDecoder<out T> : IRlpDecoder
     {
-        T Decode(Rlp rlp);
+        T Decode(DecodedRlp rlp);
     }
 }

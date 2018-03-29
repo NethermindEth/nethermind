@@ -1,0 +1,45 @@
+﻿using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Network.P2P.Subprotocols.Eth;
+using NUnit.Framework;
+
+namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
+{
+    [TestFixture]
+    public class TransactionsMessageSerializerTests
+    {
+        [Test]
+        public void Roundtrip()
+        {
+            TransactionsMessageSerializer serializer = new TransactionsMessageSerializer();
+            Transaction transaction = new Transaction();
+            transaction.ChainId = ChainId.MainNet;
+            transaction.Data = new byte[] {1, 2, 3};
+            transaction.GasLimit = 10;
+            transaction.GasPrice = 100;
+            transaction.Init = new byte[] {4, 5, 6};
+            transaction.Nonce = 1000;
+            transaction.Signature = new Signature(1, 2, 27);
+            transaction.To = Address.Zero;
+            transaction.Value = 10000;
+            transaction.Hash = Transaction.CalculateHash(transaction);
+
+            TransactionsMessage message = new TransactionsMessage(transaction, transaction);
+            byte[] bytes = serializer.Serialize(message);
+            TransactionsMessage deserialized = serializer.Deserialize(bytes);
+            Assert.AreEqual(message.Transactions.Length, deserialized.Transactions.Length, "length");
+            // TODO: Chain IDs need to be handled properly
+//            Assert.AreEqual(message.Transactions[0].ChainId, deserialized.Transactions[0].ChainId, $"{nameof(Transaction.ChainId)}");
+            Assert.AreEqual(message.Transactions[0].Data, deserialized.Transactions[0].Data, $"{nameof(Transaction.Data)}");
+            Assert.AreEqual(message.Transactions[0].GasLimit, deserialized.Transactions[0].GasLimit, $"{nameof(Transaction.GasLimit)}");
+            Assert.AreEqual(message.Transactions[0].GasPrice, deserialized.Transactions[0].GasPrice, $"{nameof(Transaction.GasPrice)}");
+            Assert.AreEqual(message.Transactions[0].Hash, deserialized.Transactions[0].Hash, $"{nameof(Transaction.Hash)}");
+            // TODO: cannot test Init and Data at once with one transaction only
+//            Assert.AreEqual(message.Transactions[0].Init, deserialized.Transactions[0].Init, $"{nameof(Transaction.Init)}");
+            Assert.AreEqual(message.Transactions[0].Nonce, deserialized.Transactions[0].Nonce, $"{nameof(Transaction.Nonce)}");
+            Assert.AreEqual(message.Transactions[0].Signature, deserialized.Transactions[0].Signature, $"{nameof(Transaction.Signature)}");
+            Assert.AreEqual(message.Transactions[0].To, deserialized.Transactions[0].To, $"{nameof(Transaction.To)}");
+            Assert.AreEqual(message.Transactions[0].Value, deserialized.Transactions[0].Value, $"{nameof(Transaction.Value)}");
+        }
+    }
+}

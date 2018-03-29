@@ -16,17 +16,19 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
-
 namespace Nethermind.Core.Encoding
 {
     public class AccountDecoder : IRlpDecoder<Account>
     {
         public Account Decode(Rlp rlp)
         {
-            Account account = new Account();
             DecodedRlp data = Rlp.Decode(rlp);
+            return Decode(data);
+        }
+
+        public Account Decode(DecodedRlp data)
+        {
+            Account account = new Account();
             account.Nonce = data.GetUnsignedBigInteger(0);
             account.Balance = data.GetUnsignedBigInteger(1);
             account.StorageRoot = data.GetKeccak(2);

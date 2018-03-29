@@ -25,7 +25,7 @@ namespace Nethermind.Core.Encoding
 {
     public class TransactionDecoder : IRlpDecoder<Transaction>
     {
-        internal Transaction Decode(DecodedRlp data)
+        public Transaction Decode(DecodedRlp data)
         {
             if (data.Length != 6 && data.Length != 9)
             {

@@ -24,7 +24,7 @@ using Nethermind.Core.Encoding;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth
 {
-    public class NewBlockHasheshMessageSerializer : IMessageSerializer<NewBlockHashesMessage>
+    public class NewBlockHashesMessageSerializer : IMessageSerializer<NewBlockHashesMessage>
     {
         public byte[] Serialize(NewBlockHashesMessage message, IMessagePad pad = null)
         {
