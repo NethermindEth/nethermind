@@ -32,8 +32,8 @@ namespace Nethermind.Network.Test.P2P
         {
             HelloMessage helloMessage = new HelloMessage();
             helloMessage.P2PVersion = 1;
-            helloMessage.Capabilities = new Dictionary<Capability, int>();
-            helloMessage.Capabilities.Add(Capability.Eth, 1);
+            helloMessage.Capabilities = new Dictionary<string, int>();
+            helloMessage.Capabilities.Add(Protocol.Eth, 1);
             helloMessage.ClientId = "Nethermind/alpha";
             helloMessage.ListenPort = 8002;
             helloMessage.NodeId = NetTestVectors.StaticKeyA.PublicKey;
@@ -47,7 +47,7 @@ namespace Nethermind.Network.Test.P2P
             Assert.AreEqual(helloMessage.NodeId, deserialized.NodeId);
             Assert.AreEqual(helloMessage.ListenPort, deserialized.ListenPort);
             Assert.AreEqual(helloMessage.Capabilities.Count, deserialized.Capabilities.Count);
-            Assert.AreEqual(helloMessage.Capabilities[Capability.Eth], deserialized.Capabilities[Capability.Eth]);
+            Assert.AreEqual(helloMessage.Capabilities[Protocol.Eth], deserialized.Capabilities[Protocol.Eth]);
         }
         
         [Test]
@@ -63,6 +63,19 @@ namespace Nethermind.Network.Test.P2P
             Assert.AreEqual(
                 new PublicKey(new Hex("1fbf1e41f08078918c9f7b6734594ee56d7f538614f602c71194db0a1af5a77f9b86eb14669fe7a8a46a2dd1b7d070b94e463f4ecd5b337c8b4d31bbf8dd5646")),
                 helloMessage.NodeId, $"{nameof(HelloMessage.NodeId)}");
+        }
+
+        [Test]
+        public void Can_deserialize_ethereumJ_eip8_sample()
+        {
+            byte[] bytes = new Hex(
+                "f87137916b6e6574682f76302e39312f706c616e39cdc5836574683dc6846d6f726b1682270fb840" +
+                "fda1cff674c90c9a197539fe3dfb53086ace64f83ed7c6eabec741f7f381cc803e52ab2cd55d5569" +
+                "bce4347107a310dfd5f88a010cd2ffd1005ca406f1842877c883666f6f836261720304");
+
+            HelloMessageSerializer serializer = new HelloMessageSerializer();
+            HelloMessage helloMessage = serializer.Deserialize(bytes);
+            Assert.AreEqual(55, helloMessage.P2PVersion);
         }
     }
 }

@@ -44,12 +44,12 @@ namespace Nethermind.Network.P2P
             _logger = logger;
             LocalNodeId = localNodeId;
             ListenPort = listenPort;
-            AgreedCapabilities = new Dictionary<Capability, int>();
+            AgreedCapabilities = new Dictionary<string, int>();
         }
 
         public int ListenPort { get; }
 
-        public Dictionary<Capability, int> AgreedCapabilities { get; }
+        public Dictionary<string, int> AgreedCapabilities { get; }
 
         public PublicKey LocalNodeId { get; }
 
@@ -76,9 +76,9 @@ namespace Nethermind.Network.P2P
                 HelloMessage helloMessage = Deserialize<HelloMessage>(msg.Data);
                 HandleHello(helloMessage);
                 
-                foreach ((Capability protocol, int version) in AgreedCapabilities)
+                foreach ((string protocol, int version) in AgreedCapabilities)
                 {
-                    _sessionManager.Start(protocol.ToString(), version, PacketSender, RemoteNodeId, RemotePort);    
+                    _sessionManager.Start(protocol, version, PacketSender, RemoteNodeId, RemotePort);    
                 } 
             }
             else if (msg.PacketType == P2PMessageCode.Disconnect)
@@ -126,19 +126,19 @@ namespace Nethermind.Network.P2P
                 return;
             }
 
-            if (!hello.Capabilities.ContainsKey(Capability.Eth))
+            if (!hello.Capabilities.ContainsKey(Protocol.Eth))
             {
                 Disconnect(DisconnectReason.Other);
                 return;
             }
 
-            if (hello.Capabilities[Capability.Eth] != 62)
+            if (hello.Capabilities[Protocol.Eth] != 62)
             {
                 Disconnect(DisconnectReason.Other);
                 return;
             }
 
-            AgreedCapabilities.Add(Capability.Eth, 62);
+            AgreedCapabilities.Add(Protocol.Eth, 62);
         }
 
         private void SendHello()
@@ -146,16 +146,16 @@ namespace Nethermind.Network.P2P
             _logger.Log($"P2P sending hello");
             HelloMessage helloMessage = new HelloMessage
             {
-                Capabilities = new Dictionary<Capability, int>
+                Capabilities = new Dictionary<string, int>
                 {
-                    {Capability.Eth, 62}
+                    {Protocol.Eth, 62}
                 },
 
                 ClientId = ClientVersion.Description,
                 NodeId = LocalNodeId,
                 ListenPort = ListenPort,
 //                P2PVersion = NettyP2PHandler.Version
-                P2PVersion = (byte)3
+                P2PVersion = (byte)5
             };
 
             _sentHello = true;
