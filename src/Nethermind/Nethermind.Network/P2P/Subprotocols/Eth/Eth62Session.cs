@@ -35,11 +35,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             RemotePort = remotePort;
         }
 
-        public string ProtocolCode { get; } = "eth";
+        public string ProtocolCode => "eth";
 
-        public int MessageIdSpaceSize { get; } = 7;
+        public virtual int MessageIdSpaceSize => 7;
 
-        public void HandleMessage(Packet packet)
+        public virtual void HandleMessage(Packet packet)
         {
             switch (packet.PacketType)
             {

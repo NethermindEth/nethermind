@@ -83,10 +83,22 @@ namespace Nethermind.Network.P2P
             switch (protocolCode)
             {
                 case Protocol.P2P:
+                    if (version != 5)
+                    {
+                        throw new NotSupportedException();
+                    }
+                    
                     session = new P2PSession(this, _serializationService, packetSender, _localNodeId, _listenPort, remoteNodeId, _logger);
                     break;
                 case Protocol.Eth:
-                    session = new Eth62Session(_serializationService, packetSender, _logger, remoteNodeId, remotePort);
+                    if (version < 62 || version > 63)
+                    {
+                        throw new NotSupportedException();
+                    }
+                    
+                    session = version == 62
+                        ? new Eth62Session(_serializationService, packetSender, _logger, remoteNodeId, remotePort)
+                        : new Eth63Session(_serializationService, packetSender, _logger, remoteNodeId, remotePort);
                     break;
                 default:
                     throw new NotSupportedException();

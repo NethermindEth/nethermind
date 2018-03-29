@@ -65,9 +65,9 @@ namespace Nethermind.Network.P2P
         {
         }
 
-        public string ProtocolCode { get; } = "p2p";
+        public string ProtocolCode => Protocol.P2P;
 
-        public int MessageIdSpaceSize { get; } = 16;
+        public int MessageIdSpaceSize => 16;
 
         public void HandleMessage(Packet msg)
         {
@@ -132,13 +132,13 @@ namespace Nethermind.Network.P2P
                 return;
             }
 
-            if (hello.Capabilities[Protocol.Eth] != 62)
+            if (hello.Capabilities[Protocol.Eth] < 62 || hello.Capabilities[Protocol.Eth] > 63)
             {
                 Disconnect(DisconnectReason.Other);
                 return;
             }
-
-            AgreedCapabilities.Add(Protocol.Eth, 62);
+            
+            AgreedCapabilities.Add(Protocol.Eth, hello.Capabilities[Protocol.Eth]);
         }
 
         private void SendHello()
