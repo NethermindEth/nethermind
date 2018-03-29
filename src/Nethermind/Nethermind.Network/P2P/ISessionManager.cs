@@ -23,8 +23,9 @@ namespace Nethermind.Network.P2P
 {
     public interface ISessionManager
     {
-        void DeliverMessage(Packet packet);
-        void Start(int protocolType, int version, IPacketSender packetSender, PublicKey remoteNodeId, int remotePort);
-        void Close(int protocolType);
+        void ReceiveMessage(Packet packet);
+        void Start(string protocolCode, int version, IPacketSender packetSender, PublicKey remoteNodeId, int remotePort);
+        void Close(string protocolCode);
+        (string, int) ResolveMessageCode(int adaptiveId);
     }
 }

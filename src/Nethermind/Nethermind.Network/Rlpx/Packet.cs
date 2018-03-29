@@ -34,7 +34,7 @@ namespace Nethermind.Network.Rlpx
             Data = data;
         }
 
-        public int PacketType { get; }
+        public int PacketType { get; set; }
 
         public int ProtocolType { get; }
     }

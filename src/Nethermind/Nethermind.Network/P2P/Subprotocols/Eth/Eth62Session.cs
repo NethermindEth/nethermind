@@ -35,13 +35,22 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             RemotePort = remotePort;
         }
 
-        public int ProtocolType { get; } = 1;
+        public string ProtocolCode { get; } = "eth";
+
+        public int MessageIdSpaceSize { get; } = 7;
 
         public void HandleMessage(Packet packet)
         {
-            if (packet.PacketType == Eth62MessageCode.Status)
+            switch (packet.PacketType)
             {
-                Logger.Log($"ETH received status");
+                case Eth62MessageCode.Status:
+                    Deserialize<StatusMessage>(packet.Data);
+                    Logger.Log($"ETH received status");
+                    break;
+                case Eth62MessageCode.NewBlockHashes:
+                    Deserialize<NewBlockHashesMessage>(packet.Data);
+                    Logger.Log($"ETH received new block hashes");
+                    break;
             }
         }
 

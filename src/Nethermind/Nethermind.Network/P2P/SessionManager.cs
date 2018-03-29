@@ -18,6 +18,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.Collections.Specialized;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Network.P2P.Subprotocols.Eth;
@@ -25,6 +27,7 @@ using Nethermind.Network.Rlpx;
 
 namespace Nethermind.Network.P2P
 {
+    // TODO: this is close to ready to dynamically accept more protocols support but it seems unnecessary at the moment
     public class SessionManager : ISessionManager
     {
         private readonly int _listenPort;
@@ -32,7 +35,8 @@ namespace Nethermind.Network.P2P
         private readonly IMessageSerializationService _serializationService;
         private readonly PublicKey _localNodeId;
 
-        private readonly Dictionary<int, ISession> _sessions = new Dictionary<int, ISession>();
+        private readonly Dictionary<string, ISession> _sessions = new Dictionary<string, ISession>();
+        private Func<int, (string, int)> _adaptiveCodeResolver;
 
         public SessionManager(IMessageSerializationService serializationService, PublicKey localNodeId, int listenPort, ILogger logger)
         {
@@ -42,43 +46,83 @@ namespace Nethermind.Network.P2P
             _logger = logger;
         }
 
-        // TODO: consider moving it out of here
-        public void DeliverMessage(Packet packet)
+        public (string, int) ResolveMessageCode(int adaptiveId)
         {
-            if (!_sessions.ContainsKey(packet.ProtocolType))
+            return _adaptiveCodeResolver.Invoke(adaptiveId);
+        }
+        
+        public void ReceiveMessage(Packet packet)
+        {
+            int dynamicMessageCode = packet.PacketType;
+            (string protocol, int messageId) = ResolveMessageCode(dynamicMessageCode);
+
+            if (protocol == null)
             {
                 throw new InvalidProtocolException(packet.ProtocolType);
             }
 
-            _sessions[packet.ProtocolType].HandleMessage(packet);
+            packet.PacketType = messageId;
+            _sessions[protocol].HandleMessage(packet);
         }
-
-        public void Start(int protocolType, int version, IPacketSender packetSender, PublicKey remoteNodeId, int remotePort)
+        
+        public void Start(string protocolCode, int version, IPacketSender packetSender, PublicKey remoteNodeId, int remotePort)
         {
-            if (_sessions.ContainsKey(protocolType))
+            protocolCode = protocolCode.ToLowerInvariant();
+            if (_sessions.ContainsKey(protocolCode))
             {
-                throw new InvalidOperationException($"Session for protocol {protocolType} already started");
+                throw new InvalidOperationException($"Session for protocol {protocolCode} already started");
+            }
+
+            if (protocolCode != Protocol.P2P && !_sessions.ContainsKey(Protocol.P2P))
+            {
+                throw new InvalidOperationException($"{Protocol.P2P} session has to be started before starting {protocolCode} session");
             }
 
             ISession session;
-            switch (protocolType)
+            switch (protocolCode)
             {
-                case 0:
+                case Protocol.P2P:
                     session = new P2PSession(this, _serializationService, packetSender, _localNodeId, _listenPort, remoteNodeId, _logger);
                     break;
-                case 1:
+                case Protocol.Eth:
                     session = new Eth62Session(_serializationService, packetSender, _logger, remoteNodeId, remotePort);
                     break;
                 default:
                     throw new NotSupportedException();
             }
 
-            _sessions[protocolType] = session;
+            _sessions[protocolCode] = session;
+
+            (string ProtocolCode, int SpaceSize)[] alphabetically = new (string, int)[_sessions.Count];
+            alphabetically[0] = (Protocol.P2P, _sessions[Protocol.P2P].MessageIdSpaceSize);
+            int i = 1;
+            foreach (KeyValuePair<string, ISession> protocolSession in _sessions.Where(kv => kv.Key != "p2p").OrderBy(kv => kv.Key))
+            {
+                alphabetically[i++] = (protocolSession.Key, protocolSession.Value.MessageIdSpaceSize);
+            }
+
+            _adaptiveCodeResolver = dynamicId =>
+            {
+                int offset = 0;
+                for (int j = 0; j < alphabetically.Length; j++)
+                {
+                    if (offset + alphabetically[j].SpaceSize > dynamicId)
+                    {
+                        return (alphabetically[j].ProtocolCode, dynamicId - offset);
+                    }
+
+                    offset += alphabetically[j].Item2;
+                }
+
+                return (null, 0);
+            };
+
             session.Init();
         }
 
-        public void Close(int protocolType)
+        public void Close(string protocolCode)
         {
+            protocolCode = protocolCode.ToLowerInvariant();
             throw new NotImplementedException();
         }
     }

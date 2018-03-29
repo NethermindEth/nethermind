@@ -17,7 +17,6 @@
  */
 
 using System.Collections.Generic;
-using System.ComponentModel.DataAnnotations;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Network.Rlpx;
@@ -95,19 +94,21 @@ namespace Nethermind.Network.P2P
         {
         }
 
-        public int ProtocolType { get; } = 0;
+        public string ProtocolCode { get; } = "p2p";
+
+        public int MessageIdSpaceSize { get; } = 16;
 
         public void HandleMessage(Packet msg)
         {
             if (msg.PacketType == P2PMessageCode.Hello)
             {
                 HelloMessage helloMessage = Deserialize<HelloMessage>(msg.Data);
-//                _logger.Log($"Received hello from {helloMessage.NodeId} @ {ctx.Channel.RemoteAddress} ({helloMessage.ClientId})");
                 HandleHello(helloMessage);
-                if (AgreedCapabilities.ContainsKey(Capability.Eth) && AgreedCapabilities[Capability.Eth] == 62)
+                
+                foreach ((Capability protocol, int version) in AgreedCapabilities)
                 {
-                    _sessionManager.Start(1, 62, PacketSender, RemoteNodeId, RemotePort);
-                }
+                    _sessionManager.Start(protocol.ToString(), version, PacketSender, RemoteNodeId, RemotePort);    
+                } 
             }
             else if (msg.PacketType == P2PMessageCode.Disconnect)
             {

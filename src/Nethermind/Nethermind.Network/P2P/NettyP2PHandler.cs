@@ -45,12 +45,12 @@ namespace Nethermind.Network.P2P
 
         public void Init()
         {
-            _sessionManager.Start(0, 5, _packetSender, _remoteNodeId, _remotePort);
+            _sessionManager.Start("p2p", 5, _packetSender, _remoteNodeId, _remotePort);
         }
-        
+
         protected override void ChannelRead0(IChannelHandlerContext ctx, Packet msg)
         {
-            _sessionManager.DeliverMessage(msg);
+            _sessionManager.ReceiveMessage(msg);
         }
 
         public override void ExceptionCaught(IChannelHandlerContext context, Exception exception)

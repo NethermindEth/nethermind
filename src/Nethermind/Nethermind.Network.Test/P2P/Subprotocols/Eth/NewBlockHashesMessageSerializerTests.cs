@@ -17,8 +17,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
             NewBlockHashesMessage deserialized = serializer.Deserialize(bytes);
             Assert.AreEqual(message.PacketType, deserialized.PacketType, $"{nameof(message.PacketType)}");
             Assert.AreEqual(message.Protocol, deserialized.Protocol, $"{nameof(message.Protocol)}");
-            Assert.AreEqual(message.BlockHashes.Count, deserialized.BlockHashes.Count, $"number of block hashes");
-            for (int i = 0; i < message.BlockHashes.Count; i++)
+            Assert.AreEqual(message.BlockHashes.Length, deserialized.BlockHashes.Length, $"number of block hashes");
+            for (int i = 0; i < message.BlockHashes.Length; i++)
             {
                 Assert.AreEqual(message.BlockHashes[i].Item1, deserialized.BlockHashes[i].Item1, $"{i} hash");
                 Assert.AreEqual(message.BlockHashes[i].Item2, deserialized.BlockHashes[i].Item2, $"{i} number");

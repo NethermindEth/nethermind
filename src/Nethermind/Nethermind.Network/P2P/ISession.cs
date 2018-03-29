@@ -23,9 +23,10 @@ namespace Nethermind.Network.P2P
 {
     public interface ISession
     {
-        int ProtocolType { get; }
+        string ProtocolCode { get; }
         PublicKey RemoteNodeId { get; }
         int RemotePort { get; }
+        int MessageIdSpaceSize { get; }
         void HandleMessage(Packet packet);
         void Init();
         void Close();

@@ -16,9 +16,9 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using Nethermind.Core;
 using Nethermind.Network.P2P;
-using Nethermind.Network.Rlpx;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -33,14 +33,38 @@ namespace Nethermind.Network.Test.P2P
         public void Can_start_p2p_session()
         {
             SessionManager factory = new SessionManager(Substitute.For<IMessageSerializationService>(), NetTestVectors.StaticKeyA.PublicKey, ListenPort, new NullLogger());
-            factory.Start(0, 5, Substitute.For<IPacketSender>(), NetTestVectors.StaticKeyB.PublicKey, 8003);
+            factory.Start("p2p", 5, Substitute.For<IPacketSender>(), NetTestVectors.StaticKeyB.PublicKey, 8003);
         }
 
+        [Test]
+        public void Cannot_start_eth_before_p2p()
+        {
+            SessionManager factory = new SessionManager(Substitute.For<IMessageSerializationService>(), NetTestVectors.StaticKeyA.PublicKey, ListenPort, new NullLogger());
+            Assert.Throws<InvalidOperationException>(() => factory.Start("eth", 62, Substitute.For<IPacketSender>(), NetTestVectors.StaticKeyB.PublicKey, 8003));
+        }
+        
         [Test]
         public void Can_start_eth_session()
         {
             SessionManager factory = new SessionManager(Substitute.For<IMessageSerializationService>(), NetTestVectors.StaticKeyA.PublicKey, ListenPort, new NullLogger());
-            factory.Start(1, 62, Substitute.For<IPacketSender>(), NetTestVectors.StaticKeyB.PublicKey, 8003);
+            factory.Start("p2p", 5, Substitute.For<IPacketSender>(), NetTestVectors.StaticKeyB.PublicKey, 8003);
+            factory.Start("eth", 62, Substitute.For<IPacketSender>(), NetTestVectors.StaticKeyB.PublicKey, 8003);
+        }
+        
+        [TestCase(100, null, 0)]
+        [TestCase(1, "p2p", 1)]
+        [TestCase(15, "p2p", 15)]
+        [TestCase(16, "eth", 0)]
+        public void Adaptive_message_ids(int dynamicId, string protocolCode, int messageCode)
+        {        
+            SessionManager factory = new SessionManager(Substitute.For<IMessageSerializationService>(), NetTestVectors.StaticKeyA.PublicKey, ListenPort, new NullLogger());
+            factory.Start("p2p", 5, Substitute.For<IPacketSender>(), NetTestVectors.StaticKeyB.PublicKey, 8003);
+            factory.Start("eth", 62, Substitute.For<IPacketSender>(), NetTestVectors.StaticKeyB.PublicKey, 8003);
+
+            (string resolvedProtocolCode, int resolvedMessageId) = factory.ResolveMessageCode(dynamicId);
+            Assert.AreEqual(protocolCode, resolvedProtocolCode, "protocol code");
+            Assert.AreEqual(messageCode, resolvedMessageId, "message code");
+            
         }
     }
 }
