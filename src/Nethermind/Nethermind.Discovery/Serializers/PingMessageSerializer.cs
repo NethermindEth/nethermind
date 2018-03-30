@@ -16,8 +16,8 @@ namespace Nethermind.Discovery.Serializers
         public byte[] Serialize(PingMessage message)
         {
             byte[] typeBytes = { (byte)message.MessageType };
-            byte[] source = GetRlpAddress(message.SourceAddress);
-            byte[] destination = GetRlpAddress(message.DestinationAddress);
+            Rlp source = GetRlpAddress(message.SourceAddress);
+            Rlp destination = GetRlpAddress(message.DestinationAddress);
             byte[] data = Rlp.Encode(
                 Rlp.Encode(message.Version),
                 source,
@@ -38,11 +38,11 @@ namespace Nethermind.Discovery.Serializers
             DecodedRlp decodedRaw = Rlp.Decode(rlp, RlpBehaviors.AllowExtraData);
             var version = decodedRaw.GetInt(0);
 
-            var sourceRaw = Rlp.Decode(new Rlp(decodedRaw.GetBytes(1)));
-            var source = GetAddress(sourceRaw.GetBytes(0), sourceRaw.GetBytes(1));
+            var sourceRlp = (DecodedRlp)decodedRaw.Items[1];
+            var source = GetAddress(sourceRlp.GetBytes(0), sourceRlp.GetBytes(1));
 
-            var destinationRaw = Rlp.Decode(new Rlp(decodedRaw.GetBytes(2)));
-            var destination = GetAddress(destinationRaw.GetBytes(0), destinationRaw.GetBytes(1));
+            var destinationRlp = (DecodedRlp)decodedRaw.Items[2];
+            var destination = GetAddress(destinationRlp.GetBytes(0), destinationRlp.GetBytes(1));
 
             var expireTime = (decodedRaw.GetBytes(3)).ToInt64();
 

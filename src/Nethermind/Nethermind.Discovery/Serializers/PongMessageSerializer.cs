@@ -16,11 +16,10 @@ namespace Nethermind.Discovery.Serializers
         public byte[] Serialize(PongMessage message)
         {
             byte[] typeBytes = { (byte)message.MessageType };
-            byte[] sender = GetRlpAddress(message.FarAddress);
-            byte[] token = Rlp.Encode(message.PingMdc).Bytes;
+            Rlp sender = GetRlpAddress(message.FarAddress);
             byte[] data = Rlp.Encode(
                 sender,
-                token,
+                message.PingMdc,
                 Rlp.Encode(message.ExpirationTime)
             ).Bytes;
 
@@ -35,7 +34,7 @@ namespace Nethermind.Discovery.Serializers
             var rlp = new Rlp(results.Data);
             var decodedRaw = Rlp.Decode(rlp, RlpBehaviors.AllowExtraData);
 
-            var token = Rlp.Decode<byte[]>(new Rlp(decodedRaw.GetBytes(1)));
+            var token = decodedRaw.GetBytes(1);
             var expireTime = decodedRaw.GetBytes(2).ToInt64();
 
             var message = results.Message;

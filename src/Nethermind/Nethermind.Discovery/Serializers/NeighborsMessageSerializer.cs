@@ -24,10 +24,10 @@ namespace Nethermind.Discovery.Serializers
         {
             byte[] typeBytes = { (byte)message.MessageType };
 
-            byte[][] nodes = null;
+            Rlp[] nodes = null;
             if (message.Nodes != null && message.Nodes.Any())
             {
-                nodes = new byte[message.Nodes.Length][];
+                nodes = new Rlp[message.Nodes.Length];
                 for (var i = 0; i < message.Nodes.Length; i++)
                 {
                     var node = message.Nodes[i];
@@ -36,10 +36,8 @@ namespace Nethermind.Discovery.Serializers
                 }
             }
 
-            var serializedNodes = nodes != null ? Rlp.Encode(nodes).Bytes : new[]{OffsetShortList};
-
             byte[] data = Rlp.Encode(
-                serializedNodes,
+                nodes ?? (object)new[] { OffsetShortList },
                 //TODO verify if encoding is correct
                 Rlp.Encode(message.ExpirationTime)
             ).Bytes;
@@ -52,27 +50,10 @@ namespace Nethermind.Discovery.Serializers
         {
             var results = Deserialize<NeighborsMessage>(msg);
 
-            Rlp rlp = new Rlp(results.Data);
-            DecodedRlp decodedRaw = Rlp.Decode(rlp, RlpBehaviors.AllowExtraData);
+            var rlp = new Rlp(results.Data);
+            var decodedRaw = Rlp.Decode(rlp, RlpBehaviors.AllowExtraData);
 
-            var serializedNodes = Rlp.Decode(new Rlp(decodedRaw.GetBytes(0)));
-
-            var nodes = new List<Node>();
-            if (serializedNodes != null && serializedNodes.Length > 0 && (serializedNodes.Length != 1 || serializedNodes.GetBytes(0)[1] != OffsetShortList))
-            {
-                for (var i = 0; i < serializedNodes.Length; i++)
-                {
-                    var serializedNode = serializedNodes.GetBytes(i);
-                    DecodedRlp nodeRaw = Rlp.Decode(new Rlp(serializedNode));
-                    var address = GetAddress(nodeRaw.GetBytes(0), nodeRaw.GetBytes(1));
-                    //TODO confirm it is correct - based on EthereumJ
-                    var idRaw = nodeRaw.Length > 3 ? nodeRaw.GetBytes(3) : nodeRaw.GetBytes(2);
-                    byte[] id = idRaw;
-
-                    var node = NodeFactory.CreateNode(new PublicKey(id), address);
-                    nodes.Add(node);
-                }
-            }
+            var nodes = DeserializeNodes(decodedRaw);
 
             var expireTime = decodedRaw.GetBytes(1).ToInt64();
             var message = results.Message;
@@ -80,6 +61,39 @@ namespace Nethermind.Discovery.Serializers
             message.ExpirationTime = expireTime;
 
             return message;
+        }
+
+        private List<Node> DeserializeNodes(DecodedRlp decodedRaw)
+        {
+            if (!(decodedRaw.Items[0] is DecodedRlp))
+            {
+                return new List<Node>();
+            }
+
+            var decodedRlp = (DecodedRlp)decodedRaw.Items[0];
+            var decodedNodes = decodedRlp != null
+                ? (decodedRlp.IsSequence ? decodedRlp.Items : new List<object> { decodedRlp.SingleItem })
+                : new List<object>();
+
+            var nodes = new List<Node>();
+            for (var i = 0; i < decodedNodes.Count; i++)
+            {
+                DecodedRlp nodeRaw = (DecodedRlp) decodedNodes[i];
+                if (i == 0 && !nodeRaw.IsSequence && ((byte[]) nodeRaw.SingleItem)[0] == OffsetShortList)
+                {
+                    break;
+                }
+
+                var address = GetAddress(nodeRaw.GetBytes(0), nodeRaw.GetBytes(1));
+                //TODO confirm it is correct - based on EthereumJ
+                var idRaw = nodeRaw.Length > 3 ? nodeRaw.GetBytes(3) : nodeRaw.GetBytes(2);
+                byte[] id = idRaw;
+
+                var node = NodeFactory.CreateNode(new PublicKey(id), address);
+                nodes.Add(node);
+            }
+
+            return nodes;
         }
     }
 }

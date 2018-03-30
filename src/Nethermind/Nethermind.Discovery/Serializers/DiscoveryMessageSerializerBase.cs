@@ -58,7 +58,7 @@ namespace Nethermind.Discovery.Serializers
             return (message, mdc, data);
         }
 
-        protected byte[] GetRlpAddress(IPEndPoint address)
+        protected Rlp GetRlpAddress(IPEndPoint address)
         {
             return Rlp.Encode(
                 Rlp.Encode(address.Address.GetAddressBytes()),
@@ -66,10 +66,10 @@ namespace Nethermind.Discovery.Serializers
                 Rlp.Encode(address.Port),
                 //udp port
                 Rlp.Encode(address.Port)
-            ).Bytes;
+            );
         }
 
-        protected byte[] GetRlpAddressAndId(IPEndPoint address, byte[] id)
+        protected Rlp GetRlpAddressAndId(IPEndPoint address, byte[] id)
         {
             return Rlp.Encode(
                 Rlp.Encode(address.Address.GetAddressBytes()),
@@ -78,7 +78,7 @@ namespace Nethermind.Discovery.Serializers
                 //udp port
                 Rlp.Encode(address.Port),
                 Rlp.Encode(id)
-            ).Bytes;
+            );
         }
 
         protected IPEndPoint GetAddress(byte[] ip, byte[] port)
