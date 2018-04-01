@@ -34,11 +34,11 @@ namespace Nethermind.KeyStore
             _logger = logger;
         }
 
-        public byte[] Encrypt(byte[] content, byte[] key, byte[] iv)
+        public byte[] Encrypt(byte[] content, byte[] key, byte[] iv, string cipherType)
         {
             try
             {
-                using (var aes = CreateAesCryptoServiceProvider(key, iv))
+                using (var aes = CreateAesCryptoServiceProvider(key, iv, cipherType))
                 {
                     var encryptor = aes.CreateEncryptor(aes.Key, aes.IV);
                     return Execute(encryptor, content);
@@ -51,13 +51,13 @@ namespace Nethermind.KeyStore
             }
         }
 
-        public byte[] Decrypt(byte[] cipher, byte[] key, byte[] iv)
+        public byte[] Decrypt(byte[] cipher, byte[] key, byte[] iv, string cipherType)
         {
             try
             {
-                using (var aes = CreateAesCryptoServiceProvider(key, iv))
+                using (var aes = CreateAesCryptoServiceProvider(key, iv, cipherType))
                 {
-                    var decryptor = aes.CreateDecryptor(aes.Key, aes.IV);
+                    var decryptor = aes.CreateDecryptor(key, aes.IV);
                     return Execute(decryptor, cipher);
                 }
             }
@@ -81,17 +81,25 @@ namespace Nethermind.KeyStore
             }
         }
 
-        private AesCryptoServiceProvider CreateAesCryptoServiceProvider(byte[] key, byte[] iv)
+        private SymmetricAlgorithm CreateAesCryptoServiceProvider(byte[] key, byte[] iv, string cipherType)
         {
-            var aes = new AesCryptoServiceProvider
+            switch (cipherType.Trim())
             {
-                BlockSize = _configurationProvider.SymmetricEncrypterBlockSize,
-                KeySize = _configurationProvider.SymmetricEncrypterKeySize,
-                Padding = PaddingMode.PKCS7,
-                Key = key,
-                IV = iv
-            };
-            return aes;
+                case "aes-128-ctr":
+                    //Custom impl for AES128 CTR
+                    return new Aes128CounterMode(iv);
+                case "aes-128-cbc":
+                    return new AesCryptoServiceProvider
+                    {
+                        BlockSize = _configurationProvider.SymmetricEncrypterBlockSize,
+                        KeySize = _configurationProvider.SymmetricEncrypterKeySize,
+                        Padding = PaddingMode.PKCS7,
+                        Key = key,
+                        IV = iv
+                    };
+                default:
+                    throw new Exception($"Unsupported cipherType: {cipherType}");
+            }
         }
     }
 }

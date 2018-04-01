@@ -21,6 +21,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Security;
+using System.Security.Cryptography;
 using CryptSharp.Utility;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -73,7 +74,7 @@ namespace Nethermind.KeyStore
         public int Version => 3;
         public int CryptoVersion => 1;
 
-        public (PrivateKey, Result) GetKey(Address address, SecureString password)
+        public (PrivateKey PrivateKey, Result Result) GetKey(Address address, SecureString password)
         {
             var serializedKey = ReadKey(address.ToString());
             if (serializedKey == null)
@@ -81,7 +82,7 @@ namespace Nethermind.KeyStore
                 return (null, Result.Fail("Cannot find key"));
             }
             var keyStoreItem = _jsonSerializer.Deserialize<KeyStoreItem>(serializedKey);
-            if (keyStoreItem == null)
+            if (keyStoreItem?.Crypto == null)
             {
                 return (null, Result.Fail("Cannot deserialize key"));
             }
@@ -99,16 +100,40 @@ namespace Nethermind.KeyStore
 
             var kdfParams = keyStoreItem.Crypto.KDFParams;
             var passBytes = password.ToByteArray(_configurationProvider.KeyStoreEncoding);
-            var derivedKey = SCrypt.ComputeDerivedKey(passBytes, salt, kdfParams.N, kdfParams.R, kdfParams.P, null, kdfParams.DkLen);
+
+            byte[] derivedKey = null;
+            var kdf = keyStoreItem.Crypto.KDF.Trim();
+            switch (kdf)
+            {
+                case "scrypt":
+                    derivedKey = SCrypt.ComputeDerivedKey(passBytes, salt, kdfParams.N, kdfParams.R, kdfParams.P, null, kdfParams.DkLen);
+                    break;
+                case "pbkdf2":
+                    var deriveBytes = new Rfc2898DeriveBytes(passBytes, salt, kdfParams.C, HashAlgorithmName.SHA256);
+                    derivedKey = deriveBytes.GetBytes(256);
+                    break;
+                default:
+                    return (null, Result.Fail($"Unsupported algoritm: {kdf}"));
+            }         
 
             var restoredMac = Keccak.Compute(derivedKey.Slice(kdfParams.DkLen - 16, 16).Concat((byte[])cipher).ToArray()).Bytes;
             if (!mac.Equals(new Hex(restoredMac)))
             {
                 return (null, Result.Fail("Incorrect MAC"));
             }
+
+            var cipherType = keyStoreItem.Crypto.Cipher.Trim();
+            byte[] decryptKey;
+            if (kdf == "scrypt" && cipherType == "aes-128-cbc")
+            {
+                decryptKey = Keccak.Compute(derivedKey.Slice(0, 16)).Bytes.Slice(0, 16);
+            }
+            else
+            {
+                decryptKey = derivedKey.Slice(0, 16);
+            }
             
-            byte[] decryptKey = Keccak.Compute(derivedKey.Slice(0, 16)).Bytes.Slice(0, 16);
-            byte[] key = _symmetricEncrypter.Decrypt(cipher, decryptKey, iv);
+            byte[] key = _symmetricEncrypter.Decrypt(cipher, decryptKey, iv, cipherType);
             if (key == null)
             {
                 return (null, Result.Fail("Error during decryption"));
@@ -118,7 +143,7 @@ namespace Nethermind.KeyStore
             return (new PrivateKey(new Hex(key)), Result.Success());
         }
 
-        public (PrivateKey, Result) GenerateKey(SecureString password)
+        public (PrivateKey PrivateKey, Result Result) GenerateKey(SecureString password)
         {
             var privateKey = new PrivateKey(_cryptoRandom.GenerateRandomBytes(32));
             var result = StoreKey(privateKey, password);
@@ -136,7 +161,7 @@ namespace Nethermind.KeyStore
             var encryptContent = key.Hex;
             var iv = _cryptoRandom.GenerateRandomBytes(_configurationProvider.IVSize);
 
-            var cipher = _symmetricEncrypter.Encrypt(encryptContent, encryptKey, iv);
+            var cipher = _symmetricEncrypter.Encrypt(encryptContent, encryptKey, iv, _configurationProvider.Cipher);
             if (cipher == null)
             {
                 return Result.Fail("Error during encryption");
@@ -181,7 +206,7 @@ namespace Nethermind.KeyStore
             return PersistKey(address, serializedKey);
         }
 
-        public (IReadOnlyCollection<Address>, Result) GetKeyAddresses()
+        public (IReadOnlyCollection<Address> Addresses, Result Result) GetKeyAddresses()
         {
             try
             {

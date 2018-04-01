@@ -30,6 +30,14 @@ namespace Nethermind.KeyStore.Test
     [TestFixture]
     public class KeyStoreTests
     {
+        private IKeyStore _store;
+        private IJsonSerializer _serializer;
+        private IConfigurationProvider _configurationProvider;
+        private ICryptoRandom _cryptoRandom;
+        private SecureString _testPasswordSecured;
+        private SecureString _wrongPasswordSecured;
+        private readonly string _testPassword = "testpassword";
+
         [SetUp]
         public void Initialize()
         {
@@ -52,14 +60,6 @@ namespace Nethermind.KeyStore.Test
             _cryptoRandom = new CryptoRandom();
             _store = new FileKeyStore(_configurationProvider, _serializer, new AesEncrypter(_configurationProvider, logger), _cryptoRandom, logger);
         }
-
-        private IKeyStore _store;
-        private IJsonSerializer _serializer;
-        private IConfigurationProvider _configurationProvider;
-        private ICryptoRandom _cryptoRandom;
-        private SecureString _testPasswordSecured;
-        private SecureString _wrongPasswordSecured;
-        private readonly string _testPassword = "testpassword";
 
         [Test]
         public void CryptoVersionMismatchTest()

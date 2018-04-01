@@ -20,7 +20,7 @@ namespace Nethermind.KeyStore
 {
     public interface ISymmetricEncrypter
     {
-        byte[] Encrypt(byte[] content, byte[] key, byte[] iv);
-        byte[] Decrypt(byte[] cipher, byte[] key, byte[] iv);
+        byte[] Encrypt(byte[] content, byte[] key, byte[] iv, string cipherType);
+        byte[] Decrypt(byte[] cipher, byte[] key, byte[] iv, string cipherType);
     }
 }

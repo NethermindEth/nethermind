@@ -26,9 +26,9 @@ namespace Nethermind.KeyStore
 {
     public interface IKeyStore
     {
-        (PrivateKey, Result) GetKey(Address address, SecureString password);
-        (IReadOnlyCollection<Address>, Result) GetKeyAddresses();
-        (PrivateKey, Result) GenerateKey(SecureString password);
+        (PrivateKey PrivateKey, Result Result) GetKey(Address address, SecureString password);
+        (IReadOnlyCollection<Address> Addresses, Result Result) GetKeyAddresses();
+        (PrivateKey PrivateKey, Result Result) GenerateKey(SecureString password);
         Result StoreKey(PrivateKey key, SecureString password);
         Result DeleteKey(Address address, SecureString password);
         int Version { get; }

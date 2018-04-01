@@ -25,5 +25,8 @@ namespace Nethermind.KeyStore
         public int P { get; set; }
         public int R { get; set; }
         public string Salt { get; set; }
+
+        public int C { get; set; }
+        public string Prf { get; set; }
     }
 }
