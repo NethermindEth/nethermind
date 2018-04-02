@@ -18,6 +18,8 @@
 
 using System.Diagnostics;
 using Org.BouncyCastle.Crypto;
+using Org.BouncyCastle.Crypto.Engines;
+using Org.BouncyCastle.Crypto.Modes;
 using Org.BouncyCastle.Crypto.Parameters;
 using Org.BouncyCastle.Security;
 
@@ -35,23 +37,28 @@ namespace Nethermind.Network.Rlpx
 
         public FrameCipher(byte[] aesKey)
         {
+            AesEngine aes = new AesEngine();
+            SicBlockCipher sic = new SicBlockCipher(aes);
+            
             Debug.Assert(aesKey.Length == KeySize, $"AES key expected to be {KeySize} bytes long");
 
-            _encryptionCipher = CipherUtilities.GetCipher("AES/CTR/NoPadding");
+            _encryptionCipher = new BufferedBlockCipher(new SicBlockCipher(aes)); // CipherUtilities.GetCipher("AES/CTR/NoPadding");
+//            _encryptionCipher = new BufferedBlockCipher(sic);
             _encryptionCipher.Init(true, new ParametersWithIV(ParameterUtilities.CreateKeyParameter("AES", aesKey), new byte[BlockSize]));
 
-            _decryptionCipher = CipherUtilities.GetCipher("AES/CTR/NoPadding");
+            _decryptionCipher = new BufferedBlockCipher(new SicBlockCipher(aes));
+//            _decryptionCipher = new BufferedBlockCipher(sic);
             _decryptionCipher.Init(false, new ParametersWithIV(ParameterUtilities.CreateKeyParameter("AES", aesKey), new byte[BlockSize]));
         }
 
         public void Encrypt(byte[] input, int offset, int length, byte[] output, int outputOffset)
         {
-            _encryptionCipher.DoFinal(input, offset, length, output, outputOffset);
+            _encryptionCipher.ProcessBytes(input, offset, length, output, outputOffset);
         }
 
         public void Decrypt(byte[] input, int offset, int length, byte[] output, int outputOffset)
         {
-            _decryptionCipher.DoFinal(input, offset, length, output, outputOffset);
+            _decryptionCipher.ProcessBytes(input, offset, length, output, outputOffset);
         }
     }
 }

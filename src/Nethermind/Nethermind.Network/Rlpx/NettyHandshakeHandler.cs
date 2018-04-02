@@ -18,6 +18,7 @@
 
 using System;
 using System.Net;
+using System.Threading.Tasks;
 using DotNetty.Buffers;
 using DotNetty.Codecs;
 using DotNetty.Transport.Channels;
@@ -66,6 +67,30 @@ namespace Nethermind.Network.Rlpx
             }
         }
 
+        public override void ChannelInactive(IChannelHandlerContext context)
+        {
+            _logger.Log("Channel Inactive");
+            base.ChannelInactive(context);
+        }
+
+        public override Task DisconnectAsync(IChannelHandlerContext context)
+        {
+            _logger.Log("Disconnected");
+            return base.DisconnectAsync(context);
+        }
+
+        public override void ChannelUnregistered(IChannelHandlerContext context)
+        {
+            _logger.Log("Channel Unregistered");
+            base.ChannelUnregistered(context);
+        }
+
+        public override void ChannelRegistered(IChannelHandlerContext context)
+        {
+            _logger.Log("Channel Registered");
+            base.ChannelRegistered(context);
+        }
+
         public override void ExceptionCaught(IChannelHandlerContext context, Exception exception)
         {
             _logger.Error("Exception when processing encryption handshake", exception);
@@ -97,7 +122,6 @@ namespace Nethermind.Network.Rlpx
                 else
                 {
                     _logger.Log($"Received ACK from {_remoteId} @ {context.Channel.RemoteAddress}");
-                    _logger.Log($"Received ACK from {_remoteId} @ {context.Channel.RemoteAddress}");
                     byte[] ackData = new byte[byteBuffer.ReadableBytes];
                     byteBuffer.ReadBytes(ackData);
                     _service.Agree(_handshake, new Packet(ackData));
@@ -106,14 +130,17 @@ namespace Nethermind.Network.Rlpx
                 FrameCipher frameCipher = new FrameCipher(_handshake.Secrets.AesSecret);
                 FrameMacProcessor macProcessor = new FrameMacProcessor(_handshake.Secrets);
 
+                _logger.Log($"Received {nameof(NettyHandshakeHandler)}");
                 context.Channel.Pipeline.Remove(this);
+                _logger.Log($"Received {nameof(LengthFieldBasedFrameDecoder)}");
                 context.Channel.Pipeline.Remove<LengthFieldBasedFrameDecoder>();
 
-                // TODO: base class for Netty handlers and codecs with instrumentations?
+                _logger.Log($"Register {Protocol.P2P}");
+                // TODO: base class for Netty handlers and codecs with instrumentation?
                 _logger.Log($"Registering {nameof(NettyFrameDecoder)} for {_remoteId} @ {context.Channel.RemoteAddress}");
                 context.Channel.Pipeline.AddLast(new NettyFrameDecoder(frameCipher, macProcessor, _logger));
                 _logger.Log($"Registering {nameof(NettyFrameEncoder)} for {_remoteId} @ {context.Channel.RemoteAddress}");
-                context.Channel.Pipeline.AddLast(new NettyFrameEncoder(frameCipher, macProcessor));
+                context.Channel.Pipeline.AddLast(new NettyFrameEncoder(frameCipher, macProcessor, _logger));
                 _logger.Log($"Registering {nameof(NettyFrameMerger)} for {_remoteId} @ {context.Channel.RemoteAddress}");
                 context.Channel.Pipeline.AddLast(new NettyFrameMerger(_logger));
                 _logger.Log($"Registering {nameof(NettyPacketSplitter)} for {_remoteId} @ {context.Channel.RemoteAddress}");

@@ -16,29 +16,40 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using DotNetty.Buffers;
 using DotNetty.Codecs;
 using DotNetty.Transport.Channels;
+using Nethermind.Core;
 
 namespace Nethermind.Network.Rlpx
 {
     public class NettyFrameEncoder : MessageToByteEncoder<byte[]>
     {
+        private readonly ILogger _logger;
         private readonly IFrameCipher _frameCipher;
         private readonly IFrameMacProcessor _frameMacProcessor;
-
-        public NettyFrameEncoder(IFrameCipher frameCipher, IFrameMacProcessor frameMacProcessor)
+        
+        public NettyFrameEncoder(IFrameCipher frameCipher, IFrameMacProcessor frameMacProcessor, ILogger logger)
         {
             _frameCipher = frameCipher;
             _frameMacProcessor = frameMacProcessor;
+            _logger = logger;
         }
 
         protected override void Encode(IChannelHandlerContext context, byte[] message, IByteBuffer output)
         {
+            if (message.Length % 16 != 0)
+            {
+                throw new InvalidOperationException($"Frame length should be a multiple of 16");
+            }
+            
+            _logger.Debug($"Sending frame (before encryption): {new Hex(message)}");
             _frameCipher.Encrypt(message, 0, 16, message, 0);
             _frameMacProcessor.AddMac(message, 0, 16, true);
             _frameCipher.Encrypt(message, 32, message.Length - 48, message, 32);
             _frameMacProcessor.AddMac(message, 32, message.Length - 48, false);
+            _logger.Debug($"Sending frame (after encryption):  {new Hex(message)}");
             output.WriteBytes(message);
         }
     }

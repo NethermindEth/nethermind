@@ -137,5 +137,29 @@ namespace Ethereum.Rlp.Test
             byte[] expected = {136, 0, 0, 0, 0, 0, 0, 0, 42};
             Assert.AreEqual(expected, Nethermind.Core.Encoding.Rlp.Encode(42UL).Bytes);
         }
+        
+        [Ignore("placeholder for various rlp tests")]
+        [Test]
+        public void VariousTests()
+        {
+            List<object> objects = new List<object>();
+            objects.Add(0);
+
+            byte[] result = Nethermind.Core.Encoding.Rlp.Encode(objects).Bytes;
+            
+            
+            List<byte[]> bytes = new List<byte[]>();
+            bytes.Add(Nethermind.Core.Encoding.Rlp.Encode(0).Bytes);
+            
+            byte[] resultBytes = Nethermind.Core.Encoding.Rlp.Encode(bytes).Bytes;
+            
+            List<object> bytesRlp = new List<object>();
+            bytesRlp.Add(Nethermind.Core.Encoding.Rlp.Encode(0));
+            
+            byte[] resultRlp = Nethermind.Core.Encoding.Rlp.Encode(bytesRlp).Bytes;
+            
+            Assert.AreEqual(resultRlp, result);
+            Assert.AreEqual(result, resultBytes);
+        }
     }
 }

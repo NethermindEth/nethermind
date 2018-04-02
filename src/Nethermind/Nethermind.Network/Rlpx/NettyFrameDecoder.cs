@@ -51,6 +51,7 @@ namespace Nethermind.Network.Rlpx
         {
             if (_state == FrameDecoderState.WaitingForHeader)
             {
+                _logger.Debug($"Decoding frame header {input.ReadableBytes}");
                 if (input.ReadableBytes >= 32)
                 {
                     input.ReadBytes(_headerBuffer);
@@ -61,15 +62,25 @@ namespace Nethermind.Network.Rlpx
                     _totalBodySize = (_totalBodySize << 8) + (_headerBuffer[1] & 0xFF);
                     _totalBodySize = (_totalBodySize << 8) + (_headerBuffer[2] & 0xFF);
                     _state = FrameDecoderState.WaitingForPayload;
+                    
+                    int paddingSize = 16 - _totalBodySize % 16;
+                    if (paddingSize == 16)
+                    {
+                        paddingSize = 0;
+                    }
+                    
+                    _logger.Debug($"Expecting a message {_totalBodySize} + {paddingSize} + 16");
                 }
                 else
                 {
+                    _logger.Debug($"Waiting for full 32 bytes of the header");
                     return;
                 }
             }
 
             if (_state == FrameDecoderState.WaitingForPayload)
             {
+                _logger.Debug($"Decoding payload {input.ReadableBytes}");
                 int paddingSize = 16 - _totalBodySize % 16;
                 if (paddingSize == 16)
                 {

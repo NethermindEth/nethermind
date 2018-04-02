@@ -44,6 +44,7 @@ namespace Nethermind.Network.Rlpx
 
         protected override void Decode(IChannelHandlerContext context, byte[] input, List<object> output)
         {
+            _logger.Debug($"Merging frames");
             DecodedRlp headerBodyItems = Rlp.Decode(new Rlp(input.Slice(3, 13)), RlpBehaviors.AllowExtraData);
             int protocolType = headerBodyItems.GetInt(0);
             int? contextId = headerBodyItems.Length > 1 ? headerBodyItems.GetInt(1) : (int?)null;
@@ -53,6 +54,7 @@ namespace Nethermind.Network.Rlpx
                              || contextId.HasValue && _currentSizes.ContainsKey(contextId.Value);
             if (isChunked)
             {
+                _logger.Debug($"Merging chunked packet");
                 bool isFirstChunk = totalPacketSize.HasValue;
                 if (isFirstChunk)
                 {
@@ -89,6 +91,7 @@ namespace Nethermind.Network.Rlpx
             }
             else
             {
+                _logger.Debug($"Merging single frame packet");
                 int totalBodySize = input[0] & 0xFF;
                 totalBodySize = (totalBodySize << 8) + (input[1] & 0xFF);
                 totalBodySize = (totalBodySize << 8) + (input[2] & 0xFF);

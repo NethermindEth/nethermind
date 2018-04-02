@@ -25,7 +25,7 @@ namespace Nethermind.Network.P2P
     {
         public byte P2PVersion { get; set; }
         public string ClientId { get; set; }
-        public Dictionary<string, int> Capabilities { get; set; }
+        public List<Capability> Capabilities { get; set; }
         public int ListenPort { get; set; }
         public PublicKey NodeId { get; set; }
         public override string Protocol => "p2p";

@@ -89,6 +89,7 @@ namespace Nethermind.Network.Rlpx.Handshake
             byte[] sizeData = auth.Data.Slice(0, 2);
             byte[] plaintext = _eciesCipher.Decrypt(_privateKey, auth.Data.Slice(2), sizeData);
             AuthMessageBase authMessage = _messageSerializationService.Deserialize<AuthEip8Message>(plaintext);
+            _logger.Debug($"Received AUTH v{authMessage.Version} from {authMessage.PublicKey}");
 
             handshake.RemotePublicKey = authMessage.PublicKey;
             handshake.RecipientNonce = _cryptoRandom.GenerateRandomBytes(32);
@@ -123,6 +124,8 @@ namespace Nethermind.Network.Rlpx.Handshake
             byte[] sizeData = ack.Data.Slice(0, 2);
             byte[] plaintext = _eciesCipher.Decrypt(_privateKey, ack.Data.Slice(2), sizeData);
             AckEip8Message ackMessage = _messageSerializationService.Deserialize<AckEip8Message>(plaintext);
+            
+            _logger.Debug($"Received ACK v{ackMessage.Version}");
 
             handshake.RemoteEphemeralPublicKey = ackMessage.EphemeralPublicKey;
             handshake.RecipientNonce = ackMessage.Nonce;

@@ -18,6 +18,7 @@
 
 using DotNetty.Buffers;
 using DotNetty.Transport.Channels;
+using Nethermind.Core;
 using Nethermind.Network.Rlpx;
 using NSubstitute;
 using NUnit.Framework;
@@ -33,8 +34,8 @@ namespace Nethermind.Network.Test.Rlpx
             _frameCipher = Substitute.For<IFrameCipher>();
             _macProcessor = Substitute.For<IFrameMacProcessor>();
 
-            _frame = new byte[16 + 16 + 1 + 16];
-            _frame[2] = 1; // size   
+            _frame = new byte[16 + 16 + 16 + 16];
+            _frame[2] = 16; // size   
         }
 
         private byte[] _frame;
@@ -45,7 +46,7 @@ namespace Nethermind.Network.Test.Rlpx
         {
             private readonly IChannelHandlerContext _context;
 
-            public UnderTest(IFrameCipher frameCipher, IFrameMacProcessor frameMacProcessor) : base(frameCipher, frameMacProcessor)
+            public UnderTest(IFrameCipher frameCipher, IFrameMacProcessor frameMacProcessor) : base(frameCipher, frameMacProcessor, new NullLogger())
             {
                 _context = Substitute.For<IChannelHandlerContext>();
             }
@@ -82,8 +83,8 @@ namespace Nethermind.Network.Test.Rlpx
             Received.InOrder(
                 () =>
                 {
-                    _frameCipher.Received().Encrypt(_frame, 32, 1, _frame, 32);
-                    _macProcessor.Received().AddMac(_frame, 32, 1, false);
+                    _frameCipher.Received().Encrypt(_frame, 32, 16, _frame, 32);
+                    _macProcessor.Received().AddMac(_frame, 32, 16, false);
                 }
             );
         }

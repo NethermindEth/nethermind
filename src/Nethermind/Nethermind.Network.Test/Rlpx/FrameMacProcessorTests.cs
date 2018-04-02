@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using DotNetty.Common.Utilities;
 using Nethermind.Network.Rlpx;
 using NUnit.Framework;
 
@@ -54,6 +55,32 @@ namespace Nethermind.Network.Test.Rlpx
             macProcessor.AddMac(full, 32, 112, false);
             macProcessor.CheckMac(full, 0, 16, true);
             macProcessor.CheckMac(full, 32, 112, false);
+        }
+        
+        [Test]
+        public void Egress_update_chunks_should_not_matter()
+        {
+            byte[] a1 = new byte[160];
+            byte[] b1 = new byte[160];
+
+            byte[] egressUpdate = new byte[32];
+            for (int i = 0; i < egressUpdate.Length; i++)
+            {
+                egressUpdate[i] = (byte)i;
+            }
+            
+            var secretsA = NetTestVectors.BuildSecretsWithSameIngressAndEgress();
+            secretsA.EgressMac.BlockUpdate(egressUpdate.Slice(0, 16), 0, 16);
+            secretsA.EgressMac.BlockUpdate(egressUpdate.Slice(16, 16), 0, 16);
+            FrameMacProcessor macProcessorA = new FrameMacProcessor(secretsA);
+            macProcessorA.AddMac(a1, 0, 16, false);
+            
+            var secretsB = NetTestVectors.BuildSecretsWithSameIngressAndEgress();
+            secretsB.EgressMac.BlockUpdate(egressUpdate, 0, 32);
+            FrameMacProcessor macProcessorB = new FrameMacProcessor(secretsB);
+            macProcessorB.AddMac(b1, 0, 16, false);
+            
+            Assert.AreEqual(a1.Slice(16, 16), b1.Slice(16, 16));
         }
     }
 }

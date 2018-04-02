@@ -30,7 +30,7 @@ namespace Nethermind.Network.P2P
             return Rlp.Encode(
                 message.P2PVersion,
                 message.ClientId,
-                message.Capabilities.Select(c => Rlp.Encode(c.Key.ToLowerInvariant(), c.Value)).ToArray(),
+                message.Capabilities.Select(c => Rlp.Encode(c.ProtocolCode.ToLowerInvariant(), c.Version)).ToArray(),
                 message.ListenPort,
                 message.NodeId.PrefixedBytes
             ).Bytes;
@@ -42,14 +42,14 @@ namespace Nethermind.Network.P2P
             HelloMessage helloMessage = new HelloMessage();
             helloMessage.P2PVersion = decoded.GetByte(0);
             helloMessage.ClientId = decoded.GetString(1);
-            helloMessage.Capabilities = new Dictionary<string, int>();
+            helloMessage.Capabilities = new List<Capability>();
             DecodedRlp decodedCapabilities = decoded.GetSequence(2);
             for (int i = 0; i < decodedCapabilities.Length; i++)
             {
                 DecodedRlp capability = decodedCapabilities.GetSequence(i);
-                string name = capability.GetString(0);
+                string protocolCode = capability.GetString(0);
                 int version = capability.GetByte(1);
-                helloMessage.Capabilities.Add(name, version);
+                helloMessage.Capabilities.Add(new Capability(protocolCode, version));
             }
             
             helloMessage.ListenPort = decoded.GetInt(3);

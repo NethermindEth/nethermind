@@ -17,7 +17,6 @@
  */
 
 using System;
-using System.Net.Mime;
 using Nethermind.Core;
 
 namespace Nethermind.Runner.TestClient

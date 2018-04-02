@@ -17,6 +17,7 @@
  */
 
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Network.Rlpx;
@@ -44,12 +45,12 @@ namespace Nethermind.Network.P2P
             _logger = logger;
             LocalNodeId = localNodeId;
             ListenPort = listenPort;
-            AgreedCapabilities = new Dictionary<string, int>();
+            AgreedCapabilities = new List<Capability>();
         }
 
         public int ListenPort { get; }
 
-        public Dictionary<string, int> AgreedCapabilities { get; }
+        public List<Capability> AgreedCapabilities { get; }
 
         public PublicKey LocalNodeId { get; }
 
@@ -76,9 +77,10 @@ namespace Nethermind.Network.P2P
                 HelloMessage helloMessage = Deserialize<HelloMessage>(msg.Data);
                 HandleHello(helloMessage);
                 
-                foreach ((string protocol, int version) in AgreedCapabilities)
-                {
-                    _sessionManager.Start(protocol, version, PacketSender, RemoteNodeId, RemotePort);    
+                foreach (Capability capability in AgreedCapabilities.GroupBy(c => c.ProtocolCode).Select(c => c.OrderBy(v => v.Version).Last()))
+                {    
+                    _logger.Log($"Starting session for {capability.ProtocolCode} v{capability.Version} from {RemoteNodeId}:{RemotePort}");    
+                    _sessionManager.Start(capability.ProtocolCode, capability.Version, PacketSender, RemoteNodeId, RemotePort);    
                 } 
             }
             else if (msg.PacketType == P2PMessageCode.Disconnect)
@@ -114,41 +116,57 @@ namespace Nethermind.Network.P2P
             RemotePort = hello.ListenPort;
             RemoteClientId = hello.ClientId;
 
-            if (!_sentHello)
-            {
-                _logger.Log($"P2P initiating inbound session from {hello.NodeId}:{hello.ListenPort} ({hello.ClientId})");
-            }
+            _logger.Log(!_sentHello
+                ? $"P2P initiating inbound {hello.Protocol} v{hello.P2PVersion} session from {hello.NodeId}:{hello.ListenPort} ({hello.ClientId})"
+                : $"P2P initiating outbound {hello.Protocol} v{hello.P2PVersion} session to {hello.NodeId}:{hello.ListenPort} ({hello.ClientId})");
 
-            // TODO: temp
-            if (hello.P2PVersion != NettyP2PHandler.Version)
+            // https://github.com/ethereum/EIPs/blob/master/EIPS/eip-8.md
+            // Clients implementing a newer version simply send a packet with higher version and possibly additional list elements.
+            // * If such a packet is received by a node with lower version, it will blindly assume that the remote end is backwards-compatible and respond with the old handshake.
+            // * If the packet is received by a node with equal version, new features of the protocol can be used.
+            // * If the packet is received by a node with higher version, it can enable backwards-compatibility logic or drop the connection.
+            if (hello.P2PVersion < NettyP2PHandler.Version)
             {
                 Disconnect(DisconnectReason.IncompatibleP2PVersion);
                 return;
             }
 
-            if (!hello.Capabilities.ContainsKey(Protocol.Eth))
+            if (hello.Capabilities.All(c => c.ProtocolCode != Protocol.Eth))
             {
                 Disconnect(DisconnectReason.Other);
                 return;
             }
 
-            if (hello.Capabilities[Protocol.Eth] < 62 || hello.Capabilities[Protocol.Eth] > 63)
+            if (hello.Capabilities.Where(c => c.ProtocolCode == Protocol.Eth).All(c => c.Version != 62))
             {
-                Disconnect(DisconnectReason.Other);
+                Disconnect(DisconnectReason.IncompatibleP2PVersion);
                 return;
             }
-            
-            AgreedCapabilities.Add(Protocol.Eth, hello.Capabilities[Protocol.Eth]);
+
+            foreach (Capability remotePeerCapability in hello.Capabilities)
+            {
+                if (SupportedCapabilities.Contains(remotePeerCapability))
+                {
+                    AgreedCapabilities.Add(remotePeerCapability);
+                }
+            }
         }
-
+        
+        private static readonly List<Capability> SupportedCapabilities = new List<Capability>
+        {
+            new Capability(Protocol.Eth, 62),
+//            new Capability(Protocol.Eth, 63),
+        }; 
+        
         private void SendHello()
         {
             _logger.Log($"P2P sending hello");
             HelloMessage helloMessage = new HelloMessage
             {
-                Capabilities = new Dictionary<string, int>
+                Capabilities = new List<Capability>
                 {
-                    {Protocol.Eth, 62}
+                    new Capability(Protocol.Eth, 62),
+                    new Capability(Protocol.Eth, 63)
                 },
 
                 ClientId = ClientVersion.Description,
