@@ -3,6 +3,6 @@
     public class GetReceiptsMessage : P2PMessage
     {
         public override int PacketType { get; } = 0x0f;
-        public override int Protocol { get; } = 1;
+        public override string Protocol { get; } = "eth";
     }
 }

@@ -23,7 +23,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
     public class BlockBodiesMessage : P2PMessage
     {
         public override int PacketType { get; } = 5;
-        public override int Protocol { get; } = 1;
+        public override string Protocol { get; } = "eth";
 
         public (Transaction[] Transactions, BlockHeader[] Ommers)[] Bodies { get; set; }
     }

@@ -79,6 +79,7 @@ namespace Nethermind.Network.Rlpx
 
         public override void ChannelRead(IChannelHandlerContext context, object message)
         {
+            _logger.Log($"Channel Read {nameof(NettyHandshakeHandler)}");
             if (message is IByteBuffer byteBuffer)
             {
                 if (_role == EncryptionHandshakeRole.Recipient)
@@ -95,6 +96,7 @@ namespace Nethermind.Network.Rlpx
                 }
                 else
                 {
+                    _logger.Log($"Received ACK from {_remoteId} @ {context.Channel.RemoteAddress}");
                     _logger.Log($"Received ACK from {_remoteId} @ {context.Channel.RemoteAddress}");
                     byte[] ackData = new byte[byteBuffer.ReadableBytes];
                     byteBuffer.ReadBytes(ackData);

@@ -31,6 +31,24 @@ namespace Nethermind.Network.P2P
     // TODO: this is close to ready to dynamically accept more protocols support but it seems unnecessary at the moment
     public class SessionManager : ISessionManager
     {
+        private class SenderWrapper : IPacketSender
+        {
+            private readonly IPacketSender _sender;
+            private readonly SessionManager _sessionManager;
+
+            public SenderWrapper(IPacketSender sender, SessionManager sessionManager)
+            {
+                _sender = sender;
+                _sessionManager = sessionManager;
+            }
+            
+            public void Enqueue(Packet message, bool priority = false)
+            {
+                message.PacketType = _sessionManager._adaptiveEncoder((message.ProtocolType, message.PacketType));
+                _sender.Enqueue(message, priority);
+            }
+        }
+        
         private readonly int _listenPort;
         private readonly ILogger _logger;
         private readonly IMessageSerializationService _serializationService;
@@ -38,6 +56,7 @@ namespace Nethermind.Network.P2P
 
         private readonly Dictionary<string, ISession> _sessions = new Dictionary<string, ISession>();
         private Func<int, (string, int)> _adaptiveCodeResolver;
+        private Func<(string ProtocolCode, int PacketType), int> _adaptiveEncoder;
 
         public SessionManager(IMessageSerializationService serializationService, PublicKey localNodeId, int listenPort, ILogger logger)
         {
@@ -56,6 +75,8 @@ namespace Nethermind.Network.P2P
         {
             int dynamicMessageCode = packet.PacketType;
             (string protocol, int messageId) = ResolveMessageCode(dynamicMessageCode);
+            packet.ProtocolType = protocol;
+            
             _logger.Log($"Session Manager received a message (dynamic ID {dynamicMessageCode}. Resolved to {protocol}.{messageId}");
 
             if (protocol == null)
@@ -89,7 +110,7 @@ namespace Nethermind.Network.P2P
                         throw new NotSupportedException();
                     }
                     
-                    session = new P2PSession(this, _serializationService, packetSender, _localNodeId, _listenPort, remoteNodeId, _logger);
+                    session = new P2PSession(this, _serializationService, new SenderWrapper(packetSender, this), _localNodeId, _listenPort, remoteNodeId, _logger);
                     break;
                 case Protocol.Eth:
                     if (version < 62 || version > 63)
@@ -98,6 +119,7 @@ namespace Nethermind.Network.P2P
                     }
                     
                     session = version == 62
+                              // TODO: packetSender handlign is very bad at the moment, we should have same handling for P2P and eth - probably need to pass this to each session created instead of packet sender
                         ? new Eth62Session(_serializationService, packetSender, _logger, remoteNodeId, remotePort)
                         : new Eth63Session(_serializationService, packetSender, _logger, remoteNodeId, remotePort);
                     break;
@@ -125,10 +147,26 @@ namespace Nethermind.Network.P2P
                         return (alphabetically[j].ProtocolCode, dynamicId - offset);
                     }
 
-                    offset += alphabetically[j].Item2;
+                    offset += alphabetically[j].SpaceSize;
                 }
 
                 return (null, 0);
+            };
+
+            _adaptiveEncoder = args =>
+            {
+                int offset = 0;
+                for (int j = 0; j < alphabetically.Length; j++)
+                {
+                    if (alphabetically[j].ProtocolCode == args.ProtocolCode)
+                    {
+                        return offset + args.PacketType;
+                    }
+
+                    offset += alphabetically[j].SpaceSize;
+                }
+
+                return args.PacketType;
             };
 
             session.Init();

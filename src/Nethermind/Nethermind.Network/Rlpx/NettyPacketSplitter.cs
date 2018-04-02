@@ -57,7 +57,10 @@ namespace Nethermind.Network.Rlpx
                 frame[1] = (byte)(framePayloadSize >> 8);
                 frame[2] = (byte)framePayloadSize;
                 List<object> headerDataItems = new List<object>();
-                headerDataItems.Add(message.ProtocolType);
+                
+                // seems that with adaptive message IDs we always send protocol ID as 0
+//                headerDataItems.Add(message.ProtocolType);
+                headerDataItems.Add(0);
                 if (framesCount > 1)
                 {
                     headerDataItems.Add(_contextId);

@@ -3,6 +3,6 @@
     public class GetNodeDataMessage : P2PMessage
     {
         public override int PacketType { get; } = 0x0d;
-        public override int Protocol { get; } = 1;
+        public override string Protocol { get; } = "eth";
     }
 }

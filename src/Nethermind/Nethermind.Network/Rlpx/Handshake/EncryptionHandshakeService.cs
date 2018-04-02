@@ -36,6 +36,7 @@ namespace Nethermind.Network.Rlpx.Handshake
         private readonly IEciesCipher _eciesCipher;
         private readonly IMessageSerializationService _messageSerializationService;
         private readonly PrivateKey _privateKey;
+        private readonly ILogger _logger;
         private readonly ISigner _signer;
 
         public EncryptionHandshakeService(
@@ -49,6 +50,7 @@ namespace Nethermind.Network.Rlpx.Handshake
             _messageSerializationService = messageSerializationService;
             _eciesCipher = eciesCipher;
             _privateKey = privateKey;
+            _logger = logger;
             _cryptoRandom = cryptoRandom;
             _signer = signer;
         }
@@ -95,7 +97,7 @@ namespace Nethermind.Network.Rlpx.Handshake
             handshake.InitiatorNonce = authMessage.Nonce;
             byte[] staticSharedSecret = BouncyCrypto.Agree(_privateKey, handshake.RemotePublicKey);
             byte[] forSigning = staticSharedSecret.Xor(handshake.InitiatorNonce);
-            
+
             handshake.RemoteEphemeralPublicKey = _signer.RecoverPublicKey(authMessage.Signature, new Keccak(forSigning));
 
             // TODO: respond depending on the auth type
@@ -103,7 +105,7 @@ namespace Nethermind.Network.Rlpx.Handshake
             ackMessage.EphemeralPublicKey = handshake.EphemeralPrivateKey.PublicKey;
 //            responseMessage.IsTokenUsed = false;
             ackMessage.Nonce = handshake.RecipientNonce;
-            
+
             byte[] ackData = _messageSerializationService.Serialize(ackMessage);
             int size = ackData.Length + 32 + 16 + 65; // data + MAC + IV + pub
             byte[] sizeBytes = size.ToBigEndianByteArray().Slice(2, 2);
@@ -128,7 +130,7 @@ namespace Nethermind.Network.Rlpx.Handshake
             SetSecrets(handshake, EncryptionHandshakeRole.Initiator);
         }
 
-        private static void SetSecrets(EncryptionHandshake handshake, EncryptionHandshakeRole encryptionHandshakeRole)
+        private void SetSecrets(EncryptionHandshake handshake, EncryptionHandshakeRole encryptionHandshakeRole)
         {
             byte[] ephemeralSharedSecret = BouncyCrypto.Agree(handshake.EphemeralPrivateKey, handshake.RemoteEphemeralPublicKey);
             byte[] nonceHash = Keccak.Compute(Bytes.Concat(handshake.RecipientNonce, handshake.InitiatorNonce)).Bytes;
@@ -161,6 +163,8 @@ namespace Nethermind.Network.Rlpx.Handshake
                 handshake.Secrets.EgressMac = mac2;
                 handshake.Secrets.IngressMac = mac1;
             }
+
+            _logger.Log($"Agreed secrets with {handshake.RemotePublicKey}");
         }
     }
 }

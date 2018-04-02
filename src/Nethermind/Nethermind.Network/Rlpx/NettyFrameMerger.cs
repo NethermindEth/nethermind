@@ -58,7 +58,8 @@ namespace Nethermind.Network.Rlpx
                 {
                     _currentSizes[contextId.Value] = 0;
                     _totalPayloadSizes[contextId.Value] = totalPacketSize.Value - 1; // packet type data size
-                    _packets[contextId.Value] = new Packet(protocolType, GetPacketType(input), new byte[_totalPayloadSizes[contextId.Value]]);
+                    _packets[contextId.Value] = new Packet("???", GetPacketType(input), new byte[_totalPayloadSizes[contextId.Value]]); // adaptive IDs
+//                    _packets[contextId.Value] = new Packet(protocolType, GetPacketType(input), new byte[_totalPayloadSizes[contextId.Value]]);
                     _payloads[contextId.Value] = new List<byte[]>();
                 }
 
@@ -91,7 +92,8 @@ namespace Nethermind.Network.Rlpx
                 int totalBodySize = input[0] & 0xFF;
                 totalBodySize = (totalBodySize << 8) + (input[1] & 0xFF);
                 totalBodySize = (totalBodySize << 8) + (input[2] & 0xFF);
-                output.Add(new Packet(protocolType, GetPacketType(input), input.Slice(1 + 32, totalBodySize - 1)));
+                output.Add(new Packet("???", GetPacketType(input), input.Slice(1 + 32, totalBodySize - 1))); // adaptive IDs
+//                output.Add(new Packet(protocolType, GetPacketType(input), input.Slice(1 + 32, totalBodySize - 1)));
             }
         }
 

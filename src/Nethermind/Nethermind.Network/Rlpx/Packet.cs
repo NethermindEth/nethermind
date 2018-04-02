@@ -22,7 +22,7 @@ namespace Nethermind.Network.Rlpx
     {
         public byte[] Data;
 
-        public Packet(int protocolType, int packetType, byte[] data)
+        public Packet(string protocolType, int packetType, byte[] data)
         {
             Data = data;
             ProtocolType = protocolType;
@@ -36,6 +36,6 @@ namespace Nethermind.Network.Rlpx
 
         public int PacketType { get; set; }
 
-        public int ProtocolType { get; }
+        public string ProtocolType { get; set; }
     }
 }

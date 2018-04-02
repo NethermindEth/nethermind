@@ -57,7 +57,7 @@ namespace Nethermind.Network.Test.Rlpx
         private static List<object> BuildFrames(int count)
         {
             TestFrameHelper frameBuilder = new TestFrameHelper();
-            Packet packet = new Packet(1, 2, new byte[(count - 1) * NettyPacketSplitter.MaxFrameSize + 1]);
+            Packet packet = new Packet("eth", 2, new byte[(count - 1) * NettyPacketSplitter.MaxFrameSize + 1]);
             List<object> frames = new List<object>();
             frameBuilder.Encode(packet, frames);
             return frames;
@@ -130,7 +130,7 @@ namespace Nethermind.Network.Test.Rlpx
             UnderTest underTest = new UnderTest();
             underTest.Decode((byte[])frame, output);
 
-            Assert.AreEqual(1, ((Packet)output[0]).ProtocolType);
+            Assert.AreEqual("???", ((Packet)output[0]).ProtocolType);
         }
 
         [Test]

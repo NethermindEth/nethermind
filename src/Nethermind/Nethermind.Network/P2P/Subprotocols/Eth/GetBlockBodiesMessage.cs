@@ -24,7 +24,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
     {
         public Keccak[] BlockHashes { get; }
         public override int PacketType { get; } = 2;
-        public override int Protocol { get; } = 1;
+        public override string Protocol { get; } = "eth";
 
         public GetBlockBodiesMessage ()
         {
