@@ -17,6 +17,7 @@
  */
 
 using System;
+using System.Threading.Tasks;
 using DotNetty.Transport.Channels;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -24,7 +25,7 @@ using Nethermind.Network.Rlpx;
 
 namespace Nethermind.Network.P2P
 {
-    public class NettyP2PHandler : SimpleChannelInboundHandler<Packet>
+    public class NettyP2PHandler : SimpleChannelInboundHandler<Packet>, IChannelController
     {
         public static byte Version = 5; // TODO: move somewhere else
 
@@ -43,9 +44,21 @@ namespace Nethermind.Network.P2P
             _remotePort = remotePort;
         }
 
-        public void Init()
+        public void Init(IChannelHandlerContext context)
         {
-            _sessionManager.Start("p2p", 5, _packetSender, _remoteNodeId, _remotePort);
+            _context = context;
+            _sessionManager.RegisterChannelController(this); // TODO: to be refactored
+            _sessionManager.StartSession("p2p", 5, _packetSender, _remoteNodeId, _remotePort);
+        }
+
+        private IChannelHandlerContext _context;
+        
+        public override void ChannelRegistered(IChannelHandlerContext context)
+        {
+            _logger.Log($"Registering {nameof(IChannelController)}");
+            
+            _sessionManager.RegisterChannelController(this);
+            base.ChannelRegistered(context);
         }
 
         protected override void ChannelRead0(IChannelHandlerContext ctx, Packet msg)
@@ -55,9 +68,25 @@ namespace Nethermind.Network.P2P
         }
 
         public override void ExceptionCaught(IChannelHandlerContext context, Exception exception)
-        {
+        {   
             _logger.Error($"{nameof(NettyP2PHandler)} exception", exception);
             base.ExceptionCaught(context, exception);
+        }
+
+        public void EnableSnappy()
+        {
+            _logger.Error($"Enabling Snappy compression");
+            _context.Channel.Pipeline.AddBefore($"{nameof(Multiplexor)}#0", null, new SnappyDecoder(_logger));
+            _context.Channel.Pipeline.AddBefore($"{nameof(Multiplexor)}#0", null, new SnappyEncoder(_logger));
+        }
+
+        public void Disconnect(TimeSpan delay)
+        {
+            Task.Delay(delay).ContinueWith(t =>
+            {
+                _context.DisconnectAsync();
+                _logger.Error($"Disconnecting now after {delay.TotalMilliseconds} milliseconds");
+            });
         }
     }
 }

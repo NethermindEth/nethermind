@@ -16,18 +16,34 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Collections.Generic;
 using DotNetty.Codecs;
 using DotNetty.Transport.Channels;
+using Nethermind.Core;
 using Snappy;
 
 namespace Nethermind.Network.Rlpx
 {
-    public class SnappyDecoder : MessageToMessageDecoder<byte[]>
+    public class SnappyDecoder : MessageToMessageDecoder<Packet>
     {
-        protected override void Decode(IChannelHandlerContext context, byte[] message, List<object> output)
+        private readonly ILogger _logger;
+
+        public SnappyDecoder(ILogger logger)
         {
-            output.Add(SnappyCodec.Uncompress(message));
+            _logger = logger;
+        }
+
+        protected override void Decode(IChannelHandlerContext context, Packet message, List<object> output)
+        {
+            if (SnappyCodec.GetUncompressedLength(message.Data) > 1024 * 1024 * 16)
+            {
+                throw new Exception("Max message size exceeeded"); // TODO: disconnect here
+            }
+            
+            _logger.Debug($"Uncompressing with Snappy a message of length {message.Data.Length}");
+            message.Data = SnappyCodec.Uncompress(message.Data);
+            output.Add(message);
         }
     }
 }

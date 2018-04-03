@@ -16,7 +16,9 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -27,12 +29,10 @@ namespace Nethermind.Network.P2P
     public class P2PSession : SessionBase, ISession
     {
         private readonly ILogger _logger;
-        private readonly ISessionManager _sessionManager;
         private bool _sentHello;
 
         // TODO: initialize with capabilities and version
         public P2PSession(
-            ISessionManager sessionManager,
             IMessageSerializationService serializationService,
             IPacketSender packetSender,
             PublicKey localNodeId,
@@ -41,7 +41,6 @@ namespace Nethermind.Network.P2P
             ILogger logger)
         :base(serializationService, packetSender, remoteNodeId, logger)
         {
-            _sessionManager = sessionManager;
             _logger = logger;
             LocalNodeId = localNodeId;
             ListenPort = listenPort;
@@ -79,8 +78,8 @@ namespace Nethermind.Network.P2P
                 
                 foreach (Capability capability in AgreedCapabilities.GroupBy(c => c.ProtocolCode).Select(c => c.OrderBy(v => v.Version).Last()))
                 {    
-                    _logger.Log($"Starting session for {capability.ProtocolCode} v{capability.Version} from {RemoteNodeId}:{RemotePort}");    
-                    _sessionManager.Start(capability.ProtocolCode, capability.Version, PacketSender, RemoteNodeId, RemotePort);    
+                    _logger.Log($"Starting session for {capability.ProtocolCode} v{capability.Version} from {RemoteNodeId}:{RemotePort}");
+                    SubprotocolRequested?.Invoke(this, new ProtocolEventArgs(capability.ProtocolCode, capability.Version));    
                 } 
             }
             else if (msg.PacketType == P2PMessageCode.Disconnect)
@@ -127,19 +126,19 @@ namespace Nethermind.Network.P2P
             // * If the packet is received by a node with higher version, it can enable backwards-compatibility logic or drop the connection.
             if (hello.P2PVersion < NettyP2PHandler.Version)
             {
-                Disconnect(DisconnectReason.IncompatibleP2PVersion);
+                Close(DisconnectReason.IncompatibleP2PVersion);
                 return;
             }
 
             if (hello.Capabilities.All(c => c.ProtocolCode != Protocol.Eth))
             {
-                Disconnect(DisconnectReason.Other);
+                Close(DisconnectReason.Other);
                 return;
             }
 
             if (hello.Capabilities.Where(c => c.ProtocolCode == Protocol.Eth).All(c => c.Version != 62))
             {
-                Disconnect(DisconnectReason.IncompatibleP2PVersion);
+                Close(DisconnectReason.IncompatibleP2PVersion);
                 return;
             }
 
@@ -150,6 +149,9 @@ namespace Nethermind.Network.P2P
                     AgreedCapabilities.Add(remotePeerCapability);
                 }
             }
+            
+            Debug.Assert(_sentHello, "Expecting Init to already be called at this point");
+            SessionEstablished?.Invoke(this, EventArgs.Empty);
         }
         
         private static readonly List<Capability> SupportedCapabilities = new List<Capability>
@@ -187,7 +189,7 @@ namespace Nethermind.Network.P2P
         }
 
         
-        private void Disconnect(DisconnectReason disconnectReason)
+        public void Disconnect(DisconnectReason disconnectReason)
         {
             // TODO: advertise disconnect up the stack so we actually disconnect   
             _logger.Log($"P2P disconnecting from {RemoteNodeId}:{RemotePort} ({RemoteClientId}) [{disconnectReason}]");
@@ -195,7 +197,7 @@ namespace Nethermind.Network.P2P
             Send(message);
         }
 
-        public void Close(DisconnectReason disconnectReason)
+        private void Close(DisconnectReason disconnectReason)
         {
             _logger.Log($"P2P received disconnect from {RemoteNodeId}:{RemotePort} ({RemoteClientId}) [{disconnectReason}]");
         }
@@ -211,5 +213,8 @@ namespace Nethermind.Network.P2P
             // TODO: timers
             Send(PingMessage.Instance);
         }
+
+        public event EventHandler SessionEstablished;
+        public event EventHandler<ProtocolEventArgs> SubprotocolRequested;
     }
 }

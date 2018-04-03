@@ -18,7 +18,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Net;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Core;
@@ -35,7 +34,7 @@ namespace Nethermind.PeerConsole
 {
     internal static class Program
     {
-        private const int PortA = 30303;
+        private const int PortA = 8001;
         private const int PortB = 8002;
         private const int PortC = 8003;
 
@@ -50,8 +49,8 @@ namespace Nethermind.PeerConsole
 
         private static async Task Run()
         {
-            await ConnectLocal();
-//            await ConnectTestnet();
+//            await ConnectLocal();
+            await ConnectTestnet();
         }
 
         private static async Task ConnectLocal()

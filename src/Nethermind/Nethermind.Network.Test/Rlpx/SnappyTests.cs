@@ -25,7 +25,7 @@ using NUnit.Framework;
 namespace Nethermind.Network.Test.Rlpx
 {
     [TestFixture]
-    public class SnappyDecoderTests
+    public class SnappyTests
     {
         private readonly string _uncompressedTestFileName = Path.Combine(TestContext.CurrentContext.WorkDirectory, "Rlpx", "block.rlp");
         private readonly string _goCompressedTestFileName = Path.Combine(TestContext.CurrentContext.WorkDirectory, "Rlpx", "block.go.snappy");
@@ -33,21 +33,32 @@ namespace Nethermind.Network.Test.Rlpx
 
         public class SnappyDecoderForTest : SnappyDecoder
         {
+            public SnappyDecoderForTest()
+                : base(NullLogger.Instance)
+            {
+            }
+
             public byte[] TestDecode(byte[] input)
             {
                 List<object> result = new List<object>();
-                Decode(null, input, result);
-                return (byte[])result[0];
+                Decode(null, new Packet(input), result);
+                return ((Packet)result[0]).Data;
             }
         }
 
         public class SnappyEncoderForTest : SnappyEncoder
         {
+            public SnappyEncoderForTest()
+                : base(NullLogger.Instance)
+            {
+                
+            }
+            
             public byte[] TestEncode(byte[] input)
             {
                 List<object> result = new List<object>();
-                Encode(null, input, result);
-                return (byte[])result[0];
+                Encode(null, new Packet(input), result);
+                return ((Packet)result[0]).Data;
             }
         }
 
@@ -90,6 +101,17 @@ namespace Nethermind.Network.Test.Rlpx
         {
             byte[] bytes = new Hex(File.ReadAllText(Path.Combine(TestContext.CurrentContext.WorkDirectory, "Rlpx", _pythonCompressedTestFileName)));
             Assert.Greater(bytes.Length, 70 * 1024);
+        }
+        
+        [Test]
+        public void Uses_same_compression_as_py()
+        {
+            byte[] bytesPy = new Hex(File.ReadAllText(Path.Combine(TestContext.CurrentContext.WorkDirectory, "Rlpx", _pythonCompressedTestFileName)));
+            byte[] bytesUncompressed = new Hex(File.ReadAllText(Path.Combine(TestContext.CurrentContext.WorkDirectory, "Rlpx", _uncompressedTestFileName)));
+            
+            SnappyEncoderForTest encoder = new SnappyEncoderForTest();
+            byte[] compressed = encoder.TestEncode(bytesUncompressed);
+            Assert.AreEqual(bytesPy, compressed);
         }
 
         [Test]

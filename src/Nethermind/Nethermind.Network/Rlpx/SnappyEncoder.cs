@@ -19,15 +19,25 @@
 using System.Collections.Generic;
 using DotNetty.Codecs;
 using DotNetty.Transport.Channels;
+using Nethermind.Core;
 using Snappy;
 
 namespace Nethermind.Network.Rlpx
 {
-    public class SnappyEncoder : MessageToMessageEncoder<byte[]>
+    public class SnappyEncoder : MessageToMessageEncoder<Packet>
     {
-        protected override void Encode(IChannelHandlerContext context, byte[] message, List<object> output)
+        private readonly ILogger _logger;
+
+        public SnappyEncoder(ILogger logger)
         {
-            output.Add(SnappyCodec.Compress(message));
+            _logger = logger;
+        }
+        
+        protected override void Encode(IChannelHandlerContext context, Packet message, List<object> output)
+        {
+            _logger.Debug($"Compressing with Snappy a message of length {message.Data.Length}");
+            message.Data = SnappyCodec.Compress(message.Data); 
+            output.Add(message);
         }
     }
 }

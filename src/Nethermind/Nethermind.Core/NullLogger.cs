@@ -12,6 +12,10 @@ namespace Nethermind.Core
             get { return LazyInitializer.EnsureInitialized(ref _instance, () => new NullLogger()); }
         }
 
+        private NullLogger()
+        {
+        }
+
         public void Log(string text)
         {
         }

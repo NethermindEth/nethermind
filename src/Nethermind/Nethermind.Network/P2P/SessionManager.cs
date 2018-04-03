@@ -18,8 +18,8 @@
 
 using System;
 using System.Collections.Generic;
-using System.Collections.Specialized;
 using System.Linq;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Network.P2P.Subprotocols.Eth;
@@ -27,7 +27,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V63;
 using Nethermind.Network.Rlpx;
 
 namespace Nethermind.Network.P2P
-{
+{   
     // TODO: this is close to ready to dynamically accept more protocols support but it seems unnecessary at the moment
     public class SessionManager : ISessionManager
     {
@@ -58,6 +58,7 @@ namespace Nethermind.Network.P2P
         private Func<int, (string, int)> _adaptiveCodeResolver;
         private Func<(string ProtocolCode, int PacketType), int> _adaptiveEncoder;
 
+        // TODO: this can only handle one remote peer at the moment, work in progress
         public SessionManager(IMessageSerializationService serializationService, PublicKey localNodeId, int listenPort, ILogger logger)
         {
             _serializationService = serializationService;
@@ -66,11 +67,19 @@ namespace Nethermind.Network.P2P
             _logger = logger;
         }
 
+        // TODO: move to a separate class?
         public (string, int) ResolveMessageCode(int adaptiveId)
         {
             return _adaptiveCodeResolver.Invoke(adaptiveId);
         }
+
+        private IChannelController _channelController;
         
+        public void RegisterChannelController(IChannelController channelController)
+        {
+            _channelController = channelController;
+        }
+
         public void ReceiveMessage(Packet packet)
         {
             int dynamicMessageCode = packet.PacketType;
@@ -88,7 +97,7 @@ namespace Nethermind.Network.P2P
             _sessions[protocol].HandleMessage(packet);
         }
         
-        public void Start(string protocolCode, int version, IPacketSender packetSender, PublicKey remoteNodeId, int remotePort)
+        public void StartSession(string protocolCode, int version, IPacketSender packetSender, PublicKey remoteNodeId, int remotePort)
         {
             protocolCode = protocolCode.ToLowerInvariant();
             if (_sessions.ContainsKey(protocolCode))
@@ -101,6 +110,7 @@ namespace Nethermind.Network.P2P
                 throw new InvalidOperationException($"{Protocol.P2P} session has to be started before starting {protocolCode} session");
             }
 
+            IPacketSender wrappedPacketSender = new SenderWrapper(packetSender, this);
             ISession session;
             switch (protocolCode)
             {
@@ -109,8 +119,9 @@ namespace Nethermind.Network.P2P
                     {
                         throw new NotSupportedException();
                     }
-                    
-                    session = new P2PSession(this, _serializationService, new SenderWrapper(packetSender, this), _localNodeId, _listenPort, remoteNodeId, _logger);
+
+                    session = new P2PSession(_serializationService, new SenderWrapper(packetSender, this), _localNodeId, _listenPort, remoteNodeId, _logger);
+                    session.SessionEstablished += (sender, args) => _channelController.EnableSnappy();
                     break;
                 case Protocol.Eth:
                     if (version < 62 || version > 63)
@@ -122,11 +133,17 @@ namespace Nethermind.Network.P2P
                               // TODO: packetSender handlign is very bad at the moment, we should have same handling for P2P and eth - probably need to pass this to each session created instead of packet sender
                         ? new Eth62Session(_serializationService, packetSender, _logger, remoteNodeId, remotePort)
                         : new Eth63Session(_serializationService, packetSender, _logger, remoteNodeId, remotePort);
+                    session.SessionEstablished += (sender, args) =>
+                    {
+                        ((P2PSession)_sessions[Protocol.P2P]).Disconnect(DisconnectReason.ClientQuitting);
+                        _channelController.Disconnect(TimeSpan.FromSeconds(5));
+                    }; 
                     break;
                 default:
                     throw new NotSupportedException();
             }
 
+            session.SubprotocolRequested += (sender, args) => StartSession(args.ProtocolCode, args.Version, wrappedPacketSender, remoteNodeId, remotePort);
             _sessions[protocolCode] = session;
 
             (string ProtocolCode, int SpaceSize)[] alphabetically = new (string, int)[_sessions.Count];
@@ -171,8 +188,8 @@ namespace Nethermind.Network.P2P
 
             session.Init();
         }
-
-        public void Close(string protocolCode)
+        
+        public void CloseSession(string protocolCode)
         {
             protocolCode = protocolCode.ToLowerInvariant();
             throw new NotImplementedException();

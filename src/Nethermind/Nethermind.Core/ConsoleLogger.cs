@@ -24,7 +24,7 @@ namespace Nethermind.Core
     {
         public void Log(string text)
         {
-            Console.WriteLine(text);
+            Console.WriteLine($"{DateTime.Now.ToLongTimeString()} {text}");
         }
 
         public void Debug(string text)

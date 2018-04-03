@@ -97,7 +97,7 @@ namespace Nethermind.PerfTest
 
         static Program()
         {
-            ILogger logger = new NullLogger();
+            ILogger logger = NullLogger.Instance;
             DbProvider dbProvider = new DbProvider(logger);
             StateTree stateTree = new StateTree(dbProvider.GetOrCreateStateDb());
             IStateProvider stateProvider = new StateProvider(stateTree, Byzantium.Instance, logger, dbProvider.GetOrCreateCodeDb());

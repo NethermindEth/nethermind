@@ -147,13 +147,15 @@ namespace Nethermind.Network.Rlpx
                 context.Channel.Pipeline.AddLast(new NettyPacketSplitter());
 
                 Multiplexor multiplexor = new Multiplexor(_logger);
+                _logger.Log($"Registering {nameof(Multiplexor)} for {_remoteId} @ {context.Channel.RemoteAddress}");
+                context.Channel.Pipeline.AddLast(multiplexor);
+                
                 _logger.Log($"Registering {nameof(NettyP2PHandler)} for {_remoteId} @ {context.Channel.RemoteAddress}");
                 int remotePort = ((IPEndPoint)context.Channel.RemoteAddress).Port;
                 NettyP2PHandler handler = new NettyP2PHandler(_sessionManager, multiplexor, _logger, _remoteId, remotePort);
                 context.Channel.Pipeline.AddLast(handler);
-                _logger.Log($"Registering {nameof(Multiplexor)} for {_remoteId} @ {context.Channel.RemoteAddress}");
-                context.Channel.Pipeline.AddLast(multiplexor);
-                handler.Init();
+                
+                handler.Init(context);
             }
             else
             {

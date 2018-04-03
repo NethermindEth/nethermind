@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using Nethermind.Core.Crypto;
 using Nethermind.Network.Rlpx;
 
@@ -30,5 +31,7 @@ namespace Nethermind.Network.P2P
         void HandleMessage(Packet packet);
         void Init();
         void Close();
+        event EventHandler SessionEstablished;
+        event EventHandler<ProtocolEventArgs> SubprotocolRequested;
     }
 }

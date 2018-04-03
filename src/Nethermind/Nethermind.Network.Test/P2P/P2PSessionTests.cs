@@ -31,12 +31,10 @@ namespace Nethermind.Network.Test.P2P
         public void Setup()
         {
             _packetSender = Substitute.For<IPacketSender>();
-            _sessionManager = Substitute.For<ISessionManager>();
             _serializer = Substitute.For<IMessageSerializationService>();
         }
 
         private IPacketSender _packetSender;
-        private ISessionManager _sessionManager;
         private IMessageSerializationService _serializer;
 
         private Packet CreatePacket(P2PMessage message)
@@ -78,13 +76,12 @@ namespace Nethermind.Network.Test.P2P
         private P2PSession CreateSession()
         {
             return new P2PSession(
-                _sessionManager,
                 _serializer,
                 _packetSender,
                 NetTestVectors.StaticKeyA.PublicKey,
                 8002,
                 NetTestVectors.StaticKeyB.PublicKey,
-                new NullLogger());
+                NullLogger.Instance);
         }
     }
 }
