@@ -65,9 +65,11 @@ namespace Nethermind.Network.P2P
         {
         }
 
+        public int ProtocolVersion => 5;
+        
         public string ProtocolCode => Protocol.P2P;
 
-        public int MessageIdSpaceSize => 16;
+        public int MessageIdSpaceSize => 0x10;
 
         public void HandleMessage(Packet msg)
         {
@@ -146,7 +148,12 @@ namespace Nethermind.Network.P2P
             {
                 if (SupportedCapabilities.Contains(remotePeerCapability))
                 {
+                    _logger.Log($"Agreed on {remotePeerCapability.ProtocolCode} v{remotePeerCapability.Version}");
                     AgreedCapabilities.Add(remotePeerCapability);
+                }
+                else
+                {
+                    _logger.Log($"Capability not supported {remotePeerCapability.ProtocolCode} v{remotePeerCapability.Version}");
                 }
             }
             
@@ -157,7 +164,7 @@ namespace Nethermind.Network.P2P
         private static readonly List<Capability> SupportedCapabilities = new List<Capability>
         {
             new Capability(Protocol.Eth, 62),
-//            new Capability(Protocol.Eth, 63),
+            new Capability(Protocol.Eth, 63),
         }; 
         
         private void SendHello()
@@ -174,8 +181,7 @@ namespace Nethermind.Network.P2P
                 ClientId = ClientVersion.Description,
                 NodeId = LocalNodeId,
                 ListenPort = ListenPort,
-//                P2PVersion = NettyP2PHandler.Version
-                P2PVersion = (byte)5
+                P2PVersion = (byte)ProtocolVersion
             };
 
             _sentHello = true;

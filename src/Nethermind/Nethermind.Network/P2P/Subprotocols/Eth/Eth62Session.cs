@@ -40,6 +40,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         private bool _statusSent;
         
+        public virtual int ProtocolVersion => 62;
+        
         public string ProtocolCode => "eth";
 
         public virtual int MessageIdSpaceSize => 7;
@@ -72,11 +74,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         {
             Logger.Log($"ETH subprotocol initializing");
             StatusMessage statusMessage = new StatusMessage();
-            statusMessage.NetworkId = TempRopstenSetup.ChainId;
-            statusMessage.ProtocolVersion = 62;
-            statusMessage.TotalDifficulty = TempRopstenSetup.Difficulty;
-            statusMessage.BestHash = TempRopstenSetup.GenesisHash;
-            statusMessage.GenesisHash = TempRopstenSetup.GenesisHash;
+            statusMessage.NetworkId = NewerRopsten.ChainId;
+            statusMessage.ProtocolVersion = ProtocolVersion;
+            statusMessage.TotalDifficulty = NewerRopsten.Difficulty;
+            statusMessage.BestHash = NewerRopsten.BestHash;
+            statusMessage.GenesisHash = NewerRopsten.GenesisHash;
             //
 
             Logger.Log($"ETH sending status");
@@ -95,6 +97,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         {
             public static BigInteger Difficulty { get; } = 0x100000; // 1,048,576
             public static Keccak GenesisHash { get; } = new Keccak(new Hex("0x41941023680923e0fe4d74a34bdac8141f2540e3ae90623718e47d66d1ca4a2d"));
+            public static Keccak BestHash { get; } = new Keccak(new Hex("0x41941023680923e0fe4d74a34bdac8141f2540e3ae90623718e47d66d1ca4a2d"));
+            public static int ChainId { get; } = 3;
+        }
+        
+        private static class NewerRopsten // 2963492   
+        {
+            public static BigInteger Difficulty { get; } = 7984694325252517;
+            public static Keccak GenesisHash { get; } = new Keccak(new Hex("0x41941023680923e0fe4d74a34bdac8141f2540e3ae90623718e47d66d1ca4a2d"));
+            public static Keccak BestHash { get; } = new Keccak(new Hex("0x452a31d7627daa0a58e7bdcf4d3f9838e710b45220eb98b8c2cee5c71d5ed9aa"));
             public static int ChainId { get; } = 3;
         }
     }

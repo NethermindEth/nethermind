@@ -16,7 +16,6 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Network.Rlpx;
@@ -34,13 +33,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
         {
             RemotePort = remotePort;
         }
+        
+        public override int ProtocolVersion => 63;
 
-        public override int MessageIdSpaceSize => base.MessageIdSpaceSize + 4;
-
-        public override void HandleMessage(Packet packet)
-        {
-            base.HandleMessage(packet);
-            throw new NotImplementedException();
-        }
+        public override int MessageIdSpaceSize => 17; // magic number here following Go
     }
 }

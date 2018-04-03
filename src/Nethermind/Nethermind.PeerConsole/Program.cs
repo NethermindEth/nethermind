@@ -49,8 +49,8 @@ namespace Nethermind.PeerConsole
 
         private static async Task Run()
         {
-//            await ConnectLocal();
-            await ConnectTestnet();
+            await ConnectLocal();
+//            await ConnectTestnet();
         }
 
         private static async Task ConnectLocal()

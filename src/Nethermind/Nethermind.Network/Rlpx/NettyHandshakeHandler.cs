@@ -130,13 +130,11 @@ namespace Nethermind.Network.Rlpx
                 FrameCipher frameCipher = new FrameCipher(_handshake.Secrets.AesSecret);
                 FrameMacProcessor macProcessor = new FrameMacProcessor(_handshake.Secrets);
 
-                _logger.Log($"Received {nameof(NettyHandshakeHandler)}");
+                _logger.Log($"Removing {nameof(NettyHandshakeHandler)}");
                 context.Channel.Pipeline.Remove(this);
-                _logger.Log($"Received {nameof(LengthFieldBasedFrameDecoder)}");
+                _logger.Log($"Removing {nameof(LengthFieldBasedFrameDecoder)}");
                 context.Channel.Pipeline.Remove<LengthFieldBasedFrameDecoder>();
 
-                _logger.Log($"Register {Protocol.P2P}");
-                // TODO: base class for Netty handlers and codecs with instrumentation?
                 _logger.Log($"Registering {nameof(NettyFrameDecoder)} for {_remoteId} @ {context.Channel.RemoteAddress}");
                 context.Channel.Pipeline.AddLast(new NettyFrameDecoder(frameCipher, macProcessor, _logger));
                 _logger.Log($"Registering {nameof(NettyFrameEncoder)} for {_remoteId} @ {context.Channel.RemoteAddress}");

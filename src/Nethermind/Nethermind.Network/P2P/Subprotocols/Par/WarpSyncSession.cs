@@ -16,19 +16,35 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Numerics;
+using System;
 using Nethermind.Core.Crypto;
+using Nethermind.Network.Rlpx;
 
-namespace Nethermind.Network.P2P.Subprotocols.Eth
+namespace Nethermind.Network.P2P.Subprotocols.Par
 {
-    public class StatusMessage : P2PMessage
+    public class WarpSyncSession : ISession
     {
-        public override int PacketType { get; } = 0;
-        public override string Protocol { get; } = "eth";
-        public int ProtocolVersion { get; set; }
-        public long NetworkId { get; set; }
-        public BigInteger TotalDifficulty { get; set; }
-        public Keccak BestHash { get; set; }
-        public Keccak GenesisHash { get; set; }
+        public int ProtocolVersion { get; } = 2;
+        public string ProtocolCode { get; } = "par";
+        public PublicKey RemoteNodeId { get; }
+        public int RemotePort { get; }
+        public int MessageIdSpaceSize { get; }
+        public void HandleMessage(Packet packet)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void Init()
+        {
+            throw new NotImplementedException();
+        }
+
+        public void Close()
+        {
+            throw new NotImplementedException();
+        }
+
+        public event EventHandler SessionEstablished;
+        public event EventHandler<ProtocolEventArgs> SubprotocolRequested;
     }
 }
