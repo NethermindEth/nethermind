@@ -115,13 +115,15 @@ namespace Nethermind.Network.P2P
             switch (protocolCode)
             {
                 case Protocol.P2P:
-                    if (version != 5)
-                    {
-                        throw new NotSupportedException();
-                    }
-
                     session = new P2PSession(_serializationService, new SenderWrapper(packetSender, this), _localNodeId, _listenPort, remoteNodeId, _logger);
-                    session.SessionEstablished += (sender, args) => _channelController.EnableSnappy();
+                    session.SessionEstablished += (sender, args) =>
+                    {
+                        if (session.ProtocolVersion >= 5)
+                        {
+                            _logger.Log($"{session.ProtocolCode} v{session.ProtocolVersion} established - Enabling Snappy");
+                            _channelController.EnableSnappy();
+                        }
+                    };
                     break;
                 case Protocol.Eth:
                     if (version < 62 || version > 63)
@@ -130,7 +132,6 @@ namespace Nethermind.Network.P2P
                     }
                     
                     session = version == 62
-                              // TODO: packetSender handlign is very bad at the moment, we should have same handling for P2P and eth - probably need to pass this to each session created instead of packet sender
                         ? new Eth62Session(_serializationService, packetSender, _logger, remoteNodeId, remotePort)
                         : new Eth63Session(_serializationService, packetSender, _logger, remoteNodeId, remotePort);
                     session.SessionEstablished += (sender, args) =>

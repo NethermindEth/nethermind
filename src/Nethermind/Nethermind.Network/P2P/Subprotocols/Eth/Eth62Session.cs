@@ -40,7 +40,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         private bool _statusSent;
         
-        public virtual int ProtocolVersion => 62;
+        public virtual byte ProtocolVersion => 62;
         
         public string ProtocolCode => "eth";
 
@@ -107,6 +107,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             public static Keccak GenesisHash { get; } = new Keccak(new Hex("0x41941023680923e0fe4d74a34bdac8141f2540e3ae90623718e47d66d1ca4a2d"));
             public static Keccak BestHash { get; } = new Keccak(new Hex("0x452a31d7627daa0a58e7bdcf4d3f9838e710b45220eb98b8c2cee5c71d5ed9aa"));
             public static int ChainId { get; } = 3;
+        }
+        
+        private static class GenesisMainnet
+        {
+            public static BigInteger Difficulty { get; } = 17179869184;
+            public static Keccak GenesisHash { get; } = new Keccak(new Hex("0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3"));
+            public static Keccak BestHash { get; } = new Keccak(new Hex("0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3"));
+            public static int ChainId { get; } = 1;
         }
     }
 }

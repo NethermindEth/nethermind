@@ -34,7 +34,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             RemotePort = remotePort;
         }
         
-        public override int ProtocolVersion => 63;
+        public override byte ProtocolVersion => 63;
 
         public override int MessageIdSpaceSize => 17; // magic number here following Go
     }

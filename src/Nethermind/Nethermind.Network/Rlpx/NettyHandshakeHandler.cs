@@ -147,18 +147,17 @@ namespace Nethermind.Network.Rlpx
                 Multiplexor multiplexor = new Multiplexor(_logger);
                 _logger.Log($"Registering {nameof(Multiplexor)} for {_remoteId} @ {context.Channel.RemoteAddress}");
                 context.Channel.Pipeline.AddLast(multiplexor);
-                
+
                 _logger.Log($"Registering {nameof(NettyP2PHandler)} for {_remoteId} @ {context.Channel.RemoteAddress}");
                 int remotePort = ((IPEndPoint)context.Channel.RemoteAddress).Port;
                 NettyP2PHandler handler = new NettyP2PHandler(_sessionManager, multiplexor, _logger, _remoteId, remotePort);
                 context.Channel.Pipeline.AddLast(handler);
-                
+
                 handler.Init(context);
             }
             else
             {
-                // TODO: add loggers for networking
-//                Debug.Assert(false, $"Always expecting {nameof(IByteBuffer)} as an input to {nameof(NettyHandshakeHandler)}");
+                _logger.Log($"DIFFERENT TYPE OF DATA {message.GetType()}");
             }
         }
 

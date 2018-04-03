@@ -65,7 +65,7 @@ namespace Nethermind.Network.P2P
         {
         }
 
-        public int ProtocolVersion => 5;
+        public byte ProtocolVersion => 5;
         
         public string ProtocolCode => Protocol.P2P;
 
@@ -128,19 +128,7 @@ namespace Nethermind.Network.P2P
             // * If the packet is received by a node with higher version, it can enable backwards-compatibility logic or drop the connection.
             if (hello.P2PVersion < NettyP2PHandler.Version)
             {
-                Close(DisconnectReason.IncompatibleP2PVersion);
-                return;
-            }
-
-            if (hello.Capabilities.All(c => c.ProtocolCode != Protocol.Eth))
-            {
-                Close(DisconnectReason.Other);
-                return;
-            }
-
-            if (hello.Capabilities.Where(c => c.ProtocolCode == Protocol.Eth).All(c => c.Version != 62))
-            {
-                Close(DisconnectReason.IncompatibleP2PVersion);
+                Disconnect(DisconnectReason.IncompatibleP2PVersion);
                 return;
             }
 
@@ -163,25 +151,20 @@ namespace Nethermind.Network.P2P
         
         private static readonly List<Capability> SupportedCapabilities = new List<Capability>
         {
-            new Capability(Protocol.Eth, 62),
+//            new Capability(Protocol.Eth, 62),
             new Capability(Protocol.Eth, 63),
         }; 
         
         private void SendHello()
         {
-            _logger.Log($"P2P sending hello");
+            _logger.Log($"P2P sending hello with Client ID {ClientVersion.Description}, protocol {ProtocolVersion}, listen port {ListenPort}");
             HelloMessage helloMessage = new HelloMessage
             {
-                Capabilities = new List<Capability>
-                {
-                    new Capability(Protocol.Eth, 62),
-                    new Capability(Protocol.Eth, 63)
-                },
-
+                Capabilities = SupportedCapabilities.ToList(),
                 ClientId = ClientVersion.Description,
                 NodeId = LocalNodeId,
                 ListenPort = ListenPort,
-                P2PVersion = (byte)ProtocolVersion
+                P2PVersion = ProtocolVersion
             };
 
             _sentHello = true;

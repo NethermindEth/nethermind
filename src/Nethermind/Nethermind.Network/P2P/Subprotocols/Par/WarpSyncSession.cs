@@ -24,7 +24,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Par
 {
     public class WarpSyncSession : ISession
     {
-        public int ProtocolVersion { get; } = 2;
+        public byte ProtocolVersion { get; } = 2;
         public string ProtocolCode { get; } = "par";
         public PublicKey RemoteNodeId { get; }
         public int RemotePort { get; }

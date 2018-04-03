@@ -36,7 +36,7 @@ namespace Nethermind.Network.Rlpx
         {
             Interlocked.Increment(ref _contextId);
 
-            byte[] packetTypeData = Rlp.Encode(message.PacketType).Bytes; // TODO: check the 0 packet type
+            byte[] packetTypeData = Rlp.Encode(message.PacketType).Bytes;
             int packetTypeSize = packetTypeData.Length;
             int totalPayloadSize = packetTypeSize + message.Data.Length;
             
@@ -51,7 +51,7 @@ namespace Nethermind.Network.Rlpx
                     paddingSize = totalPayloadSize % 16 == 0 ? 0 : 16 - totalPayloadSize % 16;
                 }
 
-                byte[] frame = new byte[16 + 16 + framePayloadSize + paddingSize + 16]; // header + header MAC + packet type + payload + frame MAC
+                byte[] frame = new byte[16 + 16 + framePayloadSize + paddingSize + 16]; // header + header MAC + packet type + payload + padding + frame MAC
 
                 frame[0] = (byte)(framePayloadSize >> 16);
                 frame[1] = (byte)(framePayloadSize >> 8);
