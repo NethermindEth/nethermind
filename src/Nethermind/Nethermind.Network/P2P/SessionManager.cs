@@ -20,6 +20,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Network.P2P.Subprotocols.Eth;
@@ -51,6 +52,8 @@ namespace Nethermind.Network.P2P
         
         private readonly int _listenPort;
         private readonly ILogger _logger;
+        private readonly IBlockStore _blockStore;
+        private readonly IBlockchain _blockchain;
         private readonly IMessageSerializationService _serializationService;
         private readonly PublicKey _localNodeId;
 
@@ -59,12 +62,20 @@ namespace Nethermind.Network.P2P
         private Func<(string ProtocolCode, int PacketType), int> _adaptiveEncoder;
 
         // TODO: this can only handle one remote peer at the moment, work in progress
-        public SessionManager(IMessageSerializationService serializationService, PublicKey localNodeId, int listenPort, ILogger logger)
+        public SessionManager(
+            IMessageSerializationService serializationService,
+            PublicKey localNodeId,
+            int listenPort,
+            ILogger logger,
+            IBlockStore blockStore, // TODO: review the class designs here
+            IBlockchain blockchain) // TODO: review the class designs here
         {
             _serializationService = serializationService;
             _localNodeId = localNodeId;
             _listenPort = listenPort;
             _logger = logger;
+            _blockStore = blockStore;
+            _blockchain = blockchain;
         }
 
         // TODO: move to a separate class?
@@ -132,7 +143,7 @@ namespace Nethermind.Network.P2P
                     }
                     
                     session = version == 62
-                        ? new Eth62Session(_serializationService, packetSender, _logger, remoteNodeId, remotePort)
+                        ? new Eth62Session(_serializationService, packetSender, _logger, remoteNodeId, remotePort, _blockStore, _blockchain)
                         : new Eth63Session(_serializationService, packetSender, _logger, remoteNodeId, remotePort);
                     session.SessionEstablished += (sender, args) =>
                     {

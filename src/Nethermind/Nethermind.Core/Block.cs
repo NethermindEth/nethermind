@@ -18,6 +18,7 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using System.Numerics;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Core
@@ -43,5 +44,6 @@ namespace Nethermind.Core
         public List<TransactionReceipt> Receipts { get; set; }
         public BlockHeader[] Ommers { get; }
         public Keccak Hash => Header.Hash;
+        public BigInteger Number => Header.Number;
     }
 }

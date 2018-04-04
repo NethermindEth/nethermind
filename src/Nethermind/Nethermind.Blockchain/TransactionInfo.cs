@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,28 +16,21 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Blockchain
 {
-    public interface IBlockStore
+    public class TransactionInfo
     {
-        /****NEW work in progress*****/
-        void HintBlock(Keccak hash, BigInteger number);
-        BlockInfo AddBlock(Block block, PublicKey receivedFrom);
-        BlockInfo AddBlockHeader(BlockHeader blockHeader);
-        void MarkProcessed(Keccak hash, bool isValid);
-        Block Load(Keccak hash);
-        /****END NEW*****/
+        public TransactionInfo(Transaction transaction, PublicKey receivedFrom)
+        {
+            Transaction = transaction;
+            ReceivedFrom = receivedFrom;
+        }
         
-        void AddBlock(Block block, bool isMainChain);
-        Block FindBlock(Keccak blockHash, bool mainChainOnly);
-        Block FindBlock(BigInteger blockNumber);
-        bool IsMainChain(Keccak blockHash);
-        void MoveToMain(Keccak blockHash);
-        void MoveToBranch(Keccak blockHash);
-        bool WasProcessed(Keccak blockHash);
+        public Transaction Transaction { get; set; }
+        public Quality Quality { get; set; }
+        public PublicKey ReceivedFrom { get; set; }
     }
 }

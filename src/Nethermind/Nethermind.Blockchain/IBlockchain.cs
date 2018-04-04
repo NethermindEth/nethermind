@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -17,27 +17,19 @@
  */
 
 using System.Numerics;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Blockchain
 {
-    public interface IBlockStore
+    public interface IBlockchain
     {
-        /****NEW work in progress*****/
-        void HintBlock(Keccak hash, BigInteger number);
-        BlockInfo AddBlock(Block block, PublicKey receivedFrom);
-        BlockInfo AddBlockHeader(BlockHeader blockHeader);
-        void MarkProcessed(Keccak hash, bool isValid);
-        Block Load(Keccak hash);
-        /****END NEW*****/
-        
-        void AddBlock(Block block, bool isMainChain);
-        Block FindBlock(Keccak blockHash, bool mainChainOnly);
-        Block FindBlock(BigInteger blockNumber);
-        bool IsMainChain(Keccak blockHash);
-        void MoveToMain(Keccak blockHash);
-        void MoveToBranch(Keccak blockHash);
-        bool WasProcessed(Keccak blockHash);
+        Keccak GenesisHash { get; set; }
+        IChain MainChain { get; set; }
+    }
+
+    public interface IChain
+    {
+        Keccak Head { get; set; }
+        BigInteger TotalDifficulty { get; set; }
     }
 }
