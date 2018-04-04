@@ -41,6 +41,11 @@ namespace Nethermind.Core.Specs
             }
         }
 
+        public IReleaseSpec GetCurrentSpec()
+        {
+            return _transitions.Last().Release;
+        }
+
         public IReleaseSpec GetSpec(BigInteger blockNumber)
         {
             IReleaseSpec spec = _transitions[0].Release;

@@ -16,26 +16,21 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-
-using System;
+using System.Collections.Generic;
 using System.Numerics;
+using Nethermind.HashLib.Crypto.SHA3;
 
-namespace Nethermind.Core.Specs
+namespace Nethermind.Core.Specs.ChainSpec
 {
-    public class KovanSpecProvider : ISpecProvider
+    public class ChainSpec
     {
-        public IReleaseSpec GetCurrentSpec()
-        {
-            throw new NotImplementedException();
-        }
+        public Dictionary<Address, BigInteger> Allocations { get; set; }
+        public Bootnode[] Bootnodes { get; set; }
+        public Block Genesis { get; set; }
 
-        public IReleaseSpec GetSpec(BigInteger blockNumber)
-        {
-            throw new NotImplementedException();
-        }
+        public string Name { get; set; }
 
-        public BigInteger? DaoBlockNumber { get; } = null;
-        
-        public int NetworkId => 42;
+        public int ChainId { get; set; }
+        // TODO: seal engine - for now we support PoW ethash only
     }
 }

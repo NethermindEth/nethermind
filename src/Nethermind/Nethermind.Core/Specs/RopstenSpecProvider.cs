@@ -22,8 +22,19 @@ namespace Nethermind.Core.Specs
 {
     public class RopstenSpecProvider : ISpecProvider
     {
-        public IReleaseSpec GetSpec(BigInteger blockNumber)
+        public IReleaseSpec GetCurrentSpec()
         {
+            return Byzantium.Instance;
+        }
+
+        public IReleaseSpec GetSpec(BigInteger blockNumber)
+        {            
+            // TODO: this is not covered by test at the moment
+            if (blockNumber < 10)
+            {
+                return TangerineWhistle.Instance;
+            }
+            
             if (blockNumber < 1700000)
             {
                 return SpuriousDragon.Instance;
@@ -35,5 +46,11 @@ namespace Nethermind.Core.Specs
         public BigInteger? DaoBlockNumber { get; } = new BigInteger(1920000);
         
         public int NetworkId => 3;
+
+        private RopstenSpecProvider()
+        {
+        }
+        
+        public static RopstenSpecProvider Instance = new RopstenSpecProvider();
     }
 }

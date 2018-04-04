@@ -29,9 +29,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 {
     public class Eth62Session : SessionBase, ISession
     {
-        private readonly ITransactionStore _transactionStore;
-        private readonly IBlockStore _blockStore;
-        private readonly IBlockchain _blockchain;
+        private readonly ISynchronizationManager _sync;
 
         public Eth62Session(
             IMessageSerializationService serializer,
@@ -39,14 +37,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             ILogger logger,
             PublicKey remoteNodeId,
             int remotePort,
-            ITransactionStore transactionStore,
-            IBlockStore blockStore,
-            IBlockchain blockchain)
+            ISynchronizationManager sync)
             : base(serializer, packetSender, remoteNodeId, logger)
         {
-            _transactionStore = transactionStore;
-            _blockStore = blockStore;
-            _blockchain = blockchain;
+            _sync = sync;
             RemotePort = remotePort;
         }
 
@@ -139,7 +133,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         {
             foreach (Transaction transaction in transactionsMessage.Transactions)
             {
-                TransactionInfo info = _transactionStore.Add(transaction, RemoteNodeId);
+                TransactionInfo info = _sync.Add(transaction, RemoteNodeId);
                 if (info.Quality == Quality.Invalid) // TODO: processed invalid should not be penalized here
                 {
                     Logger.Debug($"Received an invalid transaction from {RemoteNodeId}");
@@ -170,7 +164,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         {
             foreach (BlockHeader header in blockHeaders.BlockHeaders)
             {
-                BlockInfo blockInfo = _blockStore.AddBlockHeader(header);
+                BlockInfo blockInfo = _sync.AddBlockHeader(header);
                 if (blockInfo.HeaderQuality == Quality.Invalid)
                 {
                     Logger.Debug($"Received an invalid header from {RemoteNodeId}");
@@ -183,7 +177,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         {
             foreach ((Keccak Hash, BigInteger Number) hint in newBlockHashes.BlockHashes)
             {
-                _blockStore.HintBlock(hint.Hash, hint.Number);
+                _sync.HintBlock(hint.Hash, hint.Number);
             }
         }
 
@@ -191,7 +185,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         {
             // TODO: use total difficulty here
             // TODO: can drop connection if processing of the block fails (not only validation?)
-            BlockInfo blockInfo = _blockStore.AddBlock(newBlock.Block, RemoteNodeId);
+            BlockInfo blockInfo = _sync.AddBlock(newBlock.Block, RemoteNodeId);
             if (blockInfo.BlockQuality == Quality.Invalid)
             {
                 throw new SubprotocolException($"Peer sent an invalid new block {newBlock.Block.Hash}");

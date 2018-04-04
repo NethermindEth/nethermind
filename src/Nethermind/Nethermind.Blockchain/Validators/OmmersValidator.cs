@@ -23,10 +23,10 @@ namespace Nethermind.Blockchain.Validators
     public class OmmersValidator : IOmmersValidator
     {
         private readonly IBlockStore _chain;
-        private readonly IBlockHeaderValidator _headerValidator;
+        private readonly IHeaderValidator _headerValidator;
         private readonly ILogger _logger;
 
-        public OmmersValidator(IBlockStore chain, IBlockHeaderValidator headerValidator, ILogger logger)
+        public OmmersValidator(IBlockStore chain, IHeaderValidator headerValidator, ILogger logger)
         {
             _chain = chain;
             _headerValidator = headerValidator;

@@ -22,6 +22,11 @@ namespace Nethermind.Core.Specs
 {
     public class MainNetSpecProvider : ISpecProvider
     {
+        public IReleaseSpec GetCurrentSpec()
+        {
+            return Byzantium.Instance;
+        }
+
         public IReleaseSpec GetSpec(BigInteger blockNumber)
         {
             if (blockNumber < 1150000)

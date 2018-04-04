@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,26 +16,15 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-
 using System;
-using System.Numerics;
 
-namespace Nethermind.Core.Specs
+namespace Nethermind.Blockchain
 {
-    public class KovanSpecProvider : ISpecProvider
+    internal class EthSynchronizationException : Exception
     {
-        public IReleaseSpec GetCurrentSpec()
+        public EthSynchronizationException(string message)
+            : base(message)
         {
-            throw new NotImplementedException();
         }
-
-        public IReleaseSpec GetSpec(BigInteger blockNumber)
-        {
-            throw new NotImplementedException();
-        }
-
-        public BigInteger? DaoBlockNumber { get; } = null;
-        
-        public int NetworkId => 42;
     }
 }

@@ -17,6 +17,7 @@
  */
 
 using System;
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Network.P2P;
 using NSubstitute;
@@ -32,21 +33,21 @@ namespace Nethermind.Network.Test.P2P
         [Test]
         public void Can_start_p2p_session()
         {
-            SessionManager factory = new SessionManager(Substitute.For<IMessageSerializationService>(), NetTestVectors.StaticKeyA.PublicKey, ListenPort, NullLogger.Instance);
+            SessionManager factory = new SessionManager(Substitute.For<IMessageSerializationService>(), NetTestVectors.StaticKeyA.PublicKey, ListenPort, NullLogger.Instance, Substitute.For<ISynchronizationManager>());
             factory.StartSession("p2p", 5, Substitute.For<IPacketSender>(), NetTestVectors.StaticKeyB.PublicKey, 8003);
         }
 
         [Test]
         public void Cannot_start_eth_before_p2p()
         {
-            SessionManager factory = new SessionManager(Substitute.For<IMessageSerializationService>(), NetTestVectors.StaticKeyA.PublicKey, ListenPort, NullLogger.Instance);
+            SessionManager factory = new SessionManager(Substitute.For<IMessageSerializationService>(), NetTestVectors.StaticKeyA.PublicKey, ListenPort, NullLogger.Instance, Substitute.For<ISynchronizationManager>());
             Assert.Throws<InvalidOperationException>(() => factory.StartSession("eth", 62, Substitute.For<IPacketSender>(), NetTestVectors.StaticKeyB.PublicKey, 8003));
         }
         
         [Test]
         public void Can_start_eth_session()
         {
-            SessionManager factory = new SessionManager(Substitute.For<IMessageSerializationService>(), NetTestVectors.StaticKeyA.PublicKey, ListenPort, NullLogger.Instance);
+            SessionManager factory = new SessionManager(Substitute.For<IMessageSerializationService>(), NetTestVectors.StaticKeyA.PublicKey, ListenPort, NullLogger.Instance, Substitute.For<ISynchronizationManager>());
             factory.StartSession("p2p", 5, Substitute.For<IPacketSender>(), NetTestVectors.StaticKeyB.PublicKey, 8003);
             factory.StartSession("eth", 62, Substitute.For<IPacketSender>(), NetTestVectors.StaticKeyB.PublicKey, 8003);
         }
@@ -57,7 +58,7 @@ namespace Nethermind.Network.Test.P2P
         [TestCase(16, "eth", 0)]
         public void Adaptive_message_ids(int dynamicId, string protocolCode, int messageCode)
         {        
-            SessionManager factory = new SessionManager(Substitute.For<IMessageSerializationService>(), NetTestVectors.StaticKeyA.PublicKey, ListenPort, NullLogger.Instance);
+            SessionManager factory = new SessionManager(Substitute.For<IMessageSerializationService>(), NetTestVectors.StaticKeyA.PublicKey, ListenPort, NullLogger.Instance, Substitute.For<ISynchronizationManager>());
             factory.StartSession("p2p", 5, Substitute.For<IPacketSender>(), NetTestVectors.StaticKeyB.PublicKey, 8003);
             factory.StartSession("eth", 62, Substitute.For<IPacketSender>(), NetTestVectors.StaticKeyB.PublicKey, 8003);
 

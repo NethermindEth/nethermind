@@ -35,7 +35,12 @@ namespace Nethermind.Core.Specs
                 DaoBlockNumber = 0;
             }
         }
-        
+
+        public IReleaseSpec GetCurrentSpec()
+        {
+            return _releaseSpec;
+        }
+
         public IReleaseSpec GetSpec(BigInteger blockNumber)
         {
             return _releaseSpec;

@@ -52,8 +52,7 @@ namespace Nethermind.Network.P2P
         
         private readonly int _listenPort;
         private readonly ILogger _logger;
-        private readonly IBlockStore _blockStore;
-        private readonly IBlockchain _blockchain;
+        private readonly ISynchronizationManager _synchronizationManager;
         private readonly IMessageSerializationService _serializationService;
         private readonly PublicKey _localNodeId;
 
@@ -67,15 +66,13 @@ namespace Nethermind.Network.P2P
             PublicKey localNodeId,
             int listenPort,
             ILogger logger,
-            IBlockStore blockStore, // TODO: review the class designs here
-            IBlockchain blockchain) // TODO: review the class designs here
+            ISynchronizationManager synchronizationManager) // TODO: review the class designs here
         {
             _serializationService = serializationService;
             _localNodeId = localNodeId;
             _listenPort = listenPort;
             _logger = logger;
-            _blockStore = blockStore;
-            _blockchain = blockchain;
+            _synchronizationManager = synchronizationManager;
         }
 
         // TODO: move to a separate class?
@@ -143,8 +140,8 @@ namespace Nethermind.Network.P2P
                     }
                     
                     session = version == 62
-                        ? new Eth62Session(_serializationService, packetSender, _logger, remoteNodeId, remotePort, _blockStore, _blockchain)
-                        : new Eth63Session(_serializationService, packetSender, _logger, remoteNodeId, remotePort);
+                        ? new Eth62Session(_serializationService, packetSender, _logger, remoteNodeId, remotePort, _synchronizationManager)
+                        : new Eth63Session(_serializationService, packetSender, _logger, remoteNodeId, remotePort, _synchronizationManager);
                     session.SessionEstablished += (sender, args) =>
                     {
                         ((P2PSession)_sessions[Protocol.P2P]).Disconnect(DisconnectReason.ClientQuitting);

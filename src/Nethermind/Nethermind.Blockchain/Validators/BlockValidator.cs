@@ -23,17 +23,17 @@ namespace Nethermind.Blockchain.Validators
 {
     public class BlockValidator : IBlockValidator
     {
-        private readonly IBlockHeaderValidator _blockHeaderValidator;
+        private readonly IHeaderValidator _headerValidator;
         private readonly ITransactionValidator _transactionValidator;
         private readonly IOmmersValidator _ommersValidator;
         private readonly ILogger _logger;
 
-        public BlockValidator(ITransactionValidator transactionValidator, IBlockHeaderValidator blockHeaderValidator, IOmmersValidator ommersValidator, ILogger logger)
+        public BlockValidator(ITransactionValidator transactionValidator, IHeaderValidator headerValidator, IOmmersValidator ommersValidator, ILogger logger)
         {
             _transactionValidator = transactionValidator;
             _ommersValidator = ommersValidator;
             _logger = logger;
-            _blockHeaderValidator = blockHeaderValidator;
+            _headerValidator = headerValidator;
         }
 
         public bool ValidateSuggestedBlock(Block suggestedBlock)
@@ -60,7 +60,7 @@ namespace Nethermind.Blockchain.Validators
                 return false;
             }
 
-            bool blockHeaderValid = _blockHeaderValidator.Validate(suggestedBlock.Header);
+            bool blockHeaderValid = _headerValidator.Validate(suggestedBlock.Header);
             if (!blockHeaderValid)
             {
                 _logger?.Log($"Invalid block ({suggestedBlock.Hash}) - invalid header");

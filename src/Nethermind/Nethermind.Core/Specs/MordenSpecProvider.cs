@@ -22,6 +22,11 @@ namespace Nethermind.Core.Specs
 {
     public class MordenSpecProvider : ISpecProvider
     {
+        public IReleaseSpec GetCurrentSpec()
+        {
+            return SpuriousDragon.Instance;
+        }
+
         public IReleaseSpec GetSpec(BigInteger blockNumber)
         {
             if (blockNumber < 494000)

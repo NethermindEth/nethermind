@@ -15,12 +15,18 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
-using Nethermind.Core;
 
-namespace Nethermind.Blockchain.Validators
+using System.Collections.Generic;
+
+namespace Nethermind.Core.Specs.ChainSpec
 {
-    public interface IBlockHeaderValidator
+    internal class ChainSpecJson
     {
-        bool Validate(BlockHeader blockHeader, bool isOmmer = false);
+        public string Name { get; set; }
+        public string DataDir { get; set; }
+        public ChainSpecParamsJson Params { get; set; }
+        public ChainSpecGenesisJson Genesis { get; set; }
+        public string[] Nodes { get; set; }
+        public Dictionary<string, ChainSpecAccountJson> Accounts { get; set; }
     }
 }

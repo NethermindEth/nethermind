@@ -22,8 +22,13 @@ using Nethermind.Core.Crypto;
 namespace Nethermind.Blockchain
 {
     public interface ITransactionStore
-    {
-        TransactionInfo Add(Transaction transaction, PublicKey receivedFrom);
-        void MarkAsProcessed(Transaction transaction, bool isValid);
+    {      
+        void AddTransaction(Transaction transaction);
+        void AddTransactionReceipt(Keccak transactionHash, TransactionReceipt transactionReceipt, Keccak blockHash);
+        Transaction GetTransaction(Keccak transactionHash);
+        TransactionReceipt GetTransactionReceipt(Keccak transactionHash);
+        bool WasProcessed(Keccak transactionHash);
+        ///get hash of the block transaction was in
+        Keccak GetBlockHash(Keccak transactionHash);
     }
 }

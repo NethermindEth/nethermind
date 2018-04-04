@@ -24,7 +24,7 @@ using Nethermind.Mining;
 
 namespace Nethermind.Blockchain.Validators
 {
-    public class BlockHeaderValidator : IBlockHeaderValidator
+    public class HeaderValidator : IHeaderValidator
     {
         private static readonly Hex DaoExtraData = new Hex("0x64616f2d686172642d666f726b");
 
@@ -33,7 +33,7 @@ namespace Nethermind.Blockchain.Validators
         private readonly ILogger _logger;
         private readonly IBlockStore _chain;
 
-        public BlockHeaderValidator(IBlockStore chain, IEthash ethash, ISpecProvider specProvider, ILogger logger)
+        public HeaderValidator(IBlockStore chain, IEthash ethash, ISpecProvider specProvider, ILogger logger)
         {
             _chain = chain;
             _ethash = ethash;

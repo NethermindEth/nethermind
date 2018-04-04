@@ -22,6 +22,8 @@ namespace Nethermind.Core.Specs
 {
     public interface ISpecProvider
     {
+        IReleaseSpec GetCurrentSpec();
+        
         IReleaseSpec GetSpec(BigInteger blockNumber);
 
         BigInteger? DaoBlockNumber { get; }

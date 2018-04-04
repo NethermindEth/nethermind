@@ -17,7 +17,9 @@
  */
 
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Validators;
 using Nethermind.Core.Crypto;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test
@@ -79,12 +81,19 @@ namespace Nethermind.Core.Test
 
         private static Block BuildTestBlock()
         {
-            BlockHeader header = new BlockHeader(Keccak.Compute("parent"), Keccak.OfAnEmptySequenceRlp, new Address(Keccak.Compute("address")), 0, 0, 0, 0, new byte[0]);
+            BlockHeader header = new BlockHeader(
+                Keccak.Compute("parent"),
+                Keccak.OfAnEmptySequenceRlp,
+                new Address(Keccak.Compute("address")),
+                0,
+                0,
+                0,
+                0,
+                new byte[0]);
             header.Bloom = new Bloom();
             header.GasUsed = 0;
             header.MixHash = Keccak.Compute("mix hash");
             header.Nonce = 0;
-            header.OmmersHash = Keccak.OfAnEmptySequenceRlp;
             header.ReceiptsRoot = Keccak.EmptyTreeHash;
             header.StateRoot = Keccak.EmptyTreeHash;
             header.TransactionsRoot = Keccak.EmptyTreeHash;

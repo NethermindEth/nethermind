@@ -16,26 +16,18 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-
-using System;
-using System.Numerics;
-
-namespace Nethermind.Core.Specs
+namespace Nethermind.Core.Specs.ChainSpec
 {
-    public class KovanSpecProvider : ISpecProvider
+    internal class ChainSpecGenesisJson
     {
-        public IReleaseSpec GetCurrentSpec()
-        {
-            throw new NotImplementedException();
-        }
-
-        public IReleaseSpec GetSpec(BigInteger blockNumber)
-        {
-            throw new NotImplementedException();
-        }
-
-        public BigInteger? DaoBlockNumber { get; } = null;
-        
-        public int NetworkId => 42;
+        public string Name { get; set; }
+        public string DataDir { get; set; }
+        public ChainSpecSealJson Seal { get; set; }
+        public string Difficulty { get; set; }
+        public string Author { get; set; }
+        public string Timestamp { get; set; }
+        public string ParentHash { get; set; }
+        public string ExtraData { get; set; }
+        public string GasLimit { get; set; }
     }
 }

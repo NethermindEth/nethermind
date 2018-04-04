@@ -23,15 +23,7 @@ using Nethermind.Core.Crypto;
 namespace Nethermind.Blockchain
 {
     public interface IBlockStore
-    {
-        /****NEW work in progress*****/
-        void HintBlock(Keccak hash, BigInteger number);
-        BlockInfo AddBlock(Block block, PublicKey receivedFrom);
-        BlockInfo AddBlockHeader(BlockHeader blockHeader);
-        void MarkProcessed(Keccak hash, bool isValid);
-        Block Load(Keccak hash);
-        /****END NEW*****/
-        
+    {   
         void AddBlock(Block block, bool isMainChain);
         Block FindBlock(Keccak blockHash, bool mainChainOnly);
         Block FindBlock(BigInteger blockNumber);

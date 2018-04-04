@@ -80,7 +80,7 @@ namespace Nethermind.Runner
             services.AddSingleton<ISignatureValidator>(signatureValidator);
 
             services.AddSingleton<IEthash, Ethash>();
-            services.AddSingleton<IBlockHeaderValidator, BlockHeaderValidator>();
+            services.AddSingleton<IHeaderValidator, HeaderValidator>();
             services.AddSingleton<IOmmersValidator, OmmersValidator>();
             services.AddSingleton<ITransactionValidator, TransactionValidator>();
             services.AddSingleton<IBlockValidator, BlockValidator>();
@@ -122,7 +122,7 @@ namespace Nethermind.Runner
 
             //var blockStore = new BlockStore();
             //IEthereumRelease release = Frontier.Instance;
-            //var blockValidator = new BlockValidator(new TransactionValidator(release, new SignatureValidator(release, ChainId.DefaultGethPrivateChain)), new BlockHeaderValidator(blockStore), new OmmersValidator(blockStore, new BlockHeaderValidator(blockStore)), logger);
+            //var blockValidator = new BlockValidator(new TransactionValidator(release, new SignatureValidator(release, ChainId.DefaultGethPrivateChain)), new HeaderValidator(blockStore), new OmmersValidator(blockStore, new HeaderValidator(blockStore)), logger);
             //var db = new InMemoryDb();
             //var stateProvider = new StateProvider(new StateTree(db), release, logger);
             //var storageProvider = new StorageProvider(new MultiDb(logger), stateProvider, logger);

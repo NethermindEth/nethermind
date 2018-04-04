@@ -15,27 +15,12 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
+using Nethermind.Core;
 
-
-using System;
-using System.Numerics;
-
-namespace Nethermind.Core.Specs
+namespace Nethermind.Blockchain.Validators
 {
-    public class KovanSpecProvider : ISpecProvider
+    public interface IHeaderValidator
     {
-        public IReleaseSpec GetCurrentSpec()
-        {
-            throw new NotImplementedException();
-        }
-
-        public IReleaseSpec GetSpec(BigInteger blockNumber)
-        {
-            throw new NotImplementedException();
-        }
-
-        public BigInteger? DaoBlockNumber { get; } = null;
-        
-        public int NetworkId => 42;
+        bool Validate(BlockHeader blockHeader, bool isOmmer = false);
     }
 }

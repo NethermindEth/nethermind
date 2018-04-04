@@ -18,18 +18,27 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
+using System.IO;
+using System.Numerics;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Difficulty;
+using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
+using Nethermind.Core.Specs.ChainSpec;
+using Nethermind.Evm;
+using Nethermind.Mining;
 using Nethermind.Network;
 using Nethermind.Network.Crypto;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
+using Nethermind.Store;
 using NSubstitute;
+using ILogger = Nethermind.Core.ILogger;
 
 namespace Nethermind.PeerConsole
 {
@@ -86,9 +95,9 @@ namespace Nethermind.PeerConsole
             IEncryptionHandshakeService encryptionHandshakeServiceB = new EncryptionHandshakeService(serializationService, eciesCipher, cryptoRandom, signer, _keyB, logger);
             //            IEncryptionHandshakeService encryptionHandshakeServiceC = new EncryptionHandshakeService(serializationService, eciesCipher, cryptoRandom, signer, _keyC, logger);
 
-            ISessionManager sessionManagerA = new SessionManager(serializationService, _keyA.PublicKey, PortA, logger);
-            ISessionManager sessionManagerB = new SessionManager(serializationService, _keyB.PublicKey, PortB, logger);
-            ISessionManager sessionManagerC = new SessionManager(serializationService, _keyC.PublicKey, PortC, logger);
+            ISessionManager sessionManagerA = new SessionManager(serializationService, _keyA.PublicKey, PortA, logger, Substitute.For<ISynchronizationManager>());
+            ISessionManager sessionManagerB = new SessionManager(serializationService, _keyB.PublicKey, PortB, logger, Substitute.For<ISynchronizationManager>());
+            ISessionManager sessionManagerC = new SessionManager(serializationService, _keyC.PublicKey, PortC, logger, Substitute.For<ISynchronizationManager>());
 
             Console.WriteLine("Initializing server...");
             RlpxPeer peerServerA = new RlpxPeer(encryptionHandshakeServiceA, sessionManagerA, logger);
@@ -132,21 +141,66 @@ namespace Nethermind.PeerConsole
             serializationService.Register(new PongMessageSerializer());
             serializationService.Register(new StatusMessageSerializer());
 
+            IReleaseSpec dynamicSpecForVm = new DynamicReleaseSpec(RopstenSpecProvider.Instance);
+            
+            IBlockStore blockStore = new BlockStore();
+            IHeaderValidator headerValidator = new HeaderValidator(blockStore, new Ethash(), RopstenSpecProvider.Instance, logger);
+            IOmmersValidator ommersValidator = new OmmersValidator(blockStore, headerValidator, logger);
+            IReleaseSpec currentSpec = RopstenSpecProvider.Instance.GetCurrentSpec();
+            ITransactionValidator transactionValidator = new TransactionValidator(currentSpec, new SignatureValidator(currentSpec, ChainId.Ropsten));
+            IBlockValidator blockValidator = new BlockValidator(transactionValidator, headerValidator, ommersValidator, logger);
+
+            IBlockhashProvider blockhashProvider = new BlockhashProvider(blockStore);
+            IDbProvider dbProvider = new DbProvider(logger);
+            InMemoryDb codeDb = new InMemoryDb();
+            InMemoryDb stateDb = new InMemoryDb();
+            StateTree stateTree = new StateTree(stateDb);
+            IStateProvider stateProvider = new StateProvider(stateTree, dynamicSpecForVm, logger, codeDb);
+            IStorageProvider storageProvider = new StorageProvider(dbProvider, stateProvider, logger);
+            IDifficultyCalculator calculator = new DifficultyCalculator(dynamicSpecForVm); // dynamic spec here will be broken
+            IRewardCalculator rewardCalculator = new RewardCalculator(dynamicSpecForVm);
+            IVirtualMachine virtualMachine = new VirtualMachine(dynamicSpecForVm, stateProvider, storageProvider, blockhashProvider, logger);
+            IEthereumSigner ethereumSigner = new EthereumSigner(dynamicSpecForVm, ChainId.Ropsten);
+            ITransactionProcessor processor = new TransactionProcessor(dynamicSpecForVm, stateProvider, storageProvider, virtualMachine, ethereumSigner, logger);
+            ITransactionStore transactionStore = new TransactionStore();
+            IBlockProcessor blockProcessor = new BlockProcessor(RopstenSpecProvider.Instance, blockStore, blockValidator, calculator, rewardCalculator, processor, dbProvider, stateProvider, storageProvider, transactionStore, logger);
+            IBlockchainProcessor blockchainProcessor = new BlockchainProcessor(blockProcessor, blockStore, logger);
+            
+            ChainSpecLoader loader = new ChainSpecLoader(new UnforgivingJsonSerializer());
+            string path = Path.Combine(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, @"..\..\..\..\Chains", "ropsten.json"));
+            logger.Log($"Loading ChainSpec from {path}");
+            ChainSpec chainSpec = loader.Load(File.ReadAllBytes(path));
+            foreach (KeyValuePair<Address, BigInteger> allocation in chainSpec.Allocations)
+            {
+                stateProvider.CreateAccount(allocation.Key, allocation.Value);
+            }
+            
+            stateProvider.Commit();
+            chainSpec.Genesis.Header.StateRoot = stateProvider.StateRoot;
+            chainSpec.Genesis.Header.RecomputeHash();
+            if (chainSpec.Genesis.Hash != new Keccak("0x41941023680923e0fe4d74a34bdac8141f2540e3ae90623718e47d66d1ca4a2d"))
+            {
+                throw new Exception("Unexpected genesis hash");
+            }
+            
+            blockchainProcessor.Process(chainSpec.Genesis);
+            
+            ISynchronizationManager synchronizationManager = new SynchronizationManager(headerValidator, blockValidator, transactionValidator, chainSpec.Genesis, logger);
             IEncryptionHandshakeService encryptionHandshakeServiceA = new EncryptionHandshakeService(serializationService, eciesCipher, cryptoRandom, signer, _keyA, logger);
 
-            ISessionManager sessionManagerA = new SessionManager(serializationService, _keyA.PublicKey, PortA, logger);
+            ISessionManager sessionManagerA = new SessionManager(serializationService, _keyA.PublicKey, PortA, logger, synchronizationManager);
 
-            Console.WriteLine("Initializing server...");
+            logger.Log("Initializing server...");
             RlpxPeer localPeer = new RlpxPeer(encryptionHandshakeServiceA, sessionManagerA, logger);
             await Task.WhenAll(localPeer.Init(PortA));
-            Console.WriteLine("Servers running...");
-            Console.WriteLine($"Connecting to testnet bootnode {bootnode.Description}");
+            logger.Log("Servers running...");
+            logger.Log($"Connecting to testnet bootnode {bootnode.Description}");
             await localPeer.Connect(bootnode.PublicKey, bootnode.Host, bootnode.Port);
-            Console.WriteLine("Testnet connected...");
+            logger.Log("Testnet connected...");
             Console.ReadLine();
-            Console.WriteLine("Shutting down...");
+            logger.Log("Shutting down...");
             await Task.WhenAll(localPeer.Shutdown());
-            Console.WriteLine("Goodbye...");
+            logger.Log("Goodbye...");
         }
     }
 }

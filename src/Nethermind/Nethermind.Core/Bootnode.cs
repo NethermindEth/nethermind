@@ -1,7 +1,6 @@
-﻿using Nethermind.Core;
-using Nethermind.Core.Crypto;
+﻿using Nethermind.Core.Crypto;
 
-namespace Nethermind.PeerConsole
+namespace Nethermind.Core
 {
     public class Bootnode
     {

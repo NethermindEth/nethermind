@@ -24,7 +24,14 @@ namespace Nethermind.Core.Test
     {
         public override BlockHeader ForTest()
         {
-            BlockHeader blockHeader = new BlockHeader(Keccak.Compute("parent"), Keccak.OfAnEmptySequenceRlp, Address.Zero, 1_000_000, 1, 4_000_000, 1_000_000, new byte[] {1, 2, 3});
+            BlockHeader blockHeader = new BlockHeader(
+                Keccak.Compute("parent"),
+                Keccak.OfAnEmptySequenceRlp,
+                Address.Zero,
+                1_000_000, 1,
+                4_000_000,
+                1_000_000,
+                new byte[] {1, 2, 3});
             blockHeader.Bloom = new Bloom();
             blockHeader.MixHash = Keccak.Compute("mix_hash");
             blockHeader.Nonce = 1000;

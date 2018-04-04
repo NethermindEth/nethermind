@@ -16,9 +16,9 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Network.Rlpx;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 {
@@ -29,7 +29,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             IPacketSender packetSender,
             ILogger logger,
             PublicKey remoteNodeId,
-            int remotePort) : base(serializer, packetSender, logger, remoteNodeId, remotePort)
+            int remotePort,
+            ISynchronizationManager sync) : base(serializer, packetSender, logger, remoteNodeId, remotePort, sync)
         {
             RemotePort = remotePort;
         }
