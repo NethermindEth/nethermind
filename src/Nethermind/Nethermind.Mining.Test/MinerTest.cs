@@ -16,14 +16,31 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using NUnit.Framework;
 
-namespace Nethermind.Mining
+namespace Nethermind.Mining.Test
 {
-    public interface IEthash
+    [TestFixture]
+    public class MinerTest
     {
-        bool Validate(BlockHeader header);
-        (Keccak MixHash, ulong Nonce) Mine(BlockHeader header, ulong? startNonce = null); // TODO: for now only with cache
+        [Test]
+        public async Task Can_mine()
+        {
+            ulong validNonce = 971086423715459222;
+            
+            BlockHeader header = new BlockHeader(Keccak.Zero, Keccak.OfAnEmptySequenceRlp, Address.Zero, 1000, 1, 21000, 1, new byte[] {1, 2, 3});
+            Block block = new Block(header);
+            Miner miner = new Miner(new Ethash());
+            await miner.MineAsync(block, validNonce - 10);
+
+            Assert.AreEqual(validNonce, block.Header.Nonce);
+            Assert.AreEqual(new Keccak("0xe009999b2544c84ce29841ba4a38c5d7a22056635bc045a8403f83e96d137d59"), block.Header.MixHash);
+            
+            Console.WriteLine(block.Header.Nonce);
+        }
     }
 }

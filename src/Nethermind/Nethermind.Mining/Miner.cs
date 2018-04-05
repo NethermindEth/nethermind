@@ -16,14 +16,32 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Mining
 {
-    public interface IEthash
+    public class Miner
     {
-        bool Validate(BlockHeader header);
-        (Keccak MixHash, ulong Nonce) Mine(BlockHeader header, ulong? startNonce = null); // TODO: for now only with cache
+        private readonly IEthash _ethash;
+
+        public Miner(IEthash ethash)
+        {
+            _ethash = ethash;
+        }
+
+        public async Task<Block> MineAsync(Block block, ulong? startNonce = null)
+        {
+            return await Task.Factory.StartNew(() => Mine(block, startNonce));
+        }
+
+        private Block Mine(Block block, ulong? startNonce)
+        {
+            (Keccak MixHash, ulong Nonce) result = _ethash.Mine(block.Header, startNonce);
+            block.Header.Nonce = result.Nonce;
+            block.Header.MixHash = result.MixHash;
+            return block;
+        }
     }
 }

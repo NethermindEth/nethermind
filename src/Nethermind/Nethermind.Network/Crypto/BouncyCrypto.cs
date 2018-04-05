@@ -65,7 +65,7 @@ namespace Nethermind.Network.Crypto
             agreement.Init(privateKeyParameters);
 
             byte[] agreementBytes = agreement.CalculateAgreement(publicKeyParameters).ToByteArray();
-            return agreementBytes.Length > 32 ? agreementBytes.Slice(agreementBytes.Length - 32, 32) : agreementBytes;
+            return agreementBytes.Length > 32 ? agreementBytes.Slice(agreementBytes.Length - 32, 32) : agreementBytes.PadLeft(32);
         }
     }
 }

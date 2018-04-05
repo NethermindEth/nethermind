@@ -27,6 +27,8 @@ namespace Nethermind.Blockchain
         void HintBlock(Keccak hash, BigInteger number);
         BlockInfo AddBlock(Block block, PublicKey receivedFrom);
         BlockInfo AddBlockHeader(BlockHeader blockHeader);
+        BlockInfo Find(Keccak hash);
+        BlockInfo Find(BigInteger number); // TODO: would that be called?
         TransactionInfo Add(Transaction transaction, PublicKey receivedFrom);
         void MarkAsProcessed(Transaction transaction, bool isValid);
         void MarkAsProcessed(Block transaction, bool isValid);

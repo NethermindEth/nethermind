@@ -16,7 +16,6 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
 using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -28,6 +27,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Network.Test.Rlpx.Handshake
 {
+    // TODO: handle old format
     [TestFixture]
     public class EncryptionHandshakeServiceTests
     {

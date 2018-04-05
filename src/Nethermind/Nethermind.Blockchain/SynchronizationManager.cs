@@ -69,6 +69,21 @@ namespace Nethermind.Blockchain
             return blockInfo;
         }
 
+        public BlockInfo Find(Keccak hash)
+        {
+            if (_storedBlocks.ContainsKey(hash))
+            {
+                return _storedBlocks[hash];
+            }
+
+            return null;
+        }
+
+        public BlockInfo Find(BigInteger number)
+        {
+            throw new NotImplementedException();
+        }
+
         public BlockInfo AddBlock(Block block, PublicKey receivedFrom)
         {
             if (!_storedBlocks.ContainsKey(block.Hash))

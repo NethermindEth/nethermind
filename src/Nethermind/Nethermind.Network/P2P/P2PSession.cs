@@ -152,8 +152,9 @@ namespace Nethermind.Network.P2P
                         : new Eth63ProtocolHandler(this, _serializer, _synchronizationManager, _logger);
                     protocolHandler.ProtocolInitialized += (sender, args) =>
                     {
-                        ((P2PProtocolHandler)_protocols[Protocol.P2P]).Disconnect(DisconnectReason.ClientQuitting);
-                        Disconnect(TimeSpan.FromSeconds(5));
+                        // to test disconnecting when local
+                        //((P2PProtocolHandler)_protocols[Protocol.P2P]).Disconnect(DisconnectReason.ClientQuitting);
+                        //Disconnect(TimeSpan.FromSeconds(5));
                     };
                     break;
                 default:

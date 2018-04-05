@@ -121,7 +121,9 @@ namespace Nethermind.PeerConsole
             Bootnode bootnode = Bootnodes.EthJ[3];
 
             ICryptoRandom cryptoRandom = new CryptoRandom();
-            _keyA = new PrivateKey(cryptoRandom.GenerateRandomBytes(32));
+//            _keyA = new PrivateKey(cryptoRandom.GenerateRandomBytes(32));
+            _keyA = new PrivateKey("000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f");
+            Console.WriteLine($"Local node ID = {_keyA.PublicKey}");
 
             ISigner signer = new Signer();
             ILogger logger = new ConsoleLogger();

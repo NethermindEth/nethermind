@@ -164,7 +164,20 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         private void Handle(GetBlockHeadersMessage getBlockHeadersMessage)
         {
-            throw new NotImplementedException();
+            BlockInfo blockInfo = _sync.Find(getBlockHeadersMessage.StartingBlockHash);
+            if (blockInfo.HeaderLocation == BlockDataLocation.Store)
+            {
+                throw new NotImplementedException();
+            }
+
+            if (blockInfo.HeaderLocation == BlockDataLocation.Memory)
+            {
+                Send(new BlockHeadersMessage(new[] {blockInfo.BlockHeader}));
+            }
+            else
+            {
+                throw new NotImplementedException();
+            }
         }
 
         private void Handle(BlockBodiesMessage blockBodies)

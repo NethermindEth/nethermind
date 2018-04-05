@@ -85,10 +85,23 @@ namespace Nethermind.Network.Rlpx.Handshake
         {
             handshake.AuthPacket = auth;
 
-            // TODO: try, retry (support old clients)
-            byte[] sizeData = auth.Data.Slice(0, 2);
-            byte[] plaintext = _eciesCipher.Decrypt(_privateKey, auth.Data.Slice(2), sizeData);
-            AuthMessageBase authMessage = _messageSerializationService.Deserialize<AuthEip8Message>(plaintext);
+            AuthMessageBase authMessage;
+            bool isOld = false;
+            try
+            {
+                _logger.Log($"Trying to decrypt an old version of {nameof(AuthMessage)}");
+                byte[] plaintextOld = _eciesCipher.Decrypt(_privateKey, auth.Data);
+                authMessage = _messageSerializationService.Deserialize<AuthMessage>(plaintextOld);
+                isOld = true;
+            }
+            catch (Exception)
+            {
+                _logger.Log($"Trying to decrypt version 4 of {nameof(AuthEip8Message)}");
+                byte[] sizeData = auth.Data.Slice(0, 2);
+                byte[] plaintext = _eciesCipher.Decrypt(_privateKey, auth.Data.Slice(2), sizeData);
+                authMessage = _messageSerializationService.Deserialize<AuthEip8Message>(plaintext);
+            }
+
             _logger.Debug($"Received AUTH v{authMessage.Version} from {authMessage.PublicKey}");
 
             handshake.RemotePublicKey = authMessage.PublicKey;
@@ -101,11 +114,24 @@ namespace Nethermind.Network.Rlpx.Handshake
 
             handshake.RemoteEphemeralPublicKey = _signer.RecoverPublicKey(authMessage.Signature, new Keccak(forSigning));
 
-            AckEip8Message ackMessage = new AckEip8Message();
-            ackMessage.EphemeralPublicKey = handshake.EphemeralPrivateKey.PublicKey;
-            ackMessage.Nonce = handshake.RecipientNonce;
-
-            byte[] ackData = _messageSerializationService.Serialize(ackMessage);
+            byte[] ackData;
+            if (isOld) // what was the difference? shall I really include ephemeral public key in v4?
+            {
+                _logger.Debug($"Building an {nameof(AckMessage)}");
+                AckMessage ackMessage = new AckMessage();
+                ackMessage.EphemeralPublicKey = handshake.EphemeralPrivateKey.PublicKey;
+                ackMessage.Nonce = handshake.RecipientNonce;
+                ackData = _messageSerializationService.Serialize(ackMessage);
+            }
+            else
+            {
+                _logger.Debug($"Building an {nameof(AckEip8Message)}");
+                AckEip8Message ackMessage = new AckEip8Message();
+                ackMessage.EphemeralPublicKey = handshake.EphemeralPrivateKey.PublicKey;
+                ackMessage.Nonce = handshake.RecipientNonce;
+                ackData = _messageSerializationService.Serialize(ackMessage);    
+            }
+            
             int size = ackData.Length + 32 + 16 + 65; // data + MAC + IV + pub
             byte[] sizeBytes = size.ToBigEndianByteArray().Slice(2, 2);
             byte[] packetData = _eciesCipher.Encrypt(handshake.RemotePublicKey, ackData, sizeBytes);
@@ -118,15 +144,25 @@ namespace Nethermind.Network.Rlpx.Handshake
         {
             handshake.AckPacket = ack;
 
-            // TODO: try, retry (support old clients)
-            byte[] sizeData = ack.Data.Slice(0, 2);
-            byte[] plaintext = _eciesCipher.Decrypt(_privateKey, ack.Data.Slice(2), sizeData);
-            AckEip8Message ackMessage = _messageSerializationService.Deserialize<AckEip8Message>(plaintext);
-            
-            _logger.Debug($"Received ACK v{ackMessage.Version}");
-
-            handshake.RemoteEphemeralPublicKey = ackMessage.EphemeralPublicKey;
-            handshake.RecipientNonce = ackMessage.Nonce;
+            try
+            {
+                byte[] plaintextOld = _eciesCipher.Decrypt(_privateKey, ack.Data);
+                AckMessage ackMessage = _messageSerializationService.Deserialize<AckMessage>(plaintextOld);
+                _logger.Debug($"Received ACK old");
+                
+                handshake.RemoteEphemeralPublicKey = ackMessage.EphemeralPublicKey;
+                handshake.RecipientNonce = ackMessage.Nonce;
+            }
+            catch (Exception)
+            {
+                byte[] sizeData = ack.Data.Slice(0, 2);
+                byte[] plaintext = _eciesCipher.Decrypt(_privateKey, ack.Data.Slice(2), sizeData);
+                AckEip8Message ackMessage = _messageSerializationService.Deserialize<AckEip8Message>(plaintext);
+                _logger.Debug($"Received ACK v{ackMessage.Version}");
+                
+                handshake.RemoteEphemeralPublicKey = ackMessage.EphemeralPublicKey;
+                handshake.RecipientNonce = ackMessage.Nonce;
+            }
 
             SetSecrets(handshake, EncryptionHandshakeRole.Initiator);
         }
