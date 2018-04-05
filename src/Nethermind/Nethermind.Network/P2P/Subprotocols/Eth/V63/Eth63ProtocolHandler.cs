@@ -17,12 +17,29 @@
  */
 
 using System;
+using Nethermind.Blockchain;
+using Nethermind.Core;
 
-namespace Nethermind.Network.P2P
+namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 {
-    public interface IChannelController
+    public class Eth63ProtocolHandler : Eth62ProtocolHandler
     {
-        void EnableSnappy();
-        void Disconnect(TimeSpan delay);
+        public Eth63ProtocolHandler(
+            IP2PSession p2PSession,
+            IMessageSerializationService serializer,
+            ISynchronizationManager sync,
+            ILogger logger) : base(p2PSession, serializer, sync, logger)
+        {
+        }
+        
+        public override byte ProtocolVersion => 63;
+
+        public override int MessageIdSpaceSize => 17; // magic number here following Go
+        
+        public override Type ResolveMessageType(int messageCode)
+        {
+            // TODO:
+            return base.ResolveMessageType(messageCode);
+        }
     }
 }

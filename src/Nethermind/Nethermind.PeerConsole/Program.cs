@@ -59,7 +59,7 @@ namespace Nethermind.PeerConsole
 
         private static async Task Run()
         {
-//            await ConnectLocal();
+            //await ConnectLocal();
             await ConnectTestnet();
         }
 
@@ -95,17 +95,13 @@ namespace Nethermind.PeerConsole
             IEncryptionHandshakeService encryptionHandshakeServiceB = new EncryptionHandshakeService(serializationService, eciesCipher, cryptoRandom, signer, _keyB, logger);
             //            IEncryptionHandshakeService encryptionHandshakeServiceC = new EncryptionHandshakeService(serializationService, eciesCipher, cryptoRandom, signer, _keyC, logger);
 
-            ISessionManager sessionManagerA = new SessionManager(serializationService, _keyA.PublicKey, PortA, logger, Substitute.For<ISynchronizationManager>());
-            ISessionManager sessionManagerB = new SessionManager(serializationService, _keyB.PublicKey, PortB, logger, Substitute.For<ISynchronizationManager>());
-            ISessionManager sessionManagerC = new SessionManager(serializationService, _keyC.PublicKey, PortC, logger, Substitute.For<ISynchronizationManager>());
-
             Console.WriteLine("Initializing server...");
-            RlpxPeer peerServerA = new RlpxPeer(encryptionHandshakeServiceA, sessionManagerA, logger);
-            RlpxPeer peerServerB = new RlpxPeer(encryptionHandshakeServiceB, sessionManagerB, logger);
+            RlpxPeer peerServerA = new RlpxPeer(_keyA.PublicKey, PortA, encryptionHandshakeServiceA, serializationService, Substitute.For<ISynchronizationManager>(), logger);
+            RlpxPeer peerServerB = new RlpxPeer(_keyB.PublicKey, PortB, encryptionHandshakeServiceB, serializationService, Substitute.For<ISynchronizationManager>(), logger);
             //            RlpxPeer peerServerC = new RlpxPeer(serializationService, encryptionHandshakeServiceC, sessionFactoryC, logger);
             //            await Task.WhenAll(peerServerA.Init(PortA), peerServerB.Init(PortB), peerServerC.Init(PortC));
             //            await Task.WhenAll(peerServerA.Init(PortA), peerServerB.Init(PortB), peerServerC.Init(PortC));
-            await Task.WhenAll(peerServerA.Init(PortA), peerServerB.Init(PortB));
+            await Task.WhenAll(peerServerA.Init(), peerServerB.Init());
             Console.WriteLine("Servers running...");
             Console.WriteLine("Connecting A to B...");
             await peerServerA.Connect(_keyB.PublicKey, "127.0.0.1", PortB);
@@ -139,8 +135,18 @@ namespace Nethermind.PeerConsole
             serializationService.Register(new DisconnectMessageSerializer());
             serializationService.Register(new PingMessageSerializer());
             serializationService.Register(new PongMessageSerializer());
+            
+            /* eth */
             serializationService.Register(new StatusMessageSerializer());
-
+            serializationService.Register(new TransactionsMessageSerializer());
+            serializationService.Register(new GetBlockHeadersMessageSerializer());
+            serializationService.Register(new NewBlockHashesMessageSerializer());
+            serializationService.Register(new GetBlockBodiesMessageSerializer());
+            serializationService.Register(new BlockHeadersMessageSerializer());
+            serializationService.Register(new BlockBodiesMessageSerializer());
+            serializationService.Register(new NewBlockHashesMessageSerializer());
+            serializationService.Register(new NewBlockHashesMessageSerializer());
+           
             IReleaseSpec dynamicSpecForVm = new DynamicReleaseSpec(RopstenSpecProvider.Instance);
             
             IBlockStore blockStore = new BlockStore();
@@ -188,11 +194,9 @@ namespace Nethermind.PeerConsole
             ISynchronizationManager synchronizationManager = new SynchronizationManager(headerValidator, blockValidator, transactionValidator, chainSpec.Genesis, logger);
             IEncryptionHandshakeService encryptionHandshakeServiceA = new EncryptionHandshakeService(serializationService, eciesCipher, cryptoRandom, signer, _keyA, logger);
 
-            ISessionManager sessionManagerA = new SessionManager(serializationService, _keyA.PublicKey, PortA, logger, synchronizationManager);
-
             logger.Log("Initializing server...");
-            RlpxPeer localPeer = new RlpxPeer(encryptionHandshakeServiceA, sessionManagerA, logger);
-            await Task.WhenAll(localPeer.Init(PortA));
+            RlpxPeer localPeer = new RlpxPeer(_keyA.PublicKey, PortA, encryptionHandshakeServiceA, serializationService, synchronizationManager, logger);
+            await Task.WhenAll(localPeer.Init());
             logger.Log("Servers running...");
             logger.Log($"Connecting to testnet bootnode {bootnode.Description}");
             await localPeer.Connect(bootnode.PublicKey, bootnode.Host, bootnode.Port);

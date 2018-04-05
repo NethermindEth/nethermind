@@ -25,7 +25,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         public byte[] Serialize(GetBlockHeadersMessage message)
         {
             return Rlp.Encode(
-                Rlp.Encode(message.StartingBlock.Number, message.StartingBlock.Hash),
+                message.StartingBlockHash == null ? Rlp.Encode(message.StartingBlockNumber) : Rlp.Encode(message.StartingBlockHash),
                 message.MaxHeaders,
                 message.Skip,
                 message.Reverse
@@ -37,8 +37,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             GetBlockHeadersMessage message = new GetBlockHeadersMessage();
 
             DecodedRlp decodedRlp = Rlp.Decode(new Rlp(bytes));
-            DecodedRlp startingBlockRlp = decodedRlp.GetSequence(0);
-            message.StartingBlock = (startingBlockRlp.GetInt(0), startingBlockRlp.GetKeccak(1));
+            if (decodedRlp.GetBytes(0).Length == 32)
+            {
+                message.StartingBlockHash = decodedRlp.GetKeccak(0);
+            }
+            else
+            {
+                message.StartingBlockNumber = decodedRlp.GetUnsignedBigInteger(0);
+            }
+
             message.MaxHeaders = decodedRlp.GetInt(1);
             message.Skip = decodedRlp.GetInt(2);
             message.Reverse = decodedRlp.GetInt(3);

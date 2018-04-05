@@ -16,17 +16,23 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using Nethermind.Core.Crypto;
 using Nethermind.Network.Rlpx;
 
 namespace Nethermind.Network.P2P
 {
-    public interface ISessionManager
+    public interface IProtocolHandler
     {
-        void RegisterChannelController(IChannelController channelController);
-        void ReceiveMessage(Packet packet);
-        void StartSession(string protocolCode, int version, IPacketSender packetSender, PublicKey remoteNodeId, int remotePort);
-        void CloseSession(string protocolCode);
-        (string, int) ResolveMessageCode(int adaptiveId);
+        byte ProtocolVersion { get; }
+        string ProtocolCode { get; }
+        int MessageIdSpaceSize { get; }
+        
+        void Init();
+        void HandleMessage(Packet message);
+        void Close();
+        
+        event EventHandler ProtocolInitialized;
+        event EventHandler<ProtocolEventArgs> SubprotocolRequested;
     }
 }

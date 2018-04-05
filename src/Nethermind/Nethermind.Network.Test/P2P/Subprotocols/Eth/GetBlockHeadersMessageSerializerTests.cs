@@ -26,18 +26,34 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
     public class GetBlockHeadersMessageSerializerTests
     {
         [Test]
-        public void Roundtrip()
+        public void Roundtrip_number()
         {
             GetBlockHeadersMessage message = new GetBlockHeadersMessage();
             message.MaxHeaders = 1;
             message.Skip = 2;
             message.Reverse = 1;
-            message.StartingBlock = (100, Keccak.OfAnEmptyString);
+            message.StartingBlockHash = Keccak.OfAnEmptyString;
             GetBlockHeadersMessageSerializer serializer = new GetBlockHeadersMessageSerializer();
             byte[] bytes = serializer.Serialize(message);
             GetBlockHeadersMessage deserialized = serializer.Deserialize(bytes);
-            Assert.AreEqual(message.StartingBlock.Hash, deserialized.StartingBlock.Hash, $"{nameof(message.StartingBlock.Hash)}");
-            Assert.AreEqual(message.StartingBlock.Number, deserialized.StartingBlock.Number, $"{nameof(message.StartingBlock.Number)}");
+            Assert.AreEqual(message.StartingBlockHash, deserialized.StartingBlockHash, $"{nameof(message.StartingBlockHash)}");
+            Assert.AreEqual(message.MaxHeaders, deserialized.MaxHeaders, $"{nameof(message.MaxHeaders)}");
+            Assert.AreEqual(message.Reverse, deserialized.Reverse, $"{nameof(message.Reverse)}");
+            Assert.AreEqual(message.Skip, deserialized.Skip, $"{nameof(message.Skip)}");
+        }
+
+        [Test]
+        public void Roundtrip_hash()
+        {
+            GetBlockHeadersMessage message = new GetBlockHeadersMessage();
+            message.MaxHeaders = 1;
+            message.Skip = 2;
+            message.Reverse = 1;
+            message.StartingBlockNumber = 100;
+            GetBlockHeadersMessageSerializer serializer = new GetBlockHeadersMessageSerializer();
+            byte[] bytes = serializer.Serialize(message);
+            GetBlockHeadersMessage deserialized = serializer.Deserialize(bytes);
+            Assert.AreEqual(message.StartingBlockNumber, deserialized.StartingBlockNumber, $"{nameof(message.StartingBlockNumber)}");
             Assert.AreEqual(message.MaxHeaders, deserialized.MaxHeaders, $"{nameof(message.MaxHeaders)}");
             Assert.AreEqual(message.Reverse, deserialized.Reverse, $"{nameof(message.Reverse)}");
             Assert.AreEqual(message.Skip, deserialized.Skip, $"{nameof(message.Skip)}");

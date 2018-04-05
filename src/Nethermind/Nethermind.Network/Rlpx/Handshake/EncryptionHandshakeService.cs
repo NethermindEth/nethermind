@@ -101,10 +101,8 @@ namespace Nethermind.Network.Rlpx.Handshake
 
             handshake.RemoteEphemeralPublicKey = _signer.RecoverPublicKey(authMessage.Signature, new Keccak(forSigning));
 
-            // TODO: respond depending on the auth type
             AckEip8Message ackMessage = new AckEip8Message();
             ackMessage.EphemeralPublicKey = handshake.EphemeralPrivateKey.PublicKey;
-//            responseMessage.IsTokenUsed = false;
             ackMessage.Nonce = handshake.RecipientNonce;
 
             byte[] ackData = _messageSerializationService.Serialize(ackMessage);

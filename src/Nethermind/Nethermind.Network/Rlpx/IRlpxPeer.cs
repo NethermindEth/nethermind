@@ -23,6 +23,6 @@ namespace Nethermind.Network.Rlpx
     public interface IRlpxPeer
     {
         Task Shutdown();
-        Task Init(int port);
+        Task Init();
     }
 }

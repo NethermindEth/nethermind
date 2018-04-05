@@ -130,7 +130,7 @@ namespace Nethermind.Network.Test.Rlpx
             UnderTest underTest = new UnderTest();
             underTest.Decode((byte[])frame, output);
 
-            Assert.AreEqual("???", ((Packet)output[0]).ProtocolType);
+            Assert.AreEqual("???", ((Packet)output[0]).Protocol);
         }
 
         [Test]

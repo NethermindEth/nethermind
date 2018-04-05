@@ -22,9 +22,9 @@ namespace Nethermind.Network.P2P
 {
     public class InvalidProtocolException : Exception
     {
-        public InvalidProtocolException(string protocolType)
+        public InvalidProtocolException(string message)
+            : base(message)
         {
-            
         }
     }
 }

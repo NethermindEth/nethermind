@@ -17,76 +17,44 @@
  */
 
 using System;
-using System.Threading.Tasks;
 using DotNetty.Transport.Channels;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Network.Rlpx;
 
 namespace Nethermind.Network.P2P
 {
-    public class NettyP2PHandler : SimpleChannelInboundHandler<Packet>, IChannelController
+    public class NettyP2PHandler : SimpleChannelInboundHandler<Packet>
     {
-        public static byte Version = 5; // TODO: move somewhere else
-
-        private readonly ISessionManager _sessionManager;
-        private readonly IPacketSender _packetSender;
+        private readonly IP2PSession _ip2PSession;
         private readonly ILogger _logger;
-        private readonly PublicKey _remoteNodeId;
-        private readonly int _remotePort;
 
-        public NettyP2PHandler(ISessionManager sessionManager, IPacketSender packetSender, ILogger logger, PublicKey remoteNodeId, int remotePort)
+        public NettyP2PHandler(IP2PSession ip2PSession, ILogger logger)
         {
-            _sessionManager = sessionManager;
-            _packetSender = packetSender;
+            _ip2PSession = ip2PSession;
             _logger = logger;
-            _remoteNodeId = remoteNodeId;
-            _remotePort = remotePort;
         }
 
-        public void Init(IChannelHandlerContext context)
+        public void Init(IPacketSender packetSender, IChannelHandlerContext context)
         {
-            _context = context;
-            _sessionManager.RegisterChannelController(this); // TODO: to be refactored
-            _sessionManager.StartSession("p2p", 5, _packetSender, _remoteNodeId, _remotePort);
+            _ip2PSession.Init(5, context, packetSender);
         }
-
-        private IChannelHandlerContext _context;
         
         public override void ChannelRegistered(IChannelHandlerContext context)
         {
-            _logger.Log($"Registering {nameof(IChannelController)}");
-            
-            _sessionManager.RegisterChannelController(this);
+            _logger.Log($"Registering {nameof(NettyP2PHandler)}");
             base.ChannelRegistered(context);
         }
 
         protected override void ChannelRead0(IChannelHandlerContext ctx, Packet msg)
         {
             _logger.Log($"Channel read... data length {msg.Data.Length}");
-            _sessionManager.ReceiveMessage(msg);
+            _ip2PSession.ReceiveMessage(msg);
         }
 
         public override void ExceptionCaught(IChannelHandlerContext context, Exception exception)
         {   
             _logger.Error($"{nameof(NettyP2PHandler)} exception", exception);
             base.ExceptionCaught(context, exception);
-        }
-
-        public void EnableSnappy()
-        {
-            _logger.Error($"Enabling Snappy compression");
-            _context.Channel.Pipeline.AddBefore($"{nameof(Multiplexor)}#0", null, new SnappyDecoder(_logger));
-            _context.Channel.Pipeline.AddBefore($"{nameof(Multiplexor)}#0", null, new SnappyEncoder(_logger));
-        }
-
-        public void Disconnect(TimeSpan delay)
-        {
-            Task.Delay(delay).ContinueWith(t =>
-            {
-                _context.DisconnectAsync();
-                _logger.Error($"Disconnecting now after {delay.TotalMilliseconds} milliseconds");
-            });
         }
     }
 }

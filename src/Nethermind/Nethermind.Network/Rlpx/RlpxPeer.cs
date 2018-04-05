@@ -17,6 +17,7 @@
  */
 
 using System;
+using System.Collections.Generic;
 using System.Net;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
@@ -27,6 +28,7 @@ using DotNetty.Transport.Bootstrapping;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
 using Microsoft.Extensions.Logging.Console;
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Network.P2P;
@@ -37,9 +39,14 @@ namespace Nethermind.Network.Rlpx
     // TODO: integration tests for this one
     public class RlpxPeer : IRlpxPeer
     {
+        private readonly Dictionary<PublicKey, IP2PSession> _remotePeers = new Dictionary<PublicKey, IP2PSession>();
+        
         private const int PeerConnectionTimeout = 10000;
+        private readonly PublicKey _localNodeId;
+        private readonly int _localPort;
         private readonly IEncryptionHandshakeService _encryptionHandshakeService;
-        private readonly ISessionManager _sessionManager;
+        private readonly IMessageSerializationService _serializationService;
+        private readonly ISynchronizationManager _synchronizationManager;
         private readonly ILogger _logger;
         private IChannel _bootstrapChannel;
         private IEventLoopGroup _bossGroup;
@@ -47,10 +54,19 @@ namespace Nethermind.Network.Rlpx
         private bool _isInitialized;
         private IEventLoopGroup _workerGroup;
 
-        public RlpxPeer(IEncryptionHandshakeService encryptionHandshakeService, ISessionManager sessionManager, ILogger logger)
+        public RlpxPeer(
+            PublicKey localNodeId,
+            int localPort,
+            IEncryptionHandshakeService encryptionHandshakeService,
+            IMessageSerializationService serializationService,
+            ISynchronizationManager synchronizationManager,
+            ILogger logger)
         {
+            _localNodeId = localNodeId;
+            _localPort = localPort;
             _encryptionHandshakeService = encryptionHandshakeService;
-            _sessionManager = sessionManager;
+            _serializationService = serializationService;
+            _synchronizationManager = synchronizationManager;
             _logger = logger;
         }
 
@@ -62,7 +78,7 @@ namespace Nethermind.Network.Rlpx
             await Task.WhenAll(_bossGroup.ShutdownGracefullyAsync(), _workerGroup.ShutdownGracefullyAsync());
         }
 
-        public async Task Init(int port)
+        public async Task Init()
         {
             if (_isInitialized)
             {
@@ -84,7 +100,7 @@ namespace Nethermind.Network.Rlpx
                     .Handler(new LoggingHandler("BOSS", LogLevel.TRACE))
                     .ChildHandler(new ActionChannelInitializer<ISocketChannel>(ch => InitializeChannel(ch, EncryptionHandshakeRole.Recipient, null)));
 
-                _bootstrapChannel = await bootstrap.BindAsync(port);
+                _bootstrapChannel = await bootstrap.BindAsync(_localPort);
             }
             catch (Exception)
             {
@@ -107,7 +123,7 @@ namespace Nethermind.Network.Rlpx
             clientBootstrap.RemoteAddress(host, port);
 
             clientBootstrap.Handler(new ActionChannelInitializer<ISocketChannel>(ch => InitializeChannel(ch, EncryptionHandshakeRole.Initiator, remoteId)));
-
+            
             await clientBootstrap.ConnectAsync(new IPEndPoint(IPAddress.Parse(host), port));
             _logger.Log($"Connected to {remoteId} at {host}:{port}");
         }
@@ -117,10 +133,17 @@ namespace Nethermind.Network.Rlpx
             string inOut = remoteId == null ? "IN" : "OUT";
             _logger.Log($"Initializing {inOut} channel");
 
+            IP2PSession p2PSession = new P2PSession(
+                _localNodeId,
+                _localPort,
+                _serializationService,
+                _synchronizationManager,
+                _logger);
+
             IChannelPipeline pipeline = channel.Pipeline;
             pipeline.AddLast(new LoggingHandler(inOut, LogLevel.TRACE));
             pipeline.AddLast("enc-handshake-dec", new LengthFieldBasedFrameDecoder(ByteOrder.BigEndian, ushort.MaxValue, 0, 2, 0, 0, true));
-            pipeline.AddLast("enc-handshake-handler", new NettyHandshakeHandler(_encryptionHandshakeService, _sessionManager, role, remoteId, _logger));
+            pipeline.AddLast("enc-handshake-handler", new NettyHandshakeHandler(_encryptionHandshakeService, p2PSession, role, remoteId, _logger));
         }
     }
 }

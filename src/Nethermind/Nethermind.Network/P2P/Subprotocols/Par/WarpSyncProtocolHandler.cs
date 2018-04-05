@@ -16,27 +16,33 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Blockchain;
-using Nethermind.Core;
+using System;
 using Nethermind.Core.Crypto;
+using Nethermind.Network.Rlpx;
 
-namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
+namespace Nethermind.Network.P2P.Subprotocols.Par
 {
-    public class Eth63Session : Eth62Session
+    public class WarpSyncProtocolHandler : IProtocolHandler
     {
-        public Eth63Session(
-            IMessageSerializationService serializer,
-            IPacketSender packetSender,
-            ILogger logger,
-            PublicKey remoteNodeId,
-            int remotePort,
-            ISynchronizationManager sync) : base(serializer, packetSender, logger, remoteNodeId, remotePort, sync)
+        public byte ProtocolVersion { get; } = 2;
+        public string ProtocolCode { get; } = "par";
+        public void Init()
         {
-            RemotePort = remotePort;
+            throw new NotImplementedException();
         }
-        
-        public override byte ProtocolVersion => 63;
 
-        public override int MessageIdSpaceSize => 17; // magic number here following Go
+        public void Close()
+        {
+            throw new NotImplementedException();
+        }
+
+        public int MessageIdSpaceSize { get; } = 10;
+        public void HandleMessage(Packet message)
+        {
+            throw new NotImplementedException();
+        }
+
+        public event EventHandler ProtocolInitialized;
+        public event EventHandler<ProtocolEventArgs> SubprotocolRequested;
     }
 }

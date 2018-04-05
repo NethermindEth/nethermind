@@ -34,11 +34,7 @@ namespace Nethermind.PeerConsole
                     "peer-3.ether.camp"));
             
             EthJ.Add(
-                new Bootnode(
-                    "0d837e193233c08d6950913bf69105096457fbe204679d6c6c021c36bb5ad83d167350440670e7fec189d80abc18076f45f44bfe480c85b6c632735463d34e4b",
-                    "10.173.107.12",
-                    30303,
-                    "local ethj"));
+                new Bootnode("enode://0d837e193233c08d6950913bf69105096457fbe204679d6c6c021c36bb5ad83d167350440670e7fec189d80abc18076f45f44bfe480c85b6c632735463d34e4b@127.0.0.1:30303", "local ethj"));
 
             TestNetBootnodes = new List<Bootnode>();
             TestNetBootnodes.Add(

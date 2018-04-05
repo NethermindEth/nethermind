@@ -16,35 +16,18 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
+using DotNetty.Transport.Channels;
 using Nethermind.Core.Crypto;
 using Nethermind.Network.Rlpx;
 
-namespace Nethermind.Network.P2P.Subprotocols.Par
+namespace Nethermind.Network.P2P
 {
-    public class WarpSyncSession : ISession
+    public interface IP2PSession
     {
-        public byte ProtocolVersion { get; } = 2;
-        public string ProtocolCode { get; } = "par";
-        public PublicKey RemoteNodeId { get; }
-        public int RemotePort { get; }
-        public int MessageIdSpaceSize { get; }
-        public void HandleMessage(Packet packet)
-        {
-            throw new NotImplementedException();
-        }
-
-        public void Init()
-        {
-            throw new NotImplementedException();
-        }
-
-        public void Close()
-        {
-            throw new NotImplementedException();
-        }
-
-        public event EventHandler SessionEstablished;
-        public event EventHandler<ProtocolEventArgs> SubprotocolRequested;
+        PublicKey RemoteNodeId { get; set; }
+        int RemotePort { get; set; }
+        void ReceiveMessage(Packet packet);
+        void DeliverMessage(Packet packet, bool priority = false);
+        void Init(byte p2PVersion, IChannelHandlerContext context, IPacketSender packetSender);
     }
 }

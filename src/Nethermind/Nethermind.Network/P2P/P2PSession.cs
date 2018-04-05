@@ -18,192 +18,205 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
+using System.Threading.Tasks;
+using DotNetty.Transport.Channels;
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Network.P2P.Subprotocols.Eth;
+using Nethermind.Network.P2P.Subprotocols.Eth.V63;
 using Nethermind.Network.Rlpx;
 
 namespace Nethermind.Network.P2P
 {
-    public class P2PSession : SessionBase, ISession
+    public class P2PSession : IP2PSession
     {
         private readonly ILogger _logger;
-        private bool _sentHello;
+        private readonly IMessageSerializationService _serializer;
+        private readonly ISynchronizationManager _synchronizationManager;
+        private readonly Dictionary<string, IProtocolHandler> _protocols = new Dictionary<string, IProtocolHandler>();
+        
+        private IChannelHandlerContext _context;
+        private IPacketSender _packetSender;
+        
+        public PublicKey LocalNodeId { get; }
+        public int LocalPort { get; }
+        
+        private Func<int, (string, int)> _adaptiveCodeResolver;
+        private Func<(string ProtocolCode, int PacketType), int> _adaptiveEncoder;
 
-        // TODO: initialize with capabilities and version
         public P2PSession(
-            IMessageSerializationService serializationService,
-            IPacketSender packetSender,
             PublicKey localNodeId,
-            int listenPort,
-            PublicKey remoteNodeId,
+            int localPort,
+            IMessageSerializationService serializer,
+            ISynchronizationManager synchronizationManager,
             ILogger logger)
-        :base(serializationService, packetSender, remoteNodeId, logger)
         {
+            _serializer = serializer;
+            _synchronizationManager = synchronizationManager;
             _logger = logger;
             LocalNodeId = localNodeId;
-            ListenPort = listenPort;
-            AgreedCapabilities = new List<Capability>();
+            LocalPort = localPort;
         }
 
-        public int ListenPort { get; }
+        public PublicKey RemoteNodeId { get; set; }
+        public int RemotePort { get; set; }
 
-        public List<Capability> AgreedCapabilities { get; }
-
-        public PublicKey LocalNodeId { get; }
-
-        public string RemoteClientId { get; private set; }
-
-        public void Init() // TODO: remote node details here?
+        // TODO: this should be one level up
+        public void EnableSnappy()
         {
-            _logger.Log($"P2P initiating outbound session");
-            SendHello();
+            _logger.Error($"Enabling Snappy compression");
+            _context.Channel.Pipeline.AddBefore($"{nameof(Multiplexor)}#0", null, new SnappyDecoder(_logger));
+            _context.Channel.Pipeline.AddBefore($"{nameof(Multiplexor)}#0", null, new SnappyEncoder(_logger));
         }
 
-        public void Close()
+        // TODO: this should be one level up
+        public void Disconnect(TimeSpan delay)
         {
+            Task.Delay(delay).ContinueWith(t =>
+            {
+                _context.DisconnectAsync();
+                _logger.Error($"Disconnecting now after {delay.TotalMilliseconds} milliseconds");
+            });
         }
 
-        public byte ProtocolVersion => 5;
-        
-        public string ProtocolCode => Protocol.P2P;
-
-        public int MessageIdSpaceSize => 0x10;
-
-        public void HandleMessage(Packet msg)
+        public void Enqueue(Packet message, bool priority = false)
         {
-            if (msg.PacketType == P2PMessageCode.Hello)
-            {
-                HelloMessage helloMessage = Deserialize<HelloMessage>(msg.Data);
-                HandleHello(helloMessage);
-                
-                foreach (Capability capability in AgreedCapabilities.GroupBy(c => c.ProtocolCode).Select(c => c.OrderBy(v => v.Version).Last()))
-                {    
-                    _logger.Log($"Starting session for {capability.ProtocolCode} v{capability.Version} from {RemoteNodeId}:{RemotePort}");
-                    SubprotocolRequested?.Invoke(this, new ProtocolEventArgs(capability.ProtocolCode, capability.Version));    
-                } 
-            }
-            else if (msg.PacketType == P2PMessageCode.Disconnect)
-            {
-                DisconnectMessage disconnectMessage = Deserialize<DisconnectMessage>(msg.Data);
-                _logger.Log($"Received disconnect ({disconnectMessage.Reason}) from {RemoteNodeId}:{RemotePort}");
-                Close(disconnectMessage.Reason);
-            }
-            else if (msg.PacketType == P2PMessageCode.Ping)
-            {
-                _logger.Log($"Received PING from {RemoteNodeId}:{RemotePort}");
-                HandlePing();
-            }
-            else if (msg.PacketType == P2PMessageCode.Pong)
-            {
-                _logger.Log($"Received PONG from {RemoteNodeId}:{RemotePort}");
-                HandlePong();
-            }
-            else
-            {
-                _logger.Error($"Unhandled packet type: {msg.PacketType}");
-            }
+            _packetSender.Enqueue(message, priority);
         }
 
-        public void HandleHello(HelloMessage hello)
+        public void DeliverMessage(Packet packet, bool priority = false)
         {
-            _logger.Log($"P2P received hello from {RemoteNodeId})");
-            if (!hello.NodeId.Equals(RemoteNodeId))
+            packet.PacketType = _adaptiveEncoder((packet.Protocol, packet.PacketType));
+            _packetSender.Enqueue(packet, priority);
+        }
+
+        private (string, int) ResolveMessageCode(int adaptiveId)
+        {
+            return _adaptiveCodeResolver.Invoke(adaptiveId);
+        }
+
+        public void ReceiveMessage(Packet packet)
+        {
+            int dynamicMessageCode = packet.PacketType;
+            (string protocol, int messageId) = ResolveMessageCode(dynamicMessageCode);
+            packet.Protocol = protocol;
+
+            _logger.Log($"Session Manager received a message (dynamic ID {dynamicMessageCode}. Resolved to {protocol}.{messageId})");
+
+            if (protocol == null)
             {
-                throw new NodeDetailsMismatchException();
+                throw new InvalidProtocolException(packet.Protocol);
             }
 
-            RemotePort = hello.ListenPort;
-            RemoteClientId = hello.ClientId;
+            packet.PacketType = messageId;
+            _protocols[protocol].HandleMessage(packet);
+        }
 
-            _logger.Log(!_sentHello
-                ? $"P2P initiating inbound {hello.Protocol} v{hello.P2PVersion} session from {hello.NodeId}:{hello.ListenPort} ({hello.ClientId})"
-                : $"P2P initiating outbound {hello.Protocol} v{hello.P2PVersion} session to {hello.NodeId}:{hello.ListenPort} ({hello.ClientId})");
-
-            // https://github.com/ethereum/EIPs/blob/master/EIPS/eip-8.md
-            // Clients implementing a newer version simply send a packet with higher version and possibly additional list elements.
-            // * If such a packet is received by a node with lower version, it will blindly assume that the remote end is backwards-compatible and respond with the old handshake.
-            // * If the packet is received by a node with equal version, new features of the protocol can be used.
-            // * If the packet is received by a node with higher version, it can enable backwards-compatibility logic or drop the connection.
-            if (hello.P2PVersion < NettyP2PHandler.Version)
+        private void InitProtocol(string protocolCode, int version)
+        {
+            protocolCode = protocolCode.ToLowerInvariant();
+            if (_protocols.ContainsKey(protocolCode))
             {
-                Disconnect(DisconnectReason.IncompatibleP2PVersion);
-                return;
+                throw new InvalidOperationException($"Session for protocol {protocolCode} already started");
             }
 
-            foreach (Capability remotePeerCapability in hello.Capabilities)
+            if (protocolCode != Protocol.P2P && !_protocols.ContainsKey(Protocol.P2P))
             {
-                if (SupportedCapabilities.Contains(remotePeerCapability))
+                throw new InvalidOperationException($"{Protocol.P2P} protocolHandler has to be started before starting {protocolCode} protocolHandler");
+            }
+
+            IProtocolHandler protocolHandler;
+            switch (protocolCode)
+            {
+                case Protocol.P2P:
+                    protocolHandler = new P2PProtocolHandler(this, _serializer, LocalNodeId, LocalPort, _logger);
+                    protocolHandler.ProtocolInitialized += (sender, args) =>
+                    {
+                        if (protocolHandler.ProtocolVersion >= 5)
+                        {
+                            _logger.Log($"{protocolHandler.ProtocolCode} v{protocolHandler.ProtocolVersion} established - Enabling Snappy");
+                            EnableSnappy();
+                        }
+                    };
+                    break;
+                case Protocol.Eth:
+                    if (version < 62 || version > 63)
+                    {
+                        throw new NotSupportedException();
+                    }
+
+                    protocolHandler = version == 62
+                        ? new Eth62ProtocolHandler(this, _serializer, _synchronizationManager, _logger)
+                        : new Eth63ProtocolHandler(this, _serializer, _synchronizationManager, _logger);
+                    protocolHandler.ProtocolInitialized += (sender, args) =>
+                    {
+                        ((P2PProtocolHandler)_protocols[Protocol.P2P]).Disconnect(DisconnectReason.ClientQuitting);
+                        Disconnect(TimeSpan.FromSeconds(5));
+                    };
+                    break;
+                default:
+                    throw new NotSupportedException();
+            }
+
+            protocolHandler.SubprotocolRequested += (sender, args) => InitProtocol(args.ProtocolCode, args.Version);
+            _protocols[protocolCode] = protocolHandler;
+
+            (string ProtocolCode, int SpaceSize)[] alphabetically = new (string, int)[_protocols.Count];
+            alphabetically[0] = (Protocol.P2P, _protocols[Protocol.P2P].MessageIdSpaceSize);
+            int i = 1;
+            foreach (KeyValuePair<string, IProtocolHandler> protocolSession in _protocols.Where(kv => kv.Key != "p2p").OrderBy(kv => kv.Key))
+            {
+                alphabetically[i++] = (protocolSession.Key, protocolSession.Value.MessageIdSpaceSize);
+            }
+
+            _adaptiveCodeResolver = dynamicId =>
+            {
+                int offset = 0;
+                for (int j = 0; j < alphabetically.Length; j++)
                 {
-                    _logger.Log($"Agreed on {remotePeerCapability.ProtocolCode} v{remotePeerCapability.Version}");
-                    AgreedCapabilities.Add(remotePeerCapability);
+                    if (offset + alphabetically[j].SpaceSize > dynamicId)
+                    {
+                        return (alphabetically[j].ProtocolCode, dynamicId - offset);
+                    }
+
+                    offset += alphabetically[j].SpaceSize;
                 }
-                else
-                {
-                    _logger.Log($"Capability not supported {remotePeerCapability.ProtocolCode} v{remotePeerCapability.Version}");
-                }
-            }
-            
-            Debug.Assert(_sentHello, "Expecting Init to already be called at this point");
-            SessionEstablished?.Invoke(this, EventArgs.Empty);
-        }
-        
-        private static readonly List<Capability> SupportedCapabilities = new List<Capability>
-        {
-//            new Capability(Protocol.Eth, 62),
-            new Capability(Protocol.Eth, 63),
-        }; 
-        
-        private void SendHello()
-        {
-            _logger.Log($"P2P sending hello with Client ID {ClientVersion.Description}, protocol {ProtocolVersion}, listen port {ListenPort}");
-            HelloMessage helloMessage = new HelloMessage
-            {
-                Capabilities = SupportedCapabilities.ToList(),
-                ClientId = ClientVersion.Description,
-                NodeId = LocalNodeId,
-                ListenPort = ListenPort,
-                P2PVersion = ProtocolVersion
+
+                return (null, 0);
             };
 
-            _sentHello = true;
-            Send(helloMessage);
+            _adaptiveEncoder = args =>
+            {
+                int offset = 0;
+                for (int j = 0; j < alphabetically.Length; j++)
+                {
+                    if (alphabetically[j].ProtocolCode == args.ProtocolCode)
+                    {
+                        return offset + args.PacketType;
+                    }
+
+                    offset += alphabetically[j].SpaceSize;
+                }
+
+                return args.PacketType;
+            };
+
+            protocolHandler.Init();
         }
 
-        private void HandlePing()
+        private void CloseSession(string protocolCode)
         {
-            _logger.Log($"P2P responding to ping from {RemoteNodeId}:{RemotePort} ({RemoteClientId})");
-            Send(PongMessage.Instance);
+            throw new NotImplementedException();
         }
 
-        
-        public void Disconnect(DisconnectReason disconnectReason)
+        // TODO: use custome interface instead of netty one (can encapsulate both)
+        public void Init(byte p2PVersion, IChannelHandlerContext context, IPacketSender packetSender)
         {
-            // TODO: advertise disconnect up the stack so we actually disconnect   
-            _logger.Log($"P2P disconnecting from {RemoteNodeId}:{RemotePort} ({RemoteClientId}) [{disconnectReason}]");
-            DisconnectMessage message = new DisconnectMessage(disconnectReason);
-            Send(message);
+            _packetSender = packetSender;
+            _context = context;
+            InitProtocol(Protocol.P2P, p2PVersion);
         }
-
-        private void Close(DisconnectReason disconnectReason)
-        {
-            _logger.Log($"P2P received disconnect from {RemoteNodeId}:{RemotePort} ({RemoteClientId}) [{disconnectReason}]");
-        }
-
-        private void HandlePong()
-        {
-            _logger.Log($"P2P pong from {RemoteNodeId}:{RemotePort} ({RemoteClientId})");
-        }
-
-        private void Ping()
-        {
-            _logger.Log($"P2P sending ping to {RemoteNodeId}:{RemotePort} ({RemoteClientId})");
-            // TODO: timers
-            Send(PingMessage.Instance);
-        }
-
-        public event EventHandler SessionEstablished;
-        public event EventHandler<ProtocolEventArgs> SubprotocolRequested;
     }
 }

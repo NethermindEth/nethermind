@@ -52,7 +52,7 @@ namespace Nethermind.Network.P2P
             }
             catch (Exception e)
             {
-                _logger.Error($"Packet ({packet.ProtocolType}.{packet.PacketType}) pushed", e);
+                _logger.Error($"Packet ({packet.Protocol}.{packet.PacketType}) pushed", e);
             }
         }
 
@@ -68,7 +68,7 @@ namespace Nethermind.Network.P2P
                 }
                 else if (t.IsCompleted)
                 {
-                    _logger.Error($"Packet ({packet.ProtocolType}.{packet.PacketType}) pushed", t.Exception);
+                    _logger.Error($"Packet ({packet.Protocol}.{packet.PacketType}) pushed", t.Exception);
                 }
             });
         }

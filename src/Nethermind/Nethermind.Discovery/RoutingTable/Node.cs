@@ -75,7 +75,7 @@ namespace Nethermind.Discovery.RoutingTable
 
         public override string ToString()
         {
-            return $"Id: {IdHashText}, Host: {Host}, Port: {Port}, IsDiscovery: {IsDicoveryNode}";
+            return $"Id: {IdHashText}, Host: {Host}, RemotePort: {Port}, IsDiscovery: {IsDicoveryNode}";
         }
     }
 }

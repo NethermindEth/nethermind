@@ -17,6 +17,7 @@
  */
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Numerics;
 using Nethermind.Blockchain;
@@ -27,21 +28,18 @@ using Nethermind.Network.Rlpx;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth
 {
-    public class Eth62Session : SessionBase, ISession
+    public class Eth62ProtocolHandler : ProtocolHandlerBase, IProtocolHandler
     {
         private readonly ISynchronizationManager _sync;
 
-        public Eth62Session(
+        public Eth62ProtocolHandler(
+            IP2PSession p2PSession,
             IMessageSerializationService serializer,
-            IPacketSender packetSender,
-            ILogger logger,
-            PublicKey remoteNodeId,
-            int remotePort,
-            ISynchronizationManager sync)
-            : base(serializer, packetSender, remoteNodeId, logger)
+            ISynchronizationManager sync,
+            ILogger logger)
+            : base(p2PSession, serializer, logger)
         {
             _sync = sync;
-            RemotePort = remotePort;
         }
 
         private bool _statusSent;
@@ -69,40 +67,57 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             Send(statusMessage);
         }
 
-        public virtual void HandleMessage(Packet packet)
+        private static readonly Dictionary<int, Type> MessageTypes = new Dictionary<int, Type>
         {
-            Logger.Log($"{nameof(Eth62Session)} handling a message with code {packet.PacketType}.");
+            {Eth62MessageCode.Status, typeof(StatusMessage)},
+            {Eth62MessageCode.NewBlockHashes, typeof(NewBlockHashesMessage)},
+            {Eth62MessageCode.Transactions, typeof(TransactionsMessage)},
+            {Eth62MessageCode.GetBlockHeaders, typeof(GetBlockHeadersMessage)},
+            {Eth62MessageCode.BlockHeaders, typeof(BlockHeadersMessage)},
+            {Eth62MessageCode.GetBlockBodies, typeof(GetBlockBodiesMessage)},
+            {Eth62MessageCode.BlockBodies, typeof(BlockBodiesMessage)},
+            {Eth62MessageCode.NewBlock, typeof(NewBlockMessage)},
+        };
+        
+        public virtual Type ResolveMessageType(int messageCode)
+        {
+            return MessageTypes[messageCode];
+        }
 
-            if (packet.PacketType != Eth62MessageCode.Status && !_statusReceived)
+        public virtual void HandleMessage(Packet message)
+        {
+            Logger.Log($"{nameof(Eth62ProtocolHandler)} handling a message with code {message.PacketType}.");
+
+            if (message.PacketType != Eth62MessageCode.Status && !_statusReceived)
             {
                 throw new SubprotocolException($"No {nameof(StatusMessage)} received prior to communication.");
             }
 
-            switch (packet.PacketType)
+            switch (message.PacketType)
             {
                 case Eth62MessageCode.Status:
-                    Handle(Deserialize<StatusMessage>(packet.Data));
+                    Handle(Deserialize<StatusMessage>(message.Data));
                     break;
                 case Eth62MessageCode.NewBlockHashes:
-                    Handle(Deserialize<NewBlockHashesMessage>(packet.Data));
+                    Handle(Deserialize<NewBlockHashesMessage>(message.Data));
                     break;
                 case Eth62MessageCode.Transactions:
-                    Handle(Deserialize<TransactionsMessage>(packet.Data));
+                    Handle(Deserialize<TransactionsMessage>(message.Data));
                     break;
                 case Eth62MessageCode.GetBlockHeaders:
-                    Handle(Deserialize<GetBlockHeadersMessage>(packet.Data));
+                    Handle(Deserialize<GetBlockHeadersMessage>(message.Data));
                     break;
                 case Eth62MessageCode.BlockHeaders:
-                    Handle(Deserialize<BlockHeadersMessage>(packet.Data));
+                    Handle(Deserialize<BlockHeadersMessage>(message.Data));
                     break;
                 case Eth62MessageCode.GetBlockBodies:
-                    Handle(Deserialize<GetBlockBodiesMessage>(packet.Data));
+                    Handle(Deserialize<GetBlockBodiesMessage>(message.Data));
                     break;
                 case Eth62MessageCode.BlockBodies:
-                    Handle(Deserialize<BlockBodiesMessage>(packet.Data));
+                    Handle(Deserialize<BlockBodiesMessage>(message.Data));
                     break;
                 case Eth62MessageCode.NewBlock:
-                    Handle(Deserialize<NewBlockMessage>(packet.Data));
+                    Handle(Deserialize<NewBlockMessage>(message.Data));
                     break;
             }
         }
@@ -126,17 +141,17 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                        Environment.NewLine + $" difficulty\t{status.TotalDifficulty}");
 
             Debug.Assert(_statusSent, "Expecting Init() to have been called by this point");
-            SessionEstablished?.Invoke(this, EventArgs.Empty);
+            ProtocolInitialized?.Invoke(this, EventArgs.Empty);
         }
 
         private void Handle(TransactionsMessage transactionsMessage)
         {
             foreach (Transaction transaction in transactionsMessage.Transactions)
             {
-                TransactionInfo info = _sync.Add(transaction, RemoteNodeId);
+                TransactionInfo info = _sync.Add(transaction, P2PSession.RemoteNodeId);
                 if (info.Quality == Quality.Invalid) // TODO: processed invalid should not be penalized here
                 {
-                    Logger.Debug($"Received an invalid transaction from {RemoteNodeId}");
+                    Logger.Debug($"Received an invalid transaction from {P2PSession.RemoteNodeId}");
                     throw new SubprotocolException($"Peer sent an invalid transaction {transaction.Hash}");
                 }
             }
@@ -167,7 +182,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 BlockInfo blockInfo = _sync.AddBlockHeader(header);
                 if (blockInfo.HeaderQuality == Quality.Invalid)
                 {
-                    Logger.Debug($"Received an invalid header from {RemoteNodeId}");
+                    Logger.Debug($"Received an invalid header from {P2PSession.RemoteNodeId}");
                     throw new SubprotocolException($"Peer sent an invalid header {header.Hash}");
                 }
             }
@@ -185,7 +200,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         {
             // TODO: use total difficulty here
             // TODO: can drop connection if processing of the block fails (not only validation?)
-            BlockInfo blockInfo = _sync.AddBlock(newBlock.Block, RemoteNodeId);
+            BlockInfo blockInfo = _sync.AddBlock(newBlock.Block, P2PSession.RemoteNodeId);
             if (blockInfo.BlockQuality == Quality.Invalid)
             {
                 throw new SubprotocolException($"Peer sent an invalid new block {newBlock.Block.Hash}");
@@ -196,7 +211,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         {
         }
 
-        public event EventHandler SessionEstablished;
+        public event EventHandler ProtocolInitialized;
         public event EventHandler<ProtocolEventArgs> SubprotocolRequested;
 
         private static class GenesisRopsten

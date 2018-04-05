@@ -1,0 +1,88 @@
+﻿/*
+ * Copyright (c) 2018 Demerzel Solutions Limited
+ * This file is part of the Nethermind library.
+ *
+ * The Nethermind library is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * The Nethermind library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+using Nethermind.Core;
+using Nethermind.Network.P2P;
+using Nethermind.Network.Rlpx;
+using NSubstitute;
+using NUnit.Framework;
+
+namespace Nethermind.Network.Test.P2P
+{
+    [TestFixture]
+    public class P2PProtocolHandlerTests
+    {
+        [SetUp]
+        public void Setup()
+        {
+            _p2PSession = Substitute.For<IP2PSession>();
+            _serializer = Substitute.For<IMessageSerializationService>();
+        }
+
+        private IP2PSession _p2PSession;
+        private IMessageSerializationService _serializer;
+
+        private Packet CreatePacket(P2PMessage message)
+        {
+            return new Packet(message.Protocol, message.PacketType, _serializer.Serialize(message));
+        }
+
+        private const int ListenPort = 8003;
+
+        private P2PProtocolHandler CreateSession()
+        {
+            return new P2PProtocolHandler(
+                _p2PSession,
+                _serializer,
+                NetTestVectors.StaticKeyA.PublicKey,
+                ListenPort,
+                NullLogger.Instance);
+        }
+
+        [Test]
+        public void On_init_sends_a_hello_message()
+        {
+            P2PProtocolHandler p2PProtocolHandler = CreateSession();
+            p2PProtocolHandler.Init();
+
+            _p2PSession.Received(1).DeliverMessage(Arg.Is<Packet>(p => p.PacketType == P2PMessageCode.Hello));
+        }
+
+        [Test]
+        public void Pongs_to_ping()
+        {
+            P2PProtocolHandler p2PProtocolHandler = CreateSession();
+            p2PProtocolHandler.HandleMessage(CreatePacket(PingMessage.Instance));
+            _p2PSession.Received(1).DeliverMessage(Arg.Is<Packet>(p => p.PacketType == P2PMessageCode.Pong));
+        }
+
+        [Test]
+        public void Sets_local_node_id_from_constructor()
+        {
+            P2PProtocolHandler p2PProtocolHandler = CreateSession();
+            Assert.AreEqual(p2PProtocolHandler.LocalNodeId, NetTestVectors.StaticKeyA.PublicKey);
+        }
+
+        [Test]
+        public void Sets_port_from_constructor()
+        {
+            P2PProtocolHandler p2PProtocolHandler = CreateSession();
+            Assert.AreEqual(p2PProtocolHandler.ListenPort, ListenPort);
+        }
+    }
+}

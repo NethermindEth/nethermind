@@ -16,6 +16,8 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using DotNetty.Transport.Channels;
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Network.P2P;
 using Nethermind.Network.Rlpx;
@@ -27,61 +29,43 @@ namespace Nethermind.Network.Test.P2P
     [TestFixture]
     public class P2PSessionTests
     {
-        [SetUp]
-        public void Setup()
-        {
-            _packetSender = Substitute.For<IPacketSender>();
-            _serializer = Substitute.For<IMessageSerializationService>();
-        }
-
-        private IPacketSender _packetSender;
-        private IMessageSerializationService _serializer;
-
-        private Packet CreatePacket(P2PMessage message)
-        {
-            return new Packet(message.Protocol, message.PacketType, _serializer.Serialize(message));
-        }
+        private const int ListenPort = 8002;
 
         [Test]
-        public void On_init_sends_a_hello_message()
+        public void Can_start_p2p_session()
         {
-            P2PSession p2PSession = CreateSession();
-            p2PSession.Init();
-
-            _packetSender.Received(1).Enqueue(Arg.Is<Packet>(p => p.PacketType == P2PMessageCode.Hello));
+            IPacketSender sender = Substitute.For<IPacketSender>();
+            
+            MessageSerializationService service = new MessageSerializationService();
+            service.Register(new HelloMessageSerializer());
+            
+            P2PSession factory = new P2PSession(NetTestVectors.StaticKeyA.PublicKey, ListenPort, service, Substitute.For<ISynchronizationManager>(), NullLogger.Instance);
+            factory.Init(4, Substitute.For<IChannelHandlerContext>(), sender);
+            
+            sender.Received().Enqueue(Arg.Is<Packet>(p => p.PacketType == 0 && p.Protocol == "p2p"));
         }
-
-        [Test]
-        public void Pongs_to_ping()
-        {
-            P2PSession p2PSession = CreateSession();
-            p2PSession.HandleMessage(CreatePacket(PingMessage.Instance));
-            _packetSender.Received(1).Enqueue(Arg.Is<Packet>(p => p.PacketType == P2PMessageCode.Pong));
-        }
-
-        [Test]
-        public void Sets_local_node_id_from_constructor()
-        {
-            P2PSession p2PSession = CreateSession();
-            Assert.AreEqual(p2PSession.LocalNodeId, NetTestVectors.StaticKeyA.PublicKey);
-        }
-
-        [Test]
-        public void Sets_port_from_constructor()
-        {
-            P2PSession p2PSession = CreateSession();
-            Assert.AreEqual(p2PSession.ListenPort, 8002);
-        }
-
-        private P2PSession CreateSession()
-        {
-            return new P2PSession(
-                _serializer,
-                _packetSender,
-                NetTestVectors.StaticKeyA.PublicKey,
-                8002,
-                NetTestVectors.StaticKeyB.PublicKey,
-                NullLogger.Instance);
-        }
+        
+//        [Test]
+//        public void Can_start_eth_session()
+//        {
+//            P2PSession factory = new P2PSession(Substitute.For<IMessageSerializationService>(), NetTestVectors.StaticKeyA.PublicKey, ListenPort, NullLogger.Instance, Substitute.For<ISynchronizationManager>());
+//            factory.StartSession("p2p", 5, Substitute.For<IPacketSender>(), NetTestVectors.StaticKeyB.PublicKey, 8003);
+//            factory.StartSession("eth", 62, Substitute.For<IPacketSender>(), NetTestVectors.StaticKeyB.PublicKey, 8003);
+//        }
+//        
+//        [TestCase(100, null, 0)]
+//        [TestCase(1, "p2p", 1)]
+//        [TestCase(15, "p2p", 15)]
+//        [TestCase(16, "eth", 0)]
+//        public void Adaptive_message_ids(int dynamicId, string protocolCode, int messageCode)
+//        {        
+//            P2PSession factory = new P2PSession(Substitute.For<IMessageSerializationService>(), NetTestVectors.StaticKeyA.PublicKey, ListenPort, NullLogger.Instance, Substitute.For<ISynchronizationManager>());
+//            factory.StartSession("p2p", 5, Substitute.For<IPacketSender>(), NetTestVectors.StaticKeyB.PublicKey, 8003);
+//            factory.StartSession("eth", 62, Substitute.For<IPacketSender>(), NetTestVectors.StaticKeyB.PublicKey, 8003);
+//
+//            (string resolvedProtocolCode, int resolvedMessageId) = factory.ResolveMessageCode(dynamicId);
+//            Assert.AreEqual(protocolCode, resolvedProtocolCode, "protocol code");
+//            Assert.AreEqual(messageCode, resolvedMessageId, "message code");
+//        }
     }
 }
