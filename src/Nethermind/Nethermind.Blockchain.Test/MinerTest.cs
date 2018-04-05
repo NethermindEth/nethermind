@@ -17,10 +17,13 @@
  */
 
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
+using System.Xml.Schema;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Mining;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test
@@ -28,42 +31,63 @@ namespace Nethermind.Blockchain.Test
     [TestFixture]
     public class MinerTest
     {
+        private ITransactionStore _noPending;
+        private IBlockchainProcessor _alwaysOk;
+
+        [SetUp]
+        public void Setup()
+        {
+            _noPending = Substitute.For<ITransactionStore>();
+            _noPending.GetPending().Returns(ci => new Transaction[0]);
+
+            _alwaysOk = Substitute.For<IBlockchainProcessor>();
+            _alwaysOk.Try(Arg.Any<Block>())
+                .Returns(ci => ci.Arg<Block>())
+                .AndDoes(ci =>
+                {
+                    ci.Arg<Block>().Header.TransactionsRoot = Keccak.Zero;
+                    ci.Arg<Block>().Header.ReceiptsRoot = Keccak.Zero;
+                    ci.Arg<Block>().Header.OmmersHash = Keccak.Zero;
+                    ci.Arg<Block>().Header.StateRoot = Keccak.Zero;
+                    ci.Arg<Block>().Header.Bloom = Bloom.Empty;
+                });
+        }
+
         [Test]
         public async Task Can_mine()
         {
-            ulong validNonce = 971086423715459222;
-            
+            ulong validNonce = 971086423715459953;
+
             BlockHeader header = new BlockHeader(Keccak.Zero, Keccak.OfAnEmptySequenceRlp, Address.Zero, 1000, 1, 21000, 1, new byte[] {1, 2, 3});
             Block block = new Block(header);
-            Miner miner = new Miner(new Ethash());
+            Miner miner = new Miner(new Ethash(), _alwaysOk, _noPending);
             await miner.MineAsync(block, validNonce - 10);
 
             Assert.AreEqual(validNonce, block.Header.Nonce);
-            Assert.AreEqual(new Keccak("0xe009999b2544c84ce29841ba4a38c5d7a22056635bc045a8403f83e96d137d59"), block.Header.MixHash);
-            
+            Assert.AreEqual(new Keccak("0xff2c80283f139148a9b3f2a9dd19d698475937a85296225a96857599cce6d1e2"), block.Header.MixHash);
+
             Console.WriteLine(block.Header.Nonce);
         }
-        
+
         [Test]
-        [Explicit]
+        [Ignore("use just for finding nonces for other tests")]
         public async Task Find_nonce()
-        {   
-            BlockHeader parentHeader = new BlockHeader(Keccak.Zero, Keccak.OfAnEmptySequenceRlp, Address.Zero, 131072, 0, 21000, 0, new byte[]{});
+        {
+            BlockHeader parentHeader = new BlockHeader(Keccak.Zero, Keccak.OfAnEmptySequenceRlp, Address.Zero, 131072, 0, 21000, 0, new byte[] { });
             parentHeader.RecomputeHash();
-            Block parentBlock = new Block(parentHeader);
-            
-            BlockHeader blockHeader = new BlockHeader(parentHeader.Hash, Keccak.OfAnEmptySequenceRlp, Address.Zero, 131136, 1, 21000, 1, new byte[]{});
+
+            BlockHeader blockHeader = new BlockHeader(parentHeader.Hash, Keccak.OfAnEmptySequenceRlp, Address.Zero, 131136, 1, 21000, 1, new byte[] { });
             blockHeader.Nonce = 7217048144105167954;
             blockHeader.MixHash = new Keccak("0x37d9fb46a55e9dbbffc428f3a1be6f191b3f8eaf52f2b6f53c4b9bae62937105");
             blockHeader.RecomputeHash();
             Block block = new Block(blockHeader);
 
             IEthash ethash = new Ethash();
-            Miner miner = new Miner(ethash);
+            Miner miner = new Miner(ethash, _alwaysOk, _noPending);
             await miner.MineAsync(block, 7217048144105167954);
 
             Assert.True(ethash.Validate(block.Header));
-            
+
             Console.WriteLine(block.Header.Nonce);
             Console.WriteLine(block.Header.MixHash);
         }

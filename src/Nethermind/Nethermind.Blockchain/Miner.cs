@@ -17,6 +17,7 @@
  */
 
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Numerics;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -27,48 +28,57 @@ namespace Nethermind.Blockchain
 {
     public class Miner
     {
-        private readonly IBlockchain _blockchain;
+        private readonly IBlockchainProcessor _blockchain;
+        private readonly IEthash _ethash;
         private readonly ITransactionStore _transactionStore;
 
-        public Miner(IBlockchain blockchain, ITransactionStore transactionStore)
+        public Miner(IEthash ethash, IBlockchainProcessor blockchain, ITransactionStore transactionStore)
         {
+            _ethash = ethash;
             _blockchain = blockchain;
             _transactionStore = transactionStore;
         }
-        
-        private readonly IEthash _ethash;
 
         public BigInteger MinGasPrice { get; set; } = 0;
-        
-        public Miner(IEthash ethash)
-        {
-            _ethash = ethash;
-        }
 
         public async Task<Block> MineAsync(Block block, ulong? startNonce = null)
         {
-//            Transaction[] transactions = _transactionStore.GetPending();
-//            List<Transaction> selected = new List<Transaction>();
-//            BigInteger gasRemaining = block.Header.GasLimit;
-//            foreach (Transaction transaction in transactions)
-//            {
-//                if (transaction.GasPrice < MinGasPrice)
-//                {
-//                    continue;
-//                }
-//                
-//                if (transaction.GasLimit > gasRemaining)
-//                {
-//                    break;
-//                }
-//
-//                selected.Add(transaction);
-//                gasRemaining -= transaction.GasLimit;
-//                
-//                // TODO: any other conditions
-//            }
-            
-            return await Task.Factory.StartNew(() => Mine(block, startNonce));
+            Transaction[] transactions = _transactionStore.GetPending();
+            List<Transaction> selected = new List<Transaction>();
+            BigInteger gasRemaining = block.Header.GasLimit;
+            foreach (Transaction transaction in transactions)
+            {
+                if (transaction.GasPrice < MinGasPrice)
+                {
+                    continue;
+                }
+
+                if (transaction.GasLimit > gasRemaining)
+                {
+                    break;
+                }
+
+                selected.Add(transaction);
+                gasRemaining -= transaction.GasLimit;
+            }
+
+            block.Transactions = selected;
+
+//            block.Header.Beneficiary = _beneficiary;
+//            block.Header.ExtraData = Encoding.ASCII.GetBytes("Nethermind");
+
+            Block processed = _blockchain.Try(block);
+
+            Debug.Assert(processed.Header.TransactionsRoot != null, "transactions root");
+            Debug.Assert(processed.Header.StateRoot != null, "state root");
+            Debug.Assert(processed.Header.ReceiptsRoot != null, "receipts root");
+            Debug.Assert(processed.Header.OmmersHash != null, "ommers hash");
+            Debug.Assert(processed.Header.Bloom != null, "bloom");
+            Debug.Assert(processed.Header.ExtraData != null, "extra data");
+
+            Block minedBlock = await Task.Factory.StartNew(() => Mine(block, startNonce));
+            minedBlock.Header.RecomputeHash();
+            return minedBlock;
         }
 
         private Block Mine(Block block, ulong? startNonce)

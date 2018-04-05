@@ -165,7 +165,7 @@ namespace Nethermind.Runner
                 Hex.ToBytes(headerJson.ExtraData)
             )
             {
-                Bloom = Bloom.EmptyBloom,
+                Bloom = Bloom.Empty,
                 MixHash = new Keccak(headerJson.MixHash),
                 Nonce = (ulong) Hex.ToBytes(headerJson.Nonce).ToUnsignedBigInteger(),               
                 ReceiptsRoot = Keccak.EmptyTreeHash,

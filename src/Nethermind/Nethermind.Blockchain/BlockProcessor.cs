@@ -98,7 +98,7 @@ namespace Nethermind.Blockchain
 
             block.Receipts = receipts;
             block.Header.ReceiptsRoot = receiptTree?.RootHash ?? PatriciaTree.EmptyTreeHash;
-            block.Header.Bloom = receipts.Count > 0 ? receipts.Last().Bloom : Bloom.EmptyBloom;
+            block.Header.Bloom = receipts.Count > 0 ? receipts.Last().Bloom : Bloom.Empty;
         }
 
         private Keccak GetTransactionsRoot(List<Transaction> transactions)

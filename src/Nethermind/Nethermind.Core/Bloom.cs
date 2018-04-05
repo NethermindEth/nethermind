@@ -27,7 +27,7 @@ namespace Nethermind.Core
 {
     public class Bloom : IEquatable<Bloom>
     {
-        public static readonly Bloom EmptyBloom = new Bloom();
+        public static readonly Bloom Empty = new Bloom();
 
         private readonly BitArray _bits;
 

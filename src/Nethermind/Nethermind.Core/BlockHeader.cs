@@ -43,8 +43,8 @@ namespace Nethermind.Core
         }
 
         public Keccak ParentHash { get; internal set; }
-        public Keccak OmmersHash { get; internal set;}
-        public Address Beneficiary { get; internal set;}
+        public Keccak OmmersHash { get; set;}
+        public Address Beneficiary { get; set;}
 
         public Keccak StateRoot { get; set; }
         public Keccak TransactionsRoot { get; set; }
@@ -55,7 +55,7 @@ namespace Nethermind.Core
         public long GasUsed { get; set; }
         public long GasLimit { get; internal set;}
         public BigInteger Timestamp { get; internal set;}
-        public byte[] ExtraData { get; internal set;}
+        public byte[] ExtraData { get; set;}
         public Keccak MixHash { get; set; }
         public ulong Nonce { get; set; }
         public Keccak Hash { get; set; }
