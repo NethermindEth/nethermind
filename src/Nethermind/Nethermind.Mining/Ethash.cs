@@ -150,7 +150,7 @@ namespace Nethermind.Mining
             while(true)
             {
                 byte[] result;
-                (mixHash, result) = Hashimoto(fullSize, GetOrAddCache(header.Number), headerHashed, Keccak.Zero, nonce);
+                (mixHash, result) = Hashimoto(fullSize, GetOrAddCache(header.Number), headerHashed, null, nonce);
                 if (IsLessThanTarget(result, target))
                 {
                     break;
@@ -278,7 +278,7 @@ namespace Nethermind.Mining
             byte[] cmix = new byte[MixBytes / WordBytes];
             Buffer.BlockCopy(cmixInts, 0, cmix, 0, cmix.Length);
 
-            if (expectedMixHash != Keccak.Zero && !Bytes.UnsafeCompare(cmix, expectedMixHash.Bytes))
+            if (expectedMixHash != null && !Bytes.UnsafeCompare(cmix, expectedMixHash.Bytes))
             {
                 // TODO: handle properly
                 throw new InvalidOperationException(); // TODO: need to change this

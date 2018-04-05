@@ -25,8 +25,8 @@ namespace Nethermind.Blockchain
     {
         void Initialize(Block genesisBlock);
         Block HeadBlock { get; }
-        Block SuggestedBlock { get; }
         BigInteger TotalDifficulty { get; }
         void Process(Block block);
+        Block Try(Block block);
     }
 }

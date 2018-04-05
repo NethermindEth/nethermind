@@ -15,6 +15,7 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
+
 using System.Collections.Generic;
 using System.Numerics;
 using Nethermind.Blockchain.Validators;
@@ -36,7 +37,7 @@ namespace Nethermind.Blockchain
         {
             _blockStore = blockStore;
             _blockProcessor = blockProcessor;
-            _logger = logger;    
+            _logger = logger;
         }
 
         public void Initialize(Block genesisBlockRlp)
@@ -45,7 +46,6 @@ namespace Nethermind.Blockchain
         }
 
         public Block HeadBlock { get; private set; }
-        public Block SuggestedBlock { get; private set; }
         public BigInteger TotalDifficulty { get; private set; }
         public BigInteger TotalTransactions { get; private set; }
 
@@ -85,75 +85,79 @@ namespace Nethermind.Blockchain
             return blockHeader.Difficulty + GetTotalDifficulty(parent.Header);
         }
 
-        public void Process(Block suggestedBlock)
+        public Block Try(Block suggestedBlock)
         {
-            try
+            return Process(suggestedBlock, true);
+        }
+
+        public Block Process(Block suggestedBlock, bool tryOnly)
+        {
+            _logger?.Log("-------------------------------------------------------------------------------------");
+            suggestedBlock.Header.RecomputeHash();
+            foreach (BlockHeader ommerHeader in suggestedBlock.Ommers)
             {
-                _logger?.Log("-------------------------------------------------------------------------------------");
-                suggestedBlock.Header.RecomputeHash();
-                foreach (BlockHeader ommerHeader in suggestedBlock.Ommers)
+                ommerHeader.RecomputeHash();
+            }
+
+            BigInteger totalDifficulty = GetTotalDifficulty(suggestedBlock.Header);
+            BigInteger totalTransactions = GetTotalTransactions(suggestedBlock);
+            _logger?.Log($"TOTAL DIFFICULTY OF BLOCK {suggestedBlock.Header.Hash} ({suggestedBlock.Header.Number}) IS {totalDifficulty}");
+            _logger?.Log($"TOTAL TRANSACTIONS OF BLOCK {suggestedBlock.Header.Hash} ({suggestedBlock.Header.Number}) IS {totalTransactions}");
+
+            if (totalDifficulty > TotalDifficulty)
+            {
+                List<Block> blocksToBeAddedToMain = new List<Block>();
+                Block toBeProcessed = suggestedBlock;
+                do
                 {
-                    ommerHeader.RecomputeHash();
+                    blocksToBeAddedToMain.Add(toBeProcessed);
+                    toBeProcessed = _blockStore.FindParent(toBeProcessed);
+                    if (toBeProcessed == null)
+                    {
+                        break;
+                    }
+                } while (!_blockStore.IsMainChain(toBeProcessed.Hash));
+
+                Block branchingPoint = toBeProcessed;
+                Keccak stateRoot = branchingPoint?.Header.StateRoot;
+                _logger?.Log($"STATE ROOT LOOKUP: {stateRoot}");
+                List<Block> unprocessedBlocksToBeAddedToMain = new List<Block>();
+
+                foreach (Block block in blocksToBeAddedToMain)
+                {
+                    if (_blockStore.WasProcessed(block.Hash))
+                    {
+                        stateRoot = block.Header.StateRoot;
+                        _logger?.Log($"STATE ROOT LOOKUP: {stateRoot}");
+                        break;
+                    }
+
+                    unprocessedBlocksToBeAddedToMain.Add(block);
                 }
-                
-                SuggestedBlock = suggestedBlock;
-                BigInteger totalDifficulty = GetTotalDifficulty(suggestedBlock.Header);
-                BigInteger totalTransactions = GetTotalTransactions(suggestedBlock);
-                _logger?.Log($"TOTAL DIFFICULTY OF BLOCK {suggestedBlock.Header.Hash} ({suggestedBlock.Header.Number}) IS {totalDifficulty}");
-                _logger?.Log($"TOTAL TRANSACTIONS OF BLOCK {suggestedBlock.Header.Hash} ({suggestedBlock.Header.Number}) IS {totalTransactions}");
 
-                if (totalDifficulty > TotalDifficulty)
+                Block[] blocks = new Block[unprocessedBlocksToBeAddedToMain.Count];
+                for (int i = 0; i < unprocessedBlocksToBeAddedToMain.Count; i++)
                 {
-                    List<Block> blocksToBeAddedToMain = new List<Block>();
-                    Block toBeProcessed = suggestedBlock;
-                    do
+                    blocks[blocks.Length - i - 1] = unprocessedBlocksToBeAddedToMain[i];
+                }
+
+                _logger?.Log($"PROCESSING {blocks.Length} BLOCKS FROM STATE ROOT {stateRoot}");
+                Block[] processedBlocks = _blockProcessor.Process(stateRoot, blocks, tryOnly);
+
+                List<Block> blocksToBeRemovedFromMain = new List<Block>();
+                if (HeadBlock != branchingPoint && HeadBlock != null)
+                {
+                    blocksToBeRemovedFromMain.Add(HeadBlock);
+                    Block teBeRemovedFromMain = _blockStore.FindParent(HeadBlock);
+                    while (teBeRemovedFromMain != null && teBeRemovedFromMain.Hash != branchingPoint?.Hash)
                     {
-                        blocksToBeAddedToMain.Add(toBeProcessed);
-                        toBeProcessed = _blockStore.FindParent(toBeProcessed);
-                        if (toBeProcessed == null)
-                        {
-                            break;
-                        }
-                    } while (!_blockStore.IsMainChain(toBeProcessed.Hash));
-
-                    Block branchingPoint = toBeProcessed;
-                    Keccak stateRoot = branchingPoint?.Header.StateRoot;
-                    _logger?.Log($"STATE ROOT LOOKUP: {stateRoot}");
-                    List<Block> unprocessedBlocksToBeAddedToMain = new List<Block>();
-
-                    foreach (Block block in blocksToBeAddedToMain)
-                    {
-                        if (_blockStore.WasProcessed(block.Hash))
-                        {
-                            stateRoot = block.Header.StateRoot;
-                            _logger?.Log($"STATE ROOT LOOKUP: {stateRoot}");
-                            break;
-                        }
-
-                        unprocessedBlocksToBeAddedToMain.Add(block);
+                        blocksToBeRemovedFromMain.Add(teBeRemovedFromMain);
+                        teBeRemovedFromMain = _blockStore.FindParent(teBeRemovedFromMain);
                     }
+                }
 
-                    Block[] blocks = new Block[unprocessedBlocksToBeAddedToMain.Count];
-                    for (int i = 0; i < unprocessedBlocksToBeAddedToMain.Count; i++)
-                    {
-                        blocks[blocks.Length - i - 1] = unprocessedBlocksToBeAddedToMain[i];
-                    }
-
-                    _logger?.Log($"PROCESSING {blocks.Length} BLOCKS FROM STATE ROOT {stateRoot}");
-                    Block[] processedBlocks = _blockProcessor.Process(stateRoot, blocks);
-
-                    List<Block> blocksToBeRemovedFromMain = new List<Block>();
-                    if (HeadBlock != branchingPoint && HeadBlock != null)
-                    {
-                        blocksToBeRemovedFromMain.Add(HeadBlock);
-                        Block teBeRemovedFromMain = _blockStore.FindParent(HeadBlock);
-                        while (teBeRemovedFromMain != null && teBeRemovedFromMain.Hash != branchingPoint?.Hash)
-                        {
-                            blocksToBeRemovedFromMain.Add(teBeRemovedFromMain);
-                            teBeRemovedFromMain = _blockStore.FindParent(teBeRemovedFromMain);
-                        }
-                    }
-
+                if (!tryOnly)
+                {
                     HeadBlock = processedBlocks[processedBlocks.Length - 1];
                     _blockStore.AddBlock(HeadBlock, false);
 
@@ -174,16 +178,22 @@ namespace Nethermind.Blockchain
                     _logger?.Log($"UPDATING TOTAL TRANSACTIONS OF THE MAIN CHAIN TO {totalTransactions}");
                     TotalTransactions = totalTransactions;
                 }
-                else
-                {
-                    // lower difficulty branch
-                    _blockStore.AddBlock(suggestedBlock, false);
-                }
+
+                return processedBlocks[processedBlocks.Length - 1];
             }
-            finally
+
+            if (!tryOnly)
             {
-                SuggestedBlock = null;
+                // lower difficulty branch
+                _blockStore.AddBlock(suggestedBlock, false);
             }
+
+            return null;
+        }
+
+        public void Process(Block suggestedBlock)
+        {
+            Process(suggestedBlock, false);
         }
     }
 }

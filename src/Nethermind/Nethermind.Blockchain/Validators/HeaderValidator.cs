@@ -17,6 +17,7 @@
  */
 
 using System.Numerics;
+using Nethermind.Blockchain.Difficulty;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -31,17 +32,19 @@ namespace Nethermind.Blockchain.Validators
         private readonly IEthash _ethash;
         private readonly BigInteger? _daoBlockNumber;
         private readonly ILogger _logger;
+        private readonly IDifficultyCalculator _difficultyCalculator;
         private readonly IBlockStore _chain;
 
-        public HeaderValidator(IBlockStore chain, IEthash ethash, ISpecProvider specProvider, ILogger logger)
+        public HeaderValidator(IDifficultyCalculator difficultyCalculator, IBlockStore chain, IEthash ethash, ISpecProvider specProvider, ILogger logger)
         {
+            _difficultyCalculator = difficultyCalculator;
             _chain = chain;
             _ethash = ethash;
             _daoBlockNumber = specProvider?.DaoBlockNumber;
             _logger = logger;
         }
-
-        public bool Validate(BlockHeader header, bool isOmmer = false)
+        
+        public bool Validate(BlockHeader header, bool isOmmer = false, bool ignoreProof = false)
         {
             Block parent = _chain.FindParent(header);
             if (parent == null)
@@ -59,10 +62,17 @@ namespace Nethermind.Blockchain.Validators
                 return false;
             }
 
-            bool areNonceValidAndMixHashValid = _ethash.Validate(header);
+            bool areNonceValidAndMixHashValid = ignoreProof || _ethash.Validate(header);
             if (!areNonceValidAndMixHashValid)
             {
                 _logger?.Log($"Invalid block header ({header.Hash}) - invalid mix hash / nonce");
+            }
+            
+            BigInteger difficulty = _difficultyCalculator.Calculate(parent.Header.Difficulty, parent.Header.Timestamp, header.Timestamp, header.Number, parent.Ommers.Length > 0);
+            bool isDifficultyCorrect = difficulty == header.Difficulty;
+            if (!isDifficultyCorrect)
+            {
+                _logger?.Log($"Invalid block header ({header.Hash}) - difficulty value incorrect");
             }
 
             // difficulty check
@@ -127,6 +137,7 @@ namespace Nethermind.Blockchain.Validators
                 gasUsedBelowLimit &&
                 gasLimitNotTooLow &&
                 gasLimitNotTooHigh &&
+                isDifficultyCorrect &&
 //                   gasLimitAboveAbsoluteMinimum && // TODO: tests are consistently not following this rule
                 timestampMoreThanAtParent &&
                 numberIsParentPlusOne &&

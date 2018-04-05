@@ -211,7 +211,7 @@ namespace Ethereum.Test.Base
             IBlockhashProvider blockhashProvider = new BlockhashProvider(chain);
             ISignatureValidator signatureValidator = new SignatureValidator(_releaseSpec, ChainId.MainNet);
             ITransactionValidator transactionValidator = new TransactionValidator(_releaseSpec, signatureValidator);
-            IHeaderValidator headerValidator = new HeaderValidator(chain, Ethash, specProvider, stateLogger);
+            IHeaderValidator headerValidator = new HeaderValidator(new DifficultyCalculator(_releaseSpec), chain, Ethash, specProvider, stateLogger);
             IOmmersValidator ommersValidator = new OmmersValidator(chain, headerValidator, stateLogger);
             IBlockValidator blockValidator = new BlockValidator(transactionValidator, headerValidator, ommersValidator, stateLogger);
             _stateProvider = new StateProvider(stateTree, _releaseSpec, stateLogger, dbProvider.GetOrCreateCodeDb());
@@ -228,7 +228,6 @@ namespace Ethereum.Test.Base
                 specProvider,
                 chain,
                 blockValidator,
-                new DifficultyCalculator(_releaseSpec),
                 new RewardCalculator(_releaseSpec),
                 new TransactionProcessor(
                     _releaseSpec,

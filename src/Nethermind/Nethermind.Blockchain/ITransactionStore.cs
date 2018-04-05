@@ -30,5 +30,7 @@ namespace Nethermind.Blockchain
         bool WasProcessed(Keccak transactionHash);
         ///get hash of the block transaction was in
         Keccak GetBlockHash(Keccak transactionHash);
+        void AddPending(Transaction transaction);
+        Transaction[] GetPending();
     }
 }

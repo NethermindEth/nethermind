@@ -554,7 +554,7 @@ namespace Nethermind.JsonRpc.Module
         {
             if (blockParameter.Type == BlockParameterType.Pending)
             {
-                var count = _blockchainProcessor.SuggestedBlock.Ommers.Length;
+                var count = _blockchainProcessor.HeadBlock.Ommers.Length;
                 return ResultWrapper<Quantity>.Success(new Quantity(count));
             }
 
@@ -570,7 +570,7 @@ namespace Nethermind.JsonRpc.Module
         {
             if (blockParameter.Type == BlockParameterType.Pending)
             {
-                var count = _blockchainProcessor.SuggestedBlock.Transactions.Count;
+                var count = _blockchainProcessor.HeadBlock.Transactions.Count;
                 return ResultWrapper<Quantity>.Success(new Quantity(count));
             }
 
@@ -635,7 +635,7 @@ namespace Nethermind.JsonRpc.Module
             switch (blockParameter.Type)
             {
                 case BlockParameterType.Pending:
-                    return ResultWrapper<Core.Block>.Success(_blockchainProcessor.SuggestedBlock);
+                    return ResultWrapper<Core.Block>.Success(_blockchainProcessor.HeadBlock); // TODO: a pending block for miner, work in progress
                 case BlockParameterType.Latest:
                     return ResultWrapper<Core.Block>.Success(_blockchainProcessor.HeadBlock);
                 case BlockParameterType.Earliest:

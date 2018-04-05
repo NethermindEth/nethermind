@@ -22,6 +22,6 @@ namespace Nethermind.Blockchain
 {
     public interface IBlockProcessor
     {
-        Block[] Process(Keccak branchStateRoot, Block[] suggestedBlocks);
+        Block[] Process(Keccak branchStateRoot, Block[] suggestedBlocks, bool tryOnly);
     }
 }

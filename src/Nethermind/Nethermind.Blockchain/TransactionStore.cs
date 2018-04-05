@@ -44,5 +44,15 @@ namespace Nethermind.Blockchain
         {
             return _blockHashes.TryGetValue(transactionHash, out var blockHash) ? blockHash : null;
         }
+
+        public void AddPending(Transaction transaction)
+        {
+            throw new System.NotImplementedException();
+        }
+
+        public Transaction[] GetPending()
+        {
+            throw new System.NotImplementedException();
+        }
     }
 }

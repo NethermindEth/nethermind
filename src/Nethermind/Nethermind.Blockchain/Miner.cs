@@ -16,16 +16,30 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Collections.Generic;
+using System.Numerics;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Mining;
 
-namespace Nethermind.Mining
+namespace Nethermind.Blockchain
 {
     public class Miner
     {
+        private readonly IBlockchain _blockchain;
+        private readonly ITransactionStore _transactionStore;
+
+        public Miner(IBlockchain blockchain, ITransactionStore transactionStore)
+        {
+            _blockchain = blockchain;
+            _transactionStore = transactionStore;
+        }
+        
         private readonly IEthash _ethash;
 
+        public BigInteger MinGasPrice { get; set; } = 0;
+        
         public Miner(IEthash ethash)
         {
             _ethash = ethash;
@@ -33,6 +47,27 @@ namespace Nethermind.Mining
 
         public async Task<Block> MineAsync(Block block, ulong? startNonce = null)
         {
+//            Transaction[] transactions = _transactionStore.GetPending();
+//            List<Transaction> selected = new List<Transaction>();
+//            BigInteger gasRemaining = block.Header.GasLimit;
+//            foreach (Transaction transaction in transactions)
+//            {
+//                if (transaction.GasPrice < MinGasPrice)
+//                {
+//                    continue;
+//                }
+//                
+//                if (transaction.GasLimit > gasRemaining)
+//                {
+//                    break;
+//                }
+//
+//                selected.Add(transaction);
+//                gasRemaining -= transaction.GasLimit;
+//                
+//                // TODO: any other conditions
+//            }
+            
             return await Task.Factory.StartNew(() => Mine(block, startNonce));
         }
 

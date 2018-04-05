@@ -152,7 +152,8 @@ namespace Nethermind.PeerConsole
             IReleaseSpec dynamicSpecForVm = new DynamicReleaseSpec(RopstenSpecProvider.Instance);
             
             IBlockStore blockStore = new BlockStore();
-            IHeaderValidator headerValidator = new HeaderValidator(blockStore, new Ethash(), RopstenSpecProvider.Instance, logger);
+            IDifficultyCalculator calculator = new DifficultyCalculator(dynamicSpecForVm); // dynamic spec here will be broken
+            IHeaderValidator headerValidator = new HeaderValidator(calculator, blockStore, new Ethash(), RopstenSpecProvider.Instance, logger);
             IOmmersValidator ommersValidator = new OmmersValidator(blockStore, headerValidator, logger);
             IReleaseSpec currentSpec = RopstenSpecProvider.Instance.GetCurrentSpec();
             ITransactionValidator transactionValidator = new TransactionValidator(currentSpec, new SignatureValidator(currentSpec, ChainId.Ropsten));
@@ -165,13 +166,13 @@ namespace Nethermind.PeerConsole
             StateTree stateTree = new StateTree(stateDb);
             IStateProvider stateProvider = new StateProvider(stateTree, dynamicSpecForVm, logger, codeDb);
             IStorageProvider storageProvider = new StorageProvider(dbProvider, stateProvider, logger);
-            IDifficultyCalculator calculator = new DifficultyCalculator(dynamicSpecForVm); // dynamic spec here will be broken
+            
             IRewardCalculator rewardCalculator = new RewardCalculator(dynamicSpecForVm);
             IVirtualMachine virtualMachine = new VirtualMachine(dynamicSpecForVm, stateProvider, storageProvider, blockhashProvider, logger);
             IEthereumSigner ethereumSigner = new EthereumSigner(dynamicSpecForVm, ChainId.Ropsten);
             ITransactionProcessor processor = new TransactionProcessor(dynamicSpecForVm, stateProvider, storageProvider, virtualMachine, ethereumSigner, logger);
             ITransactionStore transactionStore = new TransactionStore();
-            IBlockProcessor blockProcessor = new BlockProcessor(RopstenSpecProvider.Instance, blockStore, blockValidator, calculator, rewardCalculator, processor, dbProvider, stateProvider, storageProvider, transactionStore, logger);
+            IBlockProcessor blockProcessor = new BlockProcessor(RopstenSpecProvider.Instance, blockStore, blockValidator, rewardCalculator, processor, dbProvider, stateProvider, storageProvider, transactionStore, logger);
             IBlockchainProcessor blockchainProcessor = new BlockchainProcessor(blockProcessor, blockStore, logger);
             
             ChainSpecLoader loader = new ChainSpecLoader(new UnforgivingJsonSerializer());
