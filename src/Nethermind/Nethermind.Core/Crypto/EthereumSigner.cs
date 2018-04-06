@@ -45,11 +45,11 @@ namespace Nethermind.Core.Crypto
         
         public void Sign(PrivateKey privateKey, Transaction transaction)
         {
-            _logger.Debug($"Signing transaction: {transaction.Value} to {transaction.To}");
+            _logger?.Debug($"Signing transaction: {transaction.Value} to {transaction.To}");
             bool isEip155Enabled = _specProvider.GetCurrentSpec().IsEip155Enabled;
             Keccak hash = Keccak.Compute(Rlp.Encode(transaction, true, isEip155Enabled, _chainIdValue));
             transaction.Signature = Sign(privateKey, hash);
-            _logger.Debug("Transaction signed");
+            _logger?.Debug("Transaction signed");
         }
 
         public bool Verify(Address sender, Transaction transaction, BigInteger blockNumber)

@@ -52,7 +52,7 @@ namespace Ethereum.Test.Base
         [SetUp]
         public void Setup()
         {
-            Setup(ShouldLog.Processing ? (ILogger)new ConsoleLogger() : NullLogger.Instance);
+            Setup(new ConsoleLogger());
         }
 
         public static IEnumerable<BlockchainTest> LoadTests(string testSet)
@@ -228,7 +228,7 @@ namespace Ethereum.Test.Base
                 ShouldLog.Evm ? _logger : null);
 
             ITransactionStore transactionStore = new TransactionStore();
-            IEthereumSigner signer = new EthereumSigner(specProvider, _logger);
+            IEthereumSigner signer = new EthereumSigner(specProvider, ShouldLog.Processing ? _logger : null);
             IBlockProcessor blockProcessor = new BlockProcessor(
                 specProvider,
                 blockValidator,
@@ -382,7 +382,10 @@ namespace Ethereum.Test.Base
                     differences.Add($"{accountState.Key} code exp: {accountState.Value.Code?.Length}, actual: {code?.Length}");
                 }
 
-                _logger?.Log(differences.Count == differencesBefore ? $"ACCOUNT STATE ({accountState.Key}) IS OK" : $"ACCOUNT STATE ({accountState.Key}) HAS DIFFERENCES");
+                if (differences.Count != differencesBefore)
+                {
+                    _logger?.Log($"ACCOUNT STATE ({accountState.Key}) HAS DIFFERENCES");    
+                }
 
                 differencesBefore = differences.Count;
 
@@ -395,7 +398,10 @@ namespace Ethereum.Test.Base
                     }
                 }
 
-                _logger?.Log(differences.Count == differencesBefore ? $"ACCOUNT STORAGE ({accountState.Key}) IS OK" : $"ACCOUNT STORAGE ({accountState.Key}) HAS DIFFERENCES");
+                if (differences.Count != differencesBefore)
+                {
+                    _logger?.Log($"ACCOUNT STORAGE ({accountState.Key}) HAS DIFFERENCES");    
+                }
             }
 
 
