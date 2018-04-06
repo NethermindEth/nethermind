@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Threading.Tasks;
 using Ethereum.Test.Base;
 using NUnit.Framework;
 
@@ -25,9 +26,9 @@ namespace Ethereum.Blockchain.Block.Test
     public class BlockGasLimitTests : BlockchainTestBase
     {
         [TestCaseSource(nameof(LoadTests), new object[] { "bcBlockGasLimitTest" })]
-        public void Test(BlockchainTest test)
+        public async Task Test(BlockchainTest test)
         {
-            RunTest(test);
+            await RunTest(test);
         }
     }
 }

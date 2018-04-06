@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,19 +16,18 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Threading.Tasks;
-using Ethereum.Test.Base;
-using NUnit.Framework;
+using System;
+using Nethermind.Core;
 
-namespace Ethereum.Blockchain.Test
+namespace Nethermind.Blockchain
 {
-    [TestFixture]
-    public class Eip158SpecificTests : BlockchainTestBase
+    public class BlockEventArgs : EventArgs
     {
-        [TestCaseSource(nameof(LoadTests), new object[] { "stEIP158Specific" })]
-        public async Task Test(BlockchainTest test)
-        {    
-            await RunTest(test);
+        public Block Block { get; }
+
+        public BlockEventArgs(Block block)
+        {
+            Block = block;
         }
     }
 }

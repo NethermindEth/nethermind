@@ -23,6 +23,7 @@ using System.IO;
 using System.Linq;
 using System.Numerics;
 using System.Text;
+using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Difficulty;
 using Nethermind.Blockchain.Validators;
@@ -51,7 +52,7 @@ namespace Ethereum.Test.Base
         [SetUp]
         public void Setup()
         {
-            Setup(new ConsoleLogger());
+            Setup(ShouldLog.Processing ? (ILogger)new ConsoleLogger() : NullLogger.Instance);
         }
 
         public static IEnumerable<BlockchainTest> LoadTests(string testSet)
@@ -178,7 +179,7 @@ namespace Ethereum.Test.Base
             _logger = logger;
         }
 
-        protected void RunTest(BlockchainTest test, Stopwatch stopwatch = null)
+        protected async Task RunTest(BlockchainTest test, Stopwatch stopwatch = null)
         {
             LoggingTraceListener traceListener = new LoggingTraceListener(_logger);
             // TODO: not supported in .NET Core, need to replace?
@@ -238,12 +239,12 @@ namespace Ethereum.Test.Base
                     _storageProvider,
                     virtualMachine,
                     signer,
-                    ShouldLog.Processing ? _logger : null),
+                    ShouldLog.Processing ? _logger : NullLogger.Instance),
                 dbProvider,
                 _stateProvider,
                 _storageProvider,
                 transactionStore,
-                ShouldLog.Processing ? _logger : null);
+                ShouldLog.Processing ? _logger : NullLogger.Instance);
 
             IBlockchainProcessor blockchainProcessor = new BlockchainProcessor(
                 blockProcessor,
@@ -251,7 +252,7 @@ namespace Ethereum.Test.Base
                 transactionStore,
                 difficultyCalculator,
                 new EthashSealEngine(new Ethash()), 
-                ShouldLog.Processing ? _logger : null);
+                ShouldLog.Processing ? _logger : NullLogger.Instance);
 
             InitializeTestState(test, _stateProvider, _storageProvider);
 
@@ -283,8 +284,15 @@ namespace Ethereum.Test.Base
             }
 
             Block genesisBlock = Rlp.Decode<Block>(test.GenesisRlp);
-            blockchainProcessor.SuggestBlock(genesisBlock);
-            Assert.AreEqual(genesisBlock.Header.StateRoot, stateTree.RootHash, "genesis state root");
+            blockchainProcessor.HeadBlockChanged += (sender, args) =>
+            {
+                if (args.Block.Number == 0)
+                {
+                    Assert.AreEqual(genesisBlock.Header.StateRoot, stateTree.RootHash, "genesis state root");        
+                }
+            };
+                
+            blockchainProcessor.Start(genesisBlock);
 
             for (int i = 0; i < correctRlpsBlocks.Count; i++)
             {
@@ -307,8 +315,10 @@ namespace Ethereum.Test.Base
                     _logger?.Log(ex.ToString());
                 }
 
-                stopwatch?.Stop();
+                stopwatch?.Stop(); // TODO: this stopwatch does not have any meaning any more (temporarily)
             }
+
+            await blockchainProcessor.StopAsync(true);
 
             RunAssertions(test, blockchainProcessor.HeadBlock);
         }

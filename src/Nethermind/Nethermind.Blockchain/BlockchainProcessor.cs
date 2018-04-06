@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -68,41 +69,49 @@ namespace Nethermind.Blockchain
         private CancellationTokenSource _cancellationSource;
         private Task _processorTask;
 
-        public async Task StopAsync()
+        public async Task StopAsync(bool processRamainingBlocks)
         {
-            _cancellationSource.Cancel();
+            if (processRamainingBlocks)
+            {
+                _suggestedBlocks.CompleteAdding();
+            }
+            else
+            {
+                _cancellationSource.Cancel();    
+            }
+            
             await _processorTask;
         }
 
         public void Start(Block genesisBlock)
         {
             _cancellationSource = new CancellationTokenSource();
-            _logger.Log($"Processing genesis block ({genesisBlock.Hash}).");
+            _logger?.Log($"Processing genesis block ({genesisBlock.Hash}).");
             Process(genesisBlock);
             _processorTask = Task.Factory.StartNew(() =>
                 {
-                    _logger.Log($"Starting block processor - {_suggestedBlocks.Count} blocks waiting in the queue.");
+                    _logger?.Log($"Starting block processor - {_suggestedBlocks.Count} blocks waiting in the queue.");
                     if (_suggestedBlocks.Count == 0 && _sealEngine.IsMining)
                     {
-                        _logger.Log("Nothing in the queue so I mine my own.");
+                        _logger?.Log("Nothing in the queue so I mine my own.");
                         BuildAndSeal();
-                        _logger.Log("Will go and wait for another block now...");
+                        _logger?.Log("Will go and wait for another block now...");
                     }
 
                     foreach (Block block in _suggestedBlocks.GetConsumingEnumerable(_cancellationSource.Token))
                     {
-                        _logger.Log($"Processing a suggested block ({block.Hash}).");
+                        _logger?.Log($"Processing a suggested block ({block.Hash}).");
                         Process(block);
-                        _logger.Log($"Now {_suggestedBlocks.Count} blocks waiting in the queue.");
+                        _logger?.Log($"Now {_suggestedBlocks.Count} blocks waiting in the queue.");
                         if (_suggestedBlocks.Count == 0 && _sealEngine.IsMining)
                         {
-                            _logger.Log("Nothing in the queue so I mine my own.");
+                            _logger?.Log("Nothing in the queue so I mine my own.");
                             BuildAndSeal();
-                            _logger.Log("Will go and wait for another block now...");
+                            _logger?.Log("Will go and wait for another block now...");
                         }
                     }
 
-                    _logger.Log("I shall never end here...");
+                    _logger?.Log("I shall never end here...");
                 },
                 _cancellationSource.Token,
                 TaskCreationOptions.LongRunning,
@@ -110,28 +119,30 @@ namespace Nethermind.Blockchain
             {
                 if (t.IsFaulted)
                 {
-                    _logger.Error($"Blockchain processor encountered an exception {t.Exception}.");
+                    _logger?.Error($"Blockchain processor encountered an exception {t.Exception}.");
                 }
                 else if(t.IsCanceled)
                 {
-                    _logger.Error("Blockchain processor stopped.");
+                    _logger?.Error("Blockchain processor stopped.");
                 }
                 else if(t.IsCompleted)
                 {
-                    _logger.Error("Sisyphus made it");
+                    _logger?.Error("Blockchain processor complete.");
                 }
             });
         }
 
         public void SuggestBlock(Block block)
         {
-            _logger.Log($"Enqueuing a new block ({block.Hash}) for processing.");
-            _logger.Debug($"Number {block.Number}");
-            _logger.Debug($"Hash {block.Hash}");
+            _logger?.Log($"Enqueuing a new block ({block.Hash}) for processing.");
+            _logger?.Debug($"Number {block.Number}");
+            _logger?.Debug($"Hash {block.Hash}");
 
             _suggestedBlocks.Add(block);
-            _logger.Log($"A new block ({block.Hash}) suggested for processing.");
+            _logger?.Log($"A new block ({block.Hash}) suggested for processing.");
         }
+
+        public event EventHandler<BlockEventArgs> HeadBlockChanged;
 
         private BigInteger GetTotalTransactions(Block block)
         {
@@ -191,18 +202,18 @@ namespace Nethermind.Blockchain
             
             List<Transaction> selected = new List<Transaction>();
             BigInteger gasRemaining = header.GasLimit;
-            _logger.Debug($"Collecting pending transactions at min gas price {MinGasPriceForMining} and block gas limit {gasRemaining}.");
+            _logger?.Debug($"Collecting pending transactions at min gas price {MinGasPriceForMining} and block gas limit {gasRemaining}.");
             foreach (Transaction transaction in transactions)
             {
                 if (transaction.GasPrice < MinGasPriceForMining)
                 {
-                    _logger.Debug($"Rejecting transaction - gas price ({transaction.GasPrice}) too low (min gas price: {MinGasPriceForMining}.");
+                    _logger?.Debug($"Rejecting transaction - gas price ({transaction.GasPrice}) too low (min gas price: {MinGasPriceForMining}.");
                     continue;
                 }
 
                 if (transaction.GasLimit > gasRemaining)
                 {
-                    _logger.Debug($"Rejecting transaction - gas limit ({transaction.GasPrice}) more than remaining gas ({gasRemaining}).");
+                    _logger?.Debug($"Rejecting transaction - gas limit ({transaction.GasPrice}) more than remaining gas ({gasRemaining}).");
                     break;
                 }
 
@@ -210,7 +221,7 @@ namespace Nethermind.Blockchain
                 gasRemaining -= transaction.GasLimit;
             }
             
-            _logger.Debug($"Collected {selected.Count} out of {transactions.Length} pending transactions.");
+            _logger?.Debug($"Collected {selected.Count} out of {transactions.Length} pending transactions.");
 
             header.TransactionsRoot = GetTransactionsRoot(selected);
 
@@ -322,6 +333,8 @@ namespace Nethermind.Blockchain
                     TotalDifficulty = totalDifficulty;
                     _logger?.Log($"UPDATING TOTAL TRANSACTIONS OF THE MAIN CHAIN TO {totalTransactions}");
                     TotalTransactions = totalTransactions;
+                    
+                    HeadBlockChanged?.Invoke(this, new BlockEventArgs(HeadBlock));
                 }
                 else
                 {

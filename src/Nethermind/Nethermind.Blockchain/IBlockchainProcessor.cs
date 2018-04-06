@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Numerics;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -28,7 +29,8 @@ namespace Nethermind.Blockchain
         BigInteger TotalDifficulty { get; }
         BigInteger TotalTransactions { get; }
         void Start(Block genesisBlock);
-        Task StopAsync();
+        Task StopAsync(bool processRemainingBlocks = false);
         void SuggestBlock(Block block);
+        event EventHandler<BlockEventArgs> HeadBlockChanged;
     }
 }
