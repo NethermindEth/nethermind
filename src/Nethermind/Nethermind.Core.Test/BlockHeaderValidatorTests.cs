@@ -54,7 +54,7 @@ namespace Nethermind.Core.Test
     public class BlockHeaderValidatorTests
     {
         private IHeaderValidator _validator;
-        private IEthash _ethash;
+        private ISealEngine _ethash;
         private TestLogger _testLogger;
         private Block _parentBlock;
         private Block _block;
@@ -64,10 +64,10 @@ namespace Nethermind.Core.Test
         [SetUp]
         public void Setup()
         {
-            _ethash = new Ethash();
+            _ethash = new EthashSealEngine(new Ethash());
             _testLogger = new TestLogger();
             BlockStore blockStore = new BlockStore();
-            DifficultyCalculator calculator = new DifficultyCalculator(Frontier.Instance);   
+            DifficultyCalculator calculator = new DifficultyCalculator(new SingleReleaseSpecProvider(Frontier.Instance, 1));   
             
             _validator = new HeaderValidator(calculator, blockStore, _ethash, new SingleReleaseSpecProvider(Byzantium.Instance, 3), _testLogger);
             _parentHeader = new BlockHeader(Keccak.Zero, Keccak.OfAnEmptySequenceRlp, Address.Zero, 131072, 0, 21000, 0, new byte[]{});

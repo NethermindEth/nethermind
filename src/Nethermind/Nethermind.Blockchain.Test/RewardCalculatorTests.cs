@@ -9,8 +9,7 @@ namespace Nethermind.Blockchain.Test
         [Ignore("To be implemented when the test framework is expanded")]
         public void Two_uncles_from_the_same_coinbase()
         {
-            IReleaseSpec spec = Frontier.Instance;
-            RewardCalculator calculator = new RewardCalculator(spec);
+            RewardCalculator calculator = new RewardCalculator(RopstenSpecProvider.Instance);
 //            calculator.CalculateRewards()
         }
     }

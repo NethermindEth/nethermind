@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,15 +16,21 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Numerics;
-using Nethermind.Core;
-
-namespace Nethermind.Blockchain
+namespace Nethermind.Core.Test.Builders
 {
-    public interface IBlockchainProcessor
+    public class BlockBuilder : BuilderBase<Block>
     {
-        Block HeadBlock { get; }
-        BigInteger TotalDifficulty { get; }
-        void Process(Block block);
+        private readonly Block _block;
+        
+        public BlockBuilder()
+        {
+            BlockHeader header = Build.A.BlockHeader().ToTest();
+            _block = new Block(header);
+        }
+
+        public override Block ToTest()
+        {
+            return _block;
+        }
     }
 }

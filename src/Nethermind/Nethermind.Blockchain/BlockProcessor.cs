@@ -47,7 +47,6 @@ namespace Nethermind.Blockchain
 
         public BlockProcessor(
             ISpecProvider specProvider,
-            IBlockStore blockStore,
             IBlockValidator blockValidator,
             IRewardCalculator rewardCalculator,
             ITransactionProcessor transactionProcessor,
@@ -57,7 +56,6 @@ namespace Nethermind.Blockchain
         {
             _specProvider = specProvider;
             _logger = logger;
-            _blockStore = blockStore;
             _blockValidator = blockValidator;
             _stateProvider = stateProvider;
             _storageProvider = storageProvider;
@@ -67,7 +65,6 @@ namespace Nethermind.Blockchain
             _dbProvider = dbProvider;
         }
 
-        private readonly IBlockStore _blockStore;
         private readonly IBlockValidator _blockValidator;
 
         private void ProcessTransactions(Block block, List<Transaction> transactions)
@@ -179,13 +176,6 @@ namespace Nethermind.Blockchain
             if (suggestedBlock.IsGenesis)
             {
                 return suggestedBlock;
-            }
-
-            Block parent = _blockStore.FindParent(suggestedBlock.Header);
-            if (parent == null)
-            {
-                _logger?.Log($"DISCARDING BLOCK - COULD NOT FIND PARENT OF {suggestedBlock.Header.Hash} (child of {suggestedBlock.Header.ParentHash}) {suggestedBlock.Header.Number}");
-                throw new InvalidBlockException();
             }
 
             // TODO: unimportant but out of curiosity, is the check faster than cast to nullable?

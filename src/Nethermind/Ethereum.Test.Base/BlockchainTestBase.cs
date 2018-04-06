@@ -42,7 +42,7 @@ namespace Ethereum.Test.Base
     public class BlockchainTestBase
     {
         private ILogger _logger;
-        private static readonly Ethash Ethash = new Ethash(); // temporarily keep reusing the same one as otherwise it would recreate cache for each test
+        private static readonly ISealEngine SealEngine = new EthashSealEngine(new Ethash()); // temporarily keep reusing the same one as otherwise it would recreate cache for each test
 
         private IStateProvider _stateProvider;
         private IStorageProvider _storageProvider;
@@ -208,10 +208,13 @@ namespace Ethereum.Test.Base
 
             _releaseSpec = new DynamicReleaseSpec(specProvider);
 
+            IDifficultyCalculator difficultyCalculator = new DifficultyCalculator(specProvider);
+            IRewardCalculator rewardCalculator = new RewardCalculator(specProvider);
+            
             IBlockhashProvider blockhashProvider = new BlockhashProvider(chain);
             ISignatureValidator signatureValidator = new SignatureValidator(_releaseSpec, ChainId.MainNet);
             ITransactionValidator transactionValidator = new TransactionValidator(_releaseSpec, signatureValidator);
-            IHeaderValidator headerValidator = new HeaderValidator(new DifficultyCalculator(_releaseSpec), chain, Ethash, specProvider, stateLogger);
+            IHeaderValidator headerValidator = new HeaderValidator(difficultyCalculator, chain, SealEngine, specProvider, stateLogger);
             IOmmersValidator ommersValidator = new OmmersValidator(chain, headerValidator, stateLogger);
             IBlockValidator blockValidator = new BlockValidator(transactionValidator, headerValidator, ommersValidator, stateLogger);
             _stateProvider = new StateProvider(stateTree, _releaseSpec, stateLogger, dbProvider.GetOrCreateCodeDb());
@@ -223,12 +226,12 @@ namespace Ethereum.Test.Base
                 blockhashProvider,
                 ShouldLog.Evm ? _logger : null);
 
+            ITransactionStore transactionStore = new TransactionStore();
             IEthereumSigner signer = new EthereumSigner(_releaseSpec, ChainId.MainNet);
             IBlockProcessor blockProcessor = new BlockProcessor(
                 specProvider,
-                chain,
                 blockValidator,
-                new RewardCalculator(_releaseSpec),
+                rewardCalculator,
                 new TransactionProcessor(
                     _releaseSpec,
                     _stateProvider,
@@ -239,12 +242,15 @@ namespace Ethereum.Test.Base
                 dbProvider,
                 _stateProvider,
                 _storageProvider,
-                new TransactionStore(),
+                transactionStore,
                 ShouldLog.Processing ? _logger : null);
 
             IBlockchainProcessor blockchainProcessor = new BlockchainProcessor(
                 blockProcessor,
                 chain,
+                transactionStore,
+                difficultyCalculator,
+                new EthashSealEngine(new Ethash()), 
                 ShouldLog.Processing ? _logger : null);
 
             InitializeTestState(test, _stateProvider, _storageProvider);
@@ -277,7 +283,7 @@ namespace Ethereum.Test.Base
             }
 
             Block genesisBlock = Rlp.Decode<Block>(test.GenesisRlp);
-            blockchainProcessor.Initialize(genesisBlock);
+            blockchainProcessor.Process(genesisBlock);
             Assert.AreEqual(genesisBlock.Header.StateRoot, stateTree.RootHash, "genesis state root");
 
             for (int i = 0; i < correctRlpsBlocks.Count; i++)

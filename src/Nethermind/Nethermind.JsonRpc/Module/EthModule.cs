@@ -635,7 +635,7 @@ namespace Nethermind.JsonRpc.Module
             switch (blockParameter.Type)
             {
                 case BlockParameterType.Pending:
-                    return ResultWrapper<Core.Block>.Success(_blockchainProcessor.HeadBlock); // TODO: a pending block for miner, work in progress
+                    return ResultWrapper<Core.Block>.Success(_blockchainProcessor.HeadBlock); // TODO: a pending block for sealEngine, work in progress
                 case BlockParameterType.Latest:
                     return ResultWrapper<Core.Block>.Success(_blockchainProcessor.HeadBlock);
                 case BlockParameterType.Earliest:

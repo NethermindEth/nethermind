@@ -92,7 +92,7 @@ namespace Ethereum.Difficulty.Test
 
         protected void RunTest(DifficultyTests test, ISpecProvider specProvider)
         {
-            IDifficultyCalculator calculator = new DifficultyCalculator(specProvider.GetSpec(test.CurrentBlockNumber));
+            IDifficultyCalculator calculator = new DifficultyCalculator(specProvider);
 
             BigInteger difficulty = calculator.Calculate(
                 test.ParentDifficulty,

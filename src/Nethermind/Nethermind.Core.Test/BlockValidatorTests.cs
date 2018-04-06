@@ -36,7 +36,7 @@ namespace Nethermind.Core.Test
             IReleaseSpec spec = Olympic.Instance;
             IBlockStore blockchain = Substitute.For<IBlockStore>();
 
-            HeaderValidator headerValidator = new HeaderValidator(new DifficultyCalculator(spec), blockchain, new Ethash(), null, null);
+            HeaderValidator headerValidator = new HeaderValidator(new DifficultyCalculator(new SingleReleaseSpecProvider(spec, 0)), blockchain, NullSealEngine.Instance, null, null);
             OmmersValidator ommersValidator = new OmmersValidator(blockchain, headerValidator, null);
             SignatureValidator signatureValidator = new SignatureValidator(spec, ChainId.MainNet);
             TransactionValidator transactionValidator = new TransactionValidator(spec, signatureValidator);

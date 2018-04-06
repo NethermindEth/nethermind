@@ -29,17 +29,17 @@ namespace Nethermind.Blockchain.Validators
     {
         private static readonly Hex DaoExtraData = new Hex("0x64616f2d686172642d666f726b");
 
-        private readonly IEthash _ethash;
+        private readonly ISealEngine _sealEngine;
         private readonly BigInteger? _daoBlockNumber;
         private readonly ILogger _logger;
         private readonly IDifficultyCalculator _difficultyCalculator;
         private readonly IBlockStore _chain;
 
-        public HeaderValidator(IDifficultyCalculator difficultyCalculator, IBlockStore chain, IEthash ethash, ISpecProvider specProvider, ILogger logger)
+        public HeaderValidator(IDifficultyCalculator difficultyCalculator, IBlockStore chain, ISealEngine sealEngine, ISpecProvider specProvider, ILogger logger)
         {
             _difficultyCalculator = difficultyCalculator;
             _chain = chain;
-            _ethash = ethash;
+            _sealEngine = sealEngine;
             _daoBlockNumber = specProvider?.DaoBlockNumber;
             _logger = logger;
         }
@@ -62,7 +62,7 @@ namespace Nethermind.Blockchain.Validators
                 return false;
             }
 
-            bool areNonceValidAndMixHashValid = ignoreProof || _ethash.Validate(header);
+            bool areNonceValidAndMixHashValid = ignoreProof || _sealEngine.Validate(header);
             if (!areNonceValidAndMixHashValid)
             {
                 _logger?.Log($"Invalid block header ({header.Hash}) - invalid mix hash / nonce");

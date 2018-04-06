@@ -16,10 +16,15 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.Core.Test
+using System.Threading.Tasks;
+using Nethermind.Core;
+
+namespace Nethermind.Blockchain
 {
-    public abstract class TestObjectBuilder<T>
+    public interface ISealEngine
     {
-        public abstract T ForTest();
+        Task<Block> MineAsync(Block block);
+        bool Validate(BlockHeader header);
+        bool IsOn { get; set; }
     }
 }

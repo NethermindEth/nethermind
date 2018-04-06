@@ -29,29 +29,29 @@ using NUnit.Framework;
 namespace Nethermind.Blockchain.Test
 {
     [TestFixture]
-    public class MinerTest
+    public class EthashSealEngineTests
     {
         private ITransactionStore _noPending;
         private IBlockchainProcessor _alwaysOk;
 
-        [SetUp]
-        public void Setup()
-        {
-            _noPending = Substitute.For<ITransactionStore>();
-            _noPending.GetPending().Returns(ci => new Transaction[0]);
-
-            _alwaysOk = Substitute.For<IBlockchainProcessor>();
-            _alwaysOk.Try(Arg.Any<Block>())
-                .Returns(ci => ci.Arg<Block>())
-                .AndDoes(ci =>
-                {
-                    ci.Arg<Block>().Header.TransactionsRoot = Keccak.Zero;
-                    ci.Arg<Block>().Header.ReceiptsRoot = Keccak.Zero;
-                    ci.Arg<Block>().Header.OmmersHash = Keccak.Zero;
-                    ci.Arg<Block>().Header.StateRoot = Keccak.Zero;
-                    ci.Arg<Block>().Header.Bloom = Bloom.Empty;
-                });
-        }
+//        [SetUp]
+//        public void Setup()
+//        {
+//            _noPending = Substitute.For<ITransactionStore>();
+//            _noPending.GetPending().Returns(ci => new Transaction[0]);
+//
+//            _alwaysOk = Substitute.For<IBlockchainProcessor>();
+//            _alwaysOk.Try(Arg.Any<Block>())
+//                .Returns(ci => ci.Arg<Block>())
+//                .AndDoes(ci =>
+//                {
+//                    ci.Arg<Block>().Header.TransactionsRoot = Keccak.Zero;
+//                    ci.Arg<Block>().Header.ReceiptsRoot = Keccak.Zero;
+//                    ci.Arg<Block>().Header.OmmersHash = Keccak.Zero;
+//                    ci.Arg<Block>().Header.StateRoot = Keccak.Zero;
+//                    ci.Arg<Block>().Header.Bloom = Bloom.Empty;
+//                });
+//        }
 
         [Test]
         public async Task Can_mine()
@@ -59,9 +59,15 @@ namespace Nethermind.Blockchain.Test
             ulong validNonce = 971086423715459953;
 
             BlockHeader header = new BlockHeader(Keccak.Zero, Keccak.OfAnEmptySequenceRlp, Address.Zero, 1000, 1, 21000, 1, new byte[] {1, 2, 3});
+            header.TransactionsRoot = Keccak.Zero;
+            header.ReceiptsRoot = Keccak.Zero;
+            header.OmmersHash = Keccak.Zero;
+            header.StateRoot = Keccak.Zero;
+            header.Bloom = Bloom.Empty;
+
             Block block = new Block(header);
-            Miner miner = new Miner(new Ethash(), _alwaysOk, _noPending);
-            await miner.MineAsync(block, validNonce - 10);
+            EthashSealEngine ethashSealEngine = new EthashSealEngine(new Ethash() /*, _alwaysOk, _noPending*/);
+            await ethashSealEngine.MineAsync(block, validNonce - 10);
 
             Assert.AreEqual(validNonce, block.Header.Nonce);
             Assert.AreEqual(new Keccak("0xff2c80283f139148a9b3f2a9dd19d698475937a85296225a96857599cce6d1e2"), block.Header.MixHash);
@@ -83,8 +89,8 @@ namespace Nethermind.Blockchain.Test
             Block block = new Block(blockHeader);
 
             IEthash ethash = new Ethash();
-            Miner miner = new Miner(ethash, _alwaysOk, _noPending);
-            await miner.MineAsync(block, 7217048144105167954);
+            EthashSealEngine ethashSealEngine = new EthashSealEngine(ethash /*, _alwaysOk, _noPending*/);
+            await ethashSealEngine.MineAsync(block, 7217048144105167954);
 
             Assert.True(ethash.Validate(block.Header));
 

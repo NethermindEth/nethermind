@@ -88,7 +88,9 @@ namespace Nethermind.PeerConsole
             Block block = new Block(new BlockHeader(Keccak.Zero, Keccak.OfAnEmptySequenceRlp, Address.Zero, 131200, 1, 100, 1, new byte[0]));
             block.Header.RecomputeHash();
             IBlockProcessor blockProcessor = Substitute.For<IBlockProcessor>();
-            BlockchainProcessor blockchainProcessor = new BlockchainProcessor(blockProcessor, blockStore, logger);
+            IDifficultyCalculator calculator = new DifficultyCalculator(RopstenSpecProvider.Instance); // dynamic spec here will be broken
+            ITransactionStore transactionStore = new TransactionStore();
+            BlockchainProcessor blockchainProcessor = new BlockchainProcessor(blockProcessor, blockStore, transactionStore, calculator, NullSealEngine.Instance, logger);
             blockStore.AddBlock(block, true);
 
             IEncryptionHandshakeService encryptionHandshakeServiceA = new EncryptionHandshakeService(serializationService, eciesCipher, cryptoRandom, signer, _keyA, logger);
@@ -150,10 +152,11 @@ namespace Nethermind.PeerConsole
             serializationService.Register(new NewBlockHashesMessageSerializer());
            
             IReleaseSpec dynamicSpecForVm = new DynamicReleaseSpec(RopstenSpecProvider.Instance);
+            ISealEngine sealEngine = new EthashSealEngine(new Ethash());
             
             IBlockStore blockStore = new BlockStore();
-            IDifficultyCalculator calculator = new DifficultyCalculator(dynamicSpecForVm); // dynamic spec here will be broken
-            IHeaderValidator headerValidator = new HeaderValidator(calculator, blockStore, new Ethash(), RopstenSpecProvider.Instance, logger);
+            IDifficultyCalculator calculator = new DifficultyCalculator(RopstenSpecProvider.Instance); // dynamic spec here will be broken
+            IHeaderValidator headerValidator = new HeaderValidator(calculator, blockStore, sealEngine, RopstenSpecProvider.Instance, logger);
             IOmmersValidator ommersValidator = new OmmersValidator(blockStore, headerValidator, logger);
             IReleaseSpec currentSpec = RopstenSpecProvider.Instance.GetCurrentSpec();
             ITransactionValidator transactionValidator = new TransactionValidator(currentSpec, new SignatureValidator(currentSpec, ChainId.Ropsten));
@@ -167,13 +170,13 @@ namespace Nethermind.PeerConsole
             IStateProvider stateProvider = new StateProvider(stateTree, dynamicSpecForVm, logger, codeDb);
             IStorageProvider storageProvider = new StorageProvider(dbProvider, stateProvider, logger);
             
-            IRewardCalculator rewardCalculator = new RewardCalculator(dynamicSpecForVm);
+            IRewardCalculator rewardCalculator = new RewardCalculator(RopstenSpecProvider.Instance);
             IVirtualMachine virtualMachine = new VirtualMachine(dynamicSpecForVm, stateProvider, storageProvider, blockhashProvider, logger);
             IEthereumSigner ethereumSigner = new EthereumSigner(dynamicSpecForVm, ChainId.Ropsten);
             ITransactionProcessor processor = new TransactionProcessor(dynamicSpecForVm, stateProvider, storageProvider, virtualMachine, ethereumSigner, logger);
             ITransactionStore transactionStore = new TransactionStore();
-            IBlockProcessor blockProcessor = new BlockProcessor(RopstenSpecProvider.Instance, blockStore, blockValidator, rewardCalculator, processor, dbProvider, stateProvider, storageProvider, transactionStore, logger);
-            IBlockchainProcessor blockchainProcessor = new BlockchainProcessor(blockProcessor, blockStore, logger);
+            IBlockProcessor blockProcessor = new BlockProcessor(RopstenSpecProvider.Instance, blockValidator, rewardCalculator, processor, dbProvider, stateProvider, storageProvider, transactionStore, logger);
+            IBlockchainProcessor blockchainProcessor = new BlockchainProcessor(blockProcessor, blockStore, transactionStore, calculator, NullSealEngine.Instance, logger);
             
             ChainSpecLoader loader = new ChainSpecLoader(new UnforgivingJsonSerializer());
             string path = Path.Combine(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, @"..\..\..\..\Chains", "ropsten.json"));

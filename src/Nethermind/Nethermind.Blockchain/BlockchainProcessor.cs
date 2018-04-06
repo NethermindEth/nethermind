@@ -18,6 +18,8 @@
 
 using System.Collections.Generic;
 using System.Numerics;
+using System.Text;
+using Nethermind.Blockchain.Difficulty;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -27,22 +29,26 @@ namespace Nethermind.Blockchain
     public class BlockchainProcessor : IBlockchainProcessor
     {
         private readonly IBlockStore _blockStore;
+        private readonly ITransactionStore _transactionStore;
+        private readonly IDifficultyCalculator _difficultyCalculator;
+        private readonly ISealEngine _sealEngine;
         private readonly IBlockProcessor _blockProcessor;
         private readonly ILogger _logger;
 
         public BlockchainProcessor(
             IBlockProcessor blockProcessor,
             IBlockStore blockStore,
+            ITransactionStore transactionStore,
+            IDifficultyCalculator difficultyCalculator,
+            ISealEngine sealEngine,
             ILogger logger)
         {
             _blockStore = blockStore;
+            _transactionStore = transactionStore;
+            _difficultyCalculator = difficultyCalculator;
+            _sealEngine = sealEngine;
             _blockProcessor = blockProcessor;
             _logger = logger;
-        }
-
-        public void Initialize(Block genesisBlockRlp)
-        {
-            Process(genesisBlockRlp);
         }
 
         public Block HeadBlock { get; private set; }
@@ -85,11 +91,50 @@ namespace Nethermind.Blockchain
             return blockHeader.Difficulty + GetTotalDifficulty(parent.Header);
         }
 
-        public Block Try(Block suggestedBlock)
+        private static readonly BigInteger MinGasPriceForMining = 1;
+
+        private void BuildAndMine()
         {
-            return Process(suggestedBlock, true);
+            BigInteger timestamp = Timestamp.UnixUtcUntilNowSecs;
+            BlockHeader parentHeader = HeadBlock.Header;
+            BlockHeader header = new BlockHeader(
+                parentHeader.Hash,
+                Keccak.OfAnEmptySequenceRlp,
+                Address.Zero,
+                _difficultyCalculator.Calculate(parentHeader.Difficulty, parentHeader.Timestamp, Timestamp.UnixUtcUntilNowSecs, parentHeader.Number + 1, HeadBlock.Ommers.Length > 0),
+                parentHeader.Number + 1,
+                parentHeader.GasLimit,
+                timestamp,
+                Encoding.UTF8.GetBytes("Nethermind"));
+
+            Transaction[] transactions = _transactionStore.GetPending();
+            List<Transaction> selected = new List<Transaction>();
+            BigInteger gasRemaining = header.GasLimit;
+            foreach (Transaction transaction in transactions)
+            {
+                if (transaction.GasPrice < MinGasPriceForMining)
+                {
+                    continue;
+                }
+
+                if (transaction.GasLimit > gasRemaining)
+                {
+                    break;
+                }
+
+                selected.Add(transaction);
+                gasRemaining -= transaction.GasLimit;
+            }
+
+            Block block = new Block(header, selected, new BlockHeader[0]);
+            _sealEngine.MineAsync(block).ContinueWith(t => Process(t.Result));
         }
 
+        public void Process(Block suggestedBlock)
+        {
+            Process(suggestedBlock, false);
+        }
+        
         public Block Process(Block suggestedBlock, bool tryOnly)
         {
             _logger?.Log("-------------------------------------------------------------------------------------");
@@ -189,11 +234,6 @@ namespace Nethermind.Blockchain
             }
 
             return null;
-        }
-
-        public void Process(Block suggestedBlock)
-        {
-            Process(suggestedBlock, false);
         }
     }
 }

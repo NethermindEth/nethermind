@@ -23,11 +23,11 @@ namespace Nethermind.Blockchain.Difficulty
 {
     public class DifficultyCalculator : IDifficultyCalculator
     {
-        private readonly IReleaseSpec _releaseSpec;
+        private readonly ISpecProvider _specProvider;
 
-        public DifficultyCalculator(IReleaseSpec releaseSpec, long genesisBlockDiffculty = OfGenesisBlock)
+        public DifficultyCalculator(ISpecProvider specProvider, long genesisBlockDiffculty = OfGenesisBlock)
         {
-            _releaseSpec = releaseSpec;
+            _specProvider = specProvider;
         }
 
         private const long OfGenesisBlock = 131_072; // Olympic?
@@ -41,9 +41,10 @@ namespace Nethermind.Blockchain.Difficulty
             BigInteger blockNumber,
             bool parentHasUncles)
         {
+            IReleaseSpec spec = _specProvider.GetSpec(blockNumber);
             BigInteger baseIncrease = BigInteger.Divide(parentDifficulty, 2048);
-            BigInteger timeAdjustment = TimeAdjustment(parentTimestamp, currentTimestamp, blockNumber, parentHasUncles);
-            BigInteger timeBomb = TimeBomb(blockNumber);
+            BigInteger timeAdjustment = TimeAdjustment(spec, parentTimestamp, currentTimestamp, parentHasUncles);
+            BigInteger timeBomb = TimeBomb(spec, blockNumber);
             return BigInteger.Max(
                 OfGenesisBlock,
                 parentDifficulty +
@@ -67,26 +68,22 @@ namespace Nethermind.Blockchain.Difficulty
         }
 
         protected internal virtual BigInteger TimeAdjustment(
+            IReleaseSpec spec,
             BigInteger parentTimestamp,
             BigInteger currentTimestamp,
-            BigInteger blockNumber,
             bool parentHasUncles)
         {
-#if DEBUG
-            BigInteger difference = parentTimestamp - currentTimestamp;
-#endif
-            
-            if (_releaseSpec.IsEip100Enabled)
+            if (spec.IsEip100Enabled)
             {
                 return BigInteger.Max((parentHasUncles ? 2 : 1) - BigInteger.Divide(currentTimestamp - parentTimestamp, 9), -99);
             }
             
-            if(_releaseSpec.IsEip2Enabled)
+            if(spec.IsEip2Enabled)
             {
                 return BigInteger.Max(1 - BigInteger.Divide(currentTimestamp - parentTimestamp, 10), -99);    
             }
             
-            if (_releaseSpec.IsTimeAdjustmentPostOlympic)
+            if (spec.IsTimeAdjustmentPostOlympic)
             {
                 return currentTimestamp < parentTimestamp + 13 ? 1 : -1;                
             }
@@ -94,9 +91,9 @@ namespace Nethermind.Blockchain.Difficulty
             return currentTimestamp < parentTimestamp + 7 ? 1 : -1;
         }
 
-        private BigInteger TimeBomb(BigInteger blockNumber)
-        {
-            if (_releaseSpec.IsEip649Enabled)
+        private BigInteger TimeBomb(IReleaseSpec spec, BigInteger blockNumber)
+        {   
+            if (spec.IsEip649Enabled)
             {
                 blockNumber = blockNumber - 3000000;
             }

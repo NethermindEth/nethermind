@@ -26,17 +26,19 @@ namespace Nethermind.Blockchain
 {
     public class RewardCalculator : IRewardCalculator
     {
-        private readonly IReleaseSpec _releaseSpec;
+        private readonly ISpecProvider _specProvider;
 
-        public RewardCalculator(IReleaseSpec releaseSpec)
+        public RewardCalculator(ISpecProvider specProvider)
         {
-            _releaseSpec = releaseSpec;
+            _specProvider = specProvider;
         }
 
         public Dictionary<Address, BigInteger> CalculateRewards(Block block)
         {
+            IReleaseSpec spec = _specProvider.GetSpec(block.Number);
+            
             BigInteger blockReward = 5.Ether();
-            if (_releaseSpec.IsEip649Enabled)
+            if (spec.IsEip649Enabled)
             {
                 blockReward = 3.Ether();
             }

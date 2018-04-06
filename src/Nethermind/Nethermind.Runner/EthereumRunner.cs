@@ -144,7 +144,7 @@ namespace Nethermind.Runner
             var blockJson = _jsonSerializer.Deserialize<TestGenesisJson>(genesisBlockRaw);
             var stateRoot = InitializeAccounts(blockJson.Alloc);
             var block = Convert(blockJson, stateRoot);
-            _blockchainProcessor.Initialize(block);
+            _blockchainProcessor.Process(block);
         }
 
         private static Block Convert(TestGenesisJson headerJson, Keccak stateRoot)

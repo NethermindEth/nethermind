@@ -16,7 +16,6 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Numerics;
 using System.Threading.Tasks;
@@ -26,49 +25,31 @@ using Nethermind.Mining;
 
 namespace Nethermind.Blockchain
 {
-    public class Miner
+    public class EthashSealEngine : ISealEngine
     {
-        private readonly IBlockchainProcessor _blockchain;
         private readonly IEthash _ethash;
-        private readonly ITransactionStore _transactionStore;
 
-        public Miner(IEthash ethash, IBlockchainProcessor blockchain, ITransactionStore transactionStore)
+        public EthashSealEngine(IEthash ethash)
         {
             _ethash = ethash;
-            _blockchain = blockchain;
-            _transactionStore = transactionStore;
         }
 
         public BigInteger MinGasPrice { get; set; } = 0;
 
-        public async Task<Block> MineAsync(Block block, ulong? startNonce = null)
+        public async Task<Block> MineAsync(Block processed)
         {
-            Transaction[] transactions = _transactionStore.GetPending();
-            List<Transaction> selected = new List<Transaction>();
-            BigInteger gasRemaining = block.Header.GasLimit;
-            foreach (Transaction transaction in transactions)
-            {
-                if (transaction.GasPrice < MinGasPrice)
-                {
-                    continue;
-                }
+            return await MineAsync(processed, null);
+        }
 
-                if (transaction.GasLimit > gasRemaining)
-                {
-                    break;
-                }
+        public bool Validate(BlockHeader header)
+        {
+            return _ethash.Validate(header);
+        }
 
-                selected.Add(transaction);
-                gasRemaining -= transaction.GasLimit;
-            }
+        public bool IsOn { get; set; }
 
-            block.Transactions = selected;
-
-//            block.Header.Beneficiary = _beneficiary;
-//            block.Header.ExtraData = Encoding.ASCII.GetBytes("Nethermind");
-
-            Block processed = _blockchain.Try(block);
-
+        public async Task<Block> MineAsync(Block processed, ulong? startNonce)
+        {
             Debug.Assert(processed.Header.TransactionsRoot != null, "transactions root");
             Debug.Assert(processed.Header.StateRoot != null, "state root");
             Debug.Assert(processed.Header.ReceiptsRoot != null, "receipts root");
@@ -76,7 +57,7 @@ namespace Nethermind.Blockchain
             Debug.Assert(processed.Header.Bloom != null, "bloom");
             Debug.Assert(processed.Header.ExtraData != null, "extra data");
 
-            Block minedBlock = await Task.Factory.StartNew(() => Mine(block, startNonce));
+            Block minedBlock = await Task.Factory.StartNew(() => Mine(processed, startNonce));
             minedBlock.Header.RecomputeHash();
             return minedBlock;
         }

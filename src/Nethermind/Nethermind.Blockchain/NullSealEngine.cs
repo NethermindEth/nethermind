@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,15 +16,29 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Numerics;
+using System.Threading.Tasks;
 using Nethermind.Core;
 
 namespace Nethermind.Blockchain
 {
-    public interface IBlockchainProcessor
+    public class NullSealEngine : ISealEngine
     {
-        Block HeadBlock { get; }
-        BigInteger TotalDifficulty { get; }
-        void Process(Block block);
+        private NullSealEngine()
+        {
+        }
+
+        public static NullSealEngine Instance { get; } = new NullSealEngine();
+
+        public Task<Block> MineAsync(Block block)
+        {
+            return Task.FromResult(block);
+        }
+
+        public bool Validate(BlockHeader header)
+        {
+            return true;
+        }
+
+        public bool IsOn { get; set; }
     }
 }
