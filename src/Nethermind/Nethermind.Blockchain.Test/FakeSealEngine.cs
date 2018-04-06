@@ -16,15 +16,31 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.Core.Test.Builders
+using System;
+using System.Threading.Tasks;
+using Nethermind.Core;
+
+namespace Nethermind.Blockchain.Test
 {
-    public partial class Build
+    public class FakeSealEngine : ISealEngine
     {
-        private Build()
+        private readonly TimeSpan _miningDelay;
+
+        public FakeSealEngine(TimeSpan miningDelay)
         {
+            _miningDelay = miningDelay;
+        }
+        
+        public Task<Block> MineAsync(Block block)
+        {
+            return Task.Delay(_miningDelay).ContinueWith(t => block);
         }
 
-        public static Build A => new Build();
-        public static Build An => new Build();
+        public bool Validate(BlockHeader header)
+        {
+            return true;
+        }
+
+        public bool IsMining { get; set; }
     }
 }

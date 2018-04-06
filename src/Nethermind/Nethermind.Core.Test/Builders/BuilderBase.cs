@@ -24,6 +24,6 @@ namespace Nethermind.Core.Test.Builders
     /// <typeparam name="T"></typeparam>
     public abstract class BuilderBase<T>
     {
-        public abstract T ToTest();
+        public T TestObject { get; protected set; }
     }
 }

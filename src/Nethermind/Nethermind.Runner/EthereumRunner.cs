@@ -110,7 +110,7 @@ namespace Nethermind.Runner
         {
             try
             {
-                _blockchainProcessor.Process(block);
+                _blockchainProcessor.SuggestBlock(block);
             }
             catch (InvalidBlockException e)
             {
@@ -144,7 +144,7 @@ namespace Nethermind.Runner
             var blockJson = _jsonSerializer.Deserialize<TestGenesisJson>(genesisBlockRaw);
             var stateRoot = InitializeAccounts(blockJson.Alloc);
             var block = Convert(blockJson, stateRoot);
-            _blockchainProcessor.Process(block);
+            _blockchainProcessor.SuggestBlock(block);
         }
 
         private static Block Convert(TestGenesisJson headerJson, Keccak stateRoot)

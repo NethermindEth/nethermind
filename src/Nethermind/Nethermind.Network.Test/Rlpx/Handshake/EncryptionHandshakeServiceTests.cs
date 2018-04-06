@@ -63,7 +63,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             _ack = null;
         }
 
-        private readonly IEthereumSigner _signer = new EthereumSigner(Byzantium.Instance, ChainId.MainNet); // TODO: separate general crypto signer from Ethereum transaction signing
+        private readonly IEthereumSigner _signer = new EthereumSigner(RopstenSpecProvider.Instance, NullLogger.Instance); // TODO: separate general crypto signer from Ethereum transaction signing
 
         private IMessageSerializationService _messageSerializationService;
 

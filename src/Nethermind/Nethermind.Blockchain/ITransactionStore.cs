@@ -31,6 +31,6 @@ namespace Nethermind.Blockchain
         ///get hash of the block transaction was in
         Keccak GetBlockHash(Keccak transactionHash);
         void AddPending(Transaction transaction);
-        Transaction[] GetPending();
+        Transaction[] GetAllPending();
     }
 }

@@ -20,17 +20,10 @@ namespace Nethermind.Core.Test.Builders
 {
     public class BlockBuilder : BuilderBase<Block>
     {
-        private readonly Block _block;
-        
         public BlockBuilder()
         {
-            BlockHeader header = Build.A.BlockHeader().ToTest();
-            _block = new Block(header);
-        }
-
-        public override Block ToTest()
-        {
-            return _block;
+            BlockHeader header = Build.A.BlockHeader.TestObject;
+            TestObject = new Block(header);
         }
     }
 }

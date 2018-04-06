@@ -4,8 +4,8 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="15.5.0" />
     <DotNetCliToolReference Include="dotnet-xunit" Version="2.3.1" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="15.7.0" />
     <PackageReference Include="NSubstitute" Version="3.1.0" />
     <PackageReference Include="NUnit" Version="3.10.1" />
     <PackageReference Include="NUnit3TestAdapter" Version="3.10.0" />
@@ -14,6 +14,10 @@
     <ProjectReference Include="..\Nethermind.Blockchain\Nethermind.Blockchain.csproj">
       <Project>{B1C9CF07-F89B-4F92-B8A5-F6949B9D3DA5}</Project>
       <Name>Nethermind.Blockchain</Name>
+    </ProjectReference>
+    <ProjectReference Include="..\Nethermind.Core.Test\Nethermind.Core.Test.csproj">
+      <Project>{6BAD851C-B0A2-4DFE-A1F3-1C3A634C522B}</Project>
+      <Name>Nethermind.Core.Test</Name>
     </ProjectReference>
   </ItemGroup>
 </Project>

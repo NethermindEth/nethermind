@@ -39,6 +39,6 @@ namespace Nethermind.Blockchain
             return true;
         }
 
-        public bool IsOn { get; set; }
+        public bool IsMining { get; set; }
     }
 }

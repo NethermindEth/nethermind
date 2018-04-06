@@ -16,6 +16,8 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Numerics;
+
 namespace Nethermind.Core.Crypto
 {
     public interface IEthereumSigner : ISigner
@@ -23,6 +25,6 @@ namespace Nethermind.Core.Crypto
         void Sign(PrivateKey privateKey, Transaction transaction);
         Address RecoverAddress(Transaction transaction);
         Address RecoverAddress(Signature signature, Keccak message);
-        bool Verify(Address sender, Transaction transaction);
+        bool Verify(Address sender, Transaction transaction, BigInteger blockNumber);
     }
 }

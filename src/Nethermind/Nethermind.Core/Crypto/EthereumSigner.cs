@@ -33,29 +33,28 @@ namespace Nethermind.Core.Crypto
         public static readonly BigInteger LowSTransform = BigInteger.Parse("00FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141", NumberStyles.HexNumber);
 
         private readonly int _chainIdValue;
-        private readonly IReleaseSpec _releaseSpec;
+        private readonly ISpecProvider _specProvider;
+        private readonly ILogger _logger;
 
-        public EthereumSigner(IReleaseSpec releaseSpec, int chainIdValue)
+        public EthereumSigner(ISpecProvider specProviderProvider, ILogger logger)
         {
-            _releaseSpec = releaseSpec;
-            _chainIdValue = chainIdValue;
+            _specProvider = specProviderProvider;
+            _logger = logger;
+            _chainIdValue = specProviderProvider.NetworkId;
         }
-
-        public EthereumSigner(IReleaseSpec releaseSpec, ChainId chainId)
-            : this(releaseSpec, (int)chainId)
-        {
-        }
-
+        
         public void Sign(PrivateKey privateKey, Transaction transaction)
         {
-            bool isEip155Enabled = _releaseSpec.IsEip155Enabled;
+            _logger.Debug($"Signing transaction: {transaction.Value} to {transaction.To}");
+            bool isEip155Enabled = _specProvider.GetCurrentSpec().IsEip155Enabled;
             Keccak hash = Keccak.Compute(Rlp.Encode(transaction, true, isEip155Enabled, _chainIdValue));
             transaction.Signature = Sign(privateKey, hash);
+            _logger.Debug("Transaction signed");
         }
 
-        public bool Verify(Address sender, Transaction transaction)
+        public bool Verify(Address sender, Transaction transaction, BigInteger blockNumber)
         {
-            bool isEip155Enabled = _releaseSpec.IsEip155Enabled;
+            bool isEip155Enabled = _specProvider.GetSpec(blockNumber).IsEip155Enabled;
             Keccak hash = Keccak.Compute(Rlp.Encode(transaction, true, isEip155Enabled, _chainIdValue));
             Address recovered = RecoverAddress(transaction.Signature, hash);
             return recovered.Equals(sender);

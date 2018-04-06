@@ -17,6 +17,7 @@
  */
 
 using System.Numerics;
+using System.Threading.Tasks;
 using Nethermind.Core;
 
 namespace Nethermind.Blockchain
@@ -25,6 +26,9 @@ namespace Nethermind.Blockchain
     {
         Block HeadBlock { get; }
         BigInteger TotalDifficulty { get; }
-        void Process(Block block);
+        BigInteger TotalTransactions { get; }
+        void Start(Block genesisBlock);
+        Task StopAsync();
+        void SuggestBlock(Block block);
     }
 }

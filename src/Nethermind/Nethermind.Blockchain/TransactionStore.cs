@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -7,6 +8,7 @@ namespace Nethermind.Blockchain
 {
     public class TransactionStore : ITransactionStore
     {
+        private readonly Dictionary<Keccak, Transaction> _pending = new Dictionary<Keccak, Transaction>();
         private readonly Dictionary<Keccak, Transaction> _transactions = new Dictionary<Keccak, Transaction>();
         private readonly Dictionary<Keccak, TransactionReceipt> _transactionRecepits = new Dictionary<Keccak, TransactionReceipt>();
         private readonly HashSet<Keccak> _processedTransations = new HashSet<Keccak>();
@@ -47,12 +49,12 @@ namespace Nethermind.Blockchain
 
         public void AddPending(Transaction transaction)
         {
-            throw new System.NotImplementedException();
+            _pending.Add(transaction.Hash, transaction);
         }
 
-        public Transaction[] GetPending()
+        public Transaction[] GetAllPending()
         {
-            throw new System.NotImplementedException();
+            return _pending.Values.ToArray();
         }
     }
 }

@@ -106,12 +106,12 @@ namespace Nethermind.PeerConsole
             await Task.WhenAll(peerServerA.Init(), peerServerB.Init());
             Console.WriteLine("Servers running...");
             Console.WriteLine("Connecting A to B...");
-            await peerServerA.Connect(_keyB.PublicKey, "127.0.0.1", PortB);
+            await peerServerA.ConnectAsync(_keyB.PublicKey, "127.0.0.1", PortB);
             Console.WriteLine("A to B connected...");
             //            Console.WriteLine("Connecting A to C...");
-            //            await peerServerA.Connect(_keyC.PublicKey, "127.0.0.1", PortC);
+            //            await peerServerA.ConnectAsync(_keyC.PublicKey, "127.0.0.1", PortC);
             //            Console.WriteLine("A to C connected...");
-            //            await peerServerB.Connect(_keyA.PublicKey, "localhost", PortA);
+            //            await peerServerB.ConnectAsync(_keyA.PublicKey, "localhost", PortA);
             Console.ReadLine();
             Console.WriteLine("Shutting down...");
             await Task.WhenAll(peerServerA.Shutdown(), peerServerB.Shutdown());
@@ -172,7 +172,7 @@ namespace Nethermind.PeerConsole
             
             IRewardCalculator rewardCalculator = new RewardCalculator(RopstenSpecProvider.Instance);
             IVirtualMachine virtualMachine = new VirtualMachine(dynamicSpecForVm, stateProvider, storageProvider, blockhashProvider, logger);
-            IEthereumSigner ethereumSigner = new EthereumSigner(dynamicSpecForVm, ChainId.Ropsten);
+            IEthereumSigner ethereumSigner = new EthereumSigner(RopstenSpecProvider.Instance, logger);
             ITransactionProcessor processor = new TransactionProcessor(dynamicSpecForVm, stateProvider, storageProvider, virtualMachine, ethereumSigner, logger);
             ITransactionStore transactionStore = new TransactionStore();
             IBlockProcessor blockProcessor = new BlockProcessor(RopstenSpecProvider.Instance, blockValidator, rewardCalculator, processor, dbProvider, stateProvider, storageProvider, transactionStore, logger);
@@ -195,7 +195,7 @@ namespace Nethermind.PeerConsole
                 throw new Exception("Unexpected genesis hash");
             }
             
-            blockchainProcessor.Process(chainSpec.Genesis);
+            blockchainProcessor.Start(chainSpec.Genesis);
             
             ISynchronizationManager synchronizationManager = new SynchronizationManager(headerValidator, blockValidator, transactionValidator, chainSpec.Genesis, logger);
             IEncryptionHandshakeService encryptionHandshakeServiceA = new EncryptionHandshakeService(serializationService, eciesCipher, cryptoRandom, signer, _keyA, logger);
@@ -205,7 +205,7 @@ namespace Nethermind.PeerConsole
             await Task.WhenAll(localPeer.Init());
             logger.Log("Servers running...");
             logger.Log($"Connecting to testnet bootnode {bootnode.Description}");
-            await localPeer.Connect(bootnode.PublicKey, bootnode.Host, bootnode.Port);
+            await localPeer.ConnectAsync(bootnode.PublicKey, bootnode.Host, bootnode.Port);
             logger.Log("Testnet connected...");
             Console.ReadLine();
             logger.Log("Shutting down...");

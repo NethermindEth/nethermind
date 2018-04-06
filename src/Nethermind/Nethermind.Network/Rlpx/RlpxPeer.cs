@@ -109,7 +109,7 @@ namespace Nethermind.Network.Rlpx
             }
         }
 
-        public async Task Connect(PublicKey remoteId, string host, int port)
+        public async Task ConnectAsync(PublicKey remoteId, string host, int port)
         {
             _logger.Log($"Connecting to {remoteId} at {host}:{port}");
 

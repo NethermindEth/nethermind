@@ -38,7 +38,7 @@ namespace Nethermind.Blockchain.Test
 //        public void Setup()
 //        {
 //            _noPending = Substitute.For<ITransactionStore>();
-//            _noPending.GetPending().Returns(ci => new Transaction[0]);
+//            _noPending.GetAllPending().Returns(ci => new Transaction[0]);
 //
 //            _alwaysOk = Substitute.For<IBlockchainProcessor>();
 //            _alwaysOk.Try(Arg.Any<Block>())

@@ -1,7 +1,27 @@
-﻿using System;
+﻿/*
+ * Copyright (c) 2018 Demerzel Solutions Limited
+ * This file is part of the Nethermind library.
+ *
+ * The Nethermind library is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * The Nethermind library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Numerics;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Blockchain.Difficulty;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
@@ -9,7 +29,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Specs.ChainSpec;
 using Nethermind.Evm;
-using Nethermind.Mining;
 using Nethermind.Store;
 using NUnit.Framework;
 
@@ -20,13 +39,15 @@ namespace Nethermind.Blockchain.Test
     public class PrivateChainTests
     {
         [Test]
-        public void _Build_some_chain()
+        public async Task Build_some_chain()
         {
+            TimeSpan blockMiningTime = TimeSpan.FromMilliseconds(50);
+            
             ILogger logger = new ConsoleLogger();
-           
-            ISealEngine sealEngine = new EthashSealEngine(new Ethash());
+            ISealEngine sealEngine = new FakeSealEngine(blockMiningTime);
             ISpecProvider specProvider = RopstenSpecProvider.Instance;
             IReleaseSpec dynamicSpecForVm = new DynamicReleaseSpec(RopstenSpecProvider.Instance);
+            IEthereumSigner ethereumSigner = new EthereumSigner(RopstenSpecProvider.Instance, logger); // dynamic spec here will be broken
             
             IBlockStore blockStore = new BlockStore();
             IDifficultyCalculator difficultyCalculator = new DifficultyCalculator(specProvider); // dynamic spec here will be broken
@@ -46,7 +67,6 @@ namespace Nethermind.Blockchain.Test
             
             IRewardCalculator rewardCalculator = new RewardCalculator(specProvider);
             IVirtualMachine virtualMachine = new VirtualMachine(dynamicSpecForVm, stateProvider, storageProvider, blockhashProvider, logger);
-            IEthereumSigner ethereumSigner = new EthereumSigner(dynamicSpecForVm, ChainId.Ropsten);
             ITransactionProcessor processor = new TransactionProcessor(dynamicSpecForVm, stateProvider, storageProvider, virtualMachine, ethereumSigner, logger);
             ITransactionStore transactionStore = new TransactionStore();
             IBlockProcessor blockProcessor = new BlockProcessor(RopstenSpecProvider.Instance, blockValidator, rewardCalculator, processor, storageDbProvider, stateProvider, storageProvider, transactionStore, logger);
@@ -69,7 +89,17 @@ namespace Nethermind.Blockchain.Test
                 throw new Exception("Unexpected genesis hash");
             }
             
-            blockchainProcessor.Process(chainSpec.Genesis);
+            FakeTransactionsGenerator generator = new FakeTransactionsGenerator(transactionStore, ethereumSigner, blockMiningTime, logger);
+            generator.Start();
+            
+            sealEngine.IsMining = true; // TODO: start / stop?
+
+            BigInteger roughlyNumberOfBlocks = 6;
+            blockchainProcessor.Start(chainSpec.Genesis);
+            Thread.Sleep(blockMiningTime * (int)roughlyNumberOfBlocks);
+            await blockchainProcessor.StopAsync();
+            Assert.GreaterOrEqual(blockchainProcessor.HeadBlock.Number, roughlyNumberOfBlocks - 2, "number of blocks");
+            Assert.GreaterOrEqual(blockchainProcessor.TotalTransactions, roughlyNumberOfBlocks - 2, "number of transactions");
         }
     }
 }

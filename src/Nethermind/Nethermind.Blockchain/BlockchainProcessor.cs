@@ -16,24 +16,33 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Numerics;
 using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Blockchain.Difficulty;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Encoding;
+using Nethermind.Store;
 
 namespace Nethermind.Blockchain
 {
     public class BlockchainProcessor : IBlockchainProcessor
     {
-        private readonly IBlockStore _blockStore;
-        private readonly ITransactionStore _transactionStore;
-        private readonly IDifficultyCalculator _difficultyCalculator;
-        private readonly ISealEngine _sealEngine;
+        private static readonly BigInteger MinGasPriceForMining = 1;
         private readonly IBlockProcessor _blockProcessor;
+        private readonly IBlockStore _blockStore;
+        private readonly IDifficultyCalculator _difficultyCalculator;
         private readonly ILogger _logger;
+        private readonly ISealEngine _sealEngine;
+
+        private readonly BlockingCollection<Block> _suggestedBlocks = new BlockingCollection<Block>(new ConcurrentQueue<Block>());
+        private readonly ITransactionStore _transactionStore;
 
         public BlockchainProcessor(
             IBlockProcessor blockProcessor,
@@ -51,9 +60,78 @@ namespace Nethermind.Blockchain
             _logger = logger;
         }
 
+        public BigInteger TotalTransactions { get; private set; }
+
         public Block HeadBlock { get; private set; }
         public BigInteger TotalDifficulty { get; private set; }
-        public BigInteger TotalTransactions { get; private set; }
+
+        private CancellationTokenSource _cancellationSource;
+        private Task _processorTask;
+
+        public async Task StopAsync()
+        {
+            _cancellationSource.Cancel();
+            await _processorTask;
+        }
+
+        public void Start(Block genesisBlock)
+        {
+            _cancellationSource = new CancellationTokenSource();
+            _logger.Log($"Processing genesis block ({genesisBlock.Hash}).");
+            Process(genesisBlock);
+            _processorTask = Task.Factory.StartNew(() =>
+                {
+                    _logger.Log($"Starting block processor - {_suggestedBlocks.Count} blocks waiting in the queue.");
+                    if (_suggestedBlocks.Count == 0 && _sealEngine.IsMining)
+                    {
+                        _logger.Log("Nothing in the queue so I mine my own.");
+                        BuildAndSeal();
+                        _logger.Log("Will go and wait for another block now...");
+                    }
+
+                    foreach (Block block in _suggestedBlocks.GetConsumingEnumerable(_cancellationSource.Token))
+                    {
+                        _logger.Log($"Processing a suggested block ({block.Hash}).");
+                        Process(block);
+                        _logger.Log($"Now {_suggestedBlocks.Count} blocks waiting in the queue.");
+                        if (_suggestedBlocks.Count == 0 && _sealEngine.IsMining)
+                        {
+                            _logger.Log("Nothing in the queue so I mine my own.");
+                            BuildAndSeal();
+                            _logger.Log("Will go and wait for another block now...");
+                        }
+                    }
+
+                    _logger.Log("I shall never end here...");
+                },
+                _cancellationSource.Token,
+                TaskCreationOptions.LongRunning,
+                TaskScheduler.Default).ContinueWith(t =>
+            {
+                if (t.IsFaulted)
+                {
+                    _logger.Error($"Blockchain processor encountered an exception {t.Exception}.");
+                }
+                else if(t.IsCanceled)
+                {
+                    _logger.Error("Blockchain processor stopped.");
+                }
+                else if(t.IsCompleted)
+                {
+                    _logger.Error("Sisyphus made it");
+                }
+            });
+        }
+
+        public void SuggestBlock(Block block)
+        {
+            _logger.Log($"Enqueuing a new block ({block.Hash}) for processing.");
+            _logger.Debug($"Number {block.Number}");
+            _logger.Debug($"Hash {block.Hash}");
+
+            _suggestedBlocks.Add(block);
+            _logger.Log($"A new block ({block.Hash}) suggested for processing.");
+        }
 
         private BigInteger GetTotalTransactions(Block block)
         {
@@ -91,9 +169,7 @@ namespace Nethermind.Blockchain
             return blockHeader.Difficulty + GetTotalDifficulty(parent.Header);
         }
 
-        private static readonly BigInteger MinGasPriceForMining = 1;
-
-        private void BuildAndMine()
+        private void BuildAndSeal()
         {
             BigInteger timestamp = Timestamp.UnixUtcUntilNowSecs;
             BlockHeader parentHeader = HeadBlock.Header;
@@ -107,35 +183,59 @@ namespace Nethermind.Blockchain
                 timestamp,
                 Encoding.UTF8.GetBytes("Nethermind"));
 
-            Transaction[] transactions = _transactionStore.GetPending();
+            Transaction[] transactions = _transactionStore.GetAllPending();
+            for (int i = 0; i < transactions.Length; i++)
+            {
+                Debug.Assert(transactions[i] != null, "transaction is null :/");
+            }
+            
             List<Transaction> selected = new List<Transaction>();
             BigInteger gasRemaining = header.GasLimit;
+            _logger.Debug($"Collecting pending transactions at min gas price {MinGasPriceForMining} and block gas limit {gasRemaining}.");
             foreach (Transaction transaction in transactions)
             {
                 if (transaction.GasPrice < MinGasPriceForMining)
                 {
+                    _logger.Debug($"Rejecting transaction - gas price ({transaction.GasPrice}) too low (min gas price: {MinGasPriceForMining}.");
                     continue;
                 }
 
                 if (transaction.GasLimit > gasRemaining)
                 {
+                    _logger.Debug($"Rejecting transaction - gas limit ({transaction.GasPrice}) more than remaining gas ({gasRemaining}).");
                     break;
                 }
 
                 selected.Add(transaction);
                 gasRemaining -= transaction.GasLimit;
             }
+            
+            _logger.Debug($"Collected {selected.Count} out of {transactions.Length} pending transactions.");
+
+            header.TransactionsRoot = GetTransactionsRoot(selected);
 
             Block block = new Block(header, selected, new BlockHeader[0]);
-            _sealEngine.MineAsync(block).ContinueWith(t => Process(t.Result));
+            Process(block, true);
+        }
+
+        private Keccak GetTransactionsRoot(List<Transaction> transactions)
+        {
+            PatriciaTree tranTree = new PatriciaTree();
+            for (int i = 0; i < transactions.Count; i++)
+            {
+                Rlp transactionRlp = Rlp.Encode(transactions[i]);
+                tranTree.Set(Rlp.Encode(i).Bytes, transactionRlp);
+            }
+
+            return tranTree.RootHash;
         }
 
         public void Process(Block suggestedBlock)
         {
             Process(suggestedBlock, false);
         }
-        
-        public Block Process(Block suggestedBlock, bool tryOnly)
+
+        private void Process(Block suggestedBlock, bool forMining)
         {
             _logger?.Log("-------------------------------------------------------------------------------------");
             suggestedBlock.Header.RecomputeHash();
@@ -187,7 +287,7 @@ namespace Nethermind.Blockchain
                 }
 
                 _logger?.Log($"PROCESSING {blocks.Length} BLOCKS FROM STATE ROOT {stateRoot}");
-                Block[] processedBlocks = _blockProcessor.Process(stateRoot, blocks, tryOnly);
+                Block[] processedBlocks = _blockProcessor.Process(stateRoot, blocks, forMining);
 
                 List<Block> blocksToBeRemovedFromMain = new List<Block>();
                 if (HeadBlock != branchingPoint && HeadBlock != null)
@@ -201,7 +301,7 @@ namespace Nethermind.Blockchain
                     }
                 }
 
-                if (!tryOnly)
+                if (!forMining)
                 {
                     HeadBlock = processedBlocks[processedBlocks.Length - 1];
                     _blockStore.AddBlock(HeadBlock, false);
@@ -223,17 +323,23 @@ namespace Nethermind.Blockchain
                     _logger?.Log($"UPDATING TOTAL TRANSACTIONS OF THE MAIN CHAIN TO {totalTransactions}");
                     TotalTransactions = totalTransactions;
                 }
-
-                return processedBlocks[processedBlocks.Length - 1];
+                else
+                {
+                    Block blockToBeMined = processedBlocks[processedBlocks.Length - 1];
+                    _sealEngine.MineAsync(blockToBeMined).ContinueWith(t =>
+                    {
+                        Block minedBlock = t.Result;
+                        minedBlock.Header.RecomputeHash();
+                        SuggestBlock(minedBlock);
+                    });
+                }
             }
 
-            if (!tryOnly)
+            if (!forMining)
             {
                 // lower difficulty branch
                 _blockStore.AddBlock(suggestedBlock, false);
             }
-
-            return null;
         }
     }
 }

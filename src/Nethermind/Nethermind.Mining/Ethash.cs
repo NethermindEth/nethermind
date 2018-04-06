@@ -65,9 +65,9 @@ namespace Nethermind.Mining
             return size;
         }
 
-        public static uint GetCacheSize(BigInteger blockNumber)
+        public static uint GetCacheSize(ulong epoch)
         {
-            uint size = CacheBytesInit + CacheBytesGrowth * (uint)GetEpoch(blockNumber);
+            uint size = CacheBytesInit + CacheBytesGrowth * (uint)epoch;
             size -= HashBytes;
             while (!IsPrime(size / HashBytes))
             {
@@ -150,7 +150,8 @@ namespace Nethermind.Mining
             while(true)
             {
                 byte[] result;
-                (mixHash, result) = Hashimoto(fullSize, GetOrAddCache(header.Number), headerHashed, null, nonce);
+                ulong epoch = GetEpoch(header.Number);
+                (mixHash, result) = Hashimoto(fullSize, GetOrAddCache(epoch), headerHashed, null, nonce);
                 if (IsLessThanTarget(result, target))
                 {
                     break;
@@ -189,7 +190,8 @@ namespace Nethermind.Mining
 
         public bool Validate(BlockHeader header)
         {
-            IEthashDataSet cache = GetOrAddCache(header.Number);
+            ulong epoch = GetEpoch(header.Number);
+            IEthashDataSet cache = GetOrAddCache(epoch);
             ulong fullSize = GetDataSize(header.Number);
             Keccak headerHashed = GetTruncatedHash(header);
             (byte[] _, byte[] result) = Hashimoto(fullSize, cache, headerHashed, header.MixHash, header.Nonce);
@@ -198,10 +200,13 @@ namespace Nethermind.Mining
             return IsLessThanTarget(result, threshold);
         }
 
-        private IEthashDataSet GetOrAddCache(BigInteger blockNumber)
+        public void PrecomputeCache(ulong epoch)
         {
-            ulong epoch = GetEpoch(blockNumber);
-
+            GetOrAddCache(epoch);
+        }
+        
+        private IEthashDataSet GetOrAddCache(ulong epoch)
+        {
             ulong? epochToRemove = null;
             IEthashDataSet cache = _cacheCache.GetOrAdd(epoch, e =>
             {
@@ -221,9 +226,9 @@ namespace Nethermind.Mining
                     }
                 }
 
-                uint cacheSize = GetCacheSize(blockNumber);
-                Keccak seed = GetSeedHash(blockNumber);
-                Console.WriteLine($"Building cache for epoch for block blockNumber {blockNumber}");
+                uint cacheSize = GetCacheSize(epoch);
+                Keccak seed = GetSeedHash(epoch);
+                Console.WriteLine($"Building cache for epoch {epoch}");
                 return new EthashCache(cacheSize, seed.Bytes);
             });
 

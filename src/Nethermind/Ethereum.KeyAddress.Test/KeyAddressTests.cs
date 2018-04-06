@@ -38,7 +38,7 @@ namespace Ethereum.KeyAddress.Test
         public void SetUp()
         {
             Directory.SetCurrentDirectory(AppDomain.CurrentDomain.BaseDirectory);
-            _signer = new EthereumSigner(Olympic.Instance, ChainId.MainNet);
+            _signer = new EthereumSigner(OlympicSpecProvider.Instance);
         }
 
         private static IEnumerable<KeyAddressTest> LoadTests()

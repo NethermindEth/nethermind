@@ -18,11 +18,8 @@
 
 namespace Nethermind.Core.Test.Builders
 {
-    public static partial class BuildExtensions
+    public partial class Build
     {
-        public static BlockBuilder Block(this Build build)
-        {
-            return new BlockBuilder();
-        }
+        public BlockHeaderBuilder BlockHeader => new BlockHeaderBuilder();
     }
 }

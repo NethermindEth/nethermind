@@ -227,7 +227,7 @@ namespace Ethereum.Test.Base
                 ShouldLog.Evm ? _logger : null);
 
             ITransactionStore transactionStore = new TransactionStore();
-            IEthereumSigner signer = new EthereumSigner(_releaseSpec, ChainId.MainNet);
+            IEthereumSigner signer = new EthereumSigner(specProvider, _logger);
             IBlockProcessor blockProcessor = new BlockProcessor(
                 specProvider,
                 blockValidator,
@@ -283,7 +283,7 @@ namespace Ethereum.Test.Base
             }
 
             Block genesisBlock = Rlp.Decode<Block>(test.GenesisRlp);
-            blockchainProcessor.Process(genesisBlock);
+            blockchainProcessor.SuggestBlock(genesisBlock);
             Assert.AreEqual(genesisBlock.Header.StateRoot, stateTree.RootHash, "genesis state root");
 
             for (int i = 0; i < correctRlpsBlocks.Count; i++)
@@ -297,7 +297,7 @@ namespace Ethereum.Test.Base
                         _logger.Log($"Expecting block exception: {correctRlpsBlocks[i].Item2}");    
                     }
                     
-                    blockchainProcessor.Process(correctRlpsBlocks[i].Item1);
+                    blockchainProcessor.SuggestBlock(correctRlpsBlocks[i].Item1);
                 }
                 catch (InvalidBlockException ex)
                 {

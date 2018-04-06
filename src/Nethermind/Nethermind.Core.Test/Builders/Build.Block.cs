@@ -20,11 +20,6 @@ namespace Nethermind.Core.Test.Builders
 {
     public partial class Build
     {
-        private Build()
-        {
-        }
-
-        public static Build A => new Build();
-        public static Build An => new Build();
+        public BlockBuilder Block => new BlockBuilder();
     }
 }

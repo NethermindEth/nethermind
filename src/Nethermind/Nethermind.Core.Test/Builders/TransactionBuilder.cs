@@ -16,15 +16,28 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.Core.Crypto;
+
 namespace Nethermind.Core.Test.Builders
 {
-    public partial class Build
-    {
-        private Build()
-        {
+    public class TransactionBuilder : BuilderBase<Transaction>
+    {   
+        public TransactionBuilder()
+        {   
+            TestObject = new Transaction();
+            TestObject.GasPrice = 1;
+            TestObject.GasLimit = 21000;
+            TestObject.To = Address.Zero;
+            TestObject.Nonce = 0;
+            TestObject.Value = 1;
+            TestObject.Data = new byte[0];
         }
 
-        public static Build A => new Build();
-        public static Build An => new Build();
+        public TransactionBuilder Signed(IEthereumSigner signer, PrivateKey privateKey)
+        {
+            signer.Sign(privateKey, TestObject);
+            TestObject.Hash = Transaction.CalculateHash(TestObject);
+            return this;
+        }
     }
 }

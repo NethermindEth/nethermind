@@ -16,15 +16,31 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.Core.Test.Builders
+
+using System.Numerics;
+
+namespace Nethermind.Core.Specs
 {
-    public partial class Build
+    public class OlympicSpecProvider : ISpecProvider
     {
-        private Build()
+        public IReleaseSpec GetCurrentSpec()
         {
+            return Olympic.Instance;
         }
 
-        public static Build A => new Build();
-        public static Build An => new Build();
+        public IReleaseSpec GetSpec(BigInteger blockNumber)
+        {            
+            return Olympic.Instance;
+        }
+        
+        public BigInteger? DaoBlockNumber { get; } = new BigInteger(1920000);
+        
+        public int NetworkId => 3;
+
+        private OlympicSpecProvider()
+        {
+        }
+        
+        public static OlympicSpecProvider Instance = new OlympicSpecProvider();
     }
 }

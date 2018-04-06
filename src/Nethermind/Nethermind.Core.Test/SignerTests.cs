@@ -47,7 +47,7 @@ namespace Nethermind.Core.Test
         [Test]
         public void Sign_and_recover()
         {
-            EthereumSigner ethereumSigner = new EthereumSigner(Olympic.Instance, ChainId.MainNet);
+            EthereumSigner ethereumSigner = new EthereumSigner(OlympicSpecProvider.Instance, NullLogger.Instance);
 
             Keccak message = Keccak.Compute("Test message");
             PrivateKey privateKey = new PrivateKey(_cryptoRandom.GenerateRandomBytes(32));

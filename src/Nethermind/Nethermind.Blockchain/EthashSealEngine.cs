@@ -46,7 +46,7 @@ namespace Nethermind.Blockchain
             return _ethash.Validate(header);
         }
 
-        public bool IsOn { get; set; }
+        public bool IsMining { get; set; }
 
         public async Task<Block> MineAsync(Block processed, ulong? startNonce)
         {

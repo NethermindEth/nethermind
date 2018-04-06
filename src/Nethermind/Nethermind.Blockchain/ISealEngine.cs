@@ -25,6 +25,6 @@ namespace Nethermind.Blockchain
     {
         Task<Block> MineAsync(Block block);
         bool Validate(BlockHeader header);
-        bool IsOn { get; set; }
+        bool IsMining { get; set; }
     }
 }

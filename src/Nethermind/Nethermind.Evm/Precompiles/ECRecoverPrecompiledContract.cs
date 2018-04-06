@@ -44,7 +44,7 @@ namespace Nethermind.Evm.Precompiles
             return 3000L;
         }
 
-        private readonly EthereumSigner _signer = new EthereumSigner(Olympic.Instance, ChainId.MainNet);
+        private readonly EthereumSigner _signer = new EthereumSigner(OlympicSpecProvider.Instance, NullLogger.Instance);
         
         public (byte[], bool) Run(byte[] inputData)
         {
