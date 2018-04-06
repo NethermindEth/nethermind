@@ -50,7 +50,7 @@ namespace Ethereum.Basic.Test
         [TestCaseSource(nameof(LoadTests))]
         public void Test(TransactionTest test)
         {
-            EthereumSigner ethereumSigner = new EthereumSigner(OlympicSpecProvider.Instance);
+            EthereumSigner ethereumSigner = new EthereumSigner(OlympicSpecProvider.Instance, NullLogger.Instance);
             Transaction decodedUnsigned = Rlp.Decode<Transaction>(test.Unsigned);
             Assert.AreEqual(test.Value, decodedUnsigned.Value);
             Assert.AreEqual(test.GasPrice, decodedUnsigned.GasPrice);

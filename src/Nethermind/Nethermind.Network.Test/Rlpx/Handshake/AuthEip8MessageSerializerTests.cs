@@ -70,7 +70,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
         [TestCase(ChainId.Kovan)]
         public void Encode_decode_with_eip155(ChainId chainId)
         {
-            EthereumSigner signer = new EthereumSigner(RopstenSpecProvider.Instance, NullLogger.Instance));
+            EthereumSigner signer = new EthereumSigner(RopstenSpecProvider.Instance, NullLogger.Instance);
             TestEncodeDecode(signer);
         }
     }
