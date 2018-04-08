@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Net;
+using System.Net.Sockets;
 using Nethermind.Core;
 
 namespace Nethermind.Network
@@ -15,7 +16,22 @@ namespace Nethermind.Network
 
         public IPAddress GetLocalIp()
         {
-            throw new NotImplementedException();
+            try
+            {
+                using (var socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, 0))
+                {
+                    socket.Connect("www.google.com", 80);
+                    IPEndPoint endPoint = socket.LocalEndPoint as IPEndPoint;
+                    var address = endPoint?.Address;
+                    _logger.Log($"Local ip: {address}");
+                    return address;
+                }
+            }
+            catch (Exception e)
+            {
+                _logger.Error("Error while getting external ip", e);
+                return null;
+            }
         }
 
         public IPAddress GetExternalIp()

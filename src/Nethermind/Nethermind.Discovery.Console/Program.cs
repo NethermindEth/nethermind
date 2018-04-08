@@ -18,6 +18,7 @@
 
 using System;
 using System.IO;
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Discovery.Lifecycle;
@@ -26,6 +27,13 @@ using Nethermind.Discovery.RoutingTable;
 using Nethermind.Discovery.Serializers;
 using Nethermind.KeyStore;
 using Nethermind.Network;
+using Nethermind.Network.Crypto;
+using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.Subprotocols.Eth;
+using Nethermind.Network.Rlpx.Handshake;
+using NSubstitute;
+using PingMessageSerializer = Nethermind.Discovery.Serializers.PingMessageSerializer;
+using PongMessageSerializer = Nethermind.Discovery.Serializers.PongMessageSerializer;
 
 namespace Nethermind.Discovery.Console
 {
@@ -83,6 +91,23 @@ namespace Nethermind.Discovery.Console
             messageSerializationService.Register(pongSerializer);
             messageSerializationService.Register(findNodeSerializer);
             messageSerializationService.Register(neighborsSerializer);
+
+
+            //P2P initialization
+            IMessagePad eip8Pad = new Eip8MessagePad(cryptoRandom);
+            messageSerializationService.Register(new AuthEip8MessageSerializer(eip8Pad));
+            messageSerializationService.Register(new AckEip8MessageSerializer(eip8Pad));
+            messageSerializationService.Register(new HelloMessageSerializer());
+            messageSerializationService.Register(new DisconnectMessageSerializer());
+            messageSerializationService.Register(new Nethermind.Network.P2P.PingMessageSerializer());
+            messageSerializationService.Register(new Nethermind.Network.P2P.PongMessageSerializer());
+            messageSerializationService.Register(new StatusMessageSerializer());
+            IEciesCipher eciesCipher = new EciesCipher(cryptoRandom);
+            IEncryptionHandshakeService encryptionHandshakeService = new EncryptionHandshakeService(messageSerializationService, eciesCipher, cryptoRandom, signer, PrivateKey, Logger);
+            var p2pManager = new P2PManager(encryptionHandshakeService, Logger, messageSerializationService, Substitute.For<ISynchronizationManager>());
+            
+            //Connect discovery with P2P
+            discoveryManager.RegisterDiscoveryListener(p2pManager);
 
             _discoveryApp = new DiscoveryApp(config, nodesLocator, Logger, discoveryManager, nodeFactory, nodeTable, messageSerializationService, cryptoRandom);
             _discoveryApp.Start();

@@ -29,17 +29,19 @@ namespace Nethermind.Network.P2P
         {
             try
             {
-                var nodeId = node.PublicKey.ToString();
-                if (_activePeers.ContainsKey(nodeId))
-                {
-                    _logger.Log($"Peer already initialied: {nodeId}");
-                    return;
-                }
+                //TODO implement proper p2p connection initialization with node
 
-                var peer = new RlpxPeer(node.PublicKey, node.Port, _encryptionHandshakeService, _messageSerializationService, _synchronizationManager, _logger);
-                _activePeers.Add(nodeId, peer);
+                //var nodeId = node.PublicKey.ToString();
+                //if (_activePeers.ContainsKey(nodeId))
+                //{
+                //    _logger.Log($"Peer already initialied: {nodeId}");
+                //    return;
+                //}
 
-                Task.Run(() => InitializePeer(peer));
+                //var peer = new RlpxPeer(node.PublicKey, node.Port, _encryptionHandshakeService, _messageSerializationService, _synchronizationManager, _logger);
+                //_activePeers.Add(nodeId, peer);
+
+                //Task.Run(() => InitializePeer(peer));
             }
             catch (Exception e)
             {
