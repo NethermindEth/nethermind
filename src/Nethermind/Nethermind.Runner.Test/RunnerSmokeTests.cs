@@ -38,7 +38,7 @@ namespace Nethermind.Runner.Test
                 .UseUrls(host)
                 .Build();
 
-            var ethereumRunner = webHost.Services.GetService<IEthereumRunner>();
+            var ethereumRunner = webHost.Services.GetService<IRunner>();
             var jsonRpcRunner = webHost.Services.GetService<IJsonRpcRunner>();
 
             Assert.IsNotNull(ethereumRunner);

@@ -64,6 +64,8 @@ namespace Nethermind.Discovery
         {
             try
             {
+                _logger.Log($"Received msg: {message}");
+
                 var msgType = message.MessageType;
                
                 var node = _nodeFactory.CreateNode(message.FarPublicKey, message.FarAddress);
@@ -136,7 +138,7 @@ namespace Nethermind.Discovery
             }
             if (!Bytes.UnsafeCompare(_nodeTable.MasterNode.Address.Address.GetAddressBytes(), message.DestinationAddress.Address.GetAddressBytes()))
             {
-                throw new NetworkingException($"Received message with inccorect destination adress, message: {message}");
+                //throw new NetworkingException($"Received message with inccorect destination adress, message: {message}");
             }
             if (_nodeTable.MasterNode.Port != message.DestinationAddress.Port)
             {
@@ -144,7 +146,7 @@ namespace Nethermind.Discovery
             }
             if (!Bytes.UnsafeCompare(message.FarAddress.Address.GetAddressBytes(), message.SourceAddress.Address.GetAddressBytes()))
             {
-                throw new NetworkingException($"Received message with inccorect source adress, message: {message}");
+                //throw new NetworkingException($"Received message with inccorect source adress, message: {message}");
             }
             if (message.FarAddress.Port != message.SourceAddress.Port)
             {

@@ -18,6 +18,8 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Model;
@@ -56,9 +58,28 @@ namespace Nethermind.Discovery
 
             for (var i = 0; i < _configurationProvider.MaxDiscoveryRounds; i++)
             {
-                //if searched node is not specified master node is used
-                var closestNodes = searchedNodeId != null ? _nodeTable.GetClosestNodes(searchedNodeId) : _nodeTable.GetClosestNodes();
-                var tryCandidates = closestNodes.Where(node => !alreadyTriedNodes.Contains(node.IdHashText)).ToArray();
+                Node[] tryCandidates;
+                var candTryIndex = 0;
+                while (true)
+                {
+                    //if searched node is not specified master node is used
+                    var closestNodes = searchedNodeId != null ? _nodeTable.GetClosestNodes(searchedNodeId) : _nodeTable.GetClosestNodes();
+                    tryCandidates = closestNodes.Where(node => !alreadyTriedNodes.Contains(node.IdHashText)).ToArray();
+                    if (tryCandidates.Any())
+                    {
+                        break;
+                    }
+                    if (candTryIndex > 20)
+                    {
+                        break;
+                    }
+                    candTryIndex = candTryIndex + 1;
+
+                    _logger.Log($"Waiting {_configurationProvider.DiscoveryNewCycleWaitTime} for new nodes");
+                    //we need to wait some time for pong messages received from new nodes we reached out to
+                    Thread.Sleep(_configurationProvider.DiscoveryNewCycleWaitTime);
+                }
+
                 if (!tryCandidates.Any())
                 {
                     _logger.Log("No more closer candidates");
@@ -103,6 +124,30 @@ namespace Nethermind.Discovery
                 }
             }
             _logger.Log($"Finished locating nodes, triedNodesCount: {alreadyTriedNodes.Count}");
+
+            LogNodeTable();
+        }
+
+        private void LogNodeTable()
+        {
+            var nonEmptyBuckets = _nodeTable.Buckets.Where(x => x.Items.Any()).ToArray();
+            var sb = new StringBuilder();
+            sb.AppendLine();
+            sb.AppendLine();
+            sb.AppendLine($"NodeTable, non-empty bucket count: {nonEmptyBuckets.Length}, total items count: {nonEmptyBuckets.Sum(x => x.Items.Count)}");
+
+            foreach (var nodeBucket in nonEmptyBuckets)
+            {
+                sb.AppendLine($"Bucket: {nodeBucket.Distance}, count: {nodeBucket.Items.Count}");
+                foreach (var bucketItem in nodeBucket.Items)
+                {
+                    sb.AppendLine($"{bucketItem.Node}, LastContactTime: {bucketItem.LastContactTime:yyyy-MM-dd HH:mm:ss:000}");
+                }
+            }
+
+            sb.AppendLine();
+            sb.AppendLine();
+            _logger.Log(sb.ToString());
         }
 
         private async Task<Result[]> SendFindNode(Node[] nodesToSend, byte[] searchedNodeId)

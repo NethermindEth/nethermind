@@ -37,7 +37,7 @@ namespace Nethermind.Discovery.Test
         [SetUp]
         public void Initialize()
         {
-            _config = new DiscoveryConfigurationProvider();
+            _config = new DiscoveryConfigurationProvider(new NetworkHelper(new ConsoleLogger()));
             _signer = new Signer();
 
             var pingSerializer = new PingMessageSerializer(_signer, _privateKey, new DiscoveryMessageFactory(_config), new NodeIdResolver(_signer), new NodeFactory());

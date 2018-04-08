@@ -27,10 +27,11 @@ namespace Nethermind.Discovery.RoutingTable
         public Node(PublicKey id)
         {
             Id = id;
-            IdHash = Keccak.Compute(id.PrefixedBytes);
+            IdHash = Keccak.Compute(id.Bytes);
             IdHashText = IdHash.ToString();
         }
 
+        //id is bytes without prefix byte - 64 bytes
         public PublicKey Id { get; }
         public Keccak IdHash { get; }
         public string IdHashText { get; }
@@ -75,7 +76,7 @@ namespace Nethermind.Discovery.RoutingTable
 
         public override string ToString()
         {
-            return $"Id: {IdHashText}, Host: {Host}, RemotePort: {Port}, IsDiscovery: {IsDicoveryNode}";
+            return $"Id: {Id}, Host: {Host}, RemotePort: {Port}, IsDiscovery: {IsDicoveryNode}";
         }
     }
 }

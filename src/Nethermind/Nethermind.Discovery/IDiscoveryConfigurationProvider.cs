@@ -16,6 +16,8 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Net;
+
 namespace Nethermind.Discovery
 {
     public interface IDiscoveryConfigurationProvider
@@ -44,6 +46,11 @@ namespace Nethermind.Discovery
         /// Current Node host
         /// </summary>
         string MasterHost { get; }
+
+        /// <summary>
+        /// Current Node external ip
+        /// </summary>
+        string MasterExternalIp { get; set; }
 
         /// <summary>
         /// Current Node port
@@ -86,6 +93,11 @@ namespace Nethermind.Discovery
         int DiscoveryInterval { get; }
 
         /// <summary>
+        /// Time between discovery cicles in miliseconds
+        /// </summary>
+        int DiscoveryNewCycleWaitTime { get; }
+
+        /// <summary>
         /// Time between running refresh processes in miliseconds
         /// </summary>
         int RefreshInterval { get; }
@@ -93,7 +105,7 @@ namespace Nethermind.Discovery
         /// <summary>
         /// Boot nodes connection details
         /// </summary>
-        (string Host, int Port)[] BootNodes { get; }
+        (string Id, string Host, int Port)[] BootNodes { get; }
 
         /// <summary>
         /// Key Pass

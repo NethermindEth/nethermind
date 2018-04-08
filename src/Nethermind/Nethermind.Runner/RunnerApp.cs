@@ -36,7 +36,7 @@ namespace Nethermind.Runner
         public static InitParams InitParams;
 
         private string _host = "0.0.0.0";
-        private string _bootNode = "localhost";
+        private string _bootNode = "enode://6ce05930c72abc632c58e2e4324f7c7ea478cec0ed4fa2528982cf34483094e9cbc9216e7aa349691242576d552a2a56aaeae426c5303ded677ce455ba1acd9d@13.84.180.240:30303";
         private int _httpPort = 8545;
         private int _discoveryPort = 30303;
         private string _genesisFile = "genesis.json";
@@ -101,7 +101,7 @@ namespace Nethermind.Runner
                     .UseUrls(host)
                     .Build();
 
-                var ethereumRunner = webHost.Services.GetService<IEthereumRunner>();
+                var ethereumRunner = webHost.Services.GetService<IRunner>();
                 ethereumRunner.Start(initParams);
 
                 var jsonRpcRunner = webHost.Services.GetService<IJsonRpcRunner>();

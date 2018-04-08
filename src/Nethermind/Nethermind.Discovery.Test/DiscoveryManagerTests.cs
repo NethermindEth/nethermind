@@ -26,6 +26,7 @@ using Nethermind.Discovery.Lifecycle;
 using Nethermind.Discovery.Messages;
 using Nethermind.Discovery.RoutingTable;
 using Nethermind.KeyStore;
+using Nethermind.Network;
 using NSubstitute;
 using NUnit.Framework;
 using Node = Nethermind.Discovery.RoutingTable.Node;
@@ -54,7 +55,7 @@ namespace Nethermind.Discovery.Test
             var privateKey = new PrivateKey(new Hex(TestPrivateKeyHex));
             _publicKey = privateKey.PublicKey;
             var logger = new ConsoleLogger();
-            var config = new DiscoveryConfigurationProvider { PongTimeout = 100 };
+            var config = new DiscoveryConfigurationProvider(new NetworkHelper(logger)) { PongTimeout = 100 };
             var configProvider = new ConfigurationProvider(Path.GetDirectoryName(Path.Combine(Path.GetTempPath(), "KeyStore")));
             
             _messageSender = Substitute.For<IMessageSender>();
@@ -62,6 +63,8 @@ namespace Nethermind.Discovery.Test
             var calculator = new NodeDistanceCalculator(config);
 
             _nodeTable = new NodeTable(config, _nodeFactory, new FileKeyStore(configProvider, new JsonSerializer(logger), new AesEncrypter(configProvider, logger), new CryptoRandom(), logger), logger, calculator);
+            _nodeTable.Initialize();
+
             var evictionManager = new EvictionManager(_nodeTable, logger);
             var lifecycleFactory = new NodeLifecycleManagerFactory(_nodeFactory, _nodeTable, logger, config, new DiscoveryMessageFactory(config), evictionManager);
 

@@ -83,7 +83,7 @@ namespace Nethermind.KeyStore
 
         private SymmetricAlgorithm CreateAesCryptoServiceProvider(byte[] key, byte[] iv, string cipherType)
         {
-            switch (cipherType.Trim())
+            switch (cipherType)
             {
                 case "aes-128-ctr":
                     //Custom impl for AES128 CTR

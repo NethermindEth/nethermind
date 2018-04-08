@@ -101,7 +101,7 @@ namespace Nethermind.KeyStore
             var kdfParams = keyStoreItem.Crypto.KDFParams;
             var passBytes = password.ToByteArray(_configurationProvider.KeyStoreEncoding);
 
-            byte[] derivedKey = null;
+            byte[] derivedKey;
             var kdf = keyStoreItem.Crypto.KDF.Trim();
             switch (kdf)
             {

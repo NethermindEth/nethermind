@@ -18,7 +18,7 @@
 
 namespace Nethermind.Runner
 {
-    public interface IEthereumRunner
+    public interface IRunner
     {
         void Start(InitParams initParams);
         void Stop();

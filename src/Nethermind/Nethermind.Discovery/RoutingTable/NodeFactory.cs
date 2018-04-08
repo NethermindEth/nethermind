@@ -33,11 +33,11 @@ namespace Nethermind.Discovery.RoutingTable
             return node;
         }
 
-        public Node CreateNode(PublicKey id, string host, int port)
+        public Node CreateNode(PublicKey id, string host, int port, bool isDiscovery = false)
         {
             var node = new Node(id)
             {
-                IsDicoveryNode = false
+                IsDicoveryNode = isDiscovery
             };
             node.InitializeAddress(host, port);
             return node;

@@ -214,7 +214,7 @@ namespace Nethermind.Discovery.Test
 
         private IMessageSerializationService CreateSerializationService(PrivateKey privateKey)
         {
-            var config = new DiscoveryConfigurationProvider();
+            var config = new DiscoveryConfigurationProvider(new NetworkHelper(new ConsoleLogger()));
             var signer = new Signer();
 
             var pingSerializer = new PingMessageSerializer(signer, privateKey, new DiscoveryMessageFactory(config), new NodeIdResolver(signer), new NodeFactory());

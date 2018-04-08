@@ -46,7 +46,7 @@ namespace Nethermind.Discovery.RoutingTable
             _logger = logger;
             _nodeDistanceCalculator = nodeDistanceCalculator;
 
-            Initialize();   
+            //Initialize();   
         }
 
         public Node MasterNode { get; private set; }
@@ -54,6 +54,7 @@ namespace Nethermind.Discovery.RoutingTable
 
         public NodeAddResult AddNode(Node node)
         {
+            _logger.Log($"Adding node to NodeTable: {node}");
             var distanceFromMaster = _nodeDistanceCalculator.CalculateDistance(MasterNode.IdHash.Bytes, node.IdHash.Bytes);
             var bucket = Buckets[distanceFromMaster > 0 ? distanceFromMaster - 1 : 0];
             _nodes.AddOrUpdate(node.IdHashText, node, (x, y) => y);
@@ -128,7 +129,7 @@ namespace Nethermind.Discovery.RoutingTable
             return allNodes;
         }
 
-        private void Initialize()
+        public void Initialize(PublicKey masterNodeKey = null)
         {
             Buckets = new NodeBucket[_configurationProvider.BucketsCount];
             var pass = new SecureString();
@@ -139,15 +140,21 @@ namespace Nethermind.Discovery.RoutingTable
             }
             pass.MakeReadOnly();
 
-            var key = _keyStore.GenerateKey(pass);
-            if (key.Item2.ResultType == ResultType.Failure)
+            if (masterNodeKey == null)
             {
-                var msg = $"Cannot create key, error: {key.Item2.Error}";
-                _logger.Error(msg);
-                throw new Exception(msg);
-            }
+                var key = _keyStore.GenerateKey(pass);
+                if (key.Item2.ResultType == ResultType.Failure)
+                {
+                    var msg = $"Cannot create key, error: {key.Item2.Error}";
+                    _logger.Error(msg);
+                    throw new Exception(msg);
+                }
 
-            MasterNode = _nodeFactory.CreateNode(key.Item1.PublicKey, _configurationProvider.MasterHost, _configurationProvider.MasterPort);
+                masterNodeKey = key.PrivateKey.PublicKey;
+            } 
+
+            MasterNode = _nodeFactory.CreateNode(masterNodeKey, _configurationProvider.MasterHost, _configurationProvider.MasterPort);
+            _logger.Log($"Created MasterNode: {MasterNode}");
 
             for (var i = 0; i < Buckets.Length; i++)
             {

@@ -27,7 +27,7 @@ namespace Nethermind.Discovery.Messages
 
         public override string ToString()
         {
-            return base.ToString() + $", Nodes: {(Nodes != null && Nodes.Any() ? string.Join(",", Nodes.Select(x => x.Id)) : "empty")}";
+            return base.ToString() + $", Nodes: {(Nodes != null && Nodes.Any() ? string.Join(",", Nodes.Select(x => x.ToString())) : "empty")}";
         }
         
         public override MessageType MessageType => MessageType.Neighbors;

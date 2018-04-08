@@ -32,7 +32,7 @@ using Nethermind.Store;
 
 namespace Nethermind.Runner
 {
-    public class EthereumRunner : IEthereumRunner
+    public class EthereumRunner : IRunner
     {
         private readonly IJsonSerializer _jsonSerializer;
         private readonly IBlockchainProcessor _blockchainProcessor;

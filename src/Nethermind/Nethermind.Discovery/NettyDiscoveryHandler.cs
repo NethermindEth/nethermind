@@ -64,6 +64,7 @@ namespace Nethermind.Discovery
 
             try
             {
+                _logger.Log($"Sending message: {discoveryMessage}");
                 message = Seserialize(discoveryMessage);
             }
             catch (Exception e)
@@ -80,6 +81,8 @@ namespace Nethermind.Discovery
 
         protected override void ChannelRead0(IChannelHandlerContext ctx, DatagramPacket packet)
         {
+            _logger.Log("Received message");
+
             var content = packet.Content;
             var address = packet.Sender;
 

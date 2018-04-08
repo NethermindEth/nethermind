@@ -116,7 +116,7 @@ namespace Nethermind.Runner
             services.AddSingleton<IShhModule, ShhModule>();
             services.AddSingleton<IJsonRpcService, JsonRpcService>();
             services.AddSingleton<IJsonRpcRunner, JsonRpcRunner>();
-            services.AddSingleton<IEthereumRunner, EthereumRunner>();
+            services.AddSingleton<IRunner, EthereumRunner>();
 
             //var logger = new ConsoleLogger();
 

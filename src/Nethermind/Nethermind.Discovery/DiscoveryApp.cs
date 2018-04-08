@@ -17,6 +17,8 @@
  */
 
 using System;
+using System.Linq;
+using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Handlers.Logging;
@@ -87,25 +89,27 @@ namespace Nethermind.Discovery
         private async Task InitializeUdpChannel()
         {
             _group = new MultithreadEventLoopGroup(1);
-            try
-            {
-                while (!_appShutdown)
-                {
+            //try
+            //{
+                //while (!_appShutdown)
+                //{
                     await StartUdpChannel();
                     //wait for closing event
-                    await _channel.CloseCompletion;
-                    StopUdpChannel();
-                }
-            }
-            finally 
-            {
-                await _group.ShutdownGracefullyAsync();
-            }
+                    //await _channel.CloseCompletion;
+                    //StopUdpChannel();
+                //}
+            //}
+            //finally 
+            //{
+            //    await _group.ShutdownGracefullyAsync();
+            //}
         }
 
         private async Task StartUdpChannel()
         {
-            _logger.Log($"Starting UDP Channel: {_nodeTable.MasterNode.Address}");
+            //var address = new IPEndPoint(IPAddress.Parse(_configurationProvider.MasterHost), _configurationProvider.MasterPort);
+            //var address = _nodeTable.MasterNode.Address;
+            _logger.Log($"Starting UDP Channel: {_configurationProvider.MasterHost}:{_configurationProvider.MasterPort}");
 
             var bootstrap = new Bootstrap();
             bootstrap
@@ -113,7 +117,7 @@ namespace Nethermind.Discovery
                 .Channel<SocketDatagramChannel>()
                 .Handler(new ActionChannelInitializer<IDatagramChannel>(InitializeChannel));
 
-            _channel = await bootstrap.BindAsync(_nodeTable.MasterNode.Address);
+            _channel = await bootstrap.BindAsync(IPAddress.Parse(_configurationProvider.MasterHost), _configurationProvider.MasterPort);
         }
 
         private void InitializeChannel(IDatagramChannel channel)
@@ -122,24 +126,42 @@ namespace Nethermind.Discovery
             _discoveryManager.MessageSender = _discoveryHandler;
             _discoveryHandler.OnChannelActivated += OnChannelActivated;
             channel.Pipeline
-                .AddLast(new LoggingHandler(LogLevel.TRACE))
+                .AddLast(new LoggingHandler(LogLevel.INFO))
                 .AddLast(_discoveryHandler);
         }
 
-        private void OnChannelActivated(object sender, EventArgs e)
+        private async void OnChannelActivated(object sender, EventArgs e)
         {
-            _logger.Log("Initializing bootNodes.");
-            InitializeBootNodes();
+            await Task.Run(() => OnChannelActivated());
+        }
 
-            InitializeDiscoveryTimer();
-            InitializeRefreshTimer();
+        private void OnChannelActivated()
+        {
+            try
+            {
+                _logger.Log("Initializing bootNodes.");
+                if (!InitializeBootNodes())
+                {
+                    _logger.Error("Could not communicate with any boot nodes. Initialization failed.");
+                    return;
+                }
+
+                RunDiscovery();
+
+                //InitializeDiscoveryTimer();
+                //InitializeRefreshTimer();
+            }
+            catch (Exception e)
+            {
+                _logger.Error("Error during discovery initialization", e);
+            }         
         }
 
         private void InitializeDiscoveryTimer()
         {
             _logger.Log("Starting discovery timer");
             _discoveryTimer = new Timer(_configurationProvider.DiscoveryInterval);
-            _discoveryTimer.Elapsed += async (sender, e) => await RunDiscovery();
+            _discoveryTimer.Elapsed += (sender, e) => RunDiscovery();
             _discoveryTimer.Start();
         }
 
@@ -160,7 +182,7 @@ namespace Nethermind.Discovery
         {
             _logger.Log("Starting refresh timer");
             _refreshTimer = new Timer(_configurationProvider.RefreshInterval);
-            _refreshTimer.Elapsed += async (sender, e) => await RunRefresh();
+            _refreshTimer.Elapsed += (sender, e) => RunRefresh();
             _refreshTimer.Start();
         }
 
@@ -199,23 +221,35 @@ namespace Nethermind.Discovery
             }
         }
 
-        private void InitializeBootNodes()
+        private bool InitializeBootNodes()
         {
             var bootNodes = _configurationProvider.BootNodes;
             var managers = new INodeLifecycleManager[bootNodes.Length];
             for (var i = 0; i < bootNodes.Length; i++)
             {
                 var bootNode = bootNodes[i];
-                var node = _nodeFactory.CreateNode(bootNode.Host, bootNode.Port);
+                var node = string.IsNullOrEmpty(bootNode.Id) 
+                    ? _nodeFactory.CreateNode(bootNode.Host, bootNode.Port) 
+                    : _nodeFactory.CreateNode(new PublicKey(new Hex(bootNode.Id)), bootNode.Host, bootNode.Port, true);
                 var manager = _discoveryManager.GetNodeLifecycleManager(node);
                 managers[i] = manager;
             }
-            
+
             //Wait for pong message to come back from Boot nodes
-            Thread.Sleep(_configurationProvider.BootNodePongTimeout);
+            var maxWaitTime = _configurationProvider.BootNodePongTimeout;
+            var itemTime = maxWaitTime / 100;
+            for (var i = 0; i < 100; i++)
+            {
+                if (managers.Any(x => x.State == NodeLifecycleState.Active))
+                {
+                    break;
+                }
+                _logger.Log($"Waiting {itemTime} ms for boot nodes to respond");
+                Thread.Sleep(itemTime);
+            }
 
             var reachedNodeCounter = 0;
-            for (int i = 0; i < managers.Length; i++)
+            for (var i = 0; i < managers.Length; i++)
             {
                 var manager = managers[i];
                 if (manager.State != NodeLifecycleState.Active)
@@ -228,19 +262,16 @@ namespace Nethermind.Discovery
                 }
             }
 
-            if (reachedNodeCounter == 0)
-            {
-                throw new Exception("Cannot reach any boot nodes. Initialization failed.");
-            }
+            return reachedNodeCounter > 0;
         }
 
-        private async Task RunDiscovery()
+        private async void RunDiscovery()
         {
             _logger.Log("Running discovery process.");
             await _nodesLocator.LocateNodes();
         }
 
-        private async Task RunRefresh()
+        private async void RunRefresh()
         {
             _logger.Log("Running refresh process.");
             var randomId = _cryptoRandom.GenerateRandomBytes(64);

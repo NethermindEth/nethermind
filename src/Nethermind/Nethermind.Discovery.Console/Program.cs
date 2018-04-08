@@ -32,7 +32,7 @@ namespace Nethermind.Discovery.Console
     class Program
     {
         private static readonly PrivateKey PrivateKey = new PrivateKey("49a7b37aa6f6645917e7b807e9d1c00d4fa71f18343b0d4122a4d2df64dd6fee");
-        private static readonly ILogger Logger = new ConsoleLogger();
+        private static readonly ILogger Logger = new NlogLogger();
         private static IDiscoveryApp _discoveryApp;
 
         static void Main(string[] args)
@@ -53,7 +53,7 @@ namespace Nethermind.Discovery.Console
 
         private static void Start()
         {
-            var config = new DiscoveryConfigurationProvider();
+            var config = new DiscoveryConfigurationProvider(new NetworkHelper(Logger));
             var signer = new Signer();
             var cryptoRandom = new CryptoRandom();
             var configProvider = new ConfigurationProvider(Path.GetDirectoryName(Path.Combine(Path.GetTempPath(), "KeyStore")));
@@ -62,6 +62,8 @@ namespace Nethermind.Discovery.Console
             var calculator = new NodeDistanceCalculator(config);
 
             var nodeTable = new NodeTable(config, nodeFactory, new FileKeyStore(configProvider, new JsonSerializer(Logger), new AesEncrypter(configProvider, Logger), cryptoRandom, Logger), Logger, calculator);
+            nodeTable.Initialize();
+
             var evictionManager = new EvictionManager(nodeTable, Logger);
             var lifecycleFactory = new NodeLifecycleManagerFactory(nodeFactory, nodeTable, Logger, config, new DiscoveryMessageFactory(config), evictionManager);
 

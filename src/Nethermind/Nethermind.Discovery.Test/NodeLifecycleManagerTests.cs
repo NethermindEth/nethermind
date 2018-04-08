@@ -27,6 +27,7 @@ using Nethermind.Discovery.Lifecycle;
 using Nethermind.Discovery.Messages;
 using Nethermind.Discovery.RoutingTable;
 using Nethermind.KeyStore;
+using Nethermind.Network;
 using NSubstitute;
 using NUnit.Framework;
 using PongMessage = Nethermind.Discovery.Messages.PongMessage;
@@ -57,7 +58,7 @@ namespace Nethermind.Discovery.Test
 
             var logger = new ConsoleLogger();
             //setting config to store 3 nodes in a bucket and for table to have one bucket//setting config to store 3 nodes in a bucket and for table to have one bucket
-            _configurationProvider = new DiscoveryConfigurationProvider
+            _configurationProvider = new DiscoveryConfigurationProvider(new NetworkHelper(logger))
             {
                 PongTimeout = 50,
                 BucketSize = 3,
@@ -68,6 +69,8 @@ namespace Nethermind.Discovery.Test
             var calculator = new NodeDistanceCalculator(_configurationProvider);
 
             _nodeTable = new NodeTable(_configurationProvider, _nodeFactory, new FileKeyStore(configProvider, new JsonSerializer(logger), new AesEncrypter(configProvider, logger), new CryptoRandom(), logger), logger, calculator);
+            _nodeTable.Initialize();
+
             var evictionManager = new EvictionManager(_nodeTable, logger);
             var lifecycleFactory = new NodeLifecycleManagerFactory(_nodeFactory, _nodeTable, logger, _configurationProvider, new DiscoveryMessageFactory(_configurationProvider), evictionManager);
 
