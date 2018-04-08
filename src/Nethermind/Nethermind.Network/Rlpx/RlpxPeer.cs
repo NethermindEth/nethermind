@@ -41,8 +41,7 @@ namespace Nethermind.Network.Rlpx
     {
         private readonly Dictionary<PublicKey, IP2PSession> _remotePeers = new Dictionary<PublicKey, IP2PSession>();
         
-        private const int PeerConnectionTimeout = 10000;
-        private readonly PublicKey _localNodeId;
+        private const int PeerConnectionTimeout = 10000;        
         private readonly int _localPort;
         private readonly IEncryptionHandshakeService _encryptionHandshakeService;
         private readonly IMessageSerializationService _serializationService;
@@ -62,13 +61,15 @@ namespace Nethermind.Network.Rlpx
             ISynchronizationManager synchronizationManager,
             ILogger logger)
         {
-            _localNodeId = localNodeId;
+            LocalNodeId = localNodeId;
             _localPort = localPort;
             _encryptionHandshakeService = encryptionHandshakeService;
             _serializationService = serializationService;
             _synchronizationManager = synchronizationManager;
             _logger = logger;
         }
+
+        public PublicKey LocalNodeId { get; }
 
         public async Task Shutdown()
         {
@@ -134,7 +135,7 @@ namespace Nethermind.Network.Rlpx
             _logger.Log($"Initializing {inOut} channel");
 
             IP2PSession p2PSession = new P2PSession(
-                _localNodeId,
+                LocalNodeId,
                 _localPort,
                 _serializationService,
                 _synchronizationManager,

@@ -26,6 +26,8 @@ using Nethermind.Core.Extensions;
 using Nethermind.Discovery.Lifecycle;
 using Nethermind.Discovery.Messages;
 using Nethermind.Discovery.RoutingTable;
+using Nethermind.Network;
+using Nethermind.Network.P2P;
 using Node = Nethermind.Discovery.RoutingTable.Node;
 using PingMessage = Nethermind.Discovery.Messages.PingMessage;
 using PongMessage = Nethermind.Discovery.Messages.PongMessage;
@@ -40,6 +42,7 @@ namespace Nethermind.Discovery
         private readonly INodeFactory _nodeFactory;
         private IMessageSender _messageSender;
         private readonly INodeTable _nodeTable;
+        private readonly List<IDiscoveryListener> _discoveryListeners = new List<IDiscoveryListener>();
 
         private readonly ConcurrentDictionary<MessageTypeKey, ManualResetEvent> _waitingEvents = new ConcurrentDictionary<MessageTypeKey, ManualResetEvent>();
         private readonly ConcurrentDictionary<string, INodeLifecycleManager> _nodeLifecycleManagers = new ConcurrentDictionary<string, INodeLifecycleManager>();
@@ -92,7 +95,7 @@ namespace Nethermind.Discovery
                         return;
                 }
 
-                NotifySubscribers(msgType, nodeManager.ManagedNode);
+                NotifySubscribersOnMsgReceived(msgType, nodeManager.ManagedNode);
                 CleanUpLifecycleManagers();
             }
             catch (Exception e)
@@ -103,7 +106,11 @@ namespace Nethermind.Discovery
 
         public INodeLifecycleManager GetNodeLifecycleManager(Node node)
         {
-            return _nodeLifecycleManagers.GetOrAdd(node.IdHashText, x => _nodeLifecycleManagerFactory.CreateNodeLifecycleManager(node));
+            return _nodeLifecycleManagers.GetOrAdd(node.IdHashText, x =>
+            {
+                NotifyListenersOnNewNodeDiscovered(node);
+                return _nodeLifecycleManagerFactory.CreateNodeLifecycleManager(node);
+            });
         }
 
         public void SendMessage(DiscoveryMessage discoveryMessage)
@@ -130,6 +137,14 @@ namespace Nethermind.Discovery
             return result;
         }
 
+        public void RegisterDiscoveryListener(IDiscoveryListener listener)
+        {
+            if (!_discoveryListeners.Contains(listener))
+            {
+                _discoveryListeners.Add(listener);
+            }
+        }
+
         protected void ValidatePingAddress(PingMessage message)
         {
             if (message.DestinationAddress == null || message.SourceAddress == null || message.FarAddress == null)
@@ -154,7 +169,21 @@ namespace Nethermind.Discovery
             }
         }
 
-        private void NotifySubscribers(MessageType msgType, Node node)
+        private void NotifyListenersOnNewNodeDiscovered(Node node)
+        {
+            for (var i = 0; i < _discoveryListeners.Count; i++)
+            {
+                var discoveryListener = _discoveryListeners[i];
+                discoveryListener.OnNewNodeDiscovered(new DiscoveryNode
+                {
+                    PublicKey = node.Id,
+                    Host = node.Host,
+                    Port = node.Port
+                });
+            }
+        }
+
+        private void NotifySubscribersOnMsgReceived(MessageType msgType, Node node)
         {
             var resetEvent = RemoveResetEvent(node.IdHashText, (int)msgType);
             resetEvent?.Set();

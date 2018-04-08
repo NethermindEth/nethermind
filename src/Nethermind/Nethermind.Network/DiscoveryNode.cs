@@ -20,11 +20,11 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Network
 {
-    public class Node
+    public class DiscoveryNode
     {
+        public PublicKey PublicKey { get; set; }
         public int Port { get; set; }
         public string Host { get; set; }
-        public PublicKey PublicKey { get; set; }
         
         // capabilities and client id here?
     }

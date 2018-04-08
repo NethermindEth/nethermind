@@ -19,14 +19,16 @@
 using Nethermind.Discovery.Lifecycle;
 using Nethermind.Discovery.Messages;
 using Nethermind.Discovery.RoutingTable;
+using Nethermind.Network.P2P;
 
 namespace Nethermind.Discovery
 {
-    public interface IDiscoveryManager : IDiscoveryListener
+    public interface IDiscoveryManager : IDiscoveryMsgListener
     {
         IMessageSender MessageSender { set; }
         INodeLifecycleManager GetNodeLifecycleManager(Node node);
         void SendMessage(DiscoveryMessage discoveryMessage);
         bool WasMessageReceived(string senderIdHash, MessageType messageType, int timeout);
+        void RegisterDiscoveryListener(IDiscoveryListener listener);
     }
 }

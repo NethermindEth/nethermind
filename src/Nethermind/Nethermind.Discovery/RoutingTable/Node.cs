@@ -27,7 +27,9 @@ namespace Nethermind.Discovery.RoutingTable
         public Node(PublicKey id)
         {
             Id = id;
-            IdHash = Keccak.Compute(id.Bytes);
+            //Bytes or PrefixBytes?
+
+            IdHash = Keccak.Compute(id.PrefixedBytes);
             IdHashText = IdHash.ToString();
         }
 

@@ -17,10 +17,11 @@
  */
 
 using Nethermind.Discovery.Messages;
+using Nethermind.Discovery.RoutingTable;
 
 namespace Nethermind.Discovery
 {
-    public interface IDiscoveryListener
+    public interface IDiscoveryMsgListener
     {
         void OnIncomingMessage(DiscoveryMessage message);
     }
