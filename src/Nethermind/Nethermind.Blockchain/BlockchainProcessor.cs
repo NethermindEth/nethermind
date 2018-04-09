@@ -110,8 +110,6 @@ namespace Nethermind.Blockchain
                             _logger?.Log("Will go and wait for another block now...");
                         }
                     }
-
-                    _logger?.Log("I shall never end here...");
                 },
                 _cancellationSource.Token,
                 TaskCreationOptions.LongRunning,

@@ -33,6 +33,7 @@ using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
+using Nethermind.HashLib;
 using Nethermind.Mining;
 using Nethermind.Store;
 using Newtonsoft.Json;
@@ -266,6 +267,8 @@ namespace Ethereum.Test.Base
                     TestBlockJson testBlockJson = test.Blocks[i];
                     Rlp rlp = new Rlp(Hex.ToBytes(testBlockJson.Rlp));
                     Block suggestedBlock = Rlp.Decode<Block>(rlp);
+                    suggestedBlock.Header.RecomputeHash(); // TODO: review this
+                    Assert.AreEqual(new Keccak(testBlockJson.BlockHeader.Hash), suggestedBlock.Header.Hash, "hash of the block");
                     correctRlpsBlocks.Add((suggestedBlock, testBlockJson.ExpectedException));
                 }
                 catch (Exception e)
@@ -307,8 +310,12 @@ namespace Ethereum.Test.Base
                         _logger.Log($"Expecting block exception: {correctRlpsBlocks[i].Item2}");    
                     }
 
+                    if (correctRlpsBlocks[i].Item1.Hash == null)
+                    {
+                        throw new Exception($"null hash in {test.Name} block {i}");
+                    }
+                    
                     // TODO: mimic the actual behaviour where block goes through validating sync manager?
-                    correctRlpsBlocks[i].Item1.Header.RecomputeHash();
                     if (blockValidator.ValidateSuggestedBlock(correctRlpsBlocks[i].Item1))
                     {
                         blockchainProcessor.SuggestBlock(correctRlpsBlocks[i].Item1);
