@@ -275,7 +275,7 @@ namespace Nethermind.Blockchain
                 Block branchingPoint = toBeProcessed;
                 if (branchingPoint != null)
                 {
-                    _logger?.Log($"BRANCHING FROM: {toBeProcessed.Number} ({toBeProcessed.Hash})");
+                    _logger?.Log($"BRANCHING FROM: {toBeProcessed.Hash} ({toBeProcessed.Number})");
                 }
                 else
                 {
@@ -285,7 +285,7 @@ namespace Nethermind.Blockchain
                     }
                     else
                     {
-                        _logger?.Log($"ADDING ON TOP OF {HeadBlock.Number} ({HeadBlock.Hash})");
+                        _logger?.Log($"ADDING ON TOP OF {HeadBlock.Hash} ({HeadBlock.Number})");
                     }
                 }
 
@@ -329,16 +329,19 @@ namespace Nethermind.Blockchain
                 if (!forMining)
                 {
                     HeadBlock = processedBlocks[processedBlocks.Length - 1];
+                    _logger?.Log($"ADDING {HeadBlock.Hash} ({HeadBlock.Number}) TO BRANCH");
                     _blockTree.AddBlock(HeadBlock, false);
 
                     foreach (Block block in blocksToBeRemovedFromMain)
                     {
+                        _logger?.Log($"MOVING {block.Header.Hash} ({block.Header.Number}) TO BRANCH");
                         _blockTree.MoveToBranch(block.Hash);
                         _logger?.Log($"BLOCK {block.Header.Hash} ({block.Header.Number}) MOVED TO BRANCH");
                     }
 
-                    foreach (Block block in processedBlocks)
+                    foreach (Block block in blocksToBeAddedToMain)
                     {
+                        _logger?.Log($"MOVING {block.Header.Hash} ({block.Header.Number}) TO MAIN");
                         _blockTree.MoveToMain(block.Hash);
                         _logger?.Log($"BLOCK {block.Header.Hash} ({block.Header.Number}) ADDED TO MAIN CHAIN");
                     }
