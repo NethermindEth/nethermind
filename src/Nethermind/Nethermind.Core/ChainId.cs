@@ -18,17 +18,17 @@
 
 namespace Nethermind.Core
 {
-    public enum ChainId
+    public static class ChainId
     {
-        MainNet = 1,
-        Morden = 2,
-        Ropsten = 3,
-        Rinkeby = 4,
-        RootstockMainnet = 30,
-        RootstockTestnet = 31,
-        Kovan = 42,
-        EthereumClassicMainnet = 61,
-        EthereumClassicTestnet = 62,
-        DefaultGethPrivateChain = 1337,
+        public const int MainNet = 1;
+        public const int Morden = 2;
+        public const int Ropsten = 3;
+        public const int Rinkeby = 4;
+        public const int RootstockMainnet = 30;
+        public const int RootstockTestnet = 31;
+        public const int Kovan = 42;
+        public const int EthereumClassicMainnet = 61;
+        public const int EthereumClassicTestnet = 62;
+        public const int DefaultGethPrivateChain = 1337;
     }
 }

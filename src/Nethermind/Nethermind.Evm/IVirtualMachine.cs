@@ -16,10 +16,12 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.Core.Specs;
+
 namespace Nethermind.Evm
 {
     public interface IVirtualMachine
     {
-        (byte[] output, TransactionSubstate) Run(EvmState state);
+        (byte[] output, TransactionSubstate) Run(EvmState state, IReleaseSpec spec);
     }
 }

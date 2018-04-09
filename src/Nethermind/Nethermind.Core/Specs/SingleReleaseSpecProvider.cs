@@ -41,6 +41,11 @@ namespace Nethermind.Core.Specs
             return _releaseSpec;
         }
 
+        public IReleaseSpec GetGenesisSpec()
+        {
+            return _releaseSpec;
+        }
+
         public IReleaseSpec GetSpec(BigInteger blockNumber)
         {
             return _releaseSpec;

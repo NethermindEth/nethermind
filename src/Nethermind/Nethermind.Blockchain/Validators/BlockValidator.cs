@@ -18,6 +18,7 @@
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.Blockchain.Validators
 {
@@ -26,12 +27,14 @@ namespace Nethermind.Blockchain.Validators
         private readonly IHeaderValidator _headerValidator;
         private readonly ITransactionValidator _transactionValidator;
         private readonly IOmmersValidator _ommersValidator;
+        private readonly ISpecProvider _specProvider;
         private readonly ILogger _logger;
 
-        public BlockValidator(ITransactionValidator transactionValidator, IHeaderValidator headerValidator, IOmmersValidator ommersValidator, ILogger logger)
+        public BlockValidator(ITransactionValidator transactionValidator, IHeaderValidator headerValidator, IOmmersValidator ommersValidator, ISpecProvider specProvider, ILogger logger)
         {
             _transactionValidator = transactionValidator;
             _ommersValidator = ommersValidator;
+            _specProvider = specProvider;
             _logger = logger;
             _headerValidator = headerValidator;
         }
@@ -46,7 +49,7 @@ namespace Nethermind.Blockchain.Validators
 
             foreach (Transaction transaction in suggestedBlock.Transactions)
             {
-                if (!_transactionValidator.IsWellFormed(transaction))
+                if (!_transactionValidator.IsWellFormed(transaction, _specProvider.GetSpec(suggestedBlock.Number)))
                 {
                     _logger?.Log($"Invalid block ({suggestedBlock.Hash}) - invalid transaction ({transaction.Hash})");
                     return false;

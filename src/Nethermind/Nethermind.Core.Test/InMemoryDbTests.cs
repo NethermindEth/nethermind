@@ -17,6 +17,7 @@
  */
 
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Store;
 using NUnit.Framework;
 
@@ -89,7 +90,7 @@ namespace Nethermind.Core.Test
         {
             InMemoryDb inMemoryDb = new InMemoryDb();
             inMemoryDb[_hash1] = _bytes1;
-            inMemoryDb.Commit();
+            inMemoryDb.Commit(Frontier.Instance);
             byte[] getResult = inMemoryDb[_hash1];
             Assert.AreEqual(_bytes1, getResult);
         }
@@ -99,7 +100,7 @@ namespace Nethermind.Core.Test
         {
             InMemoryDb inMemoryDb = new InMemoryDb();
             inMemoryDb[_hash1] = _bytes1;
-            inMemoryDb.Commit();
+            inMemoryDb.Commit(Frontier.Instance);
             inMemoryDb.Delete(_hash1);
             inMemoryDb.Restore(-1);
             byte[] getResult = inMemoryDb[_hash1];

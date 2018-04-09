@@ -17,12 +17,14 @@
  */
 
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Numerics;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Core
 {
+    [DebuggerDisplay("{Hash} ({Number})")]
     public class Block
     {
         public Block(BlockHeader blockHeader, IEnumerable<Transaction> transactions, IEnumerable<BlockHeader> ommers)

@@ -22,6 +22,7 @@ using System.Diagnostics;
 using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.Store
 {
@@ -113,7 +114,7 @@ namespace Nethermind.Store
             }
         }
 
-        public void Commit()
+        public void Commit(IReleaseSpec spec)
         {
             _logger?.Log("  COMMITTING STORAGE CHANGES");
 

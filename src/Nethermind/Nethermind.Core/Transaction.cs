@@ -24,7 +24,7 @@ namespace Nethermind.Core
 {
     public class Transaction
     {
-        public ChainId ChainId { get; set; }
+        public int ChainId { get; set; }
         public BigInteger Nonce { get; set; }
         public BigInteger GasPrice { get; set; }
         public BigInteger GasLimit { get; set; }

@@ -164,8 +164,8 @@ namespace Nethermind.Blockchain
             foreach (Address daoAccount in DaoData.DaoAccounts)
             {
                 BigInteger balance = _stateProvider.GetBalance(daoAccount);
-                _stateProvider.UpdateBalance(withdrawAccount, balance);
-                _stateProvider.UpdateBalance(daoAccount, -balance);
+                _stateProvider.UpdateBalance(withdrawAccount, balance, Dao.Instance);
+                _stateProvider.UpdateBalance(daoAccount, -balance, Dao.Instance);
             }
         }
 
@@ -221,7 +221,7 @@ namespace Nethermind.Blockchain
             }
 
             _logger?.Log($"COMMITING BLOCK - STATE ROOT {_stateProvider.StateRoot}");
-            _dbProvider.Commit();
+            _dbProvider.Commit(_specProvider.GetSpec(suggestedBlock.Number));
             return processedBlock;
         }
 
@@ -260,11 +260,11 @@ namespace Nethermind.Blockchain
                 }
                 else
                 {
-                    _stateProvider.UpdateBalance(address, reward);
+                    _stateProvider.UpdateBalance(address, reward, _specProvider.GetSpec(block.Number));
                 }
             }
 
-            _stateProvider.Commit();
+            _stateProvider.Commit(_specProvider.GetSpec(block.Number));
             _logger?.Log("DONE APPLYING MINER REWARDS");
         }
     }

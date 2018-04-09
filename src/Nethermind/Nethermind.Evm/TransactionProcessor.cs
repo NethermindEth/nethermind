@@ -29,23 +29,23 @@ namespace Nethermind.Evm
 {
     public class TransactionProcessor : ITransactionProcessor
     {
-        private readonly IReleaseSpec _releaseSpec;
         private readonly IntrinsicGasCalculator _intrinsicGasCalculator;
         private readonly ILogger _logger;
         private readonly IStateProvider _stateProvider;
         private readonly IStorageProvider _storageProvider;
+        private readonly ISpecProvider _specProvider;
         private readonly IVirtualMachine _virtualMachine;
         private readonly IEthereumSigner _signer;
 
-        public TransactionProcessor(IReleaseSpec releaseSpec, IStateProvider stateProvider, IStorageProvider storageProvider, IVirtualMachine virtualMachine, IEthereumSigner signer, ILogger logger)
+        public TransactionProcessor(ISpecProvider specProvider, IStateProvider stateProvider, IStorageProvider storageProvider, IVirtualMachine virtualMachine, IEthereumSigner signer, ILogger logger)
         {
-            _releaseSpec = releaseSpec;
+            _specProvider = specProvider;
             _virtualMachine = virtualMachine;
             _signer = signer;
             _stateProvider = stateProvider;
             _storageProvider = storageProvider;
             _logger = logger;
-            _intrinsicGasCalculator = new IntrinsicGasCalculator(_releaseSpec);
+            _intrinsicGasCalculator = new IntrinsicGasCalculator();
         }
 
         private TransactionReceipt GetNullReceipt(BlockHeader block, long gasUsed)
@@ -64,6 +64,7 @@ namespace Nethermind.Evm
             Transaction transaction,
             BlockHeader block)
         {
+            IReleaseSpec spec = _specProvider.GetSpec(block.Number);
             Address recipient = transaction.To;
             BigInteger value = transaction.Value;
             BigInteger gasPrice = transaction.GasPrice;
@@ -89,7 +90,7 @@ namespace Nethermind.Evm
                 return GetNullReceipt(block, 0L);
             }
 
-            long intrinsicGas = _intrinsicGasCalculator.Calculate(transaction);
+            long intrinsicGas = _intrinsicGasCalculator.Calculate(transaction, spec);
             _logger?.Log("INTRINSIC GAS: " + intrinsicGas);
 
             if (gasLimit < intrinsicGas)
@@ -124,8 +125,7 @@ namespace Nethermind.Evm
             }
 
             _stateProvider.IncrementNonce(sender);
-            _stateProvider.UpdateBalance(sender, -new BigInteger(gasLimit) * gasPrice);
-            _stateProvider.Commit(); // TODO: can remove this commit
+            _stateProvider.UpdateBalance(sender, -new BigInteger(gasLimit) * gasPrice, spec);
 
             long unspentGas = gasLimit - intrinsicGas;
             long spentGas = gasLimit;
@@ -142,7 +142,7 @@ namespace Nethermind.Evm
 
             int snapshot = _stateProvider.TakeSnapshot();
             int storageSnapshot = _storageProvider.TakeSnapshot();
-            _stateProvider.UpdateBalance(sender, -value);
+            _stateProvider.UpdateBalance(sender, -value, spec);
             byte statusCode = StatusCode.Failure;
 
             HashSet<Address> destroyedAccounts = new HashSet<Address>();
@@ -159,13 +159,13 @@ namespace Nethermind.Evm
 
                 if (transaction.IsTransfer)
                 {
-                    _stateProvider.UpdateBalance(sender, -value);
-                    _stateProvider.UpdateBalance(recipient, value);
+                    _stateProvider.UpdateBalance(sender, -value, spec);
+                    _stateProvider.UpdateBalance(recipient, value, spec);
                     statusCode = StatusCode.Success;
                 }
                 else
                 {
-                    bool isPrecompile = recipient.IsPrecompiled(_releaseSpec);
+                    bool isPrecompile = recipient.IsPrecompiled(spec);
 
                     ExecutionEnvironment env = new ExecutionEnvironment();
                     env.Value = value;
@@ -185,7 +185,7 @@ namespace Nethermind.Evm
                             : ExecutionType.Transaction;
                     EvmState state = new EvmState(unspentGas, env, executionType, false);
 
-                    (byte[] output, TransactionSubstate substate) = _virtualMachine.Run(state);
+                    (byte[] output, TransactionSubstate substate) = _virtualMachine.Run(state, spec);
 
                     unspentGas = state.GasAvailable;
 
@@ -203,12 +203,12 @@ namespace Nethermind.Evm
                         if (transaction.IsContractCreation)
                         {
                             long codeDepositGasCost = output.Length * GasCostOf.CodeDeposit;
-                            if (_releaseSpec.IsEip170Enabled && output.Length > 0x6000)
+                            if (spec.IsEip170Enabled && output.Length > 0x6000)
                             {
                                 codeDepositGasCost = long.MaxValue;
                             }
 
-                            if (unspentGas < codeDepositGasCost && _releaseSpec.IsEip2Enabled)
+                            if (unspentGas < codeDepositGasCost && spec.IsEip2Enabled)
                             {
                                 throw new OutOfGasException();
                             }
@@ -216,7 +216,7 @@ namespace Nethermind.Evm
                             if (unspentGas >= codeDepositGasCost)
                             {
                                 Keccak codeHash = _stateProvider.UpdateCode(output);
-                                _stateProvider.UpdateCodeHash(recipient, codeHash);
+                                _stateProvider.UpdateCodeHash(recipient, codeHash, spec);
                                 unspentGas -= codeDepositGasCost;
                             }
                         }
@@ -230,7 +230,7 @@ namespace Nethermind.Evm
                         statusCode = StatusCode.Success;
                     }
 
-                    spentGas = Refund(gasLimit, unspentGas, substate, sender, gasPrice);
+                    spentGas = Refund(gasLimit, unspentGas, substate, sender, gasPrice, spec);
                 }
             }
             catch (Exception ex) when (ex is EvmException || ex is OverflowException) // TODO: OverflowException? still needed? hope not
@@ -257,23 +257,23 @@ namespace Nethermind.Evm
                 }
                 else
                 {
-                    _stateProvider.UpdateBalance(block.Beneficiary, spentGas * gasPrice);
+                    _stateProvider.UpdateBalance(block.Beneficiary, spentGas * gasPrice, spec);
                 }
             }
 
-            _storageProvider.Commit();
-            _stateProvider.Commit();
+            _storageProvider.Commit(spec);
+            _stateProvider.Commit(spec);
 
             block.GasUsed += spentGas;
             return BuildTransactionReceipt(statusCode, logEntries, block.GasUsed, recipient);
         }
 
-        private long Refund(long gasLimit, long unspentGas, TransactionSubstate substate, Address sender, BigInteger gasPrice)
+        private long Refund(long gasLimit, long unspentGas, TransactionSubstate substate, Address sender, BigInteger gasPrice, IReleaseSpec spec)
         {
             long spentGas = gasLimit - unspentGas;
             long refund = Math.Min(spentGas / 2L, substate.Refund + substate.DestroyList.Count * RefundOf.Destroy);
             _logger?.Log("REFUNDING UNUSED GAS OF " + unspentGas + " AND REFUND OF " + refund);
-            _stateProvider.UpdateBalance(sender, (unspentGas + refund) * gasPrice);
+            _stateProvider.UpdateBalance(sender, (unspentGas + refund) * gasPrice, spec);
             spentGas -= refund;
             return spentGas;
         }

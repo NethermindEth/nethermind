@@ -47,7 +47,6 @@ namespace Ethereum.Test.Base
 
         private IStateProvider _stateProvider;
         private IStorageProvider _storageProvider;
-        private DynamicReleaseSpec _releaseSpec;
 
         [SetUp]
         public void Setup()
@@ -209,22 +208,20 @@ namespace Ethereum.Test.Base
                     (1, test.Network));
             }
 
-            _releaseSpec = new DynamicReleaseSpec(specProvider);
-
             IDifficultyCalculator difficultyCalculator = new DifficultyCalculator(specProvider);
             IRewardCalculator rewardCalculator = new RewardCalculator(specProvider);
             
             IBlockTree blockTree = new BlockTree();
             IBlockhashProvider blockhashProvider = new BlockhashProvider(blockTree);
-            ISignatureValidator signatureValidator = new SignatureValidator(_releaseSpec, ChainId.MainNet);
-            ITransactionValidator transactionValidator = new TransactionValidator(_releaseSpec, signatureValidator);
+            ISignatureValidator signatureValidator = new SignatureValidator(ChainId.MainNet);
+            ITransactionValidator transactionValidator = new TransactionValidator(signatureValidator);
             IHeaderValidator headerValidator = new HeaderValidator(difficultyCalculator, blockStore, SealEngine, specProvider, processingLogger);
             IOmmersValidator ommersValidator = new OmmersValidator(blockStore, headerValidator, processingLogger);
-            IBlockValidator blockValidator = new BlockValidator(transactionValidator, headerValidator, ommersValidator, processingLogger);
-            _stateProvider = new StateProvider(stateTree, _releaseSpec, stateLogger, dbProvider.GetOrCreateCodeDb());
+            IBlockValidator blockValidator = new BlockValidator(transactionValidator, headerValidator, ommersValidator, specProvider, processingLogger);
+            _stateProvider = new StateProvider(stateTree, stateLogger, dbProvider.GetOrCreateCodeDb());
             _storageProvider = new StorageProvider(dbProvider, _stateProvider, stateLogger);
             IVirtualMachine virtualMachine = new VirtualMachine(
-                _releaseSpec,
+                specProvider,
                 _stateProvider,
                 _storageProvider,
                 blockhashProvider,
@@ -238,7 +235,7 @@ namespace Ethereum.Test.Base
                 blockValidator,
                 rewardCalculator,
                 new TransactionProcessor(
-                    _releaseSpec,
+                    specProvider,
                     _stateProvider,
                     _storageProvider,
                     virtualMachine,
@@ -311,7 +308,6 @@ namespace Ethereum.Test.Base
                 stopwatch?.Start();
                 try
                 {
-                    _releaseSpec.CurrentBlockNumber = correctRlpsBlocks[i].Block.Header.Number;
                     if (correctRlpsBlocks[i].ExpectedException != null)
                     {
                         _logger.Log($"Expecting block exception: {correctRlpsBlocks[i].ExpectedException}");    
@@ -360,15 +356,15 @@ namespace Ethereum.Test.Base
 
                 stateProvider.CreateAccount(accountState.Key, accountState.Value.Balance);
                 Keccak codeHash = stateProvider.UpdateCode(accountState.Value.Code);
-                stateProvider.UpdateCodeHash(accountState.Key, codeHash);
+                stateProvider.UpdateCodeHash(accountState.Key, codeHash, Frontier.Instance);
                 for (int i = 0; i < accountState.Value.Nonce; i++)
                 {
                     stateProvider.IncrementNonce(accountState.Key);
                 }
             }
 
-            storageProvider.Commit();
-            stateProvider.Commit();
+            storageProvider.Commit(Frontier.Instance);
+            stateProvider.Commit(Frontier.Instance);
         }
 
         private void RunAssertions(BlockchainTest test, Block headBlock)

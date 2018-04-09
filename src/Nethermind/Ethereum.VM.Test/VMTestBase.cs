@@ -48,7 +48,7 @@ namespace Ethereum.VM.Test
             ILogger stateLogger = ShouldLog.State ? new ConsoleLogger() : null;
             _dbProvider = new DbProvider(stateLogger);
             _blockhashProvider = new TestBlockhashProvider();
-            _stateProvider = new StateProvider(new StateTree(_dbProvider.GetOrCreateStateDb()), _releaseSpec, stateLogger, _dbProvider.GetOrCreateCodeDb());
+            _stateProvider = new StateProvider(new StateTree(_dbProvider.GetOrCreateStateDb()), stateLogger, _dbProvider.GetOrCreateCodeDb());
             _storageProvider = new StorageProvider(new DbProvider(stateLogger), _stateProvider, stateLogger);
         }
 
@@ -135,7 +135,7 @@ namespace Ethereum.VM.Test
 
         protected void RunTest(VirtualMachineTest test)
         {
-            VirtualMachine machine = new VirtualMachine(_releaseSpec, _stateProvider, _storageProvider, _blockhashProvider, ShouldLog.Evm ? new ConsoleLogger() : null);
+            VirtualMachine machine = new VirtualMachine(OlympicSpecProvider.Instance, _stateProvider, _storageProvider, _blockhashProvider, ShouldLog.Evm ? new ConsoleLogger() : null);
             ExecutionEnvironment environment = new ExecutionEnvironment();
             environment.Value = test.Execution.Value;
             environment.CallDepth = 0;
@@ -175,7 +175,7 @@ namespace Ethereum.VM.Test
                 _stateProvider.CreateAccount(accountState.Key, accountState.Value.Balance);
                 _stateProvider.UpdateStorageRoot(accountState.Key, _storageProvider.GetRoot(accountState.Key));
                 Keccak codeHash = _stateProvider.UpdateCode(accountState.Value.Code);
-                _stateProvider.UpdateCodeHash(accountState.Key, codeHash);
+                _stateProvider.UpdateCodeHash(accountState.Key, codeHash, Olympic.Instance);
                 for (int i = 0; i < accountState.Value.Nonce; i++)
                 {
                     _stateProvider.IncrementNonce(accountState.Key);
@@ -186,14 +186,14 @@ namespace Ethereum.VM.Test
 
             if (test.Out == null)
             {
-                Assert.That(() => machine.Run(state), Throws.Exception);
+                Assert.That(() => machine.Run(state, Olympic.Instance), Throws.Exception);
                 return;
             }
 
-            _stateProvider.Commit();
-            _storageProvider.Commit();
+            _stateProvider.Commit(Olympic.Instance);
+            _storageProvider.Commit(Olympic.Instance);
 
-            (byte[] output, TransactionSubstate substate) = machine.Run(state);
+            (byte[] output, TransactionSubstate substate) = machine.Run(state, Olympic.Instance);
 
             Assert.True(Bytes.UnsafeCompare(test.Out, output),
                 $"Exp: {Hex.FromBytes(test.Out, true)} != Actual: {Hex.FromBytes(output, true)}");

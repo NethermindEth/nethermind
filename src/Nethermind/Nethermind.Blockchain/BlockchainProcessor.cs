@@ -45,7 +45,8 @@ namespace Nethermind.Blockchain
         private readonly BlockingCollection<Block> _suggestedBlocks = new BlockingCollection<Block>(new ConcurrentQueue<Block>());
         private readonly ITransactionStore _transactionStore;
 
-        public BlockchainProcessor(IBlockTree blockTree,
+        public BlockchainProcessor(
+            IBlockTree blockTree,
             ISealEngine sealEngine,
             ITransactionStore transactionStore,
             IDifficultyCalculator difficultyCalculator,
@@ -85,7 +86,7 @@ namespace Nethermind.Blockchain
         public void Start(Block genesisBlock)
         {
             _cancellationSource = new CancellationTokenSource();
-            _logger?.Log($"Processing genesis block {genesisBlock.Number} ({genesisBlock.Hash}).");
+            _logger?.Log($"Processing genesis block {genesisBlock.Hash} ({genesisBlock.Number}).");
             Process(genesisBlock);
             _processorTask = Task.Factory.StartNew(() =>
                 {
@@ -99,7 +100,7 @@ namespace Nethermind.Blockchain
 
                     foreach (Block block in _suggestedBlocks.GetConsumingEnumerable(_cancellationSource.Token))
                     {
-                        _logger?.Log($"Processing a suggested block {block.Number} ({block.Hash}).");
+                        _logger?.Log($"Processing a suggested block {block.Hash} ({block.Number}).");
                         Process(block);
                         _logger?.Log($"Now {_suggestedBlocks.Count} blocks waiting in the queue.");
                         if (_suggestedBlocks.Count == 0 && _sealEngine.IsMining)
@@ -116,22 +117,22 @@ namespace Nethermind.Blockchain
             {
                 if (t.IsFaulted)
                 {
-                    _logger?.Error($"BlockTree processor encountered an exception {t.Exception}.");
+                    _logger?.Error($"{nameof(BlockchainProcessor)} encountered an exception {t.Exception}.");
                 }
                 else if (t.IsCanceled)
                 {
-                    _logger?.Error("BlockTree processor stopped.");
+                    _logger?.Error($"{nameof(BlockchainProcessor)} stopped.");
                 }
                 else if (t.IsCompleted)
                 {
-                    _logger?.Error("BlockTree processor complete.");
+                    _logger?.Error($"{nameof(BlockchainProcessor)} complete.");
                 }
             });
         }
 
         public void SuggestBlock(Block block)
         {
-            _logger?.Log($"Enqueuing a new block {block.Number} ({block.Hash}) for processing.");
+            _logger?.Log($"Enqueuing a new block {block.Hash} ({block.Number}) for processing.");
             _suggestedBlocks.Add(block);
             _logger?.Log($"A new block {block.Number} ({block.Hash}) suggested for processing.");
         }

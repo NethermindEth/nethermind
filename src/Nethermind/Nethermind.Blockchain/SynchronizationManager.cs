@@ -22,6 +22,7 @@ using System.Numerics;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.Blockchain
 {
@@ -30,14 +31,16 @@ namespace Nethermind.Blockchain
         private readonly IHeaderValidator _headerValidator;
         private readonly IBlockValidator _blockValidator;
         private readonly ITransactionValidator _transactionValidator;
+        private readonly ISpecProvider _specProvider;
         private readonly ILogger _logger;
         private readonly Dictionary<Keccak, BlockInfo> _storedBlocks = new Dictionary<Keccak, BlockInfo>();
 
-        public SynchronizationManager(IHeaderValidator headerValidator, IBlockValidator blockValidator, ITransactionValidator transactionValidator, Block genesisBlock, ILogger logger)
+        public SynchronizationManager(IHeaderValidator headerValidator, IBlockValidator blockValidator, ITransactionValidator transactionValidator, ISpecProvider specProvider, Block genesisBlock, ILogger logger)
         {
             _headerValidator = headerValidator;
             _blockValidator = blockValidator;
             _transactionValidator = transactionValidator;
+            _specProvider = specProvider;
             _logger = logger;
             BlockInfo blockInfo = AddBlock(genesisBlock, new PublicKey(new byte[64]));
             if (blockInfo.BlockQuality == Quality.Invalid)
@@ -156,7 +159,7 @@ namespace Nethermind.Blockchain
             if (info == null)
             {
                 info = new TransactionInfo(transaction, receivedFrom);
-                info.Quality = _transactionValidator.IsWellFormed(transaction) ? Quality.DataValid : Quality.Invalid;
+                info.Quality = _transactionValidator.IsWellFormed(transaction, _specProvider.GetCurrentSpec()) ? Quality.DataValid : Quality.Invalid;
             }
 
             return info;

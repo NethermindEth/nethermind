@@ -191,8 +191,8 @@ namespace Ethereum.Transaction.Test
 
             bool useChainId = transaction.Signature.V > 28;            
             
-            SignatureValidator signatureValidator = new SignatureValidator(spec, useChainId ? ChainId.MainNet : 0);
-            TransactionValidator validator = new TransactionValidator(spec, signatureValidator);
+            SignatureValidator signatureValidator = new SignatureValidator(useChainId ? ChainId.MainNet : 0);
+            TransactionValidator validator = new TransactionValidator(signatureValidator);
 
             if (validTest != null)
             {
@@ -202,7 +202,7 @@ namespace Ethereum.Transaction.Test
                 Assert.AreEqual(validTest.GasPrice, transaction.GasPrice, "gasPrice");
                 Assert.AreEqual(validTest.Nonce, transaction.Nonce, "nonce");
                 Assert.AreEqual(validTest.To, transaction.To, "to");
-                Assert.True(validator.IsWellFormed(transaction));
+                Assert.True(validator.IsWellFormed(transaction, spec));
 
                 Signature expectedSignature = new Signature(validTest.R, validTest.S, validTest.V);
                 Assert.AreEqual(expectedSignature, transaction.Signature, "signature");
@@ -217,7 +217,7 @@ namespace Ethereum.Transaction.Test
             }
             else
             {
-                Assert.False(validator.IsWellFormed(transaction));
+                Assert.False(validator.IsWellFormed(transaction, spec));
             }
         }
 

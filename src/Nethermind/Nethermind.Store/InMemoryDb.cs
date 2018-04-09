@@ -22,6 +22,7 @@ using System.Diagnostics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.Store
 {
@@ -176,7 +177,7 @@ namespace Nethermind.Store
             _keptInCache.Clear();
         }
 
-        public void Commit()
+        public void Commit(IReleaseSpec spec)
         {
             _logger?.Log("  COMMITTING DB CHANGES");
 

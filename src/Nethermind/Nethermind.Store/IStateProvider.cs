@@ -19,6 +19,7 @@
 using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.Store
 {
@@ -46,9 +47,9 @@ namespace Nethermind.Store
 
         byte[] GetCode(Keccak codeHash);
 
-        void UpdateCodeHash(Address address, Keccak codeHash);
+        void UpdateCodeHash(Address address, Keccak codeHash, IReleaseSpec spec);
 
-        void UpdateBalance(Address address, BigInteger balanceChange);
+        void UpdateBalance(Address address, BigInteger balanceChange, IReleaseSpec spec);
 
         void UpdateStorageRoot(Address address, Keccak storageRoot);
 

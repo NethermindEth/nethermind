@@ -50,21 +50,20 @@ namespace Nethermind.Blockchain.Test
             var sealEngine = new FakeSealEngine(blockMiningTime);
             var specProvider = RopstenSpecProvider.Instance;
             var currentSpec = RopstenSpecProvider.Instance.GetCurrentSpec();
-            var dynamicSpecForVm = new DynamicReleaseSpec(specProvider); // TODO: remove
 
             /* stoira & validation */
             var blockStore = new BlockStore();
             var difficultyCalculator = new DifficultyCalculator(specProvider); // dynamic spec here will be broken
             var headerValidator = new HeaderValidator(difficultyCalculator, blockStore, sealEngine, specProvider, logger);
             var ommersValidator = new OmmersValidator(blockStore, headerValidator, logger);
-            var transactionValidator = new TransactionValidator(currentSpec, new SignatureValidator(currentSpec, ChainId.Ropsten));
-            var blockValidator = new BlockValidator(transactionValidator, headerValidator, ommersValidator, logger);
+            var transactionValidator = new TransactionValidator(new SignatureValidator(ChainId.Ropsten));
+            var blockValidator = new BlockValidator(transactionValidator, headerValidator, ommersValidator, specProvider, logger);
 
             /* state & storage */
             var codeDb = new InMemoryDb();
             var stateDb = new InMemoryDb();
             var stateTree = new StateTree(stateDb);
-            var stateProvider = new StateProvider(stateTree, dynamicSpecForVm, logger, codeDb); // TODO: remove dynamic spec here
+            var stateProvider = new StateProvider(stateTree, logger, codeDb); // TODO: remove dynamic spec here
             var storageDbProvider = new DbProvider(logger);
             var storageProvider = new StorageProvider(storageDbProvider, stateProvider, logger);
 
@@ -73,8 +72,8 @@ namespace Nethermind.Blockchain.Test
             var transactionStore = new TransactionStore();
             var blockchain = new BlockTree();
             var blockhashProvider = new BlockhashProvider(blockchain);
-            var virtualMachine = new VirtualMachine(dynamicSpecForVm, stateProvider, storageProvider, blockhashProvider, logger); // TODO: remove dynamic spec here
-            var processor = new TransactionProcessor(dynamicSpecForVm, stateProvider, storageProvider, virtualMachine, ethereumSigner, logger); // TODO: remove dynamic spec here
+            var virtualMachine = new VirtualMachine(specProvider, stateProvider, storageProvider, blockhashProvider, logger); // TODO: remove dynamic spec here
+            var processor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, ethereumSigner, logger); // TODO: remove dynamic spec here
             var rewardCalculator = new RewardCalculator(specProvider);
             var blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, processor, storageDbProvider, stateProvider, storageProvider, transactionStore, logger);
             var blockchainProcessor = new BlockchainProcessor(blockchain, sealEngine, transactionStore, difficultyCalculator, blockProcessor, logger);
@@ -96,7 +95,7 @@ namespace Nethermind.Blockchain.Test
                 stateProvider.CreateAccount(allocation.Key, allocation.Value);
             }
 
-            stateProvider.Commit();
+            stateProvider.Commit(specProvider.GetGenesisSpec());
 
             /* start processing */
             sealEngine.IsMining = true; // TODO: start / stop?

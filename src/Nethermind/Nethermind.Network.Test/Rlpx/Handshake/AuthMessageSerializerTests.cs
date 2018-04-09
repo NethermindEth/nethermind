@@ -63,7 +63,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
         [TestCase(ChainId.DefaultGethPrivateChain)]
         [TestCase(ChainId.EthereumClassicMainnet)]
         [TestCase(ChainId.EthereumClassicTestnet)]
-        public void Encode_decode_before_eip155(ChainId chainId)
+        public void Encode_decode_before_eip155(int chainId)
         {
             EthereumSigner signer = new EthereumSigner(OlympicSpecProvider.Instance, NullLogger.Instance);
             TestEncodeDecode(signer);
@@ -72,7 +72,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
         [TestCase(ChainId.MainNet)]
         [TestCase(ChainId.Ropsten)]
         [TestCase(ChainId.Kovan)]
-        public void Encode_decode_with_eip155(ChainId chainId)
+        public void Encode_decode_with_eip155(int chainId)
         {
             EthereumSigner signer = new EthereumSigner(OlympicSpecProvider.Instance, NullLogger.Instance);
             TestEncodeDecode(signer);

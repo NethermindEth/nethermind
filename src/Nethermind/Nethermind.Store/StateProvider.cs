@@ -40,7 +40,6 @@ namespace Nethermind.Store
         private readonly HashSet<Address> _committedThisRound = new HashSet<Address>();
 
         private readonly List<Change> _keptInCache = new List<Change>();
-        private readonly IReleaseSpec _releaseSpec;
         private readonly ILogger _logger;
         private readonly IDb _codeDb;
 
@@ -48,9 +47,8 @@ namespace Nethermind.Store
         private Change[] _changes = new Change[StartCapacity];
         private int _currentPosition = -1;
 
-        public StateProvider(StateTree stateTree, IReleaseSpec releaseSpec, ILogger logger, IDb codeDb)
+        public StateProvider(StateTree stateTree, ILogger logger, IDb codeDb)
         {
-            _releaseSpec = releaseSpec;
             _logger = logger;
             _codeDb = codeDb;
             _state = stateTree;
@@ -103,7 +101,7 @@ namespace Nethermind.Store
             return account?.Balance ?? BigInteger.Zero;
         }
 
-        public void UpdateCodeHash(Address address, Keccak codeHash)
+        public void UpdateCodeHash(Address address, Keccak codeHash, IReleaseSpec releaseSpec)
         {
             Account account = GetThroughCache(address);
             if (account.CodeHash != codeHash)
@@ -112,7 +110,7 @@ namespace Nethermind.Store
                 Account changedAccount = account.WithChangedCodeHash(codeHash);
                 PushUpdate(address, changedAccount);
             }
-            else if (_releaseSpec.IsEip158Enabled)
+            else if (releaseSpec.IsEip158Enabled)
             {
                 _logger?.Log($"  TOUCH {address} (code hash)");
                 Account touched = GetThroughCache(address);
@@ -120,11 +118,11 @@ namespace Nethermind.Store
             }
         }
 
-        public void UpdateBalance(Address address, BigInteger balanceChange)
+        public void UpdateBalance(Address address, BigInteger balanceChange, IReleaseSpec releaseSpec)
         {
             if (balanceChange == BigInteger.Zero)
             {
-                if (_releaseSpec.IsEip158Enabled)
+                if (releaseSpec.IsEip158Enabled)
                 {
                     _logger?.Log($"  TOUCH {address} (balance)");
                     Account touched = GetThroughCache(address);
@@ -263,7 +261,7 @@ namespace Nethermind.Store
             PushNew(address, account);
         }
 
-        public void Commit()
+        public void Commit(IReleaseSpec releaseSpec)
         {
             _logger?.Log("  COMMITTING STATE CHANGES");
 
@@ -297,7 +295,7 @@ namespace Nethermind.Store
                     case ChangeType.Touch:
                     case ChangeType.Update:
                     {
-                        if (_releaseSpec.IsEip158Enabled && change.Account.IsEmpty)
+                        if (releaseSpec.IsEip158Enabled && change.Account.IsEmpty)
                         {
                             _logger?.Log($"  DELETE EMPTY {change.Address} B = {change.Account.Balance} N = {change.Account.Nonce}");
                             _state.Set(change.Address, null);
@@ -312,7 +310,7 @@ namespace Nethermind.Store
                     }
                     case ChangeType.New:
                     {
-                        if (!_releaseSpec.IsEip158Enabled || !change.Account.IsEmpty)
+                        if (!releaseSpec.IsEip158Enabled || !change.Account.IsEmpty)
                         {
                             _logger?.Log($"  CREATE {change.Address} B = {change.Account.Balance} N = {change.Account.Nonce}");
                             _state.Set(change.Address, Rlp.Encode(change.Account));

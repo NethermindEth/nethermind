@@ -23,6 +23,6 @@ namespace Nethermind.Blockchain.Validators
 {
     public interface ISignatureValidator
     {
-        bool Validate(Signature signature);
+        bool Validate(Signature signature, IReleaseSpec releaseSpec);
     }
 }

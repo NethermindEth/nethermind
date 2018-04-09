@@ -100,9 +100,9 @@ namespace Nethermind.PerfTest
             ILogger logger = NullLogger.Instance;
             DbProvider dbProvider = new DbProvider(logger);
             StateTree stateTree = new StateTree(dbProvider.GetOrCreateStateDb());
-            IStateProvider stateProvider = new StateProvider(stateTree, Byzantium.Instance, logger, dbProvider.GetOrCreateCodeDb());
+            IStateProvider stateProvider = new StateProvider(stateTree, logger, dbProvider.GetOrCreateCodeDb());
             IBlockTree blockTree = new BlockTree();
-            Machine = new VirtualMachine(Frontier.Instance, stateProvider, new StorageProvider(dbProvider, stateProvider, logger), new BlockhashProvider(blockTree), null);
+            Machine = new VirtualMachine(new SingleReleaseSpecProvider(Frontier.Instance, ChainId.MainNet), stateProvider, new StorageProvider(dbProvider, stateProvider, logger), new BlockhashProvider(blockTree), null);
         }
         
         private static void Main(string[] args)
@@ -141,7 +141,7 @@ namespace Nethermind.PerfTest
             stopwatch.Start();
             for (int i = 0; i < iterations; i++)
             {
-                Machine.Run(new EvmState(1_000_000_000L, env, ExecutionType.Transaction, false));
+                Machine.Run(new EvmState(1_000_000_000L, env, ExecutionType.Transaction, false), Olympic.Instance);
             }
 
             stopwatch.Stop();

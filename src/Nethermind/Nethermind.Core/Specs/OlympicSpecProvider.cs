@@ -16,7 +16,6 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-
 using System.Numerics;
 
 namespace Nethermind.Core.Specs
@@ -24,6 +23,11 @@ namespace Nethermind.Core.Specs
     public class OlympicSpecProvider : ISpecProvider
     {
         public IReleaseSpec GetCurrentSpec()
+        {
+            return Olympic.Instance;
+        }
+
+        public IReleaseSpec GetGenesisSpec()
         {
             return Olympic.Instance;
         }

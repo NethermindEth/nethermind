@@ -29,6 +29,11 @@ namespace Nethermind.Core.Specs
             throw new NotImplementedException();
         }
 
+        public IReleaseSpec GetGenesisSpec()
+        {
+            throw new NotImplementedException();
+        }
+
         public IReleaseSpec GetSpec(BigInteger blockNumber)
         {
             throw new NotImplementedException();

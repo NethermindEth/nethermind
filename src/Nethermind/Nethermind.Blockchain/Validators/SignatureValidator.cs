@@ -15,6 +15,7 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
+
 using System;
 using System.Numerics;
 using Nethermind.Core;
@@ -26,31 +27,24 @@ namespace Nethermind.Blockchain.Validators
 {
     public class SignatureValidator : ISignatureValidator
     {
-        private readonly IReleaseSpec _releaseSpec;
         private readonly int _chainIdValue;
 
-        public SignatureValidator(IReleaseSpec releaseSpec, int chainIdValue)
+        public SignatureValidator(int chainId)
         {
-            if (chainIdValue < 0)
+            if (chainId < 0)
             {
-                throw new ArgumentException("Unexpected negative value", nameof(chainIdValue));
+                throw new ArgumentException("Unexpected negative value", nameof(chainId));
             }
 
-            _releaseSpec = releaseSpec;
-            _chainIdValue = chainIdValue;
+            _chainIdValue = chainId;
         }
 
-        public SignatureValidator(IReleaseSpec releaseSpec, ChainId chainId)
-            : this(releaseSpec, (int)chainId)
-        {
-        }
-
-        public bool Validate(Signature signature)
+        public bool Validate(Signature signature, IReleaseSpec spec)
         {
             BigInteger sValue = signature.S.ToUnsignedBigInteger();
             BigInteger rValue = signature.R.ToUnsignedBigInteger();
             
-            if (sValue.IsZero || sValue >= (_releaseSpec.IsEip2Enabled ? Secp256K1Curve.HalfN + 1 : Secp256K1Curve.N))
+            if (sValue.IsZero || sValue >= (spec.IsEip155Enabled ? Secp256K1Curve.HalfN + 1 : Secp256K1Curve.N))
             {
                 return false;
             }
@@ -60,7 +54,7 @@ namespace Nethermind.Blockchain.Validators
                 return false;
             }
 
-            if (!_releaseSpec.IsEip155Enabled)
+            if (!spec.IsEip155Enabled)
             {
                 return signature.V == 27 || signature.V == 28;
             }

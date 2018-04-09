@@ -85,12 +85,13 @@ namespace Nethermind.PeerConsole
             serializationService.Register(new StatusMessageSerializer());
 
             
+            ISpecProvider specProvider = RopstenSpecProvider.Instance;
             Block block = new Block(new BlockHeader(Keccak.Zero, Keccak.OfAnEmptySequenceRlp, Address.Zero, 131200, 1, 100, 1, new byte[0]));
             BlockStore blockStore = new BlockStore();
             blockStore.AddBlock(block);
             block.Header.RecomputeHash();
             IBlockProcessor blockProcessor = Substitute.For<IBlockProcessor>();
-            IDifficultyCalculator calculator = new DifficultyCalculator(RopstenSpecProvider.Instance); // dynamic spec here will be broken
+            IDifficultyCalculator calculator = new DifficultyCalculator(specProvider); // dynamic spec here will be broken
             ITransactionStore transactionStore = new TransactionStore();
             BlockTree blockTree = new BlockTree();
             BlockchainProcessor blockchainProcessor = new BlockchainProcessor(blockTree, NullSealEngine.Instance, transactionStore, calculator, blockProcessor, logger);
@@ -153,16 +154,15 @@ namespace Nethermind.PeerConsole
             serializationService.Register(new NewBlockHashesMessageSerializer());
             serializationService.Register(new NewBlockHashesMessageSerializer());
            
-            IReleaseSpec dynamicSpecForVm = new DynamicReleaseSpec(RopstenSpecProvider.Instance);
             ISealEngine sealEngine = new EthashSealEngine(new Ethash());
             
+            ISpecProvider specProvider = RopstenSpecProvider.Instance;
             IBlockStore blockStore = new BlockStore();
-            IDifficultyCalculator calculator = new DifficultyCalculator(RopstenSpecProvider.Instance); // dynamic spec here will be broken
-            IHeaderValidator headerValidator = new HeaderValidator(calculator, blockStore, sealEngine, RopstenSpecProvider.Instance, logger);
+            IDifficultyCalculator calculator = new DifficultyCalculator(specProvider);
+            IHeaderValidator headerValidator = new HeaderValidator(calculator, blockStore, sealEngine, specProvider, logger);
             IOmmersValidator ommersValidator = new OmmersValidator(blockStore, headerValidator, logger);
-            IReleaseSpec currentSpec = RopstenSpecProvider.Instance.GetCurrentSpec();
-            ITransactionValidator transactionValidator = new TransactionValidator(currentSpec, new SignatureValidator(currentSpec, ChainId.Ropsten));
-            IBlockValidator blockValidator = new BlockValidator(transactionValidator, headerValidator, ommersValidator, logger);
+            ITransactionValidator transactionValidator = new TransactionValidator(new SignatureValidator(ChainId.Ropsten));
+            IBlockValidator blockValidator = new BlockValidator(transactionValidator, headerValidator, ommersValidator, specProvider, logger);
 
             BlockTree blockTree = new BlockTree();
             IBlockhashProvider blockhashProvider = new BlockhashProvider(blockTree);
@@ -170,15 +170,15 @@ namespace Nethermind.PeerConsole
             InMemoryDb codeDb = new InMemoryDb();
             InMemoryDb stateDb = new InMemoryDb();
             StateTree stateTree = new StateTree(stateDb);
-            IStateProvider stateProvider = new StateProvider(stateTree, dynamicSpecForVm, logger, codeDb);
+            IStateProvider stateProvider = new StateProvider(stateTree, logger, codeDb);
             IStorageProvider storageProvider = new StorageProvider(dbProvider, stateProvider, logger);
             
-            IRewardCalculator rewardCalculator = new RewardCalculator(RopstenSpecProvider.Instance);
-            IVirtualMachine virtualMachine = new VirtualMachine(dynamicSpecForVm, stateProvider, storageProvider, blockhashProvider, logger);
-            IEthereumSigner ethereumSigner = new EthereumSigner(RopstenSpecProvider.Instance, logger);
-            ITransactionProcessor processor = new TransactionProcessor(dynamicSpecForVm, stateProvider, storageProvider, virtualMachine, ethereumSigner, logger);
+            IRewardCalculator rewardCalculator = new RewardCalculator(specProvider);
+            IVirtualMachine virtualMachine = new VirtualMachine(specProvider, stateProvider, storageProvider, blockhashProvider, logger);
+            IEthereumSigner ethereumSigner = new EthereumSigner(specProvider, logger);
+            ITransactionProcessor processor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, ethereumSigner, logger);
             ITransactionStore transactionStore = new TransactionStore();
-            IBlockProcessor blockProcessor = new BlockProcessor(RopstenSpecProvider.Instance, blockValidator, rewardCalculator, processor, dbProvider, stateProvider, storageProvider, transactionStore, logger);
+            IBlockProcessor blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, processor, dbProvider, stateProvider, storageProvider, transactionStore, logger);
             IBlockchainProcessor blockchainProcessor = new BlockchainProcessor(blockTree, NullSealEngine.Instance, transactionStore, calculator, blockProcessor, logger);
             
             ChainSpecLoader loader = new ChainSpecLoader(new UnforgivingJsonSerializer());
@@ -190,7 +190,7 @@ namespace Nethermind.PeerConsole
                 stateProvider.CreateAccount(allocation.Key, allocation.Value);
             }
             
-            stateProvider.Commit();
+            stateProvider.Commit(specProvider.GetGenesisSpec());
             chainSpec.Genesis.Header.StateRoot = stateProvider.StateRoot;
             chainSpec.Genesis.Header.RecomputeHash();
             if (chainSpec.Genesis.Hash != new Keccak("0x41941023680923e0fe4d74a34bdac8141f2540e3ae90623718e47d66d1ca4a2d"))
@@ -200,7 +200,7 @@ namespace Nethermind.PeerConsole
             
             blockchainProcessor.Start(chainSpec.Genesis);
             
-            ISynchronizationManager synchronizationManager = new SynchronizationManager(headerValidator, blockValidator, transactionValidator, chainSpec.Genesis, logger);
+            ISynchronizationManager synchronizationManager = new SynchronizationManager(headerValidator, blockValidator, transactionValidator, specProvider, chainSpec.Genesis, logger);
             IEncryptionHandshakeService encryptionHandshakeServiceA = new EncryptionHandshakeService(serializationService, eciesCipher, cryptoRandom, signer, _keyA, logger);
 
             logger.Log("Initializing server...");

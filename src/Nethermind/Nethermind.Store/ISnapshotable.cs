@@ -16,13 +16,15 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.Core.Specs;
+
 namespace Nethermind.Store
 {
     public interface ISnapshotable
     {
         void Restore(int snapshot);
 
-        void Commit();
+        void Commit(IReleaseSpec releaseSpec);
         
         int TakeSnapshot();
     }

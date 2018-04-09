@@ -27,6 +27,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.KeyStore;
 using Nethermind.Store;
 
@@ -37,11 +38,12 @@ namespace Nethermind.Runner
         private readonly IJsonSerializer _jsonSerializer;
         private readonly IBlockchainProcessor _blockchainProcessor;
         private readonly IStateProvider _stateProvider;
+        private readonly ISpecProvider _specProvider;
         private readonly IDbProvider _dbProvider;
         private readonly ILogger _logger;
         private readonly IConfigurationProvider _configurationProvider;
 
-        public EthereumRunner(IJsonSerializer jsonSerializer, IBlockchainProcessor blockchainProcessor, IStateProvider stateProvider, IDbProvider dbProvider, ILogger logger, IConfigurationProvider configurationProvider)
+        public EthereumRunner(IJsonSerializer jsonSerializer, IBlockchainProcessor blockchainProcessor, IStateProvider stateProvider, IDbProvider dbProvider, ILogger logger, IConfigurationProvider configurationProvider, ISpecProvider specProvider)
         {
             _jsonSerializer = jsonSerializer;
             _blockchainProcessor = blockchainProcessor;
@@ -49,6 +51,7 @@ namespace Nethermind.Runner
             _dbProvider = dbProvider;
             _logger = logger;
             _configurationProvider = configurationProvider;
+            _specProvider = specProvider;
         }
 
         public void Start(InitParams initParams)
@@ -188,8 +191,8 @@ namespace Nethermind.Runner
                 _stateProvider.CreateAccount(new Address(new Hex(account.Key)), account.Value.Balance.StartsWith("0x") 
                     ? new BigInteger(new Hex(account.Value.Balance)) : BigInteger.Parse(account.Value.Balance));
             }
-            _stateProvider.Commit();
-            _dbProvider.Commit();
+            _stateProvider.Commit(_specProvider.GetGenesisSpec());
+            _dbProvider.Commit(_specProvider.GetGenesisSpec());
             return _stateProvider.StateRoot;
         }
 

@@ -1,5 +1,6 @@
 ﻿using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.Store
 {
@@ -67,13 +68,13 @@ namespace Nethermind.Store
             }
         }
 
-        public void Commit()
+        public void Commit(IReleaseSpec spec)
         {
             _logger?.Log("COMMITING ALL DBS");
 
             foreach (IDb db in AllDbs)
             {
-                db.Commit();
+                db.Commit(spec);
             }
         }
 

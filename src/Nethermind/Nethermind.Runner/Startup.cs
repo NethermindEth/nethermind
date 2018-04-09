@@ -68,11 +68,10 @@ namespace Nethermind.Runner
             var ethereumRelease = specProvider.GetSpec(1);
             var chainId = ChainId.MainNet;
 
-            var dynamicReleaseSpec = new DynamicReleaseSpec(specProvider);
             var signer = new EthereumSigner(specProvider, NullLogger.Instance);
-            var signatureValidator = new SignatureValidator(dynamicReleaseSpec, chainId); // TODO: review, check with spec provider
+            var signatureValidator = new SignatureValidator(chainId); // TODO: review, check with spec provider
 
-            services.AddSingleton<ISpecProvider>(specProvider);
+            services.AddSingleton(specProvider);
             services.AddTransient<ILogger, ConsoleLogger>();
             services.AddSingleton<IBlockStore, BlockStore>();
             services.AddSingleton(ethereumRelease);

@@ -16,12 +16,14 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Diagnostics;
 using System.Numerics;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 
 namespace Nethermind.Core
 {
+    [DebuggerDisplay("{Hash} ({Number})")]
     public class BlockHeader
     {
         public const ulong GenesisBlockNumber = 0;

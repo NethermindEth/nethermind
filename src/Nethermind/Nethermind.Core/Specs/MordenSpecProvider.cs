@@ -27,6 +27,11 @@ namespace Nethermind.Core.Specs
             return SpuriousDragon.Instance;
         }
 
+        public IReleaseSpec GetGenesisSpec()
+        {
+            return Frontier.Instance;
+        }
+
         public IReleaseSpec GetSpec(BigInteger blockNumber)
         {
             if (blockNumber < 494000)

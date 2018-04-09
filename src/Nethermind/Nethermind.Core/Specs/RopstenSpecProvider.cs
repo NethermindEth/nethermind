@@ -27,6 +27,11 @@ namespace Nethermind.Core.Specs
             return Byzantium.Instance;
         }
 
+        public IReleaseSpec GetGenesisSpec()
+        {
+            return TangerineWhistle.Instance;
+        }
+
         public IReleaseSpec GetSpec(BigInteger blockNumber)
         {            
             // TODO: this is not covered by test at the moment

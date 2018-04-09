@@ -32,14 +32,14 @@ namespace Nethermind.Evm.Test
         private readonly Address _address1 = new Address(Keccak.Compute("1"));
         private readonly Address _address2 = new Address(Keccak.Compute("2"));
 
-        private readonly IStateProvider _stateProvider = new StateProvider(new StateTree(new InMemoryDb()), Frontier.Instance, ShouldLog.State ? new ConsoleLogger() : null, Substitute.For<IDb>());
+        private readonly IStateProvider _stateProvider = new StateProvider(new StateTree(new InMemoryDb()), ShouldLog.State ? new ConsoleLogger() : null, Substitute.For<IDb>());
 
         [SetUp]
         public void Setup()
         {
             _stateProvider.CreateAccount(_address1, 0);
             _stateProvider.CreateAccount(_address2, 0);
-            _stateProvider.Commit();
+            _stateProvider.Commit(Frontier.Instance);
         }
 
         private readonly byte[][] _values =
@@ -63,7 +63,7 @@ namespace Nethermind.Evm.Test
         public void Empty_commit_restore()
         {
             StorageProvider provider = BuildStorageProvider();
-            provider.Commit();
+            provider.Commit(Frontier.Instance);
             provider.Restore(-1);
         }
 
@@ -94,7 +94,7 @@ namespace Nethermind.Evm.Test
         {
             StorageProvider provider = BuildStorageProvider();
             provider.Set(_address1, 1, _values[1]);
-            provider.Commit();
+            provider.Commit(Frontier.Instance);
             provider.Get(_address1, 1);
             provider.Set(_address1, 1, _values[2]);
             provider.Restore(-1);
@@ -127,19 +127,19 @@ namespace Nethermind.Evm.Test
             provider.Set(_address1, 1, _values[1]);
             provider.Set(_address1, 2, _values[2]);
             provider.Set(_address1, 3, _values[3]);
-            provider.Commit();
+            provider.Commit(Frontier.Instance);
             provider.Set(_address2, 1, _values[4]);
             provider.Set(_address2, 2, _values[5]);
             provider.Set(_address2, 3, _values[6]);
-            provider.Commit();
+            provider.Commit(Frontier.Instance);
             provider.Set(_address1, 1, _values[7]);
             provider.Set(_address1, 2, _values[8]);
             provider.Set(_address1, 3, _values[9]);
-            provider.Commit();
+            provider.Commit(Frontier.Instance);
             provider.Set(_address2, 1, _values[10]);
             provider.Set(_address2, 2, _values[11]);
             provider.Set(_address2, 3, _values[12]);
-            provider.Commit();
+            provider.Commit(Frontier.Instance);
             provider.Restore(-1);
 
             Assert.AreEqual(_values[7], provider.Get(_address1, 1));
@@ -158,7 +158,7 @@ namespace Nethermind.Evm.Test
             provider.Set(_address1, 2, _values[2]);
             provider.Set(_address1, 3, _values[3]);
             provider.Restore(-1);
-            provider.Commit();
+            provider.Commit(Frontier.Instance);
 
             Assert.AreEqual(Keccak.EmptyTreeHash, provider.GetRoot(_address1));
         }
@@ -186,7 +186,7 @@ namespace Nethermind.Evm.Test
             provider.Get(_address1, 1);
             provider.Get(_address1, 1);
             provider.Get(_address1, 1);
-            provider.Commit();
+            provider.Commit(Frontier.Instance);
 
             Assert.AreEqual(Keccak.EmptyTreeHash, provider.GetRoot(_address1));
         }
@@ -197,14 +197,14 @@ namespace Nethermind.Evm.Test
             // block 1
             StorageProvider storageProvider = BuildStorageProvider();
             storageProvider.Set(_address1, 1, _values[1]);
-            storageProvider.Commit();
-            _stateProvider.Commit();
+            storageProvider.Commit(Frontier.Instance);
+            _stateProvider.Commit(Frontier.Instance);
             
             // block 2
             Keccak stateRoot = _stateProvider.StateRoot;
             storageProvider.Set(_address1, 1, _values[2]);
-            storageProvider.Commit();
-            _stateProvider.Commit();
+            storageProvider.Commit(Frontier.Instance);
+            _stateProvider.Commit(Frontier.Instance);
             
             // revert
             _stateProvider.ClearCaches();
@@ -226,8 +226,8 @@ namespace Nethermind.Evm.Test
                 storageProvider.Set(_address1, 1, _values[i % 2]);
             }
             
-            storageProvider.Commit();
-            _stateProvider.Commit();
+            storageProvider.Commit(Frontier.Instance);
+            _stateProvider.Commit(Frontier.Instance);
             
             byte[] valueAfter = storageProvider.Get(_address1, 1);
             Assert.AreEqual(_values[(StorageProvider.StartCapacity + 1) % 2], valueAfter);
