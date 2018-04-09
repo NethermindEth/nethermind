@@ -33,11 +33,11 @@ namespace Nethermind.Mining
 {
     public class Ethash : IEthash
     {
-        private readonly ConcurrentDictionary<ulong, IEthashDataSet> _cacheCache = new ConcurrentDictionary<ulong, IEthashDataSet>();
+        private readonly ConcurrentDictionary<uint, IEthashDataSet> _cacheCache = new ConcurrentDictionary<uint, IEthashDataSet>();
 
         public const int WordBytes = 4; // bytes in word
-        public static ulong DatasetBytesInit = (ulong)BigInteger.Pow(2, 30); // bytes in dataset at genesis
-        public static ulong DatasetBytesGrowth = (ulong)BigInteger.Pow(2, 23); // dataset growth per epoch
+        public static uint DatasetBytesInit = (uint)BigInteger.Pow(2, 30); // bytes in dataset at genesis
+        public static uint DatasetBytesGrowth = (uint)BigInteger.Pow(2, 23); // dataset growth per epoch
         public static uint CacheBytesInit = (uint)BigInteger.Pow(2, 24); // bytes in cache at genesis
         public static uint CacheBytesGrowth = (uint)BigInteger.Pow(2, 17); // cache growth per epoch
         public const int CacheMultiplier = 1024; // Size of the DAG relative to the cache
@@ -48,14 +48,14 @@ namespace Nethermind.Mining
         public const int CacheRounds = 3; // blockNumber of rounds in cache production
         public const int Accesses = 64; // blockNumber of accesses in hashimoto loop
 
-        public static ulong GetEpoch(BigInteger blockNumber)
+        public static uint GetEpoch(BigInteger blockNumber)
         {
-            return (ulong)blockNumber / EpochLength;
+            return (uint)(blockNumber / EpochLength);
         }
 
-        public static ulong GetDataSize(BigInteger blockNumber)
+        public static ulong GetDataSize(uint epoch)
         {
-            ulong size = DatasetBytesInit + DatasetBytesGrowth * GetEpoch(blockNumber);
+            ulong size = DatasetBytesInit + DatasetBytesGrowth * (ulong)epoch;
             size -= MixBytes;
             while (!IsPrime(size / MixBytes))
             {
@@ -65,9 +65,9 @@ namespace Nethermind.Mining
             return size;
         }
 
-        public static uint GetCacheSize(ulong epoch)
+        public static uint GetCacheSize(uint epoch)
         {
-            uint size = CacheBytesInit + CacheBytesGrowth * (uint)epoch;
+            uint size = CacheBytesInit + CacheBytesGrowth * epoch;
             size -= HashBytes;
             while (!IsPrime(size / HashBytes))
             {
@@ -79,41 +79,41 @@ namespace Nethermind.Mining
 
         public static bool IsPrime(ulong number)
         {
-            if (number == 1)
+            if (number == 1U)
             {
                 return false;
             }
 
-            if (number == 2 || number == 3)
+            if (number == 2U || number == 3U)
             {
                 return true;
             }
 
-            if (number % 2 == 0 || number % 3 == 0)
+            if (number % 2U == 0U || number % 3U == 0U)
             {
                 return false;
             }
 
-            ulong w = 2;
-            ulong i = 5;
+            uint w = 2U;
+            uint i = 5U;
             while (i * i <= number)
             {
-                if (number % i == 0)
+                if (number % i == 0U)
                 {
                     return false;
                 }
 
                 i += w;
-                w = 6 - w;
+                w = 6U - w;
             }
 
             return true;
         }
 
-        public static Keccak GetSeedHash(BigInteger blockNumber)
+        public static Keccak GetSeedHash(uint epoch)
         {
             byte[] seed = new byte[32];
-            for (int i = 0; i < blockNumber / EpochLength; i++)
+            for (uint i = 0; i < epoch; i++)
             {
                 seed = Keccak.Compute(seed).Bytes; // TODO: optimize
             }
@@ -140,7 +140,8 @@ namespace Nethermind.Mining
 
         public (Keccak, ulong) Mine(BlockHeader header, ulong? startNonce = null)
         {
-            ulong fullSize = GetDataSize(header.Number);
+            uint epoch = GetEpoch(header.Number);
+            ulong fullSize = GetDataSize(epoch);
             ulong nonce = startNonce ?? GetRandomNonce();
             BigInteger target = BigInteger.Divide(_2To256, header.Difficulty);
             Keccak headerHashed = GetTruncatedHash(header);
@@ -150,7 +151,6 @@ namespace Nethermind.Mining
             while(true)
             {
                 byte[] result;
-                ulong epoch = GetEpoch(header.Number);
                 (mixHash, result) = Hashimoto(fullSize, GetOrAddCache(epoch), headerHashed, null, nonce);
                 if (IsLessThanTarget(result, target))
                 {
@@ -190,9 +190,9 @@ namespace Nethermind.Mining
 
         public bool Validate(BlockHeader header)
         {
-            ulong epoch = GetEpoch(header.Number);
+            uint epoch = GetEpoch(header.Number);
             IEthashDataSet cache = GetOrAddCache(epoch);
-            ulong fullSize = GetDataSize(header.Number);
+            ulong fullSize = GetDataSize(epoch);
             Keccak headerHashed = GetTruncatedHash(header);
             (byte[] _, byte[] result) = Hashimoto(fullSize, cache, headerHashed, header.MixHash, header.Nonce);
 
@@ -200,14 +200,14 @@ namespace Nethermind.Mining
             return IsLessThanTarget(result, threshold);
         }
 
-        public void PrecomputeCache(ulong epoch)
+        public void PrecomputeCache(uint epoch)
         {
             GetOrAddCache(epoch);
         }
         
-        private IEthashDataSet GetOrAddCache(ulong epoch)
+        private IEthashDataSet GetOrAddCache(uint epoch)
         {
-            ulong? epochToRemove = null;
+            uint? epochToRemove = null;
             IEthashDataSet cache = _cacheCache.GetOrAdd(epoch, e =>
             {
                 // TODO: naive, PoC
@@ -216,9 +216,9 @@ namespace Nethermind.Mining
                     int indextToRemove = Random.Next(CacheCacheSizeLimit);
                     {
                         int index = 0;
-                        foreach (ulong epochInCache in _cacheCache.Keys)
+                        foreach (uint epochInCache in _cacheCache.Keys)
                         {
-                            if (index == indextToRemove)
+                            if (index++ == indextToRemove)
                             {
                                 epochToRemove = epochInCache;
                             }
@@ -249,7 +249,7 @@ namespace Nethermind.Mining
 
         public (byte[], byte[]) Hashimoto(ulong fullSize, IEthashDataSet dataSet, Keccak headerHash, Keccak expectedMixHash, ulong nonce)
         {
-            uint hashesInFull = (uint)(fullSize / HashBytes);
+            uint hashesInFull = (uint)(fullSize / HashBytes); // TODO: at current rate would cover around 200 years... but will the block rate change? what with private chains with shorter block times?
             const uint wordsInMix = MixBytes / WordBytes;
             const uint hashesInMix = MixBytes / HashBytes;
             byte[] headerAndNonceHashed = Keccak512.Compute(Bytes.Concat(headerHash.Bytes, nonce.ToByteArray(Bytes.Endianness.Little))).Bytes; // this tests fine

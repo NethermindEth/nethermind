@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Encoding;
 using NUnit.Framework;
@@ -356,7 +357,7 @@ namespace Nethermind.Mining.Test
             284950208, 285081536
         };
 
-        private readonly long[] _dataSizes = new long[]
+        private readonly ulong[] _dataSizes = new ulong[]
         {
             1073739904, 1082130304, 1090514816, 1098906752, 1107293056,
             1115684224, 1124070016, 1132461952, 1140849536, 1149232768,
@@ -770,22 +771,22 @@ namespace Nethermind.Mining.Test
             18228444544, 18236833408, 18245220736
         };
 
-        [TestCase(0UL, false)]
-        [TestCase(1UL, false)]
-        [TestCase(2UL, true)]
-        [TestCase(3UL, true)]
-        [TestCase(4UL, false)]
-        [TestCase(5UL, true)]
-        [TestCase(6UL, false)]
-        [TestCase(7UL, true)]
-        [TestCase(8UL, false)]
-        [TestCase(9UL, false)]
-        [TestCase(10UL, false)]
-        [TestCase(11UL, true)]
-        [TestCase(25UL, false)]
-        [TestCase(27UL, false)]
-        [TestCase(49UL, false)]
-        public void Is_prime_works(ulong number, bool isPrime)
+        [TestCase(0U, false)]
+        [TestCase(1U, false)]
+        [TestCase(2U, true)]
+        [TestCase(3U, true)]
+        [TestCase(4U, false)]
+        [TestCase(5U, true)]
+        [TestCase(6U, false)]
+        [TestCase(7U, true)]
+        [TestCase(8U, false)]
+        [TestCase(9U, false)]
+        [TestCase(10U, false)]
+        [TestCase(11U, true)]
+        [TestCase(25U, false)]
+        [TestCase(27U, false)]
+        [TestCase(49U, false)]
+        public void Is_prime_works(uint number, bool isPrime)
         {
             Assert.AreEqual(isPrime, Ethash.IsPrime(number));
         }
@@ -809,8 +810,8 @@ namespace Nethermind.Mining.Test
         {
             for (int i = 0; i < _dataSizes.Length; i++)
             {
-                ulong size = Ethash.GetDataSize((ulong)i * Ethash.EpochLength);
-                Assert.AreEqual(size, _dataSizes[i], i);
+                ulong size = Ethash.GetDataSize((uint)i);
+                Assert.AreEqual(size, _dataSizes[i], i, $"failed at epoch: {i}");
             }
         }
 
@@ -819,7 +820,7 @@ namespace Nethermind.Mining.Test
         {
             for (int i = 0; i < _cacheSizes.Length; i++)
             {
-                ulong size = Ethash.GetCacheSize((ulong)i * Ethash.EpochLength);
+                ulong size = Ethash.GetCacheSize((uint)i);
                 Assert.AreEqual(size, _cacheSizes[i], i);
             }
         }

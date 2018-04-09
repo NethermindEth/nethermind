@@ -77,7 +77,8 @@ namespace Ethereum.PoW.Test
 
             // seed is correct
             Ethash ethash = new Ethash();
-            Assert.AreEqual(test.Seed, Ethash.GetSeedHash(blockHeader.Number), "seed");
+            uint epoch = Ethash.GetEpoch(blockHeader.Number);
+            Assert.AreEqual(test.Seed, Ethash.GetSeedHash(epoch), "seed");
 
             uint cacheSize = Ethash.GetCacheSize(Ethash.GetEpoch(blockHeader.Number));
             Assert.AreEqual((ulong)test.CacheSize, cacheSize, "cache size requested");
@@ -100,7 +101,7 @@ namespace Ethereum.PoW.Test
             // Assert.True(ethash.Validate(blockHeader), "validation");
             // seems it is just testing the nonce and mix hash but not difficulty
 
-            ulong dataSetSize = Ethash.GetDataSize(blockHeader.Number);
+            ulong dataSetSize = Ethash.GetDataSize(epoch);
             Assert.AreEqual((ulong)test.FullSize, dataSetSize, "data size requested");
         }
 
