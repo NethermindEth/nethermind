@@ -73,6 +73,7 @@ namespace Nethermind.Evm
             byte[] data = transaction.Data ?? new byte[0];
 
             Address sender = _signer.RecoverAddress(transaction);
+            _logger?.Log($"SPEC: {spec.GetType().Name}");
             _logger?.Log("IS_CONTRACT_CREATION: " + transaction.IsContractCreation);
             _logger?.Log("IS_MESSAGE_CALL: " + transaction.IsMessageCall);
             _logger?.Log("IS_TRANSFER: " + transaction.IsTransfer);
@@ -125,8 +126,8 @@ namespace Nethermind.Evm
             }
 
             _stateProvider.IncrementNonce(sender);
-            _stateProvider.Commit(spec);
             _stateProvider.UpdateBalance(sender, -new BigInteger(gasLimit) * gasPrice, spec);
+            _stateProvider.Commit(spec);
 
             long unspentGas = gasLimit - intrinsicGas;
             long spentGas = gasLimit;

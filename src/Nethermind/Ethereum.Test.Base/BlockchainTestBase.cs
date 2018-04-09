@@ -201,6 +201,11 @@ namespace Ethereum.Test.Base
                     (1, test.Network));
             }
 
+            if (specProvider.GetGenesisSpec() != Frontier.Instance)
+            {
+                Assert.Fail("Expected genesis spec to be Frontier for blockchain tests");
+            }
+            
             IDifficultyCalculator difficultyCalculator = new DifficultyCalculator(specProvider);
             IRewardCalculator rewardCalculator = new RewardCalculator(specProvider);
             

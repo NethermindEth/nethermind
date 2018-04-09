@@ -181,6 +181,7 @@ namespace Nethermind.Blockchain
             // TODO: unimportant but out of curiosity, is the check faster than cast to nullable?
             if (_specProvider.DaoBlockNumber.HasValue && _specProvider.DaoBlockNumber.Value == suggestedBlock.Header.Number)
             {
+                _logger?.Log($"APPLYING DAO TRANSITION");
                 ApplyDaoTransition();
             }
 
