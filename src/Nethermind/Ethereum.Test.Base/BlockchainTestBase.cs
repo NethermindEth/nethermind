@@ -135,10 +135,6 @@ namespace Ethereum.Test.Base
 
         private static AccountState Convert(AccountStateJson accountStateJson)
         {
-            if (accountStateJson.Code.Contains("737db299e0885"))
-            {
-            }
-
             AccountState state = new AccountState();
             state.Balance = Hex.ToBytes(accountStateJson.Balance).ToUnsignedBigInteger();
             state.Code = Hex.ToBytes(accountStateJson.Code);

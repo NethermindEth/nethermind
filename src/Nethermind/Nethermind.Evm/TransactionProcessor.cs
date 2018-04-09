@@ -125,6 +125,7 @@ namespace Nethermind.Evm
             }
 
             _stateProvider.IncrementNonce(sender);
+            _stateProvider.Commit(spec);
             _stateProvider.UpdateBalance(sender, -new BigInteger(gasLimit) * gasPrice, spec);
 
             long unspentGas = gasLimit - intrinsicGas;
