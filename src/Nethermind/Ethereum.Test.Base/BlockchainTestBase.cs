@@ -247,7 +247,7 @@ namespace Ethereum.Test.Base
                 sealEngine, 
                 transactionStore, difficultyCalculator, blockProcessor, ShouldLog.Processing ? _logger : NullLogger.Instance);
 
-            InitializeTestState(test, _stateProvider, _storageProvider);
+            InitializeTestState(test, _stateProvider, _storageProvider, specProvider);
 
             List<(Block Block, string ExpectedException)> correctRlpsBlocks = new List<(Block, string)>();
             for (int i = 0; i < test.Blocks.Length; i++)
@@ -341,7 +341,7 @@ namespace Ethereum.Test.Base
             RunAssertions(test, blockchainProcessor.HeadBlock);
         }
 
-        private void InitializeTestState(BlockchainTest test, IStateProvider stateProvider, IStorageProvider storageProvider)
+        private void InitializeTestState(BlockchainTest test, IStateProvider stateProvider, IStorageProvider storageProvider, ISpecProvider specProvider)
         {
             foreach (KeyValuePair<Address, AccountState> accountState in test.Pre)
             {
@@ -352,15 +352,15 @@ namespace Ethereum.Test.Base
 
                 stateProvider.CreateAccount(accountState.Key, accountState.Value.Balance);
                 Keccak codeHash = stateProvider.UpdateCode(accountState.Value.Code);
-                stateProvider.UpdateCodeHash(accountState.Key, codeHash, Frontier.Instance);
+                stateProvider.UpdateCodeHash(accountState.Key, codeHash, specProvider.GetGenesisSpec());
                 for (int i = 0; i < accountState.Value.Nonce; i++)
                 {
                     stateProvider.IncrementNonce(accountState.Key);
                 }
             }
 
-            storageProvider.Commit(Frontier.Instance);
-            stateProvider.Commit(Frontier.Instance);
+            storageProvider.Commit(specProvider.GetGenesisSpec());
+            stateProvider.Commit(specProvider.GetGenesisSpec());
         }
 
         private void RunAssertions(BlockchainTest test, Block headBlock)

@@ -44,7 +44,7 @@ namespace Nethermind.Blockchain.Validators
             BigInteger sValue = signature.S.ToUnsignedBigInteger();
             BigInteger rValue = signature.R.ToUnsignedBigInteger();
             
-            if (sValue.IsZero || sValue >= (spec.IsEip155Enabled ? Secp256K1Curve.HalfN + 1 : Secp256K1Curve.N))
+            if (sValue.IsZero || sValue >= (spec.IsEip2Enabled ? Secp256K1Curve.HalfN + 1 : Secp256K1Curve.N))
             {
                 return false;
             }
