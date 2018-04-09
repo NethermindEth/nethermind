@@ -84,14 +84,16 @@ namespace Nethermind.PeerConsole
             serializationService.Register(new PongMessageSerializer());
             serializationService.Register(new StatusMessageSerializer());
 
-            BlockStore blockStore = new BlockStore();
+            
             Block block = new Block(new BlockHeader(Keccak.Zero, Keccak.OfAnEmptySequenceRlp, Address.Zero, 131200, 1, 100, 1, new byte[0]));
+            BlockStore blockStore = new BlockStore();
+            blockStore.AddBlock(block);
             block.Header.RecomputeHash();
             IBlockProcessor blockProcessor = Substitute.For<IBlockProcessor>();
             IDifficultyCalculator calculator = new DifficultyCalculator(RopstenSpecProvider.Instance); // dynamic spec here will be broken
             ITransactionStore transactionStore = new TransactionStore();
-            BlockchainProcessor blockchainProcessor = new BlockchainProcessor(blockProcessor, blockStore, transactionStore, calculator, NullSealEngine.Instance, logger);
-            blockStore.AddBlock(block, true);
+            BlockTree blockTree = new BlockTree();
+            BlockchainProcessor blockchainProcessor = new BlockchainProcessor(blockTree, NullSealEngine.Instance, transactionStore, calculator, blockProcessor, logger);
 
             IEncryptionHandshakeService encryptionHandshakeServiceA = new EncryptionHandshakeService(serializationService, eciesCipher, cryptoRandom, signer, _keyA, logger);
             IEncryptionHandshakeService encryptionHandshakeServiceB = new EncryptionHandshakeService(serializationService, eciesCipher, cryptoRandom, signer, _keyB, logger);
@@ -162,7 +164,8 @@ namespace Nethermind.PeerConsole
             ITransactionValidator transactionValidator = new TransactionValidator(currentSpec, new SignatureValidator(currentSpec, ChainId.Ropsten));
             IBlockValidator blockValidator = new BlockValidator(transactionValidator, headerValidator, ommersValidator, logger);
 
-            IBlockhashProvider blockhashProvider = new BlockhashProvider(blockStore);
+            BlockTree blockTree = new BlockTree();
+            IBlockhashProvider blockhashProvider = new BlockhashProvider(blockTree);
             IDbProvider dbProvider = new DbProvider(logger);
             InMemoryDb codeDb = new InMemoryDb();
             InMemoryDb stateDb = new InMemoryDb();
@@ -176,7 +179,7 @@ namespace Nethermind.PeerConsole
             ITransactionProcessor processor = new TransactionProcessor(dynamicSpecForVm, stateProvider, storageProvider, virtualMachine, ethereumSigner, logger);
             ITransactionStore transactionStore = new TransactionStore();
             IBlockProcessor blockProcessor = new BlockProcessor(RopstenSpecProvider.Instance, blockValidator, rewardCalculator, processor, dbProvider, stateProvider, storageProvider, transactionStore, logger);
-            IBlockchainProcessor blockchainProcessor = new BlockchainProcessor(blockProcessor, blockStore, transactionStore, calculator, NullSealEngine.Instance, logger);
+            IBlockchainProcessor blockchainProcessor = new BlockchainProcessor(blockTree, NullSealEngine.Instance, transactionStore, calculator, blockProcessor, logger);
             
             ChainSpecLoader loader = new ChainSpecLoader(new UnforgivingJsonSerializer());
             string path = Path.Combine(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, @"..\..\..\..\Chains", "ropsten.json"));

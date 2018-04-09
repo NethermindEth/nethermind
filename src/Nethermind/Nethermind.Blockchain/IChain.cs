@@ -16,25 +16,15 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Collections.Generic;
-using Nethermind.Core;
+using System.Numerics;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Blockchain
 {
-    public class BlockStore : IBlockStore
+    // TODO: not used yet, work in progress
+    public interface IChain
     {
-        private readonly Dictionary<Keccak, Block> _blocks = new Dictionary<Keccak, Block>();
-
-        public void AddBlock(Block block)
-        {
-            _blocks.Add(block.Header.Hash, block);
-        }
-
-        public Block FindBlock(Keccak blockHash)
-        {
-            _blocks.TryGetValue(blockHash, out Block block);
-            return block;
-        }
+        Keccak Head { get; set; }
+        BigInteger TotalDifficulty { get; set; }
     }
 }

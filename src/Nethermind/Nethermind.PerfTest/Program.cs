@@ -101,8 +101,8 @@ namespace Nethermind.PerfTest
             DbProvider dbProvider = new DbProvider(logger);
             StateTree stateTree = new StateTree(dbProvider.GetOrCreateStateDb());
             IStateProvider stateProvider = new StateProvider(stateTree, Byzantium.Instance, logger, dbProvider.GetOrCreateCodeDb());
-            IBlockStore blockStore = new BlockStore();
-            Machine = new VirtualMachine(Frontier.Instance, stateProvider, new StorageProvider(dbProvider, stateProvider, logger), new BlockhashProvider(blockStore), null);
+            IBlockTree blockTree = new BlockTree();
+            Machine = new VirtualMachine(Frontier.Instance, stateProvider, new StorageProvider(dbProvider, stateProvider, logger), new BlockhashProvider(blockTree), null);
         }
         
         private static void Main(string[] args)

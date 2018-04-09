@@ -164,7 +164,7 @@ namespace Nethermind.JsonRpc.Module
 
         public ResultWrapper<Quantity> eth_getBlockTransactionCountByHash(Data blockHash)
         {
-            var block = _blockStore.FindBlock(new Keccak(blockHash.Value), false);
+            var block = _blockStore.FindBlock(new Keccak(blockHash.Value));
             if (block == null)
             {
                 return ResultWrapper<Quantity>.Fail($"Cannot find block for hash: {blockHash.Value}", ErrorType.NotFound);
@@ -193,7 +193,7 @@ namespace Nethermind.JsonRpc.Module
 
         public ResultWrapper<Quantity> eth_getUncleCountByBlockHash(Data blockHash)
         {
-            var block = _blockStore.FindBlock(new Keccak(blockHash.Value), false);
+            var block = _blockStore.FindBlock(new Keccak(blockHash.Value));
             if (block == null)
             {
                 return ResultWrapper<Quantity>.Fail($"Cannot find block for hash: {blockHash.Value}", ErrorType.NotFound);
@@ -280,7 +280,7 @@ namespace Nethermind.JsonRpc.Module
 
         public ResultWrapper<Block> eth_getBlockByHash(Data blockHash, bool returnFullTransactionObjects)
         {
-            var block = _blockStore.FindBlock(new Keccak(blockHash.Value), false);
+            var block = _blockStore.FindBlock(new Keccak(blockHash.Value));
             if (block == null)
             {
                 return ResultWrapper<Block>.Fail($"Cannot find block for hash: {blockHash.Value}", ErrorType.NotFound);
@@ -323,7 +323,7 @@ namespace Nethermind.JsonRpc.Module
             {
                 return ResultWrapper<Transaction>.Fail($"Cannot find block hash for transaction: {transactionHash.Value}", ErrorType.NotFound);
             }
-            var block = _blockStore.FindBlock(blockHash, false);
+            var block = _blockStore.FindBlock(blockHash);
             if (block == null)
             {
                 return ResultWrapper<Transaction>.Fail($"Cannot find block for hash: {blockHash}", ErrorType.NotFound);
@@ -336,7 +336,7 @@ namespace Nethermind.JsonRpc.Module
 
         public ResultWrapper<Transaction> eth_getTransactionByBlockHashAndIndex(Data blockHash, Quantity positionIndex)
         {
-            var block = _blockStore.FindBlock(new Keccak(blockHash.Value), false);
+            var block = _blockStore.FindBlock(new Keccak(blockHash.Value));
             if (block == null)
             {
                 return ResultWrapper<Transaction>.Fail($"Cannot find block for hash: {blockHash.Value}", ErrorType.NotFound);
@@ -405,7 +405,7 @@ namespace Nethermind.JsonRpc.Module
             {
                 return ResultWrapper<TransactionReceipt>.Fail($"Cannot find block hash for transaction: {transactionHash.Value}", ErrorType.NotFound);
             }
-            var block = _blockStore.FindBlock(blockHash, false);
+            var block = _blockStore.FindBlock(blockHash);
             if (block == null)
             {
                 return ResultWrapper<TransactionReceipt>.Fail($"Cannot find block for hash: {blockHash}", ErrorType.NotFound);
@@ -418,7 +418,7 @@ namespace Nethermind.JsonRpc.Module
 
         public ResultWrapper<Block> eth_getUncleByBlockHashAndIndex(Data blockHash, Quantity positionIndex)
         {
-            var block = _blockStore.FindBlock(new Keccak(blockHash.Value), false);
+            var block = _blockStore.FindBlock(new Keccak(blockHash.Value));
             if (block == null)
             {
                 return ResultWrapper<Block>.Fail($"Cannot find block for hash: {blockHash.Value}", ErrorType.NotFound);
@@ -434,7 +434,7 @@ namespace Nethermind.JsonRpc.Module
             }
 
             var ommerHeader = block.Ommers[(int)index.Value];
-            var ommer = _blockStore.FindBlock(ommerHeader.Hash, false);
+            var ommer = _blockStore.FindBlock(ommerHeader.Hash);
             if (ommer == null)
             {
                 return ResultWrapper<Block>.Fail($"Cannot find ommer for hash: {ommerHeader.Hash}", ErrorType.NotFound);
@@ -469,7 +469,7 @@ namespace Nethermind.JsonRpc.Module
             }
 
             var ommerHeader = result.Data.Ommers[(int)index.Value];
-            var ommer = _blockStore.FindBlock(ommerHeader.Hash, false);
+            var ommer = _blockStore.FindBlock(ommerHeader.Hash);
             if (ommer == null)
             {
                 return ResultWrapper<Block>.Fail($"Cannot find ommer for hash: {ommerHeader.Hash}", ErrorType.NotFound);
@@ -651,12 +651,13 @@ namespace Nethermind.JsonRpc.Module
                     {
                         return ResultWrapper<Core.Block>.Fail("Invalid block id", ErrorType.InvalidParams);
                     }
-                    var block = _blockStore.FindBlock(value.Value);
-                    if (block == null)
-                    {
-                        return ResultWrapper<Core.Block>.Fail($"Cannot find block for {value.Value}", ErrorType.NotFound);
-                    }
-                    return ResultWrapper<Core.Block>.Success(block);
+                    throw new NotImplementedException(); // TODO: TKS - discuss with me later, there was a rebuilt of BlockStore / Blockchain, work in progress now, so just commenting it out 
+//                    var block = _blockStore.FindBlock(value.Value);
+//                    if (block == null)
+//                    {
+//                        return ResultWrapper<Core.Block>.Fail($"Cannot find block for {value.Value}", ErrorType.NotFound);
+//                    }
+//                    return ResultWrapper<Core.Block>.Success(block);
                 default:
                     throw new Exception($"BlockParameterType not supported: {blockParameter.Type}");
             }
@@ -708,7 +709,7 @@ namespace Nethermind.JsonRpc.Module
         private Core.Block GetGenesisBlock(Core.Block headBlock)
         {
             Core.Block parent;
-            while ((parent = _blockStore.FindParent(headBlock)) != null)
+            while ((parent = _blockStore.FindBlock(headBlock.Header.ParentHash)) != null)
             {
                 headBlock = parent;
             }

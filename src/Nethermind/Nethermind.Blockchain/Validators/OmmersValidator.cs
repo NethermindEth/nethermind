@@ -61,7 +61,7 @@ namespace Nethermind.Blockchain.Validators
                     return false;
                 }
 
-                Block ancestor = _chain.FindParent(header);
+                Block ancestor = _chain.FindBlock(header.ParentHash);
                 for (int i = 0; i < 5; i++)
                 {
                     if (ancestor == null)
@@ -75,7 +75,7 @@ namespace Nethermind.Blockchain.Validators
                         return false;
                     }
                     
-                    ancestor = _chain.FindParent(ancestor.Header);
+                    ancestor = _chain.FindBlock(ancestor.Header.ParentHash);
                 }
             }
 
@@ -94,7 +94,7 @@ namespace Nethermind.Blockchain.Validators
                 return false;
             }
             
-            BlockHeader parent = _chain.FindParent(header)?.Header;
+            BlockHeader parent = _chain.FindBlock(header.ParentHash)?.Header;
             if (parent == null)
             {
                 return false;

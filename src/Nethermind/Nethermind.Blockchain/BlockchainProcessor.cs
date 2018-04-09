@@ -37,7 +37,7 @@ namespace Nethermind.Blockchain
     {
         private static readonly BigInteger MinGasPriceForMining = 1;
         private readonly IBlockProcessor _blockProcessor;
-        private readonly IBlockStore _blockStore;
+        private readonly IBlockTree _blockTree;
         private readonly IDifficultyCalculator _difficultyCalculator;
         private readonly ILogger _logger;
         private readonly ISealEngine _sealEngine;
@@ -45,15 +45,14 @@ namespace Nethermind.Blockchain
         private readonly BlockingCollection<Block> _suggestedBlocks = new BlockingCollection<Block>(new ConcurrentQueue<Block>());
         private readonly ITransactionStore _transactionStore;
 
-        public BlockchainProcessor(
-            IBlockProcessor blockProcessor,
-            IBlockStore blockStore,
+        public BlockchainProcessor(IBlockTree blockTree,
+            ISealEngine sealEngine,
             ITransactionStore transactionStore,
             IDifficultyCalculator difficultyCalculator,
-            ISealEngine sealEngine,
+            IBlockProcessor blockProcessor,
             ILogger logger)
         {
-            _blockStore = blockStore;
+            _blockTree = blockTree;
             _transactionStore = transactionStore;
             _difficultyCalculator = difficultyCalculator;
             _sealEngine = sealEngine;
@@ -117,15 +116,15 @@ namespace Nethermind.Blockchain
             {
                 if (t.IsFaulted)
                 {
-                    _logger?.Error($"Blockchain processor encountered an exception {t.Exception}.");
+                    _logger?.Error($"BlockTree processor encountered an exception {t.Exception}.");
                 }
                 else if(t.IsCanceled)
                 {
-                    _logger?.Error("Blockchain processor stopped.");
+                    _logger?.Error("BlockTree processor stopped.");
                 }
                 else if(t.IsCompleted)
                 {
-                    _logger?.Error("Blockchain processor complete.");
+                    _logger?.Error("BlockTree processor complete.");
                 }
             });
         }
@@ -149,7 +148,7 @@ namespace Nethermind.Blockchain
                 return block.Transactions.Count;
             }
 
-            Block parent = _blockStore.FindParent(block.Header);
+            Block parent = _blockTree.FindParent(block.Header);
             if (parent == null)
             {
                 return 0;
@@ -167,7 +166,7 @@ namespace Nethermind.Blockchain
                 return blockHeader.Difficulty;
             }
 
-            Block parent = _blockStore.FindParent(blockHeader);
+            Block parent = _blockTree.FindParent(blockHeader);
             if (parent == null)
             {
                 return 0;
@@ -264,12 +263,12 @@ namespace Nethermind.Blockchain
                 do
                 {
                     blocksToBeAddedToMain.Add(toBeProcessed);
-                    toBeProcessed = _blockStore.FindParent(toBeProcessed);
+                    toBeProcessed = _blockTree.FindParent(toBeProcessed);
                     if (toBeProcessed == null)
                     {
                         break;
                     }
-                } while (!_blockStore.IsMainChain(toBeProcessed.Hash));
+                } while (!_blockTree.IsMainChain(toBeProcessed.Hash));
 
                 Block branchingPoint = toBeProcessed;
                 Keccak stateRoot = branchingPoint?.Header.StateRoot;
@@ -278,7 +277,7 @@ namespace Nethermind.Blockchain
 
                 foreach (Block block in blocksToBeAddedToMain)
                 {
-                    if (_blockStore.WasProcessed(block.Hash))
+                    if (_blockTree.WasProcessed(block.Hash))
                     {
                         stateRoot = block.Header.StateRoot;
                         _logger?.Log($"STATE ROOT LOOKUP: {stateRoot}");
@@ -301,28 +300,28 @@ namespace Nethermind.Blockchain
                 if (HeadBlock != branchingPoint && HeadBlock != null)
                 {
                     blocksToBeRemovedFromMain.Add(HeadBlock);
-                    Block teBeRemovedFromMain = _blockStore.FindParent(HeadBlock);
+                    Block teBeRemovedFromMain = _blockTree.FindParent(HeadBlock);
                     while (teBeRemovedFromMain != null && teBeRemovedFromMain.Hash != branchingPoint?.Hash)
                     {
                         blocksToBeRemovedFromMain.Add(teBeRemovedFromMain);
-                        teBeRemovedFromMain = _blockStore.FindParent(teBeRemovedFromMain);
+                        teBeRemovedFromMain = _blockTree.FindParent(teBeRemovedFromMain);
                     }
                 }
 
                 if (!forMining)
                 {
                     HeadBlock = processedBlocks[processedBlocks.Length - 1];
-                    _blockStore.AddBlock(HeadBlock, false);
+                    _blockTree.AddBlock(HeadBlock, false);
 
                     foreach (Block block in blocksToBeRemovedFromMain)
                     {
-                        _blockStore.MoveToBranch(block.Hash);
+                        _blockTree.MoveToBranch(block.Hash);
                         _logger?.Log($"BLOCK {block.Header.Hash} ({block.Header.Number}) MOVED TO BRANCH");
                     }
 
                     foreach (Block block in processedBlocks)
                     {
-                        _blockStore.MoveToMain(block.Hash);
+                        _blockTree.MoveToMain(block.Hash);
                         _logger?.Log($"BLOCK {block.Header.Hash} ({block.Header.Number}) ADDED TO MAIN CHAIN");
                     }
 
@@ -348,7 +347,7 @@ namespace Nethermind.Blockchain
             if (!forMining)
             {
                 // lower difficulty branch
-                _blockStore.AddBlock(suggestedBlock, false);
+                _blockTree.AddBlock(suggestedBlock, false);
             }
         }
     }

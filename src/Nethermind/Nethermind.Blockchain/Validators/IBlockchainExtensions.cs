@@ -19,14 +19,15 @@ using Nethermind.Core;
 
 namespace Nethermind.Blockchain.Validators
 {
-    public static class IBlockStoreExtensions
+    // ReSharper disable once InconsistentNaming
+    public static class IBlockchainExtensions
     {
-        public static Block FindParent(this IBlockStore store, BlockHeader header)
+        public static Block FindParent(this IBlockTree store, BlockHeader header)
         {
             return store.FindBlock(header.ParentHash, false);
         }
 
-        public static Block FindParent(this IBlockStore store, Block block)
+        public static Block FindParent(this IBlockTree store, Block block)
         {
             return store.FindBlock(block.Header.ParentHash, false);
         }

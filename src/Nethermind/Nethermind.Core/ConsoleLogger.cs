@@ -17,6 +17,7 @@
  */
 
 using System;
+using System.Threading;
 
 namespace Nethermind.Core
 {
@@ -24,7 +25,7 @@ namespace Nethermind.Core
     {
         public void Log(string text)
         {
-            Console.WriteLine($"{DateTime.Now.ToLongTimeString()} {text}");
+            Console.WriteLine($"{DateTime.Now.ToLongTimeString()} [{Thread.CurrentThread.ManagedThreadId}] {text}");
         }
 
         public void Debug(string text)

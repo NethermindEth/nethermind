@@ -17,19 +17,22 @@
  */
 
 using System.Numerics;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Blockchain
 {
-    public interface IBlockchain
+    public interface IBlockTree
     {
-        Keccak GenesisHash { get; set; }
-        IChain MainChain { get; set; }
-    }
+        Keccak GenesisHash { get; set; } // TODO: move from processor
+        IChain MainChain { get; set; } // TODO: move from processor
 
-    public interface IChain
-    {
-        Keccak Head { get; set; }
-        BigInteger TotalDifficulty { get; set; }
+        void AddBlock(Block block, bool isMainChain);
+        Block FindBlock(Keccak blockHash, bool mainChainOnly);
+        Block FindBlock(BigInteger blockNumber);
+        bool IsMainChain(Keccak blockHash);
+        void MoveToMain(Keccak blockHash);
+        void MoveToBranch(Keccak blockHash);
+        bool WasProcessed(Keccak blockHash);
     }
 }

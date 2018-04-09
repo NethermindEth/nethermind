@@ -25,9 +25,9 @@ namespace Nethermind.Blockchain
 {
     public class BlockhashProvider : IBlockhashProvider
     {
-        private readonly IBlockStore _chain;
+        private readonly IBlockTree _chain;
 
-        public BlockhashProvider(IBlockStore chain)
+        public BlockhashProvider(IBlockTree chain)
         {
             _chain = chain;
         }

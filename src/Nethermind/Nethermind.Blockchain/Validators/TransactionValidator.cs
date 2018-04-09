@@ -21,6 +21,7 @@ using Nethermind.Evm;
 
 namespace Nethermind.Blockchain.Validators
 {
+    // TODO: this will need some work to validate depending on the block number
     public class TransactionValidator : ITransactionValidator
     {
         private readonly ISignatureValidator _signatureValidator;

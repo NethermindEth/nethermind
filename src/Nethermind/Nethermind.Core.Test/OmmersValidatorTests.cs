@@ -44,10 +44,10 @@ namespace Nethermind.Core.Test
             _duplicateOmmer.Hash = Keccak.Compute("duplicate_ommer");
 
             _blockStore = Substitute.For<IBlockStore>();
-            _blockStore.FindBlock(_grandgrandparent.Hash, false).Returns(new Block(_grandgrandparent, _duplicateOmmer));
-            _blockStore.FindBlock(_grandparent.Hash, false).Returns(new Block(_grandparent));
-            _blockStore.FindBlock(_parent.Hash, false).Returns(new Block(_parent));
-            _blockStore.FindBlock(_header.Hash, false).Returns(new Block(_header));
+            _blockStore.FindBlock(_grandgrandparent.Hash).Returns(new Block(_grandgrandparent, _duplicateOmmer));
+            _blockStore.FindBlock(_grandparent.Hash).Returns(new Block(_grandparent));
+            _blockStore.FindBlock(_parent.Hash).Returns(new Block(_parent));
+            _blockStore.FindBlock(_header.Hash).Returns(new Block(_header));
 
             _headerValidator = Substitute.For<IHeaderValidator>();
             _headerValidator.Validate(Arg.Any<BlockHeader>(), true).Returns(true);

@@ -46,7 +46,7 @@ namespace Nethermind.Blockchain.Validators
         
         public bool Validate(BlockHeader header, bool isOmmer = false, bool ignoreProof = false)
         {
-            Block parent = _chain.FindParent(header);
+            Block parent = _chain.FindBlock(header.ParentHash);
             if (parent == null)
             {
                 if (header.Number == 0)

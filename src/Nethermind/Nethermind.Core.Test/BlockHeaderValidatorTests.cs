@@ -80,8 +80,8 @@ namespace Nethermind.Core.Test
             _blockHeader.RecomputeHash();
             _block = new Block(_blockHeader);
             
-            blockStore.AddBlock(_parentBlock, true);
-            blockStore.AddBlock(_block, true);
+            blockStore.AddBlock(_parentBlock);
+            blockStore.AddBlock(_block);
         }
         
         [Test]

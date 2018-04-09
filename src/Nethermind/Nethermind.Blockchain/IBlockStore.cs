@@ -16,7 +16,6 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -24,12 +23,7 @@ namespace Nethermind.Blockchain
 {
     public interface IBlockStore
     {   
-        void AddBlock(Block block, bool isMainChain);
-        Block FindBlock(Keccak blockHash, bool mainChainOnly);
-        Block FindBlock(BigInteger blockNumber);
-        bool IsMainChain(Keccak blockHash);
-        void MoveToMain(Keccak blockHash);
-        void MoveToBranch(Keccak blockHash);
-        bool WasProcessed(Keccak blockHash);
+        void AddBlock(Block block);
+        Block FindBlock(Keccak blockHash);
     }
 }

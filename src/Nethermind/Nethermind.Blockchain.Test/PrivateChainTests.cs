@@ -22,6 +22,7 @@ using System.IO;
 using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Xml;
 using Nethermind.Blockchain.Difficulty;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
@@ -41,63 +42,70 @@ namespace Nethermind.Blockchain.Test
         [Test]
         public async Task Build_some_chain()
         {
-            TimeSpan blockMiningTime = TimeSpan.FromMilliseconds(50);
-            
-            ILogger logger = new ConsoleLogger();
-            ISealEngine sealEngine = new FakeSealEngine(blockMiningTime);
-            ISpecProvider specProvider = RopstenSpecProvider.Instance;
-            IReleaseSpec dynamicSpecForVm = new DynamicReleaseSpec(RopstenSpecProvider.Instance);
-            IEthereumSigner ethereumSigner = new EthereumSigner(RopstenSpecProvider.Instance, logger); // dynamic spec here will be broken
-            
-            IBlockStore blockStore = new BlockStore();
-            IDifficultyCalculator difficultyCalculator = new DifficultyCalculator(specProvider); // dynamic spec here will be broken
-            IHeaderValidator headerValidator = new HeaderValidator(difficultyCalculator, blockStore, sealEngine, specProvider, logger);
-            IOmmersValidator ommersValidator = new OmmersValidator(blockStore, headerValidator, logger);
-            IReleaseSpec currentSpec = RopstenSpecProvider.Instance.GetCurrentSpec();
-            ITransactionValidator transactionValidator = new TransactionValidator(currentSpec, new SignatureValidator(currentSpec, ChainId.Ropsten));
-            IBlockValidator blockValidator = new BlockValidator(transactionValidator, headerValidator, ommersValidator, logger);
+            /* logging & instrumentation */
+            var logger = new ConsoleLogger();
 
-            IBlockhashProvider blockhashProvider = new BlockhashProvider(blockStore);
-            IDbProvider storageDbProvider = new DbProvider(logger);
-            InMemoryDb codeDb = new InMemoryDb();
-            InMemoryDb stateDb = new InMemoryDb();
-            StateTree stateTree = new StateTree(stateDb);
-            IStateProvider stateProvider = new StateProvider(stateTree, dynamicSpecForVm, logger, codeDb);
-            IStorageProvider storageProvider = new StorageProvider(storageDbProvider, stateProvider, logger);
-            
-            IRewardCalculator rewardCalculator = new RewardCalculator(specProvider);
-            IVirtualMachine virtualMachine = new VirtualMachine(dynamicSpecForVm, stateProvider, storageProvider, blockhashProvider, logger);
-            ITransactionProcessor processor = new TransactionProcessor(dynamicSpecForVm, stateProvider, storageProvider, virtualMachine, ethereumSigner, logger);
-            ITransactionStore transactionStore = new TransactionStore();
-            IBlockProcessor blockProcessor = new BlockProcessor(RopstenSpecProvider.Instance, blockValidator, rewardCalculator, processor, storageDbProvider, stateProvider, storageProvider, transactionStore, logger);
-            IBlockchainProcessor blockchainProcessor = new BlockchainProcessor(blockProcessor, blockStore, transactionStore, difficultyCalculator, sealEngine, logger);
-            
+            /* spec */
+            var blockMiningTime = TimeSpan.FromMilliseconds(50);
+            var sealEngine = new FakeSealEngine(blockMiningTime);
+            var specProvider = RopstenSpecProvider.Instance;
+            var currentSpec = RopstenSpecProvider.Instance.GetCurrentSpec();
+            var dynamicSpecForVm = new DynamicReleaseSpec(specProvider); // TODO: remove
+
+            /* stoira & validation */
+            var blockStore = new BlockStore();
+            var difficultyCalculator = new DifficultyCalculator(specProvider); // dynamic spec here will be broken
+            var headerValidator = new HeaderValidator(difficultyCalculator, blockStore, sealEngine, specProvider, logger);
+            var ommersValidator = new OmmersValidator(blockStore, headerValidator, logger);
+            var transactionValidator = new TransactionValidator(currentSpec, new SignatureValidator(currentSpec, ChainId.Ropsten));
+            var blockValidator = new BlockValidator(transactionValidator, headerValidator, ommersValidator, logger);
+
+            /* state & storage */
+            var codeDb = new InMemoryDb();
+            var stateDb = new InMemoryDb();
+            var stateTree = new StateTree(stateDb);
+            var stateProvider = new StateProvider(stateTree, dynamicSpecForVm, logger, codeDb); // TODO: remove dynamic spec here
+            var storageDbProvider = new DbProvider(logger);
+            var storageProvider = new StorageProvider(storageDbProvider, stateProvider, logger);
+
+            /* blockchain processing */
+            var ethereumSigner = new EthereumSigner(specProvider, logger);
+            var transactionStore = new TransactionStore();
+            var blockchain = new BlockTree();
+            var blockhashProvider = new BlockhashProvider(blockchain);
+            var virtualMachine = new VirtualMachine(dynamicSpecForVm, stateProvider, storageProvider, blockhashProvider, logger); // TODO: remove dynamic spec here
+            var processor = new TransactionProcessor(dynamicSpecForVm, stateProvider, storageProvider, virtualMachine, ethereumSigner, logger); // TODO: remove dynamic spec here
+            var rewardCalculator = new RewardCalculator(specProvider);
+            var blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, processor, storageDbProvider, stateProvider, storageProvider, transactionStore, logger);
+            var blockchainProcessor = new BlockchainProcessor(blockchain, sealEngine, transactionStore, difficultyCalculator, blockProcessor, logger);
+
+            /* load ChainSpec and init */
             ChainSpecLoader loader = new ChainSpecLoader(new UnforgivingJsonSerializer());
             string path = Path.Combine(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, @"..\..\..\..\Chains", "ropsten.json"));
             logger.Log($"Loading ChainSpec from {path}");
             ChainSpec chainSpec = loader.Load(File.ReadAllBytes(path));
-            foreach (KeyValuePair<Address, BigInteger> allocation in chainSpec.Allocations)
-            {
-                stateProvider.CreateAccount(allocation.Key, allocation.Value);
-            }
-            
-            stateProvider.Commit();
-            chainSpec.Genesis.Header.StateRoot = stateProvider.StateRoot;
-            chainSpec.Genesis.Header.RecomputeHash();
+            chainSpec.Genesis.Header.StateRoot = stateProvider.StateRoot; // TODO: shall it be HeaderSpec and not BlockHeader?
+            chainSpec.Genesis.Header.RecomputeHash(); // TODO: shall it be HeaderSpec and not BlockHeader?
             if (chainSpec.Genesis.Hash != new Keccak("0x41941023680923e0fe4d74a34bdac8141f2540e3ae90623718e47d66d1ca4a2d"))
             {
                 throw new Exception("Unexpected genesis hash");
             }
-            
-            FakeTransactionsGenerator generator = new FakeTransactionsGenerator(transactionStore, ethereumSigner, blockMiningTime, logger);
-            generator.Start();
-            
-            sealEngine.IsMining = true; // TODO: start / stop?
 
-            BigInteger roughlyNumberOfBlocks = 6;
+            foreach (KeyValuePair<Address, BigInteger> allocation in chainSpec.Allocations)
+            {
+                stateProvider.CreateAccount(allocation.Key, allocation.Value);
+            }
+
+            stateProvider.Commit();
+
+            /* start processing */
+            sealEngine.IsMining = true; // TODO: start / stop?
+            var generator = new FakeTransactionsGenerator(transactionStore, ethereumSigner, blockMiningTime, logger);
+            generator.Start();
             blockchainProcessor.Start(chainSpec.Genesis);
+            var roughlyNumberOfBlocks = 6;
             Thread.Sleep(blockMiningTime * (int)roughlyNumberOfBlocks);
-            await blockchainProcessor.StopAsync();
+            await blockchainProcessor.StopAsync(false);
             Assert.GreaterOrEqual(blockchainProcessor.HeadBlock.Number, roughlyNumberOfBlocks - 2, "number of blocks");
             Assert.GreaterOrEqual(blockchainProcessor.TotalTransactions, roughlyNumberOfBlocks - 2, "number of transactions");
         }
