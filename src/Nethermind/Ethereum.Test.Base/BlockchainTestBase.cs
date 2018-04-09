@@ -266,6 +266,12 @@ namespace Ethereum.Test.Base
                     Block suggestedBlock = Rlp.Decode<Block>(rlp);
                     suggestedBlock.Header.RecomputeHash(); // TODO: review this
                     Assert.AreEqual(new Keccak(testBlockJson.BlockHeader.Hash), suggestedBlock.Header.Hash, "hash of the block");
+                    for (int ommerIndex = 0; ommerIndex < suggestedBlock.Ommers.Length; ommerIndex++)
+                    {
+                        suggestedBlock.Ommers[ommerIndex].RecomputeHash();
+                        Assert.AreEqual(new Keccak(testBlockJson.UncleHeaders[ommerIndex].Hash), suggestedBlock.Ommers[ommerIndex].Hash, "hash of the ommer");    
+                    }
+                    
                     correctRlpsBlocks.Add((suggestedBlock, testBlockJson.ExpectedException));
                 }
                 catch (Exception e)
@@ -481,7 +487,7 @@ namespace Ethereum.Test.Base
                 Hex.ToBytes(headerJson.Timestamp).ToUnsignedBigInteger(),
                 Hex.ToBytes(headerJson.ExtraData)
             );
-
+            
             header.Bloom = new Bloom(Hex.ToBytes(headerJson.Bloom).ToBigEndianBitArray2048());
             header.GasUsed = (long)Hex.ToBytes(headerJson.GasUsed).ToUnsignedBigInteger();
             header.Hash = new Keccak(headerJson.Hash);

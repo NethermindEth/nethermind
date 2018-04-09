@@ -23,6 +23,6 @@ namespace Nethermind.Evm
         public static bool Processing = true;
         public static bool Evm = false;
         public static bool EvmStack = false;
-        public static bool State = false;
+        public static bool State = true;
     }
 }

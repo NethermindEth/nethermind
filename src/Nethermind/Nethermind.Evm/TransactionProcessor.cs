@@ -81,6 +81,7 @@ namespace Nethermind.Evm
             _logger?.Log("GAS PRICE: " + transaction.GasPrice);
             _logger?.Log("VALUE: " + transaction.Value);
             _logger?.Log("DATA_LENGTH: " + (transaction.Data?.Length ?? 0));
+            _logger?.Log("NONCE: " + transaction.Nonce);
 
             if (sender == null)
             {
@@ -118,7 +119,7 @@ namespace Nethermind.Evm
 
             if (transaction.Nonce != _stateProvider.GetNonce(sender))
             {
-                _logger?.Log($"WRONG_TRANSACTION_NONCE: {transaction.Nonce}");
+                _logger?.Log($"WRONG_TRANSACTION_NONCE: {transaction.Nonce} (expected {_stateProvider.GetNonce(sender)})");
                 return GetNullReceipt(block, 0L);
             }
 

@@ -76,16 +76,16 @@ namespace Nethermind.Blockchain
             }
             else
             {
-                _cancellationSource.Cancel();    
+                _cancellationSource.Cancel();
             }
-            
+
             await _processorTask;
         }
 
         public void Start(Block genesisBlock)
         {
             _cancellationSource = new CancellationTokenSource();
-            _logger?.Log($"Processing genesis block ({genesisBlock.Hash}).");
+            _logger?.Log($"Processing genesis block {genesisBlock.Number} ({genesisBlock.Hash}).");
             Process(genesisBlock);
             _processorTask = Task.Factory.StartNew(() =>
                 {
@@ -99,7 +99,7 @@ namespace Nethermind.Blockchain
 
                     foreach (Block block in _suggestedBlocks.GetConsumingEnumerable(_cancellationSource.Token))
                     {
-                        _logger?.Log($"Processing a suggested block ({block.Hash}).");
+                        _logger?.Log($"Processing a suggested block {block.Number} ({block.Hash}).");
                         Process(block);
                         _logger?.Log($"Now {_suggestedBlocks.Count} blocks waiting in the queue.");
                         if (_suggestedBlocks.Count == 0 && _sealEngine.IsMining)
@@ -118,11 +118,11 @@ namespace Nethermind.Blockchain
                 {
                     _logger?.Error($"BlockTree processor encountered an exception {t.Exception}.");
                 }
-                else if(t.IsCanceled)
+                else if (t.IsCanceled)
                 {
                     _logger?.Error("BlockTree processor stopped.");
                 }
-                else if(t.IsCompleted)
+                else if (t.IsCompleted)
                 {
                     _logger?.Error("BlockTree processor complete.");
                 }
@@ -131,11 +131,9 @@ namespace Nethermind.Blockchain
 
         public void SuggestBlock(Block block)
         {
-            _logger?.Log($"Enqueuing a new block ({block.Hash}) for processing.");
-            _logger?.Debug($"Number {block.Number}");
-            _logger?.Debug($"Hash {block.Hash}");
+            _logger?.Log($"Enqueuing a new block {block.Number} ({block.Hash}) for processing.");
             _suggestedBlocks.Add(block);
-            _logger?.Log($"A new block ({block.Hash}) suggested for processing.");
+            _logger?.Log($"A new block {block.Number} ({block.Hash}) suggested for processing.");
         }
 
         public event EventHandler<BlockEventArgs> HeadBlockChanged;
@@ -195,7 +193,7 @@ namespace Nethermind.Blockchain
             {
                 Debug.Assert(transactions[i] != null, "transaction is null :/");
             }
-            
+
             List<Transaction> selected = new List<Transaction>();
             BigInteger gasRemaining = header.GasLimit;
             _logger?.Debug($"Collecting pending transactions at min gas price {MinGasPriceForMining} and block gas limit {gasRemaining}.");
@@ -216,7 +214,7 @@ namespace Nethermind.Blockchain
                 selected.Add(transaction);
                 gasRemaining -= transaction.GasLimit;
             }
-            
+
             _logger?.Debug($"Collected {selected.Count} out of {transactions.Length} pending transactions.");
 
             header.TransactionsRoot = GetTransactionsRoot(selected);
@@ -245,10 +243,14 @@ namespace Nethermind.Blockchain
         private void Process(Block suggestedBlock, bool forMining)
         {
             _logger?.Log("-------------------------------------------------------------------------------------");
-            suggestedBlock.Header.RecomputeHash();
+            if (!forMining)
+            {
+                Debug.Assert(suggestedBlock.Hash != null, "block hash should be known at this stage if the block is not mining");
+            }
+
             foreach (BlockHeader ommerHeader in suggestedBlock.Ommers)
             {
-                ommerHeader.RecomputeHash();
+                Debug.Assert(ommerHeader.Hash != null, "ommer's hash should be known at this stage");
             }
 
             BigInteger totalDifficulty = GetTotalDifficulty(suggestedBlock.Header);
@@ -271,6 +273,22 @@ namespace Nethermind.Blockchain
                 } while (!_blockTree.IsMainChain(toBeProcessed.Hash));
 
                 Block branchingPoint = toBeProcessed;
+                if (branchingPoint != null)
+                {
+                    _logger?.Log($"BRANCHING FROM: {toBeProcessed.Number} ({toBeProcessed.Hash})");
+                }
+                else
+                {
+                    if (HeadBlock == null)
+                    {
+                        _logger?.Log("SETTING AS GENESIS BLOCK");
+                    }
+                    else
+                    {
+                        _logger?.Log($"ADDING ON TOP OF {HeadBlock.Number} ({HeadBlock.Hash})");
+                    }
+                }
+
                 Keccak stateRoot = branchingPoint?.Header.StateRoot;
                 _logger?.Log($"STATE ROOT LOOKUP: {stateRoot}");
                 List<Block> unprocessedBlocksToBeAddedToMain = new List<Block>();
@@ -329,7 +347,7 @@ namespace Nethermind.Blockchain
                     TotalDifficulty = totalDifficulty;
                     _logger?.Log($"UPDATING TOTAL TRANSACTIONS OF THE MAIN CHAIN TO {totalTransactions}");
                     TotalTransactions = totalTransactions;
-                    
+
                     HeadBlockChanged?.Invoke(this, new BlockEventArgs(HeadBlock));
                 }
                 else
@@ -343,8 +361,7 @@ namespace Nethermind.Blockchain
                     });
                 }
             }
-
-            if (!forMining)
+            else if (!forMining)
             {
                 // lower difficulty branch
                 _blockTree.AddBlock(suggestedBlock, false);
