@@ -263,12 +263,13 @@ namespace Nethermind.Store
 
         public void Commit(IReleaseSpec releaseSpec)
         {
-            _logger?.Log("  COMMITTING STATE CHANGES");
-
             if (_currentPosition == -1)
             {
+                _logger?.Log("  NO STATE CHANGES TO COMMIT");
                 return;
             }
+            
+            _logger?.Log("  COMMITTING STATE CHANGES");
 
             Debug.Assert(_changes[_currentPosition] != null);
             Debug.Assert(_changes[_currentPosition + 1] == null);

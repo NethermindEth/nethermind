@@ -83,6 +83,12 @@ namespace Nethermind.Blockchain.Test
             string path = Path.Combine(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, @"..\..\..\..\Chains", "ropsten.json"));
             logger.Log($"Loading ChainSpec from {path}");
             ChainSpec chainSpec = loader.Load(File.ReadAllBytes(path));
+            foreach (KeyValuePair<Address, BigInteger> allocation in chainSpec.Allocations)
+            {
+                stateProvider.CreateAccount(allocation.Key, allocation.Value);
+            }
+
+            stateProvider.Commit(specProvider.GetGenesisSpec());
             chainSpec.Genesis.Header.StateRoot = stateProvider.StateRoot; // TODO: shall it be HeaderSpec and not BlockHeader?
             chainSpec.Genesis.Header.RecomputeHash(); // TODO: shall it be HeaderSpec and not BlockHeader?
             if (chainSpec.Genesis.Hash != new Keccak("0x41941023680923e0fe4d74a34bdac8141f2540e3ae90623718e47d66d1ca4a2d"))
@@ -90,19 +96,12 @@ namespace Nethermind.Blockchain.Test
                 throw new Exception("Unexpected genesis hash");
             }
 
-            foreach (KeyValuePair<Address, BigInteger> allocation in chainSpec.Allocations)
-            {
-                stateProvider.CreateAccount(allocation.Key, allocation.Value);
-            }
-
-            stateProvider.Commit(specProvider.GetGenesisSpec());
-
             /* start processing */
             sealEngine.IsMining = true; // TODO: start / stop?
             var generator = new FakeTransactionsGenerator(transactionStore, ethereumSigner, blockMiningTime, logger);
             generator.Start();
             blockchainProcessor.Start(chainSpec.Genesis);
-            var roughlyNumberOfBlocks = 6;
+            BigInteger roughlyNumberOfBlocks = 6;
             Thread.Sleep(blockMiningTime * (int)roughlyNumberOfBlocks);
             await blockchainProcessor.StopAsync(false);
             Assert.GreaterOrEqual(blockchainProcessor.HeadBlock.Number, roughlyNumberOfBlocks - 2, "number of blocks");

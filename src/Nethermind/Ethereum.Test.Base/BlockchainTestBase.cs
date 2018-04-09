@@ -45,9 +45,6 @@ namespace Ethereum.Test.Base
         private ILogger _logger;
         private static readonly ISealEngine SealEngine = new EthashSealEngine(new Ethash()); // temporarily keep reusing the same one as otherwise it would recreate cache for each test
 
-        private IStateProvider _stateProvider;
-        private IStorageProvider _storageProvider;
-
         [SetUp]
         public void Setup()
         {
@@ -214,12 +211,12 @@ namespace Ethereum.Test.Base
             IHeaderValidator headerValidator = new HeaderValidator(difficultyCalculator, blockStore, SealEngine, specProvider, processingLogger);
             IOmmersValidator ommersValidator = new OmmersValidator(blockStore, headerValidator, processingLogger);
             IBlockValidator blockValidator = new BlockValidator(transactionValidator, headerValidator, ommersValidator, specProvider, processingLogger);
-            _stateProvider = new StateProvider(stateTree, stateLogger, dbProvider.GetOrCreateCodeDb());
-            _storageProvider = new StorageProvider(dbProvider, _stateProvider, stateLogger);
+            IStateProvider stateProvider = new StateProvider(stateTree, stateLogger, dbProvider.GetOrCreateCodeDb());
+            IStorageProvider storageProvider = new StorageProvider(dbProvider, stateProvider, stateLogger);
             IVirtualMachine virtualMachine = new VirtualMachine(
                 specProvider,
-                _stateProvider,
-                _storageProvider,
+                stateProvider,
+                storageProvider,
                 blockhashProvider,
                 ShouldLog.Evm ? _logger : null);
 
@@ -232,14 +229,14 @@ namespace Ethereum.Test.Base
                 rewardCalculator,
                 new TransactionProcessor(
                     specProvider,
-                    _stateProvider,
-                    _storageProvider,
+                    stateProvider,
+                    storageProvider,
                     virtualMachine,
                     signer,
                     ShouldLog.Processing ? _logger : NullLogger.Instance),
                 dbProvider,
-                _stateProvider,
-                _storageProvider,
+                stateProvider,
+                storageProvider,
                 transactionStore,
                 ShouldLog.Processing ? _logger : NullLogger.Instance);
 
@@ -247,7 +244,7 @@ namespace Ethereum.Test.Base
                 sealEngine, 
                 transactionStore, difficultyCalculator, blockProcessor, ShouldLog.Processing ? _logger : NullLogger.Instance);
 
-            InitializeTestState(test, _stateProvider, _storageProvider, specProvider);
+            InitializeTestState(test, stateProvider, storageProvider, specProvider);
 
             List<(Block Block, string ExpectedException)> correctRlpsBlocks = new List<(Block, string)>();
             for (int i = 0; i < test.Blocks.Length; i++)
@@ -338,7 +335,7 @@ namespace Ethereum.Test.Base
 
             await blockchainProcessor.StopAsync(true);
 
-            RunAssertions(test, blockchainProcessor.HeadBlock);
+            RunAssertions(test, blockchainProcessor.HeadBlock, storageProvider, stateProvider);
         }
 
         private void InitializeTestState(BlockchainTest test, IStateProvider stateProvider, IStorageProvider storageProvider, ISpecProvider specProvider)
@@ -363,7 +360,7 @@ namespace Ethereum.Test.Base
             stateProvider.Commit(specProvider.GetGenesisSpec());
         }
 
-        private void RunAssertions(BlockchainTest test, Block headBlock)
+        private void RunAssertions(BlockchainTest test, Block headBlock, IStorageProvider storageProvider, IStateProvider stateProvider)
         {
             TestBlockHeaderJson testHeaderJson = test.Blocks
                                                      .Where(b => b.BlockHeader != null)
@@ -380,9 +377,9 @@ namespace Ethereum.Test.Base
                     break;
                 }
 
-                bool accountExists = _stateProvider.AccountExists(accountState.Key);
-                BigInteger? balance = accountExists ? _stateProvider.GetBalance(accountState.Key) : (BigInteger?)null;
-                BigInteger? nonce = accountExists ? _stateProvider.GetNonce(accountState.Key) : (BigInteger?)null;
+                bool accountExists = stateProvider.AccountExists(accountState.Key);
+                BigInteger? balance = accountExists ? stateProvider.GetBalance(accountState.Key) : (BigInteger?)null;
+                BigInteger? nonce = accountExists ? stateProvider.GetNonce(accountState.Key) : (BigInteger?)null;
 
                 if (accountState.Value.Balance != balance)
                 {
@@ -394,7 +391,7 @@ namespace Ethereum.Test.Base
                     differences.Add($"{accountState.Key} nonce exp: {accountState.Value.Nonce}, actual: {nonce}");
                 }
 
-                byte[] code = accountExists ? _stateProvider.GetCode(accountState.Key) : new byte[0];
+                byte[] code = accountExists ? stateProvider.GetCode(accountState.Key) : new byte[0];
                 if (!Bytes.UnsafeCompare(accountState.Value.Code, code))
                 {
                     differences.Add($"{accountState.Key} code exp: {accountState.Value.Code?.Length}, actual: {code?.Length}");
@@ -409,7 +406,7 @@ namespace Ethereum.Test.Base
 
                 foreach (KeyValuePair<BigInteger, byte[]> storageItem in accountState.Value.Storage)
                 {
-                    byte[] value = _storageProvider.Get(accountState.Key, storageItem.Key) ?? new byte[0];
+                    byte[] value = storageProvider.Get(accountState.Key, storageItem.Key) ?? new byte[0];
                     if (!Bytes.UnsafeCompare(storageItem.Value, value))
                     {
                         differences.Add($"{accountState.Key} storage[{storageItem.Key}] exp: {Hex.FromBytes(storageItem.Value, true)}, actual: {Hex.FromBytes(value, true)}");
@@ -434,9 +431,9 @@ namespace Ethereum.Test.Base
                 differences.Add($"BLOOM exp: {testHeader.Bloom}, actual: {headBlock.Receipts.Last().Bloom}");
             }
 
-            if (testHeader.StateRoot != _stateProvider.StateRoot)
+            if (testHeader.StateRoot != stateProvider.StateRoot)
             {
-                differences.Add($"STATE ROOT exp: {testHeader.StateRoot}, actual: {_stateProvider.StateRoot}");
+                differences.Add($"STATE ROOT exp: {testHeader.StateRoot}, actual: {stateProvider.StateRoot}");
             }
 
             if (testHeader.TransactionsRoot != headBlock.Header.TransactionsRoot)

@@ -73,12 +73,14 @@ namespace Nethermind.Runner
 
             services.AddSingleton(specProvider);
             services.AddTransient<ILogger, ConsoleLogger>();
+            services.AddSingleton<IBlockTree, BlockTree>();            
             services.AddSingleton<IBlockStore, BlockStore>();
             services.AddSingleton(ethereumRelease);
             services.AddSingleton<IEthereumSigner>(signer);
             services.AddSingleton<ISignatureValidator>(signatureValidator);
 
             services.AddSingleton<IEthash, Ethash>();
+            services.AddSingleton<ISealEngine, EthashSealEngine>();
             services.AddSingleton<IHeaderValidator, HeaderValidator>();
             services.AddSingleton<IOmmersValidator, OmmersValidator>();
             services.AddSingleton<ITransactionValidator, TransactionValidator>();

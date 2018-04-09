@@ -75,7 +75,7 @@ namespace Nethermind.Blockchain.Validators
 
         public bool ValidateProcessedBlock(Block processedBlock, Block suggestedBlock)
         {
-            bool isValid= processedBlock.Header.Hash == suggestedBlock.Header.Hash;
+            bool isValid = processedBlock.Header.Hash == suggestedBlock.Header.Hash;
             if (_logger != null && !isValid)
             {
                 if (processedBlock.Header.GasUsed != suggestedBlock.Header.GasUsed)
@@ -97,6 +97,12 @@ namespace Nethermind.Blockchain.Validators
                 {
                     _logger?.Log($"PROCESSED_STATE {processedBlock.Header.StateRoot} != SUGGESTED_STATE {suggestedBlock.Header.StateRoot}");
                 }
+                
+                // this is tested before processing
+//                if (processedBlock.Header.TransactionsRoot != suggestedBlock.Header.TransactionsRoot)
+//                {
+//                    _logger?.Log($"TRANSACTIONS_ROOT {processedBlock.Header.TransactionsRoot} != TRANSACTIONS_ROOT {suggestedBlock.Header.TransactionsRoot}");
+//                }
             }
 
             return isValid;

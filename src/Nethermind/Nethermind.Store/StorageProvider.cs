@@ -116,12 +116,13 @@ namespace Nethermind.Store
 
         public void Commit(IReleaseSpec spec)
         {
-            _logger?.Log("  COMMITTING STORAGE CHANGES");
-
             if (_currentPosition == -1)
             {
+                _logger?.Log("  NO STORAGE CHANGES TO COMMIT");
                 return;
             }
+            
+            _logger?.Log("  COMMITTING STORAGE CHANGES");
 
             Debug.Assert(_changes[_currentPosition] != null);
             Debug.Assert(_changes[_currentPosition + 1] == null);

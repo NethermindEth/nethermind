@@ -184,14 +184,13 @@ namespace Nethermind.Blockchain
                 ApplyDaoTransition();
             }
 
+            // TODO: should be precalculated
             Keccak transactionsRoot = GetTransactionsRoot(suggestedBlock.Transactions);
-            Keccak ommersHash = Keccak.Compute(Rlp.Encode(suggestedBlock.Ommers)); // TODO: refactor RLP here
-            if (transactionsRoot != suggestedBlock.Header.TransactionsRoot ||
-                ommersHash != suggestedBlock.Header.OmmersHash)
+            if (transactionsRoot != suggestedBlock.Header.TransactionsRoot)
             {
-                throw new InvalidBlockException();
+                _logger?.Log($"TRANSACTIONS_ROOT {transactionsRoot} != TRANSACTIONS_ROOT {transactionsRoot}");
             }
-
+            
             _logger?.Log($"BLOCK BENEFICIARY {suggestedBlock.Header.Beneficiary}");
             _logger?.Log($"BLOCK GAS LIMIT {suggestedBlock.Header.GasLimit}");
             _logger?.Log($"BLOCK GAS USED {suggestedBlock.Header.GasUsed}");
@@ -217,6 +216,7 @@ namespace Nethermind.Blockchain
 
             if (!tryOnly && !_blockValidator.ValidateProcessedBlock(processedBlock, suggestedBlock))
             {
+                _logger?.Log($"PROCESSED BLOCK IS NOT VALID {processedBlock.Hash} ({processedBlock.Number})");    
                 throw new InvalidBlockException();
             }
 
