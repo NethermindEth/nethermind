@@ -137,7 +137,6 @@ namespace Nethermind.Blockchain
             _logger?.Log($"Enqueuing a new block ({block.Hash}) for processing.");
             _logger?.Debug($"Number {block.Number}");
             _logger?.Debug($"Hash {block.Hash}");
-
             _suggestedBlocks.Add(block);
             _logger?.Log($"A new block ({block.Hash}) suggested for processing.");
         }

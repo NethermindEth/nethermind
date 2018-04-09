@@ -304,8 +304,12 @@ namespace Ethereum.Test.Base
                     {
                         _logger.Log($"Expecting block exception: {correctRlpsBlocks[i].Item2}");    
                     }
-                    
-                    blockchainProcessor.SuggestBlock(correctRlpsBlocks[i].Item1);
+
+                    // TODO: mimic the actual behaviour where block goes through validating sync manager?
+                    if (blockValidator.ValidateSuggestedBlock(correctRlpsBlocks[i].Item1))
+                    {
+                        blockchainProcessor.SuggestBlock(correctRlpsBlocks[i].Item1);
+                    }
                 }
                 catch (InvalidBlockException ex)
                 {
