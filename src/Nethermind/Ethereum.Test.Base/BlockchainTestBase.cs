@@ -187,6 +187,8 @@ namespace Ethereum.Test.Base
 //            Debug.Listeners.Add(traceListener);
 
             ILogger stateLogger = ShouldLog.State ? _logger : null;
+            ILogger processingLogger = ShouldLog.Processing ? _logger : null;
+            
             IDbProvider dbProvider = new DbProvider(stateLogger);
             StateTree stateTree = new StateTree(dbProvider.GetOrCreateStateDb());
 
@@ -215,9 +217,9 @@ namespace Ethereum.Test.Base
             IBlockhashProvider blockhashProvider = new BlockhashProvider(chain);
             ISignatureValidator signatureValidator = new SignatureValidator(_releaseSpec, ChainId.MainNet);
             ITransactionValidator transactionValidator = new TransactionValidator(_releaseSpec, signatureValidator);
-            IHeaderValidator headerValidator = new HeaderValidator(difficultyCalculator, chain, SealEngine, specProvider, stateLogger);
-            IOmmersValidator ommersValidator = new OmmersValidator(chain, headerValidator, stateLogger);
-            IBlockValidator blockValidator = new BlockValidator(transactionValidator, headerValidator, ommersValidator, stateLogger);
+            IHeaderValidator headerValidator = new HeaderValidator(difficultyCalculator, chain, SealEngine, specProvider, processingLogger);
+            IOmmersValidator ommersValidator = new OmmersValidator(chain, headerValidator, processingLogger);
+            IBlockValidator blockValidator = new BlockValidator(transactionValidator, headerValidator, ommersValidator, processingLogger);
             _stateProvider = new StateProvider(stateTree, _releaseSpec, stateLogger, dbProvider.GetOrCreateCodeDb());
             _storageProvider = new StorageProvider(dbProvider, _stateProvider, stateLogger);
             IVirtualMachine virtualMachine = new VirtualMachine(
@@ -306,9 +308,14 @@ namespace Ethereum.Test.Base
                     }
 
                     // TODO: mimic the actual behaviour where block goes through validating sync manager?
+                    correctRlpsBlocks[i].Item1.Header.RecomputeHash();
                     if (blockValidator.ValidateSuggestedBlock(correctRlpsBlocks[i].Item1))
                     {
                         blockchainProcessor.SuggestBlock(correctRlpsBlocks[i].Item1);
+                    }
+                    else
+                    {
+                        Console.WriteLine("Invalid block");
                     }
                 }
                 catch (InvalidBlockException ex)
