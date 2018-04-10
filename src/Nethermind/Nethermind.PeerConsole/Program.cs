@@ -48,7 +48,7 @@ namespace Nethermind.PeerConsole
 {
     internal static class Program
     {
-        private const int ListenPort = 30309;
+        private static int _listenPort = 30312;
 
         private static PrivateKey _privateKey;
 
@@ -60,11 +60,15 @@ namespace Nethermind.PeerConsole
             CommandLineApplication commandLineApplication =
                 new CommandLineApplication(throwOnUnexpectedArg: true);
             
-            CommandArgument privateKeyOption = commandLineApplication.Argument(
+            CommandArgument keyArg = commandLineApplication.Argument(
                 "key",
                 "PrivateKey hex value for this node.");
             
-            CommandArgument chainSpecOption = commandLineApplication.Argument(
+            CommandArgument portArg = commandLineApplication.Argument(
+                "port",
+                "Listen port");
+            
+            CommandArgument chainSpecArg = commandLineApplication.Argument(
                 "specfile",
                 "ChainSpec file name (from Chains directory)");
             
@@ -81,15 +85,16 @@ namespace Nethermind.PeerConsole
 //                    _privateKey = new PrivateKey("010102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f");
 //                }
                 
-                await Run(chainSpecOption.Value, new PrivateKey(privateKeyOption.Value));
+                await Run(chainSpecArg.Value, int.Parse(portArg.Value), new PrivateKey(keyArg.Value));
                 return 0;
             });
             
             commandLineApplication.Execute(args);
         }
 
-        private static async Task Run(string chainSpecFile, PrivateKey privateKey)
+        private static async Task Run(string chainSpecFile, int port, PrivateKey privateKey)
         {
+            _listenPort = port;
             _privateKey = privateKey;
             await ConnectTestnet(chainSpecFile);
         }
@@ -167,7 +172,7 @@ namespace Nethermind.PeerConsole
             var loader = new ChainSpecLoader(new UnforgivingJsonSerializer()); 
             if (!Path.IsPathRooted(chainSpecFile))
             {
-                chainSpecFile = Path.Combine(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", "..", "..", "Chains", chainSpecFile));
+                chainSpecFile = Path.Combine(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Chains", chainSpecFile));
             }
 
             logger.Log($"Loading ChainSpec from {chainSpecFile}");
@@ -190,7 +195,7 @@ namespace Nethermind.PeerConsole
             var synchronizationManager = new SynchronizationManager(headerValidator, blockValidator, transactionValidator, specProvider, chainSpec.Genesis, logger);
 
             logger.Log("Initializing server...");
-            var localPeer = new RlpxPeer(_privateKey.PublicKey, ListenPort, encryptionHandshakeServiceA, serializationService, synchronizationManager, logger);
+            var localPeer = new RlpxPeer(_privateKey.PublicKey, _listenPort, encryptionHandshakeServiceA, serializationService, synchronizationManager, logger);
             await Task.WhenAll(localPeer.Init());
             
             // https://stackoverflow.com/questions/6803073/get-local-ip-address?utm_medium=organic&utm_source=google_rich_qa&utm_campaign=google_rich_qa
@@ -203,8 +208,8 @@ namespace Nethermind.PeerConsole
                 localIp = endPoint.Address.ToString();
             }
             
-            logger.Log($"Node is up and listening on {localIp}:{ListenPort}... press ENTER to exit");
-            logger.Log($"enode://{_privateKey.PublicKey.ToString(false)}@{localIp}:{ListenPort}");
+            logger.Log($"Node is up and listening on {localIp}:{_listenPort}... press ENTER to exit");
+            logger.Log($"enode://{_privateKey.PublicKey.ToString(false)}@{localIp}:{_listenPort}");
 
             if (chainSpec.Bootnodes.Any())
             {
