@@ -18,8 +18,11 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Net;
+using System.Net.Sockets;
 using System.Numerics;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -156,7 +159,19 @@ namespace Nethermind.PeerConsole
             logger.Log("Initializing server...");
             var localPeer = new RlpxPeer(_privateKey.PublicKey, ListenPort, encryptionHandshakeServiceA, serializationService, synchronizationManager, logger);
             await Task.WhenAll(localPeer.Init());
-            logger.Log($"Node {_privateKey.PublicKey} is up and listening on port {ListenPort}... press ENTER to exit");
+            
+            // https://stackoverflow.com/questions/6803073/get-local-ip-address?utm_medium=organic&utm_source=google_rich_qa&utm_campaign=google_rich_qa
+            string localIp;
+            using (Socket socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, 0))
+            {
+                socket.Connect("8.8.8.8", 65530);
+                IPEndPoint endPoint = socket.LocalEndPoint as IPEndPoint;
+                Debug.Assert(endPoint != null, "null endpoint when connecting a UDP socket");
+                localIp = endPoint.Address.ToString();
+            }
+            
+            logger.Log($"Node is up and listening on {localIp}:{ListenPort}... press ENTER to exit");
+            logger.Log($"enode://{_privateKey.PublicKey}@{localIp}:{ListenPort}");
 
             if (chainSpec.Bootnodes.Any())
             {
