@@ -24,7 +24,9 @@ using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Numerics;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
+using Microsoft.Extensions.CommandLineUtils;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Difficulty;
 using Nethermind.Blockchain.Validators;
@@ -50,15 +52,46 @@ namespace Nethermind.PeerConsole
 
         private static PrivateKey _privateKey;
 
-        public static async Task Main(string[] args)
+#pragma warning disable 1998
+        public static async Task Main(params string[] args)
+#pragma warning restore 1998
         {
-            await Run();
+            // https://msdn.microsoft.com/en-us/magazine/mt763239.aspx
+            CommandLineApplication commandLineApplication =
+                new CommandLineApplication(throwOnUnexpectedArg: true);
+            
+            CommandArgument privateKeyOption = commandLineApplication.Argument(
+                "key",
+                "PrivateKey hex value for this node.");
+            
+            CommandArgument chainSpecOption = commandLineApplication.Argument(
+                "specfile",
+                "ChainSpec file name (from Chains directory)");
+            
+            commandLineApplication.HelpOption("-?|-h|--help");
+            
+            commandLineApplication.OnExecute(async () =>
+            {                  
+//                if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+//                {
+//                    _privateKey = new PrivateKey("000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f");
+//                }
+//                else
+//                {
+//                    _privateKey = new PrivateKey("010102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f");
+//                }
+                
+                await Run(chainSpecOption.Value, new PrivateKey(privateKeyOption.Value));
+                return 0;
+            });
+            
+            commandLineApplication.Execute(args);
         }
 
-        private static async Task Run()
+        private static async Task Run(string chainSpecFile, PrivateKey privateKey)
         {
-            _privateKey = new PrivateKey("000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f");
-            await ConnectTestnet("nethermind_alpha.json");
+            _privateKey = privateKey;
+            await ConnectTestnet(chainSpecFile);
         }
 
         private static async Task ConnectTestnet(string chainSpecFile)
@@ -171,7 +204,7 @@ namespace Nethermind.PeerConsole
             }
             
             logger.Log($"Node is up and listening on {localIp}:{ListenPort}... press ENTER to exit");
-            logger.Log($"enode://{_privateKey.PublicKey}@{localIp}:{ListenPort}");
+            logger.Log($"enode://{_privateKey.PublicKey.ToString(false)}@{localIp}:{ListenPort}");
 
             if (chainSpec.Bootnodes.Any())
             {

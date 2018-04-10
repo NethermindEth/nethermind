@@ -92,5 +92,10 @@ namespace Nethermind.Core.Crypto
         {
             return Hex.FromBytes(Bytes, true);
         }
+        
+        public string ToString(bool with0X)
+        {
+            return Hex.FromBytes(Bytes, with0X);
+        }
     }
 }

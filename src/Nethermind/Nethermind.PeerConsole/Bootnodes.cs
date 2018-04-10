@@ -1,16 +1,39 @@
-﻿using System.Collections.Generic;
+﻿/*
+ * Copyright (c) 2018 Demerzel Solutions Limited
+ * This file is part of the Nethermind library.
+ *
+ * The Nethermind library is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * The Nethermind library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+using System.Collections.Generic;
 using Nethermind.Core;
 
 namespace Nethermind.PeerConsole
 {
     public class Bootnodes
     {
+        public static readonly List<Bootnode> Nethermind;
         public static readonly List<Bootnode> EthJ;
         public static readonly List<Bootnode> MainNetBootnodes;
         public static readonly List<Bootnode> TestNetBootnodes;
         
         static Bootnodes()
         {
+            Nethermind = new List<Bootnode>();
+            Nethermind.Add(
+                new Bootnode("enode://0xe93e38d9069fea998726eb25a5e9bdaadae9161ef8e63508dba807334dced88b53306cc7d6ab931062be7f276594a96cd68e2f874bcbae757178d80bb72ec3e7@10.0.1.4:30309", "Nethermind-vm1-testnet"));
+            
             EthJ = new List<Bootnode>();
             EthJ.Add(
                 new Bootnode(
