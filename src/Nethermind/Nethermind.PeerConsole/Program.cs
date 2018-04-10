@@ -167,7 +167,7 @@ namespace Nethermind.PeerConsole
             var loader = new ChainSpecLoader(new UnforgivingJsonSerializer()); 
             if (!Path.IsPathRooted(chainSpecFile))
             {
-                chainSpecFile = Path.Combine(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, @"..\..\..\..\Chains", chainSpecFile));
+                chainSpecFile = Path.Combine(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "..", "..", "..", "..", "Chains", chainSpecFile));
             }
 
             logger.Log($"Loading ChainSpec from {chainSpecFile}");
