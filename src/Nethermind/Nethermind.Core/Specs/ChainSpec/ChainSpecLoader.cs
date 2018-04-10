@@ -75,6 +75,12 @@ namespace Nethermind.Core.Specs.ChainSpec
             {
                 chainSpec.Allocations[new Address(account.Key)] = BigInteger.Parse(account.Value.Balance);
             }
+            
+            chainSpec.Bootnodes = new Bootnode[chainSpecJson.Nodes.Length];
+            for (int i = 0; i < chainSpecJson.Nodes.Length; i++)
+            {
+                chainSpec.Bootnodes[i] = new Bootnode(chainSpecJson.Nodes[i], "bootnode{i}");
+            }
 
             return chainSpec;
         }

@@ -19,6 +19,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Numerics;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -37,16 +38,14 @@ using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Store;
-using NSubstitute;
-using ILogger = Nethermind.Core.ILogger;
 
 namespace Nethermind.PeerConsole
 {
     internal static class Program
     {
-        private const int PortA = 30309;
+        private const int ListenPort = 30309;
 
-        private static PrivateKey _keyA;
+        private static PrivateKey _privateKey;
 
         public static async Task Main(string[] args)
         {
@@ -55,16 +54,14 @@ namespace Nethermind.PeerConsole
 
         private static async Task Run()
         {
-            await ConnectTestnet();
+            _privateKey = new PrivateKey("000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f");
+            await ConnectTestnet("nethermind_alpha.json");
         }
 
-        private static async Task ConnectTestnet()
+        private static async Task ConnectTestnet(string chainSpecFile)
         {
-            Bootnode bootnode = Bootnodes.EthJ[3];
-
             ICryptoRandom cryptoRandom = new CryptoRandom();
-            _keyA = new PrivateKey("000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f");
-            Console.WriteLine($"Local node ID = {_keyA.PublicKey}");
+            Console.WriteLine($"Local node ID = {_privateKey.PublicKey}");
 
             /* tools */
             var signer = new Signer();
@@ -78,7 +75,7 @@ namespace Nethermind.PeerConsole
             var eip8Pad = new Eip8MessagePad(cryptoRandom);
             serializationService.Register(new AuthEip8MessageSerializer(eip8Pad));
             serializationService.Register(new AckEip8MessageSerializer(eip8Pad));
-            var encryptionHandshakeServiceA = new EncryptionHandshakeService(serializationService, eciesCipher, cryptoRandom, signer, _keyA, logger);
+            var encryptionHandshakeServiceA = new EncryptionHandshakeService(serializationService, eciesCipher, cryptoRandom, signer, _privateKey, logger);
             
             /* p2p */
             serializationService.Register(new HelloMessageSerializer());
@@ -131,10 +128,14 @@ namespace Nethermind.PeerConsole
             var blockchainProcessor = new BlockchainProcessor(blockTree, NullSealEngine.Instance, transactionStore, calculator, blockProcessor, logger);
             
             /* genesis */
-            var loader = new ChainSpecLoader(new UnforgivingJsonSerializer());
-            var path = Path.Combine(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, @"..\..\..\..\Chains", "ropsten.json"));
-            logger.Log($"Loading ChainSpec from {path}");
-            var chainSpec = loader.Load(File.ReadAllBytes(path));
+            var loader = new ChainSpecLoader(new UnforgivingJsonSerializer()); 
+            if (!Path.IsPathRooted(chainSpecFile))
+            {
+                chainSpecFile = Path.Combine(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, @"..\..\..\..\Chains", chainSpecFile));
+            }
+
+            logger.Log($"Loading ChainSpec from {chainSpecFile}");
+            var chainSpec = loader.Load(File.ReadAllBytes(chainSpecFile));
             foreach (KeyValuePair<Address, BigInteger> allocation in chainSpec.Allocations)
             {
                 stateProvider.CreateAccount(allocation.Key, allocation.Value);
@@ -153,12 +154,18 @@ namespace Nethermind.PeerConsole
             var synchronizationManager = new SynchronizationManager(headerValidator, blockValidator, transactionValidator, specProvider, chainSpec.Genesis, logger);
 
             logger.Log("Initializing server...");
-            var localPeer = new RlpxPeer(_keyA.PublicKey, PortA, encryptionHandshakeServiceA, serializationService, synchronizationManager, logger);
+            var localPeer = new RlpxPeer(_privateKey.PublicKey, ListenPort, encryptionHandshakeServiceA, serializationService, synchronizationManager, logger);
             await Task.WhenAll(localPeer.Init());
-            logger.Log("Servers running...");
-            logger.Log($"Connecting to testnet bootnode {bootnode.Description}");
-            await localPeer.ConnectAsync(bootnode.PublicKey, bootnode.Host, bootnode.Port);
-            logger.Log("Testnet connected...");
+            logger.Log($"Node {_privateKey.PublicKey} is up and listening on port {ListenPort}... press ENTER to exit");
+
+            if (chainSpec.Bootnodes.Any())
+            {
+                Bootnode bootnode = chainSpec.Bootnodes[0];
+                logger.Log($"Connecting to testnet bootnode {bootnode.Description}");
+                await localPeer.ConnectAsync(bootnode.PublicKey, bootnode.Host, bootnode.Port);
+                logger.Log("Testnet connected...");
+            }
+            
             Console.ReadLine();
             logger.Log("Shutting down...");
             await Task.WhenAll(localPeer.Shutdown());

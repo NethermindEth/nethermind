@@ -92,6 +92,7 @@ ProjectSection(SolutionItems) = preProject
 	Chains\morden.json = Chains\morden.json
 	Chains\olympic.json = Chains\olympic.json
 	Chains\ropsten.json = Chains\ropsten.json
+	Chains\nethermind_alpha.json = Chains\nethermind_alpha.json
 EndProjectSection
 EndProject
 Global

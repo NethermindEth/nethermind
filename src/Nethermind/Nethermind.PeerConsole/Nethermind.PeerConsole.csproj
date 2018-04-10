@@ -23,7 +23,4 @@
       <HintPath>..\..\..\..\..\Users\tksta\.nuget\packages\nsubstitute\3.1.0\lib\netstandard1.3\NSubstitute.dll</HintPath>
     </Reference>
   </ItemGroup>
-  <ItemGroup>
-    <PackageReference Include="NSubstitute" Version="3.1.0" />
-  </ItemGroup>
 </Project>
