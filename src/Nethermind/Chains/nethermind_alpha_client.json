@@ -53,6 +53,7 @@
 		"gasLimit": "0x1000000"
 	},
 	"nodes": [
+		"enode://a49ac7010c2e0a444dfeeabadbafa4856ba4a2d732acb86d20c577b3b365fdaeb0a70ce47f890cf2f9fca562a7ed784f76eb870a2c75c0f2ab476a70ccb67e92@10.0.1.5:30309",
 		"enode://e93e38d9069fea998726eb25a5e9bdaadae9161ef8e63508dba807334dced88b53306cc7d6ab931062be7f276594a96cd68e2f874bcbae757178d80bb72ec3e7@10.0.1.4:30309"
 	],
 	"accounts": {

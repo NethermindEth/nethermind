@@ -31,8 +31,12 @@ namespace Nethermind.PeerConsole
         static Bootnodes()
         {
             Nethermind = new List<Bootnode>();
-            Nethermind.Add(
-                new Bootnode("enode://0xe93e38d9069fea998726eb25a5e9bdaadae9161ef8e63508dba807334dced88b53306cc7d6ab931062be7f276594a96cd68e2f874bcbae757178d80bb72ec3e7@10.0.1.4:30309", "Nethermind-vm1-testnet"));
+            Nethermind.AddRange(
+                new[]{
+                    new Bootnode("enode://e93e38d9069fea998726eb25a5e9bdaadae9161ef8e63508dba807334dced88b53306cc7d6ab931062be7f276594a96cd68e2f874bcbae757178d80bb72ec3e7@10.0.1.4:30309", "Nethermind-vm1-testnet"),
+                    new Bootnode("enode://a49ac7010c2e0a444dfeeabadbafa4856ba4a2d732acb86d20c577b3b365fdaeb0a70ce47f890cf2f9fca562a7ed784f76eb870a2c75c0f2ab476a70ccb67e92@10.0.1.5:30309", "Nethermind-vm2-testnet"),
+                    new Bootnode("enode://65341d5a43f8edfab09d17d014e4ac8fe741bf792a88fbf5e577efef62137c23e5b6d3cf72856dc1896c751643e65d822865d54f5dfa15d1a742e34f9e395f63@10.0.1.5:30303", "ethereumJ-vm2-testnet")
+                });
             
             EthJ = new List<Bootnode>();
             EthJ.Add(
