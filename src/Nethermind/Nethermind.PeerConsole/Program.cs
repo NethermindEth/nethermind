@@ -44,13 +44,9 @@ namespace Nethermind.PeerConsole
 {
     internal static class Program
     {
-        private const int PortA = 8001;
-        private const int PortB = 8002;
-        private const int PortC = 8003;
+        private const int PortA = 30309;
 
         private static PrivateKey _keyA;
-        private static PrivateKey _keyB;
-        private static PrivateKey _keyC;
 
         public static async Task Main(string[] args)
         {
@@ -59,66 +55,7 @@ namespace Nethermind.PeerConsole
 
         private static async Task Run()
         {
-            //await ConnectLocal();
             await ConnectTestnet();
-        }
-
-        private static async Task ConnectLocal()
-        {
-            ICryptoRandom cryptoRandom = new CryptoRandom();
-            _keyA = new PrivateKey(cryptoRandom.GenerateRandomBytes(32));
-            _keyB = new PrivateKey(cryptoRandom.GenerateRandomBytes(32));
-            _keyC = new PrivateKey(cryptoRandom.GenerateRandomBytes(32));
-
-            ISigner signer = new Signer();
-            ILogger logger = new ConsoleLogger();
-            IEciesCipher eciesCipher = new EciesCipher(cryptoRandom);
-            IMessageSerializationService serializationService = new MessageSerializationService();
-
-            IMessagePad eip8Pad = new Eip8MessagePad(cryptoRandom);
-            serializationService.Register(new AuthEip8MessageSerializer(eip8Pad));
-            serializationService.Register(new AckEip8MessageSerializer(eip8Pad));
-            serializationService.Register(new HelloMessageSerializer());
-            serializationService.Register(new DisconnectMessageSerializer());
-            serializationService.Register(new PingMessageSerializer());
-            serializationService.Register(new PongMessageSerializer());
-            serializationService.Register(new StatusMessageSerializer());
-
-            
-            ISpecProvider specProvider = RopstenSpecProvider.Instance;
-            Block block = new Block(new BlockHeader(Keccak.Zero, Keccak.OfAnEmptySequenceRlp, Address.Zero, 131200, 1, 100, 1, new byte[0]));
-            BlockStore blockStore = new BlockStore();
-            blockStore.AddBlock(block);
-            block.Header.RecomputeHash();
-            IBlockProcessor blockProcessor = Substitute.For<IBlockProcessor>();
-            IDifficultyCalculator calculator = new DifficultyCalculator(specProvider); // dynamic spec here will be broken
-            ITransactionStore transactionStore = new TransactionStore();
-            BlockTree blockTree = new BlockTree();
-            BlockchainProcessor blockchainProcessor = new BlockchainProcessor(blockTree, NullSealEngine.Instance, transactionStore, calculator, blockProcessor, logger);
-
-            IEncryptionHandshakeService encryptionHandshakeServiceA = new EncryptionHandshakeService(serializationService, eciesCipher, cryptoRandom, signer, _keyA, logger);
-            IEncryptionHandshakeService encryptionHandshakeServiceB = new EncryptionHandshakeService(serializationService, eciesCipher, cryptoRandom, signer, _keyB, logger);
-            //            IEncryptionHandshakeService encryptionHandshakeServiceC = new EncryptionHandshakeService(serializationService, eciesCipher, cryptoRandom, signer, _keyC, logger);
-
-            Console.WriteLine("Initializing server...");
-            RlpxPeer peerServerA = new RlpxPeer(_keyA.PublicKey, PortA, encryptionHandshakeServiceA, serializationService, Substitute.For<ISynchronizationManager>(), logger);
-            RlpxPeer peerServerB = new RlpxPeer(_keyB.PublicKey, PortB, encryptionHandshakeServiceB, serializationService, Substitute.For<ISynchronizationManager>(), logger);
-            //            RlpxPeer peerServerC = new RlpxPeer(serializationService, encryptionHandshakeServiceC, sessionFactoryC, logger);
-            //            await Task.WhenAll(peerServerA.Init(PortA), peerServerB.Init(PortB), peerServerC.Init(PortC));
-            //            await Task.WhenAll(peerServerA.Init(PortA), peerServerB.Init(PortB), peerServerC.Init(PortC));
-            await Task.WhenAll(peerServerA.Init(), peerServerB.Init());
-            Console.WriteLine("Servers running...");
-            Console.WriteLine("Connecting A to B...");
-            await peerServerA.ConnectAsync(_keyB.PublicKey, "127.0.0.1", PortB);
-            Console.WriteLine("A to B connected...");
-            //            Console.WriteLine("Connecting A to C...");
-            //            await peerServerA.ConnectAsync(_keyC.PublicKey, "127.0.0.1", PortC);
-            //            Console.WriteLine("A to C connected...");
-            //            await peerServerB.ConnectAsync(_keyA.PublicKey, "localhost", PortA);
-            Console.ReadLine();
-            Console.WriteLine("Shutting down...");
-            await Task.WhenAll(peerServerA.Shutdown(), peerServerB.Shutdown());
-            Console.WriteLine("Goodbye...");
         }
 
         private static async Task ConnectTestnet()
@@ -126,18 +63,24 @@ namespace Nethermind.PeerConsole
             Bootnode bootnode = Bootnodes.EthJ[3];
 
             ICryptoRandom cryptoRandom = new CryptoRandom();
-//            _keyA = new PrivateKey(cryptoRandom.GenerateRandomBytes(32));
             _keyA = new PrivateKey("000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f");
             Console.WriteLine($"Local node ID = {_keyA.PublicKey}");
 
-            ISigner signer = new Signer();
-            ILogger logger = new ConsoleLogger();
-            IEciesCipher eciesCipher = new EciesCipher(cryptoRandom);
-            IMessageSerializationService serializationService = new MessageSerializationService();
+            /* tools */
+            var signer = new Signer();
+            var logger = new ConsoleLogger();
+            
+            /* network */
+            var serializationService = new MessageSerializationService();
 
-            IMessagePad eip8Pad = new Eip8MessagePad(cryptoRandom);
+            /* rlpx */
+            var eciesCipher = new EciesCipher(cryptoRandom);
+            var eip8Pad = new Eip8MessagePad(cryptoRandom);
             serializationService.Register(new AuthEip8MessageSerializer(eip8Pad));
             serializationService.Register(new AckEip8MessageSerializer(eip8Pad));
+            var encryptionHandshakeServiceA = new EncryptionHandshakeService(serializationService, eciesCipher, cryptoRandom, signer, _keyA, logger);
+            
+            /* p2p */
             serializationService.Register(new HelloMessageSerializer());
             serializationService.Register(new DisconnectMessageSerializer());
             serializationService.Register(new PingMessageSerializer());
@@ -151,40 +94,47 @@ namespace Nethermind.PeerConsole
             serializationService.Register(new GetBlockBodiesMessageSerializer());
             serializationService.Register(new BlockHeadersMessageSerializer());
             serializationService.Register(new BlockBodiesMessageSerializer());
-            serializationService.Register(new NewBlockHashesMessageSerializer());
-            serializationService.Register(new NewBlockHashesMessageSerializer());
+            serializationService.Register(new NewBlockMessageSerializer());
            
-            ISealEngine sealEngine = new EthashSealEngine(new Ethash());
+            /* spec */
+            var sealEngine = new EthashSealEngine(new Ethash());
+            var specProvider = RopstenSpecProvider.Instance;
+            var calculator = new DifficultyCalculator(specProvider);
             
-            ISpecProvider specProvider = RopstenSpecProvider.Instance;
-            IBlockStore blockStore = new BlockStore();
-            IDifficultyCalculator calculator = new DifficultyCalculator(specProvider);
-            IHeaderValidator headerValidator = new HeaderValidator(calculator, blockStore, sealEngine, specProvider, logger);
-            IOmmersValidator ommersValidator = new OmmersValidator(blockStore, headerValidator, logger);
-            ITransactionValidator transactionValidator = new TransactionValidator(new SignatureValidator(ChainId.Ropsten));
-            IBlockValidator blockValidator = new BlockValidator(transactionValidator, headerValidator, ommersValidator, specProvider, logger);
+            /* sync */
+            var transactionStore = new TransactionStore();
+            var blockStore = new BlockStore();
+            
+            /* validation */
+            var headerValidator = new HeaderValidator(calculator, blockStore, sealEngine, specProvider, logger);
+            var ommersValidator = new OmmersValidator(blockStore, headerValidator, logger);
+            var transactionValidator = new TransactionValidator(new SignatureValidator(ChainId.Ropsten));
+            var blockValidator = new BlockValidator(transactionValidator, headerValidator, ommersValidator, specProvider, logger);
 
-            BlockTree blockTree = new BlockTree();
-            IBlockhashProvider blockhashProvider = new BlockhashProvider(blockTree);
-            IDbProvider dbProvider = new DbProvider(logger);
-            InMemoryDb codeDb = new InMemoryDb();
-            InMemoryDb stateDb = new InMemoryDb();
-            StateTree stateTree = new StateTree(stateDb);
-            IStateProvider stateProvider = new StateProvider(stateTree, logger, codeDb);
-            IStorageProvider storageProvider = new StorageProvider(dbProvider, stateProvider, logger);
+            /* state */
+            var dbProvider = new DbProvider(logger);
+            var codeDb = new InMemoryDb();
+            var stateDb = new InMemoryDb();
+            var stateTree = new StateTree(stateDb);
+            var stateProvider = new StateProvider(stateTree, logger, codeDb);
+            var storageProvider = new StorageProvider(dbProvider, stateProvider, logger);
             
-            IRewardCalculator rewardCalculator = new RewardCalculator(specProvider);
-            IVirtualMachine virtualMachine = new VirtualMachine(specProvider, stateProvider, storageProvider, blockhashProvider, logger);
-            IEthereumSigner ethereumSigner = new EthereumSigner(specProvider, logger);
-            ITransactionProcessor processor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, ethereumSigner, logger);
-            ITransactionStore transactionStore = new TransactionStore();
-            IBlockProcessor blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, processor, dbProvider, stateProvider, storageProvider, transactionStore, logger);
-            IBlockchainProcessor blockchainProcessor = new BlockchainProcessor(blockTree, NullSealEngine.Instance, transactionStore, calculator, blockProcessor, logger);
+            /* blockchain */
+            var blockTree = new BlockTree();
+            var blockhashProvider = new BlockhashProvider(blockTree);
+            var rewardCalculator = new RewardCalculator(specProvider);
             
-            ChainSpecLoader loader = new ChainSpecLoader(new UnforgivingJsonSerializer());
-            string path = Path.Combine(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, @"..\..\..\..\Chains", "ropsten.json"));
+            var ethereumSigner = new EthereumSigner(specProvider, logger);
+            var virtualMachine = new VirtualMachine(specProvider, stateProvider, storageProvider, blockhashProvider, logger);
+            var transactionProcessor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, ethereumSigner, logger);
+            var blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, transactionProcessor, dbProvider, stateProvider, storageProvider, transactionStore, logger);
+            var blockchainProcessor = new BlockchainProcessor(blockTree, NullSealEngine.Instance, transactionStore, calculator, blockProcessor, logger);
+            
+            /* genesis */
+            var loader = new ChainSpecLoader(new UnforgivingJsonSerializer());
+            var path = Path.Combine(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, @"..\..\..\..\Chains", "ropsten.json"));
             logger.Log($"Loading ChainSpec from {path}");
-            ChainSpec chainSpec = loader.Load(File.ReadAllBytes(path));
+            var chainSpec = loader.Load(File.ReadAllBytes(path));
             foreach (KeyValuePair<Address, BigInteger> allocation in chainSpec.Allocations)
             {
                 stateProvider.CreateAccount(allocation.Key, allocation.Value);
@@ -193,18 +143,17 @@ namespace Nethermind.PeerConsole
             stateProvider.Commit(specProvider.GetGenesisSpec());
             chainSpec.Genesis.Header.StateRoot = stateProvider.StateRoot;
             chainSpec.Genesis.Header.RecomputeHash();
-            if (chainSpec.Genesis.Hash != new Keccak("0x41941023680923e0fe4d74a34bdac8141f2540e3ae90623718e47d66d1ca4a2d"))
+            var expectedGenesisHash = "0x41941023680923e0fe4d74a34bdac8141f2540e3ae90623718e47d66d1ca4a2d";
+            if (chainSpec.Genesis.Hash != new Keccak(expectedGenesisHash))
             {
-                throw new Exception("Unexpected genesis hash");
+                throw new Exception($"Unexpected genesis hash for Ropsten, expected {expectedGenesisHash}, but was {chainSpec.Genesis.Hash}");
             }
             
             blockchainProcessor.Start(chainSpec.Genesis);
-            
-            ISynchronizationManager synchronizationManager = new SynchronizationManager(headerValidator, blockValidator, transactionValidator, specProvider, chainSpec.Genesis, logger);
-            IEncryptionHandshakeService encryptionHandshakeServiceA = new EncryptionHandshakeService(serializationService, eciesCipher, cryptoRandom, signer, _keyA, logger);
+            var synchronizationManager = new SynchronizationManager(headerValidator, blockValidator, transactionValidator, specProvider, chainSpec.Genesis, logger);
 
             logger.Log("Initializing server...");
-            RlpxPeer localPeer = new RlpxPeer(_keyA.PublicKey, PortA, encryptionHandshakeServiceA, serializationService, synchronizationManager, logger);
+            var localPeer = new RlpxPeer(_keyA.PublicKey, PortA, encryptionHandshakeServiceA, serializationService, synchronizationManager, logger);
             await Task.WhenAll(localPeer.Init());
             logger.Log("Servers running...");
             logger.Log($"Connecting to testnet bootnode {bootnode.Description}");
