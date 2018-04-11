@@ -295,12 +295,14 @@ namespace Nethermind.Evm
         private static Bloom BuildBloom(List<LogEntry> logEntries)
         {
             Bloom bloom = new Bloom();
-            foreach (LogEntry logEntry in logEntries)
+            for (int entryIndex = 0; entryIndex < logEntries.Count; entryIndex++)
             {
+                LogEntry logEntry = logEntries[entryIndex];
                 byte[] addressBytes = logEntry.LoggersAddress.Hex;
                 bloom.Set(addressBytes);
-                foreach (Keccak topic in logEntry.Topics)
+                for (int topicIndex = 0; topicIndex < logEntry.Topics.Length; topicIndex++)
                 {
+                    Keccak topic = logEntry.Topics[topicIndex];
                     bloom.Set(topic.Bytes);
                 }
             }

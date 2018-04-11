@@ -18,10 +18,8 @@
 
 using System;
 using System.Collections.Concurrent;
-using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
-using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
@@ -138,7 +136,7 @@ namespace Nethermind.Mining
             return resultAsInteger < target;
         }
 
-        public (Keccak, ulong) Mine(BlockHeader header, ulong? startNonce = null)
+        public (Keccak MixHash, ulong Nonce) Mine(BlockHeader header, ulong? startNonce = null)
         {
             uint epoch = GetEpoch(header.Number);
             ulong fullSize = GetDataSize(epoch);
@@ -146,7 +144,7 @@ namespace Nethermind.Mining
             BigInteger target = BigInteger.Divide(_2To256, header.Difficulty);
             Keccak headerHashed = GetTruncatedHash(header);
             
-            // parallel for
+            // parallel for (just with ulong...) - adjust based on the available mining threads, low priority
             byte[] mixHash;
             while(true)
             {

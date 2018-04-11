@@ -33,17 +33,9 @@ namespace Nethermind.Blockchain
         public Keccak GenesisHash { get; set; }
         public IChain MainChain { get; set; }
 
-        public void AddBlock(Block block, bool isMainChain)
+        public void AddBlock(Block block)
         {
-            if (isMainChain)
-            {
-                _mainChain.Add(block.Header.Hash, block);
-                _processed.Add(block.Header.Hash);
-            }
-            else
-            {
-                _branches.Add(block.Header.Hash, block);
-            }
+            _branches.Add(block.Header.Hash, block);
         }
 
         public Block FindBlock(Keccak blockHash, bool mainChainOnly)
@@ -75,6 +67,11 @@ namespace Nethermind.Blockchain
 
         private readonly HashSet<Keccak> _processed = new HashSet<Keccak>();
 
+        public void MarkAsProcessed(Keccak blockHash)
+        {
+            _processed.Add(blockHash);
+        }
+        
         public bool WasProcessed(Keccak blockHash)
         {
             return _processed.Contains(blockHash);
@@ -83,7 +80,6 @@ namespace Nethermind.Blockchain
         public void MoveToMain(Keccak blockHash)
         {
             _mainChain.Add(blockHash, _branches[blockHash]);
-            _processed.Add(blockHash);
             _branches.Remove(blockHash);
         }
     }

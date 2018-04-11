@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 
@@ -23,7 +24,7 @@ namespace Nethermind.Blockchain
 {
     public interface ISealEngine
     {
-        Task<Block> MineAsync(Block block);
+        Task<Block> MineAsync(Block block, CancellationToken cancellationToken);
         bool Validate(BlockHeader header);
         bool IsMining { get; set; }
     }

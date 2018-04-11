@@ -18,6 +18,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.Numerics;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Xml.Schema;
 using Nethermind.Core;
@@ -67,12 +69,32 @@ namespace Nethermind.Blockchain.Test
 
             Block block = new Block(header);
             EthashSealEngine ethashSealEngine = new EthashSealEngine(new Ethash() /*, _alwaysOk, _noPending*/);
-            await ethashSealEngine.MineAsync(block, validNonce - 10);
+            await ethashSealEngine.MineAsync(new CancellationTokenSource(TimeSpan.FromSeconds(5)).Token, block, validNonce - 10);
 
             Assert.AreEqual(validNonce, block.Header.Nonce);
             Assert.AreEqual(new Keccak("0xff2c80283f139148a9b3f2a9dd19d698475937a85296225a96857599cce6d1e2"), block.Header.MixHash);
 
             Console.WriteLine(block.Header.Nonce);
+        }
+
+        [Test]
+        public async Task Can_cancel()
+        {
+            ulong badNonce = 971086423715459953; // change if valid
+
+            BlockHeader header = new BlockHeader(Keccak.Zero, Keccak.OfAnEmptySequenceRlp, Address.Zero, BigInteger.Pow(2, 32), 1, 21000, 1, new byte[] {1, 2, 3});
+            header.TransactionsRoot = Keccak.Zero;
+            header.ReceiptsRoot = Keccak.Zero;
+            header.OmmersHash = Keccak.Zero;
+            header.StateRoot = Keccak.Zero;
+            header.Bloom = Bloom.Empty;
+
+            Block block = new Block(header);
+            EthashSealEngine ethashSealEngine = new EthashSealEngine(new Ethash() /*, _alwaysOk, _noPending*/);
+            await ethashSealEngine.MineAsync(new CancellationTokenSource(TimeSpan.FromMilliseconds(2000)).Token, block, badNonce).ContinueWith(t =>
+            {
+                Assert.True(t.IsCanceled);
+            });
         }
 
         [Test]
@@ -90,7 +112,7 @@ namespace Nethermind.Blockchain.Test
 
             IEthash ethash = new Ethash();
             EthashSealEngine ethashSealEngine = new EthashSealEngine(ethash /*, _alwaysOk, _noPending*/);
-            await ethashSealEngine.MineAsync(block, 7217048144105167954);
+            await ethashSealEngine.MineAsync(CancellationToken.None, block, 7217048144105167954);
 
             Assert.True(ethash.Validate(block.Header));
 

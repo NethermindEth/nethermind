@@ -45,15 +45,16 @@ namespace Nethermind.Core.Encoding
             BlockHeader blockHeader = _blockHeaderDecoder.Decode(headerData);
 
             List<Transaction> transactions = new List<Transaction>();
-            foreach (DecodedRlp transactionData in transactionsData.Items)
+            for (int txIndex = 0; txIndex < transactionsData.Items.Count; txIndex++)
             {
+                DecodedRlp transactionData = (DecodedRlp)transactionsData.Items[txIndex];
                 transactions.Add(_transactionDecoder.Decode(transactionData));
             }
 
             BlockHeader[] ommers = new BlockHeader[ommersData.Length];
-            for (int i = 0; i < ommersData.Length; i++)
+            for (int ommerIndex = 0; ommerIndex < ommersData.Length; ommerIndex++)
             {
-                ommers[i] = _blockHeaderDecoder.Decode(ommersData.GetSequence(i));
+                ommers[ommerIndex] = _blockHeaderDecoder.Decode(ommersData.GetSequence(ommerIndex));
             }
 
             Block block = new Block(blockHeader, ommers);

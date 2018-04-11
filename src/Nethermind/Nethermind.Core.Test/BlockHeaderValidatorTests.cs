@@ -66,7 +66,7 @@ namespace Nethermind.Core.Test
         {
             _ethash = new EthashSealEngine(new Ethash());
             _testLogger = new TestLogger();
-            BlockStore blockStore = new BlockStore();
+            BlockTree blockStore = new BlockTree();
             DifficultyCalculator calculator = new DifficultyCalculator(new SingleReleaseSpecProvider(Frontier.Instance, 1));   
             
             _validator = new HeaderValidator(calculator, blockStore, _ethash, new SingleReleaseSpecProvider(Byzantium.Instance, 3), _testLogger);

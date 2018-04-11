@@ -33,7 +33,7 @@ namespace Nethermind.Core.Test
         [Test]
         public void Test()
         {
-            IBlockStore blockchain = Substitute.For<IBlockStore>();
+            IBlockTree blockchain = Substitute.For<IBlockTree>();
 
             HeaderValidator headerValidator = new HeaderValidator(new DifficultyCalculator(RopstenSpecProvider.Instance), blockchain, NullSealEngine.Instance, null, null);
             OmmersValidator ommersValidator = new OmmersValidator(blockchain, headerValidator, null);

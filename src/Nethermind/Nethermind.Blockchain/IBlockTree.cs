@@ -27,12 +27,13 @@ namespace Nethermind.Blockchain
         Keccak GenesisHash { get; set; } // TODO: move from processor
         IChain MainChain { get; set; } // TODO: move from processor
 
-        void AddBlock(Block block, bool isMainChain);
+        void AddBlock(Block block);
         Block FindBlock(Keccak blockHash, bool mainChainOnly);
         Block FindBlock(BigInteger blockNumber);
         bool IsMainChain(Keccak blockHash);
         void MoveToMain(Keccak blockHash);
         void MoveToBranch(Keccak blockHash);
         bool WasProcessed(Keccak blockHash);
+        void MarkAsProcessed(Keccak blockHash);
     }
 }

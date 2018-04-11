@@ -183,8 +183,7 @@ namespace Ethereum.Test.Base
             
             IDbProvider dbProvider = new DbProvider(stateLogger);
             StateTree stateTree = new StateTree(dbProvider.GetOrCreateStateDb());
-
-            IBlockStore blockStore = new BlockStore();
+            
 
             ISpecProvider specProvider;
             if (test.NetworkAfterTransition != null)
@@ -213,8 +212,8 @@ namespace Ethereum.Test.Base
             IBlockhashProvider blockhashProvider = new BlockhashProvider(blockTree);
             ISignatureValidator signatureValidator = new SignatureValidator(ChainId.MainNet);
             ITransactionValidator transactionValidator = new TransactionValidator(signatureValidator);
-            IHeaderValidator headerValidator = new HeaderValidator(difficultyCalculator, blockStore, SealEngine, specProvider, processingLogger);
-            IOmmersValidator ommersValidator = new OmmersValidator(blockStore, headerValidator, processingLogger);
+            IHeaderValidator headerValidator = new HeaderValidator(difficultyCalculator, blockTree, SealEngine, specProvider, processingLogger);
+            IOmmersValidator ommersValidator = new OmmersValidator(blockTree, headerValidator, processingLogger);
             IBlockValidator blockValidator = new BlockValidator(transactionValidator, headerValidator, ommersValidator, specProvider, processingLogger);
             IStateProvider stateProvider = new StateProvider(stateTree, stateLogger, dbProvider.GetOrCreateCodeDb());
             IStorageProvider storageProvider = new StorageProvider(dbProvider, stateProvider, stateLogger);
@@ -298,7 +297,7 @@ namespace Ethereum.Test.Base
                 }
             };
                 
-            blockStore.AddBlock(genesisBlock);
+            blockTree.AddBlock(genesisBlock);
             blockchainProcessor.Start(genesisBlock);
 
             for (int i = 0; i < correctRlpsBlocks.Count; i++)
@@ -316,7 +315,7 @@ namespace Ethereum.Test.Base
                         throw new Exception($"null hash in {test.Name} block {i}");
                     }
                     
-                    blockStore.AddBlock(correctRlpsBlocks[i].Block);
+                    blockTree.AddBlock(correctRlpsBlocks[i].Block);
                     // TODO: mimic the actual behaviour where block goes through validating sync manager?
                     if (blockValidator.ValidateSuggestedBlock(correctRlpsBlocks[i].Block))
                     {

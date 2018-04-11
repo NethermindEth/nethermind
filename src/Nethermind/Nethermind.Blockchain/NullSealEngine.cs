@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 
@@ -29,7 +30,7 @@ namespace Nethermind.Blockchain
 
         public static NullSealEngine Instance { get; } = new NullSealEngine();
 
-        public Task<Block> MineAsync(Block block)
+        public Task<Block> MineAsync(Block block, CancellationToken cancellationToken)
         {
             return Task.FromResult(block);
         }

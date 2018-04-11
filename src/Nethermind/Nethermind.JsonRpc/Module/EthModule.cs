@@ -41,7 +41,7 @@ namespace Nethermind.JsonRpc.Module
     {
         private readonly IJsonSerializer _jsonSerializer;
         private readonly IBlockchainProcessor _blockchainProcessor;
-        private readonly IBlockStore _blockStore;
+        private readonly IBlockTree _blockStore;
         private readonly ITransactionStore _transactionStore;
         private readonly IDb _db;
         private readonly IStateProvider _stateProvider;
@@ -49,7 +49,7 @@ namespace Nethermind.JsonRpc.Module
         private readonly IJsonRpcModelMapper _modelMapper;
         private readonly IReleaseSpec _releaseSpec;
 
-        public EthModule(ILogger logger, IJsonSerializer jsonSerializer, IBlockchainProcessor blockchainProcessor, IStateProvider stateProvider, IKeyStore keyStore, IConfigurationProvider configurationProvider, IBlockStore blockStore, IDb db, IJsonRpcModelMapper modelMapper, IReleaseSpec releaseSpec, ITransactionStore transactionStore) : base(logger, configurationProvider)
+        public EthModule(ILogger logger, IJsonSerializer jsonSerializer, IBlockchainProcessor blockchainProcessor, IStateProvider stateProvider, IKeyStore keyStore, IConfigurationProvider configurationProvider, IBlockTree blockStore, IDb db, IJsonRpcModelMapper modelMapper, IReleaseSpec releaseSpec, ITransactionStore transactionStore) : base(logger, configurationProvider)
         {
             _jsonSerializer = jsonSerializer;
             _blockchainProcessor = blockchainProcessor;
@@ -164,7 +164,7 @@ namespace Nethermind.JsonRpc.Module
 
         public ResultWrapper<Quantity> eth_getBlockTransactionCountByHash(Data blockHash)
         {
-            var block = _blockStore.FindBlock(new Keccak(blockHash.Value));
+            var block = _blockStore.FindBlock(new Keccak(blockHash.Value), false);
             if (block == null)
             {
                 return ResultWrapper<Quantity>.Fail($"Cannot find block for hash: {blockHash.Value}", ErrorType.NotFound);
@@ -193,7 +193,7 @@ namespace Nethermind.JsonRpc.Module
 
         public ResultWrapper<Quantity> eth_getUncleCountByBlockHash(Data blockHash)
         {
-            var block = _blockStore.FindBlock(new Keccak(blockHash.Value));
+            var block = _blockStore.FindBlock(new Keccak(blockHash.Value), false);
             if (block == null)
             {
                 return ResultWrapper<Quantity>.Fail($"Cannot find block for hash: {blockHash.Value}", ErrorType.NotFound);
@@ -280,7 +280,7 @@ namespace Nethermind.JsonRpc.Module
 
         public ResultWrapper<Block> eth_getBlockByHash(Data blockHash, bool returnFullTransactionObjects)
         {
-            var block = _blockStore.FindBlock(new Keccak(blockHash.Value));
+            var block = _blockStore.FindBlock(new Keccak(blockHash.Value), false);
             if (block == null)
             {
                 return ResultWrapper<Block>.Fail($"Cannot find block for hash: {blockHash.Value}", ErrorType.NotFound);
@@ -323,7 +323,7 @@ namespace Nethermind.JsonRpc.Module
             {
                 return ResultWrapper<Transaction>.Fail($"Cannot find block hash for transaction: {transactionHash.Value}", ErrorType.NotFound);
             }
-            var block = _blockStore.FindBlock(blockHash);
+            var block = _blockStore.FindBlock(blockHash, false);
             if (block == null)
             {
                 return ResultWrapper<Transaction>.Fail($"Cannot find block for hash: {blockHash}", ErrorType.NotFound);
@@ -336,7 +336,7 @@ namespace Nethermind.JsonRpc.Module
 
         public ResultWrapper<Transaction> eth_getTransactionByBlockHashAndIndex(Data blockHash, Quantity positionIndex)
         {
-            var block = _blockStore.FindBlock(new Keccak(blockHash.Value));
+            var block = _blockStore.FindBlock(new Keccak(blockHash.Value), false);
             if (block == null)
             {
                 return ResultWrapper<Transaction>.Fail($"Cannot find block for hash: {blockHash.Value}", ErrorType.NotFound);
@@ -405,7 +405,7 @@ namespace Nethermind.JsonRpc.Module
             {
                 return ResultWrapper<TransactionReceipt>.Fail($"Cannot find block hash for transaction: {transactionHash.Value}", ErrorType.NotFound);
             }
-            var block = _blockStore.FindBlock(blockHash);
+            var block = _blockStore.FindBlock(blockHash, false);
             if (block == null)
             {
                 return ResultWrapper<TransactionReceipt>.Fail($"Cannot find block for hash: {blockHash}", ErrorType.NotFound);
@@ -418,7 +418,7 @@ namespace Nethermind.JsonRpc.Module
 
         public ResultWrapper<Block> eth_getUncleByBlockHashAndIndex(Data blockHash, Quantity positionIndex)
         {
-            var block = _blockStore.FindBlock(new Keccak(blockHash.Value));
+            var block = _blockStore.FindBlock(new Keccak(blockHash.Value), false);
             if (block == null)
             {
                 return ResultWrapper<Block>.Fail($"Cannot find block for hash: {blockHash.Value}", ErrorType.NotFound);
@@ -434,7 +434,7 @@ namespace Nethermind.JsonRpc.Module
             }
 
             var ommerHeader = block.Ommers[(int)index.Value];
-            var ommer = _blockStore.FindBlock(ommerHeader.Hash);
+            var ommer = _blockStore.FindBlock(ommerHeader.Hash, false);
             if (ommer == null)
             {
                 return ResultWrapper<Block>.Fail($"Cannot find ommer for hash: {ommerHeader.Hash}", ErrorType.NotFound);
@@ -469,7 +469,7 @@ namespace Nethermind.JsonRpc.Module
             }
 
             var ommerHeader = result.Data.Ommers[(int)index.Value];
-            var ommer = _blockStore.FindBlock(ommerHeader.Hash);
+            var ommer = _blockStore.FindBlock(ommerHeader.Hash, false);
             if (ommer == null)
             {
                 return ResultWrapper<Block>.Fail($"Cannot find ommer for hash: {ommerHeader.Hash}", ErrorType.NotFound);
@@ -709,7 +709,7 @@ namespace Nethermind.JsonRpc.Module
         private Core.Block GetGenesisBlock(Core.Block headBlock)
         {
             Core.Block parent;
-            while ((parent = _blockStore.FindBlock(headBlock.Header.ParentHash)) != null)
+            while ((parent = _blockStore.FindBlock(headBlock.Header.ParentHash, false)) != null)
             {
                 headBlock = parent;
             }

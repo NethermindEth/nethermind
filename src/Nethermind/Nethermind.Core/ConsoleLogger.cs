@@ -17,15 +17,31 @@
  */
 
 using System;
+using System.Collections.Concurrent;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace Nethermind.Core
 {
     public class ConsoleLogger : ILogger
     {
+        private readonly BlockingCollection<string> _queuedEntries = new BlockingCollection<string>(new ConcurrentQueue<string>());
+
+        public ConsoleLogger()
+        {
+            Task.Factory.StartNew(() =>
+                {
+                    foreach (string logEntry in _queuedEntries.GetConsumingEnumerable())
+                    {
+                        Console.WriteLine(logEntry);
+                    }
+                },
+                TaskCreationOptions.LongRunning);
+        }
+        
         public void Log(string text)
         {
-            Console.WriteLine($"{DateTime.Now.ToLongTimeString()} [{Thread.CurrentThread.ManagedThreadId}] {text}");
+            _queuedEntries.Add($"{DateTime.Now:HH:mm:ss.fff} [{Thread.CurrentThread.ManagedThreadId}] {text}");
         }
 
         public void Debug(string text)

@@ -17,6 +17,7 @@
  */
 
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 
@@ -31,9 +32,9 @@ namespace Nethermind.Blockchain
             _miningDelay = miningDelay;
         }
         
-        public Task<Block> MineAsync(Block block)
+        public Task<Block> MineAsync(Block block, CancellationToken cancellationToken)
         {
-            return Task.Delay(_miningDelay).ContinueWith(t => block);
+            return Task.Delay(_miningDelay, cancellationToken).ContinueWith(t => block, cancellationToken);
         }
 
         public bool Validate(BlockHeader header)

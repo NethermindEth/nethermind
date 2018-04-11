@@ -18,6 +18,7 @@
 
 using System.Diagnostics;
 using System.Numerics;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -36,9 +37,9 @@ namespace Nethermind.Blockchain
 
         public BigInteger MinGasPrice { get; set; } = 0;
 
-        public async Task<Block> MineAsync(Block processed)
+        public async Task<Block> MineAsync(Block processed, CancellationToken cancellationToken)
         {
-            return await MineAsync(processed, null);
+            return await MineAsync(cancellationToken, processed, null);
         }
 
         public bool Validate(BlockHeader header)
@@ -48,7 +49,7 @@ namespace Nethermind.Blockchain
 
         public bool IsMining { get; set; }
 
-        public async Task<Block> MineAsync(Block processed, ulong? startNonce)
+        public async Task<Block> MineAsync(CancellationToken cancellationToken, Block processed, ulong? startNonce)
         {
             Debug.Assert(processed.Header.TransactionsRoot != null, "transactions root");
             Debug.Assert(processed.Header.StateRoot != null, "state root");
@@ -56,10 +57,18 @@ namespace Nethermind.Blockchain
             Debug.Assert(processed.Header.OmmersHash != null, "ommers hash");
             Debug.Assert(processed.Header.Bloom != null, "bloom");
             Debug.Assert(processed.Header.ExtraData != null, "extra data");
+            
+            Task<Block> miningTask = Task.Factory.StartNew(() => Mine(processed, startNonce), cancellationToken);
+            await miningTask.ContinueWith(
+                t =>
+                {
+                    if (t.IsCompleted)
+                    {
+                        t.Result.Header.RecomputeHash();
+                    }
+                }, cancellationToken);
 
-            Block minedBlock = await Task.Factory.StartNew(() => Mine(processed, startNonce));
-            minedBlock.Header.RecomputeHash();
-            return minedBlock;
+            return await miningTask;
         }
 
         private Block Mine(Block block, ulong? startNonce)

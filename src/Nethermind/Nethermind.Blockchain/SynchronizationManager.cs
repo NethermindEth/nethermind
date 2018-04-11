@@ -17,11 +17,15 @@
  */
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Numerics;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 
 namespace Nethermind.Blockchain
@@ -35,20 +39,29 @@ namespace Nethermind.Blockchain
         private readonly ILogger _logger;
         private readonly Dictionary<Keccak, BlockInfo> _storedBlocks = new Dictionary<Keccak, BlockInfo>();
 
-        public SynchronizationManager(IHeaderValidator headerValidator, IBlockValidator blockValidator, ITransactionValidator transactionValidator, ISpecProvider specProvider, Block genesisBlock, ILogger logger)
+        private object _lockObject = new object();
+
+        private BigInteger _bestBlockDifficulty;
+        private BigInteger _bestBlockNumber;
+        private Block _bestBlock;
+
+        public SynchronizationManager(IHeaderValidator headerValidator, IBlockValidator blockValidator, ITransactionValidator transactionValidator, ISpecProvider specProvider, Block bestBlockSoFar, BigInteger totalDifficulty, ILogger logger)
         {
             _headerValidator = headerValidator;
             _blockValidator = blockValidator;
             _transactionValidator = transactionValidator;
             _specProvider = specProvider;
             _logger = logger;
-            BlockInfo blockInfo = AddBlock(genesisBlock, new PublicKey(new byte[64]));
+            BlockInfo blockInfo = AddBlock(bestBlockSoFar, new PublicKey(new byte[64]));
             if (blockInfo.BlockQuality == Quality.Invalid)
             {
                 throw new EthSynchronizationException("Provided genesis block is not valid");
             }
-            
-            _logger.Log($"Initialized {nameof(SynchronizationManager)} with genesis block {genesisBlock.Hash}");
+
+            _bestBlockDifficulty = totalDifficulty;
+            _bestBlock = bestBlockSoFar;
+            _bestBlockNumber = _bestBlock.Number;
+            _logger.Log($"Initialized {nameof(SynchronizationManager)} with genesis block {bestBlockSoFar.Hash}");
         }
 
         public BlockInfo AddBlockHeader(BlockHeader blockHeader)
@@ -77,6 +90,18 @@ namespace Nethermind.Blockchain
             if (_storedBlocks.ContainsKey(hash))
             {
                 return _storedBlocks[hash];
+            }
+
+            return null;
+        }
+
+        public BlockInfo[] Find(Keccak hash, int numberOfBlocks)
+        {
+            if (_storedBlocks.ContainsKey(hash))
+            {
+                BlockInfo[] blockInfos = new BlockInfo[numberOfBlocks];
+                blockInfos[0] = _storedBlocks[hash];
+                return blockInfos;
             }
 
             return null;
@@ -181,6 +206,108 @@ namespace Nethermind.Blockchain
             {
                 info.BlockQuality = isValid ? Quality.Processed : Quality.Invalid;
             }
+        }
+
+        public void AddPeer(ISynchronizationPeer synchronizationPeer)
+        {
+            _logger.Log("SYNC MANAGER ADDING SYNCHRONIZATION PEER");
+            _peers.TryAdd(synchronizationPeer, null);
+        }
+
+        public void RemovePeer(ISynchronizationPeer synchronizationPeer)
+        {
+            throw new NotImplementedException();
+        }
+
+        private readonly ConcurrentDictionary<ISynchronizationPeer, PeerInfo> _peers = new ConcurrentDictionary<ISynchronizationPeer, PeerInfo>();
+
+        private class PeerInfo
+        {
+            private readonly ISynchronizationPeer _peer;
+            private readonly BigInteger _bestBlockNumber;
+
+            public PeerInfo(ISynchronizationPeer peer, BigInteger bestBlockNumber)
+            {
+                _peer = peer;
+                _bestBlockNumber = bestBlockNumber;
+            }
+
+            public ISynchronizationPeer Peer { get; set; }
+            public BigInteger? Number { get; set; }
+        }
+
+        private async Task RefreshPeerInfo(ISynchronizationPeer peer)
+        {
+            Task getHashTask = peer.GetHeadBlockHash();
+            _logger.Log($"SYNC MANAGER - GETTING HEAD BLOCK INFO");
+            Task<BigInteger> getNumberTask = peer.GetHeadBlockNumber();
+            await Task.WhenAll(getHashTask, getNumberTask);
+            _logger.Log($"SYNC MANAGER - RECEIVED HEAD BLOCK INFO");
+            _peers.GetOrAdd(peer, p => new PeerInfo(p, getNumberTask.Result));
+        }
+
+        private int _round = 0;
+
+        private async Task RunRound(CancellationToken cancellationToken)
+        {
+            _logger.Log($"SYNC MANAGER ROUND {_round++}");
+            List<Task> refreshTasks = new List<Task>();
+            foreach (KeyValuePair<ISynchronizationPeer, PeerInfo> keyValuePair in _peers)
+            {
+                refreshTasks.Add(RefreshPeerInfo(keyValuePair.Key));
+            }
+
+            await Task.WhenAny(Task.WhenAll(refreshTasks), AsTask(cancellationToken));
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+
+            foreach ((ISynchronizationPeer peer, PeerInfo peerInfo) in _peers)
+            {
+                BigInteger missingBlocks = (peerInfo.Number ?? 0) - _bestBlockNumber;
+                if (missingBlocks > 0)
+                {
+                    Block[] blocks = await peer.GetBlocks(_bestBlock.Hash, missingBlocks);
+                    foreach (Block block in blocks)
+                    {
+                        _logger.Log($"SYNC MANAGER RECEIVED BLOCK {block.Number}");
+                    }
+                }
+            }
+
+            await Task.Delay(12000, cancellationToken);
+        }
+
+        // https://stackoverflow.com/questions/27238232/how-can-i-cancel-task-whenall/27238463
+        private Task AsTask(CancellationToken token)
+        {
+            var completionSource = new TaskCompletionSource<object>();
+            token.Register(() => completionSource.TrySetCanceled(), false);
+            return completionSource.Task;
+        }
+
+        private Task _syncTask;
+
+        private CancellationTokenSource _cancellationTokenSource;
+
+        public void Start()
+        {
+            _cancellationTokenSource = new CancellationTokenSource();
+            _syncTask = Task.Factory.StartNew(async () =>
+                {
+                    while (!_cancellationTokenSource.IsCancellationRequested)
+                    {
+                        await RunRound(_cancellationTokenSource.Token);
+                    }
+                },
+                _cancellationTokenSource.Token);
+        }
+
+        public async Task StopAsync()
+        {
+            _cancellationTokenSource.Cancel();
+            await _syncTask;
         }
     }
 }

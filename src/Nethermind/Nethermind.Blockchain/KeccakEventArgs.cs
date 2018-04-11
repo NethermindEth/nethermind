@@ -16,14 +16,18 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Core;
+using System;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Blockchain
 {
-    public interface IBlockStore
-    {   
-        void AddBlock(Block block);
-        Block FindBlock(Keccak blockHash);
+    public class KeccakEventArgs : EventArgs
+    {
+        public Keccak Keccak { get; }
+
+        public KeccakEventArgs(Keccak keccak)
+        {
+            Keccak = keccak;
+        }
     }
 }

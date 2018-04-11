@@ -134,7 +134,7 @@ namespace Nethermind.Network.Rlpx
             string inOut = remoteId == null ? "IN" : "OUT";
             _logger.Log($"Initializing {inOut} channel");
 
-            IP2PSession p2PSession = new P2PSession(
+            P2PSession p2PSession = new P2PSession(
                 LocalNodeId,
                 _localPort,
                 _serializationService,

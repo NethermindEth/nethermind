@@ -26,21 +26,11 @@ namespace Nethermind.Core.Test
     public class BlockTreeTests
     {
         [Test]
-        public void Add_and_find_on_main()
-        {
-            BlockTree blockStore = new BlockTree();
-            Block block = Build.A.Block.TestObject;
-            blockStore.AddBlock(block, true);
-            Block found = blockStore.FindBlock(block.Hash, true);
-            Assert.AreSame(block, found);
-        }
-
-        [Test]
         public void Add_and_find_branch()
         {
             BlockTree blockStore = new BlockTree();
             Block block = Build.A.Block.TestObject;
-            blockStore.AddBlock(block, false);
+            blockStore.AddBlock(block);
             Block found = blockStore.FindBlock(block.Hash, false);
             Assert.AreSame(block, found);
         }
@@ -50,7 +40,7 @@ namespace Nethermind.Core.Test
         {
             BlockTree blockStore = new BlockTree();
             Block block = Build.A.Block.TestObject;
-            blockStore.AddBlock(block, false);
+            blockStore.AddBlock(block);
             blockStore.MoveToMain(block.Hash);
             Block found = blockStore.FindBlock(block.Hash, true);
             Assert.AreSame(block, found);
@@ -61,7 +51,8 @@ namespace Nethermind.Core.Test
         {
             BlockTree blockStore = new BlockTree();
             Block block = Build.A.Block.TestObject;
-            blockStore.AddBlock(block, true);
+            blockStore.AddBlock(block);
+            blockStore.MoveToMain(block.Hash);
             blockStore.MoveToBranch(block.Hash);
             Block found = blockStore.FindBlock(block.Hash, false);
             Assert.AreSame(block, found);
@@ -72,7 +63,7 @@ namespace Nethermind.Core.Test
         {
             BlockTree blockStore = new BlockTree();
             Block block = Build.A.Block.TestObject;
-            blockStore.AddBlock(block, false);
+            blockStore.AddBlock(block);
             Block found = blockStore.FindBlock(block.Hash, true);
             Assert.IsNull(found);
         }

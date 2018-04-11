@@ -17,7 +17,6 @@
  */
 
 using System;
-using Nethermind.Core.Crypto;
 using Nethermind.Network.Rlpx;
 
 namespace Nethermind.Network.P2P

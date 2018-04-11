@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,25 +16,20 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Collections.Generic;
+using System;
+using System.Numerics;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Blockchain
 {
-    public class BlockStore : IBlockStore
+    public interface ISynchronizationPeer
     {
-        private readonly Dictionary<Keccak, Block> _blocks = new Dictionary<Keccak, Block>();
-
-        public void AddBlock(Block block)
-        {
-            _blocks.Add(block.Header.Hash, block);
-        }
-
-        public Block FindBlock(Keccak blockHash)
-        {
-            _blocks.TryGetValue(blockHash, out Block block);
-            return block;
-        }
+        Task<Block[]> GetBlocks(Keccak blockHash, BigInteger maxBlocks);
+        Task<Keccak> GetHeadBlockHash();
+        Task<BigInteger> GetHeadBlockNumber();
+        event EventHandler<BlockEventArgs> NewBlock;
+        event EventHandler<KeccakEventArgs> NewBlockHash;
     }
 }

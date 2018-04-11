@@ -137,8 +137,9 @@ namespace Nethermind.Evm
                             currentState.DestroyList.Add(address);
                         }
 
-                        foreach (LogEntry logEntry in previousState.Logs)
+                        for (int i = 0; i < previousState.Logs.Count; i++)
                         {
+                            LogEntry logEntry = previousState.Logs[i];
                             currentState.Logs.Add(logEntry);
                         }
 

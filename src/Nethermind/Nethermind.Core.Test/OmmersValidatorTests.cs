@@ -32,7 +32,7 @@ namespace Nethermind.Core.Test
         private readonly BlockHeader _grandparent;
         private readonly BlockHeader _parent;
         private readonly BlockHeader _header;
-        private IBlockStore _blockStore;
+        private IBlockTree _blockStore;
         private IHeaderValidator _headerValidator;
 
         private BlockHeader _duplicateOmmer;
@@ -43,11 +43,11 @@ namespace Nethermind.Core.Test
             _duplicateOmmer = new BlockHeader();
             _duplicateOmmer.Hash = Keccak.Compute("duplicate_ommer");
 
-            _blockStore = Substitute.For<IBlockStore>();
-            _blockStore.FindBlock(_grandgrandparent.Hash).Returns(new Block(_grandgrandparent, _duplicateOmmer));
-            _blockStore.FindBlock(_grandparent.Hash).Returns(new Block(_grandparent));
-            _blockStore.FindBlock(_parent.Hash).Returns(new Block(_parent));
-            _blockStore.FindBlock(_header.Hash).Returns(new Block(_header));
+            _blockStore = Substitute.For<IBlockTree>();
+            _blockStore.FindBlock(_grandgrandparent.Hash, Arg.Any<bool>()).Returns(new Block(_grandgrandparent, _duplicateOmmer));
+            _blockStore.FindBlock(_grandparent.Hash, Arg.Any<bool>()).Returns(new Block(_grandparent));
+            _blockStore.FindBlock(_parent.Hash, Arg.Any<bool>()).Returns(new Block(_parent));
+            _blockStore.FindBlock(_header.Hash, Arg.Any<bool>()).Returns(new Block(_header));
 
             _headerValidator = Substitute.For<IHeaderValidator>();
             _headerValidator.Validate(Arg.Any<BlockHeader>(), true).Returns(true);

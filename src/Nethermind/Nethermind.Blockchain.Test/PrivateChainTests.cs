@@ -50,7 +50,7 @@ namespace Nethermind.Blockchain.Test
             var specProvider = RopstenSpecProvider.Instance;
 
             /* store & validation */
-            var blockStore = new BlockStore();
+            var blockStore = new BlockTree();
             var difficultyCalculator = new DifficultyCalculator(specProvider);
             var headerValidator = new HeaderValidator(difficultyCalculator, blockStore, sealEngine, specProvider, logger);
             var ommersValidator = new OmmersValidator(blockStore, headerValidator, logger);
@@ -98,7 +98,8 @@ namespace Nethermind.Blockchain.Test
             sealEngine.IsMining = true;
             var testTransactionsGenerator = new TestTransactionsGenerator(transactionStore, ethereumSigner, blockMiningTime, logger);
             testTransactionsGenerator.Start();
-            blockchainProcessor.Start(chainSpec.Genesis);
+            blockchain.AddBlock(chainSpec.Genesis);
+            blockchainProcessor.Start(chainSpec.Genesis); // TODO: will be starting from a head block in the future
             
             BigInteger roughlyNumberOfBlocks = 6;
             Thread.Sleep(blockMiningTime * (int)roughlyNumberOfBlocks);

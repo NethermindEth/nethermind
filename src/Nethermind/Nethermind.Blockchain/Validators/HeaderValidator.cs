@@ -33,9 +33,9 @@ namespace Nethermind.Blockchain.Validators
         private readonly BigInteger? _daoBlockNumber;
         private readonly ILogger _logger;
         private readonly IDifficultyCalculator _difficultyCalculator;
-        private readonly IBlockStore _chain;
+        private readonly IBlockTree _chain;
 
-        public HeaderValidator(IDifficultyCalculator difficultyCalculator, IBlockStore chain, ISealEngine sealEngine, ISpecProvider specProvider, ILogger logger)
+        public HeaderValidator(IDifficultyCalculator difficultyCalculator, IBlockTree chain, ISealEngine sealEngine, ISpecProvider specProvider, ILogger logger)
         {
             _difficultyCalculator = difficultyCalculator;
             _chain = chain;
@@ -46,7 +46,7 @@ namespace Nethermind.Blockchain.Validators
         
         public bool Validate(BlockHeader header, bool isOmmer = false, bool ignoreProof = false)
         {
-            Block parent = _chain.FindBlock(header.ParentHash);
+            Block parent = _chain.FindBlock(header.ParentHash, false);
             if (parent == null)
             {
                 if (header.Number == 0)

@@ -19,16 +19,17 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Numerics;
+using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.HashLib;
 using Nethermind.Network.Rlpx;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth
 {
-    public class Eth62ProtocolHandler : ProtocolHandlerBase, IProtocolHandler
+    public class Eth62ProtocolHandler : ProtocolHandlerBase, IProtocolHandler, ISynchronizationPeer
     {
         private readonly ISynchronizationManager _sync;
 
@@ -78,7 +79,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             {Eth62MessageCode.BlockBodies, typeof(BlockBodiesMessage)},
             {Eth62MessageCode.NewBlock, typeof(NewBlockMessage)},
         };
-        
+
         public virtual Type ResolveMessageType(int messageCode)
         {
             return MessageTypes[messageCode];
@@ -140,14 +141,22 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                        Environment.NewLine + $" best hash\t{status.BestHash}," +
                        Environment.NewLine + $" difficulty\t{status.TotalDifficulty}");
 
+            _headBlockHash = status.BestHash;
+            _headBlockDifficulty = status.TotalDifficulty;
+            BlockInfo blockInfo = _sync.Find(status.BestHash);
+
+            // need to ask about this
+            // _headBlockNumber = blockInfo?.Number ?? ?;
+
             Debug.Assert(_statusSent, "Expecting Init() to have been called by this point");
             ProtocolInitialized?.Invoke(this, EventArgs.Empty);
         }
 
         private void Handle(TransactionsMessage transactionsMessage)
         {
-            foreach (Transaction transaction in transactionsMessage.Transactions)
+            for (int txIndex = 0; txIndex < transactionsMessage.Transactions.Length; txIndex++)
             {
+                Transaction transaction = transactionsMessage.Transactions[txIndex];
                 TransactionInfo info = _sync.Add(transaction, P2PSession.RemoteNodeId);
                 if (info.Quality == Quality.Invalid) // TODO: processed invalid should not be penalized here
                 {
@@ -164,21 +173,35 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         private void Handle(GetBlockHeadersMessage getBlockHeadersMessage)
         {
-            BlockInfo blockInfo = _sync.Find(getBlockHeadersMessage.StartingBlockHash);
-            if (blockInfo.HeaderLocation == BlockDataLocation.Store)
+            BlockInfo[] blockInfos = _sync.Find(getBlockHeadersMessage.StartingBlockHash, (int)getBlockHeadersMessage.MaxHeaders);
+            BlockHeader[] blockHeaders = new BlockHeader[blockInfos.Length];
+            for (int i = 0; i < blockInfos.Length; i++)
             {
-                throw new NotImplementedException();
+                if (blockInfos[i] != null)
+                {
+                    if (blockInfos[i].HeaderLocation == BlockDataLocation.Store)
+                    {
+                        throw new NotImplementedException();
+                    }
+
+                    if (blockInfos[i].HeaderLocation == BlockDataLocation.Memory)
+                    {
+                        blockHeaders[i] = blockInfos[i].BlockHeader;
+                    }
+                    else
+                    {
+                        throw new NotImplementedException();
+                    }
+                }
             }
 
-            if (blockInfo.HeaderLocation == BlockDataLocation.Memory)
-            {
-                Send(new BlockHeadersMessage(new[] {blockInfo.BlockHeader}));
-            }
-            else
-            {
-                throw new NotImplementedException();
-            }
+            Send(new BlockHeadersMessage(blockHeaders));
         }
+
+        private TaskCompletionSource<Block[]> _blockHeadersTaskCompletion; // queues?
+        private TaskCompletionSource<BigInteger> _numberCompletionSource; // work in progress
+
+        private Task<BlockHeadersMessage> _blockHeadersTask;
 
         private void Handle(BlockBodiesMessage blockBodies)
         {
@@ -190,14 +213,30 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         private void Handle(BlockHeadersMessage blockHeaders)
         {
-            foreach (BlockHeader header in blockHeaders.BlockHeaders)
+            if (_blockHeadersTaskCompletion != null)
             {
-                BlockInfo blockInfo = _sync.AddBlockHeader(header);
-                if (blockInfo.HeaderQuality == Quality.Invalid)
+                // TODO: rough, work in progress
+                List<Block> blocks = new List<Block>();
+                foreach (BlockHeader header in blockHeaders.BlockHeaders)
                 {
-                    Logger.Debug($"Received an invalid header from {P2PSession.RemoteNodeId}");
-                    throw new SubprotocolException($"Peer sent an invalid header {header.Hash}");
+//                BlockInfo blockInfo = _sync.AddBlockHeader(header);
+//                if (blockInfo.HeaderQuality == Quality.Invalid)
+//                {
+//                    Logger.Debug($"Received an invalid header from {P2PSession.RemoteNodeId}");
+//                    throw new SubprotocolException($"Peer sent an invalid header {header.Hash}");
+//                }
+
+                    blocks.Add(header == null ? null : new Block(header));
                 }
+
+                _blockHeadersTaskCompletion.SetResult(blocks.ToArray());
+                _blockHeadersTaskCompletion = null;
+            }
+            else
+            {
+                Debug.Assert(_numberCompletionSource != null);
+                // assume roughly it should not be null
+                _numberCompletionSource.SetResult(blockHeaders.BlockHeaders[0].Number);
             }
         }
 
@@ -250,5 +289,35 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             public static Keccak BestHash { get; } = new Keccak(new Hex("0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3"));
             public static int ChainId { get; } = 1;
         }
+
+        public async Task<Block[]> GetBlocks(Keccak blockHash, BigInteger maxBlocks)
+        {
+            _blockHeadersTaskCompletion = new TaskCompletionSource<Block[]>();
+            return await _blockHeadersTaskCompletion.Task;
+        }
+
+        public Task<Keccak> GetHeadBlockHash()
+        {
+            return Task.FromResult(_headBlockHash);
+        }
+
+        public async Task<BigInteger> GetHeadBlockNumber()
+        {
+            var msg = new GetBlockHeadersMessage();
+            msg.StartingBlockHash = _headBlockHash;
+            msg.MaxHeaders = 1;
+            msg.Reverse = 0;
+            msg.Skip = 0;
+
+            Send(msg);
+            return await _numberCompletionSource.Task;
+        }
+
+        public event EventHandler<BlockEventArgs> NewBlock;
+        public event EventHandler<KeccakEventArgs> NewBlockHash;
+
+        private Keccak _headBlockHash;
+        private BigInteger _headBlockNumber;
+        private BigInteger _headBlockDifficulty;
     }
 }

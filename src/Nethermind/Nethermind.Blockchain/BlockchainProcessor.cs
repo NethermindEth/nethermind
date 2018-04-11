@@ -20,6 +20,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Numerics;
 using System.Text;
 using System.Threading;
@@ -189,17 +190,21 @@ namespace Nethermind.Blockchain
                 timestamp,
                 Encoding.UTF8.GetBytes("Nethermind"));
 
-            Transaction[] transactions = _transactionStore.GetAllPending();
-            for (int i = 0; i < transactions.Length; i++)
-            {
-                Debug.Assert(transactions[i] != null, "transaction is null :/");
-            }
-
+            var transactions = _transactionStore.GetAllPending().OrderBy(t => t?.Nonce); // by nonce in case there are two transactions for the same account, TODO: test it
+            
             List<Transaction> selected = new List<Transaction>();
             BigInteger gasRemaining = header.GasLimit;
             _logger?.Debug($"Collecting pending transactions at min gas price {MinGasPriceForMining} and block gas limit {gasRemaining}.");
+            int total = 0;
             foreach (Transaction transaction in transactions)
             {
+                total++;
+                Debug.Assert(transaction != null, "transaction is null :/");
+                if (transaction == null)
+                {
+                    continue;
+                }
+                
                 if (transaction.GasPrice < MinGasPriceForMining)
                 {
                     _logger?.Debug($"Rejecting transaction - gas price ({transaction.GasPrice}) too low (min gas price: {MinGasPriceForMining}.");
@@ -216,7 +221,7 @@ namespace Nethermind.Blockchain
                 gasRemaining -= transaction.GasLimit;
             }
 
-            _logger?.Debug($"Collected {selected.Count} out of {transactions.Length} pending transactions.");
+            _logger?.Debug($"Collected {selected.Count} out of {total} pending transactions.");
 
             header.TransactionsRoot = GetTransactionsRoot(selected);
 
@@ -274,20 +279,14 @@ namespace Nethermind.Blockchain
                 } while (!_blockTree.IsMainChain(toBeProcessed.Hash));
 
                 Block branchingPoint = toBeProcessed;
-                if (branchingPoint != null)
+                if (branchingPoint != null && branchingPoint.Hash != HeadBlock?.Hash)
                 {
-                    _logger?.Log($"BRANCHING FROM: {toBeProcessed.Hash} ({toBeProcessed.Number})");
+                    _logger?.Log($"HEAD BLOCK WAS: {HeadBlock?.Hash} ({HeadBlock?.Number})");
+                    _logger?.Log($"BRANCHING FROM: {branchingPoint.Hash} ({branchingPoint.Number})");
                 }
                 else
                 {
-                    if (HeadBlock == null)
-                    {
-                        _logger?.Log("SETTING AS GENESIS BLOCK");
-                    }
-                    else
-                    {
-                        _logger?.Log($"ADDING ON TOP OF {HeadBlock.Hash} ({HeadBlock.Number})");
-                    }
+                    _logger?.Log(branchingPoint == null ? "SETTING AS GENESIS BLOCK" : $"ADDING ON TOP OF {branchingPoint.Hash} ({branchingPoint.Number})");
                 }
 
                 Keccak stateRoot = branchingPoint?.Header.StateRoot;
@@ -316,7 +315,7 @@ namespace Nethermind.Blockchain
                 Block[] processedBlocks = _blockProcessor.Process(stateRoot, blocks, forMining);
 
                 List<Block> blocksToBeRemovedFromMain = new List<Block>();
-                if (HeadBlock != branchingPoint && HeadBlock != null)
+                if (HeadBlock?.Hash != branchingPoint?.Hash && HeadBlock != null)
                 {
                     blocksToBeRemovedFromMain.Add(HeadBlock);
                     Block teBeRemovedFromMain = _blockTree.FindParent(HeadBlock);
@@ -329,9 +328,14 @@ namespace Nethermind.Blockchain
 
                 if (!forMining)
                 {
-                    HeadBlock = processedBlocks[processedBlocks.Length - 1];
-                    _logger?.Log($"ADDING {HeadBlock.Hash} ({HeadBlock.Number}) TO BRANCH");
-                    _blockTree.AddBlock(HeadBlock, false);
+                    foreach (Block processedBlock in processedBlocks)
+                    {
+                        _logger?.Log($"MARKING {processedBlock.Hash} ({processedBlock.Number}) AS PROCESSED");
+                        _blockTree.MarkAsProcessed(processedBlock.Hash);
+                    }
+                    
+                    HeadBlock = processedBlocks[processedBlocks.Length - 1]; // do not use processed here as reference equality will not hold
+                    _logger?.Log($"SETTING HEAD BLOCK TO {HeadBlock.Hash} ({HeadBlock.Number})");
 
                     foreach (Block block in blocksToBeRemovedFromMain)
                     {
@@ -357,18 +361,14 @@ namespace Nethermind.Blockchain
                 else
                 {
                     Block blockToBeMined = processedBlocks[processedBlocks.Length - 1];
-                    _sealEngine.MineAsync(blockToBeMined).ContinueWith(t =>
+                    _sealEngine.MineAsync(blockToBeMined, _cancellationSource.Token).ContinueWith(t =>
                     {
                         Block minedBlock = t.Result;
                         minedBlock.Header.RecomputeHash();
+                        _blockTree.AddBlock(minedBlock);
                         SuggestBlock(minedBlock);
                     });
                 }
-            }
-            else if (!forMining)
-            {
-                // lower difficulty branch
-                _blockTree.AddBlock(suggestedBlock, false);
             }
         }
     }

@@ -17,6 +17,7 @@
  */
 
 using System.Numerics;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -28,9 +29,14 @@ namespace Nethermind.Blockchain
         BlockInfo AddBlock(Block block, PublicKey receivedFrom);
         BlockInfo AddBlockHeader(BlockHeader blockHeader);
         BlockInfo Find(Keccak hash);
-        BlockInfo Find(BigInteger number); // TODO: would that be called?
+        BlockInfo[] Find(Keccak hash, int numberOfBlocks);
+        BlockInfo Find(BigInteger number);
         TransactionInfo Add(Transaction transaction, PublicKey receivedFrom);
         void MarkAsProcessed(Transaction transaction, bool isValid);
         void MarkAsProcessed(Block transaction, bool isValid);
+        void AddPeer(ISynchronizationPeer synchronizationPeer);
+        void RemovePeer(ISynchronizationPeer synchronizationPeer);
+        void Start();
+        Task StopAsync();
     }
 }
