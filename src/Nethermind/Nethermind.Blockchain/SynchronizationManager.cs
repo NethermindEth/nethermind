@@ -159,7 +159,7 @@ namespace Nethermind.Blockchain
             if (info == null)
             {
                 info = new TransactionInfo(transaction, receivedFrom);
-                info.Quality = _transactionValidator.IsWellFormed(transaction, _specProvider.GetCurrentSpec()) ? Quality.DataValid : Quality.Invalid;
+                info.Quality = _transactionValidator.IsWellFormed(transaction, _specProvider.CurrentSpec) ? Quality.DataValid : Quality.Invalid;
             }
 
             return info;

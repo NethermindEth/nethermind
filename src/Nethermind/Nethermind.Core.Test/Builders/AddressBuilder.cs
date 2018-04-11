@@ -16,15 +16,25 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Numerics;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 
-namespace Nethermind.Core.Crypto
+namespace Nethermind.Core.Test.Builders
 {
-    public interface IEthereumSigner : ISigner
-    {
-        void Sign(PrivateKey privateKey, Transaction transaction, BigInteger blockNumber);
-        Address RecoverAddress(Transaction transaction, BigInteger blockNumber);
-        Address RecoverAddress(Signature signature, Keccak message);
-        bool Verify(Address sender, Transaction transaction, BigInteger blockNumber);
+    public class AddressBuilder : BuilderBase<Address>
+    {   
+        private static readonly ICryptoRandom CryptoRandom = new CryptoRandom();
+        
+        public AddressBuilder()
+        {
+            byte[] bytes = CryptoRandom.GenerateRandomBytes(20);
+            TestObject = new Address(bytes);
+        }
+        
+        public AddressBuilder FromNumber(int number)
+        {
+            TestObject = new Address(number.ToBigEndianByteArray().PadLeft(20));
+            return this;
+        }
     }
 }

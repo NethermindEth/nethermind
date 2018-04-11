@@ -22,15 +22,9 @@ namespace Nethermind.Core.Specs
 {
     public class MordenSpecProvider : ISpecProvider
     {
-        public IReleaseSpec GetCurrentSpec()
-        {
-            return SpuriousDragon.Instance;
-        }
+        public IReleaseSpec CurrentSpec => SpuriousDragon.Instance;
 
-        public IReleaseSpec GetGenesisSpec()
-        {
-            return Frontier.Instance;
-        }
+        public IReleaseSpec GenesisSpec => Frontier.Instance;
 
         public IReleaseSpec GetSpec(BigInteger blockNumber)
         {

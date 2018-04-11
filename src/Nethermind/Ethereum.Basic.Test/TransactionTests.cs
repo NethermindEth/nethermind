@@ -60,7 +60,7 @@ namespace Ethereum.Basic.Test
             Assert.AreEqual(test.Nonce, decodedUnsigned.Nonce);
 
             Transaction decodedSigned = Rlp.Decode<Transaction>(test.Signed);
-            ethereumSigner.Sign(test.PrivateKey, decodedUnsigned);
+            ethereumSigner.Sign(test.PrivateKey, decodedUnsigned, 0);
             Assert.AreEqual(decodedSigned.Signature.R, decodedUnsigned.Signature.R);
             BigInteger expectedS = decodedSigned.Signature.S.ToUnsignedBigInteger();
             BigInteger actualS = decodedUnsigned.Signature.S.ToUnsignedBigInteger();

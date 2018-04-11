@@ -201,7 +201,7 @@ namespace Ethereum.Test.Base
                     (1, test.Network));
             }
 
-            if (specProvider.GetGenesisSpec() != Frontier.Instance)
+            if (specProvider.GenesisSpec != Frontier.Instance)
             {
                 Assert.Fail("Expected genesis spec to be Frontier for blockchain tests");
             }
@@ -354,15 +354,15 @@ namespace Ethereum.Test.Base
 
                 stateProvider.CreateAccount(accountState.Key, accountState.Value.Balance);
                 Keccak codeHash = stateProvider.UpdateCode(accountState.Value.Code);
-                stateProvider.UpdateCodeHash(accountState.Key, codeHash, specProvider.GetGenesisSpec());
+                stateProvider.UpdateCodeHash(accountState.Key, codeHash, specProvider.GenesisSpec);
                 for (int i = 0; i < accountState.Value.Nonce; i++)
                 {
                     stateProvider.IncrementNonce(accountState.Key);
                 }
             }
 
-            storageProvider.Commit(specProvider.GetGenesisSpec());
-            stateProvider.Commit(specProvider.GetGenesisSpec());
+            storageProvider.Commit(specProvider.GenesisSpec);
+            stateProvider.Commit(specProvider.GenesisSpec);
         }
 
         private void RunAssertions(BlockchainTest test, Block headBlock, IStorageProvider storageProvider, IStateProvider stateProvider)

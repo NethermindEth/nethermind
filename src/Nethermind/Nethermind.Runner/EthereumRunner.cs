@@ -191,8 +191,8 @@ namespace Nethermind.Runner
                 _stateProvider.CreateAccount(new Address(new Hex(account.Key)), account.Value.Balance.StartsWith("0x") 
                     ? new BigInteger(new Hex(account.Value.Balance)) : BigInteger.Parse(account.Value.Balance));
             }
-            _stateProvider.Commit(_specProvider.GetGenesisSpec());
-            _dbProvider.Commit(_specProvider.GetGenesisSpec());
+            _stateProvider.Commit(_specProvider.GenesisSpec);
+            _dbProvider.Commit(_specProvider.GenesisSpec);
             return _stateProvider.StateRoot;
         }
 

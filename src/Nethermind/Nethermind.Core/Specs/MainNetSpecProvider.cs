@@ -22,15 +22,9 @@ namespace Nethermind.Core.Specs
 {
     public class MainNetSpecProvider : ISpecProvider
     {
-        public IReleaseSpec GetCurrentSpec()
-        {
-            return Byzantium.Instance;
-        }
+        public IReleaseSpec CurrentSpec => Byzantium.Instance;
 
-        public IReleaseSpec GetGenesisSpec()
-        {
-            return Frontier.Instance;
-        }
+        public IReleaseSpec GenesisSpec => Frontier.Instance;
 
         public IReleaseSpec GetSpec(BigInteger blockNumber)
         {

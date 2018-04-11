@@ -24,7 +24,6 @@ using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Numerics;
-using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using Microsoft.Extensions.CommandLineUtils;
 using Nethermind.Blockchain;
@@ -32,10 +31,10 @@ using Nethermind.Blockchain.Difficulty;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Specs.ChainSpec;
 using Nethermind.Evm;
-using Nethermind.Mining;
 using Nethermind.Network;
 using Nethermind.Network.Crypto;
 using Nethermind.Network.P2P;
@@ -51,6 +50,8 @@ namespace Nethermind.PeerConsole
         private static int _listenPort = 30312;
 
         private static PrivateKey _privateKey;
+        
+        private static readonly ILogger Logger = new ConsoleLogger();
 
 #pragma warning disable 1998
         public static async Task Main(params string[] args)
@@ -96,34 +97,123 @@ namespace Nethermind.PeerConsole
         {
             _listenPort = port;
             _privateKey = privateKey;
-            await ConnectTestnet(chainSpecFile);
+            await InitTestnet(chainSpecFile);
         }
 
-        private static async Task ConnectTestnet(string chainSpecFile)
+        private static async Task InitTestnet(string chainSpecFile)
         {
-            ICryptoRandom cryptoRandom = new CryptoRandom();
-            Console.WriteLine($"Local node ID = {_privateKey.PublicKey}");
-
             /* tools */
-            var signer = new Signer();
-            var logger = new ConsoleLogger();
             
-            /* network */
+            var chainSpec = LoadChainSpec(chainSpecFile);
+            var syncManager = InitBlockchain(chainSpec);
+            await InitNet(chainSpec, syncManager);
+        }
+
+        private static ChainSpec LoadChainSpec(string chainSpecFile)
+        {
+            Logger.Log($"Loading ChainSpec from {chainSpecFile}");
+            var loader = new ChainSpecLoader(new UnforgivingJsonSerializer());
+            if (!Path.IsPathRooted(chainSpecFile))
+            {
+                chainSpecFile = Path.Combine(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Chains", chainSpecFile));
+            }
+
+            var chainSpec = loader.Load(File.ReadAllBytes(chainSpecFile));
+            return chainSpec;
+        }
+
+        private static SynchronizationManager InitBlockchain(ChainSpec chainSpec)
+        {
+            /* spec */
+            var blockMiningTime = TimeSpan.FromMilliseconds(10000);
+            var transactionDelay = TimeSpan.FromMilliseconds(10000);
+            var specProvider = RopstenSpecProvider.Instance;
+            var difficultyCalculator = new DifficultyCalculator(specProvider);
+            // var sealEngine = new EthashSealEngine(new Ethash());
+            var sealEngine = new FakeSealEngine(blockMiningTime);
+
+            /* sync */
+            var transactionStore = new TransactionStore();
+            var blockStore = new BlockStore();
+
+            /* validation */
+            var headerValidator = new HeaderValidator(difficultyCalculator, blockStore, sealEngine, specProvider, Logger);
+            var ommersValidator = new OmmersValidator(blockStore, headerValidator, Logger);
+            var transactionValidator = new TransactionValidator(new SignatureValidator(ChainId.Ropsten));
+            var blockValidator = new BlockValidator(transactionValidator, headerValidator, ommersValidator, specProvider, Logger);
+
+            /* state */
+            var dbProvider = new DbProvider(Logger);
+            var codeDb = new InMemoryDb();
+            var stateDb = new InMemoryDb();
+            var stateTree = new StateTree(stateDb);
+            var stateProvider = new StateProvider(stateTree, Logger, codeDb);
+            var storageProvider = new StorageProvider(dbProvider, stateProvider, Logger);
+            var storageDbProvider = new DbProvider(Logger);
+
+            /* blockchain */
+            var blockTree = new BlockTree();
+            var ethereumSigner = new EthereumSigner(specProvider, Logger);
+
+            /* blockchain processing */
+            var blockhashProvider = new BlockhashProvider(blockTree);
+            var virtualMachine = new VirtualMachine(specProvider, stateProvider, storageProvider, blockhashProvider, Logger);
+            var transactionProcessor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, ethereumSigner, Logger);
+            var rewardCalculator = new RewardCalculator(specProvider);
+            var blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, transactionProcessor, storageDbProvider, stateProvider, storageProvider, transactionStore, Logger);
+            var blockchainProcessor = new BlockchainProcessor(blockTree, sealEngine, transactionStore, difficultyCalculator, blockProcessor, Logger);
+
+            /* genesis */
+            foreach (KeyValuePair<Address, BigInteger> allocation in chainSpec.Allocations)
+            {
+                stateProvider.CreateAccount(allocation.Key, allocation.Value);
+            }
+            stateProvider.Commit(specProvider.GenesisSpec);
+            
+            var testTransactionsGenerator = new TestTransactionsGenerator(transactionStore, ethereumSigner, transactionDelay, Logger);
+            stateProvider.CreateAccount(testTransactionsGenerator.SenderAddress, 1000.Ether());
+            stateProvider.Commit(specProvider.GenesisSpec);
+            testTransactionsGenerator.Start();
+            
+            chainSpec.Genesis.Header.StateRoot = stateProvider.StateRoot;
+            chainSpec.Genesis.Header.RecomputeHash();
+            // we are adding test transactions account so the state root will change (not an actual ropsten at the moment)
+//            var expectedGenesisHash = "0x41941023680923e0fe4d74a34bdac8141f2540e3ae90623718e47d66d1ca4a2d";
+//            if (chainSpec.Genesis.Hash != new Keccak(expectedGenesisHash))
+//            {
+//                throw new Exception($"Unexpected genesis hash for Ropsten, expected {expectedGenesisHash}, but was {chainSpec.Genesis.Hash}");
+//            }
+
+            blockchainProcessor.Start(chainSpec.Genesis);
+
+            /* start test processing */
+            sealEngine.IsMining = true;
+            blockchainProcessor.Start(chainSpec.Genesis);
+
+            var synchronizationManager = new SynchronizationManager(headerValidator, blockValidator, transactionValidator, specProvider, chainSpec.Genesis, Logger);
+            return synchronizationManager;
+        }
+
+        private static async Task InitNet(ChainSpec chainSpec, SynchronizationManager synchronizationManager)
+        {
+            /* tools */
             var serializationService = new MessageSerializationService();
+            var cryptoRandom = new CryptoRandom();
+            var signer = new Signer();
 
             /* rlpx */
             var eciesCipher = new EciesCipher(cryptoRandom);
             var eip8Pad = new Eip8MessagePad(cryptoRandom);
             serializationService.Register(new AuthEip8MessageSerializer(eip8Pad));
             serializationService.Register(new AckEip8MessageSerializer(eip8Pad));
-            var encryptionHandshakeServiceA = new EncryptionHandshakeService(serializationService, eciesCipher, cryptoRandom, signer, _privateKey, logger);
-            
+            var encryptionHandshakeServiceA = new EncryptionHandshakeService(serializationService, eciesCipher, cryptoRandom, signer, _privateKey, Logger);
+
             /* p2p */
             serializationService.Register(new HelloMessageSerializer());
             serializationService.Register(new DisconnectMessageSerializer());
             serializationService.Register(new PingMessageSerializer());
             serializationService.Register(new PongMessageSerializer());
-            
+
             /* eth */
             serializationService.Register(new StatusMessageSerializer());
             serializationService.Register(new TransactionsMessageSerializer());
@@ -133,71 +223,11 @@ namespace Nethermind.PeerConsole
             serializationService.Register(new BlockHeadersMessageSerializer());
             serializationService.Register(new BlockBodiesMessageSerializer());
             serializationService.Register(new NewBlockMessageSerializer());
-           
-            /* spec */
-            var sealEngine = new EthashSealEngine(new Ethash());
-            var specProvider = RopstenSpecProvider.Instance;
-            var calculator = new DifficultyCalculator(specProvider);
-            
-            /* sync */
-            var transactionStore = new TransactionStore();
-            var blockStore = new BlockStore();
-            
-            /* validation */
-            var headerValidator = new HeaderValidator(calculator, blockStore, sealEngine, specProvider, logger);
-            var ommersValidator = new OmmersValidator(blockStore, headerValidator, logger);
-            var transactionValidator = new TransactionValidator(new SignatureValidator(ChainId.Ropsten));
-            var blockValidator = new BlockValidator(transactionValidator, headerValidator, ommersValidator, specProvider, logger);
 
-            /* state */
-            var dbProvider = new DbProvider(logger);
-            var codeDb = new InMemoryDb();
-            var stateDb = new InMemoryDb();
-            var stateTree = new StateTree(stateDb);
-            var stateProvider = new StateProvider(stateTree, logger, codeDb);
-            var storageProvider = new StorageProvider(dbProvider, stateProvider, logger);
-            
-            /* blockchain */
-            var blockTree = new BlockTree();
-            var blockhashProvider = new BlockhashProvider(blockTree);
-            var rewardCalculator = new RewardCalculator(specProvider);
-            
-            var ethereumSigner = new EthereumSigner(specProvider, logger);
-            var virtualMachine = new VirtualMachine(specProvider, stateProvider, storageProvider, blockhashProvider, logger);
-            var transactionProcessor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, ethereumSigner, logger);
-            var blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, transactionProcessor, dbProvider, stateProvider, storageProvider, transactionStore, logger);
-            var blockchainProcessor = new BlockchainProcessor(blockTree, NullSealEngine.Instance, transactionStore, calculator, blockProcessor, logger);
-            
-            /* genesis */
-            var loader = new ChainSpecLoader(new UnforgivingJsonSerializer()); 
-            if (!Path.IsPathRooted(chainSpecFile))
-            {
-                chainSpecFile = Path.Combine(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Chains", chainSpecFile));
-            }
-
-            logger.Log($"Loading ChainSpec from {chainSpecFile}");
-            var chainSpec = loader.Load(File.ReadAllBytes(chainSpecFile));
-            foreach (KeyValuePair<Address, BigInteger> allocation in chainSpec.Allocations)
-            {
-                stateProvider.CreateAccount(allocation.Key, allocation.Value);
-            }
-            
-            stateProvider.Commit(specProvider.GetGenesisSpec());
-            chainSpec.Genesis.Header.StateRoot = stateProvider.StateRoot;
-            chainSpec.Genesis.Header.RecomputeHash();
-            var expectedGenesisHash = "0x41941023680923e0fe4d74a34bdac8141f2540e3ae90623718e47d66d1ca4a2d";
-            if (chainSpec.Genesis.Hash != new Keccak(expectedGenesisHash))
-            {
-                throw new Exception($"Unexpected genesis hash for Ropsten, expected {expectedGenesisHash}, but was {chainSpec.Genesis.Hash}");
-            }
-            
-            blockchainProcessor.Start(chainSpec.Genesis);
-            var synchronizationManager = new SynchronizationManager(headerValidator, blockValidator, transactionValidator, specProvider, chainSpec.Genesis, logger);
-
-            logger.Log("Initializing server...");
-            var localPeer = new RlpxPeer(_privateKey.PublicKey, _listenPort, encryptionHandshakeServiceA, serializationService, synchronizationManager, logger);
+            Logger.Log("Initializing server...");
+            var localPeer = new RlpxPeer(_privateKey.PublicKey, _listenPort, encryptionHandshakeServiceA, serializationService, synchronizationManager, Logger);
             await Task.WhenAll(localPeer.Init());
-            
+
             // https://stackoverflow.com/questions/6803073/get-local-ip-address?utm_medium=organic&utm_source=google_rich_qa&utm_campaign=google_rich_qa
             string localIp;
             using (Socket socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, 0))
@@ -207,22 +237,22 @@ namespace Nethermind.PeerConsole
                 Debug.Assert(endPoint != null, "null endpoint when connecting a UDP socket");
                 localIp = endPoint.Address.ToString();
             }
-            
-            logger.Log($"Node is up and listening on {localIp}:{_listenPort}... press ENTER to exit");
-            logger.Log($"enode://{_privateKey.PublicKey.ToString(false)}@{localIp}:{_listenPort}");
+
+            Logger.Log($"Node is up and listening on {localIp}:{_listenPort}... press ENTER to exit");
+            Logger.Log($"enode://{_privateKey.PublicKey.ToString(false)}@{localIp}:{_listenPort}");
 
             if (chainSpec.Bootnodes.Any())
             {
                 Bootnode bootnode = chainSpec.Bootnodes[0];
-                logger.Log($"Connecting to testnet bootnode {bootnode.Description}");
+                Logger.Log($"Connecting to testnet bootnode {bootnode.Description}");
                 await localPeer.ConnectAsync(bootnode.PublicKey, bootnode.Host, bootnode.Port);
-                logger.Log("Testnet connected...");
+                Logger.Log("Testnet connected...");
             }
-            
+
             Console.ReadLine();
-            logger.Log("Shutting down...");
+            Logger.Log("Shutting down...");
             await Task.WhenAll(localPeer.Shutdown());
-            logger.Log("Goodbye...");
+            Logger.Log("Goodbye...");
         }
     }
 }

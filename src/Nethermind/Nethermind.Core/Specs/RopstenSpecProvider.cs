@@ -22,15 +22,9 @@ namespace Nethermind.Core.Specs
 {
     public class RopstenSpecProvider : ISpecProvider
     {
-        public IReleaseSpec GetCurrentSpec()
-        {
-            return Byzantium.Instance;
-        }
+        public IReleaseSpec CurrentSpec => Byzantium.Instance;
 
-        public IReleaseSpec GetGenesisSpec()
-        {
-            return TangerineWhistle.Instance;
-        }
+        public IReleaseSpec GenesisSpec => TangerineWhistle.Instance;
 
         public IReleaseSpec GetSpec(BigInteger blockNumber)
         {            

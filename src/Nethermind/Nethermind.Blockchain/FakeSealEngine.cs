@@ -20,7 +20,7 @@ using System;
 using System.Threading.Tasks;
 using Nethermind.Core;
 
-namespace Nethermind.Blockchain.Test
+namespace Nethermind.Blockchain
 {
     public class FakeSealEngine : ISealEngine
     {

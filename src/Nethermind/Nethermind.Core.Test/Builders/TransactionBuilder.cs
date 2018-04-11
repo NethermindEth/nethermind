@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Numerics;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Core.Test.Builders
@@ -27,15 +28,21 @@ namespace Nethermind.Core.Test.Builders
             TestObject = new Transaction();
             TestObject.GasPrice = 1;
             TestObject.GasLimit = 21000;
-            TestObject.To = Address.Zero;
+            TestObject.To = Build.An.Address.FromNumber(1).TestObject;
             TestObject.Nonce = 0;
             TestObject.Value = 1;
             TestObject.Data = new byte[0];
         }
 
-        public TransactionBuilder Signed(IEthereumSigner signer, PrivateKey privateKey)
+        public TransactionBuilder WithNonce(BigInteger nonce)
         {
-            signer.Sign(privateKey, TestObject);
+            TestObject.Nonce = nonce;
+            return this;
+        }
+        
+        public TransactionBuilder Signed(IEthereumSigner signer, PrivateKey privateKey, BigInteger blockNumber)
+        {
+            signer.Sign(privateKey, TestObject, blockNumber);
             TestObject.Hash = Transaction.CalculateHash(TestObject);
             return this;
         }

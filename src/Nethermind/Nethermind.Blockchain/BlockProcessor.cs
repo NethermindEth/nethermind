@@ -139,7 +139,7 @@ namespace Nethermind.Blockchain
                     _storageProvider.ClearCaches();
                     _stateProvider.ClearCaches();
                     _stateProvider.StateRoot = snapshotStateRoot;
-                    _logger?.Log($"REVERTED BLOCKS - STATE ROOT {_stateProvider.StateRoot}");    
+                    _logger?.Log($"REVERTED BLOCKS (JUST VALIDATED FOR MINING) - STATE ROOT {_stateProvider.StateRoot}");    
                 }
                 
                 return processedBlocks;
@@ -152,6 +152,7 @@ namespace Nethermind.Blockchain
                 _stateProvider.ClearCaches();
                 _stateProvider.StateRoot = snapshotStateRoot;
                 _logger?.Log($"REVERTED BLOCKS - STATE ROOT {_stateProvider.StateRoot}");
+                _logger?.Log($"THROWING INVALID BLOCK");
                 throw;
             }
         }
@@ -217,7 +218,8 @@ namespace Nethermind.Blockchain
 
             if (!tryOnly && !_blockValidator.ValidateProcessedBlock(processedBlock, suggestedBlock))
             {
-                _logger?.Log($"PROCESSED BLOCK IS NOT VALID {processedBlock.Hash} ({processedBlock.Number})");    
+                _logger?.Log($"PROCESSED BLOCK IS NOT VALID {processedBlock.Hash} ({processedBlock.Number})");
+                _logger?.Log($"THROWING INVALID BLOCK");
                 throw new InvalidBlockException();
             }
 

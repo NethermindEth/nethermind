@@ -72,7 +72,7 @@ namespace Nethermind.Evm
             byte[] machineCode = transaction.Init;
             byte[] data = transaction.Data ?? new byte[0];
 
-            Address sender = _signer.RecoverAddress(transaction);
+            Address sender = _signer.RecoverAddress(transaction, block.Number);
             _logger?.Log($"SPEC: {spec.GetType().Name}");
             _logger?.Log("IS_CONTRACT_CREATION: " + transaction.IsContractCreation);
             _logger?.Log("IS_MESSAGE_CALL: " + transaction.IsMessageCall);

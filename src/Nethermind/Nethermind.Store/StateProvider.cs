@@ -269,7 +269,7 @@ namespace Nethermind.Store
                 return;
             }
             
-            _logger?.Log("  COMMITTING STATE CHANGES");
+            _logger?.Log($"  COMMITTING STATE CHANGES (at {_currentPosition})");
 
             Debug.Assert(_changes[_currentPosition] != null);
             Debug.Assert(_changes[_currentPosition + 1] == null);

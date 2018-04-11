@@ -22,9 +22,9 @@ namespace Nethermind.Core.Specs
 {
     public interface ISpecProvider
     {
-        IReleaseSpec GetCurrentSpec();
+        IReleaseSpec CurrentSpec { get; }
         
-        IReleaseSpec GetGenesisSpec();
+        IReleaseSpec GenesisSpec { get; }
         
         IReleaseSpec GetSpec(BigInteger blockNumber);
 

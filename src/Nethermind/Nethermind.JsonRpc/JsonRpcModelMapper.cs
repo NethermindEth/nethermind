@@ -74,6 +74,8 @@ namespace Nethermind.JsonRpc
 
         public Transaction MapTransaction(Core.Transaction transaction, Core.Block block)
         {
+            throw new NotImplementedException(); // TODO: look at new transaction recover (that takes block number)
+            
             return new Transaction
             {
                 Hash = new Data(transaction.Hash.Bytes),
@@ -81,7 +83,7 @@ namespace Nethermind.JsonRpc
                 BlockHash = block != null ? new Data(block.Hash.Bytes) : null,
                 BlockNumber = block?.Header != null ? new Quantity(block.Header.Number) : null,
                 TransactionIndex = block?.Transactions != null ? new Quantity(GetTransactionIndex(transaction, block)) : null,
-                From = new Data(_signer.RecoverAddress(transaction).Hex),
+                From = new Data(_signer.RecoverAddress(transaction, block.Number).Hex),
                 To = new Data(transaction.To.Hex),
                 Value = new Quantity(transaction.Value),
                 GasPrice = new Quantity(transaction.GasPrice),

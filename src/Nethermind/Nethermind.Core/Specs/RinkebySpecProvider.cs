@@ -24,15 +24,9 @@ namespace Nethermind.Core.Specs
 {
     public class RinkebySpecProvider : ISpecProvider
     {
-        public IReleaseSpec GetCurrentSpec()
-        {
-            throw new NotImplementedException();
-        }
+        public IReleaseSpec CurrentSpec => throw new NotImplementedException();
 
-        public IReleaseSpec GetGenesisSpec()
-        {
-            throw new NotImplementedException();
-        }
+        public IReleaseSpec GenesisSpec => throw new NotImplementedException();
 
         public IReleaseSpec GetSpec(BigInteger blockNumber)
         {

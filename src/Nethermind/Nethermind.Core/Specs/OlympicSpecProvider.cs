@@ -22,15 +22,9 @@ namespace Nethermind.Core.Specs
 {
     public class OlympicSpecProvider : ISpecProvider
     {
-        public IReleaseSpec GetCurrentSpec()
-        {
-            return Olympic.Instance;
-        }
+        public IReleaseSpec CurrentSpec => Olympic.Instance;
 
-        public IReleaseSpec GetGenesisSpec()
-        {
-            return Olympic.Instance;
-        }
+        public IReleaseSpec GenesisSpec => Olympic.Instance;
 
         public IReleaseSpec GetSpec(BigInteger blockNumber)
         {            

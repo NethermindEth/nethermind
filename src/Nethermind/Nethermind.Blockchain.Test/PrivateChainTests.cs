@@ -48,11 +48,10 @@ namespace Nethermind.Blockchain.Test
             var blockMiningTime = TimeSpan.FromMilliseconds(50);
             var sealEngine = new FakeSealEngine(blockMiningTime);
             var specProvider = RopstenSpecProvider.Instance;
-            var currentSpec = RopstenSpecProvider.Instance.GetCurrentSpec();
 
-            /* stoira & validation */
+            /* store & validation */
             var blockStore = new BlockStore();
-            var difficultyCalculator = new DifficultyCalculator(specProvider); // dynamic spec here will be broken
+            var difficultyCalculator = new DifficultyCalculator(specProvider);
             var headerValidator = new HeaderValidator(difficultyCalculator, blockStore, sealEngine, specProvider, logger);
             var ommersValidator = new OmmersValidator(blockStore, headerValidator, logger);
             var transactionValidator = new TransactionValidator(new SignatureValidator(ChainId.Ropsten));
@@ -62,7 +61,7 @@ namespace Nethermind.Blockchain.Test
             var codeDb = new InMemoryDb();
             var stateDb = new InMemoryDb();
             var stateTree = new StateTree(stateDb);
-            var stateProvider = new StateProvider(stateTree, logger, codeDb); // TODO: remove dynamic spec here
+            var stateProvider = new StateProvider(stateTree, logger, codeDb);
             var storageDbProvider = new DbProvider(logger);
             var storageProvider = new StorageProvider(storageDbProvider, stateProvider, logger);
 
@@ -71,8 +70,8 @@ namespace Nethermind.Blockchain.Test
             var transactionStore = new TransactionStore();
             var blockchain = new BlockTree();
             var blockhashProvider = new BlockhashProvider(blockchain);
-            var virtualMachine = new VirtualMachine(specProvider, stateProvider, storageProvider, blockhashProvider, logger); // TODO: remove dynamic spec here
-            var processor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, ethereumSigner, logger); // TODO: remove dynamic spec here
+            var virtualMachine = new VirtualMachine(specProvider, stateProvider, storageProvider, blockhashProvider, logger);
+            var processor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, ethereumSigner, logger);
             var rewardCalculator = new RewardCalculator(specProvider);
             var blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, processor, storageDbProvider, stateProvider, storageProvider, transactionStore, logger);
             var blockchainProcessor = new BlockchainProcessor(blockchain, sealEngine, transactionStore, difficultyCalculator, blockProcessor, logger);
@@ -87,7 +86,7 @@ namespace Nethermind.Blockchain.Test
                 stateProvider.CreateAccount(allocation.Key, allocation.Value);
             }
 
-            stateProvider.Commit(specProvider.GetGenesisSpec());
+            stateProvider.Commit(specProvider.GenesisSpec);
             chainSpec.Genesis.Header.StateRoot = stateProvider.StateRoot; // TODO: shall it be HeaderSpec and not BlockHeader?
             chainSpec.Genesis.Header.RecomputeHash(); // TODO: shall it be HeaderSpec and not BlockHeader?
             if (chainSpec.Genesis.Hash != new Keccak("0x41941023680923e0fe4d74a34bdac8141f2540e3ae90623718e47d66d1ca4a2d"))
@@ -96,10 +95,11 @@ namespace Nethermind.Blockchain.Test
             }
 
             /* start processing */
-            sealEngine.IsMining = true; // TODO: start / stop?
-            var generator = new FakeTransactionsGenerator(transactionStore, ethereumSigner, blockMiningTime, logger);
-            generator.Start();
+            sealEngine.IsMining = true;
+            var testTransactionsGenerator = new TestTransactionsGenerator(transactionStore, ethereumSigner, blockMiningTime, logger);
+            testTransactionsGenerator.Start();
             blockchainProcessor.Start(chainSpec.Genesis);
+            
             BigInteger roughlyNumberOfBlocks = 6;
             Thread.Sleep(blockMiningTime * (int)roughlyNumberOfBlocks);
             await blockchainProcessor.StopAsync(false);
