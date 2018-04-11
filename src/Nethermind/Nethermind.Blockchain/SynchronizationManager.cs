@@ -32,6 +32,7 @@ namespace Nethermind.Blockchain
 {
     public class SynchronizationManager : ISynchronizationManager
     {
+        private readonly IBlockTree _blockTree;
         private readonly IHeaderValidator _headerValidator;
         private readonly IBlockValidator _blockValidator;
         private readonly ITransactionValidator _transactionValidator;
@@ -41,12 +42,18 @@ namespace Nethermind.Blockchain
 
         private object _lockObject = new object();
 
-        private BigInteger _bestBlockDifficulty;
-        private BigInteger _bestBlockNumber;
-        private Block _bestBlock;
-
-        public SynchronizationManager(IHeaderValidator headerValidator, IBlockValidator blockValidator, ITransactionValidator transactionValidator, ISpecProvider specProvider, Block bestBlockSoFar, BigInteger totalDifficulty, ILogger logger)
+        public SynchronizationManager(
+            IBlockTree blockTree,
+            IHeaderValidator headerValidator,
+            IBlockValidator blockValidator,
+            ITransactionValidator transactionValidator,
+            ISpecProvider specProvider,
+            Block genesisBlock,
+            Block bestBlockSoFar,
+            BigInteger totalDifficulty,
+            ILogger logger)
         {
+            _blockTree = blockTree;
             _headerValidator = headerValidator;
             _blockValidator = blockValidator;
             _transactionValidator = transactionValidator;
@@ -58,9 +65,10 @@ namespace Nethermind.Blockchain
                 throw new EthSynchronizationException("Provided genesis block is not valid");
             }
 
-            _bestBlockDifficulty = totalDifficulty;
-            _bestBlock = bestBlockSoFar;
-            _bestBlockNumber = _bestBlock.Number;
+            BestBlock = bestBlockSoFar.Hash;
+            GenesisBlock = genesisBlock.Hash;
+            BestNumber = bestBlockSoFar.Number;
+            TotalDifficulty = totalDifficulty;
             _logger.Log($"Initialized {nameof(SynchronizationManager)} with genesis block {bestBlockSoFar.Hash}");
         }
 
@@ -102,6 +110,13 @@ namespace Nethermind.Blockchain
                 BlockInfo[] blockInfos = new BlockInfo[numberOfBlocks];
                 blockInfos[0] = _storedBlocks[hash];
                 return blockInfos;
+            }
+
+            Block block = _blockTree.FindBlock(hash, false);
+            if (block != null)
+            {
+                AddBlock(block, new PublicKey(new byte[64])); // work in progress as everywhere now
+                return Find(hash, numberOfBlocks);
             }
 
             return null;
@@ -265,10 +280,10 @@ namespace Nethermind.Blockchain
 
             foreach ((ISynchronizationPeer peer, PeerInfo peerInfo) in _peers)
             {
-                BigInteger missingBlocks = (peerInfo.Number ?? 0) - _bestBlockNumber;
+                BigInteger missingBlocks = (peerInfo.Number ?? 0) - BestNumber;
                 if (missingBlocks > 0)
                 {
-                    Block[] blocks = await peer.GetBlocks(_bestBlock.Hash, missingBlocks);
+                    Block[] blocks = await peer.GetBlocks(BestBlock, missingBlocks);
                     foreach (Block block in blocks)
                     {
                         _logger.Log($"SYNC MANAGER RECEIVED BLOCK {block.Number}");
@@ -309,5 +324,11 @@ namespace Nethermind.Blockchain
             _cancellationTokenSource.Cancel();
             await _syncTask;
         }
+
+        public int ChainId => _specProvider.NetworkId;
+        public Keccak GenesisBlock { get; set; }
+        public Keccak BestBlock { get; set; }
+        public BigInteger BestNumber { get; set; }
+        public BigInteger TotalDifficulty { get; set; }
     }
 }

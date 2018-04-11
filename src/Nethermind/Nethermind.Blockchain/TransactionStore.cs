@@ -54,7 +54,9 @@ namespace Nethermind.Blockchain
 
         public Transaction[] GetAllPending()
         {
-            return _pending.Values.ToArray();
+            var result = _pending.Values.ToArray();
+            _pending.Clear(); // TODO: while testing this just clears
+            return result;
         }
     }
 }

@@ -57,11 +57,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         {
             Logger.Log($"{ProtocolCode} v{ProtocolVersion} subprotocol initializing");
             StatusMessage statusMessage = new StatusMessage();
-            statusMessage.NetworkId = GenesisRopsten.ChainId;
+            statusMessage.NetworkId =  _sync.ChainId;
             statusMessage.ProtocolVersion = ProtocolVersion;
-            statusMessage.TotalDifficulty = GenesisRopsten.Difficulty;
-            statusMessage.BestHash = GenesisRopsten.BestHash;
-            statusMessage.GenesisHash = GenesisRopsten.GenesisHash;
+            statusMessage.TotalDifficulty = _sync.TotalDifficulty;
+            statusMessage.BestHash = _sync.BestBlock;
+            statusMessage.GenesisHash = _sync.GenesisBlock;
             //
 
             _statusSent = true;
@@ -201,8 +201,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         private TaskCompletionSource<Block[]> _blockHeadersTaskCompletion; // queues?
         private TaskCompletionSource<BigInteger> _numberCompletionSource; // work in progress
 
-        private Task<BlockHeadersMessage> _blockHeadersTask;
-
         private void Handle(BlockBodiesMessage blockBodies)
         {
             foreach ((Transaction[] Transactions, BlockHeader[] Ommers) body in blockBodies.Bodies)
@@ -237,6 +235,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 Debug.Assert(_numberCompletionSource != null);
                 // assume roughly it should not be null
                 _numberCompletionSource.SetResult(blockHeaders.BlockHeaders[0].Number);
+                _numberCompletionSource = null;
             }
         }
 
@@ -309,6 +308,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             msg.Reverse = 0;
             msg.Skip = 0;
 
+            _numberCompletionSource = new TaskCompletionSource<BigInteger>();
             Send(msg);
             return await _numberCompletionSource.Task;
         }

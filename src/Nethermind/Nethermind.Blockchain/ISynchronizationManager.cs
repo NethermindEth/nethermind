@@ -38,5 +38,11 @@ namespace Nethermind.Blockchain
         void RemovePeer(ISynchronizationPeer synchronizationPeer);
         void Start();
         Task StopAsync();
+        
+        int ChainId { get; }
+        Keccak GenesisBlock { get; }
+        Keccak BestBlock { get; }
+        BigInteger BestNumber { get; }
+        BigInteger TotalDifficulty { get; }
     }
 }

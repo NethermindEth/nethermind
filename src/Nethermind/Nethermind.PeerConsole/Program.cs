@@ -133,8 +133,8 @@ namespace Nethermind.PeerConsole
         private static void InitBlockchain(ChainSpec chainSpec)
         {
             /* spec */
-            var blockMiningTime = TimeSpan.FromMilliseconds(10000);
-            var transactionDelay = TimeSpan.FromMilliseconds(10000);
+            var blockMiningTime = TimeSpan.FromMilliseconds(60000);
+            var transactionDelay = TimeSpan.FromMilliseconds(60000);
             var specProvider = RopstenSpecProvider.Instance;
             var difficultyCalculator = new DifficultyCalculator(specProvider);
             // var sealEngine = new EthashSealEngine(new Ethash());
@@ -181,9 +181,10 @@ namespace Nethermind.PeerConsole
             stateProvider.CreateAccount(testTransactionsGenerator.SenderAddress, 1000.Ether());
             stateProvider.Commit(specProvider.GenesisSpec);
             testTransactionsGenerator.Start();
-            
-            chainSpec.Genesis.Header.StateRoot = stateProvider.StateRoot;
-            chainSpec.Genesis.Header.RecomputeHash();
+
+            Block genesis = chainSpec.Genesis;
+            genesis.Header.StateRoot = stateProvider.StateRoot;
+            genesis.Header.RecomputeHash();
             // we are adding test transactions account so the state root will change (not an actual ropsten at the moment)
 //            var expectedGenesisHash = "0x41941023680923e0fe4d74a34bdac8141f2540e3ae90623718e47d66d1ca4a2d";
 //            if (chainSpec.Genesis.Hash != new Keccak(expectedGenesisHash))
@@ -193,12 +194,19 @@ namespace Nethermind.PeerConsole
 
             /* start test processing */
             sealEngine.IsMining = true;
-            blockTree.AddBlock(chainSpec.Genesis);
-            _blockchainProcessor.Start(chainSpec.Genesis);
+            blockTree.AddBlock(genesis);
+            _blockchainProcessor.Start(genesis);
 
-            var bestBlock = chainSpec.Genesis;
-            var totalDifficulty = chainSpec.Genesis.Header.Difficulty;
-            _syncManager = new SynchronizationManager(headerValidator, blockValidator, txValidator, specProvider, bestBlock, totalDifficulty, Logger);
+            _syncManager = new SynchronizationManager(
+                blockTree,
+                headerValidator,
+                blockValidator,
+                txValidator,
+                specProvider,
+                genesis,
+                genesis,
+                genesis.Header.Difficulty,
+                Logger);
             _syncManager.Start();
         }
 
