@@ -31,6 +31,7 @@ namespace Nethermind.Blockchain
         void Start(Block genesisBlock);
         Task StopAsync(bool processRemainingBlocks = false);
         void SuggestBlock(Block block);
+        void Process(Block block); // TODO: testing performance
         event EventHandler<BlockEventArgs> HeadBlockChanged;
     }
 }

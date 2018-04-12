@@ -78,6 +78,11 @@ namespace Nethermind.PeerConsole
                 "specfile",
                 "ChainSpec file name (from Chains directory)");
             
+            CommandOption isMining = commandLineApplication.Option(
+                "-m|--mining",
+                "mining",
+                CommandOptionType.NoValue);
+            
             commandLineApplication.HelpOption("-?|-h|--help");
             
             commandLineApplication.OnExecute(async () =>
@@ -91,26 +96,26 @@ namespace Nethermind.PeerConsole
 //                    _privateKey = new PrivateKey("010102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f");
 //                }
                 
-                await Run(chainSpecArg.Value, int.Parse(portArg.Value), new PrivateKey(keyArg.Value));
+                await Run(chainSpecArg.Value, int.Parse(portArg.Value), new PrivateKey(keyArg.Value), isMining.HasValue());
                 return 0;
             });
             
             commandLineApplication.Execute(args);
         }
 
-        private static async Task Run(string chainSpecFile, int port, PrivateKey privateKey)
+        private static async Task Run(string chainSpecFile, int port, PrivateKey privateKey, bool isMining)
         {
             _listenPort = port;
             _privateKey = privateKey;
-            await InitTestnet(chainSpecFile);
+            await InitTestnet(chainSpecFile, isMining);
         }
 
-        private static async Task InitTestnet(string chainSpecFile)
+        private static async Task InitTestnet(string chainSpecFile, bool isMining)
         {
             /* tools */
             
             var chainSpec = LoadChainSpec(chainSpecFile);
-            InitBlockchain(chainSpec);            
+            InitBlockchain(chainSpec, isMining);            
             await InitNet(chainSpec);
         }
 
@@ -130,7 +135,7 @@ namespace Nethermind.PeerConsole
             return chainSpec;
         }
 
-        private static void InitBlockchain(ChainSpec chainSpec)
+        private static void InitBlockchain(ChainSpec chainSpec, bool isMining)
         {
             /* spec */
             var blockMiningTime = TimeSpan.FromMilliseconds(60000);
@@ -193,7 +198,7 @@ namespace Nethermind.PeerConsole
 //            }
 
             /* start test processing */
-            sealEngine.IsMining = true;
+            sealEngine.IsMining = isMining;
             blockTree.AddBlock(genesis);
             _blockchainProcessor.Start(genesis);
 

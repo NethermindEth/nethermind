@@ -291,6 +291,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         public async Task<Block[]> GetBlocks(Keccak blockHash, BigInteger maxBlocks)
         {
+            var msg = new GetBlockHeadersMessage();
+            msg.MaxHeaders = maxBlocks;
+            msg.Reverse = 1;
+            msg.Skip = 0;
+            msg.StartingBlockHash = blockHash;
+            
             _blockHeadersTaskCompletion = new TaskCompletionSource<Block[]>();
             return await _blockHeadersTaskCompletion.Task;
         }

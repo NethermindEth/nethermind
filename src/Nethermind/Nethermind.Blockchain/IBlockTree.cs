@@ -24,11 +24,12 @@ namespace Nethermind.Blockchain
 {
     public interface IBlockTree
     {
-        Keccak GenesisHash { get; set; } // TODO: move from processor
+        Keccak GenesisHash { get; } // TODO: move from processor
         IChain MainChain { get; set; } // TODO: move from processor
 
         void AddBlock(Block block);
         Block FindBlock(Keccak blockHash, bool mainChainOnly);
+        Block[] FindBlocks(Keccak blockHash, int numberOfBlocks, int skip, bool reverse);
         Block FindBlock(BigInteger blockNumber);
         bool IsMainChain(Keccak blockHash);
         void MoveToMain(Keccak blockHash);

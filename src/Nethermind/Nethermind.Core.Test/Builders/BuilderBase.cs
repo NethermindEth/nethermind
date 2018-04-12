@@ -16,6 +16,8 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Collections.Generic;
+
 namespace Nethermind.Core.Test.Builders
 {
     /// <summary>
@@ -24,6 +26,21 @@ namespace Nethermind.Core.Test.Builders
     /// <typeparam name="T"></typeparam>
     public abstract class BuilderBase<T>
     {
-        public T TestObject { get; protected set; }
+        protected T TestObjectInternal { get; set; }
+
+        public T TestObject
+        {
+            get
+            {
+                BeforeReturn();
+                return TestObjectInternal;
+            }
+            
+            protected set => TestObjectInternal = value;
+        }
+
+        protected virtual void BeforeReturn()
+        {
+        }
     }
 }

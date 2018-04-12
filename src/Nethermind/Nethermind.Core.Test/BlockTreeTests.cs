@@ -16,6 +16,8 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
+using System.Numerics;
 using Nethermind.Blockchain;
 using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
@@ -66,6 +68,124 @@ namespace Nethermind.Core.Test
             blockStore.AddBlock(block);
             Block found = blockStore.FindBlock(block.Hash, true);
             Assert.IsNull(found);
+        }
+        
+        [Test]
+        public void Find_by_number_basic()
+        {
+            BlockTree blockStore = new BlockTree();
+            AddToMain(blockStore, 0);
+            AddToMain(blockStore, 1);
+            Block expected = AddToMain(blockStore, 2);
+            AddToMain(blockStore, 3);
+            
+            Block found = blockStore.FindBlock(2);
+            Assert.AreSame(expected, found);
+        }
+        
+        [Test]
+        public void Find_by_number_missing()
+        {
+            BlockTree blockStore = new BlockTree();
+            AddToMain(blockStore, 0);
+            AddToMain(blockStore, 1);
+            AddToMain(blockStore, 2);
+            AddToMain(blockStore, 3);
+            
+            Block found = blockStore.FindBlock(5);
+            Assert.IsNull(found);
+        }
+        
+        [Test]
+        public void Find_by_number_negative()
+        {
+            BlockTree blockStore = new BlockTree();
+            AddToMain(blockStore, 0);
+            AddToMain(blockStore, 1);
+            AddToMain(blockStore, 2);
+            AddToMain(blockStore, 3);
+            
+            Assert.Throws<ArgumentException>(() => blockStore.FindBlock(-1));
+        }
+        
+        [Test]
+        public void Find_sequence_basic()
+        {
+            BlockTree blockStore = new BlockTree();
+            AddToMain(blockStore, 0);
+            Block block = AddToMain(blockStore, 1);
+            AddToMain(blockStore, 2);
+            Block lastBlock = AddToMain(blockStore, 3);
+            
+            Block[] blocks = blockStore.FindBlocks(block.Hash, 3, 0, false);
+            Assert.AreEqual(3, blocks.Length);
+            Assert.AreSame(block, blocks[0]);
+            Assert.AreSame(lastBlock, blocks[2]);
+        }
+        
+        [Test]
+        public void Find_sequence_reverse()
+        {
+            BlockTree blockStore = new BlockTree();
+            Block lastBlock = AddToMain(blockStore, 0);
+            AddToMain(blockStore, 1);
+            Block block = AddToMain(blockStore, 2);
+            AddToMain(blockStore, 3);
+            
+            Block[] blocks = blockStore.FindBlocks(block.Hash, 3, 0, true);
+            Assert.AreEqual(3, blocks.Length);
+            Assert.AreSame(block, blocks[0]);
+            Assert.AreSame(lastBlock, blocks[2]);
+        }
+        
+        [Test]
+        public void Find_sequence_zero_blocks()
+        {
+            BlockTree blockStore = new BlockTree();
+            AddToMain(blockStore, 0);
+            Block block = AddToMain(blockStore, 1);
+            AddToMain(blockStore, 2);
+            AddToMain(blockStore, 3);
+            
+            Block[] blocks = blockStore.FindBlocks(block.Hash, 0, 0, false);
+            Assert.AreEqual(0, blocks.Length);
+        }
+        
+        [Test]
+        public void Find_sequence_basic_skip()
+        {
+            BlockTree blockStore = new BlockTree();
+            AddToMain(blockStore, 0);
+            Block block = AddToMain(blockStore, 1);
+            AddToMain(blockStore, 2);
+            AddToMain(blockStore, 3);
+            AddToMain(blockStore, 4);
+            
+            Block[] blocks = blockStore.FindBlocks(block.Hash, 3, 1, false);
+            Assert.AreEqual(3, blocks.Length);
+        }
+        
+        [Test]
+        public void Find_sequence_some_empty()
+        {
+            BlockTree blockStore = new BlockTree();
+            AddToMain(blockStore, 0);
+            Block block = AddToMain(blockStore, 1);
+            AddToMain(blockStore, 2);
+            
+            AddToMain(blockStore, 4);
+            
+            Block[] blocks = blockStore.FindBlocks(block.Hash, 3, 0, false);
+            Assert.AreEqual(3, blocks.Length);
+            Assert.IsNull(blocks[2]);
+        }
+
+        private static Block AddToMain(BlockTree blockStore, BigInteger number)
+        {
+            Block block = Build.A.Block.WithNumber(number).TestObject;
+            blockStore.AddBlock(block);
+            blockStore.MoveToMain(block.Hash);
+            return block;
         }
     }
 }

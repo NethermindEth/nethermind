@@ -20,7 +20,6 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Numerics;
-using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
@@ -224,18 +223,6 @@ namespace Nethermind.Evm
             };
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static Address ToAddress(byte[] word)
-        {
-            if (word.Length < 20)
-            {
-                word = word.PadLeft(20);
-            }
-
-            return word.Length == 20 ? new Address(word) : new Address(word.Slice(word.Length - 20, 20));
-        }
-
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void UpdateGas(long gasCost, ref long gasAvailable)
         {
             _logger?.Log($"  UPDATE GAS (-{gasCost})");
@@ -247,7 +234,6 @@ namespace Nethermind.Evm
             gasAvailable -= gasCost;
         }
 
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void RefundGas(long refund, ref long gasAvailable)
         {
             _logger?.Log($"  UPDATE GAS (+{refund})");
@@ -551,10 +537,15 @@ namespace Nethermind.Evm
                 return bytesOnStack[stackHead].ToSignedBigInteger(32);
             }
 
-            // TODO: outside and inline?
             Address PopAddress()
             {
-                return ToAddress(PopBytes());
+                byte[] bytes = PopBytes();
+                if (bytes.Length < 20)
+                {
+                    bytes = bytes.PadLeft(20);
+                }
+
+                return bytes.Length == 20 ? new Address(bytes) : new Address(bytes.Slice(bytes.Length - 20, 20));
             }
 
             void UpdateMemoryCost(BigInteger position, BigInteger length)
@@ -1444,7 +1435,10 @@ namespace Nethermind.Evm
                             false);
 
                         UpdateCurrentState();
-                        LogInstructionResult(instruction, gasBefore);
+                        if (_logger != null)
+                        {
+                            LogInstructionResult(instruction, gasBefore);
+                        }
 
                         return new CallResult(callState);
                     }
@@ -1459,7 +1453,10 @@ namespace Nethermind.Evm
                         byte[] returnData = evmState.Memory.Load(memoryPos, length);
 
                         UpdateCurrentState();
-                        LogInstructionResult(instruction, gasBefore);
+                        if (_logger != null)
+                        {
+                            LogInstructionResult(instruction, gasBefore);
+                        }
 
                         return new CallResult(returnData);
                     }
@@ -1605,7 +1602,10 @@ namespace Nethermind.Evm
                             false);
 
                         UpdateCurrentState();
-                        LogInstructionResult(instruction, gasBefore);
+                        if (_logger != null)
+                        {
+                            LogInstructionResult(instruction, gasBefore);
+                        }
 
                         return new CallResult(callState);
                     }
@@ -1625,7 +1625,10 @@ namespace Nethermind.Evm
                         byte[] errorDetails = evmState.Memory.Load(memoryPos, length);
 
                         UpdateCurrentState();
-                        LogInstructionResult(instruction, gasBefore);
+                        if (_logger != null)
+                        {
+                            LogInstructionResult(instruction, gasBefore);
+                        }
 
                         return new CallResult(errorDetails, true);
                     }
@@ -1672,7 +1675,10 @@ namespace Nethermind.Evm
                         }
 
                         UpdateCurrentState();
-                        LogInstructionResult(instruction, gasBefore);
+                        if (_logger != null)
+                        {
+                            LogInstructionResult(instruction, gasBefore);
+                        }
 
                         return CallResult.Empty;
                     }
@@ -1684,7 +1690,10 @@ namespace Nethermind.Evm
                     }
                 }
 
-                LogInstructionResult(instruction, gasBefore);
+                if (_logger != null)
+                {
+                    LogInstructionResult(instruction, gasBefore);
+                }
             }
 
             UpdateCurrentState();

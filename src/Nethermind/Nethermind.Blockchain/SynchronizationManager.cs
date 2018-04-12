@@ -261,26 +261,30 @@ namespace Nethermind.Blockchain
             _peers.GetOrAdd(peer, p => new PeerInfo(p, getNumberTask.Result));
         }
 
-        private int _round = 0;
+        private int _round; // TODO: remove when no longer needed for diagnostics
 
         private async Task RunRound(CancellationToken cancellationToken)
         {
-            _logger.Log($"SYNC MANAGER ROUND {_round++}");
+            _logger.Log($"SYNC MANAGER ROUND {_round++}, {_peers.Count} " + (_peers.Count == 1 ? "PEER" : "PEERS"));
             List<Task> refreshTasks = new List<Task>();
             foreach (KeyValuePair<ISynchronizationPeer, PeerInfo> keyValuePair in _peers)
             {
                 refreshTasks.Add(RefreshPeerInfo(keyValuePair.Key));
             }
 
+            _logger.Log($"SYNC MANAGER WAITING FOR REFRESH");
             await Task.WhenAny(Task.WhenAll(refreshTasks), AsTask(cancellationToken));
             if (cancellationToken.IsCancellationRequested)
             {
+                _logger.Log($"SYNC MANAGER CANCELLED");
                 return;
             }
 
+            _logger.Log($"SYNC MANAGER WILL GET MISSING BLOCKS NOW FROM {_peers.Count} PEERS");
             foreach ((ISynchronizationPeer peer, PeerInfo peerInfo) in _peers)
             {
                 BigInteger missingBlocks = (peerInfo.Number ?? 0) - BestNumber;
+                _logger.Log($"SYNC MANAGER REQUESTING {missingBlocks} BLOCKS FROM PEER");
                 if (missingBlocks > 0)
                 {
                     Block[] blocks = await peer.GetBlocks(BestBlock, missingBlocks);

@@ -16,6 +16,8 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Numerics;
+
 namespace Nethermind.Core.Test.Builders
 {
     public class BlockBuilder : BuilderBase<Block>
@@ -24,6 +26,18 @@ namespace Nethermind.Core.Test.Builders
         {
             BlockHeader header = Build.A.BlockHeader.TestObject;
             TestObject = new Block(header);
+        }
+
+        public BlockBuilder WithNumber(BigInteger number)
+        {
+            TestObject.Header.Number = number;
+            return this;
+        }
+
+        protected override void BeforeReturn()
+        {
+            base.BeforeReturn();
+            TestObjectInternal.Header.RecomputeHash();
         }
     }
 }

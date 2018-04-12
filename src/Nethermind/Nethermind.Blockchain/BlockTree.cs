@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
@@ -29,8 +30,9 @@ namespace Nethermind.Blockchain
     {
         private readonly Dictionary<Keccak, Block> _branches = new Dictionary<Keccak, Block>();
         private readonly Dictionary<Keccak, Block> _mainChain = new Dictionary<Keccak, Block>();
+        private readonly Block[] _canonicalChain = new Block[10 * 1000 * 1000]; // 40MB
 
-        public Keccak GenesisHash { get; set; }
+        public Keccak GenesisHash => FindBlock(0)?.Hash;
         public IChain MainChain { get; set; }
 
         public void AddBlock(Block block)
@@ -48,10 +50,32 @@ namespace Nethermind.Blockchain
 
             return block;
         }
+        
+        public Block[] FindBlocks(Keccak blockHash, int numberOfBlocks, int skip, bool reverse)
+        {
+            Block[] result = new Block[numberOfBlocks];
+            Block block = FindBlock(blockHash, true);
+            if (block == null)
+            {
+                return result;
+            }
 
+            for (int i = 0; i < numberOfBlocks; i++)
+            {
+                result[i] = _canonicalChain[(int)block.Number + (reverse ? -1 : 1) * (skip + i)];
+            }
+
+            return result;
+        }
+        
         public Block FindBlock(BigInteger blockNumber)
         {
-            return _mainChain.Values.FirstOrDefault(x => x.Header?.Number == blockNumber);
+            if (blockNumber.Sign < 0)
+            {
+                throw new ArgumentException($"{nameof(blockNumber)} must be greater or equal zero and is {blockNumber}", nameof(blockNumber));
+            }
+            
+            return _canonicalChain[(int)blockNumber];
         }
 
         public bool IsMainChain(Keccak blockHash)
@@ -61,7 +85,10 @@ namespace Nethermind.Blockchain
 
         public void MoveToBranch(Keccak blockHash)
         {
-            _branches.Add(blockHash, _mainChain[blockHash]);
+            Block block = _mainChain[blockHash];
+            _canonicalChain[(int)block.Number] = null;
+            
+            _branches.Add(blockHash, block);
             _mainChain.Remove(blockHash);
         }
 
@@ -79,7 +106,9 @@ namespace Nethermind.Blockchain
 
         public void MoveToMain(Keccak blockHash)
         {
-            _mainChain.Add(blockHash, _branches[blockHash]);
+            Block block = _branches[blockHash];
+            _canonicalChain[(int)block.Number] = block;
+            _mainChain.Add(blockHash, block);
             _branches.Remove(blockHash);
         }
     }

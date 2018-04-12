@@ -42,13 +42,13 @@ namespace Ethereum.Test.Base
 {
     public class BlockchainTestBase
     {
-        private ILogger _logger;
+        private static ILogger _logger = new ConsoleLogger();
         private static readonly ISealEngine SealEngine = new EthashSealEngine(new Ethash()); // temporarily keep reusing the same one as otherwise it would recreate cache for each test
 
         [SetUp]
         public void Setup()
         {
-            Setup(new ConsoleLogger());
+            Setup(_logger);
         }
 
         public static IEnumerable<BlockchainTest> LoadTests(string testSet)
@@ -298,7 +298,7 @@ namespace Ethereum.Test.Base
             };
                 
             blockTree.AddBlock(genesisBlock);
-            blockchainProcessor.Start(genesisBlock);
+            blockchainProcessor.Process(genesisBlock);
 
             for (int i = 0; i < correctRlpsBlocks.Count; i++)
             {
@@ -319,7 +319,7 @@ namespace Ethereum.Test.Base
                     // TODO: mimic the actual behaviour where block goes through validating sync manager?
                     if (blockValidator.ValidateSuggestedBlock(correctRlpsBlocks[i].Block))
                     {
-                        blockchainProcessor.SuggestBlock(correctRlpsBlocks[i].Block);
+                        blockchainProcessor.Process(correctRlpsBlocks[i].Block);
                     }
                     else
                     {
@@ -337,7 +337,7 @@ namespace Ethereum.Test.Base
                 stopwatch?.Stop(); // TODO: this stopwatch does not have any meaning any more (temporarily)
             }
 
-            await blockchainProcessor.StopAsync(true);
+            //await blockchainProcessor.StopAsync(true);
 
             RunAssertions(test, blockchainProcessor.HeadBlock, storageProvider, stateProvider);
         }

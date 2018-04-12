@@ -113,7 +113,7 @@ namespace Nethermind.Blockchain
                     }
                 },
                 _cancellationSource.Token,
-                TaskCreationOptions.LongRunning,
+                TaskCreationOptions.None,
                 TaskScheduler.Default).ContinueWith(t =>
             {
                 if (t.IsFaulted)
@@ -248,6 +248,8 @@ namespace Nethermind.Blockchain
 
         private void Process(Block suggestedBlock, bool forMining)
         {
+            Debug.Assert(suggestedBlock.Number == 0 || _blockTree.FindParent(suggestedBlock) != null, "Got an orphaned block for porcessing.");
+            
             _logger?.Log("-------------------------------------------------------------------------------------");
             if (!forMining)
             {

@@ -1,6 +1,5 @@
 ﻿using System.Numerics;
 using Nethermind.Core.Extensions;
-using Nethermind.Evm;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test
