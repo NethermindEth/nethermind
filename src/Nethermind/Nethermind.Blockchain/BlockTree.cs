@@ -17,8 +17,9 @@
  */
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Linq;
+using System.Diagnostics;
 using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -28,16 +29,21 @@ namespace Nethermind.Blockchain
     // TODO: work in progress
     public class BlockTree : IBlockTree
     {
-        private readonly Dictionary<Keccak, Block> _branches = new Dictionary<Keccak, Block>();
-        private readonly Dictionary<Keccak, Block> _mainChain = new Dictionary<Keccak, Block>();
-        private readonly Block[] _canonicalChain = new Block[10 * 1000 * 1000]; // 40MB
+        private readonly ConcurrentDictionary<Keccak, Block> _branches = new ConcurrentDictionary<Keccak, Block>();
+        private readonly ConcurrentDictionary<Keccak, Block> _mainChain = new ConcurrentDictionary<Keccak, Block>();
+        private readonly ConcurrentDictionary<int, Block> _canonicalChain = new ConcurrentDictionary<int, Block>();
 
         public Keccak GenesisHash => FindBlock(0)?.Hash;
         public IChain MainChain { get; set; }
 
         public void AddBlock(Block block)
         {
-            _branches.Add(block.Header.Hash, block);
+            _branches.AddOrUpdate(block.Header.Hash, block, (h, b) =>
+            {
+                //https://stackoverflow.com/questions/17926519/concurrent-dictionary-addorupdate-vs-index-add?utm_medium=organic&utm_source=google_rich_qa&utm_campaign=google_rich_qa
+                Debug.Assert(block == b, "Assuming it would not happen, if never fired use indexer instead");
+                return b;
+            });
         }
 
         public Block FindBlock(Keccak blockHash, bool mainChainOnly)
@@ -50,32 +56,34 @@ namespace Nethermind.Blockchain
 
             return block;
         }
-        
+
         public Block[] FindBlocks(Keccak blockHash, int numberOfBlocks, int skip, bool reverse)
         {
             Block[] result = new Block[numberOfBlocks];
-            Block block = FindBlock(blockHash, true);
-            if (block == null)
+            Block startBlock = FindBlock(blockHash, true);
+            if (startBlock == null)
             {
                 return result;
             }
 
             for (int i = 0; i < numberOfBlocks; i++)
             {
-                result[i] = _canonicalChain[(int)block.Number + (reverse ? -1 : 1) * (skip + i)];
+                _canonicalChain.TryGetValue((int)startBlock.Number + (reverse ? -1 : 1) * (skip + i), out Block ithBlock);
+                result[i] = ithBlock;
             }
 
             return result;
         }
-        
+
         public Block FindBlock(BigInteger blockNumber)
         {
             if (blockNumber.Sign < 0)
             {
                 throw new ArgumentException($"{nameof(blockNumber)} must be greater or equal zero and is {blockNumber}", nameof(blockNumber));
             }
-            
-            return _canonicalChain[(int)blockNumber];
+
+            _canonicalChain.TryGetValue((int)blockNumber, out Block block);
+            return block;
         }
 
         public bool IsMainChain(Keccak blockHash)
@@ -87,9 +95,17 @@ namespace Nethermind.Blockchain
         {
             Block block = _mainChain[blockHash];
             _canonicalChain[(int)block.Number] = null;
-            
-            _branches.Add(blockHash, block);
-            _mainChain.Remove(blockHash);
+
+            _branches.AddOrUpdate(blockHash, block, (h, b) =>
+            {
+                Debug.Assert(block == b, "Assuming it would not happen, if never fired use indexer instead");
+                return b;
+            });
+
+            if (!_mainChain.TryRemove(blockHash, out Block _))
+            {
+                throw new InvalidOperationException($"this should not happen as we should only be removing in {nameof(BlockchainProcessor)}");
+            }
         }
 
         private readonly HashSet<Keccak> _processed = new HashSet<Keccak>();
@@ -98,7 +114,7 @@ namespace Nethermind.Blockchain
         {
             _processed.Add(blockHash);
         }
-        
+
         public bool WasProcessed(Keccak blockHash)
         {
             return _processed.Contains(blockHash);
@@ -108,8 +124,17 @@ namespace Nethermind.Blockchain
         {
             Block block = _branches[blockHash];
             _canonicalChain[(int)block.Number] = block;
-            _mainChain.Add(blockHash, block);
-            _branches.Remove(blockHash);
+
+            _mainChain.AddOrUpdate(blockHash, block, (h, b) =>
+            {
+                Debug.Assert(block == b, "updating with a different block?");
+                return b;
+            });
+
+            if (!_branches.TryRemove(blockHash, out Block _))
+            {
+                throw new InvalidOperationException($"this should not happen as we should only be removing in {nameof(BlockchainProcessor)}");
+            }
         }
     }
 }

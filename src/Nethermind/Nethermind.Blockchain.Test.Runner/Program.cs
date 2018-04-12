@@ -61,7 +61,7 @@ namespace Nethermind.Blockchain.Test.Runner
                     ShouldLog.State = false;
                     ShouldLog.EvmStack = false;
                     ShouldLog.Processing = false;
-                    Run(new PerfTest(), testWildcard);
+                    await Run(new PerfTest(), testWildcard);
 #endif
                 }
                 else
@@ -73,6 +73,8 @@ namespace Nethermind.Blockchain.Test.Runner
                     await Run(new BugHunter(), testWildcard);
                 }
 
+                Console.WriteLine($"HELLO HELLO HELLO?");
+                
                 foreach (string failingTest in AllFailingTests)
                 {
                     ConsoleColor mem = Console.ForegroundColor;
@@ -131,7 +133,8 @@ namespace Nethermind.Blockchain.Test.Runner
             await Run(bugHunter, "stWalletTest", testWildcard);
             await Run(bugHunter, "stZeroCallsRevert", testWildcard);
             await Run(bugHunter, "stZeroCallsTest", testWildcard);
-
+            await Run(bugHunter, "stZeroKnowledge", testWildcard);
+            await Run(bugHunter, "stZeroKnowledge2", testWildcard);
             await Run(bugHunter, "bcBlockGasLimitTest", testWildcard);
             await Run(bugHunter, "bcExploitTest", testWildcard);
             await Run(bugHunter, "bcForgedTest", testWildcard);
@@ -147,14 +150,11 @@ namespace Nethermind.Blockchain.Test.Runner
             await Run(bugHunter, "bcValidBlockTest", testWildcard);
             await Run(bugHunter, "bcWalletTest", testWildcard);
 
-            await Run(bugHunter, "stZeroKnowledge", testWildcard);
-            await Run(bugHunter, "stZeroKnowledge2", testWildcard);
-
-            //            /* transition tests */
-            await Run(bugHunter,"bcEIP158ToByzantium", testWildcard);
-            await Run(bugHunter,"bcFrontierToHomestead", testWildcard);
-            await Run(bugHunter,"bcHomesteadToDao", testWildcard);
-            await Run(bugHunter,"bcHomesteadToEIP150", testWildcard);
+            /* transition tests */
+            await Run(bugHunter, "bcEIP158ToByzantium", testWildcard);
+            await Run(bugHunter, "bcFrontierToHomestead", testWildcard);
+            await Run(bugHunter, "bcHomesteadToDao", testWildcard);
+            await Run(bugHunter, "bcHomesteadToEIP150", testWildcard);
         }
     }
 }

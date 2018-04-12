@@ -89,6 +89,7 @@ namespace Nethermind.Blockchain.Test.Runner
             {
                 Console.WriteLine();
             }
+
             return new CategoryResult(totalMs, failingTests.ToArray());
         }
     }
