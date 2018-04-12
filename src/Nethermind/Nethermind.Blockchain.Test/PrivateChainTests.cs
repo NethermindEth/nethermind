@@ -35,7 +35,6 @@ using NUnit.Framework;
 namespace Nethermind.Blockchain.Test
 {
     [TestFixture]
-    [Category("INTEGRATION")]
     public class PrivateChainTests
     {
         [Test]
@@ -45,7 +44,7 @@ namespace Nethermind.Blockchain.Test
             var logger = new ConsoleLogger();
 
             /* spec */
-            var blockMiningTime = TimeSpan.FromMilliseconds(50);
+            var blockMiningTime = TimeSpan.FromMilliseconds(500);
             var sealEngine = new FakeSealEngine(blockMiningTime);
             var specProvider = RopstenSpecProvider.Instance;
 

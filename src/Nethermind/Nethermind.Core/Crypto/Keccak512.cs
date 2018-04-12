@@ -17,7 +17,6 @@
  */
 
 using System;
-using System.Threading;
 using Nethermind.Core.Encoding;
 using Nethermind.HashLib;
 
@@ -27,8 +26,6 @@ namespace Nethermind.Core.Crypto
     public struct Keccak512 : IEquatable<Keccak512>
     {
         private const int Size = 64;
-
-        [ThreadStatic] private static HashLib.Crypto.SHA3.Keccak512 _hash;
 
         public Keccak512(Hex hex)
         {
@@ -96,7 +93,8 @@ namespace Nethermind.Core.Crypto
                 throw new NotSupportedException();
             }
 
-            return _hash.ComputeBytesToUint(input);
+            HashLib.Crypto.SHA3.Keccak512 hash  = new HashLib.Crypto.SHA3.Keccak512();
+            return hash.ComputeBytesToUint(input);
         }
 
         public static uint[] ComputeUIntsToUInts(uint[] input)
@@ -106,7 +104,8 @@ namespace Nethermind.Core.Crypto
                 throw new NotSupportedException();
             }
 
-            return _hash.ComputeUIntsToUint(input);
+            HashLib.Crypto.SHA3.Keccak512 hash = new HashLib.Crypto.SHA3.Keccak512();
+            return hash.ComputeUIntsToUint(input);
         }
 
         private static HashLib.Crypto.SHA3.Keccak512 Init()
@@ -116,8 +115,8 @@ namespace Nethermind.Core.Crypto
         
         private static Keccak512 InternalCompute(byte[] input)
         {
-            LazyInitializer.EnsureInitialized(ref _hash, Init);
-            return new Keccak512(_hash.ComputeBytes(input).GetBytes());
+            HashLib.Crypto.SHA3.Keccak512 hash = new HashLib.Crypto.SHA3.Keccak512();
+            return new Keccak512(hash.ComputeBytes(input).GetBytes());
         }
 
         public static Keccak512 Compute(string input)

@@ -17,15 +17,12 @@
  */
 
 using System;
-using System.Collections.Generic;
 using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Xml.Schema;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Mining;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test
@@ -33,28 +30,6 @@ namespace Nethermind.Blockchain.Test
     [TestFixture]
     public class EthashSealEngineTests
     {
-        private ITransactionStore _noPending;
-        private IBlockchainProcessor _alwaysOk;
-
-//        [SetUp]
-//        public void Setup()
-//        {
-//            _noPending = Substitute.For<ITransactionStore>();
-//            _noPending.GetAllPending().Returns(ci => new Transaction[0]);
-//
-//            _alwaysOk = Substitute.For<IBlockchainProcessor>();
-//            _alwaysOk.Try(Arg.Any<Block>())
-//                .Returns(ci => ci.Arg<Block>())
-//                .AndDoes(ci =>
-//                {
-//                    ci.Arg<Block>().Header.TransactionsRoot = Keccak.Zero;
-//                    ci.Arg<Block>().Header.ReceiptsRoot = Keccak.Zero;
-//                    ci.Arg<Block>().Header.OmmersHash = Keccak.Zero;
-//                    ci.Arg<Block>().Header.StateRoot = Keccak.Zero;
-//                    ci.Arg<Block>().Header.Bloom = Bloom.Empty;
-//                });
-//        }
-
         [Test]
         public async Task Can_mine()
         {
