@@ -19,13 +19,14 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading.Tasks;
 using Ethereum.Test.Base;
 
 namespace Nethermind.Blockchain.Test.Runner
 {
     public class BugHunter : BlockchainTestBase, ITestInRunner
     {
-        public CategoryResult RunTests(string subset, string testWildcard, int iterations = 1)
+        public async Task<CategoryResult> RunTests(string subset, string testWildcard, int iterations = 1)
         {
             ConsoleColor defaultColor = Console.ForegroundColor;
             List<string> failingTests = new List<string>();
@@ -44,7 +45,7 @@ namespace Nethermind.Blockchain.Test.Runner
                 try
                 {
                     Console.Write($"{test.Name,-80} ");
-                    RunTest(test);
+                    await RunTest(test);
                     Console.ForegroundColor = ConsoleColor.Green;
                     Console.WriteLine("PASS");
                     Console.ForegroundColor = defaultColor;
@@ -64,7 +65,7 @@ namespace Nethermind.Blockchain.Test.Runner
                         }
 
                         Setup(logger);
-                        RunTest(test);
+                        await RunTest(test);
                     }
                     catch (Exception againEx)
                     {

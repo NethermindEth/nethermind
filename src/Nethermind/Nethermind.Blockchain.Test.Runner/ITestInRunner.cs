@@ -16,10 +16,12 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Threading.Tasks;
+
 namespace Nethermind.Blockchain.Test.Runner
 {
     public interface ITestInRunner
     {
-        CategoryResult RunTests(string subset, string testWildcard, int iterations = 1);
+        Task<CategoryResult> RunTests(string subset, string testWildcard, int iterations = 1);
     }
 }

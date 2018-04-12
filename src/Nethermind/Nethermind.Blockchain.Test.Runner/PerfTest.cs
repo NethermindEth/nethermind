@@ -19,13 +19,14 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Threading.Tasks;
 using Ethereum.Test.Base;
 
 namespace Nethermind.Blockchain.Test.Runner
 {
     public class PerfTest : BlockchainTestBase, ITestInRunner
     {
-        public CategoryResult RunTests(string subset, string testWildcard, int iterations = 1)
+        public async Task<CategoryResult> RunTests(string subset, string testWildcard, int iterations = 1)
         {
             List<string> failingTests = new List<string>();
             long totalMs = 0L;
@@ -46,7 +47,7 @@ namespace Nethermind.Blockchain.Test.Runner
                     Setup(null);
                     try
                     {
-                        RunTest(test, stopwatch);
+                        await RunTest(test, stopwatch);
                     }
                     catch (Exception e)
                     {
