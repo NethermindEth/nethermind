@@ -173,7 +173,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         private void Handle(GetBlockHeadersMessage getBlockHeadersMessage)
         {
-            BlockInfo[] blockInfos = _sync.Find(getBlockHeadersMessage.StartingBlockHash, (int)getBlockHeadersMessage.MaxHeaders);
+            BlockInfo[] blockInfos = _sync.Find(getBlockHeadersMessage.StartingBlockHash, (int)getBlockHeadersMessage.MaxHeaders, (int)getBlockHeadersMessage.Skip, getBlockHeadersMessage.Reverse == 1);
             BlockHeader[] blockHeaders = new BlockHeader[blockInfos.Length];
             for (int i = 0; i < blockInfos.Length; i++)
             {
@@ -293,7 +293,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         {
             var msg = new GetBlockHeadersMessage();
             msg.MaxHeaders = maxBlocks;
-            msg.Reverse = 1;
+            msg.Reverse = 0;
             msg.Skip = 0;
             msg.StartingBlockHash = blockHash;
             

@@ -16,25 +16,19 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Diagnostics;
 using Nethermind.Core.Crypto;
 
-namespace Nethermind.Network.P2P.Subprotocols.Eth
+namespace Nethermind.Core.Test.Builders
 {
-    [DebuggerDisplay("{BlockHashes.Length}")]
-    public class GetBlockBodiesMessage : P2PMessage
+    public static class TestObject
     {
-        public Keccak[] BlockHashes { get; }
-        public override int PacketType { get; } = 2;
-        public override string Protocol { get; } = "eth";
-
-        public GetBlockBodiesMessage ()
-        {
-        }
-
-        public GetBlockBodiesMessage (params Keccak[] blockHashes)
-        {
-            BlockHashes = blockHashes;
-        }
+        public static Keccak KeccakA = Keccak.Compute("A");
+        public static Keccak KeccakB = Keccak.Compute("B");
+        public static Keccak KeccakC = Keccak.Compute("C");
+        public static Keccak KeccakD = Keccak.Compute("D");
+        public static Keccak KeccakE = Keccak.Compute("E");
+        public static Keccak KeccakF = Keccak.Compute("F");
+        public static Keccak KeccakG = Keccak.Compute("G");
+        public static Keccak KeccakH = Keccak.Compute("H");
     }
 }

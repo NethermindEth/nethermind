@@ -22,13 +22,13 @@ namespace Nethermind.Core.Specs
 {
     public class SingleReleaseSpecProvider : ISpecProvider
     {
-        public int NetworkId { get; }
+        public int ChainId { get; }
         
         private readonly IReleaseSpec _releaseSpec;
 
         public SingleReleaseSpecProvider(IReleaseSpec releaseSpec, int networkId)
         {
-            NetworkId = networkId;
+            ChainId = networkId;
             _releaseSpec = releaseSpec;
             if (_releaseSpec == Dao.Instance)
             {

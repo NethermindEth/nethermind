@@ -33,7 +33,7 @@ namespace Nethermind.Core.Specs
         
         public BigInteger? DaoBlockNumber { get; } = new BigInteger(1920000);
         
-        public int NetworkId => 3;
+        public int ChainId => 3;
 
         private OlympicSpecProvider()
         {

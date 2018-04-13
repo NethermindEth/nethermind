@@ -19,6 +19,8 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Linq;
 using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
@@ -32,6 +34,7 @@ namespace Nethermind.Blockchain
 {
     public class SynchronizationManager : ISynchronizationManager
     {
+        private readonly TimeSpan _delay;
         private readonly IBlockTree _blockTree;
         private readonly IBlockValidator _blockValidator;
         private readonly IHeaderValidator _headerValidator;
@@ -55,6 +58,7 @@ namespace Nethermind.Blockchain
         private Task _syncTask;
 
         public SynchronizationManager(
+            TimeSpan delay,
             IBlockTree blockTree,
             IHeaderValidator headerValidator,
             IBlockValidator blockValidator,
@@ -65,6 +69,7 @@ namespace Nethermind.Blockchain
             BigInteger totalDifficulty,
             ILogger logger)
         {
+            _delay = delay;
             _blockTree = blockTree;
             _blockTree.BlockAddedToMain += OnBlockAddedToMain;
 
@@ -117,23 +122,22 @@ namespace Nethermind.Blockchain
             return null;
         }
 
-        public BlockInfo[] Find(Keccak hash, int numberOfBlocks)
+        public BlockInfo[] Find(Keccak hash, int numberOfBlocks, int skip, bool reverse)
         {
-            if (_storedBlocks.ContainsKey(hash))
+            Block[] blocks = _blockTree.FindBlocks(hash, numberOfBlocks, skip, reverse);
+            BlockInfo[] blockInfos = new BlockInfo[blocks.Length];
+            for (int i = 0; i < blocks.Length; i++)
             {
-                BlockInfo[] blockInfos = new BlockInfo[numberOfBlocks];
-                blockInfos[0] = _storedBlocks[hash];
-                return blockInfos;
+                if (blocks[i] == null)
+                {
+                    continue;
+                }
+                
+                Debug.Assert(_storedBlocks.ContainsKey(blocks[i].Hash));
+                blockInfos[i] = _storedBlocks[blocks[i].Hash];
             }
 
-            Block block = _blockTree.FindBlock(hash, false);
-            if (block != null)
-            {
-                AddBlock(block, new PublicKey(new byte[64])); // work in progress as everywhere now
-                return Find(hash, numberOfBlocks);
-            }
-
-            return null;
+            return blockInfos;
         }
 
         public BlockInfo Find(BigInteger number)
@@ -233,7 +237,7 @@ namespace Nethermind.Blockchain
             await _syncTask;
         }
 
-        public int ChainId => _specProvider.NetworkId;
+        public int ChainId => _specProvider.ChainId;
         public Keccak GenesisBlock { get; set; }
         public Keccak BestBlock { get; set; }
         public BigInteger BestNumber { get; set; }
@@ -249,6 +253,11 @@ namespace Nethermind.Blockchain
                     BestBlock = block.Hash;
                     BestNumber = block.Number;
                     TotalDifficulty = block.TotalDifficulty ?? 0;
+                }
+
+                if (!_storedBlocks.ContainsKey(block.Hash))
+                {
+                    AddBlock(block, null);
                 }
             }
         }
@@ -331,13 +340,13 @@ namespace Nethermind.Blockchain
             foreach ((ISynchronizationPeer peer, PeerInfo peerInfo) in _peers)
             {
                 _logger.Log($"CALCULATING MISSING BLOCKS");
-                _logger.Log($"PEER INFO = {peerInfo}, NUBMER = {peerInfo?.Number}, BEST = {BestNumber}");
+                _logger.Log($"PEER INFO = {peerInfo}, NUMBER = {peerInfo?.Number}, BEST = {BestNumber}");
                 BigInteger missingBlocks = (peerInfo?.Number ?? 0) - BestNumber;
                 _logger.Log($"SYNC MANAGER REQUESTING {missingBlocks} BLOCKS FROM PEER");
                 if (missingBlocks > 0)
                 {
-                    Block[] blocks = await peer.GetBlocks(BestBlock, missingBlocks);
-                    foreach (Block block in blocks)
+                    Block[] blocks = await peer.GetBlocks(BestBlock, missingBlocks + 1);
+                    foreach (Block block in blocks.Skip(1))
                     {
                         _logger.Log($"SYNC MANAGER RECEIVED BLOCK {block.Number}");
                         AddBlockResult addResult = _blockTree.AddBlock(block);
@@ -354,9 +363,14 @@ namespace Nethermind.Blockchain
                 }
             }
 
-            await Task.Delay(12000, cancellationToken);
+            RoundFinished?.Invoke(this, EventArgs.Empty);
+            
+            _logger.Log($"SYNC MANAGER WAITING {_delay.TotalMilliseconds}ms");
+            await Task.Delay(_delay, cancellationToken);
         }
 
+        public EventHandler RoundFinished;
+        
         // https://stackoverflow.com/questions/27238232/how-can-i-cancel-task-whenall/27238463
         private Task AsTask(CancellationToken token)
         {
@@ -367,13 +381,10 @@ namespace Nethermind.Blockchain
 
         private class PeerInfo
         {
-            private readonly BigInteger _bestBlockNumber;
-            private readonly ISynchronizationPeer _peer;
-
             public PeerInfo(ISynchronizationPeer peer, BigInteger bestBlockNumber)
             {
-                _peer = peer;
-                _bestBlockNumber = bestBlockNumber;
+                Peer = peer;
+                Number = bestBlockNumber;
             }
 
             public ISynchronizationPeer Peer { get; set; }

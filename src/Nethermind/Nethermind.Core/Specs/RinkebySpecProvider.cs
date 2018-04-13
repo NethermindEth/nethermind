@@ -35,6 +35,6 @@ namespace Nethermind.Core.Specs
 
         public BigInteger? DaoBlockNumber { get; } = null;
         
-        public int NetworkId => 4;
+        public int ChainId => 4;
     }
 }

@@ -16,11 +16,13 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Diagnostics;
 using System.Numerics;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth
 { 
+    [DebuggerDisplay("{StartingBlockHash} {MaxHeaders} {Skip} {Reverse}")]
     public class GetBlockHeadersMessage : P2PMessage
     {
         public override int PacketType { get; } = 3;

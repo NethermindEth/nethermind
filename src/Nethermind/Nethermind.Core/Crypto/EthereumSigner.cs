@@ -40,7 +40,7 @@ namespace Nethermind.Core.Crypto
         {
             _specProvider = specProviderProvider;
             _logger = logger;
-            _chainIdValue = specProviderProvider.NetworkId;
+            _chainIdValue = specProviderProvider.ChainId;
         }
         
         public void Sign(PrivateKey privateKey, Transaction transaction, BigInteger blockNumber)

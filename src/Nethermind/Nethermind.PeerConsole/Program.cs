@@ -205,6 +205,7 @@ namespace Nethermind.PeerConsole
             blockTree.AddBlock(genesis);
 
             _syncManager = new SynchronizationManager(
+                TimeSpan.FromMilliseconds(12000), 
                 blockTree,
                 headerValidator,
                 blockValidator,

@@ -72,6 +72,6 @@ namespace Nethermind.Core.Specs
             }
         }
 
-        public int NetworkId => 0;
+        public int ChainId => 0;
     }
 }

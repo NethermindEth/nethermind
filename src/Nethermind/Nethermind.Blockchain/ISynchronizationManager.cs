@@ -29,7 +29,7 @@ namespace Nethermind.Blockchain
         BlockInfo AddBlock(Block block, PublicKey receivedFrom);
         BlockInfo AddBlockHeader(BlockHeader blockHeader);
         BlockInfo Find(Keccak hash);
-        BlockInfo[] Find(Keccak hash, int numberOfBlocks);
+        BlockInfo[] Find(Keccak hash, int numberOfBlocks, int skip, bool reverse);
         BlockInfo Find(BigInteger number);
         TransactionInfo Add(Transaction transaction, PublicKey receivedFrom);
         void MarkAsProcessed(Transaction transaction, bool isValid);

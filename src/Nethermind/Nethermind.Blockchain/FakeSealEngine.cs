@@ -34,7 +34,9 @@ namespace Nethermind.Blockchain
         
         public Task<Block> MineAsync(Block block, CancellationToken cancellationToken)
         {
-            return Task.Delay(_miningDelay, cancellationToken).ContinueWith(t => block, cancellationToken);
+            return _miningDelay == TimeSpan.Zero
+                ? Task.FromResult(block)
+                : Task.Delay(_miningDelay, cancellationToken).ContinueWith(t => block, cancellationToken);
         }
 
         public bool Validate(BlockHeader header)
