@@ -297,6 +297,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             msg.Skip = 0;
             msg.StartingBlockHash = blockHash;
             
+            Send(msg);
+            
             _blockHeadersTaskCompletion = new TaskCompletionSource<Block[]>();
             return await _blockHeadersTaskCompletion.Task;
         }

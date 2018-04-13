@@ -47,5 +47,7 @@ namespace Nethermind.Core
         public BlockHeader[] Ommers { get; }
         public Keccak Hash => Header.Hash;
         public BigInteger Number => Header.Number;
+        public BigInteger Difficulty => Header.Difficulty;
+        public BigInteger? TotalDifficulty => Header.TotalDifficulty;
     }
 }

@@ -21,6 +21,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Numerics;
+using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -30,20 +31,55 @@ namespace Nethermind.Blockchain
     public class BlockTree : IBlockTree
     {
         private readonly ConcurrentDictionary<Keccak, Block> _branches = new ConcurrentDictionary<Keccak, Block>();
-        private readonly ConcurrentDictionary<Keccak, Block> _mainChain = new ConcurrentDictionary<Keccak, Block>();
         private readonly ConcurrentDictionary<int, Block> _canonicalChain = new ConcurrentDictionary<int, Block>();
+        private readonly ILogger _logger;
+        private readonly ConcurrentDictionary<Keccak, Block> _mainChain = new ConcurrentDictionary<Keccak, Block>();
+
+        private readonly HashSet<Keccak> _processed = new HashSet<Keccak>();
+        private Block _bestBlock;
+        private BigInteger _totalDifficulty;
+
+        public BlockTree(ILogger logger)
+        {
+            _logger = logger;
+        }
+
+        public event EventHandler<BlockEventArgs> BlockAddedToMain;
+
+        public event EventHandler<BlockEventArgs> NewBestBlockSuggested;
 
         public Keccak GenesisHash => FindBlock(0)?.Hash;
-        public IChain MainChain { get; set; }
 
-        public void AddBlock(Block block)
+        public AddBlockResult AddBlock(Block block)
         {
+            if (block.Number == 0)
+            {
+                if (_bestBlock != null)
+                {
+                    throw new InvalidOperationException("Genesis block should be added only once"); // TODO: make sure it cannot happen
+                }
+            }
+            else if (this.FindParent(block.Header) == null)
+            {
+                return AddBlockResult.Ignored;
+            }
+
             _branches.AddOrUpdate(block.Header.Hash, block, (h, b) =>
             {
                 //https://stackoverflow.com/questions/17926519/concurrent-dictionary-addorupdate-vs-index-add?utm_medium=organic&utm_source=google_rich_qa&utm_campaign=google_rich_qa
                 Debug.Assert(block == b, "Assuming it would not happen, if never fired use indexer instead");
                 return b;
             });
+
+            UpdateTotalDifficulty(block);
+            if (block.TotalDifficulty > _totalDifficulty)
+            {
+                _totalDifficulty = block.TotalDifficulty ?? 0;
+                _bestBlock = block;
+                NewBestBlockSuggested?.Invoke(this, new BlockEventArgs(block));
+            }
+
+            return AddBlockResult.Added;
         }
 
         public Block FindBlock(Keccak blockHash, bool mainChainOnly)
@@ -108,8 +144,6 @@ namespace Nethermind.Blockchain
             }
         }
 
-        private readonly HashSet<Keccak> _processed = new HashSet<Keccak>();
-
         public void MarkAsProcessed(Keccak blockHash)
         {
             _processed.Add(blockHash);
@@ -135,6 +169,31 @@ namespace Nethermind.Blockchain
             {
                 throw new InvalidOperationException($"this should not happen as we should only be removing in {nameof(BlockchainProcessor)}");
             }
+
+            BlockAddedToMain?.Invoke(this, new BlockEventArgs(block));
+        }
+
+        private void UpdateTotalDifficulty(Block block)
+        {
+            _logger?.Log($"CALCULATING TOTAL DIFFICULTY FOR {block.Hash}");
+            if (block.Number == 0)
+            {
+                block.Header.TotalDifficulty = block.Difficulty;
+            }
+            else
+            {
+                Block parent = this.FindParent(block.Header);
+                Debug.Assert(parent != null, "assuming this is never called if there has been no parent in the first place");
+                if (parent == null)
+                {
+                    throw new InvalidOperationException($"An orphaned block on the chain {block.Hash} ({block.Number})");
+                }
+
+                Debug.Assert(parent.TotalDifficulty != null, "assuming this parent's difficulty is known");
+                block.Header.TotalDifficulty = parent.TotalDifficulty + block.Difficulty;
+            }
+
+            _logger?.Log($"CALCULATED TOTAL DIFFICULTY FOR {block.Hash} IS {block.TotalDifficulty}");
         }
     }
 }

@@ -1,4 +1,22 @@
-using System.Collections.Generic;
+/*
+ * Copyright (c) 2018 Demerzel Solutions Limited
+ * This file is part of the Nethermind library.
+ *
+ * The Nethermind library is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * The Nethermind library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Linq;
 using Nethermind.Core;
@@ -8,11 +26,11 @@ namespace Nethermind.Blockchain
 {
     public class TransactionStore : ITransactionStore
     {
-        private readonly Dictionary<Keccak, Transaction> _pending = new Dictionary<Keccak, Transaction>();
-        private readonly Dictionary<Keccak, Transaction> _transactions = new Dictionary<Keccak, Transaction>();
-        private readonly Dictionary<Keccak, TransactionReceipt> _transactionRecepits = new Dictionary<Keccak, TransactionReceipt>();
-        private readonly HashSet<Keccak> _processedTransations = new HashSet<Keccak>();
-        private readonly Dictionary<Keccak, Keccak> _blockHashes = new Dictionary<Keccak, Keccak>();
+        private readonly ConcurrentDictionary<Keccak, Transaction> _pending = new ConcurrentDictionary<Keccak, Transaction>();
+        private readonly ConcurrentDictionary<Keccak, Transaction> _transactions = new ConcurrentDictionary<Keccak, Transaction>();
+        private readonly ConcurrentDictionary<Keccak, TransactionReceipt> _transactionRecepits = new ConcurrentDictionary<Keccak, TransactionReceipt>();
+        private readonly ConcurrentBag<Keccak> _processedTransations = new ConcurrentBag<Keccak>();
+        private readonly ConcurrentDictionary<Keccak, Keccak> _blockHashes = new ConcurrentDictionary<Keccak, Keccak>();
 
         public void AddTransaction(Transaction transaction)
         {
@@ -49,7 +67,7 @@ namespace Nethermind.Blockchain
 
         public void AddPending(Transaction transaction)
         {
-            _pending.Add(transaction.Hash, transaction);
+            _pending[transaction.Hash] = transaction;
         }
 
         public Transaction[] GetAllPending()

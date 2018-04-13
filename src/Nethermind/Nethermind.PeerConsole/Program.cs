@@ -50,43 +50,40 @@ namespace Nethermind.PeerConsole
         private static int _listenPort = 30312;
 
         private static PrivateKey _privateKey;
-        
+
         private static readonly ILogger Logger = new ConsoleLogger();
 
 #pragma warning disable 1998
         public static async Task Main(params string[] args)
 #pragma warning restore 1998
         {
-            AppDomain.CurrentDomain.UnhandledException += (sender, eventArgs) =>
-            {
-                Console.WriteLine(eventArgs.ExceptionObject);
-            };
-            
+            AppDomain.CurrentDomain.UnhandledException += (sender, eventArgs) => { Console.WriteLine(eventArgs.ExceptionObject); };
+
             // https://msdn.microsoft.com/en-us/magazine/mt763239.aspx
             CommandLineApplication commandLineApplication =
                 new CommandLineApplication(throwOnUnexpectedArg: true);
-            
+
             CommandArgument keyArg = commandLineApplication.Argument(
                 "key",
                 "PrivateKey hex value for this node.");
-            
+
             CommandArgument portArg = commandLineApplication.Argument(
                 "port",
                 "Listen port");
-            
+
             CommandArgument chainSpecArg = commandLineApplication.Argument(
                 "specfile",
                 "ChainSpec file name (from Chains directory)");
-            
+
             CommandOption isMining = commandLineApplication.Option(
                 "-m|--mining",
                 "mining",
-                CommandOptionType.NoValue);
-            
+                CommandOptionType.SingleValue);
+
             commandLineApplication.HelpOption("-?|-h|--help");
-            
+
             commandLineApplication.OnExecute(async () =>
-            {                  
+            {
 //                if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
 //                {
 //                    _privateKey = new PrivateKey("000102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f");
@@ -95,27 +92,27 @@ namespace Nethermind.PeerConsole
 //                {
 //                    _privateKey = new PrivateKey("010102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f");
 //                }
-                
-                await Run(chainSpecArg.Value, int.Parse(portArg.Value), new PrivateKey(keyArg.Value), isMining.HasValue());
+
+                await Run(chainSpecArg.Value, int.Parse(portArg.Value), new PrivateKey(keyArg.Value), isMining.HasValue(), int.Parse(isMining.Value() ?? "0"));
                 return 0;
             });
-            
+
             commandLineApplication.Execute(args);
         }
 
-        private static async Task Run(string chainSpecFile, int port, PrivateKey privateKey, bool isMining)
+        private static async Task Run(string chainSpecFile, int port, PrivateKey privateKey, bool isMining, int miningDelay = 0)
         {
             _listenPort = port;
             _privateKey = privateKey;
-            await InitTestnet(chainSpecFile, isMining);
+            await InitTestnet(chainSpecFile, isMining, miningDelay);
         }
 
-        private static async Task InitTestnet(string chainSpecFile, bool isMining)
+        private static async Task InitTestnet(string chainSpecFile, bool isMining, int miningDelay)
         {
             /* tools */
-            
+
             var chainSpec = LoadChainSpec(chainSpecFile);
-            InitBlockchain(chainSpec, isMining);            
+            InitBlockchain(chainSpec, isMining, miningDelay);
             await InitNet(chainSpec);
         }
 
@@ -135,11 +132,11 @@ namespace Nethermind.PeerConsole
             return chainSpec;
         }
 
-        private static void InitBlockchain(ChainSpec chainSpec, bool isMining)
+        private static void InitBlockchain(ChainSpec chainSpec, bool isMining, int miningDelay)
         {
             /* spec */
-            var blockMiningTime = TimeSpan.FromMilliseconds(60000);
-            var transactionDelay = TimeSpan.FromMilliseconds(60000);
+            var blockMiningTime = TimeSpan.FromMilliseconds(miningDelay);
+            var transactionDelay = TimeSpan.FromMilliseconds(miningDelay);
             var specProvider = RopstenSpecProvider.Instance;
             var difficultyCalculator = new DifficultyCalculator(specProvider);
             // var sealEngine = new EthashSealEngine(new Ethash());
@@ -147,7 +144,7 @@ namespace Nethermind.PeerConsole
 
             /* sync */
             var transactionStore = new TransactionStore();
-            var blockTree = new BlockTree();
+            var blockTree = new BlockTree(Logger);
 
             /* validation */
             var headerValidator = new HeaderValidator(difficultyCalculator, blockTree, sealEngine, specProvider, Logger);
@@ -180,12 +177,17 @@ namespace Nethermind.PeerConsole
             {
                 stateProvider.CreateAccount(allocation.Key, allocation.Value);
             }
+
             stateProvider.Commit(specProvider.GenesisSpec);
-            
+
             var testTransactionsGenerator = new TestTransactionsGenerator(transactionStore, ethereumSigner, transactionDelay, Logger);
             stateProvider.CreateAccount(testTransactionsGenerator.SenderAddress, 1000.Ether());
             stateProvider.Commit(specProvider.GenesisSpec);
-            testTransactionsGenerator.Start();
+            
+            if (isMining)
+            {
+                testTransactionsGenerator.Start();
+            }
 
             Block genesis = chainSpec.Genesis;
             genesis.Header.StateRoot = stateProvider.StateRoot;
@@ -199,8 +201,8 @@ namespace Nethermind.PeerConsole
 
             /* start test processing */
             sealEngine.IsMining = isMining;
+            _blockchainProcessor.Start();
             blockTree.AddBlock(genesis);
-            _blockchainProcessor.Start(genesis);
 
             _syncManager = new SynchronizationManager(
                 blockTree,

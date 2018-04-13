@@ -208,7 +208,7 @@ namespace Ethereum.Test.Base
             IDifficultyCalculator difficultyCalculator = new DifficultyCalculator(specProvider);
             IRewardCalculator rewardCalculator = new RewardCalculator(specProvider);
             
-            IBlockTree blockTree = new BlockTree();
+            IBlockTree blockTree = new BlockTree(processingLogger);
             IBlockhashProvider blockhashProvider = new BlockhashProvider(blockTree);
             ISignatureValidator signatureValidator = new SignatureValidator(ChainId.MainNet);
             ITransactionValidator transactionValidator = new TransactionValidator(signatureValidator);
@@ -297,8 +297,8 @@ namespace Ethereum.Test.Base
                 }
             };
                 
+            blockchainProcessor.Start();
             blockTree.AddBlock(genesisBlock);
-            blockchainProcessor.Start(genesisBlock);
 
             for (int i = 0; i < correctRlpsBlocks.Count; i++)
             {
@@ -315,11 +315,10 @@ namespace Ethereum.Test.Base
                         throw new Exception($"null hash in {test.Name} block {i}");
                     }
                     
-                    blockTree.AddBlock(correctRlpsBlocks[i].Block);
                     // TODO: mimic the actual behaviour where block goes through validating sync manager?
                     if (blockValidator.ValidateSuggestedBlock(correctRlpsBlocks[i].Block))
                     {
-                        blockchainProcessor.SuggestBlock(correctRlpsBlocks[i].Block);
+                        blockTree.AddBlock(correctRlpsBlocks[i].Block);
                     }
                     else
                     {

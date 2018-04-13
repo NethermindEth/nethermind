@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,19 +16,17 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
-using System.Numerics;
-using System.Threading.Tasks;
-using Nethermind.Core;
+using NUnit.Framework;
 
-namespace Nethermind.Blockchain
+namespace Nethermind.Blockchain.Test
 {
-    public interface IBlockchainProcessor
+    [TestFixture]
+    public class SynchronizationManagerTests
     {
-        Block HeadBlock { get; }
-        void Start();
-        Task StopAsync(bool processRemainingBlocks = false);
-        void Process(Block block); // TODO: testing performance
-        event EventHandler<BlockEventArgs> HeadBlockChanged;
+        [Test]
+        public void Test()
+        {
+            Assert.Fail("Not implemented");
+        }
     }
 }

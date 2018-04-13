@@ -41,10 +41,14 @@ namespace Nethermind.Blockchain
             _store = store;
             _signer = signer;
             _logger = logger;
-            _timer.Elapsed += TimerOnElapsed;
-            _timer.Interval = txDelay.TotalMilliseconds;
 
-            _random.NextBytes(_privateKeyBytes);
+            if (txDelay > TimeSpan.FromMilliseconds(0))
+            {
+                _timer.Elapsed += TimerOnElapsed;
+                _timer.Interval = txDelay.TotalMilliseconds;    
+            }
+
+            _privateKeyBytes[31] = 1;
             _privateKey = new PrivateKey(_privateKeyBytes);
             SenderAddress = _privateKey.PublicKey.Address;
             _logger.Debug($"Test transactions will be coming from {SenderAddress}.");

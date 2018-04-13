@@ -16,29 +16,11 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
-using System.Numerics;
-using System.Runtime.Serialization;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
-
 namespace Nethermind.Blockchain
 {
-    public interface IBlockTree
+    public enum AddBlockResult
     {
-        Keccak GenesisHash { get; }
-
-        AddBlockResult AddBlock(Block block);
-        Block FindBlock(Keccak blockHash, bool mainChainOnly);
-        Block[] FindBlocks(Keccak blockHash, int numberOfBlocks, int skip, bool reverse);
-        Block FindBlock(BigInteger blockNumber);
-        bool IsMainChain(Keccak blockHash);
-        void MoveToMain(Keccak blockHash);
-        void MoveToBranch(Keccak blockHash);
-        bool WasProcessed(Keccak blockHash);
-        void MarkAsProcessed(Keccak blockHash);
-
-        event EventHandler<BlockEventArgs> BlockAddedToMain;
-        event EventHandler<BlockEventArgs> NewBestBlockSuggested;
+        Ignored,
+        Added
     }
 }

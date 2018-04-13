@@ -33,14 +33,26 @@ namespace Nethermind.Blockchain
     public class SynchronizationManager : ISynchronizationManager
     {
         private readonly IBlockTree _blockTree;
-        private readonly IHeaderValidator _headerValidator;
         private readonly IBlockValidator _blockValidator;
-        private readonly ITransactionValidator _transactionValidator;
-        private readonly ISpecProvider _specProvider;
+        private readonly IHeaderValidator _headerValidator;
         private readonly ILogger _logger;
+
+        private readonly ConcurrentDictionary<ISynchronizationPeer, PeerInfo> _peers = new ConcurrentDictionary<ISynchronizationPeer, PeerInfo>();
+        private readonly ISpecProvider _specProvider;
         private readonly Dictionary<Keccak, BlockInfo> _storedBlocks = new Dictionary<Keccak, BlockInfo>();
 
+        private readonly object _syncObject = new object();
+
+        private readonly Dictionary<Keccak, TransactionInfo> _transactions = new Dictionary<Keccak, TransactionInfo>();
+        private readonly ITransactionValidator _transactionValidator;
+
+        private CancellationTokenSource _cancellationTokenSource;
+
         private object _lockObject = new object();
+
+        private int _round; // TODO: remove when no longer needed for diagnostics
+
+        private Task _syncTask;
 
         public SynchronizationManager(
             IBlockTree blockTree,
@@ -54,6 +66,8 @@ namespace Nethermind.Blockchain
             ILogger logger)
         {
             _blockTree = blockTree;
+            _blockTree.BlockAddedToMain += OnBlockAddedToMain;
+
             _headerValidator = headerValidator;
             _blockValidator = blockValidator;
             _transactionValidator = transactionValidator;
@@ -159,40 +173,6 @@ namespace Nethermind.Blockchain
             }
         }
 
-        public Block Load(Keccak hash)
-        {
-            if (!_storedBlocks.ContainsKey(hash))
-            {
-                throw new InvalidOperationException("Trying to load an unknown block.");
-            }
-
-            BlockInfo blockInfo = _storedBlocks[hash];
-            if (blockInfo.BodyLocation == BlockDataLocation.Remote || blockInfo.HeaderLocation == BlockDataLocation.Remote)
-            {
-                throw new InvalidOperationException("Cannot load block that has not been synced yet.");
-            }
-
-            if (blockInfo.BodyLocation == BlockDataLocation.Store || blockInfo.HeaderLocation == BlockDataLocation.Store)
-            {
-                throw new NotImplementedException("Block persistence not implemented yet");
-            }
-
-            return blockInfo.Block;
-        }
-
-        public void MarkProcessed(Keccak hash, bool isValid)
-        {
-            if (!_storedBlocks.ContainsKey(hash))
-            {
-                throw new InvalidOperationException("Trying to mark an unknown block as processed.");
-            }
-
-            BlockInfo blockInfo = _storedBlocks[hash];
-            blockInfo.BlockQuality = isValid ? Quality.Processed : Quality.Invalid;
-        }
-
-        private readonly Dictionary<Keccak, TransactionInfo> _transactions = new Dictionary<Keccak, TransactionInfo>();
-
         public TransactionInfo Add(Transaction transaction, PublicKey receivedFrom)
         {
             _transactions.TryGetValue(transaction.Hash, out TransactionInfo info);
@@ -234,82 +214,6 @@ namespace Nethermind.Blockchain
             throw new NotImplementedException();
         }
 
-        private readonly ConcurrentDictionary<ISynchronizationPeer, PeerInfo> _peers = new ConcurrentDictionary<ISynchronizationPeer, PeerInfo>();
-
-        private class PeerInfo
-        {
-            private readonly ISynchronizationPeer _peer;
-            private readonly BigInteger _bestBlockNumber;
-
-            public PeerInfo(ISynchronizationPeer peer, BigInteger bestBlockNumber)
-            {
-                _peer = peer;
-                _bestBlockNumber = bestBlockNumber;
-            }
-
-            public ISynchronizationPeer Peer { get; set; }
-            public BigInteger? Number { get; set; }
-        }
-
-        private async Task RefreshPeerInfo(ISynchronizationPeer peer)
-        {
-            Task getHashTask = peer.GetHeadBlockHash();
-            _logger.Log($"SYNC MANAGER - GETTING HEAD BLOCK INFO");
-            Task<BigInteger> getNumberTask = peer.GetHeadBlockNumber();
-            await Task.WhenAll(getHashTask, getNumberTask);
-            _logger.Log($"SYNC MANAGER - RECEIVED HEAD BLOCK INFO");
-            _peers.GetOrAdd(peer, p => new PeerInfo(p, getNumberTask.Result));
-        }
-
-        private int _round; // TODO: remove when no longer needed for diagnostics
-
-        private async Task RunRound(CancellationToken cancellationToken)
-        {
-            _logger.Log($"SYNC MANAGER ROUND {_round++}, {_peers.Count} " + (_peers.Count == 1 ? "PEER" : "PEERS"));
-            List<Task> refreshTasks = new List<Task>();
-            foreach (KeyValuePair<ISynchronizationPeer, PeerInfo> keyValuePair in _peers)
-            {
-                refreshTasks.Add(RefreshPeerInfo(keyValuePair.Key));
-            }
-
-            _logger.Log($"SYNC MANAGER WAITING FOR REFRESH");
-            await Task.WhenAny(Task.WhenAll(refreshTasks), AsTask(cancellationToken));
-            if (cancellationToken.IsCancellationRequested)
-            {
-                _logger.Log($"SYNC MANAGER CANCELLED");
-                return;
-            }
-
-            _logger.Log($"SYNC MANAGER WILL GET MISSING BLOCKS NOW FROM {_peers.Count} PEERS");
-            foreach ((ISynchronizationPeer peer, PeerInfo peerInfo) in _peers)
-            {
-                BigInteger missingBlocks = (peerInfo.Number ?? 0) - BestNumber;
-                _logger.Log($"SYNC MANAGER REQUESTING {missingBlocks} BLOCKS FROM PEER");
-                if (missingBlocks > 0)
-                {
-                    Block[] blocks = await peer.GetBlocks(BestBlock, missingBlocks);
-                    foreach (Block block in blocks)
-                    {
-                        _logger.Log($"SYNC MANAGER RECEIVED BLOCK {block.Number}");
-                    }
-                }
-            }
-
-            await Task.Delay(12000, cancellationToken);
-        }
-
-        // https://stackoverflow.com/questions/27238232/how-can-i-cancel-task-whenall/27238463
-        private Task AsTask(CancellationToken token)
-        {
-            var completionSource = new TaskCompletionSource<object>();
-            token.Register(() => completionSource.TrySetCanceled(), false);
-            return completionSource.Task;
-        }
-
-        private Task _syncTask;
-
-        private CancellationTokenSource _cancellationTokenSource;
-
         public void Start()
         {
             _cancellationTokenSource = new CancellationTokenSource();
@@ -334,5 +238,146 @@ namespace Nethermind.Blockchain
         public Keccak BestBlock { get; set; }
         public BigInteger BestNumber { get; set; }
         public BigInteger TotalDifficulty { get; set; }
+
+        private void OnBlockAddedToMain(object sender, BlockEventArgs blockEventArgs)
+        {
+            lock (_syncObject)
+            {
+                Block block = blockEventArgs.Block;
+                if (block.TotalDifficulty > TotalDifficulty)
+                {
+                    BestBlock = block.Hash;
+                    BestNumber = block.Number;
+                    TotalDifficulty = block.TotalDifficulty ?? 0;
+                }
+            }
+        }
+
+        public Block Load(Keccak hash)
+        {
+            if (!_storedBlocks.ContainsKey(hash))
+            {
+                throw new InvalidOperationException("Trying to load an unknown block.");
+            }
+
+            BlockInfo blockInfo = _storedBlocks[hash];
+            if (blockInfo.BodyLocation == BlockDataLocation.Remote || blockInfo.HeaderLocation == BlockDataLocation.Remote)
+            {
+                throw new InvalidOperationException("Cannot load block that has not been synced yet.");
+            }
+
+            if (blockInfo.BodyLocation == BlockDataLocation.Store || blockInfo.HeaderLocation == BlockDataLocation.Store)
+            {
+                throw new NotImplementedException("Block persistence not implemented yet");
+            }
+
+            return blockInfo.Block;
+        }
+
+        public void MarkProcessed(Keccak hash, bool isValid)
+        {
+            if (!_storedBlocks.ContainsKey(hash))
+            {
+                throw new InvalidOperationException("Trying to mark an unknown block as processed.");
+            }
+
+            BlockInfo blockInfo = _storedBlocks[hash];
+            blockInfo.BlockQuality = isValid ? Quality.Processed : Quality.Invalid;
+        }
+
+        private async Task RefreshPeerInfo(ISynchronizationPeer peer)
+        {
+            Task getHashTask = peer.GetHeadBlockHash();
+            _logger.Log($"SYNC MANAGER - GETTING HEAD BLOCK INFO");
+            Task<BigInteger> getNumberTask = peer.GetHeadBlockNumber();
+            await Task.WhenAll(getHashTask, getNumberTask);
+            _logger.Log($"SYNC MANAGER - RECEIVED HEAD BLOCK INFO");
+            _peers.AddOrUpdate(
+                peer,
+                new PeerInfo(peer, getNumberTask.Result),
+                (p, pi) =>
+                {
+                    if (pi == null)
+                    {
+                        pi = new PeerInfo(p, getNumberTask.Result);
+                    }
+                    else
+                    {
+                        pi.Number = getNumberTask.Result;
+                    }
+
+                    return pi;
+                });
+        }
+
+        private async Task RunRound(CancellationToken cancellationToken)
+        {
+            _logger.Log($"SYNC MANAGER ROUND {_round++}, {_peers.Count} " + (_peers.Count == 1 ? "PEER" : "PEERS"));
+            List<Task> refreshTasks = new List<Task>();
+            foreach (KeyValuePair<ISynchronizationPeer, PeerInfo> keyValuePair in _peers)
+            {
+                refreshTasks.Add(RefreshPeerInfo(keyValuePair.Key));
+            }
+
+            _logger.Log($"SYNC MANAGER WAITING FOR REFRESH");
+            await Task.WhenAny(Task.WhenAll(refreshTasks), AsTask(cancellationToken));
+            if (cancellationToken.IsCancellationRequested)
+            {
+                _logger.Log($"SYNC MANAGER CANCELLED");
+                return;
+            }
+
+            _logger.Log($"SYNC MANAGER WILL GET MISSING BLOCKS NOW FROM {_peers.Count} PEERS");
+            foreach ((ISynchronizationPeer peer, PeerInfo peerInfo) in _peers)
+            {
+                _logger.Log($"CALCULATING MISSING BLOCKS");
+                _logger.Log($"PEER INFO = {peerInfo}, NUBMER = {peerInfo?.Number}, BEST = {BestNumber}");
+                BigInteger missingBlocks = (peerInfo?.Number ?? 0) - BestNumber;
+                _logger.Log($"SYNC MANAGER REQUESTING {missingBlocks} BLOCKS FROM PEER");
+                if (missingBlocks > 0)
+                {
+                    Block[] blocks = await peer.GetBlocks(BestBlock, missingBlocks);
+                    foreach (Block block in blocks)
+                    {
+                        _logger.Log($"SYNC MANAGER RECEIVED BLOCK {block.Number}");
+                        AddBlockResult addResult = _blockTree.AddBlock(block);
+                        if (addResult == AddBlockResult.Ignored)
+                        {
+                            _logger.Log($"BLOCK {block.Number} WAS IGNORED");
+                            break;
+                        }
+                        else
+                        {
+                            _logger.Log($"BLOCK {block.Number} WAS ADDED TO THE CHAIN");
+                        }
+                    }
+                }
+            }
+
+            await Task.Delay(12000, cancellationToken);
+        }
+
+        // https://stackoverflow.com/questions/27238232/how-can-i-cancel-task-whenall/27238463
+        private Task AsTask(CancellationToken token)
+        {
+            TaskCompletionSource<object> completionSource = new TaskCompletionSource<object>();
+            token.Register(() => completionSource.TrySetCanceled(), false);
+            return completionSource.Task;
+        }
+
+        private class PeerInfo
+        {
+            private readonly BigInteger _bestBlockNumber;
+            private readonly ISynchronizationPeer _peer;
+
+            public PeerInfo(ISynchronizationPeer peer, BigInteger bestBlockNumber)
+            {
+                _peer = peer;
+                _bestBlockNumber = bestBlockNumber;
+            }
+
+            public ISynchronizationPeer Peer { get; set; }
+            public BigInteger? Number { get; set; }
+        }
     }
 }

@@ -17,6 +17,7 @@
  */
 
 using System.Numerics;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Core.Test.Builders
 {
@@ -31,6 +32,24 @@ namespace Nethermind.Core.Test.Builders
         public BlockBuilder WithNumber(BigInteger number)
         {
             TestObject.Header.Number = number;
+            return this;
+        }
+        
+        public BlockBuilder WithDifficulty(BigInteger difficulty)
+        {
+            TestObject.Header.Difficulty = difficulty;
+            return this;
+        }
+        
+        public BlockBuilder WithParent(Block block)
+        {
+            TestObject.Header.ParentHash = block.Hash;
+            return this;
+        }
+        
+        public BlockBuilder WithParentHash(Keccak parent)
+        {
+            TestObject.Header.ParentHash = parent;
             return this;
         }
 

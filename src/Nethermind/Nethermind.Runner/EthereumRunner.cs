@@ -36,6 +36,7 @@ namespace Nethermind.Runner
     public class EthereumRunner : IRunner
     {
         private readonly IJsonSerializer _jsonSerializer;
+        private readonly IBlockTree _blockTree;
         private readonly IBlockchainProcessor _blockchainProcessor;
         private readonly IStateProvider _stateProvider;
         private readonly ISpecProvider _specProvider;
@@ -43,10 +44,11 @@ namespace Nethermind.Runner
         private readonly ILogger _logger;
         private readonly IConfigurationProvider _configurationProvider;
 
-        public EthereumRunner(IJsonSerializer jsonSerializer, IBlockchainProcessor blockchainProcessor, IStateProvider stateProvider, IDbProvider dbProvider, ILogger logger, IConfigurationProvider configurationProvider, ISpecProvider specProvider)
+        public EthereumRunner(IJsonSerializer jsonSerializer, IBlockchainProcessor blockchainProcessor, IBlockTree blockTree, IStateProvider stateProvider, IDbProvider dbProvider, ILogger logger, IConfigurationProvider configurationProvider, ISpecProvider specProvider)
         {
             _jsonSerializer = jsonSerializer;
             _blockchainProcessor = blockchainProcessor;
+            _blockTree = blockTree;
             _stateProvider = stateProvider;
             _dbProvider = dbProvider;
             _logger = logger;
@@ -113,7 +115,7 @@ namespace Nethermind.Runner
         {
             try
             {
-                _blockchainProcessor.SuggestBlock(block);
+                _blockTree.AddBlock(block);
             }
             catch (InvalidBlockException e)
             {
@@ -147,7 +149,7 @@ namespace Nethermind.Runner
             var blockJson = _jsonSerializer.Deserialize<TestGenesisJson>(genesisBlockRaw);
             var stateRoot = InitializeAccounts(blockJson.Alloc);
             var block = Convert(blockJson, stateRoot);
-            _blockchainProcessor.SuggestBlock(block);
+            _blockTree.AddBlock(block);
         }
 
         private static Block Convert(TestGenesisJson headerJson, Keccak stateRoot)

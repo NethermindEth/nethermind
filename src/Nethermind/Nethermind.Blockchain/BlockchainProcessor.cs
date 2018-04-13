@@ -55,11 +55,18 @@ namespace Nethermind.Blockchain
             ILogger logger)
         {
             _blockTree = blockTree;
+            _blockTree.NewBestBlockSuggested += OnNewBestBlock;
+            
             _transactionStore = transactionStore;
             _difficultyCalculator = difficultyCalculator;
             _sealEngine = sealEngine;
             _blockProcessor = blockProcessor;
             _logger = logger;
+        }
+
+        private void OnNewBestBlock(object sender, BlockEventArgs blockEventArgs)
+        {
+            SuggestBlock(blockEventArgs.Block);
         }
 
         public BigInteger TotalTransactions { get; private set; }
@@ -84,11 +91,9 @@ namespace Nethermind.Blockchain
             await _processorTask;
         }
 
-        public void Start(Block genesisBlock)
+        public void Start()
         {
             _cancellationSource = new CancellationTokenSource();
-            _logger?.Log($"Processing genesis block {genesisBlock.Hash} ({genesisBlock.Number}).");
-            Process(genesisBlock);
             _processorTask = Task.Factory.StartNew(() =>
                 {
                     _logger?.Log($"Starting block processor - {_suggestedBlocks.Count} blocks waiting in the queue.");
@@ -131,7 +136,7 @@ namespace Nethermind.Blockchain
             });
         }
 
-        public void SuggestBlock(Block block)
+        private void SuggestBlock(Block block)
         {
             _logger?.Log($"Enqueuing a new block {block.Hash} ({block.Number}) for processing.");
             _suggestedBlocks.Add(block);
@@ -158,37 +163,29 @@ namespace Nethermind.Blockchain
             return block.Transactions.Count + GetTotalTransactions(parent);
         }
 
-        private BigInteger GetTotalDifficulty(BlockHeader blockHeader)
-        {
-            // TODO: vulnerability if genesis block is propagated with high initial difficulty?
-            if (blockHeader.Number == 0)
-            {
-                return blockHeader.Difficulty;
-            }
-
-            Block parent = _blockTree.FindParent(blockHeader);
-            if (parent == null)
-            {
-                return 0;
-            }
-
-            //Debug.Assert(parent != null, "testing difficulty of an orphaned block"); // ChainAtoChainB_BlockHash
-            return blockHeader.Difficulty + GetTotalDifficulty(parent.Header);
-        }
-
+        // TODO: there will be a need for cancellation of current mining whenever a new block arrives
         private void BuildAndSeal()
         {
+            if (HeadBlock == null)
+            {
+                return;
+            }
+            
             BigInteger timestamp = Timestamp.UnixUtcUntilNowSecs;
             BlockHeader parentHeader = HeadBlock.Header;
+            BigInteger difficulty = _difficultyCalculator.Calculate(parentHeader.Difficulty, parentHeader.Timestamp, Timestamp.UnixUtcUntilNowSecs, parentHeader.Number + 1, HeadBlock.Ommers.Length > 0);
             BlockHeader header = new BlockHeader(
                 parentHeader.Hash,
                 Keccak.OfAnEmptySequenceRlp,
                 Address.Zero,
-                _difficultyCalculator.Calculate(parentHeader.Difficulty, parentHeader.Timestamp, Timestamp.UnixUtcUntilNowSecs, parentHeader.Number + 1, HeadBlock.Ommers.Length > 0),
+                difficulty,
                 parentHeader.Number + 1,
                 parentHeader.GasLimit,
                 timestamp,
                 Encoding.UTF8.GetBytes("Nethermind"));
+
+            header.TotalDifficulty = parentHeader.TotalDifficulty + difficulty;
+            _logger?.Debug($"Setting total difficulty to {parentHeader.TotalDifficulty} + {difficulty}.");
 
             var transactions = _transactionStore.GetAllPending().OrderBy(t => t?.Nonce); // by nonce in case there are two transactions for the same account, TODO: test it
             
@@ -249,6 +246,7 @@ namespace Nethermind.Blockchain
         private void Process(Block suggestedBlock, bool forMining)
         {
             Debug.Assert(suggestedBlock.Number == 0 || _blockTree.FindParent(suggestedBlock) != null, "Got an orphaned block for porcessing.");
+            Debug.Assert(suggestedBlock.Header.TotalDifficulty != null, "block without total difficulty calculated was suggested for processing");
             
             _logger?.Log("-------------------------------------------------------------------------------------");
             if (!forMining)
@@ -261,7 +259,7 @@ namespace Nethermind.Blockchain
                 Debug.Assert(ommerHeader.Hash != null, "ommer's hash should be known at this stage");
             }
 
-            BigInteger totalDifficulty = GetTotalDifficulty(suggestedBlock.Header);
+            BigInteger totalDifficulty = suggestedBlock.TotalDifficulty ?? 0;
             BigInteger totalTransactions = GetTotalTransactions(suggestedBlock);
             _logger?.Log($"TOTAL DIFFICULTY OF BLOCK {suggestedBlock.Header.Hash} ({suggestedBlock.Header.Number}) IS {totalDifficulty}");
             _logger?.Log($"TOTAL TRANSACTIONS OF BLOCK {suggestedBlock.Header.Hash} ({suggestedBlock.Header.Number}) IS {totalTransactions}");
@@ -336,7 +334,8 @@ namespace Nethermind.Blockchain
                         _blockTree.MarkAsProcessed(processedBlock.Hash);
                     }
                     
-                    HeadBlock = processedBlocks[processedBlocks.Length - 1]; // do not use processed here as reference equality will not hold
+                    HeadBlock = processedBlocks[processedBlocks.Length - 1];
+                    HeadBlock.Header.TotalDifficulty = suggestedBlock.TotalDifficulty; // TODO: cleanup total difficulty
                     _logger?.Log($"SETTING HEAD BLOCK TO {HeadBlock.Hash} ({HeadBlock.Number})");
 
                     foreach (Block block in blocksToBeRemovedFromMain)

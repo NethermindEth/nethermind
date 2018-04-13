@@ -28,7 +28,7 @@ namespace Nethermind.Core.Test.Builders
                                      Keccak.Compute("parent"),
                                      Keccak.OfAnEmptySequenceRlp,
                                      Address.Zero,
-                                     1_000_000, 1,
+                                     1_000_000, 0,
                                      4_000_000,
                                      1_000_000,
                                      new byte[] {1, 2, 3});
