@@ -30,5 +30,10 @@ namespace Nethermind.Core.Test.Builders
         public static Keccak KeccakF = Keccak.Compute("F");
         public static Keccak KeccakG = Keccak.Compute("G");
         public static Keccak KeccakH = Keccak.Compute("H");
+
+        public static PrivateKey PrivateKeyA = Build.A.PrivateKey.TestObject;
+        public static PrivateKey PrivateKeyB = Build.A.PrivateKey.TestObject;
+        public static PrivateKey PrivateKeyC = Build.A.PrivateKey.TestObject;
+        public static PrivateKey PrivateKeyD = Build.A.PrivateKey.TestObject;
     }
 }

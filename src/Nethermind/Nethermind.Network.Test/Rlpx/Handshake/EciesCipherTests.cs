@@ -20,8 +20,10 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Network.Crypto;
 using Nethermind.Network.Rlpx.Handshake;
+using Nethermind.Network.Test.Builders;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.Rlpx.Handshake
@@ -38,11 +40,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
         {
             _cryptoRandom = new TestRandom();
             _eciesCipher = new EciesCipher(_cryptoRandom);
-            _messageSerializationService = new MessageSerializationService();
-            _messageSerializationService.Register(new AuthMessageSerializer());
-            _messageSerializationService.Register(new AuthEip8MessageSerializer(new Eip8MessagePad(new CryptoRandom())));
-            _messageSerializationService.Register(new AckMessageSerializer());
-            _messageSerializationService.Register(new AckEip8MessageSerializer(new Eip8MessagePad(new CryptoRandom())));
+            _messageSerializationService = Build.A.SerializationService().WithEncryptionHandshake().TestObject;
         }
 
         [Test]

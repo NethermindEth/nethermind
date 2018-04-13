@@ -27,12 +27,15 @@ using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Discovery.Messages;
 using Nethermind.Discovery.RoutingTable;
 using Nethermind.Discovery.Serializers;
 using Nethermind.Network;
+using Nethermind.Network.Test.Builders;
 using NSubstitute;
 using NUnit.Framework;
+using Org.BouncyCastle.Crypto.Parameters;
 using Node = Nethermind.Discovery.RoutingTable.Node;
 
 namespace Nethermind.Discovery.Test
@@ -58,10 +61,10 @@ namespace Nethermind.Discovery.Test
             _discoveryManagers = new List<IDiscoveryManager>();
             _channelActivatedCounter = 0;
             var discoveryManager = Substitute.For<IDiscoveryManager>();
-            var messageSerializationService = CreateSerializationService(_privateKey);
+            var messageSerializationService = Build.A.SerializationService().WithDiscovery(_privateKey).TestObject;
 
             var discoveryManager2 = Substitute.For<IDiscoveryManager>();
-            var messageSerializationService2 = CreateSerializationService(_privateKey2);
+            var messageSerializationService2 = Build.A.SerializationService().WithDiscovery(_privateKey).TestObject;
 
             await StartUdpChannel("127.0.0.1", 10001, discoveryManager, messageSerializationService);
             await StartUdpChannel("127.0.0.1", 10002, discoveryManager2, messageSerializationService2);
@@ -211,24 +214,6 @@ namespace Nethermind.Discovery.Test
             channel.Pipeline
                 .AddLast(new LoggingHandler(LogLevel.TRACE))
                 .AddLast(handler);
-        }
-
-        private IMessageSerializationService CreateSerializationService(PrivateKey privateKey)
-        {
-            var config = new DiscoveryConfigurationProvider(new NetworkHelper(new ConsoleLogger()));
-            var signer = new Signer();
-
-            var pingSerializer = new PingMessageSerializer(signer, privateKey, new DiscoveryMessageFactory(config), new NodeIdResolver(signer), new NodeFactory());
-            var pongSerializer = new PongMessageSerializer(signer, privateKey, new DiscoveryMessageFactory(config), new NodeIdResolver(signer), new NodeFactory());
-            var findNodeSerializer = new FindNodeMessageSerializer(signer, privateKey, new DiscoveryMessageFactory(config), new NodeIdResolver(signer), new NodeFactory());
-            var neighborsSerializer = new NeighborsMessageSerializer(signer, privateKey, new DiscoveryMessageFactory(config), new NodeIdResolver(signer), new NodeFactory());
-
-            var messageSerializationService = new MessageSerializationService();
-            messageSerializationService.Register(pingSerializer);
-            messageSerializationService.Register(pongSerializer);
-            messageSerializationService.Register(findNodeSerializer);
-            messageSerializationService.Register(neighborsSerializer);
-            return messageSerializationService;
         }
     }
 }

@@ -19,10 +19,12 @@
 using System.Net;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Discovery.Messages;
 using Nethermind.Discovery.RoutingTable;
 using Nethermind.Discovery.Serializers;
 using Nethermind.Network;
+using Nethermind.Network.Test.Builders;
 using NUnit.Framework;
 
 namespace Nethermind.Discovery.Test
@@ -34,7 +36,6 @@ namespace Nethermind.Discovery.Test
         //private readonly PrivateKey _farPrivateKey = new PrivateKey("3a1076bf45ab87712ad64ccb3b10217737f7faacbf2872e88fdd9a537d8fe266");
         private IPEndPoint _farAddress;
         private IPEndPoint _nearAddress;
-        private ISigner _signer;
         private IDiscoveryConfigurationProvider _config;
         private IMessageSerializationService _messageSerializationService;
 
@@ -43,19 +44,8 @@ namespace Nethermind.Discovery.Test
         {
             _config = new DiscoveryConfigurationProvider(new NetworkHelper(new ConsoleLogger()));
             _farAddress = new IPEndPoint(IPAddress.Parse("192.168.1.2"), 1);
-            _nearAddress = new IPEndPoint(IPAddress.Parse(_config.MasterExternalIp), _config.MasterPort);
-            _signer = new Signer();
-
-            var pingSerializer = new PingMessageSerializer(_signer, _privateKey, new DiscoveryMessageFactory(_config), new NodeIdResolver(_signer), new NodeFactory());
-            var pongSerializer = new PongMessageSerializer(_signer, _privateKey, new DiscoveryMessageFactory(_config), new NodeIdResolver(_signer), new NodeFactory());
-            var findNodeSerializer = new FindNodeMessageSerializer(_signer, _privateKey, new DiscoveryMessageFactory(_config), new NodeIdResolver(_signer), new NodeFactory());
-            var neighborsSerializer = new NeighborsMessageSerializer(_signer, _privateKey, new DiscoveryMessageFactory(_config), new NodeIdResolver(_signer), new NodeFactory());
-
-            _messageSerializationService = new MessageSerializationService();
-            _messageSerializationService.Register(pingSerializer);
-            _messageSerializationService.Register(pongSerializer);
-            _messageSerializationService.Register(findNodeSerializer);
-            _messageSerializationService.Register(neighborsSerializer);
+            _nearAddress = new IPEndPoint(IPAddress.Parse(_config.MasterExternalIp), _config.MasterPort);            
+            _messageSerializationService = Build.A.SerializationService().WithDiscovery(_privateKey).TestObject;
         }
 
         [Test]

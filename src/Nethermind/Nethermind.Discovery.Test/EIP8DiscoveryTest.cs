@@ -18,10 +18,12 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Discovery.Messages;
 using Nethermind.Discovery.RoutingTable;
 using Nethermind.Discovery.Serializers;
 using Nethermind.Network;
+using Nethermind.Network.Test.Builders;
 using NUnit.Framework;
 
 namespace Nethermind.Discovery.Test
@@ -30,26 +32,12 @@ namespace Nethermind.Discovery.Test
     public class EIP8DiscoveryTest
     {
         private readonly PrivateKey _privateKey = new PrivateKey("b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291");
-        private ISigner _signer;
-        private IDiscoveryConfigurationProvider _config;
         private IMessageSerializationService _messageSerializationService;
 
         [SetUp]
         public void Initialize()
         {
-            _config = new DiscoveryConfigurationProvider(new NetworkHelper(new ConsoleLogger()));
-            _signer = new Signer();
-
-            var pingSerializer = new PingMessageSerializer(_signer, _privateKey, new DiscoveryMessageFactory(_config), new NodeIdResolver(_signer), new NodeFactory());
-            var pongSerializer = new PongMessageSerializer(_signer, _privateKey, new DiscoveryMessageFactory(_config), new NodeIdResolver(_signer), new NodeFactory());
-            var findNodeSerializer = new FindNodeMessageSerializer(_signer, _privateKey, new DiscoveryMessageFactory(_config), new NodeIdResolver(_signer), new NodeFactory());
-            var neighborsSerializer = new NeighborsMessageSerializer(_signer, _privateKey, new DiscoveryMessageFactory(_config), new NodeIdResolver(_signer), new NodeFactory());
-
-            _messageSerializationService = new MessageSerializationService();
-            _messageSerializationService.Register(pingSerializer);
-            _messageSerializationService.Register(pongSerializer);
-            _messageSerializationService.Register(findNodeSerializer);
-            _messageSerializationService.Register(neighborsSerializer);
+            _messageSerializationService = Build.A.SerializationService().WithDiscovery(_privateKey).TestObject;
         }
 
         [Test]

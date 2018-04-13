@@ -34,6 +34,10 @@
       <Project>{5751C57B-9F2D-45DE-BCC2-42645B85E39E}</Project>
       <Name>Nethermind.Core</Name>
     </ProjectReference>
+    <ProjectReference Include="..\Nethermind.Discovery\Nethermind.Discovery.csproj">
+      <Project>{D1DB830A-0FF8-4A38-AFA2-9D6023BB41F9}</Project>
+      <Name>Nethermind.Discovery</Name>
+    </ProjectReference>
     <ProjectReference Include="..\Nethermind.Network\Nethermind.Network.csproj" />
   </ItemGroup>
 </Project>

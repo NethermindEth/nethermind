@@ -22,11 +22,13 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Network.Crypto;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
+using Nethermind.Network.Test.Builders;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -51,22 +53,14 @@ namespace Nethermind.Network.Test
             var logger = new TestLogger();
             
             /* rlpx + p2p + eth */
-            _keyA = new PrivateKey(cryptoRandom.GenerateRandomBytes(32));
-            _keyB = new PrivateKey(cryptoRandom.GenerateRandomBytes(32));
-            _keyC = new PrivateKey(cryptoRandom.GenerateRandomBytes(32));
+            _keyA = TestObject.PrivateKeyA;
+            _keyB = TestObject.PrivateKeyB;
+            _keyC = TestObject.PrivateKeyC;
 
             var signer = new Signer();
             var eciesCipher = new EciesCipher(cryptoRandom);
-            var serializationService = new MessageSerializationService();
-            var eip8Pad = new Eip8MessagePad(cryptoRandom);
-
-            serializationService.Register(new AuthEip8MessageSerializer(eip8Pad));
-            serializationService.Register(new AckEip8MessageSerializer(eip8Pad));
-            serializationService.Register(new HelloMessageSerializer());
-            serializationService.Register(new DisconnectMessageSerializer());
-            serializationService.Register(new PingMessageSerializer());
-            serializationService.Register(new PongMessageSerializer());
-            serializationService.Register(new StatusMessageSerializer());
+            
+            var serializationService = Build.A.SerializationService().WithEncryptionHandshake().WithP2P().WithEth().TestObject;
 
             var encryptionHandshakeServiceA = new EncryptionHandshakeService(serializationService, eciesCipher, cryptoRandom, signer, _keyA, logger);
             var encryptionHandshakeServiceB = new EncryptionHandshakeService(serializationService, eciesCipher, cryptoRandom, signer, _keyB, logger);

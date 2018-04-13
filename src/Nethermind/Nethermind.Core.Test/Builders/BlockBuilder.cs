@@ -35,6 +35,12 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
         
+        public BlockBuilder WithTotalDifficulty(BigInteger difficulty)
+        {
+            TestObject.Header.TotalDifficulty = difficulty;
+            return this;
+        }
+        
         public BlockBuilder WithDifficulty(BigInteger difficulty)
         {
             TestObject.Header.Difficulty = difficulty;

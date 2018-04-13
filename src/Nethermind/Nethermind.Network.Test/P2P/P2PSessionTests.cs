@@ -19,8 +19,10 @@
 using DotNetty.Transport.Channels;
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P;
 using Nethermind.Network.Rlpx;
+using Nethermind.Network.Test.Builders;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -35,9 +37,8 @@ namespace Nethermind.Network.Test.P2P
         public void Can_start_p2p_session()
         {
             IPacketSender sender = Substitute.For<IPacketSender>();
-            
-            MessageSerializationService service = new MessageSerializationService();
-            service.Register(new HelloMessageSerializer());
+
+            IMessageSerializationService service = Build.A.SerializationService().WithP2P().TestObject;
             
             P2PSession factory = new P2PSession(NetTestVectors.StaticKeyA.PublicKey, ListenPort, service, Substitute.For<ISynchronizationManager>(), NullLogger.Instance);
             factory.Init(4, Substitute.For<IChannelHandlerContext>(), sender);
