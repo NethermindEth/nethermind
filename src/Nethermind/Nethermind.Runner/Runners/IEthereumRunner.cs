@@ -16,10 +16,9 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.Runner
+namespace Nethermind.Runner.Runners
 {
-    public class TestAccount
+    public interface IEthereumRunner : IRunner
     {
-        public string Balance { get; set; }
     }
 }

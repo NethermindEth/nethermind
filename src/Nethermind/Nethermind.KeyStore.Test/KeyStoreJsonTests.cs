@@ -22,13 +22,14 @@ namespace Nethermind.KeyStore.Test
         [SetUp]
         public void Initialize()
         {
-            _keyStoreDir = Path.Combine(Path.GetTempPath(), "KeyStore");
+            _configurationProvider = new ConfigurationProvider();
+            _keyStoreDir = _configurationProvider.KeyStoreDirectory;
             if (!Directory.Exists(_keyStoreDir))
             {
                 Directory.CreateDirectory(_keyStoreDir);
             }
 
-            _configurationProvider = new ConfigurationProvider(_keyStoreDir);
+            _configurationProvider = new ConfigurationProvider();
 
             ConsoleAsyncLogger logger = new ConsoleAsyncLogger();
             _serializer = new JsonSerializer(logger);

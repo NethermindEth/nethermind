@@ -64,7 +64,7 @@ namespace Nethermind.Discovery.Test
                 BucketSize = 3,
                 BucketsCount = 1
             };
-            var configProvider = new ConfigurationProvider(Path.GetDirectoryName(Path.Combine(Path.GetTempPath(), "KeyStore")));
+            var configProvider = new ConfigurationProvider();
             _nodeFactory = new NodeFactory();
             var calculator = new NodeDistanceCalculator(_configurationProvider);
 

@@ -53,7 +53,7 @@ namespace Nethermind.KeyStore.Test
             _testPasswordSecured.MakeReadOnly();
             _wrongPasswordSecured.MakeReadOnly();
 
-            _configurationProvider = new ConfigurationProvider(Path.GetDirectoryName(Path.Combine(Path.GetTempPath(), "KeyStore")));
+            _configurationProvider = new ConfigurationProvider();
 
             ConsoleAsyncLogger logger = new ConsoleAsyncLogger();
             _serializer = new JsonSerializer(logger);

@@ -17,25 +17,27 @@
  */
 
 using System.Numerics;
+using Nethermind.Runner.Runners;
 
 namespace Nethermind.Runner
 {
     public class InitParams
     {
-        public string Host { get; set; }
+        public string HttpHost { get; set; }
         public string BootNode { get; set; }
-        public int HttpPort { get; set; }
-        public int DiscoveryPort { get; set; }
+        public int? HttpPort { get; set; }
+        public int? DiscoveryPort { get; set; }
         public string GenesisFilePath { get; set; }
         public string ChainFile { get; set; }
         public string BlocksDir { get; set; }
         public string KeysDir { get; set; }
         public BigInteger? HomesteadBlockNr { get; set; }
+        public EthereumRunnerType EthereumRunnerType { get; set; }
 
         public override string ToString()
         {
-            return $"Host: {Host}, BootNode: {BootNode}, HttpPort: {HttpPort}, DiscoveryPort: {DiscoveryPort}, GenesisFilePath: {GenesisFilePath}, " +
-                   $"ChainFile: {ChainFile}, BlocksDir: {BlocksDir}, KeysDir: {KeysDir}, HomesteadBlockNr: {HomesteadBlockNr}";
+            return $"HttpHost: {HttpHost}, BootNode: {BootNode}, HttpPort: {HttpPort}, DiscoveryPort: {DiscoveryPort}, GenesisFilePath: {GenesisFilePath}, " +
+                   $"ChainFile: {ChainFile}, BlocksDir: {BlocksDir}, KeysDir: {KeysDir}, HomesteadBlockNr: {HomesteadBlockNr}, EthereumRunnerType: {EthereumRunnerType}";
         }
     }
 }

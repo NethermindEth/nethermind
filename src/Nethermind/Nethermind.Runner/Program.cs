@@ -24,7 +24,7 @@ namespace Nethermind.Runner
     {
         static void Main(string[] args)
         {
-            var runner = new RunnerApp(new ConsoleAsyncLogger());
+            var runner = new RunnerApp(new NlogLogger());
             runner.Start(args);
         }       
     }

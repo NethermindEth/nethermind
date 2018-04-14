@@ -19,6 +19,10 @@
 using Microsoft.AspNetCore;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.JsonRpc;
+using Nethermind.Runner.Runners;
 using NUnit.Framework;
 
 namespace Nethermind.Runner.Test
@@ -31,18 +35,18 @@ namespace Nethermind.Runner.Test
         {
             var host = "http://localhost:100012";
 
-            RunnerApp.InitParams = new InitParams();
+            Bootstrap.ConfigureContainer(new ConfigurationProvider(), new PrivateKeyProvider(new CryptoRandom()), new ConsoleLogger(), new InitParams() );
 
             var webHost = WebHost.CreateDefaultBuilder()
                 .UseStartup<Startup>()
                 .UseUrls(host)
                 .Build();
 
-            var ethereumRunner = webHost.Services.GetService<IRunner>();
-            var jsonRpcRunner = webHost.Services.GetService<IJsonRpcRunner>();
+            var ethereumRunner = webHost.Services.GetService<IEthereumRunner>();
+            var discoveryRunner = webHost.Services.GetService<IDiscoveryRunner>();
 
             Assert.IsNotNull(ethereumRunner);
-            Assert.IsNotNull(jsonRpcRunner);
+            Assert.IsNotNull(discoveryRunner);
         }
     }
 }

@@ -30,6 +30,7 @@ namespace Nethermind.Discovery
             BucketsCount = 256;
             MasterExternalIp = networkHelper.GetExternalIp()?.ToString();
             MasterHost = networkHelper.GetLocalIp()?.ToString() ?? "127.0.0.1";
+            MasterPort = 30304;
         }
 
         public int BucketSize { get; set; }
@@ -39,7 +40,7 @@ namespace Nethermind.Discovery
         //public string MasterHost => "127.0.0.1";
         public string MasterHost { get; set; }  //=> "192.168.1.154";
         public string MasterExternalIp { get; set; }
-        public int MasterPort => 30304;
+        public int MasterPort { get; set; }
         public int MaxDiscoveryRounds => 8;
         public int EvictionCheckInterval => 75;
         public int SendNodeTimeout => 500;

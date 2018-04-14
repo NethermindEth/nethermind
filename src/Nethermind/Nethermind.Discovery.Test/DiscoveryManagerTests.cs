@@ -56,7 +56,7 @@ namespace Nethermind.Discovery.Test
             _publicKey = privateKey.PublicKey;
             var logger = new ConsoleAsyncLogger();
             var config = new DiscoveryConfigurationProvider(new NetworkHelper(logger)) { PongTimeout = 100 };
-            var configProvider = new ConfigurationProvider(Path.GetDirectoryName(Path.Combine(Path.GetTempPath(), "KeyStore")));
+            var configProvider = new ConfigurationProvider();
             
             _messageSender = Substitute.For<IMessageSender>();
             _nodeFactory = new NodeFactory();

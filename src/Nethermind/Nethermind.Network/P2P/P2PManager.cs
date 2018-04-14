@@ -25,7 +25,7 @@ namespace Nethermind.Network.P2P
             _synchronizationManager = synchronizationManager;
         }
 
-        public void OnNewNodeDiscovered(DiscoveryNode node)
+        public void OnNodeDiscovered(DiscoveryNode node)
         {
             try
             {

@@ -17,95 +17,53 @@
  */
 
 using System;
-using System.Numerics;
 using System.Threading;
 using Microsoft.AspNetCore;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.CommandLineUtils;
-using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Runner.Runners;
 
 namespace Nethermind.Runner
 {
-    public class RunnerApp : IRunnerApp
+    public class RunnerApp : BaseRunnerApp, IRunnerApp
     {
-        private readonly ILogger _logger;
-
-        //TODO temp solution - fix it
-        public static InitParams InitParams;
+        private static readonly PrivateKey PrivateKey = new PrivateKey("49a7b37aa6f6645917e7b807e9d1c00d4fa71f18343b0d4122a4d2df64dd6fee");
 
         private string _host = "0.0.0.0";
-        private string _bootNode = "enode://6ce05930c72abc632c58e2e4324f7c7ea478cec0ed4fa2528982cf34483094e9cbc9216e7aa349691242576d552a2a56aaeae426c5303ded677ce455ba1acd9d@13.84.180.240:30303";
         private int _httpPort = 8545;
-        private int _discoveryPort = 30303;
-        private string _genesisFile = "genesis.json";
-        private string _chainFile = "chain.rlp";
-        private string _blocksDir = "blocks";
-        private string _keysDir = "keys";
+        private string _genesisFile = @"Data\genesis.json";
 
-        public RunnerApp(ILogger logger)
+        public RunnerApp(ILogger logger) : base(logger, new PrivateKeyProvider(PrivateKey))
         {
-            _logger = logger;
         }
 
         public void Start(string[] args)
         {
             var app = new CommandLineApplication { Name = "Nethermind.Runner" };
             app.HelpOption("-?|-h|--help");
-            
-            var host = app.Option("-ho|--host <host>", "server host", CommandOptionType.SingleValue);
-            var bootNode = app.Option("-b|--bootNode <bootNode>", "enode URL of the remote bootstrap node", CommandOptionType.SingleValue);
+
+            var host = app.Option("-ho|--httpHost <httpHost>", "JsonRPC http server host", CommandOptionType.SingleValue);
             var httpPort = app.Option("-p|--httpPort <httpPort>", "JsonRPC http listening port", CommandOptionType.SingleValue);
             var discoveryPort = app.Option("-d|--discoveryPort <discoveryPort>", "discovery UDP listening port", CommandOptionType.SingleValue);
             var genesisFile = app.Option("-gf|--genesisFile <genesisFile>", "genesis file path", CommandOptionType.SingleValue);
-            var chainFile = app.Option("-cf|--chainFile <chainFile>", "chain file path", CommandOptionType.SingleValue);
-            var blocksDir = app.Option("-bd|--blocksDir <blocksDir>", "blocks directory path", CommandOptionType.SingleValue);
-            var keysDir = app.Option("-kd|--keysDir <keysDir>", "keys directory path", CommandOptionType.SingleValue);
-            var homesteadBlockNr = app.Option("-fh|--homesteadBlockNr <homesteadBlockNr>", "the block number of the Ethereum Homestead transition", CommandOptionType.SingleValue);
 
             app.OnExecute(() => {
-                
+
                 var initParams = new InitParams
                 {
-                    Host = host.HasValue() ? host.Value() : _host,
-                    BootNode = bootNode.HasValue() ? bootNode.Value() : _bootNode,
+                    HttpHost = host.HasValue() ? host.Value() : _host,
                     HttpPort = httpPort.HasValue() ? GetIntValue(httpPort.Value(), "httpPort") : _httpPort,
-                    DiscoveryPort = discoveryPort.HasValue() ? GetIntValue(discoveryPort.Value(), "discoveryPort") : _discoveryPort,
+                    DiscoveryPort = discoveryPort.HasValue() ? GetIntValue(discoveryPort.Value(), "discoveryPort") : (int?)null,
                     GenesisFilePath = genesisFile.HasValue() ? genesisFile.Value() : _genesisFile,
-                    ChainFile = chainFile.HasValue() ? chainFile.Value() : _chainFile,
-                    BlocksDir = blocksDir.HasValue() ? blocksDir.Value() : _blocksDir,
-                    KeysDir = keysDir.HasValue() ? keysDir.Value() : _keysDir,
-                    HomesteadBlockNr = homesteadBlockNr.HasValue() ? GetBigIntValue(homesteadBlockNr.Value(), "homesteadBlockNr") : (BigInteger?)null
+                    EthereumRunnerType = EthereumRunnerType.Default
                 };
 
-                Console.WriteLine($"Running Nethermind Runner, parameters: {initParams}");
-                InitParams = initParams;
+                Logger.Log($"Running Nethermind Runner, parameters: {initParams}");
 
                 Run(initParams);
-                return 0;
-            });
-
-            app.Execute(args);
-        }
-
-        private void Run(InitParams initParams)
-        {
-            try
-            {
-                var host = $"http://{initParams.Host}:{initParams.HttpPort}";
-                _logger.Log($"Running server, url: {host}");
-
-                var webHost = WebHost.CreateDefaultBuilder()
-                    .UseStartup<Startup>()
-                    .UseUrls(host)
-                    .Build();
-
-                var ethereumRunner = webHost.Services.GetService<IRunner>();
-                ethereumRunner.Start(initParams);
-
-                var jsonRpcRunner = webHost.Services.GetService<IJsonRpcRunner>();
-                jsonRpcRunner.Start(webHost);
 
                 while (true)
                 {
@@ -113,48 +71,18 @@ namespace Nethermind.Runner
                     var value = Console.ReadLine();
                     if ("e".CompareIgnoreCaseTrim(value))
                     {
-                        _logger.Log("Closing app");
+                        Logger.Log("Closing app");
                         break;
                     }
                     Thread.Sleep(2000);
                 }
-            }
-            catch (Exception e)
-            {
-                _logger.Error("Error while starting Nethermind.Runner", e);
-                throw;
-            }
-        }
 
-        //private void TestConnection()
-        //{
-        //    Thread.Sleep(2);
+                Stop();
 
-        //    var client = new RunnerTestCient(_logger, new JsonSerializer(_logger));
-        //    _logger.Log("Running client");
-        //    var result = client.SendEthProtocolVersion();
-        //    result.Wait();
-        //    _logger.Log($"Result connection: {result.Result}");
-        //}
+                return 0;
+            });
 
-        private int GetIntValue(string rawValue, string argName)
-        {
-            if (int.TryParse(rawValue, out var value))
-            {
-                return value;
-            }
-
-            throw new Exception($"Incorrect argument value, arg: {argName}, value: {rawValue}");
-        }
-
-        private BigInteger GetBigIntValue(string rawValue, string argName)
-        {
-            if (BigInteger.TryParse(rawValue, out var value))
-            {
-                return value;
-            }
-
-            throw new Exception($"Incorrect argument value, arg: {argName}, value: {rawValue}");
+            app.Execute(args);
         }
     }
 }

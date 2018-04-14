@@ -16,12 +16,10 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Numerics;
-using System.Text;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -29,11 +27,12 @@ using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.KeyStore;
+using Nethermind.Runner.Data;
 using Nethermind.Store;
 
-namespace Nethermind.Runner
+namespace Nethermind.Runner.Runners
 {
-    public class EthereumRunner : IRunner
+    public class HiveEthereumRunner : IEthereumRunner
     {
         private readonly IJsonSerializer _jsonSerializer;
         private readonly IBlockTree _blockTree;
@@ -44,7 +43,7 @@ namespace Nethermind.Runner
         private readonly ILogger _logger;
         private readonly IConfigurationProvider _configurationProvider;
 
-        public EthereumRunner(IJsonSerializer jsonSerializer, IBlockchainProcessor blockchainProcessor, IBlockTree blockTree, IStateProvider stateProvider, IDbProvider dbProvider, ILogger logger, IConfigurationProvider configurationProvider, ISpecProvider specProvider)
+        public HiveEthereumRunner(IJsonSerializer jsonSerializer, IBlockchainProcessor blockchainProcessor, IBlockTree blockTree, IStateProvider stateProvider, IDbProvider dbProvider, ILogger logger, IConfigurationProvider configurationProvider, ISpecProvider specProvider)
         {
             _jsonSerializer = jsonSerializer;
             _blockchainProcessor = blockchainProcessor;
@@ -58,10 +57,13 @@ namespace Nethermind.Runner
 
         public void Start(InitParams initParams)
         {
+            _logger.Log("Initializing Ethereum");
+            _blockchainProcessor.Start();
             InitializeKeys(initParams.KeysDir);
             InitializeGenesis(initParams.GenesisFilePath);
             InitializeChain(initParams.ChainFile);
             InitializeBlocks(initParams.BlocksDir);
+            _logger.Log("Ethereum initialization completed");
         }
 
         public void Stop()

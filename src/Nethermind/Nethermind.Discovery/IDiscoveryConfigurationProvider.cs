@@ -55,7 +55,7 @@ namespace Nethermind.Discovery
         /// <summary>
         /// Current Node port
         /// </summary>
-        int MasterPort { get; }
+        int MasterPort { get; set; }
 
         /// <summary>
         /// Max Discovery Rounds

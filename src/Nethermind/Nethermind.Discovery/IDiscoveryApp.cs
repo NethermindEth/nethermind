@@ -16,11 +16,13 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.Core.Crypto;
+
 namespace Nethermind.Discovery
 {
     public interface IDiscoveryApp
     {
-        void Start();
+        void Start(PublicKey masterPublicKey);
         void Stop();
     }
 }

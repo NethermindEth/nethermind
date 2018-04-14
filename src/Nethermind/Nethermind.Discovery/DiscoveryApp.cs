@@ -64,10 +64,11 @@ namespace Nethermind.Discovery
             _cryptoRandom = cryptoRandom;
         }
 
-        public async void Start()
+        public async void Start(PublicKey masterPublicKey)
         {
             try
             {
+                _nodeTable.Initialize(masterPublicKey);
                 _logger.Log("Initializing UDP channel.");
                 await InitializeUdpChannel();
             }

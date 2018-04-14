@@ -136,8 +136,7 @@ namespace Nethermind.JsonRpc
 
             //execute method
             var result = method.Invoke(module, parameters);
-            var resultWrapper = result as IResultWrapper;
-            if (resultWrapper == null)
+            if (!(result is IResultWrapper resultWrapper))
             {
                 _logger.Error($"Method {methodName} execution result does not implement IResultWrapper");
                 return GetErrorResponse(ErrorType.InternalError, "Internal error", request.Id, methodName);
@@ -150,8 +149,7 @@ namespace Nethermind.JsonRpc
 
             //process response
             var data = resultWrapper.GetData();
-            var collection = data as IEnumerable;
-            if (collection == null || data is string)
+            if (!(data is IEnumerable collection) || data is string)
             {
                 var json = GetDataObject(data);
                 return GetSuccessResponse(json, request.Id, methodName);        
@@ -228,7 +226,6 @@ namespace Nethermind.JsonRpc
                 }
             };
             return response;
-            //return _jsonSerializer.Serialize(response);
         }
 
         private (ErrorType?, string) Validate(JsonRpcRequest rpcRequest)
