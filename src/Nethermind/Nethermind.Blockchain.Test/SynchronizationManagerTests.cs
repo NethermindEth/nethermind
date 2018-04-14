@@ -46,7 +46,7 @@ namespace Nethermind.Blockchain.Test
             BlockValidator blockValidator = new BlockValidator(transactionValidator, headerValidator, ommersValidator, specProvider, NullLogger.Instance);
 
             _genesisBlock = Build.A.Block.WithNumber(0).TestObject;
-            _manager = new SynchronizationManager(_delay, _blockTree, headerValidator, blockValidator, transactionValidator, specProvider, _genesisBlock, _genesisBlock, _genesisBlock.Difficulty, new ConsoleLogger());
+            _manager = new SynchronizationManager(_delay, _blockTree, headerValidator, blockValidator, transactionValidator, specProvider, _genesisBlock, _genesisBlock, _genesisBlock.Difficulty, new ConsoleAsyncLogger());
         }
 
         private IBlockTree _blockTree;

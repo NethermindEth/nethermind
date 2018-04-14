@@ -45,7 +45,7 @@ namespace Ethereum.VM.Test
         [SetUp]
         public void Setup()
         {
-            ILogger stateLogger = ShouldLog.State ? new ConsoleLogger() : null;
+            ILogger stateLogger = ShouldLog.State ? new ConsoleAsyncLogger() : null;
             _dbProvider = new DbProvider(stateLogger);
             _blockhashProvider = new TestBlockhashProvider();
             _stateProvider = new StateProvider(new StateTree(_dbProvider.GetOrCreateStateDb()), stateLogger, _dbProvider.GetOrCreateCodeDb());
@@ -135,7 +135,7 @@ namespace Ethereum.VM.Test
 
         protected void RunTest(VirtualMachineTest test)
         {
-            VirtualMachine machine = new VirtualMachine(OlympicSpecProvider.Instance, _stateProvider, _storageProvider, _blockhashProvider, ShouldLog.Evm ? new ConsoleLogger() : null);
+            VirtualMachine machine = new VirtualMachine(OlympicSpecProvider.Instance, _stateProvider, _storageProvider, _blockhashProvider, ShouldLog.Evm ? new ConsoleAsyncLogger() : null);
             ExecutionEnvironment environment = new ExecutionEnvironment();
             environment.Value = test.Execution.Value;
             environment.CallDepth = 0;

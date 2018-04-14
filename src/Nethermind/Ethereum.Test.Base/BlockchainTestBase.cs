@@ -42,7 +42,7 @@ namespace Ethereum.Test.Base
 {
     public class BlockchainTestBase
     {
-        private static ILogger _logger = new ConsoleLogger();
+        private static ILogger _logger = new ConsoleAsyncLogger();
         private static readonly ISealEngine SealEngine = new EthashSealEngine(new Ethash()); // temporarily keep reusing the same one as otherwise it would recreate cache for each test
 
         [SetUp]

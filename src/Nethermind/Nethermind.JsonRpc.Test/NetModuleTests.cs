@@ -30,7 +30,7 @@ namespace Nethermind.JsonRpc.Test
         [SetUp]
         public void Initialize()
         {
-            _netModule = new NetModule(new ConsoleLogger(), new ConfigurationProvider());
+            _netModule = new NetModule(new ConsoleAsyncLogger(), new ConfigurationProvider());
         }
 
         [Test]

@@ -56,7 +56,7 @@ namespace Nethermind.Discovery.Test
         {
             SetupNodeIds();
 
-            var logger = new ConsoleLogger();
+            var logger = new ConsoleAsyncLogger();
             //setting config to store 3 nodes in a bucket and for table to have one bucket//setting config to store 3 nodes in a bucket and for table to have one bucket
             _configurationProvider = new DiscoveryConfigurationProvider(new NetworkHelper(logger))
             {

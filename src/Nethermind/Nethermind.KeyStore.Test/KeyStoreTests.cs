@@ -55,7 +55,7 @@ namespace Nethermind.KeyStore.Test
 
             _configurationProvider = new ConfigurationProvider(Path.GetDirectoryName(Path.Combine(Path.GetTempPath(), "KeyStore")));
 
-            ConsoleLogger logger = new ConsoleLogger();
+            ConsoleAsyncLogger logger = new ConsoleAsyncLogger();
             _serializer = new JsonSerializer(logger);
             _cryptoRandom = new CryptoRandom();
             _store = new FileKeyStore(_configurationProvider, _serializer, new AesEncrypter(_configurationProvider, logger), _cryptoRandom, logger);

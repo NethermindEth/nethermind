@@ -10,7 +10,7 @@ namespace Nethermind.Discovery.Test
         [Test]
         public void ExternalIpTest()
         {
-            var networkHelper = new NetworkHelper(new ConsoleLogger());
+            var networkHelper = new NetworkHelper(new ConsoleAsyncLogger());
             var address = networkHelper.GetExternalIp();
             Assert.IsNotNull(address);
         }
@@ -18,7 +18,7 @@ namespace Nethermind.Discovery.Test
         [Test]
         public void InternalIpTest()
         {
-            var networkHelper = new NetworkHelper(new ConsoleLogger());
+            var networkHelper = new NetworkHelper(new ConsoleAsyncLogger());
             var address = networkHelper.GetLocalIp();
             Assert.IsNotNull(address);
         }

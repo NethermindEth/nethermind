@@ -41,7 +41,6 @@ using Node = Nethermind.Discovery.RoutingTable.Node;
 namespace Nethermind.Discovery.Test
 {
     [TestFixture]
-    [Ignore("hanging")]
     public class NettyDiscoveryHandlerTests
     {
         private readonly PrivateKey _privateKey = new PrivateKey("49a7b37aa6f6645917e7b807e9d1c00d4fa71f18343b0d4122a4d2df64dd6fee");
@@ -208,7 +207,10 @@ namespace Nethermind.Discovery.Test
         private void InitializeChannel(IDatagramChannel channel, IDiscoveryManager discoveryManager, IMessageSerializationService service)
         {
             var handler = new NettyDiscoveryHandler(new ConsoleLogger(), discoveryManager, channel, service);
-            handler.OnChannelActivated += (x, y) => { _channelActivatedCounter++; };
+            handler.OnChannelActivated += (x, y) =>
+            {
+                _channelActivatedCounter++;
+            };
             _discoveryHandlers.Add(handler);
             discoveryManager.MessageSender = handler;
             channel.Pipeline

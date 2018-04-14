@@ -41,7 +41,7 @@ namespace Nethermind.Blockchain.Test
         public async Task Build_some_chain()
         {
             /* logging & instrumentation */
-            var logger = new ConsoleLogger();
+            var logger = new ConsoleAsyncLogger();
 
             /* spec */
             var blockMiningTime = TimeSpan.FromMilliseconds(500);

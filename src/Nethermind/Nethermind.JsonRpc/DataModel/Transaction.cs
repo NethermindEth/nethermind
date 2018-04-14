@@ -26,7 +26,7 @@ namespace Nethermind.JsonRpc.DataModel
 
         public Transaction()
         {
-            _jsonSerializer = new JsonSerializer(new ConsoleLogger());
+            _jsonSerializer = new JsonSerializer(new ConsoleAsyncLogger());
         }
 
         public Transaction(IJsonSerializer jsonSerializer)
