@@ -60,17 +60,10 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
-    <None Include="C:\Users\glesniakiewicz\.nuget\packages\nlog.config\4.5.2\contentFiles\any\any\NLog.config" Link="NLog.config">
-      <Private>True</Private>
-      <NuGetPackageVersion>4.5.2</NuGetPackageVersion>
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <NuGetItemType>None</NuGetItemType>
-      <TargetPath>NLog.config</TargetPath>
-      <NuGetPackageId>NLog.Config</NuGetPackageId>
-    </None>
-  </ItemGroup>
-  <ItemGroup>
     <None Update="Data\genesis.json">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Update="NLog.config">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
   </ItemGroup>
