@@ -2,9 +2,9 @@
 using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.CommandLineUtils;
 using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Core;
-using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc;
 using Nethermind.Runner.Runners;
 
@@ -24,7 +24,7 @@ namespace Nethermind.Runner
             PrivateKeyProvider = privateKeyProvider;
         }
 
-        protected void RunInternal(InitParams initParams)
+        protected void StartRunners(InitParams initParams)
         {
             try
             {
@@ -47,6 +47,41 @@ namespace Nethermind.Runner
                 Logger.Error("Error while starting Nethermind.Runner", e);
                 throw;
             }
+        }
+
+        protected abstract (CommandLineApplication, Func<InitParams>) BuildCommandLineApp();
+
+        public void Run(string[] args)
+        {
+            (var app, var buildInitParams) = BuildCommandLineApp();
+            ManualResetEvent appClosed = new ManualResetEvent(false);
+            app.OnExecute(() =>
+            {
+                var initParams = buildInitParams();
+                Logger.Log($"Running Hive Nethermind Runner, parameters: {initParams}");
+
+                StartRunners(initParams);
+
+                Console.WriteLine("Enter 'e' to exit");
+                while (true)
+                {
+                    ConsoleKeyInfo keyInfo = Console.ReadKey();
+                    if (keyInfo.KeyChar == 'e')
+                    {
+                        break;
+                    }
+                }
+
+                Console.WriteLine("Closing, please wait until all functions are stopped properly...");
+                StopAsync().Wait();
+                Console.WriteLine("All done, goodbye!");
+                appClosed.Set();
+
+                return 0;
+            });
+
+            app.Execute(args);
+            appClosed.WaitOne();
         }
 
         protected async Task StopAsync()
