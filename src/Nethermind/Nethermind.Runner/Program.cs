@@ -16,16 +16,14 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Core;
-
 namespace Nethermind.Runner
 {
     class Program
     {
         static void Main(string[] args)
         {
-            var runner = new RunnerApp(new NlogLogger());
-            runner.Start(args);
+            IRunnerApp runner = new RunnerApp(new NlogLogger());
+            runner.Run(args);
         }       
     }
 }

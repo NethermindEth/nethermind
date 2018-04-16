@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Discovery
@@ -23,6 +24,6 @@ namespace Nethermind.Discovery
     public interface IDiscoveryApp
     {
         void Start(PublicKey masterPublicKey);
-        void Stop();
+        Task StopAsync();
     }
 }

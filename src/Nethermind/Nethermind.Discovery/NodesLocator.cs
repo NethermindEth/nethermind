@@ -45,12 +45,12 @@ namespace Nethermind.Discovery
             _masterNode = nodeTable.MasterNode;
         }
 
-        public async Task LocateNodes()
+        public async Task LocateNodesAsync()
         {
-            await LocateNodes(null);
+            await LocateNodesAsync(null);
         }
 
-        public async Task LocateNodes(byte[] searchedNodeId)
+        public async Task LocateNodesAsync(byte[] searchedNodeId)
         {
             var alreadyTriedNodes = new List<string>();
             

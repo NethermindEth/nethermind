@@ -20,6 +20,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Numerics;
+using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -66,8 +67,9 @@ namespace Nethermind.Runner.Runners
             _logger.Log("Ethereum initialization completed");
         }
 
-        public void Stop()
-        {           
+        public async Task StopAsync()
+        {
+            await _blockchainProcessor.StopAsync();
         }
 
         private void InitializeChain(string chainFile)

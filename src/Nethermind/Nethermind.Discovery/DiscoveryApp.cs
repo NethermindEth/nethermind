@@ -64,13 +64,13 @@ namespace Nethermind.Discovery
             _cryptoRandom = cryptoRandom;
         }
 
-        public async void Start(PublicKey masterPublicKey)
+        public void Start(PublicKey masterPublicKey)
         {
             try
             {
                 _nodeTable.Initialize(masterPublicKey);
                 _logger.Log("Initializing UDP channel.");
-                await InitializeUdpChannel();
+                InitializeUdpChannel();
             }
             catch (Exception e)
             {
@@ -79,25 +79,25 @@ namespace Nethermind.Discovery
             }
         }
 
-        public void Stop()
+        public async Task StopAsync()
         {
             _appShutdown = true;
             StopDiscoveryTimer();
             StopRefreshTimer();
-            StopUdpChannel();
+            await StopUdpChannelAsync();
         }
 
-        private async Task InitializeUdpChannel()
+        private void InitializeUdpChannel()
         {
             _group = new MultithreadEventLoopGroup(1);
             //try
             //{
                 //while (!_appShutdown)
                 //{
-                    await StartUdpChannel();
+                    StartUdpChannel();
                     //wait for closing event
                     //await _channel.CloseCompletion;
-                    //StopUdpChannel();
+                    //StopUdpChannelAsync();
                 //}
             //}
             //finally 
@@ -106,7 +106,7 @@ namespace Nethermind.Discovery
             //}
         }
 
-        private async Task StartUdpChannel()
+        private void StartUdpChannel()
         {
             //var address = new IPEndPoint(IPAddress.Parse(_configurationProvider.MasterHost), _configurationProvider.MasterPort);
             //var address = _nodeTable.MasterNode.Address;
@@ -118,8 +118,10 @@ namespace Nethermind.Discovery
                 .Channel<SocketDatagramChannel>()
                 .Handler(new ActionChannelInitializer<IDatagramChannel>(InitializeChannel));
 
-            _channel = await bootstrap.BindAsync(IPAddress.Parse(_configurationProvider.MasterHost), _configurationProvider.MasterPort);
+            _bindingTask = bootstrap.BindAsync(IPAddress.Parse(_configurationProvider.MasterHost), _configurationProvider.MasterPort).ContinueWith(t => _channel = t.Result);
         }
+
+        private Task _bindingTask;
 
         private void InitializeChannel(IDatagramChannel channel)
         {
@@ -131,12 +133,12 @@ namespace Nethermind.Discovery
                 .AddLast(_discoveryHandler);
         }
 
-        private async void OnChannelActivated(object sender, EventArgs e)
+        private void OnChannelActivated(object sender, EventArgs e)
         {
-            await Task.Run(() => OnChannelActivated());
+            OnChannelActivated().Wait();
         }
 
-        private void OnChannelActivated()
+        private async Task OnChannelActivated()
         {
             try
             {
@@ -147,7 +149,7 @@ namespace Nethermind.Discovery
                     return;
                 }
 
-                RunDiscovery();
+                await RunDiscoveryAsync();
 
                 //InitializeDiscoveryTimer();
                 //InitializeRefreshTimer();
@@ -162,7 +164,7 @@ namespace Nethermind.Discovery
         {
             _logger.Log("Starting discovery timer");
             _discoveryTimer = new Timer(_configurationProvider.DiscoveryInterval);
-            _discoveryTimer.Elapsed += (sender, e) => RunDiscovery();
+            _discoveryTimer.Elapsed += async (sender, e) => await RunDiscoveryAsync();
             _discoveryTimer.Start();
         }
 
@@ -183,7 +185,7 @@ namespace Nethermind.Discovery
         {
             _logger.Log("Starting refresh timer");
             _refreshTimer = new Timer(_configurationProvider.RefreshInterval);
-            _refreshTimer.Elapsed += (sender, e) => RunRefresh();
+            _refreshTimer.Elapsed += async (sender, e) => await RunRefreshAsync();
             _refreshTimer.Start();
         }
 
@@ -200,10 +202,12 @@ namespace Nethermind.Discovery
             }
         }
 
-        private async void StopUdpChannel()
+        private async Task StopUdpChannelAsync()
         {
             try
             {
+                await _bindingTask; // if we are still starting
+                
                 _logger.Log("Stopping udp channel");
                 var closeTask = _channel.CloseAsync();
                 if (await Task.WhenAny(closeTask, Task.Delay(_configurationProvider.UdpChannelCloseTimeout)) != closeTask)
@@ -266,17 +270,17 @@ namespace Nethermind.Discovery
             return reachedNodeCounter > 0;
         }
 
-        private async void RunDiscovery()
+        private async Task RunDiscoveryAsync()
         {
             _logger.Log("Running discovery process.");
-            await _nodesLocator.LocateNodes();
+            await _nodesLocator.LocateNodesAsync();
         }
 
-        private async void RunRefresh()
+        private async Task RunRefreshAsync()
         {
             _logger.Log("Running refresh process.");
             var randomId = _cryptoRandom.GenerateRandomBytes(64);
-            await _nodesLocator.LocateNodes(randomId);
+            await _nodesLocator.LocateNodesAsync(randomId);
         }
     }
 }

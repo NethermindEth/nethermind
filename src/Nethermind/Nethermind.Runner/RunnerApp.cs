@@ -17,7 +17,10 @@
  */
 
 using System;
+using System.IO;
+using System.Security.Cryptography.Xml;
 using System.Threading;
+using System.Threading.Tasks;
 using Microsoft.AspNetCore;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.CommandLineUtils;
@@ -32,15 +35,15 @@ namespace Nethermind.Runner
     {
         private static readonly PrivateKey PrivateKey = new PrivateKey("49a7b37aa6f6645917e7b807e9d1c00d4fa71f18343b0d4122a4d2df64dd6fee");
 
-        private string _host = "0.0.0.0";
-        private int _httpPort = 8545;
-        private string _genesisFile = @"Data\genesis.json";
+        private readonly string _defaultHost = "0.0.0.0";
+        private readonly int _defaultHttpPort = 8545;
+        private readonly string _defaultGenesisFile = Path.Combine("Data", "genesis.json");
 
         public RunnerApp(ILogger logger) : base(logger, new PrivateKeyProvider(PrivateKey))
         {
         }
 
-        public void Start(string[] args)
+        public void Run(string[] args)
         {
             var app = new CommandLineApplication { Name = "Nethermind.Runner" };
             app.HelpOption("-?|-h|--help");
@@ -50,39 +53,42 @@ namespace Nethermind.Runner
             var discoveryPort = app.Option("-d|--discoveryPort <discoveryPort>", "discovery UDP listening port", CommandOptionType.SingleValue);
             var genesisFile = app.Option("-gf|--genesisFile <genesisFile>", "genesis file path", CommandOptionType.SingleValue);
 
+            ManualResetEvent appClosed = new ManualResetEvent(false);
             app.OnExecute(() => {
 
                 var initParams = new InitParams
                 {
-                    HttpHost = host.HasValue() ? host.Value() : _host,
-                    HttpPort = httpPort.HasValue() ? GetIntValue(httpPort.Value(), "httpPort") : _httpPort,
+                    HttpHost = host.HasValue() ? host.Value() : _defaultHost,
+                    HttpPort = httpPort.HasValue() ? GetIntValue(httpPort.Value(), "httpPort") : _defaultHttpPort,
                     DiscoveryPort = discoveryPort.HasValue() ? GetIntValue(discoveryPort.Value(), "discoveryPort") : (int?)null,
-                    GenesisFilePath = genesisFile.HasValue() ? genesisFile.Value() : _genesisFile,
+                    GenesisFilePath = genesisFile.HasValue() ? genesisFile.Value() : _defaultGenesisFile,
                     EthereumRunnerType = EthereumRunnerType.Default
                 };
 
                 Logger.Log($"Running Nethermind Runner, parameters: {initParams}");
 
-                Run(initParams);
+                RunInternal(initParams);
 
+                Console.WriteLine("Enter 'e' to exit");
                 while (true)
                 {
-                    Console.WriteLine("Enter e to exit");
-                    var value = Console.ReadLine();
-                    if ("e".CompareIgnoreCaseTrim(value))
+                    ConsoleKeyInfo keyInfo = Console.ReadKey();
+                    if (keyInfo.KeyChar == 'e')
                     {
-                        Logger.Log("Closing app");
                         break;
                     }
-                    Thread.Sleep(2000);
                 }
 
-                Stop();
+                Console.WriteLine("Closing, please wait until all functions are stopped properly...");
+                StopAsync().Wait();
+                Console.WriteLine("All done, goodbye!");
+                appClosed.Set();
 
                 return 0;
             });
 
             app.Execute(args);
+            appClosed.WaitOne();            
         }
     }
 }

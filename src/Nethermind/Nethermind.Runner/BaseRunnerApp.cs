@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Numerics;
 using System.Threading;
+using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -23,7 +24,7 @@ namespace Nethermind.Runner
             PrivateKeyProvider = privateKeyProvider;
         }
 
-        protected void Run(InitParams initParams)
+        protected void RunInternal(InitParams initParams)
         {
             try
             {
@@ -48,11 +49,11 @@ namespace Nethermind.Runner
             }
         }
 
-        protected void Stop()
+        protected async Task StopAsync()
         {
-            _jsonRpcRunner.Stop();
-            _discoveryRunner.Stop();
-            _ethereumRunner.Stop();
+            await _jsonRpcRunner.StopAsync();
+            await _discoveryRunner.StopAsync();
+            await _ethereumRunner.StopAsync();
         }
 
         protected int GetIntValue(string rawValue, string argName)

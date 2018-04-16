@@ -49,7 +49,7 @@ namespace Nethermind.Network.P2P
             }
         }
 
-        private async void InitializePeer(RlpxPeer peer)
+        private async Task InitializePeer(RlpxPeer peer)
         {
             try
             {

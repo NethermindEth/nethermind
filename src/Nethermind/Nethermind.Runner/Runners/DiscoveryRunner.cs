@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Discovery;
 using Nethermind.Discovery.Serializers;
@@ -51,9 +52,9 @@ namespace Nethermind.Runner.Runners
             _logger.Log("Discovery initialization completed");
         }
 
-        public void Stop()
+        public async Task StopAsync()
         {
-            _discoveryApp.Stop();
+            await _discoveryApp.StopAsync();
         }
     }
 }

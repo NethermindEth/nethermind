@@ -16,11 +16,13 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Threading.Tasks;
+
 namespace Nethermind.Runner.Runners
 {
     public interface IRunner
     {
         void Start(InitParams initParams);
-        void Stop();
+        Task StopAsync();
     }
 }

@@ -115,7 +115,7 @@ namespace Nethermind.Discovery.Console
 
         private static void Stop()
         {
-            _discoveryApp.Stop();
+            _discoveryApp.StopAsync();
         }
     }
 }

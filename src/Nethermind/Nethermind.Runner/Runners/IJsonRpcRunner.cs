@@ -17,13 +17,14 @@
  */
 
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using Nethermind.JsonRpc.DataModel;
 
 namespace Nethermind.Runner.Runners
 {
     public interface IJsonRpcRunner
     {
-        void Start(InitParams initParams, IEnumerable<ModuleType> modules = null);
-        void Stop(IEnumerable<ModuleType> modules = null);
+        void Start(InitParams initParams, IReadOnlyCollection<ModuleType> modules = null);
+        Task StopAsync(IEnumerable<ModuleType> modules = null);
     }
 }

@@ -25,11 +25,11 @@ namespace Nethermind.Discovery
         /// <summary>
         /// locate nodes for master node
         /// </summary>
-        Task LocateNodes();
+        Task LocateNodesAsync();
 
         /// <summary>
         /// locate nodes for specified node id
         /// </summary>
-        Task LocateNodes(byte[] searchedNodeId);
+        Task LocateNodesAsync(byte[] searchedNodeId);
     }
 }

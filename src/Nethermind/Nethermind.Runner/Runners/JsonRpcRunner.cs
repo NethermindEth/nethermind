@@ -19,6 +19,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using Microsoft.AspNetCore;
 using Microsoft.AspNetCore.Hosting;
 using Nethermind.Core;
@@ -39,7 +40,7 @@ namespace Nethermind.Runner.Runners
             _logger = logger;
         }
 
-        public void Start(InitParams initParams, IEnumerable<ModuleType> modules = null)
+        public void Start(InitParams initParams, IReadOnlyCollection<ModuleType> modules = null)
         {
             _logger.Log("Initializing JsonRPC");
             var host = $"http://{initParams.HttpHost}:{initParams.HttpPort}";
@@ -61,7 +62,7 @@ namespace Nethermind.Runner.Runners
             _logger.Log("JsonRPC initialization completed");
         }
 
-        public async void Stop(IEnumerable<ModuleType> modules = null)
+        public async Task StopAsync(IEnumerable<ModuleType> modules = null)
         {
             try
             {

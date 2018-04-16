@@ -26,7 +26,7 @@ namespace Nethermind.Runner
         {
         }
 
-        public void Start(string[] args)
+        public void Run(string[] args)
         {
             var app = new CommandLineApplication { Name = "Hive Nethermind.Runner" };
             app.HelpOption("-?|-h|--help");
@@ -59,7 +59,7 @@ namespace Nethermind.Runner
 
                 Logger.Log($"Running Hive Nethermind Runner, parameters: {initParams}");
 
-                Run(initParams);
+                RunInternal(initParams);
 
                 while (true)
                 {
