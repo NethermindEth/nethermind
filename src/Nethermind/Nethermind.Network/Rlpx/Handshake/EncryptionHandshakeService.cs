@@ -89,14 +89,14 @@ namespace Nethermind.Network.Rlpx.Handshake
             bool isOld = false;
             try
             {
-                _logger.Log($"Trying to decrypt an old version of {nameof(AuthMessage)}");
+                _logger.Info($"Trying to decrypt an old version of {nameof(AuthMessage)}");
                 byte[] plaintextOld = _eciesCipher.Decrypt(_privateKey, auth.Data);
                 authMessage = _messageSerializationService.Deserialize<AuthMessage>(plaintextOld);
                 isOld = true;
             }
             catch (Exception)
             {
-                _logger.Log($"Trying to decrypt version 4 of {nameof(AuthEip8Message)}");
+                _logger.Info($"Trying to decrypt version 4 of {nameof(AuthEip8Message)}");
                 byte[] sizeData = auth.Data.Slice(0, 2);
                 byte[] plaintext = _eciesCipher.Decrypt(_privateKey, auth.Data.Slice(2), sizeData);
                 authMessage = _messageSerializationService.Deserialize<AuthEip8Message>(plaintext);
@@ -201,7 +201,7 @@ namespace Nethermind.Network.Rlpx.Handshake
                 handshake.Secrets.IngressMac = mac1;
             }
 
-            _logger.Log($"Agreed secrets with {handshake.RemotePublicKey}");
+            _logger.Info($"Agreed secrets with {handshake.RemotePublicKey}");
         }
     }
 }

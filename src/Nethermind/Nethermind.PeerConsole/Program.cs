@@ -51,7 +51,7 @@ namespace Nethermind.PeerConsole
 
         private static PrivateKey _privateKey;
 
-        private static readonly ILogger Logger = new ConsoleAsyncLogger();
+        private static readonly ILogger Logger = new NLogLogger();
 
 #pragma warning disable 1998
         public static async Task Main(params string[] args)
@@ -121,7 +121,7 @@ namespace Nethermind.PeerConsole
 
         private static ChainSpec LoadChainSpec(string chainSpecFile)
         {
-            Logger.Log($"Loading ChainSpec from {chainSpecFile}");
+            Logger.Info($"Loading ChainSpec from {chainSpecFile}");
             var loader = new ChainSpecLoader(new UnforgivingJsonSerializer());
             if (!Path.IsPathRooted(chainSpecFile))
             {
@@ -144,7 +144,7 @@ namespace Nethermind.PeerConsole
 
             /* sync */
             var transactionStore = new TransactionStore();
-            var blockTree = new BlockTree(Logger);
+            var blockTree = new BlockTree(RopstenSpecProvider.Instance.ChainId, Logger);
 
             /* validation */
             var headerValidator = new HeaderValidator(difficultyCalculator, blockTree, sealEngine, specProvider, Logger);
@@ -248,7 +248,7 @@ namespace Nethermind.PeerConsole
             serializationService.Register(new BlockBodiesMessageSerializer());
             serializationService.Register(new NewBlockMessageSerializer());
 
-            Logger.Log("Initializing server...");
+            Logger.Info("Initializing server...");
             var localPeer = new RlpxPeer(_privateKey.PublicKey, _listenPort, encryptionHandshakeServiceA, serializationService, _syncManager, Logger);
             await localPeer.Init();
 
@@ -262,26 +262,26 @@ namespace Nethermind.PeerConsole
                 localIp = endPoint.Address.ToString();
             }
 
-            Logger.Log($"Node is up and listening on {localIp}:{_listenPort}... press ENTER to exit");
-            Logger.Log($"enode://{_privateKey.PublicKey.ToString(false)}@{localIp}:{_listenPort}");
+            Logger.Info($"Node is up and listening on {localIp}:{_listenPort}... press ENTER to exit");
+            Logger.Info($"enode://{_privateKey.PublicKey.ToString(false)}@{localIp}:{_listenPort}");
 
             if (chainSpec.Bootnodes.Any())
             {
                 Bootnode bootnode = chainSpec.Bootnodes[0];
-                Logger.Log($"Connecting to testnet bootnode {bootnode.Description}");
+                Logger.Info($"Connecting to testnet bootnode {bootnode.Description}");
                 await localPeer.ConnectAsync(bootnode.PublicKey, bootnode.Host, bootnode.Port);
-                Logger.Log("Testnet connected...");
+                Logger.Info("Testnet connected...");
             }
 
             Console.ReadLine();
-            Logger.Log("Shutting down...");
-            Logger.Log("Stopping sync manager...");
+            Logger.Info("Shutting down...");
+            Logger.Info("Stopping sync manager...");
             await _syncManager.StopAsync();
-            Logger.Log("Stopping blockchain processor...");
+            Logger.Info("Stopping blockchain processor...");
             await _blockchainProcessor.StopAsync();
-            Logger.Log("Stopping local peer...");
+            Logger.Info("Stopping local peer...");
             await localPeer.Shutdown();
-            Logger.Log("Goodbye...");
+            Logger.Info("Goodbye...");
         }
     }
 }

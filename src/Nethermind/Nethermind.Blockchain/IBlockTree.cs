@@ -27,6 +27,8 @@ namespace Nethermind.Blockchain
     public interface IBlockTree
     {
         Keccak GenesisHash { get; }
+        Block HeadBlock { get; }
+        int ChainId { get; }
 
         AddBlockResult AddBlock(Block block);
         Block FindBlock(Keccak blockHash, bool mainChainOnly);

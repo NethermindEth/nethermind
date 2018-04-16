@@ -20,6 +20,7 @@ namespace Nethermind.Core
 {
     public static class ChainId
     {
+        public const int Olympic = 0;
         public const int MainNet = 1;
         public const int Morden = 2;
         public const int Ropsten = 3;

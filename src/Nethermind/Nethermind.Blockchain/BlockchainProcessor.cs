@@ -96,24 +96,24 @@ namespace Nethermind.Blockchain
             _cancellationSource = new CancellationTokenSource();
             _processorTask = Task.Factory.StartNew(() =>
                 {
-                    _logger?.Log($"Starting block processor - {_suggestedBlocks.Count} blocks waiting in the queue.");
+                    _logger?.Info($"Starting block processor - {_suggestedBlocks.Count} blocks waiting in the queue.");
                     if (_suggestedBlocks.Count == 0 && _sealEngine.IsMining)
                     {
-                        _logger?.Log("Nothing in the queue so I mine my own.");
+                        _logger?.Info("Nothing in the queue so I mine my own.");
                         BuildAndSeal();
-                        _logger?.Log("Will go and wait for another block now...");
+                        _logger?.Info("Will go and wait for another block now...");
                     }
 
                     foreach (Block block in _suggestedBlocks.GetConsumingEnumerable(_cancellationSource.Token))
                     {
-                        _logger?.Log($"Processing a suggested block {block.Hash} ({block.Number}).");
+                        _logger?.Info($"Processing a suggested block {block.Hash} ({block.Number}).");
                         Process(block);
-                        _logger?.Log($"Now {_suggestedBlocks.Count} blocks waiting in the queue.");
+                        _logger?.Info($"Now {_suggestedBlocks.Count} blocks waiting in the queue.");
                         if (_suggestedBlocks.Count == 0 && _sealEngine.IsMining)
                         {
-                            _logger?.Log("Nothing in the queue so I mine my own.");
+                            _logger?.Info("Nothing in the queue so I mine my own.");
                             BuildAndSeal();
-                            _logger?.Log("Will go and wait for another block now...");
+                            _logger?.Info("Will go and wait for another block now...");
                         }
                     }
                 },
@@ -138,9 +138,9 @@ namespace Nethermind.Blockchain
 
         private void SuggestBlock(Block block)
         {
-            _logger?.Log($"Enqueuing a new block {block.Hash} ({block.Number}) for processing.");
+            _logger?.Info($"Enqueuing a new block {block.Hash} ({block.Number}) for processing.");
             _suggestedBlocks.Add(block);
-            _logger?.Log($"A new block {block.Number} ({block.Hash}) suggested for processing.");
+            _logger?.Info($"A new block {block.Number} ({block.Hash}) suggested for processing.");
         }
 
         public event EventHandler<BlockEventArgs> HeadBlockChanged;
@@ -150,7 +150,7 @@ namespace Nethermind.Blockchain
             // TODO: vulnerability if genesis block is propagated with high initial difficulty?
             if (block.Header.Number == 0)
             {
-                return block.Transactions.Count;
+                return block.Transactions.Length;
             }
 
             Block parent = _blockTree.FindParent(block.Header);
@@ -160,7 +160,7 @@ namespace Nethermind.Blockchain
             }
 
             //Debug.Assert(parent != null, "testing transactions count of an orphaned block");  // ChainAtoChainB_BlockHash
-            return block.Transactions.Count + GetTotalTransactions(parent);
+            return block.Transactions.Length + GetTotalTransactions(parent);
         }
 
         // TODO: there will be a need for cancellation of current mining whenever a new block arrives
@@ -248,7 +248,7 @@ namespace Nethermind.Blockchain
             Debug.Assert(suggestedBlock.Number == 0 || _blockTree.FindParent(suggestedBlock) != null, "Got an orphaned block for porcessing.");
             Debug.Assert(suggestedBlock.Header.TotalDifficulty != null, "block without total difficulty calculated was suggested for processing");
             
-            _logger?.Log("-------------------------------------------------------------------------------------");
+            _logger?.Info("-------------------------------------------------------------------------------------");
             if (!forMining)
             {
                 Debug.Assert(suggestedBlock.Hash != null, "block hash should be known at this stage if the block is not mining");
@@ -261,8 +261,8 @@ namespace Nethermind.Blockchain
 
             BigInteger totalDifficulty = suggestedBlock.TotalDifficulty ?? 0;
             BigInteger totalTransactions = GetTotalTransactions(suggestedBlock);
-            _logger?.Log($"TOTAL DIFFICULTY OF BLOCK {suggestedBlock.Header.Hash} ({suggestedBlock.Header.Number}) IS {totalDifficulty}");
-            _logger?.Log($"TOTAL TRANSACTIONS OF BLOCK {suggestedBlock.Header.Hash} ({suggestedBlock.Header.Number}) IS {totalTransactions}");
+            _logger?.Info($"TOTAL DIFFICULTY OF BLOCK {suggestedBlock.Header.Hash} ({suggestedBlock.Header.Number}) IS {totalDifficulty}");
+            _logger?.Info($"TOTAL TRANSACTIONS OF BLOCK {suggestedBlock.Header.Hash} ({suggestedBlock.Header.Number}) IS {totalTransactions}");
 
             if (totalDifficulty > TotalDifficulty)
             {
@@ -281,16 +281,16 @@ namespace Nethermind.Blockchain
                 Block branchingPoint = toBeProcessed;
                 if (branchingPoint != null && branchingPoint.Hash != HeadBlock?.Hash)
                 {
-                    _logger?.Log($"HEAD BLOCK WAS: {HeadBlock?.Hash} ({HeadBlock?.Number})");
-                    _logger?.Log($"BRANCHING FROM: {branchingPoint.Hash} ({branchingPoint.Number})");
+                    _logger?.Info($"HEAD BLOCK WAS: {HeadBlock?.Hash} ({HeadBlock?.Number})");
+                    _logger?.Info($"BRANCHING FROM: {branchingPoint.Hash} ({branchingPoint.Number})");
                 }
                 else
                 {
-                    _logger?.Log(branchingPoint == null ? "SETTING AS GENESIS BLOCK" : $"ADDING ON TOP OF {branchingPoint.Hash} ({branchingPoint.Number})");
+                    _logger?.Info(branchingPoint == null ? "SETTING AS GENESIS BLOCK" : $"ADDING ON TOP OF {branchingPoint.Hash} ({branchingPoint.Number})");
                 }
 
                 Keccak stateRoot = branchingPoint?.Header.StateRoot;
-                _logger?.Log($"STATE ROOT LOOKUP: {stateRoot}");
+                _logger?.Info($"STATE ROOT LOOKUP: {stateRoot}");
                 List<Block> unprocessedBlocksToBeAddedToMain = new List<Block>();
 
                 foreach (Block block in blocksToBeAddedToMain)
@@ -298,7 +298,7 @@ namespace Nethermind.Blockchain
                     if (_blockTree.WasProcessed(block.Hash))
                     {
                         stateRoot = block.Header.StateRoot;
-                        _logger?.Log($"STATE ROOT LOOKUP: {stateRoot}");
+                        _logger?.Info($"STATE ROOT LOOKUP: {stateRoot}");
                         break;
                     }
 
@@ -311,7 +311,7 @@ namespace Nethermind.Blockchain
                     blocks[blocks.Length - i - 1] = unprocessedBlocksToBeAddedToMain[i];
                 }
 
-                _logger?.Log($"PROCESSING {blocks.Length} BLOCKS FROM STATE ROOT {stateRoot}");
+                _logger?.Info($"PROCESSING {blocks.Length} BLOCKS FROM STATE ROOT {stateRoot}");
                 Block[] processedBlocks = _blockProcessor.Process(stateRoot, blocks, forMining);
 
                 List<Block> blocksToBeRemovedFromMain = new List<Block>();
@@ -330,31 +330,31 @@ namespace Nethermind.Blockchain
                 {
                     foreach (Block processedBlock in processedBlocks)
                     {
-                        _logger?.Log($"MARKING {processedBlock.Hash} ({processedBlock.Number}) AS PROCESSED");
+                        _logger?.Info($"MARKING {processedBlock.Hash} ({processedBlock.Number}) AS PROCESSED");
                         _blockTree.MarkAsProcessed(processedBlock.Hash);
                     }
                     
                     HeadBlock = processedBlocks[processedBlocks.Length - 1];
                     HeadBlock.Header.TotalDifficulty = suggestedBlock.TotalDifficulty; // TODO: cleanup total difficulty
-                    _logger?.Log($"SETTING HEAD BLOCK TO {HeadBlock.Hash} ({HeadBlock.Number})");
+                    _logger?.Info($"SETTING HEAD BLOCK TO {HeadBlock.Hash} ({HeadBlock.Number})");
 
                     foreach (Block block in blocksToBeRemovedFromMain)
                     {
-                        _logger?.Log($"MOVING {block.Header.Hash} ({block.Header.Number}) TO BRANCH");
+                        _logger?.Info($"MOVING {block.Header.Hash} ({block.Header.Number}) TO BRANCH");
                         _blockTree.MoveToBranch(block.Hash);
-                        _logger?.Log($"BLOCK {block.Header.Hash} ({block.Header.Number}) MOVED TO BRANCH");
+                        _logger?.Info($"BLOCK {block.Header.Hash} ({block.Header.Number}) MOVED TO BRANCH");
                     }
 
                     foreach (Block block in blocksToBeAddedToMain)
                     {
-                        _logger?.Log($"MOVING {block.Header.Hash} ({block.Header.Number}) TO MAIN");
+                        _logger?.Info($"MOVING {block.Header.Hash} ({block.Header.Number}) TO MAIN");
                         _blockTree.MoveToMain(block.Hash);
-                        _logger?.Log($"BLOCK {block.Header.Hash} ({block.Header.Number}) ADDED TO MAIN CHAIN");
+                        _logger?.Info($"BLOCK {block.Header.Hash} ({block.Header.Number}) ADDED TO MAIN CHAIN");
                     }
 
-                    _logger?.Log($"UPDATING TOTAL DIFFICULTY OF THE MAIN CHAIN TO {totalDifficulty}");
+                    _logger?.Info($"UPDATING TOTAL DIFFICULTY OF THE MAIN CHAIN TO {totalDifficulty}");
                     TotalDifficulty = totalDifficulty;
-                    _logger?.Log($"UPDATING TOTAL TRANSACTIONS OF THE MAIN CHAIN TO {totalTransactions}");
+                    _logger?.Info($"UPDATING TOTAL TRANSACTIONS OF THE MAIN CHAIN TO {totalTransactions}");
                     TotalTransactions = totalTransactions;
 
                     HeadBlockChanged?.Invoke(this, new BlockEventArgs(HeadBlock));

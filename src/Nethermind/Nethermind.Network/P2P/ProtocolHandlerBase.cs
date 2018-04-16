@@ -42,7 +42,7 @@ namespace Nethermind.Network.P2P
 
         protected void Send<T>(T message) where T : P2PMessage
         {
-            Logger.Log($"Sending {typeof(T).Name}");
+            Logger.Info($"Sending {typeof(T).Name}");
             Packet packet = new Packet(message.Protocol, message.PacketType, _serializer.Serialize(message));
             P2PSession.DeliverMessage(packet);   
         }

@@ -57,10 +57,10 @@ namespace Nethermind.Runner.Runners
 
         public void Start(InitParams initParams)
         {
-            _logger.Log("Initializing Ethereum");
+            _logger.Info("Initializing Ethereum");
             _blockchainProcessor.Start();
             InitializeGenesis(initParams.GenesisFilePath);
-            _logger.Log("Ethereum initialization completed");
+            _logger.Info("Ethereum initialization completed");
         }
 
         public async Task StopAsync()

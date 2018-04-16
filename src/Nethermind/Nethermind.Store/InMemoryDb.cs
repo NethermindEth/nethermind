@@ -139,7 +139,7 @@ namespace Nethermind.Store
         public void Restore(int snapshot)
         {
             Debug.Assert(snapshot <= _currentPosition, "INVALID DB SNAPSHOT");
-            _logger?.Log($"  RESTORING DB SNAPSHOT {snapshot}");
+            _logger?.Info($"  RESTORING DB SNAPSHOT {snapshot}");
 
             for (int i = 0; i < _currentPosition - snapshot; i++)
             {
@@ -179,7 +179,7 @@ namespace Nethermind.Store
 
         public void Commit(IReleaseSpec spec)
         {
-            _logger?.Log("  COMMITTING DB CHANGES");
+            _logger?.Info("  COMMITTING DB CHANGES");
 
             if (_currentPosition == -1)
             {
@@ -215,7 +215,7 @@ namespace Nethermind.Store
                     }
                     case ChangeType.Delete:
                     {
-                        _logger?.Log($"  DELETE {change.Hash}");
+                        _logger?.Info($"  DELETE {change.Hash}");
                         if (_db.ContainsKey(change.Hash))
                         {
                             _db.Remove(change.Hash);

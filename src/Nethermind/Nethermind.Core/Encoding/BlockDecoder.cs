@@ -58,7 +58,7 @@ namespace Nethermind.Core.Encoding
             }
 
             Block block = new Block(blockHeader, ommers);
-            block.Transactions = transactions;
+            block.Transactions = transactions.ToArray();
             return block;
         }
     }

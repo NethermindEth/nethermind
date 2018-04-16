@@ -58,7 +58,7 @@ namespace Nethermind.Runner
             app.OnExecute(() =>
             {
                 var initParams = buildInitParams();
-                Logger.Log($"Running Hive Nethermind Runner, parameters: {initParams}");
+                Logger.Info($"Running Hive Nethermind Runner, parameters: {initParams}");
 
                 StartRunners(initParams);
 

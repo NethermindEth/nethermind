@@ -25,6 +25,7 @@ using Nethermind.Network.Rlpx;
 
 namespace Nethermind.Network.P2P
 {
+    // TODO: work in progress / lower priority
     public class Multiplexor : ChannelHandlerAdapter, IPacketSender
     {
         private readonly int _dataTransferWindow;
@@ -68,7 +69,7 @@ namespace Nethermind.Network.P2P
                 }
                 else if (t.IsCompleted)
                 {
-                    _logger.Error($"Packet ({packet.Protocol}.{packet.PacketType}) pushed", t.Exception);
+                    _logger.Debug($"Packet ({packet.Protocol}.{packet.PacketType}) pushed");
                 }
             });
         }

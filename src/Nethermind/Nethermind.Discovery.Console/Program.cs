@@ -40,17 +40,17 @@ namespace Nethermind.Discovery.Console
     class Program
     {
         private static readonly PrivateKey PrivateKey = new PrivateKey("49a7b37aa6f6645917e7b807e9d1c00d4fa71f18343b0d4122a4d2df64dd6fee");
-        private static readonly ILogger Logger = new NlogLogger();
+        private static readonly ILogger Logger = new NLogLogger();
         private static IDiscoveryApp _discoveryApp;
 
         static void Main(string[] args)
         {
             try
             {
-                Logger.Log("Running DiscoveryConsole app");
+                Logger.Info("Running DiscoveryConsole app");
                 Start();
                 System.Console.ReadKey();
-                Logger.Log("Stopping DiscoveryConsole app");
+                Logger.Info("Stopping DiscoveryConsole app");
                 Stop();
             }
             catch (Exception e)

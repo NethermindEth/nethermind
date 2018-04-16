@@ -31,8 +31,7 @@ namespace Nethermind.Core
         {
             Header = blockHeader;
             Ommers = ommers.ToArray();
-            Transactions = transactions.ToList();
-            Receipts = new List<TransactionReceipt>();
+            Transactions = transactions.ToArray();
         }
 
         public Block(BlockHeader blockHeader, params BlockHeader[] ommers)
@@ -42,8 +41,8 @@ namespace Nethermind.Core
 
         public bool IsGenesis => Header.Number == 0;
         public BlockHeader Header { get; }
-        public List<Transaction> Transactions { get; set; }
-        public List<TransactionReceipt> Receipts { get; set; }
+        public Transaction[] Transactions { get; set; }
+        public TransactionReceipt[] Receipts { get; set; }
         public BlockHeader[] Ommers { get; }
         public Keccak Hash => Header.Hash;
         public BigInteger Number => Header.Number;

@@ -54,63 +54,63 @@ namespace Nethermind.Blockchain.Validators
                     var isGenesisValid = IsGenesisHeaderValid(header);;
                     if (!isGenesisValid)
                     {
-                        _logger?.Log($"Invalid genesis block header ({header.Hash})");
+                        _logger?.Info($"Invalid genesis block header ({header.Hash})");
                     }
                     return isGenesisValid;
                 }
-                _logger?.Log($"Orphan block, could not find parent ({header.Hash})");
+                _logger?.Info($"Orphan block, could not find parent ({header.Hash})");
                 return false;
             }
 
             bool areNonceValidAndMixHashValid = ignoreProof || _sealEngine.Validate(header);
             if (!areNonceValidAndMixHashValid)
             {
-                _logger?.Log($"Invalid block header ({header.Hash}) - invalid mix hash / nonce");
+                _logger?.Info($"Invalid block header ({header.Hash}) - invalid mix hash / nonce");
             }
             
             BigInteger difficulty = _difficultyCalculator.Calculate(parent.Header.Difficulty, parent.Header.Timestamp, header.Timestamp, header.Number, parent.Ommers.Length > 0);
             bool isDifficultyCorrect = difficulty == header.Difficulty;
             if (!isDifficultyCorrect)
             {
-                _logger?.Log($"Invalid block header ({header.Hash}) - difficulty value incorrect");
+                _logger?.Info($"Invalid block header ({header.Hash}) - difficulty value incorrect");
             }
 
             // difficulty check
             bool gasUsedBelowLimit = header.GasUsed <= header.GasLimit;
             if (!gasUsedBelowLimit)
             {
-                _logger?.Log($"Invalid block header ({header.Hash}) - gas used above gas limit");
+                _logger?.Info($"Invalid block header ({header.Hash}) - gas used above gas limit");
             }
 
             bool gasLimitNotTooHigh = header.GasLimit < parent.Header.GasLimit + BigInteger.Divide(parent.Header.GasLimit, 1024);
             if (!gasLimitNotTooHigh)
             {
-                _logger?.Log($"Invalid block header ({header.Hash}) - gas limit too high");
+                _logger?.Info($"Invalid block header ({header.Hash}) - gas limit too high");
             }
 
             bool gasLimitNotTooLow = header.GasLimit > parent.Header.GasLimit - BigInteger.Divide(parent.Header.GasLimit, 1024);
             if (!gasLimitNotTooLow)
             {
-                _logger?.Log($"Invalid block header ({header.Hash}) - invalid mix hash / nonce");
+                _logger?.Info($"Invalid block header ({header.Hash}) - invalid mix hash / nonce");
             }
 
 //            bool gasLimitAboveAbsoluteMinimum = header.GasLimit >= 125000; // TODO: tests are consistently not following this rule
             bool timestampMoreThanAtParent = header.Timestamp > parent.Header.Timestamp;
             if (!timestampMoreThanAtParent)
             {
-                _logger?.Log($"Invalid block header ({header.Hash}) - timestamp before parent");
+                _logger?.Info($"Invalid block header ({header.Hash}) - timestamp before parent");
             }
 
             bool numberIsParentPlusOne = header.Number == parent.Header.Number + 1;
             if (!numberIsParentPlusOne)
             {
-                _logger?.Log($"Invalid block header ({header.Hash}) - block number is not parent + 1");
+                _logger?.Info($"Invalid block header ({header.Hash}) - block number is not parent + 1");
             }
 
             bool extraDataNotTooLong = header.ExtraData.Length <= 32;
             if (!extraDataNotTooLong)
             {
-                _logger?.Log($"Invalid block header ({header.Hash}) - extra data too long");
+                _logger?.Info($"Invalid block header ({header.Hash}) - extra data too long");
             }
 
             Keccak hash = header.Hash;
@@ -118,10 +118,10 @@ namespace Nethermind.Blockchain.Validators
             bool hashAsExpected = header.Hash == hash;
             if (!hashAsExpected)
             {
-                _logger?.Log($"Invalid block header ({header.Hash}) - invalid block hash");
+                _logger?.Info($"Invalid block header ({header.Hash}) - invalid block hash");
             }
 
-            _logger?.Log($"Validating block {header.Hash} ({header.Number}) - DAO block {_daoBlockNumber}, extraData {new Hex(header.ExtraData)}");
+            _logger?.Info($"Validating block {header.Hash} ({header.Number}) - DAO block {_daoBlockNumber}, extraData {new Hex(header.ExtraData)}");
             bool extraDataValid = isOmmer
                                   || _daoBlockNumber == null
                                   || header.Number < _daoBlockNumber
@@ -129,7 +129,7 @@ namespace Nethermind.Blockchain.Validators
                                   || new Hex(header.ExtraData).Equals(DaoExtraData);
             if (!extraDataValid)
             {
-                _logger?.Log($"Invalid block header ({header.Hash}) - DAO extra data not valid");
+                _logger?.Info($"Invalid block header ({header.Hash}) - DAO extra data not valid");
             }
 
             return

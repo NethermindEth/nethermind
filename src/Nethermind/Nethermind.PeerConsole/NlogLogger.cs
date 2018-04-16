@@ -17,51 +17,48 @@
  */
 
 using System;
-using System.Threading;
+using Nethermind.Core;
 
-namespace Nethermind.Core
+namespace Nethermind.PeerConsole
 {
-    public class NullLogger : ILogger
+    public class NLogLogger : ILogger
     {
-        private static NullLogger _instance;
-
-        public static NullLogger Instance
-        {
-            get { return LazyInitializer.EnsureInitialized(ref _instance, () => new NullLogger()); }
-        }
-
-        private NullLogger()
-        {
-        }
+        private static readonly NLog.Logger Logger = NLog.LogManager.GetCurrentClassLogger();
 
         public void Log(string text)
         {
+            Logger.Info(text);
         }
 
         public void Info(string text)
         {
+            Logger.Info(text);
         }
 
         public void Warn(string text)
         {
+            Logger.Warn(text);
         }
 
         public void Debug(string text)
         {
+            Logger.Debug(text);
         }
 
         public void Trace(string text)
         {
+            Logger.Trace(text);
         }
 
         public void Error(string text, Exception ex = null)
         {
+            Logger.Error(ex, text);
         }
 
-        public bool IsInfo { get; } = false;
-        public bool IsWarn { get; } = false;
-        public bool IsDebug { get; } = false;
-        public bool IsTrace { get; } = false;
-        public bool IsError { get; } = false;
+        public bool IsInfo => Logger.IsInfoEnabled;
+        public bool IsWarn => Logger.IsWarnEnabled;
+        public bool IsDebug => Logger.IsDebugEnabled;
+        public bool IsTrace => Logger.IsTraceEnabled;
+        public bool IsError => Logger.IsErrorEnabled || Logger.IsFatalEnabled;
     }
 }

@@ -37,13 +37,13 @@ namespace Nethermind.Blockchain.Validators
         {
             if (ommers.Length > 2)
             {
-                _logger?.Log($"Invalid block ({header.Hash}) - too many ommers");
+                _logger?.Info($"Invalid block ({header.Hash}) - too many ommers");
                 return false;
             }
 
             if (ommers.Length == 2 && ommers[0].Hash == ommers[1].Hash)
             {
-                _logger?.Log($"Invalid block ({header.Hash}) - duplicated ommer");
+                _logger?.Info($"Invalid block ({header.Hash}) - duplicated ommer");
                 return false;
             }
 
@@ -51,13 +51,13 @@ namespace Nethermind.Blockchain.Validators
             {   
                 if (!_headerValidator.Validate(ommer, true))
                 {
-                    _logger?.Log($"Invalid block ({header.Hash}) - ommer's header invalid");
+                    _logger?.Info($"Invalid block ({header.Hash}) - ommer's header invalid");
                     return false;
                 }
                 
                 if (!IsKin(header, ommer, 6))
                 {
-                    _logger?.Log($"Invalid block ({header.Hash}) - ommer just pretending to be ommer");
+                    _logger?.Info($"Invalid block ({header.Hash}) - ommer just pretending to be ommer");
                     return false;
                 }
 
@@ -71,7 +71,7 @@ namespace Nethermind.Blockchain.Validators
                     
                     if (ancestor.Ommers.Any(o => o.Hash == ommer.Hash))
                     {
-                        _logger?.Log($"Invalid block ({header.Hash}) - ommers has already been included by an ancestor");
+                        _logger?.Info($"Invalid block ({header.Hash}) - ommers has already been included by an ancestor");
                         return false;
                     }
                     

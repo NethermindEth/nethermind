@@ -39,7 +39,22 @@ namespace Nethermind.Core.Test
             LogList.Add(text);
         }
 
+        public void Info(string text)
+        {
+            LogList.Add(text);
+        }
+
+        public void Warn(string text)
+        {
+            LogList.Add(text);
+        }
+
         public void Debug(string text)
+        {
+            LogList.Add(text);
+        }
+
+        public void Trace(string text)
         {
             LogList.Add(text);
         }
@@ -48,6 +63,12 @@ namespace Nethermind.Core.Test
         {
             LogList.Add(text);
         }
+
+        public bool IsInfo => true;
+        public bool IsWarn => true;
+        public bool IsDebug => true;
+        public bool IsTrace => true;
+        public bool IsError => true;
     }
     
     [TestFixture]
@@ -66,8 +87,8 @@ namespace Nethermind.Core.Test
         {
             _ethash = new EthashSealEngine(new Ethash());
             _testLogger = new TestLogger();
-            BlockTree blockStore = new BlockTree(NullLogger.Instance);
-            DifficultyCalculator calculator = new DifficultyCalculator(new SingleReleaseSpecProvider(Frontier.Instance, 1));   
+            BlockTree blockStore = new BlockTree(ChainId.MainNet, NullLogger.Instance);
+            DifficultyCalculator calculator = new DifficultyCalculator(new SingleReleaseSpecProvider(Frontier.Instance, ChainId.MainNet));   
             
             _validator = new HeaderValidator(calculator, blockStore, _ethash, new SingleReleaseSpecProvider(Byzantium.Instance, 3), _testLogger);
             _parentHeader = new BlockHeader(Keccak.Zero, Keccak.OfAnEmptySequenceRlp, Address.Zero, 131072, 0, 21000, 0, new byte[]{});

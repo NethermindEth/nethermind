@@ -49,7 +49,7 @@ namespace Nethermind.Blockchain.Test
             var specProvider = RopstenSpecProvider.Instance;
 
             /* store & validation */
-            var blockStore = new BlockTree(logger);
+            var blockStore = new BlockTree(RopstenSpecProvider.Instance.ChainId, logger);
             var difficultyCalculator = new DifficultyCalculator(specProvider);
             var headerValidator = new HeaderValidator(difficultyCalculator, blockStore, sealEngine, specProvider, logger);
             var ommersValidator = new OmmersValidator(blockStore, headerValidator, logger);
@@ -67,18 +67,17 @@ namespace Nethermind.Blockchain.Test
             /* blockchain processing */
             var ethereumSigner = new EthereumSigner(specProvider, logger);
             var transactionStore = new TransactionStore();
-            var blockchain = new BlockTree(logger);
-            var blockhashProvider = new BlockhashProvider(blockchain);
+            var blockhashProvider = new BlockhashProvider(blockStore);
             var virtualMachine = new VirtualMachine(specProvider, stateProvider, storageProvider, blockhashProvider, logger);
             var processor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, ethereumSigner, logger);
             var rewardCalculator = new RewardCalculator(specProvider);
             var blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, processor, storageDbProvider, stateProvider, storageProvider, transactionStore, logger);
-            var blockchainProcessor = new BlockchainProcessor(blockchain, sealEngine, transactionStore, difficultyCalculator, blockProcessor, logger);
+            var blockchainProcessor = new BlockchainProcessor(blockStore, sealEngine, transactionStore, difficultyCalculator, blockProcessor, logger);
 
             /* load ChainSpec and init */
             ChainSpecLoader loader = new ChainSpecLoader(new UnforgivingJsonSerializer());
             string path = Path.Combine(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, @"..\..\..\..\Chains", "ropsten.json"));
-            logger.Log($"Loading ChainSpec from {path}");
+            logger.Info($"Loading ChainSpec from {path}");
             ChainSpec chainSpec = loader.Load(File.ReadAllBytes(path));
             foreach (KeyValuePair<Address, BigInteger> allocation in chainSpec.Allocations)
             {
@@ -99,7 +98,7 @@ namespace Nethermind.Blockchain.Test
             testTransactionsGenerator.Start();
             
             blockchainProcessor.Start();
-            blockchain.AddBlock(chainSpec.Genesis);
+            blockStore.AddBlock(chainSpec.Genesis);
             
             BigInteger roughlyNumberOfBlocks = 6;
             Thread.Sleep(blockMiningTime * (int)roughlyNumberOfBlocks);

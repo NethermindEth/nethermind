@@ -17,11 +17,13 @@
  */
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Numerics;
 using System.Threading.Tasks;
+using DotNetty.Common.Concurrency;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -55,15 +57,16 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         public void Init()
         {
-            Logger.Log($"{ProtocolCode} v{ProtocolVersion} subprotocol initializing");
+            Logger.Info($"{ProtocolCode} v{ProtocolVersion} subprotocol initializing");
+            
+            Block headBlock = _sync.BlockTree.HeadBlock;
             StatusMessage statusMessage = new StatusMessage();
-            statusMessage.NetworkId =  _sync.ChainId;
+            statusMessage.ChainId = _sync.BlockTree.ChainId;
             statusMessage.ProtocolVersion = ProtocolVersion;
-            statusMessage.TotalDifficulty = _sync.TotalDifficulty;
-            statusMessage.BestHash = _sync.BestBlock;
-            statusMessage.GenesisHash = _sync.GenesisBlock;
-            //
-
+            statusMessage.TotalDifficulty = headBlock.Difficulty;
+            statusMessage.BestHash = headBlock.Hash;
+            statusMessage.GenesisHash = _sync.BlockTree.GenesisHash;
+            
             _statusSent = true;
             Send(statusMessage);
         }
@@ -87,7 +90,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         public virtual void HandleMessage(Packet message)
         {
-            Logger.Log($"{nameof(Eth62ProtocolHandler)} handling a message with code {message.PacketType}.");
+            Logger.Info($"{nameof(Eth62ProtocolHandler)} handling a message with code {message.PacketType}.");
 
             if (message.PacketType != Eth62MessageCode.Status && !_statusReceived)
             {
@@ -123,9 +126,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             }
         }
 
-        private GetBlockHeadersMessage _lastHeadersRequestSent;
-        private GetBlockBodiesMessage _lastBodiesRequestSent;
-
         private void Handle(StatusMessage status)
         {
             if (_statusReceived)
@@ -134,19 +134,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             }
 
             _statusReceived = true;
-            Logger.Log("ETH received status with" +
+            Logger.Info("ETH received status with" +
                        Environment.NewLine + $" prot version\t{status.ProtocolVersion}" +
-                       Environment.NewLine + $" network ID\t{status.NetworkId}," +
+                       Environment.NewLine + $" network ID\t{status.ChainId}," +
                        Environment.NewLine + $" genesis hash\t{status.GenesisHash}," +
                        Environment.NewLine + $" best hash\t{status.BestHash}," +
                        Environment.NewLine + $" difficulty\t{status.TotalDifficulty}");
 
-            _headBlockHash = status.BestHash;
-            _headBlockDifficulty = status.TotalDifficulty;
-            BlockInfo blockInfo = _sync.Find(status.BestHash);
-
-            // need to ask about this
-            // _headBlockNumber = blockInfo?.Number ?? ?;
+            _remoteHeadBlockHash = status.BestHash;
+            _remoteHeadBlockDifficulty = status.TotalDifficulty;
 
             Debug.Assert(_statusSent, "Expecting Init() to have been called by this point");
             ProtocolInitialized?.Invoke(this, EventArgs.Empty);
@@ -154,21 +150,46 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         private void Handle(TransactionsMessage transactionsMessage)
         {
-            for (int txIndex = 0; txIndex < transactionsMessage.Transactions.Length; txIndex++)
-            {
-                Transaction transaction = transactionsMessage.Transactions[txIndex];
-                TransactionInfo info = _sync.Add(transaction, P2PSession.RemoteNodeId);
-                if (info.Quality == Quality.Invalid) // TODO: processed invalid should not be penalized here
-                {
-                    Logger.Debug($"Received an invalid transaction from {P2PSession.RemoteNodeId}");
-                    throw new SubprotocolException($"Peer sent an invalid transaction {transaction.Hash}");
-                }
-            }
+            throw new NotImplementedException();
+//            for (int txIndex = 0; txIndex < transactionsMessage.Transactions.Length; txIndex++)
+//            {
+//                Transaction transaction = transactionsMessage.Transactions[txIndex];
+//                TransactionInfo info = _sync.Add(transaction, P2PSession.RemoteNodeId);
+//                if (info.Quality == Quality.Invalid) // TODO: processed invalid should not be penalized here
+//                {
+//                    Logger.Debug($"Received an invalid transaction from {P2PSession.RemoteNodeId}");
+//                    throw new SubprotocolException($"Peer sent an invalid transaction {transaction.Hash}");
+//                }
+//            }
         }
 
-        private void Handle(GetBlockBodiesMessage getBlockBodiesMessage)
+        private void Handle(GetBlockBodiesMessage request)
         {
-            throw new NotImplementedException();
+            Keccak[] hashes = request.BlockHashes;
+            Block[] blocks = new Block[hashes.Length];
+            
+            for (int i = 0; i < hashes.Length; i++)
+            {
+                BlockInfo blockInfo = _sync.Find(hashes[i]);
+                if (blockInfo != null)
+                {
+                    if (blockInfo.BodyLocation == BlockDataLocation.Store)
+                    {
+                        throw new NotImplementedException();
+                    }
+
+                    if (blockInfo.BodyLocation == BlockDataLocation.Memory)
+                    {
+                        blocks[i] = blockInfo.Block;
+                    }
+                    else
+                    {
+                        throw new NotImplementedException();
+                    }
+                }
+            }
+
+            Send(new BlockBodiesMessage(blocks));
         }
 
         private void Handle(GetBlockHeadersMessage getBlockHeadersMessage)
@@ -198,44 +219,43 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             Send(new BlockHeadersMessage(blockHeaders));
         }
 
-        private TaskCompletionSource<Block[]> _blockHeadersTaskCompletion; // queues?
-        private TaskCompletionSource<BigInteger> _numberCompletionSource; // work in progress
-
-        private void Handle(BlockBodiesMessage blockBodies)
+        private bool IsRequestMatched(
+            Request<GetBlockHeadersMessage, BlockHeader[]> request,
+            BlockHeadersMessage response)
         {
-            foreach ((Transaction[] Transactions, BlockHeader[] Ommers) body in blockBodies.Bodies)
+            return response.PacketType == Eth62MessageCode.GetBlockHeaders; // TODO: more detailed
+        }
+        
+        private bool IsRequestMatched(
+            Request<GetBlockBodiesMessage, Block[]> request,
+            BlockBodiesMessage response)
+        {
+            return response.PacketType == Eth62MessageCode.GetBlockBodies; // TODO: more detailed
+        }
+        
+        private void Handle(BlockBodiesMessage message)
+        {
+            List<Block> blocks = new List<Block>();
+            foreach ((Transaction[] Transactions, BlockHeader[] Ommers) body in message.Bodies)
             {
-                // TODO: work in progress
+                // TODO: match with headers
+                Block block = new Block(null, body.Transactions, body.Ommers);
+                blocks.Add(block);
+            }
+            
+            var request = _bodiesRequests.Take();
+            if (IsRequestMatched(request, message))
+            {
+                request.CompletionSource.SetResult(blocks.ToArray());
             }
         }
-
-        private void Handle(BlockHeadersMessage blockHeaders)
+        
+        private void Handle(BlockHeadersMessage message)
         {
-            if (_blockHeadersTaskCompletion != null)
+            var request = _headersRequests.Take();
+            if (IsRequestMatched(request, message))
             {
-                // TODO: rough, work in progress
-                List<Block> blocks = new List<Block>();
-                foreach (BlockHeader header in blockHeaders.BlockHeaders)
-                {
-//                BlockInfo blockInfo = _sync.AddBlockHeader(header);
-//                if (blockInfo.HeaderQuality == Quality.Invalid)
-//                {
-//                    Logger.Debug($"Received an invalid header from {P2PSession.RemoteNodeId}");
-//                    throw new SubprotocolException($"Peer sent an invalid header {header.Hash}");
-//                }
-
-                    blocks.Add(header == null ? null : new Block(header));
-                }
-
-                _blockHeadersTaskCompletion.SetResult(blocks.ToArray());
-                _blockHeadersTaskCompletion = null;
-            }
-            else
-            {
-                Debug.Assert(_numberCompletionSource != null);
-                // assume roughly it should not be null
-                _numberCompletionSource.SetResult(blockHeaders.BlockHeaders[0].Number);
-                _numberCompletionSource = null;
+                request.CompletionSource.SetResult(message.BlockHeaders);
             }
         }
 
@@ -260,72 +280,100 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         public void Close()
         {
+            _headersRequests.CompleteAdding();
+            _bodiesRequests.CompleteAdding();
         }
 
         public event EventHandler ProtocolInitialized;
         public event EventHandler<ProtocolEventArgs> SubprotocolRequested;
 
-        private static class GenesisRopsten
+        private readonly BlockingCollection<Request<GetBlockHeadersMessage, BlockHeader[]>> _headersRequests
+            = new BlockingCollection<Request<GetBlockHeadersMessage, BlockHeader[]>>();
+        
+        private readonly BlockingCollection<Request<GetBlockBodiesMessage, Block[]>> _bodiesRequests
+            = new BlockingCollection<Request<GetBlockBodiesMessage, Block[]>>();
+        
+        private class Request<TMsg, TResult>
         {
-            public static BigInteger Difficulty { get; } = 0x100000; // 1,048,576
-            public static Keccak GenesisHash { get; } = new Keccak(new Hex("0x41941023680923e0fe4d74a34bdac8141f2540e3ae90623718e47d66d1ca4a2d"));
-            public static Keccak BestHash { get; } = new Keccak(new Hex("0x41941023680923e0fe4d74a34bdac8141f2540e3ae90623718e47d66d1ca4a2d"));
-            public static int ChainId { get; } = 3;
+            public Request(TMsg message)
+            {
+                CompletionSource = new TaskCompletionSource<TResult>();
+                Message = message;
+            }
+            
+            public TMsg Message { get; set; }
+            public TaskCompletionSource<TResult> CompletionSource { get; }
+        }
+        
+        private async Task<BlockHeader[]> SendRequest(GetBlockHeadersMessage message)
+        {
+            var request = new Request<GetBlockHeadersMessage, BlockHeader[]>(message);
+            _headersRequests.Add(request);
+            return await request.CompletionSource.Task;
+        }
+        
+        private async Task<Block[]> SendRequest(GetBlockBodiesMessage message)
+        {
+            var request = new Request<GetBlockBodiesMessage, Block[]>(message);
+            _bodiesRequests.Add(request);
+            return await request.CompletionSource.Task;
         }
 
-        private static class NewerRopsten // 2963492   
-        {
-            public static BigInteger Difficulty { get; } = 7984694325252517;
-            public static Keccak GenesisHash { get; } = new Keccak(new Hex("0x41941023680923e0fe4d74a34bdac8141f2540e3ae90623718e47d66d1ca4a2d"));
-            public static Keccak BestHash { get; } = new Keccak(new Hex("0x452a31d7627daa0a58e7bdcf4d3f9838e710b45220eb98b8c2cee5c71d5ed9aa"));
-            public static int ChainId { get; } = 3;
-        }
-
-        private static class GenesisMainNet
-        {
-            public static BigInteger Difficulty { get; } = 17179869184;
-            public static Keccak GenesisHash { get; } = new Keccak(new Hex("0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3"));
-            public static Keccak BestHash { get; } = new Keccak(new Hex("0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3"));
-            public static int ChainId { get; } = 1;
-        }
-
-        public async Task<Block[]> GetBlocks(Keccak blockHash, BigInteger maxBlocks)
+        async Task<Block[]> ISynchronizationPeer.GetBlocks(Keccak blockHash, BigInteger maxBlocks)
         {
             var msg = new GetBlockHeadersMessage();
             msg.MaxHeaders = maxBlocks;
             msg.Reverse = 0;
             msg.Skip = 0;
             msg.StartingBlockHash = blockHash;
+
             
-            Send(msg);
+            BlockHeader[] headers = await SendRequest(msg);
+            List<Keccak> hashes = new List<Keccak>();
+            for (int i = 0; i < headers.Length; i++)
+            {
+                BlockInfo info = _sync.AddBlockHeader(headers[i]);
+                if (info.HeaderQuality == Quality.DataValid)
+                {
+                    hashes.Add(info.Hash);
+                }
+                else
+                {
+                    throw new NotImplementedException();
+                }
+            }
             
-            _blockHeadersTaskCompletion = new TaskCompletionSource<Block[]>();
-            return await _blockHeadersTaskCompletion.Task;
+            var bodiesMsg = new GetBlockBodiesMessage(hashes.ToArray());
+            Block[] blocks = await SendRequest(bodiesMsg);
+            for (int i = 0; i < blocks.Length; i++)
+            {
+                _sync.AddBlock(blocks[i], P2PSession.RemoteNodeId);
+            }
+
+            return blocks;
         }
 
-        public Task<Keccak> GetHeadBlockHash()
+        Task<Keccak> ISynchronizationPeer.GetHeadBlockHash()
         {
-            return Task.FromResult(_headBlockHash);
+            return Task.FromResult(_remoteHeadBlockHash);
         }
 
-        public async Task<BigInteger> GetHeadBlockNumber()
+        async Task<BigInteger> ISynchronizationPeer.GetHeadBlockNumber()
         {
             var msg = new GetBlockHeadersMessage();
-            msg.StartingBlockHash = _headBlockHash;
+            msg.StartingBlockHash = _remoteHeadBlockHash;
             msg.MaxHeaders = 1;
             msg.Reverse = 0;
             msg.Skip = 0;
 
-            _numberCompletionSource = new TaskCompletionSource<BigInteger>();
-            Send(msg);
-            return await _numberCompletionSource.Task;
+            BlockHeader[] headers = await SendRequest(msg);
+            return headers[0]?.Number ?? 0;
         }
 
         public event EventHandler<BlockEventArgs> NewBlock;
         public event EventHandler<KeccakEventArgs> NewBlockHash;
 
-        private Keccak _headBlockHash;
-        private BigInteger _headBlockNumber;
-        private BigInteger _headBlockDifficulty;
+        private Keccak _remoteHeadBlockHash;
+        private BigInteger _remoteHeadBlockDifficulty;
     }
 }

@@ -69,7 +69,7 @@ namespace Nethermind.Discovery
             try
             {
                 _nodeTable.Initialize(masterPublicKey);
-                _logger.Log("Initializing UDP channel.");
+                _logger.Info("Initializing UDP channel.");
                 InitializeUdpChannel();
             }
             catch (Exception e)
@@ -110,7 +110,7 @@ namespace Nethermind.Discovery
         {
             //var address = new IPEndPoint(IPAddress.Parse(_configurationProvider.MasterHost), _configurationProvider.MasterPort);
             //var address = _nodeTable.MasterNode.Address;
-            _logger.Log($"Starting UDP Channel: {_configurationProvider.MasterHost}:{_configurationProvider.MasterPort}");
+            _logger.Info($"Starting UDP Channel: {_configurationProvider.MasterHost}:{_configurationProvider.MasterPort}");
 
             var bootstrap = new Bootstrap();
             bootstrap
@@ -129,7 +129,7 @@ namespace Nethermind.Discovery
             _discoveryManager.MessageSender = _discoveryHandler;
             _discoveryHandler.OnChannelActivated += OnChannelActivated;
             channel.Pipeline
-                .AddLast(new LoggingHandler(LogLevel.INFO))
+                .AddLast(new LoggingHandler(DotNetty.Handlers.Logging.LogLevel.INFO))
                 .AddLast(_discoveryHandler);
         }
 
@@ -142,7 +142,7 @@ namespace Nethermind.Discovery
         {
             try
             {
-                _logger.Log("Initializing bootNodes.");
+                _logger.Info("Initializing bootNodes.");
                 if (!InitializeBootNodes())
                 {
                     _logger.Error("Could not communicate with any boot nodes. Initialization failed.");
@@ -162,7 +162,7 @@ namespace Nethermind.Discovery
 
         private void InitializeDiscoveryTimer()
         {
-            _logger.Log("Starting discovery timer");
+            _logger.Info("Starting discovery timer");
             _discoveryTimer = new Timer(_configurationProvider.DiscoveryInterval);
             _discoveryTimer.Elapsed += async (sender, e) => await RunDiscoveryAsync();
             _discoveryTimer.Start();
@@ -172,7 +172,7 @@ namespace Nethermind.Discovery
         {
             try
             {
-                _logger.Log("Stopping discovery timer");
+                _logger.Info("Stopping discovery timer");
                 _discoveryTimer?.Stop();
             }
             catch (Exception e)
@@ -183,7 +183,7 @@ namespace Nethermind.Discovery
 
         private void InitializeRefreshTimer()
         {
-            _logger.Log("Starting refresh timer");
+            _logger.Info("Starting refresh timer");
             _refreshTimer = new Timer(_configurationProvider.RefreshInterval);
             _refreshTimer.Elapsed += async (sender, e) => await RunRefreshAsync();
             _refreshTimer.Start();
@@ -193,7 +193,7 @@ namespace Nethermind.Discovery
         {
             try
             {
-                _logger.Log("Stopping refresh timer");
+                _logger.Info("Stopping refresh timer");
                 _refreshTimer?.Stop();
             }
             catch (Exception e)
@@ -208,7 +208,7 @@ namespace Nethermind.Discovery
             {
                 await _bindingTask; // if we are still starting
                 
-                _logger.Log("Stopping udp channel");
+                _logger.Info("Stopping udp channel");
                 var closeTask = _channel.CloseAsync();
                 if (await Task.WhenAny(closeTask, Task.Delay(_configurationProvider.UdpChannelCloseTimeout)) != closeTask)
                 {
@@ -249,7 +249,7 @@ namespace Nethermind.Discovery
                 {
                     break;
                 }
-                _logger.Log($"Waiting {itemTime} ms for boot nodes to respond");
+                _logger.Info($"Waiting {itemTime} ms for boot nodes to respond");
                 Thread.Sleep(itemTime);
             }
 
@@ -259,7 +259,7 @@ namespace Nethermind.Discovery
                 var manager = managers[i];
                 if (manager.State != NodeLifecycleState.Active)
                 {
-                    _logger.Log($"Cannot reach boot node: {manager.ManagedNode.Host}:{manager.ManagedNode.Port}");
+                    _logger.Info($"Cannot reach boot node: {manager.ManagedNode.Host}:{manager.ManagedNode.Port}");
                 }
                 else
                 {
@@ -272,13 +272,13 @@ namespace Nethermind.Discovery
 
         private async Task RunDiscoveryAsync()
         {
-            _logger.Log("Running discovery process.");
+            _logger.Info("Running discovery process.");
             await _nodesLocator.LocateNodesAsync();
         }
 
         private async Task RunRefreshAsync()
         {
-            _logger.Log("Running refresh process.");
+            _logger.Info("Running refresh process.");
             var randomId = _cryptoRandom.GenerateRandomBytes(64);
             await _nodesLocator.LocateNodesAsync(randomId);
         }

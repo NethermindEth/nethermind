@@ -39,12 +39,27 @@ namespace Nethermind.Core
                 TaskCreationOptions.LongRunning);
         }
 
-        public void Log(string text)
+        private void Log(string text)
         {
             _queuedEntries.Add($"{DateTime.Now:HH:mm:ss.fff} [{Thread.CurrentThread.ManagedThreadId}] {text}");
         }
+        
+        public void Info(string text)
+        {
+            Log(text);
+        }
+
+        public void Warn(string text)
+        {
+            Log(text);
+        }
 
         public void Debug(string text)
+        {
+            Log(text);
+        }
+
+        public void Trace(string text)
         {
             Log(text);
         }
@@ -53,5 +68,11 @@ namespace Nethermind.Core
         {
             Log(ex != null ? $"{text}, Exception: {ex}" : text);
         }
+
+        public bool IsInfo => true;
+        public bool IsWarn => true;
+        public bool IsDebug => true;
+        public bool IsTrace => true;
+        public bool IsError => true;
     }
 }

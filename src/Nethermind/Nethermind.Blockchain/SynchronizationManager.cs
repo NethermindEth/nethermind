@@ -35,7 +35,6 @@ namespace Nethermind.Blockchain
     public class SynchronizationManager : ISynchronizationManager
     {
         private readonly TimeSpan _delay;
-        private readonly IBlockTree _blockTree;
         private readonly IBlockValidator _blockValidator;
         private readonly IHeaderValidator _headerValidator;
         private readonly ILogger _logger;
@@ -70,8 +69,8 @@ namespace Nethermind.Blockchain
             ILogger logger)
         {
             _delay = delay;
-            _blockTree = blockTree;
-            _blockTree.BlockAddedToMain += OnBlockAddedToMain;
+            BlockTree = blockTree;
+            BlockTree.BlockAddedToMain += OnBlockAddedToMain;
 
             _headerValidator = headerValidator;
             _blockValidator = blockValidator;
@@ -88,7 +87,7 @@ namespace Nethermind.Blockchain
             GenesisBlock = genesisBlock.Hash;
             BestNumber = bestBlockSoFar.Number;
             TotalDifficulty = totalDifficulty;
-            _logger.Log($"Initialized {nameof(SynchronizationManager)} with genesis block {bestBlockSoFar.Hash}");
+            _logger.Info($"Initialized {nameof(SynchronizationManager)} with genesis block {bestBlockSoFar.Hash}");
         }
 
         public BlockInfo AddBlockHeader(BlockHeader blockHeader)
@@ -124,7 +123,7 @@ namespace Nethermind.Blockchain
 
         public BlockInfo[] Find(Keccak hash, int numberOfBlocks, int skip, bool reverse)
         {
-            Block[] blocks = _blockTree.FindBlocks(hash, numberOfBlocks, skip, reverse);
+            Block[] blocks = BlockTree.FindBlocks(hash, numberOfBlocks, skip, reverse);
             BlockInfo[] blockInfos = new BlockInfo[blocks.Length];
             for (int i = 0; i < blocks.Length; i++)
             {
@@ -209,7 +208,7 @@ namespace Nethermind.Blockchain
 
         public void AddPeer(ISynchronizationPeer synchronizationPeer)
         {
-            _logger.Log("SYNC MANAGER ADDING SYNCHRONIZATION PEER");
+            _logger.Info("SYNC MANAGER ADDING SYNCHRONIZATION PEER");
             _peers.TryAdd(synchronizationPeer, null);
         }
 
@@ -242,6 +241,7 @@ namespace Nethermind.Blockchain
         public Keccak BestBlock { get; set; }
         public BigInteger BestNumber { get; set; }
         public BigInteger TotalDifficulty { get; set; }
+        public IBlockTree BlockTree { get; set; }
 
         private void OnBlockAddedToMain(object sender, BlockEventArgs blockEventArgs)
         {
@@ -297,10 +297,10 @@ namespace Nethermind.Blockchain
         private async Task RefreshPeerInfo(ISynchronizationPeer peer)
         {
             Task getHashTask = peer.GetHeadBlockHash();
-            _logger.Log($"SYNC MANAGER - GETTING HEAD BLOCK INFO");
+            _logger.Info($"SYNC MANAGER - GETTING HEAD BLOCK INFO");
             Task<BigInteger> getNumberTask = peer.GetHeadBlockNumber();
             await Task.WhenAll(getHashTask, getNumberTask);
-            _logger.Log($"SYNC MANAGER - RECEIVED HEAD BLOCK INFO");
+            _logger.Info($"SYNC MANAGER - RECEIVED HEAD BLOCK INFO");
             _peers.AddOrUpdate(
                 peer,
                 new PeerInfo(peer, getNumberTask.Result),
@@ -321,43 +321,43 @@ namespace Nethermind.Blockchain
 
         private async Task RunRound(CancellationToken cancellationToken)
         {
-            _logger.Log($"SYNC MANAGER ROUND {_round++}, {_peers.Count} " + (_peers.Count == 1 ? "PEER" : "PEERS"));
+            _logger.Info($"SYNC MANAGER ROUND {_round++}, {_peers.Count} " + (_peers.Count == 1 ? "PEER" : "PEERS"));
             List<Task> refreshTasks = new List<Task>();
             foreach (KeyValuePair<ISynchronizationPeer, PeerInfo> keyValuePair in _peers)
             {
                 refreshTasks.Add(RefreshPeerInfo(keyValuePair.Key));
             }
 
-            _logger.Log($"SYNC MANAGER WAITING FOR REFRESH");
+            _logger.Info($"SYNC MANAGER WAITING FOR REFRESH");
             await Task.WhenAny(Task.WhenAll(refreshTasks), AsTask(cancellationToken));
             if (cancellationToken.IsCancellationRequested)
             {
-                _logger.Log($"SYNC MANAGER CANCELLED");
+                _logger.Info($"SYNC MANAGER CANCELLED");
                 return;
             }
 
-            _logger.Log($"SYNC MANAGER WILL GET MISSING BLOCKS NOW FROM {_peers.Count} PEERS");
+            _logger.Info($"SYNC MANAGER WILL GET MISSING BLOCKS NOW FROM {_peers.Count} PEERS");
             foreach ((ISynchronizationPeer peer, PeerInfo peerInfo) in _peers)
             {
-                _logger.Log($"CALCULATING MISSING BLOCKS");
-                _logger.Log($"PEER INFO = {peerInfo}, NUMBER = {peerInfo?.Number}, BEST = {BestNumber}");
+                _logger.Info($"CALCULATING MISSING BLOCKS");
+                _logger.Info($"PEER INFO = {peerInfo}, NUMBER = {peerInfo?.Number}, BEST = {BestNumber}");
                 BigInteger missingBlocks = (peerInfo?.Number ?? 0) - BestNumber;
-                _logger.Log($"SYNC MANAGER REQUESTING {missingBlocks} BLOCKS FROM PEER");
+                _logger.Info($"SYNC MANAGER REQUESTING {missingBlocks} BLOCKS FROM PEER");
                 if (missingBlocks > 0)
                 {
                     Block[] blocks = await peer.GetBlocks(BestBlock, missingBlocks + 1);
                     foreach (Block block in blocks.Skip(1))
                     {
-                        _logger.Log($"SYNC MANAGER RECEIVED BLOCK {block.Number}");
-                        AddBlockResult addResult = _blockTree.AddBlock(block);
+                        _logger.Info($"SYNC MANAGER RECEIVED BLOCK {block.Number}");
+                        AddBlockResult addResult = BlockTree.AddBlock(block);
                         if (addResult == AddBlockResult.Ignored)
                         {
-                            _logger.Log($"BLOCK {block.Number} WAS IGNORED");
+                            _logger.Info($"BLOCK {block.Number} WAS IGNORED");
                             break;
                         }
                         else
                         {
-                            _logger.Log($"BLOCK {block.Number} WAS ADDED TO THE CHAIN");
+                            _logger.Info($"BLOCK {block.Number} WAS ADDED TO THE CHAIN");
                         }
                     }
                 }
@@ -365,7 +365,7 @@ namespace Nethermind.Blockchain
 
             RoundFinished?.Invoke(this, EventArgs.Empty);
             
-            _logger.Log($"SYNC MANAGER WAITING {_delay.TotalMilliseconds}ms");
+            _logger.Info($"SYNC MANAGER WAITING {_delay.TotalMilliseconds}ms");
             await Task.Delay(_delay, cancellationToken);
         }
 

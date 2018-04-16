@@ -71,7 +71,7 @@ namespace Nethermind.Network.Test.Builders
 
         public SerializationBuilder WithDiscovery(PrivateKey privateKey)
         {
-            DiscoveryConfigurationProvider config = new DiscoveryConfigurationProvider(new NetworkHelper(new ConsoleLogger()));
+            DiscoveryConfigurationProvider config = new DiscoveryConfigurationProvider(new NetworkHelper(new SimpleConsoleLogger()));
             Signer signer = new Signer();
             var privateKeyProvider = new PrivateKeyProvider(privateKey);
 

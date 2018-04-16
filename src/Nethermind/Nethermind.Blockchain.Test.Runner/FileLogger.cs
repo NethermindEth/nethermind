@@ -51,7 +51,22 @@ namespace Nethermind.Blockchain.Test.Runner
             }
         }
 
+        public void Info(string text)
+        {
+            Log(text);
+        }
+
+        public void Warn(string text)
+        {
+            Log(text);
+        }
+
         public void Debug(string text)
+        {
+            Log(text);
+        }
+
+        public void Trace(string text)
         {
             Log(text);
         }
@@ -60,6 +75,12 @@ namespace Nethermind.Blockchain.Test.Runner
         {
             Log(ex != null ? $"{text}, Exception: {ex}" : text);
         }
+
+        public bool IsInfo => true;
+        public bool IsWarn => true;
+        public bool IsDebug => true;
+        public bool IsTrace => true;
+        public bool IsError => true;
 
         public void Flush()
         {

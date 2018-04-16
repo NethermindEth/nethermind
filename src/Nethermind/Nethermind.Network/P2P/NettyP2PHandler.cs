@@ -41,13 +41,13 @@ namespace Nethermind.Network.P2P
         
         public override void ChannelRegistered(IChannelHandlerContext context)
         {
-            _logger.Log($"Registering {nameof(NettyP2PHandler)}");
+            _logger.Info($"Registering {nameof(NettyP2PHandler)}");
             base.ChannelRegistered(context);
         }
 
         protected override void ChannelRead0(IChannelHandlerContext ctx, Packet msg)
         {
-            _logger.Log($"Channel read... data length {msg.Data.Length}");
+            _logger.Info($"Channel read... data length {msg.Data.Length}");
             _ip2PSession.ReceiveMessage(msg);
         }
 

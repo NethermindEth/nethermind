@@ -39,16 +39,21 @@ namespace Nethermind.Blockchain
         private Block _bestBlock;
         private BigInteger _totalDifficulty;
 
-        public BlockTree(ILogger logger)
+        public BlockTree(int chainId, ILogger logger)
         {
             _logger = logger;
+            ChainId = chainId;
         }
 
         public event EventHandler<BlockEventArgs> BlockAddedToMain;
 
         public event EventHandler<BlockEventArgs> NewBestBlockSuggested;
 
+        private readonly object _syncObject = new object();
+
         public Keccak GenesisHash => FindBlock(0)?.Hash;
+        public Block HeadBlock { get; private set; }
+        public int ChainId { get; }
 
         public AddBlockResult AddBlock(Block block)
         {
@@ -146,12 +151,37 @@ namespace Nethermind.Blockchain
 
         public void MarkAsProcessed(Keccak blockHash)
         {
-            _processed.Add(blockHash);
+            Block block = FindBlock(blockHash, false);
+            Debug.Assert(block != null, "Expected block to be known when marking as processed");
+            if (block == null)
+            {
+                throw new InvalidOperationException($"Unknown {nameof(Block)} cannot {nameof(MarkAsProcessed)}");
+            }
+
+            lock (_syncObject)
+            {
+                if (HeadBlock == null)
+                {
+                    HeadBlock = block;
+                }
+                else
+                {
+                    if (block.Difficulty > HeadBlock.TotalDifficulty)
+                    {
+                        HeadBlock = block;
+                    }
+
+                    _processed.Add(blockHash);
+                }
+            }
         }
 
         public bool WasProcessed(Keccak blockHash)
         {
-            return _processed.Contains(blockHash);
+            lock (_syncObject)
+            {
+                return _processed.Contains(blockHash);
+            }
         }
 
         public void MoveToMain(Keccak blockHash)
@@ -175,7 +205,7 @@ namespace Nethermind.Blockchain
 
         private void UpdateTotalDifficulty(Block block)
         {
-            _logger?.Log($"CALCULATING TOTAL DIFFICULTY FOR {block.Hash}");
+            _logger?.Info($"CALCULATING TOTAL DIFFICULTY FOR {block.Hash}");
             if (block.Number == 0)
             {
                 block.Header.TotalDifficulty = block.Difficulty;
@@ -193,7 +223,7 @@ namespace Nethermind.Blockchain
                 block.Header.TotalDifficulty = parent.TotalDifficulty + block.Difficulty;
             }
 
-            _logger?.Log($"CALCULATED TOTAL DIFFICULTY FOR {block.Hash} IS {block.TotalDifficulty}");
+            _logger?.Info($"CALCULATED TOTAL DIFFICULTY FOR {block.Hash} IS {block.TotalDifficulty}");
         }
     }
 }

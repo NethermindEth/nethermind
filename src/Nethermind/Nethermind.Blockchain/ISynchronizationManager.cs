@@ -44,5 +44,7 @@ namespace Nethermind.Blockchain
         Keccak BestBlock { get; }
         BigInteger BestNumber { get; }
         BigInteger TotalDifficulty { get; }
+        
+        IBlockTree BlockTree { get; set; }
     }
 }

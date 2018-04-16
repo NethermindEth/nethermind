@@ -23,7 +23,7 @@ namespace Nethermind.Network
                     socket.Connect("www.google.com", 80);
                     IPEndPoint endPoint = socket.LocalEndPoint as IPEndPoint;
                     var address = endPoint?.Address;
-                    _logger.Log($"Local ip: {address}");
+                    _logger.Info($"Local ip: {address}");
                     return address;
                 }
             }
@@ -39,9 +39,9 @@ namespace Nethermind.Network
             try
             {
                 var url = "http://checkip.amazonaws.com";
-                _logger.Log($"Using {url} to get external ip");
+                _logger.Info($"Using {url} to get external ip");
                 var ip = new WebClient().DownloadString(url);
-                _logger.Log($"External ip: {ip}");
+                _logger.Info($"External ip: {ip}");
                 return IPAddress.Parse(ip?.Trim());
             }
             catch (Exception e)

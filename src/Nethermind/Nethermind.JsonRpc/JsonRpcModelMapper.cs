@@ -116,7 +116,7 @@ namespace Nethermind.JsonRpc
 
         private BigInteger GetTransactionIndex(Core.Transaction transaction, Core.Block block)
         {
-            for (var i = 0; i < block.Transactions.Count; i++)
+            for (var i = 0; i < block.Transactions.Length; i++)
             {
                 var trans = block.Transactions[i];
                 if (trans.Hash.Equals(transaction.Hash))

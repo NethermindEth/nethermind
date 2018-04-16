@@ -42,9 +42,9 @@ namespace Nethermind.Runner.Runners
 
         public void Start(InitParams initParams, IReadOnlyCollection<ModuleType> modules = null)
         {
-            _logger.Log("Initializing JsonRPC");
+            _logger.Info("Initializing JsonRPC");
             var host = $"http://{initParams.HttpHost}:{initParams.HttpPort}";
-            _logger.Log($"Running server, url: {host}");
+            _logger.Info($"Running server, url: {host}");
 
             var webHost = WebHost.CreateDefaultBuilder()
                 .UseStartup<Startup>()
@@ -56,10 +56,10 @@ namespace Nethermind.Runner.Runners
                 _configurationProvider.EnabledModules = modules;
             }
 
-            _logger.Log($"Starting http service, modules: {string.Join(", ", _configurationProvider.EnabledModules.Select(x => x))}");
+            _logger.Info($"Starting http service, modules: {string.Join(", ", _configurationProvider.EnabledModules.Select(x => x))}");
             _webHost = webHost;
             _webHost.Start();
-            _logger.Log("JsonRPC initialization completed");
+            _logger.Info("JsonRPC initialization completed");
         }
 
         public async Task StopAsync(IEnumerable<ModuleType> modules = null)
@@ -67,11 +67,11 @@ namespace Nethermind.Runner.Runners
             try
             {
                 await _webHost.StopAsync();
-                _logger.Log("Service stopped");
+                _logger.Info("Service stopped");
             }
             catch (Exception e)
             {
-                _logger.Log($"Error during stopping service: {e}");
+                _logger.Info($"Error during stopping service: {e}");
             }
         }
     }

@@ -26,9 +26,9 @@ namespace Nethermind.Runner.Controllers
             using (StreamReader reader = new StreamReader(Request.Body, Encoding.UTF8))
             {
                 var value = await reader.ReadToEndAsync();
-                _logger.Log($"Received request: {value}");
+                _logger.Info($"Received request: {value}");
                 var response = _jsonRpcService.SendRequest(value);
-                _logger.Log($"Returning response: {response}");
+                _logger.Info($"Returning response: {response}");
                 return response;
             }
         }

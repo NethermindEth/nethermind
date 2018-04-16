@@ -34,7 +34,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
             statusMessage.BestHash = Keccak.Compute("1");
             statusMessage.GenesisHash = Keccak.Compute("0");
             statusMessage.TotalDifficulty = 131200;
-            statusMessage.NetworkId = 1;
+            statusMessage.ChainId = 1;
             
             StatusMessageSerializer serializer = new StatusMessageSerializer();
             byte[] bytes = serializer.Serialize(statusMessage);
@@ -43,7 +43,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
             Assert.AreEqual(statusMessage.BestHash, deserialized.BestHash, $"{nameof(deserialized.BestHash)}");
             Assert.AreEqual(statusMessage.GenesisHash, deserialized.GenesisHash, $"{nameof(deserialized.GenesisHash)}");
             Assert.AreEqual(statusMessage.TotalDifficulty, deserialized.TotalDifficulty, $"{nameof(deserialized.TotalDifficulty)}");
-            Assert.AreEqual(statusMessage.NetworkId, deserialized.NetworkId, $"{nameof(deserialized.NetworkId)}");
+            Assert.AreEqual(statusMessage.ChainId, deserialized.ChainId, $"{nameof(deserialized.ChainId)}");
             Assert.AreEqual(statusMessage.ProtocolVersion, deserialized.ProtocolVersion, $"{nameof(deserialized.ProtocolVersion)}");   
         }
 

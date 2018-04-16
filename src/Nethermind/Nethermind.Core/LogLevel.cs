@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,14 +16,14 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.Runner
+namespace Nethermind.Core
 {
-    public class Program
+    public enum LogLevel
     {
-        public static void Main(string[] args)
-        {
-            IRunnerApp runner = new RunnerApp(new NLogLogger());
-            runner.Run(args);
-        }       
+        Error = 0,
+        Warn = 1,
+        Info = 3,
+        Debug = 4,
+        Trace = 5
     }
 }

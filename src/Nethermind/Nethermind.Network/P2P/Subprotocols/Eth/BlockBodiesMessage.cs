@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Linq;
 using Nethermind.Core;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth
@@ -25,6 +26,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         public override int PacketType { get; } = 5;
         public override string Protocol { get; } = "eth";
 
+        public BlockBodiesMessage()
+        {
+        }
+
+        public BlockBodiesMessage(Block[] blocks)
+        {
+            Bodies = blocks.Select(b => (b.Transactions.ToArray(), b.Ommers)).ToArray();
+        }
+        
         public (Transaction[] Transactions, BlockHeader[] Ommers)[] Bodies { get; set; }
     }
 }

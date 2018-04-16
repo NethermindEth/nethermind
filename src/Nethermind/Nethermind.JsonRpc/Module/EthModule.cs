@@ -170,8 +170,8 @@ namespace Nethermind.JsonRpc.Module
                 return ResultWrapper<Quantity>.Fail($"Cannot find block for hash: {blockHash.Value}", ErrorType.NotFound);
             }
 
-            Logger.Debug($"eth_getBlockTransactionCountByHash request {blockHash.ToJson()}, result: {block.Transactions.Count}");
-            return ResultWrapper<Quantity>.Success(new Quantity(block.Transactions.Count));
+            Logger.Debug($"eth_getBlockTransactionCountByHash request {blockHash.ToJson()}, result: {block.Transactions.Length}");
+            return ResultWrapper<Quantity>.Success(new Quantity(block.Transactions.Length));
         }
 
         public ResultWrapper<Quantity> eth_getBlockTransactionCountByNumber(BlockParameter blockParameter)
@@ -199,7 +199,7 @@ namespace Nethermind.JsonRpc.Module
                 return ResultWrapper<Quantity>.Fail($"Cannot find block for hash: {blockHash.Value}", ErrorType.NotFound);
             }
 
-            Logger.Debug($"eth_getUncleCountByBlockHash request {blockHash.ToJson()}, result: {block.Transactions.Count}");
+            Logger.Debug($"eth_getUncleCountByBlockHash request {blockHash.ToJson()}, result: {block.Transactions.Length}");
             return ResultWrapper<Quantity>.Success(new Quantity(block.Ommers.Length));
         }
 
@@ -346,7 +346,7 @@ namespace Nethermind.JsonRpc.Module
             {
                 return ResultWrapper<Transaction>.Fail("Position Index is required", ErrorType.InvalidParams);
             }
-            if (index.Value < 0 || index.Value > block.Transactions.Count - 1)
+            if (index.Value < 0 || index.Value > block.Transactions.Length - 1)
             {
                 return ResultWrapper<Transaction>.Fail("Position Index is incorrect", ErrorType.InvalidParams);
             }
@@ -376,7 +376,7 @@ namespace Nethermind.JsonRpc.Module
             {
                 return ResultWrapper<Transaction>.Fail("Position Index is required", ErrorType.InvalidParams);
             }
-            if (index.Value < 0 || index.Value > result.Data.Transactions.Count - 1)
+            if (index.Value < 0 || index.Value > result.Data.Transactions.Length - 1)
             {
                 return ResultWrapper<Transaction>.Fail("Position Index is incorrect", ErrorType.InvalidParams);
             }
@@ -570,7 +570,7 @@ namespace Nethermind.JsonRpc.Module
         {
             if (blockParameter.Type == BlockParameterType.Pending)
             {
-                var count = _blockchainProcessor.HeadBlock.Transactions.Count;
+                var count = _blockchainProcessor.HeadBlock.Transactions.Length;
                 return ResultWrapper<Quantity>.Success(new Quantity(count));
             }
 
@@ -579,7 +579,7 @@ namespace Nethermind.JsonRpc.Module
             {
                 return ResultWrapper<Quantity>.Fail(block.Result.Error);
             }
-            return ResultWrapper<Quantity>.Success(new Quantity(block.Data.Transactions.Count));
+            return ResultWrapper<Quantity>.Success(new Quantity(block.Data.Transactions.Length));
         }
 
         private ResultWrapper<Data> GetAccountCode(Address address, BlockParameter blockParameter)

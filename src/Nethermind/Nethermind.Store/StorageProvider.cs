@@ -69,13 +69,13 @@ namespace Nethermind.Store
 
         public int TakeSnapshot()
         {
-            _logger?.Log($"  STORAGE SNAPSHOT {_currentPosition}");
+            _logger?.Info($"  STORAGE SNAPSHOT {_currentPosition}");
             return _currentPosition;
         }
 
         public void Restore(int snapshot)
         {
-            _logger?.Log($"  RESTORING STORAGE SNAPSHOT {snapshot}");
+            _logger?.Info($"  RESTORING STORAGE SNAPSHOT {snapshot}");
 
             List<Change> keptInCache = new List<Change>();
 
@@ -118,11 +118,11 @@ namespace Nethermind.Store
         {
             if (_currentPosition == -1)
             {
-                _logger?.Log("  NO STORAGE CHANGES TO COMMIT");
+                _logger?.Info("  NO STORAGE CHANGES TO COMMIT");
                 return;
             }
             
-            _logger?.Log("  COMMITTING STORAGE CHANGES");
+            _logger?.Info("  COMMITTING STORAGE CHANGES");
 
             Debug.Assert(_changes[_currentPosition] != null);
             Debug.Assert(_changes[_currentPosition + 1] == null);
@@ -149,7 +149,7 @@ namespace Nethermind.Store
                         break;
                     case ChangeType.Update:
 
-                        _logger?.Log($"  UPDATE {change.StorageAddress.Address}_{change.StorageAddress.Index} V = {Hex.FromBytes(change.Value, true)}");
+                        _logger?.Info($"  UPDATE {change.StorageAddress.Address}_{change.StorageAddress.Index} V = {Hex.FromBytes(change.Value, true)}");
 
                         StorageTree tree = GetOrCreateStorage(change.StorageAddress.Address);
                         tree.Set(change.StorageAddress.Index, change.Value);
@@ -178,7 +178,7 @@ namespace Nethermind.Store
 
         public void ClearCaches()
         {
-            _logger?.Log("  CLEARING STORAGE PROVIDER CACHES");
+            _logger?.Info("  CLEARING STORAGE PROVIDER CACHES");
 
             _cache.Clear();
             _currentPosition = -1;

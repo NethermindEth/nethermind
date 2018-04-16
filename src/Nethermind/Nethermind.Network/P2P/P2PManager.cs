@@ -34,7 +34,7 @@ namespace Nethermind.Network.P2P
                 //var nodeId = node.PublicKey.ToString();
                 //if (_activePeers.ContainsKey(nodeId))
                 //{
-                //    _logger.Log($"Peer already initialied: {nodeId}");
+                //    _logger.Info($"Peer already initialied: {nodeId}");
                 //    return;
                 //}
 

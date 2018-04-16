@@ -206,7 +206,7 @@ namespace Nethermind.Discovery.Test
 
         private void InitializeChannel(IDatagramChannel channel, IDiscoveryManager discoveryManager, IMessageSerializationService service)
         {
-            var handler = new NettyDiscoveryHandler(new ConsoleLogger(), discoveryManager, channel, service);
+            var handler = new NettyDiscoveryHandler(new SimpleConsoleLogger(), discoveryManager, channel, service);
             handler.OnChannelActivated += (x, y) =>
             {
                 _channelActivatedCounter++;
@@ -214,7 +214,7 @@ namespace Nethermind.Discovery.Test
             _discoveryHandlers.Add(handler);
             discoveryManager.MessageSender = handler;
             channel.Pipeline
-                .AddLast(new LoggingHandler(LogLevel.TRACE))
+                .AddLast(new LoggingHandler(DotNetty.Handlers.Logging.LogLevel.TRACE))
                 .AddLast(handler);
         }
     }

@@ -67,13 +67,13 @@ namespace Nethermind.Blockchain
 
         private readonly IBlockValidator _blockValidator;
 
-        private void ProcessTransactions(Block block, List<Transaction> transactions)
+        private void ProcessTransactions(Block block, Transaction[] transactions)
         {
             List<TransactionReceipt> receipts = new List<TransactionReceipt>(); // TODO: pool?
-            for (int i = 0; i < transactions.Count; i++)
+            for (int i = 0; i < transactions.Length; i++)
             {
                 var transaction = transactions[i];
-                _logger?.Log($"PROCESSING TRANSACTION {i}");
+                _logger?.Info($"PROCESSING TRANSACTION {i}");
                 _transactionStore.AddTransaction(transaction);
                 TransactionReceipt receipt = _transactionProcessor.Execute(transaction, block.Header);
                 Debug.Assert(transaction.Hash != null, "expecting only signed transactions here");
@@ -93,15 +93,15 @@ namespace Nethermind.Blockchain
                 receiptTree?.Set(Rlp.Encode(i).Bytes, receiptRlp);
             }
 
-            block.Receipts = receipts;
+            block.Receipts = receipts.ToArray();
             block.Header.ReceiptsRoot = receiptTree?.RootHash ?? PatriciaTree.EmptyTreeHash;
             block.Header.Bloom = receipts.Count > 0 ? receipts.Last().Bloom : Bloom.Empty;
         }
 
-        private Keccak GetTransactionsRoot(List<Transaction> transactions)
+        private Keccak GetTransactionsRoot(Transaction[] transactions)
         {
             PatriciaTree tranTree = new PatriciaTree();
-            for (int i = 0; i < transactions.Count; i++)
+            for (int i = 0; i < transactions.Length; i++)
             {
                 Rlp transactionRlp = Rlp.Encode(transactions[i]);
                 tranTree.Set(Rlp.Encode(i).Bytes, transactionRlp);
@@ -134,25 +134,25 @@ namespace Nethermind.Blockchain
                 if (tryOnly)
                 {
                     // TODO: this is some rapid and bad implementation, need to rmeove the clear caches approach
-                    _logger?.Log($"REVERTING BLOCKS - STATE ROOT {_stateProvider.StateRoot}");
+                    _logger?.Info($"REVERTING BLOCKS - STATE ROOT {_stateProvider.StateRoot}");
                     _dbProvider.Restore(dbSnapshot);
                     _storageProvider.ClearCaches();
                     _stateProvider.ClearCaches();
                     _stateProvider.StateRoot = snapshotStateRoot;
-                    _logger?.Log($"REVERTED BLOCKS (JUST VALIDATED FOR MINING) - STATE ROOT {_stateProvider.StateRoot}");    
+                    _logger?.Info($"REVERTED BLOCKS (JUST VALIDATED FOR MINING) - STATE ROOT {_stateProvider.StateRoot}");    
                 }
                 
                 return processedBlocks;
             }
             catch (InvalidBlockException) // TODO: which exception to catch here?
             {
-                _logger?.Log($"REVERTING BLOCKS - STATE ROOT {_stateProvider.StateRoot}");
+                _logger?.Info($"REVERTING BLOCKS - STATE ROOT {_stateProvider.StateRoot}");
                 _dbProvider.Restore(dbSnapshot);
                 _storageProvider.ClearCaches();
                 _stateProvider.ClearCaches();
                 _stateProvider.StateRoot = snapshotStateRoot;
-                _logger?.Log($"REVERTED BLOCKS - STATE ROOT {_stateProvider.StateRoot}");
-                _logger?.Log($"THROWING INVALID BLOCK");
+                _logger?.Info($"REVERTED BLOCKS - STATE ROOT {_stateProvider.StateRoot}");
+                _logger?.Info($"THROWING INVALID BLOCK");
                 throw;
             }
         }
@@ -172,7 +172,7 @@ namespace Nethermind.Blockchain
 
         private Block ProcessOne(Block suggestedBlock, bool tryOnly) // TODO: refactor
         {
-            _logger?.Log($"HASH {suggestedBlock.Header.Hash} NUMBER {suggestedBlock.Header.Number}");
+            _logger?.Info($"HASH {suggestedBlock.Header.Hash} NUMBER {suggestedBlock.Header.Number}");
 
             if (suggestedBlock.IsGenesis)
             {
@@ -182,7 +182,7 @@ namespace Nethermind.Blockchain
             // TODO: unimportant but out of curiosity, is the check faster than cast to nullable?
             if (_specProvider.DaoBlockNumber.HasValue && _specProvider.DaoBlockNumber.Value == suggestedBlock.Header.Number)
             {
-                _logger?.Log($"APPLYING DAO TRANSITION");
+                _logger?.Info($"APPLYING DAO TRANSITION");
                 ApplyDaoTransition();
             }
 
@@ -190,13 +190,13 @@ namespace Nethermind.Blockchain
             Keccak transactionsRoot = GetTransactionsRoot(suggestedBlock.Transactions);
             if (transactionsRoot != suggestedBlock.Header.TransactionsRoot)
             {
-                _logger?.Log($"TRANSACTIONS_ROOT {transactionsRoot} != TRANSACTIONS_ROOT {transactionsRoot}");
+                _logger?.Info($"TRANSACTIONS_ROOT {transactionsRoot} != TRANSACTIONS_ROOT {transactionsRoot}");
             }
             
-            _logger?.Log($"BLOCK BENEFICIARY {suggestedBlock.Header.Beneficiary}");
-            _logger?.Log($"BLOCK GAS LIMIT {suggestedBlock.Header.GasLimit}");
-            _logger?.Log($"BLOCK GAS USED {suggestedBlock.Header.GasUsed}");
-            _logger?.Log($"BLOCK DIFFICULTY {suggestedBlock.Header.Difficulty}");
+            _logger?.Info($"BLOCK BENEFICIARY {suggestedBlock.Header.Beneficiary}");
+            _logger?.Info($"BLOCK GAS LIMIT {suggestedBlock.Header.GasLimit}");
+            _logger?.Info($"BLOCK GAS USED {suggestedBlock.Header.GasUsed}");
+            _logger?.Info($"BLOCK DIFFICULTY {suggestedBlock.Header.Difficulty}");
 
             Block processedBlock = ProcessBlock(
                 suggestedBlock.Header.ParentHash,
@@ -218,12 +218,12 @@ namespace Nethermind.Blockchain
 
             if (!tryOnly && !_blockValidator.ValidateProcessedBlock(processedBlock, suggestedBlock))
             {
-                _logger?.Log($"PROCESSED BLOCK IS NOT VALID {processedBlock.Hash} ({processedBlock.Number})");
-                _logger?.Log($"THROWING INVALID BLOCK");
+                _logger?.Info($"PROCESSED BLOCK IS NOT VALID {processedBlock.Hash} ({processedBlock.Number})");
+                _logger?.Info($"THROWING INVALID BLOCK");
                 throw new InvalidBlockException();
             }
 
-            _logger?.Log($"COMMITING BLOCK - STATE ROOT {_stateProvider.StateRoot}");
+            _logger?.Info($"COMMITING BLOCK - STATE ROOT {_stateProvider.StateRoot}");
             _dbProvider.Commit(_specProvider.GetSpec(suggestedBlock.Number));
             return processedBlock;
         }
@@ -236,7 +236,7 @@ namespace Nethermind.Blockchain
             Address beneficiary,
             long gasLimit,
             byte[] extraData,
-            List<Transaction> transactions,
+            Transaction[] transactions,
             Keccak mixHash, ulong nonce,
             Keccak ommersHash,
             BlockHeader[] ommers)
@@ -253,7 +253,7 @@ namespace Nethermind.Blockchain
 
         private void ApplyMinerRewards(Block block)
         {
-            _logger?.Log("APPLYING MINER REWARDS");
+            _logger?.Info("APPLYING MINER REWARDS");
             Dictionary<Address, BigInteger> rewards = _rewardCalculator.CalculateRewards(block);
             foreach ((Address address, BigInteger reward) in rewards)
             {
@@ -268,7 +268,7 @@ namespace Nethermind.Blockchain
             }
 
             _stateProvider.Commit(_specProvider.GetSpec(block.Number));
-            _logger?.Log("DONE APPLYING MINER REWARDS");
+            _logger?.Info("DONE APPLYING MINER REWARDS");
         }
     }
 }

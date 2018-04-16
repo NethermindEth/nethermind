@@ -87,7 +87,7 @@ namespace Nethermind.Evm
                     if (_logger != null)
                     {
                         string intro = (currentState.IsContinuation ? "CONTINUE" : "BEGIN") + (currentState.IsStatic ? " STATIC" : string.Empty);
-                        _logger?.Log($"{intro} {currentState.ExecutionType} AT DEPTH {currentState.Env.CallDepth} (at {currentState.Env.ExecutingAccount})");
+                        _logger?.Info($"{intro} {currentState.ExecutionType} AT DEPTH {currentState.Env.CallDepth} (at {currentState.Env.ExecutingAccount})");
                     }
 
                     CallResult callResult;
@@ -167,11 +167,11 @@ namespace Nethermind.Evm
                             _returnDataBuffer = callResult.Output;
                         }
 
-                        _logger?.Log($"END {previousState.ExecutionType} AT DEPTH {previousState.Env.CallDepth} (RESULT {Hex.FromBytes(previousCallResult ?? Bytes.Empty, true)}) RETURNS ({previousCallOutputDestination} : {Hex.FromBytes(previousCallOutput, true)})");
+                        _logger?.Info($"END {previousState.ExecutionType} AT DEPTH {previousState.Env.CallDepth} (RESULT {Hex.FromBytes(previousCallResult ?? Bytes.Empty, true)}) RETURNS ({previousCallOutputDestination} : {Hex.FromBytes(previousCallOutput, true)})");
                     }
                     else
                     {
-                        _logger?.Log($"REVERT {previousState.ExecutionType} AT DEPTH {previousState.Env.CallDepth} (RESULT {Hex.FromBytes(previousCallResult ?? Bytes.Empty, true)}) RETURNS ({previousCallOutputDestination} : {Hex.FromBytes(previousCallOutput, true)})");
+                        _logger?.Info($"REVERT {previousState.ExecutionType} AT DEPTH {previousState.Env.CallDepth} (RESULT {Hex.FromBytes(previousCallResult ?? Bytes.Empty, true)}) RETURNS ({previousCallOutputDestination} : {Hex.FromBytes(previousCallOutput, true)})");
                         _state.Restore(previousState.StateSnapshot);
                         _storage.Restore(previousState.StorageSnapshot);
                         previousCallResult = StatusCode.FailureBytes;
@@ -182,7 +182,7 @@ namespace Nethermind.Evm
                 }
                 catch (Exception ex) when (ex is EvmException || ex is OverflowException)
                 {
-                    _logger?.Log($"EXCEPTION ({ex.GetType().Name}) IN {currentState.ExecutionType} AT DEPTH {currentState.Env.CallDepth} - RESTORING SNAPSHOT");
+                    _logger?.Info($"EXCEPTION ({ex.GetType().Name}) IN {currentState.ExecutionType} AT DEPTH {currentState.Env.CallDepth} - RESTORING SNAPSHOT");
                     _state.Restore(currentState.StateSnapshot);
                     _storage.Restore(currentState.StorageSnapshot);
 
@@ -225,7 +225,7 @@ namespace Nethermind.Evm
 
         public void UpdateGas(long gasCost, ref long gasAvailable)
         {
-            _logger?.Log($"  UPDATE GAS (-{gasCost})");
+            _logger?.Info($"  UPDATE GAS (-{gasCost})");
             if (gasAvailable < gasCost)
             {
                 throw new OutOfGasException();
@@ -236,7 +236,7 @@ namespace Nethermind.Evm
 
         public void RefundGas(long refund, ref long gasAvailable)
         {
-            _logger?.Log($"  UPDATE GAS (+{refund})");
+            _logger?.Info($"  UPDATE GAS (+{refund})");
             gasAvailable += refund;
         }
 
@@ -351,7 +351,7 @@ namespace Nethermind.Evm
 
             void LogInstructionResult(Instruction instruction, long gasBefore)
             {
-                _logger?.Log(
+                _logger?.Info(
                     $"  END {env.CallDepth}_{instruction} GAS {gasAvailable} ({gasBefore - gasAvailable}) STACK {stackHead} MEMORY {evmState.Memory.Size / 32L} PC {programCounter}");
 
                 if (ShouldLog.EvmStack)
@@ -360,11 +360,11 @@ namespace Nethermind.Evm
                     {
                         if (intPositions[stackHead - i - 1])
                         {
-                            _logger?.Log($"  STACK{i} -> {intsOnStack[stackHead - i - 1]}");
+                            _logger?.Info($"  STACK{i} -> {intsOnStack[stackHead - i - 1]}");
                         }
                         else
                         {
-                            _logger?.Log($"  STACK{i} -> {Hex.FromBytes(bytesOnStack[stackHead - i - 1], true)}");
+                            _logger?.Info($"  STACK{i} -> {Hex.FromBytes(bytesOnStack[stackHead - i - 1], true)}");
                         }
                     }
                 }
@@ -372,7 +372,7 @@ namespace Nethermind.Evm
 
             void PushBytes(byte[] value)
             {
-                _logger?.Log($"  PUSH {Hex.FromBytes(value, true)}");
+                _logger?.Info($"  PUSH {Hex.FromBytes(value, true)}");
 
                 intPositions[stackHead] = false;
                 bytesOnStack[stackHead] = value;
@@ -385,7 +385,7 @@ namespace Nethermind.Evm
 
             void PushInt(BigInteger value)
             {
-                _logger?.Log($"  PUSH {value}");
+                _logger?.Info($"  PUSH {value}");
 
                 intPositions[stackHead] = true;
                 intsOnStack[stackHead] = value;
@@ -488,7 +488,7 @@ namespace Nethermind.Evm
                 byte[] result = intPositions[stackHead]
                     ? intsOnStack[stackHead].ToBigEndianByteArray()
                     : bytesOnStack[stackHead];
-                _logger?.Log($"  POP {Hex.FromBytes(result, true)}");
+                _logger?.Info($"  POP {Hex.FromBytes(result, true)}");
 
                 return result;
             }
@@ -504,13 +504,13 @@ namespace Nethermind.Evm
 
                 if (intPositions[stackHead])
                 {
-                    _logger?.Log($"  POP {intsOnStack[stackHead]}");
+                    _logger?.Info($"  POP {intsOnStack[stackHead]}");
 
                     return intsOnStack[stackHead];
                 }
 
                 BigInteger res = bytesOnStack[stackHead].ToUnsignedBigInteger();
-                _logger?.Log($"  POP {res}");
+                _logger?.Info($"  POP {res}");
 
                 return res;
             }
@@ -527,12 +527,12 @@ namespace Nethermind.Evm
                 // TODO: can remember whether integer was signed or not so I do not have to convert
                 if (intPositions[stackHead])
                 {
-                    _logger?.Log($"  POP {intsOnStack[stackHead]}");
+                    _logger?.Info($"  POP {intsOnStack[stackHead]}");
 
                     return intsOnStack[stackHead].ToBigEndianByteArray().ToSignedBigInteger(32);
                 }
 
-                _logger?.Log($"  POP {Hex.FromBytes(bytesOnStack[stackHead], true)}");
+                _logger?.Info($"  POP {Hex.FromBytes(bytesOnStack[stackHead], true)}");
 
                 return bytesOnStack[stackHead].ToSignedBigInteger(32);
             }
@@ -551,7 +551,7 @@ namespace Nethermind.Evm
             void UpdateMemoryCost(BigInteger position, BigInteger length)
             {
                 long memoryCost = evmState.Memory.CalculateMemoryCost(position, length);
-                _logger?.Log($"  MEMORY COST {memoryCost}");
+                _logger?.Info($"  MEMORY COST {memoryCost}");
 
                 UpdateGas(memoryCost, ref gasAvailable);
             }
@@ -617,7 +617,7 @@ namespace Nethermind.Evm
                 Instruction instruction = (Instruction)code[(int)programCounter];
                 programCounter++;
 
-                _logger?.Log($"{instruction} (0x{instruction:X})");
+                _logger?.Info($"{instruction} (0x{instruction:X})");
 
                 switch (instruction)
                 {
@@ -1151,7 +1151,7 @@ namespace Nethermind.Evm
                         {
                             byte[] newValue = isNewValueZero ? new byte[] {0} : data;
                             _storage.Set(env.ExecutingAccount, storageIndex, newValue);
-                            _logger?.Log($"  UPDATING STORAGE: {env.ExecutingAccount} {storageIndex} {Hex.FromBytes(newValue, true)}");
+                            _logger?.Info($"  UPDATING STORAGE: {env.ExecutingAccount} {storageIndex} {Hex.FromBytes(newValue, true)}");
                         }
 
                         break;
@@ -1410,7 +1410,7 @@ namespace Nethermind.Evm
                         int storageSnapshot = _storage.TakeSnapshot();
 
                         _state.UpdateBalance(env.ExecutingAccount, -value, spec);
-                        _logger?.Log("  INIT: " + contractAddress);
+                        _logger?.Info("  INIT: " + contractAddress);
 
                         ExecutionEnvironment callEnv = new ExecutionEnvironment();
                         callEnv.TransferValue = value;
@@ -1502,11 +1502,11 @@ namespace Nethermind.Evm
                         Address sender = instruction == Instruction.DELEGATECALL ? env.Sender : env.ExecutingAccount;
                         Address target = instruction == Instruction.CALL || instruction == Instruction.STATICCALL ? codeSource : env.ExecutingAccount;
 
-                        _logger?.Log($"  SENDER {sender}");
-                        _logger?.Log($"  CODE SOURCE {codeSource}");
-                        _logger?.Log($"  TARGET {target}");
-                        _logger?.Log($"  VALUE {callValue}");
-                        _logger?.Log($"  TRANSFER_VALUE {transferValue}");
+                        _logger?.Info($"  SENDER {sender}");
+                        _logger?.Info($"  CODE SOURCE {codeSource}");
+                        _logger?.Info($"  TARGET {target}");
+                        _logger?.Info($"  VALUE {callValue}");
+                        _logger?.Info($"  TRANSFER_VALUE {transferValue}");
 
                         long gasExtra = 0L;
 
@@ -1548,7 +1548,7 @@ namespace Nethermind.Evm
                             evmState.Memory.Save(outputOffset, new byte[(int)outputLength]);
                             _returnDataBuffer = EmptyBytes;
                             PushInt(BigInteger.Zero);
-                            _logger?.Log("  FAIL - CALL DEPTH");
+                            _logger?.Info("  FAIL - CALL DEPTH");
                             break;
                         }
 
@@ -1560,7 +1560,7 @@ namespace Nethermind.Evm
                             evmState.Memory.Save(outputOffset, new byte[(int)outputLength]);
                             _returnDataBuffer = EmptyBytes;
                             PushInt(BigInteger.Zero);
-                            _logger?.Log($"  {instruction} FAIL - NOT ENOUGH BALANCE");
+                            _logger?.Info($"  {instruction} FAIL - NOT ENOUGH BALANCE");
                             break;
                         }
 
@@ -1588,7 +1588,7 @@ namespace Nethermind.Evm
                         callEnv.MachineCode = isPrecompile ? ((byte[])codeSource.Hex) : _state.GetCode(codeSource);
 
                         BigInteger callGas = transferValue.IsZero ? gasLimitUl : gasLimitUl + GasCostOf.CallStipend;
-                        _logger?.Log($"  CALL_GAS {callGas}");
+                        _logger?.Info($"  CALL_GAS {callGas}");
 
                         EvmState callState = new EvmState(
                             (long)callGas,
@@ -1684,7 +1684,7 @@ namespace Nethermind.Evm
                     }
                     default:
                     {
-                        _logger?.Log("UNKNOWN INSTRUCTION");
+                        _logger?.Info("UNKNOWN INSTRUCTION");
 
                         throw new InvalidInstructionException((byte)instruction);
                     }

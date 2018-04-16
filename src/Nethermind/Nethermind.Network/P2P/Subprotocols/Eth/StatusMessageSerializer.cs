@@ -26,7 +26,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         {
             return Rlp.Encode(
                 message.ProtocolVersion,
-                message.NetworkId,
+                message.ChainId,
                 message.TotalDifficulty,
                 message.BestHash,
                 message.GenesisHash
@@ -38,7 +38,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             StatusMessage statusMessage = new StatusMessage();
             DecodedRlp decoded = Rlp.Decode(new Rlp(bytes));
             statusMessage.ProtocolVersion = decoded.GetByte(0);
-            statusMessage.NetworkId = decoded.GetInt(1);
+            statusMessage.ChainId = decoded.GetInt(1);
             statusMessage.TotalDifficulty = decoded.GetUnsignedBigInteger(2);
             statusMessage.BestHash = decoded.GetKeccak(3);
             statusMessage.GenesisHash = decoded.GetKeccak(4);

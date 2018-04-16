@@ -34,7 +34,7 @@ namespace Nethermind.Network.P2P
     {
         private readonly ILogger _logger;
         private readonly IMessageSerializationService _serializer;
-        private readonly ISynchronizationManager _synchronizationManager;
+        private readonly ISynchronizationManager _syncManager;
         private readonly Dictionary<string, IProtocolHandler> _protocols = new Dictionary<string, IProtocolHandler>();
         
         private IChannelHandlerContext _context;
@@ -50,11 +50,11 @@ namespace Nethermind.Network.P2P
             PublicKey localNodeId,
             int localPort,
             IMessageSerializationService serializer,
-            ISynchronizationManager synchronizationManager,
+            ISynchronizationManager syncManager,
             ILogger logger)
         {
             _serializer = serializer;
-            _synchronizationManager = synchronizationManager;
+            _syncManager = syncManager;
             _logger = logger;
             LocalNodeId = localNodeId;
             LocalPort = localPort;
@@ -66,7 +66,7 @@ namespace Nethermind.Network.P2P
         // TODO: this should be one level up
         public void EnableSnappy()
         {
-            _logger.Error($"Enabling Snappy compression");
+            _logger.Info($"Enabling Snappy compression");
             _context.Channel.Pipeline.AddBefore($"{nameof(Multiplexor)}#0", null, new SnappyDecoder(_logger));
             _context.Channel.Pipeline.AddBefore($"{nameof(Multiplexor)}#0", null, new SnappyEncoder(_logger));
         }
@@ -77,7 +77,7 @@ namespace Nethermind.Network.P2P
             Task.Delay(delay).ContinueWith(t =>
             {
                 _context.DisconnectAsync();
-                _logger.Error($"Disconnecting now after {delay.TotalMilliseconds} milliseconds");
+                _logger.Info($"Disconnecting now after {delay.TotalMilliseconds} milliseconds");
             });
         }
 
@@ -103,7 +103,7 @@ namespace Nethermind.Network.P2P
             (string protocol, int messageId) = ResolveMessageCode(dynamicMessageCode);
             packet.Protocol = protocol;
 
-            _logger.Log($"Session Manager received a message (dynamic ID {dynamicMessageCode}. Resolved to {protocol}.{messageId})");
+            _logger.Info($"Session Manager received a message (dynamic ID {dynamicMessageCode}. Resolved to {protocol}.{messageId})");
 
             if (protocol == null)
             {
@@ -136,7 +136,7 @@ namespace Nethermind.Network.P2P
                     {
                         if (protocolHandler.ProtocolVersion >= 5)
                         {
-                            _logger.Log($"{protocolHandler.ProtocolCode} v{protocolHandler.ProtocolVersion} established - Enabling Snappy");
+                            _logger.Info($"{protocolHandler.ProtocolCode} v{protocolHandler.ProtocolVersion} established - Enabling Snappy");
                             EnableSnappy();
                         }
                     };
@@ -148,11 +148,11 @@ namespace Nethermind.Network.P2P
                     }
 
                     protocolHandler = version == 62
-                        ? new Eth62ProtocolHandler(this, _serializer, _synchronizationManager, _logger)
-                        : new Eth63ProtocolHandler(this, _serializer, _synchronizationManager, _logger);
+                        ? new Eth62ProtocolHandler(this, _serializer, _syncManager, _logger)
+                        : new Eth63ProtocolHandler(this, _serializer, _syncManager, _logger);
                     protocolHandler.ProtocolInitialized += (sender, args) =>
                     {
-                        _synchronizationManager.AddPeer((Eth62ProtocolHandler)protocolHandler);
+                        _syncManager.AddPeer((Eth62ProtocolHandler)protocolHandler);
                     };
                     break;
                 default:

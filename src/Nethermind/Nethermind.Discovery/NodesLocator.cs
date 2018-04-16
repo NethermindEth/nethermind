@@ -54,7 +54,7 @@ namespace Nethermind.Discovery
         {
             var alreadyTriedNodes = new List<string>();
             
-            _logger.Log($"Starting location process for node: {(searchedNodeId != null ? new Hex(searchedNodeId).ToString() : "masterNode: " + _masterNode.Id)}");
+            _logger.Info($"Starting location process for node: {(searchedNodeId != null ? new Hex(searchedNodeId).ToString() : "masterNode: " + _masterNode.Id)}");
 
             for (var i = 0; i < _configurationProvider.MaxDiscoveryRounds; i++)
             {
@@ -75,14 +75,14 @@ namespace Nethermind.Discovery
                     }
                     candTryIndex = candTryIndex + 1;
 
-                    _logger.Log($"Waiting {_configurationProvider.DiscoveryNewCycleWaitTime} for new nodes");
+                    _logger.Info($"Waiting {_configurationProvider.DiscoveryNewCycleWaitTime} for new nodes");
                     //we need to wait some time for pong messages received from new nodes we reached out to
                     Thread.Sleep(_configurationProvider.DiscoveryNewCycleWaitTime);
                 }
 
                 if (!tryCandidates.Any())
                 {
-                    _logger.Log("No more closer candidates");
+                    _logger.Info("No more closer candidates");
                     break;
                 }
 
@@ -95,7 +95,7 @@ namespace Nethermind.Discovery
                     var nodesToSend = tryCandidates.Skip(nodesTriedCount).Take(count).ToArray();
                     if (!nodesToSend.Any())
                     {
-                        _logger.Log($"No more nodes to send, sent {successRequestsCount} successfull requests, failedRequestCounter: {failRequestCount}, nodesTriedCounter: {nodesTriedCount}");
+                        _logger.Info($"No more nodes to send, sent {successRequestsCount} successfull requests, failedRequestCounter: {failRequestCount}, nodesTriedCounter: {nodesTriedCount}");
                         break;
                     }
 
@@ -118,12 +118,12 @@ namespace Nethermind.Discovery
 
                     if (successRequestsCount >= _configurationProvider.Concurrency)
                     {
-                        _logger.Log($"Sent {successRequestsCount} successfull requests, failedRequestCounter: {failRequestCount}, nodesTriedCounter: {nodesTriedCount}");
+                        _logger.Info($"Sent {successRequestsCount} successfull requests, failedRequestCounter: {failRequestCount}, nodesTriedCounter: {nodesTriedCount}");
                         break;
                     }
                 }
             }
-            _logger.Log($"Finished locating nodes, triedNodesCount: {alreadyTriedNodes.Count}");
+            _logger.Info($"Finished locating nodes, triedNodesCount: {alreadyTriedNodes.Count}");
 
             LogNodeTable();
         }
@@ -147,7 +147,7 @@ namespace Nethermind.Discovery
 
             sb.AppendLine();
             sb.AppendLine();
-            _logger.Log(sb.ToString());
+            _logger.Info(sb.ToString());
         }
 
         private async Task<Result[]> SendFindNode(Node[] nodesToSend, byte[] searchedNodeId)

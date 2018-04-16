@@ -26,7 +26,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         public override int PacketType { get; } = 0;
         public override string Protocol { get; } = "eth";
         public byte ProtocolVersion { get; set; }
-        public long NetworkId { get; set; }
+        public long ChainId { get; set; }
         public BigInteger TotalDifficulty { get; set; }
         public Keccak BestHash { get; set; }
         public Keccak GenesisHash { get; set; }

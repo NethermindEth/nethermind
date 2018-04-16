@@ -161,7 +161,7 @@ namespace Ethereum.Test.Base
             public override void WriteLine(string message)
             {
                 Write(message);
-                _logger?.Log(_line.ToString());
+                _logger?.Info(_line.ToString());
                 _line.Clear();
             }
         }
@@ -208,7 +208,7 @@ namespace Ethereum.Test.Base
             IDifficultyCalculator difficultyCalculator = new DifficultyCalculator(specProvider);
             IRewardCalculator rewardCalculator = new RewardCalculator(specProvider);
             
-            IBlockTree blockTree = new BlockTree(processingLogger);
+            IBlockTree blockTree = new BlockTree(ChainId.MainNet, processingLogger);
             IBlockhashProvider blockhashProvider = new BlockhashProvider(blockTree);
             ISignatureValidator signatureValidator = new SignatureValidator(ChainId.MainNet);
             ITransactionValidator transactionValidator = new TransactionValidator(signatureValidator);
@@ -270,7 +270,7 @@ namespace Ethereum.Test.Base
                 }
                 catch (Exception e)
                 {
-                    _logger?.Log($"Invalid RLP ({i})");
+                    _logger?.Info($"Invalid RLP ({i})");
                 }
             }
 
@@ -307,7 +307,7 @@ namespace Ethereum.Test.Base
                 {
                     if (correctRlpsBlocks[i].ExpectedException != null)
                     {
-                        _logger.Log($"Expecting block exception: {correctRlpsBlocks[i].ExpectedException}");    
+                        _logger.Info($"Expecting block exception: {correctRlpsBlocks[i].ExpectedException}");    
                     }
 
                     if (correctRlpsBlocks[i].Block.Hash == null)
@@ -330,7 +330,7 @@ namespace Ethereum.Test.Base
                 }
                 catch (Exception ex)
                 {
-                    _logger?.Log(ex.ToString());
+                    _logger?.Info(ex.ToString());
                 }
 
                 stopwatch?.Stop(); // TODO: this stopwatch does not have any meaning any more (temporarily)
@@ -402,7 +402,7 @@ namespace Ethereum.Test.Base
 
                 if (differences.Count != differencesBefore)
                 {
-                    _logger?.Log($"ACCOUNT STATE ({accountState.Key}) HAS DIFFERENCES");    
+                    _logger?.Info($"ACCOUNT STATE ({accountState.Key}) HAS DIFFERENCES");    
                 }
 
                 differencesBefore = differences.Count;
@@ -418,7 +418,7 @@ namespace Ethereum.Test.Base
 
                 if (differences.Count != differencesBefore)
                 {
-                    _logger?.Log($"ACCOUNT STORAGE ({accountState.Key}) HAS DIFFERENCES");    
+                    _logger?.Info($"ACCOUNT STORAGE ({accountState.Key}) HAS DIFFERENCES");    
                 }
             }
 
@@ -456,7 +456,7 @@ namespace Ethereum.Test.Base
 
             foreach (string difference in differences)
             {
-                _logger?.Log(difference);
+                _logger?.Info(difference);
             }
 
             Assert.Zero(differences.Count, "differences");
@@ -496,7 +496,7 @@ namespace Ethereum.Test.Base
             BlockHeader header = Convert(testBlockJson.BlockHeader);
             BlockHeader[] ommers = testBlockJson.UncleHeaders?.Select(Convert).ToArray() ?? new BlockHeader[0];
             Block block = new Block(header, ommers);
-            block.Transactions = testBlockJson.Transactions?.Select(Convert).ToList();
+            block.Transactions = testBlockJson.Transactions?.Select(Convert).ToArray();
             return block;
         }
 

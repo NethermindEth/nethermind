@@ -42,14 +42,14 @@ namespace Nethermind.Runner.Runners
 
         public void Start(InitParams initParams)
         {
-            _logger.Log("Initializing Discovery");
+            _logger.Info("Initializing Discovery");
             if (initParams.DiscoveryPort.HasValue)
             {
                 _configurationProvider.MasterPort = initParams.DiscoveryPort.Value;
             }
             _discoveryMsgSerializersProvider.RegisterDiscoverySerializers();
             _discoveryApp.Start(_privateKeyProvider.PrivateKey.PublicKey);
-            _logger.Log("Discovery initialization completed");
+            _logger.Info("Discovery initialization completed");
         }
 
         public async Task StopAsync()

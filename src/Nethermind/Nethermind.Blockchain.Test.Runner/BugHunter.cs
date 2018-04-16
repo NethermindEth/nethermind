@@ -69,7 +69,7 @@ namespace Nethermind.Blockchain.Test.Runner
                     }
                     catch (Exception againEx)
                     {
-                        logger.Log(againEx.ToString());
+                        logger.Info(againEx.ToString());
                         logger.Flush();
                     }
 

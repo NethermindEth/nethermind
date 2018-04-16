@@ -58,13 +58,13 @@ namespace Nethermind.Runner.Runners
 
         public void Start(InitParams initParams)
         {
-            _logger.Log("Initializing Ethereum");
+            _logger.Info("Initializing Ethereum");
             _blockchainProcessor.Start();
             InitializeKeys(initParams.KeysDir);
             InitializeGenesis(initParams.GenesisFilePath);
             InitializeChain(initParams.ChainFile);
             InitializeBlocks(initParams.BlocksDir);
-            _logger.Log("Ethereum initialization completed");
+            _logger.Info("Ethereum initialization completed");
         }
 
         public async Task StopAsync()
@@ -76,7 +76,7 @@ namespace Nethermind.Runner.Runners
         {
             if (!File.Exists(chainFile))
             {
-                _logger.Log($"Chain file does not exist: {chainFile}, skipping");
+                _logger.Info($"Chain file does not exist: {chainFile}, skipping");
                 return;
             }
 
@@ -94,7 +94,7 @@ namespace Nethermind.Runner.Runners
         {
             if (!Directory.Exists(blocksDir))
             {
-                _logger.Log($"Blocks dir does not exist: {blocksDir}, skipping");
+                _logger.Info($"Blocks dir does not exist: {blocksDir}, skipping");
                 return;
             }
 
@@ -102,7 +102,7 @@ namespace Nethermind.Runner.Runners
             var blocks = files.Select(x => new { File = x, Block = DecodeBlock(x) }).OrderBy(x => x.Block.Header.Number).ToArray();
             foreach (var block in blocks)
             {
-                _logger.Log($"Processing block file: {block.File}, blockNumber: {block.Block.Header.Number}");
+                _logger.Info($"Processing block file: {block.File}, blockNumber: {block.Block.Header.Number}");
                 ProcessBlock(block.Block);
             }
         }
@@ -131,7 +131,7 @@ namespace Nethermind.Runner.Runners
         {
             if (!Directory.Exists(keysDir))
             {
-                _logger.Log($"Keys dir does not exist: {keysDir}, skipping");
+                _logger.Info($"Keys dir does not exist: {keysDir}, skipping");
                 return;
             }
 
@@ -139,7 +139,7 @@ namespace Nethermind.Runner.Runners
             var files = Directory.GetFiles(keysDir);
             foreach (var file in files)
             {
-                _logger.Log($"Processing key file: {file}");
+                _logger.Info($"Processing key file: {file}");
                 var fileContent = File.ReadAllText(file);
                 var keyStoreItem = _jsonSerializer.Deserialize<KeyStoreItem>(fileContent);
                 var filePath = Path.Combine(keyStoreDir, keyStoreItem.Address);

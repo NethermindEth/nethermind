@@ -98,7 +98,7 @@ namespace Nethermind.Network.Rlpx
                     .Group(_bossGroup, _workerGroup)
                     .Channel<TcpServerSocketChannel>()
                     .ChildOption(ChannelOption.SoBacklog, 100)
-                    .Handler(new LoggingHandler("BOSS", LogLevel.TRACE))
+                    .Handler(new LoggingHandler("BOSS", DotNetty.Handlers.Logging.LogLevel.TRACE))
                     .ChildHandler(new ActionChannelInitializer<ISocketChannel>(ch => InitializeChannel(ch, EncryptionHandshakeRole.Recipient, null)));
 
                 _bootstrapChannel = await bootstrap.BindAsync(_localPort);
@@ -112,7 +112,7 @@ namespace Nethermind.Network.Rlpx
 
         public async Task ConnectAsync(PublicKey remoteId, string host, int port)
         {
-            _logger.Log($"Connecting to {remoteId} at {host}:{port}");
+            _logger.Info($"Connecting to {remoteId} at {host}:{port}");
 
             Bootstrap clientBootstrap = new Bootstrap();
             clientBootstrap.Group(_workerGroup);
@@ -126,13 +126,13 @@ namespace Nethermind.Network.Rlpx
             clientBootstrap.Handler(new ActionChannelInitializer<ISocketChannel>(ch => InitializeChannel(ch, EncryptionHandshakeRole.Initiator, remoteId)));
             
             await clientBootstrap.ConnectAsync(new IPEndPoint(IPAddress.Parse(host), port));
-            _logger.Log($"Connected to {remoteId} at {host}:{port}");
+            _logger.Info($"Connected to {remoteId} at {host}:{port}");
         }
 
         private void InitializeChannel(IChannel channel, EncryptionHandshakeRole role, PublicKey remoteId)
         {
             string inOut = remoteId == null ? "IN" : "OUT";
-            _logger.Log($"Initializing {inOut} channel");
+            _logger.Info($"Initializing {inOut} channel");
 
             P2PSession p2PSession = new P2PSession(
                 LocalNodeId,
@@ -142,7 +142,7 @@ namespace Nethermind.Network.Rlpx
                 _logger);
 
             IChannelPipeline pipeline = channel.Pipeline;
-            pipeline.AddLast(new LoggingHandler(inOut, LogLevel.TRACE));
+            pipeline.AddLast(new LoggingHandler(inOut, DotNetty.Handlers.Logging.LogLevel.TRACE));
             pipeline.AddLast("enc-handshake-dec", new LengthFieldBasedFrameDecoder(ByteOrder.BigEndian, ushort.MaxValue, 0, 2, 0, 0, true));
             pipeline.AddLast("enc-handshake-handler", new NettyHandshakeHandler(_encryptionHandshakeService, p2PSession, role, remoteId, _logger));
         }

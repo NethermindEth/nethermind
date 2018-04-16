@@ -67,7 +67,7 @@ namespace Nethermind.Discovery
         {
             try
             {
-                _logger.Log($"Received msg: {message}");
+                _logger.Info($"Received msg: {message}");
 
                 var msgType = message.MessageType;
                
@@ -214,13 +214,13 @@ namespace Nethermind.Discovery
             if (activeExcluded.Length == cleanupCount)
             {
                 var removeCounter = RemoveManagers(activeExcluded, activeExcluded.Length);
-                _logger.Log($"Removed: {removeCounter} node lifecycle managers");
+                _logger.Info($"Removed: {removeCounter} node lifecycle managers");
                 return;
             }
             var unreachable = _nodeLifecycleManagers.Where(x => x.Value.State == NodeLifecycleState.Unreachable).Take(cleanupCount - activeExcluded.Length).ToArray();
             var removeCount = RemoveManagers(activeExcluded, activeExcluded.Length);
             removeCount = removeCount + RemoveManagers(unreachable, unreachable.Length);
-            _logger.Log($"Removed: {removeCount} node lifecycle managers");
+            _logger.Info($"Removed: {removeCount} node lifecycle managers");
         }
 
         private int RemoveManagers(KeyValuePair<string, INodeLifecycleManager>[] items, int count)
