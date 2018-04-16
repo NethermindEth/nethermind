@@ -20,6 +20,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Blockchain
 {
@@ -34,6 +35,8 @@ namespace Nethermind.Blockchain
         
         public Task<Block> MineAsync(Block block, CancellationToken cancellationToken)
         {
+            block.Header.MixHash = Keccak.Zero;
+            
             return _miningDelay == TimeSpan.Zero
                 ? Task.FromResult(block)
                 : Task.Delay(_miningDelay, cancellationToken).ContinueWith(t => block, cancellationToken);
