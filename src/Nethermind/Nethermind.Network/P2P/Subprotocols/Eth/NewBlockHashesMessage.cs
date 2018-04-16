@@ -23,7 +23,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 {
     public class NewBlockHashesMessage : P2PMessage
     {
-        public override int PacketType { get; } = 1;
+        public override int PacketType { get; } = Eth62MessageCode.NewBlockHashes;
         public override string Protocol { get; } = "eth";
 
         public (Keccak, BigInteger)[] BlockHashes { get; set; }

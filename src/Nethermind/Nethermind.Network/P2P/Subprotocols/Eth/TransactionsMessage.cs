@@ -22,7 +22,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 {
     public class TransactionsMessage : P2PMessage
     {
-        public override int PacketType { get; } = 2;
+        public override int PacketType { get; } = Eth62MessageCode.Transactions;
         public override string Protocol { get; } = "eth";
         
         public Transaction[] Transactions { get; set; }

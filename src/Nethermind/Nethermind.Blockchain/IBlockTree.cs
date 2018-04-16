@@ -42,5 +42,6 @@ namespace Nethermind.Blockchain
 
         event EventHandler<BlockEventArgs> BlockAddedToMain;
         event EventHandler<BlockEventArgs> NewBestBlockSuggested;
+        event EventHandler<BlockEventArgs> NewHeadBlock;
     }
 }

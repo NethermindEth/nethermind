@@ -16,8 +16,11 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Diagnostics;
+
 namespace Nethermind.Network.Rlpx
 {
+    [DebuggerDisplay("{Protocol}.{PacketType}")]
     public class Packet
     {
         public byte[] Data;

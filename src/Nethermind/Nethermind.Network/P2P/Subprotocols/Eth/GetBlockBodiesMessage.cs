@@ -25,7 +25,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
     public class GetBlockBodiesMessage : P2PMessage
     {
         public Keccak[] BlockHashes { get; }
-        public override int PacketType { get; } = 2;
+        public override int PacketType { get; } = Eth62MessageCode.GetBlockBodies;
         public override string Protocol { get; } = "eth";
 
         public GetBlockBodiesMessage ()

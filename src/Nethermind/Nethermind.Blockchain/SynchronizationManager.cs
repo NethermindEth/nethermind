@@ -71,6 +71,8 @@ namespace Nethermind.Blockchain
             _delay = delay;
             BlockTree = blockTree;
             BlockTree.BlockAddedToMain += OnBlockAddedToMain;
+            BlockTree.NewHeadBlock += OnNewHeadBlock;
+
 
             _headerValidator = headerValidator;
             _blockValidator = blockValidator;
@@ -88,6 +90,16 @@ namespace Nethermind.Blockchain
             BestNumber = bestBlockSoFar.Number;
             TotalDifficulty = totalDifficulty;
             _logger.Info($"Initialized {nameof(SynchronizationManager)} with genesis block {bestBlockSoFar.Hash}");
+        }
+
+        private void OnNewHeadBlock(object sender, BlockEventArgs blockEventArgs)
+        {
+            Block block = blockEventArgs.Block;
+            Debug.Assert(block.TotalDifficulty > TotalDifficulty);
+
+            BestBlock = block.Hash;
+            BestNumber = block.Number;
+            TotalDifficulty = block.TotalDifficulty ?? 0;
         }
 
         public BlockInfo AddBlockHeader(BlockHeader blockHeader)
@@ -131,7 +143,7 @@ namespace Nethermind.Blockchain
                 {
                     continue;
                 }
-                
+
                 Debug.Assert(_storedBlocks.ContainsKey(blocks[i].Hash));
                 blockInfos[i] = _storedBlocks[blocks[i].Hash];
             }
@@ -162,6 +174,7 @@ namespace Nethermind.Blockchain
             blockInfo.BlockHeader = block.Header;
             blockInfo.HeaderLocation = BlockDataLocation.Memory;
             blockInfo.Block = block;
+            blockInfo.BlockQuality = isValid ? Quality.DataValid : Quality.Invalid;
             blockInfo.BodyLocation = BlockDataLocation.Memory;
             blockInfo.ReceivedFrom = receivedFrom;
 
@@ -248,16 +261,10 @@ namespace Nethermind.Blockchain
             lock (_syncObject)
             {
                 Block block = blockEventArgs.Block;
-                if (block.TotalDifficulty > TotalDifficulty)
-                {
-                    BestBlock = block.Hash;
-                    BestNumber = block.Number;
-                    TotalDifficulty = block.TotalDifficulty ?? 0;
-                }
-
                 if (!_storedBlocks.ContainsKey(block.Hash))
                 {
-                    AddBlock(block, null);
+                    BlockInfo blockinfo = AddBlock(block, null);
+                    blockinfo.HeaderQuality = blockinfo.BlockQuality = Quality.Processed;
                 }
             }
         }
@@ -321,56 +328,73 @@ namespace Nethermind.Blockchain
 
         private async Task RunRound(CancellationToken cancellationToken)
         {
-            _logger.Info($"SYNC MANAGER ROUND {_round++}, {_peers.Count} " + (_peers.Count == 1 ? "PEER" : "PEERS"));
+            _logger.Debug($"SYNC MANAGER ROUND {_round++}, {_peers.Count} " + (_peers.Count == 1 ? "PEER" : "PEERS"));
             List<Task> refreshTasks = new List<Task>();
             foreach (KeyValuePair<ISynchronizationPeer, PeerInfo> keyValuePair in _peers)
             {
                 refreshTasks.Add(RefreshPeerInfo(keyValuePair.Key));
             }
 
-            _logger.Info($"SYNC MANAGER WAITING FOR REFRESH");
+            _logger.Debug($"SYNC MANAGER WAITING FOR REFRESH");
             await Task.WhenAny(Task.WhenAll(refreshTasks), AsTask(cancellationToken));
             if (cancellationToken.IsCancellationRequested)
             {
-                _logger.Info($"SYNC MANAGER CANCELLED");
+                _logger.Debug($"SYNC MANAGER CANCELLED");
                 return;
             }
 
-            _logger.Info($"SYNC MANAGER WILL GET MISSING BLOCKS NOW FROM {_peers.Count} PEERS");
+            _logger.Debug($"SYNC MANAGER WILL GET MISSING BLOCKS NOW FROM {_peers.Count} PEERS");
             foreach ((ISynchronizationPeer peer, PeerInfo peerInfo) in _peers)
             {
-                _logger.Info($"CALCULATING MISSING BLOCKS");
-                _logger.Info($"PEER INFO = {peerInfo}, NUMBER = {peerInfo?.Number}, BEST = {BestNumber}");
+                _logger.Debug($"CALCULATING MISSING BLOCKS");
+                _logger.Debug($"PEER INFO = {peerInfo}, NUMBER = {peerInfo?.Number}, BEST = {BestNumber}");
                 BigInteger missingBlocks = (peerInfo?.Number ?? 0) - BestNumber;
-                _logger.Info($"SYNC MANAGER REQUESTING {missingBlocks} BLOCKS FROM PEER");
+                _logger.Debug($"SYNC MANAGER REQUESTING {missingBlocks} BLOCKS FROM PEER");
                 if (missingBlocks > 0)
                 {
-                    Block[] blocks = await peer.GetBlocks(BestBlock, missingBlocks + 1);
-                    foreach (Block block in blocks.Skip(1))
-                    {
-                        _logger.Info($"SYNC MANAGER RECEIVED BLOCK {block.Number}");
-                        AddBlockResult addResult = BlockTree.AddBlock(block);
-                        if (addResult == AddBlockResult.Ignored)
-                        {
-                            _logger.Info($"BLOCK {block.Number} WAS IGNORED");
-                            break;
-                        }
-                        else
-                        {
-                            _logger.Info($"BLOCK {block.Number} WAS ADDED TO THE CHAIN");
-                        }
-                    }
+                    await LoadBlocks(peer, BestBlock, missingBlocks + 1);
                 }
             }
 
             RoundFinished?.Invoke(this, EventArgs.Empty);
-            
-            _logger.Info($"SYNC MANAGER WAITING {_delay.TotalMilliseconds}ms");
+
+            _logger.Debug($"SYNC MANAGER WAITING {_delay.TotalMilliseconds}ms");
             await Task.Delay(_delay, cancellationToken);
         }
 
+        private async Task<Block[]> LoadBlocks(ISynchronizationPeer peer, Keccak blockHash, BigInteger maxBlocks)
+        {
+            BlockHeader[] headers = await peer.GetBlockHeaders(blockHash, maxBlocks);
+            List<Keccak> hashes = new List<Keccak>();
+            Dictionary<Keccak, BlockHeader> headersByHash = new Dictionary<Keccak, BlockHeader>();
+            for (int i = 0; i < headers.Length; i++)
+            {
+                hashes.Add(headers[i].Hash);
+                headersByHash[headers[i].Hash] = headers[i];
+            }
+
+            Block[] blocks = await peer.GetBlocks(hashes.ToArray());
+            for (int i = 1; i < blocks.Length; i++)
+            {
+                blocks[i].Header = headersByHash[hashes[i]];
+                if (_blockValidator.ValidateSuggestedBlock(blocks[i]))
+                {
+                    AddBlockResult addResult = BlockTree.AddBlock(blocks[i]);
+                    if (addResult == AddBlockResult.Ignored)
+                    {
+                        _logger.Debug($"BLOCK {blocks[i].Number} WAS IGNORED");
+                        break;
+                    }
+                    
+                    _logger.Debug($"BLOCK {blocks[i].Number} WAS ADDED TO THE CHAIN");
+                }
+            }
+
+            return blocks;
+        }
+
         public EventHandler RoundFinished;
-        
+
         // https://stackoverflow.com/questions/27238232/how-can-i-cancel-task-whenall/27238463
         private Task AsTask(CancellationToken token)
         {

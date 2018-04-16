@@ -83,7 +83,7 @@ namespace Nethermind.Blockchain.Test
             _manager.AddPeer(peer);
             _manager.Start();
             resetEvent.WaitOne(_delay * 10);
-            peer.Received().GetBlocks(_genesisBlock.Hash, 4);
+            peer.Received().GetBlockHeaders(_genesisBlock.Hash, 4);
         }
 
         [Test]
@@ -101,7 +101,7 @@ namespace Nethermind.Blockchain.Test
             ISynchronizationPeer peer = Substitute.For<ISynchronizationPeer>();
             peer.GetHeadBlockHash().Returns(TestObject.KeccakA);
             peer.GetHeadBlockNumber().Returns(3);
-            peer.GetBlocks(_genesisBlock.Hash, 4).Returns(new[] {_genesisBlock, block1, block2, block3});
+            peer.GetBlockHeaders(_genesisBlock.Hash, 4).Returns(new[] {_genesisBlock.Header, block1.Header, block2.Header, block3.Header});
 
             ManualResetEvent resetEvent = new ManualResetEvent(false);
             _manager.RoundFinished += (sender, args) => { resetEvent.Set(); };
@@ -132,7 +132,7 @@ namespace Nethermind.Blockchain.Test
             ISynchronizationPeer peer = Substitute.For<ISynchronizationPeer>();
             peer.GetHeadBlockHash().Returns(block3.Hash);
             peer.GetHeadBlockNumber().Returns(3);
-            peer.GetBlocks(_genesisBlock.Hash, 4).Returns(new[] {_genesisBlock, block1, block2, block3});
+            peer.GetBlockHeaders(_genesisBlock.Hash, 4).Returns(new[] {_genesisBlock.Header, block1.Header, block2.Header, block3.Header});
 
             CountdownEvent resetEvent = new CountdownEvent(2);
             _manager.RoundFinished += (sender, args) =>
@@ -142,7 +142,7 @@ namespace Nethermind.Blockchain.Test
                 {
                     peer.GetHeadBlockHash().Returns(block6.Hash);
                     peer.GetHeadBlockNumber().Returns(6);
-                    peer.GetBlocks(block3.Hash, 4).Returns(new[] {block3, block4, block5, block6});
+                    peer.GetBlockHeaders(block3.Hash, 4).Returns(new[] {block3.Header, block4.Header, block5.Header, block6.Header});
                     
                     _blockTree.Received().AddBlock(block1);
                     _blockTree.Received().AddBlock(block2);

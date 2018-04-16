@@ -23,7 +23,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 {
     public class StatusMessage : P2PMessage
     {
-        public override int PacketType { get; } = 0;
+        public override int PacketType { get; } = Eth62MessageCode.Status;
         public override string Protocol { get; } = "eth";
         public byte ProtocolVersion { get; set; }
         public long ChainId { get; set; }

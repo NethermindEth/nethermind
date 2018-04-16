@@ -36,8 +36,6 @@ namespace Nethermind.Blockchain
         private readonly ConcurrentDictionary<Keccak, Block> _mainChain = new ConcurrentDictionary<Keccak, Block>();
 
         private readonly HashSet<Keccak> _processed = new HashSet<Keccak>();
-        private Block _bestBlock;
-        private BigInteger _totalDifficulty;
 
         public BlockTree(int chainId, ILogger logger)
         {
@@ -48,6 +46,8 @@ namespace Nethermind.Blockchain
         public event EventHandler<BlockEventArgs> BlockAddedToMain;
 
         public event EventHandler<BlockEventArgs> NewBestBlockSuggested;
+        
+        public event EventHandler<BlockEventArgs> NewHeadBlock;
 
         private readonly object _syncObject = new object();
 
@@ -59,7 +59,7 @@ namespace Nethermind.Blockchain
         {
             if (block.Number == 0)
             {
-                if (_bestBlock != null)
+                if (HeadBlock != null)
                 {
                     throw new InvalidOperationException("Genesis block should be added only once"); // TODO: make sure it cannot happen
                 }
@@ -77,13 +77,13 @@ namespace Nethermind.Blockchain
             });
 
             UpdateTotalDifficulty(block);
-            if (block.TotalDifficulty > _totalDifficulty)
+            
+            if (block.TotalDifficulty > (HeadBlock?.TotalDifficulty ?? 0))
             {
-                _totalDifficulty = block.TotalDifficulty ?? 0;
-                _bestBlock = block;
+                HeadBlock = block;
                 NewBestBlockSuggested?.Invoke(this, new BlockEventArgs(block));
             }
-
+            
             return AddBlockResult.Added;
         }
 
@@ -166,11 +166,6 @@ namespace Nethermind.Blockchain
                 }
                 else
                 {
-                    if (block.Difficulty > HeadBlock.TotalDifficulty)
-                    {
-                        HeadBlock = block;
-                    }
-
                     _processed.Add(blockHash);
                 }
             }
@@ -186,6 +181,11 @@ namespace Nethermind.Blockchain
 
         public void MoveToMain(Keccak blockHash)
         {
+            if (!WasProcessed(blockHash))
+            {
+                throw new InvalidOperationException("Cannot move unprocessed blocks to main");
+            }
+            
             Block block = _branches[blockHash];
             _canonicalChain[(int)block.Number] = block;
 
@@ -199,8 +199,14 @@ namespace Nethermind.Blockchain
             {
                 throw new InvalidOperationException($"this should not happen as we should only be removing in {nameof(BlockchainProcessor)}");
             }
-
+            
             BlockAddedToMain?.Invoke(this, new BlockEventArgs(block));
+            
+            if (block.TotalDifficulty > HeadBlock.TotalDifficulty)
+            {
+                HeadBlock = block;
+                NewHeadBlock?.Invoke(this, new BlockEventArgs(block));
+            }
         }
 
         private void UpdateTotalDifficulty(Block block)

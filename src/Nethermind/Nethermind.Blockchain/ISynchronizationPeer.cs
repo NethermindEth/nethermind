@@ -26,7 +26,8 @@ namespace Nethermind.Blockchain
 {
     public interface ISynchronizationPeer
     {
-        Task<Block[]> GetBlocks(Keccak blockHash, BigInteger maxBlocks);
+        Task<Block[]> GetBlocks(Keccak[] blockHashes);
+        Task<BlockHeader[]> GetBlockHeaders(Keccak blockHash, BigInteger maxBlocks);
         Task<Keccak> GetHeadBlockHash();
         Task<BigInteger> GetHeadBlockNumber();
         event EventHandler<BlockEventArgs> NewBlock;

@@ -40,7 +40,7 @@ namespace Nethermind.Core
         }
 
         public bool IsGenesis => Header.Number == 0;
-        public BlockHeader Header { get; }
+        public BlockHeader Header { get; set; }
         public Transaction[] Transactions { get; set; }
         public TransactionReceipt[] Receipts { get; set; }
         public BlockHeader[] Ommers { get; }
