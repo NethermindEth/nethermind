@@ -57,19 +57,11 @@ namespace Nethermind.Blockchain.Test.Runner
 #if DEBUG
                     Console.WriteLine("Performance test should not run in the DEBUG mode");
 #else
-                    ShouldLog.Evm = false;
-                    ShouldLog.State = false;
-                    ShouldLog.EvmStack = false;
-                    ShouldLog.Processing = false;
                     await Run(new PerfTest(), testWildcard);
 #endif
                 }
                 else
                 {
-                    ShouldLog.Evm = true;
-                    ShouldLog.State = true;
-                    ShouldLog.EvmStack = false;
-                    ShouldLog.Processing = true;
                     await Run(new BugHunter(), testWildcard);
                 }
 

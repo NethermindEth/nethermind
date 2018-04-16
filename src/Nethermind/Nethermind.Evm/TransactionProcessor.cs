@@ -39,12 +39,12 @@ namespace Nethermind.Evm
 
         public TransactionProcessor(ISpecProvider specProvider, IStateProvider stateProvider, IStorageProvider storageProvider, IVirtualMachine virtualMachine, IEthereumSigner signer, ILogger logger)
         {
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _specProvider = specProvider;
             _virtualMachine = virtualMachine;
             _signer = signer;
             _stateProvider = stateProvider;
             _storageProvider = storageProvider;
-            _logger = logger;
             _intrinsicGasCalculator = new IntrinsicGasCalculator();
         }
 
@@ -73,55 +73,85 @@ namespace Nethermind.Evm
             byte[] data = transaction.Data ?? new byte[0];
 
             Address sender = _signer.RecoverAddress(transaction, block.Number);
-            _logger?.Info($"SPEC: {spec.GetType().Name}");
-            _logger?.Info("IS_CONTRACT_CREATION: " + transaction.IsContractCreation);
-            _logger?.Info("IS_MESSAGE_CALL: " + transaction.IsMessageCall);
-            _logger?.Info("IS_TRANSFER: " + transaction.IsTransfer);
-            _logger?.Info("SENDER: " + sender);
-            _logger?.Info("TO: " + transaction.To);
-            _logger?.Info("GAS LIMIT: " + transaction.GasLimit);
-            _logger?.Info("GAS PRICE: " + transaction.GasPrice);
-            _logger?.Info("VALUE: " + transaction.Value);
-            _logger?.Info("DATA_LENGTH: " + (transaction.Data?.Length ?? 0));
-            _logger?.Info("NONCE: " + transaction.Nonce);
+            if (_logger.IsDebug)
+            {
+                _logger.Debug($"SPEC: {spec.GetType().Name}");
+                _logger.Debug("IS_CONTRACT_CREATION: " + transaction.IsContractCreation);
+                _logger.Debug("IS_MESSAGE_CALL: " + transaction.IsMessageCall);
+                _logger.Debug("IS_TRANSFER: " + transaction.IsTransfer);
+                _logger.Debug("SENDER: " + sender);
+                _logger.Debug("TO: " + transaction.To);
+                _logger.Debug("GAS LIMIT: " + transaction.GasLimit);
+                _logger.Debug("GAS PRICE: " + transaction.GasPrice);
+                _logger.Debug("VALUE: " + transaction.Value);
+                _logger.Debug("DATA_LENGTH: " + (transaction.Data?.Length ?? 0));
+                _logger.Debug("NONCE: " + transaction.Nonce);
+            }
 
             if (sender == null)
             {
-                _logger?.Info($"SENDER_NOT_SPECIFIED");
+                if (_logger.IsDebug)
+                {
+                    _logger.Debug($"SENDER_NOT_SPECIFIED");
+                }
+
                 return GetNullReceipt(block, 0L);
             }
 
             long intrinsicGas = _intrinsicGasCalculator.Calculate(transaction, spec);
-            _logger?.Info("INTRINSIC GAS: " + intrinsicGas);
+            if (_logger.IsDebug)
+            {
+                _logger.Debug("INTRINSIC GAS: " + intrinsicGas);
+            }
 
             if (gasLimit < intrinsicGas)
             {
-                _logger?.Info($"GAS_LIMIT_BELOW_INTRINSIC_GAS {gasLimit} < {intrinsicGas}");
+                if (_logger.IsDebug)
+                {
+                    _logger.Debug($"GAS_LIMIT_BELOW_INTRINSIC_GAS {gasLimit} < {intrinsicGas}");
+                }
+
                 return GetNullReceipt(block, 0L);
             }
 
             if (gasLimit > block.GasLimit - block.GasUsed)
             {
-                _logger?.Info($"BLOCK_GAS_LIMIT_EXCEEDED {gasLimit} > {block.GasLimit} - {block.GasUsed}");
+                if (_logger.IsDebug)
+                {
+                    _logger.Debug($"BLOCK_GAS_LIMIT_EXCEEDED {gasLimit} > {block.GasLimit} - {block.GasUsed}");
+                }
+
                 return GetNullReceipt(block, 0L);
             }
 
             if (!_stateProvider.AccountExists(sender))
             {
-                _logger?.Info($"SENDER_ACCOUNT_DOES_NOT_EXIST {sender}");
+                if (_logger.IsDebug)
+                {
+                    _logger.Debug($"SENDER_ACCOUNT_DOES_NOT_EXIST {sender}");
+                }
+
                 _stateProvider.CreateAccount(sender, 0);
             }
 
             BigInteger senderBalance = _stateProvider.GetBalance(sender);
             if (intrinsicGas * gasPrice + value > senderBalance)
             {
-                _logger?.Info($"INSUFFICIENT_SENDER_BALANCE: ({sender})b = {senderBalance}");
+                if (_logger.IsDebug)
+                {
+                    _logger.Debug($"INSUFFICIENT_SENDER_BALANCE: ({sender})b = {senderBalance}");
+                }
+
                 return GetNullReceipt(block, 0L);
             }
 
             if (transaction.Nonce != _stateProvider.GetNonce(sender))
             {
-                _logger?.Info($"WRONG_TRANSACTION_NONCE: {transaction.Nonce} (expected {_stateProvider.GetNonce(sender)})");
+                if (_logger.IsDebug)
+                {
+                    _logger.Debug($"WRONG_TRANSACTION_NONCE: {transaction.Nonce} (expected {_stateProvider.GetNonce(sender)})");
+                }
+
                 return GetNullReceipt(block, 0L);
             }
 
@@ -193,7 +223,10 @@ namespace Nethermind.Evm
 
                     if (substate.ShouldRevert)
                     {
-                        _logger?.Info("REVERTING");
+                        if (_logger.IsDebug)
+                        {
+                            _logger.Debug("REVERTING");
+                        }
 
                         logEntries.Clear();
                         destroyedAccounts.Clear();
@@ -237,7 +270,10 @@ namespace Nethermind.Evm
             }
             catch (Exception ex) when (ex is EvmException || ex is OverflowException) // TODO: OverflowException? still needed? hope not
             {
-                _logger?.Info($"EVM EXCEPTION: {ex.GetType().Name}");
+                if (_logger.IsDebug)
+                {
+                    _logger.Debug($"EVM EXCEPTION: {ex.GetType().Name}");
+                }
 
                 logEntries.Clear();
                 destroyedAccounts.Clear();
@@ -250,7 +286,11 @@ namespace Nethermind.Evm
                 _stateProvider.DeleteAccount(toBeDestroyed);
             }
 
-            _logger?.Info("GAS SPENT: " + spentGas);
+            if (_logger.IsDebug)
+            {
+                _logger.Debug("GAS SPENT: " + spentGas);
+            }
+
             if (!destroyedAccounts.Contains(block.Beneficiary))
             {
                 if (!_stateProvider.AccountExists(block.Beneficiary))
@@ -274,7 +314,11 @@ namespace Nethermind.Evm
         {
             long spentGas = gasLimit - unspentGas;
             long refund = Math.Min(spentGas / 2L, substate.Refund + substate.DestroyList.Count * RefundOf.Destroy);
-            _logger?.Info("REFUNDING UNUSED GAS OF " + unspentGas + " AND REFUND OF " + refund);
+            if (_logger.IsDebug)
+            {
+                _logger.Debug("REFUNDING UNUSED GAS OF " + unspentGas + " AND REFUND OF " + refund);
+            }
+
             _stateProvider.UpdateBalance(sender, (unspentGas + refund) * gasPrice, spec);
             spentGas -= refund;
             return spentGas;

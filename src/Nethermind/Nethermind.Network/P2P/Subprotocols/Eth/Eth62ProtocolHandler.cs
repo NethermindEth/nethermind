@@ -309,6 +309,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         {
             var request = new Request<GetBlockHeadersMessage, BlockHeader[]>(message);
             _headersRequests.Add(request);
+            Send(request.Message);
             return await request.CompletionSource.Task;
         }
         
@@ -316,6 +317,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         {
             var request = new Request<GetBlockBodiesMessage, Block[]>(message);
             _bodiesRequests.Add(request);
+            Send(request.Message);
             return await request.CompletionSource.Task;
         }
 

@@ -51,7 +51,10 @@ namespace Nethermind.PeerConsole
 
         private static PrivateKey _privateKey;
 
-        private static readonly ILogger Logger = new NLogLogger();
+        private static readonly ILogger EvmLogger = new NLogLogger("evm");
+        private static readonly ILogger StateLogger = new NLogLogger("state");
+        private static readonly ILogger ChainLogger = new NLogLogger("chain");
+        private static readonly ILogger NetworkLogger = new NLogLogger("net");
 
 #pragma warning disable 1998
         public static async Task Main(params string[] args)
@@ -121,7 +124,7 @@ namespace Nethermind.PeerConsole
 
         private static ChainSpec LoadChainSpec(string chainSpecFile)
         {
-            Logger.Info($"Loading ChainSpec from {chainSpecFile}");
+            ChainLogger.Info($"Loading ChainSpec from {chainSpecFile}");
             var loader = new ChainSpecLoader(new UnforgivingJsonSerializer());
             if (!Path.IsPathRooted(chainSpecFile))
             {
@@ -144,33 +147,33 @@ namespace Nethermind.PeerConsole
 
             /* sync */
             var transactionStore = new TransactionStore();
-            var blockTree = new BlockTree(RopstenSpecProvider.Instance.ChainId, Logger);
+            var blockTree = new BlockTree(RopstenSpecProvider.Instance.ChainId, ChainLogger);
 
             /* validation */
-            var headerValidator = new HeaderValidator(difficultyCalculator, blockTree, sealEngine, specProvider, Logger);
-            var ommersValidator = new OmmersValidator(blockTree, headerValidator, Logger);
+            var headerValidator = new HeaderValidator(difficultyCalculator, blockTree, sealEngine, specProvider, ChainLogger);
+            var ommersValidator = new OmmersValidator(blockTree, headerValidator, ChainLogger);
             var txValidator = new TransactionValidator(new SignatureValidator(ChainId.Ropsten));
-            var blockValidator = new BlockValidator(txValidator, headerValidator, ommersValidator, specProvider, Logger);
+            var blockValidator = new BlockValidator(txValidator, headerValidator, ommersValidator, specProvider, ChainLogger);
 
             /* state */
-            var dbProvider = new DbProvider(Logger);
+            var dbProvider = new DbProvider(StateLogger);
             var codeDb = new InMemoryDb();
             var stateDb = new InMemoryDb();
             var stateTree = new StateTree(stateDb);
-            var stateProvider = new StateProvider(stateTree, Logger, codeDb);
-            var storageProvider = new StorageProvider(dbProvider, stateProvider, Logger);
-            var storageDbProvider = new DbProvider(Logger);
+            var stateProvider = new StateProvider(stateTree, StateLogger, codeDb);
+            var storageProvider = new StorageProvider(dbProvider, stateProvider, StateLogger);
+            var storageDbProvider = new DbProvider(StateLogger);
 
             /* blockchain */
-            var ethereumSigner = new EthereumSigner(specProvider, Logger);
+            var ethereumSigner = new EthereumSigner(specProvider, ChainLogger);
 
             /* blockchain processing */
             var blockhashProvider = new BlockhashProvider(blockTree);
-            var virtualMachine = new VirtualMachine(specProvider, stateProvider, storageProvider, blockhashProvider, Logger);
-            var transactionProcessor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, ethereumSigner, Logger);
+            var virtualMachine = new VirtualMachine(specProvider, stateProvider, storageProvider, blockhashProvider, EvmLogger);
+            var transactionProcessor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, ethereumSigner, ChainLogger);
             var rewardCalculator = new RewardCalculator(specProvider);
-            var blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, transactionProcessor, storageDbProvider, stateProvider, storageProvider, transactionStore, Logger);
-            _blockchainProcessor = new BlockchainProcessor(blockTree, sealEngine, transactionStore, difficultyCalculator, blockProcessor, Logger);
+            var blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, transactionProcessor, storageDbProvider, stateProvider, storageProvider, transactionStore, ChainLogger);
+            _blockchainProcessor = new BlockchainProcessor(blockTree, sealEngine, transactionStore, difficultyCalculator, blockProcessor, ChainLogger);
 
             /* genesis */
             foreach (KeyValuePair<Address, BigInteger> allocation in chainSpec.Allocations)
@@ -180,7 +183,7 @@ namespace Nethermind.PeerConsole
 
             stateProvider.Commit(specProvider.GenesisSpec);
 
-            var testTransactionsGenerator = new TestTransactionsGenerator(transactionStore, ethereumSigner, transactionDelay, Logger);
+            var testTransactionsGenerator = new TestTransactionsGenerator(transactionStore, ethereumSigner, transactionDelay, ChainLogger);
             stateProvider.CreateAccount(testTransactionsGenerator.SenderAddress, 1000.Ether());
             stateProvider.Commit(specProvider.GenesisSpec);
             
@@ -214,7 +217,7 @@ namespace Nethermind.PeerConsole
                 genesis,
                 genesis,
                 genesis.Header.Difficulty,
-                Logger);
+                NetworkLogger);
             _syncManager.Start();
         }
 
@@ -230,7 +233,7 @@ namespace Nethermind.PeerConsole
             var eip8Pad = new Eip8MessagePad(cryptoRandom);
             serializationService.Register(new AuthEip8MessageSerializer(eip8Pad));
             serializationService.Register(new AckEip8MessageSerializer(eip8Pad));
-            var encryptionHandshakeServiceA = new EncryptionHandshakeService(serializationService, eciesCipher, cryptoRandom, signer, _privateKey, Logger);
+            var encryptionHandshakeServiceA = new EncryptionHandshakeService(serializationService, eciesCipher, cryptoRandom, signer, _privateKey, NetworkLogger);
 
             /* p2p */
             serializationService.Register(new HelloMessageSerializer());
@@ -248,8 +251,8 @@ namespace Nethermind.PeerConsole
             serializationService.Register(new BlockBodiesMessageSerializer());
             serializationService.Register(new NewBlockMessageSerializer());
 
-            Logger.Info("Initializing server...");
-            var localPeer = new RlpxPeer(_privateKey.PublicKey, _listenPort, encryptionHandshakeServiceA, serializationService, _syncManager, Logger);
+            NetworkLogger.Info("Initializing server...");
+            var localPeer = new RlpxPeer(_privateKey.PublicKey, _listenPort, encryptionHandshakeServiceA, serializationService, _syncManager, NetworkLogger);
             await localPeer.Init();
 
             // https://stackoverflow.com/questions/6803073/get-local-ip-address?utm_medium=organic&utm_source=google_rich_qa&utm_campaign=google_rich_qa
@@ -262,26 +265,26 @@ namespace Nethermind.PeerConsole
                 localIp = endPoint.Address.ToString();
             }
 
-            Logger.Info($"Node is up and listening on {localIp}:{_listenPort}... press ENTER to exit");
-            Logger.Info($"enode://{_privateKey.PublicKey.ToString(false)}@{localIp}:{_listenPort}");
+            NetworkLogger.Info($"Node is up and listening on {localIp}:{_listenPort}... press ENTER to exit");
+            NetworkLogger.Info($"enode://{_privateKey.PublicKey.ToString(false)}@{localIp}:{_listenPort}");
 
             if (chainSpec.Bootnodes.Any())
             {
                 Bootnode bootnode = chainSpec.Bootnodes[0];
-                Logger.Info($"Connecting to testnet bootnode {bootnode.Description}");
+                NetworkLogger.Info($"Connecting to testnet bootnode {bootnode.Description}");
                 await localPeer.ConnectAsync(bootnode.PublicKey, bootnode.Host, bootnode.Port);
-                Logger.Info("Testnet connected...");
+                NetworkLogger.Info("Testnet connected...");
             }
 
             Console.ReadLine();
-            Logger.Info("Shutting down...");
-            Logger.Info("Stopping sync manager...");
+            NetworkLogger.Info("Shutting down...");
+            NetworkLogger.Info("Stopping sync manager...");
             await _syncManager.StopAsync();
-            Logger.Info("Stopping blockchain processor...");
+            NetworkLogger.Info("Stopping blockchain processor...");
             await _blockchainProcessor.StopAsync();
-            Logger.Info("Stopping local peer...");
+            NetworkLogger.Info("Stopping local peer...");
             await localPeer.Shutdown();
-            Logger.Info("Goodbye...");
+            NetworkLogger.Info("Goodbye...");
         }
     }
 }

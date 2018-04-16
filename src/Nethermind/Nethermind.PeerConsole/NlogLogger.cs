@@ -23,42 +23,47 @@ namespace Nethermind.PeerConsole
 {
     public class NLogLogger : ILogger
     {
-        private static readonly NLog.Logger Logger = NLog.LogManager.GetCurrentClassLogger();
+        private readonly NLog.Logger _logger;
 
+        public NLogLogger(string name = null)
+        {
+            _logger = name == null ? NLog.LogManager.GetLogger("default") : NLog.LogManager.GetLogger(name);
+        }
+        
         public void Log(string text)
         {
-            Logger.Info(text);
+            _logger.Info(text);
         }
 
         public void Info(string text)
         {
-            Logger.Info(text);
+            _logger.Info(text);
         }
 
         public void Warn(string text)
         {
-            Logger.Warn(text);
+            _logger.Warn(text);
         }
 
         public void Debug(string text)
         {
-            Logger.Debug(text);
+            _logger.Debug(text);
         }
 
         public void Trace(string text)
         {
-            Logger.Trace(text);
+            _logger.Trace(text);
         }
 
         public void Error(string text, Exception ex = null)
         {
-            Logger.Error(ex, text);
+            _logger.Error(ex, text);
         }
 
-        public bool IsInfo => Logger.IsInfoEnabled;
-        public bool IsWarn => Logger.IsWarnEnabled;
-        public bool IsDebug => Logger.IsDebugEnabled;
-        public bool IsTrace => Logger.IsTraceEnabled;
-        public bool IsError => Logger.IsErrorEnabled || Logger.IsFatalEnabled;
+        public bool IsInfo => _logger.IsInfoEnabled;
+        public bool IsWarn => _logger.IsWarnEnabled;
+        public bool IsDebug => _logger.IsDebugEnabled;
+        public bool IsTrace => _logger.IsTraceEnabled;
+        public bool IsError => _logger.IsErrorEnabled || _logger.IsFatalEnabled;
     }
 }

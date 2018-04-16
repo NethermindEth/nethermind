@@ -49,7 +49,7 @@ namespace Nethermind.Store
 
         public StateProvider(StateTree stateTree, ILogger logger, IDb codeDb)
         {
-            _logger = logger;
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _codeDb = codeDb;
             _state = stateTree;
         }
@@ -106,13 +106,21 @@ namespace Nethermind.Store
             Account account = GetThroughCache(address);
             if (account.CodeHash != codeHash)
             {
-                _logger?.Info($"  UPDATE CODE HASH of {address} to {codeHash}");
+                if (_logger.IsDebug)
+                {
+                    _logger.Debug($"  UPDATE CODE HASH of {address} to {codeHash}");
+                }
+
                 Account changedAccount = account.WithChangedCodeHash(codeHash);
                 PushUpdate(address, changedAccount);
             }
             else if (releaseSpec.IsEip158Enabled)
             {
-                _logger?.Info($"  TOUCH {address} (code hash)");
+                if (_logger.IsDebug)
+                {
+                    _logger.Debug($"  TOUCH {address} (code hash)");
+                }
+
                 Account touched = GetThroughCache(address);
                 PushTouch(address, touched);
             }
@@ -124,7 +132,11 @@ namespace Nethermind.Store
             {
                 if (releaseSpec.IsEip158Enabled)
                 {
-                    _logger?.Info($"  TOUCH {address} (balance)");
+                    if (_logger.IsDebug)
+                    {
+                        _logger.Debug($"  TOUCH {address} (balance)");
+                    }
+
                     Account touched = GetThroughCache(address);
                     PushTouch(address, touched);
                 }
@@ -141,7 +153,10 @@ namespace Nethermind.Store
             }
 
             Account changedAccount = account.WithChangedBalance(account.Balance + balanceChange);
-            _logger?.Info($"  UPDATE {address} B = {account.Balance + balanceChange} B_CHANGE = {balanceChange}");
+            if (_logger.IsDebug)
+            {
+                _logger.Debug($"  UPDATE {address} B = {account.Balance + balanceChange} B_CHANGE = {balanceChange}");
+            }
 
             PushUpdate(address, changedAccount);
         }
@@ -151,7 +166,11 @@ namespace Nethermind.Store
             Account account = GetThroughCache(address);
             if (account.StorageRoot != storageRoot)
             {
-                _logger?.Info($"  UPDATE {address} STORAGE ROOT = {storageRoot}");
+                if (_logger.IsDebug)
+                {
+                    _logger.Debug($"  UPDATE {address} STORAGE ROOT = {storageRoot}");
+                }
+
                 Account changedAccount = account.WithChangedStorageRoot(storageRoot);
                 PushUpdate(address, changedAccount);
             }
@@ -207,14 +226,21 @@ namespace Nethermind.Store
 
         public int TakeSnapshot()
         {
-            _logger?.Info($"  STATE SNAPSHOT {_currentPosition}");
+            if (_logger.IsDebug)
+            {
+                _logger.Debug($"  STATE SNAPSHOT {_currentPosition}");
+            }
+
             return _currentPosition;
         }
 
         public void Restore(int snapshot)
         {
             Debug.Assert(snapshot <= _currentPosition, "INVALID SNAPSHOT");
-            _logger?.Info($"  RESTORING STATE SNAPSHOT {snapshot}");
+            if (_logger.IsDebug)
+            {
+                _logger.Debug($"  RESTORING STATE SNAPSHOT {snapshot}");
+            }
 
             for (int i = 0; i < _currentPosition - snapshot; i++)
             {
@@ -254,7 +280,10 @@ namespace Nethermind.Store
 
         public void CreateAccount(Address address, BigInteger balance)
         {
-            _logger?.Info($"  CREATING ACCOUNT: {address} with balance {balance}");
+            if (_logger.IsDebug)
+            {
+                _logger.Debug($"  CREATING ACCOUNT: {address} with balance {balance}");
+            }
 
             Account account = new Account();
             account.Balance = balance;
@@ -265,11 +294,18 @@ namespace Nethermind.Store
         {
             if (_currentPosition == -1)
             {
-                _logger?.Info("  NO STATE CHANGES TO COMMIT");
+                if (_logger.IsDebug)
+                {
+                    _logger.Debug("  NO STATE CHANGES TO COMMIT");
+                }
+
                 return;
             }
-            
-            _logger?.Info($"  COMMITTING STATE CHANGES (at {_currentPosition})");
+
+            if (_logger.IsDebug)
+            {
+                _logger.Debug($"  COMMITTING STATE CHANGES (at {_currentPosition})");
+            }
 
             Debug.Assert(_changes[_currentPosition] != null);
             Debug.Assert(_changes[_currentPosition + 1] == null);
@@ -298,12 +334,20 @@ namespace Nethermind.Store
                     {
                         if (releaseSpec.IsEip158Enabled && change.Account.IsEmpty)
                         {
-                            _logger?.Info($"  DELETE EMPTY {change.Address} B = {change.Account.Balance} N = {change.Account.Nonce}");
+                            if (_logger.IsDebug)
+                            {
+                                _logger.Debug($"  DELETE EMPTY {change.Address} B = {change.Account.Balance} N = {change.Account.Nonce}");
+                            }
+
                             _state.Set(change.Address, null);
                         }
                         else
                         {
-                            _logger?.Info($"  UPDATE {change.Address} B = {change.Account.Balance} N = {change.Account.Nonce}");
+                            if (_logger.IsDebug)
+                            {
+                                _logger.Debug($"  UPDATE {change.Address} B = {change.Account.Balance} N = {change.Account.Nonce}");
+                            }
+
                             _state.Set(change.Address, Rlp.Encode(change.Account));
                         }
 
@@ -313,7 +357,11 @@ namespace Nethermind.Store
                     {
                         if (!releaseSpec.IsEip158Enabled || !change.Account.IsEmpty)
                         {
-                            _logger?.Info($"  CREATE {change.Address} B = {change.Account.Balance} N = {change.Account.Nonce}");
+                            if (_logger.IsDebug)
+                            {
+                                _logger.Debug($"  CREATE {change.Address} B = {change.Account.Balance} N = {change.Account.Nonce}");
+                            }
+
                             _state.Set(change.Address, Rlp.Encode(change.Account));
                         }
 
@@ -321,7 +369,10 @@ namespace Nethermind.Store
                     }
                     case ChangeType.Delete:
                     {
-                        _logger?.Info($"  DELETE {change.Address}");
+                        if (_logger.IsDebug)
+                        {
+                            _logger.Debug($"  DELETE {change.Address}");
+                        }
 
                         bool wasItCreatedNow = false;
                         while (_cache[change.Address].Count > 0)
@@ -464,8 +515,11 @@ namespace Nethermind.Store
         
         public void ClearCaches()
         {
-            _logger?.Info("  CLEARING STATE PROVIDER CACHES");
-            
+            if (_logger.IsDebug)
+            {
+                _logger.Debug("  CLEARING STATE PROVIDER CACHES");
+            }
+
             _cache.Clear();
             _currentPosition = -1;
             _committedThisRound.Clear();

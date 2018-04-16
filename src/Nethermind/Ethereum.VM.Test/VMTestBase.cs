@@ -40,12 +40,13 @@ namespace Ethereum.VM.Test
         private IStorageProvider _storageProvider;
         private IBlockhashProvider _blockhashProvider;
         private IStateProvider _stateProvider;
+        private ILogger _vmLogger = NullLogger.Instance;
         private readonly IReleaseSpec _releaseSpec = Olympic.Instance;
 
         [SetUp]
         public void Setup()
         {
-            ILogger stateLogger = ShouldLog.State ? new ConsoleAsyncLogger() : null;
+            ILogger stateLogger = NullLogger.Instance;
             _dbProvider = new DbProvider(stateLogger);
             _blockhashProvider = new TestBlockhashProvider();
             _stateProvider = new StateProvider(new StateTree(_dbProvider.GetOrCreateStateDb()), stateLogger, _dbProvider.GetOrCreateCodeDb());
@@ -135,7 +136,7 @@ namespace Ethereum.VM.Test
 
         protected void RunTest(VirtualMachineTest test)
         {
-            VirtualMachine machine = new VirtualMachine(OlympicSpecProvider.Instance, _stateProvider, _storageProvider, _blockhashProvider, ShouldLog.Evm ? new ConsoleAsyncLogger() : null);
+            VirtualMachine machine = new VirtualMachine(OlympicSpecProvider.Instance, _stateProvider, _storageProvider, _blockhashProvider, _vmLogger);
             ExecutionEnvironment environment = new ExecutionEnvironment();
             environment.Value = test.Execution.Value;
             environment.CallDepth = 0;

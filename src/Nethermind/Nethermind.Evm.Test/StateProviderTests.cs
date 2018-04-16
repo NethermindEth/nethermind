@@ -31,17 +31,17 @@ namespace Nethermind.Evm.Test
     {
         private static readonly Keccak Hash1 = Keccak.Compute("1");
         private static readonly Keccak Hash2 = Keccak.Compute("2");
-
         private readonly Address _address1 = new Address(Hash1);
+        private static ILogger _logger = NullLogger.Instance;
 
         [Test]
         public void Eip_158_zero_value_transfer_deletes()
         {
             StateTree tree = new StateTree(new InMemoryDb());
-            StateProvider frontierProvider = new StateProvider(tree, ShouldLog.State ? new ConsoleAsyncLogger() : null, Substitute.For<IDb>());
+            StateProvider frontierProvider = new StateProvider(tree, _logger, Substitute.For<IDb>());
             frontierProvider.CreateAccount(_address1, 0);
             frontierProvider.Commit(Frontier.Instance);
-            StateProvider provider = new StateProvider(tree, ShouldLog.State ? new ConsoleAsyncLogger() : null, Substitute.For<IDb>());
+            StateProvider provider = new StateProvider(tree, _logger, Substitute.For<IDb>());
             provider.UpdateBalance(_address1, 0, SpuriousDragon.Instance);
             provider.Commit(SpuriousDragon.Instance);
             Assert.False(provider.AccountExists(_address1));
@@ -50,7 +50,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Empty_commit_restore()
         {
-            StateProvider provider = new StateProvider(new StateTree(new InMemoryDb()), ShouldLog.State ? new ConsoleAsyncLogger() : null, Substitute.For<IDb>());
+            StateProvider provider = new StateProvider(new StateTree(new InMemoryDb()), _logger, Substitute.For<IDb>());
             provider.Commit(Frontier.Instance);
             provider.Restore(-1);
         }
@@ -58,7 +58,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Is_empty_account()
         {
-            StateProvider provider = new StateProvider(new StateTree(new InMemoryDb()), ShouldLog.State ? new ConsoleAsyncLogger() : null, Substitute.For<IDb>());
+            StateProvider provider = new StateProvider(new StateTree(new InMemoryDb()), _logger, Substitute.For<IDb>());
             provider.CreateAccount(_address1, 0);
             provider.Commit(Frontier.Instance);
             Assert.True(provider.IsEmptyAccount(_address1));
@@ -67,7 +67,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Restore_update_restore()
         {
-            StateProvider provider = new StateProvider(new StateTree(new InMemoryDb()), ShouldLog.State ? new ConsoleAsyncLogger() : null, Substitute.For<IDb>());
+            StateProvider provider = new StateProvider(new StateTree(new InMemoryDb()), _logger, Substitute.For<IDb>());
             provider.CreateAccount(_address1, 0);
             provider.UpdateBalance(_address1, 1, Frontier.Instance);
             provider.UpdateBalance(_address1, 1, Frontier.Instance);
@@ -93,7 +93,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Keep_in_cache()
         {
-            StateProvider provider = new StateProvider(new StateTree(new InMemoryDb()), ShouldLog.State ? new ConsoleAsyncLogger() : null, Substitute.For<IDb>());
+            StateProvider provider = new StateProvider(new StateTree(new InMemoryDb()), _logger, Substitute.For<IDb>());
             provider.CreateAccount(_address1, 0);
             provider.Commit(Frontier.Instance);
             provider.GetBalance(_address1);
@@ -111,7 +111,7 @@ namespace Nethermind.Evm.Test
         {
             byte[] code = new byte[] {1};
 
-            StateProvider provider = new StateProvider(new StateTree(new InMemoryDb()), ShouldLog.State ? new ConsoleAsyncLogger() : null, Substitute.For<IDb>());
+            StateProvider provider = new StateProvider(new StateTree(new InMemoryDb()), _logger, Substitute.For<IDb>());
             provider.CreateAccount(_address1, 1);
             provider.UpdateBalance(_address1, 1, Frontier.Instance);
             provider.IncrementNonce(_address1);

@@ -41,7 +41,7 @@ namespace Nethermind.Blockchain
 
         public BlockTree(int chainId, ILogger logger)
         {
-            _logger = logger;
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             ChainId = chainId;
         }
 
@@ -205,7 +205,11 @@ namespace Nethermind.Blockchain
 
         private void UpdateTotalDifficulty(Block block)
         {
-            _logger?.Info($"CALCULATING TOTAL DIFFICULTY FOR {block.Hash}");
+            if (_logger.IsDebug)
+            {
+                _logger.Debug($"CALCULATING TOTAL DIFFICULTY FOR {block.Hash}");
+            }
+
             if (block.Number == 0)
             {
                 block.Header.TotalDifficulty = block.Difficulty;
@@ -223,7 +227,10 @@ namespace Nethermind.Blockchain
                 block.Header.TotalDifficulty = parent.TotalDifficulty + block.Difficulty;
             }
 
-            _logger?.Info($"CALCULATED TOTAL DIFFICULTY FOR {block.Hash} IS {block.TotalDifficulty}");
+            if (_logger.IsDebug)
+            {
+                _logger.Debug($"CALCULATED TOTAL DIFFICULTY FOR {block.Hash} IS {block.TotalDifficulty}");
+            }
         }
     }
 }

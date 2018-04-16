@@ -29,10 +29,10 @@ namespace Nethermind.Evm.Test
     [TestFixture]
     public class StorageProviderTests
     {
+        private static readonly ILogger Logger = NullLogger.Instance;
         private readonly Address _address1 = new Address(Keccak.Compute("1"));
         private readonly Address _address2 = new Address(Keccak.Compute("2"));
-
-        private readonly IStateProvider _stateProvider = new StateProvider(new StateTree(new InMemoryDb()), ShouldLog.State ? new ConsoleAsyncLogger() : null, Substitute.For<IDb>());
+        private readonly IStateProvider _stateProvider = new StateProvider(new StateTree(new InMemoryDb()), Logger, Substitute.For<IDb>());
 
         [SetUp]
         public void Setup()
@@ -69,8 +69,7 @@ namespace Nethermind.Evm.Test
 
         private StorageProvider BuildStorageProvider()
         {
-            ILogger stateLogger = ShouldLog.State ? new ConsoleAsyncLogger() : null;
-            StorageProvider provider = new StorageProvider(new DbProvider(stateLogger), _stateProvider, stateLogger);
+            StorageProvider provider = new StorageProvider(new DbProvider(Logger), _stateProvider, Logger);
             return provider;
         }
 
