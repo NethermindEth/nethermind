@@ -1,4 +1,5 @@
-﻿using Nethermind.Core.Crypto;
+﻿using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
 using Nethermind.Discovery.Messages;
@@ -9,7 +10,7 @@ namespace Nethermind.Discovery.Serializers
 {
     public class PongMessageSerializer : DiscoveryMessageSerializerBase, IMessageSerializer<PongMessage>
     {
-        public PongMessageSerializer(ISigner signer, PrivateKey privateKey, IDiscoveryMessageFactory messageFactory, INodeIdResolver nodeIdResolver, INodeFactory nodeFactory) : base(signer, privateKey, messageFactory, nodeIdResolver, nodeFactory)
+        public PongMessageSerializer(ISigner signer, IPrivateKeyProvider privateKeyProvider, IDiscoveryMessageFactory messageFactory, INodeIdResolver nodeIdResolver, INodeFactory nodeFactory) : base(signer, privateKeyProvider, messageFactory, nodeIdResolver, nodeFactory)
         {
         }
 

@@ -2,6 +2,6 @@
 {
     public interface IDiscoveryListener
     {
-        void OnNewNodeDiscovered(DiscoveryNode node);
+        void OnNodeDiscovered(DiscoveryNode node);
     }
 }

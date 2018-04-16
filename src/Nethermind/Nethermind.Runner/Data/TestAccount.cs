@@ -16,29 +16,10 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Core;
-using Nethermind.Core.Extensions;
-using Nethermind.JsonRpc.Module;
-using NUnit.Framework;
-
-namespace Nethermind.JsonRpc.Test
+namespace Nethermind.Runner.Data
 {
-    [TestFixture]
-    public class EthModuleTests
+    public class TestAccount
     {
-//        private IEthModule _ethModule;
-
-        [SetUp]
-        public void Initialize()
-        {
-            var logger = new ConsoleAsyncLogger();
-            //_ethModule = new EthModule(logger, new JsonSerializer(logger), new BlockchainProcessor(), new StateProvider() );
-        }
-
-        [Test]
-        public void GetBalanceSuccessTest()
-        {
-            var hex = new Hex(1024.ToBigEndianByteArray()).ToString(true, true);
-        }
+        public string Balance { get; set; }
     }
 }

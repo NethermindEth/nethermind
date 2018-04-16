@@ -16,18 +16,14 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.IO;
 using System.Text;
 
 namespace Nethermind.KeyStore
 {
     public class ConfigurationProvider : IConfigurationProvider
     {
-        public ConfigurationProvider(string keyStoreDirectory = "KeyStore")
-        {
-            KeyStoreDirectory = keyStoreDirectory;
-        }
-
-        public string KeyStoreDirectory { get; }
+        public string KeyStoreDirectory => Path.GetDirectoryName(Path.Combine(Path.GetTempPath(), "KeyStore"));
         public Encoding KeyStoreEncoding => Encoding.UTF8;
         public string Kdf => "scrypt";
         public string Cipher => "aes-128-cbc";

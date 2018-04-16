@@ -1,4 +1,5 @@
 ﻿using System.Net;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
@@ -17,10 +18,10 @@ namespace Nethermind.Discovery.Serializers
         protected readonly INodeIdResolver NodeIdResolver;
         protected readonly INodeFactory NodeFactory;
 
-        protected DiscoveryMessageSerializerBase(ISigner signer, PrivateKey privateKey, IDiscoveryMessageFactory messageFactory, INodeIdResolver nodeIdResolver, INodeFactory nodeFactory)
+        protected DiscoveryMessageSerializerBase(ISigner signer, IPrivateKeyProvider privateKeyProvider, IDiscoveryMessageFactory messageFactory, INodeIdResolver nodeIdResolver, INodeFactory nodeFactory)
         {
             _signer = signer;
-            _privateKey = privateKey;
+            _privateKey = privateKeyProvider.PrivateKey;
             MessageFactory = messageFactory;
             NodeIdResolver = nodeIdResolver;
             NodeFactory = nodeFactory;

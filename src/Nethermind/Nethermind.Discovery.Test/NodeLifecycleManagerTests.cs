@@ -56,7 +56,7 @@ namespace Nethermind.Discovery.Test
         {
             SetupNodeIds();
 
-            var logger = new ConsoleLogger();
+            var logger = new ConsoleAsyncLogger();
             //setting config to store 3 nodes in a bucket and for table to have one bucket//setting config to store 3 nodes in a bucket and for table to have one bucket
             _configurationProvider = new DiscoveryConfigurationProvider(new NetworkHelper(logger))
             {
@@ -64,7 +64,7 @@ namespace Nethermind.Discovery.Test
                 BucketSize = 3,
                 BucketsCount = 1
             };
-            var configProvider = new ConfigurationProvider(Path.GetDirectoryName(Path.Combine(Path.GetTempPath(), "KeyStore")));
+            var configProvider = new ConfigurationProvider();
             _nodeFactory = new NodeFactory();
             var calculator = new NodeDistanceCalculator(_configurationProvider);
 

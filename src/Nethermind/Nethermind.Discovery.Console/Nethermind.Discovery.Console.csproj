@@ -27,4 +27,9 @@
       <HintPath>C:\Users\glesniakiewicz\.nuget\packages\nsubstitute\3.1.0\lib\netstandard1.3\NSubstitute.dll</HintPath>
     </Reference>
   </ItemGroup>
+  <ItemGroup>
+    <None Update="NLog.config">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
 </Project>

@@ -44,9 +44,7 @@ namespace Nethermind.Discovery.RoutingTable
             _nodeFactory = nodeFactory;
             _keyStore = keyStore;
             _logger = logger;
-            _nodeDistanceCalculator = nodeDistanceCalculator;
-
-            //Initialize();   
+            _nodeDistanceCalculator = nodeDistanceCalculator; 
         }
 
         public Node MasterNode { get; private set; }

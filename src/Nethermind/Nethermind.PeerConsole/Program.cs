@@ -51,7 +51,7 @@ namespace Nethermind.PeerConsole
 
         private static PrivateKey _privateKey;
 
-        private static readonly ILogger Logger = new ConsoleLogger();
+        private static readonly ILogger Logger = new ConsoleAsyncLogger();
 
 #pragma warning disable 1998
         public static async Task Main(params string[] args)

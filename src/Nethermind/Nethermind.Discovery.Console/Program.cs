@@ -61,16 +61,16 @@ namespace Nethermind.Discovery.Console
 
         private static void Start()
         {
+            var privateKeyProvider = new PrivateKeyProvider(PrivateKey);
             var config = new DiscoveryConfigurationProvider(new NetworkHelper(Logger));
             var signer = new Signer();
             var cryptoRandom = new CryptoRandom();
-            var configProvider = new ConfigurationProvider(Path.GetDirectoryName(Path.Combine(Path.GetTempPath(), "KeyStore")));
+            var configProvider = new ConfigurationProvider();
 
             var nodeFactory = new NodeFactory();
             var calculator = new NodeDistanceCalculator(config);
 
             var nodeTable = new NodeTable(config, nodeFactory, new FileKeyStore(configProvider, new JsonSerializer(Logger), new AesEncrypter(configProvider, Logger), cryptoRandom, Logger), Logger, calculator);
-            nodeTable.Initialize();
 
             var evictionManager = new EvictionManager(nodeTable, Logger);
             var lifecycleFactory = new NodeLifecycleManagerFactory(nodeFactory, nodeTable, Logger, config, new DiscoveryMessageFactory(config), evictionManager);
@@ -81,10 +81,10 @@ namespace Nethermind.Discovery.Console
             var discoveryMesageFactory = new DiscoveryMessageFactory(config);
             var nodeIdResolver = new NodeIdResolver(signer);
 
-            var pingSerializer = new PingMessageSerializer(signer, PrivateKey, discoveryMesageFactory, nodeIdResolver, nodeFactory);
-            var pongSerializer = new PongMessageSerializer(signer, PrivateKey, discoveryMesageFactory, nodeIdResolver, nodeFactory);
-            var findNodeSerializer = new FindNodeMessageSerializer(signer, PrivateKey, discoveryMesageFactory, nodeIdResolver, nodeFactory);
-            var neighborsSerializer = new NeighborsMessageSerializer(signer, PrivateKey, discoveryMesageFactory, nodeIdResolver, nodeFactory);
+            var pingSerializer = new PingMessageSerializer(signer, privateKeyProvider, discoveryMesageFactory, nodeIdResolver, nodeFactory);
+            var pongSerializer = new PongMessageSerializer(signer, privateKeyProvider, discoveryMesageFactory, nodeIdResolver, nodeFactory);
+            var findNodeSerializer = new FindNodeMessageSerializer(signer, privateKeyProvider, discoveryMesageFactory, nodeIdResolver, nodeFactory);
+            var neighborsSerializer = new NeighborsMessageSerializer(signer, privateKeyProvider, discoveryMesageFactory, nodeIdResolver, nodeFactory);
 
             var messageSerializationService = new MessageSerializationService();
             messageSerializationService.Register(pingSerializer);
@@ -110,7 +110,7 @@ namespace Nethermind.Discovery.Console
             discoveryManager.RegisterDiscoveryListener(p2pManager);
 
             _discoveryApp = new DiscoveryApp(config, nodesLocator, Logger, discoveryManager, nodeFactory, nodeTable, messageSerializationService, cryptoRandom);
-            _discoveryApp.Start();
+            _discoveryApp.Start(PrivateKey.PublicKey);
         }
 
         private static void Stop()

@@ -19,13 +19,13 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading.Tasks;
+using Microsoft.AspNetCore;
+using Microsoft.AspNetCore.Hosting;
 using Nethermind.Core;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.DataModel;
-using Microsoft.AspNetCore.Hosting;
 
-namespace Nethermind.Runner
+namespace Nethermind.Runner.Runners
 {
     public class JsonRpcRunner : IJsonRpcRunner
     {
@@ -39,8 +39,17 @@ namespace Nethermind.Runner
             _logger = logger;
         }
 
-        public void Start(IWebHost webHost, IEnumerable<ModuleType> modules = null)
+        public void Start(InitParams initParams, IEnumerable<ModuleType> modules = null)
         {
+            _logger.Log("Initializing JsonRPC");
+            var host = $"http://{initParams.HttpHost}:{initParams.HttpPort}";
+            _logger.Log($"Running server, url: {host}");
+
+            var webHost = WebHost.CreateDefaultBuilder()
+                .UseStartup<Startup>()
+                .UseUrls(host)
+                .Build();
+
             if (modules != null && modules.Any())
             {
                 _configurationProvider.EnabledModules = modules;
@@ -49,6 +58,7 @@ namespace Nethermind.Runner
             _logger.Log($"Starting http service, modules: {string.Join(", ", _configurationProvider.EnabledModules.Select(x => x))}");
             _webHost = webHost;
             _webHost.Start();
+            _logger.Log("JsonRPC initialization completed");
         }
 
         public async void Stop(IEnumerable<ModuleType> modules = null)

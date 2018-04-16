@@ -26,7 +26,7 @@ namespace Nethermind.Runner.TestClient
         static void Main(string[] args)
         {
             Console.WriteLine("Welcome in Runner Test Client");
-            var logger = new ConsoleLogger();
+            var logger = new ConsoleAsyncLogger();
             var client = new RunnerTestCientApp(new RunnerTestCient(logger, new JsonSerializer(logger)));
             client.Start();
             Console.WriteLine("Exiting Runner Test Client");

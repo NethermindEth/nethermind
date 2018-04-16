@@ -16,16 +16,11 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Collections.Generic;
-using System.Threading.Tasks;
-using Microsoft.AspNetCore.Hosting;
-using Nethermind.JsonRpc.DataModel;
-
-namespace Nethermind.Runner
+namespace Nethermind.Runner.Runners
 {
-    public interface IJsonRpcRunner
+    public enum EthereumRunnerType
     {
-        void Start(IWebHost webHost, IEnumerable<ModuleType> modules = null);
-        void Stop(IEnumerable<ModuleType> modules = null);
+        Default,
+        Hive
     }
 }

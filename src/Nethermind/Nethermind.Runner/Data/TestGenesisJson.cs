@@ -18,7 +18,7 @@
 
 using System.Collections.Generic;
 
-namespace Nethermind.Runner
+namespace Nethermind.Runner.Data
 {
     public class TestGenesisJson
     {

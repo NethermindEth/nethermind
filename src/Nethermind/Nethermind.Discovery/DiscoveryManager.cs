@@ -174,7 +174,7 @@ namespace Nethermind.Discovery
             for (var i = 0; i < _discoveryListeners.Count; i++)
             {
                 var discoveryListener = _discoveryListeners[i];
-                discoveryListener.OnNewNodeDiscovered(new DiscoveryNode
+                discoveryListener.OnNodeDiscovered(new DiscoveryNode
                 {
                     PublicKey = node.Id,
                     Host = node.Host,
