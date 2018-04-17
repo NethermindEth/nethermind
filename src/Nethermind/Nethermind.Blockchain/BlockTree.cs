@@ -34,8 +34,7 @@ namespace Nethermind.Blockchain
         private readonly ConcurrentDictionary<int, Block> _canonicalChain = new ConcurrentDictionary<int, Block>();
         private readonly ILogger _logger;
         private readonly ConcurrentDictionary<Keccak, Block> _mainChain = new ConcurrentDictionary<Keccak, Block>();
-
-        private readonly HashSet<Keccak> _processed = new HashSet<Keccak>();
+        private readonly ConcurrentDictionary<Keccak, bool> _processed = new ConcurrentDictionary<Keccak, bool>();
 
         public BlockTree(int chainId, ILogger logger)
         {
@@ -45,21 +44,22 @@ namespace Nethermind.Blockchain
 
         public event EventHandler<BlockEventArgs> BlockAddedToMain;
 
-        public event EventHandler<BlockEventArgs> NewBestBlockSuggested;
-        
+        public event EventHandler<BlockEventArgs> NewBestSuggestedBlock;
+
         public event EventHandler<BlockEventArgs> NewHeadBlock;
 
         private readonly object _syncObject = new object();
 
         public Keccak GenesisHash => FindBlock(0)?.Hash;
         public Block HeadBlock { get; private set; }
+        public Block BestSuggestedBlock { get; private set; }
         public int ChainId { get; }
 
         public AddBlockResult AddBlock(Block block)
         {
             if (block.Number == 0)
             {
-                if (HeadBlock != null)
+                if (BestSuggestedBlock != null)
                 {
                     throw new InvalidOperationException("Genesis block should be added only once"); // TODO: make sure it cannot happen
                 }
@@ -77,13 +77,13 @@ namespace Nethermind.Blockchain
             });
 
             UpdateTotalDifficulty(block);
-            
-            if (block.TotalDifficulty > (HeadBlock?.TotalDifficulty ?? 0))
+
+            if (block.TotalDifficulty > (BestSuggestedBlock?.TotalDifficulty ?? 0))
             {
-                HeadBlock = block;
-                NewBestBlockSuggested?.Invoke(this, new BlockEventArgs(block));
+                BestSuggestedBlock = block;
+                NewBestSuggestedBlock?.Invoke(this, new BlockEventArgs(block));
             }
-            
+
             return AddBlockResult.Added;
         }
 
@@ -158,25 +158,12 @@ namespace Nethermind.Blockchain
                 throw new InvalidOperationException($"Unknown {nameof(Block)} cannot {nameof(MarkAsProcessed)}");
             }
 
-            lock (_syncObject)
-            {
-                if (HeadBlock == null)
-                {
-                    HeadBlock = block;
-                }
-                else
-                {
-                    _processed.Add(blockHash);
-                }
-            }
+            _processed[blockHash] = true;
         }
 
         public bool WasProcessed(Keccak blockHash)
         {
-            lock (_syncObject)
-            {
-                return _processed.Contains(blockHash);
-            }
+            return _processed.ContainsKey(blockHash);
         }
 
         public void MoveToMain(Keccak blockHash)
@@ -185,7 +172,7 @@ namespace Nethermind.Blockchain
             {
                 throw new InvalidOperationException("Cannot move unprocessed blocks to main");
             }
-            
+
             Block block = _branches[blockHash];
             _canonicalChain[(int)block.Number] = block;
 
@@ -199,10 +186,10 @@ namespace Nethermind.Blockchain
             {
                 throw new InvalidOperationException($"this should not happen as we should only be removing in {nameof(BlockchainProcessor)}");
             }
-            
+
             BlockAddedToMain?.Invoke(this, new BlockEventArgs(block));
-            
-            if (block.TotalDifficulty > HeadBlock.TotalDifficulty)
+
+            if (block.TotalDifficulty > (HeadBlock?.TotalDifficulty ?? 0))
             {
                 HeadBlock = block;
                 NewHeadBlock?.Invoke(this, new BlockEventArgs(block));

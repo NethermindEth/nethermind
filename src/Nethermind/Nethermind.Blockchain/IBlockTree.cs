@@ -41,7 +41,7 @@ namespace Nethermind.Blockchain
         void MarkAsProcessed(Keccak blockHash);
 
         event EventHandler<BlockEventArgs> BlockAddedToMain;
-        event EventHandler<BlockEventArgs> NewBestBlockSuggested;
+        event EventHandler<BlockEventArgs> NewBestSuggestedBlock;
         event EventHandler<BlockEventArgs> NewHeadBlock;
     }
 }

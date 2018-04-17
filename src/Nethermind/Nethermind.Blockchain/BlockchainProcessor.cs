@@ -56,7 +56,7 @@ namespace Nethermind.Blockchain
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _blockTree = blockTree;
-            _blockTree.NewBestBlockSuggested += OnNewBestBlock;
+            _blockTree.NewBestSuggestedBlock += OnNewBestBlock;
 
             _transactionStore = transactionStore;
             _difficultyCalculator = difficultyCalculator;

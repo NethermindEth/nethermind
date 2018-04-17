@@ -37,6 +37,8 @@ namespace Nethermind.Core.Test
 
             Block block = Build.A.Block.WithNumber(0).TestObject;
             var result = blockTree.AddBlock(block);
+            blockTree.MarkAsProcessed(block.Hash);
+            blockTree.MoveToMain(block.Hash);
 
             Assert.True(hasNotified, "notification");
             Assert.AreEqual(AddBlockResult.Added, result, "result");
@@ -62,6 +64,8 @@ namespace Nethermind.Core.Test
             blockTree.AddBlock(block0);
             blockTree.NewHeadBlock += (sender, args) => { hasNotified = true; };
             var result = blockTree.AddBlock(block1);
+            blockTree.MarkAsProcessed(block1.Hash);
+            blockTree.MoveToMain(block1.Hash);
 
             Assert.True(hasNotified, "notification");
             Assert.AreEqual(AddBlockResult.Added, result, "result");
@@ -110,8 +114,7 @@ namespace Nethermind.Core.Test
         {
             BlockTree blockTree = new BlockTree(ChainId.Olympic, NullLogger.Instance);
             Block block = Build.A.Block.TestObject;
-            blockTree.AddBlock(block);
-            blockTree.MoveToMain(block.Hash);
+            AddToMain(blockTree, block);
             Block found = blockTree.FindBlock(block.Hash, true);
             Assert.AreSame(block, found);
         }
@@ -121,8 +124,7 @@ namespace Nethermind.Core.Test
         {
             BlockTree blockTree = new BlockTree(ChainId.Olympic, NullLogger.Instance);
             Block block = Build.A.Block.TestObject;
-            blockTree.AddBlock(block);
-            blockTree.MoveToMain(block.Hash);
+            AddToMain(blockTree, block);
             blockTree.MoveToBranch(block.Hash);
             Block found = blockTree.FindBlock(block.Hash, false);
             Assert.AreSame(block, found);
@@ -145,12 +147,9 @@ namespace Nethermind.Core.Test
             Block block0 = Build.A.Block.WithNumber(0).TestObject;
             Block block1 = Build.A.Block.WithNumber(1).WithParent(block0).TestObject;
             Block block2 = Build.A.Block.WithNumber(2).WithParent(block1).TestObject;
-            blockTree.AddBlock(block0);
-            blockTree.MoveToMain(block0.Hash);
-            blockTree.AddBlock(block1);
-            blockTree.MoveToMain(block1.Hash);
-            blockTree.AddBlock(block2);
-            blockTree.MoveToMain(block2.Hash);
+            AddToMain(blockTree, block0);
+            AddToMain(blockTree, block1);
+            AddToMain(blockTree, block2);
 
             Block found = blockTree.FindBlock(2);
             Assert.AreSame(block2, found);
@@ -162,10 +161,8 @@ namespace Nethermind.Core.Test
             BlockTree blockTree = new BlockTree(ChainId.Olympic, NullLogger.Instance);
             Block block0 = Build.A.Block.WithNumber(0).TestObject;
             Block block1 = Build.A.Block.WithNumber(1).WithParent(block0).TestObject;
-            blockTree.AddBlock(block0);
-            blockTree.MoveToMain(block0.Hash);
-            blockTree.AddBlock(block1);
-            blockTree.MoveToMain(block1.Hash);
+            AddToMain(blockTree, block0);
+            AddToMain(blockTree, block1);
 
             Block found = blockTree.FindBlock(5);
             Assert.IsNull(found);
@@ -177,10 +174,8 @@ namespace Nethermind.Core.Test
             BlockTree blockTree = new BlockTree(ChainId.Olympic, NullLogger.Instance);
             Block block0 = Build.A.Block.WithNumber(0).TestObject;
             Block block1 = Build.A.Block.WithNumber(1).WithParent(block0).TestObject;
-            blockTree.AddBlock(block0);
-            blockTree.MoveToMain(block0.Hash);
-            blockTree.AddBlock(block1);
-            blockTree.MoveToMain(block1.Hash);
+            AddToMain(blockTree, block0);
+            AddToMain(blockTree, block1);
 
             Assert.Throws<ArgumentException>(() => blockTree.FindBlock(-1));
         }
@@ -192,12 +187,9 @@ namespace Nethermind.Core.Test
             Block block0 = Build.A.Block.WithNumber(0).TestObject;
             Block block1 = Build.A.Block.WithNumber(1).WithParent(block0).TestObject;
             Block block2 = Build.A.Block.WithNumber(2).WithParent(block1).TestObject;
-            blockTree.AddBlock(block0);
-            blockTree.MoveToMain(block0.Hash);
-            blockTree.AddBlock(block1);
-            blockTree.MoveToMain(block1.Hash);
-            blockTree.AddBlock(block2);
-            blockTree.MoveToMain(block2.Hash);
+            AddToMain(blockTree, block0);
+            AddToMain(blockTree, block1);
+            AddToMain(blockTree, block2);
 
             Block[] blocks = blockTree.FindBlocks(block0.Hash, 3, 0, false);
             Assert.AreEqual(3, blocks.Length);
@@ -212,17 +204,21 @@ namespace Nethermind.Core.Test
             Block block0 = Build.A.Block.WithNumber(0).TestObject;
             Block block1 = Build.A.Block.WithNumber(1).WithParent(block0).TestObject;
             Block block2 = Build.A.Block.WithNumber(2).WithParent(block1).TestObject;
-            blockTree.AddBlock(block0);
-            blockTree.MoveToMain(block0.Hash);
-            blockTree.AddBlock(block1);
-            blockTree.MoveToMain(block1.Hash);
-            blockTree.AddBlock(block2);
-            blockTree.MoveToMain(block2.Hash);
+            AddToMain(blockTree, block0);
+            AddToMain(blockTree, block1);
+            AddToMain(blockTree, block2);
 
             Block[] blocks = blockTree.FindBlocks(block2.Hash, 3, 0, true);
             Assert.AreEqual(3, blocks.Length);
             Assert.AreSame(block2, blocks[0]);
             Assert.AreSame(block0, blocks[2]);
+        }
+
+        private static void AddToMain(BlockTree blockTree, Block block0)
+        {
+            blockTree.AddBlock(block0);
+            blockTree.MarkAsProcessed(block0.Hash);
+            blockTree.MoveToMain(block0.Hash);
         }
 
         [Test]
@@ -232,12 +228,9 @@ namespace Nethermind.Core.Test
             Block block0 = Build.A.Block.WithNumber(0).TestObject;
             Block block1 = Build.A.Block.WithNumber(1).WithParent(block0).TestObject;
             Block block2 = Build.A.Block.WithNumber(2).WithParent(block1).TestObject;
-            blockTree.AddBlock(block0);
-            blockTree.MoveToMain(block0.Hash);
-            blockTree.AddBlock(block1);
-            blockTree.MoveToMain(block1.Hash);
-            blockTree.AddBlock(block2);
-            blockTree.MoveToMain(block2.Hash);
+            AddToMain(blockTree, block0);
+            AddToMain(blockTree, block1);
+            AddToMain(blockTree, block2);
 
             Block[] blocks = blockTree.FindBlocks(block0.Hash, 0, 0, false);
             Assert.AreEqual(0, blocks.Length);
@@ -250,12 +243,9 @@ namespace Nethermind.Core.Test
             Block block0 = Build.A.Block.WithNumber(0).TestObject;
             Block block1 = Build.A.Block.WithNumber(1).WithParent(block0).TestObject;
             Block block2 = Build.A.Block.WithNumber(2).WithParent(block1).TestObject;
-            blockTree.AddBlock(block0);
-            blockTree.MoveToMain(block0.Hash);
-            blockTree.AddBlock(block1);
-            blockTree.MoveToMain(block1.Hash);
-            blockTree.AddBlock(block2);
-            blockTree.MoveToMain(block2.Hash);
+            AddToMain(blockTree, block0);
+            AddToMain(blockTree, block1);
+            AddToMain(blockTree, block2);
 
             Block[] blocks = blockTree.FindBlocks(block0.Hash, 2, 1, false);
             Assert.AreEqual(2, blocks.Length);
@@ -268,12 +258,9 @@ namespace Nethermind.Core.Test
             Block block0 = Build.A.Block.WithNumber(0).TestObject;
             Block block1 = Build.A.Block.WithNumber(1).WithParent(block0).TestObject;
             Block block2 = Build.A.Block.WithNumber(2).WithParent(block1).TestObject;
-            blockTree.AddBlock(block0);
-            blockTree.MoveToMain(block0.Hash);
-            blockTree.AddBlock(block1);
-            blockTree.MoveToMain(block1.Hash);
-            blockTree.AddBlock(block2);
-            blockTree.MoveToMain(block2.Hash);
+            AddToMain(blockTree, block0);
+            AddToMain(blockTree, block1);
+            AddToMain(blockTree, block2);
 
             Block[] blocks = blockTree.FindBlocks(block0.Hash, 4, 0, false);
             Assert.AreEqual(4, blocks.Length);
@@ -311,10 +298,8 @@ namespace Nethermind.Core.Test
             BlockTree blockTree = new BlockTree(ChainId.Olympic, NullLogger.Instance);
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
             Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
-            blockTree.AddBlock(block0);            
-            blockTree.MarkAsProcessed(block0.Hash);
-            blockTree.AddBlock(block1);
-            blockTree.MarkAsProcessed(block1.Hash);
+            AddToMain(blockTree, block0);
+            AddToMain(blockTree, block1); 
 
             Assert.AreEqual(block1, blockTree.HeadBlock);
         }
