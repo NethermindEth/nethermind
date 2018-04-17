@@ -59,13 +59,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         {
             Logger.Info($"{ProtocolCode} v{ProtocolVersion} subprotocol initializing");
 
-            Block headBlock = _sync.BlockTree.HeadBlock;
+            Block headBlock = _sync.HeadBlock;
             StatusMessage statusMessage = new StatusMessage();
             statusMessage.ChainId = _sync.BlockTree.ChainId;
             statusMessage.ProtocolVersion = ProtocolVersion;
             statusMessage.TotalDifficulty = headBlock.Difficulty;
             statusMessage.BestHash = headBlock.Hash;
-            statusMessage.GenesisHash = _sync.BlockTree.GenesisHash;
+            statusMessage.GenesisHash = _sync.GenesisBlock.Hash;
 
             _statusSent = true;
             Send(statusMessage);
@@ -148,19 +148,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             ProtocolInitialized?.Invoke(this, EventArgs.Empty);
         }
 
-        private void Handle(TransactionsMessage transactionsMessage)
+        private void Handle(TransactionsMessage msg)
         {
-            throw new NotImplementedException();
-//            for (int txIndex = 0; txIndex < transactionsMessage.Transactions.Length; txIndex++)
-//            {
-//                Transaction transaction = transactionsMessage.Transactions[txIndex];
-//                TransactionInfo info = _sync.Add(transaction, P2PSession.RemoteNodeId);
-//                if (info.Quality == Quality.Invalid) // TODO: processed invalid should not be penalized here
-//                {
-//                    Logger.Debug($"Received an invalid transaction from {P2PSession.RemoteNodeId}");
-//                    throw new SubprotocolException($"Peer sent an invalid transaction {transaction.Hash}");
-//                }
-//            }
+            for (int i = 0; i < msg.Transactions.Length; i++)
+            {
+                _sync.AddNewTransaction(msg.Transactions[i], NodeId);    
+            }
         }
 
         private void Handle(GetBlockBodiesMessage request)
@@ -170,23 +163,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
             for (int i = 0; i < hashes.Length; i++)
             {
-                BlockInfo blockInfo = _sync.Find(hashes[i]);
-                if (blockInfo != null)
-                {
-                    if (blockInfo.BodyLocation == BlockDataLocation.Store)
-                    {
-                        throw new NotImplementedException();
-                    }
-
-                    if (blockInfo.BodyLocation == BlockDataLocation.Memory)
-                    {
-                        blocks[i] = blockInfo.Block;
-                    }
-                    else
-                    {
-                        throw new NotImplementedException();
-                    }
-                }
+                blocks[i] = _sync.Find(hashes[i]);
             }
 
             Send(new BlockBodiesMessage(blocks));
@@ -194,29 +171,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         private void Handle(GetBlockHeadersMessage getBlockHeadersMessage)
         {
-            BlockInfo[] blockInfos = _sync.Find(getBlockHeadersMessage.StartingBlockHash, (int)getBlockHeadersMessage.MaxHeaders, (int)getBlockHeadersMessage.Skip, getBlockHeadersMessage.Reverse == 1);
-            BlockHeader[] blockHeaders = new BlockHeader[blockInfos.Length];
-            for (int i = 0; i < blockInfos.Length; i++)
+            Block[] blocks = _sync.Find(getBlockHeadersMessage.StartingBlockHash, (int)getBlockHeadersMessage.MaxHeaders, (int)getBlockHeadersMessage.Skip, getBlockHeadersMessage.Reverse == 1);
+            BlockHeader[] headers = new BlockHeader[blocks.Length];
+            for (int i = 0; i < blocks.Length; i++)
             {
-                if (blockInfos[i] != null)
-                {
-                    if (blockInfos[i].HeaderLocation == BlockDataLocation.Store)
-                    {
-                        throw new NotImplementedException();
-                    }
-
-                    if (blockInfos[i].HeaderLocation == BlockDataLocation.Memory)
-                    {
-                        blockHeaders[i] = blockInfos[i].BlockHeader;
-                    }
-                    else
-                    {
-                        throw new NotImplementedException();
-                    }
-                }
+                headers[i] = blocks[i].Header;
             }
 
-            Send(new BlockHeadersMessage(blockHeaders));
+            Send(new BlockHeadersMessage(headers));
         }
 
         private bool IsRequestMatched(
@@ -263,19 +225,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         {
             foreach ((Keccak Hash, BigInteger Number) hint in newBlockHashes.BlockHashes)
             {
-                _sync.HintBlock(hint.Hash, hint.Number);
+                _sync.HintBlock(hint.Hash, hint.Number, NodeId);
             }
         }
 
         private void Handle(NewBlockMessage newBlock)
         {
-            // TODO: use total difficulty here
-            // TODO: can drop connection if processing of the block fails (not only validation?)
-            BlockInfo blockInfo = _sync.AddBlock(newBlock.Block, P2PSession.RemoteNodeId);
-            if (blockInfo.BlockQuality == Quality.Invalid)
-            {
-                throw new SubprotocolException($"Peer sent an invalid new block {newBlock.Block.Hash}");
-            }
+            _sync.AddNewBlock(newBlock.Block, P2PSession.RemoteNodeId);
+            // TODO: still thinking where to handle invalid new blocks, at the moment the plan is that it will be managed by sync manager
         }
 
         public void Close()
@@ -325,17 +282,17 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             var request = new Request<GetBlockBodiesMessage, Block[]>(message);
             _bodiesRequests.Add(request);
             Send(request.Message);
-            
+
             Task<Block[]> task = request.CompletionSource.Task;
             if (await Task.WhenAny(task, Task.Delay(5000)) == task)
             {
                 return task.Result;
             }
-            
+
             // TODO: work in progress
             throw new TimeoutException($"Request timeout in {nameof(GetBlockBodiesMessage)}");
         }
-        
+
         async Task<BlockHeader[]> ISynchronizationPeer.GetBlockHeaders(Keccak blockHash, BigInteger maxBlocks)
         {
             var msg = new GetBlockHeadersMessage();
@@ -347,11 +304,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             BlockHeader[] headers = await SendRequest(msg);
             return headers;
         }
-        
+
+        public PublicKey NodeId => P2PSession.RemoteNodeId;
+
         async Task<Block[]> ISynchronizationPeer.GetBlocks(Keccak[] blockHashes)
         {
             var bodiesMsg = new GetBlockBodiesMessage(blockHashes.ToArray());
-            
+
             Block[] blocks = await SendRequest(bodiesMsg);
             return blocks;
         }
@@ -373,8 +332,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             return headers[0]?.Number ?? 0;
         }
 
-        public event EventHandler<BlockEventArgs> NewBlock;
-        public event EventHandler<KeccakEventArgs> NewBlockHash;
+        public Task Disconnect()
+        {
+            throw new NotImplementedException();
+        }
 
         private Keccak _remoteHeadBlockHash;
         private BigInteger _remoteHeadBlockDifficulty;

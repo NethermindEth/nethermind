@@ -16,7 +16,6 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
 using System.Numerics;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -26,11 +25,11 @@ namespace Nethermind.Blockchain
 {
     public interface ISynchronizationPeer
     {
+        PublicKey NodeId { get; }
         Task<Block[]> GetBlocks(Keccak[] blockHashes);
         Task<BlockHeader[]> GetBlockHeaders(Keccak blockHash, BigInteger maxBlocks);
         Task<Keccak> GetHeadBlockHash();
         Task<BigInteger> GetHeadBlockNumber();
-        event EventHandler<BlockEventArgs> NewBlock;
-        event EventHandler<KeccakEventArgs> NewBlockHash;
+        Task Disconnect();
     }
 }

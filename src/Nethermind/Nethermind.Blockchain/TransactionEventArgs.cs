@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -18,20 +18,16 @@
 
 using System;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 
 namespace Nethermind.Blockchain
 {
-    public interface ITransactionStore
+    public class TransactionEventArgs : EventArgs
     {
-        void AddTransaction(Transaction transaction);
-        void AddTransactionReceipt(Keccak transactionHash, TransactionReceipt transactionReceipt, Keccak blockHash);
-        Transaction GetTransaction(Keccak transactionHash);
-        TransactionReceipt GetTransactionReceipt(Keccak transactionHash);
-        bool WasProcessed(Keccak transactionHash);
-        Keccak GetBlockHash(Keccak transactionHash); // get hash of the block transaction was in
-        void AddPending(Transaction transaction);
-        Transaction[] GetAllPending();
-        event EventHandler<TransactionEventArgs> NewPending;
+        public Transaction Transaction { get; }
+
+        public TransactionEventArgs(Transaction transaction)
+        {
+            Transaction = transaction;
+        }
     }
 }

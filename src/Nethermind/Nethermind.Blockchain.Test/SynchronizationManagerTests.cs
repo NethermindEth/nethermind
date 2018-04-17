@@ -18,6 +18,7 @@
 
 using System;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Blockchain.Difficulty;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
@@ -42,11 +43,12 @@ namespace Nethermind.Blockchain.Test
             HeaderValidator headerValidator = new HeaderValidator(difficultyCalculator, _blockTree, new FakeSealEngine(TimeSpan.Zero), specProvider, NullLogger.Instance);
             SignatureValidator signatureValidator = new SignatureValidator(specProvider.ChainId);
             TransactionValidator transactionValidator = new TransactionValidator(signatureValidator);
+            TransactionStore txStore = new TransactionStore();
             OmmersValidator ommersValidator = new OmmersValidator(_blockTree, headerValidator, NullLogger.Instance);
             BlockValidator blockValidator = new BlockValidator(transactionValidator, headerValidator, ommersValidator, specProvider, NullLogger.Instance);
 
             _genesisBlock = Build.A.Block.WithNumber(0).TestObject;
-            _manager = new SynchronizationManager(_delay, _blockTree, headerValidator, blockValidator, transactionValidator, specProvider, _genesisBlock, _genesisBlock, _genesisBlock.Difficulty, new ConsoleAsyncLogger());
+            _manager = new SynchronizationManager(_blockTree, blockValidator, headerValidator, txStore, transactionValidator, new ConsoleAsyncLogger());
         }
 
         private IBlockTree _blockTree;
@@ -56,7 +58,7 @@ namespace Nethermind.Blockchain.Test
         private readonly TimeSpan _delay = TimeSpan.FromMilliseconds(50);
 
         [Test]
-        public void On_new_peer_asks_about_the_best_block()
+        public async Task On_new_peer_asks_about_the_best_block()
         {
             ISynchronizationPeer peer = Substitute.For<ISynchronizationPeer>();
             peer.GetHeadBlockHash().Returns(TestObject.KeccakA);
@@ -64,15 +66,15 @@ namespace Nethermind.Blockchain.Test
 
             ManualResetEvent resetEvent = new ManualResetEvent(false);
             _manager.RoundFinished += (sender, args) => { resetEvent.Set(); };
-            _manager.AddPeer(peer);
+            await _manager.AddPeer(peer);
             _manager.Start();
             resetEvent.WaitOne(_delay * 10);
-            peer.Received().GetHeadBlockHash();
-            peer.Received().GetHeadBlockNumber();
+            await peer.Received().GetHeadBlockHash();
+            await peer.Received().GetHeadBlockNumber();
         }
 
         [Test]
-        public void On_new_peer_retrieves_missing_blocks()
+        public async Task  On_new_peer_retrieves_missing_blocks()
         {
             ISynchronizationPeer peer = Substitute.For<ISynchronizationPeer>();
             peer.GetHeadBlockHash().Returns(TestObject.KeccakA);
@@ -80,10 +82,10 @@ namespace Nethermind.Blockchain.Test
 
             ManualResetEvent resetEvent = new ManualResetEvent(false);
             _manager.RoundFinished += (sender, args) => { resetEvent.Set(); };
-            _manager.AddPeer(peer);
+            await _manager.AddPeer(peer);
             _manager.Start();
             resetEvent.WaitOne(_delay * 10);
-            peer.Received().GetBlockHeaders(_genesisBlock.Hash, 4);
+            await peer.Received().GetBlockHeaders(_genesisBlock.Hash, 4);
         }
     }
 }

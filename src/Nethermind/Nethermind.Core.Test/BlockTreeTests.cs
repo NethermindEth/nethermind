@@ -114,7 +114,19 @@ namespace Nethermind.Core.Test
             Block block2 = Build.A.Block.WithNumber(2).WithDifficulty(3).TestObject;
             blockTree.AddBlock(block0);
             var result = blockTree.AddBlock(block2);
-            Assert.AreEqual(AddBlockResult.Ignored, result);
+            Assert.AreEqual(AddBlockResult.UnknownParent, result);
+        }
+        
+        [Test]
+        public void Shall_ignore_known()
+        {
+            BlockTree blockTree = new BlockTree(ChainId.Olympic, NullLogger.Instance);
+            Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
+            Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
+            blockTree.AddBlock(block0);
+            blockTree.AddBlock(block1);
+            var result = blockTree.AddBlock(block1);
+            Assert.AreEqual(AddBlockResult.AlreadyKnown, result);
         }
 
         [Test]
@@ -320,6 +332,16 @@ namespace Nethermind.Core.Test
             AddToMain(blockTree, block1); 
 
             Assert.AreEqual(block1, blockTree.HeadBlock);
+        }
+        
+        [Test]
+        public void Sets_genesis_block()
+        {
+            BlockTree blockTree = new BlockTree(ChainId.Olympic, NullLogger.Instance);
+            Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
+            AddToMain(blockTree, block0);
+
+            Assert.AreEqual(block0, blockTree.GenesisBlock);
         }
     }
 }

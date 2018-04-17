@@ -20,7 +20,8 @@ namespace Nethermind.Blockchain
 {
     public enum AddBlockResult
     {
-        Ignored,
+        AlreadyKnown,
+        UnknownParent,
         Added
     }
 }

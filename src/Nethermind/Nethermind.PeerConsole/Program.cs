@@ -207,16 +207,12 @@ namespace Nethermind.PeerConsole
             _blockchainProcessor.Start();
             blockTree.AddBlock(genesis);
 
-            _syncManager = new SynchronizationManager(
-                TimeSpan.FromMilliseconds(12000), 
+            _syncManager = new SynchronizationManager( 
                 blockTree,
-                headerValidator,
                 blockValidator,
+                headerValidator,
+                transactionStore,
                 txValidator,
-                specProvider,
-                genesis,
-                genesis,
-                genesis.Header.Difficulty,
                 NetworkLogger);
             _syncManager.Start();
         }

@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Linq;
@@ -76,5 +77,7 @@ namespace Nethermind.Blockchain
             _pending.Clear(); // TODO: while testing this just clears
             return result;
         }
+
+        public event EventHandler<TransactionEventArgs> NewPending;
     }
 }

@@ -25,24 +25,21 @@ namespace Nethermind.Blockchain
 {
     public interface ISynchronizationManager
     {
-        void HintBlock(Keccak hash, BigInteger number);
-        BlockInfo AddBlock(Block block, PublicKey receivedFrom);
-        BlockInfo AddBlockHeader(BlockHeader blockHeader);
-        BlockInfo Find(Keccak hash);
-        BlockInfo[] Find(Keccak hash, int numberOfBlocks, int skip, bool reverse);
-        BlockInfo Find(BigInteger number);
-        TransactionInfo Add(Transaction transaction, PublicKey receivedFrom);
-        void MarkAsProcessed(Transaction transaction, bool isValid);
-        void MarkAsProcessed(Block transaction, bool isValid);
-        void AddPeer(ISynchronizationPeer synchronizationPeer);
+        void HintBlock(Keccak hash, BigInteger number, PublicKey receivedFrom);
+        Block Find(Keccak hash);
+        Block Find(BigInteger number);
+        Block[] Find(Keccak hash, int numberOfBlocks, int skip, bool reverse);
+        void AddNewBlock(Block block, PublicKey receivedFrom);
+        void AddNewTransaction(Transaction transaction, PublicKey receivedFrom);
+        Task AddPeer(ISynchronizationPeer synchronizationPeer);
         void RemovePeer(ISynchronizationPeer synchronizationPeer);
         void Start();
         Task StopAsync();
         
         int ChainId { get; }
-        Keccak GenesisBlock { get; }
-        Keccak BestBlock { get; }
-        BigInteger BestNumber { get; }
+        Block GenesisBlock { get; }
+        Block HeadBlock { get; }
+        BigInteger HeadNumber { get; }
         BigInteger TotalDifficulty { get; }
         
         IBlockTree BlockTree { get; set; }

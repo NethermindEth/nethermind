@@ -26,9 +26,9 @@ namespace Nethermind.Blockchain
 {
     public interface IBlockTree
     {
-        Keccak GenesisHash { get; }
-        Block HeadBlock { get; }
         int ChainId { get; }
+        Block GenesisBlock { get; }
+        Block HeadBlock { get; }
 
         AddBlockResult AddBlock(Block block);
         Block FindBlock(Keccak blockHash, bool mainChainOnly);
@@ -40,8 +40,8 @@ namespace Nethermind.Blockchain
         bool WasProcessed(Keccak blockHash);
         void MarkAsProcessed(Keccak blockHash);
 
-        event EventHandler<BlockEventArgs> BlockAddedToMain;
         event EventHandler<BlockEventArgs> NewBestSuggestedBlock;
+        event EventHandler<BlockEventArgs> BlockAddedToMain;
         event EventHandler<BlockEventArgs> NewHeadBlock;
     }
 }

@@ -36,6 +36,7 @@ namespace Nethermind.Blockchain
         private readonly ConcurrentDictionary<Keccak, Block> _mainChain = new ConcurrentDictionary<Keccak, Block>();
         private readonly ConcurrentDictionary<Keccak, bool> _processed = new ConcurrentDictionary<Keccak, bool>();
 
+        // TODO: validators should be here
         public BlockTree(int chainId, ILogger logger)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
@@ -50,7 +51,7 @@ namespace Nethermind.Blockchain
 
         private readonly object _syncObject = new object();
 
-        public Keccak GenesisHash => FindBlock(0)?.Hash;
+        public Block GenesisBlock { get; private set; }
         public Block HeadBlock { get; private set; }
         public Block BestSuggestedBlock { get; private set; }
         public int ChainId { get; }
@@ -64,9 +65,13 @@ namespace Nethermind.Blockchain
                     throw new InvalidOperationException("Genesis block should be added only once"); // TODO: make sure it cannot happen
                 }
             }
+            else if(FindBlock(block.Hash, false) != null)
+            {
+                return AddBlockResult.AlreadyKnown;
+            }
             else if (this.FindParent(block.Header) == null)
             {
-                return AddBlockResult.Ignored;
+                return AddBlockResult.UnknownParent;
             }
 
             _branches.AddOrUpdate(block.Header.Hash, block, (h, b) =>
@@ -191,6 +196,11 @@ namespace Nethermind.Blockchain
 
             if (block.TotalDifficulty > (HeadBlock?.TotalDifficulty ?? 0))
             {
+                if (block.Number == 0)
+                {
+                    GenesisBlock = block;
+                }
+                
                 HeadBlock = block;
                 NewHeadBlock?.Invoke(this, new BlockEventArgs(block));
             }

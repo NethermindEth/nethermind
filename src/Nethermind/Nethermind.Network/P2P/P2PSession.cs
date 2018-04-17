@@ -150,9 +150,9 @@ namespace Nethermind.Network.P2P
                     protocolHandler = version == 62
                         ? new Eth62ProtocolHandler(this, _serializer, _syncManager, _logger)
                         : new Eth63ProtocolHandler(this, _serializer, _syncManager, _logger);
-                    protocolHandler.ProtocolInitialized += (sender, args) =>
+                    protocolHandler.ProtocolInitialized += async (sender, args) =>
                     {
-                        _syncManager.AddPeer((Eth62ProtocolHandler)protocolHandler);
+                        await _syncManager.AddPeer((Eth62ProtocolHandler)protocolHandler);
                     };
                     break;
                 default:

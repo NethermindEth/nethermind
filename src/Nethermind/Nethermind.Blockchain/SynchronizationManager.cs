@@ -32,197 +32,110 @@ using Nethermind.Core.Specs;
 
 namespace Nethermind.Blockchain
 {
+    // TODO: forks
     public class SynchronizationManager : ISynchronizationManager
     {
-        private readonly TimeSpan _delay;
+        private readonly ITransactionStore _transactionStore;
+        private readonly ITransactionValidator _transactionValidator;
         private readonly IBlockValidator _blockValidator;
         private readonly IHeaderValidator _headerValidator;
         private readonly ILogger _logger;
-
-        private readonly ConcurrentDictionary<ISynchronizationPeer, PeerInfo> _peers = new ConcurrentDictionary<ISynchronizationPeer, PeerInfo>();
-        private readonly ISpecProvider _specProvider;
-        private readonly Dictionary<Keccak, BlockInfo> _storedBlocks = new Dictionary<Keccak, BlockInfo>();
-
-        private readonly object _syncObject = new object();
-
-        private readonly Dictionary<Keccak, TransactionInfo> _transactions = new Dictionary<Keccak, TransactionInfo>();
-        private readonly ITransactionValidator _transactionValidator;
+        private readonly ConcurrentDictionary<PublicKey, PeerInfo> _peers = new ConcurrentDictionary<PublicKey, PeerInfo>();
 
         private CancellationTokenSource _cancellationTokenSource;
-
-        private object _lockObject = new object();
-
-        private int _round; // TODO: remove when no longer needed for diagnostics
 
         private Task _syncTask;
 
         public SynchronizationManager(
-            TimeSpan delay,
             IBlockTree blockTree,
-            IHeaderValidator headerValidator,
             IBlockValidator blockValidator,
+            IHeaderValidator headerValidator,
+            ITransactionStore transactionStore,            
             ITransactionValidator transactionValidator,
-            ISpecProvider specProvider,
-            Block genesisBlock,
-            Block bestBlockSoFar,
-            BigInteger totalDifficulty,
             ILogger logger)
         {
-            _delay = delay;
-            BlockTree = blockTree;
-            BlockTree.BlockAddedToMain += OnBlockAddedToMain;
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _transactionStore = transactionStore ?? throw new ArgumentNullException(nameof(transactionStore));
+            _transactionValidator = transactionValidator?? throw new ArgumentNullException(nameof(transactionValidator));
+
+            BlockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+            _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
+            _headerValidator = headerValidator ?? throw new ArgumentNullException(nameof(headerValidator));
             BlockTree.NewHeadBlock += OnNewHeadBlock;
-
-
-            _headerValidator = headerValidator;
-            _blockValidator = blockValidator;
-            _transactionValidator = transactionValidator;
-            _specProvider = specProvider;
-            _logger = logger;
-            BlockInfo blockInfo = AddBlock(bestBlockSoFar, new PublicKey(new byte[64]));
-            if (blockInfo.BlockQuality == Quality.Invalid)
-            {
-                throw new EthSynchronizationException("Provided genesis block is not valid");
-            }
-
-            BestBlock = bestBlockSoFar.Hash;
-            GenesisBlock = genesisBlock.Hash;
-            BestNumber = bestBlockSoFar.Number;
-            TotalDifficulty = totalDifficulty;
-            _logger.Info($"Initialized {nameof(SynchronizationManager)} with genesis block {bestBlockSoFar.Hash}");
+            
+            _logger.Info($"Initialized {nameof(SynchronizationManager)} with genesis block {HeadBlock}");
         }
 
         private void OnNewHeadBlock(object sender, BlockEventArgs blockEventArgs)
         {
             Block block = blockEventArgs.Block;
-            Debug.Assert(block.TotalDifficulty > TotalDifficulty);
-
-            BestBlock = block.Hash;
-            BestNumber = block.Number;
-            TotalDifficulty = block.TotalDifficulty ?? 0;
+            // TODO: propagate to peers with Number < block.Number!
         }
 
-        public BlockInfo AddBlockHeader(BlockHeader blockHeader)
+        public Block Find(Keccak hash)
         {
-            if (!_storedBlocks.ContainsKey(blockHeader.Hash))
-            {
-                HintBlock(blockHeader.Hash, blockHeader.Number);
-            }
-
-            _storedBlocks.TryGetValue(blockHeader.Hash, out BlockInfo blockInfo);
-            if (blockInfo.HeaderQuality != Quality.Unknown)
-            {
-                return blockInfo;
-            }
-
-            bool isValid = _headerValidator.Validate(blockHeader);
-            blockInfo.HeaderQuality = isValid ? Quality.DataValid : Quality.Invalid;
-            blockInfo.BlockHeader = blockHeader;
-            blockInfo.HeaderLocation = BlockDataLocation.Memory;
-
-            return blockInfo;
+            return BlockTree.FindBlock(hash, false);
         }
 
-        public BlockInfo Find(Keccak hash)
+        public Block[] Find(Keccak hash, int numberOfBlocks, int skip, bool reverse)
         {
-            if (_storedBlocks.ContainsKey(hash))
-            {
-                return _storedBlocks[hash];
-            }
-
-            return null;
+            return BlockTree.FindBlocks(hash, numberOfBlocks, skip, reverse);
         }
 
-        public BlockInfo[] Find(Keccak hash, int numberOfBlocks, int skip, bool reverse)
-        {
-            Block[] blocks = BlockTree.FindBlocks(hash, numberOfBlocks, skip, reverse);
-            BlockInfo[] blockInfos = new BlockInfo[blocks.Length];
-            for (int i = 0; i < blocks.Length; i++)
-            {
-                if (blocks[i] == null)
-                {
-                    continue;
-                }
-
-                Debug.Assert(_storedBlocks.ContainsKey(blocks[i].Hash));
-                blockInfos[i] = _storedBlocks[blocks[i].Hash];
-            }
-
-            return blockInfos;
-        }
-
-        public BlockInfo Find(BigInteger number)
+        public Block Find(BigInteger number)
         {
             throw new NotImplementedException();
         }
 
-        public BlockInfo AddBlock(Block block, PublicKey receivedFrom)
+        public void AddNewBlock(Block block, PublicKey receivedFrom)
         {
-            if (!_storedBlocks.ContainsKey(block.Hash))
+            _peers.TryGetValue(receivedFrom, out PeerInfo peerInfo);
+            Debug.Assert(peerInfo != null, $"Received notification from an unknown peer at {nameof(ISynchronizationManager)}");
+            if (peerInfo == null)
             {
-                HintBlock(block.Hash, block.Number);
+                throw new InvalidOperationException($"unknown synchronization peer {receivedFrom}");
             }
+            
+            peerInfo.NumberAvailable = block.Number;
 
-            _storedBlocks.TryGetValue(block.Hash, out BlockInfo blockInfo);
-            if (blockInfo.BlockQuality != Quality.Unknown)
+            if (block.Number == HeadNumber + 1)
             {
-                return blockInfo;
+                AddBlockResult result = BlockTree.AddBlock(block);
+                // TODO: use for reputation later
             }
-
-            bool isValid = _blockValidator.ValidateSuggestedBlock(block);
-            blockInfo.HeaderQuality = isValid ? Quality.DataValid : Quality.Invalid;
-            blockInfo.BlockHeader = block.Header;
-            blockInfo.HeaderLocation = BlockDataLocation.Memory;
-            blockInfo.Block = block;
-            blockInfo.BlockQuality = isValid ? Quality.DataValid : Quality.Invalid;
-            blockInfo.BodyLocation = BlockDataLocation.Memory;
-            blockInfo.ReceivedFrom = receivedFrom;
-
-            return blockInfo;
-        }
-
-        public void HintBlock(Keccak hash, BigInteger number)
-        {
-            if (!_storedBlocks.ContainsKey(hash))
+            else
             {
-                _storedBlocks[hash] = new BlockInfo(hash, number);
+                // TODO: if synced but received new block much higher than before then resync
             }
         }
 
-        public TransactionInfo Add(Transaction transaction, PublicKey receivedFrom)
+        public void HintBlock(Keccak hash, BigInteger number, PublicKey receivedFrom)
         {
-            _transactions.TryGetValue(transaction.Hash, out TransactionInfo info);
-            if (info == null)
+            _peers.TryGetValue(receivedFrom, out PeerInfo peerInfo);
+            Debug.Assert(peerInfo != null, $"Received notification from an unknown peer at {nameof(ISynchronizationManager)}");
+            if (peerInfo == null)
             {
-                info = new TransactionInfo(transaction, receivedFrom);
-                info.Quality = _transactionValidator.IsWellFormed(transaction, _specProvider.CurrentSpec) ? Quality.DataValid : Quality.Invalid;
+                throw new InvalidOperationException($"unknown synchronization peer {receivedFrom}");
             }
-
-            return info;
-        }
-
-        public void MarkAsProcessed(Transaction transaction, bool isValid)
-        {
-            _transactions.TryGetValue(transaction.Hash, out TransactionInfo info);
-            if (info != null)
+            
+            peerInfo.NumberAvailable = number;
+            
             {
-                info.Quality = isValid ? Quality.Processed : Quality.Invalid;
+                // TODO: if synced but received new block much higher than before then resync
             }
         }
 
-        public void MarkAsProcessed(Block transaction, bool isValid)
+        public void AddNewTransaction(Transaction transaction, PublicKey receivedFrom)
         {
-            _storedBlocks.TryGetValue(transaction.Hash, out BlockInfo info);
-            if (info != null)
-            {
-                info.BlockQuality = isValid ? Quality.Processed : Quality.Invalid;
-            }
+            _transactionStore.AddPending(transaction);
+            
+            // TODO: reputation
         }
 
-        public void AddPeer(ISynchronizationPeer synchronizationPeer)
+        public async Task AddPeer(ISynchronizationPeer synchronizationPeer)
         {
             _logger.Info("SYNC MANAGER ADDING SYNCHRONIZATION PEER");
-            _peers.TryAdd(synchronizationPeer, null);
+            await RefreshPeerInfo(synchronizationPeer);
         }
 
         public void RemovePeer(ISynchronizationPeer synchronizationPeer)
@@ -233,14 +146,18 @@ namespace Nethermind.Blockchain
         public void Start()
         {
             _cancellationTokenSource = new CancellationTokenSource();
-            _syncTask = Task.Factory.StartNew(async () =>
-                {
-                    while (!_cancellationTokenSource.IsCancellationRequested)
-                    {
-                        await RunRound(_cancellationTokenSource.Token);
-                    }
-                },
-                _cancellationTokenSource.Token);
+            // get a peer with a number higher than ours
+            // sync
+            // repeat
+            
+//            _syncTask = Task.Factory.StartNew(async () =>
+//                {
+//                    while (!_cancellationTokenSource.IsCancellationRequested)
+//                    {
+//                        await RunRound(_cancellationTokenSource.Token);
+//                    }
+//                },
+//                _cancellationTokenSource.Token);
         }
 
         public async Task StopAsync()
@@ -249,58 +166,13 @@ namespace Nethermind.Blockchain
             await _syncTask;
         }
 
-        public int ChainId => _specProvider.ChainId;
-        public Keccak GenesisBlock { get; set; }
-        public Keccak BestBlock { get; set; }
-        public BigInteger BestNumber { get; set; }
-        public BigInteger TotalDifficulty { get; set; }
+        public int ChainId => BlockTree.ChainId;
+        public Block GenesisBlock => BlockTree.GenesisBlock;        
+        public Block HeadBlock => BlockTree.HeadBlock;
+        public BigInteger HeadNumber => BlockTree.HeadBlock.Number;
+        public BigInteger TotalDifficulty => BlockTree.HeadBlock?.TotalDifficulty ?? 0;
         public IBlockTree BlockTree { get; set; }
-
-        private void OnBlockAddedToMain(object sender, BlockEventArgs blockEventArgs)
-        {
-            lock (_syncObject)
-            {
-                Block block = blockEventArgs.Block;
-                if (!_storedBlocks.ContainsKey(block.Hash))
-                {
-                    BlockInfo blockinfo = AddBlock(block, null);
-                    blockinfo.HeaderQuality = blockinfo.BlockQuality = Quality.Processed;
-                }
-            }
-        }
-
-        public Block Load(Keccak hash)
-        {
-            if (!_storedBlocks.ContainsKey(hash))
-            {
-                throw new InvalidOperationException("Trying to load an unknown block.");
-            }
-
-            BlockInfo blockInfo = _storedBlocks[hash];
-            if (blockInfo.BodyLocation == BlockDataLocation.Remote || blockInfo.HeaderLocation == BlockDataLocation.Remote)
-            {
-                throw new InvalidOperationException("Cannot load block that has not been synced yet.");
-            }
-
-            if (blockInfo.BodyLocation == BlockDataLocation.Store || blockInfo.HeaderLocation == BlockDataLocation.Store)
-            {
-                throw new NotImplementedException("Block persistence not implemented yet");
-            }
-
-            return blockInfo.Block;
-        }
-
-        public void MarkProcessed(Keccak hash, bool isValid)
-        {
-            if (!_storedBlocks.ContainsKey(hash))
-            {
-                throw new InvalidOperationException("Trying to mark an unknown block as processed.");
-            }
-
-            BlockInfo blockInfo = _storedBlocks[hash];
-            blockInfo.BlockQuality = isValid ? Quality.Processed : Quality.Invalid;
-        }
-
+       
         private async Task RefreshPeerInfo(ISynchronizationPeer peer)
         {
             Task getHashTask = peer.GetHeadBlockHash();
@@ -309,89 +181,89 @@ namespace Nethermind.Blockchain
             await Task.WhenAll(getHashTask, getNumberTask);
             _logger.Info($"SYNC MANAGER - RECEIVED HEAD BLOCK INFO");
             _peers.AddOrUpdate(
-                peer,
+                peer.NodeId,
                 new PeerInfo(peer, getNumberTask.Result),
                 (p, pi) =>
                 {
                     if (pi == null)
                     {
-                        pi = new PeerInfo(p, getNumberTask.Result);
+                        Debug.Fail("unexpected null peer info");
                     }
                     else
                     {
-                        pi.Number = getNumberTask.Result;
+                        pi.NumberAvailable = getNumberTask.Result;
                     }
 
                     return pi;
                 });
         }
 
-        private async Task RunRound(CancellationToken cancellationToken)
-        {
-            _logger.Debug($"SYNC MANAGER ROUND {_round++}, {_peers.Count} " + (_peers.Count == 1 ? "PEER" : "PEERS"));
-            List<Task> refreshTasks = new List<Task>();
-            foreach (KeyValuePair<ISynchronizationPeer, PeerInfo> keyValuePair in _peers)
-            {
-                refreshTasks.Add(RefreshPeerInfo(keyValuePair.Key));
-            }
+//        private async Task RunRound(CancellationToken cancellationToken)
+//        {
+//            _logger.Debug($"SYNC MANAGER ROUND {_round++}, {_peers.Count} " + (_peers.Count == 1 ? "PEER" : "PEERS"));
+//            List<Task> refreshTasks = new List<Task>();
+//            foreach (KeyValuePair<ISynchronizationPeer, PeerInfo> keyValuePair in _peers)
+//            {
+//                refreshTasks.Add(RefreshPeerInfo(keyValuePair.Key));
+//            }
+//
+//            _logger.Debug($"SYNC MANAGER WAITING FOR REFRESH");
+//            await Task.WhenAny(Task.WhenAll(refreshTasks), AsTask(cancellationToken));
+//            if (cancellationToken.IsCancellationRequested)
+//            {
+//                _logger.Debug($"SYNC MANAGER CANCELLED");
+//                return;
+//            }
+//
+//            _logger.Debug($"SYNC MANAGER WILL GET MISSING BLOCKS NOW FROM {_peers.Count} PEERS");
+//            foreach ((ISynchronizationPeer peer, PeerInfo peerInfo) in _peers)
+//            {
+//                _logger.Debug($"CALCULATING MISSING BLOCKS");
+//                _logger.Debug($"PEER INFO = {peerInfo}, NUMBER = {peerInfo?.Number}, BEST = {HeadNumber}");
+//                BigInteger missingBlocks = (peerInfo?.Number ?? 0) - HeadNumber;
+//                _logger.Debug($"SYNC MANAGER REQUESTING {missingBlocks} BLOCKS FROM PEER");
+//                if (missingBlocks > 0)
+//                {
+//                    await LoadBlocks(peer, HeadBlock, missingBlocks + 1);
+//                }
+//            }
+//
+//            RoundFinished?.Invoke(this, EventArgs.Empty);
+//
+//            _logger.Debug($"SYNC MANAGER WAITING {_delay.TotalMilliseconds}ms");
+//            await Task.Delay(_delay, cancellationToken);
+//        }
 
-            _logger.Debug($"SYNC MANAGER WAITING FOR REFRESH");
-            await Task.WhenAny(Task.WhenAll(refreshTasks), AsTask(cancellationToken));
-            if (cancellationToken.IsCancellationRequested)
-            {
-                _logger.Debug($"SYNC MANAGER CANCELLED");
-                return;
-            }
-
-            _logger.Debug($"SYNC MANAGER WILL GET MISSING BLOCKS NOW FROM {_peers.Count} PEERS");
-            foreach ((ISynchronizationPeer peer, PeerInfo peerInfo) in _peers)
-            {
-                _logger.Debug($"CALCULATING MISSING BLOCKS");
-                _logger.Debug($"PEER INFO = {peerInfo}, NUMBER = {peerInfo?.Number}, BEST = {BestNumber}");
-                BigInteger missingBlocks = (peerInfo?.Number ?? 0) - BestNumber;
-                _logger.Debug($"SYNC MANAGER REQUESTING {missingBlocks} BLOCKS FROM PEER");
-                if (missingBlocks > 0)
-                {
-                    await LoadBlocks(peer, BestBlock, missingBlocks + 1);
-                }
-            }
-
-            RoundFinished?.Invoke(this, EventArgs.Empty);
-
-            _logger.Debug($"SYNC MANAGER WAITING {_delay.TotalMilliseconds}ms");
-            await Task.Delay(_delay, cancellationToken);
-        }
-
-        private async Task<Block[]> LoadBlocks(ISynchronizationPeer peer, Keccak blockHash, BigInteger maxBlocks)
-        {
-            BlockHeader[] headers = await peer.GetBlockHeaders(blockHash, maxBlocks);
-            List<Keccak> hashes = new List<Keccak>();
-            Dictionary<Keccak, BlockHeader> headersByHash = new Dictionary<Keccak, BlockHeader>();
-            for (int i = 0; i < headers.Length; i++)
-            {
-                hashes.Add(headers[i].Hash);
-                headersByHash[headers[i].Hash] = headers[i];
-            }
-
-            Block[] blocks = await peer.GetBlocks(hashes.ToArray());
-            for (int i = 1; i < blocks.Length; i++)
-            {
-                blocks[i].Header = headersByHash[hashes[i]];
-                if (_blockValidator.ValidateSuggestedBlock(blocks[i]))
-                {
-                    AddBlockResult addResult = BlockTree.AddBlock(blocks[i]);
-                    if (addResult == AddBlockResult.Ignored)
-                    {
-                        _logger.Debug($"BLOCK {blocks[i].Number} WAS IGNORED");
-                        break;
-                    }
-                    
-                    _logger.Debug($"BLOCK {blocks[i].Number} WAS ADDED TO THE CHAIN");
-                }
-            }
-
-            return blocks;
-        }
+//        private async Task<Block[]> LoadBlocks(ISynchronizationPeer peer, Keccak blockHash, BigInteger maxBlocks)
+//        {
+//            BlockHeader[] headers = await peer.GetBlockHeaders(blockHash, maxBlocks);
+//            List<Keccak> hashes = new List<Keccak>();
+//            Dictionary<Keccak, BlockHeader> headersByHash = new Dictionary<Keccak, BlockHeader>();
+//            for (int i = 0; i < headers.Length; i++)
+//            {
+//                hashes.Add(headers[i].Hash);
+//                headersByHash[headers[i].Hash] = headers[i];
+//            }
+//
+//            Block[] blocks = await peer.GetBlocks(hashes.ToArray());
+//            for (int i = 1; i < blocks.Length; i++)
+//            {
+//                blocks[i].Header = headersByHash[hashes[i]];
+//                if (_blockValidator.ValidateSuggestedBlock(blocks[i]))
+//                {
+//                    AddBlockResult addResult = BlockTree.AddBlock(blocks[i]);
+//                    if (addResult == AddBlockResult.UnknownParent)
+//                    {
+//                        _logger.Debug($"BLOCK {blocks[i].Number} WAS IGNORED");
+//                        break;
+//                    }
+//                    
+//                    _logger.Debug($"BLOCK {blocks[i].Number} WAS ADDED TO THE CHAIN");
+//                }
+//            }
+//
+//            return blocks;
+//        }
 
         public EventHandler RoundFinished;
 
@@ -405,14 +277,14 @@ namespace Nethermind.Blockchain
 
         private class PeerInfo
         {
-            public PeerInfo(ISynchronizationPeer peer, BigInteger bestBlockNumber)
+            public PeerInfo(ISynchronizationPeer peer, BigInteger bestRemoteBlockNumber)
             {
                 Peer = peer;
-                Number = bestBlockNumber;
+                NumberAvailable = bestRemoteBlockNumber;
             }
 
             public ISynchronizationPeer Peer { get; set; }
-            public BigInteger? Number { get; set; }
+            public BigInteger NumberAvailable { get; set; }
         }
     }
 }
