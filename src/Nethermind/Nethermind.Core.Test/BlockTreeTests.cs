@@ -55,7 +55,7 @@ namespace Nethermind.Core.Test
         }
 
         [Test]
-        public void Shall_notify_on_block_after_genesis()
+        public void Shall_notify_on_new_head_block_after_genesis()
         {
             bool hasNotified = false;
             BlockTree blockTree = new BlockTree(ChainId.Olympic, NullLogger.Instance);
@@ -70,21 +70,39 @@ namespace Nethermind.Core.Test
             Assert.True(hasNotified, "notification");
             Assert.AreEqual(AddBlockResult.Added, result, "result");
         }
+        
+        [Test]
+        public void Shall_notify_on_new_suggested_block_after_genesis()
+        {
+            bool hasNotified = false;
+            BlockTree blockTree = new BlockTree(ChainId.Olympic, NullLogger.Instance);
+            Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
+            Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
+            blockTree.AddBlock(block0);
+            blockTree.NewBestSuggestedBlock += (sender, args) => { hasNotified = true; };
+            var result = blockTree.AddBlock(block1);
+
+            Assert.True(hasNotified, "notification");
+            Assert.AreEqual(AddBlockResult.Added, result, "result");
+        }
 
         [Test]
         public void Shall_not_notify_but_add_on_lower_difficulty()
         {
-            bool hasNotified = false;
+            bool hasNotifiedBest = false;
+            bool hasNotifiedHead = false;
             BlockTree blockTree = new BlockTree(ChainId.Olympic, NullLogger.Instance);
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
             Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(3).WithParent(block0).TestObject;
             Block block2 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
             blockTree.AddBlock(block0);
             blockTree.AddBlock(block1);
-            blockTree.NewHeadBlock += (sender, args) => { hasNotified = true; };
+            blockTree.NewHeadBlock += (sender, args) => { hasNotifiedHead = true; };
+            blockTree.NewBestSuggestedBlock += (sender, args) => { hasNotifiedBest = true; };
             var result = blockTree.AddBlock(block2);
 
-            Assert.False(hasNotified, "notification");
+            Assert.False(hasNotifiedBest, "notification best");
+            Assert.False(hasNotifiedHead, "notification head");
             Assert.AreEqual(AddBlockResult.Added, result, "result");
         }
 
