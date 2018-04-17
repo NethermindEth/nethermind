@@ -28,6 +28,7 @@ namespace Nethermind.Blockchain
     {
         int ChainId { get; }
         Block GenesisBlock { get; }
+        Block BestSuggestedBlock { get; }
         Block HeadBlock { get; }
 
         AddBlockResult AddBlock(Block block);

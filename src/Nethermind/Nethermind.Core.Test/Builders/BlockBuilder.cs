@@ -58,6 +58,8 @@ namespace Nethermind.Core.Test.Builders
             TestObject.Header.ParentHash = parent;
             return this;
         }
+        
+        public BlockBuilder Genesis => WithNumber(0);
 
         protected override void BeforeReturn()
         {

@@ -33,6 +33,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             DecodedRlp decodedRlp = Rlp.Decode(new Rlp(bytes));
             NewBlockMessage message = new NewBlockMessage();
             message.Block = Rlp.Decode<Block>(decodedRlp.GetSequence(0));
+            message.Block.Header.RecomputeHash();
             message.TotalDifficulty = decodedRlp.GetUnsignedBigInteger(1);
             return message;
         }

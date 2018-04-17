@@ -27,9 +27,10 @@ namespace Nethermind.Blockchain
     {
         PublicKey NodeId { get; }
         Task<Block[]> GetBlocks(Keccak[] blockHashes);
-        Task<BlockHeader[]> GetBlockHeaders(Keccak blockHash, BigInteger maxBlocks);
+        Task<BlockHeader[]> GetBlockHeaders(Keccak blockHash, int maxBlocks, int skip);
         Task<Keccak> GetHeadBlockHash();
         Task<BigInteger> GetHeadBlockNumber();
+        void SendNewBlock(Block block);
         Task Disconnect();
     }
 }

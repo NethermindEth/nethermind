@@ -335,6 +335,19 @@ namespace Nethermind.Core.Test
         }
         
         [Test]
+        public void Best_suggested_block_gets_updated()
+        {
+            BlockTree blockTree = new BlockTree(ChainId.Olympic, NullLogger.Instance);
+            Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
+            Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
+            AddToMain(blockTree, block0);
+            blockTree.AddBlock(block1);
+
+            Assert.AreEqual(block0, blockTree.HeadBlock, "head");
+            Assert.AreEqual(block1, blockTree.BestSuggestedBlock, "best");
+        }
+        
+        [Test]
         public void Sets_genesis_block()
         {
             BlockTree blockTree = new BlockTree(ChainId.Olympic, NullLogger.Instance);

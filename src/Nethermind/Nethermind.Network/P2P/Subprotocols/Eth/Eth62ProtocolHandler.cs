@@ -144,6 +144,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             _remoteHeadBlockHash = status.BestHash;
             _remoteHeadBlockDifficulty = status.TotalDifficulty;
 
+            if (status.GenesisHash != _sync.GenesisBlock.Hash)
+            {
+                Logger.Warn($"Connected peer's genesis hash {status.GenesisHash} differes from {_sync.GenesisBlock.Hash}");
+                throw new InvalidOperationException("genesis hash mismatch");
+            }
+
             Debug.Assert(_statusSent, "Expecting Init() to have been called by this point");
             ProtocolInitialized?.Invoke(this, EventArgs.Empty);
         }
@@ -232,7 +238,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         private void Handle(NewBlockMessage newBlock)
         {
             _sync.AddNewBlock(newBlock.Block, P2PSession.RemoteNodeId);
-            // TODO: still thinking where to handle invalid new blocks, at the moment the plan is that it will be managed by sync manager
         }
 
         public void Close()
@@ -293,12 +298,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             throw new TimeoutException($"Request timeout in {nameof(GetBlockBodiesMessage)}");
         }
 
-        async Task<BlockHeader[]> ISynchronizationPeer.GetBlockHeaders(Keccak blockHash, BigInteger maxBlocks)
+        async Task<BlockHeader[]> ISynchronizationPeer.GetBlockHeaders(Keccak blockHash, int maxBlocks, int skip)
         {
             var msg = new GetBlockHeadersMessage();
             msg.MaxHeaders = maxBlocks;
             msg.Reverse = 0;
-            msg.Skip = 0;
+            msg.Skip = skip;
             msg.StartingBlockHash = blockHash;
 
             BlockHeader[] headers = await SendRequest(msg);
@@ -330,6 +335,17 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
             BlockHeader[] headers = await SendRequest(msg);
             return headers[0]?.Number ?? 0;
+        }
+
+        public void SendNewBlock(Block block)
+        {
+            Debug.Assert(block.TotalDifficulty != null, $"blocks with null {nameof(Block.TotalDifficulty)} should never be propagated");
+            
+            NewBlockMessage newBlockMessage = new NewBlockMessage();
+            newBlockMessage.Block = block;
+            newBlockMessage.TotalDifficulty = block.TotalDifficulty ?? 0;
+            
+            Send(newBlockMessage);
         }
 
         public Task Disconnect()

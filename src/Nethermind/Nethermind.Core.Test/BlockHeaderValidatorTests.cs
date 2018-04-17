@@ -17,7 +17,6 @@
  */
 
 using System;
-using System.Collections.Generic;
 using System.Numerics;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Difficulty;
@@ -30,47 +29,6 @@ using NUnit.Framework;
 
 namespace Nethermind.Core.Test
 {
-    public class TestLogger : ILogger
-    {
-        public List<string> LogList { get; set; } = new List<string>();
-        
-        public void Log(string text)
-        {
-            LogList.Add(text);
-        }
-
-        public void Info(string text)
-        {
-            LogList.Add(text);
-        }
-
-        public void Warn(string text)
-        {
-            LogList.Add(text);
-        }
-
-        public void Debug(string text)
-        {
-            LogList.Add(text);
-        }
-
-        public void Trace(string text)
-        {
-            LogList.Add(text);
-        }
-
-        public void Error(string text, Exception ex = null)
-        {
-            LogList.Add(text);
-        }
-
-        public bool IsInfo => true;
-        public bool IsWarn => true;
-        public bool IsDebug => true;
-        public bool IsTrace => true;
-        public bool IsError => true;
-    }
-    
     [TestFixture]
     public class BlockHeaderValidatorTests
     {

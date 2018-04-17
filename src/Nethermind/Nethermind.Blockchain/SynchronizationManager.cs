@@ -24,52 +24,46 @@ using System.Linq;
 using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
+using MathNet.Numerics;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Specs;
 
 namespace Nethermind.Blockchain
 {
     // TODO: forks
     public class SynchronizationManager : ISynchronizationManager
     {
-        private readonly ITransactionStore _transactionStore;
-        private readonly ITransactionValidator _transactionValidator;
+        public const int BatchSize = 64;
         private readonly IBlockValidator _blockValidator;
         private readonly IHeaderValidator _headerValidator;
         private readonly ILogger _logger;
         private readonly ConcurrentDictionary<PublicKey, PeerInfo> _peers = new ConcurrentDictionary<PublicKey, PeerInfo>();
-
+        private readonly ITransactionStore _transactionStore;
+        private readonly ITransactionValidator _transactionValidator;
         private CancellationTokenSource _cancellationTokenSource;
-
-        private Task _syncTask;
+        private Task _currentSyncTask;
+        private bool _isSyncing;
 
         public SynchronizationManager(
             IBlockTree blockTree,
             IBlockValidator blockValidator,
             IHeaderValidator headerValidator,
-            ITransactionStore transactionStore,            
+            ITransactionStore transactionStore,
             ITransactionValidator transactionValidator,
             ILogger logger)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _transactionStore = transactionStore ?? throw new ArgumentNullException(nameof(transactionStore));
-            _transactionValidator = transactionValidator?? throw new ArgumentNullException(nameof(transactionValidator));
+            _transactionValidator = transactionValidator ?? throw new ArgumentNullException(nameof(transactionValidator));
 
             BlockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
             _headerValidator = headerValidator ?? throw new ArgumentNullException(nameof(headerValidator));
             BlockTree.NewHeadBlock += OnNewHeadBlock;
-            
-            _logger.Info($"Initialized {nameof(SynchronizationManager)} with genesis block {HeadBlock}");
-        }
 
-        private void OnNewHeadBlock(object sender, BlockEventArgs blockEventArgs)
-        {
-            Block block = blockEventArgs.Block;
-            // TODO: propagate to peers with Number < block.Number!
+            _logger.Info($"Initialized {nameof(SynchronizationManager)} with genesis block {HeadBlock}");
         }
 
         public Block Find(Keccak hash)
@@ -95,7 +89,7 @@ namespace Nethermind.Blockchain
             {
                 throw new InvalidOperationException($"unknown synchronization peer {receivedFrom}");
             }
-            
+
             peerInfo.NumberAvailable = block.Number;
 
             if (block.Number == HeadNumber + 1)
@@ -105,7 +99,7 @@ namespace Nethermind.Blockchain
             }
             else
             {
-                // TODO: if synced but received new block much higher than before then resync
+                RunSync();
             }
         }
 
@@ -117,9 +111,9 @@ namespace Nethermind.Blockchain
             {
                 throw new InvalidOperationException($"unknown synchronization peer {receivedFrom}");
             }
-            
+
             peerInfo.NumberAvailable = number;
-            
+
             {
                 // TODO: if synced but received new block much higher than before then resync
             }
@@ -128,7 +122,7 @@ namespace Nethermind.Blockchain
         public void AddNewTransaction(Transaction transaction, PublicKey receivedFrom)
         {
             _transactionStore.AddPending(transaction);
-            
+
             // TODO: reputation
         }
 
@@ -136,6 +130,10 @@ namespace Nethermind.Blockchain
         {
             _logger.Info("SYNC MANAGER ADDING SYNCHRONIZATION PEER");
             await RefreshPeerInfo(synchronizationPeer);
+            if (!_isSyncing)
+            {
+                RunSync();
+            }
         }
 
         public void RemovePeer(ISynchronizationPeer synchronizationPeer)
@@ -146,11 +144,12 @@ namespace Nethermind.Blockchain
         public void Start()
         {
             _cancellationTokenSource = new CancellationTokenSource();
+            RunSync();
             // get a peer with a number higher than ours
             // sync
             // repeat
-            
-//            _syncTask = Task.Factory.StartNew(async () =>
+
+//            _currentSyncTask = Task.Factory.StartNew(async () =>
 //                {
 //                    while (!_cancellationTokenSource.IsCancellationRequested)
 //                    {
@@ -163,23 +162,135 @@ namespace Nethermind.Blockchain
         public async Task StopAsync()
         {
             _cancellationTokenSource.Cancel();
-            await _syncTask;
+            await _currentSyncTask;
         }
 
         public int ChainId => BlockTree.ChainId;
-        public Block GenesisBlock => BlockTree.GenesisBlock;        
+        public Block GenesisBlock => BlockTree.GenesisBlock;
         public Block HeadBlock => BlockTree.HeadBlock;
         public BigInteger HeadNumber => BlockTree.HeadBlock.Number;
         public BigInteger TotalDifficulty => BlockTree.HeadBlock?.TotalDifficulty ?? 0;
         public IBlockTree BlockTree { get; set; }
-       
+
+        private void OnNewHeadBlock(object sender, BlockEventArgs blockEventArgs)
+        {
+            Block block = blockEventArgs.Block;
+            foreach ((PublicKey nodeId, PeerInfo peerInfo) in _peers)
+            {
+                if (peerInfo.NumberAvailable < block.Number)
+                {
+                    peerInfo.Peer.SendNewBlock(block);
+                }
+            }
+        }
+
+        private void RunSync()
+        {
+            SyncAsync().ContinueWith(t =>
+            {
+                if (t.IsCompleted)
+                {
+                    if (_logger.IsInfo)
+                    {
+                        _logger.Info($"Sync process finished. Best block now is {BlockTree.BestSuggestedBlock.Hash} ({BlockTree.BestSuggestedBlock.Number})");
+                    }
+                }
+                else if (t.IsCanceled)
+                {
+                    if (_logger.IsInfo)
+                    {
+                        _logger.Info($"Sync cancelled");
+                    }
+                }
+                else if (t.IsFaulted)
+                {
+                    if (_logger.IsError)
+                    {
+                        _logger.Error($"Error in the sync process", t.Exception);
+                    }
+                }
+            });
+        }
+
+        private async Task SyncAsync() // soooo funny...
+        {
+            _isSyncing = true;
+            bool wasCancelled = false;
+            if (_peers.Any())
+            {
+                PeerInfo peerInfo = _peers.OrderBy(p => p.Value.NumberAvailable).Last().Value;
+                ISynchronizationPeer peer = peerInfo.Peer;
+                BigInteger bestNumber = BlockTree.BestSuggestedBlock.Number;
+                while (peerInfo.NumberAvailable > bestNumber)
+                {
+                    BigInteger blocksLeft = peerInfo.NumberAvailable - bestNumber;
+                    // TODO: fault handling on tasks
+
+                    Task<BlockHeader[]> headersTask = peer.GetBlockHeaders(peerInfo.LastSyncedHash ?? GenesisBlock.Hash, (int)(BigInteger.Min(blocksLeft, BatchSize) + (bestNumber.IsZero ? 1 : 0)), bestNumber.IsZero ? 0 : 1);
+                    _currentSyncTask = headersTask;
+                    BlockHeader[] headers = await headersTask;
+                    if (_currentSyncTask.IsCanceled)
+                    {
+                        wasCancelled = true;
+                        break;
+                    }
+
+                    List<Keccak> hashes = new List<Keccak>();
+                    Dictionary<Keccak, BlockHeader> headersByHash = new Dictionary<Keccak, BlockHeader>();
+                    for (int i = 0; i < headers.Length; i++)
+                    {
+                        hashes.Add(headers[i].Hash);
+                        headersByHash[headers[i].Hash] = headers[i];
+                    }
+
+                    Task<Block[]> bodiesTask = peer.GetBlocks(hashes.ToArray());
+                    _currentSyncTask = bodiesTask;
+                    Block[] blocks = await bodiesTask;
+                    if (_currentSyncTask.IsCanceled)
+                    {
+                        wasCancelled = true;
+                        break;
+                    }
+
+                    for (int i = 1; i < blocks.Length; i++)
+                    {
+                        blocks[i].Header = headersByHash[hashes[i]];
+                        if (_blockValidator.ValidateSuggestedBlock(blocks[i]))
+                        {
+                            AddBlockResult addResult = BlockTree.AddBlock(blocks[i]);
+                            peerInfo.NumberReceived = blocks[i].Number;
+                            if (addResult == AddBlockResult.UnknownParent)
+                            {
+                                _logger.Debug($"BLOCK {blocks[i].Number} WAS IGNORED");
+                                break;
+                            }
+
+                            _logger.Debug($"BLOCK {blocks[i].Number} WAS ADDED TO THE CHAIN");
+                        }
+                    }
+
+                    bestNumber = BlockTree.BestSuggestedBlock.Number;
+                }
+
+                if (!wasCancelled)
+                {
+                    peerInfo.IsSynced = true;
+                    Synced?.Invoke(this, EventArgs.Empty);
+                }
+            }
+
+            _isSyncing = false;
+        }
+
+        public event EventHandler Synced;
+
         private async Task RefreshPeerInfo(ISynchronizationPeer peer)
         {
-            Task getHashTask = peer.GetHeadBlockHash();
-            _logger.Info($"SYNC MANAGER - GETTING HEAD BLOCK INFO");
+            Task<Keccak> getHashTask = peer.GetHeadBlockHash();
+            _logger.Info("SYNC MANAGER - GETTING HEAD BLOCK INFO");
             Task<BigInteger> getNumberTask = peer.GetHeadBlockNumber();
             await Task.WhenAll(getHashTask, getNumberTask);
-            _logger.Info($"SYNC MANAGER - RECEIVED HEAD BLOCK INFO");
+            _logger.Info("SYNC MANAGER - RECEIVED HEAD BLOCK INFO");
             _peers.AddOrUpdate(
                 peer.NodeId,
                 new PeerInfo(peer, getNumberTask.Result),
@@ -265,7 +376,7 @@ namespace Nethermind.Blockchain
 //            return blocks;
 //        }
 
-        public EventHandler RoundFinished;
+//        public EventHandler RoundFinished;
 
         // https://stackoverflow.com/questions/27238232/how-can-i-cancel-task-whenall/27238463
         private Task AsTask(CancellationToken token)
@@ -283,8 +394,11 @@ namespace Nethermind.Blockchain
                 NumberAvailable = bestRemoteBlockNumber;
             }
 
-            public ISynchronizationPeer Peer { get; set; }
+            public ISynchronizationPeer Peer { get; }
             public BigInteger NumberAvailable { get; set; }
+            public BigInteger NumberReceived { get; set; }
+            public Keccak LastSyncedHash { get; set; }
+            public bool IsSynced { get; set; }
         }
     }
 }

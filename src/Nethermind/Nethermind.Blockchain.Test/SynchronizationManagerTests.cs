@@ -17,6 +17,8 @@
  */
 
 using System;
+using System.Collections;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Difficulty;
@@ -48,6 +50,15 @@ namespace Nethermind.Blockchain.Test
             BlockValidator blockValidator = new BlockValidator(transactionValidator, headerValidator, ommersValidator, specProvider, NullLogger.Instance);
 
             _genesisBlock = Build.A.Block.WithNumber(0).TestObject;
+             Block headBlock = Build.A.Block.WithNumber(3).TestObject;
+            
+            Queue<Block> blocks = new Queue<Block>();
+            blocks.Enqueue(_genesisBlock);
+            blocks.Enqueue(headBlock);
+            
+            _blockTree.BestSuggestedBlock.Returns(ci => blocks.Dequeue());
+            _blockTree.GenesisBlock.Returns(_genesisBlock);
+            
             _manager = new SynchronizationManager(_blockTree, blockValidator, headerValidator, txStore, transactionValidator, new ConsoleAsyncLogger());
         }
 
@@ -60,12 +71,10 @@ namespace Nethermind.Blockchain.Test
         [Test]
         public async Task On_new_peer_asks_about_the_best_block()
         {
-            ISynchronizationPeer peer = Substitute.For<ISynchronizationPeer>();
-            peer.GetHeadBlockHash().Returns(TestObject.KeccakA);
-            peer.GetHeadBlockNumber().Returns(3);
+            ISynchronizationPeer peer = BuildSynchronizatioPeer(3);
 
             ManualResetEvent resetEvent = new ManualResetEvent(false);
-            _manager.RoundFinished += (sender, args) => { resetEvent.Set(); };
+            _manager.Synced += (sender, args) => { resetEvent.Set(); };
             await _manager.AddPeer(peer);
             _manager.Start();
             resetEvent.WaitOne(_delay * 10);
@@ -73,19 +82,26 @@ namespace Nethermind.Blockchain.Test
             await peer.Received().GetHeadBlockNumber();
         }
 
+        private static ISynchronizationPeer BuildSynchronizatioPeer(int numberOfBlocks)
+        {
+            ISynchronizationPeer peer = Substitute.For<ISynchronizationPeer>();
+            peer.NodeId.Returns(TestObject.PublicKeyA);
+            peer.GetHeadBlockHash().Returns(TestObject.KeccakA);
+            peer.GetHeadBlockNumber().Returns(numberOfBlocks);
+            return peer;
+        }
+
         [Test]
         public async Task  On_new_peer_retrieves_missing_blocks()
         {
-            ISynchronizationPeer peer = Substitute.For<ISynchronizationPeer>();
-            peer.GetHeadBlockHash().Returns(TestObject.KeccakA);
-            peer.GetHeadBlockNumber().Returns(3);
+            ISynchronizationPeer peer = BuildSynchronizatioPeer(3);
 
             ManualResetEvent resetEvent = new ManualResetEvent(false);
-            _manager.RoundFinished += (sender, args) => { resetEvent.Set(); };
+            _manager.Synced += (sender, args) => { resetEvent.Set(); };
             await _manager.AddPeer(peer);
             _manager.Start();
             resetEvent.WaitOne(_delay * 10);
-            await peer.Received().GetBlockHeaders(_genesisBlock.Hash, 4);
+            await peer.Received().GetBlockHeaders(_genesisBlock.Hash, 4, 0);
         }
     }
 }

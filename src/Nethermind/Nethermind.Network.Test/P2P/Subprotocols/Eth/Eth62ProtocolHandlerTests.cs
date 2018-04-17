@@ -38,6 +38,9 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
             
             var session = Substitute.For<IP2PSession>();
             var syncManager = Substitute.For<ISynchronizationManager>();
+            Block genesisBlock = Build.A.Block.Genesis.TestObject;
+            syncManager.HeadBlock.Returns(genesisBlock);
+            syncManager.GenesisBlock.Returns(genesisBlock);
             var handler = new Eth62ProtocolHandler(session, svc, syncManager, NullLogger.Instance);
             handler.Init();
             
@@ -48,6 +51,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
             msg.Reverse = 1;
             
             var statusMsg = new StatusMessage();
+            statusMsg.GenesisHash = genesisBlock.Hash;
             
             handler.HandleMessage(new Packet(Protocol.Eth, statusMsg.PacketType, svc.Serialize(statusMsg)));
             handler.HandleMessage(new Packet(Protocol.Eth, msg.PacketType, svc.Serialize(msg)));

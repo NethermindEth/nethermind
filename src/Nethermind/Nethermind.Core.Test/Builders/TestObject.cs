@@ -35,5 +35,10 @@ namespace Nethermind.Core.Test.Builders
         public static PrivateKey PrivateKeyB = Build.A.PrivateKey.TestObject;
         public static PrivateKey PrivateKeyC = Build.A.PrivateKey.TestObject;
         public static PrivateKey PrivateKeyD = Build.A.PrivateKey.TestObject;
+        
+        public static PublicKey PublicKeyA = PrivateKeyA.PublicKey;
+        public static PublicKey PublicKeyB = PrivateKeyB.PublicKey;
+        public static PublicKey PublicKeyC = PrivateKeyC.PublicKey;
+        public static PublicKey PublicKeyD = PrivateKeyD.PublicKey;
     }
 }

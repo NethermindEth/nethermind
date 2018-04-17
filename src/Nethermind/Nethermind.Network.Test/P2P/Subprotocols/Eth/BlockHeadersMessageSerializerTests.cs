@@ -17,6 +17,7 @@
  */
 
 using Nethermind.Core;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P.Subprotocols.Eth;
 using NUnit.Framework;
 
@@ -29,12 +30,13 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
         public void Roundtrip()
         {
             BlockHeadersMessage message = new BlockHeadersMessage();
-            message.BlockHeaders = new BlockHeader[0];
-            
+            message.BlockHeaders = new[] {Build.A.BlockHeader.TestObject};
+
             BlockHeadersMessageSerializer serializer = new BlockHeadersMessageSerializer();
             byte[] bytes = serializer.Serialize(message);
             BlockHeadersMessage deserialized = serializer.Deserialize(bytes);
             Assert.AreEqual(message.BlockHeaders.Length, deserialized.BlockHeaders.Length, "length");
+            Assert.AreEqual(message.BlockHeaders[0].Hash, deserialized.BlockHeaders[0].Hash, "hash");
         }
     }
 }

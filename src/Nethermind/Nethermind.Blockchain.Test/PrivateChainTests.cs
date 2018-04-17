@@ -22,6 +22,7 @@ using System.IO;
 using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
+using Castle.Core.Logging;
 using Nethermind.Blockchain.Difficulty;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
@@ -41,7 +42,7 @@ namespace Nethermind.Blockchain.Test
         public async Task Build_some_chain()
         {
             /* logging & instrumentation */
-            var logger = new ConsoleAsyncLogger();
+            var logger = new SimpleConsoleLogger();
 
             /* spec */
             var blockMiningTime = TimeSpan.FromMilliseconds(500);
@@ -49,10 +50,10 @@ namespace Nethermind.Blockchain.Test
             var specProvider = RopstenSpecProvider.Instance;
 
             /* store & validation */
-            var blockStore = new BlockTree(RopstenSpecProvider.Instance.ChainId, logger);
+            var blockTree = new BlockTree(RopstenSpecProvider.Instance.ChainId, logger);
             var difficultyCalculator = new DifficultyCalculator(specProvider);
-            var headerValidator = new HeaderValidator(difficultyCalculator, blockStore, sealEngine, specProvider, logger);
-            var ommersValidator = new OmmersValidator(blockStore, headerValidator, logger);
+            var headerValidator = new HeaderValidator(difficultyCalculator, blockTree, sealEngine, specProvider, logger);
+            var ommersValidator = new OmmersValidator(blockTree, headerValidator, logger);
             var transactionValidator = new TransactionValidator(new SignatureValidator(ChainId.Ropsten));
             var blockValidator = new BlockValidator(transactionValidator, headerValidator, ommersValidator, specProvider, logger);
 
@@ -67,12 +68,12 @@ namespace Nethermind.Blockchain.Test
             /* blockchain processing */
             var ethereumSigner = new EthereumSigner(specProvider, logger);
             var transactionStore = new TransactionStore();
-            var blockhashProvider = new BlockhashProvider(blockStore);
+            var blockhashProvider = new BlockhashProvider(blockTree);
             var virtualMachine = new VirtualMachine(specProvider, stateProvider, storageProvider, blockhashProvider, logger);
             var processor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, ethereumSigner, logger);
             var rewardCalculator = new RewardCalculator(specProvider);
             var blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, processor, storageDbProvider, stateProvider, storageProvider, transactionStore, logger);
-            var blockchainProcessor = new BlockchainProcessor(blockStore, sealEngine, transactionStore, difficultyCalculator, blockProcessor, logger);
+            var blockchainProcessor = new BlockchainProcessor(blockTree, sealEngine, transactionStore, difficultyCalculator, blockProcessor, logger);
 
             /* load ChainSpec and init */
             ChainSpecLoader loader = new ChainSpecLoader(new UnforgivingJsonSerializer());
@@ -98,7 +99,7 @@ namespace Nethermind.Blockchain.Test
             testTransactionsGenerator.Start();
             
             blockchainProcessor.Start();
-            blockStore.AddBlock(chainSpec.Genesis);
+            blockTree.AddBlock(chainSpec.Genesis);
             
             BigInteger roughlyNumberOfBlocks = 6;
             Thread.Sleep(blockMiningTime * (int)roughlyNumberOfBlocks);

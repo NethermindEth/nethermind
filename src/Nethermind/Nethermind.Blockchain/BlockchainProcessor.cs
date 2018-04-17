@@ -372,7 +372,7 @@ namespace Nethermind.Blockchain
 
                 foreach (Block block in blocksToBeAddedToMain)
                 {
-                    if (_blockTree.WasProcessed(block.Hash))
+                    if (!forMining && _blockTree.WasProcessed(block.Hash))
                     {
                         stateRoot = block.Header.StateRoot;
                         if (_logger.IsDebug)

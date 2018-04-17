@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P.Subprotocols.Eth;
 using NUnit.Framework;
 
@@ -29,11 +30,12 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
         {
             NewBlockMessage message = new NewBlockMessage();
             message.TotalDifficulty = 131200;
+            message.Block = Build.A.Block.Genesis.TestObject;
             NewBlockMessageSerializer serializer = new NewBlockMessageSerializer();
             byte[] bytes = serializer.Serialize(message);
             NewBlockMessage deserialized = serializer.Deserialize(bytes);
-            Assert.AreEqual(message.Block, deserialized.Block, "block");
             Assert.AreEqual(message.TotalDifficulty, deserialized.TotalDifficulty, "total difficulty");
+            Assert.AreEqual(message.Block.Hash, deserialized.Block.Hash, "hash");
         }
     }
 }
