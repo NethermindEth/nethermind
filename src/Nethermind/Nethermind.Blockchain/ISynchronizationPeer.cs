@@ -31,6 +31,7 @@ namespace Nethermind.Blockchain
         Task<Keccak> GetHeadBlockHash();
         Task<BigInteger> GetHeadBlockNumber();
         void SendNewBlock(Block block);
+        void SendNewTransaction(Transaction transaction);
         Task Disconnect();
     }
 }

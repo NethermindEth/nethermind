@@ -341,11 +341,19 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         {
             Debug.Assert(block.TotalDifficulty != null, $"blocks with null {nameof(Block.TotalDifficulty)} should never be propagated");
             
-            NewBlockMessage newBlockMessage = new NewBlockMessage();
-            newBlockMessage.Block = block;
-            newBlockMessage.TotalDifficulty = block.TotalDifficulty ?? 0;
+            NewBlockMessage msg = new NewBlockMessage();
+            msg.Block = block;
+            msg.TotalDifficulty = block.TotalDifficulty ?? 0;
             
-            Send(newBlockMessage);
+            Send(msg);
+        }
+
+        public void SendNewTransaction(Transaction transaction)
+        {
+            Debug.Assert(transaction.Hash != null, $"transaction with null {nameof(transaction.Hash)} should never be propagated");
+            
+            TransactionsMessage msg = new TransactionsMessage(transaction);
+            Send(msg);
         }
 
         public Task Disconnect()

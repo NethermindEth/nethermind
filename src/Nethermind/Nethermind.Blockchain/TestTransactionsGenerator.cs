@@ -31,15 +31,22 @@ namespace Nethermind.Blockchain
         private readonly byte[] _privateKeyBytes = new byte[32];
         private readonly Random _random = new Random();
         private readonly IEthereumSigner _signer;
+        private readonly TimeSpan _txDelay;
         private readonly ITransactionStore _store;
         private readonly Timer _timer = new Timer();
 
         private int _count;
-
+        
+        private TimeSpan RandomizeDelay()
+        {
+            return _txDelay + TimeSpan.FromMilliseconds((_random.Next((int)_txDelay.TotalMilliseconds) - (int)_txDelay.TotalMilliseconds / 2));
+        }
+        
         public TestTransactionsGenerator(ITransactionStore store, IEthereumSigner signer, TimeSpan txDelay, ILogger logger)
         {
             _store = store;
             _signer = signer;
+            _txDelay = txDelay;
             _logger = logger;
 
             if (txDelay > TimeSpan.FromMilliseconds(0))
@@ -58,6 +65,7 @@ namespace Nethermind.Blockchain
 
         private void TimerOnElapsed(object sender, ElapsedEventArgs elapsedEventArgs)
         {
+            _timer.Interval = RandomizeDelay().TotalMilliseconds;
             _logger.Debug($"Generating a test transaction for testing ({_count}).");
 
             Transaction tx = new Transaction();

@@ -30,7 +30,7 @@ namespace Nethermind.Blockchain
         private readonly ConcurrentDictionary<Keccak, Transaction> _pending = new ConcurrentDictionary<Keccak, Transaction>();
         private readonly ConcurrentDictionary<Keccak, Transaction> _transactions = new ConcurrentDictionary<Keccak, Transaction>();
         private readonly ConcurrentDictionary<Keccak, TransactionReceipt> _transactionRecepits = new ConcurrentDictionary<Keccak, TransactionReceipt>();
-        private readonly ConcurrentBag<Keccak> _processedTransations = new ConcurrentBag<Keccak>();
+        private readonly ConcurrentBag<Keccak> _processedTransactions = new ConcurrentBag<Keccak>();
         private readonly ConcurrentDictionary<Keccak, Keccak> _blockHashes = new ConcurrentDictionary<Keccak, Keccak>();
 
         public void AddTransaction(Transaction transaction)
@@ -43,7 +43,7 @@ namespace Nethermind.Blockchain
         {
             _transactionRecepits[transactionHash] = transactionReceipt;
             _blockHashes[transactionHash] = blockHash;
-            _processedTransations.Add(transactionHash);
+            _processedTransactions.Add(transactionHash);
         }
 
         public Transaction GetTransaction(Keccak transactionHash)
@@ -58,7 +58,7 @@ namespace Nethermind.Blockchain
 
         public bool WasProcessed(Keccak transactionHash)
         {
-            return _processedTransations.Contains(transactionHash);
+            return _processedTransactions.Contains(transactionHash);
         }
 
         public Keccak GetBlockHash(Keccak transactionHash)
@@ -66,15 +66,34 @@ namespace Nethermind.Blockchain
             return _blockHashes.TryGetValue(transactionHash, out var blockHash) ? blockHash : null;
         }
 
-        public void AddPending(Transaction transaction)
+        public AddTransactionResult AddPending(Transaction transaction)
         {
+            if (_processedTransactions.Contains(transaction.Hash))
+            {
+                return AddTransactionResult.AlreadyProcessed;
+            }
+
+            if (_pending.ContainsKey(transaction.Hash))
+            {
+                return AddTransactionResult.AlreadyKnown;
+            }
+
             _pending[transaction.Hash] = transaction;
+            NewPending?.Invoke(this, new TransactionEventArgs(transaction));
+            return AddTransactionResult.Added;
+        }
+
+        public void RemovePending(Transaction transaction)
+        {
+            if (_pending.ContainsKey(transaction.Hash))
+            {
+                _pending.TryRemove(transaction.Hash, out Transaction _);
+            }
         }
 
         public Transaction[] GetAllPending()
         {
             var result = _pending.Values.ToArray();
-            _pending.Clear(); // TODO: while testing this just clears
             return result;
         }
 

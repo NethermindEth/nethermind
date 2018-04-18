@@ -139,11 +139,11 @@ namespace Nethermind.PeerConsole
         {
             /* spec */
             var blockMiningTime = TimeSpan.FromMilliseconds(miningDelay);
-            var transactionDelay = TimeSpan.FromMilliseconds(miningDelay);
+            var transactionDelay = TimeSpan.FromMilliseconds(miningDelay / 4);
             var specProvider = RopstenSpecProvider.Instance;
             var difficultyCalculator = new DifficultyCalculator(specProvider);
             // var sealEngine = new EthashSealEngine(new Ethash());
-            var sealEngine = new FakeSealEngine(blockMiningTime);
+            var sealEngine = new FakeSealEngine(blockMiningTime, false);
 
             /* sync */
             var transactionStore = new TransactionStore();

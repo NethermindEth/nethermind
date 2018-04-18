@@ -66,6 +66,7 @@ namespace Nethermind.Blockchain
 
         private void OnNewBestBlock(object sender, BlockEventArgs blockEventArgs)
         {
+            _miningCancellation?.Cancel();
             SuggestBlock(blockEventArgs.Block);
         }
 
@@ -74,7 +75,9 @@ namespace Nethermind.Blockchain
         public Block HeadBlock { get; private set; }
         public BigInteger TotalDifficulty { get; private set; }
 
-        private CancellationTokenSource _cancellationSource;
+        private CancellationTokenSource _blockchainCancellation;
+        private CancellationTokenSource _miningCancellation;
+
         private Task _processorTask;
 
         public async Task StopAsync(bool processRamainingBlocks)
@@ -85,7 +88,7 @@ namespace Nethermind.Blockchain
             }
             else
             {
-                _cancellationSource.Cancel();
+                _blockchainCancellation.Cancel();
             }
 
             await _processorTask;
@@ -93,7 +96,7 @@ namespace Nethermind.Blockchain
 
         public void Start()
         {
-            _cancellationSource = new CancellationTokenSource();
+            _blockchainCancellation = new CancellationTokenSource();
             _processorTask = Task.Factory.StartNew(() =>
                 {
                     if (_logger.IsInfo)
@@ -116,7 +119,7 @@ namespace Nethermind.Blockchain
                         }
                     }
 
-                    foreach (Block block in _suggestedBlocks.GetConsumingEnumerable(_cancellationSource.Token))
+                    foreach (Block block in _suggestedBlocks.GetConsumingEnumerable(_blockchainCancellation.Token))
                     {
                         if (_logger.IsInfo)
                         {
@@ -146,7 +149,7 @@ namespace Nethermind.Blockchain
                         }
                     }
                 },
-                _cancellationSource.Token,
+                _blockchainCancellation.Token,
                 TaskCreationOptions.None,
                 TaskScheduler.Default).ContinueWith(t =>
             {
@@ -438,6 +441,10 @@ namespace Nethermind.Blockchain
                         }
 
                         _blockTree.MoveToBranch(block.Hash);
+                        foreach (Transaction transaction in block.Transactions)
+                        {
+                            _transactionStore.AddPending(transaction);
+                        }
 
                         if (_logger.IsDebug)
                         {
@@ -453,6 +460,10 @@ namespace Nethermind.Blockchain
                         }
 
                         _blockTree.MoveToMain(block.Hash);
+                        foreach (Transaction transaction in block.Transactions)
+                        {
+                            _transactionStore.RemovePending(transaction);
+                        }
 
                         if (_logger.IsDebug)
                         {
@@ -479,17 +490,22 @@ namespace Nethermind.Blockchain
                 else
                 {
                     Block blockToBeMined = processedBlocks[processedBlocks.Length - 1];
-                    _sealEngine.MineAsync(blockToBeMined, _cancellationSource.Token).ContinueWith(t =>
+                    _miningCancellation = new CancellationTokenSource();
+                    CancellationTokenSource anyCancellation =
+                        CancellationTokenSource.CreateLinkedTokenSource(_miningCancellation.Token, _blockchainCancellation.Token);
+                    _sealEngine.MineAsync(blockToBeMined, anyCancellation.Token).ContinueWith(t =>
                     {
+                        anyCancellation.Dispose();
+                        
                         if (_logger.IsInfo)
                         {
                             _logger.Info($"Mined a block {t.Result.Hash} ({t.Result.Number})");
                         }
-                        
+
                         Block minedBlock = t.Result;
                         minedBlock.Header.RecomputeHash();
                         _blockTree.AddBlock(minedBlock);
-                    });
+                    }, _miningCancellation.Token);
                 }
             }
         }

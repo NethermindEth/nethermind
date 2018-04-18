@@ -27,19 +27,29 @@ namespace Nethermind.Blockchain
     public class FakeSealEngine : ISealEngine
     {
         private readonly TimeSpan _miningDelay;
+        private readonly bool _exact;
 
-        public FakeSealEngine(TimeSpan miningDelay)
+        public FakeSealEngine(TimeSpan miningDelay, bool exact = true)
         {
             _miningDelay = miningDelay;
+            _exact = exact;
+        }
+
+        private static readonly Random Random = new Random();
+
+        private TimeSpan RandomizeDelay()
+        {
+            return _miningDelay + TimeSpan.FromMilliseconds((_exact ? 0 : 1) * (Random.Next((int)_miningDelay.TotalMilliseconds) - (int)_miningDelay.TotalMilliseconds / 2));
         }
         
         public Task<Block> MineAsync(Block block, CancellationToken cancellationToken)
         {
             block.Header.MixHash = Keccak.Zero;
-            
+
             return _miningDelay == TimeSpan.Zero
                 ? Task.FromResult(block)
-                : Task.Delay(_miningDelay, cancellationToken).ContinueWith(t => block, cancellationToken);
+                : Task.Delay(RandomizeDelay(), cancellationToken)
+                    .ContinueWith(t => block, cancellationToken);
         }
 
         public bool Validate(BlockHeader header)

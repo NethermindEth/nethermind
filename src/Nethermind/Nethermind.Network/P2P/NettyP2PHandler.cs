@@ -38,22 +38,34 @@ namespace Nethermind.Network.P2P
         {
             _ip2PSession.Init(5, context, packetSender);
         }
-        
+
         public override void ChannelRegistered(IChannelHandlerContext context)
         {
-            _logger.Info($"Registering {nameof(NettyP2PHandler)}");
+            if (_logger.IsInfo)
+            {
+                _logger.Info($"Registering {nameof(NettyP2PHandler)}");
+            }
+
             base.ChannelRegistered(context);
         }
 
         protected override void ChannelRead0(IChannelHandlerContext ctx, Packet msg)
         {
-            _logger.Info($"Channel read... data length {msg.Data.Length}");
+            if (_logger.IsTrace)
+            {
+                _logger.Trace($"Channel read... data length {msg.Data.Length}");
+            }
+
             _ip2PSession.ReceiveMessage(msg);
         }
 
         public override void ExceptionCaught(IChannelHandlerContext context, Exception exception)
-        {   
-            _logger.Error($"{nameof(NettyP2PHandler)} exception", exception);
+        {
+            if (_logger.IsError)
+            {
+                _logger.Error($"{nameof(NettyP2PHandler)} exception", exception);
+            }
+
             base.ExceptionCaught(context, exception);
         }
     }

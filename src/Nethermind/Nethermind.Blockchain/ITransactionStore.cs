@@ -30,7 +30,8 @@ namespace Nethermind.Blockchain
         TransactionReceipt GetTransactionReceipt(Keccak transactionHash);
         bool WasProcessed(Keccak transactionHash);
         Keccak GetBlockHash(Keccak transactionHash); // get hash of the block transaction was in
-        void AddPending(Transaction transaction);
+        AddTransactionResult AddPending(Transaction transaction);
+        void RemovePending(Transaction transaction);
         Transaction[] GetAllPending();
         event EventHandler<TransactionEventArgs> NewPending;
     }

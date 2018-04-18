@@ -20,6 +20,7 @@ namespace Nethermind.Blockchain
 {
     public enum AddTransactionResult
     {
+        AlreadyProcessed,
         AlreadyKnown,        
         Added
     }
