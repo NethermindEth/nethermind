@@ -17,6 +17,7 @@
  */
 
 using System;
+using System.Threading.Tasks;
 using Nethermind.Discovery.Messages;
 using Nethermind.Discovery.RoutingTable;
 
