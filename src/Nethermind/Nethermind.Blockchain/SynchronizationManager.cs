@@ -251,6 +251,11 @@ namespace Nethermind.Blockchain
                 BigInteger bestNumber = BlockTree.BestSuggestedBlock.Number;
                 while (peerInfo.NumberAvailable > bestNumber && peerInfo.NumberReceived <= bestNumber)
                 {
+                    if (_logger.IsInfo)
+                    {
+                        _logger.Info($"Sending sync request to peer with best {peerInfo.NumberAvailable} (I received {peerInfo.NumberReceived}), is synced {peerInfo.IsSynced}");
+                    }
+                    
                     BigInteger blocksLeft = peerInfo.NumberAvailable - bestNumber;
                     // TODO: fault handling on tasks
 

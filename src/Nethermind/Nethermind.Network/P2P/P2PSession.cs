@@ -103,7 +103,10 @@ namespace Nethermind.Network.P2P
             (string protocol, int messageId) = ResolveMessageCode(dynamicMessageCode);
             packet.Protocol = protocol;
 
-            _logger.Info($"Session Manager received a message (dynamic ID {dynamicMessageCode}. Resolved to {protocol}.{messageId})");
+            if (_logger.IsDebug)
+            {
+                _logger.Debug($"Session Manager received a message (dynamic ID {dynamicMessageCode}. Resolved to {protocol}.{messageId})");
+            }
 
             if (protocol == null)
             {

@@ -264,10 +264,9 @@ namespace Nethermind.PeerConsole
             NetworkLogger.Info($"Node is up and listening on {localIp}:{_listenPort}... press ENTER to exit");
             NetworkLogger.Info($"enode://{_privateKey.PublicKey.ToString(false)}@{localIp}:{_listenPort}");
 
-            if (chainSpec.Bootnodes.Any())
+            foreach (Bootnode bootnode in chainSpec.Bootnodes)
             {
-                Bootnode bootnode = chainSpec.Bootnodes[0];
-                NetworkLogger.Info($"Connecting to testnet bootnode {bootnode.Description}");
+                NetworkLogger.Info($"Connecting to {bootnode.Description} @ {bootnode.Host}:{bootnode.Port}");
                 await localPeer.ConnectAsync(bootnode.PublicKey, bootnode.Host, bootnode.Port);
                 NetworkLogger.Info("Testnet connected...");
             }
