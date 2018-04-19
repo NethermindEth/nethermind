@@ -28,12 +28,12 @@ namespace Nethermind.Core.Test.Builders
         public AddressBuilder()
         {
             byte[] bytes = CryptoRandom.GenerateRandomBytes(20);
-            TestObject = new Address(bytes);
+            TestObjectInternal = new Address(bytes);
         }
         
         public AddressBuilder FromNumber(int number)
         {
-            TestObject = new Address(number.ToBigEndianByteArray().PadLeft(20));
+            TestObjectInternal = new Address(number.ToBigEndianByteArray().PadLeft(20));
             return this;
         }
     }

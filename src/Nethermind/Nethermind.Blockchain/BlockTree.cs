@@ -56,7 +56,7 @@ namespace Nethermind.Blockchain
         public Block BestSuggestedBlock { get; private set; }
         public int ChainId { get; }
 
-        public AddBlockResult AddBlock(Block block)
+        public AddBlockResult SuggestBlock(Block block)
         {
             if (block.Number == 0)
             {

@@ -99,7 +99,7 @@ namespace Nethermind.Blockchain.Test
             testTransactionsGenerator.Start();
             
             blockchainProcessor.Start();
-            blockTree.AddBlock(chainSpec.Genesis);
+            blockTree.SuggestBlock(chainSpec.Genesis);
             
             BigInteger roughlyNumberOfBlocks = 6;
             Thread.Sleep(blockMiningTime * (int)roughlyNumberOfBlocks);

@@ -16,34 +16,44 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Collections.Generic;
+
+using Nethermind.Blockchain.Validators;
+using NSubstitute;
 
 namespace Nethermind.Core.Test.Builders
 {
-    /// <summary>
-    /// This class is here just to hint the API for implementations
-    /// </summary>
-    /// <typeparam name="T"></typeparam>
-    public abstract class BuilderBase<T>
+    public class BlockValidatorBuilder : BuilderBase<IBlockValidator>
     {
-        protected T TestObjectInternal { get; set; }
+        private bool _alwaysTrue;
 
-        public T TestObject
+        public BlockValidatorBuilder()
+        {
+            TestObject = Substitute.For<IBlockValidator>();
+        }
+
+        public BlockValidatorBuilder ThatAlwaysReturnsFalse
         {
             get
             {
-                BeforeReturn();
-                return TestObjectInternal;
+                _alwaysTrue = false;
+                return this;
             }
-
-            protected set => TestObjectInternal = value;
         }
 
-        public List<T> TestObjectAsList => new List<T> {TestObject};
-        public T[] TestObjectAsArray => new[] {TestObject};
-
-        protected virtual void BeforeReturn()
+        public BlockValidatorBuilder ThatAlwaysReturnsTrue
         {
+            get
+            {
+                _alwaysTrue = true;
+                return this;
+            }
+        }
+
+        protected override void BeforeReturn()
+        {
+            TestObjectInternal.ValidateSuggestedBlock(Arg.Any<Block>()).Returns(_alwaysTrue);
+            TestObjectInternal.ValidateProcessedBlock(Arg.Any<Block>(), Arg.Any<Block>()).Returns(_alwaysTrue);
+            base.BeforeReturn();
         }
     }
 }

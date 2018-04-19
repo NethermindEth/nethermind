@@ -24,7 +24,7 @@ namespace Nethermind.Core.Test.Builders
     {
         public BlockHeaderBuilder()
         {
-            TestObject = new BlockHeader(
+            TestObjectInternal = new BlockHeader(
                                      Keccak.Compute("parent"),
                                      Keccak.OfAnEmptySequenceRlp,
                                      Address.Zero,
@@ -32,19 +32,19 @@ namespace Nethermind.Core.Test.Builders
                                      4_000_000,
                                      1_000_000,
                                      new byte[] {1, 2, 3});
-            TestObject.Bloom = new Bloom();
-            TestObject.MixHash = Keccak.Compute("mix_hash");
-            TestObject.Nonce = 1000;
-            TestObject.ReceiptsRoot = Keccak.EmptyTreeHash;
-            TestObject.StateRoot = Keccak.EmptyTreeHash;
-            TestObject.TransactionsRoot = Keccak.EmptyTreeHash;
-            TestObject.RecomputeHash();
+            TestObjectInternal.Bloom = new Bloom();
+            TestObjectInternal.MixHash = Keccak.Compute("mix_hash");
+            TestObjectInternal.Nonce = 1000;
+            TestObjectInternal.ReceiptsRoot = Keccak.EmptyTreeHash;
+            TestObjectInternal.StateRoot = Keccak.EmptyTreeHash;
+            TestObjectInternal.TransactionsRoot = Keccak.EmptyTreeHash;
+            TestObjectInternal.RecomputeHash();
         }
         
         public BlockHeaderBuilder WithParent(BlockHeader parentHeader)
         {
-            TestObject.Number = parentHeader.Number + 1;
-            TestObject.GasLimit = parentHeader.GasLimit;
+            TestObjectInternal.Number = parentHeader.Number + 1;
+            TestObjectInternal.GasLimit = parentHeader.GasLimit;
             return this;
         }
     }

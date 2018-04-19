@@ -31,7 +31,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Blockchain
-{
+{   
     // TODO: forks
     public class SynchronizationManager : ISynchronizationManager
     {
@@ -105,9 +105,9 @@ namespace Nethermind.Blockchain
 
             peerInfo.NumberAvailable = block.Number;
 
-            if (block.Number == HeadNumber + 1)
+            if (block.Number == BlockTree.BestSuggestedBlock.Number + 1)
             {
-                AddBlockResult result = BlockTree.AddBlock(block);
+                AddBlockResult result = BlockTree.SuggestBlock(block);
                 // TODO: use for reputation later
                 
                 if (_logger.IsInfoEnabled)
@@ -115,7 +115,7 @@ namespace Nethermind.Blockchain
                     _logger.Info($"Received a {result} block {block.Hash} ({block.Number}) from the network with {block.Transactions.Length} transactions");
                 }
             }
-            else
+            else if(block.Number > BlockTree.BestSuggestedBlock.Number + 1)
             {
                 if (_logger.IsInfoEnabled)
                 {
@@ -123,6 +123,10 @@ namespace Nethermind.Blockchain
                 }
                 
                 RunSync();
+            }
+            else
+            {
+                throw new NotImplementedException();
             }
         }
 
@@ -172,19 +176,6 @@ namespace Nethermind.Blockchain
         public void Start()
         {
             _cancellationTokenSource = new CancellationTokenSource();
-            RunSync();
-            // get a peer with a number higher than ours
-            // sync
-            // repeat
-
-//            _currentSyncTask = Task.Factory.StartNew(async () =>
-//                {
-//                    while (!_cancellationTokenSource.IsCancellationRequested)
-//                    {
-//                        await RunRound(_cancellationTokenSource.Token);
-//                    }
-//                },
-//                _cancellationTokenSource.Token);
         }
 
         public async Task StopAsync()
@@ -259,7 +250,7 @@ namespace Nethermind.Blockchain
                     BigInteger blocksLeft = peerInfo.NumberAvailable - bestNumber;
                     // TODO: fault handling on tasks
 
-                    Task<BlockHeader[]> headersTask = peer.GetBlockHeaders(peerInfo.LastSyncedHash ?? GenesisBlock.Hash, (int)(BigInteger.Min(blocksLeft, BatchSize) + (bestNumber.IsZero ? 1 : 0)), bestNumber.IsZero ? 0 : 1);
+                    Task<BlockHeader[]> headersTask = peer.GetBlockHeaders(peerInfo.LastSyncedHash ?? GenesisBlock.Hash, (int)BigInteger.Min(blocksLeft, BatchSize), 1);
                     _currentSyncTask = headersTask;
                     BlockHeader[] headers = await headersTask;
                     if (_currentSyncTask.IsCanceled)
@@ -285,22 +276,24 @@ namespace Nethermind.Blockchain
                         break;
                     }
 
-                    for (int i = 1; i < blocks.Length; i++)
+                    for (int i = 0; i < blocks.Length; i++)
                     {
                         blocks[i].Header = headersByHash[hashes[i]];
                         if (_blockValidator.ValidateSuggestedBlock(blocks[i]))
                         {
-                            AddBlockResult addResult = BlockTree.AddBlock(blocks[i]);
-                            peerInfo.NumberReceived = blocks[i].Number;
+                            AddBlockResult addResult = BlockTree.SuggestBlock(blocks[i]);
                             if (addResult == AddBlockResult.UnknownParent)
                             {
                                 _logger.Debug($"BLOCK {blocks[i].Number} WAS IGNORED");
-                                break;
+                                throw new EthSynchronizationException("Peer sent an orphaned block"); // TODO: need to handle forking here
                             }
 
                             _logger.Debug($"BLOCK {blocks[i].Number} WAS ADDED TO THE CHAIN");
                         }
                     }
+                    
+                    peerInfo.NumberReceived = blocks[blocks.Length - 1].Number;
+                    peerInfo.LastSyncedHash = blocks[blocks.Length - 1].Hash;
 
                     bestNumber = BlockTree.BestSuggestedBlock.Number;
                 }

@@ -169,7 +169,7 @@ namespace Nethermind.Runner.Runners
             /* start test processing */
             sealEngine.IsMining = isMining;
             _blockchainProcessor.Start();
-            blockTree.AddBlock(genesis);
+            blockTree.SuggestBlock(genesis);
 
             _syncManager = new SynchronizationManager(
                 blockTree,

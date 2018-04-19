@@ -59,8 +59,8 @@ namespace Nethermind.Core.Test
             _blockHeader.RecomputeHash();
             _block = new Block(_blockHeader);
             
-            blockStore.AddBlock(_parentBlock);
-            blockStore.AddBlock(_block);
+            blockStore.SuggestBlock(_parentBlock);
+            blockStore.SuggestBlock(_block);
         }
         
         [Test]

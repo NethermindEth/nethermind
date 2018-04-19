@@ -43,7 +43,7 @@ namespace Nethermind.Blockchain
         private readonly ILogger _logger;
         private readonly ISealEngine _sealEngine;
 
-        private readonly BlockingCollection<Block> _suggestedBlocks = new BlockingCollection<Block>(new ConcurrentQueue<Block>());
+        private readonly BlockingCollection<Block> _blockQueue = new BlockingCollection<Block>(new ConcurrentQueue<Block>());
         private readonly ITransactionStore _transactionStore;
 
         public BlockchainProcessor(
@@ -67,7 +67,7 @@ namespace Nethermind.Blockchain
         private void OnNewBestBlock(object sender, BlockEventArgs blockEventArgs)
         {
             _miningCancellation?.Cancel();
-            SuggestBlock(blockEventArgs.Block);
+            EnqueueForProcessing(blockEventArgs.Block);
         }
 
         public BigInteger TotalTransactions { get; private set; }
@@ -84,7 +84,7 @@ namespace Nethermind.Blockchain
         {
             if (processRamainingBlocks)
             {
-                _suggestedBlocks.CompleteAdding();
+                _blockQueue.CompleteAdding();
             }
             else
             {
@@ -101,10 +101,10 @@ namespace Nethermind.Blockchain
                 {
                     if (_logger.IsInfoEnabled)
                     {
-                        _logger.Info($"Starting block processor - {_suggestedBlocks.Count} blocks waiting in the queue.");
+                        _logger.Info($"Starting block processor - {_blockQueue.Count} blocks waiting in the queue.");
                     }
 
-                    if (_suggestedBlocks.Count == 0 && _sealEngine.IsMining)
+                    if (_blockQueue.Count == 0 && _sealEngine.IsMining)
                     {
                         if (_logger.IsDebugEnabled)
                         {
@@ -119,7 +119,7 @@ namespace Nethermind.Blockchain
                         }
                     }
 
-                    foreach (Block block in _suggestedBlocks.GetConsumingEnumerable(_blockchainCancellation.Token))
+                    foreach (Block block in _blockQueue.GetConsumingEnumerable(_blockchainCancellation.Token))
                     {
                         if (_logger.IsInfoEnabled)
                         {
@@ -130,10 +130,10 @@ namespace Nethermind.Blockchain
 
                         if (_logger.IsDebugEnabled) // TODO: different levels depending on the queue size?
                         {
-                            _logger.Debug($"Now {_suggestedBlocks.Count} blocks waiting in the queue.");
+                            _logger.Debug($"Now {_blockQueue.Count} blocks waiting in the queue.");
                         }
 
-                        if (_suggestedBlocks.Count == 0 && _sealEngine.IsMining)
+                        if (_blockQueue.Count == 0 && _sealEngine.IsMining)
                         {
                             if (_logger.IsDebugEnabled)
                             {
@@ -177,14 +177,14 @@ namespace Nethermind.Blockchain
             });
         }
 
-        private void SuggestBlock(Block block)
+        private void EnqueueForProcessing(Block block)
         {
             if (_logger.IsDebugEnabled)
             {
                 _logger.Debug($"Enqueuing a new block {block.Hash} ({block.Number}) for processing.");
             }
 
-            _suggestedBlocks.Add(block);
+            _blockQueue.Add(block);
 
             if (_logger.IsDebugEnabled)
             {
@@ -504,7 +504,7 @@ namespace Nethermind.Blockchain
 
                         Block minedBlock = t.Result;
                         minedBlock.Header.RecomputeHash();
-                        _blockTree.AddBlock(minedBlock);
+                        _blockTree.SuggestBlock(minedBlock);
                     }, _miningCancellation.Token);
                 }
             }

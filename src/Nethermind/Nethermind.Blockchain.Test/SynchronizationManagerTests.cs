@@ -17,17 +17,16 @@
  */
 
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Difficulty;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using NSubstitute;
-using NSubstitute.ClearExtensions;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test
@@ -38,70 +37,108 @@ namespace Nethermind.Blockchain.Test
         [SetUp]
         public void Setup()
         {
-            ISpecProvider specProvider = RopstenSpecProvider.Instance;
-
-            _blockTree = Substitute.For<IBlockTree>();
-            DifficultyCalculator difficultyCalculator = new DifficultyCalculator(specProvider);
-            HeaderValidator headerValidator = new HeaderValidator(difficultyCalculator, _blockTree, new FakeSealEngine(TimeSpan.Zero), specProvider, NullLogger.Instance);
-            SignatureValidator signatureValidator = new SignatureValidator(specProvider.ChainId);
-            TransactionValidator transactionValidator = new TransactionValidator(signatureValidator);
-            TransactionStore txStore = new TransactionStore();
-            OmmersValidator ommersValidator = new OmmersValidator(_blockTree, headerValidator, NullLogger.Instance);
-            BlockValidator blockValidator = new BlockValidator(transactionValidator, headerValidator, ommersValidator, specProvider, NullLogger.Instance);
-
             _genesisBlock = Build.A.Block.WithNumber(0).TestObject;
-             Block headBlock = Build.A.Block.WithNumber(3).TestObject;
+            _blockTree = Build.A.BlockTree(_genesisBlock).OfChainLength(1).TestObject;
             
-            Queue<Block> blocks = new Queue<Block>();
-            blocks.Enqueue(_genesisBlock);
-            blocks.Enqueue(headBlock);
+            IHeaderValidator headerValidator = Build.A.HeaderValidator.ThatAlwaysReturnsTrue.TestObject;
+            IBlockValidator blockValidator = Build.A.BlockValidator.ThatAlwaysReturnsTrue.TestObject;
+            ITransactionValidator transactionValidator = Build.A.TransactionValidator.ThatAlwaysReturnsTrue.TestObject;
             
-            _blockTree.BestSuggestedBlock.Returns(ci => blocks.Dequeue());
-            _blockTree.GenesisBlock.Returns(_genesisBlock);
-            
-            _manager = new SynchronizationManager(_blockTree, blockValidator, headerValidator, txStore, transactionValidator, new ConsoleAsyncLogger());
+            _manager = new SynchronizationManager(_blockTree, blockValidator, headerValidator, new TransactionStore(), transactionValidator, NullLogger.Instance);
         }
 
         private IBlockTree _blockTree;
+        private IBlockTree _remoteBlockTree;
         private Block _genesisBlock;
         private SynchronizationManager _manager;
 
-        private readonly TimeSpan _delay = TimeSpan.FromMilliseconds(50);
-
         [Test]
-        public async Task On_new_peer_asks_about_the_best_block()
+        public async Task Retrieves_missing_blocks_in_batches()
         {
-            ISynchronizationPeer peer = BuildSynchronizatioPeer(3);
-
+            _remoteBlockTree = Build.A.BlockTree(_genesisBlock).OfChainLength(SynchronizationManager.BatchSize * 2).TestObject;
+            ISynchronizationPeer peer = new SynchronizationPeerMock(_remoteBlockTree);
+            
             ManualResetEvent resetEvent = new ManualResetEvent(false);
             _manager.Synced += (sender, args) => { resetEvent.Set(); };
-            await _manager.AddPeer(peer);
+            Task addPeerTask = _manager.AddPeer(peer);
+            Task firstToComplete = await Task.WhenAny(addPeerTask, Task.Delay(2000));
+            Assert.AreSame(addPeerTask, firstToComplete);
             _manager.Start();
-            resetEvent.WaitOne(_delay * 10);
-            await peer.Received().GetHeadBlockHash();
-            await peer.Received().GetHeadBlockNumber();
+            resetEvent.WaitOne(TimeSpan.FromMilliseconds(2000));
+            Assert.AreEqual(SynchronizationManager.BatchSize * 2 - 1, (int)_blockTree.BestSuggestedBlock.Number);
         }
-
-        private static ISynchronizationPeer BuildSynchronizatioPeer(int numberOfBlocks)
-        {
-            ISynchronizationPeer peer = Substitute.For<ISynchronizationPeer>();
-            peer.NodeId.Returns(TestObject.PublicKeyA);
-            peer.GetHeadBlockHash().Returns(TestObject.KeccakA);
-            peer.GetHeadBlockNumber().Returns(numberOfBlocks);
-            return peer;
-        }
-
+        
         [Test]
-        public async Task  On_new_peer_retrieves_missing_blocks()
+        public async Task Syncs_with_empty_peer()
         {
-            ISynchronizationPeer peer = BuildSynchronizatioPeer(3);
-
+            _remoteBlockTree = Build.A.BlockTree(_genesisBlock).OfChainLength(0).TestObject;
+            ISynchronizationPeer peer = new SynchronizationPeerMock(_remoteBlockTree);
+            
             ManualResetEvent resetEvent = new ManualResetEvent(false);
             _manager.Synced += (sender, args) => { resetEvent.Set(); };
-            await _manager.AddPeer(peer);
+            Task addPeerTask = _manager.AddPeer(peer);
+            Task firstToComplete = await Task.WhenAny(addPeerTask, Task.Delay(2000));
+            Assert.AreSame(addPeerTask, firstToComplete);
             _manager.Start();
-            resetEvent.WaitOne(_delay * 10);
-            await peer.Received().GetBlockHeaders(_genesisBlock.Hash, 4, 0);
+            resetEvent.WaitOne(TimeSpan.FromMilliseconds(2000));
+            Assert.AreEqual(0, (int)_blockTree.BestSuggestedBlock.Number);
+        }
+        
+        [Test]
+        public async Task Syncs_when_knows_more_blocks()
+        {
+            _blockTree = Build.A.BlockTree(_genesisBlock).OfChainLength(SynchronizationManager.BatchSize * 2).TestObject;
+            _remoteBlockTree = Build.A.BlockTree(_genesisBlock).OfChainLength(0).TestObject;
+            ISynchronizationPeer peer = new SynchronizationPeerMock(_remoteBlockTree);
+            
+            ManualResetEvent resetEvent = new ManualResetEvent(false);
+            _manager.Synced += (sender, args) => { resetEvent.Set(); };
+            Task addPeerTask = _manager.AddPeer(peer);
+            Task firstToComplete = await Task.WhenAny(addPeerTask, Task.Delay(2000));
+            Assert.AreSame(addPeerTask, firstToComplete);
+            _manager.Start();
+            resetEvent.WaitOne(TimeSpan.FromMilliseconds(2000));
+            Assert.AreEqual(SynchronizationManager.BatchSize * 2 - 1, (int)_blockTree.BestSuggestedBlock.Number);
+        }
+        
+        [Test]
+        public async Task Can_resync_if_missed_a_block()
+        {
+            _remoteBlockTree = Build.A.BlockTree(_genesisBlock).OfChainLength(SynchronizationManager.BatchSize).TestObject;
+            ISynchronizationPeer peer = new SynchronizationPeerMock(_remoteBlockTree);
+            
+            ManualResetEvent resetEvent = new ManualResetEvent(false);
+            _manager.Synced += (sender, args) => { resetEvent.Set(); };
+            Task addPeerTask = _manager.AddPeer(peer);
+            Task firstToComplete = await Task.WhenAny(addPeerTask, Task.Delay(2000));
+            Assert.AreSame(addPeerTask, firstToComplete);
+            _manager.Start();
+            resetEvent.WaitOne(TimeSpan.FromMilliseconds(2000));
+
+            BlockTreeBuilder.ExtendTree(_remoteBlockTree, SynchronizationManager.BatchSize * 2);
+            _manager.AddNewBlock(_remoteBlockTree.HeadBlock, peer.NodeId);
+            
+            Assert.AreEqual(SynchronizationManager.BatchSize * 2 - 1, (int)_blockTree.BestSuggestedBlock.Number);
+        }
+        
+        [Test]
+        public async Task Can_add_new_block()
+        {
+            _remoteBlockTree = Build.A.BlockTree(_genesisBlock).OfChainLength(SynchronizationManager.BatchSize).TestObject;
+            ISynchronizationPeer peer = new SynchronizationPeerMock(_remoteBlockTree);
+            
+            ManualResetEvent resetEvent = new ManualResetEvent(false);
+            _manager.Synced += (sender, args) => { resetEvent.Set(); };
+            Task addPeerTask = _manager.AddPeer(peer);
+            Task firstToComplete = await Task.WhenAny(addPeerTask, Task.Delay(2000));
+            Assert.AreSame(addPeerTask, firstToComplete);
+            _manager.Start();
+            resetEvent.WaitOne(TimeSpan.FromMilliseconds(2000));
+
+            Block block = Build.A.Block.WithParent(_remoteBlockTree.HeadBlock).TestObject;
+            _manager.AddNewBlock(block, peer.NodeId);
+            
+            Assert.AreEqual(SynchronizationManager.BatchSize, (int)_blockTree.BestSuggestedBlock.Number);
         }
     }
 }

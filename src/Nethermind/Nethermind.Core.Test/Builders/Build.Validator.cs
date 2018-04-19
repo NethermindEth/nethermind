@@ -16,34 +16,12 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Collections.Generic;
-
 namespace Nethermind.Core.Test.Builders
 {
-    /// <summary>
-    /// This class is here just to hint the API for implementations
-    /// </summary>
-    /// <typeparam name="T"></typeparam>
-    public abstract class BuilderBase<T>
+    public partial class Build
     {
-        protected T TestObjectInternal { get; set; }
-
-        public T TestObject
-        {
-            get
-            {
-                BeforeReturn();
-                return TestObjectInternal;
-            }
-
-            protected set => TestObjectInternal = value;
-        }
-
-        public List<T> TestObjectAsList => new List<T> {TestObject};
-        public T[] TestObjectAsArray => new[] {TestObject};
-
-        protected virtual void BeforeReturn()
-        {
-        }
+        public HeaderValidatorBuilder HeaderValidator => new HeaderValidatorBuilder();
+        public BlockValidatorBuilder BlockValidator => new BlockValidatorBuilder();
+        public TransactionValidatorBuilder TransactionValidator => new TransactionValidatorBuilder();
     }
 }

@@ -26,36 +26,37 @@ namespace Nethermind.Core.Test.Builders
         public BlockBuilder()
         {
             BlockHeader header = Build.A.BlockHeader.TestObject;
-            TestObject = new Block(header);
+            TestObjectInternal = new Block(header);
         }
 
         public BlockBuilder WithNumber(BigInteger number)
         {
-            TestObject.Header.Number = number;
+            TestObjectInternal.Header.Number = number;
             return this;
         }
         
         public BlockBuilder WithTotalDifficulty(BigInteger difficulty)
         {
-            TestObject.Header.TotalDifficulty = difficulty;
+            TestObjectInternal.Header.TotalDifficulty = difficulty;
             return this;
         }
         
         public BlockBuilder WithDifficulty(BigInteger difficulty)
         {
-            TestObject.Header.Difficulty = difficulty;
+            TestObjectInternal.Header.Difficulty = difficulty;
             return this;
         }
         
         public BlockBuilder WithParent(Block block)
         {
-            TestObject.Header.ParentHash = block.Hash;
+            TestObjectInternal.Header.Number = (block?.Number ?? -1) + 1;
+            TestObjectInternal.Header.ParentHash = block == null ? Keccak.Zero : block.Hash;
             return this;
         }
         
         public BlockBuilder WithParentHash(Keccak parent)
         {
-            TestObject.Header.ParentHash = parent;
+            TestObjectInternal.Header.ParentHash = parent;
             return this;
         }
         

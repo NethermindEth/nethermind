@@ -37,7 +37,7 @@ namespace Nethermind.Core.Test
             blockTree.NewHeadBlock += (sender, args) => { hasNotified = true; };
 
             Block block = Build.A.Block.WithNumber(0).TestObject;
-            var result = blockTree.AddBlock(block);
+            var result = blockTree.SuggestBlock(block);
             blockTree.MarkAsProcessed(block.Hash);
             blockTree.MoveToMain(block.Hash);
 
@@ -51,8 +51,8 @@ namespace Nethermind.Core.Test
             BlockTree blockTree = new BlockTree(OlympicSpecProvider.Instance, NullLogger.Instance);
             Block blockA = Build.A.Block.WithNumber(0).TestObject;
             Block blockB = Build.A.Block.WithNumber(0).TestObject;
-            blockTree.AddBlock(blockA);
-            Assert.Throws<InvalidOperationException>(() => blockTree.AddBlock(blockB));
+            blockTree.SuggestBlock(blockA);
+            Assert.Throws<InvalidOperationException>(() => blockTree.SuggestBlock(blockB));
         }
 
         [Test]
@@ -62,9 +62,9 @@ namespace Nethermind.Core.Test
             BlockTree blockTree = new BlockTree(OlympicSpecProvider.Instance, NullLogger.Instance);
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
             Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
-            blockTree.AddBlock(block0);
+            blockTree.SuggestBlock(block0);
             blockTree.NewHeadBlock += (sender, args) => { hasNotified = true; };
-            var result = blockTree.AddBlock(block1);
+            var result = blockTree.SuggestBlock(block1);
             blockTree.MarkAsProcessed(block1.Hash);
             blockTree.MoveToMain(block1.Hash);
 
@@ -79,9 +79,9 @@ namespace Nethermind.Core.Test
             BlockTree blockTree = new BlockTree(OlympicSpecProvider.Instance, NullLogger.Instance);
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
             Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
-            blockTree.AddBlock(block0);
+            blockTree.SuggestBlock(block0);
             blockTree.NewBestSuggestedBlock += (sender, args) => { hasNotified = true; };
-            var result = blockTree.AddBlock(block1);
+            var result = blockTree.SuggestBlock(block1);
 
             Assert.True(hasNotified, "notification");
             Assert.AreEqual(AddBlockResult.Added, result, "result");
@@ -96,11 +96,11 @@ namespace Nethermind.Core.Test
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
             Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(3).WithParent(block0).TestObject;
             Block block2 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
-            blockTree.AddBlock(block0);
-            blockTree.AddBlock(block1);
+            blockTree.SuggestBlock(block0);
+            blockTree.SuggestBlock(block1);
             blockTree.NewHeadBlock += (sender, args) => { hasNotifiedHead = true; };
             blockTree.NewBestSuggestedBlock += (sender, args) => { hasNotifiedBest = true; };
-            var result = blockTree.AddBlock(block2);
+            var result = blockTree.SuggestBlock(block2);
 
             Assert.False(hasNotifiedBest, "notification best");
             Assert.False(hasNotifiedHead, "notification head");
@@ -113,8 +113,8 @@ namespace Nethermind.Core.Test
             BlockTree blockTree = new BlockTree(OlympicSpecProvider.Instance, NullLogger.Instance);
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
             Block block2 = Build.A.Block.WithNumber(2).WithDifficulty(3).TestObject;
-            blockTree.AddBlock(block0);
-            var result = blockTree.AddBlock(block2);
+            blockTree.SuggestBlock(block0);
+            var result = blockTree.SuggestBlock(block2);
             Assert.AreEqual(AddBlockResult.UnknownParent, result);
         }
         
@@ -124,9 +124,9 @@ namespace Nethermind.Core.Test
             BlockTree blockTree = new BlockTree(OlympicSpecProvider.Instance, NullLogger.Instance);
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
             Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
-            blockTree.AddBlock(block0);
-            blockTree.AddBlock(block1);
-            var result = blockTree.AddBlock(block1);
+            blockTree.SuggestBlock(block0);
+            blockTree.SuggestBlock(block1);
+            var result = blockTree.SuggestBlock(block1);
             Assert.AreEqual(AddBlockResult.AlreadyKnown, result);
         }
 
@@ -135,7 +135,7 @@ namespace Nethermind.Core.Test
         {
             BlockTree blockTree = new BlockTree(OlympicSpecProvider.Instance, NullLogger.Instance);
             Block block = Build.A.Block.TestObject;
-            blockTree.AddBlock(block);
+            blockTree.SuggestBlock(block);
             Block found = blockTree.FindBlock(block.Hash, false);
             Assert.AreSame(block, found);
         }
@@ -166,7 +166,7 @@ namespace Nethermind.Core.Test
         {
             BlockTree blockTree = new BlockTree(OlympicSpecProvider.Instance, NullLogger.Instance);
             Block block = Build.A.Block.TestObject;
-            blockTree.AddBlock(block);
+            blockTree.SuggestBlock(block);
             Block found = blockTree.FindBlock(block.Hash, true);
             Assert.IsNull(found);
         }
@@ -247,7 +247,7 @@ namespace Nethermind.Core.Test
 
         private static void AddToMain(BlockTree blockTree, Block block0)
         {
-            blockTree.AddBlock(block0);
+            blockTree.SuggestBlock(block0);
             blockTree.MarkAsProcessed(block0.Hash);
             blockTree.MoveToMain(block0.Hash);
         }
@@ -304,9 +304,9 @@ namespace Nethermind.Core.Test
             BlockTree blockTree = new BlockTree(OlympicSpecProvider.Instance, NullLogger.Instance);
             
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
-            blockTree.AddBlock(block0);
+            blockTree.SuggestBlock(block0);
             Block block1 = Build.A.Block.WithNumber(1).WithParentHash(block0.Hash).WithDifficulty(2).TestObject;
-            blockTree.AddBlock(block1);
+            blockTree.SuggestBlock(block1);
             Assert.AreEqual(3, (int)block1.TotalDifficulty);
         }
 
@@ -316,10 +316,10 @@ namespace Nethermind.Core.Test
             BlockTree blockTree = new BlockTree(OlympicSpecProvider.Instance, NullLogger.Instance);
             
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
-            blockTree.AddBlock(block0);
+            blockTree.SuggestBlock(block0);
 
             Block block2 = Build.A.Block.WithNumber(1).WithDifficulty(3).WithParentHash(Keccak.Zero).TestObject;
-            blockTree.AddBlock(block2);
+            blockTree.SuggestBlock(block2);
             Assert.AreEqual(null, block2.TotalDifficulty);
         }
         
@@ -342,7 +342,7 @@ namespace Nethermind.Core.Test
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
             Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
             AddToMain(blockTree, block0);
-            blockTree.AddBlock(block1);
+            blockTree.SuggestBlock(block1);
 
             Assert.AreEqual(block0, blockTree.HeadBlock, "head");
             Assert.AreEqual(block1, blockTree.BestSuggestedBlock, "best");

@@ -299,7 +299,7 @@ namespace Ethereum.Test.Base
             };
                 
             blockchainProcessor.Start();
-            blockTree.AddBlock(genesisBlock);
+            blockTree.SuggestBlock(genesisBlock);
 
             for (int i = 0; i < correctRlpsBlocks.Count; i++)
             {
@@ -319,7 +319,7 @@ namespace Ethereum.Test.Base
                     // TODO: mimic the actual behaviour where block goes through validating sync manager?
                     if (blockValidator.ValidateSuggestedBlock(correctRlpsBlocks[i].Block))
                     {
-                        blockTree.AddBlock(correctRlpsBlocks[i].Block);
+                        blockTree.SuggestBlock(correctRlpsBlocks[i].Block);
                     }
                     else
                     {

@@ -119,7 +119,7 @@ namespace Nethermind.Runner.Runners
         {
             try
             {
-                _blockTree.AddBlock(block);
+                _blockTree.SuggestBlock(block);
             }
             catch (InvalidBlockException e)
             {
@@ -153,7 +153,7 @@ namespace Nethermind.Runner.Runners
             var blockJson = _jsonSerializer.Deserialize<TestGenesisJson>(genesisBlockRaw);
             var stateRoot = InitializeAccounts(blockJson.Alloc);
             var block = Convert(blockJson, stateRoot);
-            _blockTree.AddBlock(block);
+            _blockTree.SuggestBlock(block);
         }
 
         private static Block Convert(TestGenesisJson headerJson, Keccak stateRoot)
