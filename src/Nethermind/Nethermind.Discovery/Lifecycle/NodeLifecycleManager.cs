@@ -33,7 +33,6 @@ namespace Nethermind.Discovery.Lifecycle
         private readonly IDiscoveryMessageFactory _discoveryMessageFactory;
         private readonly IEvictionManager _evictionManager;
 
-        private int _pingRetryCount;
         private bool _isPongExpected;
         private bool _isNeighborsExpected;
 
@@ -46,7 +45,6 @@ namespace Nethermind.Discovery.Lifecycle
             _discoveryMessageFactory = discoveryMessageFactory;
             _evictionManager = evictionManager;
             ManagedNode = node;
-            _pingRetryCount = _discoveryConfigurationProvider.PingRetryCount;
             UpdateState(NodeLifecycleState.New);
         }
 
@@ -103,10 +101,10 @@ namespace Nethermind.Discovery.Lifecycle
             _discoveryManager.SendMessage(msg);
         }
 
-        public async void SendPing()
+        public void SendPing()
         {
             _isPongExpected = true;
-            await Task.Run(() => SendPingSync());
+            Task.Run(() => SendPingSync(_discoveryConfigurationProvider.PingRetryCount));
         }
 
         public void SendPong(PingMessage discoveryMessage)
@@ -175,7 +173,7 @@ namespace Nethermind.Discovery.Lifecycle
             }
         }
 
-        private void SendPingSync()
+        private void SendPingSync(int counter)
         {
             try
             {
@@ -185,16 +183,11 @@ namespace Nethermind.Discovery.Lifecycle
                 msg.DestinationAddress = msg.FarAddress;
                 _discoveryManager.SendMessage(msg);
 
-                if (_discoveryManager.WasMessageReceived(ManagedNode.IdHashText, MessageType.Pong, _discoveryConfigurationProvider.PongTimeout))
+                if (!_discoveryManager.WasMessageReceived(ManagedNode.IdHashText, MessageType.Pong, _discoveryConfigurationProvider.PongTimeout))
                 {
-                    _pingRetryCount = _discoveryConfigurationProvider.PingRetryCount;
-                }
-                else
-                {
-                    if (_pingRetryCount > 1)
+                    if (counter > 1)
                     {
-                        _pingRetryCount = _pingRetryCount - 1;
-                        SendPing();
+                        SendPingSync(counter - 1);
                     }
                     else
                     {
