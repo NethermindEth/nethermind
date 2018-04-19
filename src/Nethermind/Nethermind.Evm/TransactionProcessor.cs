@@ -73,7 +73,7 @@ namespace Nethermind.Evm
             byte[] data = transaction.Data ?? new byte[0];
 
             Address sender = _signer.RecoverAddress(transaction, block.Number);
-            if (_logger.IsDebug)
+            if (_logger.IsDebugEnabled)
             {
                 _logger.Debug($"SPEC: {spec.GetType().Name}");
                 _logger.Debug("IS_CONTRACT_CREATION: " + transaction.IsContractCreation);
@@ -90,7 +90,7 @@ namespace Nethermind.Evm
 
             if (sender == null)
             {
-                if (_logger.IsDebug)
+                if (_logger.IsDebugEnabled)
                 {
                     _logger.Debug($"SENDER_NOT_SPECIFIED");
                 }
@@ -99,14 +99,14 @@ namespace Nethermind.Evm
             }
 
             long intrinsicGas = _intrinsicGasCalculator.Calculate(transaction, spec);
-            if (_logger.IsDebug)
+            if (_logger.IsDebugEnabled)
             {
                 _logger.Debug("INTRINSIC GAS: " + intrinsicGas);
             }
 
             if (gasLimit < intrinsicGas)
             {
-                if (_logger.IsDebug)
+                if (_logger.IsDebugEnabled)
                 {
                     _logger.Debug($"GAS_LIMIT_BELOW_INTRINSIC_GAS {gasLimit} < {intrinsicGas}");
                 }
@@ -116,7 +116,7 @@ namespace Nethermind.Evm
 
             if (gasLimit > block.GasLimit - block.GasUsed)
             {
-                if (_logger.IsDebug)
+                if (_logger.IsDebugEnabled)
                 {
                     _logger.Debug($"BLOCK_GAS_LIMIT_EXCEEDED {gasLimit} > {block.GasLimit} - {block.GasUsed}");
                 }
@@ -126,7 +126,7 @@ namespace Nethermind.Evm
 
             if (!_stateProvider.AccountExists(sender))
             {
-                if (_logger.IsDebug)
+                if (_logger.IsDebugEnabled)
                 {
                     _logger.Debug($"SENDER_ACCOUNT_DOES_NOT_EXIST {sender}");
                 }
@@ -137,7 +137,7 @@ namespace Nethermind.Evm
             BigInteger senderBalance = _stateProvider.GetBalance(sender);
             if (intrinsicGas * gasPrice + value > senderBalance)
             {
-                if (_logger.IsDebug)
+                if (_logger.IsDebugEnabled)
                 {
                     _logger.Debug($"INSUFFICIENT_SENDER_BALANCE: ({sender})b = {senderBalance}");
                 }
@@ -147,7 +147,7 @@ namespace Nethermind.Evm
 
             if (transaction.Nonce != _stateProvider.GetNonce(sender))
             {
-                if (_logger.IsDebug)
+                if (_logger.IsDebugEnabled)
                 {
                     _logger.Debug($"WRONG_TRANSACTION_NONCE: {transaction.Nonce} (expected {_stateProvider.GetNonce(sender)})");
                 }
@@ -223,7 +223,7 @@ namespace Nethermind.Evm
 
                     if (substate.ShouldRevert)
                     {
-                        if (_logger.IsDebug)
+                        if (_logger.IsDebugEnabled)
                         {
                             _logger.Debug("REVERTING");
                         }
@@ -270,7 +270,7 @@ namespace Nethermind.Evm
             }
             catch (Exception ex) when (ex is EvmException || ex is OverflowException) // TODO: OverflowException? still needed? hope not
             {
-                if (_logger.IsDebug)
+                if (_logger.IsDebugEnabled)
                 {
                     _logger.Debug($"EVM EXCEPTION: {ex.GetType().Name}");
                 }
@@ -286,7 +286,7 @@ namespace Nethermind.Evm
                 _stateProvider.DeleteAccount(toBeDestroyed);
             }
 
-            if (_logger.IsDebug)
+            if (_logger.IsDebugEnabled)
             {
                 _logger.Debug("GAS SPENT: " + spentGas);
             }
@@ -314,7 +314,7 @@ namespace Nethermind.Evm
         {
             long spentGas = gasLimit - unspentGas;
             long refund = Math.Min(spentGas / 2L, substate.Refund + substate.DestroyList.Count * RefundOf.Destroy);
-            if (_logger.IsDebug)
+            if (_logger.IsDebugEnabled)
             {
                 _logger.Debug("REFUNDING UNUSED GAS OF " + unspentGas + " AND REFUND OF " + refund);
             }

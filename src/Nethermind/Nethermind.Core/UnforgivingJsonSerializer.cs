@@ -45,11 +45,12 @@ namespace Nethermind.Core
             return (token.ToObject<T>(), null);
         }
 
-        public string Serialize<T>(T value)
+        public string Serialize<T>(T value, bool indented = false)
         {
             return JsonConvert.SerializeObject(value, new JsonSerializerSettings
             {
-                NullValueHandling = NullValueHandling.Ignore
+                NullValueHandling = NullValueHandling.Ignore,
+                Formatting = indented ? Formatting.Indented : Formatting.None
             });
         }
     }

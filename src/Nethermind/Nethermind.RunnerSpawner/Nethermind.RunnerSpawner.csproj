@@ -1,0 +1,31 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>netcoreapp2.0</TargetFramework>
+    <AllowedReferenceRelatedFileExtensions>
+            .pdb;
+            .xml;
+            .json;
+        </AllowedReferenceRelatedFileExtensions>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Nethermind.Runner\Nethermind.Runner.csproj">
+      <Project>{33E2CCD2-0D52-477C-8EAC-D429F66BEAC0}</Project>
+      <Name>Nethermind.Runner</Name>
+    </ProjectReference>
+    <!--<Content Include="..\Nethermind.Runner\appsettings.Development.json">-->
+    <!--<Link>Nethermind.Runner.runtimeconfig2.dev.json</Link>-->
+    <!--<CopyToOutputDirectory>Always</CopyToOutputDirectory>-->
+    <!--</Content>-->
+    <!--<Content Include="..\Nethermind.Runner\appsettings.json">-->
+    <!--<Link>Nethermind.Runner.runtimeconfig2.json</Link>-->
+    <!--<CopyToOutputDirectory>Always</CopyToOutputDirectory>-->
+    <!--</Content>-->
+    <Content Include="spawner.json">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="NLog.Config" Version="4.5.3" />
+  </ItemGroup>
+</Project>

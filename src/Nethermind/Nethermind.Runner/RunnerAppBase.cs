@@ -1,4 +1,22 @@
-﻿using System;
+﻿/*
+ * Copyright (c) 2018 Demerzel Solutions Limited
+ * This file is part of the Nethermind library.
+ *
+ * The Nethermind library is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * The Nethermind library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+using System;
 using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
@@ -10,15 +28,15 @@ using Nethermind.Runner.Runners;
 
 namespace Nethermind.Runner
 {
-    public abstract class BaseRunnerApp
+    public abstract class RunnerAppBase
     {
         protected readonly ILogger Logger;
         protected readonly IPrivateKeyProvider PrivateKeyProvider;
-        private IJsonRpcRunner _jsonRpcRunner;
-        private IEthereumRunner _ethereumRunner;
-        private IDiscoveryRunner _discoveryRunner;
+        private IJsonRpcRunner _jsonRpcRunner = NullRunner.Instance;
+        private IEthereumRunner _ethereumRunner = NullRunner.Instance;
+        private IDiscoveryRunner _discoveryRunner = NullRunner.Instance;
 
-        protected BaseRunnerApp(ILogger logger, IPrivateKeyProvider privateKeyProvider)
+        protected RunnerAppBase(ILogger logger, IPrivateKeyProvider privateKeyProvider)
         {
             Logger = logger;
             PrivateKeyProvider = privateKeyProvider;
@@ -32,15 +50,21 @@ namespace Nethermind.Runner
                 var configProvider = new ConfigurationProvider();
                 Bootstrap.ConfigureContainer(configProvider, PrivateKeyProvider, Logger, initParams);
 
-                //It needs to run first to finalize objects registration in the container
-                _jsonRpcRunner = new JsonRpcRunner(configProvider, Logger);
-                _jsonRpcRunner.Start(initParams);
+                if (initParams.JsonRpcEnabled)
+                {
+                    //It needs to run first to finalize objects registration in the container
+                    _jsonRpcRunner = new JsonRpcRunner(configProvider, Logger);
+                    _jsonRpcRunner.Start(initParams);
+                }
 
                 _ethereumRunner = Bootstrap.ServiceProvider.GetService<IEthereumRunner>();
                 _ethereumRunner.Start(initParams);
 
-                _discoveryRunner = Bootstrap.ServiceProvider.GetService<IDiscoveryRunner>();
-                _discoveryRunner.Start(initParams);
+                if (initParams.DiscoveryEnabled)
+                {
+                    _discoveryRunner = Bootstrap.ServiceProvider.GetService<IDiscoveryRunner>();
+                    _discoveryRunner.Start(initParams);
+                }
             }
             catch (Exception e)
             {

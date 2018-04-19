@@ -101,8 +101,8 @@ namespace Nethermind.PerfTest
             DbProvider dbProvider = new DbProvider(logger);
             StateTree stateTree = new StateTree(dbProvider.GetOrCreateStateDb());
             IStateProvider stateProvider = new StateProvider(stateTree, logger, dbProvider.GetOrCreateCodeDb());
-            IBlockTree blockTree = new BlockTree(ChainId.MainNet, logger);
-            Machine = new VirtualMachine(new SingleReleaseSpecProvider(Frontier.Instance, ChainId.MainNet), stateProvider, new StorageProvider(dbProvider, stateProvider, logger), new BlockhashProvider(blockTree), null);
+            IBlockTree blockTree = new BlockTree(FrontierSpecProvider.Instance, logger);
+            Machine = new VirtualMachine(FrontierSpecProvider.Instance, stateProvider, new StorageProvider(dbProvider, stateProvider, logger), new BlockhashProvider(blockTree), null);
         }
         
         private static void Main(string[] args)

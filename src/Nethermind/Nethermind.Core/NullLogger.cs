@@ -58,10 +58,10 @@ namespace Nethermind.Core
         {
         }
 
-        public bool IsInfo { get; } = false;
-        public bool IsWarn { get; } = false;
-        public bool IsDebug { get; } = false;
-        public bool IsTrace { get; } = false;
-        public bool IsError { get; } = false;
+        public bool IsInfoEnabled { get; } = false;
+        public bool IsWarnEnabled { get; } = false;
+        public bool IsDebugEnabled { get; } = false;
+        public bool IsTraceEnabled { get; } = false;
+        public bool IsErrorEnabled { get; } = false;
     }
 }

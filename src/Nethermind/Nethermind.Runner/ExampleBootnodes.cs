@@ -19,7 +19,7 @@
 using System.Collections.Generic;
 using Nethermind.Core;
 
-namespace Nethermind.PeerConsole
+namespace Nethermind.Runner
 {
     public class Bootnodes
     {

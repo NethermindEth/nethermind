@@ -77,13 +77,14 @@ namespace Nethermind.Core
             }
         }
 
-        public string Serialize<T>(T value)
+        public string Serialize<T>(T value, bool indented = false)
         {
             try
             {
                 return JsonConvert.SerializeObject(value, new JsonSerializerSettings
                 {
-                    NullValueHandling = NullValueHandling.Ignore
+                    NullValueHandling = NullValueHandling.Ignore,
+                    Formatting = indented ? Formatting.Indented : Formatting.None
                 });
             }
             catch (Exception e)

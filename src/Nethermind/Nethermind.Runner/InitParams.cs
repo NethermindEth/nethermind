@@ -17,20 +17,30 @@
  */
 
 using System.Numerics;
+using Nethermind.Core.Crypto;
 using Nethermind.Runner.Runners;
+using Newtonsoft.Json;
 
 namespace Nethermind.Runner
 {
     public class InitParams
     {
+        public bool JsonRpcEnabled { get; set; } = true;
+        public bool DiscoveryEnabled { get; set; } = true;
+        public bool? IsMining { get; set; }
+        public int? FakeMiningDelay { get; set; }
         public string HttpHost { get; set; }
         public string BootNode { get; set; }
         public int? HttpPort { get; set; }
         public int? DiscoveryPort { get; set; }
+        public int? P2PPort { get; set; }
+        public string ChainSpecPath { get; set; }
         public string GenesisFilePath { get; set; }
         public string ChainFile { get; set; }
         public string BlocksDir { get; set; }
         public string KeysDir { get; set; }
+        public string TestNodeKey { get; set; }
+        public string LogFileName { get; set; }
         public BigInteger? HomesteadBlockNr { get; set; }
         public EthereumRunnerType EthereumRunnerType { get; set; }
 

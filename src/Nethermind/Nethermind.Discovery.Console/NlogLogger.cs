@@ -55,10 +55,10 @@ namespace Nethermind.Discovery.Console
             Logger.Error(ex, text);
         }
 
-        public bool IsInfo => Logger.IsInfoEnabled;
-        public bool IsWarn => Logger.IsWarnEnabled;
-        public bool IsDebug => Logger.IsDebugEnabled;
-        public bool IsTrace => Logger.IsTraceEnabled;
-        public bool IsError => Logger.IsErrorEnabled || Logger.IsFatalEnabled;
+        public bool IsInfoEnabled => Logger.IsInfoEnabled;
+        public bool IsWarnEnabled => Logger.IsWarnEnabled;
+        public bool IsDebugEnabled => Logger.IsDebugEnabled;
+        public bool IsTraceEnabled => Logger.IsTraceEnabled;
+        public bool IsErrorEnabled => Logger.IsErrorEnabled || Logger.IsFatalEnabled;
     }
 }

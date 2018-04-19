@@ -17,49 +17,59 @@
  */
 
 using System;
-using NLog;
+using System.Linq;
+using NLog.Targets;
 using ILogger = Nethermind.Core.ILogger;
 
 namespace Nethermind.Runner
 {
     public class NLogLogger : ILogger
     {
-        private static readonly Logger Logger = LogManager.GetCurrentClassLogger();
+        private readonly NLog.Logger _logger;
 
+        public NLogLogger(string fileName, string loggerName = null)
+        {
+            _logger = loggerName == null ? NLog.LogManager.GetLogger("default") : NLog.LogManager.GetLogger(loggerName);
+            if (NLog.LogManager.Configuration.AllTargets.SingleOrDefault(t => t.Name == "file") is FileTarget target)
+            {
+                target.FileName = fileName;
+            }
+        }
+        
         public void Log(string text)
         {
-            Logger.Info(text);
+            _logger.Info(text);
         }
 
         public void Info(string text)
         {
-            Logger.Info(text);
+            _logger.Info(text);
         }
 
         public void Warn(string text)
         {
-            Logger.Warn(text);
+            _logger.Warn(text);
         }
 
         public void Debug(string text)
         {
-            Logger.Debug(text);
+            _logger.Debug(text);
         }
 
         public void Trace(string text)
         {
-            Logger.Trace(text);
+            _logger.Trace(text);
         }
 
         public void Error(string text, Exception ex = null)
         {
-            Logger.Error(ex, text);
+            _logger.Error(ex, text);
         }
 
-        public bool IsInfo => Logger.IsInfoEnabled;
-        public bool IsWarn => Logger.IsWarnEnabled;
-        public bool IsDebug => Logger.IsDebugEnabled;
-        public bool IsTrace => Logger.IsTraceEnabled;
-        public bool IsError => Logger.IsErrorEnabled || Logger.IsFatalEnabled;
+        public bool IsInfoEnabled => _logger.IsInfoEnabled;
+        public bool IsWarnEnabled => _logger.IsWarnEnabled;
+        public bool IsDebugEnabled => _logger.IsDebugEnabled;
+        public bool IsTraceEnabled => _logger.IsTraceEnabled;
+        public bool IsErrorEnabled => _logger.IsErrorEnabled || _logger.IsFatalEnabled;
     }
 }

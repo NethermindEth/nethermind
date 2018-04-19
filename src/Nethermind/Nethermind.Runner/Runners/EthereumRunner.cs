@@ -18,15 +18,28 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
+using System.Net;
+using System.Net.Sockets;
 using System.Numerics;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Difficulty;
+using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Specs.ChainSpec;
+using Nethermind.Evm;
 using Nethermind.KeyStore;
+using Nethermind.Network;
+using Nethermind.Network.Crypto;
+using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.Subprotocols.Eth;
+using Nethermind.Network.Rlpx;
+using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Runner.Data;
 using Nethermind.Store;
 
@@ -34,47 +47,193 @@ namespace Nethermind.Runner.Runners
 {
     public class EthereumRunner : IEthereumRunner
     {
-        private readonly IJsonSerializer _jsonSerializer;
-        private readonly IBlockTree _blockTree;
-        private readonly IBlockchainProcessor _blockchainProcessor;
-        private readonly IStateProvider _stateProvider;
-        private readonly ISpecProvider _specProvider;
-        private readonly IDbProvider _dbProvider;
-        private readonly ILogger _logger;
-        private readonly IConfigurationProvider _configurationProvider;
+        private IBlockchainProcessor _blockchainProcessor;
+        private IRlpxPeer _localPeer;
+        private PrivateKey _privateKey;
+        private ISynchronizationManager _syncManager;
 
-        public EthereumRunner(IJsonSerializer jsonSerializer, IBlockchainProcessor blockchainProcessor, IBlockTree blockTree, IStateProvider stateProvider, IDbProvider dbProvider, ILogger logger, IConfigurationProvider configurationProvider, ISpecProvider specProvider)
-        {
-            _jsonSerializer = jsonSerializer;
-            _blockchainProcessor = blockchainProcessor;
-            _blockTree = blockTree;
-            _stateProvider = stateProvider;
-            _dbProvider = dbProvider;
-            _logger = logger;
-            _configurationProvider = configurationProvider;
-            _specProvider = specProvider;
-        }
+        private static ILogger _defaultLogger = new NLogLogger("default");
+        private static ILogger _evmLogger = new NLogLogger("evm");
+        private static ILogger _stateLogger = new NLogLogger("state");
+        private static ILogger _chainLogger = new NLogLogger("chain");
+        private static ILogger _networkLogger = new NLogLogger("net");
 
         public void Start(InitParams initParams)
         {
-            _logger.Info("Initializing Ethereum");
-            _blockchainProcessor.Start();
-            InitializeGenesis(initParams.GenesisFilePath);
-            _logger.Info("Ethereum initialization completed");
+            _defaultLogger = new NLogLogger(initParams.LogFileName, "default");
+            _evmLogger = new NLogLogger(initParams.LogFileName, "evm");
+            _stateLogger = new NLogLogger(initParams.LogFileName, "state");
+            _chainLogger = new NLogLogger(initParams.LogFileName, "chain");
+            _networkLogger = new NLogLogger(initParams.LogFileName, "net");
+
+            _defaultLogger.Info("Initializing Ethereum");
+            _privateKey = new PrivateKey(initParams.TestNodeKey);
+            ChainSpec chainSpec = LoadChainSpec(initParams.ChainSpecPath);
+            InitBlockchain(chainSpec, initParams.IsMining ?? false, initParams.FakeMiningDelay ?? 12000);
+            InitNet(chainSpec, initParams.P2PPort ?? 30303).Wait();
+            _defaultLogger.Info("Ethereum initialization completed");
         }
 
         public async Task StopAsync()
         {
+            _networkLogger.Info("Shutting down...");
+            _networkLogger.Info("Stopping sync manager...");
+            await _syncManager.StopAsync();
+            _networkLogger.Info("Stopping blockchain processor...");
             await _blockchainProcessor.StopAsync();
+            _networkLogger.Info("Stopping local peer...");
+            await _localPeer.Shutdown();
+            _networkLogger.Info("Goodbye...");
         }
 
-        private void InitializeGenesis(string genesisFile)
+        private ChainSpec LoadChainSpec(string chainSpecFile)
         {
-            var genesisBlockRaw = File.ReadAllText(genesisFile);
-            var blockJson = _jsonSerializer.Deserialize<TestGenesisJson>(genesisBlockRaw);
-            var stateRoot = InitializeAccounts(blockJson.Alloc);
-            var block = Convert(blockJson, stateRoot);
-            _blockTree.AddBlock(block);
+            _defaultLogger.Info($"Loading ChainSpec from {chainSpecFile}");
+            var loader = new ChainSpecLoader(new UnforgivingJsonSerializer());
+            if (!Path.IsPathRooted(chainSpecFile))
+            {
+                chainSpecFile = Path.Combine(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Chains", chainSpecFile));
+            }
+
+            var chainSpec = loader.Load(File.ReadAllBytes(chainSpecFile));
+            return chainSpec;
+        }
+
+        private void InitBlockchain(ChainSpec chainSpec, bool isMining, int miningDelay)
+        {
+            /* spec */
+            var blockMiningTime = TimeSpan.FromMilliseconds(miningDelay);
+            var transactionDelay = TimeSpan.FromMilliseconds(miningDelay / 4);
+            var specProvider = RopstenSpecProvider.Instance;
+            var difficultyCalculator = new DifficultyCalculator(specProvider);
+            // var sealEngine = new EthashSealEngine(new Ethash());
+            var sealEngine = new FakeSealEngine(blockMiningTime, false);
+
+            /* sync */
+            var transactionStore = new TransactionStore();
+            var blockTree = new BlockTree(RopstenSpecProvider.Instance, _chainLogger);
+
+            /* validation */
+            var headerValidator = new HeaderValidator(difficultyCalculator, blockTree, sealEngine, specProvider, _chainLogger);
+            var ommersValidator = new OmmersValidator(blockTree, headerValidator, _chainLogger);
+            var txValidator = new TransactionValidator(new SignatureValidator(ChainId.Ropsten));
+            var blockValidator = new BlockValidator(txValidator, headerValidator, ommersValidator, specProvider, _chainLogger);
+
+            /* state */
+            var dbProvider = new DbProvider(_stateLogger);
+            var codeDb = new InMemoryDb();
+            var stateDb = new InMemoryDb();
+            var stateTree = new StateTree(stateDb);
+            var stateProvider = new StateProvider(stateTree, _stateLogger, codeDb);
+            var storageProvider = new StorageProvider(dbProvider, stateProvider, _stateLogger);
+            var storageDbProvider = new DbProvider(_stateLogger);
+
+            /* blockchain */
+            var ethereumSigner = new EthereumSigner(specProvider, _chainLogger);
+
+            /* blockchain processing */
+            var blockhashProvider = new BlockhashProvider(blockTree);
+            var virtualMachine = new VirtualMachine(specProvider, stateProvider, storageProvider, blockhashProvider, _evmLogger);
+            var transactionProcessor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, ethereumSigner, _chainLogger);
+            var rewardCalculator = new RewardCalculator(specProvider);
+            var blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, transactionProcessor, storageDbProvider, stateProvider, storageProvider, transactionStore, _chainLogger);
+            _blockchainProcessor = new BlockchainProcessor(blockTree, sealEngine, transactionStore, difficultyCalculator, blockProcessor, _chainLogger);
+
+            /* genesis */
+            foreach (KeyValuePair<Address, BigInteger> allocation in chainSpec.Allocations)
+            {
+                stateProvider.CreateAccount(allocation.Key, allocation.Value);
+            }
+
+            stateProvider.Commit(specProvider.GenesisSpec);
+
+            var testTransactionsGenerator = new TestTransactionsGenerator(transactionStore, ethereumSigner, transactionDelay, _chainLogger);
+            stateProvider.CreateAccount(testTransactionsGenerator.SenderAddress, 1000.Ether());
+            stateProvider.Commit(specProvider.GenesisSpec);
+
+            if (isMining)
+            {
+                testTransactionsGenerator.Start();
+            }
+
+            Block genesis = chainSpec.Genesis;
+            genesis.Header.StateRoot = stateProvider.StateRoot;
+            genesis.Header.RecomputeHash();
+            // we are adding test transactions account so the state root will change (not an actual ropsten at the moment)
+//            var expectedGenesisHash = "0x41941023680923e0fe4d74a34bdac8141f2540e3ae90623718e47d66d1ca4a2d";
+//            if (chainSpec.Genesis.Hash != new Keccak(expectedGenesisHash))
+//            {
+//                throw new Exception($"Unexpected genesis hash for Ropsten, expected {expectedGenesisHash}, but was {chainSpec.Genesis.Hash}");
+//            }
+
+            /* start test processing */
+            sealEngine.IsMining = isMining;
+            _blockchainProcessor.Start();
+            blockTree.AddBlock(genesis);
+
+            _syncManager = new SynchronizationManager(
+                blockTree,
+                blockValidator,
+                headerValidator,
+                transactionStore,
+                txValidator,
+                _networkLogger);
+            _syncManager.Start();
+        }
+
+        private async Task InitNet(ChainSpec chainSpec, int listenPort)
+        {
+            /* tools */
+            var serializationService = new MessageSerializationService();
+            var cryptoRandom = new CryptoRandom();
+            var signer = new Signer();
+
+            /* rlpx */
+            var eciesCipher = new EciesCipher(cryptoRandom);
+            var eip8Pad = new Eip8MessagePad(cryptoRandom);
+            serializationService.Register(new AuthEip8MessageSerializer(eip8Pad));
+            serializationService.Register(new AckEip8MessageSerializer(eip8Pad));
+            var encryptionHandshakeServiceA = new EncryptionHandshakeService(serializationService, eciesCipher, cryptoRandom, signer, _privateKey, _networkLogger);
+
+            /* p2p */
+            serializationService.Register(new HelloMessageSerializer());
+            serializationService.Register(new DisconnectMessageSerializer());
+            serializationService.Register(new PingMessageSerializer());
+            serializationService.Register(new PongMessageSerializer());
+
+            /* eth */
+            serializationService.Register(new StatusMessageSerializer());
+            serializationService.Register(new TransactionsMessageSerializer());
+            serializationService.Register(new GetBlockHeadersMessageSerializer());
+            serializationService.Register(new NewBlockHashesMessageSerializer());
+            serializationService.Register(new GetBlockBodiesMessageSerializer());
+            serializationService.Register(new BlockHeadersMessageSerializer());
+            serializationService.Register(new BlockBodiesMessageSerializer());
+            serializationService.Register(new NewBlockMessageSerializer());
+
+            _networkLogger.Info("Initializing server...");
+            _localPeer = new RlpxPeer(_privateKey.PublicKey, listenPort, encryptionHandshakeServiceA, serializationService, _syncManager, _networkLogger);
+            await _localPeer.Init();
+
+            // https://stackoverflow.com/questions/6803073/get-local-ip-address?utm_medium=organic&utm_source=google_rich_qa&utm_campaign=google_rich_qa
+            string localIp;
+            using (Socket socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, 0))
+            {
+                socket.Connect("8.8.8.8", 65530);
+                IPEndPoint endPoint = socket.LocalEndPoint as IPEndPoint;
+                Debug.Assert(endPoint != null, "null endpoint when connecting a UDP socket");
+                localIp = endPoint.Address.ToString();
+            }
+
+            _networkLogger.Info($"Node is up and listening on {localIp}:{listenPort}... press ENTER to exit");
+            _networkLogger.Info($"enode://{_privateKey.PublicKey.ToString(false)}@{localIp}:{listenPort}");
+
+            foreach (Bootnode bootnode in chainSpec.Bootnodes)
+            {
+                _networkLogger.Info($"Connecting to {bootnode.Description} @ {bootnode.Host}:{bootnode.Port}");
+                await _localPeer.ConnectAsync(bootnode.PublicKey, bootnode.Host, bootnode.Port);
+                _networkLogger.Info("Testnet connected...");
+            }
         }
 
         private static Block Convert(TestGenesisJson headerJson, Keccak stateRoot)
@@ -109,18 +268,6 @@ namespace Nethermind.Runner.Runners
             var block = new Block(header);
             return block;
             //0xbd008bffd224489523896ed37442e90b4a7a3218127dafdfed9d503d95e3e1f3
-        }
-
-        private Keccak InitializeAccounts(IDictionary<string, TestAccount> alloc)
-        {
-            foreach (var account in alloc)
-            {
-                _stateProvider.CreateAccount(new Address(new Hex(account.Key)), account.Value.Balance.StartsWith("0x")
-                    ? new BigInteger(new Hex(account.Value.Balance)) : BigInteger.Parse(account.Value.Balance));
-            }
-            _stateProvider.Commit(_specProvider.GenesisSpec);
-            _dbProvider.Commit(_specProvider.GenesisSpec);
-            return _stateProvider.StateRoot;
         }
     }
 }

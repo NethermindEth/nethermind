@@ -84,7 +84,7 @@ namespace Nethermind.Evm
 
                 try
                 {
-                    if (_logger.IsDebug)
+                    if (_logger.IsDebugEnabled)
                     {
                         string intro = (currentState.IsContinuation ? "CONTINUE" : "BEGIN") + (currentState.IsStatic ? " STATIC" : string.Empty);
                         _logger.Debug($"{intro} {currentState.ExecutionType} AT DEPTH {currentState.Env.CallDepth} (at {currentState.Env.ExecutingAccount})");
@@ -167,14 +167,14 @@ namespace Nethermind.Evm
                             _returnDataBuffer = callResult.Output;
                         }
 
-                        if (_logger.IsDebug)
+                        if (_logger.IsDebugEnabled)
                         {
                             _logger.Debug($"END {previousState.ExecutionType} AT DEPTH {previousState.Env.CallDepth} (RESULT {Hex.FromBytes(previousCallResult ?? Bytes.Empty, true)}) RETURNS ({previousCallOutputDestination} : {Hex.FromBytes(previousCallOutput, true)})");
                         }
                     }
                     else
                     {
-                        if (_logger.IsDebug)
+                        if (_logger.IsDebugEnabled)
                         {
                             _logger.Debug($"REVERT {previousState.ExecutionType} AT DEPTH {previousState.Env.CallDepth} (RESULT {Hex.FromBytes(previousCallResult ?? Bytes.Empty, true)}) RETURNS ({previousCallOutputDestination} : {Hex.FromBytes(previousCallOutput, true)})");
                         }
@@ -189,7 +189,7 @@ namespace Nethermind.Evm
                 }
                 catch (Exception ex) when (ex is EvmException || ex is OverflowException)
                 {
-                    if (_logger.IsDebug)
+                    if (_logger.IsDebugEnabled)
                     {
                         _logger.Debug($"EXCEPTION ({ex.GetType().Name}) IN {currentState.ExecutionType} AT DEPTH {currentState.Env.CallDepth} - RESTORING SNAPSHOT");
                     }
@@ -236,7 +236,7 @@ namespace Nethermind.Evm
 
         public void UpdateGas(long gasCost, ref long gasAvailable)
         {
-            if (_logger.IsDebug)
+            if (_logger.IsDebugEnabled)
             {
                 _logger.Debug($"  UPDATE GAS (-{gasCost})");
             }
@@ -251,7 +251,7 @@ namespace Nethermind.Evm
 
         public void RefundGas(long refund, ref long gasAvailable)
         {
-            if (_logger.IsDebug)
+            if (_logger.IsDebugEnabled)
             {
                 _logger.Debug($"  UPDATE GAS (+{refund})");
             }
@@ -370,12 +370,12 @@ namespace Nethermind.Evm
 
             void LogInstructionResult(Instruction instruction, long gasBefore)
             {
-                if (_logger.IsDebug)
+                if (_logger.IsDebugEnabled)
                 {
                     _logger.Debug(
                         $"  END {env.CallDepth}_{instruction} GAS {gasAvailable} ({gasBefore - gasAvailable}) STACK {stackHead} MEMORY {evmState.Memory.Size / 32L} PC {programCounter}");
 
-                    if (_logger.IsTrace)
+                    if (_logger.IsTraceEnabled)
                     {
                         for (int i = 0; i < Math.Min(stackHead, 7); i++)
                         {
@@ -394,7 +394,7 @@ namespace Nethermind.Evm
 
             void PushBytes(byte[] value)
             {
-                if (_logger.IsDebug)
+                if (_logger.IsDebugEnabled)
                 {
                     _logger.Debug($"  PUSH {Hex.FromBytes(value, true)}");
                 }
@@ -410,7 +410,7 @@ namespace Nethermind.Evm
 
             void PushInt(BigInteger value)
             {
-                if (_logger.IsDebug)
+                if (_logger.IsDebugEnabled)
                 {
                     _logger.Debug($"  PUSH {value}");
                 }
@@ -517,7 +517,7 @@ namespace Nethermind.Evm
                     ? intsOnStack[stackHead].ToBigEndianByteArray()
                     : bytesOnStack[stackHead];
 
-                if (_logger.IsDebug)
+                if (_logger.IsDebugEnabled)
                 {
                     _logger.Debug($"  POP {Hex.FromBytes(result, true)}");
                 }
@@ -536,7 +536,7 @@ namespace Nethermind.Evm
 
                 if (intPositions[stackHead])
                 {
-                    if (_logger.IsDebug)
+                    if (_logger.IsDebugEnabled)
                     {
                         _logger.Debug($"  POP {intsOnStack[stackHead]}");
                     }
@@ -545,7 +545,7 @@ namespace Nethermind.Evm
                 }
 
                 BigInteger res = bytesOnStack[stackHead].ToUnsignedBigInteger();
-                if (_logger.IsDebug)
+                if (_logger.IsDebugEnabled)
                 {
                     _logger.Debug($"  POP {res}");
                 }
@@ -565,7 +565,7 @@ namespace Nethermind.Evm
                 // TODO: can remember whether integer was signed or not so I do not have to convert
                 if (intPositions[stackHead])
                 {
-                    if (_logger.IsDebug)
+                    if (_logger.IsDebugEnabled)
                     {
                         _logger.Debug($"  POP {intsOnStack[stackHead]}");
                     }
@@ -573,7 +573,7 @@ namespace Nethermind.Evm
                     return intsOnStack[stackHead].ToBigEndianByteArray().ToSignedBigInteger(32);
                 }
 
-                if (_logger.IsDebug)
+                if (_logger.IsDebugEnabled)
                 {
                     _logger.Debug($"  POP {Hex.FromBytes(bytesOnStack[stackHead], true)}");
                 }
@@ -595,7 +595,7 @@ namespace Nethermind.Evm
             void UpdateMemoryCost(BigInteger position, BigInteger length)
             {
                 long memoryCost = evmState.Memory.CalculateMemoryCost(position, length);
-                if (_logger.IsDebug)
+                if (_logger.IsDebugEnabled)
                 {
                     _logger.Debug($"  MEMORY COST {memoryCost}");
                 }
@@ -664,7 +664,7 @@ namespace Nethermind.Evm
                 Instruction instruction = (Instruction)code[(int)programCounter];
                 programCounter++;
 
-                if (_logger.IsDebug)
+                if (_logger.IsDebugEnabled)
                 {
                     _logger.Debug($"{instruction} (0x{instruction:X})");
                 }
@@ -1201,7 +1201,7 @@ namespace Nethermind.Evm
                             {
                                 byte[] newValue = isNewValueZero ? new byte[] { 0 } : data;
                                 _storage.Set(env.ExecutingAccount, storageIndex, newValue);
-                                if (_logger.IsDebug)
+                                if (_logger.IsDebugEnabled)
                                 {
                                     _logger.Debug($"  UPDATING STORAGE: {env.ExecutingAccount} {storageIndex} {Hex.FromBytes(newValue, true)}");
                                 }
@@ -1441,7 +1441,7 @@ namespace Nethermind.Evm
                             BigInteger balance = _state.GetBalance(env.ExecutingAccount);
                             if (value > _state.GetBalance(env.ExecutingAccount))
                             {
-                                if (_logger.IsDebug)
+                                if (_logger.IsDebugEnabled)
                                 {
                                     _logger.Debug($"Insufficient balance when calling create - value = {value} > {balance} = balance");
                                 }
@@ -1458,7 +1458,7 @@ namespace Nethermind.Evm
                             bool accountExists = _state.AccountExists(contractAddress);
                             if (accountExists && (_state.GetCode(contractAddress).Length != 0 || _state.GetNonce(contractAddress) != 0))
                             {
-                                if (_logger.IsDebug)
+                                if (_logger.IsDebugEnabled)
                                 {
                                     _logger.Debug($"Contract collision at {contractAddress}"); // the account already owns the contract with the code
                                 }
@@ -1471,7 +1471,7 @@ namespace Nethermind.Evm
                             int storageSnapshot = _storage.TakeSnapshot();
 
                             _state.UpdateBalance(env.ExecutingAccount, -value, spec);
-                            if (_logger.IsDebug)
+                            if (_logger.IsDebugEnabled)
                             {
                                 _logger.Debug("  INIT: " + contractAddress);
                             }
@@ -1499,7 +1499,7 @@ namespace Nethermind.Evm
                                 false);
 
                             UpdateCurrentState();
-                            if (_logger.IsDebug)
+                            if (_logger.IsDebugEnabled)
                             {
                                 LogInstructionResult(instruction, gasBefore);
                             }
@@ -1517,7 +1517,7 @@ namespace Nethermind.Evm
                             byte[] returnData = evmState.Memory.Load(memoryPos, length);
 
                             UpdateCurrentState();
-                            if (_logger.IsDebug)
+                            if (_logger.IsDebugEnabled)
                             {
                                 LogInstructionResult(instruction, gasBefore);
                             }
@@ -1566,7 +1566,7 @@ namespace Nethermind.Evm
                             Address sender = instruction == Instruction.DELEGATECALL ? env.Sender : env.ExecutingAccount;
                             Address target = instruction == Instruction.CALL || instruction == Instruction.STATICCALL ? codeSource : env.ExecutingAccount;
 
-                            if (_logger.IsDebug)
+                            if (_logger.IsDebugEnabled)
                             {
                                 _logger.Debug($"  SENDER {sender}");
                                 _logger.Debug($"  CODE SOURCE {codeSource}");
@@ -1615,7 +1615,7 @@ namespace Nethermind.Evm
                                 evmState.Memory.Save(outputOffset, new byte[(int)outputLength]);
                                 _returnDataBuffer = EmptyBytes;
                                 PushInt(BigInteger.Zero);
-                                if (_logger.IsDebug)
+                                if (_logger.IsDebugEnabled)
                                 {
                                     _logger.Debug("  FAIL - CALL DEPTH");
                                 }
@@ -1631,7 +1631,7 @@ namespace Nethermind.Evm
                                 evmState.Memory.Save(outputOffset, new byte[(int)outputLength]);
                                 _returnDataBuffer = EmptyBytes;
                                 PushInt(BigInteger.Zero);
-                                if (_logger.IsDebug)
+                                if (_logger.IsDebugEnabled)
                                 {
                                     _logger.Debug($"  {instruction} FAIL - NOT ENOUGH BALANCE");
                                 }
@@ -1663,7 +1663,7 @@ namespace Nethermind.Evm
                             callEnv.MachineCode = isPrecompile ? ((byte[])codeSource.Hex) : _state.GetCode(codeSource);
 
                             BigInteger callGas = transferValue.IsZero ? gasLimitUl : gasLimitUl + GasCostOf.CallStipend;
-                            if (_logger.IsDebug)
+                            if (_logger.IsDebugEnabled)
                             {
                                 _logger.Debug($"  CALL_GAS {callGas}");
                             }
@@ -1680,7 +1680,7 @@ namespace Nethermind.Evm
                                 false);
 
                             UpdateCurrentState();
-                            if (_logger.IsDebug)
+                            if (_logger.IsDebugEnabled)
                             {
                                 LogInstructionResult(instruction, gasBefore);
                             }
@@ -1703,7 +1703,7 @@ namespace Nethermind.Evm
                             byte[] errorDetails = evmState.Memory.Load(memoryPos, length);
 
                             UpdateCurrentState();
-                            if (_logger.IsDebug)
+                            if (_logger.IsDebugEnabled)
                             {
                                 LogInstructionResult(instruction, gasBefore);
                             }
@@ -1753,7 +1753,7 @@ namespace Nethermind.Evm
                             }
 
                             UpdateCurrentState();
-                            if (_logger.IsDebug)
+                            if (_logger.IsDebugEnabled)
                             {
                                 LogInstructionResult(instruction, gasBefore);
                             }
@@ -1762,7 +1762,7 @@ namespace Nethermind.Evm
                         }
                     default:
                         {
-                            if (_logger.IsDebug)
+                            if (_logger.IsDebugEnabled)
                             {
                                 _logger.Debug("UNKNOWN INSTRUCTION");
                             }
@@ -1771,7 +1771,7 @@ namespace Nethermind.Evm
                         }
                 }
 
-                if (_logger.IsDebug)
+                if (_logger.IsDebugEnabled)
                 {
                     LogInstructionResult(instruction, gasBefore);
                 }

@@ -66,5 +66,45 @@
     <None Update="NLog.config">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
+    <None Update="runner.config">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
+  <ItemGroup>
+    <Content Include="..\Chains\foundation.json">
+      <Link>Chains\foundation.json</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\Chains\kovan.json">
+      <Link>Chains\kovan.json</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\Chains\morden.json">
+      <Link>Chains\morden.json</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\Chains\nethermind_alpha.json">
+      <Link>Chains\nethermind_alpha.json</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\Chains\nethermind_alpha_client.json">
+      <Link>Chains\nethermind_alpha_client.json</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\Chains\olympic.json">
+      <Link>Chains\olympic.json</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\Chains\ropsten.json">
+      <Link>Chains\ropsten.json</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+  <Target Name="AddRuntimeDependenciesToContent" Condition=" '$(TargetFrameworkIdentifier)' == '.NETCoreApp'" BeforeTargets="GetCopyToOutputDirectoryItems">
+    <ItemGroup>
+      <ContentWithTargetPath Include="$(ProjectDepsFilePath)" CopyToOutputDirectory="PreserveNewest" TargetPath="$(ProjectDepsFileName)" />
+      <ContentWithTargetPath Include="$(ProjectRuntimeConfigFilePath)" CopyToOutputDirectory="PreserveNewest" TargetPath="$(ProjectRuntimeConfigFileName)" />
+      <ContentWithTargetPath Include="$(ProjectRuntimeConfigFilePath.Substring(0, $([MSBuild]::Subtract($(ProjectRuntimeConfigFilePath.Length), 5)))).dev.json" CopyToOutputDirectory="PreserveNewest" TargetPath="$(ProjectRuntimeConfigFileName.Substring(0, $([MSBuild]::Subtract($(ProjectRuntimeConfigFileName.Length), 5)))).dev.json" />
+    </ItemGroup>
+  </Target>
 </Project>

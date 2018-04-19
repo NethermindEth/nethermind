@@ -16,14 +16,35 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
+using System.Net.Mime;
+using System.Threading;
+using Nethermind.Core;
+
 namespace Nethermind.Runner
 {
     public class Program
     {
         public static void Main(string[] args)
         {
-            IRunnerApp runner = new RunnerApp(new NLogLogger());
-            runner.Run(args);
-        }       
+            ILogger logger = new NLogLogger("logs.txt");
+
+            AppDomain.CurrentDomain.UnhandledException += (sender, eventArgs) =>
+            {
+                logger.Error("Unhandled exception");
+                Console.ReadLine(); // TODO: remove later
+            }; 
+            
+            try
+            {
+                IRunnerApp runner = new RunnerApp(logger);
+                runner.Run(args);
+            }
+            catch (Exception e)
+            {
+                logger.Error("Runner exception", e);
+                Console.ReadLine(); // TODO: remove later
+            }
+        }
     }
 }

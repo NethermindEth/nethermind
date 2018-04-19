@@ -17,14 +17,36 @@
  */
 
 using System.Collections.Generic;
+using System.Threading.Tasks;
+using Nethermind.JsonRpc.DataModel;
+using Nethermind.Runner.Runners;
 
-namespace Nethermind.Core
+namespace Nethermind.Runner
 {
-    public interface IJsonSerializer
+    public class NullRunner : IJsonRpcRunner, IEthereumRunner, IDiscoveryRunner
     {
-        T DeserializeAnonymousType<T>(string json, T definition);
-        T Deserialize<T>(string json);
-        (T Model, IEnumerable<T> Collection) DeserializeObjectOrArray<T>(string json);
-        string Serialize<T>(T value, bool indented = false);
+        private NullRunner()
+        {
+        }
+        
+        public static NullRunner Instance = new NullRunner();
+        
+        public void Start(InitParams initParams)
+        {
+        }
+
+        public Task StopAsync()
+        {
+            return Task.CompletedTask;
+        }
+
+        void IJsonRpcRunner.Start(InitParams initParams, IReadOnlyCollection<ModuleType> modules)
+        {
+        }
+
+        Task IJsonRpcRunner.StopAsync(IEnumerable<ModuleType> modules)
+        {
+            return Task.CompletedTask;
+        }
     }
 }

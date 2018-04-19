@@ -110,14 +110,14 @@ namespace Nethermind.Blockchain
                 AddBlockResult result = BlockTree.AddBlock(block);
                 // TODO: use for reputation later
                 
-                if (_logger.IsInfo)
+                if (_logger.IsInfoEnabled)
                 {
                     _logger.Info($"Received a {result} block {block.Hash} ({block.Number}) from the network with {block.Transactions.Length} transactions");
                 }
             }
             else
             {
-                if (_logger.IsInfo)
+                if (_logger.IsInfoEnabled)
                 {
                     _logger.Info($"Received a block {block.Hash} ({block.Number}) from the network - need to resync");
                 }
@@ -144,9 +144,9 @@ namespace Nethermind.Blockchain
 
         public void AddNewTransaction(Transaction transaction, PublicKey receivedFrom)
         {
-            if (_logger.IsInfo)
+            if (_logger.IsDebugEnabled)
             {
-                _logger.Info($"Received a pending transaction {transaction.Hash} from the network");
+                _logger.Debug($"Received a pending transaction {transaction.Hash} from the network");
             }
             
             _transactionStore.AddPending(transaction);
@@ -190,7 +190,7 @@ namespace Nethermind.Blockchain
         public async Task StopAsync()
         {
             _cancellationTokenSource.Cancel();
-            await _currentSyncTask;
+            await (_currentSyncTask ?? Task.CompletedTask);
         }
 
         public int ChainId => BlockTree.ChainId;
@@ -218,21 +218,21 @@ namespace Nethermind.Blockchain
             {
                 if (t.IsCompleted)
                 {
-                    if (_logger.IsInfo)
+                    if (_logger.IsInfoEnabled)
                     {
                         _logger.Info($"Sync process finished. Best block now is {BlockTree.BestSuggestedBlock.Hash} ({BlockTree.BestSuggestedBlock.Number})");
                     }
                 }
                 else if (t.IsCanceled)
                 {
-                    if (_logger.IsInfo)
+                    if (_logger.IsInfoEnabled)
                     {
                         _logger.Info($"Sync cancelled");
                     }
                 }
                 else if (t.IsFaulted)
                 {
-                    if (_logger.IsError)
+                    if (_logger.IsErrorEnabled)
                     {
                         _logger.Error($"Error in the sync process", t.Exception);
                     }
@@ -251,7 +251,7 @@ namespace Nethermind.Blockchain
                 BigInteger bestNumber = BlockTree.BestSuggestedBlock.Number;
                 while (peerInfo.NumberAvailable > bestNumber && peerInfo.NumberReceived <= bestNumber)
                 {
-                    if (_logger.IsInfo)
+                    if (_logger.IsInfoEnabled)
                     {
                         _logger.Info($"Sending sync request to peer with best {peerInfo.NumberAvailable} (I received {peerInfo.NumberReceived}), is synced {peerInfo.IsSynced}");
                     }

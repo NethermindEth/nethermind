@@ -50,7 +50,7 @@ namespace Nethermind.Blockchain.Test
             var specProvider = RopstenSpecProvider.Instance;
 
             /* store & validation */
-            var blockTree = new BlockTree(RopstenSpecProvider.Instance.ChainId, logger);
+            var blockTree = new BlockTree(specProvider, logger);
             var difficultyCalculator = new DifficultyCalculator(specProvider);
             var headerValidator = new HeaderValidator(difficultyCalculator, blockTree, sealEngine, specProvider, logger);
             var ommersValidator = new OmmersValidator(blockTree, headerValidator, logger);

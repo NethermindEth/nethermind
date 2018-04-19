@@ -47,8 +47,6 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Discovery.Consol
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.PerfTest", "Nethermind.PerfTest\Nethermind.PerfTest.csproj", "{7798EC58-E66C-4C77-999E-4A0AD2321F4E}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.PeerConsole", "Nethermind.PeerConsole\Nethermind.PeerConsole.csproj", "{5B4D8626-8B3D-49CC-A0E4-C91BF9A8289E}"
-EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Runner", "Nethermind.Runner\Nethermind.Runner.csproj", "{33E2CCD2-0D52-477C-8EAC-D429F66BEAC0}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Ethereum.Basic.Test", "Ethereum.Basic.Test\Ethereum.Basic.Test.csproj", "{12EE9DC4-2EE4-4EC0-859B-3FA335CE66CD}"
@@ -95,6 +93,8 @@ ProjectSection(SolutionItems) = preProject
 	Chains\nethermind_alpha.json = Chains\nethermind_alpha.json
 	Chains\nethermind_alpha_client.json = Chains\nethermind_alpha_client.json
 EndProjectSection
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.RunnerSpawner", "Nethermind.RunnerSpawner\Nethermind.RunnerSpawner.csproj", "{7285ABAE-A946-437E-A6DD-F1DECFE7F8D5}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -190,10 +190,6 @@ Global
 		{7798EC58-E66C-4C77-999E-4A0AD2321F4E}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{7798EC58-E66C-4C77-999E-4A0AD2321F4E}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{7798EC58-E66C-4C77-999E-4A0AD2321F4E}.Release|Any CPU.Build.0 = Release|Any CPU
-		{5B4D8626-8B3D-49CC-A0E4-C91BF9A8289E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{5B4D8626-8B3D-49CC-A0E4-C91BF9A8289E}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{5B4D8626-8B3D-49CC-A0E4-C91BF9A8289E}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{5B4D8626-8B3D-49CC-A0E4-C91BF9A8289E}.Release|Any CPU.Build.0 = Release|Any CPU
 		{33E2CCD2-0D52-477C-8EAC-D429F66BEAC0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{33E2CCD2-0D52-477C-8EAC-D429F66BEAC0}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{33E2CCD2-0D52-477C-8EAC-D429F66BEAC0}.Release|Any CPU.ActiveCfg = Release|Any CPU
@@ -266,6 +262,10 @@ Global
 		{B6C47D29-78D6-4966-B5A0-D4D651EE068F}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{B6C47D29-78D6-4966-B5A0-D4D651EE068F}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{B6C47D29-78D6-4966-B5A0-D4D651EE068F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{7285ABAE-A946-437E-A6DD-F1DECFE7F8D5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7285ABAE-A946-437E-A6DD-F1DECFE7F8D5}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7285ABAE-A946-437E-A6DD-F1DECFE7F8D5}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7285ABAE-A946-437E-A6DD-F1DECFE7F8D5}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

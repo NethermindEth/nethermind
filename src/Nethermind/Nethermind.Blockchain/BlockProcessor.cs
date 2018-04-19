@@ -74,7 +74,7 @@ namespace Nethermind.Blockchain
             for (int i = 0; i < transactions.Length; i++)
             {
                 var transaction = transactions[i];
-                if (_logger.IsDebug)
+                if (_logger.IsDebugEnabled)
                 {
                     _logger.Debug($"PROCESSING TRANSACTION {i}");
                 }
@@ -139,7 +139,7 @@ namespace Nethermind.Blockchain
                 if (tryOnly)
                 {
                     // TODO: this is some rapid and bad implementation, need to rmeove the clear caches approach
-                    if (_logger.IsDebug)
+                    if (_logger.IsDebugEnabled)
                     {
                         _logger.Debug($"REVERTING BLOCKS - STATE ROOT {_stateProvider.StateRoot}");
                     }
@@ -149,7 +149,7 @@ namespace Nethermind.Blockchain
                     _stateProvider.ClearCaches();
                     _stateProvider.StateRoot = snapshotStateRoot;
 
-                    if (_logger.IsDebug)
+                    if (_logger.IsDebugEnabled)
                     {
                         _logger.Debug($"REVERTED BLOCKS (JUST VALIDATED FOR MINING) - STATE ROOT {_stateProvider.StateRoot}");
                     }
@@ -159,7 +159,7 @@ namespace Nethermind.Blockchain
             }
             catch (InvalidBlockException) // TODO: which exception to catch here?
             {
-                if (_logger.IsDebug)
+                if (_logger.IsDebugEnabled)
                 {
                     _logger.Debug($"REVERTING BLOCKS - STATE ROOT {_stateProvider.StateRoot}");
                 }
@@ -169,12 +169,12 @@ namespace Nethermind.Blockchain
                 _stateProvider.ClearCaches();
                 _stateProvider.StateRoot = snapshotStateRoot;
 
-                if (_logger.IsDebug)
+                if (_logger.IsDebugEnabled)
                 {
                     _logger.Debug($"REVERTED BLOCKS - STATE ROOT {_stateProvider.StateRoot}");
                 }
 
-                if (_logger.IsError)
+                if (_logger.IsErrorEnabled)
                 {
                     _logger.Error($"THROWING INVALID BLOCK");
                 }
@@ -198,7 +198,7 @@ namespace Nethermind.Blockchain
 
         private Block ProcessOne(Block suggestedBlock, bool tryOnly) // TODO: refactor
         {
-            if (_logger.IsDebug)
+            if (_logger.IsDebugEnabled)
             {
                 _logger.Debug($"HASH {suggestedBlock.Header.Hash} NUMBER {suggestedBlock.Header.Number}");
             }
@@ -211,7 +211,7 @@ namespace Nethermind.Blockchain
             // TODO: unimportant but out of curiosity, is the check faster than cast to nullable?
             if (_specProvider.DaoBlockNumber.HasValue && _specProvider.DaoBlockNumber.Value == suggestedBlock.Header.Number)
             {
-                if (_logger.IsInfo)
+                if (_logger.IsInfoEnabled)
                 {
                     _logger.Info($"APPLYING DAO TRANSITION");
                 }
@@ -223,13 +223,13 @@ namespace Nethermind.Blockchain
             Keccak transactionsRoot = GetTransactionsRoot(suggestedBlock.Transactions);
             if (transactionsRoot != suggestedBlock.Header.TransactionsRoot)
             {
-                if (_logger.IsDebug)
+                if (_logger.IsDebugEnabled)
                 {
                     _logger.Debug($"TRANSACTIONS_ROOT {transactionsRoot} != TRANSACTIONS_ROOT {transactionsRoot}");
                 }
             }
 
-            if (_logger.IsDebug)
+            if (_logger.IsDebugEnabled)
             {
                 _logger.Debug($"BLOCK BENEFICIARY {suggestedBlock.Header.Beneficiary}");
                 _logger.Debug($"BLOCK GAS LIMIT {suggestedBlock.Header.GasLimit}");
@@ -257,7 +257,7 @@ namespace Nethermind.Blockchain
 
             if (!tryOnly && !_blockValidator.ValidateProcessedBlock(processedBlock, suggestedBlock))
             {
-                if (_logger.IsInfo)
+                if (_logger.IsInfoEnabled)
                 {
                     _logger.Info($"PROCESSED BLOCK IS NOT VALID {processedBlock.Hash} ({processedBlock.Number})");
                     _logger.Debug($"THROWING INVALID BLOCK");
@@ -266,7 +266,7 @@ namespace Nethermind.Blockchain
                 throw new InvalidBlockException();
             }
 
-            if (_logger.IsDebug)
+            if (_logger.IsDebugEnabled)
             {
                 _logger.Debug($"COMMITING BLOCK - STATE ROOT {_stateProvider.StateRoot}");
             }
@@ -300,7 +300,7 @@ namespace Nethermind.Blockchain
 
         private void ApplyMinerRewards(Block block)
         {
-            if (_logger.IsDebug)
+            if (_logger.IsDebugEnabled)
             {
                 _logger.Debug("APPLYING MINER REWARDS");
             }
@@ -320,7 +320,7 @@ namespace Nethermind.Blockchain
 
             _stateProvider.Commit(_specProvider.GetSpec(block.Number));
 
-            if (_logger.IsDebug)
+            if (_logger.IsDebugEnabled)
             {
                 _logger.Debug("DONE APPLYING MINER REWARDS");
             }

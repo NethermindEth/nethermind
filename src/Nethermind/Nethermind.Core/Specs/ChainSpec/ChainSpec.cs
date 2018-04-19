@@ -17,11 +17,13 @@
  */
 
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Numerics;
 using Nethermind.HashLib.Crypto.SHA3;
 
 namespace Nethermind.Core.Specs.ChainSpec
 {
+    [DebuggerDisplay("{Name}, ChainId = {ChainId}")]
     public class ChainSpec
     {
         public Dictionary<Address, BigInteger> Allocations { get; set; }

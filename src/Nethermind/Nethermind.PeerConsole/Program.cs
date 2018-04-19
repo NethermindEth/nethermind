@@ -147,7 +147,7 @@ namespace Nethermind.PeerConsole
 
             /* sync */
             var transactionStore = new TransactionStore();
-            var blockTree = new BlockTree(RopstenSpecProvider.Instance.ChainId, ChainLogger);
+            var blockTree = new BlockTree(RopstenSpecProvider.Instance, ChainLogger);
 
             /* validation */
             var headerValidator = new HeaderValidator(difficultyCalculator, blockTree, sealEngine, specProvider, ChainLogger);

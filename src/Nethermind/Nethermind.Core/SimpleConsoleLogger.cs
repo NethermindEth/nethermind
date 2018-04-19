@@ -35,10 +35,10 @@ namespace Nethermind.Core
             Log(ex != null ? $"{text}, Exception: {ex}" : text);
         }
 
-        public bool IsInfo => true;
-        public bool IsWarn => true;
-        public bool IsDebug => true;
-        public bool IsTrace => true;
-        public bool IsError => true;
+        public bool IsInfoEnabled => true;
+        public bool IsWarnEnabled => true;
+        public bool IsDebugEnabled => true;
+        public bool IsTraceEnabled => true;
+        public bool IsErrorEnabled => true;
     }
 }

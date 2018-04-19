@@ -16,15 +16,29 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Collections.Generic;
+using System.Numerics;
 
-namespace Nethermind.Core
+namespace Nethermind.Core.Specs
 {
-    public interface IJsonSerializer
+    public class FrontierSpecProvider : ISpecProvider
     {
-        T DeserializeAnonymousType<T>(string json, T definition);
-        T Deserialize<T>(string json);
-        (T Model, IEnumerable<T> Collection) DeserializeObjectOrArray<T>(string json);
-        string Serialize<T>(T value, bool indented = false);
+        public IReleaseSpec CurrentSpec => Frontier.Instance;
+
+        public IReleaseSpec GenesisSpec => Frontier.Instance;
+
+        public IReleaseSpec GetSpec(BigInteger blockNumber)
+        {            
+            return Olympic.Instance;
+        }
+        
+        public BigInteger? DaoBlockNumber { get; } = null;
+        
+        public int ChainId => Core.ChainId.MainNet;
+
+        private FrontierSpecProvider()
+        {
+        }
+        
+        public static FrontierSpecProvider Instance = new FrontierSpecProvider();
     }
 }

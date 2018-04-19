@@ -18,12 +18,12 @@
 
 using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Numerics;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.Blockchain
 {
@@ -37,10 +37,10 @@ namespace Nethermind.Blockchain
         private readonly ConcurrentDictionary<Keccak, bool> _processed = new ConcurrentDictionary<Keccak, bool>();
 
         // TODO: validators should be here
-        public BlockTree(int chainId, ILogger logger)
+        public BlockTree(ISpecProvider specProvider, ILogger logger)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-            ChainId = chainId;
+            ChainId = specProvider.ChainId;
         }
 
         public event EventHandler<BlockEventArgs> BlockAddedToMain;
@@ -208,7 +208,7 @@ namespace Nethermind.Blockchain
 
         private void UpdateTotalDifficulty(Block block)
         {
-            if (_logger.IsDebug)
+            if (_logger.IsDebugEnabled)
             {
                 _logger.Debug($"CALCULATING TOTAL DIFFICULTY FOR {block.Hash}");
             }
@@ -230,7 +230,7 @@ namespace Nethermind.Blockchain
                 block.Header.TotalDifficulty = parent.TotalDifficulty + block.Difficulty;
             }
 
-            if (_logger.IsDebug)
+            if (_logger.IsDebugEnabled)
             {
                 _logger.Debug($"CALCULATED TOTAL DIFFICULTY FOR {block.Hash} IS {block.TotalDifficulty}");
             }

@@ -90,7 +90,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         public virtual void HandleMessage(Packet message)
         {
-            Logger.Info($"{nameof(Eth62ProtocolHandler)} handling a message with code {message.PacketType}.");
+            if (Logger.IsDebugEnabled)
+            {
+                Logger.Debug($"{nameof(Eth62ProtocolHandler)} handling a message with code {message.PacketType}.");
+            }
 
             if (message.PacketType != Eth62MessageCode.Status && !_statusReceived)
             {

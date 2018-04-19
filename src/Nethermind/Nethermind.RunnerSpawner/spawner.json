@@ -1,0 +1,54 @@
+{
+  "Miner1": {
+    "JsonRpcEnabled": true,
+    "DiscoveryEnabled": false,
+    "DiscoveryPort": 30312,
+    "P2PPort": 30312,
+    "HttpHost": "127.0.0.1",
+    "HttpPort": 8002,
+    "IsMining": true,
+    "FakeMiningDelay": 12000,
+    "ChainSpecPath": "nethermind_alpha.json",
+    "TestNodeKey": "020102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f",
+    "LogFileName": "miner1.logs.txt"
+  },
+  "Miner2": {
+    "JsonRpcEnabled": true,
+    "DiscoveryEnabled": false,
+    "DiscoveryPort": 30314,
+    "P2PPort": 30314,
+    "HttpHost": "127.0.0.1",
+    "HttpPort": 8004,
+    "IsMining": true,
+    "FakeMiningDelay": 12000,
+    "ChainSpecPath": "nethermind_alpha.json",
+    "TestNodeKey": "040102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f",
+    "LogFileName": "miner2.logs.txt"
+  },
+  "MinerClient": {
+    "JsonRpcEnabled": true,
+    "DiscoveryEnabled": false,
+    "DiscoveryPort": 30313,
+    "P2PPort": 30313,
+    "HttpHost": "127.0.0.1",
+    "HttpPort": 8003,
+    "IsMining": true,
+    "FakeMiningDelay": 24000,
+    "ChainSpecPath": "nethermind_alpha_client.json",
+    "TestNodeKey": "030102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f",
+    "LogFileName": "minerclient.logs.txt"
+  },
+  "Client": {
+    "JsonRpcEnabled": true,
+    "DiscoveryEnabled": false,
+    "DiscoveryPort": 30315,
+    "P2PPort": 30315,
+    "HttpHost": "127.0.0.1",
+    "HttpPort": 8005,
+    "IsMining": false,
+    "FakeMiningDelay": 12000,
+    "ChainSpecPath": "nethermind_alpha_client.json",
+    "TestNodeKey": "050102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f",
+    "LogFileName": "client.logs.txt"
+  }
+}

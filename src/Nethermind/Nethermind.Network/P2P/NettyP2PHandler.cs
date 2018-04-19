@@ -41,7 +41,7 @@ namespace Nethermind.Network.P2P
 
         public override void ChannelRegistered(IChannelHandlerContext context)
         {
-            if (_logger.IsInfo)
+            if (_logger.IsInfoEnabled)
             {
                 _logger.Info($"Registering {nameof(NettyP2PHandler)}");
             }
@@ -51,7 +51,7 @@ namespace Nethermind.Network.P2P
 
         protected override void ChannelRead0(IChannelHandlerContext ctx, Packet msg)
         {
-            if (_logger.IsTrace)
+            if (_logger.IsTraceEnabled)
             {
                 _logger.Trace($"Channel read... data length {msg.Data.Length}");
             }
@@ -61,7 +61,7 @@ namespace Nethermind.Network.P2P
 
         public override void ExceptionCaught(IChannelHandlerContext context, Exception exception)
         {
-            if (_logger.IsError)
+            if (_logger.IsErrorEnabled)
             {
                 _logger.Error($"{nameof(NettyP2PHandler)} exception", exception);
             }

@@ -17,6 +17,7 @@
  */
 
 using System.Threading.Tasks;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Network.Rlpx
 {
@@ -24,5 +25,6 @@ namespace Nethermind.Network.Rlpx
     {
         Task Shutdown();
         Task Init();
+        Task ConnectAsync(PublicKey remoteNodeId, string rmeoteHost, int remotePort);
     }
 }

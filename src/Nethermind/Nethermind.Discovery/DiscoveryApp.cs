@@ -249,7 +249,12 @@ namespace Nethermind.Discovery
                 {
                     break;
                 }
-                _logger.Info($"Waiting {itemTime} ms for boot nodes to respond");
+
+                if (_logger.IsDebugEnabled)
+                {
+                    _logger.Debug($"Waiting {itemTime} ms for boot nodes to respond");
+                }
+
                 Thread.Sleep(itemTime);
             }
 
@@ -259,7 +264,10 @@ namespace Nethermind.Discovery
                 var manager = managers[i];
                 if (manager.State != NodeLifecycleState.Active)
                 {
-                    _logger.Info($"Cannot reach boot node: {manager.ManagedNode.Host}:{manager.ManagedNode.Port}");
+                    if (_logger.IsWarnEnabled)
+                    {
+                        _logger.Warn($"Cannot reach boot node: {manager.ManagedNode.Host}:{manager.ManagedNode.Port}");
+                    }
                 }
                 else
                 {

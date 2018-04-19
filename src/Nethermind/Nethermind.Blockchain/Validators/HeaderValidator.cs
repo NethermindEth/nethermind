@@ -123,7 +123,7 @@ namespace Nethermind.Blockchain.Validators
                 _logger.Warn($"Invalid block header ({header.Hash}) - invalid block hash");
             }
 
-            if (_logger.IsDebug)
+            if (_logger.IsDebugEnabled)
             {
                 _logger.Debug($"Validating block {header.Hash} ({header.Number}) - DAO block {_daoBlockNumber}, extraData {new Hex(header.ExtraData)}");
             }
