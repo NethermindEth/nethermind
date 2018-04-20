@@ -41,12 +41,14 @@ using ILogger = Nethermind.Core.ILogger;
 
 namespace Nethermind.Runner
 {
+    // TODO use here only what is needed in JSON RPC, pass implementations, do not use Bootstrap class outside of JSON RPC
+    // I guess we will only need BlockTree, signer, and some of the state / stores classes
     public static class Bootstrap
     {
         public static IServiceCollection ServiceCollection { get; private set; }
         public static IServiceProvider ServiceProvider { get; set; }
 
-        public static void ConfigureContainer(JsonRpc.IConfigurationProvider configurationProvider, IPrivateKeyProvider privateKeyProvider, ILogger logger, InitParams initParams)
+        public static void ConfigureContainer(JsonRpc.IConfigurationProvider configurationProvider, IDiscoveryConfigurationProvider discoveryConfigurationProvider, IPrivateKeyProvider privateKeyProvider, ILogger logger, InitParams initParams)
         {
             var services = new ServiceCollection();
 
@@ -117,7 +119,7 @@ namespace Nethermind.Runner
 
             //Discovery
             services.AddSingleton<INetworkHelper, NetworkHelper>();
-            services.AddSingleton<IDiscoveryConfigurationProvider, DiscoveryConfigurationProvider>();
+            services.AddSingleton<IDiscoveryConfigurationProvider>(discoveryConfigurationProvider);
             services.AddTransient<INodeFactory, NodeFactory>();
             services.AddSingleton<INodeDistanceCalculator, NodeDistanceCalculator>();
             services.AddSingleton<INodeTable, NodeTable>();

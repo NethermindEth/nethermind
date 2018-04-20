@@ -43,8 +43,6 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.JsonRpc.Test", "
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.KeyStore.Test", "Nethermind.KeyStore.Test\Nethermind.KeyStore.Test.csproj", "{2CE2C804-40B6-4ECA-AF81-556041FA03C6}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Discovery.Console", "Nethermind.Discovery.Console\Nethermind.Discovery.Console.csproj", "{815FE1CE-C3F0-47AA-A3A1-9188FB273A32}"
-EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.PerfTest", "Nethermind.PerfTest\Nethermind.PerfTest.csproj", "{7798EC58-E66C-4C77-999E-4A0AD2321F4E}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Runner", "Nethermind.Runner\Nethermind.Runner.csproj", "{33E2CCD2-0D52-477C-8EAC-D429F66BEAC0}"
@@ -92,6 +90,7 @@ ProjectSection(SolutionItems) = preProject
 	Chains\ropsten.json = Chains\ropsten.json
 	Chains\nethermind_alpha.json = Chains\nethermind_alpha.json
 	Chains\nethermind_alpha_client.json = Chains\nethermind_alpha_client.json
+	Chains\ropsten_through_ethj.json = Chains\ropsten_through_ethj.json
 EndProjectSection
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.RunnerSpawner", "Nethermind.RunnerSpawner\Nethermind.RunnerSpawner.csproj", "{7285ABAE-A946-437E-A6DD-F1DECFE7F8D5}"
@@ -182,10 +181,6 @@ Global
 		{2CE2C804-40B6-4ECA-AF81-556041FA03C6}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{2CE2C804-40B6-4ECA-AF81-556041FA03C6}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{2CE2C804-40B6-4ECA-AF81-556041FA03C6}.Release|Any CPU.Build.0 = Release|Any CPU
-		{815FE1CE-C3F0-47AA-A3A1-9188FB273A32}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{815FE1CE-C3F0-47AA-A3A1-9188FB273A32}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{815FE1CE-C3F0-47AA-A3A1-9188FB273A32}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{815FE1CE-C3F0-47AA-A3A1-9188FB273A32}.Release|Any CPU.Build.0 = Release|Any CPU
 		{7798EC58-E66C-4C77-999E-4A0AD2321F4E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{7798EC58-E66C-4C77-999E-4A0AD2321F4E}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{7798EC58-E66C-4C77-999E-4A0AD2321F4E}.Release|Any CPU.ActiveCfg = Release|Any CPU

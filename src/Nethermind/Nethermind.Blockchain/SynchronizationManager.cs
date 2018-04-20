@@ -105,7 +105,7 @@ namespace Nethermind.Blockchain
 
             peerInfo.NumberAvailable = block.Number;
 
-            if (block.Number == BlockTree.BestSuggestedBlock.Number + 1)
+            if (block.Number <= BlockTree.BestSuggestedBlock.Number + 1)
             {
                 AddBlockResult result = BlockTree.SuggestBlock(block);
                 // TODO: use for reputation later
@@ -126,7 +126,7 @@ namespace Nethermind.Blockchain
             }
             else
             {
-                throw new NotImplementedException();
+                Debug.Fail("above should be covering everything");
             }
         }
 

@@ -18,6 +18,7 @@
 
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Discovery;
 using Nethermind.Discovery.Serializers;
 
@@ -47,8 +48,9 @@ namespace Nethermind.Runner.Runners
             {
                 _configurationProvider.MasterPort = initParams.DiscoveryPort.Value;
             }
+            
             _discoveryMsgSerializersProvider.RegisterDiscoverySerializers();
-            _discoveryApp.Start(_privateKeyProvider.PrivateKey.PublicKey);
+            _discoveryApp.Start(new PrivateKey(initParams.TestNodeKey).PublicKey);
             _logger.Info("Discovery initialization completed");
         }
 

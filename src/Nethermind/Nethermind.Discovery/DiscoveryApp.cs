@@ -143,9 +143,9 @@ namespace Nethermind.Discovery
             try
             {
                 _logger.Info("Initializing bootNodes.");
-                if (!InitializeBootNodes())
+                if (!InitializeBootnodes())
                 {
-                    _logger.Error("Could not communicate with any boot nodes. Initialization failed.");
+                    _logger.Error("Could not communicate with any bootnodes. Initialization failed.");
                     return;
                 }
 
@@ -226,16 +226,16 @@ namespace Nethermind.Discovery
             }
         }
 
-        private bool InitializeBootNodes()
+        private bool InitializeBootnodes()
         {
-            var bootNodes = _configurationProvider.BootNodes;
+            var bootNodes = _configurationProvider.Bootnodes;
             var managers = new INodeLifecycleManager[bootNodes.Length];
             for (var i = 0; i < bootNodes.Length; i++)
             {
-                var bootNode = bootNodes[i];
-                var node = string.IsNullOrEmpty(bootNode.Id) 
-                    ? _nodeFactory.CreateNode(bootNode.Host, bootNode.Port) 
-                    : _nodeFactory.CreateNode(new PublicKey(new Hex(bootNode.Id)), bootNode.Host, bootNode.Port, true);
+                var bootnode = bootNodes[i];
+                var node = bootnode.PublicKey == null
+                    ? _nodeFactory.CreateNode(bootnode.Host, bootnode.Port) 
+                    : _nodeFactory.CreateNode(bootnode.PublicKey, bootnode.Host, bootnode.Port, true);
                 var manager = _discoveryManager.GetNodeLifecycleManager(node);
                 managers[i] = manager;
             }
@@ -252,7 +252,7 @@ namespace Nethermind.Discovery
 
                 if (_logger.IsDebugEnabled)
                 {
-                    _logger.Debug($"Waiting {itemTime} ms for boot nodes to respond");
+                    _logger.Debug($"Waiting {itemTime} ms for bootnodes to respond");
                 }
 
                 Thread.Sleep(itemTime);
@@ -266,7 +266,7 @@ namespace Nethermind.Discovery
                 {
                     if (_logger.IsWarnEnabled)
                     {
-                        _logger.Warn($"Cannot reach boot node: {manager.ManagedNode.Host}:{manager.ManagedNode.Port}");
+                        _logger.Warn($"Cannot reach bootnode: {manager.ManagedNode.Host}:{manager.ManagedNode.Port}");
                     }
                 }
                 else

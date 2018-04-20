@@ -36,7 +36,7 @@ namespace Nethermind.Runner
             }; 
             
             try
-            {
+            {   
                 IRunnerApp runner = new RunnerApp(logger);
                 runner.Run(args);
             }

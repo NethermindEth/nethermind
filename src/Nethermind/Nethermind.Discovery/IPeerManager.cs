@@ -16,16 +16,9 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-
-using System;
-
 namespace Nethermind.Discovery
 {
-    public class NetworkingException : Exception
+    public interface IPeerManager
     {
-        public NetworkingException(string message)
-            : base(message)
-        {
-        }
     }
 }

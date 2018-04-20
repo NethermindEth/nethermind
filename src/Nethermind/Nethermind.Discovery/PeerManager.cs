@@ -17,15 +17,33 @@
  */
 
 
-using System;
+using Nethermind.Core;
+using Nethermind.Network;
+using Nethermind.Network.Rlpx;
 
 namespace Nethermind.Discovery
 {
-    public class NetworkingException : Exception
+    public class PeerManager : IPeerManager
     {
-        public NetworkingException(string message)
-            : base(message)
+        private readonly IRlpxPeer _localPeer;
+        private readonly ILogger _logger;
+
+        public PeerManager(IRlpxPeer localPeer, IDiscoveryManager discoveryManager, ILogger logger)
         {
+            _localPeer = localPeer;
+            _logger = logger;
+            discoveryManager.NodeDiscovered += OnNodeDiscovered;
+        }
+
+        private void OnNodeDiscovered(object sender, NodeEventArgs nodeEventArgs)
+        {
+            DiscoveryNode node = nodeEventArgs.Node;
+            if (_logger.IsInfoEnabled)
+            {
+                _logger.Info($"Connecting to a newly discovered node {node.PublicKey} @ {node.Host}:{node.Port}");
+            }
+
+            _localPeer.ConnectAsync(node.PublicKey, node.Host, node.Port);
         }
     }
 }

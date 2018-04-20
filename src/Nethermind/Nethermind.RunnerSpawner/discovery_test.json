@@ -1,7 +1,7 @@
 {
   "Miner1": {
     "JsonRpcEnabled": true,
-    "DiscoveryEnabled": false,
+    "DiscoveryEnabled": true,
     "DiscoveryPort": 30312,
     "P2PPort": 30312,
     "HttpHost": "127.0.0.1",
@@ -14,7 +14,7 @@
   },
   "Miner2": {
     "JsonRpcEnabled": true,
-    "DiscoveryEnabled": false,
+    "DiscoveryEnabled": true,
     "DiscoveryPort": 30314,
     "P2PPort": 30314,
     "HttpHost": "127.0.0.1",
@@ -25,30 +25,30 @@
     "TestNodeKey": "040102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f",
     "LogFileName": "miner2.logs.txt"
   },
-  "MinerClient": {
+  "Disc1": {
     "JsonRpcEnabled": true,
-    "DiscoveryEnabled": false,
-    "DiscoveryPort": 30313,
-    "P2PPort": 30313,
+    "DiscoveryEnabled": true,
+    "DiscoveryPort": 30321,
+    "P2PPort": 30321,
     "HttpHost": "127.0.0.1",
-    "HttpPort": 8003,
-    "IsMining": true,
-    "FakeMiningDelay": 24000,
-    "ChainSpecPath": "Chains\\nethermind_alpha_client.json",
-    "TestNodeKey": "030102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f",
-    "LogFileName": "minerclient.logs.txt"
-  },
-  "Client": {
-    "JsonRpcEnabled": true,
-    "DiscoveryEnabled": false,
-    "DiscoveryPort": 30315,
-    "P2PPort": 30315,
-    "HttpHost": "127.0.0.1",
-    "HttpPort": 8005,
+    "HttpPort": 8011,
     "IsMining": false,
     "FakeMiningDelay": 12000,
     "ChainSpecPath": "Chains\\nethermind_alpha_client.json",
-    "TestNodeKey": "050102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f",
+    "TestNodeKey": "110102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f",
+    "LogFileName": "client.logs.txt"
+  },
+  "Disc2": {
+    "JsonRpcEnabled": true,
+    "DiscoveryEnabled": true,
+    "DiscoveryPort": 30322,
+    "P2PPort": 30322,
+    "HttpHost": "127.0.0.1",
+    "HttpPort": 8012,
+    "IsMining": false,
+    "FakeMiningDelay": 12000,
+    "ChainSpecPath": "Chains\\nethermind_alpha_client.json",
+    "TestNodeKey": "120102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f",
     "LogFileName": "client.logs.txt"
   }
 }

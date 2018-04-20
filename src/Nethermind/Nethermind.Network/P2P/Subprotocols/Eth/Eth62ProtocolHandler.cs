@@ -90,42 +90,50 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         public virtual void HandleMessage(Packet message)
         {
-            if (Logger.IsDebugEnabled)
+            try
             {
-                Logger.Debug($"{nameof(Eth62ProtocolHandler)} handling a message with code {message.PacketType}.");
-            }
+                if (Logger.IsDebugEnabled)
+                {
+                    Logger.Debug($"{nameof(Eth62ProtocolHandler)} handling a message with code {message.PacketType}.");
+                }
 
-            if (message.PacketType != Eth62MessageCode.Status && !_statusReceived)
-            {
-                throw new SubprotocolException($"No {nameof(StatusMessage)} received prior to communication.");
-            }
+                if (message.PacketType != Eth62MessageCode.Status && !_statusReceived)
+                {
+                    throw new SubprotocolException($"No {nameof(StatusMessage)} received prior to communication.");
+                }
 
-            switch (message.PacketType)
+                switch (message.PacketType)
+                {
+                    case Eth62MessageCode.Status:
+                        Handle(Deserialize<StatusMessage>(message.Data));
+                        break;
+                    case Eth62MessageCode.NewBlockHashes:
+                        Handle(Deserialize<NewBlockHashesMessage>(message.Data));
+                        break;
+                    case Eth62MessageCode.Transactions:
+                        Handle(Deserialize<TransactionsMessage>(message.Data));
+                        break;
+                    case Eth62MessageCode.GetBlockHeaders:
+                        Handle(Deserialize<GetBlockHeadersMessage>(message.Data));
+                        break;
+                    case Eth62MessageCode.BlockHeaders:
+                        Handle(Deserialize<BlockHeadersMessage>(message.Data));
+                        break;
+                    case Eth62MessageCode.GetBlockBodies:
+                        Handle(Deserialize<GetBlockBodiesMessage>(message.Data));
+                        break;
+                    case Eth62MessageCode.BlockBodies:
+                        Handle(Deserialize<BlockBodiesMessage>(message.Data));
+                        break;
+                    case Eth62MessageCode.NewBlock:
+                        Handle(Deserialize<NewBlockMessage>(message.Data));
+                        break;
+                }
+            }
+            catch (Exception e)
             {
-                case Eth62MessageCode.Status:
-                    Handle(Deserialize<StatusMessage>(message.Data));
-                    break;
-                case Eth62MessageCode.NewBlockHashes:
-                    Handle(Deserialize<NewBlockHashesMessage>(message.Data));
-                    break;
-                case Eth62MessageCode.Transactions:
-                    Handle(Deserialize<TransactionsMessage>(message.Data));
-                    break;
-                case Eth62MessageCode.GetBlockHeaders:
-                    Handle(Deserialize<GetBlockHeadersMessage>(message.Data));
-                    break;
-                case Eth62MessageCode.BlockHeaders:
-                    Handle(Deserialize<BlockHeadersMessage>(message.Data));
-                    break;
-                case Eth62MessageCode.GetBlockBodies:
-                    Handle(Deserialize<GetBlockBodiesMessage>(message.Data));
-                    break;
-                case Eth62MessageCode.BlockBodies:
-                    Handle(Deserialize<BlockBodiesMessage>(message.Data));
-                    break;
-                case Eth62MessageCode.NewBlock:
-                    Handle(Deserialize<NewBlockMessage>(message.Data));
-                    break;
+                Logger.Error("TEMP Investigating exception propagation", e);
+                throw;
             }
         }
 
@@ -161,7 +169,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         {
             for (int i = 0; i < msg.Transactions.Length; i++)
             {
-                _sync.AddNewTransaction(msg.Transactions[i], NodeId);    
+                _sync.AddNewTransaction(msg.Transactions[i], NodeId);
             }
         }
 
@@ -343,18 +351,18 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         public void SendNewBlock(Block block)
         {
             Debug.Assert(block.TotalDifficulty != null, $"blocks with null {nameof(Block.TotalDifficulty)} should never be propagated");
-            
+
             NewBlockMessage msg = new NewBlockMessage();
             msg.Block = block;
             msg.TotalDifficulty = block.TotalDifficulty ?? 0;
-            
+
             Send(msg);
         }
 
         public void SendNewTransaction(Transaction transaction)
         {
             Debug.Assert(transaction.Hash != null, $"transaction with null {nameof(transaction.Hash)} should never be propagated");
-            
+
             TransactionsMessage msg = new TransactionsMessage(transaction);
             Send(msg);
         }

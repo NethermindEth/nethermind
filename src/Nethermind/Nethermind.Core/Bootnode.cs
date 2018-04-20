@@ -16,10 +16,12 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Diagnostics;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Core
 {
+    [DebuggerDisplay("{Description} {PublicKey} @ {Host}:{Port}")]
     public class Bootnode
     {
         public Bootnode(string enode, string description)

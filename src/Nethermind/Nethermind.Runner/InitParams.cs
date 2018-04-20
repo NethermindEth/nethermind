@@ -23,6 +23,7 @@ using Newtonsoft.Json;
 
 namespace Nethermind.Runner
 {
+    // TODO: remove this, use separate config files for hive and for runner - at the moment we just throw everything at this file
     public class InitParams
     {
         public bool JsonRpcEnabled { get; set; } = true;
@@ -30,7 +31,7 @@ namespace Nethermind.Runner
         public bool? IsMining { get; set; }
         public int? FakeMiningDelay { get; set; }
         public string HttpHost { get; set; }
-        public string BootNode { get; set; }
+        public string Bootnode { get; set; }
         public int? HttpPort { get; set; }
         public int? DiscoveryPort { get; set; }
         public int? P2PPort { get; set; }
@@ -46,7 +47,7 @@ namespace Nethermind.Runner
 
         public override string ToString()
         {
-            return $"HttpHost: {HttpHost}, BootNode: {BootNode}, HttpPort: {HttpPort}, DiscoveryPort: {DiscoveryPort}, GenesisFilePath: {GenesisFilePath}, " +
+            return $"HttpHost: {HttpHost}, Bootnode: {Bootnode}, HttpPort: {HttpPort}, DiscoveryPort: {DiscoveryPort}, GenesisFilePath: {GenesisFilePath}, " +
                    $"ChainFile: {ChainFile}, BlocksDir: {BlocksDir}, KeysDir: {KeysDir}, HomesteadBlockNr: {HomesteadBlockNr}, EthereumRunnerType: {EthereumRunnerType}";
         }
     }

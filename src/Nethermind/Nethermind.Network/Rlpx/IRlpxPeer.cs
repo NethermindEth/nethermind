@@ -25,6 +25,6 @@ namespace Nethermind.Network.Rlpx
     {
         Task Shutdown();
         Task Init();
-        Task ConnectAsync(PublicKey remoteNodeId, string rmeoteHost, int remotePort);
+        Task ConnectAsync(PublicKey remoteNodeId, string remoteHost, int remotePort);
     }
 }

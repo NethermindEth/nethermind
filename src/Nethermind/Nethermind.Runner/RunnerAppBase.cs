@@ -17,13 +17,17 @@
  */
 
 using System;
+using System.IO;
 using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.CommandLineUtils;
 using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Core;
+using Nethermind.Core.Specs.ChainSpec;
+using Nethermind.Discovery;
 using Nethermind.JsonRpc;
+using Nethermind.Network;
 using Nethermind.Runner.Runners;
 
 namespace Nethermind.Runner
@@ -48,7 +52,20 @@ namespace Nethermind.Runner
             {
                 //Configuring app DI
                 var configProvider = new ConfigurationProvider();
-                Bootstrap.ConfigureContainer(configProvider, PrivateKeyProvider, Logger, initParams);
+                var discoveryConfigProvider = new DiscoveryConfigurationProvider(new NetworkHelper(Logger));
+                ChainSpecLoader chainSpecLoader = new ChainSpecLoader(new UnforgivingJsonSerializer());
+
+                string path = initParams.ChainSpecPath;
+                if (!Path.IsPathRooted(path))
+                {
+                    path = Path.Combine(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, path));
+                }
+
+                byte[] chainSpecData = File.ReadAllBytes(path);
+                ChainSpec chainSpec = chainSpecLoader.Load(chainSpecData);
+                discoveryConfigProvider.Bootnodes = chainSpec.Bootnodes;
+                
+                Bootstrap.ConfigureContainer(configProvider, discoveryConfigProvider, PrivateKeyProvider, Logger, initParams);
 
                 if (initParams.JsonRpcEnabled)
                 {
@@ -57,14 +74,14 @@ namespace Nethermind.Runner
                     _jsonRpcRunner.Start(initParams);
                 }
 
-                _ethereumRunner = Bootstrap.ServiceProvider.GetService<IEthereumRunner>();
-                _ethereumRunner.Start(initParams);
-
                 if (initParams.DiscoveryEnabled)
                 {
                     _discoveryRunner = Bootstrap.ServiceProvider.GetService<IDiscoveryRunner>();
                     _discoveryRunner.Start(initParams);
                 }
+                
+                _ethereumRunner = Bootstrap.ServiceProvider.GetService<IEthereumRunner>();
+                _ethereumRunner.Start(initParams);
             }
             catch (Exception e)
             {
@@ -82,6 +99,8 @@ namespace Nethermind.Runner
             app.OnExecute(() =>
             {
                 var initParams = buildInitParams();
+                Console.Title = initParams.LogFileName;
+                
                 Logger.Info($"Running Hive Nethermind Runner, parameters: {initParams}");
 
                 StartRunners(initParams);

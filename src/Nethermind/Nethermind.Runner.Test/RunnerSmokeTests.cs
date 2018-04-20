@@ -21,7 +21,9 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Discovery;
 using Nethermind.JsonRpc;
+using Nethermind.Network;
 using Nethermind.Runner.Runners;
 using NUnit.Framework;
 
@@ -35,7 +37,7 @@ namespace Nethermind.Runner.Test
         {
             var host = "http://localhost:100012";
 
-            Bootstrap.ConfigureContainer(new ConfigurationProvider(), new PrivateKeyProvider(new CryptoRandom()), new SimpleConsoleLogger(), new InitParams() );
+            Bootstrap.ConfigureContainer(new ConfigurationProvider(), new DiscoveryConfigurationProvider(new NetworkHelper(NullLogger.Instance)), new PrivateKeyProvider(new CryptoRandom()), new SimpleConsoleLogger(), new InitParams() );
 
             var webHost = WebHost.CreateDefaultBuilder()
                 .UseStartup<Startup>()

@@ -61,7 +61,7 @@ namespace Nethermind.Runner
             InitParams InitParams() => new InitParams
             {
                 HttpHost = host.HasValue() ? host.Value() : DefaultHost,
-                BootNode = bootNode.HasValue() ? bootNode.Value() : DefaultBootNode,
+                Bootnode = bootNode.HasValue() ? bootNode.Value() : DefaultBootNode,
                 HttpPort = httpPort.HasValue() ? GetIntValue(httpPort.Value(), "httpPort") : DefaultHttpPort,
                 DiscoveryPort = discoveryPort.HasValue() ? GetIntValue(discoveryPort.Value(), "discoveryPort") : DefaultDiscoveryPort,
                 GenesisFilePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, genesisFile.HasValue() ? genesisFile.Value() : _defaultGenesisFile),

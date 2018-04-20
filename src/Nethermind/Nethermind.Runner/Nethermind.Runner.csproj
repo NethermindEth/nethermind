@@ -91,6 +91,10 @@
       <Link>Chains\nethermind_alpha_client.json</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <Content Include="..\Chains\ropsten_through_ethj.json">
+      <Link>Chains\ropsten_through_ethj.json</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
     <Content Include="..\Chains\olympic.json">
       <Link>Chains\olympic.json</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>

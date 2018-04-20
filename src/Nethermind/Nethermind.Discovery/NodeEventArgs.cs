@@ -18,14 +18,17 @@
 
 
 using System;
+using Nethermind.Network;
 
 namespace Nethermind.Discovery
 {
-    public class NetworkingException : Exception
+    public class NodeEventArgs : EventArgs
     {
-        public NetworkingException(string message)
-            : base(message)
+        public DiscoveryNode Node { get; }
+
+        public NodeEventArgs(DiscoveryNode node)
         {
+            Node = node;
         }
     }
 }

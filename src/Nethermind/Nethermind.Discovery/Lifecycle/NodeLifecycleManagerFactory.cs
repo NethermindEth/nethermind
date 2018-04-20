@@ -49,8 +49,9 @@ namespace Nethermind.Discovery.Lifecycle
         {
             if (DiscoveryManager == null)
             {
-                throw new Exception("DiscoveryManager has to be set");
+                throw new Exception($"{nameof(DiscoveryManager)} has to be set");
             }
+            
             return new NodeLifecycleManager(node, DiscoveryManager, _nodeTable, _logger, _discoveryConfigurationProvider, _discoveryMessageFactory, _evictionManager);
         }
 
@@ -58,8 +59,9 @@ namespace Nethermind.Discovery.Lifecycle
         {
             if (DiscoveryManager == null)
             {
-                throw new Exception("DiscoveryManager has to be set");
+                throw new Exception($"{nameof(DiscoveryManager)} has to be set");
             }
+            
             var node = _nodeFactory.CreateNode(id, host, port);
             return new NodeLifecycleManager(node, DiscoveryManager, _nodeTable, _logger, _discoveryConfigurationProvider, _discoveryMessageFactory, _evictionManager);
         }

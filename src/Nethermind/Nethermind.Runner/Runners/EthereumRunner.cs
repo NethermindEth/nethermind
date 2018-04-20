@@ -32,6 +32,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Specs.ChainSpec;
+using Nethermind.Discovery;
 using Nethermind.Evm;
 using Nethermind.KeyStore;
 using Nethermind.Network;
@@ -47,8 +48,10 @@ namespace Nethermind.Runner.Runners
 {
     public class EthereumRunner : IEthereumRunner
     {
+        private readonly IDiscoveryManager _discoveryManager;
         private IBlockchainProcessor _blockchainProcessor;
         private IRlpxPeer _localPeer;
+        private IPeerManager _peerManager;
         private PrivateKey _privateKey;
         private ISynchronizationManager _syncManager;
 
@@ -58,6 +61,11 @@ namespace Nethermind.Runner.Runners
         private static ILogger _chainLogger = new NLogLogger("chain");
         private static ILogger _networkLogger = new NLogLogger("net");
 
+        public EthereumRunner(IDiscoveryManager discoveryManager)
+        {
+            _discoveryManager = discoveryManager;
+        }
+        
         public void Start(InitParams initParams)
         {
             _defaultLogger = new NLogLogger(initParams.LogFileName, "default");
@@ -92,7 +100,7 @@ namespace Nethermind.Runner.Runners
             var loader = new ChainSpecLoader(new UnforgivingJsonSerializer());
             if (!Path.IsPathRooted(chainSpecFile))
             {
-                chainSpecFile = Path.Combine(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Chains", chainSpecFile));
+                chainSpecFile = Path.Combine(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, chainSpecFile));
             }
 
             var chainSpec = loader.Load(File.ReadAllBytes(chainSpecFile));
@@ -228,12 +236,14 @@ namespace Nethermind.Runner.Runners
             _networkLogger.Info($"Node is up and listening on {localIp}:{listenPort}... press ENTER to exit");
             _networkLogger.Info($"enode://{_privateKey.PublicKey.ToString(false)}@{localIp}:{listenPort}");
 
-            foreach (Bootnode bootnode in chainSpec.Bootnodes)
-            {
-                _networkLogger.Info($"Connecting to {bootnode.Description} @ {bootnode.Host}:{bootnode.Port}");
-                await _localPeer.ConnectAsync(bootnode.PublicKey, bootnode.Host, bootnode.Port);
-                _networkLogger.Info("Testnet connected...");
-            }
+            _peerManager = new PeerManager(_localPeer, _discoveryManager, _networkLogger);
+            
+//            foreach (Bootnode bootnode in chainSpec.Bootnodes)
+//            {
+//                _networkLogger.Info($"Connecting to {bootnode.Description} @ {bootnode.Host}:{bootnode.Port}");
+//                await _localPeer.ConnectAsync(bootnode.PublicKey, bootnode.Host, bootnode.Port);
+//                _networkLogger.Info("Testnet connected...");
+//            }
         }
 
         private static Block Convert(TestGenesisJson headerJson, Keccak stateRoot)

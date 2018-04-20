@@ -35,9 +35,6 @@ namespace Nethermind.Runner
     {
         private static readonly PrivateKey PrivateKey = new PrivateKey("49a7b37aa6f6645917e7b807e9d1c00d4fa71f18343b0d4122a4d2df64dd6fee");
 
-        private const string DefaultHost = "0.0.0.0";
-        private const int DefaultHttpPort = 8545;
-        private readonly string _defaultGenesisFile = Path.Combine("Data", "genesis.json");
         private const string DefaultConfigFile = "runner.config.json";
 
         public RunnerApp(ILogger logger) : base(logger, new PrivateKeyProvider(PrivateKey))
@@ -56,24 +53,6 @@ namespace Nethermind.Runner
                 return serializer.Deserialize<InitParams>(File.ReadAllText(configFile.HasValue() ? configFile.Value() : DefaultConfigFile));
             };
 
-//            var app = new CommandLineApplication {Name = "Nethermind.Runner"};
-//            app.HelpOption("-?|-h|--help");
-//
-//            var host = app.Option("-ho|--httpHost <httpHost>", "JsonRPC http server host", CommandOptionType.SingleValue);
-//            var httpPort = app.Option("-p|--httpPort <httpPort>", "JsonRPC http listening port", CommandOptionType.SingleValue);
-//            var discoveryPort = app.Option("-d|--discoveryPort <discoveryPort>", "discovery UDP listening port", CommandOptionType.SingleValue);
-//            var genesisFile = app.Option("-gf|--genesisFile <genesisFile>", "genesis file path", CommandOptionType.SingleValue);
-//            
-//            InitParams InitParams() => new InitParams
-//            {
-//                HttpHost = host.HasValue() ? host.Value() : DefaultHost,
-//                HttpPort = httpPort.HasValue() ? GetIntValue(httpPort.Value(), "httpPort") : DefaultHttpPort,
-//                DiscoveryPort = discoveryPort.HasValue() ? GetIntValue(discoveryPort.Value(), "discoveryPort") : (int?)null,
-//                GenesisFilePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, genesisFile.HasValue() ? genesisFile.Value() : _defaultGenesisFile),
-//                EthereumRunnerType = EthereumRunnerType.Default
-//            };
-//
-            
             return (app, InitParams);
         }
     }

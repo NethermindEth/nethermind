@@ -19,6 +19,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Threading;
 using Nethermind.Core;
@@ -27,25 +28,20 @@ using Nethermind.Discovery.Lifecycle;
 using Nethermind.Discovery.Messages;
 using Nethermind.Discovery.RoutingTable;
 using Nethermind.Network;
-using Nethermind.Network.P2P;
-using Node = Nethermind.Discovery.RoutingTable.Node;
-using PingMessage = Nethermind.Discovery.Messages.PingMessage;
-using PongMessage = Nethermind.Discovery.Messages.PongMessage;
 
 namespace Nethermind.Discovery
 {
     public class DiscoveryManager : IDiscoveryManager
     {
-        private readonly ILogger _logger;
         private readonly IDiscoveryConfigurationProvider _configurationProvider;
-        private readonly INodeLifecycleManagerFactory _nodeLifecycleManagerFactory;
+        private readonly ILogger _logger;
         private readonly INodeFactory _nodeFactory;
-        private IMessageSender _messageSender;
+        private readonly INodeLifecycleManagerFactory _nodeLifecycleManagerFactory;
+        private readonly ConcurrentDictionary<string, INodeLifecycleManager> _nodeLifecycleManagers = new ConcurrentDictionary<string, INodeLifecycleManager>();
         private readonly INodeTable _nodeTable;
-        private readonly List<IDiscoveryListener> _discoveryListeners = new List<IDiscoveryListener>();
 
         private readonly ConcurrentDictionary<MessageTypeKey, ManualResetEvent> _waitingEvents = new ConcurrentDictionary<MessageTypeKey, ManualResetEvent>();
-        private readonly ConcurrentDictionary<string, INodeLifecycleManager> _nodeLifecycleManagers = new ConcurrentDictionary<string, INodeLifecycleManager>();
+        private IMessageSender _messageSender;
 
         public DiscoveryManager(
             ILogger logger,
@@ -61,7 +57,10 @@ namespace Nethermind.Discovery
             _nodeLifecycleManagerFactory.DiscoveryManager = this;
         }
 
-        public IMessageSender MessageSender { set => _messageSender = value; }
+        public IMessageSender MessageSender
+        {
+            set => _messageSender = value;
+        }
 
         public void OnIncomingMessage(DiscoveryMessage message)
         {
@@ -69,10 +68,10 @@ namespace Nethermind.Discovery
             {
                 _logger.Info($"Received msg: {message}");
 
-                var msgType = message.MessageType;
-               
-                var node = _nodeFactory.CreateNode(message.FarPublicKey, message.FarAddress);
-                var nodeManager = GetNodeLifecycleManager(node);
+                MessageType msgType = message.MessageType;
+
+                Node node = _nodeFactory.CreateNode(message.FarPublicKey, message.FarAddress);
+                INodeLifecycleManager nodeManager = GetNodeLifecycleManager(node);
 
                 switch (msgType)
                 {
@@ -83,7 +82,7 @@ namespace Nethermind.Discovery
                         nodeManager.ProcessPongMessage(message as PongMessage);
                         break;
                     case MessageType.Ping:
-                        var ping = message as PingMessage;
+                        PingMessage ping = message as PingMessage;
                         ValidatePingAddress(ping);
                         nodeManager.ProcessPingMessage(ping);
                         break;
@@ -108,7 +107,7 @@ namespace Nethermind.Discovery
         {
             return _nodeLifecycleManagers.GetOrAdd(node.IdHashText, x =>
             {
-                NotifyListenersOnNewNodeDiscovered(node);
+                OnNewNode(node);
                 return _nodeLifecycleManagerFactory.CreateNodeLifecycleManager(node);
             });
         }
@@ -122,13 +121,13 @@ namespace Nethermind.Discovery
             catch (Exception e)
             {
                 _logger.Error($"Error during sending message: {discoveryMessage}", e);
-            }    
+            }
         }
 
         public bool WasMessageReceived(string senderIdHash, MessageType messageType, int timeout)
         {
-            var resetEvent = GetResetEvent(senderIdHash, (int)messageType);
-            var result = resetEvent.WaitOne(timeout);
+            ManualResetEvent resetEvent = GetResetEvent(senderIdHash, (int)messageType);
+            bool result = resetEvent.WaitOne(timeout);
             if (result)
             {
                 resetEvent.Reset();
@@ -137,13 +136,7 @@ namespace Nethermind.Discovery
             return result;
         }
 
-        public void RegisterDiscoveryListener(IDiscoveryListener listener)
-        {
-            if (!_discoveryListeners.Contains(listener))
-            {
-                _discoveryListeners.Add(listener);
-            }
-        }
+        public event EventHandler<NodeEventArgs> NodeDiscovered;
 
         protected void ValidatePingAddress(PingMessage message)
         {
@@ -151,55 +144,57 @@ namespace Nethermind.Discovery
             {
                 throw new NetworkingException($"Received ping message with empty address, message: {message}");
             }
+
             if (!Bytes.UnsafeCompare(_nodeTable.MasterNode.Address.Address.GetAddressBytes(), message.DestinationAddress.Address.GetAddressBytes()))
             {
                 //throw new NetworkingException($"Received message with inccorect destination adress, message: {message}");
             }
+
             if (_nodeTable.MasterNode.Port != message.DestinationAddress.Port)
             {
                 throw new NetworkingException($"Received message with inccorect destination port, message: {message}");
             }
+
             if (!Bytes.UnsafeCompare(message.FarAddress.Address.GetAddressBytes(), message.SourceAddress.Address.GetAddressBytes()))
             {
                 //throw new NetworkingException($"Received message with inccorect source adress, message: {message}");
             }
+
             if (message.FarAddress.Port != message.SourceAddress.Port)
             {
                 throw new NetworkingException($"Received message with inccorect source port, message: {message}");
             }
         }
 
-        private void NotifyListenersOnNewNodeDiscovered(Node node)
+        private void OnNewNode(Node node)
         {
-            for (var i = 0; i < _discoveryListeners.Count; i++)
+            DiscoveryNode discoveryNode = new DiscoveryNode
             {
-                var discoveryListener = _discoveryListeners[i];
-                discoveryListener.OnNodeDiscovered(new DiscoveryNode
-                {
-                    PublicKey = node.Id,
-                    Host = node.Host,
-                    Port = node.Port
-                });
-            }
+                PublicKey = node.Id,
+                Host = node.Host,
+                Port = node.Port
+            };
+
+            NodeDiscovered?.Invoke(this, new NodeEventArgs(discoveryNode));
         }
 
         private void NotifySubscribersOnMsgReceived(MessageType msgType, Node node)
         {
-            var resetEvent = RemoveResetEvent(node.IdHashText, (int)msgType);
+            ManualResetEvent resetEvent = RemoveResetEvent(node.IdHashText, (int)msgType);
             resetEvent?.Set();
         }
 
         private ManualResetEvent GetResetEvent(string senderAddressHash, int messageType)
         {
-            var key = new MessageTypeKey { SenderAddressHash = senderAddressHash, MessageType = messageType };
-            var resetEvent = _waitingEvents.GetOrAdd(key, new ManualResetEvent(false));
+            MessageTypeKey key = new MessageTypeKey(senderAddressHash, messageType);
+            ManualResetEvent resetEvent = _waitingEvents.GetOrAdd(key, new ManualResetEvent(false));
             return resetEvent;
         }
 
         private ManualResetEvent RemoveResetEvent(string senderAddressHash, int messageType)
         {
-            var key = new MessageTypeKey { SenderAddressHash = senderAddressHash, MessageType = messageType };
-            return _waitingEvents.TryRemove(key, out var resetEvent) ? resetEvent : null;
+            MessageTypeKey key = new MessageTypeKey(senderAddressHash, messageType);
+            return _waitingEvents.TryRemove(key, out ManualResetEvent resetEvent) ? resetEvent : null;
         }
 
         private void CleanUpLifecycleManagers()
@@ -209,24 +204,25 @@ namespace Nethermind.Discovery
                 return;
             }
 
-            var cleanupCount = _configurationProvider.NodeLifecycleManagersCleaupCount;
-            var activeExcluded = _nodeLifecycleManagers.Where(x => x.Value.State == NodeLifecycleState.ActiveExcluded).Take(cleanupCount).ToArray();
+            int cleanupCount = _configurationProvider.NodeLifecycleManagersCleaupCount;
+            KeyValuePair<string, INodeLifecycleManager>[] activeExcluded = _nodeLifecycleManagers.Where(x => x.Value.State == NodeLifecycleState.ActiveExcluded).Take(cleanupCount).ToArray();
             if (activeExcluded.Length == cleanupCount)
             {
-                var removeCounter = RemoveManagers(activeExcluded, activeExcluded.Length);
+                int removeCounter = RemoveManagers(activeExcluded, activeExcluded.Length);
                 _logger.Info($"Removed: {removeCounter} node lifecycle managers");
                 return;
             }
-            var unreachable = _nodeLifecycleManagers.Where(x => x.Value.State == NodeLifecycleState.Unreachable).Take(cleanupCount - activeExcluded.Length).ToArray();
-            var removeCount = RemoveManagers(activeExcluded, activeExcluded.Length);
+
+            KeyValuePair<string, INodeLifecycleManager>[] unreachable = _nodeLifecycleManagers.Where(x => x.Value.State == NodeLifecycleState.Unreachable).Take(cleanupCount - activeExcluded.Length).ToArray();
+            int removeCount = RemoveManagers(activeExcluded, activeExcluded.Length);
             removeCount = removeCount + RemoveManagers(unreachable, unreachable.Length);
             _logger.Info($"Removed: {removeCount} node lifecycle managers");
         }
 
         private int RemoveManagers(KeyValuePair<string, INodeLifecycleManager>[] items, int count)
         {
-            var removeCount = 0;
-            for (var i = 0; i < count; i++)
+            int removeCount = 0;
+            for (int i = 0; i < count; i++)
             {
                 if (_nodeLifecycleManagers.TryRemove(items[i].Key, out var _))
                 {
@@ -237,10 +233,36 @@ namespace Nethermind.Discovery
             return removeCount;
         }
 
-        private struct MessageTypeKey
+        private struct MessageTypeKey : IEquatable<MessageTypeKey>
         {
-            public string SenderAddressHash { get; set; }
-            public int MessageType { get; set; }
+            public string SenderAddressHash { get; private set; }
+            public int MessageType { get; private set; }
+
+            public MessageTypeKey(string senderAddressHash, int messageType)
+            {
+                SenderAddressHash = senderAddressHash;
+                MessageType = messageType;
+            }
+            
+            public bool Equals(MessageTypeKey other)
+            {
+                return string.Equals(SenderAddressHash, other.SenderAddressHash) && MessageType == other.MessageType;
+            }
+
+            public override bool Equals(object obj)
+            {
+                if (ReferenceEquals(null, obj)) return false;
+                return obj is MessageTypeKey && Equals((MessageTypeKey)obj);
+            }
+
+            [SuppressMessage("ReSharper", "NonReadonlyMemberInGetHashCode")]
+            public override int GetHashCode()
+            {
+                unchecked
+                {
+                    return ((SenderAddressHash != null ? SenderAddressHash.GetHashCode() : 0) * 397) ^ MessageType;
+                }
+            }
         }
     }
 }

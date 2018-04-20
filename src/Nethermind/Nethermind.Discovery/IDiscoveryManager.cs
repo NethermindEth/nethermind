@@ -16,10 +16,10 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using Nethermind.Discovery.Lifecycle;
 using Nethermind.Discovery.Messages;
 using Nethermind.Discovery.RoutingTable;
-using Nethermind.Network.P2P;
 
 namespace Nethermind.Discovery
 {
@@ -29,6 +29,6 @@ namespace Nethermind.Discovery
         INodeLifecycleManager GetNodeLifecycleManager(Node node);
         void SendMessage(DiscoveryMessage discoveryMessage);
         bool WasMessageReceived(string senderIdHash, MessageType messageType, int timeout);
-        void RegisterDiscoveryListener(IDiscoveryListener listener);
+        event EventHandler<NodeEventArgs> NodeDiscovered;
     }
 }

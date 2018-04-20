@@ -16,7 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Net;
+using Nethermind.Core;
 
 namespace Nethermind.Discovery
 {
@@ -105,7 +105,7 @@ namespace Nethermind.Discovery
         /// <summary>
         /// Boot nodes connection details
         /// </summary>
-        (string Id, string Host, int Port)[] BootNodes { get; }
+        Bootnode[] Bootnodes { get; }
 
         /// <summary>
         /// Key Pass
