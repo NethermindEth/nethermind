@@ -22,6 +22,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Model;
 using Nethermind.Discovery.Messages;
 using Nethermind.Discovery.RoutingTable;
@@ -34,7 +35,7 @@ namespace Nethermind.Discovery
         private readonly INodeTable _nodeTable;
         private readonly IDiscoveryManager _discoveryManager;
         private readonly IDiscoveryConfigurationProvider _configurationProvider;
-        private readonly Node _masterNode;
+        private Node _masterNode;
 
         public NodesLocator(INodeTable nodeTable, IDiscoveryManager discoveryManager, IDiscoveryConfigurationProvider configurationProvider, ILogger logger)
         {
@@ -42,7 +43,11 @@ namespace Nethermind.Discovery
             _discoveryManager = discoveryManager;
             _configurationProvider = configurationProvider;
             _logger = logger;
-            _masterNode = nodeTable.MasterNode;
+        }
+
+        public void Initialize(Node masterNode)
+        {
+            _masterNode = masterNode;
         }
 
         public async Task LocateNodesAsync()

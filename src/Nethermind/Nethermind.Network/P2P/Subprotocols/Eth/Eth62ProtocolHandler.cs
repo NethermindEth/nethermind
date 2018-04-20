@@ -92,9 +92,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         {
             try
             {
-                if (Logger.IsDebugEnabled)
+                if (Logger.IsWarnEnabled)
                 {
-                    Logger.Debug($"{nameof(Eth62ProtocolHandler)} handling a message with code {message.PacketType}.");
+                    Logger.Warn($"{nameof(Eth62ProtocolHandler)} handling a message with code {message.PacketType}.");
                 }
 
                 if (message.PacketType != Eth62MessageCode.Status && !_statusReceived)

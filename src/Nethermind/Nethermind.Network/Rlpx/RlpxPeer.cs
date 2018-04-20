@@ -40,8 +40,8 @@ namespace Nethermind.Network.Rlpx
     public class RlpxPeer : IRlpxPeer
     {
         private readonly Dictionary<PublicKey, IP2PSession> _remotePeers = new Dictionary<PublicKey, IP2PSession>();
-        
-        private const int PeerConnectionTimeout = 10000;        
+
+        private const int PeerConnectionTimeout = 10000;
         private readonly int _localPort;
         private readonly IEncryptionHandshakeService _encryptionHandshakeService;
         private readonly IMessageSerializationService _serializationService;
@@ -124,9 +124,24 @@ namespace Nethermind.Network.Rlpx
             clientBootstrap.RemoteAddress(host, port);
 
             clientBootstrap.Handler(new ActionChannelInitializer<ISocketChannel>(ch => InitializeChannel(ch, EncryptionHandshakeRole.Initiator, remoteId)));
-            
-            await clientBootstrap.ConnectAsync(new IPEndPoint(IPAddress.Parse(host), port));
-            _logger.Info($"Connected to {remoteId} at {host}:{port}");
+
+            Task connectTask = clientBootstrap.ConnectAsync(new IPEndPoint(IPAddress.Parse(host), port));
+            Task firstTask = await Task.WhenAny(connectTask, Task.Delay(5000));
+            if (firstTask != connectTask)
+            {
+                _logger.Error($"Connection to {remoteId} at {host}:{port} timed out.");
+            }
+            else
+            {
+                if (connectTask.IsFaulted)
+                {
+                    _logger.Error($"Error when connecting to {remoteId} at {host}:{port}.", connectTask.Exception);    
+                }
+                else
+                {
+                    _logger.Info($"Connected to {remoteId} at {host}:{port}");    
+                }
+            }
         }
 
         private void InitializeChannel(IChannel channel, EncryptionHandshakeRole role, PublicKey remoteId)

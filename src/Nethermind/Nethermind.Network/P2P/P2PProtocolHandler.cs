@@ -146,8 +146,7 @@ namespace Nethermind.Network.P2P
 
         private static readonly List<Capability> SupportedCapabilities = new List<Capability>
         {
-//            new Capability(Protocol.Eth, 62),
-            new Capability(Protocol.Eth, 63),
+            new Capability(Protocol.Eth, 62),
         };
 
         private void SendHello()

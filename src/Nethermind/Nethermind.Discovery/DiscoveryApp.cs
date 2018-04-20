@@ -50,7 +50,7 @@ namespace Nethermind.Discovery
         private bool _appShutdown;
         private IChannel _channel;
         private MultithreadEventLoopGroup _group;
-        private NettyDiscoveryHandler _discoveryHandler;      
+        private NettyDiscoveryHandler _discoveryHandler;
 
         public DiscoveryApp(IDiscoveryConfigurationProvider configurationProvider, INodesLocator nodesLocator, ILogger logger, IDiscoveryManager discoveryManager, INodeFactory nodeFactory, INodeTable nodeTable, IMessageSerializationService messageSerializationService, ICryptoRandom cryptoRandom)
         {
@@ -68,7 +68,9 @@ namespace Nethermind.Discovery
         {
             try
             {
+                // TODO: can we do it so we do not have to call initialize on these classes?
                 _nodeTable.Initialize(masterPublicKey);
+                _nodesLocator.Initialize(_nodeTable.MasterNode);
                 _logger.Info("Initializing UDP channel.");
                 InitializeUdpChannel();
             }
@@ -92,13 +94,13 @@ namespace Nethermind.Discovery
             _group = new MultithreadEventLoopGroup(1);
             //try
             //{
-                //while (!_appShutdown)
-                //{
-                    StartUdpChannel();
-                    //wait for closing event
-                    //await _channel.CloseCompletion;
-                    //StopUdpChannelAsync();
-                //}
+            //while (!_appShutdown)
+            //{
+            StartUdpChannel();
+            //wait for closing event
+            //await _channel.CloseCompletion;
+            //StopUdpChannelAsync();
+            //}
             //}
             //finally 
             //{
@@ -135,15 +137,29 @@ namespace Nethermind.Discovery
 
         private void OnChannelActivated(object sender, EventArgs e)
         {
-            OnChannelActivated().Wait();
+            OnChannelActivated().ContinueWith
+            (
+                t =>
+                {
+                    if (t.IsFaulted)
+                    {
+                        throw t.Exception;
+                    }
+                    
+                    if (t.IsCompleted)
+                    {
+                        _logger.Info("Bootnodes initialized.");
+                    }
+                }
+            );
         }
 
         private async Task OnChannelActivated()
         {
             try
             {
-                _logger.Info("Initializing bootNodes.");
-                if (!InitializeBootnodes())
+                _logger.Info("Initializing bootnodes.");
+                if (!await InitializeBootnodes())
                 {
                     _logger.Error("Could not communicate with any bootnodes. Initialization failed.");
                     return;
@@ -157,7 +173,7 @@ namespace Nethermind.Discovery
             catch (Exception e)
             {
                 _logger.Error("Error during discovery initialization", e);
-            }         
+            }
         }
 
         private void InitializeDiscoveryTimer()
@@ -207,7 +223,7 @@ namespace Nethermind.Discovery
             try
             {
                 await _bindingTask; // if we are still starting
-                
+
                 _logger.Info("Stopping udp channel");
                 var closeTask = _channel.CloseAsync();
                 if (await Task.WhenAny(closeTask, Task.Delay(_configurationProvider.UdpChannelCloseTimeout)) != closeTask)
@@ -226,7 +242,7 @@ namespace Nethermind.Discovery
             }
         }
 
-        private bool InitializeBootnodes()
+        private async Task<bool> InitializeBootnodes()
         {
             var bootNodes = _configurationProvider.Bootnodes;
             var managers = new INodeLifecycleManager[bootNodes.Length];
@@ -234,7 +250,7 @@ namespace Nethermind.Discovery
             {
                 var bootnode = bootNodes[i];
                 var node = bootnode.PublicKey == null
-                    ? _nodeFactory.CreateNode(bootnode.Host, bootnode.Port) 
+                    ? _nodeFactory.CreateNode(bootnode.Host, bootnode.Port)
                     : _nodeFactory.CreateNode(bootnode.PublicKey, bootnode.Host, bootnode.Port, true);
                 var manager = _discoveryManager.GetNodeLifecycleManager(node);
                 managers[i] = manager;
@@ -255,7 +271,7 @@ namespace Nethermind.Discovery
                     _logger.Debug($"Waiting {itemTime} ms for bootnodes to respond");
                 }
 
-                Thread.Sleep(itemTime);
+                await Task.Delay(1000);
             }
 
             var reachedNodeCounter = 0;

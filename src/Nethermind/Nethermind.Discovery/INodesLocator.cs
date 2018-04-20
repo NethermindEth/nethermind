@@ -17,6 +17,7 @@
  */
 
 using System.Threading.Tasks;
+using Nethermind.Discovery.RoutingTable;
 
 namespace Nethermind.Discovery
 {
@@ -31,5 +32,7 @@ namespace Nethermind.Discovery
         /// locate nodes for specified node id
         /// </summary>
         Task LocateNodesAsync(byte[] searchedNodeId);
+        
+        void Initialize(Node masterNode);
     }
 }

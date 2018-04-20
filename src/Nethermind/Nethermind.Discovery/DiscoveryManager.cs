@@ -152,7 +152,7 @@ namespace Nethermind.Discovery
 
             if (_nodeTable.MasterNode.Port != message.DestinationAddress.Port)
             {
-                throw new NetworkingException($"Received message with inccorect destination port, message: {message}");
+//                throw new NetworkingException($"Received message with inccorect destination port, message: {message}");
             }
 
             if (!Bytes.UnsafeCompare(message.FarAddress.Address.GetAddressBytes(), message.SourceAddress.Address.GetAddressBytes()))
