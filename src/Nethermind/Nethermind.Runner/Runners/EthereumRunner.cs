@@ -155,24 +155,27 @@ namespace Nethermind.Runner.Runners
 
             stateProvider.Commit(specProvider.GenesisSpec);
 
-            var testTransactionsGenerator = new TestTransactionsGenerator(transactionStore, ethereumSigner, transactionDelay, _chainLogger);
-            stateProvider.CreateAccount(testTransactionsGenerator.SenderAddress, 1000.Ether());
-            stateProvider.Commit(specProvider.GenesisSpec);
-
             if (isMining)
             {
+                var testTransactionsGenerator = new TestTransactionsGenerator(transactionStore, ethereumSigner, transactionDelay, _chainLogger);
+                stateProvider.CreateAccount(testTransactionsGenerator.SenderAddress, 1000.Ether());
+                stateProvider.Commit(specProvider.GenesisSpec);
                 testTransactionsGenerator.Start();
             }
 
             Block genesis = chainSpec.Genesis;
             genesis.Header.StateRoot = stateProvider.StateRoot;
             genesis.Header.RecomputeHash();
-            // we are adding test transactions account so the state root will change (not an actual ropsten at the moment)
-//            var expectedGenesisHash = "0x41941023680923e0fe4d74a34bdac8141f2540e3ae90623718e47d66d1ca4a2d";
-//            if (chainSpec.Genesis.Hash != new Keccak(expectedGenesisHash))
-//            {
-//                throw new Exception($"Unexpected genesis hash for Ropsten, expected {expectedGenesisHash}, but was {chainSpec.Genesis.Hash}");
-//            }
+
+            if (!isMining)
+            {
+                // we are adding test transactions account so the state root will change (not an actual ropsten at the moment)
+                var expectedGenesisHash = "0x41941023680923e0fe4d74a34bdac8141f2540e3ae90623718e47d66d1ca4a2d";
+                if (chainSpec.Genesis.Hash != new Keccak(expectedGenesisHash))
+                {
+                    throw new Exception($"Unexpected genesis hash for Ropsten, expected {expectedGenesisHash}, but was {chainSpec.Genesis.Hash}");
+                }
+            }
 
             /* start test processing */
             sealEngine.IsMining = isMining;
@@ -238,12 +241,12 @@ namespace Nethermind.Runner.Runners
 
             _peerManager = new PeerManager(_localPeer, _discoveryManager, _networkLogger);
             
-//            foreach (Bootnode bootnode in chainSpec.Bootnodes)
-//            {
-//                _networkLogger.Info($"Connecting to {bootnode.Description} @ {bootnode.Host}:{bootnode.Port}");
-//                await _localPeer.ConnectAsync(bootnode.PublicKey, bootnode.Host, bootnode.Port);
-//                _networkLogger.Info("Testnet connected...");
-//            }
+            foreach (Bootnode bootnode in chainSpec.Bootnodes)
+            {
+                _networkLogger.Info($"Connecting to {bootnode.Description} @ {bootnode.Host}:{bootnode.Port}");
+                await _localPeer.ConnectAsync(bootnode.PublicKey, bootnode.Host, bootnode.Port);
+                _networkLogger.Info("Testnet connected...");
+            }
         }
 
         private static Block Convert(TestGenesisJson headerJson, Keccak stateRoot)

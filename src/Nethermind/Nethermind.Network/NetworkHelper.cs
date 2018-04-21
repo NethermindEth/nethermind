@@ -40,7 +40,7 @@ namespace Nethermind.Network
             {
                 var url = "http://checkip.amazonaws.com";
                 _logger.Info($"Using {url} to get external ip");
-                var ip = new WebClient().DownloadString(url);
+                var ip = "5.69.24.121"; // new WebClient().DownloadString(url);
                 _logger.Info($"External ip: {ip}");
                 return IPAddress.Parse(ip?.Trim());
             }

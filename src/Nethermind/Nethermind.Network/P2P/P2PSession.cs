@@ -66,7 +66,7 @@ namespace Nethermind.Network.P2P
         // TODO: this should be one level up
         public void EnableSnappy()
         {
-            _logger.Info($"Enabling Snappy compression");
+            _logger.Info($"{RemoteNodeId} Enabling Snappy compression");
             _context.Channel.Pipeline.AddBefore($"{nameof(Multiplexor)}#0", null, new SnappyDecoder(_logger));
             _context.Channel.Pipeline.AddBefore($"{nameof(Multiplexor)}#0", null, new SnappyEncoder(_logger));
         }
@@ -77,7 +77,7 @@ namespace Nethermind.Network.P2P
             Task.Delay(delay).ContinueWith(t =>
             {
                 _context.DisconnectAsync();
-                _logger.Info($"Disconnecting now after {delay.TotalMilliseconds} milliseconds");
+                _logger.Info($"{RemoteNodeId} Disconnecting now after {delay.TotalMilliseconds} milliseconds");
             });
         }
 
@@ -105,11 +105,17 @@ namespace Nethermind.Network.P2P
 
             if (_logger.IsDebugEnabled)
             {
-                _logger.Debug($"Session Manager received a message (dynamic ID {dynamicMessageCode}. Resolved to {protocol}.{messageId})");
+                _logger.Debug($"{RemoteNodeId} Session Manager received a message (dynamic ID {dynamicMessageCode}. Resolved to {protocol}.{messageId})");
             }
 
             if (protocol == null)
             {
+                _logger.Error($"{RemoteNodeId} Session Manager received a message (dynamic ID {dynamicMessageCode}. Resolved to null.{messageId})");
+                _logger.Error($"{RemoteNodeId} Known protocols ({_protocols.Count}):");
+                foreach (KeyValuePair<string,IProtocolHandler> protocolHandler in _protocols)
+                {
+                    _logger.Error($"{RemoteNodeId} {protocolHandler.Key} {protocolHandler.Value.ProtocolVersion} {protocolHandler.Value.MessageIdSpaceSize}");    
+                }
                 throw new InvalidProtocolException(packet.Protocol);
             }
 
@@ -122,7 +128,7 @@ namespace Nethermind.Network.P2P
             protocolCode = protocolCode.ToLowerInvariant();
             if (_protocols.ContainsKey(protocolCode))
             {
-                throw new InvalidOperationException($"Session for protocol {protocolCode} already started");
+                throw new InvalidOperationException($"{RemoteNodeId} Session for protocol {protocolCode} already started");
             }
 
             if (protocolCode != Protocol.P2P && !_protocols.ContainsKey(Protocol.P2P))
@@ -139,7 +145,7 @@ namespace Nethermind.Network.P2P
                     {
                         if (protocolHandler.ProtocolVersion >= 5)
                         {
-                            _logger.Info($"{protocolHandler.ProtocolCode} v{protocolHandler.ProtocolVersion} established - Enabling Snappy");
+                            _logger.Info($"{RemoteNodeId} {protocolHandler.ProtocolCode} v{protocolHandler.ProtocolVersion} established - Enabling Snappy");
                             EnableSnappy();
                         }
                     };
@@ -186,6 +192,12 @@ namespace Nethermind.Network.P2P
                     offset += alphabetically[j].SpaceSize;
                 }
 
+                _logger.Warn($"Could not resolve message id from {dynamicId} with known:");
+                for (int j = 0; j < alphabetically.Length; j++)
+                {
+                    _logger.Warn($"{alphabetically[j].ProtocolCode} {alphabetically[j].SpaceSize}");    
+                }
+                
                 return (null, 0);
             };
 
@@ -213,7 +225,7 @@ namespace Nethermind.Network.P2P
             throw new NotImplementedException();
         }
 
-        // TODO: use custome interface instead of netty one (can encapsulate both)
+        // TODO: use custom interface instead of netty one (can encapsulate both)
         public void Init(byte p2PVersion, IChannelHandlerContext context, IPacketSender packetSender)
         {
             _packetSender = packetSender;

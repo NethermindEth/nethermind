@@ -53,11 +53,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         public string ProtocolCode => "eth";
 
-        public virtual int MessageIdSpaceSize => 7;
+        public virtual int MessageIdSpaceSize => 8;
 
         public void Init()
         {
-            Logger.Info($"{ProtocolCode} v{ProtocolVersion} subprotocol initializing");
+            Logger.Info($"{P2PSession.RemoteNodeId} {ProtocolCode} v{ProtocolVersion} subprotocol initializing");
 
             Block headBlock = _sync.HeadBlock;
             StatusMessage statusMessage = new StatusMessage();
@@ -94,12 +94,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             {
                 if (Logger.IsWarnEnabled)
                 {
-                    Logger.Warn($"{nameof(Eth62ProtocolHandler)} handling a message with code {message.PacketType}.");
+                    Logger.Warn($"{P2PSession.RemoteNodeId} {nameof(Eth62ProtocolHandler)} handling a message with code {message.PacketType}.");
                 }
 
                 if (message.PacketType != Eth62MessageCode.Status && !_statusReceived)
                 {
-                    throw new SubprotocolException($"No {nameof(StatusMessage)} received prior to communication.");
+                    throw new SubprotocolException($"{P2PSession.RemoteNodeId} No {nameof(StatusMessage)} received prior to communication.");
                 }
 
                 switch (message.PacketType)
@@ -132,7 +132,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             }
             catch (Exception e)
             {
-                Logger.Error("TEMP Investigating exception propagation", e);
+                Logger.Error($"{P2PSession.RemoteNodeId} TEMP Investigating exception propagation", e);
                 throw;
             }
         }
@@ -145,7 +145,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             }
 
             _statusReceived = true;
-            Logger.Info("ETH received status with" +
+            Logger.Info($"{P2PSession.RemoteNodeId} ETH received status with" +
                         Environment.NewLine + $" prot version\t{status.ProtocolVersion}" +
                         Environment.NewLine + $" network ID\t{status.ChainId}," +
                         Environment.NewLine + $" genesis hash\t{status.GenesisHash}," +
@@ -157,11 +157,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
             if (status.GenesisHash != _sync.GenesisBlock.Hash)
             {
-                Logger.Warn($"Connected peer's genesis hash {status.GenesisHash} differes from {_sync.GenesisBlock.Hash}");
+                Logger.Warn($"{P2PSession.RemoteNodeId} Connected peer's genesis hash {status.GenesisHash} differes from {_sync.GenesisBlock.Hash}");
                 throw new InvalidOperationException("genesis hash mismatch");
             }
 
-            Debug.Assert(_statusSent, "Expecting Init() to have been called by this point");
+            Debug.Assert(_statusSent, $"{P2PSession.RemoteNodeId} Expecting Init() to have been called by this point");
             ProtocolInitialized?.Invoke(this, EventArgs.Empty);
         }
 
@@ -188,7 +188,19 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         private void Handle(GetBlockHeadersMessage getBlockHeadersMessage)
         {
-            Block[] blocks = _sync.Find(getBlockHeadersMessage.StartingBlockHash, (int)getBlockHeadersMessage.MaxHeaders, (int)getBlockHeadersMessage.Skip, getBlockHeadersMessage.Reverse == 1);
+            Logger.Warn($"GetBlockHeaders.MaxHeaders: {getBlockHeadersMessage.MaxHeaders}");
+            Logger.Warn($"GetBlockHeaders.Reverse: {getBlockHeadersMessage.Reverse}");
+            Logger.Warn($"GetBlockHeaders.Skip: {getBlockHeadersMessage.Skip}");
+            Logger.Warn($"GetBlockHeaders.StartingBlockhash: {getBlockHeadersMessage.StartingBlockHash}");
+            Logger.Warn($"GetBlockHeaders.StartingBlockNumber: {getBlockHeadersMessage.StartingBlockNumber}");
+
+            Keccak startingHash = getBlockHeadersMessage.StartingBlockHash;
+            if (startingHash == null)
+            {
+                startingHash = _sync.Find(getBlockHeadersMessage.StartingBlockNumber).Hash;
+            }
+            
+            Block[] blocks = _sync.Find(startingHash, (int)getBlockHeadersMessage.MaxHeaders, (int)getBlockHeadersMessage.Skip, getBlockHeadersMessage.Reverse == 1);
             BlockHeader[] headers = new BlockHeader[blocks.Length];
             for (int i = 0; i < blocks.Length; i++)
             {
@@ -290,7 +302,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             }
 
             // TODO: work in progress
-            throw new TimeoutException($"Request timeout in {nameof(GetBlockHeadersMessage)}");
+            throw new TimeoutException($"{P2PSession.RemoteNodeId} Request timeout in {nameof(GetBlockHeadersMessage)}");
         }
 
         private async Task<Block[]> SendRequest(GetBlockBodiesMessage message)
@@ -306,7 +318,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             }
 
             // TODO: work in progress
-            throw new TimeoutException($"Request timeout in {nameof(GetBlockBodiesMessage)}");
+            throw new TimeoutException($"{P2PSession.RemoteNodeId} Request timeout in {nameof(GetBlockBodiesMessage)}");
         }
 
         async Task<BlockHeader[]> ISynchronizationPeer.GetBlockHeaders(Keccak blockHash, int maxBlocks, int skip)

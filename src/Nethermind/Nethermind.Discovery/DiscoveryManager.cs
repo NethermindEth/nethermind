@@ -66,7 +66,7 @@ namespace Nethermind.Discovery
         {
             try
             {
-                _logger.Info($"Received msg: {message}");
+                _logger.Debug($"Received msg: {message}");
 
                 MessageType msgType = message.MessageType;
 

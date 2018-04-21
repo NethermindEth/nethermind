@@ -29,7 +29,7 @@ namespace Nethermind.Discovery
             PongTimeout = 15000;
             BucketSize = 16;
             BucketsCount = 256;
-            MasterExternalIp = networkHelper.GetExternalIp()?.ToString();
+            MasterExternalIp = // networkHelper.GetExternalIp()?.ToString();
             MasterHost = networkHelper.GetLocalIp()?.ToString() ?? "127.0.0.1";
             MasterPort = 30304;
         }
