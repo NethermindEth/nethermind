@@ -40,7 +40,7 @@ namespace Nethermind.Runner.Runners
             _logger = logger;
         }
 
-        public void Start(InitParams initParams, IReadOnlyCollection<ModuleType> modules = null)
+        public void Start(InitParams initParams)
         {
             _logger.Info("Initializing JsonRPC");
             var host = $"http://{initParams.HttpHost}:{initParams.HttpPort}";
@@ -51,6 +51,7 @@ namespace Nethermind.Runner.Runners
                 .UseUrls(host)
                 .Build();
 
+            var modules = GetModules(initParams.JsonRpcEnabledModules);
             if (modules != null && modules.Any())
             {
                 _configurationProvider.EnabledModules = modules;
@@ -62,7 +63,7 @@ namespace Nethermind.Runner.Runners
             _logger.Info("JsonRPC initialization completed");
         }
 
-        public async Task StopAsync(IEnumerable<ModuleType> modules = null)
+        public async Task StopAsync()
         {
             try
             {
@@ -73,6 +74,29 @@ namespace Nethermind.Runner.Runners
             {
                 _logger.Info($"Error during stopping service: {e}");
             }
+        }
+
+        private IEnumerable<ModuleType> GetModules(string[] moduleNames)
+        {
+            if (moduleNames == null || !moduleNames.Any())
+            {
+                return null;
+            }
+
+            var modules = new List<ModuleType>();
+            foreach (var moduleName in moduleNames)
+            {
+                if (Enum.TryParse(moduleName.Trim(), true, out ModuleType moduleType))
+                {
+                    modules.Add(moduleType);
+                }
+                else
+                {
+                    _logger.Warn($"Incorrect jsonRpc module type: {moduleName}");
+                }
+            }
+
+            return modules;
         }
     }
 }

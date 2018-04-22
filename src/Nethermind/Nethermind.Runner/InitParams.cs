@@ -44,6 +44,7 @@ namespace Nethermind.Runner
         public string LogFileName { get; set; }
         public BigInteger? HomesteadBlockNr { get; set; }
         public EthereumRunnerType EthereumRunnerType { get; set; }
+        public string[] JsonRpcEnabledModules { get; set; }
 
         public override string ToString()
         {

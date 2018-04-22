@@ -16,15 +16,9 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Collections.Generic;
-using System.Threading.Tasks;
-using Nethermind.JsonRpc.DataModel;
-
 namespace Nethermind.Runner.Runners
 {
-    public interface IJsonRpcRunner
+    public interface IJsonRpcRunner : IRunner
     {
-        void Start(InitParams initParams, IReadOnlyCollection<ModuleType> modules = null);
-        Task StopAsync(IEnumerable<ModuleType> modules = null);
     }
 }
