@@ -228,6 +228,7 @@ namespace Nethermind.Runner.Runners
 
             // https://stackoverflow.com/questions/6803073/get-local-ip-address?utm_medium=organic&utm_source=google_rich_qa&utm_campaign=google_rich_qa
             string localIp;
+            //TODO you can use NetworkHelper for that - I use it in the same way in discovery - i changed it to lazy load impl so we can find it once and share between discovery and peer
             using (Socket socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, 0))
             {
                 socket.Connect("8.8.8.8", 65530);

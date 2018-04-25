@@ -8,6 +8,8 @@ namespace Nethermind.Network
     public class NetworkHelper : INetworkHelper
     {
         private readonly ILogger _logger;
+        private IPAddress _localIp;
+        private IPAddress _externalIp;
 
         public NetworkHelper(ILogger logger)
         {
@@ -15,6 +17,34 @@ namespace Nethermind.Network
         }
 
         public IPAddress GetLocalIp()
+        {
+            return _localIp ?? (_localIp = FindLocalIp());
+        }
+        
+        public IPAddress GetExternalIp()
+        {
+            return _externalIp ?? (_externalIp = FindExternalIp());
+        }
+
+        private IPAddress FindExternalIp()
+        {
+            try
+            {
+                var url = "http://checkip.amazonaws.com";
+                _logger.Info($"Using {url} to get external ip");
+                //TODO - for testing?
+                var ip = "5.69.24.121"; // new WebClient().DownloadString(url);
+                _logger.Info($"External ip: {ip}");
+                return IPAddress.Parse(ip?.Trim());
+            }
+            catch (Exception e)
+            {
+                _logger.Error("Error while getting external ip", e);
+                return null;
+            }
+        }
+
+        private IPAddress FindLocalIp()
         {
             try
             {
@@ -26,23 +56,6 @@ namespace Nethermind.Network
                     _logger.Info($"Local ip: {address}");
                     return address;
                 }
-            }
-            catch (Exception e)
-            {
-                _logger.Error("Error while getting external ip", e);
-                return null;
-            }
-        }
-
-        public IPAddress GetExternalIp()
-        {
-            try
-            {
-                var url = "http://checkip.amazonaws.com";
-                _logger.Info($"Using {url} to get external ip");
-                var ip = "5.69.24.121"; // new WebClient().DownloadString(url);
-                _logger.Info($"External ip: {ip}");
-                return IPAddress.Parse(ip?.Trim());
             }
             catch (Exception e)
             {

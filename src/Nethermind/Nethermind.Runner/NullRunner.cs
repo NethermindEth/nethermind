@@ -39,14 +39,5 @@ namespace Nethermind.Runner
         {
             return Task.CompletedTask;
         }
-
-        void IJsonRpcRunner.Start(InitParams initParams, IReadOnlyCollection<ModuleType> modules)
-        {
-        }
-
-        Task IJsonRpcRunner.StopAsync(IEnumerable<ModuleType> modules)
-        {
-            return Task.CompletedTask;
-        }
     }
 }
