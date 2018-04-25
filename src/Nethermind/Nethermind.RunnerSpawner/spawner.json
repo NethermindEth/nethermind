@@ -7,7 +7,7 @@
     "HttpHost": "127.0.0.1",
     "HttpPort": 8002,
     "IsMining": true,
-    "FakeMiningDelay": 12000,
+    "FakeMiningDelay": 1000,
     "ChainSpecPath": "Chains\\nethermind_alpha.json",
     "TestNodeKey": "020102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f",
     "LogFileName": "miner1.logs.txt"
@@ -20,7 +20,7 @@
     "HttpHost": "127.0.0.1",
     "HttpPort": 8004,
     "IsMining": true,
-    "FakeMiningDelay": 12000,
+    "FakeMiningDelay": 1000,
     "ChainSpecPath": "Chains\\nethermind_alpha.json",
     "TestNodeKey": "040102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f",
     "LogFileName": "miner2.logs.txt"
@@ -33,7 +33,7 @@
     "HttpHost": "127.0.0.1",
     "HttpPort": 8003,
     "IsMining": true,
-    "FakeMiningDelay": 24000,
+    "FakeMiningDelay": 2000,
     "ChainSpecPath": "Chains\\nethermind_alpha_client.json",
     "TestNodeKey": "030102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f",
     "LogFileName": "minerclient.logs.txt"
@@ -46,7 +46,7 @@
     "HttpHost": "127.0.0.1",
     "HttpPort": 8005,
     "IsMining": false,
-    "FakeMiningDelay": 12000,
+    "FakeMiningDelay": 1000,
     "ChainSpecPath": "Chains\\nethermind_alpha_client.json",
     "TestNodeKey": "050102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f",
     "LogFileName": "client.logs.txt"

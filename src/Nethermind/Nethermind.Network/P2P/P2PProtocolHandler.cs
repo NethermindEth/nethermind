@@ -127,6 +127,8 @@ namespace Nethermind.Network.P2P
                 return;
             }
 
+            ProtocolVersion = hello.P2PVersion;
+
             foreach (Capability remotePeerCapability in hello.Capabilities)
             {
                 if (SupportedCapabilities.Contains(remotePeerCapability))
