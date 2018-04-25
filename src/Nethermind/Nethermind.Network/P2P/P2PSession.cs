@@ -105,12 +105,12 @@ namespace Nethermind.Network.P2P
 
             if (_logger.IsDebugEnabled)
             {
-                _logger.Debug($"{RemoteNodeId} Session Manager received a message (dynamic ID {dynamicMessageCode}. Resolved to {protocol}.{messageId})");
+                _logger.Debug($"{RemoteNodeId} {nameof(P2PSession)} received a message (dynamic ID {dynamicMessageCode}. Resolved to {protocol}.{messageId})");
             }
 
             if (protocol == null)
             {
-                _logger.Error($"{RemoteNodeId} Session Manager received a message (dynamic ID {dynamicMessageCode}. Resolved to null.{messageId})");
+                _logger.Error($"{RemoteNodeId} {nameof(P2PSession)} received a message (dynamic ID {dynamicMessageCode}. Resolved to null.{messageId})");
                 _logger.Error($"{RemoteNodeId} Known protocols ({_protocols.Count}):");
                 foreach (KeyValuePair<string,IProtocolHandler> protocolHandler in _protocols)
                 {
@@ -118,7 +118,7 @@ namespace Nethermind.Network.P2P
                 }
                 throw new InvalidProtocolException(packet.Protocol);
             }
-
+            
             packet.PacketType = messageId;
             _protocols[protocol].HandleMessage(packet);
         }

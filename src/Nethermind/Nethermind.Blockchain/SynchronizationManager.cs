@@ -31,7 +31,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Blockchain
-{   
+{
     // TODO: forks
     public class SynchronizationManager : ISynchronizationManager
     {
@@ -96,7 +96,27 @@ namespace Nethermind.Blockchain
 
         public void AddNewBlock(Block block, PublicKey receivedFrom)
         {
-            _peers.TryGetValue(receivedFrom, out PeerInfo peerInfo);
+            if (_logger.IsDebugEnabled)
+            {
+                _logger.Debug($"Adding new block {block.Hash} ({block.Number}) from {receivedFrom}");
+            }
+
+            bool getValueResult = _peers.TryGetValue(receivedFrom, out PeerInfo peerInfo);
+            if (!getValueResult)
+            {
+                _logger.Error($"Try get value failed on {nameof(PeerInfo)} {receivedFrom}");
+            }
+
+            if (peerInfo == null && _logger.IsErrorEnabled)
+            {
+                _logger.Error($"{receivedFrom} peer info is null");
+            }
+
+            if (_logger.IsDebugEnabled)
+            {
+                _logger.Debug($"Using {peerInfo}");
+            }
+
             Debug.Assert(peerInfo != null, $"Received notification from an unknown peer at {nameof(ISynchronizationManager)}");
             if (peerInfo == null)
             {
@@ -107,21 +127,26 @@ namespace Nethermind.Blockchain
 
             if (block.Number <= BlockTree.BestSuggestedBlock.Number + 1)
             {
+                if (_logger.IsDebugEnabled)
+                {
+                    _logger.Debug($"Suggesting a block {block.Hash} ({block.Number}) from {receivedFrom} with {block.Transactions.Length} transactions");
+                }
+
                 AddBlockResult result = BlockTree.SuggestBlock(block);
                 // TODO: use for reputation later
-                
+
                 if (_logger.IsInfoEnabled)
                 {
-                    _logger.Info($"Received a {result} block {block.Hash} ({block.Number}) from the network with {block.Transactions.Length} transactions");
+                    _logger.Info($"{block.Hash} ({block.Number}) adding result is {result}");
                 }
             }
-            else if(block.Number > BlockTree.BestSuggestedBlock.Number + 1)
+            else if (block.Number > BlockTree.BestSuggestedBlock.Number + 1)
             {
                 if (_logger.IsInfoEnabled)
                 {
-                    _logger.Info($"Received a block {block.Hash} ({block.Number}) from the network - need to resync");
+                    _logger.Info($"Received a block {block.Hash} ({block.Number}) from {receivedFrom} - need to resync");
                 }
-                
+
                 RunSync();
             }
             else
@@ -133,14 +158,15 @@ namespace Nethermind.Blockchain
         public void HintBlock(Keccak hash, BigInteger number, PublicKey receivedFrom)
         {
             _peers.TryGetValue(receivedFrom, out PeerInfo peerInfo);
-            Debug.Assert(peerInfo != null, $"Received notification from an unknown peer at {nameof(ISynchronizationManager)}");
+            string errorMessage = $"Received a block hint from an unknown peer {receivedFrom}";
+            Debug.Assert(peerInfo != null, $"Received a block hint from an unknown peer {receivedFrom}");
             if (peerInfo == null)
             {
-                throw new InvalidOperationException($"unknown synchronization peer {receivedFrom}");
+                _logger.Error(errorMessage);
+                throw new InvalidOperationException(errorMessage);
             }
 
             peerInfo.NumberAvailable = number;
-
             {
                 // TODO: if synced but received new block much higher than before then resync
             }
@@ -150,9 +176,9 @@ namespace Nethermind.Blockchain
         {
             if (_logger.IsDebugEnabled)
             {
-                _logger.Debug($"Received a pending transaction {transaction.Hash} from the network");
+                _logger.Debug($"Received a pending transaction {transaction.Hash} from {receivedFrom}");
             }
-            
+
             _transactionStore.AddPending(transaction);
 
             // TODO: reputation
@@ -160,8 +186,12 @@ namespace Nethermind.Blockchain
 
         public async Task AddPeer(ISynchronizationPeer synchronizationPeer)
         {
-            _logger.Info("SYNC MANAGER ADDING SYNCHRONIZATION PEER");
-            await RefreshPeerInfo(synchronizationPeer);
+            if (_logger.IsInfoEnabled)
+            {
+                _logger.Info($"Adding synchronization peer {synchronizationPeer.NodeId}");
+            }
+
+            await InitPeerInfo(synchronizationPeer);
             if (!_isSyncing)
             {
                 RunSync();
@@ -246,7 +276,7 @@ namespace Nethermind.Blockchain
                     {
                         _logger.Info($"Sending sync request to peer with best {peerInfo.NumberAvailable} (I received {peerInfo.NumberReceived}), is synced {peerInfo.IsSynced}");
                     }
-                    
+
                     BigInteger blocksLeft = peerInfo.NumberAvailable - bestNumber;
                     // TODO: fault handling on tasks
 
@@ -291,7 +321,7 @@ namespace Nethermind.Blockchain
                             _logger.Debug($"BLOCK {blocks[i].Number} WAS ADDED TO THE CHAIN");
                         }
                     }
-                    
+
                     peerInfo.NumberReceived = blocks[blocks.Length - 1].Number;
                     peerInfo.LastSyncedHash = blocks[blocks.Length - 1].Hash;
 
@@ -310,29 +340,45 @@ namespace Nethermind.Blockchain
 
         public event EventHandler Synced;
 
-        private async Task RefreshPeerInfo(ISynchronizationPeer peer)
+        private async Task InitPeerInfo(ISynchronizationPeer peer)
         {
             Task<Keccak> getHashTask = peer.GetHeadBlockHash();
-            _logger.Info("SYNC MANAGER - GETTING HEAD BLOCK INFO");
+
+            if (_logger.IsDebugEnabled)
+            {
+                _logger.Debug($"Requesting head block info from {peer.NodeId}");
+            }
+
             Task<BigInteger> getNumberTask = peer.GetHeadBlockNumber();
             await Task.WhenAll(getHashTask, getNumberTask);
-            _logger.Info("SYNC MANAGER - RECEIVED HEAD BLOCK INFO");
-            _peers.AddOrUpdate(
-                peer.NodeId,
-                new PeerInfo(peer, getNumberTask.Result),
-                (p, pi) =>
-                {
-                    if (pi == null)
-                    {
-                        Debug.Fail("unexpected null peer info");
-                    }
-                    else
-                    {
-                        pi.NumberAvailable = getNumberTask.Result;
-                    }
+            if (_logger.IsDebugEnabled)
+            {
+                _logger.Info($"Received head block info from {peer.NodeId} with head block numer {getNumberTask.Result}");
+            }
 
-                    return pi;
-                });
+            bool addResult = _peers.TryAdd(peer.NodeId, new PeerInfo(peer, getNumberTask.Result));
+            if (!addResult)
+            {
+                _logger.Error($"Adding {nameof(PeerInfo)} failed for {peer.NodeId}");
+            }
+
+#if DEBUG
+            bool getValueResult = _peers.TryGetValue(peer.NodeId, out PeerInfo peerInfo);
+            if (!getValueResult)
+            {
+                _logger.Error($"Try get value failed on {nameof(PeerInfo)} {peer.NodeId}");
+                int i = 0;
+                foreach (KeyValuePair<PublicKey, PeerInfo> keyValuePair in _peers)
+                {
+                    _logger.Error($"{i++}: {keyValuePair.Key} {keyValuePair.Value}");
+                }
+            }
+
+            if (peerInfo == null)
+            {
+                _logger.Error($"Newly added {nameof(PeerInfo)} for {peer.NodeId} is null");
+            }
+#endif
         }
 
         private class PeerInfo
@@ -348,6 +394,11 @@ namespace Nethermind.Blockchain
             public BigInteger NumberReceived { get; set; }
             public Keccak LastSyncedHash { get; set; }
             public bool IsSynced { get; set; }
+
+            public override string ToString()
+            {
+                return $"Peer {Peer.NodeId}, Available {NumberAvailable}, Received {NumberReceived}, Last Synced: {LastSyncedHash}, Is Synced: {IsSynced}";
+            }
         }
     }
 }

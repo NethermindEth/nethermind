@@ -20,13 +20,14 @@ using System;
 using System.Diagnostics;
 using System.Numerics;
 using System.Security.Cryptography;
+using System.Threading;
 using Extensions.Data;
 
 namespace Nethermind.Core.Extensions
 {
     public static class ByteArrayExtensions
     {
-        private static readonly HashAlgorithm XxHash = XXHash32.Create();
+        [ThreadStatic] private static HashAlgorithm _xxHash;
 
         public static string ToHex(this byte[] bytes, bool withZeroX = true)
         {
@@ -110,7 +111,8 @@ namespace Nethermind.Core.Extensions
 
         public static int GetXxHashCode(this byte[] bytes)
         {
-            return BitConverter.ToInt32(XxHash.ComputeHash(bytes), 0);
+            LazyInitializer.EnsureInitialized(ref _xxHash, XXHash32.Create);
+            return BitConverter.ToInt32(_xxHash.ComputeHash(bytes), 0);
         }
     }
 }

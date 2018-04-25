@@ -92,13 +92,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         {
             try
             {
-//                if (Logger.IsWarnEnabled)
-//                {
-//                    Logger.Warn($"{P2PSession.RemoteNodeId} {nameof(Eth62ProtocolHandler)} handling a message with code {message.PacketType}.");
-//                }
+                if (Logger.IsDebugEnabled)
+                {
+                    Logger.Debug($"{P2PSession.RemoteNodeId} {nameof(Eth62ProtocolHandler)} handling a message with code {message.PacketType}.");
+                }
 
                 if (message.PacketType != Eth62MessageCode.Status && !_statusReceived)
                 {
+                    Diagnostics.TestExceptionHere("HandleMessage no status", Logger);
                     throw new SubprotocolException($"{P2PSession.RemoteNodeId} No {nameof(StatusMessage)} received prior to communication.");
                 }
 

@@ -17,7 +17,9 @@
  */
 
 using System;
+using System.IO;
 using System.Linq;
+using System.Linq.Expressions;
 using NLog.Targets;
 using ILogger = Nethermind.Core.ILogger;
 
@@ -29,13 +31,32 @@ namespace Nethermind.Runner
 
         public NLogLogger(string fileName, string loggerName = null)
         {
+            if (!Directory.Exists("logs"))
+            {
+                Directory.CreateDirectory("logs");
+            }
+
+            string[] files = Directory.GetFiles("logs");
+            foreach (string file in files)
+            {
+                // TODO: temp for testing
+                try
+                {
+                    File.Delete(file);
+                }
+                catch (Exception e)
+                {
+                    // ignore
+                }
+            }
+
             _logger = loggerName == null ? NLog.LogManager.GetLogger("default") : NLog.LogManager.GetLogger(loggerName);
             if (NLog.LogManager.Configuration.AllTargets.SingleOrDefault(t => t.Name == "file") is FileTarget target)
             {
-                target.FileName = fileName;
+                target.FileName = Path.Combine("logs", fileName);
             }
         }
-        
+
         public void Log(string text)
         {
             _logger.Info(text);

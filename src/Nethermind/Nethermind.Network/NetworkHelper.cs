@@ -20,7 +20,7 @@ namespace Nethermind.Network
         {
             return _localIp ?? (_localIp = FindLocalIp());
         }
-        
+
         public IPAddress GetExternalIp()
         {
             return _externalIp ?? (_externalIp = FindExternalIp());
@@ -32,8 +32,9 @@ namespace Nethermind.Network
             {
                 var url = "http://checkip.amazonaws.com";
                 _logger.Info($"Using {url} to get external ip");
-                //TODO - for testing?
-                var ip = "5.69.24.121"; // new WebClient().DownloadString(url);
+                // TODO - for testing?
+                // var ip = "5.69.24.121";
+                var ip = new WebClient().DownloadString(url);
                 _logger.Info($"External ip: {ip}");
                 return IPAddress.Parse(ip?.Trim());
             }

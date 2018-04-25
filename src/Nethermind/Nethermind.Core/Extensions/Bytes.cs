@@ -59,7 +59,9 @@ namespace Nethermind.Core.Extensions
                 return true;
             }
 
-            if (a1 == null || a2 == null || a1.Length != a2.Length)
+            if (a1 == null || a2 ==
+                
+                null || a1.Length != a2.Length)
             {
                 return false;
             }
