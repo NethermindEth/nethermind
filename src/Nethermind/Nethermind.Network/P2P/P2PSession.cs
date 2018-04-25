@@ -148,6 +148,10 @@ namespace Nethermind.Network.P2P
                             _logger.Info($"{RemoteNodeId} {protocolHandler.ProtocolCode} v{protocolHandler.ProtocolVersion} established - Enabling Snappy");
                             EnableSnappy();
                         }
+                        else
+                        {
+                            _logger.Info($"{RemoteNodeId} {protocolHandler.ProtocolCode} v{protocolHandler.ProtocolVersion} established - Disabling Snappy");
+                        }
                     };
                     break;
                 case Protocol.Eth:

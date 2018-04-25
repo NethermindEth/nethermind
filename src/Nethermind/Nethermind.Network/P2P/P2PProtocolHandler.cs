@@ -60,7 +60,7 @@ namespace Nethermind.Network.P2P
         {
         }
 
-        public byte ProtocolVersion => 5;
+        public byte ProtocolVersion { get; private set; } = 5;
 
         public string ProtocolCode => Protocol.P2P;
 
@@ -121,7 +121,7 @@ namespace Nethermind.Network.P2P
             // * If such a packet is received by a node with lower version, it will blindly assume that the remote end is backwards-compatible and respond with the old handshake.
             // * If the packet is received by a node with equal version, new features of the protocol can be used.
             // * If the packet is received by a node with higher version, it can enable backwards-compatibility logic or drop the connection.
-            if (hello.P2PVersion < ProtocolVersion)
+            if (hello.P2PVersion < 4 || hello.P2PVersion > 5)
             {
                 Disconnect(DisconnectReason.IncompatibleP2PVersion);
                 return;

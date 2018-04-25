@@ -158,8 +158,8 @@ namespace Nethermind.Runner.Runners
             if (isMining)
             {
                 var testTransactionsGenerator = new TestTransactionsGenerator(transactionStore, ethereumSigner, transactionDelay, _chainLogger);
-                stateProvider.CreateAccount(testTransactionsGenerator.SenderAddress, 1000.Ether());
-                stateProvider.Commit(specProvider.GenesisSpec);
+//                stateProvider.CreateAccount(testTransactionsGenerator.SenderAddress, 1000.Ether());
+//                stateProvider.Commit(specProvider.GenesisSpec);
                 testTransactionsGenerator.Start();
             }
 
@@ -243,6 +243,7 @@ namespace Nethermind.Runner.Runners
             
             foreach (Bootnode bootnode in chainSpec.Bootnodes)
             {
+                bootnode.Host = bootnode.Host == "127.0.0.1" ? localIp : bootnode.Host;
                 _networkLogger.Info($"Connecting to {bootnode.Description} @ {bootnode.Host}:{bootnode.Port}");
                 await _localPeer.ConnectAsync(bootnode.PublicKey, bootnode.Host, bootnode.Port);
                 _networkLogger.Info("Testnet connected...");

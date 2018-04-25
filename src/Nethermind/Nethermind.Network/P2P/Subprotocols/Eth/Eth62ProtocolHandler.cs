@@ -92,10 +92,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         {
             try
             {
-                if (Logger.IsWarnEnabled)
-                {
-                    Logger.Warn($"{P2PSession.RemoteNodeId} {nameof(Eth62ProtocolHandler)} handling a message with code {message.PacketType}.");
-                }
+//                if (Logger.IsWarnEnabled)
+//                {
+//                    Logger.Warn($"{P2PSession.RemoteNodeId} {nameof(Eth62ProtocolHandler)} handling a message with code {message.PacketType}.");
+//                }
 
                 if (message.PacketType != Eth62MessageCode.Status && !_statusReceived)
                 {
