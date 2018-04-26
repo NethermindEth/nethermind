@@ -165,7 +165,7 @@ namespace Nethermind.Runner.Runners
 
             Block genesis = chainSpec.Genesis;
             genesis.Header.StateRoot = stateProvider.StateRoot;
-            genesis.Header.RecomputeHash();
+            genesis.Header.Hash = BlockHeader.CalculateHash(genesis.Header);
 
             if (!isMining)
             {
@@ -278,7 +278,7 @@ namespace Nethermind.Runner.Runners
             };
 
             header.StateRoot = stateRoot;
-            header.RecomputeHash();
+            header.Hash = BlockHeader.CalculateHash(header);
 
             var block = new Block(header);
             return block;

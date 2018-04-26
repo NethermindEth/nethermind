@@ -91,6 +91,7 @@ ProjectSection(SolutionItems) = preProject
 	Chains\nethermind_alpha.json = Chains\nethermind_alpha.json
 	Chains\nethermind_alpha_client.json = Chains\nethermind_alpha_client.json
 	Chains\ropsten_through_ethj.json = Chains\ropsten_through_ethj.json
+	Chains\some_node.json = Chains\some_node.json
 EndProjectSection
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.RunnerSpawner", "Nethermind.RunnerSpawner\Nethermind.RunnerSpawner.csproj", "{7285ABAE-A946-437E-A6DD-F1DECFE7F8D5}"

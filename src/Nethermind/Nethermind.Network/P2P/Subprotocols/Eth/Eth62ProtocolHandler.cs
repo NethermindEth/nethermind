@@ -24,6 +24,7 @@ using System.Linq;
 using System.Numerics;
 using System.Threading.Tasks;
 using DotNetty.Common.Concurrency;
+using DotNetty.Common.Utilities;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -293,6 +294,16 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         private async Task<BlockHeader[]> SendRequest(GetBlockHeadersMessage message)
         {
+            if (Logger.IsWarnEnabled)
+            {
+                Logger.Warn("Sending headers request:");
+                Logger.Warn($"Starting blockhash: {message.StartingBlockHash}");
+                Logger.Warn($"Starting number: {message.StartingBlockNumber}");
+                Logger.Warn($"Skip: {message.Skip}");
+                Logger.Warn($"Reverse: {message.Reverse}");
+                Logger.Warn($"Max headers: {message.MaxHeaders}");
+            }
+            
             var request = new Request<GetBlockHeadersMessage, BlockHeader[]>(message);
             _headersRequests.Add(request);
             Send(request.Message);
@@ -308,6 +319,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         private async Task<Block[]> SendRequest(GetBlockBodiesMessage message)
         {
+            if (Logger.IsWarnEnabled)
+            {
+                Logger.Warn("Sending bodies request:");
+                Logger.Warn($"Blockhashes count: {message.BlockHashes.Length}");
+            }
+            
             var request = new Request<GetBlockBodiesMessage, Block[]>(message);
             _bodiesRequests.Add(request);
             Send(request.Message);
@@ -329,7 +346,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             msg.Reverse = 0;
             msg.Skip = skip;
             msg.StartingBlockHash = blockHash;
-
+            
             BlockHeader[] headers = await SendRequest(msg);
             return headers;
         }
@@ -338,7 +355,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         async Task<Block[]> ISynchronizationPeer.GetBlocks(Keccak[] blockHashes)
         {
-            var bodiesMsg = new GetBlockBodiesMessage(blockHashes.ToArray());
+            var bodiesMsg = new GetBlockBodiesMessage(blockHashes.ToArray());   
 
             Block[] blocks = await SendRequest(bodiesMsg);
             return blocks;

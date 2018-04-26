@@ -20,6 +20,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Numerics;
+using System.Text;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Core
@@ -48,5 +49,31 @@ namespace Nethermind.Core
         public BigInteger Number => Header.Number;
         public BigInteger Difficulty => Header.Difficulty;
         public BigInteger? TotalDifficulty => Header.TotalDifficulty;
+        
+        public string ToString(string indent)
+        {
+            StringBuilder builder = new StringBuilder();
+            builder.AppendLine($"BLOCK {Number}");
+            builder.AppendLine($"HEADER:");
+            builder.Append($"{Header.ToString("  ")}");
+            builder.AppendLine($"OMMERS:");
+            foreach (BlockHeader ommer in Ommers)
+            {
+                builder.Append($"{ommer.ToString("  ")}");    
+            }
+            
+            builder.AppendLine($"TRANSACTIONS:");
+            foreach (Transaction tx in Transactions)
+            {
+                builder.Append($"{tx.ToString("  ")}");    
+            }
+            
+            return builder.ToString();
+        }
+
+        public override string ToString()
+        {
+            return ToString(string.Empty);
+        }
     }
 }

@@ -18,6 +18,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using DotNetty.Buffers;
 using DotNetty.Codecs;
 using DotNetty.Transport.Channels;
@@ -51,10 +52,26 @@ namespace Nethermind.Network.Rlpx
         {
             if (_state == FrameDecoderState.WaitingForHeader)
             {
-                _logger.Debug($"Decoding frame header {input.ReadableBytes}");
+                if (_logger.IsTraceEnabled)
+                {
+                    _logger.Trace($"Decoding frame header {input.ReadableBytes}");
+                }
+
+                if (input.ReadableBytes == 0)
+                {
+                    _logger.Warn($"{context.Channel.RemoteAddress} sent an empty frame, disconnecting");
+                    context.CloseAsync();
+                    return;
+                }
+
                 if (input.ReadableBytes >= 32)
                 {
                     input.ReadBytes(_headerBuffer);
+                    if (_logger.IsTraceEnabled)
+                    {
+                        _logger.Trace($"Decoding encrypted frame header {new Hex(_headerBuffer)}");
+                    }
+
                     _frameMacProcessor.CheckMac(_headerBuffer, 0, 16, true);
                     _frameCipher.Decrypt(_headerBuffer, 0, 16, _headerBuffer, 0);
 
@@ -68,28 +85,41 @@ namespace Nethermind.Network.Rlpx
                     {
                         paddingSize = 0;
                     }
-                    
-                    _logger.Debug($"Expecting a message {_totalBodySize} + {paddingSize} + 16");
+
+                    if (_logger.IsTraceEnabled)
+                    {
+                        _logger.Trace($"Expecting a message {_totalBodySize} + {paddingSize} + 16");
+                    }
                 }
                 else
                 {
-                    _logger.Debug($"Waiting for full 32 bytes of the header");
+                    if (_logger.IsTraceEnabled)
+                    {
+                        _logger.Trace("Waiting for full 32 bytes of the header");
+                    }
+
                     return;
                 }
             }
 
             if (_state == FrameDecoderState.WaitingForPayload)
             {
-                _logger.Debug($"Decoding payload {input.ReadableBytes}");
+                if (_logger.IsTraceEnabled)
+                {
+                    _logger.Trace($"Decoding payload {input.ReadableBytes}");
+                }
+
                 int paddingSize = 16 - _totalBodySize % 16;
                 if (paddingSize == 16)
                 {
                     paddingSize = 0;
                 }
-                
-                byte[] buffer = new byte[_totalBodySize + paddingSize + MacSize];
-                if (input.ReadableBytes >= buffer.Length)
+
+                int expectedSize = _totalBodySize + paddingSize + MacSize;
+                byte[] buffer;
+                if (input.ReadableBytes >= expectedSize)
                 {
+                    buffer = new byte[expectedSize];
                     input.ReadBytes(buffer);
                 }
                 else
@@ -97,11 +127,22 @@ namespace Nethermind.Network.Rlpx
                     return;
                 }
 
+                if (_logger.IsTraceEnabled)
+                {
+                    _logger.Trace($"Decoding encrypted payload {new Hex(buffer)}");
+                }
+
                 int frameSize = buffer.Length - MacSize;
                 _frameMacProcessor.CheckMac(buffer, 0, frameSize, false);
                 _frameCipher.Decrypt(buffer, 0, frameSize, buffer, 0);
 
                 output.Add(Bytes.Concat(_headerBuffer, buffer));
+                
+                if (_logger.IsTraceEnabled)
+                {
+                    _logger.Trace($"Decrypted message {new Hex((byte[])output.Last())}");
+                }
+                
                 _state = FrameDecoderState.WaitingForHeader;
             }
         }

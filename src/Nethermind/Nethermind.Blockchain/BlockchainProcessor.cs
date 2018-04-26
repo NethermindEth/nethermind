@@ -503,7 +503,7 @@ namespace Nethermind.Blockchain
                         }
 
                         Block minedBlock = t.Result;
-                        minedBlock.Header.RecomputeHash();
+                        Debug.Assert(minedBlock.Hash != null, "expecting miner to set the block hash");
                         _blockTree.SuggestBlock(minedBlock);
                     }, _miningCancellation.Token);
                 }

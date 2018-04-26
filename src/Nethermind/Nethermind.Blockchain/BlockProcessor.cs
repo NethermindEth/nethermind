@@ -253,7 +253,7 @@ namespace Nethermind.Blockchain
 
             processedBlock.Transactions = suggestedBlock.Transactions;
             processedBlock.Header.TransactionsRoot = transactionsRoot;
-            processedBlock.Header.RecomputeHash();
+            processedBlock.Header.Hash = BlockHeader.CalculateHash(processedBlock.Header);
 
             if (!tryOnly && !_blockValidator.ValidateProcessedBlock(processedBlock, suggestedBlock))
             {

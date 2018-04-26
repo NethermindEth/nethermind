@@ -35,7 +35,7 @@ namespace Nethermind.Blockchain
     // TODO: forks
     public class SynchronizationManager : ISynchronizationManager
     {
-        public const int BatchSize = 64;
+        public const int BatchSize = 16;
         private readonly IBlockValidator _blockValidator;
         private readonly IHeaderValidator _headerValidator;
         private readonly ILogger _logger;
@@ -132,6 +132,12 @@ namespace Nethermind.Blockchain
                     _logger.Debug($"Suggesting a block {block.Hash} ({block.Number}) from {receivedFrom} with {block.Transactions.Length} transactions");
                 }
 
+                if (_logger.IsTraceEnabled)
+                {
+                    _logger.Trace("SUGGESTING BLOCK:");
+                    _logger.Trace($"{block}");
+                }
+                
                 AddBlockResult result = BlockTree.SuggestBlock(block);
                 // TODO: use for reputation later
 
@@ -237,7 +243,15 @@ namespace Nethermind.Blockchain
         {
             SyncAsync().ContinueWith(t =>
             {
-                if (t.IsCompleted)
+                if (t.IsFaulted)
+                {
+                    if (_logger.IsErrorEnabled)
+                    {
+                        _logger.Error($"Error in the sync process", t.Exception);
+                        throw t.Exception;
+                    }
+                }
+                else if (t.IsCompleted)
                 {
                     if (_logger.IsInfoEnabled)
                     {
@@ -249,13 +263,6 @@ namespace Nethermind.Blockchain
                     if (_logger.IsInfoEnabled)
                     {
                         _logger.Info($"Sync cancelled");
-                    }
-                }
-                else if (t.IsFaulted)
-                {
-                    if (_logger.IsErrorEnabled)
-                    {
-                        _logger.Error($"Error in the sync process", t.Exception);
                     }
                 }
             });
@@ -280,7 +287,7 @@ namespace Nethermind.Blockchain
                     BigInteger blocksLeft = peerInfo.NumberAvailable - bestNumber;
                     // TODO: fault handling on tasks
 
-                    Task<BlockHeader[]> headersTask = peer.GetBlockHeaders(peerInfo.LastSyncedHash ?? GenesisBlock.Hash, (int)BigInteger.Min(blocksLeft, BatchSize), 1);
+                    Task<BlockHeader[]> headersTask = peer.GetBlockHeaders(peerInfo.LastSyncedHash ?? GenesisBlock.Hash, (int)BigInteger.Min(blocksLeft + 1, BatchSize), 0);
                     _currentSyncTask = headersTask;
                     BlockHeader[] headers = await headersTask;
                     if (_currentSyncTask.IsCanceled)
@@ -291,7 +298,7 @@ namespace Nethermind.Blockchain
 
                     List<Keccak> hashes = new List<Keccak>();
                     Dictionary<Keccak, BlockHeader> headersByHash = new Dictionary<Keccak, BlockHeader>();
-                    for (int i = 0; i < headers.Length; i++)
+                    for (int i = 1; i < headers.Length; i++)
                     {
                         hashes.Add(headers[i].Hash);
                         headersByHash[headers[i].Hash] = headers[i];
@@ -309,16 +316,27 @@ namespace Nethermind.Blockchain
                     for (int i = 0; i < blocks.Length; i++)
                     {
                         blocks[i].Header = headersByHash[hashes[i]];
-                        if (_blockValidator.ValidateSuggestedBlock(blocks[i]))
+                        
+                        if (_logger.IsTraceEnabled)
                         {
+                            _logger.Trace("RECEIVED BLOCK:");
+                            _logger.Trace($"{blocks[i]}");
+                        }
+                        
+                        if (_blockValidator.ValidateSuggestedBlock(blocks[i]))
+                        {                            
                             AddBlockResult addResult = BlockTree.SuggestBlock(blocks[i]);
                             if (addResult == AddBlockResult.UnknownParent)
                             {
-                                _logger.Debug($"BLOCK {blocks[i].Number} WAS IGNORED");
+                                _logger.Warn($"Block {blocks[i].Number} ignored (unknown parent)");
                                 throw new EthSynchronizationException("Peer sent an orphaned block"); // TODO: need to handle forking here
                             }
 
-                            _logger.Debug($"BLOCK {blocks[i].Number} WAS ADDED TO THE CHAIN");
+                            _logger.Debug($"Block {blocks[i].Number} suggested for processing");
+                        }
+                        else
+                        {
+                            _logger.Warn($"Block {blocks[i].Number} skipped (validation failed)");
                         }
                     }
 

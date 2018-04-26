@@ -49,6 +49,11 @@ namespace Nethermind.Core.Crypto
             bool isEip155Enabled = _specProvider.GetSpec(blockNumber).IsEip155Enabled;
             Keccak hash = Keccak.Compute(Rlp.Encode(transaction, true, isEip155Enabled, _chainIdValue));
             transaction.Signature = Sign(privateKey, hash);
+            if (isEip155Enabled)
+            {
+                transaction.Signature.V = (byte)(transaction.Signature.V + 8 + 2 * _chainIdValue);
+            }
+            
             _logger?.Debug("Transaction signed");
         }
 
@@ -63,7 +68,8 @@ namespace Nethermind.Core.Crypto
         public Address RecoverAddress(Transaction transaction, BigInteger blockNumber)
         {
             bool isEip155Enabled = _specProvider.GetSpec(blockNumber).IsEip155Enabled;
-            Keccak hash = Keccak.Compute(Rlp.Encode(transaction, true, isEip155Enabled, _chainIdValue));
+            bool applyEip155 = isEip155Enabled && (transaction.Signature.V == _chainIdValue * 2 + 35 || transaction.Signature.V == _chainIdValue * 2 + 36);  
+            Keccak hash = Keccak.Compute(Rlp.Encode(transaction, true, applyEip155, _chainIdValue));
             return RecoverAddress(transaction.Signature, hash);
         }
 

@@ -45,6 +45,7 @@ namespace Nethermind.Blockchain
         public Task<Block> MineAsync(Block block, CancellationToken cancellationToken)
         {
             block.Header.MixHash = Keccak.Zero;
+            block.Header.Hash = BlockHeader.CalculateHash(block.Header);
 
             return _miningDelay == TimeSpan.Zero
                 ? Task.FromResult(block)

@@ -202,6 +202,18 @@ namespace Nethermind.Network.Rlpx.Handshake
             }
 
             _logger.Info($"Agreed secrets with {handshake.RemotePublicKey}");
+            #if DEBUG
+            if (_logger.IsDebugEnabled)
+            {
+                _logger.Debug($"{handshake.RemotePublicKey} ephemeral private key {handshake.EphemeralPrivateKey}");
+                _logger.Debug($"{handshake.RemotePublicKey} initiator nonce {new Hex(handshake.InitiatorNonce)}");
+                _logger.Debug($"{handshake.RemotePublicKey} recipient nonce {new Hex(handshake.RecipientNonce)}");
+                _logger.Debug($"{handshake.RemotePublicKey} remote ephemeral public key {handshake.RemoteEphemeralPublicKey}");
+                _logger.Debug($"{handshake.RemotePublicKey} remote public key {handshake.RemotePublicKey}");
+                _logger.Debug($"{handshake.RemotePublicKey} auth packet {new Hex(handshake.AuthPacket.Data)}");
+                _logger.Debug($"{handshake.RemotePublicKey} ack packet {new Hex(handshake.AckPacket.Data)}");
+            }
+            #endif
         }
     }
 }

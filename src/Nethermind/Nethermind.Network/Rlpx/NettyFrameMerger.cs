@@ -44,9 +44,13 @@ namespace Nethermind.Network.Rlpx
 
         protected override void Decode(IChannelHandlerContext context, byte[] input, List<object> output)
         {
-            _logger.Debug($"Merging frames");
+            if (_logger.IsTraceEnabled)
+            {
+                _logger.Trace("Merging frames");
+            }
+
             DecodedRlp headerBodyItems = Rlp.Decode(new Rlp(input.Slice(3, 13)), RlpBehaviors.AllowExtraData);
-            int protocolType = headerBodyItems.GetInt(0);
+            // int protocolType = headerBodyItems.GetInt(0); // not needed - adaptive IDs
             int? contextId = headerBodyItems.Length > 1 ? headerBodyItems.GetInt(1) : (int?)null;
             int? totalPacketSize = headerBodyItems.Length > 2 ? headerBodyItems.GetInt(2) : (int?)null;
 
@@ -54,14 +58,17 @@ namespace Nethermind.Network.Rlpx
                              || contextId.HasValue && _currentSizes.ContainsKey(contextId.Value);
             if (isChunked)
             {
-                _logger.Debug($"Merging chunked packet");
+                if (_logger.IsTraceEnabled)
+                {
+                    _logger.Trace("Merging chunked packet");
+                }
+
                 bool isFirstChunk = totalPacketSize.HasValue;
                 if (isFirstChunk)
                 {
                     _currentSizes[contextId.Value] = 0;
                     _totalPayloadSizes[contextId.Value] = totalPacketSize.Value - 1; // packet type data size
                     _packets[contextId.Value] = new Packet("???", GetPacketType(input), new byte[_totalPayloadSizes[contextId.Value]]); // adaptive IDs
-//                    _packets[contextId.Value] = new Packet(protocolType, GetPacketType(input), new byte[_totalPayloadSizes[contextId.Value]]);
                     _payloads[contextId.Value] = new List<byte[]>();
                 }
 
@@ -91,18 +98,25 @@ namespace Nethermind.Network.Rlpx
             }
             else
             {
-                _logger.Debug($"Merging single frame packet");
+                if (_logger.IsTraceEnabled)
+                {
+                    _logger.Trace("Merging single frame packet");
+                }
+
                 int totalBodySize = input[0] & 0xFF;
                 totalBodySize = (totalBodySize << 8) + (input[1] & 0xFF);
                 totalBodySize = (totalBodySize << 8) + (input[2] & 0xFF);
-                output.Add(new Packet("???", GetPacketType(input), input.Slice(1 + 32, totalBodySize - 1))); // adaptive IDs
-//                output.Add(new Packet(protocolType, GetPacketType(input), input.Slice(1 + 32, totalBodySize - 1)));
+                output.Add(new Packet("???", GetPacketType(input), input.Slice(1 + 32, totalBodySize - 1))); // ??? protocol because of adaptive IDs
             }
         }
 
         public override void ExceptionCaught(IChannelHandlerContext context, Exception exception)
         {
-            _logger.Error($"{GetType().Name} exception", exception);
+            if (_logger.IsErrorEnabled)
+            {
+                _logger.Error($"{GetType().Name} exception", exception);
+            }
+
             base.ExceptionCaught(context, exception);
         }
 

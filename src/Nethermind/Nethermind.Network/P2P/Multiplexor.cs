@@ -53,7 +53,7 @@ namespace Nethermind.Network.P2P
             }
             catch (Exception e)
             {
-                _logger.Error($"Packet ({packet.Protocol}.{packet.PacketType}) pushed", e);
+                _logger.Error($"Packet ({packet.Protocol}.{packet.PacketType}) failed", e);
             }
         }
 

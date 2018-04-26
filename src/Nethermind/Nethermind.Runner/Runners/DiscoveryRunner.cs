@@ -21,28 +21,29 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Discovery;
 using Nethermind.Discovery.Serializers;
+using ILogger = Nethermind.Core.ILogger;
 
 namespace Nethermind.Runner.Runners
 {
     public class DiscoveryRunner : IDiscoveryRunner
     {
-        private readonly ILogger _logger;
+        private ILogger _logger;
         private readonly IDiscoveryConfigurationProvider _configurationProvider;
         private readonly IDiscoveryMsgSerializersProvider _discoveryMsgSerializersProvider;
         private readonly IDiscoveryApp _discoveryApp;
         private readonly IPrivateKeyProvider _privateKeyProvider;
 
-        public DiscoveryRunner(IDiscoveryMsgSerializersProvider discoveryMsgSerializersProvider, IDiscoveryApp discoveryApp, IDiscoveryConfigurationProvider configurationProvider, IPrivateKeyProvider privateKeyProvider, ILogger logger)
+        public DiscoveryRunner(IDiscoveryMsgSerializersProvider discoveryMsgSerializersProvider, IDiscoveryApp discoveryApp, IDiscoveryConfigurationProvider configurationProvider, IPrivateKeyProvider privateKeyProvider)
         {
             _discoveryMsgSerializersProvider = discoveryMsgSerializersProvider;
             _discoveryApp = discoveryApp;
             _configurationProvider = configurationProvider;
             _privateKeyProvider = privateKeyProvider;
-            _logger = logger;
         }
 
         public void Start(InitParams initParams)
         {
+            _logger = new NLogLogger(initParams.LogFileName, "discovery");
             _logger.Info("Initializing Discovery");
             if (initParams.DiscoveryPort.HasValue)
             {

@@ -58,6 +58,12 @@ namespace Nethermind.Blockchain
 
         public AddBlockResult SuggestBlock(Block block)
         {
+            // TODO: review where the ChainId should be set
+            foreach (Transaction transaction in block.Transactions)
+            {
+                transaction.ChainId = ChainId;
+            }
+            
             if (block.Number == 0)
             {
                 if (BestSuggestedBlock != null)
@@ -65,7 +71,7 @@ namespace Nethermind.Blockchain
                     throw new InvalidOperationException("Genesis block should be added only once"); // TODO: make sure it cannot happen
                 }
             }
-            else if(FindBlock(block.Hash, false) != null)
+            else if (FindBlock(block.Hash, false) != null)
             {
                 return AddBlockResult.AlreadyKnown;
             }
@@ -114,7 +120,8 @@ namespace Nethermind.Blockchain
 
             for (int i = 0; i < numberOfBlocks; i++)
             {
-                _canonicalChain.TryGetValue((int)startBlock.Number + (reverse ? -1 : 1) * (skip + i), out Block ithBlock);
+                int blockNumber = (int)startBlock.Number + (reverse ? -1 : 1) * (i + i * skip);
+                _canonicalChain.TryGetValue(blockNumber, out Block ithBlock);
                 result[i] = ithBlock;
             }
 
@@ -200,7 +207,7 @@ namespace Nethermind.Blockchain
                 {
                     GenesisBlock = block;
                 }
-                
+
                 HeadBlock = block;
                 NewHeadBlock?.Invoke(this, new BlockEventArgs(block));
             }

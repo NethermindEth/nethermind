@@ -35,7 +35,7 @@ namespace Nethermind.Network.P2P
         public DisconnectMessage Deserialize(byte[] bytes)
         {
             DecodedRlp decoded = Rlp.Decode(new Rlp(bytes));
-            DisconnectReason reason = decoded.GetEnum<DisconnectReason>(0);
+            int reason = decoded.GetInt(0);
             DisconnectMessage disconnectMessage = new DisconnectMessage(reason);
             return disconnectMessage;
         }

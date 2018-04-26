@@ -36,13 +36,13 @@ namespace Nethermind.Network.P2P
         private readonly IMessageSerializationService _serializer;
         private readonly ISynchronizationManager _syncManager;
         private readonly Dictionary<string, IProtocolHandler> _protocols = new Dictionary<string, IProtocolHandler>();
-        
+
         private IChannelHandlerContext _context;
         private IPacketSender _packetSender;
-        
+
         public PublicKey LocalNodeId { get; }
         public int LocalPort { get; }
-        
+
         private Func<int, (string, int)> _adaptiveCodeResolver;
         private Func<(string ProtocolCode, int PacketType), int> _adaptiveEncoder;
 
@@ -88,6 +88,11 @@ namespace Nethermind.Network.P2P
 
         public void DeliverMessage(Packet packet, bool priority = false)
         {
+            if (_logger.IsTraceEnabled)
+            {
+                _logger.Trace($"P2P to deliver {packet.Protocol}.{packet.PacketType} with payload {new Hex(packet.Data)}");
+            }
+
             packet.PacketType = _adaptiveEncoder((packet.Protocol, packet.PacketType));
             _packetSender.Enqueue(packet, priority);
         }
@@ -105,20 +110,21 @@ namespace Nethermind.Network.P2P
 
             if (_logger.IsDebugEnabled)
             {
-                _logger.Debug($"{RemoteNodeId} {nameof(P2PSession)} received a message (dynamic ID {dynamicMessageCode}. Resolved to {protocol}.{messageId})");
+                _logger.Debug($"{RemoteNodeId} {nameof(P2PSession)} received a message ({dynamicMessageCode} => {protocol}.{messageId})");
             }
 
             if (protocol == null)
             {
-                _logger.Error($"{RemoteNodeId} {nameof(P2PSession)} received a message (dynamic ID {dynamicMessageCode}. Resolved to null.{messageId})");
+                _logger.Error($"{RemoteNodeId} {nameof(P2PSession)} received a message ({dynamicMessageCode} => {messageId})");
                 _logger.Error($"{RemoteNodeId} Known protocols ({_protocols.Count}):");
-                foreach (KeyValuePair<string,IProtocolHandler> protocolHandler in _protocols)
+                foreach (KeyValuePair<string, IProtocolHandler> protocolHandler in _protocols)
                 {
-                    _logger.Error($"{RemoteNodeId} {protocolHandler.Key} {protocolHandler.Value.ProtocolVersion} {protocolHandler.Value.MessageIdSpaceSize}");    
+                    _logger.Error($"{RemoteNodeId} {protocolHandler.Key} {protocolHandler.Value.ProtocolVersion} {protocolHandler.Value.MessageIdSpaceSize}");
                 }
+
                 throw new InvalidProtocolException(packet.Protocol);
             }
-            
+
             packet.PacketType = messageId;
             _protocols[protocol].HandleMessage(packet);
         }
@@ -163,10 +169,7 @@ namespace Nethermind.Network.P2P
                     protocolHandler = version == 62
                         ? new Eth62ProtocolHandler(this, _serializer, _syncManager, _logger)
                         : new Eth63ProtocolHandler(this, _serializer, _syncManager, _logger);
-                    protocolHandler.ProtocolInitialized += async (sender, args) =>
-                    {
-                        await _syncManager.AddPeer((Eth62ProtocolHandler)protocolHandler);
-                    };
+                    protocolHandler.ProtocolInitialized += async (sender, args) => { await _syncManager.AddPeer((Eth62ProtocolHandler)protocolHandler); };
                     break;
                 default:
                     throw new NotSupportedException();
@@ -199,9 +202,9 @@ namespace Nethermind.Network.P2P
                 _logger.Warn($"Could not resolve message id from {dynamicId} with known:");
                 for (int j = 0; j < alphabetically.Length; j++)
                 {
-                    _logger.Warn($"{alphabetically[j].ProtocolCode} {alphabetically[j].SpaceSize}");    
+                    _logger.Warn($"{alphabetically[j].ProtocolCode} {alphabetically[j].SpaceSize}");
                 }
-                
+
                 return (null, 0);
             };
 

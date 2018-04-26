@@ -183,7 +183,7 @@ namespace Nethermind.Runner.Runners
             };
 
             header.StateRoot = stateRoot;
-            header.RecomputeHash();
+            header.Hash = BlockHeader.CalculateHash(header);
 
             var block = new Block(header);
             return block;

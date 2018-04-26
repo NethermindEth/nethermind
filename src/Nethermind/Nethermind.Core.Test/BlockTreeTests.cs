@@ -279,7 +279,9 @@ namespace Nethermind.Core.Test
             AddToMain(blockTree, block2);
 
             Block[] blocks = blockTree.FindBlocks(block0.Hash, 2, 1, false);
-            Assert.AreEqual(2, blocks.Length);
+            Assert.AreEqual(2, blocks.Length, "length");
+            Assert.AreEqual(block0, blocks[0], "blocks[0]");
+            Assert.AreEqual(block2, blocks[1], "blocks[1]");
         }
 
         [Test]

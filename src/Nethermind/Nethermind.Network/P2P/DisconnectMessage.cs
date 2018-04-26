@@ -22,11 +22,16 @@ namespace Nethermind.Network.P2P
     {
         public DisconnectMessage(DisconnectReason reason)
         {
+            Reason = (int)reason;
+        }
+        
+        public DisconnectMessage(int reason)
+        {
             Reason = reason;
         }
 
         public override string Protocol => "p2p";
         public override int PacketType => P2PMessageCode.Disconnect;
-        public DisconnectReason Reason { get; set; }
+        public int Reason { get; set; }
     }
 }

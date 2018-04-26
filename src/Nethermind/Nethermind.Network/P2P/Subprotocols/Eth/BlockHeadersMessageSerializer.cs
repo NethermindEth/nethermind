@@ -36,7 +36,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             for (int i = 0; i < decodedRlp.Length; i++)
             {
                 headers[i] = Rlp.Decode<BlockHeader>(decodedRlp.GetSequence(i));
-                headers[i].RecomputeHash();
             }
 
             message.BlockHeaders = headers;

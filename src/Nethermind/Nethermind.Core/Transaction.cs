@@ -17,6 +17,7 @@
  */
 
 using System.Numerics;
+using System.Text;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 
@@ -44,6 +45,26 @@ namespace Nethermind.Core
         public static Keccak CalculateHash(Transaction transaction)
         {
             return Keccak.Compute(Rlp.Encode(transaction));
+        }
+
+        public string ToString(string indent)
+        {
+            StringBuilder builder = new StringBuilder();
+            builder.AppendLine($"{indent}ChainId: {ChainId}");
+            builder.AppendLine($"{indent}Gas Price: {GasPrice}");
+            builder.AppendLine($"{indent}Gas Limit: {GasLimit}");
+            builder.AppendLine($"{indent}To: {To}");
+            builder.AppendLine($"{indent}Nonce: {Nonce}");
+            builder.AppendLine($"{indent}Value: {Value}");
+            builder.AppendLine($"{indent}Data: {new Hex(Data ?? new byte[0])}");
+            builder.AppendLine($"{indent}Init: {new Hex(Init ?? new byte[0])}");
+            builder.AppendLine($"{indent}Hash: {Hash}");
+            return builder.ToString();
+        }
+        
+        public override string ToString()
+        {
+            return ToString(string.Empty);
         }
     }
 }

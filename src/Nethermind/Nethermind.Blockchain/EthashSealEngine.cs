@@ -64,7 +64,7 @@ namespace Nethermind.Blockchain
                 {
                     if (t.IsCompleted)
                     {
-                        t.Result.Header.RecomputeHash();
+                        t.Result.Header.Hash = BlockHeader.CalculateHash(t.Result.Header);
                     }
                 }, cancellationToken);
 

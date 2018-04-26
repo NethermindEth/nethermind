@@ -182,7 +182,7 @@ namespace Nethermind.Network.P2P
             Send(message);
         }
 
-        private void Close(DisconnectReason disconnectReason)
+        private void Close(int disconnectReason)
         {
             Logger.Info($"{P2PSession.RemoteNodeId} P2P received disconnect on {P2PSession.RemotePort} ({RemoteClientId}) [{disconnectReason}]");
         }

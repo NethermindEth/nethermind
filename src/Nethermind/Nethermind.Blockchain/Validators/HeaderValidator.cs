@@ -115,9 +115,7 @@ namespace Nethermind.Blockchain.Validators
                 _logger.Warn($"Invalid block header ({header.Hash}) - extra data too long");
             }
 
-            Keccak hash = header.Hash;
-            header.RecomputeHash();
-            bool hashAsExpected = header.Hash == hash;
+            bool hashAsExpected = header.Hash == BlockHeader.CalculateHash(header);
             if (!hashAsExpected)
             {
                 _logger.Warn($"Invalid block header ({header.Hash}) - invalid block hash");

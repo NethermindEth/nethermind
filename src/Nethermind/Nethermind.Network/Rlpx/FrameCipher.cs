@@ -38,16 +38,13 @@ namespace Nethermind.Network.Rlpx
         public FrameCipher(byte[] aesKey)
         {
             AesEngine aes = new AesEngine();
-            SicBlockCipher sic = new SicBlockCipher(aes);
             
             Debug.Assert(aesKey.Length == KeySize, $"AES key expected to be {KeySize} bytes long");
 
-            _encryptionCipher = new BufferedBlockCipher(new SicBlockCipher(aes)); // CipherUtilities.GetCipher("AES/CTR/NoPadding");
-//            _encryptionCipher = new BufferedBlockCipher(sic);
+            _encryptionCipher = new BufferedBlockCipher(new SicBlockCipher(aes));
             _encryptionCipher.Init(true, new ParametersWithIV(ParameterUtilities.CreateKeyParameter("AES", aesKey), new byte[BlockSize]));
 
             _decryptionCipher = new BufferedBlockCipher(new SicBlockCipher(aes));
-//            _decryptionCipher = new BufferedBlockCipher(sic);
             _decryptionCipher.Init(false, new ParametersWithIV(ParameterUtilities.CreateKeyParameter("AES", aesKey), new byte[BlockSize]));
         }
 

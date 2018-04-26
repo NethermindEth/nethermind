@@ -18,6 +18,7 @@
 
 using System.Diagnostics;
 using System.Numerics;
+using System.Text;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 
@@ -31,7 +32,7 @@ namespace Nethermind.Core
         internal BlockHeader()
         {
         }
-        
+
         public BlockHeader(Keccak parentHash, Keccak ommersHash, Address beneficiary, BigInteger difficulty, BigInteger number, long gasLimit, BigInteger timestamp, byte[] extraData)
         {
             ParentHash = parentHash;
@@ -45,51 +46,50 @@ namespace Nethermind.Core
         }
 
         public Keccak ParentHash { get; internal set; }
-        public Keccak OmmersHash { get; set;}
-        public Address Beneficiary { get; set;}
+        public Keccak OmmersHash { get; set; }
+        public Address Beneficiary { get; set; }
 
         public Keccak StateRoot { get; set; }
         public Keccak TransactionsRoot { get; set; }
         public Keccak ReceiptsRoot { get; set; }
         public Bloom Bloom { get; set; }
-        public BigInteger Difficulty { get; internal set;}
-        public BigInteger Number { get; internal set;}
+        public BigInteger Difficulty { get; internal set; }
+        public BigInteger Number { get; internal set; }
         public long GasUsed { get; set; }
-        public long GasLimit { get; internal set;}
-        public BigInteger Timestamp { get; internal set;}
-        public byte[] ExtraData { get; set;}
+        public long GasLimit { get; internal set; }
+        public BigInteger Timestamp { get; internal set; }
+        public byte[] ExtraData { get; set; }
         public Keccak MixHash { get; set; }
         public ulong Nonce { get; set; }
         public Keccak Hash { get; set; }
         public BigInteger? TotalDifficulty { get; set; }
 
-        ////static BlockHeader()
-        ////{
-        ////    Genesis = new BlockHeader(null, new BlockHeader[] { }, new Transaction[] { });
-        ////    Genesis.Number = GenesisBlockNumber;
-        ////    Genesis.ParentHash = Keccak.Zero;
-        ////    Genesis.OmmersHash = Keccak.Compute(Rlp.OfEmptySequence);
-        ////    Genesis.Beneficiary = Address.Zero;
-        ////    // state root
-        ////    Genesis.TransactionsRoot = Keccak.Zero;
-        ////    Genesis.ReceiptsRoot = Keccak.Zero;
-        ////    Genesis.LogsBloom = new Bloom();
-        ////    throw new NotImplementedException();
-        ////    //Genesis.Difficulty = DifficultyCalculator.OfGenesisBlock;
-        ////    Genesis.Number = 0;
-        ////    Genesis.GasUsed = 0;
-        ////    //Genesis.GasLimit = 3141592;
-        ////    Genesis.GasLimit = 5000;
-        ////    // timestamp
-        ////    Genesis.ExtraData = Hex.ToBytes("0x11bbe8db4e347b4e8c937c1c8370e4b5ed33adb3db69cbdb7a38e1e50b1b82fa");
-        ////    Genesis.MixHash = Keccak.Zero;
-        ////    Genesis.Nonce = Rlp.Encode(new byte[] {42}).Bytes.ToUInt64();
-        ////}
-
-//        public static BlockHeader Genesis { get; }
-        public void RecomputeHash()
+        public static Keccak CalculateHash(BlockHeader header)
         {
-            Hash = Keccak.Compute(Rlp.Encode(this));
+            return Keccak.Compute(Rlp.Encode(header));
+        }
+
+        public string ToString(string indent)
+        {
+            StringBuilder builder = new StringBuilder();
+            builder.AppendLine($"{indent}Parent: {ParentHash}");
+            builder.AppendLine($"{indent}Ommers Hash: {OmmersHash}");
+            builder.AppendLine($"{indent}Beneficiary: {Beneficiary}");
+            builder.AppendLine($"{indent}Difficulty: {Difficulty}");
+            builder.AppendLine($"{indent}Number: {Number}");
+            builder.AppendLine($"{indent}Gas Limit: {GasLimit}");
+            builder.AppendLine($"{indent}Gas Used: {GasUsed}");
+            builder.AppendLine($"{indent}Timestamp: {Timestamp}");
+            builder.AppendLine($"{indent}Extra Data: {new Hex(ExtraData ?? new byte[0])}");
+            builder.AppendLine($"{indent}Mix Hash: {MixHash}");
+            builder.AppendLine($"{indent}Nonce: {Nonce}");
+            builder.AppendLine($"{indent}Hash: {Hash}");
+            return builder.ToString();
+        }
+
+        public override string ToString()
+        {
+            return ToString(string.Empty);
         }
     }
 }

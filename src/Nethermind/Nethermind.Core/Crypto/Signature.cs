@@ -93,7 +93,7 @@ namespace Nethermind.Core.Crypto
         }
 
         public byte[] Bytes { get; } = new byte[64];
-        public byte V { get; }
+        public byte V { get; set; }
         public byte RecoveryId
         {
             get

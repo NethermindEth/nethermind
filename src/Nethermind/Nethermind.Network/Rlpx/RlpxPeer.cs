@@ -112,7 +112,7 @@ namespace Nethermind.Network.Rlpx
 
         public async Task ConnectAsync(PublicKey remoteId, string host, int port)
         {
-            _logger.Info($"Connecting to {remoteId} at {host}:{port}");
+            _logger.Info($"Connecting to {remoteId.ToString(false)}@{host}:{port}");
 
             Bootstrap clientBootstrap = new Bootstrap();
             clientBootstrap.Group(_workerGroup);
@@ -129,17 +129,17 @@ namespace Nethermind.Network.Rlpx
             Task firstTask = await Task.WhenAny(connectTask, Task.Delay(5000));
             if (firstTask != connectTask)
             {
-                _logger.Error($"Connection to {remoteId} at {host}:{port} timed out.");
+                _logger.Error($"Connection to {remoteId.ToString(false)}@{host}:{port} timed out.");
             }
             else
             {
                 if (connectTask.IsFaulted)
                 {
-                    _logger.Error($"Error when connecting to {remoteId} at {host}:{port}.", connectTask.Exception);    
+                    _logger.Error($"Error when connecting to {remoteId.ToString(false)}@{host}:{port}.", connectTask.Exception);    
                 }
                 else
                 {
-                    _logger.Info($"Connected to {remoteId} at {host}:{port}");    
+                    _logger.Info($"Connected to {remoteId.ToString(false)}@{host}:{port}");    
                 }
             }
         }
@@ -147,7 +147,7 @@ namespace Nethermind.Network.Rlpx
         private void InitializeChannel(IChannel channel, EncryptionHandshakeRole role, PublicKey remoteId)
         {
             string inOut = remoteId == null ? "IN" : "OUT";
-            _logger.Info($"Initializing {inOut} channel");
+            _logger.Debug($"Initializing {inOut} channel");
 
             P2PSession p2PSession = new P2PSession(
                 LocalNodeId,

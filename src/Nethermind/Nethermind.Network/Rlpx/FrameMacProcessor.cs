@@ -18,6 +18,7 @@
 
 using System;
 using System.IO;
+using Nethermind.Core.Extensions;
 using Org.BouncyCastle.Crypto.Digests;
 using Org.BouncyCastle.Crypto.Engines;
 using Org.BouncyCastle.Crypto.Parameters;
@@ -116,7 +117,8 @@ namespace Nethermind.Network.Rlpx
 
                 if (!isMacSame)
                 {
-                    throw new IOException("MAC mismatch");
+                    
+                    throw new IOException($"MAC mismatch, expected {result}, was {output.Slice(outOffset, length)}");
                 }
             }
 

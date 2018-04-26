@@ -34,11 +34,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             DecodedRlp decodedRlp = Rlp.Decode(new Rlp(bytes));
             (Transaction[] Transactions, BlockHeader[] Ommers)[] bodies = new (Transaction[] Transactions, BlockHeader[] Ommers)[decodedRlp.Length];
             for (int i = 0; i < bodies.Length; i++)
-            {
+            {   
                 DecodedRlp bodyRlp = decodedRlp.GetSequence(i);
                 DecodedRlp transactionsRlp = bodyRlp.GetSequence(0);
                 DecodedRlp ommersRlp = bodyRlp.GetSequence(1);
-                
+
                 Transaction[] transactions = new Transaction[transactionsRlp.Length];
                 BlockHeader[] ommers = new BlockHeader[ommersRlp.Length];
 
@@ -46,7 +46,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 {
                     transactions[j] = Rlp.Decode<Transaction>(transactionsRlp.GetSequence(j));
                 }
-                
+
                 for (int j = 0; j < ommers.Length; j++)
                 {
                     ommers[j] = Rlp.Decode<BlockHeader>(ommersRlp.GetSequence(j));
@@ -55,7 +55,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 bodies[i].Transactions = transactions;
                 bodies[i].Ommers = ommers;
             }
-            
+
             BlockBodiesMessage message = new BlockBodiesMessage();
             message.Bodies = bodies;
             return message;
