@@ -137,7 +137,7 @@ namespace Nethermind.Blockchain
                     _logger.Trace("SUGGESTING BLOCK:");
                     _logger.Trace($"{block}");
                 }
-                
+
                 AddBlockResult result = BlockTree.SuggestBlock(block);
                 // TODO: use for reputation later
 
@@ -197,7 +197,13 @@ namespace Nethermind.Blockchain
                 _logger.Info($"Adding synchronization peer {synchronizationPeer.NodeId}");
             }
 
-            await InitPeerInfo(synchronizationPeer);
+            await InitPeerInfo(synchronizationPeer).ContinueWith(t =>
+            {
+                if (t.IsFaulted)
+                {
+                    _logger.Error($"{nameof(AddPeer)} failed.", t.Exception);
+                }
+            });
             if (!_isSyncing)
             {
                 RunSync();
@@ -217,7 +223,13 @@ namespace Nethermind.Blockchain
         public async Task StopAsync()
         {
             _cancellationTokenSource.Cancel();
-            await (_currentSyncTask ?? Task.CompletedTask);
+            await (_currentSyncTask ?? Task.CompletedTask).ContinueWith(t =>
+            {
+                if (t.IsFaulted)
+                {
+                    _logger.Error($"{nameof(StopAsync)} failed.", t.Exception);
+                }
+            });
         }
 
         public int ChainId => BlockTree.ChainId;
@@ -296,6 +308,12 @@ namespace Nethermind.Blockchain
                         break;
                     }
 
+                    if (_currentSyncTask.IsFaulted)
+                    {
+                        _logger.Error("Failed to retrieve headers when synchronizing", _currentSyncTask.Exception);
+                        throw _currentSyncTask.Exception;
+                    }
+
                     List<Keccak> hashes = new List<Keccak>();
                     Dictionary<Keccak, BlockHeader> headersByHash = new Dictionary<Keccak, BlockHeader>();
                     for (int i = 1; i < headers.Length; i++)
@@ -313,18 +331,24 @@ namespace Nethermind.Blockchain
                         break;
                     }
 
+                    if (_currentSyncTask.IsFaulted)
+                    {
+                        _logger.Error("Failed to retrieve bodies when synchronizing", _currentSyncTask.Exception);
+                        throw _currentSyncTask.Exception;
+                    }
+
                     for (int i = 0; i < blocks.Length; i++)
                     {
                         blocks[i].Header = headersByHash[hashes[i]];
-                        
+
                         if (_logger.IsTraceEnabled)
                         {
                             _logger.Trace("RECEIVED BLOCK:");
                             _logger.Trace($"{blocks[i]}");
                         }
-                        
+
                         if (_blockValidator.ValidateSuggestedBlock(blocks[i]))
-                        {                            
+                        {
                             AddBlockResult addResult = BlockTree.SuggestBlock(blocks[i]);
                             if (addResult == AddBlockResult.UnknownParent)
                             {
@@ -368,7 +392,15 @@ namespace Nethermind.Blockchain
             }
 
             Task<BigInteger> getNumberTask = peer.GetHeadBlockNumber();
-            await Task.WhenAll(getHashTask, getNumberTask);
+            await Task.WhenAll(getHashTask, getNumberTask).ContinueWith(
+                t =>
+                {
+                    if (t.IsFaulted)
+                    {
+                        _logger.Error($"{nameof(InitPeerInfo)} failed.", t.Exception);
+                    }
+                });
+
             if (_logger.IsDebugEnabled)
             {
                 _logger.Info($"Received head block info from {peer.NodeId} with head block numer {getNumberTask.Result}");

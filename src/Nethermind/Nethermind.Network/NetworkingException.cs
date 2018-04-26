@@ -20,10 +20,14 @@ using System;
 
 namespace Nethermind.Network
 {
-    public class EthNetworkException : Exception
+    public class NetworkingException : Exception
     {
-        public EthNetworkException(string message)
+        public NetworkingException(string message)
             : base(message)
+        {
+        }
+
+        public NetworkingException(string message, Exception innerException) : base(message, innerException)
         {
         }
     }

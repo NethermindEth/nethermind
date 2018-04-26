@@ -19,12 +19,15 @@
 
 using System;
 
-namespace Nethermind.Discovery
+namespace Nethermind.Blockchain
 {
-    public class NetworkingException : Exception
+    internal class SealEngineException : Exception
     {
-        public NetworkingException(string message)
-            : base(message)
+        public SealEngineException(string message) : base(message)
+        {
+        }
+
+        public SealEngineException(string message, Exception innerException) : base(message, innerException)
         {
         }
     }

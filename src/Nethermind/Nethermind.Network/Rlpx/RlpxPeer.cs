@@ -75,8 +75,21 @@ namespace Nethermind.Network.Rlpx
         {
             InternalLoggerFactory.DefaultFactory.AddProvider(new ConsoleLoggerProvider((s, level) => true, false));
 
-            await _bootstrapChannel.CloseAsync();
-            await Task.WhenAll(_bossGroup.ShutdownGracefullyAsync(), _workerGroup.ShutdownGracefullyAsync());
+            await _bootstrapChannel.CloseAsync().ContinueWith(t =>
+            {
+                if (t.IsFaulted)
+                {
+                    _logger.Error($"{nameof(Shutdown)} failed", t.Exception);
+                }
+            });
+
+            await Task.WhenAll(_bossGroup.ShutdownGracefullyAsync(), _workerGroup.ShutdownGracefullyAsync()).ContinueWith(t =>
+            {
+                if (t.IsFaulted)
+                {
+                    _logger.Error($"Groups shutdown failed in {nameof(RlpxPeer)}", t.Exception);
+                }
+            });
         }
 
         public async Task Init()
@@ -101,11 +114,27 @@ namespace Nethermind.Network.Rlpx
                     .Handler(new LoggingHandler("BOSS", DotNetty.Handlers.Logging.LogLevel.TRACE))
                     .ChildHandler(new ActionChannelInitializer<ISocketChannel>(ch => InitializeChannel(ch, EncryptionHandshakeRole.Recipient, null)));
 
-                _bootstrapChannel = await bootstrap.BindAsync(_localPort);
+                _bootstrapChannel = await bootstrap.BindAsync(_localPort).ContinueWith<IChannel>(t =>
+                {
+                    if (t.IsFaulted)
+                    {
+                        _logger.Error($"{nameof(Init)} failed", t.Exception);
+                        return null;
+                    }
+
+                    return t.Result;
+                });
+
+                if (_bootstrapChannel == null)
+                {
+                    throw new NetworkingException($"Failed to initialize {nameof(_bootstrapChannel)}");
+                }
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                await Task.WhenAll(_bossGroup.ShutdownGracefullyAsync(), _workerGroup.ShutdownGracefullyAsync());
+                _logger.Error($"{nameof(Init)} failed.", ex);
+                // TODO: check what happens on nulls
+                await Task.WhenAll(_bossGroup?.ShutdownGracefullyAsync(), _workerGroup?.ShutdownGracefullyAsync());
                 throw;
             }
         }
@@ -135,12 +164,11 @@ namespace Nethermind.Network.Rlpx
             {
                 if (connectTask.IsFaulted)
                 {
-                    _logger.Error($"Error when connecting to {remoteId.ToString(false)}@{host}:{port}.", connectTask.Exception);    
+                    _logger.Error($"Error when connecting to {remoteId.ToString(false)}@{host}:{port}.", connectTask.Exception);
+                    throw new NetworkingException($"Failed to connect to {remoteId}", connectTask.Exception);
                 }
-                else
-                {
-                    _logger.Info($"Connected to {remoteId.ToString(false)}@{host}:{port}");    
-                }
+
+                _logger.Info($"Connected to {remoteId.ToString(false)}@{host}:{port}");
             }
         }
 

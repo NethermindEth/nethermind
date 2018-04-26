@@ -47,7 +47,7 @@ namespace Ethereum.Test.Base
         private static ILogger _evmLogger = DefaultLogger;
         private static ILogger _chainLogger = DefaultLogger;
         
-        private static readonly ISealEngine SealEngine = new EthashSealEngine(new Ethash()); // temporarily keep reusing the same one as otherwise it would recreate cache for each test
+        private static readonly ISealEngine SealEngine = new EthashSealEngine(new Ethash(), NullLogger.Instance); // temporarily keep reusing the same one as otherwise it would recreate cache for each test
 
         [SetUp]
         public void Setup()
@@ -225,7 +225,7 @@ namespace Ethereum.Test.Base
                 blockhashProvider,
                 _evmLogger);
 
-            ISealEngine sealEngine = new EthashSealEngine(new Ethash());
+            ISealEngine sealEngine = new EthashSealEngine(new Ethash(), NullLogger.Instance);
             ITransactionStore transactionStore = new TransactionStore();
             IEthereumSigner signer = new EthereumSigner(specProvider, _chainLogger);
             IBlockProcessor blockProcessor = new BlockProcessor(

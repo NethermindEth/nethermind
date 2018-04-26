@@ -43,7 +43,7 @@ namespace Nethermind.Core.Test
         [SetUp]
         public void Setup()
         {
-            _ethash = new EthashSealEngine(new Ethash());
+            _ethash = new EthashSealEngine(new Ethash(), NullLogger.Instance);
             _testLogger = new TestLogger();
             BlockTree blockStore = new BlockTree(FrontierSpecProvider.Instance, NullLogger.Instance);
             DifficultyCalculator calculator = new DifficultyCalculator(new SingleReleaseSpecProvider(Frontier.Instance, ChainId.MainNet));   

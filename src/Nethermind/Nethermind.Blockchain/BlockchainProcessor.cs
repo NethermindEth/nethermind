@@ -75,7 +75,7 @@ namespace Nethermind.Blockchain
         public Block HeadBlock { get; private set; }
         public BigInteger TotalDifficulty { get; private set; }
 
-        private CancellationTokenSource _blockchainCancellation;
+        private CancellationTokenSource _loopCancellationSource;
         private CancellationTokenSource _miningCancellation;
 
         private Task _processorTask;
@@ -88,68 +88,24 @@ namespace Nethermind.Blockchain
             }
             else
             {
-                _blockchainCancellation.Cancel();
+                _loopCancellationSource.Cancel();
             }
 
-            await _processorTask;
+            await _processorTask.ContinueWith(t =>
+            {
+                if (t.IsFaulted)
+                {
+                    _logger.Error($"{nameof(StopAsync)} failed in {nameof(BlockchainProcessor)}", t.Exception);
+                }
+            });
         }
 
         public void Start()
         {
-            _blockchainCancellation = new CancellationTokenSource();
-            _processorTask = Task.Factory.StartNew(() =>
-                {
-                    if (_logger.IsInfoEnabled)
-                    {
-                        _logger.Info($"Starting block processor - {_blockQueue.Count} blocks waiting in the queue.");
-                    }
-
-                    if (_blockQueue.Count == 0 && _sealEngine.IsMining)
-                    {
-                        if (_logger.IsDebugEnabled)
-                        {
-                            _logger.Debug("Nothing in the queue so I mine my own.");
-                        }
-
-                        BuildAndSeal();
-
-                        if (_logger.IsDebugEnabled)
-                        {
-                            _logger.Debug("Will go and wait for another block now...");
-                        }
-                    }
-
-                    foreach (Block block in _blockQueue.GetConsumingEnumerable(_blockchainCancellation.Token))
-                    {
-                        if (_logger.IsInfoEnabled)
-                        {
-                            _logger.Info($"Block processing {block.Hash} ({block.Number}).");
-                        }
-
-                        Process(block);
-
-                        if (_logger.IsDebugEnabled) // TODO: different levels depending on the queue size?
-                        {
-                            _logger.Debug($"Now {_blockQueue.Count} blocks waiting in the queue.");
-                        }
-
-                        if (_blockQueue.Count == 0 && _sealEngine.IsMining)
-                        {
-                            if (_logger.IsDebugEnabled)
-                            {
-                                _logger.Debug("Nothing in the queue so I mine my own.");
-                            }
-
-                            BuildAndSeal();
-
-                            if (_logger.IsDebugEnabled)
-                            {
-                                _logger.Debug("Will go and wait for another block now...");
-                            }
-                        }
-                    }
-                },
-                _blockchainCancellation.Token,
+            _loopCancellationSource = new CancellationTokenSource();
+            _processorTask = Task.Factory.StartNew(
+                RunProcessingLoop,
+                _loopCancellationSource.Token,
                 TaskCreationOptions.None,
                 TaskScheduler.Default).ContinueWith(t =>
             {
@@ -175,6 +131,59 @@ namespace Nethermind.Blockchain
                     }
                 }
             });
+        }
+
+        private void RunProcessingLoop()
+        {
+            if (_logger.IsInfoEnabled)
+            {
+                _logger.Info($"Starting block processor - {_blockQueue.Count} blocks waiting in the queue.");
+            }
+
+            if (_blockQueue.Count == 0 && _sealEngine.IsMining)
+            {
+                if (_logger.IsDebugEnabled)
+                {
+                    _logger.Debug("Nothing in the queue so I mine my own.");
+                }
+
+                BuildAndSeal();
+
+                if (_logger.IsDebugEnabled)
+                {
+                    _logger.Debug("Will go and wait for another block now...");
+                }
+            }
+
+            foreach (Block block in _blockQueue.GetConsumingEnumerable(_loopCancellationSource.Token))
+            {
+                if (_logger.IsInfoEnabled)
+                {
+                    _logger.Info($"Block processing {block.Hash} ({block.Number}).");
+                }
+
+                Process(block);
+
+                if (_logger.IsDebugEnabled) // TODO: different levels depending on the queue size?
+                {
+                    _logger.Debug($"Now {_blockQueue.Count} blocks waiting in the queue.");
+                }
+
+                if (_blockQueue.Count == 0 && _sealEngine.IsMining)
+                {
+                    if (_logger.IsDebugEnabled)
+                    {
+                        _logger.Debug("Nothing in the queue so I mine my own.");
+                    }
+
+                    BuildAndSeal();
+
+                    if (_logger.IsDebugEnabled)
+                    {
+                        _logger.Debug("Will go and wait for another block now...");
+                    }
+                }
+            }
         }
 
         private void EnqueueForProcessing(Block block)
@@ -492,7 +501,7 @@ namespace Nethermind.Blockchain
                     Block blockToBeMined = processedBlocks[processedBlocks.Length - 1];
                     _miningCancellation = new CancellationTokenSource();
                     CancellationTokenSource anyCancellation =
-                        CancellationTokenSource.CreateLinkedTokenSource(_miningCancellation.Token, _blockchainCancellation.Token);
+                        CancellationTokenSource.CreateLinkedTokenSource(_miningCancellation.Token, _loopCancellationSource.Token);
                     _sealEngine.MineAsync(blockToBeMined, anyCancellation.Token).ContinueWith(t =>
                     {
                         anyCancellation.Dispose();

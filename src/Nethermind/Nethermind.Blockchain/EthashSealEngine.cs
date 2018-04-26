@@ -18,28 +18,49 @@
 
 using System.Diagnostics;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Mining;
 
+[assembly:InternalsVisibleTo("Nethermind.Blockchain.Test")]
+
 namespace Nethermind.Blockchain
 {
     public class EthashSealEngine : ISealEngine
     {
         private readonly IEthash _ethash;
+        private readonly ILogger _logger;
 
-        public EthashSealEngine(IEthash ethash)
+        public EthashSealEngine(IEthash ethash, ILogger logger)
         {
             _ethash = ethash;
+            _logger = logger;
         }
 
         public BigInteger MinGasPrice { get; set; } = 0;
 
         public async Task<Block> MineAsync(Block processed, CancellationToken cancellationToken)
         {
-            return await MineAsync(cancellationToken, processed, null);
+            Block block = await MineAsync(cancellationToken, processed, null).ContinueWith(t =>
+            {
+                if (t.IsFaulted)
+                {
+                    _logger.Error($"{nameof(MineAsync)} failed", t.Exception);
+                    return null;
+                }
+
+                return t.Result;
+            }, cancellationToken);
+
+            if (block == null)
+            {
+                throw new SealEngineException($"{nameof(MineAsync)} failed");
+            }
+
+            return block;
         }
 
         public bool Validate(BlockHeader header)
@@ -49,7 +70,7 @@ namespace Nethermind.Blockchain
 
         public bool IsMining { get; set; }
 
-        public async Task<Block> MineAsync(CancellationToken cancellationToken, Block processed, ulong? startNonce)
+        internal async Task<Block> MineAsync(CancellationToken cancellationToken, Block processed, ulong? startNonce)
         {
             Debug.Assert(processed.Header.TransactionsRoot != null, "transactions root");
             Debug.Assert(processed.Header.StateRoot != null, "state root");
@@ -57,16 +78,16 @@ namespace Nethermind.Blockchain
             Debug.Assert(processed.Header.OmmersHash != null, "ommers hash");
             Debug.Assert(processed.Header.Bloom != null, "bloom");
             Debug.Assert(processed.Header.ExtraData != null, "extra data");
-            
+
             Task<Block> miningTask = Task.Factory.StartNew(() => Mine(processed, startNonce), cancellationToken);
             await miningTask.ContinueWith(
                 t =>
                 {
-                    if (t.IsCompleted)
+                    if ( t.IsCompleted)
                     {
                         t.Result.Header.Hash = BlockHeader.CalculateHash(t.Result.Header);
                     }
-                }, cancellationToken);
+                }, cancellationToken, TaskContinuationOptions.NotOnFaulted, TaskScheduler.Default);
 
             return await miningTask;
         }

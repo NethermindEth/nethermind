@@ -190,11 +190,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         private void Handle(GetBlockHeadersMessage getBlockHeadersMessage)
         {
-            Logger.Warn($"GetBlockHeaders.MaxHeaders: {getBlockHeadersMessage.MaxHeaders}");
-            Logger.Warn($"GetBlockHeaders.Reverse: {getBlockHeadersMessage.Reverse}");
-            Logger.Warn($"GetBlockHeaders.Skip: {getBlockHeadersMessage.Skip}");
-            Logger.Warn($"GetBlockHeaders.StartingBlockhash: {getBlockHeadersMessage.StartingBlockHash}");
-            Logger.Warn($"GetBlockHeaders.StartingBlockNumber: {getBlockHeadersMessage.StartingBlockNumber}");
+            if (Logger.IsTraceEnabled)
+            {
+                Logger.Trace($"GetBlockHeaders.MaxHeaders: {getBlockHeadersMessage.MaxHeaders}");
+                Logger.Trace($"GetBlockHeaders.Reverse: {getBlockHeadersMessage.Reverse}");
+                Logger.Trace($"GetBlockHeaders.Skip: {getBlockHeadersMessage.Skip}");
+                Logger.Trace($"GetBlockHeaders.StartingBlockhash: {getBlockHeadersMessage.StartingBlockHash}");
+                Logger.Trace($"GetBlockHeaders.StartingBlockNumber: {getBlockHeadersMessage.StartingBlockNumber}");
+            }
 
             Keccak startingHash = getBlockHeadersMessage.StartingBlockHash;
             if (startingHash == null)
@@ -294,14 +297,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         private async Task<BlockHeader[]> SendRequest(GetBlockHeadersMessage message)
         {
-            if (Logger.IsWarnEnabled)
+            if (Logger.IsTraceEnabled)
             {
-                Logger.Warn("Sending headers request:");
-                Logger.Warn($"Starting blockhash: {message.StartingBlockHash}");
-                Logger.Warn($"Starting number: {message.StartingBlockNumber}");
-                Logger.Warn($"Skip: {message.Skip}");
-                Logger.Warn($"Reverse: {message.Reverse}");
-                Logger.Warn($"Max headers: {message.MaxHeaders}");
+                Logger.Trace("Sending headers request:");
+                Logger.Trace($"Starting blockhash: {message.StartingBlockHash}");
+                Logger.Trace($"Starting number: {message.StartingBlockNumber}");
+                Logger.Trace($"Skip: {message.Skip}");
+                Logger.Trace($"Reverse: {message.Reverse}");
+                Logger.Trace($"Max headers: {message.MaxHeaders}");
             }
             
             var request = new Request<GetBlockHeadersMessage, BlockHeader[]>(message);
@@ -319,10 +322,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         private async Task<Block[]> SendRequest(GetBlockBodiesMessage message)
         {
-            if (Logger.IsWarnEnabled)
+            if (Logger.IsTraceEnabled)
             {
-                Logger.Warn("Sending bodies request:");
-                Logger.Warn($"Blockhashes count: {message.BlockHashes.Length}");
+                Logger.Trace("Sending bodies request:");
+                Logger.Trace($"Blockhashes count: {message.BlockHashes.Length}");
             }
             
             var request = new Request<GetBlockBodiesMessage, Block[]>(message);

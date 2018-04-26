@@ -43,7 +43,7 @@ namespace Nethermind.Blockchain.Test
             header.Bloom = Bloom.Empty;
 
             Block block = new Block(header);
-            EthashSealEngine ethashSealEngine = new EthashSealEngine(new Ethash() /*, _alwaysOk, _noPending*/);
+            EthashSealEngine ethashSealEngine = new EthashSealEngine(new Ethash(), NullLogger.Instance);
             await ethashSealEngine.MineAsync(new CancellationTokenSource(TimeSpan.FromSeconds(5)).Token, block, validNonce - 10);
 
             Assert.AreEqual(validNonce, block.Header.Nonce);
@@ -65,7 +65,7 @@ namespace Nethermind.Blockchain.Test
             header.Bloom = Bloom.Empty;
 
             Block block = new Block(header);
-            EthashSealEngine ethashSealEngine = new EthashSealEngine(new Ethash() /*, _alwaysOk, _noPending*/);
+            EthashSealEngine ethashSealEngine = new EthashSealEngine(new Ethash(), NullLogger.Instance);
             await ethashSealEngine.MineAsync(new CancellationTokenSource(TimeSpan.FromMilliseconds(2000)).Token, block, badNonce).ContinueWith(t =>
             {
                 Assert.True(t.IsCanceled);
@@ -86,7 +86,7 @@ namespace Nethermind.Blockchain.Test
             Block block = new Block(blockHeader);
 
             IEthash ethash = new Ethash();
-            EthashSealEngine ethashSealEngine = new EthashSealEngine(ethash /*, _alwaysOk, _noPending*/);
+            EthashSealEngine ethashSealEngine = new EthashSealEngine(ethash, NullLogger.Instance);
             await ethashSealEngine.MineAsync(CancellationToken.None, block, 7217048144105167954);
 
             Assert.True(ethash.Validate(block.Header));

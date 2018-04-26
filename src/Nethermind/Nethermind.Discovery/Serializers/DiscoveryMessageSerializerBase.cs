@@ -23,6 +23,7 @@ using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
 using Nethermind.Discovery.Messages;
 using Nethermind.Discovery.RoutingTable;
+using Nethermind.Network;
 
 namespace Nethermind.Discovery.Serializers
 {
