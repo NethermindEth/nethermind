@@ -50,13 +50,13 @@ namespace Nethermind.Core.Test
             
             _validator = new HeaderValidator(calculator, blockStore, _ethash, new SingleReleaseSpecProvider(Byzantium.Instance, 3), _testLogger);
             _parentHeader = new BlockHeader(Keccak.Zero, Keccak.OfAnEmptySequenceRlp, Address.Zero, 131072, 0, 21000, 0, new byte[]{});
-            _parentHeader.RecomputeHash();
+            _parentHeader.Hash = BlockHeader.CalculateHash(_parentHeader);
             _parentBlock = new Block(_parentHeader);
             
             _blockHeader = new BlockHeader(_parentHeader.Hash, Keccak.OfAnEmptySequenceRlp, Address.Zero, 131136, 1, 21000, 1, new byte[]{});
             _blockHeader.Nonce = 7217048144105167954;
             _blockHeader.MixHash = new Keccak("0x37d9fb46a55e9dbbffc428f3a1be6f191b3f8eaf52f2b6f53c4b9bae62937105");
-            _blockHeader.RecomputeHash();
+            _blockHeader.Hash = BlockHeader.CalculateHash(_blockHeader);
             _block = new Block(_blockHeader);
             
             blockStore.SuggestBlock(_parentBlock);

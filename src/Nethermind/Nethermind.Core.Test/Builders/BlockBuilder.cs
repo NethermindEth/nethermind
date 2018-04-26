@@ -65,7 +65,7 @@ namespace Nethermind.Core.Test.Builders
         protected override void BeforeReturn()
         {
             base.BeforeReturn();
-            TestObjectInternal.Header.RecomputeHash();
+            TestObjectInternal.Header.Hash = BlockHeader.CalculateHash(TestObjectInternal.Header);
         }
     }
 }

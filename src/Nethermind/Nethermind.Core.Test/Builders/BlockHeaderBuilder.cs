@@ -38,7 +38,7 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal.ReceiptsRoot = Keccak.EmptyTreeHash;
             TestObjectInternal.StateRoot = Keccak.EmptyTreeHash;
             TestObjectInternal.TransactionsRoot = Keccak.EmptyTreeHash;
-            TestObjectInternal.RecomputeHash();
+            TestObjectInternal.Hash = BlockHeader.CalculateHash(TestObjectInternal);
         }
         
         public BlockHeaderBuilder WithParent(BlockHeader parentHeader)

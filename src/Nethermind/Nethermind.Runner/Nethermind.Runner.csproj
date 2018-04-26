@@ -107,6 +107,9 @@
       <Link>Chains\some_node.json</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <Content Include="Configs\some_node.config.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
   <Target Name="AddRuntimeDependenciesToContent" Condition=" '$(TargetFrameworkIdentifier)' == '.NETCoreApp'" BeforeTargets="GetCopyToOutputDirectoryItems">
     <ItemGroup>
