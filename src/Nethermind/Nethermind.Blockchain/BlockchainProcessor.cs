@@ -508,7 +508,7 @@ namespace Nethermind.Blockchain
                         
                         if (_logger.IsInfoEnabled)
                         {
-                            _logger.Info($"Mined a block {t.Result.Hash} ({t.Result.Number})");
+                            _logger.Info($"Mined a block {t.Result.Hash} ({t.Result.Number}) with parent {t.Result.Header.ParentHash}");
                         }
 
                         Block minedBlock = t.Result;

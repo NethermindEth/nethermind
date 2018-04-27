@@ -49,8 +49,6 @@ namespace Nethermind.Blockchain
 
         public event EventHandler<BlockEventArgs> NewHeadBlock;
 
-        private readonly object _syncObject = new object();
-
         public Block GenesisBlock { get; private set; }
         public Block HeadBlock { get; private set; }
         public Block BestSuggestedBlock { get; private set; }
@@ -63,7 +61,7 @@ namespace Nethermind.Blockchain
             {
                 transaction.ChainId = ChainId;
             }
-            
+
             if (block.Number == 0)
             {
                 if (BestSuggestedBlock != null)
@@ -77,25 +75,34 @@ namespace Nethermind.Blockchain
             }
             else if (this.FindParent(block.Header) == null)
             {
+                if (_logger.IsDebugEnabled)
+                {
+                    _logger.Debug($"Could not find parent ({block.Header.ParentHash}) of block {block.Hash}");
+                }
+
                 return AddBlockResult.UnknownParent;
             }
 
-            _branches.AddOrUpdate(block.Header.Hash, block, (h, b) =>
+            bool added = _branches.TryAdd(block.Header.Hash, block);
+            if (added)
             {
-                //https://stackoverflow.com/questions/17926519/concurrent-dictionary-addorupdate-vs-index-add?utm_medium=organic&utm_source=google_rich_qa&utm_campaign=google_rich_qa
-                Debug.Assert(block == b, "Assuming it would not happen, if never fired use indexer instead");
-                return b;
-            });
+                UpdateTotalDifficulty(block);
 
-            UpdateTotalDifficulty(block);
+                if (block.TotalDifficulty > (BestSuggestedBlock?.TotalDifficulty ?? 0))
+                {
+                    BestSuggestedBlock = block;
+                    NewBestSuggestedBlock?.Invoke(this, new BlockEventArgs(block));
+                }
 
-            if (block.TotalDifficulty > (BestSuggestedBlock?.TotalDifficulty ?? 0))
-            {
-                BestSuggestedBlock = block;
-                NewBestSuggestedBlock?.Invoke(this, new BlockEventArgs(block));
+                return AddBlockResult.Added;
             }
 
-            return AddBlockResult.Added;
+            if (_logger.IsDebugEnabled)
+            {
+                _logger.Debug($"Block {block.Hash} already known.");
+            }
+
+            return AddBlockResult.AlreadyKnown;
         }
 
         public Block FindBlock(Keccak blockHash, bool mainChainOnly)

@@ -16,19 +16,22 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Numerics;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Core.Test.Builders
 {
     public class BlockHeaderBuilder : BuilderBase<BlockHeader>
     {
+        public static BigInteger DefaultDifficulty = 1_000_000;
+        
         public BlockHeaderBuilder()
         {
             TestObjectInternal = new BlockHeader(
                                      Keccak.Compute("parent"),
                                      Keccak.OfAnEmptySequenceRlp,
                                      Address.Zero,
-                                     1_000_000, 0,
+                                     DefaultDifficulty, 0,
                                      4_000_000,
                                      1_000_000,
                                      new byte[] {1, 2, 3});

@@ -353,6 +353,18 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             BlockHeader[] headers = await SendRequest(msg);
             return headers;
         }
+        
+        async Task<BlockHeader[]> ISynchronizationPeer.GetBlockHeaders(BigInteger number, int maxBlocks, int skip)
+        {
+            var msg = new GetBlockHeadersMessage();
+            msg.MaxHeaders = maxBlocks;
+            msg.Reverse = 0;
+            msg.Skip = skip;
+            msg.StartingBlockNumber = number;
+            
+            BlockHeader[] headers = await SendRequest(msg);
+            return headers;
+        }
 
         public PublicKey NodeId => P2PSession.RemoteNodeId;
 

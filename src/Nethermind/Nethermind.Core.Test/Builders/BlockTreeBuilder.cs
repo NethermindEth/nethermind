@@ -31,7 +31,7 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal = new BlockTree(RopstenSpecProvider.Instance, NullLogger.Instance);
         }
 
-        public BlockTreeBuilder OfChainLength(int chainLength)
+        public BlockTreeBuilder OfChainLength(int chainLength, int splitBlockNumber = 0, int splitVariant = 0)
         {
             Block previous = _genesisBlock;
             for (int i = 0; i < chainLength; i++)
@@ -39,7 +39,7 @@ namespace Nethermind.Core.Test.Builders
                 TestObjectInternal.SuggestBlock(previous);
                 TestObjectInternal.MarkAsProcessed(previous.Hash);
                 TestObjectInternal.MoveToMain(previous.Hash);
-                previous = Build.A.Block.WithNumber(i + 1).WithParent(previous).TestObject;
+                previous = Build.A.Block.WithNumber(i + 1).WithParent(previous).WithDifficulty(BlockHeaderBuilder.DefaultDifficulty - splitVariant).TestObject;
             }
             
             return this;

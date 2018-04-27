@@ -18,6 +18,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Difficulty;
@@ -139,6 +141,144 @@ namespace Nethermind.Blockchain.Test
             _manager.AddNewBlock(block, peer.NodeId);
             
             Assert.AreEqual(SynchronizationManager.BatchSize, (int)_blockTree.BestSuggestedBlock.Number);
+        }
+        
+        [Test]
+        public async Task Can_sync_on_split_of_length_1()
+        {
+            BlockTree miner1Tree = Build.A.BlockTree(_genesisBlock).OfChainLength(6).TestObject;
+            ISynchronizationPeer miner1 = new SynchronizationPeerMock(miner1Tree);
+            
+            ManualResetEvent resetEvent = new ManualResetEvent(false);
+            _manager.Synced += (sender, args) => { resetEvent.Set(); };
+            
+            Task addMiner1Task = _manager.AddPeer(miner1);
+            
+            await Task.WhenAll(addMiner1Task);
+
+            resetEvent.WaitOne(TimeSpan.FromSeconds(1));
+
+            Assert.AreEqual(miner1Tree.BestSuggestedBlock.Hash, _manager.BlockTree.BestSuggestedBlock.Hash, "client agrees with miner before split");
+            
+            Block splitBlock = Build.A.Block.WithParent(miner1Tree.FindParent(miner1Tree.HeadBlock)).WithDifficulty(miner1Tree.HeadBlock.Difficulty - 1).TestObject;
+            Block splitBlockChild = Build.A.Block.WithParent(splitBlock).TestObject;
+
+            miner1Tree.SuggestBlock(splitBlock);
+            miner1Tree.MarkAsProcessed(splitBlock.Hash);
+            miner1Tree.MoveToMain(splitBlock.Hash);
+            miner1Tree.SuggestBlock(splitBlockChild);
+            miner1Tree.MarkAsProcessed(splitBlockChild.Hash);
+            miner1Tree.MoveToMain(splitBlockChild.Hash);
+
+            Assert.AreEqual(splitBlockChild.Hash, miner1Tree.BestSuggestedBlock.Hash, "split as expected");
+            
+            resetEvent.Reset();
+            
+            _manager.AddNewBlock(splitBlockChild, miner1.NodeId);
+            
+            resetEvent.WaitOne(TimeSpan.FromSeconds(1));
+            
+            Assert.AreEqual(miner1Tree.BestSuggestedBlock.Hash, _manager.BlockTree.BestSuggestedBlock.Hash, "client agrees with miner after split");
+        }
+        
+        [Test]
+        public async Task Can_sync_on_split_of_length_6()
+        {
+            BlockTree miner1Tree = Build.A.BlockTree(_genesisBlock).OfChainLength(6).TestObject;
+            ISynchronizationPeer miner1 = new SynchronizationPeerMock(miner1Tree);
+            
+            ManualResetEvent resetEvent = new ManualResetEvent(false);
+            _manager.Synced += (sender, args) => { resetEvent.Set(); };
+            
+            Task addMiner1Task = _manager.AddPeer(miner1);
+            
+            await Task.WhenAll(addMiner1Task);
+
+            resetEvent.WaitOne(TimeSpan.FromSeconds(1));
+
+            Assert.AreEqual(miner1Tree.BestSuggestedBlock.Hash, _manager.BlockTree.BestSuggestedBlock.Hash, "client agrees with miner before split");
+            
+            miner1Tree.AddBranch(7, 0, 1);
+            
+            Assert.AreNotEqual(miner1Tree.BestSuggestedBlock.Hash, _manager.BlockTree.BestSuggestedBlock.Hash, "client does not agree with miner after split");
+            
+            resetEvent.Reset();
+            
+            _manager.AddNewBlock(miner1Tree.HeadBlock, miner1.NodeId);
+            
+            resetEvent.WaitOne(TimeSpan.FromSeconds(1));
+            
+            Assert.AreEqual(miner1Tree.BestSuggestedBlock.Hash, _manager.BlockTree.BestSuggestedBlock.Hash, "client agrees with miner after split");
+        }
+        
+        [Test]
+        public async Task Does_not_do_full_sync_when_not_needed()
+        {
+            BlockTree minerTree = Build.A.BlockTree(_genesisBlock).OfChainLength(6).TestObject;
+            ISynchronizationPeer miner1 = new SynchronizationPeerMock(minerTree);
+            
+            ManualResetEvent resetEvent = new ManualResetEvent(false);
+            _manager.Synced += (sender, args) => { resetEvent.Set(); };
+            
+            Task addMiner1Task = _manager.AddPeer(miner1);
+            
+            await Task.WhenAll(addMiner1Task);
+
+            resetEvent.WaitOne(TimeSpan.FromSeconds(1));
+
+            Assert.AreEqual(minerTree.BestSuggestedBlock.Hash, _manager.BlockTree.BestSuggestedBlock.Hash, "client agrees with miner before split");
+
+            Block newBlock = Build.A.Block.WithParent(minerTree.HeadBlock).TestObject;
+            minerTree.SuggestBlock(newBlock);
+            minerTree.MarkAsProcessed(newBlock.Hash);
+            minerTree.MoveToMain(newBlock.Hash);
+            
+            ISynchronizationPeer miner2 = Substitute.For<ISynchronizationPeer>();
+            miner2.GetHeadBlockNumber().Returns(miner1.GetHeadBlockNumber());
+            miner2.GetHeadBlockHash().Returns(miner1.GetHeadBlockHash());
+            miner2.NodeId.Returns(TestObject.PublicKeyB);
+            
+            Assert.AreEqual(newBlock.Number, await miner2.GetHeadBlockNumber(), "number as expected");
+            Assert.AreEqual(newBlock.Hash, await miner2.GetHeadBlockHash(), "hash as expected");
+            
+            await _manager.AddPeer(miner2);
+
+            await miner2.Received().GetBlockHeaders(6, 1, 0);
+        }
+        
+        [Test]
+        public async Task Does_not_do_full_sync_when_not_needed_with_split()
+        {
+            BlockTree minerTree = Build.A.BlockTree(_genesisBlock).OfChainLength(6).TestObject;
+            ISynchronizationPeer miner1 = new SynchronizationPeerMock(minerTree);
+            
+            ManualResetEvent resetEvent = new ManualResetEvent(false);
+            _manager.Synced += (sender, args) => { resetEvent.Set(); };
+            
+            Task addMiner1Task = _manager.AddPeer(miner1);
+            
+            await Task.WhenAll(addMiner1Task);
+
+            resetEvent.WaitOne(TimeSpan.FromSeconds(1));
+
+            Assert.AreEqual(minerTree.BestSuggestedBlock.Hash, _manager.BlockTree.BestSuggestedBlock.Hash, "client agrees with miner before split");
+
+            Block newBlock = Build.A.Block.WithParent(minerTree.HeadBlock).TestObject;
+            minerTree.SuggestBlock(newBlock);
+            minerTree.MarkAsProcessed(newBlock.Hash);
+            minerTree.MoveToMain(newBlock.Hash);
+            
+            ISynchronizationPeer miner2 = Substitute.For<ISynchronizationPeer>();
+            miner2.GetHeadBlockNumber().Returns(miner1.GetHeadBlockNumber());
+            miner2.GetHeadBlockHash().Returns(miner1.GetHeadBlockHash());
+            miner2.NodeId.Returns(TestObject.PublicKeyB);
+            
+            Assert.AreEqual(newBlock.Number, await miner2.GetHeadBlockNumber(), "number as expected");
+            Assert.AreEqual(newBlock.Hash, await miner2.GetHeadBlockHash(), "hash as expected");
+            
+            await _manager.AddPeer(miner2);
+
+            await miner2.Received().GetBlockHeaders(6, 1, 0);
         }
     }
 }

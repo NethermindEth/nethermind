@@ -35,7 +35,7 @@ namespace Nethermind.Blockchain.Test
             _blockTree = blockTree;
         }
 
-        public PublicKey NodeId { get; } = TestObject.PublicKeyA;
+        public PublicKey NodeId { get; set; } = TestObject.PublicKeyA;
         
         public Task<Block[]> GetBlocks(Keccak[] blockHashes)
         {
@@ -51,6 +51,19 @@ namespace Nethermind.Blockchain.Test
         public Task<BlockHeader[]> GetBlockHeaders(Keccak blockHash, int maxBlocks, int skip)
         {
             BigInteger firstNumber = _blockTree.FindBlock(blockHash, true).Number;
+            
+            BlockHeader[] result = new BlockHeader[maxBlocks];
+            for (int i = 0; i < maxBlocks; i++)
+            {
+                result[i] = _blockTree.FindBlock((int)firstNumber + i + skip).Header;
+            }
+            
+            return Task.FromResult(result);
+        }
+        
+        public Task<BlockHeader[]> GetBlockHeaders(BigInteger number, int maxBlocks, int skip)
+        {
+            BigInteger firstNumber = _blockTree.FindBlock(number).Number;
             
             BlockHeader[] result = new BlockHeader[maxBlocks];
             for (int i = 0; i < maxBlocks; i++)
