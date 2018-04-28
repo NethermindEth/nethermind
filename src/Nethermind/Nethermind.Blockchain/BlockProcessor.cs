@@ -85,7 +85,7 @@ namespace Nethermind.Blockchain
                 {
                     throw new InvalidOperationException("Transaction's hash is null when processing");
                 }
-                
+
                 _transactionStore.AddTransactionReceipt(transaction.Hash, receipt, block.Hash);
                 receipts.Add(receipt);
             }
@@ -104,7 +104,7 @@ namespace Nethermind.Blockchain
 
             block.Receipts = receipts.ToArray();
             block.Header.ReceiptsRoot = receiptTree?.RootHash ?? PatriciaTree.EmptyTreeHash;
-            block.Header.Bloom = receipts.Count > 0 ? receipts.Last().Bloom : Bloom.Empty;
+            block.Header.Bloom = receipts.Count > 0 ? TransactionProcessor.BuildBloom(receipts.SelectMany(r => r.Logs).ToList()) : Bloom.Empty; // TODO not tested anywhere at the time of writing
         }
 
         private Keccak GetTransactionsRoot(Transaction[] transactions)
@@ -158,7 +158,7 @@ namespace Nethermind.Blockchain
                         _logger.Debug($"REVERTED BLOCKS (JUST VALIDATED FOR MINING) - STATE ROOT {_stateProvider.StateRoot}");
                     }
                 }
-                
+
                 return processedBlocks;
             }
             catch (InvalidBlockException) // TODO: which exception to catch here?
@@ -167,7 +167,7 @@ namespace Nethermind.Blockchain
                 {
                     _logger.Debug($"REVERTING BLOCKS - STATE ROOT {_stateProvider.StateRoot}");
                 }
-                
+
                 _dbProvider.Restore(dbSnapshot);
                 _storageProvider.ClearCaches();
                 _stateProvider.ClearCaches();
@@ -267,7 +267,7 @@ namespace Nethermind.Blockchain
                     _logger.Debug($"THROWING INVALID BLOCK");
                 }
 
-                throw new InvalidBlockException();
+                throw new InvalidBlockException($"{processedBlock}");
             }
 
             if (_logger.IsDebugEnabled)

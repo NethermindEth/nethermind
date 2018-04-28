@@ -96,6 +96,7 @@ namespace Nethermind.Blockchain
                 if (t.IsFaulted)
                 {
                     _logger.Error($"{nameof(StopAsync)} failed in {nameof(BlockchainProcessor)}", t.Exception);
+                    throw t.Exception;
                 }
             });
         }
@@ -113,8 +114,10 @@ namespace Nethermind.Blockchain
                 {
                     if (_logger.IsErrorEnabled)
                     {
-                        _logger.Error($"{nameof(BlockchainProcessor)} encountered an exception {t.Exception}.");
+                        _logger.Error($"{nameof(BlockchainProcessor)} encountered an exception.", t.Exception);
                     }
+
+                    throw t.Exception;
                 }
                 else if (t.IsCanceled)
                 {
@@ -300,26 +303,6 @@ namespace Nethermind.Blockchain
 
         public void Process(Block suggestedBlock)
         {
-            if (suggestedBlock.Number == 4830)
-            {
-                
-            }
-            
-            if (suggestedBlock.Number == 4835)
-            {
-                
-            }
-            
-            if (suggestedBlock.Number == 4838)
-            {
-                
-            }
-            
-            if (suggestedBlock.Number == 4839)
-            {
-                
-            }
-            
             Process(suggestedBlock, false);
         }
 

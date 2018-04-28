@@ -19,5 +19,9 @@ namespace Nethermind.Blockchain
 {
     public class InvalidBlockException : BlockchainException
     {
+        public InvalidBlockException(string message) : base(message)
+        {
+            
+        }
     }
 }

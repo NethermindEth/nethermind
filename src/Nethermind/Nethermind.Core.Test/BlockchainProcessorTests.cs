@@ -30,6 +30,7 @@ using Nethermind.Core.Encoding;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Specs.ChainSpec;
 using Nethermind.Evm;
+using Nethermind.Runner;
 using Nethermind.Store;
 using NUnit.Framework;
 
@@ -41,11 +42,11 @@ namespace Nethermind.Core.Test
         [Test]
         public async Task Test()
         {
-            string[] files = Directory.GetFiles(Path.Combine(TestContext.CurrentContext.TestDirectory, "TestRopstenBlocks"));
+            string[] files = Directory.GetFiles("C:\\ropsten\\blocks");
             Assert.Greater(files.Length, 4000);
 
             /* logging & instrumentation */
-            var logger = NullLogger.Instance;
+            var logger = new SimpleConsoleLogger();
 
             /* spec */
             var sealEngine = NullSealEngine.Instance;
@@ -102,32 +103,15 @@ namespace Nethermind.Core.Test
             List<Block> blocks = new List<Block>();
             foreach (string file in files)
             {
-                try
-                {
-                    string rlpText = File.ReadAllText(file);
-                    Rlp rlp = new Rlp(new Hex(rlpText));
-                    Block block = Rlp.Decode<Block>(rlp);
-                    blocks.Add(block);
-                }
-                catch (Exception e)
-                {
-                    Console.WriteLine(e);
-                    continue;
-                }
+                string rlpText = File.ReadAllText(file);
+                Rlp rlp = new Rlp(new Hex(rlpText));
+                Block block = Rlp.Decode<Block>(rlp);
+                blocks.Add(block);
             }
 
-            blockchainProcessor.HeadBlockChanged += (sender, args) => Console.WriteLine(args.Block.Number);
             foreach (Block block in blocks.OrderBy(b => b.Number).Skip(1))
             {
-                try
-                {
-                    blockTree.SuggestBlock(block);
-                }
-                catch (Exception e)
-                {
-                    Console.WriteLine($"BLOCK {block.Number} failed, " + e);
-                    throw;
-                }
+                blockTree.SuggestBlock(block);
             }
 
             await blockchainProcessor.StopAsync(true).ContinueWith(

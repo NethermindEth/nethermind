@@ -336,7 +336,7 @@ namespace Nethermind.Evm
             return transactionReceipt;
         }
 
-        private static Bloom BuildBloom(List<LogEntry> logEntries)
+        public static Bloom BuildBloom(List<LogEntry> logEntries)
         {
             Bloom bloom = new Bloom();
             for (int entryIndex = 0; entryIndex < logEntries.Count; entryIndex++)
