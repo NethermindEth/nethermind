@@ -43,28 +43,22 @@ namespace Nethermind.Evm.Test
             IBlockhashProvider blockhashProvider = new TestBlockhashProvider();
             IVirtualMachine virtualMachine = new VirtualMachine(_spec, _stateProvider, _storageProvider, blockhashProvider, logger);
             _processor = new TransactionProcessor(_spec, _stateProvider, _storageProvider, virtualMachine, _ethereumSigner, logger);
-        }
-
-        private int _stateDbSnapshot;
-        private int _storageDbSnapshot;
-        private int _stateSnapshot;
-        private int _storageSnapshot;
-
-        [SetUp]
-        public void Setup()
-        {
+            
             _stateDbSnapshot = _stateDb.TakeSnapshot();
             _storageDbSnapshot = _storageDbProvider.TakeSnapshot();
-
-            _stateSnapshot = _stateProvider.TakeSnapshot();
-            _storageSnapshot = _storageProvider.TakeSnapshot();
+            _stateRoot = _stateProvider.StateRoot;
         }
+
+        private readonly int _stateDbSnapshot;
+        private readonly int _storageDbSnapshot;
+        private readonly Keccak _stateRoot;
 
         [TearDown]
         public void TearDown()
         {
-            _storageProvider.Restore(_storageSnapshot);
-            _stateProvider.Restore(_stateSnapshot);
+            _storageProvider.ClearCaches();
+            _stateProvider.ClearCaches();
+            _stateProvider.StateRoot = _stateRoot;
 
             _storageDbProvider.Restore(_storageDbSnapshot);
             _stateDb.Restore(_stateDbSnapshot);
