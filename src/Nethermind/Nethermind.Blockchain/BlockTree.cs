@@ -19,10 +19,12 @@
 using System;
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.IO;
 using System.Numerics;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Encoding;
 using Nethermind.Core.Specs;
 
 namespace Nethermind.Blockchain
@@ -56,6 +58,18 @@ namespace Nethermind.Blockchain
 
         public AddBlockResult SuggestBlock(Block block)
         {
+            // TEMP: store on disk
+            if (!Directory.Exists("C:\\ropsten\\blocks"))
+            {
+                Directory.CreateDirectory("C:\\ropsten\\blocks");
+            }
+
+            string filePath = Path.Combine("C:\\ropsten\\blocks", block.Hash.ToString(true));
+            if (!File.Exists(filePath))
+            {
+                File.WriteAllText(filePath, new Hex(Rlp.Encode(block).Bytes));
+            }
+
             // TODO: review where the ChainId should be set
             foreach (Transaction transaction in block.Transactions)
             {
@@ -87,6 +101,7 @@ namespace Nethermind.Blockchain
             if (added)
             {
                 UpdateTotalDifficulty(block);
+                UpdateTotalTransactions(block);
 
                 if (block.TotalDifficulty > (BestSuggestedBlock?.TotalDifficulty ?? 0))
                 {
@@ -156,22 +171,22 @@ namespace Nethermind.Blockchain
             Block block = _mainChain[blockHash];
             _canonicalChain[(int)block.Number] = null;
 
-            _branches.AddOrUpdate(blockHash, block, (h, b) =>
-            {
-                Debug.Assert(block == b, "Assuming it would not happen, if never fired use indexer instead");
-                return b;
-            });
+            _branches.AddOrUpdate(blockHash, block, (h, b) => throw new InvalidOperationException("Block being moved to branch is already there"));
 
             if (!_mainChain.TryRemove(blockHash, out Block _))
             {
-                throw new InvalidOperationException($"this should not happen as we should only be removing in {nameof(BlockchainProcessor)}");
+                throw new InvalidOperationException("Not able to move block from the main chain to branch"); // should never happen as we only invoke it in the BlockchainProcessor
             }
         }
 
         public void MarkAsProcessed(Keccak blockHash)
         {
             Block block = FindBlock(blockHash, false);
-            Debug.Assert(block != null, "Expected block to be known when marking as processed");
+            if (block == null)
+            {
+                throw new InvalidOperationException("Block being marked as processed is unknown.");
+            }
+
             if (block == null)
             {
                 throw new InvalidOperationException($"Unknown {nameof(Block)} cannot {nameof(MarkAsProcessed)}");
@@ -195,15 +210,11 @@ namespace Nethermind.Blockchain
             Block block = _branches[blockHash];
             _canonicalChain[(int)block.Number] = block;
 
-            _mainChain.AddOrUpdate(blockHash, block, (h, b) =>
-            {
-                Debug.Assert(block == b, "updating with a different block?");
-                return b;
-            });
+            _mainChain.AddOrUpdate(blockHash, block, (h, b) => throw new InvalidOperationException("Block being moved to main is already there"));
 
             if (!_branches.TryRemove(blockHash, out Block _))
             {
-                throw new InvalidOperationException($"this should not happen as we should only be removing in {nameof(BlockchainProcessor)}");
+                throw new InvalidOperationException("Not able to move block from branch to the main chain"); // should never happen as we only invoke it in the BlockchainProcessor
             }
 
             BlockAddedToMain?.Invoke(this, new BlockEventArgs(block));
@@ -234,19 +245,46 @@ namespace Nethermind.Blockchain
             else
             {
                 Block parent = this.FindParent(block.Header);
-                Debug.Assert(parent != null, "assuming this is never called if there has been no parent in the first place");
                 if (parent == null)
                 {
                     throw new InvalidOperationException($"An orphaned block on the chain {block.Hash} ({block.Number})");
                 }
 
-                Debug.Assert(parent.TotalDifficulty != null, "assuming this parent's difficulty is known");
+                if (parent.TotalDifficulty == null)
+                {
+                    throw new InvalidOperationException($"Parent's {nameof(parent.TotalDifficulty)} unknown when calculating for {block.Hash} ({block.Number})");
+                }
+                
                 block.Header.TotalDifficulty = parent.TotalDifficulty + block.Difficulty;
             }
 
             if (_logger.IsDebugEnabled)
             {
                 _logger.Debug($"CALCULATED TOTAL DIFFICULTY FOR {block.Hash} IS {block.TotalDifficulty}");
+            }
+        }
+        
+        // TODO: move it, merge it with diff calc (copy pasted for now)
+        private void UpdateTotalTransactions(Block block)
+        {
+            if (block.Number == 0)
+            {
+                block.Header.TotalTransactions = block.Transactions.Length;
+            }
+            else
+            {
+                Block parent = this.FindParent(block.Header);
+                if (parent == null)
+                {
+                    throw new InvalidOperationException($"An orphaned block on the chain {block.Hash} ({block.Number})");
+                }
+
+                if (parent.TotalTransactions == null)
+                {
+                    throw new InvalidOperationException($"Parent's {nameof(parent.TotalTransactions)} unknown when calculating for {block.Hash} ({block.Number})");
+                }
+                
+                block.Header.TotalTransactions = parent.TotalTransactions + block.Transactions.Length;
             }
         }
     }

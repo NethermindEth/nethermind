@@ -81,7 +81,11 @@ namespace Nethermind.Blockchain
 
                 _transactionStore.AddTransaction(transaction);
                 TransactionReceipt receipt = _transactionProcessor.Execute(transaction, block.Header);
-                Debug.Assert(transaction.Hash != null, "expecting only signed transactions here");
+                if (transaction.Hash == null)
+                {
+                    throw new InvalidOperationException("Transaction's hash is null when processing");
+                }
+                
                 _transactionStore.AddTransactionReceipt(transaction.Hash, receipt, block.Hash);
                 receipts.Add(receipt);
             }

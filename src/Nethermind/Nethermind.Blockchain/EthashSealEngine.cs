@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
@@ -25,7 +26,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Mining;
 
-[assembly:InternalsVisibleTo("Nethermind.Blockchain.Test")]
+[assembly: InternalsVisibleTo("Nethermind.Blockchain.Test")]
 
 namespace Nethermind.Blockchain
 {
@@ -72,18 +73,21 @@ namespace Nethermind.Blockchain
 
         internal async Task<Block> MineAsync(CancellationToken cancellationToken, Block processed, ulong? startNonce)
         {
-            Debug.Assert(processed.Header.TransactionsRoot != null, "transactions root");
-            Debug.Assert(processed.Header.StateRoot != null, "state root");
-            Debug.Assert(processed.Header.ReceiptsRoot != null, "receipts root");
-            Debug.Assert(processed.Header.OmmersHash != null, "ommers hash");
-            Debug.Assert(processed.Header.Bloom != null, "bloom");
-            Debug.Assert(processed.Header.ExtraData != null, "extra data");
+            if (processed.Header.TransactionsRoot == null ||
+                processed.Header.StateRoot == null ||
+                processed.Header.ReceiptsRoot == null ||
+                processed.Header.OmmersHash == null ||
+                processed.Header.Bloom == null ||
+                processed.Header.ExtraData == null)
+            {
+                throw new InvalidOperationException($"Requested to mine an invalid block {processed.Header}");
+            }
 
             Task<Block> miningTask = Task.Factory.StartNew(() => Mine(processed, startNonce), cancellationToken);
             await miningTask.ContinueWith(
                 t =>
                 {
-                    if ( t.IsCompleted)
+                    if (t.IsCompleted)
                     {
                         t.Result.Header.Hash = BlockHeader.CalculateHash(t.Result.Header);
                     }

@@ -138,8 +138,12 @@ namespace Nethermind.Store
 
         public void Restore(int snapshot)
         {
-            Debug.Assert(snapshot <= _currentPosition, "INVALID DB SNAPSHOT");
-            _logger?.Info($"  RESTORING DB SNAPSHOT {snapshot}");
+            if (snapshot > _currentPosition)
+            {
+                throw new InvalidOperationException($"Trying to restore snapshot beyond current positions at {nameof(InMemoryDb)}");
+            }
+            
+            _logger?.Debug($"  RESTORING DB SNAPSHOT {snapshot}");
 
             for (int i = 0; i < _currentPosition - snapshot; i++)
             {
@@ -149,7 +153,11 @@ namespace Nethermind.Store
                     if (change.ChangeType == ChangeType.JustCache)
                     {
                         int actualPosition = _cache[change.Hash].Pop();
-                        Debug.Assert(_currentPosition - i == actualPosition);
+                        if (actualPosition != _currentPosition - i)
+                        {
+                            throw new InvalidOperationException($"Expected actual position {actualPosition} to be equal to {_currentPosition} - {i}");
+                        }
+                        
                         _keptInCache.Add(change);
                         _changes[actualPosition] = null;
                         continue;
@@ -158,7 +166,10 @@ namespace Nethermind.Store
 
                 _changes[_currentPosition - i] = null; // TODO: temp
                 int forAssertion = _cache[change.Hash].Pop();
-                Debug.Assert(forAssertion == _currentPosition - i);
+                if (forAssertion != _currentPosition - i)
+                {
+                    throw new InvalidOperationException($"Expected checked value {forAssertion} to be equal to {_currentPosition} - {i}");
+                }
 
                 if (_cache[change.Hash].Count == 0)
                 {
@@ -179,15 +190,22 @@ namespace Nethermind.Store
 
         public void Commit(IReleaseSpec spec)
         {
-            _logger?.Info("  COMMITTING DB CHANGES");
+            _logger?.Debug("  COMMITTING DB CHANGES");
 
             if (_currentPosition == -1)
             {
                 return;
             }
-
-            Debug.Assert(_changes[_currentPosition] != null);
-            Debug.Assert(_changes[_currentPosition + 1] == null);
+            
+            if (_changes[_currentPosition] == null)
+            {
+                throw new InvalidOperationException($"Change at current position {_currentPosition} was null when commiting {nameof(InMemoryDb)}");
+            }
+            
+            if (_changes[_currentPosition + 1] != null)
+            {
+                throw new InvalidOperationException($"Change after current position ({_currentPosition} + 1) was not null when commiting {nameof(InMemoryDb)}");
+            }
 
             for (int i = 0; i <= _currentPosition; i++)
             {
@@ -198,7 +216,10 @@ namespace Nethermind.Store
                 }
 
                 int forAssertion = _cache[change.Hash].Pop();
-                Debug.Assert(forAssertion == _currentPosition - i);
+                if (forAssertion != _currentPosition - i)
+                {
+                    throw new InvalidOperationException($"Expected checked value {forAssertion} to be equal to {_currentPosition} - {i}");
+                }
 
                 _committedThisRound.Add(change.Hash);
 

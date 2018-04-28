@@ -36,7 +36,11 @@ namespace Nethermind.Core.Extensions
 
         public static byte[] Xor(this byte[] bytes, byte[] otherBytes)
         {
-            Debug.Assert(bytes.Length == otherBytes.Length, $"Expected same length when xoring but {nameof(bytes)}.Length == {bytes.Length} and {nameof(otherBytes)} == {otherBytes.Length}");
+            if (bytes.Length != otherBytes.Length)
+            {
+                throw new InvalidOperationException($"Trying to xor arrays of different lengths: {bytes?.Length} and {otherBytes?.Length}");
+            }
+            
             byte[] result = new byte[bytes.Length];
             for (int i = 0; i < result.Length; i++)
             {

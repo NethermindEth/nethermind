@@ -59,6 +59,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         public void Init()
         {
             Logger.Info($"{P2PSession.RemoteNodeId} {ProtocolCode} v{ProtocolVersion} subprotocol initializing");
+            if (_sync.HeadBlock == null)
+            {
+                throw new InvalidOperationException("Initializing sync protocol without the head block set");
+            }
 
             Block headBlock = _sync.HeadBlock;
             StatusMessage statusMessage = new StatusMessage();
@@ -163,7 +167,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 throw new InvalidOperationException("genesis hash mismatch");
             }
 
-            Debug.Assert(_statusSent, $"{P2PSession.RemoteNodeId} Expecting Init() to have been called by this point");
+            if (!_statusSent)
+            {
+                throw new InvalidOperationException($"Received status from {P2PSession.RemoteNodeId} before calling Init");
+            }
+            
             ProtocolInitialized?.Invoke(this, EventArgs.Empty);
         }
 
@@ -204,7 +212,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             {
                 startingHash = _sync.Find(getBlockHeadersMessage.StartingBlockNumber).Hash;
             }
-            
+
             Block[] blocks = _sync.Find(startingHash, (int)getBlockHeadersMessage.MaxHeaders, (int)getBlockHeadersMessage.Skip, getBlockHeadersMessage.Reverse == 1);
             BlockHeader[] headers = new BlockHeader[blocks.Length];
             for (int i = 0; i < blocks.Length; i++)
@@ -306,7 +314,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 Logger.Trace($"Reverse: {message.Reverse}");
                 Logger.Trace($"Max headers: {message.MaxHeaders}");
             }
-            
+
             var request = new Request<GetBlockHeadersMessage, BlockHeader[]>(message);
             _headersRequests.Add(request);
             Send(request.Message);
@@ -327,7 +335,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 Logger.Trace("Sending bodies request:");
                 Logger.Trace($"Blockhashes count: {message.BlockHashes.Length}");
             }
-            
+
             var request = new Request<GetBlockBodiesMessage, Block[]>(message);
             _bodiesRequests.Add(request);
             Send(request.Message);
@@ -349,11 +357,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             msg.Reverse = 0;
             msg.Skip = skip;
             msg.StartingBlockHash = blockHash;
-            
+
             BlockHeader[] headers = await SendRequest(msg);
             return headers;
         }
-        
+
         async Task<BlockHeader[]> ISynchronizationPeer.GetBlockHeaders(BigInteger number, int maxBlocks, int skip)
         {
             var msg = new GetBlockHeadersMessage();
@@ -361,7 +369,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             msg.Reverse = 0;
             msg.Skip = skip;
             msg.StartingBlockNumber = number;
-            
+
             BlockHeader[] headers = await SendRequest(msg);
             return headers;
         }
@@ -370,7 +378,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         async Task<Block[]> ISynchronizationPeer.GetBlocks(Keccak[] blockHashes)
         {
-            var bodiesMsg = new GetBlockBodiesMessage(blockHashes.ToArray());   
+            var bodiesMsg = new GetBlockBodiesMessage(blockHashes.ToArray());
 
             Block[] blocks = await SendRequest(bodiesMsg);
             return blocks;
@@ -395,7 +403,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         public void SendNewBlock(Block block)
         {
-            Debug.Assert(block.TotalDifficulty != null, $"blocks with null {nameof(Block.TotalDifficulty)} should never be propagated");
+            if (block.TotalDifficulty == null)
+            {
+                throw new InvalidOperationException($"Trying to send a block {block.Hash} with null total difficulty");
+            }
 
             NewBlockMessage msg = new NewBlockMessage();
             msg.Block = block;
@@ -406,7 +417,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         public void SendNewTransaction(Transaction transaction)
         {
-            Debug.Assert(transaction.Hash != null, $"transaction with null {nameof(transaction.Hash)} should never be propagated");
+            if (transaction.Hash == null)
+            {
+                throw new InvalidOperationException($"Trying to send a transaction with null hash");
+            }
 
             TransactionsMessage msg = new TransactionsMessage(transaction);
             Send(msg);

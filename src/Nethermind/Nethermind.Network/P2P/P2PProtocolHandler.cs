@@ -142,7 +142,11 @@ namespace Nethermind.Network.P2P
                 }
             }
 
-            Debug.Assert(_sentHello, $"{P2PSession.RemoteNodeId} Expecting Init to already be called at this point");
+            if (!_sentHello)
+            {
+                throw new InvalidOperationException($"Handling {nameof(HelloMessage)} from peer before sending our own");
+            }
+            
             ProtocolInitialized?.Invoke(this, EventArgs.Empty);
         }
 

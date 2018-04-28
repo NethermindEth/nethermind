@@ -26,7 +26,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Specs;
 
-[assembly:InternalsVisibleTo("Nethermind.Evm.Test")]
+[assembly: InternalsVisibleTo("Nethermind.Evm.Test")]
 
 namespace Nethermind.Store
 {
@@ -53,7 +53,7 @@ namespace Nethermind.Store
             _codeDb = codeDb;
             _state = stateTree;
         }
-        
+
         public Keccak StateRoot
         {
             get => _state.RootHash;
@@ -88,7 +88,7 @@ namespace Nethermind.Store
             Account account = GetThroughCache(address);
             return account?.Nonce ?? BigInteger.Zero;
         }
-        
+
         public Keccak GetStorageRoot(Address address)
         {
             Account account = GetThroughCache(address);
@@ -236,7 +236,11 @@ namespace Nethermind.Store
 
         public void Restore(int snapshot)
         {
-            Debug.Assert(snapshot <= _currentPosition, "INVALID SNAPSHOT");
+            if (snapshot > _currentPosition)
+            {
+                throw new InvalidOperationException($"{nameof(StateProvider)} tried to restore snapshot {snapshot} beyond current position {_currentPosition}");
+            }
+
             if (_logger.IsDebugEnabled)
             {
                 _logger.Debug($"  RESTORING STATE SNAPSHOT {snapshot}");
@@ -250,16 +254,23 @@ namespace Nethermind.Store
                     if (change.ChangeType == ChangeType.JustCache)
                     {
                         int actualPosition = _cache[change.Address].Pop();
-                        Debug.Assert(_currentPosition - i == actualPosition);
+                        if (actualPosition != _currentPosition - i)
+                        {
+                            throw new InvalidOperationException($"Expected actual position {actualPosition} to be equal to {_currentPosition} - {i}");
+                        }
+                        
                         _keptInCache.Add(change);
                         _changes[actualPosition] = null;
                         continue;
                     }
                 }
 
-                _changes[_currentPosition - i] = null; // TODO: temp
-                int forAssertion = _cache[change.Address].Pop();
-                Debug.Assert(forAssertion == _currentPosition - i);
+                _changes[_currentPosition - i] = null; // TODO: temp, ???
+                int forChecking = _cache[change.Address].Pop();
+                if (forChecking != _currentPosition - i)
+                {
+                    throw new InvalidOperationException($"Expected checked value {forChecking} to be equal to {_currentPosition} - {i}");
+                }
 
                 if (_cache[change.Address].Count == 0)
                 {
@@ -307,8 +318,15 @@ namespace Nethermind.Store
                 _logger.Debug($"  COMMITTING STATE CHANGES (at {_currentPosition})");
             }
 
-            Debug.Assert(_changes[_currentPosition] != null);
-            Debug.Assert(_changes[_currentPosition + 1] == null);
+            if (_changes[_currentPosition] == null)
+            {
+                throw new InvalidOperationException($"Change at current position {_currentPosition} was null when commiting {nameof(StateProvider)}");
+            }
+            
+            if (_changes[_currentPosition + 1] != null)
+            {
+                throw new InvalidOperationException($"Change after current position ({_currentPosition} + 1) was not null when commiting {nameof(StateProvider)}");
+            }
 
             for (int i = 0; i <= _currentPosition; i++)
             {
@@ -319,7 +337,10 @@ namespace Nethermind.Store
                 }
 
                 int forAssertion = _cache[change.Address].Pop();
-                Debug.Assert(forAssertion == _currentPosition - i);
+                if (forAssertion != _currentPosition - i)
+                {
+                    throw new InvalidOperationException($"Expected checked value {forAssertion} to be equal to {_currentPosition} - {i}");
+                }
 
                 _committedThisRound.Add(change.Address);
 
@@ -389,10 +410,11 @@ namespace Nethermind.Store
                         {
                             _state.Set(change.Address, null);
                         }
+
                         break;
                     }
                     default:
-                    throw new ArgumentOutOfRangeException();
+                        throw new ArgumentOutOfRangeException();
                 }
             }
 
@@ -512,7 +534,7 @@ namespace Nethermind.Store
             public Address Address { get; }
             public Account Account { get; }
         }
-        
+
         public void ClearCaches()
         {
             if (_logger.IsDebugEnabled)

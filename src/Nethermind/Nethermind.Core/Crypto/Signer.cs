@@ -55,7 +55,10 @@ namespace Nethermind.Core.Crypto
 
 #if DEBUG
             PublicKey address = RecoverPublicKey(signature, message);
-            Debug.Assert(address.Equals(privateKey.PublicKey));
+            if (!address.Equals(privateKey.PublicKey))
+            {
+                throw new InvalidOperationException("After signing recovery returns different address than signer's");
+            }
 #endif
 
             return signature;

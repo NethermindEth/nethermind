@@ -35,7 +35,11 @@ namespace Nethermind.Blockchain
 
         public void AddTransaction(Transaction transaction)
         {
-            Debug.Assert(transaction.Hash != null, "expecting only signed transactions here");
+            if (transaction.Hash == null)
+            {
+                throw new InvalidOperationException("Transaction hash is null when adding to the store.");
+            }
+
             _transactions[transaction.Hash] = transaction;
         }
 

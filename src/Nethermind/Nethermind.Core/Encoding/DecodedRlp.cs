@@ -17,6 +17,7 @@
  */
 
 
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Numerics;
@@ -52,7 +53,11 @@ namespace Nethermind.Core.Encoding
                 return (T)SingleItem;
             }
 
-            Debug.Assert(Items.Count == 0, $"Expected exactly one item in {nameof(DecodedRlp)}");
+            if (Items.Count != 1)
+            {
+                throw new InvalidOperationException($"{nameof(DecodedRlp)} expected to have exactly one element here and had {Items?.Count}");
+            }
+            
             return (T)Items[0];
         }
 

@@ -203,24 +203,6 @@ namespace Nethermind.Blockchain
 
         public event EventHandler<BlockEventArgs> HeadBlockChanged;
 
-        private BigInteger GetTotalTransactions(Block block)
-        {
-            // TODO: vulnerability if genesis block is propagated with high initial difficulty?
-            if (block.Header.Number == 0)
-            {
-                return block.Transactions.Length;
-            }
-
-            Block parent = _blockTree.FindParent(block.Header);
-            if (parent == null)
-            {
-                return 0;
-            }
-
-            //Debug.Assert(parent != null, "testing transactions count of an orphaned block");  // ChainAtoChainB_BlockHash
-            return block.Transactions.Length + GetTotalTransactions(parent);
-        }
-
         // TODO: there will be a need for cancellation of current mining whenever a new block arrives
         private void BuildAndSeal()
         {
@@ -230,6 +212,8 @@ namespace Nethermind.Blockchain
             }
 
             BigInteger timestamp = Timestamp.UnixUtcUntilNowSecs;
+            // TODO: timestamps
+            
             BlockHeader parentHeader = HeadBlock.Header;
             BigInteger difficulty = _difficultyCalculator.Calculate(parentHeader.Difficulty, parentHeader.Timestamp, Timestamp.UnixUtcUntilNowSecs, parentHeader.Number + 1, HeadBlock.Ommers.Length > 0);
             BlockHeader header = new BlockHeader(
@@ -239,7 +223,7 @@ namespace Nethermind.Blockchain
                 difficulty,
                 parentHeader.Number + 1,
                 parentHeader.GasLimit,
-                timestamp,
+                timestamp > parentHeader.Timestamp ? timestamp : parentHeader.Timestamp + 1,
                 Encoding.UTF8.GetBytes("Nethermind"));
 
             header.TotalDifficulty = parentHeader.TotalDifficulty + difficulty;
@@ -262,10 +246,9 @@ namespace Nethermind.Blockchain
             foreach (Transaction transaction in transactions)
             {
                 total++;
-                Debug.Assert(transaction != null, "transaction is null :/");
                 if (transaction == null)
                 {
-                    continue;
+                    throw new InvalidOperationException("Block transaction is null");
                 }
 
                 if (transaction.GasPrice < MinGasPriceForMining)
@@ -317,26 +300,56 @@ namespace Nethermind.Blockchain
 
         public void Process(Block suggestedBlock)
         {
+            if (suggestedBlock.Number == 4830)
+            {
+                
+            }
+            
+            if (suggestedBlock.Number == 4835)
+            {
+                
+            }
+            
+            if (suggestedBlock.Number == 4838)
+            {
+                
+            }
+            
+            if (suggestedBlock.Number == 4839)
+            {
+                
+            }
+            
             Process(suggestedBlock, false);
         }
 
         private void Process(Block suggestedBlock, bool forMining)
         {
-            Debug.Assert(suggestedBlock.Number == 0 || _blockTree.FindParent(suggestedBlock) != null, "Got an orphaned block for porcessing.");
-            Debug.Assert(suggestedBlock.Header.TotalDifficulty != null, "block without total difficulty calculated was suggested for processing");
-
-            if (!forMining)
+            if (suggestedBlock.Number != 0 && _blockTree.FindParent(suggestedBlock) == null)
             {
-                Debug.Assert(suggestedBlock.Hash != null, "block hash should be known at this stage if the block is not mining");
+                throw new InvalidOperationException("Got an orphaned block for porcessing.");
+            }
+
+            if (suggestedBlock.Header.TotalDifficulty == null)
+            {
+                throw new InvalidOperationException("block without total difficulty calculated was suggested for processing");
+            }
+
+            if (!forMining && suggestedBlock.Hash == null)
+            {
+                throw new InvalidOperationException("block hash should be known at this stage if the block is not mining");
             }
 
             foreach (BlockHeader ommerHeader in suggestedBlock.Ommers)
             {
-                Debug.Assert(ommerHeader.Hash != null, "ommer's hash should be known at this stage");
+                if (ommerHeader.Hash == null)
+                {
+                    throw new InvalidOperationException("ommer's hash is null when processing block");
+                }
             }
 
             BigInteger totalDifficulty = suggestedBlock.TotalDifficulty ?? 0;
-            BigInteger totalTransactions = GetTotalTransactions(suggestedBlock);
+            BigInteger totalTransactions = suggestedBlock.TotalTransactions ?? 0;
             if (_logger.IsDebugEnabled)
             {
                 _logger.Debug($"TOTAL DIFFICULTY OF BLOCK {suggestedBlock.Header.Hash} ({suggestedBlock.Header.Number}) IS {totalDifficulty}");
@@ -512,7 +525,12 @@ namespace Nethermind.Blockchain
                         }
 
                         Block minedBlock = t.Result;
-                        Debug.Assert(minedBlock.Hash != null, "expecting miner to set the block hash");
+
+                        if (minedBlock.Hash == null)
+                        {
+                            throw new InvalidOperationException("Mined block with null hash");
+                        }
+
                         _blockTree.SuggestBlock(minedBlock);
                     }, _miningCancellation.Token);
                 }

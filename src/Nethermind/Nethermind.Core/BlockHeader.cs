@@ -63,6 +63,7 @@ namespace Nethermind.Core
         public ulong Nonce { get; set; }
         public Keccak Hash { get; set; }
         public BigInteger? TotalDifficulty { get; set; }
+        public BigInteger? TotalTransactions { get; set; }
 
         public static Keccak CalculateHash(BlockHeader header)
         {

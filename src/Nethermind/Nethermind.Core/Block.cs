@@ -49,6 +49,7 @@ namespace Nethermind.Core
         public BigInteger Number => Header.Number;
         public BigInteger Difficulty => Header.Difficulty;
         public BigInteger? TotalDifficulty => Header.TotalDifficulty;
+        public BigInteger? TotalTransactions => Header.TotalTransactions;
         
         public string ToString(string indent)
         {

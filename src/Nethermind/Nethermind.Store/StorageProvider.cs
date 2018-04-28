@@ -69,13 +69,17 @@ namespace Nethermind.Store
 
         public int TakeSnapshot()
         {
-            _logger?.Info($"  STORAGE SNAPSHOT {_currentPosition}");
+            _logger?.Debug($"  STORAGE SNAPSHOT {_currentPosition}");
             return _currentPosition;
         }
 
         public void Restore(int snapshot)
         {
-            _logger?.Info($"  RESTORING STORAGE SNAPSHOT {snapshot}");
+            _logger?.Debug($"  RESTORING STORAGE SNAPSHOT {snapshot}");
+            if (snapshot > _currentPosition)
+            {
+                throw new InvalidOperationException($"{nameof(StorageProvider)} tried to restore snapshot {snapshot} beyond current position {_currentPosition}");
+            }
 
             List<Change> keptInCache = new List<Change>();
 
@@ -87,7 +91,11 @@ namespace Nethermind.Store
                     if (_changes[_cache[change.StorageAddress].Peek()].ChangeType == ChangeType.JustCache)
                     {
                         int actualPosition = _cache[change.StorageAddress].Pop();
-                        Debug.Assert(_currentPosition - i == actualPosition);
+                        if (actualPosition != _currentPosition - i)
+                        {
+                            throw new InvalidOperationException($"Expected actual position {actualPosition} to be equal to {_currentPosition} - {i}");
+                        }
+                        
                         keptInCache.Add(change);
                         _changes[actualPosition] = null;
                         continue;
@@ -95,7 +103,10 @@ namespace Nethermind.Store
                 }
 
                 int forAssertion = _cache[change.StorageAddress].Pop();
-                Debug.Assert(forAssertion == _currentPosition - i);
+                if (forAssertion != _currentPosition - i)
+                {
+                    throw new InvalidOperationException($"Expected checked value {forAssertion} to be equal to {_currentPosition} - {i}");
+                }
 
                 _changes[_currentPosition - i] = null;
 
@@ -118,14 +129,21 @@ namespace Nethermind.Store
         {
             if (_currentPosition == -1)
             {
-                _logger?.Info("  NO STORAGE CHANGES TO COMMIT");
+                _logger?.Debug("  NO STORAGE CHANGES TO COMMIT");
                 return;
             }
             
-            _logger?.Info("  COMMITTING STORAGE CHANGES");
+            _logger?.Debug("  COMMITTING STORAGE CHANGES");
 
-            Debug.Assert(_changes[_currentPosition] != null);
-            Debug.Assert(_changes[_currentPosition + 1] == null);
+            if (_changes[_currentPosition] == null)
+            {
+                throw new InvalidOperationException($"Change at current position {_currentPosition} was null when commiting {nameof(StorageProvider)}");
+            }
+            
+            if (_changes[_currentPosition + 1] != null)
+            {
+                throw new InvalidOperationException($"Change after current position ({_currentPosition} + 1) was not null when commiting {nameof(StorageProvider)}");
+            }
 
             HashSet<Address> toUpdateRoots = new HashSet<Address>();
 
@@ -138,7 +156,10 @@ namespace Nethermind.Store
                 }
 
                 int forAssertion = _cache[change.StorageAddress].Pop();
-                Debug.Assert(forAssertion == _currentPosition - i);
+                if (forAssertion != _currentPosition - i)
+                {
+                    throw new InvalidOperationException($"Expected checked value {forAssertion} to be equal to {_currentPosition} - {i}");
+                }
 
                 _committedThisRound.Add(change.StorageAddress);
                 toUpdateRoots.Add(change.StorageAddress.Address);
@@ -149,7 +170,7 @@ namespace Nethermind.Store
                         break;
                     case ChangeType.Update:
 
-                        _logger?.Info($"  UPDATE {change.StorageAddress.Address}_{change.StorageAddress.Index} V = {Hex.FromBytes(change.Value, true)}");
+                        _logger?.Debug($"  UPDATE {change.StorageAddress.Address}_{change.StorageAddress.Index} V = {Hex.FromBytes(change.Value, true)}");
 
                         StorageTree tree = GetOrCreateStorage(change.StorageAddress.Address);
                         tree.Set(change.StorageAddress.Index, change.Value);
@@ -178,7 +199,7 @@ namespace Nethermind.Store
 
         public void ClearCaches()
         {
-            _logger?.Info("  CLEARING STORAGE PROVIDER CACHES");
+            _logger?.Debug("  CLEARING STORAGE PROVIDER CACHES");
 
             _cache.Clear();
             _currentPosition = -1;

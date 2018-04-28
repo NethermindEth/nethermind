@@ -53,8 +53,11 @@ namespace Nethermind.Network
                 throw new InvalidOperationException($"No {nameof(IMessageSerializer<T>)} registered for {type.Name}.");
             }
 
-            IMessageSerializer<T> serializer = serializerObject as IMessageSerializer<T>;
-            Debug.Assert(serializer != null, $"Unexpected serializer type {serializerObject.GetType().Name} for {nameof(T)}");
+            if (!(serializerObject is IMessageSerializer<T> serializer))
+            {
+                throw new InvalidOperationException($"Missing matching serializer for {nameof(T)} (registered: {serializerObject?.GetType()?.Name})");
+            }
+            
             return serializer;
         }
     }

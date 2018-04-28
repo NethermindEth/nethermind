@@ -144,7 +144,11 @@ namespace Nethermind.Store
                         {
                             int childNodeIndex = Array.FindIndex(branch.Nodes, n => n != null);
                             KeccakOrRlp childNodeHash = branch.Nodes[childNodeIndex];
-                            Debug.Assert(childNodeHash != null, "Before updating branch should have had at least two non-empty children");
+                            if (childNodeHash == null)
+                            {
+                                throw new InvalidOperationException("Before updating branch should have had at least two non-empty children");
+                            }
+                            
                             // need to restore this node now?
                             Node childNode = _tree.GetNode(childNodeHash);
                             if (childNode is BranchNode)

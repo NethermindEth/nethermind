@@ -103,9 +103,9 @@ namespace Nethermind.Blockchain
                     return;
                 }
             }
-            
+
             // TODO: validation
-            
+
             if (_logger.IsDebugEnabled)
             {
                 _logger.Debug($"Adding new block {block.Hash} ({block.Number}) from {receivedFrom}");
@@ -127,10 +127,11 @@ namespace Nethermind.Blockchain
                 _logger.Debug($"Using {peerInfo}");
             }
 
-            Debug.Assert(peerInfo != null, $"Received notification from an unknown peer at {nameof(ISynchronizationManager)}");
             if (peerInfo == null)
             {
-                throw new InvalidOperationException($"unknown synchronization peer {receivedFrom}");
+                string errorMessage = $"unknown synchronization peer {receivedFrom}";
+                _logger.Error(errorMessage);
+                throw new InvalidOperationException(errorMessage);
             }
 
             peerInfo.NumberAvailable = BigInteger.Max(block.Number, peerInfo.NumberAvailable);
@@ -150,7 +151,7 @@ namespace Nethermind.Blockchain
 
                 AddBlockResult result = BlockTree.SuggestBlock(block);
                 if (result == AddBlockResult.UnknownParent)
-                { 
+                {
                     RunSync();
                 }
                 else
@@ -182,7 +183,6 @@ namespace Nethermind.Blockchain
         {
             _peers.TryGetValue(receivedFrom, out PeerInfo peerInfo);
             string errorMessage = $"Received a block hint from an unknown peer {receivedFrom}";
-            Debug.Assert(peerInfo != null, $"Received a block hint from an unknown peer {receivedFrom}");
             if (peerInfo == null)
             {
                 _logger.Error(errorMessage);
@@ -329,7 +329,7 @@ namespace Nethermind.Blockchain
                         _logger.Info($"Finding common ancestor for {peerInfo.Peer.NodeId}");
                         isCommonAncestorKnown = true;
                     }
-                    
+
                     if (_logger.IsInfoEnabled)
                     {
                         _logger.Info($"Sending sync request to peer with best {peerInfo.NumberAvailable} (I received {peerInfo.NumberReceived}), is synced {peerInfo.IsSynced}");
@@ -394,7 +394,7 @@ namespace Nethermind.Blockchain
                                 _logger.Info($"Block {blocks[i].Number} ignored (unknown parent)");
                                 if (i == 0)
                                 {
-                                    _logger.Info("Resyncing split");
+                                    _logger.Warn("Resyncing split");
                                     peerInfo.NumberReceived -= 1;
                                     await SyncAsync();
                                 }

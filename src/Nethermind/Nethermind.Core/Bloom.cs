@@ -38,7 +38,11 @@ namespace Nethermind.Core
 
         public Bloom(BitArray bitArray)
         {
-            Debug.Assert(bitArray.Length == 2048);
+            if (bitArray.Length != 2048)
+            {
+                throw new ArgumentException("Invalid source array length", nameof(bitArray));
+            }
+            
             _bits = bitArray;
         }
 
