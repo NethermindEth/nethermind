@@ -1,4 +1,22 @@
-﻿using System.Collections.Generic;
+﻿/*
+ * Copyright (c) 2018 Demerzel Solutions Limited
+ * This file is part of the Nethermind library.
+ *
+ * The Nethermind library is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * The Nethermind library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 
@@ -54,7 +72,7 @@ namespace Nethermind.Store
 
         public void Restore(int snapshot)
         {
-            _logger?.Info($"RESTORING ALL DBS TO {snapshot}");
+            if(_logger.IsDebugEnabled) _logger.Debug($"Restoring all DBs to {snapshot}");
 
             while (_snapshots.Count - 2 != snapshot)
             {
@@ -70,7 +88,7 @@ namespace Nethermind.Store
 
         public void Commit(IReleaseSpec spec)
         {
-            _logger?.Info("COMMITING ALL DBS");
+            if(_logger.IsDebugEnabled) _logger.Debug("Committing all DBs");
 
             foreach (IDb db in AllDbs)
             {
@@ -89,7 +107,7 @@ namespace Nethermind.Store
             _snapshots.Push(dbSnapshots);
 
             int snapshot = _snapshots.Count - 2;
-            _logger?.Info($"TAKING DBS SNAPSHOT AT {snapshot}");
+            if(_logger.IsDebugEnabled) _logger.Debug($"Taking DB snapshot at {snapshot}");
             return snapshot;
         }
     }

@@ -34,6 +34,8 @@ namespace Nethermind.Blockchain
     // TODO: forks
     public class SynchronizationManager : ISynchronizationManager
     {
+        public static readonly TimeSpan SyncTimeout = TimeSpan.FromSeconds(10);
+        
         public const int BatchSize = 16;
         private readonly IBlockValidator _blockValidator;
         private readonly IHeaderValidator _headerValidator;
@@ -71,7 +73,7 @@ namespace Nethermind.Blockchain
             Transaction transaction = transactionEventArgs.Transaction;
             foreach ((PublicKey nodeId, PeerInfo peerInfo) in _peers)
             {
-                if (!(transaction.EthDeliveredBy?.Equals(nodeId) ?? false))
+                if (!(transaction.DeliveredBy?.Equals(nodeId) ?? false))
                 {
                     peerInfo.Peer.SendNewTransaction(transaction);
                 }

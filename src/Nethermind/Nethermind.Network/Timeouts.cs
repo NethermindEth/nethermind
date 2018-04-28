@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,14 +16,12 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.Core
+using System;
+
+namespace Nethermind.Network
 {
-    public enum LogLevel
+    public class Timeouts
     {
-        Error = 0,
-        Warn = 1,
-        Info = 2,
-        Debug = 3,
-        Trace = 4
+        public static readonly TimeSpan Eth62 = TimeSpan.FromSeconds(10);
     }
 }

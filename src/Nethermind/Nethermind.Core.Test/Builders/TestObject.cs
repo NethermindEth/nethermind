@@ -31,14 +31,19 @@ namespace Nethermind.Core.Test.Builders
         public static Keccak KeccakG = Keccak.Compute("G");
         public static Keccak KeccakH = Keccak.Compute("H");
 
-        public static PrivateKey PrivateKeyA = Build.A.PrivateKey.TestObject;
-        public static PrivateKey PrivateKeyB = Build.A.PrivateKey.TestObject;
-        public static PrivateKey PrivateKeyC = Build.A.PrivateKey.TestObject;
-        public static PrivateKey PrivateKeyD = Build.A.PrivateKey.TestObject;
+        public static PrivateKey PrivateKeyA = new PrivateKey("010102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f");
+        public static PrivateKey PrivateKeyB = new PrivateKey("020102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f");
+        public static PrivateKey PrivateKeyC = new PrivateKey("030102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f");
+        public static PrivateKey PrivateKeyD = new PrivateKey("040102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f");
         
         public static PublicKey PublicKeyA = PrivateKeyA.PublicKey;
         public static PublicKey PublicKeyB = PrivateKeyB.PublicKey;
         public static PublicKey PublicKeyC = PrivateKeyC.PublicKey;
         public static PublicKey PublicKeyD = PrivateKeyD.PublicKey;
+        
+        public static Address AddressA = PublicKeyA.Address;
+        public static Address AddressB = PublicKeyB.Address;
+        public static Address AddressC = PublicKeyC.Address;
+        public static Address AddressD = PublicKeyD.Address;
     }
 }

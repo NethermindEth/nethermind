@@ -16,7 +16,9 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Collections;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Linq;
 using System.Numerics;
@@ -75,6 +77,23 @@ namespace Nethermind.Core
         public override string ToString()
         {
             return ToString(string.Empty);
+        }
+        
+        public string ToString(Format format)
+        {
+            switch (format)
+            {
+                case Format.Full:
+                    return ToString(string.Empty);
+                default:
+                    return $"{Number} ({((string)new Hex(Hash.Bytes)).Substring(58, 6)}), tx: {Transactions?.Length}"; 
+            }
+        }
+        
+        public enum Format
+        {
+            Full,
+            Short
         }
     }
 }

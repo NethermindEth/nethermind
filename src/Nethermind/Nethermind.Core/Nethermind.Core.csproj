@@ -14,5 +14,6 @@
   <ItemGroup>
     <PackageReference Include="Extensions.Data.xxHash.core20" Version="1.0.2.1" />
     <PackageReference Include="Newtonsoft.Json" Version="11.0.1" />
+    <PackageReference Include="NLog.Config" Version="4.5.3" />
   </ItemGroup>
 </Project>

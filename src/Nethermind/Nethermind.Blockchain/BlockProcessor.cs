@@ -76,7 +76,7 @@ namespace Nethermind.Blockchain
                 var transaction = transactions[i];
                 if (_logger.IsDebugEnabled)
                 {
-                    _logger.Debug($"PROCESSING TRANSACTION {i}");
+                    _logger.Debug($"Processing transaction {i}");
                 }
 
                 _transactionStore.AddTransaction(transaction);
@@ -202,11 +202,6 @@ namespace Nethermind.Blockchain
 
         private Block ProcessOne(Block suggestedBlock, bool tryOnly) // TODO: refactor
         {
-            if (_logger.IsDebugEnabled)
-            {
-                _logger.Debug($"HASH {suggestedBlock.Header.Hash} NUMBER {suggestedBlock.Header.Number}");
-            }
-
             if (suggestedBlock.IsGenesis)
             {
                 return suggestedBlock;
@@ -217,7 +212,7 @@ namespace Nethermind.Blockchain
             {
                 if (_logger.IsInfoEnabled)
                 {
-                    _logger.Info($"APPLYING DAO TRANSITION");
+                    _logger.Info($"Applying DAO transition");
                 }
 
                 ApplyDaoTransition();
@@ -235,10 +230,10 @@ namespace Nethermind.Blockchain
 
             if (_logger.IsDebugEnabled)
             {
-                _logger.Debug($"BLOCK BENEFICIARY {suggestedBlock.Header.Beneficiary}");
-                _logger.Debug($"BLOCK GAS LIMIT {suggestedBlock.Header.GasLimit}");
-                _logger.Debug($"BLOCK GAS USED {suggestedBlock.Header.GasUsed}");
-                _logger.Debug($"BLOCK DIFFICULTY {suggestedBlock.Header.Difficulty}");
+                _logger.Debug($"Block beneficiary {suggestedBlock.Header.Beneficiary}");
+                _logger.Debug($"Block gas limit {suggestedBlock.Header.GasLimit}");
+                _logger.Debug($"Block gas used {suggestedBlock.Header.GasUsed}");
+                _logger.Debug($"Block difficulty {suggestedBlock.Header.Difficulty}");
             }
 
             Block processedBlock = ProcessBlock(
@@ -263,8 +258,8 @@ namespace Nethermind.Blockchain
             {
                 if (_logger.IsInfoEnabled)
                 {
-                    _logger.Info($"PROCESSED BLOCK IS NOT VALID {processedBlock.Hash} ({processedBlock.Number})");
-                    _logger.Debug($"THROWING INVALID BLOCK");
+                    _logger.Info($"Processed block is not valid {processedBlock.ToString(Block.Format.Short)}");
+                    _logger.Debug("Throwing invalid block");
                 }
 
                 throw new InvalidBlockException($"{processedBlock}");
@@ -272,7 +267,7 @@ namespace Nethermind.Blockchain
 
             if (_logger.IsDebugEnabled)
             {
-                _logger.Debug($"COMMITING BLOCK - STATE ROOT {_stateProvider.StateRoot}");
+                _logger.Debug($"Committing block - state root {_stateProvider.StateRoot}");
             }
 
             _dbProvider.Commit(_specProvider.GetSpec(suggestedBlock.Number));
@@ -306,7 +301,7 @@ namespace Nethermind.Blockchain
         {
             if (_logger.IsDebugEnabled)
             {
-                _logger.Debug("APPLYING MINER REWARDS");
+                _logger.Debug("Applying miner rewards");
             }
 
             Dictionary<Address, BigInteger> rewards = _rewardCalculator.CalculateRewards(block);
@@ -326,7 +321,7 @@ namespace Nethermind.Blockchain
 
             if (_logger.IsDebugEnabled)
             {
-                _logger.Debug("DONE APPLYING MINER REWARDS");
+                _logger.Debug("Done applying miner rewards");
             }
         }
     }

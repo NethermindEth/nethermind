@@ -59,16 +59,16 @@ namespace Nethermind.Blockchain
         public AddBlockResult SuggestBlock(Block block)
         {
             // TEMP: store on disk
-//            if (!Directory.Exists("C:\\ropsten\\blocks"))
-//            {
-//                Directory.CreateDirectory("C:\\ropsten\\blocks");
-//            }
-//
-//            string filePath = Path.Combine("C:\\ropsten\\blocks", block.Hash.ToString(true));
-//            if (!File.Exists(filePath))
-//            {
-//                File.WriteAllText(filePath, new Hex(Rlp.Encode(block).Bytes));
-//            }
+            if (!Directory.Exists("C:\\ropsten\\blocks"))
+            {
+                Directory.CreateDirectory("C:\\ropsten\\blocks");
+            }
+
+            string filePath = Path.Combine("C:\\ropsten\\blocks", block.Hash.ToString(true));
+            if (!File.Exists(filePath))
+            {
+                File.WriteAllText(filePath, new Hex(Rlp.Encode(block).Bytes));
+            }
 
             // TODO: review where the ChainId should be set
             foreach (Transaction transaction in block.Transactions)

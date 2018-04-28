@@ -25,26 +25,58 @@ namespace Nethermind.Core.Test.Builders
     {   
         public TransactionBuilder()
         {   
-            TestObject = new Transaction();
-            TestObject.GasPrice = 1;
-            TestObject.GasLimit = 21000;
-            TestObject.To = Build.An.Address.FromNumber(1).TestObject;
-            TestObject.Nonce = 0;
-            TestObject.Value = 1;
-            TestObject.Data = new byte[0];
+            TestObjectInternal = new Transaction();
+            TestObjectInternal.GasPrice = 1;
+            TestObjectInternal.GasLimit = 21000;
+            TestObjectInternal.To = Build.An.Address.FromNumber(1).TestObject;
+            TestObjectInternal.Nonce = 0;
+            TestObjectInternal.Value = 1;
+            TestObjectInternal.Data = new byte[0];
         }
 
         public TransactionBuilder WithNonce(BigInteger nonce)
         {
-            TestObject.Nonce = nonce;
+            TestObjectInternal.Nonce = nonce;
+            return this;
+        }
+        
+        public TransactionBuilder WithTo(Address address)
+        {
+            TestObjectInternal.To = address;
+            return this;
+        }
+        
+        public TransactionBuilder WithData(byte[] data)
+        {
+            TestObjectInternal.Data = data;
+            return this;
+        }
+        
+        public TransactionBuilder WithGasPrice(BigInteger gasPrice)
+        {
+            TestObjectInternal.GasPrice = gasPrice;
+            return this;
+        }
+        
+        public TransactionBuilder WithGasLimit(BigInteger gasLimit)
+        {
+            TestObjectInternal.GasLimit = gasLimit;
             return this;
         }
         
         public TransactionBuilder Signed(IEthereumSigner signer, PrivateKey privateKey, BigInteger blockNumber)
         {
-            signer.Sign(privateKey, TestObject, blockNumber);
-            TestObject.Hash = Transaction.CalculateHash(TestObject);
+            signer.Sign(privateKey, TestObjectInternal, blockNumber);
             return this;
+        }
+
+        protected override void BeforeReturn()
+        {
+            base.BeforeReturn();
+            if (TestObjectInternal.IsSigned)
+            {
+                TestObjectInternal.Hash = Transaction.CalculateHash(TestObjectInternal);
+            }
         }
     }
 }

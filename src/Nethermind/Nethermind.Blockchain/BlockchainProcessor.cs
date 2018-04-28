@@ -91,14 +91,7 @@ namespace Nethermind.Blockchain
                 _loopCancellationSource.Cancel();
             }
 
-            await _processorTask.ContinueWith(t =>
-            {
-                if (t.IsFaulted)
-                {
-                    _logger.Error($"{nameof(StopAsync)} failed in {nameof(BlockchainProcessor)}", t.Exception);
-                    throw t.Exception;
-                }
-            });
+            await _processorTask;
         }
 
         public void Start()
@@ -162,7 +155,7 @@ namespace Nethermind.Blockchain
             {
                 if (_logger.IsInfoEnabled)
                 {
-                    _logger.Info($"Block processing {block.Hash} ({block.Number}).");
+                    _logger.Debug($"Processing block {block.ToString(Block.Format.Short)}).");
                 }
 
                 Process(block);
@@ -193,14 +186,14 @@ namespace Nethermind.Blockchain
         {
             if (_logger.IsDebugEnabled)
             {
-                _logger.Debug($"Enqueuing a new block {block.Hash} ({block.Number}) for processing.");
+                _logger.Debug($"Enqueuing a new block {block.ToString(Block.Format.Short)} for processing.");
             }
 
             _blockQueue.Add(block);
 
             if (_logger.IsDebugEnabled)
             {
-                _logger.Debug($"A new block {block.Number} ({block.Hash}) enqueued for processing.");
+                _logger.Debug($"A new block {block.ToString(Block.Format.Short)} enqueued for processing.");
             }
         }
 
@@ -303,7 +296,11 @@ namespace Nethermind.Blockchain
 
         public void Process(Block suggestedBlock)
         {
+            Stopwatch stopwatch = new Stopwatch(); // TODO: instrumentation
+            stopwatch.Start();
             Process(suggestedBlock, false);
+            stopwatch.Stop();
+            _logger.Info($"Processed block {suggestedBlock.ToString(Block.Format.Short)} in {stopwatch.ElapsedTicks:N0} ticks");
         }
 
         private void Process(Block suggestedBlock, bool forMining)
@@ -335,8 +332,8 @@ namespace Nethermind.Blockchain
             BigInteger totalTransactions = suggestedBlock.TotalTransactions ?? 0;
             if (_logger.IsDebugEnabled)
             {
-                _logger.Debug($"TOTAL DIFFICULTY OF BLOCK {suggestedBlock.Header.Hash} ({suggestedBlock.Header.Number}) IS {totalDifficulty}");
-                _logger.Debug($"TOTAL TRANSACTIONS OF BLOCK {suggestedBlock.Header.Hash} ({suggestedBlock.Header.Number}) IS {totalTransactions}");
+                _logger.Debug($"Total difficulty of block {suggestedBlock.ToString(Block.Format.Short)} is {totalDifficulty}");
+                _logger.Debug($"Total transactions of block {suggestedBlock.ToString(Block.Format.Short)} is {totalTransactions}");
             }
 
             if (totalDifficulty > TotalDifficulty)
@@ -358,22 +355,22 @@ namespace Nethermind.Blockchain
                 {
                     if (_logger.IsDebugEnabled)
                     {
-                        _logger.Debug($"HEAD BLOCK WAS: {HeadBlock?.Hash} ({HeadBlock?.Number})");
-                        _logger.Debug($"BRANCHING FROM: {branchingPoint.Hash} ({branchingPoint.Number})");
+                        _logger.Debug($"Head block was: {HeadBlock?.ToString(Block.Format.Short)}");
+                        _logger.Debug($"Branching from: {branchingPoint.ToString(Block.Format.Short)}");
                     }
                 }
                 else
                 {
                     if (_logger.IsDebugEnabled)
                     {
-                        _logger.Debug(branchingPoint == null ? "SETTING AS GENESIS BLOCK" : $"ADDING ON TOP OF {branchingPoint.Hash} ({branchingPoint.Number})");
+                        _logger.Debug(branchingPoint == null ? "Setting as genesis block" : $"Adding on top of {branchingPoint.ToString(Block.Format.Short)}");
                     }
                 }
 
                 Keccak stateRoot = branchingPoint?.Header.StateRoot;
-                if (_logger.IsDebugEnabled)
+                if (_logger.IsTraceEnabled)
                 {
-                    _logger.Debug($"STATE ROOT LOOKUP: {stateRoot}");
+                    _logger.Trace($"State root lookup: {stateRoot}");
                 }
 
                 List<Block> unprocessedBlocksToBeAddedToMain = new List<Block>();
@@ -383,9 +380,9 @@ namespace Nethermind.Blockchain
                     if (!forMining && _blockTree.WasProcessed(block.Hash))
                     {
                         stateRoot = block.Header.StateRoot;
-                        if (_logger.IsDebugEnabled)
+                        if (_logger.IsTraceEnabled)
                         {
-                            _logger.Debug($"STATE ROOT LOOKUP: {stateRoot}");
+                            _logger.Trace($"State root lookup: {stateRoot}");
                         }
 
                         break;
@@ -402,7 +399,7 @@ namespace Nethermind.Blockchain
 
                 if (_logger.IsDebugEnabled)
                 {
-                    _logger.Debug($"PROCESSING {blocks.Length} BLOCKS FROM STATE ROOT {stateRoot}");
+                    _logger.Debug($"Processing {blocks.Length} blocks from state root {stateRoot}");
                 }
 
                 Block[] processedBlocks = _blockProcessor.Process(stateRoot, blocks, forMining);
@@ -425,7 +422,7 @@ namespace Nethermind.Blockchain
                     {
                         if (_logger.IsDebugEnabled)
                         {
-                            _logger.Debug($"MARKING {processedBlock.Hash} ({processedBlock.Number}) AS PROCESSED");
+                            _logger.Debug($"Marking {processedBlock.ToString(Block.Format.Short)} as processed");
                         }
 
                         _blockTree.MarkAsProcessed(processedBlock.Hash);
@@ -435,25 +432,26 @@ namespace Nethermind.Blockchain
                     HeadBlock.Header.TotalDifficulty = suggestedBlock.TotalDifficulty; // TODO: cleanup total difficulty
                     if (_logger.IsDebugEnabled)
                     {
-                        _logger.Debug($"SETTING HEAD BLOCK TO {HeadBlock.Hash} ({HeadBlock.Number})");
+                        _logger.Debug($"Setting head block to {HeadBlock.ToString(Block.Format.Short)}");
                     }
 
                     foreach (Block block in blocksToBeRemovedFromMain)
                     {
                         if (_logger.IsDebugEnabled)
                         {
-                            _logger.Debug($"MOVING {block.Header.Hash} ({block.Header.Number}) TO BRANCH");
+                            _logger.Debug($"Moving {block.ToString(Block.Format.Short)} to branch");
                         }
 
                         _blockTree.MoveToBranch(block.Hash);
-                        foreach (Transaction transaction in block.Transactions)
-                        {
-                            _transactionStore.AddPending(transaction);
-                        }
+                        // TODO: only for miners
+                        //foreach (Transaction transaction in block.Transactions)
+                        //{
+                        //    _transactionStore.AddPending(transaction);
+                        //}
 
                         if (_logger.IsDebugEnabled)
                         {
-                            _logger.Debug($"BLOCK {block.Header.Hash} ({block.Header.Number}) MOVED TO BRANCH");
+                            _logger.Debug($"Block {block.ToString(Block.Format.Short)} moved to branch");
                         }
                     }
 
@@ -461,31 +459,32 @@ namespace Nethermind.Blockchain
                     {
                         if (_logger.IsDebugEnabled)
                         {
-                            _logger.Debug($"MOVING {block.Header.Hash} ({block.Header.Number}) TO MAIN");
+                            _logger.Debug($"Moving {block.ToString(Block.Format.Short)} to main");
                         }
 
                         _blockTree.MoveToMain(block.Hash);
-                        foreach (Transaction transaction in block.Transactions)
-                        {
-                            _transactionStore.RemovePending(transaction);
-                        }
+                        // TODO: only for miners
+                        //foreach (Transaction transaction in block.Transactions)
+                        //{
+                        //    _transactionStore.RemovePending(transaction);
+                        //}
 
                         if (_logger.IsDebugEnabled)
                         {
-                            _logger.Debug($"BLOCK {block.Header.Hash} ({block.Header.Number}) ADDED TO MAIN CHAIN");
+                            _logger.Debug($"Block {block.ToString(Block.Format.Short)} added to main chain");
                         }
                     }
 
                     if (_logger.IsDebugEnabled)
                     {
-                        _logger.Debug($"UPDATING TOTAL DIFFICULTY OF THE MAIN CHAIN TO {totalDifficulty}");
+                        _logger.Debug($"Updating total difficulty of the main chain to {totalDifficulty}");
                     }
 
                     TotalDifficulty = totalDifficulty;
 
                     if (_logger.IsDebugEnabled)
                     {
-                        _logger.Debug($"UPDATING TOTAL TRANSACTIONS OF THE MAIN CHAIN TO {totalTransactions}");
+                        _logger.Debug($"Updating total transactions of the main chain to {totalTransactions}");
                     }
 
                     TotalTransactions = totalTransactions;
@@ -504,14 +503,14 @@ namespace Nethermind.Blockchain
                         
                         if (_logger.IsInfoEnabled)
                         {
-                            _logger.Info($"Mined a block {t.Result.Hash} ({t.Result.Number}) with parent {t.Result.Header.ParentHash}");
+                            _logger.Info($"Mined a block {t.Result.ToString(Block.Format.Short)} with parent {t.Result.Header.ParentHash}");
                         }
 
                         Block minedBlock = t.Result;
 
                         if (minedBlock.Hash == null)
                         {
-                            throw new InvalidOperationException("Mined block with null hash");
+                            throw new InvalidOperationException("Mined a block with null hash");
                         }
 
                         _blockTree.SuggestBlock(minedBlock);

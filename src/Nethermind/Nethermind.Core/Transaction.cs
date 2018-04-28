@@ -40,7 +40,7 @@ namespace Nethermind.Core
         public bool IsTransfer => !IsContractCreation && !IsMessageCall;
         public bool IsValid { get; set; }
         public Keccak Hash { get; set; }
-        public PublicKey EthDeliveredBy { get; set; } // TODO: create a wrapper?
+        public PublicKey DeliveredBy { get; set; } // TODO: create a wrapper?
 
         public static Keccak CalculateHash(Transaction transaction)
         {

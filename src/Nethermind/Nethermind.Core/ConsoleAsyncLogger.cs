@@ -25,10 +25,12 @@ namespace Nethermind.Core
 {
     public class ConsoleAsyncLogger : ILogger
     {
+        private readonly LogLevel _loglevel;
         private readonly BlockingCollection<string> _queuedEntries = new BlockingCollection<string>(new ConcurrentQueue<string>());
 
-        public ConsoleAsyncLogger()
+        public ConsoleAsyncLogger(LogLevel loglevel)
         {
+            _loglevel = loglevel;
             Task.Factory.StartNew(() =>
                 {
                     foreach (string logEntry in _queuedEntries.GetConsumingEnumerable())
@@ -69,10 +71,10 @@ namespace Nethermind.Core
             Log(ex != null ? $"{text}, Exception: {ex}" : text);
         }
 
-        public bool IsInfoEnabled => true;
-        public bool IsWarnEnabled => true;
-        public bool IsDebugEnabled => true;
-        public bool IsTraceEnabled => true;
+        public bool IsInfoEnabled => (int)_loglevel >= 2;
+        public bool IsWarnEnabled => (int)_loglevel >= 1;
+        public bool IsDebugEnabled => (int)_loglevel >= 3;
+        public bool IsTraceEnabled => (int)_loglevel >= 4;
         public bool IsErrorEnabled => true;
     }
 }

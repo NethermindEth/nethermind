@@ -19,15 +19,18 @@
 using System;
 using System.IO;
 using System.Linq;
-using System.Linq.Expressions;
 using NLog.Targets;
-using ILogger = Nethermind.Core.ILogger;
 
-namespace Nethermind.Runner
+namespace Nethermind.Core
 {
     public class NLogLogger : ILogger
     {
-        private readonly NLog.Logger _logger;
+        private NLog.Logger _logger;
+
+        public void ChangeLogger(string newLoggerName)
+        {
+            _logger = newLoggerName == null ? NLog.LogManager.GetLogger("default") : NLog.LogManager.GetLogger(newLoggerName);
+        }
 
         public NLogLogger(string fileName, string loggerName = null)
         {
@@ -50,7 +53,7 @@ namespace Nethermind.Runner
                 }
             }
 
-            _logger = loggerName == null ? NLog.LogManager.GetLogger("default") : NLog.LogManager.GetLogger(loggerName);
+            ChangeLogger(loggerName);
             if (NLog.LogManager.Configuration.AllTargets.SingleOrDefault(t => t.Name == "file") is FileTarget target)
             {
                 target.FileName = Path.Combine("logs", fileName);

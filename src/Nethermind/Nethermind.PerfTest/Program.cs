@@ -1,10 +1,18 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
+using System.Linq;
+using System.Numerics;
+using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Difficulty;
+using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Encoding;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Specs.ChainSpec;
 using Nethermind.Evm;
 using Nethermind.Store;
 
@@ -17,15 +25,15 @@ namespace Nethermind.PerfTest
             {
                 ["ackermann32"] =
                 (
-                "0x60e060020a6000350480632839e92814601e57806361047ff414603457005b602a6004356024356047565b8060005260206000f35b603d6004356099565b8060005260206000f35b600082600014605457605e565b8160010190506093565b81600014606957607b565b60756001840360016047565b90506093565b609060018403608c85600186036047565b6047565b90505b92915050565b6000816000148060a95750816001145b60b05760b7565b81905060cf565b60c1600283036099565b60cb600184036099565b0190505b91905056",
-                "0x2839e92800000000000000000000000000000000000000000000000000000000000000030000000000000000000000000000000000000000000000000000000000000002",
-                10000
+                    "0x60e060020a6000350480632839e92814601e57806361047ff414603457005b602a6004356024356047565b8060005260206000f35b603d6004356099565b8060005260206000f35b600082600014605457605e565b8160010190506093565b81600014606957607b565b60756001840360016047565b90506093565b609060018403608c85600186036047565b6047565b90505b92915050565b6000816000148060a95750816001145b60b05760b7565b81905060cf565b60c1600283036099565b60cb600184036099565b0190505b91905056",
+                    "0x2839e92800000000000000000000000000000000000000000000000000000000000000030000000000000000000000000000000000000000000000000000000000000002",
+                    10000
                 ),
                 ["fibonacci16"] =
                 (
-                "0x60e060020a6000350480632839e92814601e57806361047ff414603457005b602a6004356024356047565b8060005260206000f35b603d6004356099565b8060005260206000f35b600082600014605457605e565b8160010190506093565b81600014606957607b565b60756001840360016047565b90506093565b609060018403608c85600186036047565b6047565b90505b92915050565b6000816000148060a95750816001145b60b05760b7565b81905060cf565b60c1600283036099565b60cb600184036099565b0190505b91905056",
-                "0x61047ff40000000000000000000000000000000000000000000000000000000000000010",
-                100
+                    "0x60e060020a6000350480632839e92814601e57806361047ff414603457005b602a6004356024356047565b8060005260206000f35b603d6004356099565b8060005260206000f35b600082600014605457605e565b8160010190506093565b81600014606957607b565b60756001840360016047565b90506093565b609060018403608c85600186036047565b6047565b90505b92915050565b6000816000148060a95750816001145b60b05760b7565b81905060cf565b60c1600283036099565b60cb600184036099565b0190505b91905056",
+                    "0x61047ff40000000000000000000000000000000000000000000000000000000000000010",
+                    100
                 ),
                 //["loop-mul"] =
                 //(
@@ -93,21 +101,28 @@ namespace Nethermind.PerfTest
                 //)
             };
 
-        private static readonly VirtualMachine Machine; 
+        private static VirtualMachine Machine;
 
         static Program()
+        {
+
+        }
+
+        private static async Task Main(string[] args)
+        {
+            await RunRopstenBlocks();
+            //            RunVmPerfTests();
+        }
+
+        private static void RunVmPerfTests()
         {
             ILogger logger = NullLogger.Instance;
             DbProvider dbProvider = new DbProvider(logger);
             StateTree stateTree = new StateTree(dbProvider.GetOrCreateStateDb());
             IStateProvider stateProvider = new StateProvider(stateTree, logger, dbProvider.GetOrCreateCodeDb());
             IBlockTree blockTree = new BlockTree(FrontierSpecProvider.Instance, logger);
-            Machine = new VirtualMachine(FrontierSpecProvider.Instance, stateProvider, new StorageProvider(dbProvider, stateProvider, logger), new BlockhashProvider(blockTree), null);
-        }
-        
-        private static void Main(string[] args)
-        {
-            //ShouldLog.Evm = false;
+            Machine = new VirtualMachine(FrontierSpecProvider.Instance, stateProvider, new StorageProvider(dbProvider, stateProvider, logger), new BlockhashProvider(blockTree), NullLogger.Instance);
+
             Stopwatch stopwatch = new Stopwatch();
             stopwatch.Start();
 
@@ -117,7 +132,7 @@ namespace Nethermind.PerfTest
                 env.MachineCode = Hex.ToBytes(testCase.Value.Code);
                 env.InputData = Hex.ToBytes(testCase.Value.Input);
                 env.ExecutingAccount = new Address(Keccak.Zero);
-                
+
                 RunTestCase(testCase.Key, env, testCase.Value.Iterations);
             }
 
@@ -127,6 +142,119 @@ namespace Nethermind.PerfTest
             Console.WriteLine($"TOTAL (ns): " + ns);
             Console.WriteLine($"TOTAL (ms): " + ms);
             Console.ReadLine();
+        }
+
+        private static NLogLogger _logger;
+
+        private static async Task RunRopstenBlocks()
+        {
+            string[] files = Directory.GetFiles("C:\\ropsten\\blocks");
+
+            /* logging & instrumentation */
+            _logger = new NLogLogger("perTest.logs.txt", "perfTest");
+            //var logger = new ConsoleAsyncLogger(LogLevel.Info);
+
+            /* spec */
+            var sealEngine = NullSealEngine.Instance;
+            var specProvider = RopstenSpecProvider.Instance;
+
+            /* store & validation */
+            var blockTree = new BlockTree(specProvider, _logger);
+            var difficultyCalculator = new DifficultyCalculator(specProvider);
+            var headerValidator = new HeaderValidator(difficultyCalculator, blockTree, sealEngine, specProvider, _logger);
+            var ommersValidator = new OmmersValidator(blockTree, headerValidator, _logger);
+            var transactionValidator = new TransactionValidator(new SignatureValidator(ChainId.Ropsten));
+            var blockValidator = new BlockValidator(transactionValidator, headerValidator, ommersValidator, specProvider, _logger);
+
+            /* state & storage */
+            var codeDb = new InMemoryDb();
+            var stateDb = new InMemoryDb();
+            var stateTree = new StateTree(stateDb);
+            var stateProvider = new StateProvider(stateTree, _logger, codeDb);
+            var storageDbProvider = new DbProvider(_logger);
+            var storageProvider = new StorageProvider(storageDbProvider, stateProvider, _logger);
+
+            /* blockchain processing */
+            var ethereumSigner = new EthereumSigner(specProvider, _logger);
+            var transactionStore = new TransactionStore();
+            var blockhashProvider = new BlockhashProvider(blockTree);
+            var virtualMachine = new VirtualMachine(specProvider, stateProvider, storageProvider, blockhashProvider, _logger);
+            var processor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, ethereumSigner, _logger);
+            var rewardCalculator = new RewardCalculator(specProvider);
+            var blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, processor, storageDbProvider, stateProvider, storageProvider, transactionStore, _logger);
+            var blockchainProcessor = new BlockchainProcessor(blockTree, sealEngine, transactionStore, difficultyCalculator, blockProcessor, _logger);
+
+            /* load ChainSpec and init */
+            ChainSpecLoader loader = new ChainSpecLoader(new UnforgivingJsonSerializer());
+            string path = Path.Combine(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, @"..\..\..\..\Chains", "ropsten.json"));
+            _logger.Info($"Loading ChainSpec from {path}");
+            ChainSpec chainSpec = loader.Load(File.ReadAllBytes(path));
+            foreach (KeyValuePair<Address, BigInteger> allocation in chainSpec.Allocations)
+            {
+                stateProvider.CreateAccount(allocation.Key, allocation.Value);
+            }
+
+            stateProvider.Commit(specProvider.GenesisSpec);
+            chainSpec.Genesis.Header.StateRoot = stateProvider.StateRoot; // TODO: shall it be HeaderSpec and not BlockHeader?
+            chainSpec.Genesis.Header.Hash = BlockHeader.CalculateHash(chainSpec.Genesis.Header);
+            if (chainSpec.Genesis.Hash != new Keccak("0x41941023680923e0fe4d74a34bdac8141f2540e3ae90623718e47d66d1ca4a2d"))
+            {
+                throw new Exception("Unexpected genesis hash");
+            }
+
+            /* start processing */
+            blockchainProcessor.Start();
+            blockTree.SuggestBlock(chainSpec.Genesis);
+
+            List<Block> blocks = new List<Block>();
+            foreach (string file in files)
+            {
+                if (blocks.Count % 1000 == 0)
+                {
+                    _logger.Info($"Loading blocks from files. Loaded {blocks.Count} blocks.");
+                }
+
+                string rlpText = File.ReadAllText(file);
+                Rlp rlp = new Rlp(new Hex(rlpText));
+                Block block = Rlp.Decode<Block>(rlp);
+                blocks.Add(block);
+            }
+
+            Stopwatch stopwatch = new Stopwatch();
+            stopwatch.Start();
+            foreach (Block block in blocks.OrderBy(b => b.Number).Skip(1))
+            {
+                blockTree.SuggestBlock(block);
+            }
+
+            blockchainProcessor.HeadBlockChanged += BlockchainProcessorOnHeadBlockChanged;
+
+            await blockchainProcessor.StopAsync(true).ContinueWith(
+                t =>
+                {
+                    if (t.IsFaulted)
+                    {
+                        _logger.Error("Failed", t.Exception);
+                        Console.ReadLine();
+                    }
+
+                    Console.WriteLine("COMPLETED");
+                });
+
+            stopwatch.Stop();
+            long ns = 1_000_000_000L * stopwatch.ElapsedTicks / Stopwatch.Frequency;
+            long ms = 1_000L * stopwatch.ElapsedTicks / Stopwatch.Frequency;
+            Console.WriteLine($"TOTAL (ns): " + ns);
+            Console.WriteLine($"TOTAL (ms): " + ms);
+            Console.ReadLine();
+        }
+
+        private static void BlockchainProcessorOnHeadBlockChanged(object sender, BlockEventArgs blockEventArgs)
+        {
+            if (blockEventArgs.Block.Number > 9400)
+            {
+                _logger.ChangeLogger("perfTestTrace");
+            }
         }
 
         private static void RunTestCase(string name, ExecutionEnvironment env, int iterations)

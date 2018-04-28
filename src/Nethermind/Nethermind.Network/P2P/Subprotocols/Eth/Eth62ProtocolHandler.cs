@@ -319,7 +319,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             _headersRequests.Add(request);
             Send(request.Message);
             Task<BlockHeader[]> task = request.CompletionSource.Task;
-            if (await Task.WhenAny(task, Task.Delay(5000)) == task)
+            if (await Task.WhenAny(task, Task.Delay(Timeouts.Eth62)) == task)
             {
                 return task.Result;
             }
@@ -341,7 +341,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             Send(request.Message);
 
             Task<Block[]> task = request.CompletionSource.Task;
-            if (await Task.WhenAny(task, Task.Delay(5000)) == task)
+            if (await Task.WhenAny(task, Task.Delay(Timeouts.Eth62)) == task)
             {
                 return task.Result;
             }
