@@ -222,7 +222,10 @@ namespace Nethermind.PerfTest
 
             Stopwatch stopwatch = new Stopwatch();
             stopwatch.Start();
-            foreach (Block block in blocks.OrderBy(b => b.Number).Skip(1))
+
+            blocks = blocks.OrderBy(b => b.Number).Skip(1).ToList();
+            
+            foreach (Block block in blocks)
             {
                 blockTree.SuggestBlock(block);
             }
