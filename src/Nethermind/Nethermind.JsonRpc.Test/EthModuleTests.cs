@@ -31,7 +31,7 @@ namespace Nethermind.JsonRpc.Test
         [SetUp]
         public void Initialize()
         {
-            var logger = new ConsoleAsyncLogger();
+            var logger = NullLogger.Instance;
             //_ethModule = new EthModule(logger, new JsonSerializer(logger), new BlockchainProcessor(), new StateProvider() );
         }
 

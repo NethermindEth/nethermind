@@ -41,7 +41,7 @@ namespace Nethermind.JsonRpc.Test
         public void Initialize()
         {
             _configurationProvider = new ConfigurationProvider();            
-            _logger = new ConsoleAsyncLogger();
+            _logger = NullLogger.Instance;
             _jsonSerializer = new JsonSerializer(_logger);
         }
 

@@ -624,11 +624,15 @@ namespace Nethermind.Evm
                 int index = 0;
                 while (index < code.Length)
                 {
-                    Instruction instruction = (Instruction)code[index];
-                    jumpDestinations[index] = !spec.AreJumpDestinationsUsed || instruction == Instruction.JUMPDEST;
-                    if (instruction >= Instruction.PUSH1 && instruction <= Instruction.PUSH32)
+                    //Instruction instruction = (Instruction)code[index];
+                    byte instruction = code[index];
+                    //jumpDestinations[index] = !spec.AreJumpDestinationsUsed || instruction == Instruction.JUMPDEST;
+                    jumpDestinations[index] = !spec.AreJumpDestinationsUsed || instruction == 0x5b;
+                    //if (instruction >= Instruction.PUSH1 && instruction <= Instruction.PUSH32)
+                    if (instruction >= 0x60 && instruction <= 0x7f)
                     {
-                        index += instruction - Instruction.PUSH1 + 2;
+                        //index += instruction - Instruction.PUSH1 + 2;
+                        index += instruction - 0x60 + 2;
                     }
                     else
                     {
