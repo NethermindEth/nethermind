@@ -113,6 +113,8 @@ namespace Nethermind.Evm
                         {
                             _stateStack.Push(currentState);
                             currentState = callResult.StateToExecute;
+                            previousCallResult = null; // TODO: testing on ropsten sync, write VirtualMachineTest for this case as it was not covered by Ethereum tests (failing block 9411 on Ropsten https://ropsten.etherscan.io/vmtrace?txhash=0x666194d15c14c54fffafab1a04c08064af165870ef9a87f65711dcce7ed27fe1)
+                            previousCallOutput = Bytes.Empty; // TODO: testing on ropsten sync, write VirtualMachineTest for this case as it was not covered by Ethereum tests
                             continue;
                         }
                     }
@@ -641,7 +643,7 @@ namespace Nethermind.Evm
             }
 
             if (previousCallOutput.Length > 0)
-            {
+            {   
                 UpdateMemoryCost(previousCallOutputDestination, previousCallOutput.Length);
                 evmState.Memory.Save(previousCallOutputDestination, previousCallOutput);
             }
