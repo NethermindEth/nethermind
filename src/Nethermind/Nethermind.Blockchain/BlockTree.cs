@@ -58,7 +58,7 @@ namespace Nethermind.Blockchain
 
         public AddBlockResult SuggestBlock(Block block)
         {
-            // TEMP: store on disk
+            // TEMP: store on disk, while we start to work on DB
 //            if (!Directory.Exists("C:\\ropsten\\blocks"))
 //            {
 //                Directory.CreateDirectory("C:\\ropsten\\blocks");

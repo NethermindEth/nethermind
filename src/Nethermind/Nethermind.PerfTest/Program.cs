@@ -254,10 +254,10 @@ namespace Nethermind.PerfTest
 
         private static void BlockchainProcessorOnHeadBlockChanged(object sender, BlockEventArgs blockEventArgs)
         {
-//            if (blockEventArgs.Block.Number > 22990)            
-//            {
-//                _logger.ChangeLogger("perfTestTrace");
-//            }
+            //if (blockEventArgs.Block.Number > 61361)
+            //{
+            //    _logger.ChangeLogger("perfTestTrace");
+            //}
         }
 
         private static void RunTestCase(string name, ExecutionEnvironment env, int iterations)

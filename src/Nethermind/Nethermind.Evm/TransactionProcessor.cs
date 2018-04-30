@@ -76,6 +76,7 @@ namespace Nethermind.Evm
             if (_logger.IsDebugEnabled)
             {
                 _logger.Debug($"SPEC: {spec.GetType().Name}");
+                _logger.Debug("HASH: " + transaction.Hash);
                 _logger.Debug("IS_CONTRACT_CREATION: " + transaction.IsContractCreation);
                 _logger.Debug("IS_MESSAGE_CALL: " + transaction.IsMessageCall);
                 _logger.Debug("IS_TRANSFER: " + transaction.IsTransfer);
