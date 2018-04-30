@@ -111,7 +111,7 @@ namespace Nethermind.PerfTest
         private static async Task Main(string[] args)
         {
             await RunRopstenBlocks();
-            //            RunVmPerfTests();
+//            RunVmPerfTests();
         }
 
         private static void RunVmPerfTests()
@@ -254,7 +254,7 @@ namespace Nethermind.PerfTest
 
         private static void BlockchainProcessorOnHeadBlockChanged(object sender, BlockEventArgs blockEventArgs)
         {
-//            if (blockEventArgs.Block.Number > 9400)
+//            if (blockEventArgs.Block.Number > 22990)            
 //            {
 //                _logger.ChangeLogger("perfTestTrace");
 //            }

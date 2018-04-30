@@ -31,7 +31,6 @@ namespace Nethermind.Core.Specs
         public static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new TangerineWhistle());
         
         public bool IsTimeAdjustmentPostOlympic => true;
-        public bool AreJumpDestinationsUsed => false;
         public bool IsEip2Enabled => true;
         public bool IsEip7Enabled => true;
         public bool IsEip100Enabled => false;

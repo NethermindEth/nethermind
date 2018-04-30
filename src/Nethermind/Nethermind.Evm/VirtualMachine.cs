@@ -627,7 +627,7 @@ namespace Nethermind.Evm
                     //Instruction instruction = (Instruction)code[index];
                     byte instruction = code[index];
                     //jumpDestinations[index] = !spec.AreJumpDestinationsUsed || instruction == Instruction.JUMPDEST;
-                    jumpDestinations[index] = !spec.AreJumpDestinationsUsed || instruction == 0x5b;
+                    jumpDestinations[index] = instruction == 0x5b;
                     //if (instruction >= Instruction.PUSH1 && instruction <= Instruction.PUSH32)
                     if (instruction >= 0x60 && instruction <= 0x7f)
                     {
@@ -1225,7 +1225,7 @@ namespace Nethermind.Evm
                             }
 
                             int dest = (int)bigReg;
-                            if (spec.AreJumpDestinationsUsed) ValidateJump(dest);
+                            ValidateJump(dest);
 
                             programCounter = dest;
                             break;
@@ -1243,7 +1243,7 @@ namespace Nethermind.Evm
                             BigInteger condition = PopUInt();
                             if (condition > BigInteger.Zero)
                             {
-                                if (spec.AreJumpDestinationsUsed) ValidateJump(dest);
+                                ValidateJump(dest);
                                 programCounter = dest;
                             }
 

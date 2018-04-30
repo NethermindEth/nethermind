@@ -24,7 +24,6 @@ namespace Nethermind.Core.Specs
     public interface IReleaseSpec
     {
         bool IsTimeAdjustmentPostOlympic { get; }
-        bool AreJumpDestinationsUsed { get; }
 
         /// <summary>
         /// Contract creation via transaction cost set to 21000 + 32000 (previously 21000)

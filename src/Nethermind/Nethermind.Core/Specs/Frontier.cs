@@ -31,7 +31,6 @@ namespace Nethermind.Core.Specs
         public static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new Frontier());
         
         public bool IsTimeAdjustmentPostOlympic => true;
-        public bool AreJumpDestinationsUsed => false;
         public bool IsEip2Enabled => false;
         public bool IsEip7Enabled => false;
         public bool IsEip100Enabled => false;

@@ -70,7 +70,7 @@ namespace Nethermind.Store
         private void IncrementPosition()
         {
             _currentPosition++;
-            if (_currentPosition > _capacity - 1)
+            if (_currentPosition >= _capacity - 1) // sometimes we ask about the _currentPosition + 1;
             {
                 _capacity *= 2;
                 Array.Resize(ref _changes, _capacity);
