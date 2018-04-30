@@ -54,7 +54,7 @@ namespace Nethermind.Discovery.Test
         {
             var privateKey = new PrivateKey(new Hex(TestPrivateKeyHex));
             _publicKey = privateKey.PublicKey;
-            var logger = new ConsoleAsyncLogger();
+            var logger = NullLogger.Instance;
             var config = new DiscoveryConfigurationProvider(new NetworkHelper(logger)) { PongTimeout = 100 };
             var configProvider = new ConfigurationProvider();
             

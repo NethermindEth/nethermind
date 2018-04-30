@@ -16,31 +16,30 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+
 using System.Numerics;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Evm
 {
-    public class ExecutionEnvironment
+    // TODO: it was some work planned for optimization but then another solutions was used, will consider later to refactor EvmState and this class as well
+    public class CodeInfo
     {
-        public Address ExecutingAccount { get; set; }
+        public CodeInfo(byte[] code)
+        {
+            MachineCode = code;
+        }
+        
+        public CodeInfo(Address precompileAddress)
+        {
+            PrecompileAddress = precompileAddress;
+            PrecompileId = PrecompileAddress.Hex.ToUnsignedBigInteger();
+        }
 
-        public Address Originator { get; set; }
-
-        public Address Sender { get; set; }
-
-        public BigInteger GasPrice { get; set; }
-
-        public byte[] InputData { get; set; }
-
-        public BigInteger TransferValue { get; set; }
-
-        public BigInteger Value { get; set; }
-
-        public CodeInfo CodeInfo { get; set; }
-
-        public BlockHeader CurrentBlock { get; set; }
-
-        public int CallDepth { get; set; }
+        public bool IsPrecompile => PrecompileAddress != null;
+        public byte[] MachineCode { get; set; }
+        public Address PrecompileAddress { get; set; }
+        public BigInteger PrecompileId { get; set; }
     }
 }

@@ -196,6 +196,11 @@ namespace Nethermind.Store
             {
                 return;
             }
+
+            if (_changes.Length <= _currentPosition + 1)
+            {
+                throw new InvalidOperationException($"{nameof(_currentPosition)} ({_currentPosition}) is outside of the range of {_changes} array (length {_changes.Length})");
+            }
             
             if (_changes[_currentPosition] == null)
             {

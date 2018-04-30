@@ -129,7 +129,7 @@ namespace Nethermind.PerfTest
             foreach (KeyValuePair<string, (string Code, string Input, int Iterations)> testCase in TestCases)
             {
                 ExecutionEnvironment env = new ExecutionEnvironment();
-                env.MachineCode = Hex.ToBytes(testCase.Value.Code);
+                env.CodeInfo = new CodeInfo(Hex.ToBytes(testCase.Value.Code));
                 env.InputData = Hex.ToBytes(testCase.Value.Input);
                 env.ExecutingAccount = new Address(Keccak.Zero);
 

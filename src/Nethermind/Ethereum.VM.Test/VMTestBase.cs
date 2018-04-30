@@ -157,7 +157,7 @@ namespace Ethereum.VM.Test
 
             environment.GasPrice = test.Execution.GasPrice;
             environment.InputData = test.Execution.Data;
-            environment.MachineCode = test.Execution.Code;
+            environment.CodeInfo = new CodeInfo(test.Execution.Code);
             environment.Originator = test.Execution.Origin;
 
             foreach (KeyValuePair<Address, AccountState> accountState in test.Pre)

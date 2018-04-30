@@ -207,7 +207,7 @@ namespace Nethermind.Evm
                     env.CurrentBlock = block;
                     env.GasPrice = gasPrice;
                     env.InputData = data ?? new byte[0];
-                    env.MachineCode = isPrecompile ? (byte[])recipient.Hex : machineCode ?? _stateProvider.GetCode(recipient);
+                    env.CodeInfo = isPrecompile ? new CodeInfo(recipient) : new CodeInfo(machineCode ?? _stateProvider.GetCode(recipient));
                     env.Originator = sender;
 
                     ExecutionType executionType = isPrecompile

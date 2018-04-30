@@ -17,10 +17,8 @@
  */
 
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Net;
-using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Discovery.Lifecycle;
@@ -56,7 +54,7 @@ namespace Nethermind.Discovery.Test
         {
             SetupNodeIds();
 
-            var logger = new ConsoleAsyncLogger();
+            var logger = NullLogger.Instance;
             //setting config to store 3 nodes in a bucket and for table to have one bucket//setting config to store 3 nodes in a bucket and for table to have one bucket
             _configurationProvider = new DiscoveryConfigurationProvider(new NetworkHelper(logger))
             {

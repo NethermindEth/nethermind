@@ -267,7 +267,7 @@ namespace Nethermind.Evm
             BigInteger transferValue = state.Env.TransferValue;
             long gasAvailable = state.GasAvailable;
 
-            BigInteger precompileId = state.Env.MachineCode.ToUnsignedBigInteger();
+            BigInteger precompileId = state.Env.CodeInfo.PrecompileId;
             long baseGasCost = _precompiles[precompileId].BaseGasCost();
             long dataGasCost = _precompiles[precompileId].DataGasCost(callData);
 
@@ -360,7 +360,7 @@ namespace Nethermind.Evm
                 stackHead = evmState.StackHead;
                 gasAvailable = evmState.GasAvailable;
                 programCounter = (long)evmState.ProgramCounter;
-                code = env.MachineCode;
+                code = env.CodeInfo.MachineCode;
             }
 
             void UpdateCurrentState()
@@ -617,7 +617,7 @@ namespace Nethermind.Evm
                     throw new InvalidJumpDestinationException();
                 }
             }
-
+            
             void CalculateJumpDestinations()
             {
                 jumpDestinations = new bool[code.Length];
@@ -1225,7 +1225,8 @@ namespace Nethermind.Evm
                             }
 
                             int dest = (int)bigReg;
-                            ValidateJump(dest);
+                            if (spec.AreJumpDestinationsUsed) ValidateJump(dest);
+
                             programCounter = dest;
                             break;
                         }
@@ -1242,7 +1243,7 @@ namespace Nethermind.Evm
                             BigInteger condition = PopUInt();
                             if (condition > BigInteger.Zero)
                             {
-                                ValidateJump(dest);
+                                if (spec.AreJumpDestinationsUsed) ValidateJump(dest);
                                 programCounter = dest;
                             }
 
@@ -1491,7 +1492,7 @@ namespace Nethermind.Evm
                             callEnv.CurrentBlock = env.CurrentBlock;
                             callEnv.GasPrice = env.GasPrice;
                             callEnv.ExecutingAccount = contractAddress;
-                            callEnv.MachineCode = initCode;
+                            callEnv.CodeInfo = new CodeInfo(initCode);
                             callEnv.InputData = Bytes.Empty;
                             EvmState callState = new EvmState(
                                 callGas,
@@ -1666,7 +1667,7 @@ namespace Nethermind.Evm
                             callEnv.TransferValue = transferValue;
                             callEnv.Value = callValue;
                             callEnv.InputData = callData;
-                            callEnv.MachineCode = isPrecompile ? ((byte[])codeSource.Hex) : _state.GetCode(codeSource);
+                            callEnv.CodeInfo = isPrecompile ? new CodeInfo(codeSource) : new CodeInfo(_state.GetCode(codeSource));
 
                             BigInteger callGas = transferValue.IsZero ? gasLimitUl : gasLimitUl + GasCostOf.CallStipend;
                             if (_logger.IsDebugEnabled)
