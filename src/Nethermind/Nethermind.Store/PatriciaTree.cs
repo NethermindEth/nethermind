@@ -25,7 +25,7 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.Store
 {
-    // I guess it is a very slow and Keccak-heavy implementation, the first one to pass tests
+    // TODO: I guess it is a very slow and Keccak-heavy implementation, the first one to pass tests
     [DebuggerDisplay("{RootHash}")]
     public class PatriciaTree
     {
@@ -221,7 +221,7 @@ namespace Nethermind.Store
 //
 //            Keccak thisNodeKeccak = hash.GetOrComputeKeccak();
 //            Node node = ignoreChildren ? null : RlpDecode(new Rlp(_db[thisNodeKeccak]));
-//            _db.Delete(thisNodeKeccak);
+//            _db.Remove(thisNodeKeccak);
 //
 //            if (ignoreChildren)
 //            {
@@ -231,7 +231,7 @@ namespace Nethermind.Store
 //            if (node is ExtensionNode extension)
 //            {
 //                DeleteNode(extension.NextNode, true);
-//                _db.Delete(hash.GetOrComputeKeccak());
+//                _db.Remove(hash.GetOrComputeKeccak());
 //            }
 //
 //            if (node is BranchNode branch)
@@ -249,7 +249,7 @@ namespace Nethermind.Store
             {
 //                DeleteNode(new KeccakOrRlp(RootHash));
                 Root = null;
-//                _db.Delete(RootHash);
+//                _db.Remove(RootHash);
                 RootHash = EmptyTreeHash;
                 return new KeccakOrRlp(EmptyTreeHash);
             }
@@ -274,11 +274,6 @@ namespace Nethermind.Store
             }
 
             return key;
-        }
-
-        public void PrintDbContent()
-        {
-            _db.Print(Console.WriteLine);
         }
     }
 }

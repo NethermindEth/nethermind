@@ -362,7 +362,7 @@ namespace Nethermind.Store
                         {
                             if (_logger.IsDebugEnabled)
                             {
-                                _logger.Debug($"  Delete empty {change.Address} B = {change.Account.Balance} N = {change.Account.Nonce}");
+                                _logger.Debug($"  Remove empty {change.Address} B = {change.Account.Balance} N = {change.Account.Nonce}");
                             }
 
                             _state.Set(change.Address, null);
@@ -397,7 +397,7 @@ namespace Nethermind.Store
                     {
                         if (_logger.IsDebugEnabled)
                         {
-                            _logger.Debug($"  Delete {change.Address}");
+                            _logger.Debug($"  Remove {change.Address}");
                         }
 
                         bool wasItCreatedNow = false;

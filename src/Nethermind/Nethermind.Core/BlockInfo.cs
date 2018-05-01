@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,13 +16,23 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.Blockchain
+using System.Numerics;
+
+namespace Nethermind.Core
 {
-    public enum Quality
+    public class BlockInfo
     {
-        Unknown,
-        DataValid,
-        Processed,
-        Invalid
+        public BlockInfo()
+        {   
+        }
+        
+        public BlockInfo(BigInteger totalDifficulty, BigInteger totalTransactions)
+        {
+            TotalDifficulty = totalDifficulty;
+            TotalTransactions = totalTransactions;
+        }
+        
+        public BigInteger TotalDifficulty { get; set; }
+        public BigInteger TotalTransactions { get; set; }
     }
 }

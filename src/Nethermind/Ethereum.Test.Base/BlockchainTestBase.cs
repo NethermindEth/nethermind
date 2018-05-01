@@ -209,7 +209,7 @@ namespace Ethereum.Test.Base
             IDifficultyCalculator difficultyCalculator = new DifficultyCalculator(specProvider);
             IRewardCalculator rewardCalculator = new RewardCalculator(specProvider);
             
-            IBlockTree blockTree = new BlockTree(specProvider, _chainLogger);
+            IBlockTree blockTree = new BlockTree(new InMemoryDb(), new InMemoryDb(), specProvider, _chainLogger);
             IBlockhashProvider blockhashProvider = new BlockhashProvider(blockTree);
             ISignatureValidator signatureValidator = new SignatureValidator(ChainId.MainNet);
             ITransactionValidator transactionValidator = new TransactionValidator(signatureValidator);
@@ -287,7 +287,7 @@ namespace Ethereum.Test.Base
             Block genesisBlock = Rlp.Decode<Block>(test.GenesisRlp);
             Assert.AreEqual(new Keccak(test.GenesisBlockHeader.Hash), genesisBlock.Header.Hash, "genesis header hash");
             
-            blockchainProcessor.HeadBlockChanged += (sender, args) =>
+            blockTree.NewHeadBlock += (sender, args) =>
             {
                 if (args.Block.Number == 0)
                 {
@@ -336,7 +336,7 @@ namespace Ethereum.Test.Base
 
             await blockchainProcessor.StopAsync(true);
 
-            RunAssertions(test, blockchainProcessor.HeadBlock, storageProvider, stateProvider);
+            RunAssertions(test, blockTree.HeadBlock, storageProvider, stateProvider);
         }
 
         private void InitializeTestState(BlockchainTest test, IStateProvider stateProvider, IStorageProvider storageProvider, ISpecProvider specProvider)

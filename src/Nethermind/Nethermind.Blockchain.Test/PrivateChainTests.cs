@@ -50,7 +50,7 @@ namespace Nethermind.Blockchain.Test
             var specProvider = RopstenSpecProvider.Instance;
 
             /* store & validation */
-            var blockTree = new BlockTree(specProvider, logger);
+            var blockTree = new BlockTree(new InMemoryDb(), new InMemoryDb(), specProvider, logger);
             var difficultyCalculator = new DifficultyCalculator(specProvider);
             var headerValidator = new HeaderValidator(difficultyCalculator, blockTree, sealEngine, specProvider, logger);
             var ommersValidator = new OmmersValidator(blockTree, headerValidator, logger);
@@ -104,8 +104,8 @@ namespace Nethermind.Blockchain.Test
             BigInteger roughlyNumberOfBlocks = 6;
             Thread.Sleep(blockMiningTime * (int)roughlyNumberOfBlocks);
             await blockchainProcessor.StopAsync(false);
-            Assert.GreaterOrEqual(blockchainProcessor.HeadBlock.Number, roughlyNumberOfBlocks - 2, "number of blocks");
-            Assert.GreaterOrEqual(blockchainProcessor.TotalTransactions, roughlyNumberOfBlocks - 2, "number of transactions");
+            Assert.GreaterOrEqual(blockTree.HeadBlock.Number, roughlyNumberOfBlocks - 2, "number of blocks");
+            Assert.GreaterOrEqual(blockTree.HeadBlock.TotalTransactions, roughlyNumberOfBlocks - 2, "number of transactions");
         }
     }
 }

@@ -18,6 +18,7 @@
 
 using Nethermind.Blockchain;
 using Nethermind.Core.Specs;
+using Nethermind.Store;
 
 namespace Nethermind.Core.Test.Builders
 {
@@ -28,7 +29,7 @@ namespace Nethermind.Core.Test.Builders
         public BlockTreeBuilder(Block genesisBlock)
         {
             _genesisBlock = genesisBlock;
-            TestObjectInternal = new BlockTree(RopstenSpecProvider.Instance, NullLogger.Instance);
+            TestObjectInternal = new BlockTree(new InMemoryDb(), new InMemoryDb(), RopstenSpecProvider.Instance, NullLogger.Instance);
         }
 
         public BlockTreeBuilder OfChainLength(int chainLength, int splitBlockNumber = 0, int splitVariant = 0)

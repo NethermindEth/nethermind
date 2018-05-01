@@ -26,11 +26,11 @@ using Nethermind.Core.Specs;
 
 namespace Nethermind.Store
 {
-    public class InMemoryDb : IDb
+    public class InMemoryDb : ISnapshotableDb
     {
+        private readonly IDb _db;
+        
         private const int InitialCapacity = 1024;
-
-        private readonly Dictionary<Keccak, byte[]> _db;
 
         private readonly Dictionary<Keccak, Stack<int>> _cache = new Dictionary<Keccak, Stack<int>>();
 
@@ -44,14 +44,14 @@ namespace Nethermind.Store
 
         private Change[] _changes = new Change[InitialCapacity];
 
-        private InMemoryDb(Dictionary<Keccak, byte[]> toCopy)
-        {
-            _db = new Dictionary<Keccak, byte[]>(toCopy);
-        }
+//        private InMemoryDb(Dictionary<Keccak, byte[]> toCopy)
+//        {
+//            _db = new Dictionary<Keccak, byte[]>(toCopy);
+//        }
 
         public InMemoryDb()
         {
-            _db = new Dictionary<Keccak, byte[]>(4);
+            _db = new MemDb();
         }
 
         private byte[] GetThroughCache(Keccak hash)
@@ -63,6 +63,7 @@ namespace Nethermind.Store
             }
 
             byte[] value = _db.ContainsKey(hash) ? _db[hash] : null;
+            
             PushJustCache(hash, value);
             return value;
         }
@@ -129,7 +130,13 @@ namespace Nethermind.Store
             set => PushSet(key, value);
         }
 
-        public void Delete(Keccak key)
+        // TODO: review the API
+        public bool ContainsKey(Keccak key)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void Remove(Keccak key)
         {
             PushDelete(key);
         }
@@ -258,16 +265,6 @@ namespace Nethermind.Store
             _currentPosition = -1;
             _committedThisRound.Clear();
             _cache.Clear();
-        }
-
-
-        public void Print(Action<string> output)
-        {
-            foreach (KeyValuePair<Keccak, byte[]> keyValuePair in _db)
-            {
-                Node node = PatriciaTree.RlpDecode(new Rlp(keyValuePair.Value));
-                output($"{keyValuePair.Key.ToString(true).Substring(0, 6)} : {node}");
-            }
         }
 
         public int TakeSnapshot()

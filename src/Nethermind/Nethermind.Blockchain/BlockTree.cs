@@ -18,30 +18,33 @@
 
 using System;
 using System.Collections.Concurrent;
-using System.Diagnostics;
-using System.IO;
 using System.Numerics;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Specs;
+using Nethermind.Store;
 
 namespace Nethermind.Blockchain
 {
-    // TODO: work in progress
     public class BlockTree : IBlockTree
     {
-        private readonly ConcurrentDictionary<Keccak, Block> _branches = new ConcurrentDictionary<Keccak, Block>();
-        private readonly ConcurrentDictionary<int, Block> _canonicalChain = new ConcurrentDictionary<int, Block>();
+        private const bool IgnoredValue = false;
+        private readonly ConcurrentDictionary<Keccak, bool> _branches = new ConcurrentDictionary<Keccak, bool>(); // TODO: minor, would byte be better than bool?
+        private readonly ConcurrentDictionary<BigInteger, Keccak> _canonicalChain = new ConcurrentDictionary<BigInteger, Keccak>();
+        private readonly IDb _blockDb; // TODO: separate bodies and headers
+        private readonly IDb _blockInfoDb; // TODO: separate bodies and headers
         private readonly ILogger _logger;
-        private readonly ConcurrentDictionary<Keccak, Block> _mainChain = new ConcurrentDictionary<Keccak, Block>();
+        private readonly ConcurrentDictionary<Keccak, bool> _mainChain = new ConcurrentDictionary<Keccak, bool>();
         private readonly ConcurrentDictionary<Keccak, bool> _processed = new ConcurrentDictionary<Keccak, bool>();
 
         // TODO: validators should be here
-        public BlockTree(ISpecProvider specProvider, ILogger logger)
+        public BlockTree(IDb blockDb, IDb blockInfoDb, ISpecProvider specProvider, ILogger logger)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _blockDb = blockDb;
+            _blockInfoDb = blockInfoDb;
             ChainId = specProvider.ChainId;
         }
 
@@ -58,18 +61,6 @@ namespace Nethermind.Blockchain
 
         public AddBlockResult SuggestBlock(Block block)
         {
-            // TEMP: store on disk, while we start to work on DB
-//            if (!Directory.Exists("C:\\ropsten\\blocks"))
-//            {
-//                Directory.CreateDirectory("C:\\ropsten\\blocks");
-//            }
-//
-//            string filePath = Path.Combine("C:\\ropsten\\blocks", block.Hash.ToString(true));
-//            if (!File.Exists(filePath))
-//            {
-//                File.WriteAllText(filePath, new Hex(Rlp.Encode(block).Bytes));
-//            }
-
             // TODO: review where the ChainId should be set
             foreach (Transaction transaction in block.Transactions)
             {
@@ -97,12 +88,15 @@ namespace Nethermind.Blockchain
                 return AddBlockResult.UnknownParent;
             }
 
-            bool added = _branches.TryAdd(block.Header.Hash, block);
+            UpdateTotalDifficulty(block);
+            UpdateTotalTransactions(block);
+            
+            _blockDb[block.Hash] = Rlp.Encode(block).Bytes;
+            _blockInfoDb[block.Hash] = Rlp.Encode(new BlockInfo(block.TotalDifficulty.Value, block.TotalTransactions.Value)).Bytes;
+
+            bool added = _branches.TryAdd(block.Header.Hash, IgnoredValue);
             if (added)
             {
-                UpdateTotalDifficulty(block);
-                UpdateTotalTransactions(block);
-
                 if (block.TotalDifficulty > (BestSuggestedBlock?.TotalDifficulty ?? 0))
                 {
                     BestSuggestedBlock = block;
@@ -122,13 +116,19 @@ namespace Nethermind.Blockchain
 
         public Block FindBlock(Keccak blockHash, bool mainChainOnly)
         {
-            _mainChain.TryGetValue(blockHash, out Block block);
-            if (block == null && !mainChainOnly)
+            bool isOnMainChain = _mainChain.ContainsKey(blockHash);
+            if (!isOnMainChain && mainChainOnly)
             {
-                _branches.TryGetValue(blockHash, out block);
+                return null;
             }
-
-            return block;
+            
+            bool isOnbranch = _branches.ContainsKey(blockHash);
+            if (!isOnMainChain && !isOnbranch)
+            {
+                return null;
+            }
+            
+            return Load(blockHash);
         }
 
         public Block[] FindBlocks(Keccak blockHash, int numberOfBlocks, int skip, bool reverse)
@@ -143,7 +143,7 @@ namespace Nethermind.Blockchain
             for (int i = 0; i < numberOfBlocks; i++)
             {
                 int blockNumber = (int)startBlock.Number + (reverse ? -1 : 1) * (i + i * skip);
-                _canonicalChain.TryGetValue(blockNumber, out Block ithBlock);
+                Block ithBlock = FindBlock(blockNumber);
                 result[i] = ithBlock;
             }
 
@@ -156,8 +156,23 @@ namespace Nethermind.Blockchain
             {
                 throw new ArgumentException($"{nameof(blockNumber)} must be greater or equal zero and is {blockNumber}", nameof(blockNumber));
             }
+            
+            _canonicalChain.TryGetValue((int)blockNumber, out Keccak blockHash);
 
-            _canonicalChain.TryGetValue((int)blockNumber, out Block block);
+            if (blockHash == null)
+            {
+                return null;
+            }
+
+            return Load(blockHash);
+        }
+
+        private Block Load(Keccak blockHash)
+        {
+            Block block = Rlp.Decode<Block>(new Rlp(_blockDb[blockHash]));
+            BlockInfo blockInfo =Rlp.Decode<BlockInfo>(new Rlp(_blockInfoDb[blockHash]));
+            block.Header.TotalDifficulty = blockInfo.TotalDifficulty;
+            block.Header.TotalTransactions = blockInfo.TotalTransactions;
             return block;
         }
 
@@ -168,12 +183,12 @@ namespace Nethermind.Blockchain
 
         public void MoveToBranch(Keccak blockHash)
         {
-            Block block = _mainChain[blockHash];
+            Block block = FindBlock(blockHash, true);
             _canonicalChain[(int)block.Number] = null;
 
-            _branches.AddOrUpdate(blockHash, block, (h, b) => throw new InvalidOperationException("Block being moved to branch is already there"));
+            _branches.AddOrUpdate(blockHash, IgnoredValue, (h, b) => throw new InvalidOperationException("Block being moved to branch is already there"));
 
-            if (!_mainChain.TryRemove(blockHash, out Block _))
+            if (!_mainChain.TryRemove(blockHash, out bool _))
             {
                 throw new InvalidOperationException("Not able to move block from the main chain to branch"); // should never happen as we only invoke it in the BlockchainProcessor
             }
@@ -207,12 +222,12 @@ namespace Nethermind.Blockchain
                 throw new InvalidOperationException("Cannot move unprocessed blocks to main");
             }
 
-            Block block = _branches[blockHash];
-            _canonicalChain[(int)block.Number] = block;
+            Block block = FindBlock(blockHash, false);
+            _canonicalChain[(int)block.Number] = blockHash;
 
-            _mainChain.AddOrUpdate(blockHash, block, (h, b) => throw new InvalidOperationException("Block being moved to main is already there"));
+            _mainChain.AddOrUpdate(blockHash, IgnoredValue, (h, b) => throw new InvalidOperationException("Block being moved to main is already there"));
 
-            if (!_branches.TryRemove(blockHash, out Block _))
+            if (!_branches.TryRemove(blockHash, out bool _))
             {
                 throw new InvalidOperationException("Not able to move block from branch to the main chain"); // should never happen as we only invoke it in the BlockchainProcessor
             }
@@ -254,7 +269,7 @@ namespace Nethermind.Blockchain
                 {
                     throw new InvalidOperationException($"Parent's {nameof(parent.TotalDifficulty)} unknown when calculating for {block.Hash} ({block.Number})");
                 }
-                
+
                 block.Header.TotalDifficulty = parent.TotalDifficulty + block.Difficulty;
             }
 
@@ -263,7 +278,7 @@ namespace Nethermind.Blockchain
                 _logger.Debug($"CALCULATED TOTAL DIFFICULTY FOR {block.Hash} IS {block.TotalDifficulty}");
             }
         }
-        
+
         // TODO: move it, merge it with diff calc (copy pasted for now)
         private void UpdateTotalTransactions(Block block)
         {
@@ -283,7 +298,7 @@ namespace Nethermind.Blockchain
                 {
                     throw new InvalidOperationException($"Parent's {nameof(parent.TotalTransactions)} unknown when calculating for {block.Hash} ({block.Number})");
                 }
-                
+
                 block.Header.TotalTransactions = parent.TotalTransactions + block.Transactions.Length;
             }
         }

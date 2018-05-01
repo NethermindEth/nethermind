@@ -17,8 +17,6 @@
  */
 
 using System;
-using System.Net.Mime;
-using System.Threading;
 using Nethermind.Core;
 
 namespace Nethermind.Runner

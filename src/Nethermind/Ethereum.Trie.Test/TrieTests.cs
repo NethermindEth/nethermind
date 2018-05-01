@@ -40,12 +40,6 @@ namespace Ethereum.Trie.Test
             _db = new InMemoryDb();
         }
 
-        [TearDown]
-        public void TearDown()
-        {
-            _db.Print(Console.WriteLine);
-        }
-
         private static IEnumerable<TrieTest> GetTestPermutations(IEnumerable<TrieTest> tests)
         {
             return tests.SelectMany(t =>
@@ -159,7 +153,6 @@ namespace Ethereum.Trie.Test
                     ? Hex.ToBytes(valueString)
                     : Encoding.ASCII.GetBytes(valueString);
 
-                _db.Print(TestContext.WriteLine);
                 TestContext.WriteLine();
                 TestContext.WriteLine($"Setting {keyString} -> {valueString}");
                 patriciaTree.Set(key, value);

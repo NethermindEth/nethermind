@@ -16,8 +16,6 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
-using System.Numerics;
 using System.Threading.Tasks;
 using Nethermind.Core;
 
@@ -25,10 +23,8 @@ namespace Nethermind.Blockchain
 {
     public interface IBlockchainProcessor
     {
-        Block HeadBlock { get; }
         void Start();
         Task StopAsync(bool processRemainingBlocks = false);
-        void Process(Block block); // TODO: testing performance
-        event EventHandler<BlockEventArgs> HeadBlockChanged;
+        void Process(Block block);
     }
 }

@@ -19,6 +19,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Linq;
 using System.Numerics;
@@ -69,11 +70,6 @@ namespace Nethermind.Blockchain
             _miningCancellation?.Cancel();
             EnqueueForProcessing(blockEventArgs.Block);
         }
-
-        public BigInteger TotalTransactions { get; private set; }
-
-        public Block HeadBlock { get; private set; }
-        public BigInteger TotalDifficulty { get; private set; }
 
         private CancellationTokenSource _loopCancellationSource;
         private CancellationTokenSource _miningCancellation;
@@ -197,35 +193,32 @@ namespace Nethermind.Blockchain
             }
         }
 
-        public event EventHandler<BlockEventArgs> HeadBlockChanged;
-
         // TODO: there will be a need for cancellation of current mining whenever a new block arrives
         private void BuildAndSeal()
         {
-            if (HeadBlock == null)
+            Block parent = _blockTree.HeadBlock;
+            if (parent == null)
             {
-                return;
-            }
+                return; // TODO: review
+            }            
 
             BigInteger timestamp = Timestamp.UnixUtcUntilNowSecs;
-            // TODO: timestamps
-            
-            BlockHeader parentHeader = HeadBlock.Header;
-            BigInteger difficulty = _difficultyCalculator.Calculate(parentHeader.Difficulty, parentHeader.Timestamp, Timestamp.UnixUtcUntilNowSecs, parentHeader.Number + 1, HeadBlock.Ommers.Length > 0);
+
+            BigInteger difficulty = _difficultyCalculator.Calculate(parent.Difficulty, parent.Timestamp, Timestamp.UnixUtcUntilNowSecs, parent.Number + 1, parent.Ommers.Length > 0);
             BlockHeader header = new BlockHeader(
-                parentHeader.Hash,
+                parent.Hash,
                 Keccak.OfAnEmptySequenceRlp,
                 Address.Zero,
                 difficulty,
-                parentHeader.Number + 1,
-                parentHeader.GasLimit,
-                timestamp > parentHeader.Timestamp ? timestamp : parentHeader.Timestamp + 1,
+                parent.Number + 1,
+                parent.GasLimit,
+                timestamp > parent.Timestamp ? timestamp : parent.Timestamp + 1,
                 Encoding.UTF8.GetBytes("Nethermind"));
 
-            header.TotalDifficulty = parentHeader.TotalDifficulty + difficulty;
+            header.TotalDifficulty = parent.TotalDifficulty + difficulty;
             if (_logger.IsDebugEnabled)
             {
-                _logger.Debug($"Setting total difficulty to {parentHeader.TotalDifficulty} + {difficulty}.");
+                _logger.Debug($"Setting total difficulty to {parent.TotalDifficulty} + {difficulty}.");
             }
 
             var transactions = _transactionStore.GetAllPending().OrderBy(t => t?.Nonce); // by nonce in case there are two transactions for the same account, TODO: test it
@@ -336,7 +329,7 @@ namespace Nethermind.Blockchain
                 _logger.Debug($"Total transactions of block {suggestedBlock.ToString(Block.Format.Short)} is {totalTransactions}");
             }
 
-            if (totalDifficulty > TotalDifficulty)
+            if (totalDifficulty > (_blockTree.HeadBlock?.TotalDifficulty ?? 0))
             {
                 List<Block> blocksToBeAddedToMain = new List<Block>();
                 Block toBeProcessed = suggestedBlock;
@@ -351,11 +344,11 @@ namespace Nethermind.Blockchain
                 } while (!_blockTree.IsMainChain(toBeProcessed.Hash));
 
                 Block branchingPoint = toBeProcessed;
-                if (branchingPoint != null && branchingPoint.Hash != HeadBlock?.Hash)
+                if (branchingPoint != null && branchingPoint.Hash != _blockTree.HeadBlock?.Hash)
                 {
                     if (_logger.IsDebugEnabled)
                     {
-                        _logger.Debug($"Head block was: {HeadBlock?.ToString(Block.Format.Short)}");
+                        _logger.Debug($"Head block was: {_blockTree.HeadBlock?.ToString(Block.Format.Short)}");
                         _logger.Debug($"Branching from: {branchingPoint.ToString(Block.Format.Short)}");
                     }
                 }
@@ -405,10 +398,10 @@ namespace Nethermind.Blockchain
                 Block[] processedBlocks = _blockProcessor.Process(stateRoot, blocks, forMining);
 
                 List<Block> blocksToBeRemovedFromMain = new List<Block>();
-                if (HeadBlock?.Hash != branchingPoint?.Hash && HeadBlock != null)
+                if (_blockTree.HeadBlock?.Hash != branchingPoint?.Hash && _blockTree.HeadBlock != null)
                 {
-                    blocksToBeRemovedFromMain.Add(HeadBlock);
-                    Block teBeRemovedFromMain = _blockTree.FindParent(HeadBlock);
+                    blocksToBeRemovedFromMain.Add(_blockTree.HeadBlock);
+                    Block teBeRemovedFromMain = _blockTree.FindParent(_blockTree.HeadBlock);
                     while (teBeRemovedFromMain != null && teBeRemovedFromMain.Hash != branchingPoint?.Hash)
                     {
                         blocksToBeRemovedFromMain.Add(teBeRemovedFromMain);
@@ -428,11 +421,11 @@ namespace Nethermind.Blockchain
                         _blockTree.MarkAsProcessed(processedBlock.Hash);
                     }
 
-                    HeadBlock = processedBlocks[processedBlocks.Length - 1];
-                    HeadBlock.Header.TotalDifficulty = suggestedBlock.TotalDifficulty; // TODO: cleanup total difficulty
+                    Block newHeadBlock = processedBlocks[processedBlocks.Length - 1];
+                    newHeadBlock.Header.TotalDifficulty = suggestedBlock.TotalDifficulty; // TODO: cleanup total difficulty
                     if (_logger.IsDebugEnabled)
                     {
-                        _logger.Debug($"Setting head block to {HeadBlock.ToString(Block.Format.Short)}");
+                        _logger.Debug($"Setting head block to {newHeadBlock.ToString(Block.Format.Short)}");
                     }
 
                     foreach (Block block in blocksToBeRemovedFromMain)
@@ -480,16 +473,11 @@ namespace Nethermind.Blockchain
                         _logger.Debug($"Updating total difficulty of the main chain to {totalDifficulty}");
                     }
 
-                    TotalDifficulty = totalDifficulty;
 
                     if (_logger.IsDebugEnabled)
                     {
                         _logger.Debug($"Updating total transactions of the main chain to {totalTransactions}");
                     }
-
-                    TotalTransactions = totalTransactions;
-
-                    HeadBlockChanged?.Invoke(this, new BlockEventArgs(HeadBlock));
                 }
                 else
                 {

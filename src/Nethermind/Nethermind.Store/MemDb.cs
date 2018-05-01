@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,14 +16,34 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Core;
+using System.Collections.Generic;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Store
 {
-    public interface IDbProvider : ISnapshotable
+    public class MemDb : IDb
     {
-        ISnapshotableDb GetOrCreateStateDb();
-        ISnapshotableDb GetOrCreateStorageDb(Address address);
-        ISnapshotableDb GetOrCreateCodeDb();
+        private readonly Dictionary<Keccak, byte[]> _db;
+        
+        public byte[] this[Keccak key]
+        {
+            get => _db.ContainsKey(key) ? _db[key] : null;
+            set => _db[key] = value;
+        }
+
+        public bool ContainsKey(Keccak key)
+        {
+            return _db.ContainsKey(key);
+        }
+
+        public void Remove(Keccak key)
+        {
+            _db.Remove(key);
+        }
+
+        public MemDb()
+        {
+            _db = new Dictionary<Keccak, byte[]>(1024);
+        }
     }
 }

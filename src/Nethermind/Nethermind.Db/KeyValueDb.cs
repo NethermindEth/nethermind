@@ -16,20 +16,40 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Core;
+using System.IO;
 using Nethermind.Core.Crypto;
+using Nethermind.Store;
+using RocksDbSharp;
 
-namespace Nethermind.Blockchain
+namespace Nethermind.Db
 {
-    public class TransactionInfo
+    public class KeyValueDb : IDb
     {
-        public TransactionInfo(Transaction transaction, PublicKey receivedFrom)
-        {
-            Transaction = transaction;
-            ReceivedFrom = receivedFrom;
-        }
+        public const string BlocksDbPath = "blocks";
+        public const string BlockInfosDbPath = "blockInfos";
         
-        public Transaction Transaction { get; set; }
-        public PublicKey ReceivedFrom { get; set; }
+        private readonly RocksDb _db;
+
+        public KeyValueDb(string dbPath)
+        {
+            DbOptions options = new DbOptions();
+            _db = RocksDb.Open(options, Path.Combine("db", dbPath));
+        }
+
+        public byte[] this[Keccak key]
+        {
+            get => _db.Get(key.Bytes);
+            set => _db.Put(key.Bytes, value);
+        }
+
+        public bool ContainsKey(Keccak key)
+        {
+            return _db.Get(key.Bytes) != null;
+        }
+
+        public void Remove(Keccak key)
+        {
+            _db.Remove(key.Bytes);
+        }
     }
 }

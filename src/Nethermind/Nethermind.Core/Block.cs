@@ -44,14 +44,18 @@ namespace Nethermind.Core
 
         public bool IsGenesis => Header.Number == 0;
         public BlockHeader Header { get; set; }
+        public BlockInfo BlockInfo { get; set; }
         public Transaction[] Transactions { get; set; }
         public TransactionReceipt[] Receipts { get; set; }
         public BlockHeader[] Ommers { get; }
         public Keccak Hash => Header.Hash;
+        public long GasLimit => Header.GasLimit;
+        public BigInteger GasUsed => Header.GasUsed;
+        public BigInteger Timestamp => Header.Timestamp;
         public BigInteger Number => Header.Number;
         public BigInteger Difficulty => Header.Difficulty;
-        public BigInteger? TotalDifficulty => Header.TotalDifficulty;
-        public BigInteger? TotalTransactions => Header.TotalTransactions;
+        public BigInteger? TotalDifficulty => Header?.TotalDifficulty;
+        public BigInteger? TotalTransactions => Header?.TotalTransactions;
         
         public string ToString(string indent)
         {
@@ -86,7 +90,14 @@ namespace Nethermind.Core
                 case Format.Full:
                     return ToString(string.Empty);
                 default:
-                    return $"{Number} ({((string)new Hex(Hash.Bytes)).Substring(58, 6)}), tx: {Transactions?.Length}"; 
+                    if (Hash == null)
+                    {
+                        return $"{Number} null";
+                    }
+                    else
+                    {
+                        return $"{Number} ({((string)new Hex(Hash.Bytes)).Substring(58, 6)}), tx: {Transactions?.Length}";    
+                    }
             }
         }
         

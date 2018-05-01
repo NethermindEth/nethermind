@@ -68,7 +68,7 @@ namespace Nethermind.Evm.Test
         private readonly IEthereumSigner _ethereumSigner;
         private readonly ITransactionProcessor _processor;
         private readonly ISpecProvider _spec;
-        private readonly IDb _stateDb;
+        private readonly ISnapshotableDb _stateDb;
         private readonly IDbProvider _storageDbProvider;
         private readonly IStateProvider _stateProvider;
         private readonly IStorageProvider _storageProvider;

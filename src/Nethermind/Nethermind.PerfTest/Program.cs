@@ -105,7 +105,6 @@ namespace Nethermind.PerfTest
 
         static Program()
         {
-
         }
 
         private static async Task Main(string[] args)
@@ -120,7 +119,7 @@ namespace Nethermind.PerfTest
             DbProvider dbProvider = new DbProvider(logger);
             StateTree stateTree = new StateTree(dbProvider.GetOrCreateStateDb());
             IStateProvider stateProvider = new StateProvider(stateTree, logger, dbProvider.GetOrCreateCodeDb());
-            IBlockTree blockTree = new BlockTree(FrontierSpecProvider.Instance, logger);
+            IBlockTree blockTree = new BlockTree(new InMemoryDb(), new InMemoryDb(), FrontierSpecProvider.Instance, logger);
             Machine = new VirtualMachine(FrontierSpecProvider.Instance, stateProvider, new StorageProvider(dbProvider, stateProvider, logger), new BlockhashProvider(blockTree), NullLogger.Instance);
 
             Stopwatch stopwatch = new Stopwatch();
@@ -159,7 +158,7 @@ namespace Nethermind.PerfTest
             var specProvider = RopstenSpecProvider.Instance;
 
             /* store & validation */
-            var blockTree = new BlockTree(specProvider, _logger);
+            var blockTree = new BlockTree(new InMemoryDb(), new InMemoryDb(), specProvider, _logger);
             var difficultyCalculator = new DifficultyCalculator(specProvider);
             var headerValidator = new HeaderValidator(difficultyCalculator, blockTree, sealEngine, specProvider, _logger);
             var ommersValidator = new OmmersValidator(blockTree, headerValidator, _logger);
@@ -224,13 +223,13 @@ namespace Nethermind.PerfTest
             stopwatch.Start();
 
             blocks = blocks.OrderBy(b => b.Number).Skip(1).ToList();
-            
+
             foreach (Block block in blocks)
             {
                 blockTree.SuggestBlock(block);
             }
 
-            blockchainProcessor.HeadBlockChanged += BlockchainProcessorOnHeadBlockChanged;
+            blockTree.NewHeadBlock += OnNewHeadBlock;
 
             await blockchainProcessor.StopAsync(true).ContinueWith(
                 t =>
@@ -252,7 +251,7 @@ namespace Nethermind.PerfTest
             Console.ReadLine();
         }
 
-        private static void BlockchainProcessorOnHeadBlockChanged(object sender, BlockEventArgs blockEventArgs)
+        private static void OnNewHeadBlock(object sender, BlockEventArgs blockEventArgs)
         {
             //if (blockEventArgs.Block.Number > 61361)
             //{

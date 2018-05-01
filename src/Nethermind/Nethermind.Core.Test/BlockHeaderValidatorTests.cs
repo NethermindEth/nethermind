@@ -24,6 +24,7 @@ using Nethermind.Blockchain.Validators;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Mining;
+using Nethermind.Store;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -45,7 +46,7 @@ namespace Nethermind.Core.Test
         {
             _ethash = new EthashSealEngine(new Ethash(), NullLogger.Instance);
             _testLogger = new TestLogger();
-            BlockTree blockStore = new BlockTree(FrontierSpecProvider.Instance, NullLogger.Instance);
+            BlockTree blockStore = new BlockTree(new InMemoryDb(), new InMemoryDb(), FrontierSpecProvider.Instance, NullLogger.Instance);
             DifficultyCalculator calculator = new DifficultyCalculator(new SingleReleaseSpecProvider(Frontier.Instance, ChainId.MainNet));   
             
             _validator = new HeaderValidator(calculator, blockStore, _ethash, new SingleReleaseSpecProvider(Byzantium.Instance, 3), _testLogger);
@@ -129,7 +130,7 @@ namespace Nethermind.Core.Test
         [Test]
         public void When_incorrect_difficulty_then_invalid()
         {
-            _parentHeader.Difficulty = _parentHeader.Difficulty - 1;
+            _blockHeader.Difficulty = 1;
             bool result = _validator.Validate(_blockHeader, false, true);
             Assert.False(result);
         }
@@ -137,7 +138,7 @@ namespace Nethermind.Core.Test
         [Test]
         public void When_incorrect_number_then_invalid()
         {
-            _parentHeader.Difficulty = 2;
+            _blockHeader.Number += 1;
             bool result = _validator.Validate(_blockHeader, false, true);
             Assert.False(result);
         }

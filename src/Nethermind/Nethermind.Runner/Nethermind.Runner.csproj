@@ -29,6 +29,10 @@
       <Project>{5751C57B-9F2D-45DE-BCC2-42645B85E39E}</Project>
       <Name>Nethermind.Core</Name>
     </ProjectReference>
+    <ProjectReference Include="..\Nethermind.Db\Nethermind.Db.csproj">
+      <Project>{0B52D472-A7B0-4AB6-AFE3-A644B90F53FC}</Project>
+      <Name>Nethermind.Db</Name>
+    </ProjectReference>
     <ProjectReference Include="..\Nethermind.Discovery\Nethermind.Discovery.csproj" />
     <ProjectReference Include="..\Nethermind.JsonRpc\Nethermind.JsonRpc.csproj">
       <Project>{53D62515-72D1-4DEA-BC60-71BCC9C928E3}</Project>

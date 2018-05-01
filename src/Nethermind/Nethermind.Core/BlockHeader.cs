@@ -69,6 +69,11 @@ namespace Nethermind.Core
         {
             return Keccak.Compute(Rlp.Encode(header));
         }
+        
+        public static Keccak CalculateHash(Block block)
+        {
+            return Keccak.Compute(Rlp.Encode(block.Header));
+        }
 
         public string ToString(string indent)
         {

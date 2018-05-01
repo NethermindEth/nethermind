@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,14 +16,20 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Core;
+using System.Numerics;
 
-namespace Nethermind.Store
+namespace Nethermind.Core.Encoding
 {
-    public interface IDbProvider : ISnapshotable
+    public class BlockInfoDecoder : IRlpDecoder<BlockInfo>
     {
-        ISnapshotableDb GetOrCreateStateDb();
-        ISnapshotableDb GetOrCreateStorageDb(Address address);
-        ISnapshotableDb GetOrCreateCodeDb();
+        public BlockInfo Decode(DecodedRlp rlp)
+        {
+            BigInteger totalDifficulty = rlp.GetUnsignedBigInteger(0);
+            BigInteger totalTransactions = rlp.GetUnsignedBigInteger(1);
+            BlockInfo blockInfo = new BlockInfo();
+            blockInfo.TotalDifficulty = totalDifficulty;
+            blockInfo.TotalTransactions = totalTransactions;
+            return blockInfo;
+        }
     }
 }

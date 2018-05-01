@@ -55,7 +55,7 @@ namespace Nethermind.Core.Test
         {
             InMemoryDb inMemoryDb = new InMemoryDb();
             inMemoryDb[_hash1] = _bytes1;
-            inMemoryDb.Delete(_hash1);
+            inMemoryDb.Remove(_hash1);
             byte[] getResult = inMemoryDb[_hash1];
             Assert.AreEqual(null, getResult);
         }
@@ -101,7 +101,7 @@ namespace Nethermind.Core.Test
             InMemoryDb inMemoryDb = new InMemoryDb();
             inMemoryDb[_hash1] = _bytes1;
             inMemoryDb.Commit(Frontier.Instance);
-            inMemoryDb.Delete(_hash1);
+            inMemoryDb.Remove(_hash1);
             inMemoryDb.Restore(-1);
             byte[] getResult = inMemoryDb[_hash1];
             Assert.AreEqual(_bytes1, getResult);
@@ -112,7 +112,7 @@ namespace Nethermind.Core.Test
         {
             InMemoryDb inMemoryDb = new InMemoryDb();
             inMemoryDb[_hash1] = _bytes1;
-            inMemoryDb.Delete(_hash1);
+            inMemoryDb.Remove(_hash1);
             inMemoryDb[_hash1] = _bytes2;
             byte[] getResult = inMemoryDb[_hash1];
             Assert.AreEqual(_bytes2, getResult);

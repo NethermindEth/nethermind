@@ -40,8 +40,7 @@ namespace Nethermind.JsonRpc.Module
     public class EthModule : ModuleBase, IEthModule
     {
         private readonly IJsonSerializer _jsonSerializer;
-        private readonly IBlockchainProcessor _blockchainProcessor;
-        private readonly IBlockTree _blockStore;
+        private readonly IBlockTree _blockTree;
         private readonly ITransactionStore _transactionStore;
         private readonly IDb _db;
         private readonly IStateProvider _stateProvider;
@@ -49,13 +48,12 @@ namespace Nethermind.JsonRpc.Module
         private readonly IJsonRpcModelMapper _modelMapper;
         private readonly IReleaseSpec _releaseSpec;
 
-        public EthModule(ILogger logger, IJsonSerializer jsonSerializer, IBlockchainProcessor blockchainProcessor, IStateProvider stateProvider, IKeyStore keyStore, IConfigurationProvider configurationProvider, IBlockTree blockStore, IDb db, IJsonRpcModelMapper modelMapper, IReleaseSpec releaseSpec, ITransactionStore transactionStore) : base(logger, configurationProvider)
+        public EthModule(ILogger logger, IJsonSerializer jsonSerializer, IStateProvider stateProvider, IKeyStore keyStore, IConfigurationProvider configurationProvider, IBlockTree blockTree, IDb db, IJsonRpcModelMapper modelMapper, IReleaseSpec releaseSpec, ITransactionStore transactionStore) : base(logger, configurationProvider)
         {
             _jsonSerializer = jsonSerializer;
-            _blockchainProcessor = blockchainProcessor;
             _stateProvider = stateProvider;
             _keyStore = keyStore;
-            _blockStore = blockStore;
+            _blockTree = blockTree;
             _db = db;
             _modelMapper = modelMapper;
             _releaseSpec = releaseSpec;
@@ -114,20 +112,20 @@ namespace Nethermind.JsonRpc.Module
 
         public ResultWrapper<Quantity> eth_blockNumber()
         {
-            if (_blockchainProcessor.HeadBlock?.Header == null)
+            if (_blockTree.HeadBlock?.Header == null)
             {
-                return ResultWrapper<Quantity>.Fail($"Incorrect head block: {(_blockchainProcessor.HeadBlock != null ? "HeadBlock is null" : "HeadBlock header is null")}");
+                return ResultWrapper<Quantity>.Fail($"Incorrect head block: {(_blockTree.HeadBlock != null ? "HeadBlock is null" : "HeadBlock header is null")}");
             }
-            var number = _blockchainProcessor.HeadBlock.Header.Number;
+            var number = _blockTree.HeadBlock.Header.Number;
             Logger.Debug($"eth_blockNumber request, result: {number}");
             return ResultWrapper<Quantity>.Success(new Quantity(number));
         }
 
         public ResultWrapper<Quantity> eth_getBalance(Data address, BlockParameter blockParameter)
         {
-            if (_blockchainProcessor.HeadBlock?.Header == null)
+            if (_blockTree.HeadBlock?.Header == null)
             {
-                return ResultWrapper<Quantity>.Fail($"Incorrect head block: {(_blockchainProcessor.HeadBlock != null ? "HeadBlock is null" : "HeadBlock header is null")}");
+                return ResultWrapper<Quantity>.Fail($"Incorrect head block: {(_blockTree.HeadBlock != null ? "HeadBlock is null" : "HeadBlock header is null")}");
             }
 
             var result = GetAccountBalance(new Address(address.Value), blockParameter);
@@ -147,9 +145,9 @@ namespace Nethermind.JsonRpc.Module
 
         public ResultWrapper<Quantity> eth_getTransactionCount(Data address, BlockParameter blockParameter)
         {
-            if (_blockchainProcessor.HeadBlock?.Header == null)
+            if (_blockTree.HeadBlock?.Header == null)
             {
-                return ResultWrapper<Quantity>.Fail($"Incorrect head block: {(_blockchainProcessor.HeadBlock != null ? "HeadBlock is null" : "HeadBlock header is null")}");
+                return ResultWrapper<Quantity>.Fail($"Incorrect head block: {(_blockTree.HeadBlock != null ? "HeadBlock is null" : "HeadBlock header is null")}");
             }
 
             var result = GetAccountNonce(new Address(address.Value), blockParameter);
@@ -164,7 +162,7 @@ namespace Nethermind.JsonRpc.Module
 
         public ResultWrapper<Quantity> eth_getBlockTransactionCountByHash(Data blockHash)
         {
-            var block = _blockStore.FindBlock(new Keccak(blockHash.Value), false);
+            var block = _blockTree.FindBlock(new Keccak(blockHash.Value), false);
             if (block == null)
             {
                 return ResultWrapper<Quantity>.Fail($"Cannot find block for hash: {blockHash.Value}", ErrorType.NotFound);
@@ -176,9 +174,9 @@ namespace Nethermind.JsonRpc.Module
 
         public ResultWrapper<Quantity> eth_getBlockTransactionCountByNumber(BlockParameter blockParameter)
         {
-            if (_blockchainProcessor.HeadBlock?.Header == null)
+            if (_blockTree.HeadBlock?.Header == null)
             {
-                return ResultWrapper<Quantity>.Fail($"Incorrect head block: {(_blockchainProcessor.HeadBlock != null ? "HeadBlock is null" : "HeadBlock header is null")}");
+                return ResultWrapper<Quantity>.Fail($"Incorrect head block: {(_blockTree.HeadBlock != null ? "HeadBlock is null" : "HeadBlock header is null")}");
             }
 
             var transactionCount = GetTransactionCount(blockParameter);
@@ -193,7 +191,7 @@ namespace Nethermind.JsonRpc.Module
 
         public ResultWrapper<Quantity> eth_getUncleCountByBlockHash(Data blockHash)
         {
-            var block = _blockStore.FindBlock(new Keccak(blockHash.Value), false);
+            var block = _blockTree.FindBlock(new Keccak(blockHash.Value), false);
             if (block == null)
             {
                 return ResultWrapper<Quantity>.Fail($"Cannot find block for hash: {blockHash.Value}", ErrorType.NotFound);
@@ -205,9 +203,9 @@ namespace Nethermind.JsonRpc.Module
 
         public ResultWrapper<Quantity> eth_getUncleCountByBlockNumber(BlockParameter blockParameter)
         {
-            if (_blockchainProcessor.HeadBlock?.Header == null)
+            if (_blockTree.HeadBlock?.Header == null)
             {
-                return ResultWrapper<Quantity>.Fail($"Incorrect head block: {(_blockchainProcessor.HeadBlock != null ? "HeadBlock is null" : "HeadBlock header is null")}");
+                return ResultWrapper<Quantity>.Fail($"Incorrect head block: {(_blockTree.HeadBlock != null ? "HeadBlock is null" : "HeadBlock header is null")}");
             }
 
             var ommersCount = GetOmmersCount(blockParameter);
@@ -222,9 +220,9 @@ namespace Nethermind.JsonRpc.Module
 
         public ResultWrapper<Data> eth_getCode(Data address, BlockParameter blockParameter)
         {
-            if (_blockchainProcessor.HeadBlock?.Header == null)
+            if (_blockTree.HeadBlock?.Header == null)
             {
-                return ResultWrapper<Data>.Fail($"Incorrect head block: {(_blockchainProcessor.HeadBlock != null ? "HeadBlock is null" : "HeadBlock header is null")}");
+                return ResultWrapper<Data>.Fail($"Incorrect head block: {(_blockTree.HeadBlock != null ? "HeadBlock is null" : "HeadBlock header is null")}");
             }
 
             var result = GetAccountCode(new Address(address.Value), blockParameter);
@@ -280,7 +278,7 @@ namespace Nethermind.JsonRpc.Module
 
         public ResultWrapper<Block> eth_getBlockByHash(Data blockHash, bool returnFullTransactionObjects)
         {
-            var block = _blockStore.FindBlock(new Keccak(blockHash.Value), false);
+            var block = _blockTree.FindBlock(new Keccak(blockHash.Value), false);
             if (block == null)
             {
                 return ResultWrapper<Block>.Fail($"Cannot find block for hash: {blockHash.Value}", ErrorType.NotFound);
@@ -294,9 +292,9 @@ namespace Nethermind.JsonRpc.Module
 
         public ResultWrapper<Block> eth_getBlockByNumber(BlockParameter blockParameter, bool returnFullTransactionObjects)
         {
-            if (_blockchainProcessor.HeadBlock?.Header == null)
+            if (_blockTree.HeadBlock?.Header == null)
             {
-                return ResultWrapper<Block>.Fail($"Incorrect head block: {(_blockchainProcessor.HeadBlock != null ? "HeadBlock is null" : "HeadBlock header is null")}");
+                return ResultWrapper<Block>.Fail($"Incorrect head block: {(_blockTree.HeadBlock != null ? "HeadBlock is null" : "HeadBlock header is null")}");
             }
 
             var result = GetBlock(blockParameter);
@@ -323,7 +321,7 @@ namespace Nethermind.JsonRpc.Module
             {
                 return ResultWrapper<Transaction>.Fail($"Cannot find block hash for transaction: {transactionHash.Value}", ErrorType.NotFound);
             }
-            var block = _blockStore.FindBlock(blockHash, false);
+            var block = _blockTree.FindBlock(blockHash, false);
             if (block == null)
             {
                 return ResultWrapper<Transaction>.Fail($"Cannot find block for hash: {blockHash}", ErrorType.NotFound);
@@ -336,7 +334,7 @@ namespace Nethermind.JsonRpc.Module
 
         public ResultWrapper<Transaction> eth_getTransactionByBlockHashAndIndex(Data blockHash, Quantity positionIndex)
         {
-            var block = _blockStore.FindBlock(new Keccak(blockHash.Value), false);
+            var block = _blockTree.FindBlock(new Keccak(blockHash.Value), false);
             if (block == null)
             {
                 return ResultWrapper<Transaction>.Fail($"Cannot find block for hash: {blockHash.Value}", ErrorType.NotFound);
@@ -360,9 +358,9 @@ namespace Nethermind.JsonRpc.Module
 
         public ResultWrapper<Transaction> eth_getTransactionByBlockNumberAndIndex(BlockParameter blockParameter, Quantity positionIndex)
         {
-            if (_blockchainProcessor.HeadBlock?.Header == null)
+            if (_blockTree.HeadBlock?.Header == null)
             {
-                return ResultWrapper<Transaction>.Fail($"Incorrect head block: {(_blockchainProcessor.HeadBlock != null ? "HeadBlock is null" : "HeadBlock header is null")}");
+                return ResultWrapper<Transaction>.Fail($"Incorrect head block: {(_blockTree.HeadBlock != null ? "HeadBlock is null" : "HeadBlock header is null")}");
             }
 
             var result = GetBlock(blockParameter);
@@ -405,7 +403,7 @@ namespace Nethermind.JsonRpc.Module
             {
                 return ResultWrapper<TransactionReceipt>.Fail($"Cannot find block hash for transaction: {transactionHash.Value}", ErrorType.NotFound);
             }
-            var block = _blockStore.FindBlock(blockHash, false);
+            var block = _blockTree.FindBlock(blockHash, false);
             if (block == null)
             {
                 return ResultWrapper<TransactionReceipt>.Fail($"Cannot find block for hash: {blockHash}", ErrorType.NotFound);
@@ -418,7 +416,7 @@ namespace Nethermind.JsonRpc.Module
 
         public ResultWrapper<Block> eth_getUncleByBlockHashAndIndex(Data blockHash, Quantity positionIndex)
         {
-            var block = _blockStore.FindBlock(new Keccak(blockHash.Value), false);
+            var block = _blockTree.FindBlock(new Keccak(blockHash.Value), false);
             if (block == null)
             {
                 return ResultWrapper<Block>.Fail($"Cannot find block for hash: {blockHash.Value}", ErrorType.NotFound);
@@ -434,7 +432,7 @@ namespace Nethermind.JsonRpc.Module
             }
 
             var ommerHeader = block.Ommers[(int)index.Value];
-            var ommer = _blockStore.FindBlock(ommerHeader.Hash, false);
+            var ommer = _blockTree.FindBlock(ommerHeader.Hash, false);
             if (ommer == null)
             {
                 return ResultWrapper<Block>.Fail($"Cannot find ommer for hash: {ommerHeader.Hash}", ErrorType.NotFound);
@@ -447,9 +445,9 @@ namespace Nethermind.JsonRpc.Module
 
         public ResultWrapper<Block> eth_getUncleByBlockNumberAndIndex(BlockParameter blockParameter, Quantity positionIndex)
         {
-            if (_blockchainProcessor.HeadBlock?.Header == null)
+            if (_blockTree.HeadBlock?.Header == null)
             {
-                return ResultWrapper<Block>.Fail($"Incorrect head block: {(_blockchainProcessor.HeadBlock != null ? "HeadBlock is null" : "HeadBlock header is null")}");
+                return ResultWrapper<Block>.Fail($"Incorrect head block: {(_blockTree.HeadBlock != null ? "HeadBlock is null" : "HeadBlock header is null")}");
             }
 
             var result = GetBlock(blockParameter);
@@ -469,7 +467,7 @@ namespace Nethermind.JsonRpc.Module
             }
 
             var ommerHeader = result.Data.Ommers[(int)index.Value];
-            var ommer = _blockStore.FindBlock(ommerHeader.Hash, false);
+            var ommer = _blockTree.FindBlock(ommerHeader.Hash, false);
             if (ommer == null)
             {
                 return ResultWrapper<Block>.Fail($"Cannot find ommer for hash: {ommerHeader.Hash}", ErrorType.NotFound);
@@ -554,7 +552,7 @@ namespace Nethermind.JsonRpc.Module
         {
             if (blockParameter.Type == BlockParameterType.Pending)
             {
-                var count = _blockchainProcessor.HeadBlock.Ommers.Length;
+                var count = _blockTree.HeadBlock.Ommers.Length;
                 return ResultWrapper<Quantity>.Success(new Quantity(count));
             }
 
@@ -570,7 +568,7 @@ namespace Nethermind.JsonRpc.Module
         {
             if (blockParameter.Type == BlockParameterType.Pending)
             {
-                var count = _blockchainProcessor.HeadBlock.Transactions.Length;
+                var count = _blockTree.HeadBlock.Transactions.Length;
                 return ResultWrapper<Quantity>.Success(new Quantity(count));
             }
 
@@ -635,11 +633,11 @@ namespace Nethermind.JsonRpc.Module
             switch (blockParameter.Type)
             {
                 case BlockParameterType.Pending:
-                    return ResultWrapper<Core.Block>.Success(_blockchainProcessor.HeadBlock); // TODO: a pending block for sealEngine, work in progress
+                    return ResultWrapper<Core.Block>.Success(_blockTree.HeadBlock); // TODO: a pending block for sealEngine, work in progress
                 case BlockParameterType.Latest:
-                    return ResultWrapper<Core.Block>.Success(_blockchainProcessor.HeadBlock);
+                    return ResultWrapper<Core.Block>.Success(_blockTree.HeadBlock);
                 case BlockParameterType.Earliest:
-                    var genesis = GetGenesisBlock(_blockchainProcessor.HeadBlock);
+                    var genesis = GetGenesisBlock(_blockTree.HeadBlock);
                     return ResultWrapper<Core.Block>.Success(genesis);
                 case BlockParameterType.BlockId:
                     if (blockParameter.BlockId?.Value == null)
@@ -652,7 +650,7 @@ namespace Nethermind.JsonRpc.Module
                         return ResultWrapper<Core.Block>.Fail("Invalid block id", ErrorType.InvalidParams);
                     }
                     throw new NotImplementedException(); // TODO: TKS - discuss with me later, there was a rebuilt of BlockStore / Blockchain, work in progress now, so just commenting it out 
-//                    var block = _blockStore.FindBlock(value.Value);
+//                    var block = _blockTree.FindBlock(value.Value);
 //                    if (block == null)
 //                    {
 //                        return ResultWrapper<Core.Block>.Fail($"Cannot find block for {value.Value}", ErrorType.NotFound);
@@ -709,7 +707,7 @@ namespace Nethermind.JsonRpc.Module
         private Core.Block GetGenesisBlock(Core.Block headBlock)
         {
             Core.Block parent;
-            while ((parent = _blockStore.FindBlock(headBlock.Header.ParentHash, false)) != null)
+            while ((parent = _blockTree.FindBlock(headBlock.Header.ParentHash, false)) != null)
             {
                 headBlock = parent;
             }

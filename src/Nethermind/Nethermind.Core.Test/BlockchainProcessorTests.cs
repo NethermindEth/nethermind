@@ -21,6 +21,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Numerics;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Difficulty;
@@ -42,18 +43,19 @@ namespace Nethermind.Core.Test
         [Test]
         public async Task Test()
         {
-            string[] files = Directory.GetFiles("C:\\ropsten\\blocks");
-            Assert.Greater(files.Length, 4000);
-
+            TimeSpan miningDelay = TimeSpan.FromMilliseconds(50);
+            
             /* logging & instrumentation */
             var logger = new SimpleConsoleLogger();
 
             /* spec */
-            var sealEngine = NullSealEngine.Instance;
+            var sealEngine = new FakeSealEngine(miningDelay);
+            sealEngine.IsMining = true;
+            
             var specProvider = RopstenSpecProvider.Instance;
 
             /* store & validation */
-            var blockTree = new BlockTree(specProvider, logger);
+            var blockTree = new BlockTree(new InMemoryDb(), new InMemoryDb(), specProvider, logger);
             var difficultyCalculator = new DifficultyCalculator(specProvider);
             var headerValidator = new HeaderValidator(difficultyCalculator, blockTree, sealEngine, specProvider, logger);
             var ommersValidator = new OmmersValidator(blockTree, headerValidator, logger);
@@ -97,23 +99,11 @@ namespace Nethermind.Core.Test
             }
 
             /* start processing */
-            blockchainProcessor.Start();
             blockTree.SuggestBlock(chainSpec.Genesis);
+            blockchainProcessor.Start();
 
-            List<Block> blocks = new List<Block>();
-            foreach (string file in files)
-            {
-                string rlpText = File.ReadAllText(file);
-                Rlp rlp = new Rlp(new Hex(rlpText));
-                Block block = Rlp.Decode<Block>(rlp);
-                blocks.Add(block);
-            }
-
-            foreach (Block block in blocks.OrderBy(b => b.Number).Skip(1))
-            {
-                blockTree.SuggestBlock(block);
-            }
-
+            Thread.Sleep(miningDelay * 10);
+            
             await blockchainProcessor.StopAsync(true).ContinueWith(
                 t =>
                 {
@@ -122,7 +112,7 @@ namespace Nethermind.Core.Test
                         throw t.Exception;
                     }
 
-                    Console.WriteLine("COMPLETED");
+                    Assert.GreaterOrEqual((int)blockTree.HeadBlock.Number, 6);
                 });
         }
     }

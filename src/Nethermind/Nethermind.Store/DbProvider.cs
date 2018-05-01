@@ -24,28 +24,28 @@ namespace Nethermind.Store
 {
     public class DbProvider : IDbProvider
     {
-        private readonly IDb _stateDb = new InMemoryDb();
-        private readonly IDb _codeDb = new InMemoryDb();
-        private readonly Dictionary<Address, IDb> _storageDbs = new Dictionary<Address, IDb>();
-        private IEnumerable<IDb> AllDbs
+        private readonly ISnapshotableDb _stateDb = new InMemoryDb();
+        private readonly ISnapshotableDb _codeDb = new InMemoryDb();
+        private readonly Dictionary<Address, ISnapshotableDb> _storageDbs = new Dictionary<Address, ISnapshotableDb>();
+        private IEnumerable<ISnapshotableDb> AllDbs
         {
             get
             {
                 yield return _stateDb;
                 yield return _codeDb;
-                foreach (IDb storageDb in _storageDbs.Values)
+                foreach (ISnapshotableDb storageDb in _storageDbs.Values)
                 {
                     yield return storageDb;
                 }
             }
         }
         
-        public IDb GetOrCreateStateDb()
+        public ISnapshotableDb GetOrCreateStateDb()
         {
             return _stateDb;
         }
 
-        public IDb GetOrCreateStorageDb(Address address)
+        public ISnapshotableDb GetOrCreateStorageDb(Address address)
         {
             if (!_storageDbs.ContainsKey(address))
             {
@@ -55,19 +55,19 @@ namespace Nethermind.Store
             return _storageDbs[address];
         }
 
-        public IDb GetOrCreateCodeDb()
+        public ISnapshotableDb GetOrCreateCodeDb()
         {
             return _codeDb;
         }
         
         private readonly ILogger _logger;
 
-        private readonly Stack<Dictionary<IDb, int>> _snapshots = new Stack<Dictionary<IDb, int>>();
+        private readonly Stack<Dictionary<ISnapshotableDb, int>> _snapshots = new Stack<Dictionary<ISnapshotableDb, int>>();
 
         public DbProvider(ILogger logger)
         {
             _logger = logger;
-            _snapshots.Push(new Dictionary<IDb, int>());
+            _snapshots.Push(new Dictionary<ISnapshotableDb, int>());
         }
 
         public void Restore(int snapshot)
@@ -79,8 +79,8 @@ namespace Nethermind.Store
                 _snapshots.Pop();
             }
 
-            Dictionary<IDb, int> dbSnapshots = _snapshots.Peek();
-            foreach (IDb db in AllDbs)
+            Dictionary<ISnapshotableDb, int> dbSnapshots = _snapshots.Peek();
+            foreach (ISnapshotableDb db in AllDbs)
             {
                 db.Restore(dbSnapshots.ContainsKey(db) ? dbSnapshots[db] : -1);
             }
@@ -90,7 +90,7 @@ namespace Nethermind.Store
         {
             if(_logger.IsDebugEnabled) _logger.Debug("Committing all DBs");
 
-            foreach (IDb db in AllDbs)
+            foreach (ISnapshotableDb db in AllDbs)
             {
                 db.Commit(spec);
             }
@@ -98,8 +98,8 @@ namespace Nethermind.Store
 
         public int TakeSnapshot()
         {
-            Dictionary<IDb, int> dbSnapshots = new Dictionary<IDb, int>();
-            foreach (IDb db in AllDbs)
+            Dictionary<ISnapshotableDb, int> dbSnapshots = new Dictionary<ISnapshotableDb, int>();
+            foreach (ISnapshotableDb db in AllDbs)
             {
                 dbSnapshots.Add(db, db.TakeSnapshot());
             }

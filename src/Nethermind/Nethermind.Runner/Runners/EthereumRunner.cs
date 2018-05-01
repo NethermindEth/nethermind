@@ -32,6 +32,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Specs.ChainSpec;
+using Nethermind.Db;
 using Nethermind.Discovery;
 using Nethermind.Evm;
 using Nethermind.KeyStore;
@@ -65,7 +66,7 @@ namespace Nethermind.Runner.Runners
         {
             _discoveryManager = discoveryManager;
         }
-        
+
         public void Start(InitParams initParams)
         {
             _defaultLogger = new NLogLogger(initParams.LogFileName, "default");
@@ -119,7 +120,7 @@ namespace Nethermind.Runner.Runners
 
             /* sync */
             var transactionStore = new TransactionStore();
-            var blockTree = new BlockTree(RopstenSpecProvider.Instance, _chainLogger);
+            var blockTree = new BlockTree(new KeyValueDb(KeyValueDb.BlocksDbPath), new KeyValueDb(KeyValueDb.BlockInfosDbPath), RopstenSpecProvider.Instance, _chainLogger);
 
             /* validation */
             var headerValidator = new HeaderValidator(difficultyCalculator, blockTree, sealEngine, specProvider, _chainLogger);
@@ -241,7 +242,7 @@ namespace Nethermind.Runner.Runners
             _networkLogger.Info($"enode://{_privateKey.PublicKey.ToString(false)}@{localIp}:{listenPort}");
 
             _peerManager = new PeerManager(_localPeer, _discoveryManager, _networkLogger);
-            
+
             foreach (Bootnode bootnode in chainSpec.Bootnodes)
             {
                 bootnode.Host = bootnode.Host == "127.0.0.1" ? localIp : bootnode.Host;
@@ -255,10 +256,10 @@ namespace Nethermind.Runner.Runners
                         }
                         else
                         {
-                            _networkLogger.Info($"Established connection with {bootnode.Description}@{bootnode.Host}:{bootnode.Port}");            
+                            _networkLogger.Info($"Established connection with {bootnode.Description}@{bootnode.Host}:{bootnode.Port}");
                         }
                     });
-                
+
                 _networkLogger.Info("Testnet connected...");
             }
         }

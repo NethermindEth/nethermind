@@ -41,7 +41,8 @@ namespace Nethermind.Core.Encoding
                 [typeof(Transaction).TypeHandle] = new TransactionDecoder(),
                 [typeof(Account).TypeHandle] = new AccountDecoder(),
                 [typeof(Block).TypeHandle] = new BlockDecoder(),
-                [typeof(BlockHeader).TypeHandle] = new BlockHeaderDecoder()
+                [typeof(BlockHeader).TypeHandle] = new BlockHeaderDecoder(),
+                [typeof(BlockInfo).TypeHandle] = new BlockInfoDecoder()
             };
 
         public Rlp(byte singleByte)
@@ -481,6 +482,8 @@ namespace Nethermind.Core.Encoding
                     return Encode(block);
                 case BlockHeader header:
                     return Encode(header);
+                case BlockInfo blockInfo:
+                    return Encode(blockInfo);
                 case Bloom bloom:
                     return Encode(bloom);
                 case Transaction transaction:
@@ -576,6 +579,14 @@ namespace Nethermind.Core.Encoding
                 elements[14] = Encode(blockHeader.Nonce);
             }
 
+            return Encode(elements);
+        }
+        
+        public static Rlp Encode(BlockInfo blockInfo)
+        {
+            Rlp[] elements = new Rlp[2];
+            elements[0] = Encode(blockInfo.TotalDifficulty);
+            elements[1] = Encode(blockInfo.TotalTransactions);
             return Encode(elements);
         }
 
