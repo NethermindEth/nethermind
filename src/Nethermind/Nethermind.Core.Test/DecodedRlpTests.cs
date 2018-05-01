@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,25 +16,22 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Blockchain;
+using Nethermind.Core.Encoding;
+using Nethermind.Core.Test.Builders;
+using NUnit.Framework;
 
-namespace Nethermind.Core.Test.Builders
+namespace Nethermind.Core.Test
 {
-    public static class BlockTreeExtensions
+    [TestFixture]
+    public class DecodedRlpTests
     {
-        public static void AddBranch(this BlockTree blockTree, int branchLength, int splitBlockNumber, int splitVariant)
+        [Test]
+        public void Can_deserialize_block()
         {
-            BlockTree alternative = Build.A.BlockTree(blockTree.GenesisBlock).OfChainLength(branchLength, splitBlockNumber, splitVariant).TestObject;
-            for (int i = splitBlockNumber + 1; i < branchLength; i++)
-            {
-                Block block = alternative.FindBlock(i);
-                blockTree.SuggestBlock(block);
-                blockTree.MarkAsProcessed(block.Hash);
-                if (branchLength > blockTree.HeadBlock.Number)
-                {
-                    blockTree.MoveToMain(block.Hash);    
-                }
-            }
+            Block block = Build.A.Block.TestObject;
+            Rlp rlp = Rlp.Encode(block);
+            Block decoded = Rlp.Decode<Block>(rlp);
+            Assert.AreEqual(block.Hash, BlockHeader.CalculateHash(decoded));
         }
     }
 }

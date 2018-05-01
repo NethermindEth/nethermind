@@ -35,6 +35,7 @@ namespace Nethermind.Core.Encoding
 
         public static readonly Rlp OfEmptySequence = new Rlp(192);
 
+        // TODO: discover decoders, use them for encoding as well
         private static readonly Dictionary<RuntimeTypeHandle, IRlpDecoder> Decoders =
             new Dictionary<RuntimeTypeHandle, IRlpDecoder>
             {
@@ -42,7 +43,9 @@ namespace Nethermind.Core.Encoding
                 [typeof(Account).TypeHandle] = new AccountDecoder(),
                 [typeof(Block).TypeHandle] = new BlockDecoder(),
                 [typeof(BlockHeader).TypeHandle] = new BlockHeaderDecoder(),
-                [typeof(BlockInfo).TypeHandle] = new BlockInfoDecoder()
+                [typeof(BlockInfo).TypeHandle] = new BlockInfoDecoder(),
+                [typeof(TransactionReceipt).TypeHandle] = new TransactionReceiptDecoder(),
+                [typeof(LogEntry).TypeHandle] = new LogEntryDecoder()
             };
 
         public Rlp(byte singleByte)
@@ -77,7 +80,7 @@ namespace Nethermind.Core.Encoding
 
         public static T Decode<T>(Rlp rlp, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            DecodedRlp decodedRlp = Rlp.Decode(rlp);
+            DecodedRlp decodedRlp = Decode(rlp);
             return Decode<T>(decodedRlp, rlpBehaviors);
         }
 
@@ -89,6 +92,30 @@ namespace Nethermind.Core.Encoding
             }
 
             return rlp.As<T>();
+        }
+        
+        public static T[] DecodeArray<T>(Rlp rlp, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            DecodedRlp decodedRlp = Decode(rlp);
+            return DecodeArray<T>(decodedRlp, rlpBehaviors);
+        }
+        
+        public static T[] DecodeArray<T>(DecodedRlp rlp, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            T[] array = new T[rlp.Items.Count];
+            for (int i = 0; i < array.Length; i++)
+            {
+                if (Decoders.ContainsKey(typeof(T).TypeHandle))
+                {
+                    array[i] = ((IRlpDecoder<T>)Decoders[typeof(T).TypeHandle]).Decode(rlp.GetSequence(i));
+                }
+                else
+                {
+                    array[i] = (T)rlp.Items[i];
+                }
+            }
+
+            return array;
         }
 
         public static Rlp[] ExtractRlpList(Rlp rlp)
@@ -581,7 +608,7 @@ namespace Nethermind.Core.Encoding
 
             return Encode(elements);
         }
-        
+
         public static Rlp Encode(BlockInfo blockInfo)
         {
             Rlp[] elements = new Rlp[2];

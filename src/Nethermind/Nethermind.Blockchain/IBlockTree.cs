@@ -39,7 +39,7 @@ namespace Nethermind.Blockchain
         void MoveToMain(Keccak blockHash);
         void MoveToBranch(Keccak blockHash);
         bool WasProcessed(Keccak blockHash);
-        void MarkAsProcessed(Keccak blockHash);
+        void MarkAsProcessed(Keccak blockHash, TransactionReceipt[] receipts = null); // TODO: null receipts by default so the existing tests do not fail, to be changed later alongside the tests
 
         event EventHandler<BlockEventArgs> NewBestSuggestedBlock;
         event EventHandler<BlockEventArgs> BlockAddedToMain;

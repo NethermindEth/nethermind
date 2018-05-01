@@ -120,7 +120,7 @@ namespace Nethermind.Runner.Runners
 
             /* sync */
             var transactionStore = new TransactionStore();
-            var blockTree = new BlockTree(new KeyValueDb(KeyValueDb.BlocksDbPath), new KeyValueDb(KeyValueDb.BlockInfosDbPath), RopstenSpecProvider.Instance, _chainLogger);
+            var blockTree = new BlockTree(new KeyValueDb(KeyValueDb.BlocksDbPath), new KeyValueDb(KeyValueDb.BlockInfosDbPath), new KeyValueDb(KeyValueDb.ReceiptsDbPath), RopstenSpecProvider.Instance, _chainLogger);
 
             /* validation */
             var headerValidator = new HeaderValidator(difficultyCalculator, blockTree, sealEngine, specProvider, _chainLogger);

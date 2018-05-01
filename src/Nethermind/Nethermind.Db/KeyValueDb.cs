@@ -30,6 +30,7 @@ namespace Nethermind.Db
         public const string StateDbPath = "state";
         public const string CodeDbPath = "code";
         public const string BlocksDbPath = "blocks";
+        public const string ReceiptsDbPath = "receipts";
         public const string BlockInfosDbPath = "blockInfos";
 
         private readonly RocksDb _db;

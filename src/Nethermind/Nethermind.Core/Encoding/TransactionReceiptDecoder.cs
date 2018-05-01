@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,25 +16,31 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Blockchain;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 
-namespace Nethermind.Core.Test.Builders
+namespace Nethermind.Core.Encoding
 {
-    public static class BlockTreeExtensions
+    public class TransactionReceiptDecoder : IRlpDecoder<TransactionReceipt>
     {
-        public static void AddBranch(this BlockTree blockTree, int branchLength, int splitBlockNumber, int splitVariant)
+        public TransactionReceipt Decode(DecodedRlp rlp)
         {
-            BlockTree alternative = Build.A.BlockTree(blockTree.GenesisBlock).OfChainLength(branchLength, splitBlockNumber, splitVariant).TestObject;
-            for (int i = splitBlockNumber + 1; i < branchLength; i++)
+            TransactionReceipt receipt = new TransactionReceipt();
+            byte[] firstItem = rlp.GetBytes(0);
+            if (firstItem.Length == 1)
             {
-                Block block = alternative.FindBlock(i);
-                blockTree.SuggestBlock(block);
-                blockTree.MarkAsProcessed(block.Hash);
-                if (branchLength > blockTree.HeadBlock.Number)
-                {
-                    blockTree.MoveToMain(block.Hash);    
-                }
+                receipt.StatusCode = firstItem[0];
             }
+            else
+            {
+                receipt.PostTransactionState = firstItem.Length == 0 ? null : new Keccak(firstItem);
+            }
+
+            receipt.GasUsed = rlp.GetInt(1);
+            receipt.Bloom = new Bloom(rlp.GetBytes(2).ToBigEndianBitArray2048());
+            receipt.Logs = rlp.GetComplexObjectArray<LogEntry>(3);
+
+            return receipt;
         }
     }
 }

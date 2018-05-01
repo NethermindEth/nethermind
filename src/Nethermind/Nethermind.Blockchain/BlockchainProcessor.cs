@@ -418,7 +418,7 @@ namespace Nethermind.Blockchain
                             _logger.Debug($"Marking {processedBlock.ToString(Block.Format.Short)} as processed");
                         }
 
-                        _blockTree.MarkAsProcessed(processedBlock.Hash);
+                        _blockTree.MarkAsProcessed(processedBlock.Hash, processedBlock.Receipts);
                     }
 
                     Block newHeadBlock = processedBlocks[processedBlocks.Length - 1];

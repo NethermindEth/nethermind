@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,25 +16,26 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Blockchain;
+using Nethermind.Core.Crypto;
 
-namespace Nethermind.Core.Test.Builders
+namespace Nethermind.Core.Encoding
 {
-    public static class BlockTreeExtensions
+    public class LogEntryDecoder : IRlpDecoder<LogEntry>
     {
-        public static void AddBranch(this BlockTree blockTree, int branchLength, int splitBlockNumber, int splitVariant)
+        public LogEntry Decode(DecodedRlp rlp)
         {
-            BlockTree alternative = Build.A.BlockTree(blockTree.GenesisBlock).OfChainLength(branchLength, splitBlockNumber, splitVariant).TestObject;
-            for (int i = splitBlockNumber + 1; i < branchLength; i++)
+            Address address = rlp.GetAddress(0);
+            DecodedRlp topicSequence = rlp.GetSequence(1);
+            Keccak[] topics = new Keccak[topicSequence.Length];
+            for (int i = 0; i < topics.Length; i++)
             {
-                Block block = alternative.FindBlock(i);
-                blockTree.SuggestBlock(block);
-                blockTree.MarkAsProcessed(block.Hash);
-                if (branchLength > blockTree.HeadBlock.Number)
-                {
-                    blockTree.MoveToMain(block.Hash);    
-                }
+                topics[i] = topicSequence.GetKeccak(i);
             }
+            
+            byte[] data = rlp.GetBytes(2);
+
+            LogEntry logEntry = new LogEntry(address, data, topics);
+            return logEntry;
         }
     }
 }

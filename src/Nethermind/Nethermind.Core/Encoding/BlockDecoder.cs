@@ -23,7 +23,6 @@ namespace Nethermind.Core.Encoding
     public class BlockDecoder : IRlpDecoder<Block>
     {
         private readonly BlockHeaderDecoder _blockHeaderDecoder = new BlockHeaderDecoder();
-        private readonly TransactionDecoder _transactionDecoder = new TransactionDecoder();
         
         public Block Decode(Rlp rlp)
         {
@@ -42,19 +41,19 @@ namespace Nethermind.Core.Encoding
             DecodedRlp transactionsData = data.GetSequence(1);
             DecodedRlp ommersData = data.GetSequence(2);
 
-            BlockHeader blockHeader = _blockHeaderDecoder.Decode(headerData);
+            BlockHeader blockHeader = Rlp.Decode<BlockHeader>(headerData);
 
             List<Transaction> transactions = new List<Transaction>();
             for (int txIndex = 0; txIndex < transactionsData.Items.Count; txIndex++)
             {
                 DecodedRlp transactionData = (DecodedRlp)transactionsData.Items[txIndex];
-                transactions.Add(_transactionDecoder.Decode(transactionData));
+                transactions.Add(Rlp.Decode<Transaction>(transactionData));
             }
 
             BlockHeader[] ommers = new BlockHeader[ommersData.Length];
             for (int ommerIndex = 0; ommerIndex < ommersData.Length; ommerIndex++)
             {
-                ommers[ommerIndex] = _blockHeaderDecoder.Decode(ommersData.GetSequence(ommerIndex));
+                ommers[ommerIndex] = Rlp.Decode<BlockHeader>(ommersData.GetSequence(ommerIndex));
             }
 
             Block block = new Block(blockHeader, ommers);

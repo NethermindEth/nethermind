@@ -57,7 +57,7 @@ namespace Nethermind.Core.Encoding
             {
                 throw new InvalidOperationException($"{nameof(DecodedRlp)} expected to have exactly one element here and had {Items?.Count}");
             }
-            
+
             return (T)Items[0];
         }
 
@@ -100,6 +100,12 @@ namespace Nethermind.Core.Encoding
             return bytes.Length == 0 ? 0 : bytes.ToInt32();
         }
 
+        public long GetLong(int index)
+        {
+            byte[] bytes = (byte[])Items[index];
+            return bytes.Length == 0 ? 0L : bytes.ToInt64();
+        }
+
         public byte[] GetBytes(int index)
         {
             return (byte[])Items[index];
@@ -124,6 +130,24 @@ namespace Nethermind.Core.Encoding
             }
 
             return (DecodedRlp)Items[index];
+        }
+
+        // TODO: refactor RLP
+        public T GetComplexObject<T>(int index)
+        {
+            return Rlp.Decode<T>(GetSequence(index));
+        }
+
+        public T[] GetComplexObjectArray<T>(int index)
+        {
+            DecodedRlp sequence = GetSequence(index);
+            T[] result = new T[sequence.Items.Count];
+            for (int i = 0; i < result.Length; i++)
+            {
+                result[i] = Rlp.Decode<T>(sequence.GetSequence(i));
+            }
+
+            return result;
         }
     }
 }

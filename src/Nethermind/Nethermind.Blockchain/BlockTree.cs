@@ -18,6 +18,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Linq;
 using System.Numerics;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
@@ -35,17 +36,20 @@ namespace Nethermind.Blockchain
         private readonly ConcurrentDictionary<BigInteger, Keccak> _canonicalChain = new ConcurrentDictionary<BigInteger, Keccak>();
         private readonly IDb _blockDb; // TODO: separate bodies and headers
         private readonly IDb _blockInfoDb; // TODO: separate bodies and headers
+        private readonly IDb _receiptsDb;
+        private readonly ISpecProvider _specProvider;
         private readonly ILogger _logger;
         private readonly ConcurrentDictionary<Keccak, bool> _mainChain = new ConcurrentDictionary<Keccak, bool>();
         private readonly ConcurrentDictionary<Keccak, bool> _processed = new ConcurrentDictionary<Keccak, bool>();
 
         // TODO: validators should be here
-        public BlockTree(IDb blockDb, IDb blockInfoDb, ISpecProvider specProvider, ILogger logger)
+        public BlockTree(IDb blockDb, IDb blockInfoDb, IDb receiptsDb, ISpecProvider specProvider, ILogger logger)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _blockDb = blockDb;
             _blockInfoDb = blockInfoDb;
-            ChainId = specProvider.ChainId;
+            _receiptsDb = receiptsDb;
+            _specProvider = specProvider;
         }
 
         public event EventHandler<BlockEventArgs> BlockAddedToMain;
@@ -57,7 +61,7 @@ namespace Nethermind.Blockchain
         public Block GenesisBlock { get; private set; }
         public Block HeadBlock { get; private set; }
         public Block BestSuggestedBlock { get; private set; }
-        public int ChainId { get; }
+        public int ChainId => _specProvider.ChainId;
 
         public AddBlockResult SuggestBlock(Block block)
         {
@@ -90,7 +94,7 @@ namespace Nethermind.Blockchain
 
             UpdateTotalDifficulty(block);
             UpdateTotalTransactions(block);
-            
+
             _blockDb[block.Hash] = Rlp.Encode(block).Bytes;
             _blockInfoDb[block.Hash] = Rlp.Encode(new BlockInfo(block.TotalDifficulty.Value, block.TotalTransactions.Value)).Bytes;
 
@@ -121,13 +125,13 @@ namespace Nethermind.Blockchain
             {
                 return null;
             }
-            
+
             bool isOnbranch = _branches.ContainsKey(blockHash);
             if (!isOnMainChain && !isOnbranch)
             {
                 return null;
             }
-            
+
             return Load(blockHash);
         }
 
@@ -156,7 +160,7 @@ namespace Nethermind.Blockchain
             {
                 throw new ArgumentException($"{nameof(blockNumber)} must be greater or equal zero and is {blockNumber}", nameof(blockNumber));
             }
-            
+
             _canonicalChain.TryGetValue((int)blockNumber, out Keccak blockHash);
 
             if (blockHash == null)
@@ -170,9 +174,19 @@ namespace Nethermind.Blockchain
         private Block Load(Keccak blockHash)
         {
             Block block = Rlp.Decode<Block>(new Rlp(_blockDb[blockHash]));
-            BlockInfo blockInfo =Rlp.Decode<BlockInfo>(new Rlp(_blockInfoDb[blockHash]));
+            BlockInfo blockInfo = Rlp.Decode<BlockInfo>(new Rlp(_blockInfoDb[blockHash]));
             block.Header.TotalDifficulty = blockInfo.TotalDifficulty;
             block.Header.TotalTransactions = blockInfo.TotalTransactions;
+            if (_receiptsDb.ContainsKey(block.Hash))
+            {
+                TransactionReceipt[] receipts = Rlp.DecodeArray<TransactionReceipt>(new Rlp(_receiptsDb[block.Hash]));
+                block.Receipts = receipts;
+            }
+            else
+            {
+                block.Receipts = new TransactionReceipt[0];
+            }
+            
             return block;
         }
 
@@ -194,7 +208,7 @@ namespace Nethermind.Blockchain
             }
         }
 
-        public void MarkAsProcessed(Keccak blockHash)
+        public void MarkAsProcessed(Keccak blockHash, TransactionReceipt[] receipts = null)
         {
             Block block = FindBlock(blockHash, false);
             if (block == null)
@@ -205,6 +219,11 @@ namespace Nethermind.Blockchain
             if (block == null)
             {
                 throw new InvalidOperationException($"Unknown {nameof(Block)} cannot {nameof(MarkAsProcessed)}");
+            }
+
+            if (receipts != null)
+            {
+                _receiptsDb[block.Hash] = Rlp.Encode(receipts.Select(r => Rlp.Encode(r, _specProvider.GetSpec(block.Number).IsEip658Enabled)).ToArray()).Bytes;
             }
 
             _processed[blockHash] = true;

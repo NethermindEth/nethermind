@@ -34,32 +34,32 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal.Header.Number = number;
             return this;
         }
-        
+
         public BlockBuilder WithTotalDifficulty(BigInteger difficulty)
         {
             TestObjectInternal.Header.TotalDifficulty = difficulty;
             return this;
         }
-        
+
         public BlockBuilder WithDifficulty(BigInteger difficulty)
         {
             TestObjectInternal.Header.Difficulty = difficulty;
             return this;
         }
-        
+
         public BlockBuilder WithParent(Block block)
         {
             TestObjectInternal.Header.Number = (block?.Number ?? -1) + 1;
             TestObjectInternal.Header.ParentHash = block == null ? Keccak.Zero : block.Hash;
             return this;
         }
-        
+
         public BlockBuilder WithParentHash(Keccak parent)
         {
             TestObjectInternal.Header.ParentHash = parent;
             return this;
         }
-        
+
         public BlockBuilder Genesis => WithNumber(0);
 
         protected override void BeforeReturn()

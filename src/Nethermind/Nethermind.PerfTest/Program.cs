@@ -119,7 +119,7 @@ namespace Nethermind.PerfTest
             MemDbProvider memDbProvider = new MemDbProvider(logger);
             StateTree stateTree = new StateTree(memDbProvider.GetOrCreateStateDb());
             IStateProvider stateProvider = new StateProvider(stateTree, logger, memDbProvider.GetOrCreateCodeDb());
-            IBlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), FrontierSpecProvider.Instance, logger);
+            IBlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), new MemDb(), FrontierSpecProvider.Instance, logger);
             Machine = new VirtualMachine(FrontierSpecProvider.Instance, stateProvider, new StorageProvider(memDbProvider, stateProvider, logger), new BlockhashProvider(blockTree), NullLogger.Instance);
 
             Stopwatch stopwatch = new Stopwatch();
@@ -158,7 +158,7 @@ namespace Nethermind.PerfTest
             var specProvider = RopstenSpecProvider.Instance;
 
             /* store & validation */
-            var blockTree = new BlockTree(new MemDb(), new MemDb(), specProvider, _logger);
+            var blockTree = new BlockTree(new MemDb(), new MemDb(), new MemDb(), specProvider, _logger);
             var difficultyCalculator = new DifficultyCalculator(specProvider);
             var headerValidator = new HeaderValidator(difficultyCalculator, blockTree, sealEngine, specProvider, _logger);
             var ommersValidator = new OmmersValidator(blockTree, headerValidator, _logger);
