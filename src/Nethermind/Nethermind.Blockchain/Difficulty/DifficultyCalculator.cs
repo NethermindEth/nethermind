@@ -25,12 +25,12 @@ namespace Nethermind.Blockchain.Difficulty
     {
         private readonly ISpecProvider _specProvider;
 
-        public DifficultyCalculator(ISpecProvider specProvider, long genesisBlockDiffculty = OfGenesisBlock)
+        public DifficultyCalculator(ISpecProvider specProvider)
         {
             _specProvider = specProvider;
         }
 
-        private const long OfGenesisBlock = 131_072; // Olympic?
+        private const long OfGenesisBlock = 131_072;
 
         //private const long OfGenesisBlock = 17_179_869_184;
 
@@ -56,7 +56,7 @@ namespace Nethermind.Blockchain.Difficulty
         {
             if (parentBlockHeader == null)
             {
-                return OfGenesisBlock;
+                return blockHeader.Difficulty;
             }
 
             return Calculate(

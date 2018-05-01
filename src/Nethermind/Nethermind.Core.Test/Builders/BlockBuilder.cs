@@ -41,6 +41,18 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
+        public BlockBuilder WithNonce(ulong nonce)
+        {
+            TestObjectInternal.Header.Nonce = nonce;
+            return this;
+        }
+        
+        public BlockBuilder WithMixHash(Keccak mixHash)
+        {
+            TestObjectInternal.Header.MixHash = mixHash;
+            return this;
+        }
+        
         public BlockBuilder WithDifficulty(BigInteger difficulty)
         {
             TestObjectInternal.Header.Difficulty = difficulty;
@@ -50,6 +62,7 @@ namespace Nethermind.Core.Test.Builders
         public BlockBuilder WithParent(Block block)
         {
             TestObjectInternal.Header.Number = (block?.Number ?? -1) + 1;
+            TestObjectInternal.Header.Timestamp = (block?.Timestamp ?? -1) + 1;
             TestObjectInternal.Header.ParentHash = block == null ? Keccak.Zero : block.Hash;
             return this;
         }

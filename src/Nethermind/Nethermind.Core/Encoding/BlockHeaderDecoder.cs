@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Numerics;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -37,7 +38,8 @@ namespace Nethermind.Core.Encoding
             Keccak stateRoot = data.GetKeccak(3);
             Keccak transactionsRoot = data.GetKeccak(4);
             Keccak receiptsRoot = data.GetKeccak(5);
-            Bloom bloom = new Bloom(data.GetBytes(6).ToBigEndianBitArray2048());
+            byte[] bloomBytes = data.GetBytes(6);
+            Bloom bloom = bloomBytes.Length == 256 ? new Bloom(bloomBytes.ToBigEndianBitArray2048()) : throw new InvalidOperationException("Incorrect bloom RLP");
             BigInteger difficulty = data.GetUnsignedBigInteger(7);
             BigInteger number = data.GetUnsignedBigInteger(8);
             BigInteger gasLimit = data.GetUnsignedBigInteger(9);

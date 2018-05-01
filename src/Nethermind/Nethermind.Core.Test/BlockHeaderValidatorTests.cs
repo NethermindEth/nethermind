@@ -18,18 +18,21 @@
 
 using System;
 using System.Numerics;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Difficulty;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Mining;
 using Nethermind.Store;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test
 {
+    // TODO: need to recalculate nonce and mix hash for this test to be fine again (after Bloom added)
     [TestFixture]
     public class BlockHeaderValidatorTests
     {
@@ -38,11 +41,9 @@ namespace Nethermind.Core.Test
         private TestLogger _testLogger;
         private Block _parentBlock;
         private Block _block;
-        private BlockHeader _parentHeader;
-        private BlockHeader _blockHeader;
 
         [SetUp]
-        public void Setup()
+        public async Task Setup()
         {
             _ethash = new EthashSealEngine(new Ethash(), NullLogger.Instance);
             _testLogger = new TestLogger();
@@ -50,15 +51,11 @@ namespace Nethermind.Core.Test
             DifficultyCalculator calculator = new DifficultyCalculator(new SingleReleaseSpecProvider(Frontier.Instance, ChainId.MainNet));   
             
             _validator = new HeaderValidator(calculator, blockStore, _ethash, new SingleReleaseSpecProvider(Byzantium.Instance, 3), _testLogger);
-            _parentHeader = new BlockHeader(Keccak.Zero, Keccak.OfAnEmptySequenceRlp, Address.Zero, 131072, 0, 21000, 0, new byte[]{});
-            _parentHeader.Hash = BlockHeader.CalculateHash(_parentHeader);
-            _parentBlock = new Block(_parentHeader);
-            
-            _blockHeader = new BlockHeader(_parentHeader.Hash, Keccak.OfAnEmptySequenceRlp, Address.Zero, 131136, 1, 21000, 1, new byte[]{});
-            _blockHeader.Nonce = 7217048144105167954;
-            _blockHeader.MixHash = new Keccak("0x37d9fb46a55e9dbbffc428f3a1be6f191b3f8eaf52f2b6f53c4b9bae62937105");
-            _blockHeader.Hash = BlockHeader.CalculateHash(_blockHeader);
-            _block = new Block(_blockHeader);
+            _parentBlock = Build.A.Block.WithDifficulty(1).TestObject;
+            _block = Build.A.Block.WithParent(_parentBlock)
+                .WithDifficulty(1)
+                .WithMixHash(new Keccak("0xd7db5fdd332d3a65d6ac9c4c530929369905734d3ef7a91e373e81d0f010b8e8"))
+                .WithNonce(0).TestObject;
             
             blockStore.SuggestBlock(_parentBlock);
             blockStore.SuggestBlock(_block);
@@ -67,7 +64,7 @@ namespace Nethermind.Core.Test
         [Test]
         public void Valid_when_valid()
         {
-            bool result = _validator.Validate(_blockHeader);
+            bool result = _validator.Validate(_block.Header);
             if (!result)
             {
                 foreach (string error in _testLogger.LogList)
@@ -82,73 +79,73 @@ namespace Nethermind.Core.Test
         [Test]
         public void When_gas_limit_too_high()
         {
-            _blockHeader.GasLimit = _parentHeader.GasLimit + (long)BigInteger.Divide(_parentHeader.GasLimit, 1024);
-            bool result = _validator.Validate(_blockHeader, false, true);
+            _block.Header.GasLimit = _parentBlock.Header.GasLimit + (long)BigInteger.Divide(_parentBlock.Header.GasLimit, 1024);
+            bool result = _validator.Validate(_block.Header, false, true);
             Assert.False(result);
         }
         
         [Test]
         public void When_gas_limit_too_low()
         {
-            _blockHeader.GasLimit = _parentHeader.GasLimit - (long)BigInteger.Divide(_parentHeader.GasLimit, 1024);
-            bool result = _validator.Validate(_blockHeader, false, true);
+            _block.Header.GasLimit = _parentBlock.Header.GasLimit - (long)BigInteger.Divide(_parentBlock.Header.GasLimit, 1024);
+            bool result = _validator.Validate(_block.Header, false, true);
             Assert.False(result);
         }
         
         [Test]
         public void When_gas_used_above_gas_limit()
         {
-            _blockHeader.GasUsed = _blockHeader.GasLimit + 1;
-            bool result = _validator.Validate(_blockHeader, false, true);
+            _block.Header.GasUsed = _parentBlock.Header.GasLimit + 1;
+            bool result = _validator.Validate(_block.Header, false, true);
             Assert.False(result);
         }
         
         [Test]
         public void When_no_parent_invalid()
         {
-            _blockHeader.ParentHash = Keccak.Zero;
-            bool result = _validator.Validate(_blockHeader, false, true);
+            _block.Header.ParentHash = Keccak.Zero;
+            bool result = _validator.Validate(_block.Header, false, true);
             Assert.False(result);
         }
         
         [Test]
         public void When_timestamp_same_as_parent()
         {
-            _blockHeader.Timestamp = _parentHeader.Timestamp;
-            bool result = _validator.Validate(_blockHeader, false, true);
+            _block.Header.Timestamp = _parentBlock.Header.Timestamp;
+            bool result = _validator.Validate(_block.Header, false, true);
             Assert.False(result);
         }
         
         [Test]
         public void When_extra_data_too_long()
         {
-            _blockHeader.ExtraData = new byte[33];
-            bool result = _validator.Validate(_blockHeader, false, true);
+            _block.Header.ExtraData = new byte[33];
+            bool result = _validator.Validate(_block.Header, false, true);
             Assert.False(result);
         }
         
         [Test]
         public void When_incorrect_difficulty_then_invalid()
         {
-            _blockHeader.Difficulty = 1;
-            bool result = _validator.Validate(_blockHeader, false, true);
+            _block.Header.Difficulty = 1;
+            bool result = _validator.Validate(_block.Header, false, true);
             Assert.False(result);
         }
         
         [Test]
         public void When_incorrect_number_then_invalid()
         {
-            _blockHeader.Number += 1;
-            bool result = _validator.Validate(_blockHeader, false, true);
+            _block.Header.Number += 1;
+            bool result = _validator.Validate(_block.Header, false, true);
             Assert.False(result);
         }
         
         [Test]
         public void When_incorrect_nonce_then_invalid()
         {
-            _blockHeader.Nonce = 1UL;
-            _blockHeader.MixHash = null;
-            bool result = _validator.Validate(_blockHeader);
+            _block.Header.Nonce = 1UL;
+            _block.Header.MixHash = null;
+            bool result = _validator.Validate(_block.Header);
             Assert.False(result);
         }
     }

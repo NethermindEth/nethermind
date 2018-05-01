@@ -364,6 +364,22 @@ namespace Nethermind.Core.Test
         }
         
         [Test]
+        public void Stores_multiple_blocks_per_level()
+        {
+            BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), new MemDb(), OlympicSpecProvider.Instance, NullLogger.Instance);
+            Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
+            Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
+            Block block1B = Build.A.Block.WithNumber(1).WithDifficulty(3).WithParent(block0).TestObject;
+            AddToMain(blockTree, block0);
+            AddToMain(blockTree, block1);
+            blockTree.SuggestBlock(block1B);
+
+            Block found = blockTree.FindBlock(block1B.Hash, false);
+            
+            Assert.AreEqual(block1B.Hash, BlockHeader.CalculateHash(found.Header));
+        }
+        
+        [Test]
         public void Restores_receipts()
         {
             BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), new MemDb(), OlympicSpecProvider.Instance, NullLogger.Instance);

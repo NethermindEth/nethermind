@@ -42,7 +42,7 @@ namespace Ethereum.Test.Base
 {
     public class BlockchainTestBase
     {
-        private static readonly ILogger DefaultLogger = NullLogger.Instance;
+        private static readonly ILogger DefaultLogger = new SimpleConsoleLogger();
         private static ILogger _stateLogger = DefaultLogger;
         private static ILogger _evmLogger = DefaultLogger;
         private static ILogger _chainLogger = DefaultLogger;

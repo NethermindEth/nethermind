@@ -17,6 +17,7 @@
  */
 
 using System;
+using System.Diagnostics;
 using System.Linq;
 using System.Numerics;
 using Nethermind.Blockchain.Validators;
@@ -93,8 +94,9 @@ namespace Nethermind.Blockchain
 
             UpdateTotalDifficulty(block);
             UpdateTotalTransactions(block);
-
+            
             _blockDb.Set(block.Hash, Rlp.Encode(block).Bytes);
+            
             BlockInfo blockInfo = new BlockInfo(block.Hash, block.TotalDifficulty.Value, block.TotalTransactions.Value);
             UpdateLevel(block.Number, blockInfo);
 
@@ -243,6 +245,7 @@ namespace Nethermind.Blockchain
                 }
 
                 blockInfos[blockInfos.Length - 1] = blockInfo;
+                level.BlockInfos = blockInfos;
             }
             else
             {
@@ -268,7 +271,7 @@ namespace Nethermind.Blockchain
                 }
             }
 
-            return (null, null);
+            return (null, level);
         }
 
         private ChainLevelInfo LoadLevel(BigInteger number)
@@ -303,6 +306,11 @@ namespace Nethermind.Blockchain
             Block block = Rlp.Decode<Block>(new Rlp(_blockDb.Get(blockHash)));
             (BlockInfo blockInfo, ChainLevelInfo level) = LoadInfo(block.Number, block.Hash);
 
+            if (blockInfo == null)
+            {
+                throw new InvalidOperationException($"{nameof(blockInfo)} is null when {nameof(block)} is not null");
+            }
+            
             block.Header.TotalDifficulty = blockInfo.TotalDifficulty;
             block.Header.TotalTransactions = blockInfo.TotalTransactions;
             if (_receiptsDb.ContainsKey(block.Hash))
