@@ -16,27 +16,17 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Numerics;
-using Nethermind.Core.Crypto;
-
 namespace Nethermind.Core
 {
-    public class BlockInfo
+    public class ChainLevelInfo
     {
-        public BlockInfo()
-        {   
-        }
-        
-        public BlockInfo(Keccak blockHash, BigInteger totalDifficulty, BigInteger totalTransactions)
+        public ChainLevelInfo(bool hasBlockInMainChain,  BlockInfo[] blockInfos)
         {
-            BlockHash = blockHash;
-            TotalDifficulty = totalDifficulty;
-            TotalTransactions = totalTransactions;
+            HasBlockOnMainChain = hasBlockInMainChain;
+            BlockInfos = blockInfos;
         }
         
-        public BigInteger TotalDifficulty { get; set; }
-        public BigInteger TotalTransactions { get; set; }
-        public bool WasProcessed { get; set; }
-        public Keccak BlockHash { get; set; }
+        public bool HasBlockOnMainChain { get; set; }
+        public BlockInfo[] BlockInfos { get; set; }
     }
 }

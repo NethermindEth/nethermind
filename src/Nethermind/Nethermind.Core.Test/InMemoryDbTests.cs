@@ -35,8 +35,8 @@ namespace Nethermind.Core.Test
         public void Set_get()
         {
             SnapshotableDb db = new SnapshotableDb(new MemDb());
-            db[_hash1] = _bytes1;
-            byte[] getResult = db[_hash1];
+            db.Set(_hash1, _bytes1);
+            byte[] getResult = db.Get(_hash1);
             Assert.AreEqual(_bytes1, getResult);
         }
         
@@ -44,9 +44,9 @@ namespace Nethermind.Core.Test
         public void Double_set_get()
         {
             SnapshotableDb db = new SnapshotableDb(new MemDb());
-            db[_hash1] = _bytes1;
-            db[_hash1] = _bytes2;
-            byte[] getResult = db[_hash1];
+            db.Set(_hash1, _bytes1);
+            db.Set(_hash1, _bytes2);
+            byte[] getResult = db.Get(_hash1);
             Assert.AreEqual(_bytes2, getResult);
         }
         
@@ -54,9 +54,9 @@ namespace Nethermind.Core.Test
         public void Set_delete_get()
         {
             SnapshotableDb db = new SnapshotableDb(new MemDb());
-            db[_hash1] = _bytes1;
+            db.Set(_hash1, _bytes1);
             db.Remove(_hash1);
-            byte[] getResult = db[_hash1];
+            byte[] getResult = db.Get(_hash1);
             Assert.AreEqual(null, getResult);
         }
         
@@ -71,7 +71,7 @@ namespace Nethermind.Core.Test
         public void Set_take_snapshot()
         {
             SnapshotableDb db = new SnapshotableDb(new MemDb());
-            db[_hash1] = _bytes1;
+            db.Set(_hash1, _bytes1);
             Assert.AreEqual(0, db.TakeSnapshot());
         }
         
@@ -79,9 +79,9 @@ namespace Nethermind.Core.Test
         public void Set_restore_get()
         {
             SnapshotableDb db = new SnapshotableDb(new MemDb());
-            db[_hash1] = _bytes1;
+            db.Set(_hash1, _bytes1);
             db.Restore(-1);
-            byte[] getResult = db[_hash1];
+            byte[] getResult = db.Get(_hash1);
             Assert.AreEqual(null, getResult);
         }
         
@@ -89,9 +89,9 @@ namespace Nethermind.Core.Test
         public void Set_commit_get()
         {
             SnapshotableDb db = new SnapshotableDb(new MemDb());
-            db[_hash1] = _bytes1;
+            db.Set(_hash1, _bytes1);
             db.Commit(Frontier.Instance);
-            byte[] getResult = db[_hash1];
+            byte[] getResult = db.Get(_hash1);
             Assert.AreEqual(_bytes1, getResult);
         }
         
@@ -99,11 +99,11 @@ namespace Nethermind.Core.Test
         public void Set_commit_delete_restore_get()
         {
             SnapshotableDb db = new SnapshotableDb(new MemDb());
-            db[_hash1] = _bytes1;
+            db.Set(_hash1, _bytes1);
             db.Commit(Frontier.Instance);
             db.Remove(_hash1);
             db.Restore(-1);
-            byte[] getResult = db[_hash1];
+            byte[] getResult = db.Get(_hash1);
             Assert.AreEqual(_bytes1, getResult);
         }
         
@@ -111,10 +111,10 @@ namespace Nethermind.Core.Test
         public void Set_delete_set_get()
         {
             SnapshotableDb db = new SnapshotableDb(new MemDb());
-            db[_hash1] = _bytes1;
+            db.Set(_hash1, _bytes1);
             db.Remove(_hash1);
-            db[_hash1] = _bytes2;
-            byte[] getResult = db[_hash1];
+            db.Set(_hash1, _bytes2);
+            byte[] getResult = db.Get(_hash1);
             Assert.AreEqual(_bytes2, getResult);
         }
     }

@@ -18,6 +18,7 @@
 
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
@@ -27,6 +28,21 @@ namespace Nethermind.Core.Extensions
     // TODO: move to ByteArrayExtensions and ByteExtensions
     public static class Bytes
     {
+        public static readonly IEqualityComparer<byte[]> EqualityComparer = new BytesEqualityComparer();
+        
+        private class BytesEqualityComparer : EqualityComparer<byte[]>
+        {
+            public override bool Equals(byte[] x, byte[] y)
+            {
+                return UnsafeCompare(x, y);
+            }
+
+            public override int GetHashCode(byte[] obj)
+            {
+                return obj.GetXxHashCode();
+            }
+        }
+        
         public static readonly byte[] Empty = new byte[0]; // consider immutable 
 
         public enum Endianness

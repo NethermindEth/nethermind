@@ -16,19 +16,17 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Numerics;
-
 namespace Nethermind.Core.Encoding
 {
     public class BlockInfoDecoder : IRlpDecoder<BlockInfo>
     {
         public BlockInfo Decode(DecodedRlp rlp)
         {
-            BigInteger totalDifficulty = rlp.GetUnsignedBigInteger(0);
-            BigInteger totalTransactions = rlp.GetUnsignedBigInteger(1);
             BlockInfo blockInfo = new BlockInfo();
-            blockInfo.TotalDifficulty = totalDifficulty;
-            blockInfo.TotalTransactions = totalTransactions;
+            blockInfo.BlockHash = rlp.GetKeccak(0);
+            blockInfo.WasProcessed = rlp.GetBool(1);
+            blockInfo.TotalDifficulty = rlp.GetUnsignedBigInteger(2);
+            blockInfo.TotalTransactions = rlp.GetUnsignedBigInteger(3);
             return blockInfo;
         }
     }

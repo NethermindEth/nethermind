@@ -198,7 +198,7 @@ namespace Nethermind.Store
             }
 
             Keccak codeHash = Keccak.Compute(code);
-            _codeDb[codeHash] = code;
+            _codeDb[codeHash.Bytes] = code;
 
             return codeHash;
         }
@@ -210,7 +210,7 @@ namespace Nethermind.Store
                 return new byte[0];
             }
 
-            return _codeDb[codeHash];
+            return _codeDb[codeHash.Bytes];
         }
 
         public byte[] GetCode(Address address)

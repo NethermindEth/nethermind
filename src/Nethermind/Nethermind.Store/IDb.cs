@@ -16,19 +16,17 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Core.Crypto;
-
 namespace Nethermind.Store
 {
     public interface IDb
     {
-        byte[] this[Keccak key]
+        byte[] this[byte[] key]
         {
             get;
             set;
         }
         
-        bool ContainsKey(Keccak key);
-        void Remove(Keccak key);
+        bool ContainsKey(byte[] key);
+        void Remove(byte[] key);
     }
 }

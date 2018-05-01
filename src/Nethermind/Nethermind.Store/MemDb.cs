@@ -17,33 +17,33 @@
  */
 
 using System.Collections.Generic;
-using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Store
 {
     public class MemDb : IDb
     {
-        private readonly Dictionary<Keccak, byte[]> _db;
+        private readonly Dictionary<byte[], byte[]> _db;
         
-        public byte[] this[Keccak key]
+        public byte[] this[byte[] key]
         {
             get => _db.ContainsKey(key) ? _db[key] : null;
             set => _db[key] = value;
         }
 
-        public bool ContainsKey(Keccak key)
+        public bool ContainsKey(byte[] key)
         {
             return _db.ContainsKey(key);
         }
 
-        public void Remove(Keccak key)
+        public void Remove(byte[] key)
         {
             _db.Remove(key);
         }
 
         public MemDb()
         {
-            _db = new Dictionary<Keccak, byte[]>(1024);
+            _db = new Dictionary<byte[], byte[]>(1024, Bytes.EqualityComparer);
         }
     }
 }

@@ -57,7 +57,7 @@ namespace Nethermind.Store
                 return change.ChangeType == ChangeType.Delete ? null : change.Value;
             }
 
-            byte[] value = _db.ContainsKey(hash) ? _db[hash] : null;
+            byte[] value = _db.ContainsKey(hash) ? _db[hash.Bytes] : null;
 
             PushJustCache(hash, value);
             return value;
@@ -119,21 +119,21 @@ namespace Nethermind.Store
             _changes[_currentPosition] = change;
         }
 
-        public byte[] this[Keccak key]
+        public byte[] this[byte[] key]
         {
-            get => GetThroughCache(key);
-            set => PushSet(key, value);
+            get => GetThroughCache(new Keccak(key));
+            set => PushSet(new Keccak(key), value);
         }
 
         // TODO: review the API
-        public bool ContainsKey(Keccak key)
+        public bool ContainsKey(byte[] key)
         {
             throw new NotImplementedException();
         }
 
-        public void Remove(Keccak key)
+        public void Remove(byte[] key)
         {
-            PushDelete(key);
+            PushDelete(new Keccak(key));
         }
 
         private readonly List<Change> _keptInCache = new List<Change>();
@@ -238,7 +238,7 @@ namespace Nethermind.Store
                     }
                     case ChangeType.Update:
                     {
-                        _db[change.Hash] = change.Value;
+                        _db[change.Hash.Bytes] = change.Value;
                         break;
                     }
                     case ChangeType.Delete:

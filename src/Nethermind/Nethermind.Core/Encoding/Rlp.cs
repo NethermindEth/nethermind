@@ -39,11 +39,12 @@ namespace Nethermind.Core.Encoding
         private static readonly Dictionary<RuntimeTypeHandle, IRlpDecoder> Decoders =
             new Dictionary<RuntimeTypeHandle, IRlpDecoder>
             {
-                [typeof(Transaction).TypeHandle] = new TransactionDecoder(),
                 [typeof(Account).TypeHandle] = new AccountDecoder(),
                 [typeof(Block).TypeHandle] = new BlockDecoder(),
                 [typeof(BlockHeader).TypeHandle] = new BlockHeaderDecoder(),
                 [typeof(BlockInfo).TypeHandle] = new BlockInfoDecoder(),
+                [typeof(ChainLevelInfo).TypeHandle] = new ChainLevelDecoder(),
+                [typeof(Transaction).TypeHandle] = new TransactionDecoder(),
                 [typeof(TransactionReceipt).TypeHandle] = new TransactionReceiptDecoder(),
                 [typeof(LogEntry).TypeHandle] = new LogEntryDecoder()
             };
@@ -410,6 +411,11 @@ namespace Nethermind.Core.Encoding
             return Encode(new BigInteger(value));
         }
 
+        public static Rlp Encode(bool value)
+        {
+            return value ? new Rlp(1) : new Rlp(128);
+        }
+        
         public static Rlp Encode(byte value)
         {
             return EncodeNumber(value);
@@ -511,6 +517,8 @@ namespace Nethermind.Core.Encoding
                     return Encode(header);
                 case BlockInfo blockInfo:
                     return Encode(blockInfo);
+                case ChainLevelInfo levelInfo:
+                    return Encode(levelInfo);
                 case Bloom bloom:
                     return Encode(bloom);
                 case Transaction transaction:
@@ -609,11 +617,21 @@ namespace Nethermind.Core.Encoding
             return Encode(elements);
         }
 
-        public static Rlp Encode(BlockInfo blockInfo)
+        public static Rlp Encode(ChainLevelInfo levelInfo)
         {
             Rlp[] elements = new Rlp[2];
-            elements[0] = Encode(blockInfo.TotalDifficulty);
-            elements[1] = Encode(blockInfo.TotalTransactions);
+            elements[0] = Encode(levelInfo.HasBlockOnMainChain);
+            elements[1] = Encode(levelInfo.BlockInfos);
+            return Encode(elements);
+        }
+        
+        public static Rlp Encode(BlockInfo blockInfo)
+        {
+            Rlp[] elements = new Rlp[4];
+            elements[0] = Encode(blockInfo.BlockHash);
+            elements[1] = Encode(blockInfo.WasProcessed);
+            elements[2] = Encode(blockInfo.TotalDifficulty);
+            elements[3] = Encode(blockInfo.TotalTransactions);
             return Encode(elements);
         }
 

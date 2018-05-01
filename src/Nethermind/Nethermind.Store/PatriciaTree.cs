@@ -68,7 +68,7 @@ namespace Nethermind.Store
                 }
                 else
                 {
-                    Rlp rootRlp = new Rlp(_db[_rootHash]);
+                    Rlp rootRlp = new Rlp(_db[_rootHash.Bytes]);
                     Root = RlpDecode(rootRlp); // TODO: needed?
                 }
             }
@@ -201,7 +201,7 @@ namespace Nethermind.Store
             Rlp rlp = null;
             try
             {
-                rlp = new Rlp(keccakOrRlp.IsKeccak ? _db[keccakOrRlp.GetOrComputeKeccak()] : keccakOrRlp.Bytes);
+                rlp = new Rlp(keccakOrRlp.IsKeccak ? _db[keccakOrRlp.GetOrComputeKeccak().Bytes] : keccakOrRlp.Bytes);
             }
             catch (Exception e)
             {
@@ -263,7 +263,7 @@ namespace Nethermind.Store
             if (key.IsKeccak || isRoot)
             {
                 Keccak keyKeccak = key.GetOrComputeKeccak();
-                _db[keyKeccak] = rlp.Bytes;
+                _db[keyKeccak.Bytes] = rlp.Bytes;
 
                 if (isRoot)
                 {

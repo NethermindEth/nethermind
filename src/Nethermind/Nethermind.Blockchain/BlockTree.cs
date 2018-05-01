@@ -17,7 +17,6 @@
  */
 
 using System;
-using System.Collections.Concurrent;
 using System.Linq;
 using System.Numerics;
 using Nethermind.Blockchain.Validators;
@@ -31,16 +30,11 @@ namespace Nethermind.Blockchain
 {
     public class BlockTree : IBlockTree
     {
-        private const bool IgnoredValue = false;
-        private readonly ConcurrentDictionary<Keccak, bool> _branches = new ConcurrentDictionary<Keccak, bool>(); // TODO: minor, would byte be better than bool?
-        private readonly ConcurrentDictionary<BigInteger, Keccak> _canonicalChain = new ConcurrentDictionary<BigInteger, Keccak>();
-        private readonly IDb _blockDb; // TODO: separate bodies and headers
-        private readonly IDb _blockInfoDb; // TODO: separate bodies and headers
+        private readonly IDb _blockDb;
+        private readonly IDb _blockInfoDb;
+        private readonly ILogger _logger;
         private readonly IDb _receiptsDb;
         private readonly ISpecProvider _specProvider;
-        private readonly ILogger _logger;
-        private readonly ConcurrentDictionary<Keccak, bool> _mainChain = new ConcurrentDictionary<Keccak, bool>();
-        private readonly ConcurrentDictionary<Keccak, bool> _processed = new ConcurrentDictionary<Keccak, bool>();
 
         // TODO: validators should be here
         public BlockTree(IDb blockDb, IDb blockInfoDb, IDb receiptsDb, ISpecProvider specProvider, ILogger logger)
@@ -80,6 +74,11 @@ namespace Nethermind.Blockchain
             }
             else if (FindBlock(block.Hash, false) != null)
             {
+                if (_logger.IsDebugEnabled)
+                {
+                    _logger.Debug($"Block {block.Hash} already known.");
+                }
+
                 return AddBlockResult.AlreadyKnown;
             }
             else if (this.FindParent(block.Header) == null)
@@ -95,46 +94,38 @@ namespace Nethermind.Blockchain
             UpdateTotalDifficulty(block);
             UpdateTotalTransactions(block);
 
-            _blockDb[block.Hash] = Rlp.Encode(block).Bytes;
-            _blockInfoDb[block.Hash] = Rlp.Encode(new BlockInfo(block.TotalDifficulty.Value, block.TotalTransactions.Value)).Bytes;
+            _blockDb.Set(block.Hash, Rlp.Encode(block).Bytes);
+            BlockInfo blockInfo = new BlockInfo(block.Hash, block.TotalDifficulty.Value, block.TotalTransactions.Value);
+            UpdateLevel(block.Number, blockInfo);
 
-            bool added = _branches.TryAdd(block.Header.Hash, IgnoredValue);
-            if (added)
+            if (block.TotalDifficulty > (BestSuggestedBlock?.TotalDifficulty ?? 0))
             {
-                if (block.TotalDifficulty > (BestSuggestedBlock?.TotalDifficulty ?? 0))
-                {
-                    BestSuggestedBlock = block;
-                    NewBestSuggestedBlock?.Invoke(this, new BlockEventArgs(block));
-                }
-
-                return AddBlockResult.Added;
+                BestSuggestedBlock = block;
+                NewBestSuggestedBlock?.Invoke(this, new BlockEventArgs(block));
             }
 
-            if (_logger.IsDebugEnabled)
-            {
-                _logger.Debug($"Block {block.Hash} already known.");
-            }
-
-            return AddBlockResult.AlreadyKnown;
+            return AddBlockResult.Added;
         }
 
         public Block FindBlock(Keccak blockHash, bool mainChainOnly)
         {
-            bool isOnMainChain = _mainChain.ContainsKey(blockHash);
-            if (!isOnMainChain && mainChainOnly)
+            (Block block, BlockInfo _, ChainLevelInfo level) = Load(blockHash);
+            if (block == null)
             {
                 return null;
             }
 
-            bool isOnbranch = _branches.ContainsKey(blockHash);
-            if (!isOnMainChain && !isOnbranch)
+            if (mainChainOnly)
             {
-                return null;
+                // TODO: double hash comparison
+                bool isMain = level.HasBlockOnMainChain && level.BlockInfos[0].BlockHash.Equals(blockHash);
+                return isMain ? block : null;
             }
 
-            return Load(blockHash);
+            return block;
         }
 
+        // TODO: since finding by hash will be faster it will be worth to refactor this part
         public Block[] FindBlocks(Keccak blockHash, int numberOfBlocks, int skip, bool reverse)
         {
             Block[] result = new Block[numberOfBlocks];
@@ -161,77 +152,51 @@ namespace Nethermind.Blockchain
                 throw new ArgumentException($"{nameof(blockNumber)} must be greater or equal zero and is {blockNumber}", nameof(blockNumber));
             }
 
-            _canonicalChain.TryGetValue((int)blockNumber, out Keccak blockHash);
 
-            if (blockHash == null)
+            ChainLevelInfo level = LoadLevel(blockNumber);
+            if (level == null)
             {
                 return null;
             }
 
-            return Load(blockHash);
-        }
-
-        private Block Load(Keccak blockHash)
-        {
-            Block block = Rlp.Decode<Block>(new Rlp(_blockDb[blockHash]));
-            BlockInfo blockInfo = Rlp.Decode<BlockInfo>(new Rlp(_blockInfoDb[blockHash]));
-            block.Header.TotalDifficulty = blockInfo.TotalDifficulty;
-            block.Header.TotalTransactions = blockInfo.TotalTransactions;
-            if (_receiptsDb.ContainsKey(block.Hash))
-            {
-                TransactionReceipt[] receipts = Rlp.DecodeArray<TransactionReceipt>(new Rlp(_receiptsDb[block.Hash]));
-                block.Receipts = receipts;
-            }
-            else
-            {
-                block.Receipts = new TransactionReceipt[0];
-            }
-            
-            return block;
+            return Load(level.BlockInfos[0].BlockHash).Block;
         }
 
         public bool IsMainChain(Keccak blockHash)
         {
-            return _mainChain.ContainsKey(blockHash);
+            BigInteger number = LoadNumberOnly(blockHash);
+            ChainLevelInfo level = LoadLevel(number);
+            return level.HasBlockOnMainChain && level.BlockInfos[0].BlockHash.Equals(blockHash);
         }
 
         public void MoveToBranch(Keccak blockHash)
         {
-            Block block = FindBlock(blockHash, true);
-            _canonicalChain[(int)block.Number] = null;
-
-            _branches.AddOrUpdate(blockHash, IgnoredValue, (h, b) => throw new InvalidOperationException("Block being moved to branch is already there"));
-
-            if (!_mainChain.TryRemove(blockHash, out bool _))
-            {
-                throw new InvalidOperationException("Not able to move block from the main chain to branch"); // should never happen as we only invoke it in the BlockchainProcessor
-            }
+            (Block _, BlockInfo _, ChainLevelInfo level) = Load(blockHash);
+            level.HasBlockOnMainChain = false;
         }
 
         public void MarkAsProcessed(Keccak blockHash, TransactionReceipt[] receipts = null)
         {
-            Block block = FindBlock(blockHash, false);
-            if (block == null)
+            BigInteger number = LoadNumberOnly(blockHash);
+            (BlockInfo info, ChainLevelInfo level) = LoadInfo(number, blockHash);
+
+            if (info.WasProcessed)
             {
-                throw new InvalidOperationException("Block being marked as processed is unknown.");
+                throw new InvalidOperationException($"Marking already processed block {blockHash} as processed");
             }
 
-            if (block == null)
-            {
-                throw new InvalidOperationException($"Unknown {nameof(Block)} cannot {nameof(MarkAsProcessed)}");
-            }
-
+            info.WasProcessed = true;
+            UpdateLevel(number, level);
             if (receipts != null)
             {
-                _receiptsDb[block.Hash] = Rlp.Encode(receipts.Select(r => Rlp.Encode(r, _specProvider.GetSpec(block.Number).IsEip658Enabled)).ToArray()).Bytes;
+                IReleaseSpec spec = _specProvider.GetSpec(number);
+                _receiptsDb.Set(blockHash, Rlp.Encode(receipts.Select(r => Rlp.Encode(r, spec.IsEip658Enabled)).ToArray()).Bytes);
             }
-
-            _processed[blockHash] = true;
         }
 
         public bool WasProcessed(Keccak blockHash)
         {
-            return _processed.ContainsKey(blockHash);
+            return Load(blockHash).Info.WasProcessed;
         }
 
         public void MoveToMain(Keccak blockHash)
@@ -241,15 +206,16 @@ namespace Nethermind.Blockchain
                 throw new InvalidOperationException("Cannot move unprocessed blocks to main");
             }
 
-            Block block = FindBlock(blockHash, false);
-            _canonicalChain[(int)block.Number] = blockHash;
+            (Block block, BlockInfo _, ChainLevelInfo level) = Load(blockHash);
 
-            _mainChain.AddOrUpdate(blockHash, IgnoredValue, (h, b) => throw new InvalidOperationException("Block being moved to main is already there"));
-
-            if (!_branches.TryRemove(blockHash, out bool _))
+            int index = FindIndex(blockHash, level);
+            if (index != 0)
             {
-                throw new InvalidOperationException("Not able to move block from branch to the main chain"); // should never happen as we only invoke it in the BlockchainProcessor
+                (level.BlockInfos[index], level.BlockInfos[0]) = (level.BlockInfos[0], level.BlockInfos[index]);
             }
+
+            level.HasBlockOnMainChain = true;
+            UpdateLevel(block.Number, level);
 
             BlockAddedToMain?.Invoke(this, new BlockEventArgs(block));
 
@@ -263,6 +229,106 @@ namespace Nethermind.Blockchain
                 HeadBlock = block;
                 NewHeadBlock?.Invoke(this, new BlockEventArgs(block));
             }
+        }
+
+        private void UpdateLevel(BigInteger number, BlockInfo blockInfo)
+        {
+            ChainLevelInfo level = LoadLevel(number);
+            if (level != null)
+            {
+                BlockInfo[] blockInfos = new BlockInfo[level.BlockInfos.Length + 1];
+                for (int i = 0; i < level.BlockInfos.Length; i++)
+                {
+                    blockInfos[i] = level.BlockInfos[i];
+                }
+
+                blockInfos[blockInfos.Length - 1] = blockInfo;
+            }
+            else
+            {
+                level = new ChainLevelInfo(false, new[] {blockInfo});
+            }
+            
+            _blockInfoDb.Set(number, Rlp.Encode(level).Bytes);
+        }
+
+        private void UpdateLevel(BigInteger number, ChainLevelInfo level)
+        {
+            _blockInfoDb.Set(number, Rlp.Encode(level).Bytes);
+        }
+
+        private (BlockInfo Info, ChainLevelInfo Level) LoadInfo(BigInteger number, Keccak blockHash)
+        {
+            ChainLevelInfo level = Rlp.Decode<ChainLevelInfo>(new Rlp(_blockInfoDb.Get(number)));
+            for (int i = 0; i < level.BlockInfos.Length; i++)
+            {
+                if (level.BlockInfos[i].BlockHash.Equals(blockHash))
+                {
+                    return (level.BlockInfos[i], level);
+                }
+            }
+
+            return (null, null);
+        }
+
+        private ChainLevelInfo LoadLevel(BigInteger number)
+        {
+            if (!_blockInfoDb.ContainsKey(number))
+            {
+                return null;
+            }
+            
+            return Rlp.Decode<ChainLevelInfo>(new Rlp(_blockInfoDb.Get(number)));
+        }
+
+        // TODO: use headers store?
+        private BigInteger LoadNumberOnly(Keccak blockHash)
+        {
+            Block block = Rlp.Decode<Block>(new Rlp(_blockDb.Get(blockHash)));
+            if (block == null)
+            {
+                throw new InvalidOperationException($"Not able to retrieve block number for an unknown block {blockHash}");
+            }
+
+            return block.Number;
+        }
+
+        private (Block Block, BlockInfo Info, ChainLevelInfo Level) Load(Keccak blockHash)
+        {
+            if (!_blockDb.ContainsKey(blockHash))
+            {
+                return (null, null, null);
+            }
+
+            Block block = Rlp.Decode<Block>(new Rlp(_blockDb.Get(blockHash)));
+            (BlockInfo blockInfo, ChainLevelInfo level) = LoadInfo(block.Number, block.Hash);
+
+            block.Header.TotalDifficulty = blockInfo.TotalDifficulty;
+            block.Header.TotalTransactions = blockInfo.TotalTransactions;
+            if (_receiptsDb.ContainsKey(block.Hash))
+            {
+                TransactionReceipt[] receipts = Rlp.DecodeArray<TransactionReceipt>(new Rlp(_receiptsDb.Get(block.Hash)));
+                block.Receipts = receipts;
+            }
+            else
+            {
+                block.Receipts = new TransactionReceipt[0];
+            }
+
+            return (block, blockInfo, level);
+        }
+
+        private int FindIndex(Keccak blockHash, ChainLevelInfo level)
+        {
+            for (int i = 0; i < level.BlockInfos.Length; i++)
+            {
+                if (level.BlockInfos[i].BlockHash.Equals(blockHash))
+                {
+                    return i;
+                }
+            }
+
+            throw new InvalidOperationException($"Not able to find block {blockHash} index on the chain level");
         }
 
         private void UpdateTotalDifficulty(Block block)
@@ -298,7 +364,6 @@ namespace Nethermind.Blockchain
             }
         }
 
-        // TODO: move it, merge it with diff calc (copy pasted for now)
         private void UpdateTotalTransactions(Block block)
         {
             if (block.Number == 0)

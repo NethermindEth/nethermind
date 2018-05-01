@@ -83,6 +83,12 @@ namespace Nethermind.Core.Encoding
             return ((byte[])Items[index]).ToSignedBigInteger(byteLength);
         }
 
+        public bool GetBool(int index)
+        {
+            byte[] bytes = (byte[])Items[index];
+            return bytes.Length != 0 && bytes[0] == 1;
+        }
+        
         public byte GetByte(int index)
         {
             byte[] bytes = (byte[])Items[index];

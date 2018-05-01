@@ -43,20 +43,20 @@ namespace Nethermind.Db
             _db = RocksDb.Open(options, Path.Combine("db", dbPath));
         }
 
-        public byte[] this[Keccak key]
+        public byte[] this[byte[] key]
         {
-            get => _db.Get(_prefix == null ? key.Bytes : Bytes.Concat(_prefix, key.Bytes));
-            set => _db.Put(_prefix == null ? key.Bytes : Bytes.Concat(_prefix, key.Bytes), value);
+            get => _db.Get(_prefix == null ? key : Bytes.Concat(_prefix, key));
+            set => _db.Put(_prefix == null ? key : Bytes.Concat(_prefix, key), value);
         }
 
-        public bool ContainsKey(Keccak key)
+        public bool ContainsKey(byte[] key)
         {
-            return _db.Get(_prefix == null ? key.Bytes : Bytes.Concat(_prefix, key.Bytes)) != null;
+            return _db.Get(_prefix == null ? key : Bytes.Concat(_prefix, key)) != null;
         }
 
-        public void Remove(Keccak key)
+        public void Remove(byte[] key)
         {
-            _db.Remove(_prefix == null ? key.Bytes : Bytes.Concat(_prefix, key.Bytes));
+            _db.Remove(_prefix == null ? key : Bytes.Concat(_prefix, key));
         }
     }
 }

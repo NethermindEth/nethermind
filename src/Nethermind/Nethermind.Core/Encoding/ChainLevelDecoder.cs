@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,27 +16,16 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Numerics;
-using Nethermind.Core.Crypto;
-
-namespace Nethermind.Core
+namespace Nethermind.Core.Encoding
 {
-    public class BlockInfo
+    public class ChainLevelDecoder : IRlpDecoder<ChainLevelInfo>
     {
-        public BlockInfo()
-        {   
-        }
-        
-        public BlockInfo(Keccak blockHash, BigInteger totalDifficulty, BigInteger totalTransactions)
+        public ChainLevelInfo Decode(DecodedRlp rlp)
         {
-            BlockHash = blockHash;
-            TotalDifficulty = totalDifficulty;
-            TotalTransactions = totalTransactions;
+            bool hasBlockOnMainChain = rlp.GetBool(0);
+            BlockInfo[] blockInfos = rlp.GetComplexObjectArray<BlockInfo>(1);
+            ChainLevelInfo blockInfo = new ChainLevelInfo(hasBlockOnMainChain, blockInfos);
+            return blockInfo;
         }
-        
-        public BigInteger TotalDifficulty { get; set; }
-        public BigInteger TotalTransactions { get; set; }
-        public bool WasProcessed { get; set; }
-        public Keccak BlockHash { get; set; }
     }
 }
