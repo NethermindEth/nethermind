@@ -71,7 +71,7 @@ namespace Nethermind.Runner
             var signatureValidator = new SignatureValidator(chainId); // TODO: review, check with spec provider
 
             services.AddSingleton(specProvider);
-            var blockTree = new BlockTree(new InMemoryDb(), new InMemoryDb(), specProvider, logger); // TODO: temp, change
+            var blockTree = new BlockTree(new MemDb(), new MemDb(), specProvider, logger); // TODO: temp, change
 
             services.AddSingleton<IBlockTree>(blockTree);
             services.AddSingleton(ethereumRelease);
@@ -86,10 +86,10 @@ namespace Nethermind.Runner
             services.AddSingleton<ITransactionValidator, TransactionValidator>();
             services.AddSingleton<IBlockValidator, BlockValidator>();
 
-            services.AddSingleton<IDb, InMemoryDb>();
+            services.AddSingleton<IDb, MemDb>(); // TODO: temp change
             services.AddSingleton<StateTree>();
             services.AddSingleton<IStateProvider, StateProvider>();
-            services.AddSingleton<IDbProvider, DbProvider>();
+            services.AddSingleton<IDbProvider, MemDbProvider>();
             services.AddSingleton<IStorageProvider, StorageProvider>();
 
             services.AddSingleton<IBlockhashProvider, BlockhashProvider>();

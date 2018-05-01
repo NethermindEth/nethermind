@@ -116,11 +116,11 @@ namespace Nethermind.PerfTest
         private static void RunVmPerfTests()
         {
             ILogger logger = NullLogger.Instance;
-            DbProvider dbProvider = new DbProvider(logger);
-            StateTree stateTree = new StateTree(dbProvider.GetOrCreateStateDb());
-            IStateProvider stateProvider = new StateProvider(stateTree, logger, dbProvider.GetOrCreateCodeDb());
-            IBlockTree blockTree = new BlockTree(new InMemoryDb(), new InMemoryDb(), FrontierSpecProvider.Instance, logger);
-            Machine = new VirtualMachine(FrontierSpecProvider.Instance, stateProvider, new StorageProvider(dbProvider, stateProvider, logger), new BlockhashProvider(blockTree), NullLogger.Instance);
+            MemDbProvider memDbProvider = new MemDbProvider(logger);
+            StateTree stateTree = new StateTree(memDbProvider.GetOrCreateStateDb());
+            IStateProvider stateProvider = new StateProvider(stateTree, logger, memDbProvider.GetOrCreateCodeDb());
+            IBlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), FrontierSpecProvider.Instance, logger);
+            Machine = new VirtualMachine(FrontierSpecProvider.Instance, stateProvider, new StorageProvider(memDbProvider, stateProvider, logger), new BlockhashProvider(blockTree), NullLogger.Instance);
 
             Stopwatch stopwatch = new Stopwatch();
             stopwatch.Start();
@@ -158,7 +158,7 @@ namespace Nethermind.PerfTest
             var specProvider = RopstenSpecProvider.Instance;
 
             /* store & validation */
-            var blockTree = new BlockTree(new InMemoryDb(), new InMemoryDb(), specProvider, _logger);
+            var blockTree = new BlockTree(new MemDb(), new MemDb(), specProvider, _logger);
             var difficultyCalculator = new DifficultyCalculator(specProvider);
             var headerValidator = new HeaderValidator(difficultyCalculator, blockTree, sealEngine, specProvider, _logger);
             var ommersValidator = new OmmersValidator(blockTree, headerValidator, _logger);
@@ -166,12 +166,11 @@ namespace Nethermind.PerfTest
             var blockValidator = new BlockValidator(transactionValidator, headerValidator, ommersValidator, specProvider, _logger);
 
             /* state & storage */
-            var codeDb = new InMemoryDb();
-            var stateDb = new InMemoryDb();
-            var stateTree = new StateTree(stateDb);
-            var stateProvider = new StateProvider(stateTree, _logger, codeDb);
-            var storageDbProvider = new DbProvider(_logger);
-            var storageProvider = new StorageProvider(storageDbProvider, stateProvider, _logger);
+            
+            var dbProvider = new MemDbProvider(_logger);
+            var stateTree = new StateTree(dbProvider.GetOrCreateStateDb());
+            var stateProvider = new StateProvider(stateTree, _logger, dbProvider.GetOrCreateCodeDb());
+            var storageProvider = new StorageProvider(dbProvider, stateProvider, _logger);
 
             /* blockchain processing */
             var ethereumSigner = new EthereumSigner(specProvider, _logger);
@@ -180,7 +179,7 @@ namespace Nethermind.PerfTest
             var virtualMachine = new VirtualMachine(specProvider, stateProvider, storageProvider, blockhashProvider, _logger);
             var processor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, ethereumSigner, _logger);
             var rewardCalculator = new RewardCalculator(specProvider);
-            var blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, processor, storageDbProvider, stateProvider, storageProvider, transactionStore, _logger);
+            var blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, processor, dbProvider, stateProvider, storageProvider, transactionStore, _logger);
             var blockchainProcessor = new BlockchainProcessor(blockTree, sealEngine, transactionStore, difficultyCalculator, blockProcessor, _logger);
 
             /* load ChainSpec and init */

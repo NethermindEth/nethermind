@@ -129,13 +129,13 @@ namespace Nethermind.Runner.Runners
             var blockValidator = new BlockValidator(txValidator, headerValidator, ommersValidator, specProvider, _chainLogger);
 
             /* state */
-            var dbProvider = new DbProvider(_stateLogger);
-            var codeDb = new InMemoryDb();
-            var stateDb = new InMemoryDb();
+            var dbProvider = new MemDbProvider(_stateLogger);
+            var codeDb = new MemDb();
+            var stateDb = new MemDb();
             var stateTree = new StateTree(stateDb);
             var stateProvider = new StateProvider(stateTree, _stateLogger, codeDb);
             var storageProvider = new StorageProvider(dbProvider, stateProvider, _stateLogger);
-            var storageDbProvider = new DbProvider(_stateLogger);
+            var storageDbProvider = new MemDbProvider(_stateLogger);
 
             /* blockchain */
             var ethereumSigner = new EthereumSigner(specProvider, _chainLogger);

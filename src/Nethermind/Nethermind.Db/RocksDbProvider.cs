@@ -19,13 +19,15 @@
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Store;
 
-namespace Nethermind.Store
+namespace Nethermind.Db
 {
-    public class DbProvider : IDbProvider
+    // TODO: this is a copy paste, like most snapshotable classes, awaiting some refactoring
+    public class RocksDbProvider : IDbProvider
     {
-        private readonly ISnapshotableDb _stateDb = new InMemoryDb();
-        private readonly ISnapshotableDb _codeDb = new InMemoryDb();
+        private readonly ISnapshotableDb _stateDb = new SnapshotableDb(new KeyValueDb(KeyValueDb.StateDbPath));
+        private readonly ISnapshotableDb _codeDb = new SnapshotableDb(new KeyValueDb(KeyValueDb.CodeDbPath));
         private readonly Dictionary<Address, ISnapshotableDb> _storageDbs = new Dictionary<Address, ISnapshotableDb>();
         private IEnumerable<ISnapshotableDb> AllDbs
         {
@@ -49,7 +51,7 @@ namespace Nethermind.Store
         {
             if (!_storageDbs.ContainsKey(address))
             {
-                _storageDbs[address] = new InMemoryDb();
+                _storageDbs[address] = new SnapshotableDb(new KeyValueDb(KeyValueDb.StorageDbPath, address.Hex));
             }
 
             return _storageDbs[address];
@@ -64,7 +66,7 @@ namespace Nethermind.Store
 
         private readonly Stack<Dictionary<ISnapshotableDb, int>> _snapshots = new Stack<Dictionary<ISnapshotableDb, int>>();
 
-        public DbProvider(ILogger logger)
+        public RocksDbProvider(ILogger logger)
         {
             _logger = logger;
             _snapshots.Push(new Dictionary<ISnapshotableDb, int>());

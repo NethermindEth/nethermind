@@ -47,10 +47,10 @@ namespace Ethereum.VM.Test
         public void Setup()
         {
             ILogger stateLogger = NullLogger.Instance;
-            _dbProvider = new DbProvider(stateLogger);
+            _dbProvider = new MemDbProvider(stateLogger);
             _blockhashProvider = new TestBlockhashProvider();
             _stateProvider = new StateProvider(new StateTree(_dbProvider.GetOrCreateStateDb()), stateLogger, _dbProvider.GetOrCreateCodeDb());
-            _storageProvider = new StorageProvider(new DbProvider(stateLogger), _stateProvider, stateLogger);
+            _storageProvider = new StorageProvider(new MemDbProvider(stateLogger), _stateProvider, stateLogger);
         }
 
         public static IEnumerable<VirtualMachineTest> LoadTests(string testSet)

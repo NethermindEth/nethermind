@@ -24,12 +24,12 @@ namespace Nethermind.Store
 {
     public class SecurePatriciaTree : PatriciaTree
     {
-        public SecurePatriciaTree(Keccak rootHash, InMemoryDb db)
+        public SecurePatriciaTree(Keccak rootHash, IDb db)
             : base(db, rootHash)
         {
         }
 
-        public SecurePatriciaTree(InMemoryDb db)
+        public SecurePatriciaTree(IDb db)
             :base(db)
         {
         }

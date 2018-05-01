@@ -24,97 +24,97 @@ using NUnit.Framework;
 namespace Nethermind.Core.Test
 {
     [TestFixture]
-    public class InMemoryDbTests
+    public class SnapshotableDbTests
     {
         private readonly Keccak _hash1 = Keccak.Compute("1");
 
-        private byte[] _bytes1 = new byte[] {1};
-        private byte[] _bytes2 = new byte[] {2};
+        private readonly byte[] _bytes1 = new byte[] {1};
+        private readonly byte[] _bytes2 = new byte[] {2};
 
         [Test]
         public void Set_get()
         {
-            InMemoryDb inMemoryDb = new InMemoryDb();
-            inMemoryDb[_hash1] = _bytes1;
-            byte[] getResult = inMemoryDb[_hash1];
+            SnapshotableDb db = new SnapshotableDb(new MemDb());
+            db[_hash1] = _bytes1;
+            byte[] getResult = db[_hash1];
             Assert.AreEqual(_bytes1, getResult);
         }
         
         [Test]
         public void Double_set_get()
         {
-            InMemoryDb inMemoryDb = new InMemoryDb();
-            inMemoryDb[_hash1] = _bytes1;
-            inMemoryDb[_hash1] = _bytes2;
-            byte[] getResult = inMemoryDb[_hash1];
+            SnapshotableDb db = new SnapshotableDb(new MemDb());
+            db[_hash1] = _bytes1;
+            db[_hash1] = _bytes2;
+            byte[] getResult = db[_hash1];
             Assert.AreEqual(_bytes2, getResult);
         }
         
         [Test]
         public void Set_delete_get()
         {
-            InMemoryDb inMemoryDb = new InMemoryDb();
-            inMemoryDb[_hash1] = _bytes1;
-            inMemoryDb.Remove(_hash1);
-            byte[] getResult = inMemoryDb[_hash1];
+            SnapshotableDb db = new SnapshotableDb(new MemDb());
+            db[_hash1] = _bytes1;
+            db.Remove(_hash1);
+            byte[] getResult = db[_hash1];
             Assert.AreEqual(null, getResult);
         }
         
         [Test]
         public void Initial_take_snapshot()
         {
-            InMemoryDb inMemoryDb = new InMemoryDb();
-            Assert.AreEqual(-1, inMemoryDb.TakeSnapshot());
+            SnapshotableDb db = new SnapshotableDb(new MemDb());
+            Assert.AreEqual(-1, db.TakeSnapshot());
         }
         
         [Test]
         public void Set_take_snapshot()
         {
-            InMemoryDb inMemoryDb = new InMemoryDb();
-            inMemoryDb[_hash1] = _bytes1;
-            Assert.AreEqual(0, inMemoryDb.TakeSnapshot());
+            SnapshotableDb db = new SnapshotableDb(new MemDb());
+            db[_hash1] = _bytes1;
+            Assert.AreEqual(0, db.TakeSnapshot());
         }
         
         [Test]
         public void Set_restore_get()
         {
-            InMemoryDb inMemoryDb = new InMemoryDb();
-            inMemoryDb[_hash1] = _bytes1;
-            inMemoryDb.Restore(-1);
-            byte[] getResult = inMemoryDb[_hash1];
+            SnapshotableDb db = new SnapshotableDb(new MemDb());
+            db[_hash1] = _bytes1;
+            db.Restore(-1);
+            byte[] getResult = db[_hash1];
             Assert.AreEqual(null, getResult);
         }
         
         [Test]
         public void Set_commit_get()
         {
-            InMemoryDb inMemoryDb = new InMemoryDb();
-            inMemoryDb[_hash1] = _bytes1;
-            inMemoryDb.Commit(Frontier.Instance);
-            byte[] getResult = inMemoryDb[_hash1];
+            SnapshotableDb db = new SnapshotableDb(new MemDb());
+            db[_hash1] = _bytes1;
+            db.Commit(Frontier.Instance);
+            byte[] getResult = db[_hash1];
             Assert.AreEqual(_bytes1, getResult);
         }
         
         [Test]
         public void Set_commit_delete_restore_get()
         {
-            InMemoryDb inMemoryDb = new InMemoryDb();
-            inMemoryDb[_hash1] = _bytes1;
-            inMemoryDb.Commit(Frontier.Instance);
-            inMemoryDb.Remove(_hash1);
-            inMemoryDb.Restore(-1);
-            byte[] getResult = inMemoryDb[_hash1];
+            SnapshotableDb db = new SnapshotableDb(new MemDb());
+            db[_hash1] = _bytes1;
+            db.Commit(Frontier.Instance);
+            db.Remove(_hash1);
+            db.Restore(-1);
+            byte[] getResult = db[_hash1];
             Assert.AreEqual(_bytes1, getResult);
         }
         
         [Test]
         public void Set_delete_set_get()
         {
-            InMemoryDb inMemoryDb = new InMemoryDb();
-            inMemoryDb[_hash1] = _bytes1;
-            inMemoryDb.Remove(_hash1);
-            inMemoryDb[_hash1] = _bytes2;
-            byte[] getResult = inMemoryDb[_hash1];
+            SnapshotableDb db = new SnapshotableDb(new MemDb());
+            db[_hash1] = _bytes1;
+            db.Remove(_hash1);
+            db[_hash1] = _bytes2;
+            byte[] getResult = db[_hash1];
             Assert.AreEqual(_bytes2, getResult);
         }
     }

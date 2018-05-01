@@ -29,7 +29,7 @@ namespace Ethereum.Trie.Test
         [Test]
         public void Storage_trie_set_reset_with_empty()
         {
-            StorageTree tree = new StorageTree(new InMemoryDb());
+            StorageTree tree = new StorageTree(new MemDb());
             Keccak rootBefore = tree.RootHash;
             tree.Set(1, new byte[] { 1 });
             tree.Set(1, new byte[] { });
@@ -40,7 +40,7 @@ namespace Ethereum.Trie.Test
         [Test]
         public void Storage_trie_set_reset_with_long_zero()
         {
-            StorageTree tree = new StorageTree(new InMemoryDb());
+            StorageTree tree = new StorageTree(new MemDb());
             Keccak rootBefore = tree.RootHash;
             tree.Set(1, new byte[] { 1 });
             tree.Set(1, new byte[] { 0, 0, 0, 0, 0 });
@@ -51,7 +51,7 @@ namespace Ethereum.Trie.Test
         [Test]
         public void Storage_trie_set_reset_with_short_zero()
         {
-            StorageTree tree = new StorageTree(new InMemoryDb());
+            StorageTree tree = new StorageTree(new MemDb());
             Keccak rootBefore = tree.RootHash;
             tree.Set(1, new byte[] { 1 });
             tree.Set(1, new byte[] { 0 });

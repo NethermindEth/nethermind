@@ -34,11 +34,11 @@ namespace Nethermind.Evm.Test
         {
             _spec = RopstenSpecProvider.Instance;
             ILogger logger = NullLogger.Instance;
-            IDb codeDb = new InMemoryDb();
-            _stateDb = new InMemoryDb();
+            IDb codeDb = new MemDb();
+            _stateDb = new SnapshotableDb(new MemDb());
             StateTree stateTree = new StateTree(_stateDb);
             _stateProvider = new StateProvider(stateTree, logger, codeDb);
-            _storageDbProvider = new DbProvider(logger);
+            _storageDbProvider = new MemDbProvider(logger);
             _storageProvider = new StorageProvider(_storageDbProvider, _stateProvider, logger);
             _ethereumSigner = new EthereumSigner(_spec, logger);
             IBlockhashProvider blockhashProvider = new TestBlockhashProvider();

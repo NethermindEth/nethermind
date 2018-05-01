@@ -32,12 +32,12 @@ namespace Ethereum.Trie.Test
 {
     public class TrieTests
     {
-        private InMemoryDb _db;
+        private MemDb _db;
 
         [SetUp]
         public void Setup()
         {
-            _db = new InMemoryDb();
+            _db = new MemDb();
         }
 
         private static IEnumerable<TrieTest> GetTestPermutations(IEnumerable<TrieTest> tests)
@@ -352,7 +352,7 @@ namespace Ethereum.Trie.Test
         [Test]
         public void Lookup_in_empty_tree()
         {
-            PatriciaTree tree = new PatriciaTree(new InMemoryDb());
+            PatriciaTree tree = new PatriciaTree(new MemDb());
             Assert.AreEqual(tree.Root, null);
             tree.Get(new byte[] { 1 });
             Assert.AreEqual(tree.Root, null);

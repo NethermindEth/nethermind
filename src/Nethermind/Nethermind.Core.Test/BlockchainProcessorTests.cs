@@ -55,7 +55,7 @@ namespace Nethermind.Core.Test
             var specProvider = RopstenSpecProvider.Instance;
 
             /* store & validation */
-            var blockTree = new BlockTree(new InMemoryDb(), new InMemoryDb(), specProvider, logger);
+            var blockTree = new BlockTree(new MemDb(), new MemDb(), specProvider, logger);
             var difficultyCalculator = new DifficultyCalculator(specProvider);
             var headerValidator = new HeaderValidator(difficultyCalculator, blockTree, sealEngine, specProvider, logger);
             var ommersValidator = new OmmersValidator(blockTree, headerValidator, logger);
@@ -63,11 +63,11 @@ namespace Nethermind.Core.Test
             var blockValidator = new BlockValidator(transactionValidator, headerValidator, ommersValidator, specProvider, logger);
 
             /* state & storage */
-            var codeDb = new InMemoryDb();
-            var stateDb = new InMemoryDb();
+            var codeDb = new MemDb();
+            var stateDb = new MemDb();
             var stateTree = new StateTree(stateDb);
             var stateProvider = new StateProvider(stateTree, logger, codeDb);
-            var storageDbProvider = new DbProvider(logger);
+            var storageDbProvider = new MemDbProvider(logger);
             var storageProvider = new StorageProvider(storageDbProvider, stateProvider, logger);
 
             /* blockchain processing */

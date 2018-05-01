@@ -26,10 +26,10 @@ using Nethermind.Core.Specs;
 
 namespace Nethermind.Store
 {
-    public class InMemoryDb : ISnapshotableDb
+    public class SnapshotableDb : ISnapshotableDb
     {
         private readonly IDb _db;
-        
+
         private const int InitialCapacity = 1024;
 
         private readonly Dictionary<Keccak, Stack<int>> _cache = new Dictionary<Keccak, Stack<int>>();
@@ -44,14 +44,9 @@ namespace Nethermind.Store
 
         private Change[] _changes = new Change[InitialCapacity];
 
-//        private InMemoryDb(Dictionary<Keccak, byte[]> toCopy)
-//        {
-//            _db = new Dictionary<Keccak, byte[]>(toCopy);
-//        }
-
-        public InMemoryDb()
+        public SnapshotableDb(IDb db)
         {
-            _db = new MemDb();
+            _db = db;
         }
 
         private byte[] GetThroughCache(Keccak hash)
@@ -63,7 +58,7 @@ namespace Nethermind.Store
             }
 
             byte[] value = _db.ContainsKey(hash) ? _db[hash] : null;
-            
+
             PushJustCache(hash, value);
             return value;
         }
@@ -147,9 +142,9 @@ namespace Nethermind.Store
         {
             if (snapshot > _currentPosition)
             {
-                throw new InvalidOperationException($"Trying to restore snapshot beyond current positions at {nameof(InMemoryDb)}");
+                throw new InvalidOperationException($"Trying to restore snapshot beyond current positions at {nameof(SnapshotableDb)}");
             }
-            
+
             _logger?.Debug($"  RESTORING DB SNAPSHOT {snapshot}");
 
             for (int i = 0; i < _currentPosition - snapshot; i++)
@@ -164,7 +159,7 @@ namespace Nethermind.Store
                         {
                             throw new InvalidOperationException($"Expected actual position {actualPosition} to be equal to {_currentPosition} - {i}");
                         }
-                        
+
                         _keptInCache.Add(change);
                         _changes[actualPosition] = null;
                         continue;
@@ -208,15 +203,15 @@ namespace Nethermind.Store
             {
                 throw new InvalidOperationException($"{nameof(_currentPosition)} ({_currentPosition}) is outside of the range of {_changes} array (length {_changes.Length})");
             }
-            
+
             if (_changes[_currentPosition] == null)
             {
-                throw new InvalidOperationException($"Change at current position {_currentPosition} was null when commiting {nameof(InMemoryDb)}");
+                throw new InvalidOperationException($"Change at current position {_currentPosition} was null when commiting {nameof(SnapshotableDb)}");
             }
-            
+
             if (_changes[_currentPosition + 1] != null)
             {
-                throw new InvalidOperationException($"Change after current position ({_currentPosition} + 1) was not null when commiting {nameof(InMemoryDb)}");
+                throw new InvalidOperationException($"Change after current position ({_currentPosition} + 1) was not null when commiting {nameof(SnapshotableDb)}");
             }
 
             for (int i = 0; i <= _currentPosition; i++)
@@ -253,6 +248,7 @@ namespace Nethermind.Store
                         {
                             _db.Remove(change.Hash);
                         }
+
                         break;
                     }
                     default:

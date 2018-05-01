@@ -50,7 +50,7 @@ namespace Nethermind.Blockchain.Test
             var specProvider = RopstenSpecProvider.Instance;
 
             /* store & validation */
-            var blockTree = new BlockTree(new InMemoryDb(), new InMemoryDb(), specProvider, logger);
+            var blockTree = new BlockTree(new MemDb(), new MemDb(), specProvider, logger);
             var difficultyCalculator = new DifficultyCalculator(specProvider);
             var headerValidator = new HeaderValidator(difficultyCalculator, blockTree, sealEngine, specProvider, logger);
             var ommersValidator = new OmmersValidator(blockTree, headerValidator, logger);
@@ -58,12 +58,10 @@ namespace Nethermind.Blockchain.Test
             var blockValidator = new BlockValidator(transactionValidator, headerValidator, ommersValidator, specProvider, logger);
 
             /* state & storage */
-            var codeDb = new InMemoryDb();
-            var stateDb = new InMemoryDb();
-            var stateTree = new StateTree(stateDb);
-            var stateProvider = new StateProvider(stateTree, logger, codeDb);
-            var storageDbProvider = new DbProvider(logger);
-            var storageProvider = new StorageProvider(storageDbProvider, stateProvider, logger);
+            var dbProvider = new MemDbProvider(logger);
+            var stateTree = new StateTree(dbProvider.GetOrCreateStateDb());
+            var stateProvider = new StateProvider(stateTree, logger, dbProvider.GetOrCreateCodeDb());
+            var storageProvider = new StorageProvider(dbProvider, stateProvider, logger);
 
             /* blockchain processing */
             var ethereumSigner = new EthereumSigner(specProvider, logger);
@@ -72,7 +70,7 @@ namespace Nethermind.Blockchain.Test
             var virtualMachine = new VirtualMachine(specProvider, stateProvider, storageProvider, blockhashProvider, logger);
             var processor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, ethereumSigner, logger);
             var rewardCalculator = new RewardCalculator(specProvider);
-            var blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, processor, storageDbProvider, stateProvider, storageProvider, transactionStore, logger);
+            var blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, processor, dbProvider, stateProvider, storageProvider, transactionStore, logger);
             var blockchainProcessor = new BlockchainProcessor(blockTree, sealEngine, transactionStore, difficultyCalculator, blockProcessor, logger);
 
             /* load ChainSpec and init */

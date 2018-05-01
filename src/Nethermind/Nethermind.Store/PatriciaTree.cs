@@ -39,9 +39,8 @@ namespace Nethermind.Store
         internal Node Root;
 
         public PatriciaTree()
-            : this(new InMemoryDb(), EmptyTreeHash)
+            : this(new MemDb(), EmptyTreeHash)
         {
-            _db = new InMemoryDb();
         }
 
         public PatriciaTree(IDb db)

@@ -18,6 +18,7 @@
 
 using System.IO;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Store;
 using RocksDbSharp;
 
@@ -25,31 +26,36 @@ namespace Nethermind.Db
 {
     public class KeyValueDb : IDb
     {
+        public const string StorageDbPath = "state";
+        public const string StateDbPath = "state";
+        public const string CodeDbPath = "code";
         public const string BlocksDbPath = "blocks";
         public const string BlockInfosDbPath = "blockInfos";
-        
-        private readonly RocksDb _db;
 
-        public KeyValueDb(string dbPath)
+        private readonly RocksDb _db;
+        private readonly byte[] _prefix;
+
+        public KeyValueDb(string dbPath, byte[] prefix = null) // TODO: check column families
         {
+            _prefix = prefix;
             DbOptions options = new DbOptions();
             _db = RocksDb.Open(options, Path.Combine("db", dbPath));
         }
 
         public byte[] this[Keccak key]
         {
-            get => _db.Get(key.Bytes);
-            set => _db.Put(key.Bytes, value);
+            get => _db.Get(_prefix == null ? key.Bytes : Bytes.Concat(_prefix, key.Bytes));
+            set => _db.Put(_prefix == null ? key.Bytes : Bytes.Concat(_prefix, key.Bytes), value);
         }
 
         public bool ContainsKey(Keccak key)
         {
-            return _db.Get(key.Bytes) != null;
+            return _db.Get(_prefix == null ? key.Bytes : Bytes.Concat(_prefix, key.Bytes)) != null;
         }
 
         public void Remove(Keccak key)
         {
-            _db.Remove(key.Bytes);
+            _db.Remove(_prefix == null ? key.Bytes : Bytes.Concat(_prefix, key.Bytes));
         }
     }
 }
