@@ -21,6 +21,7 @@ using System.Numerics;
 using System.Reflection.Emit;
 using Nethermind.Blockchain;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Encoding;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Store;
@@ -387,6 +388,42 @@ namespace Nethermind.Core.Test
             AddToMain(blockTree, block0);
 
             Assert.AreEqual(1, blockTree.GenesisBlock.Receipts.Length);
+        }
+        
+        [Test]
+        public void Can_init_head_block_from_db()
+        {
+            Block genesisBlock = Build.A.Block.Genesis.TestObject;
+            Block headBlock = genesisBlock;
+            
+            MemDb blocksDb = new MemDb();
+            blocksDb.Set(Keccak.Zero, Rlp.Encode(genesisBlock).Bytes);
+            blocksDb.Set(genesisBlock.Hash, Rlp.Encode(genesisBlock).Bytes);
+            
+            MemDb blockInfosDb = new MemDb();
+            ChainLevelInfo level = new ChainLevelInfo(true, new BlockInfo[1] {new BlockInfo(headBlock.Hash, headBlock.Difficulty, headBlock.Transactions.Length)});
+            blockInfosDb.Set(0, Rlp.Encode(level).Bytes);
+            
+            BlockTree blockTree = new BlockTree(blocksDb, blockInfosDb, new MemDb(), OlympicSpecProvider.Instance, NullLogger.Instance);
+            Assert.AreEqual(headBlock.Hash, blockTree.HeadBlock?.Hash, "head");
+            Assert.AreEqual(headBlock.Hash, blockTree.GenesisBlock?.Hash, "genesis");
+        }
+        
+        [Test]
+        public void Sets_head_block_info_in_db_on_new_head_block()
+        {
+            MemDb blocksDb = new MemDb();
+            MemDb blockInfosDb = new MemDb();
+            
+            BlockTree blockTree = new BlockTree(blocksDb, blockInfosDb, new MemDb(), OlympicSpecProvider.Instance, NullLogger.Instance);
+            Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
+            Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
+
+            AddToMain(blockTree, block0);
+            AddToMain(blockTree, block1);
+
+            Block storedInDb = Rlp.Decode<Block>(new Rlp(blocksDb.Get(Keccak.Zero)));
+            Assert.AreEqual(block1.Hash, storedInDb.Hash);
         }
     }
 }

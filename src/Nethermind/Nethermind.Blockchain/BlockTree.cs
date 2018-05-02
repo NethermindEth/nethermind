@@ -45,6 +45,30 @@ namespace Nethermind.Blockchain
             _blockInfoDb = blockInfoDb;
             _receiptsDb = receiptsDb;
             _specProvider = specProvider;
+
+            ChainLevelInfo genesisLevel = LoadLevel(0);
+            if (genesisLevel != null)
+            {
+                if (genesisLevel.BlockInfos.Length != 1)
+                {
+                    // TODO: corrupted state exception?
+                    throw new InvalidOperationException($"Genesis level in DB has {genesisLevel.BlockInfos.Length} blocks");
+                }
+
+                Block genesisBlock = Load(genesisLevel.BlockInfos[0].BlockHash).Block;
+                GenesisBlock = genesisBlock;
+                LoadHeadBlock();
+            }
+        }
+
+        private void LoadHeadBlock()
+        {
+            if (_blockDb.ContainsKey(Keccak.Zero))
+            {
+                Block block = Rlp.Decode<Block>(new Rlp(_blockDb.Get(Keccak.Zero)));
+                HeadBlock = block;
+                BestSuggestedBlock = HeadBlock;
+            }
         }
 
         public event EventHandler<BlockEventArgs> BlockAddedToMain;
@@ -94,9 +118,9 @@ namespace Nethermind.Blockchain
 
             UpdateTotalDifficulty(block);
             UpdateTotalTransactions(block);
-            
+
             _blockDb.Set(block.Hash, Rlp.Encode(block).Bytes);
-            
+
             BlockInfo blockInfo = new BlockInfo(block.Hash, block.TotalDifficulty.Value, block.TotalTransactions.Value);
             UpdateLevel(block.Number, blockInfo);
 
@@ -229,8 +253,14 @@ namespace Nethermind.Blockchain
                 }
 
                 HeadBlock = block;
+                SaveHeadBlock();
                 NewHeadBlock?.Invoke(this, new BlockEventArgs(block));
             }
+        }
+
+        private void SaveHeadBlock()
+        {
+            _blockDb.Set(Keccak.Zero, Rlp.Encode(HeadBlock).Bytes);
         }
 
         private void UpdateLevel(BigInteger number, BlockInfo blockInfo)
@@ -251,7 +281,7 @@ namespace Nethermind.Blockchain
             {
                 level = new ChainLevelInfo(false, new[] {blockInfo});
             }
-            
+
             _blockInfoDb.Set(number, Rlp.Encode(level).Bytes);
         }
 
@@ -280,7 +310,7 @@ namespace Nethermind.Blockchain
             {
                 return null;
             }
-            
+
             return Rlp.Decode<ChainLevelInfo>(new Rlp(_blockInfoDb.Get(number)));
         }
 
@@ -310,7 +340,7 @@ namespace Nethermind.Blockchain
             {
                 throw new InvalidOperationException($"{nameof(blockInfo)} is null when {nameof(block)} is not null");
             }
-            
+
             block.Header.TotalDifficulty = blockInfo.TotalDifficulty;
             block.Header.TotalTransactions = blockInfo.TotalTransactions;
             if (_receiptsDb.ContainsKey(block.Hash))
