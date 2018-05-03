@@ -65,7 +65,7 @@ namespace Nethermind.Blockchain
             BlockTree.NewHeadBlock += OnNewHeadBlock;
             _transactionStore.NewPending += OnNewPendingTransaction;
 
-            _logger.Info($"Initialized {nameof(SynchronizationManager)} with genesis block {HeadBlock}");
+            _logger.Info($"Initialized {nameof(SynchronizationManager)} with head block {HeadBlock}");
         }
 
         private void OnNewPendingTransaction(object sender, TransactionEventArgs transactionEventArgs)
@@ -456,7 +456,7 @@ namespace Nethermind.Blockchain
             }
 
 //            bool addResult = _peers.TryAdd(peer.NodeId, new PeerInfo(peer, getNumberTask.Result));
-            bool addResult = _peers.TryAdd(peer.NodeId, new PeerInfo(peer, getNumberTask.Result) {NumberReceived = this.HeadNumber}); // TODO: cheating now with assumign the consistency of the chains
+            bool addResult = _peers.TryAdd(peer.NodeId, new PeerInfo(peer, getNumberTask.Result) {NumberReceived = BlockTree.BestSuggestedBlock.Number}); // TODO: cheating now with assumign the consistency of the chains
             if (!addResult)
             {
                 _logger.Error($"Adding {nameof(PeerInfo)} failed for {peer.NodeId}");

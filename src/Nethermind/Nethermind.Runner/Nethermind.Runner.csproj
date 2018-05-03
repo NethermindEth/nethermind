@@ -99,6 +99,10 @@
             <Link>Chains\ropsten_through_ethj.json</Link>
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
         </Content>
+        <Content Include="..\Chains\ropsten_through_vm2.json">
+            <Link>Chains\ropsten_through_vm2.json</Link>
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
         <Content Include="..\Chains\olympic.json">
             <Link>Chains\olympic.json</Link>
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
@@ -115,6 +119,9 @@
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
         </Content>
         <Content Include="Configs\ropsten_through_ethj.config.json">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Content Include="Configs\ropsten_through_vm2.config.json">
             <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
         </Content>
         <Content Include="Configs\runner.config.json">

@@ -1752,31 +1752,33 @@ namespace Nethermind.Evm
                         if (!evmState.DestroyList.Contains(env.ExecutingAccount))
                         {
                             evmState.DestroyList.Add(env.ExecutingAccount);
-
-                            BigInteger ownerBalance = _state.GetBalance(env.ExecutingAccount);
-                            bool inheritorAccountExists = _state.AccountExists(inheritor);
-
-                            if (!spec.IsEip158Enabled && !inheritorAccountExists && spec.IsEip150Enabled)
-                            {
-                                UpdateGas(GasCostOf.NewAccount, ref gasAvailable);
-                            }
-
-                            if (spec.IsEip158Enabled && ownerBalance != 0 && _state.IsDeadAccount(inheritor))
-                            {
-                                UpdateGas(GasCostOf.NewAccount, ref gasAvailable);
-                            }
-
-                            if (!inheritorAccountExists)
-                            {
-                                _state.CreateAccount(inheritor, ownerBalance);
-                            }
-                            else if (!inheritor.Equals(env.ExecutingAccount))
-                            {
-                                _state.UpdateBalance(inheritor, ownerBalance, spec);
-                            }
-
-                            _state.UpdateBalance(env.ExecutingAccount, -ownerBalance, spec);
                         }
+
+                        // TODO: review the change for Ropsten 468194 (lots of reciprocated selfdestruct calls)
+                        
+                        BigInteger ownerBalance = _state.GetBalance(env.ExecutingAccount);
+                        bool inheritorAccountExists = _state.AccountExists(inheritor);
+
+                        if (!spec.IsEip158Enabled && !inheritorAccountExists && spec.IsEip150Enabled)
+                        {
+                            UpdateGas(GasCostOf.NewAccount, ref gasAvailable);
+                        }
+
+                        if (spec.IsEip158Enabled && ownerBalance != 0 && _state.IsDeadAccount(inheritor))
+                        {
+                            UpdateGas(GasCostOf.NewAccount, ref gasAvailable);
+                        }
+
+                        if (!inheritorAccountExists)
+                        {
+                            _state.CreateAccount(inheritor, ownerBalance);
+                        }
+                        else if (!inheritor.Equals(env.ExecutingAccount))
+                        {
+                            _state.UpdateBalance(inheritor, ownerBalance, spec);
+                        }
+
+                        _state.UpdateBalance(env.ExecutingAccount, -ownerBalance, spec);
 
                         UpdateCurrentState();
                         if (_logger.IsDebugEnabled)

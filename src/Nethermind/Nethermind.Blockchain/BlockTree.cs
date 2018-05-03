@@ -20,6 +20,7 @@ using System;
 using System.Diagnostics;
 using System.Linq;
 using System.Numerics;
+using System.Threading.Tasks;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -61,13 +62,38 @@ namespace Nethermind.Blockchain
             }
         }
 
+        public void LoadBlocksFromDb()
+        {
+            if (_logger.IsInfoEnabled)
+            {
+                _logger.Info("Loading blocks from DB.");
+            }
+
+            BigInteger blocksToLoad = FindNumberOfBlocksToLoadFromDb();
+            if (_logger.IsInfoEnabled)
+            {
+                _logger.Info($"Found {blocksToLoad} blocks to load starting from current head block {HeadBlock.ToString(Block.Format.Short)}.");
+            }
+            
+            for (int i = 0; i < blocksToLoad; i++)
+            {
+                Block block = FindBlock(HeadBlock.Number + i + 1);
+                BestSuggestedBlock = block;
+                NewBestSuggestedBlock?.Invoke(this, new BlockEventArgs(block));
+            }
+            
+            if (_logger.IsInfoEnabled)
+            {
+                _logger.Info("Finished loading blocks from DB. Current best suggested block");
+            }
+        }
+
         private void LoadHeadBlock()
         {
             if (_blockDb.ContainsKey(Keccak.Zero))
             {
                 Block block = Rlp.Decode<Block>(new Rlp(_blockDb.Get(Keccak.Zero)));
-                HeadBlock = block;
-                BestSuggestedBlock = HeadBlock;
+                HeadBlock = BestSuggestedBlock = block;
             }
         }
 
@@ -132,6 +158,32 @@ namespace Nethermind.Blockchain
 
             return AddBlockResult.Added;
         }
+
+        // TODO: this is all temp while we test full chain sync
+        private BigInteger FindNumberOfBlocksToLoadFromDb()
+        {
+            BigInteger headNumber = HeadBlock.Number;
+            BigInteger left = headNumber;
+            BigInteger right = headNumber + MaxQueueSize;
+
+            while (left != right)
+            {
+                BigInteger index = left + (right - left) / 2;
+                Block block = FindBlock(index);
+                if (block == null)
+                {
+                    right = index;
+                }
+                else
+                {
+                    left = index + 1;
+                }
+            }
+
+            return left - headNumber - 1;
+        }
+
+        private const int MaxQueueSize = 100000;
 
         public Block FindBlock(Keccak blockHash, bool mainChainOnly)
         {

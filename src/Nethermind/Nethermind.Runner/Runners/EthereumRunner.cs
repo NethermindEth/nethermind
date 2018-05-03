@@ -192,17 +192,21 @@ namespace Nethermind.Runner.Runners
             /* start test processing */
             sealEngine.IsMining = isMining;
             _blockchainProcessor.Start();
-
-            _syncManager = new SynchronizationManager(
-                blockTree,
-                blockValidator,
-                headerValidator,
-                transactionStore,
-                txValidator,
-                _networkLogger);
-            _syncManager.Start();
+            
+            blockTree.LoadBlocksFromDb();
+            
+            // TODO: only start sync manager after queued blocks are processed
+//            _syncManager = new SynchronizationManager(
+//                blockTree,
+//                blockValidator,
+//                headerValidator,
+//                transactionStore,
+//                txValidator,
+//                _networkLogger);
+//
+//            _syncManager.Start();
         }
-
+        
         private async Task InitNet(ChainSpec chainSpec, int listenPort)
         {
             /* tools */

@@ -183,10 +183,11 @@ namespace Nethermind.Evm
             {
                 if (transaction.IsContractCreation)
                 {
+                    // TODO: review tests around it as it fails on Ropsten 230881 when we throw an exception
                     if (_stateProvider.AccountExists(recipient) && !_stateProvider.IsEmptyAccount(recipient))
                     {
                         // TODO: review
-                        throw new TransactionCollisionException();
+//                        throw new TransactionCollisionException();
                     }
                 }
 
@@ -284,13 +285,11 @@ namespace Nethermind.Evm
 
             foreach (Address toBeDestroyed in destroyedAccounts)
             {
+                if (_logger.IsDebugEnabled) _logger.Debug($"DESTROYING: {toBeDestroyed}");
                 _stateProvider.DeleteAccount(toBeDestroyed);
             }
 
-            if (_logger.IsDebugEnabled)
-            {
-                _logger.Debug("GAS SPENT: " + spentGas);
-            }
+            if (_logger.IsDebugEnabled) _logger.Debug("GAS SPENT: " + spentGas);
 
             if (!destroyedAccounts.Contains(block.Beneficiary))
             {
