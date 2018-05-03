@@ -1,125 +1,131 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <OutputType>Exe</OutputType>
-    <TargetFramework>netcoreapp2.0</TargetFramework>
-  </PropertyGroup>
-  <ItemGroup>
-    <None Remove="appsettings.Development.json" />
-    <None Remove="appsettings.json" />
-    <None Remove="Properties\launchSettings.json" />
-  </ItemGroup>
-  <ItemGroup>
-    <Content Include="appsettings.Development.json">
-      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
-    </Content>
-    <Content Include="appsettings.json">
-      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
-    </Content>
-    <Content Include="Properties\launchSettings.json">
-      <CopyToPublishDirectory>Never</CopyToPublishDirectory>
-    </Content>
-  </ItemGroup>
-  <ItemGroup>
-    <PackageReference Include="Microsoft.AspNetCore.All" Version="2.0.5" />
-    <PackageReference Include="Microsoft.Extensions.CommandLineUtils" Version="1.1.1" />
-    <PackageReference Include="NLog.Config" Version="4.5.3" />
-  </ItemGroup>
-  <ItemGroup>
-    <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj">
-      <Project>{5751C57B-9F2D-45DE-BCC2-42645B85E39E}</Project>
-      <Name>Nethermind.Core</Name>
-    </ProjectReference>
-    <ProjectReference Include="..\Nethermind.Db\Nethermind.Db.csproj">
-      <Project>{0B52D472-A7B0-4AB6-AFE3-A644B90F53FC}</Project>
-      <Name>Nethermind.Db</Name>
-    </ProjectReference>
-    <ProjectReference Include="..\Nethermind.Discovery\Nethermind.Discovery.csproj" />
-    <ProjectReference Include="..\Nethermind.JsonRpc\Nethermind.JsonRpc.csproj">
-      <Project>{53D62515-72D1-4DEA-BC60-71BCC9C928E3}</Project>
-      <Name>Nethermind.JsonRpc</Name>
-    </ProjectReference>
-    <ProjectReference Include="..\Nethermind.Network\Nethermind.Network.csproj" />
-  </ItemGroup>
-  <ItemGroup>
-    <Reference Include="Microsoft.AspNetCore">
-      <HintPath>C:\Program Files\dotnet\sdk\NuGetFallbackFolder\microsoft.aspnetcore\2.0.1\lib\netstandard2.0\Microsoft.AspNetCore.dll</HintPath>
-    </Reference>
-    <Reference Include="Microsoft.AspNetCore.Hosting.Abstractions">
-      <HintPath>C:\Program Files\dotnet\sdk\NuGetFallbackFolder\microsoft.aspnetcore.hosting.abstractions\2.0.1\lib\netstandard2.0\Microsoft.AspNetCore.Hosting.Abstractions.dll</HintPath>
-    </Reference>
-    <Reference Include="Microsoft.AspNetCore.Http.Abstractions">
-      <HintPath>C:\Program Files\dotnet\sdk\NuGetFallbackFolder\microsoft.aspnetcore.http.abstractions\2.0.1\lib\netstandard2.0\Microsoft.AspNetCore.Http.Abstractions.dll</HintPath>
-    </Reference>
-    <Reference Include="Microsoft.AspNetCore.Mvc.Core">
-      <HintPath>C:\Program Files\dotnet\sdk\NuGetFallbackFolder\microsoft.aspnetcore.mvc.core\2.0.2\lib\netstandard2.0\Microsoft.AspNetCore.Mvc.Core.dll</HintPath>
-    </Reference>
-    <Reference Include="Microsoft.AspNetCore.Mvc.ViewFeatures">
-      <HintPath>C:\Program Files\dotnet\sdk\NuGetFallbackFolder\microsoft.aspnetcore.mvc.viewfeatures\2.0.2\lib\netstandard2.0\Microsoft.AspNetCore.Mvc.ViewFeatures.dll</HintPath>
-    </Reference>
-    <Reference Include="Microsoft.Extensions.Configuration.Abstractions">
-      <HintPath>C:\Users\glesniakiewicz\.nuget\packages\microsoft.extensions.configuration.abstractions\2.1.0-preview1-final\lib\netstandard2.0\Microsoft.Extensions.Configuration.Abstractions.dll</HintPath>
-    </Reference>
-    <Reference Include="Microsoft.Extensions.DependencyInjection.Abstractions">
-      <HintPath>C:\Users\glesniakiewicz\.nuget\packages\microsoft.extensions.dependencyinjection.abstractions\1.1.0\lib\netstandard1.0\Microsoft.Extensions.DependencyInjection.Abstractions.dll</HintPath>
-    </Reference>
-  </ItemGroup>
-  <ItemGroup>
-    <None Update="Data\genesis.json">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
-    <None Update="NLog.config">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
-    <None Update="runner.config">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-    </None>
-  </ItemGroup>
-  <ItemGroup>
-    <Content Include="..\Chains\foundation.json">
-      <Link>Chains\foundation.json</Link>
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-    <Content Include="..\Chains\kovan.json">
-      <Link>Chains\kovan.json</Link>
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-    <Content Include="..\Chains\morden.json">
-      <Link>Chains\morden.json</Link>
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-    <Content Include="..\Chains\nethermind_alpha.json">
-      <Link>Chains\nethermind_alpha.json</Link>
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-    <Content Include="..\Chains\nethermind_alpha_client.json">
-      <Link>Chains\nethermind_alpha_client.json</Link>
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-    <Content Include="..\Chains\ropsten_through_ethj.json">
-      <Link>Chains\ropsten_through_ethj.json</Link>
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-    <Content Include="..\Chains\olympic.json">
-      <Link>Chains\olympic.json</Link>
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-    <Content Include="..\Chains\ropsten.json">
-      <Link>Chains\ropsten.json</Link>
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-    <Content Include="..\Chains\some_node.json">
-      <Link>Chains\some_node.json</Link>
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-    <Content Include="Configs\some_node.config.json">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-  </ItemGroup>
-  <Target Name="AddRuntimeDependenciesToContent" Condition=" '$(TargetFrameworkIdentifier)' == '.NETCoreApp'" BeforeTargets="GetCopyToOutputDirectoryItems">
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <TargetFramework>netcoreapp2.0</TargetFramework>
+    </PropertyGroup>
     <ItemGroup>
-      <ContentWithTargetPath Include="$(ProjectDepsFilePath)" CopyToOutputDirectory="PreserveNewest" TargetPath="$(ProjectDepsFileName)" />
-      <ContentWithTargetPath Include="$(ProjectRuntimeConfigFilePath)" CopyToOutputDirectory="PreserveNewest" TargetPath="$(ProjectRuntimeConfigFileName)" />
-      <ContentWithTargetPath Include="$(ProjectRuntimeConfigFilePath.Substring(0, $([MSBuild]::Subtract($(ProjectRuntimeConfigFilePath.Length), 5)))).dev.json" CopyToOutputDirectory="PreserveNewest" TargetPath="$(ProjectRuntimeConfigFileName.Substring(0, $([MSBuild]::Subtract($(ProjectRuntimeConfigFileName.Length), 5)))).dev.json" />
+        <None Remove="appsettings.Development.json"/>
+        <None Remove="appsettings.json"/>
+        <None Remove="Properties\launchSettings.json"/>
     </ItemGroup>
-  </Target>
+    <ItemGroup>
+        <Content Include="appsettings.Development.json">
+            <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+        </Content>
+        <Content Include="appsettings.json">
+            <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+        </Content>
+        <Content Include="Properties\launchSettings.json">
+            <CopyToPublishDirectory>Never</CopyToPublishDirectory>
+        </Content>
+    </ItemGroup>
+    <ItemGroup>
+        <PackageReference Include="Microsoft.AspNetCore.All" Version="2.0.5"/>
+        <PackageReference Include="Microsoft.Extensions.CommandLineUtils" Version="1.1.1"/>
+        <PackageReference Include="NLog.Config" Version="4.5.3"/>
+    </ItemGroup>
+    <ItemGroup>
+        <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj">
+            <Project>{5751C57B-9F2D-45DE-BCC2-42645B85E39E}</Project>
+            <Name>Nethermind.Core</Name>
+        </ProjectReference>
+        <ProjectReference Include="..\Nethermind.Db\Nethermind.Db.csproj">
+            <Project>{0B52D472-A7B0-4AB6-AFE3-A644B90F53FC}</Project>
+            <Name>Nethermind.Db</Name>
+        </ProjectReference>
+        <ProjectReference Include="..\Nethermind.Discovery\Nethermind.Discovery.csproj"/>
+        <ProjectReference Include="..\Nethermind.JsonRpc\Nethermind.JsonRpc.csproj">
+            <Project>{53D62515-72D1-4DEA-BC60-71BCC9C928E3}</Project>
+            <Name>Nethermind.JsonRpc</Name>
+        </ProjectReference>
+        <ProjectReference Include="..\Nethermind.Network\Nethermind.Network.csproj"/>
+    </ItemGroup>
+    <ItemGroup>
+        <Reference Include="Microsoft.AspNetCore">
+            <HintPath>C:\Program Files\dotnet\sdk\NuGetFallbackFolder\microsoft.aspnetcore\2.0.1\lib\netstandard2.0\Microsoft.AspNetCore.dll</HintPath>
+        </Reference>
+        <Reference Include="Microsoft.AspNetCore.Hosting.Abstractions">
+            <HintPath>C:\Program Files\dotnet\sdk\NuGetFallbackFolder\microsoft.aspnetcore.hosting.abstractions\2.0.1\lib\netstandard2.0\Microsoft.AspNetCore.Hosting.Abstractions.dll</HintPath>
+        </Reference>
+        <Reference Include="Microsoft.AspNetCore.Http.Abstractions">
+            <HintPath>C:\Program Files\dotnet\sdk\NuGetFallbackFolder\microsoft.aspnetcore.http.abstractions\2.0.1\lib\netstandard2.0\Microsoft.AspNetCore.Http.Abstractions.dll</HintPath>
+        </Reference>
+        <Reference Include="Microsoft.AspNetCore.Mvc.Core">
+            <HintPath>C:\Program Files\dotnet\sdk\NuGetFallbackFolder\microsoft.aspnetcore.mvc.core\2.0.2\lib\netstandard2.0\Microsoft.AspNetCore.Mvc.Core.dll</HintPath>
+        </Reference>
+        <Reference Include="Microsoft.AspNetCore.Mvc.ViewFeatures">
+            <HintPath>C:\Program Files\dotnet\sdk\NuGetFallbackFolder\microsoft.aspnetcore.mvc.viewfeatures\2.0.2\lib\netstandard2.0\Microsoft.AspNetCore.Mvc.ViewFeatures.dll</HintPath>
+        </Reference>
+        <Reference Include="Microsoft.Extensions.Configuration.Abstractions">
+            <HintPath>C:\Users\glesniakiewicz\.nuget\packages\microsoft.extensions.configuration.abstractions\2.1.0-preview1-final\lib\netstandard2.0\Microsoft.Extensions.Configuration.Abstractions.dll</HintPath>
+        </Reference>
+        <Reference Include="Microsoft.Extensions.DependencyInjection.Abstractions">
+            <HintPath>C:\Users\glesniakiewicz\.nuget\packages\microsoft.extensions.dependencyinjection.abstractions\1.1.0\lib\netstandard1.0\Microsoft.Extensions.DependencyInjection.Abstractions.dll</HintPath>
+        </Reference>
+    </ItemGroup>
+    <ItemGroup>
+        <None Update="Data\genesis.json">
+            <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+        </None>
+        <None Update="NLog.config">
+            <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+        </None>
+        <None Update="runner.config">
+            <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+        </None>
+    </ItemGroup>
+    <ItemGroup>
+        <Content Include="..\Chains\foundation.json">
+            <Link>Chains\foundation.json</Link>
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Content Include="..\Chains\kovan.json">
+            <Link>Chains\kovan.json</Link>
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Content Include="..\Chains\morden.json">
+            <Link>Chains\morden.json</Link>
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Content Include="..\Chains\nethermind_alpha.json">
+            <Link>Chains\nethermind_alpha.json</Link>
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Content Include="..\Chains\nethermind_alpha_client.json">
+            <Link>Chains\nethermind_alpha_client.json</Link>
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Content Include="..\Chains\ropsten_through_ethj.json">
+            <Link>Chains\ropsten_through_ethj.json</Link>
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Content Include="..\Chains\olympic.json">
+            <Link>Chains\olympic.json</Link>
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Content Include="..\Chains\ropsten.json">
+            <Link>Chains\ropsten.json</Link>
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Content Include="..\Chains\some_node.json">
+            <Link>Chains\some_node.json</Link>
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Content Include="Configs\some_node.config.json">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Content Include="Configs\ropsten_through_ethj.config.json">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+        <Content Include="Configs\runner.config.json">
+            <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        </Content>
+    </ItemGroup>
+    <Target Name="AddRuntimeDependenciesToContent" Condition=" '$(TargetFrameworkIdentifier)' == '.NETCoreApp'" BeforeTargets="GetCopyToOutputDirectoryItems">
+        <ItemGroup>
+            <ContentWithTargetPath Include="$(ProjectDepsFilePath)" CopyToOutputDirectory="PreserveNewest" TargetPath="$(ProjectDepsFileName)"/>
+            <ContentWithTargetPath Include="$(ProjectRuntimeConfigFilePath)" CopyToOutputDirectory="PreserveNewest" TargetPath="$(ProjectRuntimeConfigFileName)"/>
+            <ContentWithTargetPath Include="$(ProjectRuntimeConfigFilePath.Substring(0, $([MSBuild]::Subtract($(ProjectRuntimeConfigFilePath.Length), 5)))).dev.json" CopyToOutputDirectory="PreserveNewest" TargetPath="$(ProjectRuntimeConfigFileName.Substring(0, $([MSBuild]::Subtract($(ProjectRuntimeConfigFileName.Length), 5)))).dev.json"/>
+        </ItemGroup>
+    </Target>
 </Project>

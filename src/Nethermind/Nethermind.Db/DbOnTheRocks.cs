@@ -16,6 +16,8 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.IO;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -24,7 +26,7 @@ using RocksDbSharp;
 
 namespace Nethermind.Db
 {
-    public class KeyValueDb : IDb
+    public class DbOnTheRocks : IDb
     {
         public const string StorageDbPath = "state";
         public const string StateDbPath = "state";
@@ -33,14 +35,23 @@ namespace Nethermind.Db
         public const string ReceiptsDbPath = "receipts";
         public const string BlockInfosDbPath = "blockInfos";
 
+        private static readonly ConcurrentDictionary<string, RocksDb> DbsByPath = new ConcurrentDictionary<string, RocksDb>();
+        
         private readonly RocksDb _db;
         private readonly byte[] _prefix;
 
-        public KeyValueDb(string dbPath, byte[] prefix = null) // TODO: check column families
+        public DbOnTheRocks(string dbPath, byte[] prefix = null) // TODO: check column families
         {
+            if (!Directory.Exists("db"))
+            {
+                Directory.CreateDirectory("db");
+            }
+            
             _prefix = prefix;
             DbOptions options = new DbOptions();
-            _db = RocksDb.Open(options, Path.Combine("db", dbPath));
+            options.SetCreateIfMissing(true);
+            
+            _db = DbsByPath.GetOrAdd(dbPath, path => RocksDb.Open(options, Path.Combine("db", path)));
         }
 
         public byte[] this[byte[] key]

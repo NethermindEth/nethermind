@@ -26,8 +26,8 @@ namespace Nethermind.Db
     // TODO: this is a copy paste, like most snapshotable classes, awaiting some refactoring
     public class RocksDbProvider : IDbProvider
     {
-        private readonly ISnapshotableDb _stateDb = new SnapshotableDb(new KeyValueDb(KeyValueDb.StateDbPath));
-        private readonly ISnapshotableDb _codeDb = new SnapshotableDb(new KeyValueDb(KeyValueDb.CodeDbPath));
+        private readonly ISnapshotableDb _stateDb = new SnapshotableDb(new DbOnTheRocks(DbOnTheRocks.StateDbPath));
+        private readonly ISnapshotableDb _codeDb = new SnapshotableDb(new DbOnTheRocks(DbOnTheRocks.CodeDbPath));
         private readonly Dictionary<Address, ISnapshotableDb> _storageDbs = new Dictionary<Address, ISnapshotableDb>();
         private IEnumerable<ISnapshotableDb> AllDbs
         {
@@ -51,7 +51,7 @@ namespace Nethermind.Db
         {
             if (!_storageDbs.ContainsKey(address))
             {
-                _storageDbs[address] = new SnapshotableDb(new KeyValueDb(KeyValueDb.StorageDbPath, address.Hex));
+                _storageDbs[address] = new SnapshotableDb(new DbOnTheRocks(DbOnTheRocks.StorageDbPath, address.Hex));
             }
 
             return _storageDbs[address];

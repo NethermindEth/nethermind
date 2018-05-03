@@ -71,36 +71,36 @@ namespace Nethermind.Runner
             var signatureValidator = new SignatureValidator(chainId); // TODO: review, check with spec provider
 
             services.AddSingleton(specProvider);
-            var blockTree = new BlockTree(new MemDb(), new MemDb(), new MemDb(), specProvider, logger); // TODO: temp, change
+//            var blockTree = new BlockTree(new MemDb(), new MemDb(), new MemDb(), specProvider, logger); // TODO: temp, change
 
-            services.AddSingleton<IBlockTree>(blockTree);
+//            services.AddSingleton<IBlockTree>(blockTree);
             services.AddSingleton(ethereumRelease);
             services.AddSingleton<IEthereumSigner>(signer);
             services.AddSingleton<ISigner>(signer);
             services.AddSingleton<ISignatureValidator>(signatureValidator);
 
-            services.AddSingleton<IEthash, Ethash>();
-            services.AddSingleton<ISealEngine, EthashSealEngine>();
-            services.AddSingleton<IHeaderValidator, HeaderValidator>();
-            services.AddSingleton<IOmmersValidator, OmmersValidator>();
-            services.AddSingleton<ITransactionValidator, TransactionValidator>();
-            services.AddSingleton<IBlockValidator, BlockValidator>();
+//            services.AddSingleton<IEthash, Ethash>();
+//            services.AddSingleton<ISealEngine, EthashSealEngine>();
+//            services.AddSingleton<IHeaderValidator, HeaderValidator>();
+//            services.AddSingleton<IOmmersValidator, OmmersValidator>();
+//            services.AddSingleton<ITransactionValidator, TransactionValidator>();
+//            services.AddSingleton<IBlockValidator, BlockValidator>();
 
-            services.AddSingleton<IDb, MemDb>(); // TODO: temp change
-            services.AddSingleton<StateTree>();
-            services.AddSingleton<IStateProvider, StateProvider>();
-            services.AddSingleton<IDbProvider, MemDbProvider>();
-            services.AddSingleton<IStorageProvider, StorageProvider>();
+//            services.AddSingleton<IDb, MemDb>(); // TODO: temp change
+//            services.AddSingleton<StateTree>();
+//            services.AddSingleton<IStateProvider, StateProvider>();
+//            services.AddSingleton<IDbProvider, MemDbProvider>();
+//            services.AddSingleton<IStorageProvider, StorageProvider>();
 
-            services.AddSingleton<IBlockhashProvider, BlockhashProvider>();
-            services.AddSingleton<IVirtualMachine, VirtualMachine>();
-            services.AddSingleton<ITransactionProcessor, TransactionProcessor>();
-            services.AddSingleton<ITransactionStore, TransactionStore>();
-
-            services.AddSingleton<IDifficultyCalculator, DifficultyCalculator>();
-            services.AddSingleton<IRewardCalculator, RewardCalculator>();
-            services.AddSingleton<IBlockProcessor, BlockProcessor>();
-            services.AddSingleton<IBlockchainProcessor, BlockchainProcessor>();
+//            services.AddSingleton<IBlockhashProvider, BlockhashProvider>();
+//            services.AddSingleton<IVirtualMachine, VirtualMachine>();
+//            services.AddSingleton<ITransactionProcessor, TransactionProcessor>();
+//            services.AddSingleton<ITransactionStore, TransactionStore>();
+//
+//            services.AddSingleton<IDifficultyCalculator, DifficultyCalculator>();
+//            services.AddSingleton<IRewardCalculator, RewardCalculator>();
+//            services.AddSingleton<IBlockProcessor, BlockProcessor>();
+//            services.AddSingleton<IBlockchainProcessor, BlockchainProcessor>();
 
             services.AddSingleton<KeyStore.IConfigurationProvider, KeyStore.ConfigurationProvider>();
             services.AddSingleton<IJsonSerializer, JsonSerializer>();

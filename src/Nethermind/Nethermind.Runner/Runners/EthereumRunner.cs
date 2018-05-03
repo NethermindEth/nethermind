@@ -120,7 +120,7 @@ namespace Nethermind.Runner.Runners
 
             /* sync */
             var transactionStore = new TransactionStore();
-            var blockTree = new BlockTree(new KeyValueDb(KeyValueDb.BlocksDbPath), new KeyValueDb(KeyValueDb.BlockInfosDbPath), new KeyValueDb(KeyValueDb.ReceiptsDbPath), RopstenSpecProvider.Instance, _chainLogger);
+            var blockTree = new BlockTree(new DbOnTheRocks(DbOnTheRocks.BlocksDbPath), new DbOnTheRocks(DbOnTheRocks.BlockInfosDbPath), new DbOnTheRocks(DbOnTheRocks.ReceiptsDbPath), RopstenSpecProvider.Instance, _chainLogger);
 
             /* validation */
             var headerValidator = new HeaderValidator(difficultyCalculator, blockTree, sealEngine, specProvider, _chainLogger);
@@ -129,13 +129,12 @@ namespace Nethermind.Runner.Runners
             var blockValidator = new BlockValidator(txValidator, headerValidator, ommersValidator, specProvider, _chainLogger);
 
             /* state */
-            var dbProvider = new MemDbProvider(_stateLogger);
-            var codeDb = new MemDb();
-            var stateDb = new MemDb();
+            var dbProvider = new RocksDbProvider(_stateLogger);
+            var codeDb = new DbOnTheRocks(DbOnTheRocks.CodeDbPath);
+            var stateDb = new DbOnTheRocks(DbOnTheRocks.StateDbPath);
             var stateTree = new StateTree(stateDb);
             var stateProvider = new StateProvider(stateTree, _stateLogger, codeDb);
             var storageProvider = new StorageProvider(dbProvider, stateProvider, _stateLogger);
-            var storageDbProvider = new MemDbProvider(_stateLogger);
 
             /* blockchain */
             var ethereumSigner = new EthereumSigner(specProvider, _chainLogger);
@@ -145,16 +144,42 @@ namespace Nethermind.Runner.Runners
             var virtualMachine = new VirtualMachine(specProvider, stateProvider, storageProvider, blockhashProvider, _evmLogger);
             var transactionProcessor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, ethereumSigner, _chainLogger);
             var rewardCalculator = new RewardCalculator(specProvider);
-            var blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, transactionProcessor, storageDbProvider, stateProvider, storageProvider, transactionStore, _chainLogger);
+            var blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, transactionProcessor, dbProvider, stateProvider, storageProvider, transactionStore, _chainLogger);
             _blockchainProcessor = new BlockchainProcessor(blockTree, sealEngine, transactionStore, difficultyCalculator, blockProcessor, _chainLogger);
-
-            /* genesis */
-            foreach (KeyValuePair<Address, BigInteger> allocation in chainSpec.Allocations)
+            
+            var expectedGenesisHash = "0x41941023680923e0fe4d74a34bdac8141f2540e3ae90623718e47d66d1ca4a2d";
+            if (blockTree.GenesisBlock == null)
             {
-                stateProvider.CreateAccount(allocation.Key, allocation.Value);
-            }
+                /* genesis */
+                foreach (KeyValuePair<Address, BigInteger> allocation in chainSpec.Allocations)
+                {
+                    stateProvider.CreateAccount(allocation.Key, allocation.Value);
+                }
 
-            stateProvider.Commit(specProvider.GenesisSpec);
+                stateProvider.Commit(specProvider.GenesisSpec);
+
+                Block genesis = chainSpec.Genesis;
+                genesis.Header.StateRoot = stateProvider.StateRoot;
+                genesis.Header.Hash = BlockHeader.CalculateHash(genesis.Header);
+                
+                if (blockTree.GenesisBlock == null)
+                {
+                    blockTree.SuggestBlock(genesis);
+                }
+                
+                // we are adding test transactions account so the state root will change (not an actual ropsten at the moment)
+                if (chainSpec.Genesis.Hash != new Keccak(expectedGenesisHash))
+                {
+                    throw new Exception($"Unexpected genesis hash for Ropsten, expected {expectedGenesisHash}, but was {chainSpec.Genesis.Hash}");
+                }
+            }
+            else
+            {
+                if (blockTree.GenesisBlock.Hash != new Keccak(expectedGenesisHash))
+                {
+                    throw new Exception($"Unexpected genesis hash for Ropsten, expected {expectedGenesisHash}, but was {chainSpec.Genesis.Hash}");
+                }
+            }
 
             if (isMining)
             {
@@ -164,24 +189,9 @@ namespace Nethermind.Runner.Runners
                 testTransactionsGenerator.Start();
             }
 
-            Block genesis = chainSpec.Genesis;
-            genesis.Header.StateRoot = stateProvider.StateRoot;
-            genesis.Header.Hash = BlockHeader.CalculateHash(genesis.Header);
-
-            if (!isMining)
-            {
-                // we are adding test transactions account so the state root will change (not an actual ropsten at the moment)
-                var expectedGenesisHash = "0x41941023680923e0fe4d74a34bdac8141f2540e3ae90623718e47d66d1ca4a2d";
-                if (chainSpec.Genesis.Hash != new Keccak(expectedGenesisHash))
-                {
-                    throw new Exception($"Unexpected genesis hash for Ropsten, expected {expectedGenesisHash}, but was {chainSpec.Genesis.Hash}");
-                }
-            }
-
             /* start test processing */
             sealEngine.IsMining = isMining;
             _blockchainProcessor.Start();
-            blockTree.SuggestBlock(genesis);
 
             _syncManager = new SynchronizationManager(
                 blockTree,

@@ -74,11 +74,11 @@ namespace Nethermind.Runner
                     _jsonRpcRunner.Start(initParams);
                 }
 
-                if (initParams.DiscoveryEnabled)
-                {
-                    _discoveryRunner = Bootstrap.ServiceProvider.GetService<IDiscoveryRunner>();
-                    _discoveryRunner.Start(initParams);
-                }
+//                if (initParams.DiscoveryEnabled)
+//                {
+//                    _discoveryRunner = Bootstrap.ServiceProvider.GetService<IDiscoveryRunner>();
+//                    _discoveryRunner.Start(initParams);
+//                }
                 
                 _ethereumRunner = Bootstrap.ServiceProvider.GetService<IEthereumRunner>();
                 _ethereumRunner.Start(initParams);

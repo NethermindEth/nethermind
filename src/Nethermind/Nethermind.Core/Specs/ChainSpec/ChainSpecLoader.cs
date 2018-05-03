@@ -70,6 +70,7 @@ namespace Nethermind.Core.Specs.ChainSpec
             genesisHeader.TransactionsRoot = Keccak.EmptyTreeHash;
 
             chainSpec.Genesis = new Block(genesisHeader);
+            
             chainSpec.Allocations = new Dictionary<Address, BigInteger>();
             foreach (KeyValuePair<string, ChainSpecAccountJson> account in chainSpecJson.Accounts)
             {

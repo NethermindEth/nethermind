@@ -35,7 +35,7 @@ namespace Nethermind.Blockchain
     public class SynchronizationManager : ISynchronizationManager
     {
         public static readonly TimeSpan SyncTimeout = TimeSpan.FromSeconds(10);
-        
+
         public const int BatchSize = 16;
         private readonly IBlockValidator _blockValidator;
         private readonly IHeaderValidator _headerValidator;
@@ -323,7 +323,7 @@ namespace Nethermind.Blockchain
 
                 bool isCommonAncestorKnown = false;
 
-                while (peerInfo.NumberAvailable > bestNumber && peerInfo.NumberReceived <= bestNumber)
+                while (peerInfo.NumberAvailable > bestNumber && peerInfo.NumberReceived <= peerInfo.NumberAvailable)
                 {
                     if (!isCommonAncestorKnown)
                     {
@@ -455,7 +455,8 @@ namespace Nethermind.Blockchain
                 _logger.Info($"Received head block info from {peer.NodeId} with head block numer {getNumberTask.Result}");
             }
 
-            bool addResult = _peers.TryAdd(peer.NodeId, new PeerInfo(peer, getNumberTask.Result));
+//            bool addResult = _peers.TryAdd(peer.NodeId, new PeerInfo(peer, getNumberTask.Result));
+            bool addResult = _peers.TryAdd(peer.NodeId, new PeerInfo(peer, getNumberTask.Result) {NumberReceived = this.HeadNumber}); // TODO: cheating now with assumign the consistency of the chains
             if (!addResult)
             {
                 _logger.Error($"Adding {nameof(PeerInfo)} failed for {peer.NodeId}");
