@@ -168,6 +168,9 @@ namespace Nethermind.Evm
                                 // TODO: out of gas - try to handle as everywhere else - test with 61362 (7933dd) on Ropsten - second contract creation
                                 previousCallResult = BytesZero;
                                 currentState.GasAvailable -= gasAvailableForCodeDeposit;
+                                // TODO: there should be an OutOfGasException here and a proper reversal of the account creation (and value transfer and all state changes called in the CREATE call)
+                                // TODO: instead just adding the simplest way to fix 552387 on Ropsten
+                                _state.DeleteAccount(callCodeOwner);
                             }
 
                             previousCallOutput = Bytes.Empty;

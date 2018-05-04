@@ -293,7 +293,12 @@ namespace Nethermind.Blockchain
             stopwatch.Start();
             Process(suggestedBlock, false);
             stopwatch.Stop();
-            _logger.Info($"Processed block {suggestedBlock.ToString(Block.Format.Short)} in {stopwatch.ElapsedTicks:N0} ticks");
+            if(_logger.IsInfoEnabled)
+            {
+                decimal gasPercentage = (decimal)suggestedBlock.GasUsed / suggestedBlock.GasLimit;
+                decimal gasPerTick = (decimal)suggestedBlock.GasUsed / stopwatch.ElapsedTicks;
+                _logger.Info($"Processed block {suggestedBlock.ToString(Block.Format.Short)} in {stopwatch.ElapsedTicks:N0} ticks, gas: {gasPercentage:P}, gpt: {gasPerTick:F}");
+            }
         }
 
         private void Process(Block suggestedBlock, bool forMining)

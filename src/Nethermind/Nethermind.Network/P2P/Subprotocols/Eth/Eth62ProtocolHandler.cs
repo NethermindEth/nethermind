@@ -26,8 +26,12 @@ using System.Threading.Tasks;
 using DotNetty.Common.Concurrency;
 using DotNetty.Common.Utilities;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Difficulty;
+using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
+using Nethermind.Mining;
 using Nethermind.Network.Rlpx;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth
@@ -214,6 +218,16 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             }
 
             Block[] blocks = _sync.Find(startingHash, (int)getBlockHeadersMessage.MaxHeaders, (int)getBlockHeadersMessage.Skip, getBlockHeadersMessage.Reverse == 1);
+//            HeaderValidator validator = new HeaderValidator(new DifficultyCalculator(RopstenSpecProvider.Instance), _sync.BlockTree, new EthashSealEngine(new Ethash(), NullLogger.Instance), RopstenSpecProvider.Instance, NullLogger.Instance);
+//            foreach (Block block in blocks)
+//            {
+//                bool validated = validator.Validate(block.Header);
+//                if (!validated)
+//                {
+//                    throw new Exception("Sending invalid");
+//                }
+//            }
+            
             BlockHeader[] headers = new BlockHeader[blocks.Length];
             for (int i = 0; i < blocks.Length; i++)
             {

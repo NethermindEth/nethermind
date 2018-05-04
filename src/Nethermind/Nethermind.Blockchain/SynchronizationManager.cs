@@ -65,7 +65,7 @@ namespace Nethermind.Blockchain
             BlockTree.NewHeadBlock += OnNewHeadBlock;
             _transactionStore.NewPending += OnNewPendingTransaction;
 
-            _logger.Info($"Initialized {nameof(SynchronizationManager)} with head block {HeadBlock}");
+            _logger.Info($"Initialized {nameof(SynchronizationManager)} with head block {HeadBlock.ToString(Block.Format.Short)}");
         }
 
         private void OnNewPendingTransaction(object sender, TransactionEventArgs transactionEventArgs)
