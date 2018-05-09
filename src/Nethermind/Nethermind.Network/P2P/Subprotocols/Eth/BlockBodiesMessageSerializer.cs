@@ -30,7 +30,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         }
 
         public BlockBodiesMessage Deserialize(byte[] bytes)
-        {
+        {   
             DecodedRlp decodedRlp = Rlp.Decode(new Rlp(bytes));
             (Transaction[] Transactions, BlockHeader[] Ommers)[] bodies = new (Transaction[] Transactions, BlockHeader[] Ommers)[decodedRlp.Length];
             for (int i = 0; i < bodies.Length; i++)

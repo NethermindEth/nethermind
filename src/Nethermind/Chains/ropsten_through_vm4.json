@@ -53,7 +53,7 @@
 		"gasLimit": "0x1000000"
 	},
 	"nodes": [
-		"enode://6ff539d921e36b7c09d28c1fc9a9530fb4418ea64558c1ca7c1fa4c55328f30efb5e002dd30a800b28edd66bc10e34cab19d47f3da3f2cc66a35a3bbaa2efc68@127.0.0.1:30303"
+		"enode://[node_id_here]@10.0.1.7:30303"
 	],
 	"accounts": {
 		"0000000000000000000000000000000000000000": { "balance": "1" },

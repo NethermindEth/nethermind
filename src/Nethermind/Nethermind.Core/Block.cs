@@ -96,7 +96,7 @@ namespace Nethermind.Core
                     }
                     else
                     {
-                        return $"{Number} ({((string)new Hex(Hash.Bytes)).Substring(58, 6)}), tx: {Transactions?.Length}";    
+                        return $"{Number} ({((string)new Hex(Hash.Bytes)).Substring(58, 6)}), tx:{Transactions?.Length, 5}";    
                     }
             }
         }

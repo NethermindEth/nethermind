@@ -7,8 +7,8 @@
   "HttpPort": 8345,
   "IsMining": false,
   "FakeMiningDelay": 12000,
-  "ChainSpecPath": "Chains\\ropsten_through_vm2.json",
+  "ChainSpecPath": "Chains\\ropsten_through_vm4.json",
   "TestNodeKey": "020102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f",
-  "LogFileName": "ropsten_through_vm2.logs.txt",
+  "LogFileName": "ropsten_through_vm4.logs.txt",
   "JsonRpcEnabledModules": [ "Eth", "Net", "Web3", "Db", "Shh" ]
 }

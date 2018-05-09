@@ -79,23 +79,28 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Runner.TestClien
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Blockchain.Test", "Nethermind.Blockchain.Test\Nethermind.Blockchain.Test.csproj", "{E6C8C319-1BA8-437D-961D-1357FF5A9699}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Runner.Test", "Nethermind.Runner.Test\Nethermind.Runner.Test.csproj", "{B6C47D29-78D6-4966-B5A0-D4D651EE068F}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Runner.Test", "Nethermind.Runner.Test\Nethermind.Runner.Test.csproj", "{B6C47D29-78D6-4966-B5A0-D4D651EE068F}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Chains", "Chains", "{D75E83BB-6092-45A4-B751-D05D4A6ED995}"
-ProjectSection(SolutionItems) = preProject
-	Chains\foundation.json = Chains\foundation.json
-	Chains\kovan.json = Chains\kovan.json
-	Chains\morden.json = Chains\morden.json
-	Chains\olympic.json = Chains\olympic.json
-	Chains\ropsten.json = Chains\ropsten.json
-	Chains\nethermind_alpha.json = Chains\nethermind_alpha.json
-	Chains\nethermind_alpha_client.json = Chains\nethermind_alpha_client.json
-	Chains\ropsten_through_ethj.json = Chains\ropsten_through_ethj.json
-	Chains\some_node.json = Chains\some_node.json
-	Chains\ropsten_through_vm2.json = Chains\ropsten_through_vm2.json
-EndProjectSection
+	ProjectSection(SolutionItems) = preProject
+		Chains\foundation.json = Chains\foundation.json
+		Chains\kovan.json = Chains\kovan.json
+		Chains\morden.json = Chains\morden.json
+		Chains\nethermind_alpha.json = Chains\nethermind_alpha.json
+		Chains\nethermind_alpha_client.json = Chains\nethermind_alpha_client.json
+		Chains\olympic.json = Chains\olympic.json
+		Chains\ropsten.json = Chains\ropsten.json
+		Chains\ropsten_through_ethj.json = Chains\ropsten_through_ethj.json
+		Chains\ropsten_through_vm2.json = Chains\ropsten_through_vm2.json
+		Chains\some_node.json = Chains\some_node.json
+		Chains\ropsten_through_vm5.json = Chains\ropsten_through_vm5.json
+		Chains\ropsten_through_vm4.json = Chains\ropsten_through_vm4.json
+		Chains\ropsten_through_vm3.json = Chains\ropsten_through_vm3.json
+	EndProjectSection
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.RunnerSpawner", "Nethermind.RunnerSpawner\Nethermind.RunnerSpawner.csproj", "{7285ABAE-A946-437E-A6DD-F1DECFE7F8D5}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.RunnerSpawner", "Nethermind.RunnerSpawner\Nethermind.RunnerSpawner.csproj", "{7285ABAE-A946-437E-A6DD-F1DECFE7F8D5}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.DiagTools", "Nethermind.DiagTools\Nethermind.DiagTools.csproj", "{B8F7A931-EF2F-4107-8F9B-6C66053A8833}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -263,6 +268,10 @@ Global
 		{7285ABAE-A946-437E-A6DD-F1DECFE7F8D5}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{7285ABAE-A946-437E-A6DD-F1DECFE7F8D5}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{7285ABAE-A946-437E-A6DD-F1DECFE7F8D5}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B8F7A931-EF2F-4107-8F9B-6C66053A8833}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B8F7A931-EF2F-4107-8F9B-6C66053A8833}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B8F7A931-EF2F-4107-8F9B-6C66053A8833}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B8F7A931-EF2F-4107-8F9B-6C66053A8833}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

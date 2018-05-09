@@ -86,12 +86,12 @@ namespace Nethermind.Network.P2P
             }
             else if (msg.PacketType == P2PMessageCode.Ping)
             {
-                Logger.Info($"{P2PSession.RemoteNodeId} Received PING on {P2PSession.RemotePort}");
+                if(Logger.IsDebugEnabled) Logger.Debug($"{P2PSession.RemoteNodeId} Received PING on {P2PSession.RemotePort}");
                 HandlePing();
             }
             else if (msg.PacketType == P2PMessageCode.Pong)
             {
-                Logger.Info($"{P2PSession.RemoteNodeId} Received PONG on {P2PSession.RemotePort}");
+                if(Logger.IsDebugEnabled) Logger.Debug($"{P2PSession.RemoteNodeId} Received PONG on {P2PSession.RemotePort}");
                 HandlePong();
             }
             else
@@ -173,7 +173,7 @@ namespace Nethermind.Network.P2P
 
         private void HandlePing()
         {
-            Logger.Info($"{P2PSession.RemoteNodeId} P2P responding to ping on {P2PSession.RemotePort} ({RemoteClientId})");
+            if(Logger.IsDebugEnabled) Logger.Debug($"{P2PSession.RemoteNodeId} P2P responding to ping on {P2PSession.RemotePort} ({RemoteClientId})");
             Send(PongMessage.Instance);
         }
 
@@ -193,12 +193,12 @@ namespace Nethermind.Network.P2P
 
         private void HandlePong()
         {
-            Logger.Info($"{P2PSession.RemoteNodeId} P2P pong on {P2PSession.RemotePort} ({RemoteClientId})");
+            if(Logger.IsTraceEnabled) Logger.Trace($"{P2PSession.RemoteNodeId} P2P pong on {P2PSession.RemotePort} ({RemoteClientId})");
         }
 
         private void Ping()
         {
-            Logger.Info($"{P2PSession.RemoteNodeId} P2P sending ping on {P2PSession.RemotePort} ({RemoteClientId})");
+            if(Logger.IsTraceEnabled) Logger.Trace($"{P2PSession.RemoteNodeId} P2P sending ping on {P2PSession.RemotePort} ({RemoteClientId})");
             // TODO: timers
             Send(PingMessage.Instance);
         }

@@ -51,7 +51,7 @@ namespace Nethermind.Core.Test
         [Test]
         public void Can_only_add_genesis_once()
         {
-            BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(),  new MemDb(),OlympicSpecProvider.Instance, NullLogger.Instance);
+            BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), new MemDb(), OlympicSpecProvider.Instance, NullLogger.Instance);
             Block blockA = Build.A.Block.WithNumber(0).TestObject;
             Block blockB = Build.A.Block.WithNumber(0).TestObject;
             blockTree.SuggestBlock(blockA);
@@ -62,7 +62,7 @@ namespace Nethermind.Core.Test
         public void Shall_notify_on_new_head_block_after_genesis()
         {
             bool hasNotified = false;
-            BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(),  new MemDb(),OlympicSpecProvider.Instance, NullLogger.Instance);
+            BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), new MemDb(), OlympicSpecProvider.Instance, NullLogger.Instance);
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
             Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
             blockTree.SuggestBlock(block0);
@@ -74,12 +74,12 @@ namespace Nethermind.Core.Test
             Assert.True(hasNotified, "notification");
             Assert.AreEqual(AddBlockResult.Added, result, "result");
         }
-        
+
         [Test]
         public void Shall_notify_on_new_suggested_block_after_genesis()
         {
             bool hasNotified = false;
-            BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(),  new MemDb(),OlympicSpecProvider.Instance, NullLogger.Instance);
+            BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), new MemDb(), OlympicSpecProvider.Instance, NullLogger.Instance);
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
             Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
             blockTree.SuggestBlock(block0);
@@ -120,7 +120,7 @@ namespace Nethermind.Core.Test
             var result = blockTree.SuggestBlock(block2);
             Assert.AreEqual(AddBlockResult.UnknownParent, result);
         }
-        
+
         [Test]
         public void Shall_ignore_known()
         {
@@ -244,7 +244,7 @@ namespace Nethermind.Core.Test
 
             Block[] blocks = blockTree.FindBlocks(block2.Hash, 3, 0, true);
             Assert.AreEqual(3, blocks.Length);
-            
+
             Assert.AreEqual(block2.Hash, BlockHeader.CalculateHash(blocks[0].Header));
             Assert.AreEqual(block0.Hash, BlockHeader.CalculateHash(blocks[2].Header));
         }
@@ -252,7 +252,7 @@ namespace Nethermind.Core.Test
         private static void AddToMain(BlockTree blockTree, Block block0)
         {
             blockTree.SuggestBlock(block0);
-            blockTree.MarkAsProcessed(block0.Hash, new [] {Build.A.Receipt.TestObject});
+            blockTree.MarkAsProcessed(block0.Hash, new[] {Build.A.Receipt.TestObject});
             blockTree.MoveToMain(block0.Hash);
         }
 
@@ -308,7 +308,7 @@ namespace Nethermind.Core.Test
         public void Total_difficulty_is_calculated_when_exists_parent_with_total_difficulty()
         {
             BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), new MemDb(), OlympicSpecProvider.Instance, NullLogger.Instance);
-            
+
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
             blockTree.SuggestBlock(block0);
             Block block1 = Build.A.Block.WithNumber(1).WithParentHash(block0.Hash).WithDifficulty(2).TestObject;
@@ -320,7 +320,7 @@ namespace Nethermind.Core.Test
         public void Total_difficulty_is_null_when_no_parent()
         {
             BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), new MemDb(), OlympicSpecProvider.Instance, NullLogger.Instance);
-            
+
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
             blockTree.SuggestBlock(block0);
 
@@ -328,7 +328,7 @@ namespace Nethermind.Core.Test
             blockTree.SuggestBlock(block2);
             Assert.AreEqual(null, block2.TotalDifficulty);
         }
-        
+
         [Test]
         public void Head_block_gets_updated()
         {
@@ -336,11 +336,11 @@ namespace Nethermind.Core.Test
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
             Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
             AddToMain(blockTree, block0);
-            AddToMain(blockTree, block1); 
+            AddToMain(blockTree, block1);
 
             Assert.AreEqual(block1.Hash, BlockHeader.CalculateHash(blockTree.HeadBlock));
         }
-        
+
         [Test]
         public void Best_suggested_block_gets_updated()
         {
@@ -353,7 +353,7 @@ namespace Nethermind.Core.Test
             Assert.AreEqual(block0.Hash, BlockHeader.CalculateHash(blockTree.HeadBlock.Header), "head block");
             Assert.AreEqual(block1.Hash, BlockHeader.CalculateHash(blockTree.BestSuggestedBlock.Header), "best suggested");
         }
-        
+
         [Test]
         public void Sets_genesis_block()
         {
@@ -363,7 +363,7 @@ namespace Nethermind.Core.Test
 
             Assert.AreEqual(block0.Hash, BlockHeader.CalculateHash(blockTree.GenesisBlock));
         }
-        
+
         [Test]
         public void Stores_multiple_blocks_per_level()
         {
@@ -376,10 +376,10 @@ namespace Nethermind.Core.Test
             blockTree.SuggestBlock(block1B);
 
             Block found = blockTree.FindBlock(block1B.Hash, false);
-            
+
             Assert.AreEqual(block1B.Hash, BlockHeader.CalculateHash(found.Header));
         }
-        
+
         [Test]
         public void Restores_receipts()
         {
@@ -389,32 +389,92 @@ namespace Nethermind.Core.Test
 
             Assert.AreEqual(1, blockTree.GenesisBlock.Receipts.Length);
         }
-        
+
         [Test]
         public void Can_init_head_block_from_db()
         {
             Block genesisBlock = Build.A.Block.Genesis.TestObject;
             Block headBlock = genesisBlock;
-            
+
             MemDb blocksDb = new MemDb();
             blocksDb.Set(Keccak.Zero, Rlp.Encode(genesisBlock).Bytes);
             blocksDb.Set(genesisBlock.Hash, Rlp.Encode(genesisBlock).Bytes);
-            
+
             MemDb blockInfosDb = new MemDb();
             ChainLevelInfo level = new ChainLevelInfo(true, new BlockInfo[1] {new BlockInfo(headBlock.Hash, headBlock.Difficulty, headBlock.Transactions.Length)});
             blockInfosDb.Set(0, Rlp.Encode(level).Bytes);
-            
+
             BlockTree blockTree = new BlockTree(blocksDb, blockInfosDb, new MemDb(), OlympicSpecProvider.Instance, NullLogger.Instance);
             Assert.AreEqual(headBlock.Hash, blockTree.HeadBlock?.Hash, "head");
             Assert.AreEqual(headBlock.Hash, blockTree.GenesisBlock?.Hash, "genesis");
         }
+
+        [Test]
+        public void Can_load_blocks_from_db()
+        {
+            for (int chainLength = 1; chainLength <= 32; chainLength++)
+            {
+                Block genesisBlock = Build.A.Block.Genesis.TestObject;
+
+                MemDb blocksDb = new MemDb();
+                MemDb blockInfosDb = new MemDb();
+
+                BlockTree testTree = Build.A.BlockTree(genesisBlock).OfChainLength(chainLength).TestObject;
+                for (int i = 0; i < testTree.HeadBlock.Number + 1; i++)
+                {
+                    Block ithBlock = testTree.FindBlock(i);
+                    blocksDb.Set(ithBlock.Hash, Rlp.Encode(ithBlock).Bytes);
+
+                    ChainLevelInfo ithLevel = new ChainLevelInfo(true, new BlockInfo[1] {new BlockInfo(ithBlock.Hash, ithBlock.TotalDifficulty.Value, ithBlock.Transactions.Length)});
+                    blockInfosDb.Set(i, Rlp.Encode(ithLevel).Bytes);
+                }
+
+                blocksDb.Set(Keccak.Zero, Rlp.Encode(testTree.GenesisBlock).Bytes);
+
+                BlockTree blockTree = new BlockTree(blocksDb, blockInfosDb, new MemDb(), OlympicSpecProvider.Instance, NullLogger.Instance);
+                blockTree.LoadBlocksFromDb();
+
+                Assert.AreEqual(genesisBlock.Hash, blockTree.GenesisBlock?.Hash, $"genesis {chainLength}");
+                Assert.AreEqual(blockTree.BestSuggestedBlock.Hash, testTree.HeadBlock.Hash, $"head {chainLength}");
+            }
+        }
         
+        [Test]
+        public void Can_load_blocks_from_db_odd()
+        {
+            for (int chainLength = 2; chainLength <= 32; chainLength++)
+            {
+                Block genesisBlock = Build.A.Block.Genesis.TestObject;
+
+                MemDb blocksDb = new MemDb();
+                MemDb blockInfosDb = new MemDb();
+
+                BlockTree testTree = Build.A.BlockTree(genesisBlock).OfChainLength(chainLength).TestObject;
+                for (int i = 0; i < testTree.HeadBlock.Number + 1; i++)
+                {
+                    Block ithBlock = testTree.FindBlock(i);
+                    blocksDb.Set(ithBlock.Hash, Rlp.Encode(ithBlock).Bytes);
+
+                    ChainLevelInfo ithLevel = new ChainLevelInfo(true, new BlockInfo[1] {new BlockInfo(ithBlock.Hash, ithBlock.TotalDifficulty.Value, ithBlock.Transactions.Length)});
+                    blockInfosDb.Set(i, Rlp.Encode(ithLevel).Bytes);
+                }
+
+                blocksDb.Set(Keccak.Zero, Rlp.Encode(testTree.FindBlock(1)).Bytes);
+
+                BlockTree blockTree = new BlockTree(blocksDb, blockInfosDb, new MemDb(), OlympicSpecProvider.Instance, NullLogger.Instance);
+                blockTree.LoadBlocksFromDb();
+
+                Assert.AreEqual(genesisBlock.Hash, blockTree.GenesisBlock?.Hash, $"genesis {chainLength}");
+                Assert.AreEqual(blockTree.BestSuggestedBlock.Hash, testTree.HeadBlock.Hash, $"head {chainLength}");
+            }
+        }
+
         [Test]
         public void Sets_head_block_info_in_db_on_new_head_block()
         {
             MemDb blocksDb = new MemDb();
             MemDb blockInfosDb = new MemDb();
-            
+
             BlockTree blockTree = new BlockTree(blocksDb, blockInfosDb, new MemDb(), OlympicSpecProvider.Instance, NullLogger.Instance);
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
             Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;

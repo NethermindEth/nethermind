@@ -62,30 +62,68 @@ namespace Nethermind.Blockchain
             }
         }
 
-        public void LoadBlocksFromDb()
+        public void LoadBlocksFromDb(BigInteger? startBlockNumber = null)
         {
+            if (startBlockNumber == null)
+            {
+                startBlockNumber = HeadBlock.Number;
+            }
+            else
+            {
+                HeadBlock = startBlockNumber == 0 ? null : FindBlock(startBlockNumber.Value - 1);
+            }
+            
             if (_logger.IsInfoEnabled)
             {
-                _logger.Info("Loading blocks from DB.");
+                _logger.Info($"Loading blocks from DB (starting from {startBlockNumber}).");
             }
-
+            
             BigInteger blocksToLoad = FindNumberOfBlocksToLoadFromDb();
             if (_logger.IsInfoEnabled)
             {
-                _logger.Info($"Found {blocksToLoad} blocks to load starting from current head block {HeadBlock.ToString(Block.Format.Short)}.");
+                _logger.Info($"Found {blocksToLoad} blocks to load starting from current head block {HeadBlock?.ToString(Block.Format.Short)}.");
             }
             
             for (int i = 0; i < blocksToLoad; i++)
-            {
-                Block block = FindBlock(HeadBlock.Number + i + 1);
+            {   
+                Block block = FindBlock(startBlockNumber.Value + i + 1);
                 BestSuggestedBlock = block;
                 NewBestSuggestedBlock?.Invoke(this, new BlockEventArgs(block));
+                
+                if (i % 10000 == 9999 && _logger.IsInfoEnabled)
+                {
+                    _logger.Info($"Loaded {i + 1} blocks");    
+                }
             }
             
             if (_logger.IsInfoEnabled)
             {
                 _logger.Info("Finished loading blocks from DB. Current best suggested block");
             }
+        }
+        
+        // TODO: this is all temp while we test full chain sync
+        private BigInteger FindNumberOfBlocksToLoadFromDb()
+        {
+            BigInteger headNumber = HeadBlock?.Number ?? -1;
+            BigInteger left = headNumber;
+            BigInteger right = headNumber + MaxQueueSize;
+
+            while (left != right)
+            {
+                BigInteger index = left + (right - left) / 2;
+                Block block = FindBlock(index);
+                if (block == null)
+                {
+                    right = index;
+                }
+                else
+                {
+                    left = index + 1;
+                }
+            }
+            
+            return left - headNumber - 1;
         }
 
         private void LoadHeadBlock()
@@ -157,30 +195,6 @@ namespace Nethermind.Blockchain
             }
 
             return AddBlockResult.Added;
-        }
-
-        // TODO: this is all temp while we test full chain sync
-        private BigInteger FindNumberOfBlocksToLoadFromDb()
-        {
-            BigInteger headNumber = HeadBlock.Number;
-            BigInteger left = headNumber;
-            BigInteger right = headNumber + MaxQueueSize;
-
-            while (left != right)
-            {
-                BigInteger index = left + (right - left) / 2;
-                Block block = FindBlock(index);
-                if (block == null)
-                {
-                    right = index;
-                }
-                else
-                {
-                    left = index + 1;
-                }
-            }
-
-            return left - headNumber - 1;
         }
 
         private const int MaxQueueSize = 100000;

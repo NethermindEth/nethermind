@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -13,7 +14,9 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Specs.ChainSpec;
+using Nethermind.Db;
 using Nethermind.Evm;
+using Nethermind.Mining;
 using Nethermind.Store;
 
 namespace Nethermind.PerfTest
@@ -109,7 +112,14 @@ namespace Nethermind.PerfTest
 
         private static async Task Main(string[] args)
         {
-            await RunRopstenBlocks();
+            await RunRopstenBlocks().ContinueWith(t =>
+            {
+                if (t.IsFaulted)
+                {
+                    _logger.Error("test failed", t.Exception);
+                    Console.ReadLine();
+                }
+            });
 //            RunVmPerfTests();
         }
 
@@ -145,20 +155,96 @@ namespace Nethermind.PerfTest
 
         private static NLogLogger _logger;
 
+        private class UnprocessedBlockTreeWrapper : IBlockTree
+        {
+            private readonly IBlockTree _blockTree;
+            private readonly ConcurrentDictionary<Keccak, byte> _processed = new ConcurrentDictionary<Keccak, byte>();
+
+            public UnprocessedBlockTreeWrapper(IBlockTree blockTree)
+            {
+                _blockTree = blockTree;
+                _blockTree.NewHeadBlock += (sender, args) => NewHeadBlock?.Invoke(sender, args);
+                _blockTree.NewBestSuggestedBlock += (sender, args) => NewBestSuggestedBlock?.Invoke(sender, args);
+                _blockTree.BlockAddedToMain += (sender, args) => BlockAddedToMain?.Invoke(sender, args);
+            }
+
+            public int ChainId => _blockTree.ChainId;
+            public Block GenesisBlock => _blockTree.GenesisBlock;
+            public Block BestSuggestedBlock => _blockTree.BestSuggestedBlock;
+            public Block HeadBlock => _blockTree.HeadBlock;
+
+            public void LoadBlocksFromDb(BigInteger? startBlockNumber)
+            {
+                _blockTree.LoadBlocksFromDb(startBlockNumber);
+            }
+
+            public AddBlockResult SuggestBlock(Block block)
+            {
+                return _blockTree.SuggestBlock(block);
+            }
+
+            public Block FindBlock(Keccak blockHash, bool mainChainOnly)
+            {
+                return _blockTree.FindBlock(blockHash, mainChainOnly);
+            }
+
+            public Block[] FindBlocks(Keccak blockHash, int numberOfBlocks, int skip, bool reverse)
+            {
+                return _blockTree.FindBlocks(blockHash, numberOfBlocks, skip, reverse);
+            }
+
+            public Block FindBlock(BigInteger blockNumber)
+            {
+                return _blockTree.FindBlock(blockNumber);
+            }
+
+            public bool IsMainChain(Keccak blockHash)
+            {
+                return _blockTree.IsMainChain(blockHash);
+            }
+
+            public void MoveToMain(Keccak blockHash)
+            {
+                _blockTree.MoveToMain(blockHash);
+            }
+
+            public void MoveToBranch(Keccak blockHash)
+            {
+                _blockTree.MoveToBranch(blockHash);
+            }
+
+            public bool WasProcessed(Keccak blockHash)
+            {
+                return _processed.ContainsKey(blockHash) && _blockTree.WasProcessed(blockHash); // to mimic the reads at least
+            }
+
+            public void MarkAsProcessed(Keccak blockHash, TransactionReceipt[] receipts = null)
+            {
+                const byte ignored = 1;
+                _processed.TryAdd(blockHash, ignored);
+            }
+
+            public event EventHandler<BlockEventArgs> NewBestSuggestedBlock;
+            public event EventHandler<BlockEventArgs> BlockAddedToMain;
+            public event EventHandler<BlockEventArgs> NewHeadBlock;
+        }
+
         private static async Task RunRopstenBlocks()
         {
-            string[] files = Directory.GetFiles("C:\\ropsten\\blocks");
-
             /* logging & instrumentation */
             _logger = new NLogLogger("perTest.logs.txt", "perfTest");
             //var logger = new ConsoleAsyncLogger(LogLevel.Info);
 
             /* spec */
-            var sealEngine = NullSealEngine.Instance;
+            var sealEngine = new EthashSealEngine(new Ethash(), _logger);
             var specProvider = RopstenSpecProvider.Instance;
 
+            var blocksDb = new DbOnTheRocks(DbOnTheRocks.BlocksDbPath);
+            var blockInfosDb = new DbOnTheRocks(DbOnTheRocks.BlockInfosDbPath);
+            var receiptsDb = new DbOnTheRocks(DbOnTheRocks.ReceiptsDbPath);
+
             /* store & validation */
-            var blockTree = new BlockTree(new MemDb(), new MemDb(), new MemDb(), specProvider, _logger);
+            var blockTree = new UnprocessedBlockTreeWrapper(new BlockTree(blocksDb, blockInfosDb, receiptsDb, specProvider, _logger));
             var difficultyCalculator = new DifficultyCalculator(specProvider);
             var headerValidator = new HeaderValidator(difficultyCalculator, blockTree, sealEngine, specProvider, _logger);
             var ommersValidator = new OmmersValidator(blockTree, headerValidator, _logger);
@@ -166,8 +252,8 @@ namespace Nethermind.PerfTest
             var blockValidator = new BlockValidator(transactionValidator, headerValidator, ommersValidator, specProvider, _logger);
 
             /* state & storage */
-            
-            var dbProvider = new MemDbProvider(_logger);
+
+            var dbProvider = new RocksDbProvider(_logger);
             var stateTree = new StateTree(dbProvider.GetOrCreateStateDb());
             var stateProvider = new StateProvider(stateTree, _logger, dbProvider.GetOrCreateCodeDb());
             var storageProvider = new StorageProvider(dbProvider, stateProvider, _logger);
@@ -200,62 +286,57 @@ namespace Nethermind.PerfTest
                 throw new Exception("Unexpected genesis hash");
             }
 
+            if (chainSpec.Genesis.Hash != blockTree.GenesisBlock.Hash)
+            {
+                throw new Exception("Unexpected genesis hash");
+            }
+
             /* start processing */
-            blockchainProcessor.Start();
-            blockTree.SuggestBlock(chainSpec.Genesis);
-
-            List<Block> blocks = new List<Block>();
-            foreach (string file in files)
-            {
-                if (blocks.Count % 1000 == 0)
-                {
-                    _logger.Info($"Loading blocks from files. Loaded {blocks.Count} blocks.");
-                }
-
-                string rlpText = File.ReadAllText(file);
-                Rlp rlp = new Rlp(new Hex(rlpText));
-                Block block = Rlp.Decode<Block>(rlp);
-                blocks.Add(block);
-            }
-
+            BigInteger totalGas = BigInteger.Zero;
             Stopwatch stopwatch = new Stopwatch();
-            stopwatch.Start();
-
-            blocks = blocks.OrderBy(b => b.Number).Skip(1).ToList();
-
-            foreach (Block block in blocks)
+            Block currentHead;
+            blockTree.NewHeadBlock += (sender, args) =>
             {
-                blockTree.SuggestBlock(block);
-            }
+                currentHead = args.Block;
+                if (currentHead.Number == 0)
+                {
+                    return;
+                }
+                
+                totalGas += currentHead.GasUsed;
+                if (args.Block.Number % 1000 == 0)
+                {
+                    stopwatch.Stop();
+                    long ns = 1_000_000_000L * stopwatch.ElapsedTicks / Stopwatch.Frequency;
+                    long ms = 1_000L * stopwatch.ElapsedTicks / Stopwatch.Frequency;
+                    _logger.Warn($"TOTAL after {args.Block.Number} (ns)     : " + ns);
+                    _logger.Warn($"TOTAL after {args.Block.Number} (ms)     : " + ms);
+                    _logger.Warn($"TOTAL after {args.Block.Number} blocks/s : {(decimal)currentHead.Number / (ms / 1000m), 5}");
+                    _logger.Warn($"TOTAL after {args.Block.Number} Mgas/s   : {((decimal)totalGas / 1000000) / (ms / 1000m), 5}");
+                    stopwatch.Start();
+                }                
+            };
 
-            blockTree.NewHeadBlock += OnNewHeadBlock;
+            blockTree.LoadBlocksFromDb(0);
+            blockchainProcessor.Process(blockTree.GenesisBlock);
+            
+            stopwatch.Start();
+            blockchainProcessor.Start();
 
             await blockchainProcessor.StopAsync(true).ContinueWith(
                 t =>
                 {
                     if (t.IsFaulted)
                     {
-                        _logger.Error("Failed", t.Exception);
+                        _logger.Error("processing failed", t.Exception);
                         Console.ReadLine();
                     }
 
-                    Console.WriteLine("COMPLETED");
+                    _logger.Info("Block processing completed.");
                 });
-
+            
             stopwatch.Stop();
-            long ns = 1_000_000_000L * stopwatch.ElapsedTicks / Stopwatch.Frequency;
-            long ms = 1_000L * stopwatch.ElapsedTicks / Stopwatch.Frequency;
-            Console.WriteLine($"TOTAL (ns): " + ns);
-            Console.WriteLine($"TOTAL (ms): " + ms);
             Console.ReadLine();
-        }
-
-        private static void OnNewHeadBlock(object sender, BlockEventArgs blockEventArgs)
-        {
-            //if (blockEventArgs.Block.Number > 61361)
-            //{
-            //    _logger.ChangeLogger("perfTestTrace");
-            //}
         }
 
         private static void RunTestCase(string name, ExecutionEnvironment env, int iterations)

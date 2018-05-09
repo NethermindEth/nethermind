@@ -67,6 +67,11 @@ namespace Nethermind.Blockchain
 
         private void OnNewBestBlock(object sender, BlockEventArgs blockEventArgs)
         {
+            if (blockEventArgs.Block == null)
+            {
+                throw new InvalidOperationException("New best block is null");
+            }
+            
             _miningCancellation?.Cancel();
             EnqueueForProcessing(blockEventArgs.Block);
         }
@@ -200,7 +205,7 @@ namespace Nethermind.Blockchain
             if (parent == null)
             {
                 return; // TODO: review
-            }            
+            }
 
             BigInteger timestamp = Timestamp.UnixUtcUntilNowSecs;
 
@@ -293,11 +298,13 @@ namespace Nethermind.Blockchain
             stopwatch.Start();
             Process(suggestedBlock, false);
             stopwatch.Stop();
-            if(_logger.IsInfoEnabled)
+            if (_logger.IsInfoEnabled)
             {
                 decimal gasPercentage = (decimal)suggestedBlock.GasUsed / suggestedBlock.GasLimit;
-                decimal gasPerTick = (decimal)suggestedBlock.GasUsed / stopwatch.ElapsedTicks;
-                _logger.Info($"Processed block {suggestedBlock.ToString(Block.Format.Short)} in {stopwatch.ElapsedTicks:N0} ticks, gas: {gasPercentage:P}, gpt: {gasPerTick:F}");
+                decimal microSeconds = stopwatch.ElapsedTicks * (1_000_000m / Stopwatch.Frequency);
+                decimal mgas = (decimal)suggestedBlock.GasUsed / 1_000_000m;
+                decimal mgasPerSecond = (decimal)suggestedBlock.GasUsed / stopwatch.ElapsedTicks * (Stopwatch.Frequency / 1000000m);
+                _logger.Info($"Processed block {suggestedBlock.ToString(Block.Format.Short)} in {microSeconds,12:N0}μs, guse={gasPercentage,6:P2}, mgas={mgas,6:F2}, mgasps={mgasPerSecond,7:F2}");
             }
         }
 
@@ -341,7 +348,9 @@ namespace Nethermind.Blockchain
                 do
                 {
                     blocksToBeAddedToMain.Add(toBeProcessed);
-                    toBeProcessed = _blockTree.FindParent(toBeProcessed);
+                    toBeProcessed = toBeProcessed.Number == 0 ? null : _blockTree.FindParent(toBeProcessed);
+                    // TODO: need to remove the hardcoded head block store at keccak zero as it would be referenced by the genesis... 
+                    
                     if (toBeProcessed == null)
                     {
                         break;
@@ -493,7 +502,7 @@ namespace Nethermind.Blockchain
                     _sealEngine.MineAsync(blockToBeMined, anyCancellation.Token).ContinueWith(t =>
                     {
                         anyCancellation.Dispose();
-                        
+
                         if (_logger.IsInfoEnabled)
                         {
                             _logger.Info($"Mined a block {t.Result.ToString(Block.Format.Short)} with parent {t.Result.Header.ParentHash}");

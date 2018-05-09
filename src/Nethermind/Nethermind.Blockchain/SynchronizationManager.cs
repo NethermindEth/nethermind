@@ -36,7 +36,7 @@ namespace Nethermind.Blockchain
     {
         public static readonly TimeSpan SyncTimeout = TimeSpan.FromSeconds(10);
 
-        public const int BatchSize = 16;
+        public const int BatchSize = 8; // when syncing, we got disconnected on 16 because of the too big Snappy message, need to dynamically adjust
         private readonly IBlockValidator _blockValidator;
         private readonly IHeaderValidator _headerValidator;
         private readonly ILogger _logger;
@@ -332,10 +332,7 @@ namespace Nethermind.Blockchain
                         isCommonAncestorKnown = true;
                     }
 
-                    if (_logger.IsInfoEnabled)
-                    {
-                        _logger.Info($"Sending sync request to peer with best {peerInfo.NumberAvailable} (I received {peerInfo.NumberReceived}), is synced {peerInfo.IsSynced}");
-                    }
+                    if (_logger.IsDebugEnabled) _logger.Debug($"Sending sync request to peer with best {peerInfo.NumberAvailable} (I received {peerInfo.NumberReceived}), is synced {peerInfo.IsSynced}");
 
                     BigInteger blocksLeft = peerInfo.NumberAvailable - peerInfo.NumberReceived;
                     // TODO: fault handling on tasks
