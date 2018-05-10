@@ -18,10 +18,8 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Encoding;
 using Nethermind.Core.Specs;
 
 namespace Nethermind.Store

@@ -315,15 +315,19 @@ namespace Nethermind.PerfTest
                 }
                 
                 totalGas += currentHead.GasUsed;
-                if (args.Block.Number % 1000 == 0)
+                if (args.Block.Number % 1000 == 999)
                 {
                     stopwatch.Stop();
                     long ns = 1_000_000_000L * stopwatch.ElapsedTicks / Stopwatch.Frequency;
                     long ms = 1_000L * stopwatch.ElapsedTicks / Stopwatch.Frequency;
-                    _logger.Warn($"TOTAL after {args.Block.Number} (ns)     : " + ns);
-                    _logger.Warn($"TOTAL after {args.Block.Number} (ms)     : " + ms);
-                    _logger.Warn($"TOTAL after {args.Block.Number} blocks/s : {(decimal)currentHead.Number / (ms / 1000m), 5}");
-                    _logger.Warn($"TOTAL after {args.Block.Number} Mgas/s   : {((decimal)totalGas / 1000000) / (ms / 1000m), 5}");
+                    _logger.Warn($"TOTAL after {args.Block.Number + 1} (ns)     : " + ns);
+                    _logger.Warn($"TOTAL after {args.Block.Number + 1} (ms)     : " + ms);
+                    _logger.Warn($"TOTAL after {args.Block.Number + 1} blocks/s : {(decimal)currentHead.Number / (ms / 1000m), 5}");
+                    _logger.Warn($"TOTAL after {args.Block.Number + 1} Mgas/s   : {((decimal)totalGas / 1000000) / (ms / 1000m), 5}");
+                    _logger.Warn($"TOTAL after {args.Block.Number + 1} mem (GC) : {GC.GetTotalMemory(true)}");
+                    _logger.Warn($"TOTAL after {args.Block.Number + 1} GC (0)   : {GC.CollectionCount(0)}");
+                    _logger.Warn($"TOTAL after {args.Block.Number + 1} GC (1)   : {GC.CollectionCount(1)}");
+                    _logger.Warn($"TOTAL after {args.Block.Number + 1} GC (2)   : {GC.CollectionCount(2)}");
                     stopwatch.Start();
                 }                
             };
