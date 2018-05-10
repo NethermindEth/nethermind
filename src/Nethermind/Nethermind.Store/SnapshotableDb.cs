@@ -55,7 +55,7 @@ namespace Nethermind.Store
                 return change.ChangeType == ChangeType.Delete ? null : change.Value;
             }
 
-            byte[] value = _db.ContainsKey(hash) ? _db[hash.Bytes] : null;
+            byte[] value = _db[hash.Bytes];
 
             PushJustCache(hash, value);
             return value;
@@ -242,11 +242,7 @@ namespace Nethermind.Store
                     case ChangeType.Delete:
                     {
                         _logger?.Info($"  DELETE {change.Hash}");
-                        if (_db.ContainsKey(change.Hash))
-                        {
-                            _db.Remove(change.Hash);
-                        }
-
+                        _db.Remove(change.Hash);
                         break;
                     }
                     default:

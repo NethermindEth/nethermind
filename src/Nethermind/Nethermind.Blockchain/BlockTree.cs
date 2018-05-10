@@ -17,10 +17,8 @@
  */
 
 using System;
-using System.Diagnostics;
 using System.Linq;
 using System.Numerics;
-using System.Threading.Tasks;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -128,9 +126,10 @@ namespace Nethermind.Blockchain
 
         private void LoadHeadBlock()
         {
-            if (_blockDb.ContainsKey(Keccak.Zero))
+            byte[] data = _blockDb.Get(Keccak.Zero);
+            if (data != null)
             {
-                Block block = Rlp.Decode<Block>(new Rlp(_blockDb.Get(Keccak.Zero)));
+                Block block = Rlp.Decode<Block>(new Rlp(data));
                 HeadBlock = BestSuggestedBlock = block;
             }
         }
@@ -372,12 +371,8 @@ namespace Nethermind.Blockchain
 
         private ChainLevelInfo LoadLevel(BigInteger number)
         {
-            if (!_blockInfoDb.ContainsKey(number))
-            {
-                return null;
-            }
-
-            return Rlp.Decode<ChainLevelInfo>(new Rlp(_blockInfoDb.Get(number)));
+            byte[] data = _blockInfoDb.Get(number);
+            return data == null ? null : Rlp.Decode<ChainLevelInfo>(new Rlp(data));
         }
 
         // TODO: use headers store?
@@ -394,12 +389,13 @@ namespace Nethermind.Blockchain
 
         private (Block Block, BlockInfo Info, ChainLevelInfo Level) Load(Keccak blockHash)
         {
-            if (!_blockDb.ContainsKey(blockHash))
+            byte[] data = _blockDb.Get(blockHash);
+            if (data == null)
             {
                 return (null, null, null);
             }
 
-            Block block = Rlp.Decode<Block>(new Rlp(_blockDb.Get(blockHash)));
+            Block block = Rlp.Decode<Block>(new Rlp(data));
             (BlockInfo blockInfo, ChainLevelInfo level) = LoadInfo(block.Number, block.Hash);
 
             if (blockInfo == null)
@@ -409,9 +405,11 @@ namespace Nethermind.Blockchain
 
             block.Header.TotalDifficulty = blockInfo.TotalDifficulty;
             block.Header.TotalTransactions = blockInfo.TotalTransactions;
-            if (_receiptsDb.ContainsKey(block.Hash))
+
+            byte[] receiptsData = _receiptsDb.Get(block.Hash);
+            if (receiptsData != null)
             {
-                TransactionReceipt[] receipts = Rlp.DecodeArray<TransactionReceipt>(new Rlp(_receiptsDb.Get(block.Hash)));
+                TransactionReceipt[] receipts = Rlp.DecodeArray<TransactionReceipt>(new Rlp(receiptsData));
                 block.Receipts = receipts;
             }
             else

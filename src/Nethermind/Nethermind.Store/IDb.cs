@@ -26,7 +26,6 @@ namespace Nethermind.Store
             set;
         }
         
-        bool ContainsKey(byte[] key);
         void Remove(byte[] key);
     }
 }

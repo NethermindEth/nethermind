@@ -17,9 +17,7 @@
  */
 
 using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.IO;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Store;
 using RocksDbSharp;

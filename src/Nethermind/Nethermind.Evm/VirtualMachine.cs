@@ -347,7 +347,6 @@ namespace Nethermind.Evm
             long gasAvailable;
             long programCounter;
             byte[] code;
-            bool[] jumpDestinations = null;
 
             ApplyState();
 
@@ -620,42 +619,6 @@ namespace Nethermind.Evm
                 }
 
                 UpdateGas(memoryCost, ref gasAvailable);
-            }
-
-            void ValidateJump(int destination)
-            {
-                if (jumpDestinations == null)
-                {
-                    CalculateJumpDestinations();
-                }
-
-                if (destination < 0 || destination > jumpDestinations.Length || !jumpDestinations[destination])
-                {
-                    throw new InvalidJumpDestinationException();
-                }
-            }
-
-            void CalculateJumpDestinations()
-            {
-                jumpDestinations = new bool[code.Length];
-                int index = 0;
-                while (index < code.Length)
-                {
-                    //Instruction instruction = (Instruction)code[index];
-                    byte instruction = code[index];
-                    //jumpDestinations[index] = !spec.AreJumpDestinationsUsed || instruction == Instruction.JUMPDEST;
-                    jumpDestinations[index] = instruction == 0x5b;
-                    //if (instruction >= Instruction.PUSH1 && instruction <= Instruction.PUSH32)
-                    if (instruction >= 0x60 && instruction <= 0x7f)
-                    {
-                        //index += instruction - Instruction.PUSH1 + 2;
-                        index += instruction - 0x60 + 2;
-                    }
-                    else
-                    {
-                        index++;
-                    }
-                }
             }
 
             if (previousCallResult != null)
@@ -1243,7 +1206,7 @@ namespace Nethermind.Evm
                         }
 
                         int dest = (int)bigReg;
-                        ValidateJump(dest);
+                        env.CodeInfo.ValidateJump(dest);
 
                         programCounter = dest;
                         break;
@@ -1265,7 +1228,7 @@ namespace Nethermind.Evm
                         BigInteger condition = PopUInt();
                         if (condition > BigInteger.Zero)
                         {
-                            ValidateJump(dest); // TODO: add a test, validating inside the condition was not covered by existing tests and fails on 61363 Ropsten
+                            env.CodeInfo.ValidateJump(dest); // TODO: add a test, validating inside the condition was not covered by existing tests and fails on 61363 Ropsten
                             programCounter = dest;
                         }
 

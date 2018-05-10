@@ -34,11 +34,6 @@ namespace Nethermind.Store
             return db[key.Bytes];
         }
         
-        public static bool ContainsKey(this IDb db, Keccak key)
-        {
-            return db.ContainsKey(key.Bytes);
-        }
-        
         public static void Remove(this IDb db, Keccak key)
         {
             db.Remove(key.Bytes);
@@ -52,11 +47,6 @@ namespace Nethermind.Store
         public static byte[] Get(this IDb db, BigInteger key)
         {
             return db[key.ToBigEndianByteArray()];
-        }
-        
-        public static bool ContainsKey(this IDb db, BigInteger key)
-        {
-            return db.ContainsKey(key.ToBigEndianByteArray());
         }
         
         public static void Remove(this IDb db, BigInteger key)

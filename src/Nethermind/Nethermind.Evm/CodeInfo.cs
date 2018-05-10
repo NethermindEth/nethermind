@@ -16,19 +16,22 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-
+using System.Collections.Generic;
 using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Evm
 {
-    // TODO: it was some work planned for optimization but then another solutions was used, will consider later to refactor EvmState and this class as well
+    // TODO: test this now after jd were moved here
     public class CodeInfo
     {
+        private HashSet<int> _validJumpDestinations;
+
         public CodeInfo(byte[] code)
         {
             MachineCode = code;
+            // jump destinations
         }
         
         public CodeInfo(Address precompileAddress)
@@ -41,5 +44,45 @@ namespace Nethermind.Evm
         public byte[] MachineCode { get; set; }
         public Address PrecompileAddress { get; set; }
         public BigInteger PrecompileId { get; set; }
+
+        public void ValidateJump(int destination)
+        {
+            if (_validJumpDestinations == null)
+            {
+                CalculateJumpDestinations();
+            }
+
+            if (destination < 0 || destination >= MachineCode.Length || !_validJumpDestinations.Contains(destination))
+            {
+                throw new InvalidJumpDestinationException();
+            }
+        }
+
+        private void CalculateJumpDestinations()
+        {
+            _validJumpDestinations = new HashSet<int>();
+            int index = 0;
+            while (index < MachineCode.Length)
+            {
+                //Instruction instruction = (Instruction)code[index];
+                byte instruction = MachineCode[index];                
+                //if (instruction == Instruction.JUMPDEST)
+                if (instruction == 0x5b)
+                {
+                    _validJumpDestinations.Add(index);
+                }
+
+                //if (instruction >= Instruction.PUSH1 && instruction <= Instruction.PUSH32)
+                if (instruction >= 0x60 && instruction <= 0x7f)
+                {
+                    //index += instruction - Instruction.PUSH1 + 2;
+                    index += instruction - 0x60 + 2;
+                }
+                else
+                {
+                    index++;
+                }
+            }
+        }
     }
 }
