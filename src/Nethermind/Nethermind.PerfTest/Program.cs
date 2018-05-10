@@ -3,7 +3,6 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
-using System.Linq;
 using System.Numerics;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -11,7 +10,6 @@ using Nethermind.Blockchain.Difficulty;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Encoding;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Specs.ChainSpec;
 using Nethermind.Db;
@@ -229,11 +227,24 @@ namespace Nethermind.PerfTest
             public event EventHandler<BlockEventArgs> NewHeadBlock;
         }
 
+        private static void DeleteDb(string dbPath)
+        {
+            string fullDbPath = Path.Combine("db", dbPath);
+            if (Directory.Exists(fullDbPath)) Directory.Delete(fullDbPath, true);
+        }
+
         private static async Task RunRopstenBlocks()
         {
             /* logging & instrumentation */
             _logger = new NLogLogger("perTest.logs.txt", "perfTest");
             //var logger = new ConsoleAsyncLogger(LogLevel.Info);
+
+            _logger.Info("Deleting state DBs");
+            DeleteDb(DbOnTheRocks.StateDbPath);
+            DeleteDb(DbOnTheRocks.StorageDbPath);
+            DeleteDb(DbOnTheRocks.CodeDbPath);
+            DeleteDb(DbOnTheRocks.ReceiptsDbPath);
+            _logger.Info("State DBs deleted");
 
             /* spec */
             var sealEngine = new EthashSealEngine(new Ethash(), _logger);
