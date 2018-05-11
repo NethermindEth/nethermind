@@ -411,15 +411,16 @@ namespace Nethermind.Blockchain
 
                 Block[] processedBlocks = _blockProcessor.Process(stateRoot, blocks, forMining);
 
+                // TODO: lots of unnecessary loading and decoding here, review after adding support for loading headers only
                 List<BlockHeader> blocksToBeRemovedFromMain = new List<BlockHeader>();
                 if (_blockTree.Head?.Hash != branchingPoint?.Hash && _blockTree.Head != null)
                 {
                     blocksToBeRemovedFromMain.Add(_blockTree.Head);
-                    Block teBeRemovedFromMain = _blockTree.FindParent(_blockTree.Head);
+                    BlockHeader teBeRemovedFromMain = _blockTree.FindHeader(_blockTree.Head.ParentHash);
                     while (teBeRemovedFromMain != null && teBeRemovedFromMain.Hash != branchingPoint?.Hash)
                     {
-                        blocksToBeRemovedFromMain.Add(teBeRemovedFromMain.Header);
-                        teBeRemovedFromMain = _blockTree.FindParent(teBeRemovedFromMain);
+                        blocksToBeRemovedFromMain.Add(teBeRemovedFromMain);
+                        teBeRemovedFromMain = _blockTree.FindHeader(teBeRemovedFromMain.ParentHash);
                     }
                 }
 
@@ -469,7 +470,7 @@ namespace Nethermind.Blockchain
                             _logger.Debug($"Moving {block.ToString(Block.Format.Short)} to main");
                         }
 
-                        _blockTree.MoveToMain(block.Hash);
+                        _blockTree.MoveToMain(block);
                         // TODO: only for miners
                         //foreach (Transaction transaction in block.Transactions)
                         //{

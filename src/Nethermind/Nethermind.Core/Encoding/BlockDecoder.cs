@@ -16,48 +16,58 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Collections.Generic;
-
 namespace Nethermind.Core.Encoding
 {
     public class BlockDecoder : IRlpDecoder<Block>
     {
-        private readonly BlockHeaderDecoder _blockHeaderDecoder = new BlockHeaderDecoder();
-        
-        public Block Decode(Rlp rlp)
+        public Block Decode(Rlp rlp, bool ignoreBody)
         {
             DecodedRlp data = Rlp.Decode(rlp);
-            return Decode(data);
+            return Decode(data, ignoreBody);
+        }
+
+        public Block Decode(Rlp rlp)
+        {
+            return Decode(rlp, false);
         }
 
         public Block Decode(DecodedRlp data)
+        {
+            return Decode(data, false);
+        }
+
+        public Block Decode(DecodedRlp data, bool ignoreBody)
         {
             if (data == null)
             {
                 return null;
             }
-            
-            DecodedRlp headerData = data.GetSequence(0);
-            DecodedRlp transactionsData = data.GetSequence(1);
-            DecodedRlp ommersData = data.GetSequence(2);
 
+            DecodedRlp headerData = data.GetSequence(0);
             BlockHeader blockHeader = Rlp.Decode<BlockHeader>(headerData);
 
-            List<Transaction> transactions = new List<Transaction>();
-            for (int txIndex = 0; txIndex < transactionsData.Items.Count; txIndex++)
+            Transaction[] transactions = null;
+            BlockHeader[] ommers = null;
+            if (!ignoreBody)
             {
-                DecodedRlp transactionData = (DecodedRlp)transactionsData.Items[txIndex];
-                transactions.Add(Rlp.Decode<Transaction>(transactionData));
+                DecodedRlp transactionsData = data.GetSequence(1);
+                transactions = new Transaction[transactionsData.Items.Count];
+                for (int txIndex = 0; txIndex < transactionsData.Items.Count; txIndex++)
+                {
+                    DecodedRlp transactionData = (DecodedRlp)transactionsData.Items[txIndex];
+                    transactions[txIndex] = Rlp.Decode<Transaction>(transactionData);
+                }
+
+                DecodedRlp ommersData = data.GetSequence(2);
+                ommers = new BlockHeader[ommersData.Length];
+                for (int ommerIndex = 0; ommerIndex < ommersData.Length; ommerIndex++)
+                {
+                    ommers[ommerIndex] = Rlp.Decode<BlockHeader>(ommersData.GetSequence(ommerIndex));
+                }
             }
 
-            BlockHeader[] ommers = new BlockHeader[ommersData.Length];
-            for (int ommerIndex = 0; ommerIndex < ommersData.Length; ommerIndex++)
-            {
-                ommers[ommerIndex] = Rlp.Decode<BlockHeader>(ommersData.GetSequence(ommerIndex));
-            }
-
-            Block block = new Block(blockHeader, ommers);
-            block.Transactions = transactions.ToArray();
+            Block block = new Block(blockHeader, ommers ?? new BlockHeader[0]);
+            block.Transactions = transactions ?? new Transaction[0];
             return block;
         }
     }

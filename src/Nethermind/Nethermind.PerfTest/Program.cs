@@ -204,6 +204,11 @@ namespace Nethermind.PerfTest
                 return _blockTree.FindBlock(blockHash, mainChainOnly);
             }
 
+            public BlockHeader FindHeader(Keccak blockHash)
+            {
+                return _blockTree.FindHeader(blockHash);
+            }
+
             public Block[] FindBlocks(Keccak blockHash, int numberOfBlocks, int skip, bool reverse)
             {
                 return _blockTree.FindBlocks(blockHash, numberOfBlocks, skip, reverse);
@@ -217,6 +222,16 @@ namespace Nethermind.PerfTest
             public bool IsMainChain(Keccak blockHash)
             {
                 return _blockTree.IsMainChain(blockHash);
+            }
+
+            public bool IsKnownBlock(Keccak blockHash)
+            {
+                return _blockTree.IsKnownBlock(blockHash);
+            }
+
+            public void MoveToMain(Block block)
+            {
+                _blockTree.MoveToMain(block);
             }
 
             public void MoveToMain(Keccak blockHash)

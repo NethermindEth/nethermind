@@ -17,8 +17,6 @@
  */
 
 using System;
-using System.Numerics;
-using System.Reflection.Emit;
 using Nethermind.Blockchain;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;

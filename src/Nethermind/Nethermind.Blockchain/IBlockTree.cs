@@ -33,9 +33,12 @@ namespace Nethermind.Blockchain
         void LoadBlocksFromDb(BigInteger? startBlockNumber); // TODO: start block number for testing, consider making it internal and keep the public without arguments
         AddBlockResult SuggestBlock(Block block);
         Block FindBlock(Keccak blockHash, bool mainChainOnly);
+        BlockHeader FindHeader(Keccak blockHash);
         Block[] FindBlocks(Keccak blockHash, int numberOfBlocks, int skip, bool reverse);
         Block FindBlock(BigInteger blockNumber);
         bool IsMainChain(Keccak blockHash);
+        bool IsKnownBlock(Keccak blockHash);
+        void MoveToMain(Block block);
         void MoveToMain(Keccak blockHash);
         void MoveToBranch(Keccak blockHash);
         bool WasProcessed(Keccak blockHash);

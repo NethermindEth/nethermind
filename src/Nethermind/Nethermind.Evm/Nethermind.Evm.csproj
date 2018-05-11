@@ -12,4 +12,9 @@
   <ItemGroup>
     <PackageReference Include="MathNet.Numerics.FSharp" Version="4.4.0" />
   </ItemGroup>
+  <ItemGroup>
+    <Reference Include="System.Numerics.Vectors">
+      <HintPath>..\..\..\..\..\Users\tksta\.nuget\packages\system.numerics.vectors\4.5.0-preview1-26216-02\ref\netstandard2.0\System.Numerics.Vectors.dll</HintPath>
+    </Reference>
+  </ItemGroup>
 </Project>
