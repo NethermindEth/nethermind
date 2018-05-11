@@ -37,7 +37,12 @@ namespace Nethermind.Blockchain
         private readonly ISpecProvider _specProvider;
 
         // TODO: validators should be here
-        public BlockTree(IDb blockDb, IDb blockInfoDb, IDb receiptsDb, ISpecProvider specProvider, ILogger logger)
+        public BlockTree(
+            IDb blockDb,
+            IDb blockInfoDb,
+            IDb receiptsDb,
+            ISpecProvider specProvider,
+            ILogger logger)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _blockDb = blockDb;
@@ -318,14 +323,14 @@ namespace Nethermind.Blockchain
                 }
 
                 Head = block.Header;
-                SaveHeadBlock();
+                SaveHeadBlock(block);
                 NewHeadBlock?.Invoke(this, new BlockEventArgs(block));
             }
         }
 
-        private void SaveHeadBlock()
+        private void SaveHeadBlock(Block block)
         {
-            _blockDb.Set(Keccak.Zero, Rlp.Encode(Head).Bytes);
+            _blockDb.Set(Keccak.Zero, Rlp.Encode(block).Bytes);
         }
 
         private void UpdateLevel(BigInteger number, BlockInfo blockInfo)

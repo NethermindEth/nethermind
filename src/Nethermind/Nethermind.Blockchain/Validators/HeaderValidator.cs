@@ -20,9 +20,7 @@ using System;
 using System.Numerics;
 using Nethermind.Blockchain.Difficulty;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.Mining;
 
 namespace Nethermind.Blockchain.Validators
 {
