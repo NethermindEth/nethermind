@@ -25,6 +25,12 @@ namespace Nethermind.Core
 {
     public class NLogLogger : ILogger
     {
+        public bool IsErrorEnabled { get; }
+        public bool IsWarnEnabled { get; }
+        public bool IsInfoEnabled { get; }
+        public bool IsDebugEnabled { get; }
+        public bool IsTraceEnabled { get; }
+
         private NLog.Logger _logger;
 
         public void ChangeLogger(string newLoggerName)
@@ -58,7 +64,14 @@ namespace Nethermind.Core
             {
                 target.FileName = Path.Combine("logs", fileName);
             }
-        }
+
+            /* NOTE: minor perf gain - not planning to switch logging levels while app is running */
+            IsInfoEnabled = _logger.IsInfoEnabled;
+            IsWarnEnabled = _logger.IsWarnEnabled;
+            IsDebugEnabled = _logger.IsDebugEnabled;
+            IsTraceEnabled = _logger.IsTraceEnabled;
+            IsErrorEnabled = _logger.IsErrorEnabled || _logger.IsFatalEnabled;
+    }
 
         public void Log(string text)
         {
@@ -89,11 +102,5 @@ namespace Nethermind.Core
         {
             _logger.Error(ex, text);
         }
-
-        public bool IsInfoEnabled => _logger.IsInfoEnabled;
-        public bool IsWarnEnabled => _logger.IsWarnEnabled;
-        public bool IsDebugEnabled => _logger.IsDebugEnabled;
-        public bool IsTraceEnabled => _logger.IsTraceEnabled;
-        public bool IsErrorEnabled => _logger.IsErrorEnabled || _logger.IsFatalEnabled;
     }
 }

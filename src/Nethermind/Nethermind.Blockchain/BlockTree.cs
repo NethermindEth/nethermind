@@ -196,7 +196,7 @@ namespace Nethermind.Blockchain
             return AddBlockResult.Added;
         }
 
-        private const int MaxQueueSize = 10_000;
+        private const int MaxQueueSize = 100_000;
 
         public Block FindBlock(Keccak blockHash, bool mainChainOnly)
         {
