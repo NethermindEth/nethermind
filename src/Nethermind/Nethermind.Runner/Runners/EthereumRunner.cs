@@ -35,7 +35,6 @@ using Nethermind.Core.Specs.ChainSpec;
 using Nethermind.Db;
 using Nethermind.Discovery;
 using Nethermind.Evm;
-using Nethermind.KeyStore;
 using Nethermind.Network;
 using Nethermind.Network.Crypto;
 using Nethermind.Network.P2P;
@@ -77,6 +76,8 @@ namespace Nethermind.Runner.Runners
 
             _defaultLogger.Info("Initializing Ethereum");
             _privateKey = new PrivateKey(initParams.TestNodeKey);
+            _dbBasePath = initParams.BaseDbPath ?? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "db");
+
             ChainSpec chainSpec = LoadChainSpec(initParams.ChainSpecPath);
             InitBlockchain(chainSpec, initParams.IsMining ?? false, initParams.FakeMiningDelay ?? 12000);
             InitNet(chainSpec, initParams.P2PPort ?? 30303).Wait();
@@ -108,6 +109,8 @@ namespace Nethermind.Runner.Runners
             return chainSpec;
         }
 
+        private static string _dbBasePath;
+
         private void InitBlockchain(ChainSpec chainSpec, bool isMining, int miningDelay)
         {
             /* spec */
@@ -120,7 +123,11 @@ namespace Nethermind.Runner.Runners
 
             /* sync */
             var transactionStore = new TransactionStore();
-            var blockTree = new BlockTree(new DbOnTheRocks(DbOnTheRocks.BlocksDbPath), new DbOnTheRocks(DbOnTheRocks.BlockInfosDbPath), new DbOnTheRocks(DbOnTheRocks.ReceiptsDbPath), RopstenSpecProvider.Instance, _chainLogger);
+            var blocksDb = new DbOnTheRocks(Path.Combine(_dbBasePath, DbOnTheRocks.BlocksDbPath));
+            var blockInfosDb = new DbOnTheRocks(Path.Combine(_dbBasePath, DbOnTheRocks.BlockInfosDbPath));
+            var receiptsDb = new DbOnTheRocks(Path.Combine(_dbBasePath, DbOnTheRocks.ReceiptsDbPath));
+
+            var blockTree = new BlockTree(blocksDb, blockInfosDb, receiptsDb, RopstenSpecProvider.Instance, _chainLogger);
 
             /* validation */
             var headerValidator = new HeaderValidator(difficultyCalculator, blockTree, sealEngine, specProvider, _chainLogger);
@@ -129,9 +136,9 @@ namespace Nethermind.Runner.Runners
             var blockValidator = new BlockValidator(txValidator, headerValidator, ommersValidator, specProvider, _chainLogger);
 
             /* state */
-            var dbProvider = new RocksDbProvider(_stateLogger);
-            var codeDb = new DbOnTheRocks(DbOnTheRocks.CodeDbPath);
-            var stateDb = new DbOnTheRocks(DbOnTheRocks.StateDbPath);
+            var dbProvider = new RocksDbProvider(_dbBasePath, _stateLogger);
+            var codeDb = new DbOnTheRocks(Path.Combine(_dbBasePath, DbOnTheRocks.CodeDbPath));
+            var stateDb = new DbOnTheRocks(Path.Combine(_dbBasePath, DbOnTheRocks.StateDbPath));
             var stateTree = new StateTree(stateDb);
             var stateProvider = new StateProvider(stateTree, _stateLogger, codeDb);
             var storageProvider = new StorageProvider(dbProvider, stateProvider, _stateLogger);

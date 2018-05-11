@@ -227,32 +227,41 @@ namespace Nethermind.PerfTest
             public event EventHandler<BlockEventArgs> NewHeadBlock;
         }
 
+        private const string DbBasePath = @"D:\chains\Nethermind\Ropsten\perf100k";
+
         private static void DeleteDb(string dbPath)
         {
-            string fullDbPath = Path.Combine("db", dbPath);
-            if (Directory.Exists(fullDbPath)) Directory.Delete(fullDbPath, true);
+            if (Directory.Exists(dbPath)) Directory.Delete(dbPath, true);
         }
+
+        private static readonly string FullStateDbPath = Path.Combine(DbBasePath, DbOnTheRocks.StateDbPath);
+        private static readonly string FullStorageDbPath = Path.Combine(DbBasePath, DbOnTheRocks.StorageDbPath);
+        private static readonly string FullCodeDbPath = Path.Combine(DbBasePath, DbOnTheRocks.CodeDbPath);
+        private static readonly string FullReceiptsDbPath = Path.Combine(DbBasePath, DbOnTheRocks.ReceiptsDbPath);
+
+        private static readonly string FullBlocksDbPath = Path.Combine(DbBasePath, DbOnTheRocks.BlocksDbPath);
+        private static readonly string FullBlockInfosDbPath = Path.Combine(DbBasePath, DbOnTheRocks.BlockInfosDbPath);
 
         private static async Task RunRopstenBlocks()
         {
             /* logging & instrumentation */
             _logger = new NLogLogger("perTest.logs.txt", "perfTest");
             //var logger = new ConsoleAsyncLogger(LogLevel.Info);
-
+            
             _logger.Info("Deleting state DBs");
-            DeleteDb(DbOnTheRocks.StateDbPath);
-            DeleteDb(DbOnTheRocks.StorageDbPath);
-            DeleteDb(DbOnTheRocks.CodeDbPath);
-            DeleteDb(DbOnTheRocks.ReceiptsDbPath);
+            DeleteDb(FullStateDbPath);
+            DeleteDb(FullStorageDbPath);
+            DeleteDb(FullCodeDbPath);
+            DeleteDb(FullReceiptsDbPath);
             _logger.Info("State DBs deleted");
 
             /* spec */
             var sealEngine = new EthashSealEngine(new Ethash(), _logger);
             var specProvider = RopstenSpecProvider.Instance;
 
-            var blocksDb = new DbOnTheRocks(DbOnTheRocks.BlocksDbPath);
-            var blockInfosDb = new DbOnTheRocks(DbOnTheRocks.BlockInfosDbPath);
-            var receiptsDb = new DbOnTheRocks(DbOnTheRocks.ReceiptsDbPath);
+            var blocksDb = new DbOnTheRocks(FullBlocksDbPath);
+            var blockInfosDb = new DbOnTheRocks(FullBlockInfosDbPath);
+            var receiptsDb = new DbOnTheRocks(FullReceiptsDbPath);
 
             /* store & validation */
             var blockTree = new UnprocessedBlockTreeWrapper(new BlockTree(blocksDb, blockInfosDb, receiptsDb, specProvider, _logger));
@@ -264,7 +273,7 @@ namespace Nethermind.PerfTest
 
             /* state & storage */
 
-            var dbProvider = new RocksDbProvider(_logger);
+            var dbProvider = new RocksDbProvider(DbBasePath, _logger);
             var stateTree = new StateTree(dbProvider.GetOrCreateStateDb());
             var stateProvider = new StateProvider(stateTree, _logger, dbProvider.GetOrCreateCodeDb());
             var storageProvider = new StorageProvider(dbProvider, stateProvider, _logger);

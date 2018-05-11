@@ -9,6 +9,7 @@
     "IsMining": true,
     "FakeMiningDelay": 1000,
     "ChainSpecPath": "Chains\\nethermind_alpha.json",
+    "BaseDbPath": "D:\\chains\\Nethermind\\private\\spawner\\miner1",
     "TestNodeKey": "020102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f",
     "LogFileName": "miner1.logs.txt"
   },
@@ -22,6 +23,7 @@
     "IsMining": true,
     "FakeMiningDelay": 1000,
     "ChainSpecPath": "Chains\\nethermind_alpha.json",
+    "BaseDbPath": "D:\\chains\\Nethermind\\private\\spawner\\miner2",
     "TestNodeKey": "040102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f",
     "LogFileName": "miner2.logs.txt"
   },
@@ -35,6 +37,7 @@
     "IsMining": true,
     "FakeMiningDelay": 2000,
     "ChainSpecPath": "Chains\\nethermind_alpha_client.json",
+    "BaseDbPath": "D:\\chains\\Nethermind\\private\\spawner\\minerclient",
     "TestNodeKey": "030102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f",
     "LogFileName": "minerclient.logs.txt"
   },
@@ -48,6 +51,7 @@
     "IsMining": false,
     "FakeMiningDelay": 1000,
     "ChainSpecPath": "Chains\\nethermind_alpha_client.json",
+    "BaseDbPath": "D:\\chains\\Nethermind\\private\\spawner\\client",
     "TestNodeKey": "050102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f",
     "LogFileName": "client.logs.txt"
   }

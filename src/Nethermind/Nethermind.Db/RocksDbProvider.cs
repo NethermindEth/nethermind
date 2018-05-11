@@ -17,17 +17,18 @@
  */
 
 using System.Collections.Generic;
+using System.IO;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Store;
 
 namespace Nethermind.Db
 {
-    // TODO: this is a copy paste, like most snapshotable classes, awaiting some refactoring
+    // TODO: this is a copy paste from MemDbProvider (mainly commit / restore / snapshots), like most snapshotable classes, awaiting some refactoring
     public class RocksDbProvider : IDbProvider
     {
-        private readonly ISnapshotableDb _stateDb = new SnapshotableDb(new DbOnTheRocks(DbOnTheRocks.StateDbPath));
-        private readonly ISnapshotableDb _codeDb = new SnapshotableDb(new DbOnTheRocks(DbOnTheRocks.CodeDbPath));
+        private readonly ISnapshotableDb _stateDb;
+        private readonly ISnapshotableDb _codeDb;
         private readonly Dictionary<Address, ISnapshotableDb> _storageDbs = new Dictionary<Address, ISnapshotableDb>();
         private IEnumerable<ISnapshotableDb> AllDbs
         {
@@ -41,7 +42,7 @@ namespace Nethermind.Db
                 }
             }
         }
-        
+
         public ISnapshotableDb GetOrCreateStateDb()
         {
             return _stateDb;
@@ -51,7 +52,9 @@ namespace Nethermind.Db
         {
             if (!_storageDbs.ContainsKey(address))
             {
-                _storageDbs[address] = new SnapshotableDb(new DbOnTheRocks(DbOnTheRocks.StorageDbPath, address.Hex));
+                var path = Path.Combine(_dbBasePath, DbOnTheRocks.StorageDbPath);
+                var db = new DbOnTheRocks(path, address.Hex);
+                _storageDbs[address] = new SnapshotableDb(db);
             }
 
             return _storageDbs[address];
@@ -61,14 +64,18 @@ namespace Nethermind.Db
         {
             return _codeDb;
         }
-        
+
+        private readonly string _dbBasePath;
         private readonly ILogger _logger;
 
         internal Stack<Dictionary<ISnapshotableDb, int>> Snapshots { get; } = new Stack<Dictionary<ISnapshotableDb, int>>();
 
-        public RocksDbProvider(ILogger logger)
+        public RocksDbProvider(string dbBasePath, ILogger logger)
         {
             _logger = logger;
+            _dbBasePath = dbBasePath;
+            _stateDb = new SnapshotableDb(new DbOnTheRocks(Path.Combine(_dbBasePath, DbOnTheRocks.StateDbPath)));
+            _codeDb = new SnapshotableDb(new DbOnTheRocks(Path.Combine(_dbBasePath, DbOnTheRocks.CodeDbPath)));
         }
 
         public void Restore(int snapshot)

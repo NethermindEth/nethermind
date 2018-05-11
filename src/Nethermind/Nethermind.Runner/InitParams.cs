@@ -36,6 +36,7 @@ namespace Nethermind.Runner
         public int? DiscoveryPort { get; set; }
         public int? P2PPort { get; set; }
         public string ChainSpecPath { get; set; }
+        public string BaseDbPath { get; set; }
         public string GenesisFilePath { get; set; }
         public string ChainFile { get; set; }
         public string BlocksDir { get; set; }

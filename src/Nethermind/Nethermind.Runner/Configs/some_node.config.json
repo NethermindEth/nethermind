@@ -8,6 +8,7 @@
   "IsMining": false,
   "FakeMiningDelay": 12000,
   "ChainSpecPath": "Chains\\some_node.json",
+  "BaseDbPath": "D:\\chains\\Nethermind\\ropsten\\full",
   "TestNodeKey": "020102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f",
   "LogFileName": "some_node.logs.txt",
   "JsonRpcEnabledModules": [ "Eth", "Net", "Web3", "Db", "Shh" ]
