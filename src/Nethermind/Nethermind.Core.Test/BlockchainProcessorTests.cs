@@ -112,7 +112,7 @@ namespace Nethermind.Core.Test
                         throw t.Exception;
                     }
 
-                    Assert.GreaterOrEqual((int)blockTree.HeadBlock.Number, 6);
+                    Assert.GreaterOrEqual((int)blockTree.Head.Number, 6);
                 });
         }
     }

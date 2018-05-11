@@ -97,5 +97,29 @@ namespace Nethermind.Core
         {
             return ToString(string.Empty);
         }
+
+        public string ToString(Format format)
+        {
+            switch (format)
+            {
+                case Format.Full:
+                    return ToString(string.Empty);
+                default:
+                    if (Hash == null)
+                    {
+                        return $"{Number} null";
+                    }
+                    else
+                    {
+                        return $"{Number} ({((string)new Hex(Hash.Bytes)).Substring(58, 6)})";
+                    }
+            }
+        }
+
+        public enum Format // TODO: use formatting strings / standard approach?
+        {
+            Full,
+            Short
+        }
     }
 }

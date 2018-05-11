@@ -17,6 +17,7 @@
  */
 
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Validators;
 
 namespace Nethermind.Core.Test.Builders
 {
@@ -24,13 +25,13 @@ namespace Nethermind.Core.Test.Builders
     {
         public static void AddBranch(this BlockTree blockTree, int branchLength, int splitBlockNumber, int splitVariant)
         {
-            BlockTree alternative = Build.A.BlockTree(blockTree.GenesisBlock).OfChainLength(branchLength, splitBlockNumber, splitVariant).TestObject;
+            BlockTree alternative = Build.A.BlockTree(blockTree.RetrieveGenesisBlock()).OfChainLength(branchLength, splitBlockNumber, splitVariant).TestObject;
             for (int i = splitBlockNumber + 1; i < branchLength; i++)
             {
                 Block block = alternative.FindBlock(i);
                 blockTree.SuggestBlock(block);
                 blockTree.MarkAsProcessed(block.Hash);
-                if (branchLength > blockTree.HeadBlock.Number)
+                if (branchLength > blockTree.Head.Number)
                 {
                     blockTree.MoveToMain(block.Hash);    
                 }

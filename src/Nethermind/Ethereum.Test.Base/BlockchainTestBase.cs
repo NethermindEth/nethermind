@@ -336,7 +336,7 @@ namespace Ethereum.Test.Base
 
             await blockchainProcessor.StopAsync(true);
 
-            RunAssertions(test, blockTree.HeadBlock, storageProvider, stateProvider);
+            RunAssertions(test, blockTree.RetrieveHeadBlock(), storageProvider, stateProvider);
         }
 
         private void InitializeTestState(BlockchainTest test, IStateProvider stateProvider, IStorageProvider storageProvider, ISpecProvider specProvider)

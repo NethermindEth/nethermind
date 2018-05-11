@@ -102,8 +102,8 @@ namespace Nethermind.Blockchain.Test
             BigInteger roughlyNumberOfBlocks = 6;
             Thread.Sleep(blockMiningTime * (int)roughlyNumberOfBlocks);
             await blockchainProcessor.StopAsync(false);
-            Assert.GreaterOrEqual(blockTree.HeadBlock.Number, roughlyNumberOfBlocks - 2, "number of blocks");
-            Assert.GreaterOrEqual(blockTree.HeadBlock.TotalTransactions, roughlyNumberOfBlocks - 2, "number of transactions");
+            Assert.GreaterOrEqual(blockTree.Head.Number, roughlyNumberOfBlocks - 2, "number of blocks");
+            Assert.GreaterOrEqual(blockTree.Head.TotalTransactions, roughlyNumberOfBlocks - 2, "number of transactions");
         }
     }
 }

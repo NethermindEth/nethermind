@@ -26,9 +26,9 @@ namespace Nethermind.Blockchain
     public interface IBlockTree
     {
         int ChainId { get; }
-        Block GenesisBlock { get; }
-        Block BestSuggestedBlock { get; }
-        Block HeadBlock { get; }
+        BlockHeader Genesis { get; }
+        BlockHeader BestSuggested { get; }
+        BlockHeader Head { get; }
 
         void LoadBlocksFromDb(BigInteger? startBlockNumber); // TODO: start block number for testing, consider making it internal and keep the public without arguments
         AddBlockResult SuggestBlock(Block block);

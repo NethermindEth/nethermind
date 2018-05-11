@@ -63,18 +63,18 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         public void Init()
         {
             Logger.Info($"{P2PSession.RemoteNodeId} {ProtocolCode} v{ProtocolVersion} subprotocol initializing");
-            if (_sync.HeadBlock == null)
+            if (_sync.Head == null)
             {
                 throw new InvalidOperationException("Initializing sync protocol without the head block set");
             }
 
-            Block headBlock = _sync.HeadBlock;
+            BlockHeader head = _sync.Head;
             StatusMessage statusMessage = new StatusMessage();
             statusMessage.ChainId = _sync.BlockTree.ChainId;
             statusMessage.ProtocolVersion = ProtocolVersion;
-            statusMessage.TotalDifficulty = headBlock.Difficulty;
-            statusMessage.BestHash = headBlock.Hash;
-            statusMessage.GenesisHash = _sync.GenesisBlock.Hash;
+            statusMessage.TotalDifficulty = head.Difficulty;
+            statusMessage.BestHash = head.Hash;
+            statusMessage.GenesisHash = _sync.Genesis.Hash;
 
             _statusSent = true;
             Send(statusMessage);
@@ -165,9 +165,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             _remoteHeadBlockHash = status.BestHash;
             _remoteHeadBlockDifficulty = status.TotalDifficulty;
 
-            if (status.GenesisHash != _sync.GenesisBlock.Hash)
+            if (status.GenesisHash != _sync.Genesis.Hash)
             {
-                Logger.Warn($"{P2PSession.RemoteNodeId} Connected peer's genesis hash {status.GenesisHash} differes from {_sync.GenesisBlock.Hash}");
+                Logger.Warn($"{P2PSession.RemoteNodeId} Connected peer's genesis hash {status.GenesisHash} differes from {_sync.Genesis.Hash}");
                 throw new InvalidOperationException("genesis hash mismatch");
             }
 

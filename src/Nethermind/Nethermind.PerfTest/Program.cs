@@ -167,9 +167,9 @@ namespace Nethermind.PerfTest
             }
 
             public int ChainId => _blockTree.ChainId;
-            public Block GenesisBlock => _blockTree.GenesisBlock;
-            public Block BestSuggestedBlock => _blockTree.BestSuggestedBlock;
-            public Block HeadBlock => _blockTree.HeadBlock;
+            public BlockHeader Genesis => _blockTree.Genesis;
+            public BlockHeader BestSuggested => _blockTree.BestSuggested;
+            public BlockHeader Head => _blockTree.Head;
 
             public void LoadBlocksFromDb(BigInteger? startBlockNumber)
             {
@@ -306,7 +306,7 @@ namespace Nethermind.PerfTest
                 throw new Exception("Unexpected genesis hash");
             }
 
-            if (chainSpec.Genesis.Hash != blockTree.GenesisBlock.Hash)
+            if (chainSpec.Genesis.Hash != blockTree.Genesis.Hash)
             {
                 throw new Exception("Unexpected genesis hash");
             }
@@ -342,7 +342,7 @@ namespace Nethermind.PerfTest
             };
 
             blockTree.LoadBlocksFromDb(0);
-            blockchainProcessor.Process(blockTree.GenesisBlock);
+            blockchainProcessor.Process(blockTree.FindBlock(blockTree.Genesis.Hash, true));
             
             stopwatch.Start();
             blockchainProcessor.Start();

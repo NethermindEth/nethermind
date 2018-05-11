@@ -338,7 +338,7 @@ namespace Nethermind.Core.Test
             AddToMain(blockTree, block0);
             AddToMain(blockTree, block1);
 
-            Assert.AreEqual(block1.Hash, BlockHeader.CalculateHash(blockTree.HeadBlock));
+            Assert.AreEqual(block1.Hash, BlockHeader.CalculateHash(blockTree.Head));
         }
 
         [Test]
@@ -350,8 +350,8 @@ namespace Nethermind.Core.Test
             AddToMain(blockTree, block0);
             blockTree.SuggestBlock(block1);
 
-            Assert.AreEqual(block0.Hash, BlockHeader.CalculateHash(blockTree.HeadBlock.Header), "head block");
-            Assert.AreEqual(block1.Hash, BlockHeader.CalculateHash(blockTree.BestSuggestedBlock.Header), "best suggested");
+            Assert.AreEqual(block0.Hash, BlockHeader.CalculateHash(blockTree.Head), "head block");
+            Assert.AreEqual(block1.Hash, BlockHeader.CalculateHash(blockTree.BestSuggested), "best suggested");
         }
 
         [Test]
@@ -361,7 +361,7 @@ namespace Nethermind.Core.Test
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
             AddToMain(blockTree, block0);
 
-            Assert.AreEqual(block0.Hash, BlockHeader.CalculateHash(blockTree.GenesisBlock));
+            Assert.AreEqual(block0.Hash, BlockHeader.CalculateHash(blockTree.Genesis));
         }
 
         [Test]
@@ -387,7 +387,8 @@ namespace Nethermind.Core.Test
             Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
             AddToMain(blockTree, block0);
 
-            Assert.AreEqual(1, blockTree.GenesisBlock.Receipts.Length);
+            Block restored = blockTree.FindBlock(blockTree.Genesis.Hash, false);
+            Assert.AreEqual(1, restored.Receipts.Length);
         }
 
         [Test]
@@ -405,8 +406,8 @@ namespace Nethermind.Core.Test
             blockInfosDb.Set(0, Rlp.Encode(level).Bytes);
 
             BlockTree blockTree = new BlockTree(blocksDb, blockInfosDb, new MemDb(), OlympicSpecProvider.Instance, NullLogger.Instance);
-            Assert.AreEqual(headBlock.Hash, blockTree.HeadBlock?.Hash, "head");
-            Assert.AreEqual(headBlock.Hash, blockTree.GenesisBlock?.Hash, "genesis");
+            Assert.AreEqual(headBlock.Hash, blockTree.Head?.Hash, "head");
+            Assert.AreEqual(headBlock.Hash, blockTree.Genesis?.Hash, "genesis");
         }
 
         [Test]
@@ -420,7 +421,7 @@ namespace Nethermind.Core.Test
                 MemDb blockInfosDb = new MemDb();
 
                 BlockTree testTree = Build.A.BlockTree(genesisBlock).OfChainLength(chainLength).TestObject;
-                for (int i = 0; i < testTree.HeadBlock.Number + 1; i++)
+                for (int i = 0; i < testTree.Head.Number + 1; i++)
                 {
                     Block ithBlock = testTree.FindBlock(i);
                     blocksDb.Set(ithBlock.Hash, Rlp.Encode(ithBlock).Bytes);
@@ -429,13 +430,13 @@ namespace Nethermind.Core.Test
                     blockInfosDb.Set(i, Rlp.Encode(ithLevel).Bytes);
                 }
 
-                blocksDb.Set(Keccak.Zero, Rlp.Encode(testTree.GenesisBlock).Bytes);
+                blocksDb.Set(Keccak.Zero, Rlp.Encode(genesisBlock).Bytes);
 
                 BlockTree blockTree = new BlockTree(blocksDb, blockInfosDb, new MemDb(), OlympicSpecProvider.Instance, NullLogger.Instance);
                 blockTree.LoadBlocksFromDb();
 
-                Assert.AreEqual(genesisBlock.Hash, blockTree.GenesisBlock?.Hash, $"genesis {chainLength}");
-                Assert.AreEqual(blockTree.BestSuggestedBlock.Hash, testTree.HeadBlock.Hash, $"head {chainLength}");
+                Assert.AreEqual(genesisBlock.Hash, blockTree.Genesis?.Hash, $"genesis {chainLength}");
+                Assert.AreEqual(blockTree.BestSuggested.Hash, testTree.Head.Hash, $"head {chainLength}");
             }
         }
         
@@ -450,7 +451,7 @@ namespace Nethermind.Core.Test
                 MemDb blockInfosDb = new MemDb();
 
                 BlockTree testTree = Build.A.BlockTree(genesisBlock).OfChainLength(chainLength).TestObject;
-                for (int i = 0; i < testTree.HeadBlock.Number + 1; i++)
+                for (int i = 0; i < testTree.Head.Number + 1; i++)
                 {
                     Block ithBlock = testTree.FindBlock(i);
                     blocksDb.Set(ithBlock.Hash, Rlp.Encode(ithBlock).Bytes);
@@ -464,8 +465,8 @@ namespace Nethermind.Core.Test
                 BlockTree blockTree = new BlockTree(blocksDb, blockInfosDb, new MemDb(), OlympicSpecProvider.Instance, NullLogger.Instance);
                 blockTree.LoadBlocksFromDb();
 
-                Assert.AreEqual(genesisBlock.Hash, blockTree.GenesisBlock?.Hash, $"genesis {chainLength}");
-                Assert.AreEqual(blockTree.BestSuggestedBlock.Hash, testTree.HeadBlock.Hash, $"head {chainLength}");
+                Assert.AreEqual(genesisBlock.Hash, blockTree.Genesis?.Hash, $"genesis {chainLength}");
+                Assert.AreEqual(blockTree.BestSuggested.Hash, testTree.Head.Hash, $"head {chainLength}");
             }
         }
 

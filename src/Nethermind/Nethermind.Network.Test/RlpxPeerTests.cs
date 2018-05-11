@@ -69,8 +69,8 @@ namespace Nethermind.Network.Test
 
             var syncManager = Substitute.For<ISynchronizationManager>();
             Block genesisBlock = Build.A.Block.Genesis.TestObject;
-            syncManager.HeadBlock.Returns(genesisBlock);
-            syncManager.GenesisBlock.Returns(genesisBlock);
+            syncManager.Head.Returns(genesisBlock.Header);
+            syncManager.Genesis.Returns(genesisBlock.Header);
             
             var peerServerA = new RlpxPeer(_keyA.PublicKey, PortA, encryptionHandshakeServiceA, serializationService, syncManager, logger);
             var peerServerB = new RlpxPeer(_keyB.PublicKey, PortB, encryptionHandshakeServiceB, serializationService, syncManager, logger);

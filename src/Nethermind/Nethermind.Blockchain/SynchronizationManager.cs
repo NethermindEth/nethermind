@@ -65,7 +65,7 @@ namespace Nethermind.Blockchain
             BlockTree.NewHeadBlock += OnNewHeadBlock;
             _transactionStore.NewPending += OnNewPendingTransaction;
 
-            _logger.Info($"Initialized {nameof(SynchronizationManager)} with head block {HeadBlock.ToString(Block.Format.Short)}");
+            _logger.Info($"Initialized {nameof(SynchronizationManager)} with head block {Head.ToString(BlockHeader.Format.Short)}");
         }
 
         private void OnNewPendingTransaction(object sender, TransactionEventArgs transactionEventArgs)
@@ -138,7 +138,7 @@ namespace Nethermind.Blockchain
 
             peerInfo.NumberAvailable = BigInteger.Max(block.Number, peerInfo.NumberAvailable);
 
-            if (block.Number <= BlockTree.BestSuggestedBlock.Number + 1)
+            if (block.Number <= BlockTree.BestSuggested.Number + 1)
             {
                 if (_logger.IsDebugEnabled)
                 {
@@ -166,7 +166,7 @@ namespace Nethermind.Blockchain
                     _logger.Info($"{block.Hash} ({block.Number}) adding result is {result}");
                 }
             }
-            else if (block.Number > BlockTree.BestSuggestedBlock.Number + 1)
+            else if (block.Number > BlockTree.BestSuggested.Number + 1)
             {
                 if (_logger.IsInfoEnabled)
                 {
@@ -248,10 +248,10 @@ namespace Nethermind.Blockchain
         }
 
         public int ChainId => BlockTree.ChainId;
-        public Block GenesisBlock => BlockTree.GenesisBlock;
-        public Block HeadBlock => BlockTree.HeadBlock;
-        public BigInteger HeadNumber => BlockTree.HeadBlock.Number;
-        public BigInteger TotalDifficulty => BlockTree.HeadBlock?.TotalDifficulty ?? 0;
+        public BlockHeader Genesis => BlockTree.Genesis;
+        public BlockHeader Head => BlockTree.Head;
+        public BigInteger HeadNumber => BlockTree.Head.Number;
+        public BigInteger TotalDifficulty => BlockTree.Head?.TotalDifficulty ?? 0;
         public IBlockTree BlockTree { get; set; }
 
         private void OnNewHeadBlock(object sender, BlockEventArgs blockEventArgs)
@@ -299,7 +299,7 @@ namespace Nethermind.Blockchain
                 {
                     if (_logger.IsInfoEnabled)
                     {
-                        _logger.Info($"Sync process finished. Best block now is {BlockTree.BestSuggestedBlock.Hash} ({BlockTree.BestSuggestedBlock.Number})");
+                        _logger.Info($"Sync process finished. Best block now is {BlockTree.BestSuggested.Hash} ({BlockTree.BestSuggested.Number})");
                     }
                 }
                 else if (t.IsCanceled)
@@ -319,7 +319,7 @@ namespace Nethermind.Blockchain
             {
                 PeerInfo peerInfo = _peers.OrderBy(p => p.Value.NumberAvailable).Last().Value; // TODO: order by total difficulty
                 ISynchronizationPeer peer = peerInfo.Peer;
-                BigInteger bestNumber = BlockTree.BestSuggestedBlock.Number;
+                BigInteger bestNumber = BlockTree.BestSuggested.Number;
 
                 bool isCommonAncestorKnown = false;
 
@@ -415,7 +415,7 @@ namespace Nethermind.Blockchain
 
                     peerInfo.NumberReceived = blocks[blocks.Length - 1].Number;
 
-                    bestNumber = BlockTree.BestSuggestedBlock.Number;
+                    bestNumber = BlockTree.BestSuggested.Number;
                 }
 
                 if (!wasCancelled)
@@ -453,7 +453,7 @@ namespace Nethermind.Blockchain
             }
 
 //            bool addResult = _peers.TryAdd(peer.NodeId, new PeerInfo(peer, getNumberTask.Result));
-            bool addResult = _peers.TryAdd(peer.NodeId, new PeerInfo(peer, getNumberTask.Result) {NumberReceived = BlockTree.BestSuggestedBlock.Number}); // TODO: cheating now with assumign the consistency of the chains
+            bool addResult = _peers.TryAdd(peer.NodeId, new PeerInfo(peer, getNumberTask.Result) {NumberReceived = BlockTree.BestSuggested.Number}); // TODO: cheating now with assumign the consistency of the chains
             if (!addResult)
             {
                 _logger.Error($"Adding {nameof(PeerInfo)} failed for {peer.NodeId}");

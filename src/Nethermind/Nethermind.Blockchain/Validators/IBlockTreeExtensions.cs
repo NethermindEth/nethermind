@@ -20,7 +20,7 @@ using Nethermind.Core;
 namespace Nethermind.Blockchain.Validators
 {
     // ReSharper disable once InconsistentNaming
-    public static class IBlockchainExtensions
+    public static class IBlockTreeExtensions
     {
         public static Block FindParent(this IBlockTree tree, BlockHeader header)
         {
@@ -30,6 +30,21 @@ namespace Nethermind.Blockchain.Validators
         public static Block FindParent(this IBlockTree tree, Block block)
         {
             return tree.FindBlock(block.Header.ParentHash, false);
+        }
+
+        public static Block RetrieveBestSuggestedBlock(this IBlockTree tree)
+        {
+            return tree.FindBlock(tree.BestSuggested.Hash, false);
+        }
+
+        public static Block RetrieveHeadBlock(this IBlockTree tree)
+        {
+            return tree.FindBlock(tree.Head.Hash, false);
+        }
+
+        public static Block RetrieveGenesisBlock(this IBlockTree tree)
+        {
+            return tree.FindBlock(tree.Genesis.Hash, true);
         }
     }
 }

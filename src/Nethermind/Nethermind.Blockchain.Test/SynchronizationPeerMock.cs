@@ -76,12 +76,12 @@ namespace Nethermind.Blockchain.Test
 
         public Task<Keccak> GetHeadBlockHash()
         {
-            return Task.FromResult(_blockTree.HeadBlock.Hash);
+            return Task.FromResult(_blockTree.Head.Hash);
         }
 
         public Task<BigInteger> GetHeadBlockNumber()
         {
-            return Task.FromResult(_blockTree.HeadBlock.Number);
+            return Task.FromResult(_blockTree.Head.Number);
         }
 
         public void SendNewBlock(Block block)

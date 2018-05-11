@@ -55,7 +55,7 @@ namespace Nethermind.Blockchain
                 }
 
                 Block genesisBlock = Load(genesisLevel.BlockInfos[0].BlockHash).Block;
-                GenesisBlock = genesisBlock;
+                Genesis = genesisBlock.Header;
                 LoadHeadBlock();
             }
         }
@@ -64,11 +64,11 @@ namespace Nethermind.Blockchain
         {
             if (startBlockNumber == null)
             {
-                startBlockNumber = HeadBlock.Number;
+                startBlockNumber = Head.Number;
             }
             else
             {
-                HeadBlock = startBlockNumber == 0 ? null : FindBlock(startBlockNumber.Value - 1);
+                Head = startBlockNumber == 0 ? null : FindBlock(startBlockNumber.Value - 1)?.Header;
             }
             
             if (_logger.IsInfoEnabled)
@@ -79,13 +79,13 @@ namespace Nethermind.Blockchain
             BigInteger blocksToLoad = FindNumberOfBlocksToLoadFromDb();
             if (_logger.IsInfoEnabled)
             {
-                _logger.Info($"Found {blocksToLoad} blocks to load starting from current head block {HeadBlock?.ToString(Block.Format.Short)}.");
+                _logger.Info($"Found {blocksToLoad} blocks to load starting from current head block {Head?.ToString(BlockHeader.Format.Short)}.");
             }
             
             for (int i = 0; i < blocksToLoad; i++)
             {   
                 Block block = FindBlock(startBlockNumber.Value + i + 1);
-                BestSuggestedBlock = block;
+                BestSuggested = block.Header;
                 NewBestSuggestedBlock?.Invoke(this, new BlockEventArgs(block));
                 
                 if (i % 10000 == 9999 && _logger.IsInfoEnabled)
@@ -103,7 +103,7 @@ namespace Nethermind.Blockchain
         // TODO: this is all temp while we test full chain sync
         private BigInteger FindNumberOfBlocksToLoadFromDb()
         {
-            BigInteger headNumber = HeadBlock?.Number ?? -1;
+            BigInteger headNumber = Head?.Number ?? -1;
             BigInteger left = headNumber;
             BigInteger right = headNumber + MaxQueueSize;
 
@@ -130,7 +130,7 @@ namespace Nethermind.Blockchain
             if (data != null)
             {
                 Block block = Rlp.Decode<Block>(new Rlp(data));
-                HeadBlock = BestSuggestedBlock = block;
+                Head = BestSuggested = block.Header;
             }
         }
 
@@ -140,9 +140,9 @@ namespace Nethermind.Blockchain
 
         public event EventHandler<BlockEventArgs> NewHeadBlock;
 
-        public Block GenesisBlock { get; private set; }
-        public Block HeadBlock { get; private set; }
-        public Block BestSuggestedBlock { get; private set; }
+        public BlockHeader Genesis { get; private set; }
+        public BlockHeader Head { get; private set; }
+        public BlockHeader BestSuggested { get; private set; }
         public int ChainId => _specProvider.ChainId;
 
         public AddBlockResult SuggestBlock(Block block)
@@ -155,7 +155,7 @@ namespace Nethermind.Blockchain
 
             if (block.Number == 0)
             {
-                if (BestSuggestedBlock != null)
+                if (BestSuggested != null)
                 {
                     throw new InvalidOperationException("Genesis block should be added only once"); // TODO: make sure it cannot happen
                 }
@@ -187,16 +187,16 @@ namespace Nethermind.Blockchain
             BlockInfo blockInfo = new BlockInfo(block.Hash, block.TotalDifficulty.Value, block.TotalTransactions.Value);
             UpdateLevel(block.Number, blockInfo);
 
-            if (block.TotalDifficulty > (BestSuggestedBlock?.TotalDifficulty ?? 0))
+            if (block.TotalDifficulty > (BestSuggested?.TotalDifficulty ?? 0))
             {
-                BestSuggestedBlock = block;
+                BestSuggested = block.Header;
                 NewBestSuggestedBlock?.Invoke(this, new BlockEventArgs(block));
             }
 
             return AddBlockResult.Added;
         }
 
-        private const int MaxQueueSize = 100000;
+        private const int MaxQueueSize = 10_000;
 
         public Block FindBlock(Keccak blockHash, bool mainChainOnly)
         {
@@ -310,14 +310,14 @@ namespace Nethermind.Blockchain
 
             BlockAddedToMain?.Invoke(this, new BlockEventArgs(block));
 
-            if (block.TotalDifficulty > (HeadBlock?.TotalDifficulty ?? 0))
+            if (block.TotalDifficulty > (Head?.TotalDifficulty ?? 0))
             {
                 if (block.Number == 0)
                 {
-                    GenesisBlock = block;
+                    Genesis = block.Header;
                 }
 
-                HeadBlock = block;
+                Head = block.Header;
                 SaveHeadBlock();
                 NewHeadBlock?.Invoke(this, new BlockEventArgs(block));
             }
@@ -325,7 +325,7 @@ namespace Nethermind.Blockchain
 
         private void SaveHeadBlock()
         {
-            _blockDb.Set(Keccak.Zero, Rlp.Encode(HeadBlock).Bytes);
+            _blockDb.Set(Keccak.Zero, Rlp.Encode(Head).Bytes);
         }
 
         private void UpdateLevel(BigInteger number, BlockInfo blockInfo)

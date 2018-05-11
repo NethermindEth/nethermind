@@ -39,8 +39,8 @@ namespace Nethermind.Blockchain
         
         IBlockTree BlockTree { get; set; }
         int ChainId { get; }
-        Block GenesisBlock { get; }
-        Block HeadBlock { get; }
+        BlockHeader Genesis { get; }
+        BlockHeader Head { get; }
         BigInteger HeadNumber { get; }
         BigInteger TotalDifficulty { get; }
 

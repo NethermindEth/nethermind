@@ -155,7 +155,7 @@ namespace Nethermind.Runner.Runners
             _blockchainProcessor = new BlockchainProcessor(blockTree, sealEngine, transactionStore, difficultyCalculator, blockProcessor, _chainLogger);
             
             var expectedGenesisHash = "0x41941023680923e0fe4d74a34bdac8141f2540e3ae90623718e47d66d1ca4a2d";
-            if (blockTree.GenesisBlock == null)
+            if (blockTree.Genesis == null)
             {
                 /* genesis */
                 foreach (KeyValuePair<Address, BigInteger> allocation in chainSpec.Allocations)
@@ -169,7 +169,7 @@ namespace Nethermind.Runner.Runners
                 genesis.Header.StateRoot = stateProvider.StateRoot;
                 genesis.Header.Hash = BlockHeader.CalculateHash(genesis.Header);
                 
-                if (blockTree.GenesisBlock == null)
+                if (blockTree.Genesis == null)
                 {
                     blockTree.SuggestBlock(genesis);
                 }
@@ -182,7 +182,7 @@ namespace Nethermind.Runner.Runners
             }
             else
             {
-                if (blockTree.GenesisBlock.Hash != new Keccak(expectedGenesisHash))
+                if (blockTree.Genesis.Hash != new Keccak(expectedGenesisHash))
                 {
                     throw new Exception($"Unexpected genesis hash for Ropsten, expected {expectedGenesisHash}, but was {chainSpec.Genesis.Hash}");
                 }

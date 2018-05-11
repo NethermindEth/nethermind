@@ -19,7 +19,6 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.ComponentModel;
 using System.Diagnostics;
 using System.Linq;
 using System.Numerics;
@@ -201,12 +200,13 @@ namespace Nethermind.Blockchain
         // TODO: there will be a need for cancellation of current mining whenever a new block arrives
         private void BuildAndSeal()
         {
-            Block parent = _blockTree.HeadBlock;
-            if (parent == null)
+            BlockHeader parentHeader = _blockTree.Head;
+            if (parentHeader == null)
             {
                 return; // TODO: review
             }
 
+            Block parent = _blockTree.FindBlock(parentHeader.Hash, false);
             BigInteger timestamp = Timestamp.UnixUtcUntilNowSecs;
 
             BigInteger difficulty = _difficultyCalculator.Calculate(parent.Difficulty, parent.Timestamp, Timestamp.UnixUtcUntilNowSecs, parent.Number + 1, parent.Ommers.Length > 0);
@@ -341,7 +341,7 @@ namespace Nethermind.Blockchain
                 _logger.Debug($"Total transactions of block {suggestedBlock.ToString(Block.Format.Short)} is {totalTransactions}");
             }
 
-            if (totalDifficulty > (_blockTree.HeadBlock?.TotalDifficulty ?? 0))
+            if (totalDifficulty > (_blockTree.Head?.TotalDifficulty ?? 0))
             {
                 List<Block> blocksToBeAddedToMain = new List<Block>();
                 Block toBeProcessed = suggestedBlock;
@@ -357,24 +357,24 @@ namespace Nethermind.Blockchain
                     }
                 } while (!_blockTree.IsMainChain(toBeProcessed.Hash));
 
-                Block branchingPoint = toBeProcessed;
-                if (branchingPoint != null && branchingPoint.Hash != _blockTree.HeadBlock?.Hash)
+                BlockHeader branchingPoint = toBeProcessed?.Header;
+                if (branchingPoint != null && branchingPoint.Hash != _blockTree.Head?.Hash)
                 {
                     if (_logger.IsDebugEnabled)
                     {
-                        _logger.Debug($"Head block was: {_blockTree.HeadBlock?.ToString(Block.Format.Short)}");
-                        _logger.Debug($"Branching from: {branchingPoint.ToString(Block.Format.Short)}");
+                        _logger.Debug($"Head block was: {_blockTree.Head?.ToString(BlockHeader.Format.Short)}");
+                        _logger.Debug($"Branching from: {branchingPoint.ToString(BlockHeader.Format.Short)}");
                     }
                 }
                 else
                 {
                     if (_logger.IsDebugEnabled)
                     {
-                        _logger.Debug(branchingPoint == null ? "Setting as genesis block" : $"Adding on top of {branchingPoint.ToString(Block.Format.Short)}");
+                        _logger.Debug(branchingPoint == null ? "Setting as genesis block" : $"Adding on top of {branchingPoint.ToString(BlockHeader.Format.Short)}");
                     }
                 }
 
-                Keccak stateRoot = branchingPoint?.Header.StateRoot;
+                Keccak stateRoot = branchingPoint?.StateRoot;
                 if (_logger.IsTraceEnabled)
                 {
                     _logger.Trace($"State root lookup: {stateRoot}");
@@ -411,14 +411,14 @@ namespace Nethermind.Blockchain
 
                 Block[] processedBlocks = _blockProcessor.Process(stateRoot, blocks, forMining);
 
-                List<Block> blocksToBeRemovedFromMain = new List<Block>();
-                if (_blockTree.HeadBlock?.Hash != branchingPoint?.Hash && _blockTree.HeadBlock != null)
+                List<BlockHeader> blocksToBeRemovedFromMain = new List<BlockHeader>();
+                if (_blockTree.Head?.Hash != branchingPoint?.Hash && _blockTree.Head != null)
                 {
-                    blocksToBeRemovedFromMain.Add(_blockTree.HeadBlock);
-                    Block teBeRemovedFromMain = _blockTree.FindParent(_blockTree.HeadBlock);
+                    blocksToBeRemovedFromMain.Add(_blockTree.Head);
+                    Block teBeRemovedFromMain = _blockTree.FindParent(_blockTree.Head);
                     while (teBeRemovedFromMain != null && teBeRemovedFromMain.Hash != branchingPoint?.Hash)
                     {
-                        blocksToBeRemovedFromMain.Add(teBeRemovedFromMain);
+                        blocksToBeRemovedFromMain.Add(teBeRemovedFromMain.Header);
                         teBeRemovedFromMain = _blockTree.FindParent(teBeRemovedFromMain);
                     }
                 }
@@ -442,14 +442,14 @@ namespace Nethermind.Blockchain
                         _logger.Debug($"Setting head block to {newHeadBlock.ToString(Block.Format.Short)}");
                     }
 
-                    foreach (Block block in blocksToBeRemovedFromMain)
+                    foreach (BlockHeader blockHeader in blocksToBeRemovedFromMain)
                     {
                         if (_logger.IsDebugEnabled)
                         {
-                            _logger.Debug($"Moving {block.ToString(Block.Format.Short)} to branch");
+                            _logger.Debug($"Moving {blockHeader.ToString(BlockHeader.Format.Short)} to branch");
                         }
 
-                        _blockTree.MoveToBranch(block.Hash);
+                        _blockTree.MoveToBranch(blockHeader.Hash);
                         // TODO: only for miners
                         //foreach (Transaction transaction in block.Transactions)
                         //{
@@ -458,7 +458,7 @@ namespace Nethermind.Blockchain
 
                         if (_logger.IsDebugEnabled)
                         {
-                            _logger.Debug($"Block {block.ToString(Block.Format.Short)} moved to branch");
+                            _logger.Debug($"Block {blockHeader.ToString(BlockHeader.Format.Short)} moved to branch");
                         }
                     }
 

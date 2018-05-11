@@ -59,12 +59,17 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
+        public BlockBuilder WithParent(BlockHeader blockHeader)
+        {
+            TestObjectInternal.Header.Number = (blockHeader?.Number ?? -1) + 1;
+            TestObjectInternal.Header.Timestamp = (blockHeader?.Timestamp ?? -1) + 1;
+            TestObjectInternal.Header.ParentHash = blockHeader == null ? Keccak.Zero : blockHeader.Hash;
+            return this;
+        }
+
         public BlockBuilder WithParent(Block block)
         {
-            TestObjectInternal.Header.Number = (block?.Number ?? -1) + 1;
-            TestObjectInternal.Header.Timestamp = (block?.Timestamp ?? -1) + 1;
-            TestObjectInternal.Header.ParentHash = block == null ? Keccak.Zero : block.Hash;
-            return this;
+            return WithParent(block.Header);
         }
 
         public BlockBuilder WithParentHash(Keccak parent)

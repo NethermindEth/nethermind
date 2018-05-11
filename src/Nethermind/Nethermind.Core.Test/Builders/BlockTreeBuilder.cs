@@ -17,6 +17,7 @@
  */
 
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Validators;
 using Nethermind.Core.Specs;
 using Nethermind.Store;
 
@@ -48,7 +49,7 @@ namespace Nethermind.Core.Test.Builders
 
         public static void ExtendTree(IBlockTree blockTree, int newChainLength)
         {
-            Block previous = blockTree.HeadBlock;
+            Block previous = blockTree.RetrieveHeadBlock();
             int initialLength = (int)previous.Number + 1;
             for (int i = initialLength; i < newChainLength; i++)
             {
