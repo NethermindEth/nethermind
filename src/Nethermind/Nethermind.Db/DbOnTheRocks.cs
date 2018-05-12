@@ -58,11 +58,6 @@ namespace Nethermind.Db
             set => _db.Put(_prefix == null ? key : Bytes.Concat(_prefix, key), value);
         }
 
-        public bool ContainsKey(byte[] key)
-        {
-            return _db.Get(_prefix == null ? key : Bytes.Concat(_prefix, key)) != null;
-        }
-
         public void Remove(byte[] key)
         {
             _db.Remove(_prefix == null ? key : Bytes.Concat(_prefix, key));

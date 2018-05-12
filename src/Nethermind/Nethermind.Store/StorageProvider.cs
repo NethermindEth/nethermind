@@ -173,6 +173,7 @@ namespace Nethermind.Store
 
                         StorageTree tree = GetOrCreateStorage(change.StorageAddress.Address);
                         tree.Set(change.StorageAddress.Index, change.Value);
+                        _storageCache.Set(change.StorageAddress, change.Value);
                         break;
                     default:
                         throw new ArgumentOutOfRangeException();
@@ -232,11 +233,24 @@ namespace Nethermind.Store
             return GetAndAddToCache(storageAddress);
         }
 
+        private readonly StorageLruCache _storageCache = new StorageLruCache(1024 * 32);
+        
         private byte[] GetAndAddToCache(StorageAddress storageAddress)
         {
+            byte[] cached = _storageCache.Get(storageAddress);
+            if (cached != null)
+            {
+//                _logger.Warn($"Using cached storage for {storageAddress.Address} {storageAddress.Index}");
+                return cached;
+            }
+            
             StorageTree tree = GetOrCreateStorage(storageAddress.Address);
+
+//            _logger.Warn($"Get storage {storageAddress.Address} {storageAddress.Index}");
+
             byte[] value = tree.Get(storageAddress.Index);
             PushJustCache(storageAddress, value);
+            _storageCache.Set(storageAddress, value);
             return value;
         }
 
@@ -271,40 +285,6 @@ namespace Nethermind.Store
             if (!_cache.ContainsKey(address))
             {
                 _cache[address] = new Stack<int>();
-            }
-        }
-
-        private struct StorageAddress : IEquatable<StorageAddress>
-        {
-            public Address Address { get; }
-            public BigInteger Index { get; }
-
-            public StorageAddress(Address address, BigInteger index)
-            {
-                Address = address;
-                Index = index;
-            }
-
-            public bool Equals(StorageAddress other)
-            {
-                return Equals(Address, other.Address) && Index.Equals(other.Index);
-            }
-
-            public override bool Equals(object obj)
-            {
-                if (ReferenceEquals(null, obj))
-                {
-                    return false;
-                }
-                return obj is StorageAddress address && Equals(address);
-            }
-
-            public override int GetHashCode()
-            {
-                unchecked
-                {
-                    return ((Address != null ? Address.GetHashCode() : 0) * 397) ^ Index.GetHashCode();
-                }
             }
         }
 

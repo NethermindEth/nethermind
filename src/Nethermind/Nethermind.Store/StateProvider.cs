@@ -34,6 +34,7 @@ namespace Nethermind.Store
     {
         private const int StartCapacity = 1024;
 
+        private readonly StateLruCache _stateCache = new StateLruCache(1024);
         private readonly Dictionary<Address, Stack<int>> _cache = new Dictionary<Address, Stack<int>>();
 
         private readonly HashSet<Address> _committedThisRound = new HashSet<Address>();
@@ -364,7 +365,7 @@ namespace Nethermind.Store
                                 _logger.Debug($"  Remove empty {change.Address} B = {change.Account.Balance} N = {change.Account.Nonce}");
                             }
 
-                            _state.Set(change.Address, null);
+                            SetState(change.Address, null);
                         }
                         else
                         {
@@ -373,7 +374,7 @@ namespace Nethermind.Store
                                 _logger.Debug($"  Update {change.Address} B = {change.Account.Balance} N = {change.Account.Nonce}");
                             }
 
-                            _state.Set(change.Address, Rlp.Encode(change.Account));
+                            SetState(change.Address, change.Account);
                         }
 
                         break;
@@ -387,7 +388,7 @@ namespace Nethermind.Store
                                 _logger.Debug($"  Create {change.Address} B = {change.Account.Balance} N = {change.Account.Nonce}");
                             }
 
-                            _state.Set(change.Address, Rlp.Encode(change.Account));
+                            SetState(change.Address, change.Account);
                         }
 
                         break;
@@ -412,7 +413,7 @@ namespace Nethermind.Store
 
                         if (!wasItCreatedNow)
                         {
-                            _state.Set(change.Address, null);
+                            SetState(change.Address, null);
                         }
 
                         break;
@@ -429,20 +430,50 @@ namespace Nethermind.Store
             _cache.Clear();
         }
 
-        private Account GetAccount(Address address)
+        private Address _lastAddress;
+
+        private Account GetState(Address address)
         {
+            Account cached = _stateCache.Get(address);
+            if (cached != null)
+            {
+                //_logger.Warn($"Using cached {address}");
+                return cached;
+            }
+
+            //if (address.Equals(_lastAddress))
+            //{
+            //    // it happens on nulls
+            //    _logger.Warn($"Retrieving again {address}");
+            //}
+            //else
+            //{
+            //    _logger.Warn($"Retrieving {address} (last {_lastAddress})");
+            //}
+            
+            _lastAddress = address;
+
             Rlp rlp = _state.Get(address);
             if (rlp.Bytes == null)
             {
                 return null;
             }
 
-            return Rlp.Decode<Account>(rlp);
+            Account account = Rlp.Decode<Account>(rlp);
+            _stateCache.Set(address, account);
+            //_logger.Warn($"Set {address}");
+            return account;
+        }
+
+        private void SetState(Address address, Account account)
+        {
+            _stateCache.Set(address, account);
+            _state.Set(address, account == null ? null : Rlp.Encode(account));
         }
 
         private Account GetAndAddToCache(Address address)
         {
-            Account account = GetAccount(address);
+            Account account = GetState(address);
             if (account != null)
             {
                 PushJustCache(address, account);
