@@ -201,9 +201,11 @@ namespace Nethermind.Runner.Runners
 
             /* start test processing */
             sealEngine.IsMining = isMining;
-            _blockchainProcessor.Start();
             
             blockTree.LoadBlocksFromDb();
+
+            _blockchainProcessor.Start();
+
 
             if (shouldSynchronize)
             {
