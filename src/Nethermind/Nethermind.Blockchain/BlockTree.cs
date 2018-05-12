@@ -74,7 +74,7 @@ namespace Nethermind.Blockchain
         {
             if (startBlockNumber == null)
             {
-                startBlockNumber = Head.Number;
+                startBlockNumber = Head?.Number ?? 0;
             }
             else
             {
@@ -155,12 +155,12 @@ namespace Nethermind.Blockchain
                 return AddBlockResult.UnknownParent;
             }
 
-            SetTotalDifficulty(block);
-            SetTotalTransactions(block);
-
             _blockDb.Set(block.Hash, Rlp.Encode(block).Bytes);
             _blockCache.Set(block.Hash, block);
 
+            // TODO: when reviewing the entire data chain need to look at the transactional storing of level and block
+            SetTotalDifficulty(block);
+            SetTotalTransactions(block);
             BlockInfo blockInfo = new BlockInfo(block.Hash, block.TotalDifficulty.Value, block.TotalTransactions.Value);
             UpdateLevel(block.Number, blockInfo);
 
@@ -403,7 +403,13 @@ namespace Nethermind.Blockchain
 
         private (BlockInfo Info, ChainLevelInfo Level) LoadInfo(BigInteger number, Keccak blockHash)
         {
-            ChainLevelInfo level = Rlp.Decode<ChainLevelInfo>(new Rlp(_blockInfoDb.Get(number)));
+            byte[] levelBytes = _blockInfoDb.Get(number);
+            if (levelBytes == null)
+            {
+                return (null, null);
+            }
+
+            ChainLevelInfo level = Rlp.Decode<ChainLevelInfo>(new Rlp(levelBytes));
             int? index = FindIndex(blockHash, level);
             return index.HasValue ? (level.BlockInfos[index.Value], level) : (null, level);
         }
@@ -483,14 +489,20 @@ namespace Nethermind.Blockchain
             }
 
             (BlockInfo blockInfo, ChainLevelInfo level) = LoadInfo(block.Number, block.Hash);
-
-            if (blockInfo == null)
+            if (level == null || blockInfo == null)
             {
-                throw new InvalidOperationException($"{nameof(blockInfo)} is null when {nameof(block)} is not null");
+                // TODO: this is here because storing block data is not transactional
+                SetTotalDifficulty(block);
+                SetTotalTransactions(block);
+                blockInfo = new BlockInfo(block.Hash, block.TotalDifficulty.Value, block.TotalTransactions.Value);
+                UpdateLevel(block.Number, blockInfo);
+                (blockInfo, level) = LoadInfo(block.Number, block.Hash);
             }
-
-            block.Header.TotalDifficulty = blockInfo.TotalDifficulty;
-            block.Header.TotalTransactions = blockInfo.TotalTransactions;
+            else
+            {
+                block.Header.TotalDifficulty = blockInfo.TotalDifficulty;
+                block.Header.TotalTransactions = blockInfo.TotalTransactions;
+            }
 
             byte[] receiptsData = _receiptsDb.Get(block.Hash);
             if (receiptsData != null)

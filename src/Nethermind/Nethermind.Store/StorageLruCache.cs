@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
@@ -50,6 +51,8 @@ namespace Nethermind.Store
             return default(byte[]);
         }
 
+        private bool firstTime = true;
+
         [MethodImpl(MethodImplOptions.Synchronized)]
         public void Set(StorageAddress key, byte[] val)
         {
@@ -63,6 +66,11 @@ namespace Nethermind.Store
             {
                 if (_cacheMap.Count >= _capacity)
                 {
+                    if (firstTime)
+                    {
+                        Console.WriteLine("STORAGE CACHE CAPACITY STORAGE CACHE CAPACITY STORAGE CACHE CAPACITY STORAGE CACHE CAPACITY");
+                        firstTime = false;
+                    }
                     RemoveFirst();
                 }
 
