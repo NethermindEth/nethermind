@@ -79,7 +79,7 @@ namespace Nethermind.Runner.Runners
             _dbBasePath = initParams.BaseDbPath ?? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "db");
 
             ChainSpec chainSpec = LoadChainSpec(initParams.ChainSpecPath);
-            InitBlockchain(chainSpec, initParams.IsMining ?? false, initParams.FakeMiningDelay ?? 12000);
+            InitBlockchain(chainSpec, initParams.IsMining ?? false, initParams.FakeMiningDelay ?? 12000, initParams.SynchronizationEnabled);
             InitNet(chainSpec, initParams.P2PPort ?? 30303).Wait();
             _defaultLogger.Info("Ethereum initialization completed");
         }
@@ -111,7 +111,7 @@ namespace Nethermind.Runner.Runners
 
         private static string _dbBasePath;
 
-        private void InitBlockchain(ChainSpec chainSpec, bool isMining, int miningDelay)
+        private void InitBlockchain(ChainSpec chainSpec, bool isMining, int miningDelay, bool shouldSynchronize)
         {
             /* spec */
             var blockMiningTime = TimeSpan.FromMilliseconds(miningDelay);
@@ -201,17 +201,20 @@ namespace Nethermind.Runner.Runners
             _blockchainProcessor.Start();
             
             blockTree.LoadBlocksFromDb();
-            
-            // TODO: only start sync manager after queued blocks are processed
-            _syncManager = new SynchronizationManager(
-                blockTree,
-                blockValidator,
-                headerValidator,
-                transactionStore,
-                txValidator,
-                _networkLogger);
 
-            _syncManager.Start();
+            if (shouldSynchronize)
+            {
+                // TODO: only start sync manager after queued blocks are processed
+                _syncManager = new SynchronizationManager(
+                    blockTree,
+                    blockValidator,
+                    headerValidator,
+                    transactionStore,
+                    txValidator,
+                    _networkLogger);
+
+                _syncManager.Start();
+            }
         }
         
         private async Task InitNet(ChainSpec chainSpec, int listenPort)

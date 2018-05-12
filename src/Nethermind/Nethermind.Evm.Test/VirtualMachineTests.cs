@@ -45,14 +45,20 @@ namespace Nethermind.Evm.Test
             IVirtualMachine virtualMachine = new VirtualMachine(_spec, _stateProvider, _storageProvider, blockhashProvider, logger);
             _processor = new TransactionProcessor(_spec, _stateProvider, _storageProvider, virtualMachine, _ethereumSigner, logger);
 
+            
+        }
+
+        [SetUp]
+        public void Setup()
+        {
             _stateDbSnapshot = _stateDb.TakeSnapshot();
             _storageDbSnapshot = _storageDbProvider.TakeSnapshot();
             _stateRoot = _stateProvider.StateRoot;
         }
 
-        private readonly int _stateDbSnapshot;
-        private readonly int _storageDbSnapshot;
-        private readonly Keccak _stateRoot;
+        private int _stateDbSnapshot;
+        private int _storageDbSnapshot;
+        private Keccak _stateRoot;
 
         [TearDown]
         public void TearDown()
@@ -257,7 +263,7 @@ namespace Nethermind.Evm.Test
         }
 
         [Test]
-        public void Exp()
+        public void Exp_2_160()
         {
             TransactionReceipt receipt = Execute(
                 (byte)Instruction.PUSH1,
@@ -272,6 +278,54 @@ namespace Nethermind.Evm.Test
             Assert.AreEqual(BigInteger.Pow(2, 160).ToBigEndianByteArray(), _storageProvider.Get(B, 0), "storage");
         }
 
+        [Test]
+        public void Exp_0_0()
+        {
+            TransactionReceipt receipt = Execute(
+                (byte)Instruction.PUSH1,
+                0,
+                (byte)Instruction.PUSH1,
+                0,
+                (byte)Instruction.EXP,
+                (byte)Instruction.PUSH1,
+                0,
+                (byte)Instruction.SSTORE);
+            Assert.AreEqual(GasCostOf.Transaction + GasCostOf.VeryLow * 3 + GasCostOf.Exp + GasCostOf.SSet, receipt.GasUsed, "gas");
+            Assert.AreEqual(BigInteger.One.ToBigEndianByteArray(), _storageProvider.Get(B, 0), "storage");
+        }
+        
+        [Test]
+        public void Exp_0_160()
+        {
+            TransactionReceipt receipt = Execute(
+                (byte)Instruction.PUSH1,
+                160,
+                (byte)Instruction.PUSH1,
+                0,
+                (byte)Instruction.EXP,
+                (byte)Instruction.PUSH1,
+                0,
+                (byte)Instruction.SSTORE);
+            Assert.AreEqual(GasCostOf.Transaction + GasCostOf.VeryLow * 3 + GasCostOf.Exp + GasCostOf.ExpByteEip160 + GasCostOf.SReset, receipt.GasUsed, "gas");
+            Assert.AreEqual(BigInteger.Zero.ToBigEndianByteArray(), _storageProvider.Get(B, 0), "storage");
+        }
+        
+        [Test]
+        public void Exp_1_160()
+        {
+            TransactionReceipt receipt = Execute(
+                (byte)Instruction.PUSH1,
+                160,
+                (byte)Instruction.PUSH1,
+                1,
+                (byte)Instruction.EXP,
+                (byte)Instruction.PUSH1,
+                0,
+                (byte)Instruction.SSTORE);
+            Assert.AreEqual(GasCostOf.Transaction + GasCostOf.VeryLow * 3 + GasCostOf.Exp + GasCostOf.ExpByteEip160 + GasCostOf.SSet, receipt.GasUsed, "gas");
+            Assert.AreEqual(BigInteger.One.ToBigEndianByteArray(), _storageProvider.Get(B, 0), "storage");
+        }
+        
         [Test]
         public void Sub_0_0()
         {

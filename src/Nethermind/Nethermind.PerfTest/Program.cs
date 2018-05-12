@@ -280,8 +280,12 @@ namespace Nethermind.PerfTest
             /* logging & instrumentation */
             _logger = new NLogLogger("perTest.logs.txt", "perfTest");
             //var logger = new ConsoleAsyncLogger(LogLevel.Info);
-            
-            _logger.Info("Deleting state DBs");
+
+            if (_logger.IsInfoEnabled)
+            {
+                _logger.Info("Deleting state DBs");
+            }
+
             DeleteDb(FullStateDbPath);
             DeleteDb(FullStorageDbPath);
             DeleteDb(FullCodeDbPath);

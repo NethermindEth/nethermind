@@ -17,9 +17,7 @@
  */
 
 using System.Numerics;
-using Nethermind.Core.Crypto;
 using Nethermind.Runner.Runners;
-using Newtonsoft.Json;
 
 namespace Nethermind.Runner
 {
@@ -28,6 +26,7 @@ namespace Nethermind.Runner
     {
         public bool JsonRpcEnabled { get; set; } = true;
         public bool DiscoveryEnabled { get; set; } = true;
+        public bool SynchronizationEnabled { get; set; } = true;
         public bool? IsMining { get; set; }
         public int? FakeMiningDelay { get; set; }
         public string HttpHost { get; set; }

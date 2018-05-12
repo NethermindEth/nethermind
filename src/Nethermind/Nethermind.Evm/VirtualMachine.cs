@@ -786,6 +786,11 @@ namespace Nethermind.Evm
 
                             UpdateGas((spec.IsEip160Enabled ? GasCostOf.ExpByteEip160 : GasCostOf.ExpByte) * (1L + expSize), ref gasAvailable);
                         }
+                        else
+                        {
+                            PushInt(BigInteger.One);
+                            break;
+                        }
 
                         if (baseInt == BigInteger.Zero)
                         {
