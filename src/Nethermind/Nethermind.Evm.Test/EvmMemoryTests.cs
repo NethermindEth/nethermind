@@ -29,7 +29,7 @@ namespace Nethermind.Evm.Test
         {
             EvmMemory memory = new EvmMemory();
             memory.SaveWord(0, new byte[EvmMemory.WordSize]);
-            List<byte[]> trace =  memory.GetTrace();
+            List<string> trace =  memory.GetTrace();
             Assert.AreEqual(1, trace.Count);
         }
         
@@ -38,7 +38,7 @@ namespace Nethermind.Evm.Test
         {
             EvmMemory memory = new EvmMemory();
             memory.SaveWord(EvmMemory.WordSize, new byte[EvmMemory.WordSize]);
-            List<byte[]> trace =  memory.GetTrace();
+            List<string> trace =  memory.GetTrace();
             Assert.AreEqual(2, trace.Count);
         }
         
@@ -48,7 +48,7 @@ namespace Nethermind.Evm.Test
             EvmMemory memory = new EvmMemory();
             memory.SaveWord(EvmMemory.WordSize, new byte[EvmMemory.WordSize]);
             memory.SaveWord(EvmMemory.WordSize, new byte[EvmMemory.WordSize]);
-            List<byte[]> trace =  memory.GetTrace();
+            List<string> trace =  memory.GetTrace();
             Assert.AreEqual(2, trace.Count);
         }
     }

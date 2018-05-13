@@ -573,16 +573,16 @@ namespace Nethermind.Evm
                 return result;
             }
             
-            List<byte[]> GetStackTrace()
+            List<string> GetStackTrace()
             {
-                List<byte[]> stackTrace = new List<byte[]>();
+                List<string> stackTrace = new List<string>();
                 for (int i = 0; i < stackHead; i++)
                 {
                     byte[] stackItem = intPositions[i]
                         ? intsOnStack[i].ToBigEndianByteArray()
                         : bytesOnStack[i];
 
-                    stackTrace.Add(stackItem);
+                    stackTrace.Add(new Hex(stackItem));
                 }
 
                 return stackTrace;

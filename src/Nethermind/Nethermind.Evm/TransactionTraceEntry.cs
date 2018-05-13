@@ -25,9 +25,9 @@ namespace Nethermind.Evm
     {
         public TransactionTraceEntry()
         {
-            Stack = new List<byte[]>();
-            Memory = new List<byte[]>();
-            Storage = new List<byte[]>();
+            Stack = new List<string>();
+            Memory = new List<string>();
+            Storage = new List<string>();
         }
 
         [JsonProperty("op")]
@@ -46,12 +46,12 @@ namespace Nethermind.Evm
         public int Depth { get; set; }
 
         [JsonProperty("stack")]
-        public List<byte[]> Stack { get; set; }
+        public List<string> Stack { get; set; }
 
         [JsonProperty("memory")]
-        public List<byte[]> Memory { get; set; }
+        public List<string> Memory { get; set; }
 
         [JsonProperty("storage")]
-        public List<byte[]> Storage { get; set; }
+        public List<string> Storage { get; set; }
     }
 }

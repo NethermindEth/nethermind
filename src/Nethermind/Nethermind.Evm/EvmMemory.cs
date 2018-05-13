@@ -19,6 +19,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Numerics;
+using Nethermind.Core;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Evm
@@ -158,14 +159,14 @@ namespace Nethermind.Evm
             return 0L;
         }
         
-        public List<byte[]> GetTrace()
+        public List<string> GetTrace()
         {
             int tracePosition = 0;
-            List<byte[]> memoryTrace = new List<byte[]>();
+            List<string> memoryTrace = new List<string>();
             byte[] buffer = _memory.GetBuffer();
             while (tracePosition < Size)
             {
-                memoryTrace.Add(buffer.Slice(tracePosition, WordSize));
+                memoryTrace.Add(new Hex(buffer.Slice(tracePosition, WordSize)));
                 tracePosition = tracePosition + WordSize;
             }
 
