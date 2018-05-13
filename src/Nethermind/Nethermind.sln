@@ -90,17 +90,18 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Chains", "Chains", "{D75E83
 		Chains\nethermind_alpha_client.json = Chains\nethermind_alpha_client.json
 		Chains\olympic.json = Chains\olympic.json
 		Chains\ropsten.json = Chains\ropsten.json
+		Chains\ropsten_linux_vm.json = Chains\ropsten_linux_vm.json
 		Chains\ropsten_through_ethj.json = Chains\ropsten_through_ethj.json
 		Chains\ropsten_through_vm2.json = Chains\ropsten_through_vm2.json
-		Chains\some_node.json = Chains\some_node.json
-		Chains\ropsten_through_vm5.json = Chains\ropsten_through_vm5.json
-		Chains\ropsten_through_vm4.json = Chains\ropsten_through_vm4.json
 		Chains\ropsten_through_vm3.json = Chains\ropsten_through_vm3.json
+		Chains\ropsten_through_vm4.json = Chains\ropsten_through_vm4.json
+		Chains\ropsten_through_vm5.json = Chains\ropsten_through_vm5.json
+		Chains\some_node.json = Chains\some_node.json
 	EndProjectSection
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.RunnerSpawner", "Nethermind.RunnerSpawner\Nethermind.RunnerSpawner.csproj", "{7285ABAE-A946-437E-A6DD-F1DECFE7F8D5}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.DiagTools", "Nethermind.DiagTools\Nethermind.DiagTools.csproj", "{B8F7A931-EF2F-4107-8F9B-6C66053A8833}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.DiagTools", "Nethermind.DiagTools\Nethermind.DiagTools.csproj", "{B8F7A931-EF2F-4107-8F9B-6C66053A8833}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

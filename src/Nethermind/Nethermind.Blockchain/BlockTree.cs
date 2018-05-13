@@ -74,7 +74,7 @@ namespace Nethermind.Blockchain
         {
             if (startBlockNumber == null)
             {
-                startBlockNumber = Head?.Number ?? 0;
+                startBlockNumber = Head?.Number ?? -1;
             }
             else
             {
