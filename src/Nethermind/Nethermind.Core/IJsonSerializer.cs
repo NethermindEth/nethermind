@@ -25,6 +25,6 @@ namespace Nethermind.Core
         T DeserializeAnonymousType<T>(string json, T definition);
         T Deserialize<T>(string json);
         (T Model, IEnumerable<T> Collection) DeserializeObjectOrArray<T>(string json);
-        string Serialize<T>(T value, bool indented = false);
+        string Serialize<T>(T value, bool indented = false); // TODO: support serializing to stream
     }
 }

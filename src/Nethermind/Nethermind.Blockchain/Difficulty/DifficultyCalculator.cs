@@ -32,8 +32,6 @@ namespace Nethermind.Blockchain.Difficulty
 
         private const long OfGenesisBlock = 131_072;
 
-        //private const long OfGenesisBlock = 17_179_869_184;
-
         public BigInteger Calculate(
             BigInteger parentDifficulty,
             BigInteger parentTimestamp,
@@ -75,20 +73,20 @@ namespace Nethermind.Blockchain.Difficulty
         {
             if (spec.IsEip100Enabled)
             {
-                return BigInteger.Max((parentHasUncles ? 2 : 1) - BigInteger.Divide(currentTimestamp - parentTimestamp, 9), -99);
+                return BigInteger.Max((parentHasUncles ? 2 : BigInteger.One) - BigInteger.Divide(currentTimestamp - parentTimestamp, 9), -99);
             }
             
             if(spec.IsEip2Enabled)
             {
-                return BigInteger.Max(1 - BigInteger.Divide(currentTimestamp - parentTimestamp, 10), -99);    
+                return BigInteger.Max(BigInteger.One - BigInteger.Divide(currentTimestamp - parentTimestamp, 10), -99);    
             }
             
             if (spec.IsTimeAdjustmentPostOlympic)
             {
-                return currentTimestamp < parentTimestamp + 13 ? 1 : -1;                
+                return currentTimestamp < parentTimestamp + 13 ? BigInteger.One : BigInteger.MinusOne;                
             }
             
-            return currentTimestamp < parentTimestamp + 7 ? 1 : -1;
+            return currentTimestamp < parentTimestamp + 7 ? BigInteger.One : BigInteger.MinusOne;
         }
 
         private BigInteger TimeBomb(IReleaseSpec spec, BigInteger blockNumber)

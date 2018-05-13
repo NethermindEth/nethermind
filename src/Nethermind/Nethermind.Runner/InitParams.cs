@@ -24,6 +24,8 @@ namespace Nethermind.Runner
     // TODO: remove this, use separate config files for hive and for runner - at the moment we just throw everything at this file
     public class InitParams
     {
+        public bool TransactionTracingEnabled { get; set; }
+        public string BaseTracingPath { get; set; }
         public bool JsonRpcEnabled { get; set; } = true;
         public bool DiscoveryEnabled { get; set; } = true;
         public bool SynchronizationEnabled { get; set; } = true;

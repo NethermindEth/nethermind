@@ -238,6 +238,7 @@ namespace Ethereum.Test.Base
                     storageProvider,
                     virtualMachine,
                     signer,
+                    NullTracer.Instance,
                     _chainLogger),
                 dbProvider,
                 stateProvider,

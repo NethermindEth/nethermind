@@ -45,9 +45,9 @@ namespace Nethermind.Store
 
         public StorageProvider(IDbProvider dbProvider, IStateProvider stateProvider, ILogger logger)
         {
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _dbProvider = dbProvider;
             _stateProvider = stateProvider;
-            _logger = logger;
         }
 
         public byte[] Get(Address address, BigInteger index)
@@ -74,10 +74,20 @@ namespace Nethermind.Store
 
         public void Restore(int snapshot)
         {
-            _logger?.Debug($"  RESTORING STORAGE SNAPSHOT {snapshot}");
+            _logger.Debug($"  RESTORING STORAGE SNAPSHOT {snapshot}");
             if (snapshot > _currentPosition)
             {
                 throw new InvalidOperationException($"{nameof(StorageProvider)} tried to restore snapshot {snapshot} beyond current position {_currentPosition}");
+            }
+
+            if (_logger.IsDebugEnabled)
+            {
+                _logger.Debug($"  Restoring storage snapshot {snapshot}");
+            }
+
+            if (snapshot == _currentPosition)
+            {
+                return;
             }
 
             List<Change> keptInCache = new List<Change>();
@@ -173,7 +183,6 @@ namespace Nethermind.Store
 
                         StorageTree tree = GetOrCreateStorage(change.StorageAddress.Address);
                         tree.Set(change.StorageAddress.Index, change.Value);
-                        _storageCache.Set(change.StorageAddress, change.Value);
                         break;
                     default:
                         throw new ArgumentOutOfRangeException();
@@ -232,25 +241,15 @@ namespace Nethermind.Store
 
             return GetAndAddToCache(storageAddress);
         }
-
-        private readonly StorageLruCache _storageCache = new StorageLruCache(1024 * 32);
         
         private byte[] GetAndAddToCache(StorageAddress storageAddress)
-        {
-            byte[] cached = _storageCache.Get(storageAddress);
-            if (cached != null)
-            {
-//                _logger.Warn($"Using cached storage for {storageAddress.Address} {storageAddress.Index}");
-                return cached;
-            }
-            
+        {   
             StorageTree tree = GetOrCreateStorage(storageAddress.Address);
 
 //            _logger.Warn($"Get storage {storageAddress.Address} {storageAddress.Index}");
 
             byte[] value = tree.Get(storageAddress.Index);
             PushJustCache(storageAddress, value);
-            _storageCache.Set(storageAddress, value);
             return value;
         }
 

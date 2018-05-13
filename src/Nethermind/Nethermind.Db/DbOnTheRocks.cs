@@ -48,7 +48,7 @@ namespace Nethermind.Db
             _prefix = prefix;
             DbOptions options = new DbOptions();
             options.SetCreateIfMissing(true);
-            
+
             _db = DbsByPath.GetOrAdd(dbPath, path => RocksDb.Open(options, Path.Combine("db", path)));
         }
 

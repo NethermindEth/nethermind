@@ -56,6 +56,8 @@ namespace Nethermind.Evm
         private readonly Stack<EvmState> _stateStack = new Stack<EvmState>();
         private Address _parityTouchBugAccount;
         private int _instructionCounter;
+        private TransactionTrace _trace;
+        private TransactionTraceEntry _traceEntry;
 
         public VirtualMachine(ISpecProvider specProvider, IStateProvider stateProvider, IStorageProvider storageProvider, IBlockhashProvider blockhashProvider, ILogger logger)
         {
@@ -69,9 +71,11 @@ namespace Nethermind.Evm
         }
 
         // can refactor and integrate the other call
-        public (byte[] output, TransactionSubstate) Run(EvmState state, IReleaseSpec releaseSpec)
+        public (byte[] output, TransactionSubstate) Run(EvmState state, IReleaseSpec releaseSpec, TransactionTrace trace)
         {
             _instructionCounter = 0;
+            _trace = trace;
+            
             IReleaseSpec spec = releaseSpec;
             EvmState currentState = state;
             byte[] previousCallResult = null;
@@ -386,8 +390,34 @@ namespace Nethermind.Evm
                 evmState.StackHead = stackHead;
             }
 
-            void LogInstructionResult(Instruction instruction, long gasBefore)
+            void StartInstructionTrace(Instruction instruction)
             {
+                if (_trace == null)
+                {
+                    return;
+                }
+                
+                _traceEntry = new TransactionTraceEntry();
+                _traceEntry.Depth = env.CallDepth;
+                _traceEntry.Gas = gasAvailable;
+                _traceEntry.Operation = Enum.GetName(typeof(Instruction), instruction);
+                _traceEntry.Memory = evmState.Memory.GetTrace();
+                _traceEntry.Pc = _instructionCounter;
+                _traceEntry.Stack = GetStackTrace();
+                _traceEntry.Storage = null; // TODO: read storage
+            }
+            
+            void EndInstructionTrace()
+            {
+                if (_trace != null)
+                {
+                    _traceEntry.GasCost = _traceEntry.Gas - gasAvailable;
+                    _trace.Entries.Add(_traceEntry);
+                }
+            }
+            
+            void LogInstructionResult(Instruction instruction, long gasBefore)
+            {             
                 if (_logger.IsDebugEnabled)
                 {
                     _logger.Debug(
@@ -542,6 +572,21 @@ namespace Nethermind.Evm
 
                 return result;
             }
+            
+            List<byte[]> GetStackTrace()
+            {
+                List<byte[]> stackTrace = new List<byte[]>();
+                for (int i = 0; i < stackHead; i++)
+                {
+                    byte[] stackItem = intPositions[i]
+                        ? intsOnStack[i].ToBigEndianByteArray()
+                        : bytesOnStack[i];
+
+                    stackTrace.Add(stackItem);
+                }
+
+                return stackTrace;
+            }
 
             BigInteger PopUInt()
             {
@@ -648,6 +693,8 @@ namespace Nethermind.Evm
                 long gasBefore = gasAvailable;
 
                 Instruction instruction = (Instruction)code[(int)programCounter];
+                StartInstructionTrace(instruction);
+                
                 _instructionCounter++;
                 programCounter++;
 
@@ -1496,6 +1543,7 @@ namespace Nethermind.Evm
                             false);
 
                         UpdateCurrentState();
+                        EndInstructionTrace();
                         if (_logger.IsDebugEnabled)
                         {
                             LogInstructionResult(instruction, gasBefore);
@@ -1514,6 +1562,7 @@ namespace Nethermind.Evm
                         byte[] returnData = evmState.Memory.Load(memoryPos, length);
 
                         UpdateCurrentState();
+                        EndInstructionTrace();
                         if (_logger.IsDebugEnabled)
                         {
                             LogInstructionResult(instruction, gasBefore);
@@ -1677,6 +1726,7 @@ namespace Nethermind.Evm
                             false);
 
                         UpdateCurrentState();
+                        EndInstructionTrace();
                         if (_logger.IsDebugEnabled)
                         {
                             LogInstructionResult(instruction, gasBefore);
@@ -1700,6 +1750,7 @@ namespace Nethermind.Evm
                         byte[] errorDetails = evmState.Memory.Load(memoryPos, length);
 
                         UpdateCurrentState();
+                        EndInstructionTrace();
                         if (_logger.IsDebugEnabled)
                         {
                             LogInstructionResult(instruction, gasBefore);
@@ -1752,6 +1803,7 @@ namespace Nethermind.Evm
                         _state.UpdateBalance(env.ExecutingAccount, -ownerBalance, spec);
 
                         UpdateCurrentState();
+                        EndInstructionTrace();
                         if (_logger.IsDebugEnabled)
                         {
                             LogInstructionResult(instruction, gasBefore);
@@ -1770,6 +1822,7 @@ namespace Nethermind.Evm
                     }
                 }
 
+                EndInstructionTrace();
                 if (_logger.IsDebugEnabled)
                 {
                     LogInstructionResult(instruction, gasBefore);

@@ -22,6 +22,6 @@ namespace Nethermind.Evm
 {
     public interface IVirtualMachine
     {
-        (byte[] output, TransactionSubstate) Run(EvmState state, IReleaseSpec spec);
+        (byte[] output, TransactionSubstate) Run(EvmState state, IReleaseSpec spec, TransactionTrace trace);
     }
 }

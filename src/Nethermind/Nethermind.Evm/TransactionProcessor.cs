@@ -18,10 +18,12 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Store;
 
@@ -29,31 +31,32 @@ namespace Nethermind.Evm
 {
     public class TransactionProcessor : ITransactionProcessor
     {
-        private readonly IntrinsicGasCalculator _intrinsicGasCalculator;
+        private readonly IntrinsicGasCalculator _intrinsicGasCalculator = new IntrinsicGasCalculator();
         private readonly ILogger _logger;
         private readonly IStateProvider _stateProvider;
         private readonly IStorageProvider _storageProvider;
         private readonly ISpecProvider _specProvider;
         private readonly IVirtualMachine _virtualMachine;
         private readonly IEthereumSigner _signer;
+        private readonly ITransactionTracer _tracer;
 
-        public TransactionProcessor(ISpecProvider specProvider, IStateProvider stateProvider, IStorageProvider storageProvider, IVirtualMachine virtualMachine, IEthereumSigner signer, ILogger logger)
+        public TransactionProcessor(ISpecProvider specProvider, IStateProvider stateProvider, IStorageProvider storageProvider, IVirtualMachine virtualMachine, IEthereumSigner signer, ITransactionTracer tracer, ILogger logger)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-            _specProvider = specProvider;
-            _virtualMachine = virtualMachine;
-            _signer = signer;
-            _stateProvider = stateProvider;
-            _storageProvider = storageProvider;
-            _intrinsicGasCalculator = new IntrinsicGasCalculator();
+            _tracer = tracer ?? throw new ArgumentNullException(nameof(tracer));
+            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+            _virtualMachine = virtualMachine ?? throw new ArgumentNullException(nameof(virtualMachine));
+            _signer = signer ?? throw new ArgumentNullException(nameof(signer));
+            _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
+            _storageProvider = storageProvider ?? throw new ArgumentNullException(nameof(storageProvider));            
         }
 
         private TransactionReceipt GetNullReceipt(BlockHeader block, long gasUsed)
         {
             block.GasUsed += gasUsed;
             TransactionReceipt transactionReceipt = new TransactionReceipt();
-            transactionReceipt.Logs = new LogEntry[0];
-            transactionReceipt.Bloom = new Bloom();
+            transactionReceipt.Logs = LogEntry.EmptyLogs;
+            transactionReceipt.Bloom = Bloom.Empty;
             transactionReceipt.GasUsed = block.GasUsed;
             transactionReceipt.PostTransactionState = _stateProvider.StateRoot;
             transactionReceipt.StatusCode = StatusCode.Failure;
@@ -64,13 +67,19 @@ namespace Nethermind.Evm
             Transaction transaction,
             BlockHeader block)
         {
+            TransactionTrace trace = null;
+            if (_tracer.IsTracingEnabled)
+            {
+                trace = new TransactionTrace();
+            }
+
             IReleaseSpec spec = _specProvider.GetSpec(block.Number);
             Address recipient = transaction.To;
             BigInteger value = transaction.Value;
             BigInteger gasPrice = transaction.GasPrice;
             long gasLimit = (long)transaction.GasLimit;
             byte[] machineCode = transaction.Init;
-            byte[] data = transaction.Data ?? new byte[0];
+            byte[] data = transaction.Data ?? Bytes.Empty;
 
             Address sender = _signer.RecoverAddress(transaction, block.Number);
             if (_logger.IsDebugEnabled)
@@ -219,7 +228,7 @@ namespace Nethermind.Evm
                             : ExecutionType.Transaction;
                     EvmState state = new EvmState(unspentGas, env, executionType, false);
 
-                    (byte[] output, TransactionSubstate substate) = _virtualMachine.Run(state, spec);
+                    (byte[] output, TransactionSubstate substate) = _virtualMachine.Run(state, spec, trace);
 
                     unspentGas = state.GasAvailable;
 
@@ -307,7 +316,13 @@ namespace Nethermind.Evm
             _stateProvider.Commit(spec);
 
             block.GasUsed += spentGas;
-            return BuildTransactionReceipt(statusCode, logEntries, block.GasUsed, recipient);
+
+            if (_tracer.IsTracingEnabled)
+            {
+                _tracer.SaveTrace(Transaction.CalculateHash(transaction), trace);
+            }
+
+            return BuildTransactionReceipt(statusCode, logEntries.Any() ? logEntries.ToArray() : LogEntry.EmptyLogs, block.GasUsed, recipient);
         }
 
         private long Refund(long gasLimit, long unspentGas, TransactionSubstate substate, Address sender, BigInteger gasPrice, IReleaseSpec spec)
@@ -324,11 +339,11 @@ namespace Nethermind.Evm
             return spentGas;
         }
 
-        private TransactionReceipt BuildTransactionReceipt(byte statusCode, List<LogEntry> logEntries, long gasUsedSoFar, Address recipient)
+        private TransactionReceipt BuildTransactionReceipt(byte statusCode, LogEntry[] logEntries, long gasUsedSoFar, Address recipient)
         {
             TransactionReceipt transactionReceipt = new TransactionReceipt();
-            transactionReceipt.Logs = logEntries.ToArray();
-            transactionReceipt.Bloom = BuildBloom(logEntries);
+            transactionReceipt.Logs = logEntries;
+            transactionReceipt.Bloom = logEntries.Length == 0 ? Bloom.Empty : BuildBloom(logEntries);
             transactionReceipt.GasUsed = gasUsedSoFar;
             transactionReceipt.PostTransactionState = _stateProvider.StateRoot;
             transactionReceipt.StatusCode = statusCode;
@@ -336,10 +351,10 @@ namespace Nethermind.Evm
             return transactionReceipt;
         }
 
-        public static Bloom BuildBloom(List<LogEntry> logEntries)
-        {
+        public static Bloom BuildBloom(LogEntry[] logEntries)
+        {            
             Bloom bloom = new Bloom();
-            for (int entryIndex = 0; entryIndex < logEntries.Count; entryIndex++)
+            for (int entryIndex = 0; entryIndex < logEntries.Length; entryIndex++)
             {
                 LogEntry logEntry = logEntries[entryIndex];
                 byte[] addressBytes = logEntry.LoggersAddress.Hex;

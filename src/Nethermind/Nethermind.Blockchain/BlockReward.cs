@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,12 +16,14 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Numerics;
+using Nethermind.Core;
+
 namespace Nethermind.Blockchain
 {
-    public class InvalidBlockException : BlockchainException
+    public class BlockReward
     {
-        public InvalidBlockException(string message) : base(message)
-        {
-        }
+        public Address Address { get; set; }
+        public BigInteger Value { get; set; }
     }
 }

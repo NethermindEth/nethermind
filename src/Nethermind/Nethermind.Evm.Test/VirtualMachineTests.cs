@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Diagnostics;
 using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -28,7 +29,7 @@ using NUnit.Framework;
 namespace Nethermind.Evm.Test
 {
     [TestFixture]
-    public class VirtualMachineTests
+    public class VirtualMachineTests : ITransactionTracer
     {
         public VirtualMachineTests()
         {
@@ -43,14 +44,16 @@ namespace Nethermind.Evm.Test
             _ethereumSigner = new EthereumSigner(_spec, logger);
             IBlockhashProvider blockhashProvider = new TestBlockhashProvider();
             IVirtualMachine virtualMachine = new VirtualMachine(_spec, _stateProvider, _storageProvider, blockhashProvider, logger);
-            _processor = new TransactionProcessor(_spec, _stateProvider, _storageProvider, virtualMachine, _ethereumSigner, logger);
-
             
+            _processor = new TransactionProcessor(_spec, _stateProvider, _storageProvider, virtualMachine, _ethereumSigner, this, logger);
         }
-
+        
         [SetUp]
         public void Setup()
         {
+            IsTracingEnabled = false;
+            _trace = null;
+
             _stateDbSnapshot = _stateDb.TakeSnapshot();
             _storageDbSnapshot = _storageDbProvider.TakeSnapshot();
             _stateRoot = _stateProvider.StateRoot;
@@ -106,14 +109,40 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Stop()
         {
-            TransactionReceipt receipt = Execute(
-                (byte)Instruction.STOP);
+            TransactionReceipt receipt = Execute((byte)Instruction.STOP);
             Assert.AreEqual(GasCostOf.Transaction, receipt.GasUsed);
         }
 
         private static readonly Address A = TestObject.AddressA;
         private static readonly Address B = TestObject.AddressB;
 
+        [Test]
+        public void Trace()
+        {
+            IsTracingEnabled = true;
+            TransactionTrace trace = new TransactionTrace();
+            Execute(
+                (byte)Instruction.PUSH1,
+                0,
+                (byte)Instruction.PUSH1,
+                0,
+                (byte)Instruction.ADD,
+                (byte)Instruction.PUSH1,
+                0,
+                (byte)Instruction.SSTORE);
+            
+            Assert.AreEqual(5, trace.Entries.Count, "number of entries");
+            TransactionTraceEntry entry = trace.Entries[1];
+            Assert.AreEqual(0, entry.Depth, nameof(entry.Depth));
+            Assert.AreEqual(79000 - GasCostOf.VeryLow, entry.Gas, nameof(entry.Gas));
+            Assert.AreEqual(GasCostOf.VeryLow, entry.GasCost, nameof(entry.GasCost));
+            Assert.AreEqual(0, entry.Memory.Count, nameof(entry.Memory));
+            Assert.AreEqual(1, entry.Stack.Count, nameof(entry.Stack));
+            Assert.Null(entry.Storage, nameof(entry.Storage));
+            Assert.AreEqual(1, entry.Pc, nameof(entry.Pc));
+            Assert.AreEqual("PUSH1", entry.Operation, nameof(entry.Operation));
+        }
+        
         [Test]
         public void Add_0_0()
         {
@@ -370,6 +399,14 @@ namespace Nethermind.Evm.Test
                 (byte)Instruction.SSTORE);
             Assert.AreEqual(GasCostOf.Transaction + GasCostOf.VeryLow * 4 + GasCostOf.SReset, receipt.GasUsed, "gas");
             Assert.AreEqual(BigInteger.Zero.ToBigEndianByteArray(), _storageProvider.Get(B, 0), "storage");
+        }
+
+        private TransactionTrace _trace;
+        
+        public bool IsTracingEnabled { get; private set; }
+        public void SaveTrace(Keccak hash, TransactionTrace trace)
+        {
+            _trace = trace;
         }
     }
 }

@@ -34,7 +34,6 @@ namespace Nethermind.Store
     {
         private const int StartCapacity = 1024;
 
-        private readonly StateLruCache _stateCache = new StateLruCache(1024);
         private readonly Dictionary<Address, Stack<int>> _cache = new Dictionary<Address, Stack<int>>();
 
         private readonly HashSet<Address> _committedThisRound = new HashSet<Address>();
@@ -251,6 +250,11 @@ namespace Nethermind.Store
                 _logger.Debug($"  Restoring state snapshot {snapshot}");
             }
 
+            if (snapshot == _currentPosition)
+            {
+                return;
+            }
+
             for (int i = 0; i < _currentPosition - snapshot; i++)
             {
                 Change change = _changes[_currentPosition - i];
@@ -430,29 +434,8 @@ namespace Nethermind.Store
             _cache.Clear();
         }
 
-        private Address _lastAddress;
-
         private Account GetState(Address address)
         {
-            Account cached = _stateCache.Get(address);
-            if (cached != null)
-            {
-                //_logger.Warn($"Using cached {address}");
-                return cached;
-            }
-
-            //if (address.Equals(_lastAddress))
-            //{
-            //    // it happens on nulls
-            //    _logger.Warn($"Retrieving again {address}");
-            //}
-            //else
-            //{
-            //    _logger.Warn($"Retrieving {address} (last {_lastAddress})");
-            //}
-            
-            _lastAddress = address;
-
             Rlp rlp = _state.Get(address);
             if (rlp.Bytes == null)
             {
@@ -460,14 +443,11 @@ namespace Nethermind.Store
             }
 
             Account account = Rlp.Decode<Account>(rlp);
-            _stateCache.Set(address, account);
-            //_logger.Warn($"Set {address}");
             return account;
         }
 
         private void SetState(Address address, Account account)
         {
-            _stateCache.Set(address, account);
             _state.Set(address, account == null ? null : Rlp.Encode(account));
         }
 

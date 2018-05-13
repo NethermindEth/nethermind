@@ -54,6 +54,7 @@ namespace Nethermind.Runner.Runners
         private IPeerManager _peerManager;
         private PrivateKey _privateKey;
         private ISynchronizationManager _syncManager;
+        private ITransactionTracer _tracer;
 
         private static ILogger _defaultLogger = new NLogLogger("default");
         private static ILogger _evmLogger = new NLogLogger("evm");
@@ -78,6 +79,8 @@ namespace Nethermind.Runner.Runners
             _privateKey = new PrivateKey(initParams.TestNodeKey);
             _dbBasePath = initParams.BaseDbPath ?? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "db");
 
+            _tracer = initParams.TransactionTracingEnabled ? new TransactionTracer(initParams.BaseTracingPath, new UnforgivingJsonSerializer()) : NullTracer.Instance; 
+            
             ChainSpec chainSpec = LoadChainSpec(initParams.ChainSpecPath);
             InitBlockchain(chainSpec, initParams.IsMining ?? false, initParams.FakeMiningDelay ?? 12000, initParams.SynchronizationEnabled);
             InitNet(chainSpec, initParams.P2PPort ?? 30303).Wait();
@@ -149,7 +152,7 @@ namespace Nethermind.Runner.Runners
             /* blockchain processing */
             var blockhashProvider = new BlockhashProvider(blockTree);
             var virtualMachine = new VirtualMachine(specProvider, stateProvider, storageProvider, blockhashProvider, _evmLogger);
-            var transactionProcessor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, ethereumSigner, _chainLogger);
+            var transactionProcessor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, ethereumSigner, _tracer, _chainLogger);
             var rewardCalculator = new RewardCalculator(specProvider);
             var blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, transactionProcessor, dbProvider, stateProvider, storageProvider, transactionStore, _chainLogger);
             _blockchainProcessor = new BlockchainProcessor(blockTree, sealEngine, transactionStore, difficultyCalculator, blockProcessor, _chainLogger);

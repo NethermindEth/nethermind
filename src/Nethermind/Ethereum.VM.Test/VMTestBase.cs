@@ -187,14 +187,14 @@ namespace Ethereum.VM.Test
 
             if (test.Out == null)
             {
-                Assert.That(() => machine.Run(state, Olympic.Instance), Throws.Exception);
+                Assert.That(() => machine.Run(state, Olympic.Instance, null), Throws.Exception);
                 return;
             }
 
             _stateProvider.Commit(Olympic.Instance);
             _storageProvider.Commit(Olympic.Instance);
 
-            (byte[] output, TransactionSubstate substate) = machine.Run(state, Olympic.Instance);
+            (byte[] output, TransactionSubstate substate) = machine.Run(state, Olympic.Instance, null);
 
             Assert.True(Bytes.UnsafeCompare(test.Out, output),
                 $"Exp: {Hex.FromBytes(test.Out, true)} != Actual: {Hex.FromBytes(output, true)}");

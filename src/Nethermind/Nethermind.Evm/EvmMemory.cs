@@ -16,14 +16,16 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Collections.Generic;
 using System.IO;
 using System.Numerics;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Evm
 {
     public class EvmMemory
     {
-        private const int WordSize = 32;
+        public const int WordSize = 32;
 
         private static readonly byte[] EmptyBytes = new byte[0];
         private readonly MemoryStream _memory = new MemoryStream();
@@ -154,6 +156,20 @@ namespace Nethermind.Evm
             }
 
             return 0L;
+        }
+        
+        public List<byte[]> GetTrace()
+        {
+            int tracePosition = 0;
+            List<byte[]> memoryTrace = new List<byte[]>();
+            byte[] buffer = _memory.GetBuffer();
+            while (tracePosition < Size)
+            {
+                memoryTrace.Add(buffer.Slice(tracePosition, tracePosition + WordSize));
+                tracePosition = tracePosition + WordSize;
+            }
+
+            return memoryTrace;
         }
     }
 }

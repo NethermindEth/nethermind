@@ -16,14 +16,12 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Collections.Generic;
-using System.Numerics;
 using Nethermind.Core;
 
 namespace Nethermind.Blockchain
 {
     public interface IRewardCalculator
     {
-        Dictionary<Address, BigInteger> CalculateRewards(Block block);
+        BlockReward[] CalculateRewards(Block block);
     }
 }

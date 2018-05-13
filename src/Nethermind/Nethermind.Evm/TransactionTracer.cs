@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,12 +16,30 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.Blockchain
+
+using System.IO;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+
+namespace Nethermind.Evm
 {
-    public enum BlockDataLocation
+    public class TransactionTracer : ITransactionTracer
     {
-        Memory,
-        Store,
-        Remote
+        private readonly string _baseDir;
+        private readonly IJsonSerializer _jsonSerializer;
+
+        public TransactionTracer(string baseDir, IJsonSerializer jsonSerializer)
+        {
+            _baseDir = baseDir;
+            _jsonSerializer = jsonSerializer;
+        }
+
+        public bool IsTracingEnabled => true;
+        public void SaveTrace(Keccak transactionHash, TransactionTrace trace)
+        {
+            string path = Path.Combine(_baseDir, transactionHash.ToString(true));
+            string text = _jsonSerializer.Serialize(trace, true);
+            File.WriteAllText(path, text);
+        }
     }
 }

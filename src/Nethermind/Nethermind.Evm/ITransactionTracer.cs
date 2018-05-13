@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,12 +16,13 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.Blockchain
+using Nethermind.Core.Crypto;
+
+namespace Nethermind.Evm
 {
-    public class InvalidBlockException : BlockchainException
+    public interface ITransactionTracer
     {
-        public InvalidBlockException(string message) : base(message)
-        {
-        }
+        bool IsTracingEnabled { get; }
+        void SaveTrace(Keccak hash, TransactionTrace trace);
     }
 }

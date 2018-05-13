@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,12 +16,25 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.Blockchain
+using System.Collections.Generic;
+using Newtonsoft.Json;
+
+namespace Nethermind.Evm
 {
-    public class InvalidBlockException : BlockchainException
+    public class TransactionTrace
     {
-        public InvalidBlockException(string message) : base(message)
+        public TransactionTrace()
         {
+            Entries = new List<TransactionTraceEntry>();
         }
+        
+        [JsonProperty("structLogs")]
+        public List<TransactionTraceEntry> Entries { get; set; }
+        
+        [JsonProperty("returnValue")]
+        public byte[] ReturnValue { get; set; } // TODO: not implemented
+        
+        [JsonProperty("failed")]
+        public bool Failed { get; set; } // TODO: not implemented
     }
 }

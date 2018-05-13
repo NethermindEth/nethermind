@@ -320,7 +320,7 @@ namespace Nethermind.PerfTest
             var transactionStore = new TransactionStore();
             var blockhashProvider = new BlockhashProvider(blockTree);
             var virtualMachine = new VirtualMachine(specProvider, stateProvider, storageProvider, blockhashProvider, _logger);
-            var processor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, ethereumSigner, _logger);
+            var processor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, ethereumSigner, NullTracer.Instance, _logger);
             var rewardCalculator = new RewardCalculator(specProvider);
             var blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, processor, dbProvider, stateProvider, storageProvider, transactionStore, _logger);
             var blockchainProcessor = new BlockchainProcessor(blockTree, sealEngine, transactionStore, difficultyCalculator, blockProcessor, _logger);
@@ -412,7 +412,7 @@ namespace Nethermind.PerfTest
             stopwatch.Start();
             for (int i = 0; i < iterations; i++)
             {
-                Machine.Run(new EvmState(1_000_000_000L, env, ExecutionType.Transaction, false), Olympic.Instance);
+                Machine.Run(new EvmState(1_000_000_000L, env, ExecutionType.Transaction, false), Olympic.Instance, null);
             }
 
             stopwatch.Stop();

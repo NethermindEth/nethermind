@@ -17,19 +17,14 @@
  */
 
 using System;
-using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
 using System.Numerics;
-using Nethermind.Blockchain.Difficulty;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
-using Nethermind.HashLib;
 using Nethermind.Store;
 
 namespace Nethermind.Blockchain
@@ -43,7 +38,6 @@ namespace Nethermind.Blockchain
         private readonly ISpecProvider _specProvider;
         private readonly ILogger _logger;
         private readonly ITransactionStore _transactionStore;
-
         private readonly IRewardCalculator _rewardCalculator;
 
         public BlockProcessor(
@@ -70,7 +64,7 @@ namespace Nethermind.Blockchain
 
         private void ProcessTransactions(Block block, Transaction[] transactions)
         {
-            List<TransactionReceipt> receipts = new List<TransactionReceipt>(); // TODO: pool?
+            TransactionReceipt[] receipts = new TransactionReceipt[transactions.Length];
             for (int i = 0; i < transactions.Length; i++)
             {
                 var transaction = transactions[i];
@@ -87,36 +81,41 @@ namespace Nethermind.Blockchain
                 }
 
                 _transactionStore.AddTransactionReceipt(transaction.Hash, receipt, block.Hash);
-                receipts.Add(receipt);
+                receipts[i] = receipt;
             }
 
             SetReceipts(block, receipts);
         }
 
-        private void SetReceipts(Block block, List<TransactionReceipt> receipts)
+        private void SetReceipts(Block block, TransactionReceipt[] receipts)
         {
-            PatriciaTree receiptTree = receipts.Count > 0 ? new PatriciaTree() : null;
-            for (int i = 0; i < receipts.Count; i++)
+            PatriciaTree receiptTree = receipts.Length > 0 ? new PatriciaTree() : null;
+            for (int i = 0; i < receipts.Length; i++)
             {
                 Rlp receiptRlp = Rlp.Encode(receipts[i], _specProvider.GetSpec(block.Header.Number).IsEip658Enabled);
                 receiptTree?.Set(Rlp.Encode(i).Bytes, receiptRlp);
             }
 
-            block.Receipts = receipts.ToArray();
+            block.Receipts = receipts;
             block.Header.ReceiptsRoot = receiptTree?.RootHash ?? PatriciaTree.EmptyTreeHash;
-            block.Header.Bloom = receipts.Count > 0 ? TransactionProcessor.BuildBloom(receipts.SelectMany(r => r.Logs).ToList()) : Bloom.Empty; // TODO not tested anywhere at the time of writing
+            block.Header.Bloom = receipts.Length > 0 ? TransactionProcessor.BuildBloom(receipts.SelectMany(r => r.Logs).ToArray()) : Bloom.Empty; // TODO not tested anywhere at the time of writing
         }
 
         private Keccak GetTransactionsRoot(Transaction[] transactions)
         {
-            PatriciaTree tranTree = new PatriciaTree();
+            if (transactions.Length == 0)
+            {
+                return PatriciaTree.EmptyTreeHash;
+            }
+            
+            PatriciaTree txTree = new PatriciaTree();
             for (int i = 0; i < transactions.Length; i++)
             {
                 Rlp transactionRlp = Rlp.Encode(transactions[i]);
-                tranTree.Set(Rlp.Encode(i).Bytes, transactionRlp);
+                txTree.Set(Rlp.Encode(i).Bytes, transactionRlp);
             }
 
-            return tranTree.RootHash;
+            return txTree.RootHash;
         }
 
         public Block[] Process(Keccak branchStateRoot, Block[] suggestedBlocks, bool tryOnly)
@@ -304,16 +303,16 @@ namespace Nethermind.Blockchain
                 _logger.Debug("Applying miner rewards");
             }
 
-            Dictionary<Address, BigInteger> rewards = _rewardCalculator.CalculateRewards(block);
-            foreach ((Address address, BigInteger reward) in rewards)
+            BlockReward[] rewards = _rewardCalculator.CalculateRewards(block);
+            for (int i = 0; i < rewards.Length; i++)
             {
-                if (!_stateProvider.AccountExists(address))
+                if (!_stateProvider.AccountExists(rewards[i].Address))
                 {
-                    _stateProvider.CreateAccount(address, reward);
+                    _stateProvider.CreateAccount(rewards[i].Address, rewards[i].Value);
                 }
                 else
                 {
-                    _stateProvider.UpdateBalance(address, reward, _specProvider.GetSpec(block.Number));
+                    _stateProvider.UpdateBalance(rewards[i].Address, rewards[i].Value, _specProvider.GetSpec(block.Number));
                 }
             }
 
