@@ -165,7 +165,7 @@ namespace Nethermind.Evm
             byte[] buffer = _memory.GetBuffer();
             while (tracePosition < Size)
             {
-                memoryTrace.Add(buffer.Slice(tracePosition, tracePosition + WordSize));
+                memoryTrace.Add(buffer.Slice(tracePosition, WordSize));
                 tracePosition = tracePosition + WordSize;
             }
 

@@ -16,7 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-
+using System;
 using System.IO;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -30,14 +30,19 @@ namespace Nethermind.Evm
 
         public TransactionTracer(string baseDir, IJsonSerializer jsonSerializer)
         {
-            _baseDir = baseDir;
-            _jsonSerializer = jsonSerializer;
+            _baseDir = baseDir ?? throw new ArgumentNullException(nameof(baseDir));
+            _jsonSerializer = jsonSerializer ?? throw new ArgumentNullException(nameof(jsonSerializer));
+
+            if (!Directory.Exists(baseDir))
+            {
+                Directory.CreateDirectory(baseDir);
+            }
         }
 
         public bool IsTracingEnabled => true;
         public void SaveTrace(Keccak transactionHash, TransactionTrace trace)
         {
-            string path = Path.Combine(_baseDir, transactionHash.ToString(true));
+            string path = Path.Combine(_baseDir, string.Concat(transactionHash.ToString(true), ".txt"));
             string text = _jsonSerializer.Serialize(trace, true);
             File.WriteAllText(path, text);
         }
