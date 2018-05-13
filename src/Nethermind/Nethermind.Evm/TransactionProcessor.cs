@@ -319,6 +319,7 @@ namespace Nethermind.Evm
 
             if (_tracer.IsTracingEnabled)
             {
+                trace.Gas = spentGas;
                 _tracer.SaveTrace(Transaction.CalculateHash(transaction), trace);
             }
 
@@ -329,6 +330,11 @@ namespace Nethermind.Evm
         {
             long spentGas = gasLimit - unspentGas;
             long refund = Math.Min(spentGas / 2L, substate.Refund + substate.DestroyList.Count * RefundOf.Destroy);
+            if (substate.ShouldRevert) // TODO: not tested anywhere
+            {
+                refund = 0;
+            }
+
             if (_logger.IsDebugEnabled)
             {
                 _logger.Debug("REFUNDING UNUSED GAS OF " + unspentGas + " AND REFUND OF " + refund);

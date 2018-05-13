@@ -75,6 +75,7 @@ namespace Nethermind.Evm
         public (byte[] output, TransactionSubstate) Run(EvmState state, IReleaseSpec releaseSpec, TransactionTrace trace)
         {
             _instructionCounter = 0;
+            _traceEntry = null;
             _trace = trace;
             
             IReleaseSpec spec = releaseSpec;

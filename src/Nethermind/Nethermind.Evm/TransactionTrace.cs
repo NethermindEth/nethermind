@@ -17,6 +17,7 @@
  */
 
 using System.Collections.Generic;
+using System.Numerics;
 using Newtonsoft.Json;
 
 namespace Nethermind.Evm
@@ -27,14 +28,17 @@ namespace Nethermind.Evm
         {
             Entries = new List<TransactionTraceEntry>();
         }
-        
-        [JsonProperty("structLogs")]
-        public List<TransactionTraceEntry> Entries { get; set; }
-        
-        [JsonProperty("returnValue")]
-        public byte[] ReturnValue { get; set; } // TODO: not implemented
-        
-        [JsonProperty("failed")]
+
+        [JsonProperty("gas", Order = 0)]
+        public BigInteger Gas { get; set; } // TODO: not implemented
+
+        [JsonProperty("failed", Order = 1)]
         public bool Failed { get; set; } // TODO: not implemented
+
+        [JsonProperty("returnValue", Order = 2)]
+        public byte[] ReturnValue { get; set; } // TODO: not implemented
+
+        [JsonProperty("structLogs", Order = 3)]
+        public List<TransactionTraceEntry> Entries { get; set; }
     }
 }
