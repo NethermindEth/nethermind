@@ -17,6 +17,7 @@
  */
 
 using System.Collections.Generic;
+using System.Linq;
 using Newtonsoft.Json;
 
 namespace Nethermind.Evm
@@ -27,31 +28,34 @@ namespace Nethermind.Evm
         {
             Stack = new List<string>();
             Memory = new List<string>();
-            Storage = new List<string>();
+            Storage = new Dictionary<string, string>();
         }
 
-        [JsonProperty("op")]
+        [JsonProperty("pc", Order = 0)]
+        public long Pc { get; set; }
+
+        [JsonProperty("op", Order = 1)]
         public string Operation { get; set; }
 
-        [JsonProperty("pc")]
-        public int Pc { get; set; }
-
-        [JsonProperty("gas")]
+        [JsonProperty("gas", Order = 2)]
         public long Gas { get; set; }
 
-        [JsonProperty("gaCost")]
+        [JsonProperty("gaCost", Order = 3)]
         public long GasCost { get; set; }
 
-        [JsonProperty("depth")]
+        [JsonProperty("depth", Order = 4)]
         public int Depth { get; set; }
 
-        [JsonProperty("stack")]
+        [JsonProperty("stack", Order = 5)]
         public List<string> Stack { get; set; }
 
-        [JsonProperty("memory")]
+        [JsonProperty("memory", Order = 6)]
         public List<string> Memory { get; set; }
 
-        [JsonProperty("storage")]
-        public List<string> Storage { get; set; }
+        [JsonIgnore]
+        public Dictionary<string, string> Storage { get; set; }
+
+        [JsonProperty("storage", Order = 7)]
+        public Dictionary<string, string> SortedStorage => Storage.OrderBy(p => p.Key).ToDictionary(p => p.Key, p => p.Value);
     }
 }

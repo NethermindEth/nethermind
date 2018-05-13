@@ -137,8 +137,8 @@ namespace Nethermind.Evm.Test
             Assert.AreEqual(GasCostOf.VeryLow, entry.GasCost, nameof(entry.GasCost));
             Assert.AreEqual(0, entry.Memory.Count, nameof(entry.Memory));
             Assert.AreEqual(1, entry.Stack.Count, nameof(entry.Stack));
-            Assert.Null(entry.Storage, nameof(entry.Storage));
-            Assert.AreEqual(1, entry.Pc, nameof(entry.Pc));
+            Assert.AreEqual(1, _trace.Entries[4].Storage.Count, nameof(entry.Storage));
+            Assert.AreEqual(2, entry.Pc, nameof(entry.Pc));
             Assert.AreEqual("PUSH1", entry.Operation, nameof(entry.Operation));
         }
         

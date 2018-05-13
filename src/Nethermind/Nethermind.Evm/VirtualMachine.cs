@@ -19,6 +19,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -396,15 +397,22 @@ namespace Nethermind.Evm
                 {
                     return;
                 }
-                
+
+                Dictionary<string, string> previousStorage = _traceEntry?.Storage;
                 _traceEntry = new TransactionTraceEntry();
                 _traceEntry.Depth = env.CallDepth;
                 _traceEntry.Gas = gasAvailable;
                 _traceEntry.Operation = Enum.GetName(typeof(Instruction), instruction);
                 _traceEntry.Memory = evmState.Memory.GetTrace();
-                _traceEntry.Pc = _instructionCounter;
+                _traceEntry.Pc = programCounter;
                 _traceEntry.Stack = GetStackTrace();
-                _traceEntry.Storage = null; // TODO: read storage
+                if (previousStorage != null)
+                {
+                    foreach (KeyValuePair<string, string> storageEntry in previousStorage)
+                    {
+                        _traceEntry.Storage.Add(storageEntry.Key, storageEntry.Value);
+                    }
+                }
             }
             
             void EndInstructionTrace()
@@ -582,7 +590,7 @@ namespace Nethermind.Evm
                         ? intsOnStack[i].ToBigEndianByteArray()
                         : bytesOnStack[i];
 
-                    stackTrace.Add(new Hex(stackItem));
+                    stackTrace.Add(new Hex(stackItem.PadLeft(32)));
                 }
 
                 return stackTrace;
@@ -1205,6 +1213,12 @@ namespace Nethermind.Evm
                         UpdateGas(spec.IsEip150Enabled ? GasCostOf.SLoadEip150 : GasCostOf.SLoad, ref gasAvailable);
                         BigInteger storageIndex = PopUInt();
                         byte[] value = _storage.Get(env.ExecutingAccount, storageIndex);
+                        
+                        //if (_trace != null)
+                        //{
+                        //    _traceEntry.Storage.Add(new Hex(storageIndex.ToBigEndianByteArray()), new Hex(value));
+                        //}
+                        
                         PushBytes(value);
                         break;
                     }
@@ -1244,6 +1258,11 @@ namespace Nethermind.Evm
                             {
                                 _logger.Debug($"  UPDATING STORAGE: {env.ExecutingAccount} {storageIndex} {Hex.FromBytes(newValue, true)}");
                             }
+                        }
+
+                        if (_trace != null)
+                        {
+                            _traceEntry.Storage[new Hex(storageIndex.ToBigEndianByteArray().PadLeft(32))] = new Hex(data.PadLeft(32));
                         }
 
                         break;
