@@ -22,6 +22,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Numerics;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Difficulty;
@@ -189,9 +190,9 @@ namespace Nethermind.PerfTest
             public BlockHeader BestSuggested => _blockTree.BestSuggested;
             public BlockHeader Head => _blockTree.Head;
 
-            public void LoadBlocksFromDb(BigInteger? startBlockNumber)
+            public async Task LoadBlocksFromDb(BigInteger? startBlockNumber, int batchSize = BlockTree.DbLoadBatchSize, int maxBlocksToLoad = int.MaxValue)
             {
-                _blockTree.LoadBlocksFromDb(startBlockNumber);
+                await _blockTree.LoadBlocksFromDb(startBlockNumber, 100000, 100000);
             }
 
             public AddBlockResult SuggestBlock(Block block)
@@ -378,7 +379,16 @@ namespace Nethermind.PerfTest
                 }                
             };
 
-            blockTree.LoadBlocksFromDb(0);
+            TaskCompletionSource<object> completionSource = new TaskCompletionSource<object>();
+            blockTree.NewBestSuggestedBlock += (sender, args) =>
+            {
+                if (args.Block.Number == 100000)
+                {
+                    completionSource.SetResult(null);
+                }
+            };
+
+            await Task.WhenAny(completionSource.Task, blockTree.LoadBlocksFromDb(0));
             blockchainProcessor.Process(blockTree.FindBlock(blockTree.Genesis.Hash, true));
             
             stopwatch.Start();
@@ -398,6 +408,11 @@ namespace Nethermind.PerfTest
             
             stopwatch.Stop();
             Console.ReadLine();
+        }
+
+        private static void BlockTree_NewBestSuggestedBlock(object sender, BlockEventArgs e)
+        {
+            throw new NotImplementedException();
         }
 
         private static void RunTestCase(string name, ExecutionEnvironment env, int iterations)

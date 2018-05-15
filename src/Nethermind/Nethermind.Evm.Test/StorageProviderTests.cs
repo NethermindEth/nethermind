@@ -80,28 +80,28 @@ namespace Nethermind.Evm.Test
         public void Same_address_same_index_different_values_restore(int snapshot)
         {
             StorageProvider provider = BuildStorageProvider();
-            provider.Set(_address1, 1, _values[1]);
-            provider.Set(_address1, 1, _values[2]);
-            provider.Set(_address1, 1, _values[3]);
+            provider.Set(new StorageAddress(_address1, 1), _values[1]);
+            provider.Set(new StorageAddress(_address1, 1), _values[2]);
+            provider.Set(new StorageAddress(_address1, 1), _values[3]);
             provider.Restore(snapshot);
 
-            Assert.AreEqual(_values[snapshot + 1], provider.Get(_address1, 1));
+            Assert.AreEqual(_values[snapshot + 1], provider.Get(new StorageAddress(_address1, 1)));
         }
 
         [Test]
         public void Keep_in_cache()
         {
             StorageProvider provider = BuildStorageProvider();
-            provider.Set(_address1, 1, _values[1]);
+            provider.Set(new StorageAddress(_address1, 1), _values[1]);
             provider.Commit(Frontier.Instance);
-            provider.Get(_address1, 1);
-            provider.Set(_address1, 1, _values[2]);
+            provider.Get(new StorageAddress(_address1, 1));
+            provider.Set(new StorageAddress(_address1, 1), _values[2]);
             provider.Restore(-1);
-            provider.Set(_address1, 1, _values[2]);
+            provider.Set(new StorageAddress(_address1, 1), _values[2]);
             provider.Restore(-1);
-            provider.Set(_address1, 1, _values[2]);
+            provider.Set(new StorageAddress(_address1, 1), _values[2]);
             provider.Restore(-1);
-            Assert.AreEqual(_values[1], provider.Get(_address1, 1));
+            Assert.AreEqual(_values[1], provider.Get(new StorageAddress(_address1, 1)));
         }
 
         [TestCase(-1)]
@@ -111,51 +111,51 @@ namespace Nethermind.Evm.Test
         public void Same_address_different_index(int snapshot)
         {
             StorageProvider provider = BuildStorageProvider();
-            provider.Set(_address1, 1, _values[1]);
-            provider.Set(_address1, 2, _values[2]);
-            provider.Set(_address1, 3, _values[3]);
+            provider.Set(new StorageAddress(_address1, 1), _values[1]);
+            provider.Set(new StorageAddress(_address1, 2), _values[2]);
+            provider.Set(new StorageAddress(_address1, 3), _values[3]);
             provider.Restore(snapshot);
 
-            Assert.AreEqual(_values[Math.Min(snapshot + 1, 1)], provider.Get(_address1, 1));
+            Assert.AreEqual(_values[Math.Min(snapshot + 1, 1)], provider.Get(new StorageAddress(_address1, 1)));
         }
 
         [Test]
         public void Commit_restore()
         {
             StorageProvider provider = BuildStorageProvider();
-            provider.Set(_address1, 1, _values[1]);
-            provider.Set(_address1, 2, _values[2]);
-            provider.Set(_address1, 3, _values[3]);
+            provider.Set(new StorageAddress(_address1, 1), _values[1]);
+            provider.Set(new StorageAddress(_address1, 2), _values[2]);
+            provider.Set(new StorageAddress(_address1, 3), _values[3]);
             provider.Commit(Frontier.Instance);
-            provider.Set(_address2, 1, _values[4]);
-            provider.Set(_address2, 2, _values[5]);
-            provider.Set(_address2, 3, _values[6]);
+            provider.Set(new StorageAddress(_address2, 1), _values[4]);
+            provider.Set(new StorageAddress(_address2, 2), _values[5]);
+            provider.Set(new StorageAddress(_address2, 3), _values[6]);
             provider.Commit(Frontier.Instance);
-            provider.Set(_address1, 1, _values[7]);
-            provider.Set(_address1, 2, _values[8]);
-            provider.Set(_address1, 3, _values[9]);
+            provider.Set(new StorageAddress(_address1, 1), _values[7]);
+            provider.Set(new StorageAddress(_address1, 2), _values[8]);
+            provider.Set(new StorageAddress(_address1, 3), _values[9]);
             provider.Commit(Frontier.Instance);
-            provider.Set(_address2, 1, _values[10]);
-            provider.Set(_address2, 2, _values[11]);
-            provider.Set(_address2, 3, _values[12]);
+            provider.Set(new StorageAddress(_address2, 1), _values[10]);
+            provider.Set(new StorageAddress(_address2, 2), _values[11]);
+            provider.Set(new StorageAddress(_address2, 3), _values[12]);
             provider.Commit(Frontier.Instance);
             provider.Restore(-1);
 
-            Assert.AreEqual(_values[7], provider.Get(_address1, 1));
-            Assert.AreEqual(_values[8], provider.Get(_address1, 2));
-            Assert.AreEqual(_values[9], provider.Get(_address1, 3));
-            Assert.AreEqual(_values[10], provider.Get(_address2, 1));
-            Assert.AreEqual(_values[11], provider.Get(_address2, 2));
-            Assert.AreEqual(_values[12], provider.Get(_address2, 3));
+            Assert.AreEqual(_values[7], provider.Get(new StorageAddress(_address1, 1)));
+            Assert.AreEqual(_values[8], provider.Get(new StorageAddress(_address1, 2)));
+            Assert.AreEqual(_values[9], provider.Get(new StorageAddress(_address1, 3)));
+            Assert.AreEqual(_values[10], provider.Get(new StorageAddress(_address2, 1)));
+            Assert.AreEqual(_values[11], provider.Get(new StorageAddress(_address2, 2)));
+            Assert.AreEqual(_values[12], provider.Get(new StorageAddress(_address2, 3)));
         }
 
         [Test]
         public void Commit_no_changes()
         {
             StorageProvider provider = BuildStorageProvider();
-            provider.Set(_address1, 1, _values[1]);
-            provider.Set(_address1, 2, _values[2]);
-            provider.Set(_address1, 3, _values[3]);
+            provider.Set(new StorageAddress(_address1, 1), _values[1]);
+            provider.Set(new StorageAddress(_address1, 2), _values[2]);
+            provider.Set(new StorageAddress(_address1, 3), _values[3]);
             provider.Restore(-1);
             provider.Commit(Frontier.Instance);
 
@@ -166,25 +166,25 @@ namespace Nethermind.Evm.Test
         public void Commit_no_changes_2()
         {
             StorageProvider provider = BuildStorageProvider();
-            provider.Get(_address1, 1);
-            provider.Get(_address1, 1);
-            provider.Get(_address1, 1);
-            provider.Set(_address1, 1, _values[1]);
-            provider.Set(_address1, 1, _values[2]);
-            provider.Set(_address1, 1, _values[3]);
+            provider.Get(new StorageAddress(_address1, 1));
+            provider.Get(new StorageAddress(_address1, 1));
+            provider.Get(new StorageAddress(_address1, 1));
+            provider.Set(new StorageAddress(_address1, 1), _values[1]);
+            provider.Set(new StorageAddress(_address1, 1), _values[2]);
+            provider.Set(new StorageAddress(_address1, 1), _values[3]);
             provider.Restore(2);
             provider.Restore(1);
             provider.Restore(0);
-            provider.Get(_address1, 1);
-            provider.Get(_address1, 1);
-            provider.Get(_address1, 1);
-            provider.Set(_address1, 1, _values[1]);
-            provider.Set(_address1, 1, _values[2]);
-            provider.Set(_address1, 1, _values[3]);
+            provider.Get(new StorageAddress(_address1, 1));
+            provider.Get(new StorageAddress(_address1, 1));
+            provider.Get(new StorageAddress(_address1, 1));
+            provider.Set(new StorageAddress(_address1, 1), _values[1]);
+            provider.Set(new StorageAddress(_address1, 1), _values[2]);
+            provider.Set(new StorageAddress(_address1, 1), _values[3]);
             provider.Restore(-1);
-            provider.Get(_address1, 1);
-            provider.Get(_address1, 1);
-            provider.Get(_address1, 1);
+            provider.Get(new StorageAddress(_address1, 1));
+            provider.Get(new StorageAddress(_address1, 1));
+            provider.Get(new StorageAddress(_address1, 1));
             provider.Commit(Frontier.Instance);
 
             Assert.AreEqual(Keccak.EmptyTreeHash, provider.GetRoot(_address1));
@@ -195,13 +195,13 @@ namespace Nethermind.Evm.Test
         {
             // block 1
             StorageProvider storageProvider = BuildStorageProvider();
-            storageProvider.Set(_address1, 1, _values[1]);
+            storageProvider.Set(new StorageAddress(_address1, 1), _values[1]);
             storageProvider.Commit(Frontier.Instance);
             _stateProvider.Commit(Frontier.Instance);
             
             // block 2
             Keccak stateRoot = _stateProvider.StateRoot;
-            storageProvider.Set(_address1, 1, _values[2]);
+            storageProvider.Set(new StorageAddress(_address1, 1), _values[2]);
             storageProvider.Commit(Frontier.Instance);
             _stateProvider.Commit(Frontier.Instance);
             
@@ -210,7 +210,7 @@ namespace Nethermind.Evm.Test
             storageProvider.ClearCaches();
             _stateProvider.StateRoot = stateRoot;
             
-            byte[] valueAfter = storageProvider.Get(_address1, 1);
+            byte[] valueAfter = storageProvider.Get(new StorageAddress(_address1, 1));
             
             Assert.AreEqual(_values[1], valueAfter);
         }
@@ -222,13 +222,13 @@ namespace Nethermind.Evm.Test
             StorageProvider storageProvider = BuildStorageProvider();
             for (int i = 0; i < StorageProvider.StartCapacity; i++)
             {
-                storageProvider.Set(_address1, 1, _values[i % 2]);
+                storageProvider.Set(new StorageAddress(_address1, 1), _values[i % 2]);
             }
             
             storageProvider.Commit(Frontier.Instance);
             _stateProvider.Commit(Frontier.Instance);
             
-            byte[] valueAfter = storageProvider.Get(_address1, 1);
+            byte[] valueAfter = storageProvider.Get(new StorageAddress(_address1, 1));
             Assert.AreEqual(_values[(StorageProvider.StartCapacity + 1) % 2], valueAfter);
         }
     }

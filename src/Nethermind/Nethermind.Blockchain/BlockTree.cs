@@ -35,7 +35,7 @@ namespace Nethermind.Blockchain
 
         private const int MaxQueueSize = 1_000_000;
         
-        private const int DbLoadBatchSize = 1000;
+        public const int DbLoadBatchSize = 1000;
         
         private BigInteger _currentDbLoadBatchEnd;
         
@@ -76,7 +76,7 @@ namespace Nethermind.Blockchain
             }
         } 
         
-        public async Task LoadBlocksFromDb(BigInteger? startBlockNumber = null)
+        public async Task LoadBlocksFromDb(BigInteger? startBlockNumber = null, int batchSize = DbLoadBatchSize, int maxBlocksToLoad = int.MaxValue)
         {
             if (startBlockNumber == null)
             {
@@ -92,7 +92,7 @@ namespace Nethermind.Blockchain
                 _logger.Info($"Loading blocks from DB (starting from {startBlockNumber}).");
             }
 
-            BigInteger blocksToLoad = FindNumberOfBlocksToLoadFromDb();
+            BigInteger blocksToLoad = BigInteger.Max(FindNumberOfBlocksToLoadFromDb(), maxBlocksToLoad);
             if (_logger.IsInfoEnabled)
             {
                 _logger.Info($"Found {blocksToLoad} blocks to load starting from current head block {Head?.ToString(BlockHeader.Format.Short)}.");
@@ -105,7 +105,7 @@ namespace Nethermind.Blockchain
                 BestSuggested = block.Header;
                 NewBestSuggestedBlock?.Invoke(this, new BlockEventArgs(block));
 
-                if (i % DbLoadBatchSize == DbLoadBatchSize - 1)
+                if (i % batchSize == batchSize - 1)
                 {
                     if (_logger.IsInfoEnabled)
                     {
