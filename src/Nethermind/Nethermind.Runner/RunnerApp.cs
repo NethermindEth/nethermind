@@ -28,7 +28,7 @@ namespace Nethermind.Runner
     {
         private static readonly PrivateKey PrivateKey = new PrivateKey("49a7b37aa6f6645917e7b807e9d1c00d4fa71f18343b0d4122a4d2df64dd6fee");
 
-        private const string DefaultConfigFile = "runner.config.json";
+        private const string DefaultConfigFile = "Configs\\ropsten_through_vm5.config.json";
 
         public RunnerApp(ILogger logger) : base(logger, new PrivateKeyProvider(PrivateKey))
         {

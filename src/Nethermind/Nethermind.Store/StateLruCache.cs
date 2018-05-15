@@ -28,12 +28,14 @@ namespace Nethermind.Store
     internal class StateLruCache
     {
         private readonly int _capacity;
-        private readonly Dictionary<Address, LinkedListNode<LruCacheItem>> _cacheMap = new Dictionary<Address, LinkedListNode<LruCacheItem>>();
-        private readonly LinkedList<LruCacheItem> _lruList = new LinkedList<LruCacheItem>();
+        private readonly Dictionary<Address, LinkedListNode<LruCacheItem>> _cacheMap;
+        private readonly LinkedList<LruCacheItem> _lruList;
 
         public StateLruCache(int capacity)
         {
             _capacity = capacity;
+            _cacheMap = new Dictionary<Address, LinkedListNode<LruCacheItem>>(_capacity);
+            _lruList = new LinkedList<LruCacheItem>();
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]

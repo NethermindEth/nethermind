@@ -73,14 +73,16 @@ namespace Nethermind.Blockchain
                     _logger.Debug($"Processing transaction {i}");
                 }
 
-                _transactionStore.AddTransaction(transaction);
+                // TODO: setup a DB for this
+//                _transactionStore.AddTransaction(transaction);
                 TransactionReceipt receipt = _transactionProcessor.Execute(transaction, block.Header);
                 if (transaction.Hash == null)
                 {
                     throw new InvalidOperationException("Transaction's hash is null when processing");
                 }
 
-                _transactionStore.AddTransactionReceipt(transaction.Hash, receipt, block.Hash);
+                // TODO: setup a DB for this
+//                _transactionStore.AddTransactionReceipt(transaction.Hash, receipt, block.Hash);
                 receipts[i] = receipt;
             }
 

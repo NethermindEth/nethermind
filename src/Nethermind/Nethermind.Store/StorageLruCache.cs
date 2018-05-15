@@ -29,12 +29,14 @@ namespace Nethermind.Store
     internal class StorageLruCache
     {
         private readonly int _capacity;
-        private readonly Dictionary<StorageAddress, LinkedListNode<LruCacheItem>> _cacheMap = new Dictionary<StorageAddress, LinkedListNode<LruCacheItem>>();
-        private readonly LinkedList<LruCacheItem> _lruList = new LinkedList<LruCacheItem>();
+        private readonly Dictionary<StorageAddress, LinkedListNode<LruCacheItem>> _cacheMap;
+        private readonly LinkedList<LruCacheItem> _lruList;
 
         public StorageLruCache(int capacity)
         {
             _capacity = capacity;
+            _cacheMap = new Dictionary<StorageAddress, LinkedListNode<LruCacheItem>>(_capacity);
+            _lruList = new LinkedList<LruCacheItem>();
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
@@ -51,8 +53,6 @@ namespace Nethermind.Store
             return default(byte[]);
         }
 
-        private bool firstTime = true;
-
         [MethodImpl(MethodImplOptions.Synchronized)]
         public void Set(StorageAddress key, byte[] val)
         {
@@ -66,11 +66,6 @@ namespace Nethermind.Store
             {
                 if (_cacheMap.Count >= _capacity)
                 {
-                    if (firstTime)
-                    {
-                        Console.WriteLine("STORAGE CACHE CAPACITY STORAGE CACHE CAPACITY STORAGE CACHE CAPACITY STORAGE CACHE CAPACITY");
-                        firstTime = false;
-                    }
                     RemoveFirst();
                 }
 

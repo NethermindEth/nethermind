@@ -28,7 +28,7 @@ namespace Nethermind.Store
     {
         private readonly IDb _db;
 
-        private const int InitialCapacity = 1024;
+        private const int InitialCapacity = 4;
 
         private readonly Dictionary<Keccak, Stack<int>> _cache = new Dictionary<Keccak, Stack<int>>();
 
@@ -250,7 +250,7 @@ namespace Nethermind.Store
                 }
             }
 
-            _capacity = 1024;
+            _capacity = InitialCapacity;
             _changes = new Change[_capacity];
             _currentPosition = -1;
             _committedThisRound.Clear();

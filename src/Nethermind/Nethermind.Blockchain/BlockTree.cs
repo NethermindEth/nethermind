@@ -92,7 +92,7 @@ namespace Nethermind.Blockchain
                 _logger.Info($"Loading blocks from DB (starting from {startBlockNumber}).");
             }
 
-            BigInteger blocksToLoad = BigInteger.Max(FindNumberOfBlocksToLoadFromDb(), maxBlocksToLoad);
+            BigInteger blocksToLoad = BigInteger.Min(FindNumberOfBlocksToLoadFromDb(), maxBlocksToLoad);
             if (_logger.IsInfoEnabled)
             {
                 _logger.Info($"Found {blocksToLoad} blocks to load starting from current head block {Head?.ToString(BlockHeader.Format.Short)}.");

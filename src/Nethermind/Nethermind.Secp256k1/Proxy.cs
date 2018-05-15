@@ -24,7 +24,6 @@ namespace Nethermind.Secp256k1
 {
     // TODO: analyze security concerns for SuppressUnmanagedCodeSecurity
     // TODO: analyze memory access concerns when passing byte[] through P/Invoke
-    // TODO: analyze differences between verify and recover + compare
     public static class Proxy
     {
         // TODO: there was some work planned with .NET Core team to allow to map libraries based on the system in DllImport
