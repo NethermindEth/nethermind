@@ -18,6 +18,7 @@
 
 using System;
 using System.Numerics;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -30,7 +31,7 @@ namespace Nethermind.Blockchain
         BlockHeader BestSuggested { get; }
         BlockHeader Head { get; }
 
-        void LoadBlocksFromDb(BigInteger? startBlockNumber); // TODO: start block number for testing, consider making it internal and keep the public without arguments
+        Task LoadBlocksFromDb(BigInteger? startBlockNumber); // TODO: start block number for testing, consider making it internal and keep the public without arguments
         AddBlockResult SuggestBlock(Block block);
         Block FindBlock(Keccak blockHash, bool mainChainOnly);
         BlockHeader FindHeader(Keccak blockHash);

@@ -19,6 +19,7 @@
 using System;
 using System.Linq;
 using System.Numerics;
+using System.Threading.Tasks;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -32,7 +33,12 @@ namespace Nethermind.Blockchain
     {
         private readonly BlockCache _blockCache = new BlockCache(16);
 
-        private const int MaxQueueSize = 10_000;
+        private const int MaxQueueSize = 1_000_000;
+        
+        private const int DbLoadBatchSize = 1000;
+        
+        private BigInteger _currentDbLoadBatchEnd;
+        
         private readonly IDb _blockDb;
 
         private readonly BlockDecoder _blockDecoder = new BlockDecoder();
@@ -68,9 +74,9 @@ namespace Nethermind.Blockchain
                 Genesis = genesisBlock.Header;
                 LoadHeadBlock();
             }
-        }
-
-        public void LoadBlocksFromDb(BigInteger? startBlockNumber = null)
+        } 
+        
+        public async Task LoadBlocksFromDb(BigInteger? startBlockNumber = null)
         {
             if (startBlockNumber == null)
             {
@@ -94,13 +100,21 @@ namespace Nethermind.Blockchain
 
             for (int i = 0; i < blocksToLoad; i++)
             {
-                Block block = FindBlock(startBlockNumber.Value + i + 1);
+                BigInteger blockNumber = startBlockNumber.Value + i + 1;
+                Block block = FindBlock(blockNumber);
                 BestSuggested = block.Header;
                 NewBestSuggestedBlock?.Invoke(this, new BlockEventArgs(block));
 
-                if (i % 10000 == 9999 && _logger.IsInfoEnabled)
+                if (i % DbLoadBatchSize == DbLoadBatchSize - 1)
                 {
-                    _logger.Info($"Loaded {i + 1} blocks");
+                    if (_logger.IsInfoEnabled)
+                    {
+                        _logger.Info($"Loaded {i + 1} blocks, waiting for processor.");       
+                    }
+                    
+                    _dbBatchProcessed = new TaskCompletionSource<object>();
+                    _currentDbLoadBatchEnd = blockNumber;
+                    await _dbBatchProcessed.Task;
                 }
             }
 
@@ -286,6 +300,8 @@ namespace Nethermind.Blockchain
             MoveToMain(level, block);
         }
 
+        private TaskCompletionSource<object> _dbBatchProcessed;
+        
         private void MoveToMain(ChainLevelInfo level, Block block)
         {
             int? index = FindIndex(block.Hash, level);
@@ -318,9 +334,7 @@ namespace Nethermind.Blockchain
                     Genesis = block.Header;
                 }
 
-                Head = block.Header;
-                SaveHeadBlock(block);
-                NewHeadBlock?.Invoke(this, new BlockEventArgs(block));
+                UpdateHeadBlock(block);
             }
         }
 
@@ -369,9 +383,20 @@ namespace Nethermind.Blockchain
             return data != null;
         }
 
-        private void SaveHeadBlock(Block block)
+        private void UpdateHeadBlock(Block block)
         {
+            Head = block.Header;
             _blockDb.Set(Keccak.Zero, Rlp.Encode(block).Bytes);
+            NewHeadBlock?.Invoke(this, new BlockEventArgs(block));
+            if (_dbBatchProcessed != null)
+            {
+                if (block.Number == _currentDbLoadBatchEnd)
+                {
+                    TaskCompletionSource<object> completionSoruce = _dbBatchProcessed;
+                    _dbBatchProcessed = null;
+                    completionSoruce.SetResult(null);
+                }
+            }
         }
 
         private void UpdateLevel(BigInteger number, BlockInfo blockInfo)

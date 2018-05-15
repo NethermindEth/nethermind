@@ -201,25 +201,47 @@ namespace Nethermind.Runner.Runners
 
             /* start test processing */
             sealEngine.IsMining = isMining;
-            
-            blockTree.LoadBlocksFromDb();
 
             _blockchainProcessor.Start();
-
-
-            if (shouldSynchronize)
+            blockTree.LoadBlocksFromDb().ContinueWith(t =>
             {
-                // TODO: only start sync manager after queued blocks are processed
-                _syncManager = new SynchronizationManager(
-                    blockTree,
-                    blockValidator,
-                    headerValidator,
-                    transactionStore,
-                    txValidator,
-                    _networkLogger);
 
-                _syncManager.Start();
-            }
+                if (t.IsFaulted)
+                {
+                    if (_chainLogger.IsErrorEnabled)
+                    {
+                        _chainLogger.Error("Loading blocks from DB failed.", t.Exception);
+                    }
+                }
+                else if (t.IsCanceled)
+                {
+                    if (_chainLogger.IsWarnEnabled)
+                    {
+                        _chainLogger.Warn("Loading blocks from DB cancelled.");
+                    }
+                }
+                else
+                {
+                    if (_chainLogger.IsInfoEnabled)
+                    {
+                        _chainLogger.Info("Loaded all blocks from DB, starting sync manager.");
+                    }
+                    
+                    if (shouldSynchronize)
+                    {
+                        // TODO: only start sync manager after queued blocks are processed
+                        _syncManager = new SynchronizationManager(
+                            blockTree,
+                            blockValidator,
+                            headerValidator,
+                            transactionStore,
+                            txValidator,
+                            _networkLogger);
+
+                        _syncManager.Start();
+                    }
+                }
+            });
         }
         
         private async Task InitNet(ChainSpec chainSpec, int listenPort)
