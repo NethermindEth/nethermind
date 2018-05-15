@@ -304,7 +304,7 @@ namespace Nethermind.Blockchain
                 decimal microSeconds = stopwatch.ElapsedTicks * (1_000_000m / Stopwatch.Frequency);
                 decimal mgas = (decimal)suggestedBlock.GasUsed / 1_000_000m;
                 decimal mgasPerSecond = (decimal)suggestedBlock.GasUsed / stopwatch.ElapsedTicks * (Stopwatch.Frequency / 1000000m);
-                _logger.Info($"Processed block {suggestedBlock.ToString(Block.Format.Short)} in {microSeconds,12:N0}μs, guse={gasPercentage,6:P2}, mgas={mgas,6:F2}, mgasps={mgasPerSecond,7:F2}");
+                _logger.Info($"Processed block {suggestedBlock.ToString(Block.Format.Short)} in {microSeconds,12:N0}μs, guse={gasPercentage,7:P2}, mgas={mgas,6:F2}, mgasps={mgasPerSecond,9:F2}");
             }
         }
 
