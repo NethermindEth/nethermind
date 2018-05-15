@@ -16,7 +16,6 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -24,9 +23,9 @@ namespace Nethermind.Store
 {
     public interface IStorageProvider : ISnapshotable
     {
-        byte[] Get(Address address, BigInteger index);
+        byte[] Get(StorageAddress storageAddress);
 
-        void Set(Address address, BigInteger index, byte[] newValue);
+        void Set(StorageAddress storageAddress, byte[] newValue);
 
         Keccak GetRoot(Address address);
         

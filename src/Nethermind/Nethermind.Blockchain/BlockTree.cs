@@ -32,7 +32,7 @@ namespace Nethermind.Blockchain
     {
         private readonly BlockCache _blockCache = new BlockCache(16);
 
-        private const int MaxQueueSize = 100_000;
+        private const int MaxQueueSize = 10_000;
         private readonly IDb _blockDb;
 
         private readonly BlockDecoder _blockDecoder = new BlockDecoder();

@@ -19,7 +19,6 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Linq;
 using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -129,6 +128,7 @@ namespace Nethermind.Evm
 
                     if (currentState.ExecutionType == ExecutionType.Transaction || currentState.ExecutionType == ExecutionType.DirectCreate || currentState.ExecutionType == ExecutionType.DirectPrecompile)
                     {
+                        // TODO: review refund logic as there was a quick change for Refunds for Ropsten 2005537
                         return (callResult.Output, new TransactionSubstate(currentState.Refund, currentState.DestroyList, currentState.Logs, callResult.ShouldRevert));
                     }
 
@@ -138,10 +138,11 @@ namespace Nethermind.Evm
                     currentState.IsContinuation = true;
                     long gasAvailableForCodeDeposit = previousState.GasAvailable; // TODO: refactor, this is to fix 61363 Ropsten
                     currentState.GasAvailable += previousState.GasAvailable;
-                    currentState.Refund += previousState.Refund;
 
                     if (!callResult.ShouldRevert)
                     {
+                        currentState.Refund += previousState.Refund;
+
                         foreach (Address address in previousState.DestroyList)
                         {
                             currentState.DestroyList.Add(address);
@@ -717,6 +718,7 @@ namespace Nethermind.Evm
                     case Instruction.STOP:
                     {
                         UpdateCurrentState();
+                        EndInstructionTrace();
                         return CallResult.Empty;
                     }
                     case Instruction.ADD:
@@ -1213,13 +1215,7 @@ namespace Nethermind.Evm
                     {
                         UpdateGas(spec.IsEip150Enabled ? GasCostOf.SLoadEip150 : GasCostOf.SLoad, ref gasAvailable);
                         BigInteger storageIndex = PopUInt();
-                        byte[] value = _storage.Get(env.ExecutingAccount, storageIndex);
-                        
-                        //if (_trace != null)
-                        //{
-                        //    _traceEntry.Storage.Add(new Hex(storageIndex.ToBigEndianByteArray()), new Hex(value));
-                        //}
-                        
+                        byte[] value = _storage.Get(new StorageAddress(env.ExecutingAccount, storageIndex));
                         PushBytes(value);
                         break;
                     }
@@ -1232,11 +1228,16 @@ namespace Nethermind.Evm
 
                         BigInteger storageIndex = PopUInt();
                         byte[] data = PopBytes().WithoutLeadingZeros();
-                        byte[] previousValue = _storage.Get(env.ExecutingAccount, storageIndex);
 
                         bool isNewValueZero = data.IsZero();
+                        
+                        StorageAddress storageAddress = new StorageAddress(env.ExecutingAccount, storageIndex);
+                        byte[] previousValue = _storage.Get(storageAddress);
+                        
                         bool isValueChanged = !(isNewValueZero && previousValue.IsZero()) ||
                                               !Bytes.UnsafeCompare(previousValue, data);
+
+                        
                         if (isNewValueZero)
                         {
                             UpdateGas(GasCostOf.SReset, ref gasAvailable);
@@ -1247,14 +1248,13 @@ namespace Nethermind.Evm
                         }
                         else
                         {
-                            UpdateGas(previousValue.IsZero() ? GasCostOf.SSet : GasCostOf.SReset,
-                                ref gasAvailable);
+                            UpdateGas(previousValue.IsZero() ? GasCostOf.SSet : GasCostOf.SReset, ref gasAvailable);
                         }
 
                         if (isValueChanged)
                         {
                             byte[] newValue = isNewValueZero ? new byte[] {0} : data;
-                            _storage.Set(env.ExecutingAccount, storageIndex, newValue);
+                            _storage.Set(storageAddress, newValue);
                             if (_logger.IsDebugEnabled)
                             {
                                 _logger.Debug($"  UPDATING STORAGE: {env.ExecutingAccount} {storageIndex} {Hex.FromBytes(newValue, true)}");
@@ -1780,6 +1780,8 @@ namespace Nethermind.Evm
                     }
                     case Instruction.INVALID:
                     {
+                        UpdateGas(GasCostOf.High, ref gasAvailable); // TODO: review tests - taken from Geth trace
+                        EndInstructionTrace();
                         throw new InvalidInstructionException((byte)instruction);
                     }
                     case Instruction.SELFDESTRUCT:
@@ -1838,6 +1840,7 @@ namespace Nethermind.Evm
                             _logger.Debug("UNKNOWN INSTRUCTION");
                         }
 
+                        EndInstructionTrace();
                         throw new InvalidInstructionException((byte)instruction);
                     }
                 }

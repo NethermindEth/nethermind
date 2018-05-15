@@ -50,14 +50,13 @@ namespace Nethermind.Store
             _logger = logger;
         }
 
-        public byte[] Get(Address address, BigInteger index)
+        public byte[] Get(StorageAddress storageAddress)
         {
-            return GetThroughCache(new StorageAddress(address, index));
+            return GetThroughCache(storageAddress);
         }
 
-        public void Set(Address address, BigInteger index, byte[] newValue)
+        public void Set(StorageAddress storageAddress, byte[] newValue)
         {
-            StorageAddress storageAddress = new StorageAddress(address, index);
             PushUpdate(storageAddress, newValue);
         }
 

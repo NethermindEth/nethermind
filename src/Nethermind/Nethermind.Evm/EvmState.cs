@@ -21,6 +21,7 @@ using System.Diagnostics;
 using System.Numerics;
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Store;
 
 namespace Nethermind.Evm
 {
@@ -78,7 +79,7 @@ namespace Nethermind.Evm
 
         public long Refund { get; set; }
         public EvmMemory Memory { get; } = new EvmMemory();
-
+        
         public HashSet<Address> DestroyList
         {
             get { return LazyInitializer.EnsureInitialized(ref _destroyList, () => new HashSet<Address>()); }

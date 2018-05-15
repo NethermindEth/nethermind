@@ -1,5 +1,5 @@
 {
-  "TransactionTracingEnabled": true,
+  "TransactionTracingEnabled": false,
   "BaseTracingPath": "D:\\tx_traces\\nethermind",
   "JsonRpcEnabled": true,
   "DiscoveryEnabled": false,

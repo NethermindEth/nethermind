@@ -1,5 +1,5 @@
 {
-  "TransactionTracingEnabled": true,
+  "TransactionTracingEnabled": false,
   "BaseTracingPath": "logs",
   "JsonRpcEnabled": true,
   "DiscoveryEnabled": false,

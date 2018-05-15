@@ -29,27 +29,36 @@ namespace Nethermind.Evm.Test
         {
             EvmMemory memory = new EvmMemory();
             memory.SaveWord(0, new byte[EvmMemory.WordSize]);
-            List<string> trace =  memory.GetTrace();
+            List<string> trace = memory.GetTrace();
             Assert.AreEqual(1, trace.Count);
         }
-        
+
         [Test]
         public void Trace_two_words()
         {
             EvmMemory memory = new EvmMemory();
             memory.SaveWord(EvmMemory.WordSize, new byte[EvmMemory.WordSize]);
-            List<string> trace =  memory.GetTrace();
+            List<string> trace = memory.GetTrace();
             Assert.AreEqual(2, trace.Count);
         }
-        
+
         [Test]
         public void Trace_overwrite()
         {
             EvmMemory memory = new EvmMemory();
             memory.SaveWord(EvmMemory.WordSize, new byte[EvmMemory.WordSize]);
             memory.SaveWord(EvmMemory.WordSize, new byte[EvmMemory.WordSize]);
-            List<string> trace =  memory.GetTrace();
+            List<string> trace = memory.GetTrace();
             Assert.AreEqual(2, trace.Count);
+        }
+
+        [Test]
+        public void Trace_when_position_not_on_word_border()
+        {
+            EvmMemory memory = new EvmMemory();
+            memory.SaveByte(EvmMemory.WordSize / 2, new byte[] {1});
+            List<string> trace = memory.GetTrace();
+            Assert.AreEqual(1, trace.Count);
         }
     }
 }

@@ -17,12 +17,14 @@
  */
 
 using System;
+using System.Diagnostics;
 using System.Numerics;
 using Nethermind.Core;
 
 namespace Nethermind.Store
 {
-    internal struct StorageAddress : IEquatable<StorageAddress>
+    [DebuggerDisplay("{Address}->{Index}")]
+    public struct StorageAddress : IEquatable<StorageAddress>
     {
         public Address Address { get; }
         public BigInteger Index { get; }

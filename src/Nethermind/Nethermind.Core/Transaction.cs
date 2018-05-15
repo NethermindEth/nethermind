@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Diagnostics;
 using System.Numerics;
 using System.Text;
 using Nethermind.Core.Crypto;
@@ -23,6 +24,7 @@ using Nethermind.Core.Encoding;
 
 namespace Nethermind.Core
 {
+    [DebuggerDisplay("{Hash}, Value: {Value}, To: {To}, Gas: {GasLimit}")]
     public class Transaction
     {
         public int ChainId { get; set; }

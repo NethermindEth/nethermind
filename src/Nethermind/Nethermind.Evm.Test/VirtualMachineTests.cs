@@ -399,6 +399,19 @@ namespace Nethermind.Evm.Test
             Assert.AreEqual(GasCostOf.Transaction + GasCostOf.VeryLow * 4 + GasCostOf.SReset, receipt.GasUsed, "gas");
             Assert.AreEqual(BigInteger.Zero.ToBigEndianByteArray(), _storageProvider.Get(B, 0), "storage");
         }
+        
+        [Test]
+        public void Sstore_twice_0_same_storage_should_refund_only_once()
+        {
+            TransactionReceipt receipt = Execute(
+                (byte)Instruction.PUSH1,
+                0,
+                (byte)Instruction.PUSH1,
+                0,
+                (byte)Instruction.SSTORE);
+            Assert.AreEqual(GasCostOf.Transaction + GasCostOf.VeryLow * 4 + GasCostOf.SReset, receipt.GasUsed, "gas");
+            Assert.AreEqual(BigInteger.Zero.ToBigEndianByteArray(), _storageProvider.Get(B, 0), "storage");
+        }
 
         private TransactionTrace _trace;
         

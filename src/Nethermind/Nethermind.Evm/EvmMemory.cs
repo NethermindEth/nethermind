@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Numerics;
@@ -166,7 +167,8 @@ namespace Nethermind.Evm
             byte[] buffer = _memory.GetBuffer();
             while (tracePosition < Size)
             {
-                memoryTrace.Add(new Hex(buffer.Slice(tracePosition, WordSize)));
+                int sizeAvailable = Math.Min(WordSize, buffer.Length - tracePosition);
+                memoryTrace.Add(new Hex(buffer.Slice(tracePosition, sizeAvailable)));
                 tracePosition = tracePosition + WordSize;
             }
 

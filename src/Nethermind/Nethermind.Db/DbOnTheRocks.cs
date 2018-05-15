@@ -26,7 +26,7 @@ namespace Nethermind.Db
 {
     public class DbOnTheRocks : IDb
     {
-        public const string StorageDbPath = "storage";
+        public const string StorageDbPath = "state";
         public const string StateDbPath = "state";
         public const string CodeDbPath = "code";
         public const string BlocksDbPath = "blocks";

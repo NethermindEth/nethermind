@@ -22,6 +22,18 @@ using Newtonsoft.Json;
 
 namespace Nethermind.Evm
 {
+    public class WrappedTransactionTrace
+    {
+        [JsonProperty("jsonRpc")]
+        public string RpcVersion { get; set; }
+
+        [JsonProperty("id")]
+        public string Id { get; set; }
+
+        [JsonProperty("result")]
+        public TransactionTrace Result { get; set; }
+    }
+
     public class TransactionTrace
     {
         public TransactionTrace()

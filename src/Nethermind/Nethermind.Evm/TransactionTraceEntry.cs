@@ -40,7 +40,7 @@ namespace Nethermind.Evm
         [JsonProperty("gas", Order = 2)]
         public long Gas { get; set; }
 
-        [JsonProperty("gaCost", Order = 3)]
+        [JsonProperty("gasCost", Order = 3)]
         public long GasCost { get; set; }
 
         [JsonProperty("depth", Order = 4)]
