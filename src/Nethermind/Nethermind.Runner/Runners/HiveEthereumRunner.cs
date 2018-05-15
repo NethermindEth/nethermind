@@ -56,7 +56,7 @@ namespace Nethermind.Runner.Runners
             _specProvider = specProvider;
         }
 
-        public void Start(InitParams initParams)
+        public Task Start(InitParams initParams)
         {
             _logger.Info("Initializing Ethereum");
             _blockchainProcessor.Start();
@@ -65,6 +65,7 @@ namespace Nethermind.Runner.Runners
             InitializeChain(initParams.ChainFile);
             InitializeBlocks(initParams.BlocksDir);
             _logger.Info("Ethereum initialization completed");
+            return Task.CompletedTask;
         }
 
         public async Task StopAsync()

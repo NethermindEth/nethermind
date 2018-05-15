@@ -40,7 +40,7 @@ namespace Nethermind.Runner.Runners
             _logger = logger;
         }
 
-        public void Start(InitParams initParams)
+        public Task Start(InitParams initParams)
         {
             _logger.Info("Initializing JsonRPC");
             var host = $"http://{initParams.HttpHost}:{initParams.HttpPort}";
@@ -61,6 +61,8 @@ namespace Nethermind.Runner.Runners
             _webHost = webHost;
             _webHost.Start();
             _logger.Info("JsonRPC initialization completed");
+
+            return Task.CompletedTask;
         }
 
         public async Task StopAsync()

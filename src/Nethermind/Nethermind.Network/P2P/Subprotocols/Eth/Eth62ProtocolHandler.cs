@@ -19,19 +19,12 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
 using System.Numerics;
 using System.Threading.Tasks;
-using DotNetty.Common.Concurrency;
-using DotNetty.Common.Utilities;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Difficulty;
-using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
-using Nethermind.Mining;
 using Nethermind.Network.Rlpx;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth

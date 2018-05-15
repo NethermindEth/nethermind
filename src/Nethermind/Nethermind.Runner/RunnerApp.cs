@@ -18,16 +18,9 @@
 
 using System;
 using System.IO;
-using System.Security.Cryptography.Xml;
-using System.Threading;
-using System.Threading.Tasks;
-using Microsoft.AspNetCore;
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.CommandLineUtils;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
-using Nethermind.Runner.Runners;
 
 namespace Nethermind.Runner
 {

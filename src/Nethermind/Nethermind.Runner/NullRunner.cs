@@ -16,9 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Collections.Generic;
 using System.Threading.Tasks;
-using Nethermind.JsonRpc.DataModel;
 using Nethermind.Runner.Runners;
 
 namespace Nethermind.Runner
@@ -31,8 +29,9 @@ namespace Nethermind.Runner
         
         public static NullRunner Instance = new NullRunner();
         
-        public void Start(InitParams initParams)
+        public Task Start(InitParams initParams)
         {
+            return Task.CompletedTask;
         }
 
         public Task StopAsync()

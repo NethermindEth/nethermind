@@ -237,7 +237,7 @@ namespace Nethermind.Blockchain
 
         public async Task StopAsync()
         {
-            _cancellationTokenSource.Cancel();
+            _cancellationTokenSource?.Cancel();
             await (_currentSyncTask ?? Task.CompletedTask).ContinueWith(t =>
             {
                 if (t.IsFaulted)

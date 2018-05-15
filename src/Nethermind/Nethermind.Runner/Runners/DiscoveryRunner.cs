@@ -41,7 +41,7 @@ namespace Nethermind.Runner.Runners
             _privateKeyProvider = privateKeyProvider;
         }
 
-        public void Start(InitParams initParams)
+        public Task Start(InitParams initParams)
         {
             _logger = new NLogLogger(initParams.LogFileName, "discovery");
             _logger.Info("Initializing Discovery");
@@ -53,6 +53,8 @@ namespace Nethermind.Runner.Runners
             _discoveryMsgSerializersProvider.RegisterDiscoverySerializers();
             _discoveryApp.Start(new PrivateKey(initParams.TestNodeKey).PublicKey);
             _logger.Info("Discovery initialization completed");
+
+            return Task.CompletedTask;
         }
 
         public async Task StopAsync()

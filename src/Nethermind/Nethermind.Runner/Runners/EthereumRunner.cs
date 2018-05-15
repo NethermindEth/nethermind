@@ -67,7 +67,7 @@ namespace Nethermind.Runner.Runners
             _discoveryManager = discoveryManager;
         }
 
-        public void Start(InitParams initParams)
+        public async Task Start(InitParams initParams)
         {
             _defaultLogger = new NLogLogger(initParams.LogFileName, "default");
             _evmLogger = new NLogLogger(initParams.LogFileName, "evm");
@@ -82,20 +82,19 @@ namespace Nethermind.Runner.Runners
             _tracer = initParams.TransactionTracingEnabled ? new TransactionTracer(initParams.BaseTracingPath, new UnforgivingJsonSerializer()) : NullTracer.Instance; 
             
             ChainSpec chainSpec = LoadChainSpec(initParams.ChainSpecPath);
-            InitBlockchain(chainSpec, initParams.IsMining ?? false, initParams.FakeMiningDelay ?? 12000, initParams.SynchronizationEnabled);
-            InitNet(chainSpec, initParams.P2PPort ?? 30303).Wait();
-            _defaultLogger.Info("Ethereum initialization completed");
+            await InitBlockchain(chainSpec, initParams.IsMining ?? false, initParams.FakeMiningDelay ?? 12000, initParams.SynchronizationEnabled, initParams.P2PPort ?? 30303);
+            _defaultLogger.Info("Ethereum initialization completed"); // TODO: this is not done very well, start should be async as well
         }
 
         public async Task StopAsync()
         {
             _networkLogger.Info("Shutting down...");
             _networkLogger.Info("Stopping sync manager...");
-            await _syncManager.StopAsync();
+            await (_syncManager?.StopAsync() ?? Task.CompletedTask);
             _networkLogger.Info("Stopping blockchain processor...");
-            await _blockchainProcessor.StopAsync();
+            await (_blockchainProcessor?.StopAsync() ?? Task.CompletedTask);
             _networkLogger.Info("Stopping local peer...");
-            await _localPeer.Shutdown();
+            await (_localPeer?.Shutdown() ?? Task.CompletedTask);
             _networkLogger.Info("Goodbye...");
         }
 
@@ -114,7 +113,7 @@ namespace Nethermind.Runner.Runners
 
         private static string _dbBasePath;
 
-        private void InitBlockchain(ChainSpec chainSpec, bool isMining, int miningDelay, bool shouldSynchronize)
+        private async Task InitBlockchain(ChainSpec chainSpec, bool isMining, int miningDelay, bool shouldSynchronize, int listenPort)
         {
             /* spec */
             var blockMiningTime = TimeSpan.FromMilliseconds(miningDelay);
@@ -203,7 +202,7 @@ namespace Nethermind.Runner.Runners
             sealEngine.IsMining = isMining;
 
             _blockchainProcessor.Start();
-            blockTree.LoadBlocksFromDb().ContinueWith(t =>
+            await blockTree.LoadBlocksFromDb().ContinueWith(async t =>
             {
 
                 if (t.IsFaulted)
@@ -229,6 +228,7 @@ namespace Nethermind.Runner.Runners
                     
                     if (shouldSynchronize)
                     {
+                        await InitNet(chainSpec, listenPort);
                         // TODO: only start sync manager after queued blocks are processed
                         _syncManager = new SynchronizationManager(
                             blockTree,

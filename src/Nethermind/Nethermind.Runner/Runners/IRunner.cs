@@ -22,8 +22,7 @@ namespace Nethermind.Runner.Runners
 {
     public interface IRunner
     {
-        // TODO: if we make this async then we can launch multiple runners at once, let us consider this
-        void Start(InitParams initParams);
+        Task Start(InitParams initParams);
         Task StopAsync();
     }
 }

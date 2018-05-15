@@ -46,7 +46,7 @@ namespace Nethermind.Runner
             PrivateKeyProvider = privateKeyProvider;
         }
 
-        protected void StartRunners(InitParams initParams)
+        protected async Task StartRunners(InitParams initParams)
         {
             try
             {
@@ -71,7 +71,7 @@ namespace Nethermind.Runner
                 {
                     //It needs to run first to finalize objects registration in the container
                     _jsonRpcRunner = new JsonRpcRunner(configProvider, Logger);
-                    _jsonRpcRunner.Start(initParams);
+                    await _jsonRpcRunner.Start(initParams);
                 }
 
 //                if (initParams.DiscoveryEnabled)
@@ -81,7 +81,7 @@ namespace Nethermind.Runner
 //                }
                 
                 _ethereumRunner = Bootstrap.ServiceProvider.GetService<IEthereumRunner>();
-                _ethereumRunner.Start(initParams);
+                await _ethereumRunner.Start(initParams);
             }
             catch (Exception e)
             {
@@ -96,24 +96,28 @@ namespace Nethermind.Runner
         {
             (var app, var buildInitParams) = BuildCommandLineApp();
             ManualResetEvent appClosed = new ManualResetEvent(false);
-            app.OnExecute(() =>
+            app.OnExecute(async () =>
             {
                 var initParams = buildInitParams();
                 Console.Title = initParams.LogFileName;
                 
                 Logger.Info($"Running Hive Nethermind Runner, parameters: {initParams}");
 
-                StartRunners(initParams);
-
-                Console.WriteLine("Enter 'e' to exit");
-                while (true)
+                Task userCancelTask = Task.Factory.StartNew(() =>
                 {
-                    ConsoleKeyInfo keyInfo = Console.ReadKey();
-                    if (keyInfo.KeyChar == 'e')
+                    Console.WriteLine("Enter 'e' to exit");
+                    while (true)
                     {
-                        break;
+                        ConsoleKeyInfo keyInfo = Console.ReadKey();
+                        if (keyInfo.KeyChar == 'e')
+                        {
+                            break;
+                        }
                     }
-                }
+                });
+
+                Task runnersTask = StartRunners(initParams);
+                await Task.WhenAny(userCancelTask, runnersTask);
 
                 Console.WriteLine("Closing, please wait until all functions are stopped properly...");
                 StopAsync().Wait();
