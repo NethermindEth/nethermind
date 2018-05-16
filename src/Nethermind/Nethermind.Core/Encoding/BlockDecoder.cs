@@ -17,7 +17,7 @@
  */
 
 namespace Nethermind.Core.Encoding
-{
+{   
     public class BlockDecoder : IRlpDecoder<Block>
     {
         public Block Decode(Rlp rlp, bool ignoreBody)

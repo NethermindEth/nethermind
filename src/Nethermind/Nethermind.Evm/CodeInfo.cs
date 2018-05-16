@@ -16,7 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Collections.Generic;
+using System.Collections;
 using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -26,7 +26,7 @@ namespace Nethermind.Evm
     // TODO: test this now after jd were moved here
     public class CodeInfo
     {
-        private HashSet<int> _validJumpDestinations;
+        private BitArray _validJumpDestinations;
 
         public CodeInfo(byte[] code)
         {
@@ -52,7 +52,7 @@ namespace Nethermind.Evm
                 CalculateJumpDestinations();
             }
 
-            if (destination < 0 || destination >= MachineCode.Length || !_validJumpDestinations.Contains(destination))
+            if (destination < 0 || destination >= MachineCode.Length || !_validJumpDestinations.Get(destination))
             {
                 throw new InvalidJumpDestinationException();
             }
@@ -60,7 +60,7 @@ namespace Nethermind.Evm
 
         private void CalculateJumpDestinations()
         {
-            _validJumpDestinations = new HashSet<int>();
+            _validJumpDestinations = new BitArray(MachineCode.Length);
             int index = 0;
             while (index < MachineCode.Length)
             {
@@ -69,7 +69,7 @@ namespace Nethermind.Evm
                 //if (instruction == Instruction.JUMPDEST)
                 if (instruction == 0x5b)
                 {
-                    _validJumpDestinations.Add(index);
+                    _validJumpDestinations.Set(index, true);
                 }
 
                 //if (instruction >= Instruction.PUSH1 && instruction <= Instruction.PUSH32)

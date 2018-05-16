@@ -17,11 +17,11 @@
  */
 
 using System;
-using System.Diagnostics;
 using System.Numerics;
 using System.Security.Cryptography;
 using System.Threading;
 using Extensions.Data;
+using Nethermind.Core.Encoding;
 
 namespace Nethermind.Core.Extensions
 {
@@ -50,6 +50,11 @@ namespace Nethermind.Core.Extensions
             return result;
         }
 
+        public static NewRlp.DecoderContext AsRlpContext(this byte[] bytes)
+        {
+            return bytes == null ? null : new NewRlp.DecoderContext(bytes);
+        }
+        
         public static byte[] Slice(this byte[] bytes, int startIndex)
         {
             byte[] slice = new byte[bytes.Length - startIndex];

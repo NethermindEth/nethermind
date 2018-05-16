@@ -61,7 +61,7 @@ namespace Nethermind.Store
 
         public Rlp GetOrEncodeRlp()
         {
-            return _rlp ?? (_rlp = Rlp.Encode(_keccak.Bytes));
+            return _rlp ?? (_rlp = Rlp.Encode(_keccak));
         }
 
         public override string ToString()

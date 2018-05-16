@@ -458,13 +458,13 @@ namespace Nethermind.Store
             
             _lastAddress = address;
 
-            Rlp rlp = _state.Get(address);
-            if (rlp.Bytes == null)
+            NewRlp.DecoderContext rlp = _state.Get(address);
+            if (rlp.IsNull)
             {
                 return null;
             }
 
-            Account account = Rlp.Decode<Account>(rlp);
+            Account account = NewRlp.Decode<Account>(rlp);
             _stateCache.Set(address, account);
             //_logger.Warn($"Set {address}");
             return account;

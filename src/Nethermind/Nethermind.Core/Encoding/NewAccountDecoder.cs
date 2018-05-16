@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,36 +16,27 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Encoding;
-using Nethermind.Core.Extensions;
-
-namespace Nethermind.Store
+namespace Nethermind.Core.Encoding
 {
-    public class StateTree : PatriciaTree
+    public class NewAccountDecoder : INewRlpDecoder<Account>
     {
-        public StateTree(IDb db) : base(db)
+        public Account Decode(NewRlp.DecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-        }
+            context.ReadSequenceLength();
+            //long checkValue = context.ReadSequenceLength() + context.Position;
 
-        public StateTree(Keccak rootHash, IDb db) : base(db, rootHash)
-        {
-        }
+            Account account = new Account();
+            account.Nonce = context.ReadUBigInt();
+            account.Balance = context.ReadUBigInt();
+            account.StorageRoot = context.ReadKeccak();
+            account.CodeHash = context.ReadKeccak();
 
-        public NewRlp.DecoderContext Get(Address address)
-        {
-            return Get(Keccak.Compute((byte[])address.Hex).Bytes).AsRlpContext();
-        }
+            //if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraData))
+            //{
+            //    context.Check(checkValue);
+            //}
 
-        public void Set(Address address, Rlp rlp)
-        {
-            Set(Keccak.Compute((byte[])address.Hex), rlp);
-        }
-
-        public void Set(Keccak addressHash, Rlp rlp)
-        {
-            base.Set(addressHash.Bytes, rlp);
+            return account;
         }
     }
 }

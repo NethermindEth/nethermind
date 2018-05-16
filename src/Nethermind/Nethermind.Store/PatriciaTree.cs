@@ -119,56 +119,62 @@ namespace Nethermind.Store
 
             throw new InvalidOperationException("Unknown node type");
         }
-
+        
         internal static Node RlpDecode(Rlp bytes)
         {
-            DecodedRlp decoded = Rlp.Decode(bytes);
-            if (decoded.Length == 17)
+            NewRlp.DecoderContext context = bytes.Bytes.AsRlpContext();
+
+            context.ReadSequenceLength();
+            int numberOfItems = context.ReadNumberOfItemsRemaining();
+
+            Node result;
+            if (numberOfItems == 17)
             {
                 BranchNode branch = new BranchNode();
                 for (int i = 0; i < 16; i++)
                 {
-                    branch.Nodes[i] = DecodeChildNode(decoded.GetObject(i));
+                    branch.Nodes[i] = DecodeChildNode(context);
                 }
 
-                branch.Value = decoded.GetBytes(16);
-                return branch;
+                branch.Value = context.ReadByteArray();
+                result = branch;
             }
-
-            if (decoded.Length == 2)
+            else if (numberOfItems == 2)
             {
-                HexPrefix key = HexPrefix.FromBytes(decoded.GetBytes(0));
+                HexPrefix key = HexPrefix.FromBytes(context.ReadByteArray());
                 bool isExtension = key.IsExtension;
                 if (isExtension)
                 {
                     ExtensionNode extension = new ExtensionNode();
                     extension.Key = key;
-                    extension.NextNode = DecodeChildNode(decoded.GetObject(1));
-                    return extension;
+                    extension.NextNode = DecodeChildNode(context);
+                    result = extension;
                 }
-
-                LeafNode leaf = new LeafNode();
-                leaf.Key = key;
-                leaf.Value = decoded.GetBytes(1);
-                return leaf;
+                else
+                {
+                    LeafNode leaf = new LeafNode();
+                    leaf.Key = key;
+                    leaf.Value = context.ReadByteArray();
+                    result = leaf;
+                }
+            }
+            else
+            {
+                throw new InvalidOperationException($"Unexpected number of items = {numberOfItems} when decoding a node");
             }
 
-            throw new InvalidOperationException("Invalid node RLP");
+            return result;
         }
 
-        private static KeccakOrRlp DecodeChildNode(object deserialized)
+        private static KeccakOrRlp DecodeChildNode(NewRlp.DecoderContext decoderContext)
         {
-            if (deserialized is DecodedRlp nodeSequence)
+            if (decoderContext.IsSequenceNext())
             {
-                return new KeccakOrRlp(Rlp.Encode(nodeSequence.Items));
+                return new KeccakOrRlp(new Rlp(decoderContext.ReadSequenceRlp()));
             }
 
-            if (deserialized is byte[] bytes)
-            {
-                return bytes.Length == 0 ? null : new KeccakOrRlp(new Keccak(bytes));
-            }
-
-            throw new InvalidOperationException("Invalid child node RLP");
+            byte[] bytes = decoderContext.ReadByteArray();
+            return bytes.Length == 0 ? null : new KeccakOrRlp(new Keccak(bytes));
         }
 
         public void Set(Nibble[] nibbles, Rlp rlp)

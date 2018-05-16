@@ -24,6 +24,7 @@ using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Store;
 
@@ -41,7 +42,7 @@ namespace Nethermind.Blockchain
         
         private readonly IDb _blockDb;
 
-        private readonly BlockDecoder _blockDecoder = new BlockDecoder();
+        private readonly NewBlockDecoder _blockDecoder = new NewBlockDecoder();
         private readonly IDb _blockInfoDb;
         private readonly ILogger _logger;
         private readonly IDb _receiptsDb;
@@ -367,7 +368,7 @@ namespace Nethermind.Blockchain
             byte[] data = _blockDb.Get(Keccak.Zero);
             if (data != null)
             {
-                Block block = _blockDecoder.Decode(new Rlp(data), true);
+                Block block = _blockDecoder.Decode(data.AsRlpContext(), RlpBehaviors.AllowExtraData);
                 Head = BestSuggested = block.Header;
             }
         }
@@ -467,7 +468,7 @@ namespace Nethermind.Blockchain
                 return block.Number;
             }
 
-            block = _blockDecoder.Decode(new Rlp(_blockDb.Get(blockHash)), true);
+            block = _blockDecoder.Decode(_blockDb.Get(blockHash).AsRlpContext(), RlpBehaviors.AllowExtraData);
             if (block == null)
             {
                 throw new InvalidOperationException($"Not able to retrieve block number for an unknown block {blockHash}");
@@ -487,7 +488,7 @@ namespace Nethermind.Blockchain
                     return null;
                 }
 
-                block = _blockDecoder.Decode(new Rlp(data), true);
+                block = _blockDecoder.Decode(data.AsRlpContext(), RlpBehaviors.AllowExtraData);
             }
 
             BlockHeader header = block.Header;
@@ -509,7 +510,7 @@ namespace Nethermind.Blockchain
                     return (null, null, null);
                 }
 
-                block = _blockDecoder.Decode(new Rlp(data));
+                block = _blockDecoder.Decode(data.AsRlpContext(), RlpBehaviors.AllowExtraData);
                 _blockCache.Set(blockHash, block);
             }
 
