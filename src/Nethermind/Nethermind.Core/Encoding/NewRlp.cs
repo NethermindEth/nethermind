@@ -713,7 +713,7 @@ namespace Nethermind.Core.Encoding
             {
                 // TODO: check first bytes
                 byte[] bloomBytes = ReadByteArray();
-                if (bloomBytes.Length == 128)
+                if (bloomBytes.Length == 0)
                 {
                     return null;
                 }

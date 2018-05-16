@@ -704,7 +704,7 @@ namespace Nethermind.JsonRpc.Module
             {
                 return null;
             }
-            return Rlp.Decode<Account>(rlp);
+            return NewRlp.Decode<Account>(rlp);
         }
 
         private string GetJsonLog(object model)

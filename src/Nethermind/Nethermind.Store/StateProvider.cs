@@ -459,7 +459,7 @@ namespace Nethermind.Store
             _lastAddress = address;
 
             NewRlp.DecoderContext rlp = _state.Get(address);
-            if (rlp.IsNull)
+            if (rlp?.IsNull ?? true)
             {
                 return null;
             }
