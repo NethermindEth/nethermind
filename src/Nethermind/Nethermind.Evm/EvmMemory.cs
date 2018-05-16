@@ -70,6 +70,11 @@ namespace Nethermind.Evm
 
         public void Save(BigInteger location, byte[] value)
         {
+            if (value.Length == 0)
+            {
+                return;
+            }
+
             _memory.Position = (long)location;
             _memory.Write(value, 0, value.Length);
 

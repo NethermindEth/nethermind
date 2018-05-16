@@ -17,6 +17,7 @@
  */
 
 using System.Collections.Generic;
+using System.Numerics;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
@@ -24,6 +25,13 @@ namespace Nethermind.Evm.Test
     [TestFixture]
     public class EvmMemoryTests
     {
+        [Test]
+        public void Save_empty_beyond_reasonable_size_does_not_throw()
+        {
+            EvmMemory memory = new EvmMemory();
+            memory.Save((BigInteger)int.MaxValue + 1, new byte[0]);
+        }
+
         [Test]
         public void Trace_one_word()
         {
