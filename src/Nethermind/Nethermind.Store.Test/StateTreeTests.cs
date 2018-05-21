@@ -11,6 +11,14 @@ namespace Nethermind.Store.Test
         private readonly Account _account1 = Build.An.Account.WithBalance(1).TestObject;
         private readonly Account _account2 = Build.An.Account.WithBalance(2).TestObject;
         private readonly Account _account3 = Build.An.Account.WithBalance(3).TestObject;
+
+        [SetUp]
+        public void Setup()
+        {
+            Metrics.TreeNodeHashCalculations = 0;
+            Metrics.TreeNodeRlpDecodings = 0;
+            Metrics.TreeNodeRlpEncodings = 0;
+        }
         
         [Test]
         public void No_reads_when_setting_on_empty()
@@ -34,6 +42,42 @@ namespace Nethermind.Store.Test
             tree.Set(TestObject.AddressC, _account0);
             tree.Commit();
             Assert.AreEqual(4, db.WritesCount, "writes"); // extension, branch, two leaves
+        }
+        
+        [Test]
+        public void Minimal_hashes_when_setting_on_empty()
+        {
+            MemDb db = new MemDb();
+            StateTree tree = new StateTree(db);
+            tree.Set(TestObject.AddressA, _account0);
+            tree.Set(TestObject.AddressB, _account0);
+            tree.Set(TestObject.AddressC, _account0);
+            tree.Commit();
+            Assert.AreEqual(4, Metrics.TreeNodeHashCalculations, "hashes"); // extension, branch, two leaves
+        }
+        
+        [Test]
+        public void Minimal_encodings_when_setting_on_empty()
+        {
+            MemDb db = new MemDb();
+            StateTree tree = new StateTree(db);
+            tree.Set(TestObject.AddressA, _account0);
+            tree.Set(TestObject.AddressB, _account0);
+            tree.Set(TestObject.AddressC, _account0);
+            tree.Commit();
+            Assert.AreEqual(4, Metrics.TreeNodeRlpEncodings, "encodings"); // extension, branch, two leaves
+        }
+        
+        [Test]
+        public void Zero_decodings_when_setting_on_empty()
+        {
+            MemDb db = new MemDb();
+            StateTree tree = new StateTree(db);
+            tree.Set(TestObject.AddressA, _account0);
+            tree.Set(TestObject.AddressB, _account0);
+            tree.Set(TestObject.AddressC, _account0);
+            tree.Commit();
+            Assert.AreEqual(0, Metrics.TreeNodeRlpDecodings, "decodings");
         }
         
         [Test]
