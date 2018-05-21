@@ -73,7 +73,7 @@ namespace Nethermind.Core
 
             if (hex.ByteLength != AddressLengthInBytes)
             {
-                throw new ArgumentException($"{nameof(Address)} should be {AddressLengthInBytes} bytes long", nameof(hex));
+                throw new ArgumentException($"{nameof(Address)} should be {AddressLengthInBytes} bytes long and is {hex.ByteLength} bytes long", nameof(hex));
             }
 
             Hex = hex;

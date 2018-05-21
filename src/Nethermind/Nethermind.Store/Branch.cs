@@ -25,11 +25,11 @@ namespace Nethermind.Store
     internal class Branch : Node
     {
         public Branch()
-            : this(new KeccakOrRlp[16], new byte[0])
+            : this(new NodeRef[16], new byte[0])
         {
         }
         
-        public Branch(KeccakOrRlp[] nodes, byte[] value)
+        public Branch(NodeRef[] nodes, byte[] value)
         {
             Value = value ?? throw new ArgumentNullException(nameof(value));
             Nodes = nodes ?? throw new ArgumentNullException(nameof(nodes));
@@ -40,7 +40,7 @@ namespace Nethermind.Store
             }
         }
 
-        public KeccakOrRlp[] Nodes { get; private set; }
+        public NodeRef[] Nodes { get; private set; }
 
         private byte[] _value;
 

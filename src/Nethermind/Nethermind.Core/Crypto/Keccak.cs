@@ -35,7 +35,7 @@ namespace Nethermind.Core.Crypto
         {
             if (hex.ByteLength != Size)
             {
-                throw new ArgumentException($"{nameof(Keccak)} must be {Size} bytes", nameof(hex));
+                throw new ArgumentException($"{nameof(Keccak)} must be {Size} bytes and was {hex.ByteLength} bytes", nameof(hex));
             }
 
             Bytes = hex;
@@ -45,7 +45,7 @@ namespace Nethermind.Core.Crypto
         {
             if (bytes.Length != Size)
             {
-                throw new ArgumentException($"{nameof(Keccak)} must be {Size} bytes", nameof(bytes));
+                throw new ArgumentException($"{nameof(Keccak)} must be {Size} bytes and was {bytes.Length} bytes", nameof(bytes));
             }
 
             Bytes = bytes;

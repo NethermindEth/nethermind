@@ -28,20 +28,20 @@ namespace Nethermind.Store
         }
         
         [DebuggerStepThrough]
-        public Extension(HexPrefix key, KeccakOrRlp nextNode)
+        public Extension(HexPrefix key, NodeRef nodeRef)
         {
             Key = key;
-            NextNode = nextNode;
+            NextNodeRef = nodeRef;
         }
 
         public byte[] Path => Key.Path;
 
         public HexPrefix Key { get; }
-        public KeccakOrRlp NextNode { get; set; }
+        public NodeRef NextNodeRef { get; set; }
 
         public override string ToString()
         {
-            return $"[{Key}, {NextNode}]";
+            return $"[{Key}, {NextNodeRef}]";
         }
     }
 }

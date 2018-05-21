@@ -225,7 +225,7 @@ namespace Ethereum.Trie.Test
 
             Extension extension = patriciaTree.Root as Extension;
             Assert.NotNull(extension);
-            Branch branch = patriciaTree.GetNode(extension.NextNode) as Branch;
+            Branch branch = extension.NextNodeRef?.Node as Branch;
             Assert.NotNull(branch);
 
             Assert.AreEqual("0xb5e187f15f1a250e51a78561e29ccfc0a7f48e06d19ce02f98dd61159e81f71d",
@@ -246,7 +246,7 @@ namespace Ethereum.Trie.Test
 
             Extension extension = patriciaTree.Root as Extension;
             Assert.NotNull(extension);
-            Branch branch = patriciaTree.GetNode(extension.NextNode) as Branch;
+            Branch branch = extension.NextNodeRef?.Node as Branch;
             Assert.NotNull(branch);
         }
 
@@ -264,7 +264,7 @@ namespace Ethereum.Trie.Test
 
             Extension extension = patriciaTree.Root as Extension;
             Assert.NotNull(extension);
-            Branch branch = patriciaTree.GetNode(extension.NextNode) as Branch;
+            Branch branch = extension.NextNodeRef?.Node as Branch;
             Assert.NotNull(branch);
 
             Assert.AreEqual("0x17fe8af9c6e73de00ed5fd45d07e88b0c852da5dd4ee43870a26c39fc0ec6fb3",
@@ -310,7 +310,7 @@ namespace Ethereum.Trie.Test
         public void Assigning_null_value_in_branch_throws_an_exception()
         {
             // ReSharper disable once ObjectCreationAsStatement
-            Assert.Throws<ArgumentNullException>(() => new Branch(new KeccakOrRlp[16], null));
+            Assert.Throws<ArgumentNullException>(() => new Branch(new NodeRef[16], null));
 
             Branch branch = new Branch();
             Assert.Throws<ArgumentNullException>(() => branch.Value = null);
@@ -353,9 +353,9 @@ namespace Ethereum.Trie.Test
         public void Lookup_in_empty_tree()
         {
             PatriciaTree tree = new PatriciaTree(new MemDb());
-            Assert.AreEqual(tree.Root, null);
+            Assert.AreEqual(tree.RootRef, null);
             tree.Get(new byte[] { 1 });
-            Assert.AreEqual(tree.Root, null);
+            Assert.AreEqual(tree.RootRef, null);
         }
 
         public class TrieTestJson

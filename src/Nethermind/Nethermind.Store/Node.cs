@@ -24,5 +24,6 @@ namespace Nethermind.Store
 {
     internal abstract class Node
     {
+        public bool IsDirty { get; set; }
     }
 }
