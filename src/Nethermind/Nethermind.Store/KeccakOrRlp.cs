@@ -39,6 +39,7 @@ namespace Nethermind.Store
             }
             else
             {
+                Metrics.TreeNodeHashCalculations++;
                 _keccak = Keccak.Compute(rlp);
                 IsKeccak = true;
             }
@@ -53,6 +54,7 @@ namespace Nethermind.Store
         {
             if (!IsKeccak)
             {
+                Metrics.TreeNodeHashCalculations++;
                 _keccak = Keccak.Compute(_rlp);
             }
 

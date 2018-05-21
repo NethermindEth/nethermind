@@ -177,6 +177,7 @@ namespace Nethermind.Store
                     if(_logger.IsDebugEnabled) _logger.Debug($"  UPDATE {change.StorageAddress.Address}_{change.StorageAddress.Index} V = {Hex.FromBytes(change.Value, true)}");
 
                     StorageTree tree = GetOrCreateStorage(change.StorageAddress.Address);
+                    Metrics.StorageTreeWrites++;
                     tree.Set(change.StorageAddress.Index, change.Value);
                     _storageCache.Set(change.StorageAddress, change.Value);
                     break;
@@ -245,14 +246,12 @@ namespace Nethermind.Store
             byte[] cached = _storageCache.Get(storageAddress);
             if (cached != null)
             {
-                //                _logger.Warn($"Using cached storage for {storageAddress.Address} {storageAddress.Index}");
                 return cached;
             }
 
             StorageTree tree = GetOrCreateStorage(storageAddress.Address);
 
-            //            _logger.Warn($"Get storage {storageAddress.Address} {storageAddress.Index}");
-
+            Metrics.StorageTreeReads++;
             byte[] value = tree.Get(storageAddress.Index);
             PushJustCache(storageAddress, value);
             _storageCache.Set(storageAddress, value);

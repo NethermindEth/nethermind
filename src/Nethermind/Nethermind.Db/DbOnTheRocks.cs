@@ -37,9 +37,21 @@ namespace Nethermind.Db
         public const string PeersDbPath = "peers";
 
         private static readonly ConcurrentDictionary<string, RocksDb> DbsByPath = new ConcurrentDictionary<string, RocksDb>();
-        
+
         private readonly RocksDb _db;
+        private readonly DbInstance _dbInstance;
         private readonly byte[] _prefix;
+
+        private enum DbInstance
+        {
+            State,
+            Storage,
+            BlockInfo,
+            Block,
+            Code,
+            Receipts,
+            Other
+        }
 
         public DbOnTheRocks(string dbPath, byte[] prefix = null) // TODO: check column families
         {
@@ -47,18 +59,103 @@ namespace Nethermind.Db
             {
                 Directory.CreateDirectory("db");
             }
-            
+
             _prefix = prefix;
             DbOptions options = new DbOptions();
             options.SetCreateIfMissing(true);
 
             _db = DbsByPath.GetOrAdd(dbPath, path => RocksDb.Open(options, Path.Combine("db", path)));
+
+            if (dbPath.EndsWith(StateDbPath))
+            {
+                _dbInstance = _prefix == null ? DbInstance.State : DbInstance.Storage;
+            }
+            else if (dbPath.EndsWith(BlockInfosDbPath))
+            {
+                _dbInstance = DbInstance.BlockInfo;
+            }
+            else if (dbPath.EndsWith(BlocksDbPath))
+            {
+                _dbInstance = DbInstance.Block;
+            }
+            else if (dbPath.EndsWith(CodeDbPath))
+            {
+                _dbInstance = DbInstance.Code;
+            }
+            else if (dbPath.EndsWith(ReceiptsDbPath))
+            {
+                _dbInstance = DbInstance.Receipts;
+            }
+            else
+            {
+                _dbInstance = DbInstance.Other;
+            }
         }
 
         public byte[] this[byte[] key]
         {
-            get => _db.Get(_prefix == null ? key : Bytes.Concat(_prefix, key));
-            set => _db.Put(_prefix == null ? key : Bytes.Concat(_prefix, key), value);
+            get
+            {
+                switch (_dbInstance)
+                {
+                    case DbInstance.State:
+                        Metrics.StateDbReads++;
+                        break;
+                    case DbInstance.Storage:
+                        Metrics.StorageDbReads++;
+                        break;
+                    case DbInstance.BlockInfo:
+                        Metrics.BlockInfosDbReads++;
+                        break;
+                    case DbInstance.Block:
+                        Metrics.BlocksDbReads++;
+                        break;
+                    case DbInstance.Code:
+                        Metrics.CodeDbReads++;
+                        break;
+                    case DbInstance.Receipts:
+                        Metrics.ReceiptsDbReads++;
+                        break;
+                    case DbInstance.Other:
+                        Metrics.OtherDbReads++;
+                        break;
+                    default:
+                        throw new ArgumentOutOfRangeException();
+                }
+
+                return _db.Get(_prefix == null ? key : Bytes.Concat(_prefix, key));
+            }
+            set
+            {
+                switch (_dbInstance)
+                {
+                    case DbInstance.State:
+                        Metrics.StateDbWrites++;
+                        break;
+                    case DbInstance.Storage:
+                        Metrics.StorageDbWrites++;
+                        break;
+                    case DbInstance.BlockInfo:
+                        Metrics.BlockInfosDbWrites++;
+                        break;
+                    case DbInstance.Block:
+                        Metrics.BlocksDbWrites++;
+                        break;
+                    case DbInstance.Code:
+                        Metrics.CodeDbWrites++;
+                        break;
+                    case DbInstance.Receipts:
+                        Metrics.ReceiptsDbWrites++;
+                        break;
+                    case DbInstance.Other:
+                        Metrics.OtherDbWrites++;
+                        break;
+                    default:
+                        throw new ArgumentOutOfRangeException();
+                }
+
+                _db.Put(_prefix == null ? key : Bytes.Concat(_prefix, key), value);
+            }
         }
 
         public void Remove(byte[] key)

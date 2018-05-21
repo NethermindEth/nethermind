@@ -81,6 +81,7 @@ namespace Nethermind.Store
 
         private static Rlp RlpEncode(Node node)
         {
+            Metrics.TreeNodeRlpEncodings++;
             if (node is LeafNode leaf)
             {
                 Rlp result = Rlp.Encode(leaf.Key.ToBytes(), leaf.Value);
@@ -122,6 +123,7 @@ namespace Nethermind.Store
         
         internal static Node RlpDecode(Rlp bytes)
         {
+            Metrics.TreeNodeRlpDecodings++;
             NewRlp.DecoderContext context = bytes.Bytes.AsRlpContext();
 
             context.ReadSequenceLength();

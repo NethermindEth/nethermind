@@ -435,29 +435,15 @@ namespace Nethermind.Store
             _cache.Clear();
         }
 
-        private Address _lastAddress;
-
         private Account GetState(Address address)
         {
             Account cached = _stateCache.Get(address);
             if (cached != null)
             {
-                //_logger.Warn($"Using cached {address}");
                 return cached;
             }
-
-            //if (address.Equals(_lastAddress))
-            //{
-            //    // it happens on nulls
-            //    _logger.Warn($"Retrieving again {address}");
-            //}
-            //else
-            //{
-            //    _logger.Warn($"Retrieving {address} (last {_lastAddress})");
-            //}
             
-            _lastAddress = address;
-
+            Metrics.StateTreeReads++;
             NewRlp.DecoderContext rlp = _state.Get(address);
             if (rlp?.IsNull ?? true)
             {
@@ -466,13 +452,13 @@ namespace Nethermind.Store
 
             Account account = NewRlp.Decode<Account>(rlp);
             _stateCache.Set(address, account);
-            //_logger.Warn($"Set {address}");
             return account;
         }
 
         private void SetState(Address address, Account account)
         {
             _stateCache.Set(address, account);
+            Metrics.StateTreeWrites++;
             _state.Set(address, account == null ? null : Rlp.Encode(account));
         }
 
