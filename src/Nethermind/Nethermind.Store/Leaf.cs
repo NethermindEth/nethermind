@@ -21,14 +21,14 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.Store
 {
-    internal class LeafNode : Node
+    internal class Leaf : Node
     {
-        public LeafNode()
+        public Leaf()
         {
         }
 
         [DebuggerStepThrough]
-        public LeafNode(HexPrefix key, byte[] value)
+        public Leaf(HexPrefix key, byte[] value)
         {
             Key = key;
             Value = value;

@@ -22,21 +22,21 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.Store
 {
-    internal class BranchNode : Node
+    internal class Branch : Node
     {
-        public BranchNode()
+        public Branch()
             : this(new KeccakOrRlp[16], new byte[0])
         {
         }
         
-        public BranchNode(KeccakOrRlp[] nodes, byte[] value)
+        public Branch(KeccakOrRlp[] nodes, byte[] value)
         {
             Value = value ?? throw new ArgumentNullException(nameof(value));
             Nodes = nodes ?? throw new ArgumentNullException(nameof(nodes));
 
             if (nodes.Length != 16)
             {
-                throw new ArgumentException($"{nameof(BranchNode)} should have 16 child nodes", nameof(nodes));
+                throw new ArgumentException($"{nameof(Branch)} should have 16 child nodes", nameof(nodes));
             }
         }
 

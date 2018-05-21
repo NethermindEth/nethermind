@@ -190,9 +190,9 @@ namespace Ethereum.Trie.Test
                 Rlp.Encode(new object[] { "hello" }));
 
             PatriciaTree another = new PatriciaTree(_db, patriciaTree.RootHash);
-            Assert.AreEqual(((LeafNode)patriciaTree.Root).Key.ToString(), ((LeafNode)another.Root).Key.ToString());
-            Assert.AreEqual(Keccak.Compute(((LeafNode)patriciaTree.Root).Value),
-                Keccak.Compute(((LeafNode)another.Root).Value));
+            Assert.AreEqual(((Leaf)patriciaTree.Root).Key.ToString(), ((Leaf)another.Root).Key.ToString());
+            Assert.AreEqual(Keccak.Compute(((Leaf)patriciaTree.Root).Value),
+                Keccak.Compute(((Leaf)another.Root).Value));
         }
 
         [Test]
@@ -223,10 +223,10 @@ namespace Ethereum.Trie.Test
                 new byte[] { 0x01, 0x01, 0x03 },
                 Rlp.Encode(new object[] { "hellothere" }));
 
-            ExtensionNode extension = patriciaTree.Root as ExtensionNode;
+            Extension extension = patriciaTree.Root as Extension;
             Assert.NotNull(extension);
-            BranchNode branchNode = patriciaTree.GetNode(extension.NextNode) as BranchNode;
-            Assert.NotNull(branchNode);
+            Branch branch = patriciaTree.GetNode(extension.NextNode) as Branch;
+            Assert.NotNull(branch);
 
             Assert.AreEqual("0xb5e187f15f1a250e51a78561e29ccfc0a7f48e06d19ce02f98dd61159e81f71d",
                 patriciaTree.RootHash.ToString());
@@ -244,10 +244,10 @@ namespace Ethereum.Trie.Test
                 new byte[] { 0x01, 0x01 },
                 Rlp.Encode(new object[] { "hellothere" }));
 
-            ExtensionNode extension = patriciaTree.Root as ExtensionNode;
+            Extension extension = patriciaTree.Root as Extension;
             Assert.NotNull(extension);
-            BranchNode branchNode = patriciaTree.GetNode(extension.NextNode) as BranchNode;
-            Assert.NotNull(branchNode);
+            Branch branch = patriciaTree.GetNode(extension.NextNode) as Branch;
+            Assert.NotNull(branch);
         }
 
         [Test]
@@ -262,10 +262,10 @@ namespace Ethereum.Trie.Test
                 new byte[] { 0x01, 0x01, 0x02, 0x55 },
                 Rlp.Encode(new object[] { "hellothere" }));
 
-            ExtensionNode extension = patriciaTree.Root as ExtensionNode;
+            Extension extension = patriciaTree.Root as Extension;
             Assert.NotNull(extension);
-            BranchNode branchNode = patriciaTree.GetNode(extension.NextNode) as BranchNode;
-            Assert.NotNull(branchNode);
+            Branch branch = patriciaTree.GetNode(extension.NextNode) as Branch;
+            Assert.NotNull(branch);
 
             Assert.AreEqual("0x17fe8af9c6e73de00ed5fd45d07e88b0c852da5dd4ee43870a26c39fc0ec6fb3",
                 patriciaTree.RootHash.ToString());
@@ -310,10 +310,10 @@ namespace Ethereum.Trie.Test
         public void Assigning_null_value_in_branch_throws_an_exception()
         {
             // ReSharper disable once ObjectCreationAsStatement
-            Assert.Throws<ArgumentNullException>(() => new BranchNode(new KeccakOrRlp[16], null));
+            Assert.Throws<ArgumentNullException>(() => new Branch(new KeccakOrRlp[16], null));
 
-            BranchNode branchNode = new BranchNode();
-            Assert.Throws<ArgumentNullException>(() => branchNode.Value = null);
+            Branch branch = new Branch();
+            Assert.Throws<ArgumentNullException>(() => branch.Value = null);
         }
 
         [Test]

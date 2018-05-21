@@ -90,13 +90,13 @@ namespace Nethermind.Store
         private static Rlp RlpEncode(Node node)
         {
             Metrics.TreeNodeRlpEncodings++;
-            if (node is LeafNode leaf)
+            if (node is Leaf leaf)
             {
                 Rlp result = Rlp.Encode(leaf.Key.ToBytes(), leaf.Value);
                 return result;
             }
 
-            if (node is BranchNode branch)
+            if (node is Branch branch)
             {
                 // Geth encoded a structure of nodes so child nodes are actual objects and not RLP of items,
                 // hence when RLP encoding nodes are not byte arrays but actual objects of format byte[][2] or their Keccak
@@ -121,7 +121,7 @@ namespace Nethermind.Store
                 return result;
             }
 
-            if (node is ExtensionNode extension)
+            if (node is Extension extension)
             {
                 return Rlp.Encode(extension.Key.ToBytes(), RlpEncode(extension.NextNode));
             }
@@ -148,8 +148,8 @@ namespace Nethermind.Store
                 }
 
                 byte[] value = context.ReadByteArray();
-                BranchNode branchNode = new BranchNode(nodes, value);
-                result = branchNode;
+                Branch branch = new Branch(nodes, value);
+                result = branch;
             }
             else if (numberOfItems == 2)
             {
@@ -157,12 +157,12 @@ namespace Nethermind.Store
                 bool isExtension = key.IsExtension;
                 if (isExtension)
                 {
-                    ExtensionNode extension = new ExtensionNode(key, DecodeChildNode(context));
+                    Extension extension = new Extension(key, DecodeChildNode(context));
                     result = extension;
                 }
                 else
                 {
-                    LeafNode leaf = new LeafNode(key, context.ReadByteArray());
+                    Leaf leaf = new Leaf(key, context.ReadByteArray());
                     result = leaf;
                 }
             }
@@ -245,13 +245,13 @@ namespace Nethermind.Store
 //                return;
 //            }
 //
-//            if (node is ExtensionNode extension)
+//            if (node is Extension extension)
 //            {
 //                DeleteNode(extension.NextNode, true);
 //                _db.Remove(hash.GetOrComputeKeccak());
 //            }
 //
-//            if (node is BranchNode branch)
+//            if (node is Branch branch)
 //            {
 //                foreach (KeccakOrRlp subnode in branch.Nodes)
 //                {

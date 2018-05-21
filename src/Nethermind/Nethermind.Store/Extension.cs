@@ -20,15 +20,15 @@ using System.Diagnostics;
 
 namespace Nethermind.Store
 {
-    internal class ExtensionNode : Node
+    internal class Extension : Node
     {
-        public ExtensionNode(HexPrefix key)
+        public Extension(HexPrefix key)
         {
             Key = key;
         }
         
         [DebuggerStepThrough]
-        public ExtensionNode(HexPrefix key, KeccakOrRlp nextNode)
+        public Extension(HexPrefix key, KeccakOrRlp nextNode)
         {
             Key = key;
             NextNode = nextNode;
