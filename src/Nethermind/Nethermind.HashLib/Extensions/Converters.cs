@@ -4,6 +4,7 @@ using System.Text;
 
 namespace Nethermind.HashLib.Extensions
 {
+    [DebuggerStepThrough]
     public static class Converters
     {
         public static byte[] ConvertToBytes(object a_in)

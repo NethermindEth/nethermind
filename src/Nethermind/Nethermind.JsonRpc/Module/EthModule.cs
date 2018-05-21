@@ -699,12 +699,7 @@ namespace Nethermind.JsonRpc.Module
         private Account GetAccount(Address address, Keccak stateRoot)
         {
             var stateTree = new StateTree(stateRoot, _db);
-            var rlp = stateTree.Get(address);
-            if (rlp == null)
-            {
-                return null;
-            }
-            return NewRlp.Decode<Account>(rlp);
+            return stateTree.Get(address);
         }
 
         private string GetJsonLog(object model)

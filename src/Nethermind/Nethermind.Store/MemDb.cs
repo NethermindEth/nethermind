@@ -23,17 +23,23 @@ namespace Nethermind.Store
 {
     public class MemDb : IDb
     {
+        public long ReadsCount { get; private set; }
+        public long WritesCount { get; private set; }
+        
         private readonly Dictionary<byte[], byte[]> _db;
         
         public byte[] this[byte[] key]
         {
-            get => _db.ContainsKey(key) ? _db[key] : null;
-            set => _db[key] = value;
-        }
-
-        public bool ContainsKey(byte[] key)
-        {
-            return _db.ContainsKey(key);
+            get
+            {
+                ReadsCount++;
+                return _db.ContainsKey(key) ? _db[key] : null;
+            }
+            set
+            {
+                WritesCount++;
+                _db[key] = value;
+            }
         }
 
         public void Remove(byte[] key)

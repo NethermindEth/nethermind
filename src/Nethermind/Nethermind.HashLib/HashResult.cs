@@ -6,6 +6,7 @@ using Nethermind.HashLib.Extensions;
 namespace Nethermind.HashLib
 {
     [DebuggerDisplay("HashResult, Size: {m_hash.Length}, Hash: {ToString()}")]
+    [DebuggerStepThrough]
     public class HashResult
     {
         private byte[] m_hash;
@@ -24,6 +25,7 @@ namespace Nethermind.HashLib
         {
             m_hash = BitConverter.GetBytes(a_hash);
         }
+        
         public HashResult(byte[] a_hash)
         {
             m_hash = a_hash;

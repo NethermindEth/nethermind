@@ -29,6 +29,14 @@ namespace Nethermind.Store
     [DebuggerDisplay("{RootHash}")]
     public class PatriciaTree
     {
+        public void Commit()
+        {
+        }
+        
+        public void UpdateRootHash()
+        {
+        }
+        
         /// <summary>
         ///     0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421
         /// </summary>
@@ -132,14 +140,16 @@ namespace Nethermind.Store
             Node result;
             if (numberOfItems == 17)
             {
-                BranchNode branch = new BranchNode();
+                
+                KeccakOrRlp[] nodes = new KeccakOrRlp[16];
                 for (int i = 0; i < 16; i++)
                 {
-                    branch.Nodes[i] = DecodeChildNode(context);
+                    nodes[i] = DecodeChildNode(context);
                 }
 
-                branch.Value = context.ReadByteArray();
-                result = branch;
+                byte[] value = context.ReadByteArray();
+                BranchNode branchNode = new BranchNode(nodes, value);
+                result = branchNode;
             }
             else if (numberOfItems == 2)
             {
@@ -147,16 +157,12 @@ namespace Nethermind.Store
                 bool isExtension = key.IsExtension;
                 if (isExtension)
                 {
-                    ExtensionNode extension = new ExtensionNode();
-                    extension.Key = key;
-                    extension.NextNode = DecodeChildNode(context);
+                    ExtensionNode extension = new ExtensionNode(key, DecodeChildNode(context));
                     result = extension;
                 }
                 else
                 {
-                    LeafNode leaf = new LeafNode();
-                    leaf.Key = key;
-                    leaf.Value = context.ReadByteArray();
+                    LeafNode leaf = new LeafNode(key, context.ReadByteArray());
                     result = leaf;
                 }
             }
@@ -179,11 +185,13 @@ namespace Nethermind.Store
             return bytes.Length == 0 ? null : new KeccakOrRlp(new Keccak(bytes));
         }
 
+        [DebuggerStepThrough]
         public void Set(Nibble[] nibbles, Rlp rlp)
         {
             Set(nibbles, rlp.Bytes);
         }
 
+        [DebuggerStepThrough]
         public virtual void Set(Nibble[] nibbles, byte[] value)
         {
             new TreeOperation(this, nibbles, value, true).Run();
@@ -194,11 +202,13 @@ namespace Nethermind.Store
             return new TreeOperation(this, Nibbles.FromBytes(rawKey), null, false).Run();
         }
 
+        [DebuggerStepThrough]
         public void Set(byte[] rawKey, byte[] value)
         {
             Set(Nibbles.FromBytes(rawKey), value);
         }
 
+        [DebuggerStepThrough]
         public void Set(byte[] rawKey, Rlp value)
         {
             Set(Nibbles.FromBytes(rawKey), value == null ? new byte[0] : value.Bytes);

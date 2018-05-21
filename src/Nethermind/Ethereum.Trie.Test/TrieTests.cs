@@ -225,8 +225,8 @@ namespace Ethereum.Trie.Test
 
             ExtensionNode extension = patriciaTree.Root as ExtensionNode;
             Assert.NotNull(extension);
-            BranchNode branch = patriciaTree.GetNode(extension.NextNode) as BranchNode;
-            Assert.NotNull(branch);
+            BranchNode branchNode = patriciaTree.GetNode(extension.NextNode) as BranchNode;
+            Assert.NotNull(branchNode);
 
             Assert.AreEqual("0xb5e187f15f1a250e51a78561e29ccfc0a7f48e06d19ce02f98dd61159e81f71d",
                 patriciaTree.RootHash.ToString());
@@ -246,8 +246,8 @@ namespace Ethereum.Trie.Test
 
             ExtensionNode extension = patriciaTree.Root as ExtensionNode;
             Assert.NotNull(extension);
-            BranchNode branch = patriciaTree.GetNode(extension.NextNode) as BranchNode;
-            Assert.NotNull(branch);
+            BranchNode branchNode = patriciaTree.GetNode(extension.NextNode) as BranchNode;
+            Assert.NotNull(branchNode);
         }
 
         [Test]
@@ -264,8 +264,8 @@ namespace Ethereum.Trie.Test
 
             ExtensionNode extension = patriciaTree.Root as ExtensionNode;
             Assert.NotNull(extension);
-            BranchNode branch = patriciaTree.GetNode(extension.NextNode) as BranchNode;
-            Assert.NotNull(branch);
+            BranchNode branchNode = patriciaTree.GetNode(extension.NextNode) as BranchNode;
+            Assert.NotNull(branchNode);
 
             Assert.AreEqual("0x17fe8af9c6e73de00ed5fd45d07e88b0c852da5dd4ee43870a26c39fc0ec6fb3",
                 patriciaTree.RootHash.ToString());
@@ -312,8 +312,8 @@ namespace Ethereum.Trie.Test
             // ReSharper disable once ObjectCreationAsStatement
             Assert.Throws<ArgumentNullException>(() => new BranchNode(new KeccakOrRlp[16], null));
 
-            BranchNode branch = new BranchNode();
-            Assert.Throws<ArgumentNullException>(() => branch.Value = null);
+            BranchNode branchNode = new BranchNode();
+            Assert.Throws<ArgumentNullException>(() => branchNode.Value = null);
         }
 
         [Test]

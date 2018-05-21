@@ -16,6 +16,8 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Numerics;
+
 namespace Nethermind.Core.Test.Builders
 {
     public class AccountBuilder : BuilderBase<Account>
@@ -23,6 +25,12 @@ namespace Nethermind.Core.Test.Builders
         public AccountBuilder()
         {
             TestObjectInternal = new Account();
+        }
+
+        public AccountBuilder WithBalance(BigInteger balance)
+        {
+            TestObjectInternal.Balance = balance;
+            return this;
         }
     }
 }

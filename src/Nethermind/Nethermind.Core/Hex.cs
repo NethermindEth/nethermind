@@ -28,6 +28,7 @@ namespace Nethermind.Core
     ///     https://stackoverflow.com/questions/311165/how-do-you-convert-a-byte-array-to-a-hexadecimal-string-and-vice-versa
     /// </summary>
     // TODO: from performance / memory perspective probably better to remove this class entirely, experimental
+    [DebuggerStepThrough]
     public class Hex : IEquatable<Hex>
     {
         private static readonly uint[] Lookup32 = CreateLookup32("x2");

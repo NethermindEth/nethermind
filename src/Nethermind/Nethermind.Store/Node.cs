@@ -17,6 +17,7 @@
  */
 
 using System.Runtime.CompilerServices;
+
 [assembly: InternalsVisibleTo("Ethereum.Trie.Test")]
 
 namespace Nethermind.Store

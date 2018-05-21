@@ -28,7 +28,7 @@ namespace Nethermind.Store
             : this(new KeccakOrRlp[16], new byte[0])
         {
         }
-
+        
         public BranchNode(KeccakOrRlp[] nodes, byte[] value)
         {
             Value = value ?? throw new ArgumentNullException(nameof(value));
@@ -40,7 +40,7 @@ namespace Nethermind.Store
             }
         }
 
-        public KeccakOrRlp[] Nodes { get; set; }
+        public KeccakOrRlp[] Nodes { get; private set; }
 
         private byte[] _value;
 

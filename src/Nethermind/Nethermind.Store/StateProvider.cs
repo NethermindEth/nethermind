@@ -444,13 +444,12 @@ namespace Nethermind.Store
             }
             
             Metrics.StateTreeReads++;
-            NewRlp.DecoderContext rlp = _state.Get(address);
-            if (rlp?.IsNull ?? true)
+            Account account = _state.Get(address);
+            if (account == null)
             {
                 return null;
             }
 
-            Account account = NewRlp.Decode<Account>(rlp);
             _stateCache.Set(address, account);
             return account;
         }
@@ -459,7 +458,7 @@ namespace Nethermind.Store
         {
             _stateCache.Set(address, account);
             Metrics.StateTreeWrites++;
-            _state.Set(address, account == null ? null : Rlp.Encode(account));
+            _state.Set(address, account);
         }
 
         private Account GetAndAddToCache(Address address)

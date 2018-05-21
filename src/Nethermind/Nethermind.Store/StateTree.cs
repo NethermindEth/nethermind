@@ -24,7 +24,9 @@ using Nethermind.Core.Extensions;
 namespace Nethermind.Store
 {
     public class StateTree : PatriciaTree
-    {
+    {   
+        private readonly NewAccountDecoder _decoder = new NewAccountDecoder();
+        
         public StateTree(IDb db) : base(db)
         {
         }
@@ -33,14 +35,20 @@ namespace Nethermind.Store
         {
         }
 
-        public NewRlp.DecoderContext Get(Address address)
+        public Account Get(Address address)
         {
-            return Get(Keccak.Compute((byte[])address.Hex).Bytes).AsRlpContext();
+            byte[] bytes = Get(Keccak.Compute((byte[])address.Hex).Bytes);
+            if (bytes == null)
+            {
+                return null;
+            }
+
+            return _decoder.Decode(bytes.AsRlpContext());
         }
 
-        public void Set(Address address, Rlp rlp)
+        public void Set(Address address, Account account)
         {
-            Set(Keccak.Compute((byte[])address.Hex), rlp);
+            Set(Keccak.Compute((byte[])address.Hex), account == null ? null : Rlp.Encode(account));
         }
 
         public void Set(Keccak addressHash, Rlp rlp)
