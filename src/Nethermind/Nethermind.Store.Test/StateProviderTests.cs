@@ -23,11 +23,10 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Store;
 using NSubstitute;
 using NUnit.Framework;
 
-namespace Nethermind.Evm.Test
+namespace Nethermind.Store.Test
 {
     [TestFixture]
     public class StateProviderTests

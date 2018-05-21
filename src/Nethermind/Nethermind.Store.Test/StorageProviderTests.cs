@@ -20,11 +20,10 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.Store;
 using NSubstitute;
 using NUnit.Framework;
 
-namespace Nethermind.Evm.Test
+namespace Nethermind.Store.Test
 {
     [TestFixture]
     public class StorageProviderTests

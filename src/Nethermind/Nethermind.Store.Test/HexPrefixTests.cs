@@ -16,10 +16,9 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Store;
 using NUnit.Framework;
 
-namespace Nethermind.Evm.Test
+namespace Nethermind.Store.Test
 {
     [TestFixture]
     public class HexPrefixTests

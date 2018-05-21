@@ -18,10 +18,9 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Store;
 using NUnit.Framework;
 
-namespace Nethermind.Evm.Test
+namespace Nethermind.Store.Test
 {
     [TestFixture]
     public class MemDbProviderTests
