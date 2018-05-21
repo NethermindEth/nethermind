@@ -17,7 +17,6 @@
  */
 
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Encoding;
 using Nethermind.Store;
 using NUnit.Framework;
 
@@ -33,6 +32,7 @@ namespace Ethereum.Trie.Test
             Keccak rootBefore = tree.RootHash;
             tree.Set(1, new byte[] { 1 });
             tree.Set(1, new byte[] { });
+            tree.UpdateRootHash();
             Keccak rootAfter = tree.RootHash;
             Assert.AreEqual(rootBefore, rootAfter);
         }
@@ -44,6 +44,7 @@ namespace Ethereum.Trie.Test
             Keccak rootBefore = tree.RootHash;
             tree.Set(1, new byte[] { 1 });
             tree.Set(1, new byte[] { 0, 0, 0, 0, 0 });
+            tree.UpdateRootHash();
             Keccak rootAfter = tree.RootHash;
             Assert.AreEqual(rootBefore, rootAfter);
         }
@@ -55,6 +56,7 @@ namespace Ethereum.Trie.Test
             Keccak rootBefore = tree.RootHash;
             tree.Set(1, new byte[] { 1 });
             tree.Set(1, new byte[] { 0 });
+            tree.UpdateRootHash();
             Keccak rootAfter = tree.RootHash;
             Assert.AreEqual(rootBefore, rootAfter);
         }

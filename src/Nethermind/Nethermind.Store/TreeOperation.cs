@@ -104,6 +104,7 @@ namespace Nethermind.Store
             public int PathIndex { get; }
         }
 
+        // TODO: this can be removed now but is lower priority temporarily while the patricia rewrite testing is in progress
         private void UpdateHashes(Node node)
         {
 //            Keccak previousRootHash = _tree.RootHash;

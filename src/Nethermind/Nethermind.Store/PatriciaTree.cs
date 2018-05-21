@@ -37,10 +37,14 @@ namespace Nethermind.Store
                 return;
             }
 
-            Commit(RootRef);
+            Commit(RootRef, true);
+
+            // reset objects
+            Keccak keccak = RootRef.KeccakOrRlp.GetOrComputeKeccak();
+            SetRootHash(keccak, true);
         }
 
-        private void Commit(NodeRef nodeRef)
+        private void Commit(NodeRef nodeRef, bool isRoot)
         {
             if (nodeRef.IsDirty)
             {
@@ -53,6 +57,10 @@ namespace Nethermind.Store
                 }
                 else
                 {
+                    if (isRoot)
+                    {
+                        _db.Set(nodeRef.KeccakOrRlp.GetOrComputeKeccak(), nodeRef.FullRlp.Bytes);    
+                    }
                     // this is stored on the branch / extension as a RLP value
                 }
             }
@@ -91,7 +99,7 @@ namespace Nethermind.Store
                 NodeRef nodeRef = branch.Nodes[i];
                 if (nodeRef?.IsDirty ?? false)
                 {
-                    Commit(branch.Nodes[i]);
+                    Commit(branch.Nodes[i], false);
                 }
             }
         }
@@ -105,7 +113,7 @@ namespace Nethermind.Store
 
             if (extension.NextNodeRef.IsDirty)
             {
-                Commit(extension.NextNodeRef);
+                Commit(extension.NextNodeRef, false);
             }
         }
 
@@ -124,7 +132,14 @@ namespace Nethermind.Store
 
         internal NodeRef RootRef;
         
-        internal Node Root => RootRef?.Node; // for testing purposes
+        internal Node Root
+        {
+            get
+            {
+                RootRef?.ResolveNode(this);
+                return RootRef?.Node;
+            }
+        }
 
         public PatriciaTree()
             : this(new MemDb(), EmptyTreeHash)
