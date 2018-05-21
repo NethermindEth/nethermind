@@ -24,7 +24,7 @@ using NUnit.Framework;
 namespace Nethermind.Evm.Test
 {
     [TestFixture]
-    public class StateLruCacheTests
+    public class LruCacheTests
     {
         private const int Capacity = 16;
 
@@ -44,7 +44,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Beyond_capacity()
         {
-            StateLruCache cache = new StateLruCache(Capacity);
+            LruCache<Address, Account> cache = new LruCache<Address, Account>(Capacity);
             for (int i = 0; i < Capacity; i++)
             {
                 cache.Set(_addresses[i], _accounts[i]);

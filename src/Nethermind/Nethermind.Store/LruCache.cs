@@ -25,35 +25,35 @@ namespace Nethermind.Store
     /// <summary>
     /// https://stackoverflow.com/questions/754233/is-it-there-any-lru-implementation-of-idictionary
     /// </summary>
-    internal class StateLruCache
+    internal class LruCache<TKey, TValue>
     {
         private readonly int _capacity;
-        private readonly Dictionary<Address, LinkedListNode<LruCacheItem>> _cacheMap;
+        private readonly Dictionary<TKey, LinkedListNode<LruCacheItem>> _cacheMap;
         private readonly LinkedList<LruCacheItem> _lruList;
 
-        public StateLruCache(int capacity)
+        public LruCache(int capacity)
         {
             _capacity = capacity;
-            _cacheMap = new Dictionary<Address, LinkedListNode<LruCacheItem>>(_capacity);
+            _cacheMap = new Dictionary<TKey, LinkedListNode<LruCacheItem>>(_capacity);
             _lruList = new LinkedList<LruCacheItem>();
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public Account Get(Address key)
+        public TValue Get(TKey key)
         {
             if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem> node))
             {
-                Account value = node.Value.Value;
+                TValue value = node.Value.Value;
                 _lruList.Remove(node);
                 _lruList.AddLast(node);
                 return value;
             }
 
-            return default(Account);
+            return default(TValue);
         }
 
         [MethodImpl(MethodImplOptions.Synchronized)]
-        public void Set(Address key, Account val)
+        public void Set(TKey key, TValue val)
         {
             if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem> node))
             {
@@ -85,14 +85,14 @@ namespace Nethermind.Store
 
         private class LruCacheItem
         {
-            public LruCacheItem(Address k, Account v)
+            public LruCacheItem(TKey k, TValue v)
             {
                 Key = k;
                 Value = v;
             }
 
-            public readonly Address Key;
-            public Account Value;
+            public readonly TKey Key;
+            public TValue Value;
         }
     }
 }

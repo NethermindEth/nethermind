@@ -34,7 +34,7 @@ namespace Nethermind.Store
     {
         private const int StartCapacity = 1024;
 
-        private readonly StateLruCache _stateCache = new StateLruCache(1024 * 1024); // ~100MB
+        private readonly LruCache<Address, Account> _stateCache = new LruCache<Address, Account>(1024 * 1024); // ~100MB
         private readonly Dictionary<Address, Stack<int>> _cache = new Dictionary<Address, Stack<int>>();
 
         private readonly HashSet<Address> _committedThisRound = new HashSet<Address>();

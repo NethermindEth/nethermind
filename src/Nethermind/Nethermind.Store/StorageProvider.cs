@@ -31,10 +31,14 @@ namespace Nethermind.Store
         private readonly Dictionary<StorageAddress, Stack<int>> _cache = new Dictionary<StorageAddress, Stack<int>>();
 
         private readonly HashSet<StorageAddress> _committedThisRound = new HashSet<StorageAddress>();
+        
+        private readonly IDbProvider _dbProvider;
 
         private readonly ILogger _logger;
-        private readonly IDbProvider _dbProvider;
+        
         private readonly IStateProvider _stateProvider;
+
+        private readonly LruCache<StorageAddress, byte[]> _storageCache = new LruCache<StorageAddress, byte[]>(1024 * 32 * 10); // ~100MB
 
         private readonly Dictionary<Address, StorageTree> _storages = new Dictionary<Address, StorageTree>();
 
@@ -66,13 +70,21 @@ namespace Nethermind.Store
 
         public int TakeSnapshot()
         {
-            if(_logger.IsDebugEnabled) _logger.Debug($"  STORAGE SNAPSHOT {_currentPosition}");
+            if (_logger.IsDebugEnabled)
+            {
+                _logger.Debug($"  STORAGE SNAPSHOT {_currentPosition}");
+            }
+
             return _currentPosition;
         }
 
         public void Restore(int snapshot)
         {
-            if(_logger.IsDebugEnabled) _logger.Debug($"  RESTORING STORAGE SNAPSHOT {snapshot}");
+            if (_logger.IsDebugEnabled)
+            {
+                _logger.Debug($"  RESTORING STORAGE SNAPSHOT {snapshot}");
+            }
+
             if (snapshot > _currentPosition)
             {
                 throw new InvalidOperationException($"{nameof(StorageProvider)} tried to restore snapshot {snapshot} beyond current position {_currentPosition}");
@@ -133,11 +145,18 @@ namespace Nethermind.Store
         {
             if (_currentPosition == -1)
             {
-                if(_logger.IsDebugEnabled) _logger.Debug("  NO STORAGE CHANGES TO COMMIT");
+                if (_logger.IsDebugEnabled)
+                {
+                    _logger.Debug("  NO STORAGE CHANGES TO COMMIT");
+                }
+
                 return;
             }
 
-            if(_logger.IsDebugEnabled) _logger.Debug("  COMMITTING STORAGE CHANGES");
+            if (_logger.IsDebugEnabled)
+            {
+                _logger.Debug("  COMMITTING STORAGE CHANGES");
+            }
 
             if (_changes[_currentPosition] == null)
             {
@@ -171,18 +190,21 @@ namespace Nethermind.Store
                 switch (change.ChangeType)
                 {
                     case ChangeType.JustCache:
-                    break;
+                        break;
                     case ChangeType.Update:
 
-                    if(_logger.IsDebugEnabled) _logger.Debug($"  UPDATE {change.StorageAddress.Address}_{change.StorageAddress.Index} V = {Hex.FromBytes(change.Value, true)}");
+                        if (_logger.IsDebugEnabled)
+                        {
+                            _logger.Debug($"  UPDATE {change.StorageAddress.Address}_{change.StorageAddress.Index} V = {Hex.FromBytes(change.Value, true)}");
+                        }
 
-                    StorageTree tree = GetOrCreateStorage(change.StorageAddress.Address);
-                    Metrics.StorageTreeWrites++;
-                    tree.Set(change.StorageAddress.Index, change.Value);
-                    _storageCache.Set(change.StorageAddress, change.Value);
-                    break;
+                        StorageTree tree = GetOrCreateStorage(change.StorageAddress.Address);
+                        Metrics.StorageTreeWrites++;
+                        tree.Set(change.StorageAddress.Index, change.Value);
+                        _storageCache.Set(change.StorageAddress, change.Value);
+                        break;
                     default:
-                    throw new ArgumentOutOfRangeException();
+                        throw new ArgumentOutOfRangeException();
                 }
             }
 
@@ -205,7 +227,10 @@ namespace Nethermind.Store
 
         public void ClearCaches()
         {
-            if(_logger.IsDebugEnabled) _logger.Debug("  CLEARING STORAGE PROVIDER CACHES");
+            if (_logger.IsDebugEnabled)
+            {
+                _logger.Debug("  CLEARING STORAGE PROVIDER CACHES");
+            }
 
             _cache.Clear();
             _currentPosition = -1;
@@ -238,8 +263,6 @@ namespace Nethermind.Store
 
             return GetAndAddToCache(storageAddress);
         }
-
-        private readonly StorageLruCache _storageCache = new StorageLruCache(1024 * 32 * 10); // ~100MB
 
         private byte[] GetAndAddToCache(StorageAddress storageAddress)
         {
