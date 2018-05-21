@@ -41,6 +41,7 @@ namespace Nethermind.Discovery.RoutingTable
         public int Port { get; private set; }
         public IPEndPoint Address { get; private set; }
         public bool IsDicoveryNode { get; set; }
+        public string Description { get; set; }
 
         public void InitializeAddress(IPEndPoint address)
         {

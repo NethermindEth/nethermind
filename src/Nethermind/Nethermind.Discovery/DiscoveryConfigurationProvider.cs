@@ -18,7 +18,9 @@
 
 using System.Net;
 using Nethermind.Core;
+using Nethermind.Discovery.RoutingTable;
 using Nethermind.Network;
+using Nethermind.Network.P2P;
 
 namespace Nethermind.Discovery
 {
@@ -32,6 +34,7 @@ namespace Nethermind.Discovery
             MasterExternalIp = // networkHelper.GetExternalIp()?.ToString();
             MasterHost = networkHelper.GetLocalIp()?.ToString() ?? "127.0.0.1";
             MasterPort = 30304;
+            IsDiscoveryNodesPersistenceOn = true;
         }
 
         public int BucketSize { get; set; }
@@ -51,10 +54,11 @@ namespace Nethermind.Discovery
         public int BootNodePongTimeout => 100000;
         public int PingRetryCount => 3;
         public int DiscoveryInterval => 30000;
+        public int DiscoveryPersistanceInterval => 3000;
         public int DiscoveryNewCycleWaitTime => 50;
         public int RefreshInterval => 7200;
 
-        public Bootnode[] Bootnodes { get; set; }
+        public NetworkNode[] NetworkNodes { get; set; }
 
         public string KeyPass => "TestPass";
         public int UdpChannelCloseTimeout => 10000;
@@ -62,5 +66,23 @@ namespace Nethermind.Discovery
         public int DiscoveryMsgExpiryTime => 60 * 90;
         public int MaxNodeLifecycleManagersCount => 2000;
         public int NodeLifecycleManagersCleaupCount => 200;
+        public long PredefiedReputation => 1000500;
+
+        public DisconnectReason[] PenalizedReputationLocalDisconnectReasons => new[]
+        {
+            DisconnectReason.UnexpectedIdentity, DisconnectReason.IncompatibleP2PVersion, DisconnectReason.UselessPeer,
+            DisconnectReason.BreachOfProtocol
+        };
+
+        public DisconnectReason[] PenalizedReputationRemoteDisconnectReasons => new[]
+        {
+            DisconnectReason.UnexpectedIdentity, DisconnectReason.IncompatibleP2PVersion, DisconnectReason.UselessPeer,
+            DisconnectReason.BreachOfProtocol, DisconnectReason.TooManyPeers, DisconnectReason.AlreadyConnected
+        };
+
+        public long PenalizedReputationTooManyPeersTimeout => 10 * 1000;
+        public Node[] TrustedNodes { get; set; }
+        public string DbBasePath { get; set; }
+        public bool IsDiscoveryNodesPersistenceOn { get; set; }
     }
 }

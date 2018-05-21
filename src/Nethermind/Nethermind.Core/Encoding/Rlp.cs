@@ -523,6 +523,8 @@ namespace Nethermind.Core.Encoding
                     return Encode(bloom);
                 case Transaction transaction:
                     return Encode(transaction);
+                case NetworkNode node:
+                    return Encode(node);
                 case DecodedRlp decoded:
                     return Encode(decoded);
             }
@@ -632,6 +634,17 @@ namespace Nethermind.Core.Encoding
             elements[1] = Encode(blockInfo.WasProcessed);
             elements[2] = Encode(blockInfo.TotalDifficulty);
             elements[3] = Encode(blockInfo.TotalTransactions);
+            return Encode(elements);
+        }
+
+        public static Rlp Encode(NetworkNode network)
+        {
+            Rlp[] elements = new Rlp[5];
+            elements[0] = Encode(network.PublicKey.Bytes);
+            elements[1] = Encode(network.Host);
+            elements[2] = Encode(network.Port);
+            elements[3] = Encode(network.Description);
+            elements[4] = Encode(network.Reputation);
             return Encode(elements);
         }
 

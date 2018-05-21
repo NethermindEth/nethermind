@@ -16,18 +16,34 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
-using System.Threading.Tasks;
-using Nethermind.Core.Crypto;
+using System.Threading;
 
-namespace Nethermind.Network.Rlpx
+namespace Nethermind.Discovery.Stats
 {
-    public interface IRlpxPeer
+    public class AtomicLong
     {
-        Task Shutdown();
-        Task Init();
-        Task ConnectAsync(PublicKey remoteNodeId, string remoteHost, int remotePort);
+        private long _value = 0;
 
-        event EventHandler<ConnectionInitializedEventArgs> ConnectionInitialized;
+        public void Increment()
+        {
+            Interlocked.Increment(ref _value);
+        }
+
+        public void Decrement()
+        {
+            Interlocked.Decrement(ref _value);
+        }
+
+        public void Add(long value)
+        {
+            Interlocked.Add(ref _value, value);
+        }
+
+        public void Substract(long value)
+        {
+            Interlocked.Add(ref _value, value * -1);
+        }
+
+        public long Value => _value;
     }
 }

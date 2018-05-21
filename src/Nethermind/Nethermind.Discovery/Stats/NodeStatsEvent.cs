@@ -16,16 +16,35 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Core.Crypto;
-
-namespace Nethermind.Network
+namespace Nethermind.Discovery.Stats
 {
-    public class DiscoveryNode
+    public enum NodeStatsEvent
     {
-        public PublicKey PublicKey { get; set; }
-        public int Port { get; set; }
-        public string Host { get; set; }
-        
-        // capabilities and client id here?
+        DiscoveryPingOut,
+        DiscoveryPingIn,
+        DiscoveryPongOut,
+        DiscoveryPongIn,
+        DiscoveryNeighboursOut,
+        DiscoveryNeighboursIn,
+        DiscoveryFindNodeOut,
+        DiscoveryFindNodeIn,
+
+        RlpxConnectionAttempts,
+        RlpxAuthMessagesSent,
+        RlpxOutHello,
+        RlpxInHello,
+        RlpxHandshake,
+        RlpxOutMessages,
+        RlpxInMessages,
+
+        EthHandshake,
+        EthInbound,
+        EthOutbound,
+
+        Eth63NodesRequested,
+        Eth63NodesReceived,
+        Eth63NodesRetrieveTime,
+
+        Disconnect
     }
 }

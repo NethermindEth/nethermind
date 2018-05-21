@@ -81,8 +81,9 @@ namespace Nethermind.Discovery
                     candTryIndex = candTryIndex + 1;
 
                     _logger.Debug($"Waiting {_configurationProvider.DiscoveryNewCycleWaitTime} for new nodes");
-                    //we need to wait some time for pong messages received from new nodes we reached out to
-                    Thread.Sleep(_configurationProvider.DiscoveryNewCycleWaitTime);
+                    //we need to wait some time for pong messages received from new nodes we reached out to    
+                    await Task.Delay(_configurationProvider.DiscoveryNewCycleWaitTime);
+                    //Thread.Sleep(_configurationProvider.DiscoveryNewCycleWaitTime);
                 }
 
                 if (!tryCandidates.Any())

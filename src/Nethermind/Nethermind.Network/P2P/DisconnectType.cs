@@ -16,18 +16,11 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
-using System.Threading.Tasks;
-using Nethermind.Core.Crypto;
-
-namespace Nethermind.Network.Rlpx
+namespace Nethermind.Network.P2P
 {
-    public interface IRlpxPeer
+    public enum DisconnectType
     {
-        Task Shutdown();
-        Task Init();
-        Task ConnectAsync(PublicKey remoteNodeId, string remoteHost, int remotePort);
-
-        event EventHandler<ConnectionInitializedEventArgs> ConnectionInitialized;
+        Local,
+        Remote
     }
 }

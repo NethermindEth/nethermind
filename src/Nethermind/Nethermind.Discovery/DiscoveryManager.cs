@@ -23,6 +23,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Discovery.Lifecycle;
 using Nethermind.Discovery.Messages;
@@ -107,9 +108,16 @@ namespace Nethermind.Discovery
         {
             return _nodeLifecycleManagers.GetOrAdd(node.IdHashText, x =>
             {
-                OnNewNode(node);
-                return _nodeLifecycleManagerFactory.CreateNodeLifecycleManager(node);
+                var manager = _nodeLifecycleManagerFactory.CreateNodeLifecycleManager(node);
+                OnNewNode(manager);
+                return manager;
             });
+        }
+
+        public INodeLifecycleManager GetNodeLifecycleManager(PublicKey nodeId)
+        {
+            var node = new Node(nodeId);
+            return _nodeLifecycleManagers.TryGetValue(node.IdHashText, out INodeLifecycleManager manager) ? manager : null;
         }
 
         public void SendMessage(DiscoveryMessage discoveryMessage)
@@ -137,6 +145,16 @@ namespace Nethermind.Discovery
         }
 
         public event EventHandler<NodeEventArgs> NodeDiscovered;
+
+        public IReadOnlyCollection<INodeLifecycleManager> GetNodeLifecycleManagers()
+        {
+            return _nodeLifecycleManagers.Values.ToArray();
+        }
+
+        public IReadOnlyCollection<INodeLifecycleManager> GetNodeLifecycleManagers(Func<INodeLifecycleManager, bool> query)
+        {
+            return _nodeLifecycleManagers.Values.Where(query.Invoke).ToArray();
+        }
 
         protected void ValidatePingAddress(PingMessage message)
         {
@@ -166,16 +184,9 @@ namespace Nethermind.Discovery
             }
         }
 
-        private void OnNewNode(Node node)
+        private void OnNewNode(INodeLifecycleManager manager)
         {
-            DiscoveryNode discoveryNode = new DiscoveryNode
-            {
-                PublicKey = node.Id,
-                Host = node.Host,
-                Port = node.Port
-            };
-
-            NodeDiscovered?.Invoke(this, new NodeEventArgs(discoveryNode));
+            NodeDiscovered?.Invoke(this, new NodeEventArgs(manager));
         }
 
         private void NotifySubscribersOnMsgReceived(MessageType msgType, Node node)
@@ -209,14 +220,14 @@ namespace Nethermind.Discovery
             if (activeExcluded.Length == cleanupCount)
             {
                 int removeCounter = RemoveManagers(activeExcluded, activeExcluded.Length);
-                _logger.Info($"Removed: {removeCounter} node lifecycle managers");
+                _logger.Info($"Removed: {removeCounter} activeExcluded node lifecycle managers");
                 return;
             }
 
             KeyValuePair<string, INodeLifecycleManager>[] unreachable = _nodeLifecycleManagers.Where(x => x.Value.State == NodeLifecycleState.Unreachable).Take(cleanupCount - activeExcluded.Length).ToArray();
             int removeCount = RemoveManagers(activeExcluded, activeExcluded.Length);
             removeCount = removeCount + RemoveManagers(unreachable, unreachable.Length);
-            _logger.Info($"Removed: {removeCount} node lifecycle managers");
+            _logger.Info($"Removed: {removeCount} unreachable node lifecycle managers");
         }
 
         private int RemoveManagers(KeyValuePair<string, INodeLifecycleManager>[] items, int count)
@@ -235,8 +246,8 @@ namespace Nethermind.Discovery
 
         private struct MessageTypeKey : IEquatable<MessageTypeKey>
         {
-            public string SenderAddressHash { get; private set; }
-            public int MessageType { get; private set; }
+            public string SenderAddressHash { get; }
+            public int MessageType { get; }
 
             public MessageTypeKey(string senderAddressHash, int messageType)
             {

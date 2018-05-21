@@ -27,7 +27,7 @@ namespace Nethermind.Core.Specs.ChainSpec
     public class ChainSpec
     {
         public Dictionary<Address, BigInteger> Allocations { get; set; }
-        public Bootnode[] Bootnodes { get; set; }
+        public NetworkNode[] NetworkNodes { get; set; }
         public Block Genesis { get; set; }
 
         public string Name { get; set; }

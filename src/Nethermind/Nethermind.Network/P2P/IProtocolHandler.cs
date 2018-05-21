@@ -29,8 +29,10 @@ namespace Nethermind.Network.P2P
         
         void Init();
         void HandleMessage(Packet message);
+        //TODO is close needed if we have disconnect?
         void Close();
-        
+        void Disconnect(DisconnectReason disconnectReason);
+
         event EventHandler ProtocolInitialized;
         event EventHandler<ProtocolEventArgs> SubprotocolRequested;
     }

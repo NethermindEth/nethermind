@@ -134,6 +134,12 @@ namespace Nethermind.Store
             PushDelete(new Keccak(key));
         }
 
+        // TODO: implement
+        public ICollection<byte[]> Keys => throw new NotImplementedException();
+
+        // TODO: implement
+        public ICollection<byte[]> Values => throw new NotImplementedException();
+
         private readonly List<Change> _keptInCache = new List<Change>();
 
         public void Restore(int snapshot)

@@ -7,6 +7,7 @@
       <Project>{5751C57B-9F2D-45DE-BCC2-42645B85E39E}</Project>
       <Name>Nethermind.Core</Name>
     </ProjectReference>
+    <ProjectReference Include="..\Nethermind.Db\Nethermind.Db.csproj" />
     <ProjectReference Include="..\Nethermind.KeyStore\Nethermind.KeyStore.csproj">
       <Project>{31AFB372-BE97-4804-B2B9-AD4C515924B6}</Project>
       <Name>Nethermind.KeyStore</Name>

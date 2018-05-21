@@ -172,6 +172,8 @@ namespace Nethermind.Network.Rlpx
             }
         }
 
+        public event EventHandler<ConnectionInitializedEventArgs> ConnectionInitialized;
+
         private void InitializeChannel(IChannel channel, EncryptionHandshakeRole role, PublicKey remoteId)
         {
             string inOut = remoteId == null ? "IN" : "OUT";
@@ -183,6 +185,12 @@ namespace Nethermind.Network.Rlpx
                 _serializationService,
                 _synchronizationManager,
                 _logger);
+
+            //Only for remote connection
+            if (remoteId != null)
+            {
+                ConnectionInitialized?.Invoke(this, new ConnectionInitializedEventArgs(p2PSession));
+            }
 
             IChannelPipeline pipeline = channel.Pipeline;
             pipeline.AddLast(new LoggingHandler(inOut, DotNetty.Handlers.Logging.LogLevel.TRACE));

@@ -17,33 +17,128 @@
  */
 
 
+using System.Collections.Concurrent;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Discovery.Lifecycle;
+using Nethermind.Discovery.RoutingTable;
+using Nethermind.Discovery.Stats;
 using Nethermind.Network;
+using Nethermind.Network.P2P;
 using Nethermind.Network.Rlpx;
 
 namespace Nethermind.Discovery
 {
+    /// <summary>
+    /// Responsible for periodically getting best peers from Dicovery Manager and updating SynchManager
+    /// </summary>
     public class PeerManager : IPeerManager
     {
         private readonly IRlpxPeer _localPeer;
         private readonly ILogger _logger;
+        private readonly IDiscoveryManager _discoveryManager;
+        private readonly INodeFactory _nodeFactory;
 
-        public PeerManager(IRlpxPeer localPeer, IDiscoveryManager discoveryManager, ILogger logger)
+        private readonly ConcurrentDictionary<PublicKey, Peer> _activePeers = new ConcurrentDictionary<PublicKey, Peer>();
+        private readonly ConcurrentDictionary<PublicKey, Peer> _newPeers = new ConcurrentDictionary<PublicKey, Peer>();
+
+        //TODO Timer to periodically check active peers and move new to active based on max size and compatibility - stats and capabilities + update peers in synchronization manager
+        //TODO Remove active and synch on disconnect
+        //TODO Update Stats on disconnect, other events
+        //TODO Move Discover to Network
+        //TODO update runner to run discovery
+
+        public PeerManager(IRlpxPeer localPeer, IDiscoveryManager discoveryManager, ILogger logger, INodeFactory nodeFactory)
         {
             _localPeer = localPeer;
             _logger = logger;
+            _nodeFactory = nodeFactory;
+            _discoveryManager = discoveryManager;
+
             discoveryManager.NodeDiscovered += OnNodeDiscovered;
+            localPeer.ConnectionInitialized += OnRemoteConnectionInitialized;
+        }
+
+        private void OnRemoteConnectionInitialized(object sender, ConnectionInitializedEventArgs eventArgs)
+        {
+            var id = eventArgs.Session.RemoteNodeId;
+            if (_newPeers.TryGetValue(id, out Peer peer))
+            {
+                peer.Session = eventArgs.Session;
+                peer.Session.PeerDisconnected += OnPeerDisconnected;
+                return;
+            }
+
+            if (_logger.IsWarnEnabled)
+            {
+                _logger.Warn($"Connected to Peer via rlpx before discovery connection: {id.ToString(false)}");
+            }
+
+            var manager =_discoveryManager.GetNodeLifecycleManager(id);
+            if (manager != null)
+            {
+                peer = new Peer(manager)
+                {
+                    Session = eventArgs.Session
+                };
+                _newPeers.AddOrUpdate(id, peer, (x, y) => y);
+                peer.Session.PeerDisconnected += OnPeerDisconnected;
+                return;
+            }
+
+            if (_logger.IsErrorEnabled)
+            {
+                _logger.Error($"Connected to Peer via rlpx for remote which was not received from discovery: {id.ToString(false)}");
+            }
+        }
+
+        private void OnPeerDisconnected(object sender, DisconnectEventArgs e)
+        {
+            var peer = (IP2PSession) sender;
+            peer.PeerDisconnected -= OnPeerDisconnected;
+
+            if (_activePeers.TryRemove(peer.RemoteNodeId, out var removedPeer))
+            {
+                removedPeer.NodeStats.AddNodeStatsDisconnectEvent(e.DisconnectType, e.DisconnectReason);
+            }
+
+            if (_newPeers.TryRemove(peer.RemoteNodeId, out removedPeer))
+            {
+                removedPeer.NodeStats.AddNodeStatsDisconnectEvent(e.DisconnectType, e.DisconnectReason);
+            }
+
+            //TODO remove peer from synching
         }
 
         private void OnNodeDiscovered(object sender, NodeEventArgs nodeEventArgs)
         {
-            DiscoveryNode node = nodeEventArgs.Node;
-            if (_logger.IsInfoEnabled)
+            var id = nodeEventArgs.Manager.ManagedNode.Id;
+            if (_newPeers.ContainsKey(id) || _activePeers.ContainsKey(id))
             {
-                _logger.Info($"Connecting to a newly discovered node {node.PublicKey} @ {node.Host}:{node.Port}");
+                return;
             }
 
-            _localPeer.ConnectAsync(node.PublicKey, node.Host, node.Port);
+            var peer = new Peer(nodeEventArgs.Manager);
+            _newPeers.AddOrUpdate(id, peer, (x, y) => y);
+            if (_logger.IsInfoEnabled)
+            {
+                _logger.Info($"Adding newly discovered node to New collection {id.ToString(false)}@{nodeEventArgs.Manager.ManagedNode.Host}:{nodeEventArgs.Manager.ManagedNode.Port}");
+            }
+        }
+
+        private class Peer
+        {
+            public Peer(INodeLifecycleManager manager)
+            {
+                Node = manager.ManagedNode;
+                NodeLifecycleManager = manager;
+                NodeStats = manager.NodeStats;
+            }
+
+            public Node Node { get; }
+            public INodeLifecycleManager NodeLifecycleManager { get; }
+            public INodeStats NodeStats { get; }
+            public IP2PSession Session { get; set; }           
         }
     }
 }

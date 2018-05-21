@@ -71,16 +71,6 @@ namespace Nethermind.Network.P2P
             _context.Channel.Pipeline.AddBefore($"{nameof(Multiplexor)}#0", null, new SnappyEncoder(_logger));
         }
 
-        // TODO: this should be one level up
-        public void Disconnect(TimeSpan delay)
-        {
-            Task.Delay(delay).ContinueWith(t =>
-            {
-                _context.DisconnectAsync();
-                _logger.Info($"{RemoteNodeId} Disconnecting now after {delay.TotalMilliseconds} milliseconds");
-            });
-        }
-
         public void Enqueue(Packet message, bool priority = false)
         {
             _packetSender.Enqueue(message, priority);
@@ -95,11 +85,6 @@ namespace Nethermind.Network.P2P
 
             packet.PacketType = _adaptiveEncoder((packet.Protocol, packet.PacketType));
             _packetSender.Enqueue(packet, priority);
-        }
-
-        private (string, int) ResolveMessageCode(int adaptiveId)
-        {
-            return _adaptiveCodeResolver.Invoke(adaptiveId);
         }
 
         public void ReceiveMessage(Packet packet)
@@ -127,6 +112,51 @@ namespace Nethermind.Network.P2P
 
             packet.PacketType = messageId;
             _protocols[protocol].HandleMessage(packet);
+        }
+
+        // TODO: use custom interface instead of netty one (can encapsulate both)
+        public void Init(byte p2PVersion, IChannelHandlerContext context, IPacketSender packetSender)
+        {
+            _packetSender = packetSender;
+            _context = context;
+            InitProtocol(Protocol.P2P, p2PVersion);
+        }
+
+        public async Task InitiateDisconnectAsync(DisconnectReason disconnectReason)
+        {
+            //Trigger disconnect on each protocol handler (if p2p is initialized it will send disconnect message to the peer)
+            if (_protocols.Any())
+            {
+                foreach (var protocolHandler in _protocols.Values)
+                {
+                    protocolHandler.Disconnect(disconnectReason);
+                }
+            }
+            await DisconnectAsync(disconnectReason, DisconnectType.Local);
+        }
+
+        public async Task DisconnectAsync(DisconnectReason disconnectReason, DisconnectType disconnectType, TimeSpan? delay = null)
+        {
+            if (!delay.HasValue)
+            {
+                //TODO move default delay time to configuration
+                delay = new TimeSpan(0, 0, 0, 10);
+            }
+
+            PeerDisconnected?.Invoke(this, new DisconnectEventArgs(disconnectReason, disconnectType));
+
+            await Task.Delay(delay.Value).ContinueWith(t =>
+            {
+                _context.DisconnectAsync();
+                _logger.Info($"{RemoteNodeId} Disconnecting now after {delay.Value.TotalMilliseconds} milliseconds");
+            });
+        }
+
+        public event EventHandler<DisconnectEventArgs> PeerDisconnected;
+
+        private (string, int) ResolveMessageCode(int adaptiveId)
+        {
+            return _adaptiveCodeResolver.Invoke(adaptiveId);
         }
 
         private void InitProtocol(string protocolCode, int version)
@@ -230,14 +260,6 @@ namespace Nethermind.Network.P2P
         private void CloseSession(string protocolCode)
         {
             throw new NotImplementedException();
-        }
-
-        // TODO: use custom interface instead of netty one (can encapsulate both)
-        public void Init(byte p2PVersion, IChannelHandlerContext context, IPacketSender packetSender)
-        {
-            _packetSender = packetSender;
-            _context = context;
-            InitProtocol(Protocol.P2P, p2PVersion);
-        }
+        }      
     }
 }

@@ -22,9 +22,9 @@ using Nethermind.Core.Crypto;
 namespace Nethermind.Core
 {
     [DebuggerDisplay("{Description} {PublicKey} @ {Host}:{Port}")]
-    public class Bootnode
+    public class NetworkNode
     {
-        public Bootnode(string enode, string description)
+        public NetworkNode(string enode, string description)
         {
             //enode://0d837e193233c08d6950913bf69105096457fbe204679d6c6c021c36bb5ad83d167350440670e7fec189d80abc18076f45f44bfe480c85b6c632735463d34e4b@89.197.135.74:30303
             Hex publicKeyString = new Hex(enode.Substring(8, 128));
@@ -35,17 +35,19 @@ namespace Nethermind.Core
             Description = description;
         }
 
-        public Bootnode(Hex publicKey, string ip, int port, string description)
+        public NetworkNode(Hex publicKey, string ip, int port, string description, long reputation = 0)
         {
             PublicKey = new PublicKey(publicKey);
             Host = ip;
             Port = port;
             Description = description;
+            Reputation = reputation;
         }
 
         public PublicKey PublicKey { get; set; }
         public string Host { get; set; }
         public int Port { get; set; }
         public string Description { get; set; }
+        public long Reputation { get; set; }
     }
 }

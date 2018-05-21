@@ -41,6 +41,9 @@ namespace Nethermind.Store
             _db.Remove(key);
         }
 
+        public ICollection<byte[]> Keys => _db.Keys;
+        public ICollection<byte[]> Values => _db.Values;
+
         public MemDb()
         {
             _db = new Dictionary<byte[], byte[]>(1024, Bytes.EqualityComparer);

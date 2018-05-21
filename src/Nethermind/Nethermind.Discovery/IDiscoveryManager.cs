@@ -17,6 +17,8 @@
  */
 
 using System;
+using System.Collections.Generic;
+using Nethermind.Core.Crypto;
 using Nethermind.Discovery.Lifecycle;
 using Nethermind.Discovery.Messages;
 using Nethermind.Discovery.RoutingTable;
@@ -27,8 +29,12 @@ namespace Nethermind.Discovery
     {
         IMessageSender MessageSender { set; }
         INodeLifecycleManager GetNodeLifecycleManager(Node node);
+        INodeLifecycleManager GetNodeLifecycleManager(PublicKey nodeId);
         void SendMessage(DiscoveryMessage discoveryMessage);
         bool WasMessageReceived(string senderIdHash, MessageType messageType, int timeout);
         event EventHandler<NodeEventArgs> NodeDiscovered;
+
+        IReadOnlyCollection<INodeLifecycleManager> GetNodeLifecycleManagers();
+        IReadOnlyCollection<INodeLifecycleManager> GetNodeLifecycleManagers(Func<INodeLifecycleManager, bool> query);
     }
 }

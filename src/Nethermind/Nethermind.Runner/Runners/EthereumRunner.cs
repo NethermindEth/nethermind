@@ -34,6 +34,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Specs.ChainSpec;
 using Nethermind.Db;
 using Nethermind.Discovery;
+using Nethermind.Discovery.RoutingTable;
 using Nethermind.Evm;
 using Nethermind.Network;
 using Nethermind.Network.Crypto;
@@ -292,9 +293,9 @@ namespace Nethermind.Runner.Runners
             _networkLogger.Info($"Node is up and listening on {localIp}:{listenPort}... press ENTER to exit");
             _networkLogger.Info($"enode://{_privateKey.PublicKey.ToString(false)}@{localIp}:{listenPort}");
 
-            _peerManager = new PeerManager(_localPeer, _discoveryManager, _networkLogger);
+            //_peerManager = new PeerManager(_localPeer, _discoveryManager, _networkLogger, new NodeFactory());
 
-            foreach (Bootnode bootnode in chainSpec.Bootnodes)
+            foreach (NetworkNode bootnode in chainSpec.NetworkNodes)
             {
                 bootnode.Host = bootnode.Host == "127.0.0.1" ? localIp : bootnode.Host;
                 _networkLogger.Info($"Connecting to {bootnode.Description}@{bootnode.Host}:{bootnode.Port}");

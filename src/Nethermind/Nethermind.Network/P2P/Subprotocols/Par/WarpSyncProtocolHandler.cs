@@ -36,6 +36,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Par
             throw new NotImplementedException();
         }
 
+        public void Disconnect(DisconnectReason disconnectReason)
+        {
+        }
+
         public int MessageIdSpaceSize { get; } = 10;
         public void HandleMessage(Packet message)
         {

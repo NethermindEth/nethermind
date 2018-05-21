@@ -16,7 +16,9 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.IO;
 using Nethermind.Core.Extensions;
 using Nethermind.Store;
@@ -32,6 +34,7 @@ namespace Nethermind.Db
         public const string BlocksDbPath = "blocks";
         public const string ReceiptsDbPath = "receipts";
         public const string BlockInfosDbPath = "blockInfos";
+        public const string PeersDbPath = "peers";
 
         private static readonly ConcurrentDictionary<string, RocksDb> DbsByPath = new ConcurrentDictionary<string, RocksDb>();
         
@@ -61,6 +64,33 @@ namespace Nethermind.Db
         public void Remove(byte[] key)
         {
             _db.Remove(_prefix == null ? key : Bytes.Concat(_prefix, key));
+        }
+
+        public ICollection<byte[]> Keys
+        {
+            get { return GetKeysOrValues(x => x.Key()); }
+        }
+
+        public ICollection<byte[]> Values
+        {
+            get { return GetKeysOrValues(x => x.Value()); }
+        }
+
+        private ICollection<byte[]> GetKeysOrValues(Func<Iterator, byte[]> selector)
+        {
+            var readOptions = new ReadOptions();
+            var items = new List<byte[]>();
+            using (var iter = _db.NewIterator(readOptions: readOptions))
+            {
+                while (iter.Valid())
+                {
+                    var item = selector.Invoke(iter);
+                    items.Add(item);
+                    iter.Next();
+                }
+            }
+
+            return items;
         }
     }
 }

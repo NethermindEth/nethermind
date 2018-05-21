@@ -21,6 +21,7 @@ using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Discovery.Messages;
 using Nethermind.Discovery.RoutingTable;
+using Nethermind.Discovery.Stats;
 
 namespace Nethermind.Discovery.Lifecycle
 {
@@ -36,7 +37,7 @@ namespace Nethermind.Discovery.Lifecycle
         private bool _isPongExpected;
         private bool _isNeighborsExpected;
 
-        public NodeLifecycleManager(Node node, IDiscoveryManager discoveryManager, INodeTable nodeTable, ILogger logger, IDiscoveryConfigurationProvider discoveryConfigurationProvider, IDiscoveryMessageFactory discoveryMessageFactory, IEvictionManager evictionManager)
+        public NodeLifecycleManager(Node node, IDiscoveryManager discoveryManager, INodeTable nodeTable, ILogger logger, IDiscoveryConfigurationProvider discoveryConfigurationProvider, IDiscoveryMessageFactory discoveryMessageFactory, IEvictionManager evictionManager, INodeStats nodeStats)
         {
             _discoveryManager = discoveryManager;
             _nodeTable = nodeTable;
@@ -44,27 +45,34 @@ namespace Nethermind.Discovery.Lifecycle
             _discoveryConfigurationProvider = discoveryConfigurationProvider;
             _discoveryMessageFactory = discoveryMessageFactory;
             _evictionManager = evictionManager;
+            NodeStats = nodeStats;
             ManagedNode = node;
             UpdateState(NodeLifecycleState.New);
         }
 
         public Node ManagedNode { get; }
         public NodeLifecycleState State { get; private set; }
+        public INodeStats NodeStats { get; }
 
         public event EventHandler<NodeLifecycleState> OnStateChanged;
 
         public void ProcessPingMessage(PingMessage discoveryMessage)
         {
             SendPong(discoveryMessage);
+
+            NodeStats.AddNodeStatsEvent(NodeStatsEvent.DiscoveryPingIn);
             RefreshNodeContactTime();
+            
         }
 
         public void ProcessPongMessage(PongMessage discoveryMessage)
         {
             if (_isPongExpected)
             {
-                UpdateState(NodeLifecycleState.Active);
+                NodeStats.AddNodeStatsEvent(NodeStatsEvent.DiscoveryPongIn);
                 RefreshNodeContactTime();
+
+                UpdateState(NodeLifecycleState.Active);
             }
 
             _isPongExpected = false;
@@ -74,13 +82,14 @@ namespace Nethermind.Discovery.Lifecycle
         {
             if (_isNeighborsExpected)
             {
+                NodeStats.AddNodeStatsEvent(NodeStatsEvent.DiscoveryNeighboursIn);
+                RefreshNodeContactTime();
+
                 foreach (var node in discoveryMessage.Nodes)
                 {
                     //If node is new it will create a new nodeLifecycleManager and will update state to New, which will trigger Ping
                     _discoveryManager.GetNodeLifecycleManager(node);
                 }
-
-                RefreshNodeContactTime();
             }
 
             _isNeighborsExpected = false;
@@ -88,9 +97,11 @@ namespace Nethermind.Discovery.Lifecycle
 
         public void ProcessFindNodeMessage(FindNodeMessage discoveryMessage)
         {
+            NodeStats.AddNodeStatsEvent(NodeStatsEvent.DiscoveryFindNodeIn);
+            RefreshNodeContactTime();
+
             var nodes = _nodeTable.GetClosestNodes(discoveryMessage.SearchedNodeId);
             SendNeighbors(nodes);
-            RefreshNodeContactTime();
         }
 
         public void SendFindNode(byte[] searchedNodeId)
@@ -99,6 +110,7 @@ namespace Nethermind.Discovery.Lifecycle
             msg.SearchedNodeId = searchedNodeId;
             _isNeighborsExpected = true;
             _discoveryManager.SendMessage(msg);
+            NodeStats.AddNodeStatsEvent(NodeStatsEvent.DiscoveryFindNodeOut);
         }
 
         public void SendPing()
@@ -112,6 +124,7 @@ namespace Nethermind.Discovery.Lifecycle
             var msg = _discoveryMessageFactory.CreateOutgoingMessage<PongMessage>(ManagedNode);
             msg.PingMdc = discoveryMessage.Mdc;
             _discoveryManager.SendMessage(msg);
+            NodeStats.AddNodeStatsEvent(NodeStatsEvent.DiscoveryPongOut);
         }
 
         public void SendNeighbors(Node[] nodes)
@@ -119,6 +132,7 @@ namespace Nethermind.Discovery.Lifecycle
             var msg = _discoveryMessageFactory.CreateOutgoingMessage<NeighborsMessage>(ManagedNode);
             msg.Nodes = nodes;
             _discoveryManager.SendMessage(msg);
+            NodeStats.AddNodeStatsEvent(NodeStatsEvent.DiscoveryNeighboursOut);
         }
 
         public void StartEvictionProcess()
@@ -182,6 +196,7 @@ namespace Nethermind.Discovery.Lifecycle
                 msg.SourceAddress = _nodeTable.MasterNode.Address;
                 msg.DestinationAddress = msg.FarAddress;
                 _discoveryManager.SendMessage(msg);
+                NodeStats.AddNodeStatsEvent(NodeStatsEvent.DiscoveryPingOut);
 
                 if (!_discoveryManager.WasMessageReceived(ManagedNode.IdHashText, MessageType.Pong, _discoveryConfigurationProvider.PongTimeout))
                 {

@@ -18,17 +18,18 @@
 
 
 using System;
+using Nethermind.Discovery.Lifecycle;
 using Nethermind.Network;
 
 namespace Nethermind.Discovery
 {
     public class NodeEventArgs : EventArgs
     {
-        public DiscoveryNode Node { get; }
+        public INodeLifecycleManager Manager { get; }
 
-        public NodeEventArgs(DiscoveryNode node)
+        public NodeEventArgs(INodeLifecycleManager manager)
         {
-            Node = node;
+            Manager = manager;
         }
     }
 }

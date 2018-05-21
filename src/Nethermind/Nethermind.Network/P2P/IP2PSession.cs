@@ -16,6 +16,8 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
+using System.Threading.Tasks;
 using DotNetty.Transport.Channels;
 using Nethermind.Core.Crypto;
 using Nethermind.Network.Rlpx;
@@ -29,5 +31,17 @@ namespace Nethermind.Network.P2P
         void ReceiveMessage(Packet packet);
         void DeliverMessage(Packet packet, bool priority = false);
         void Init(byte p2PVersion, IChannelHandlerContext context, IPacketSender packetSender);
+
+        /// <summary>
+        /// Starts local disconnect (triggers disconnect on each protocolHandler, down to tcp disconnect)
+        /// </summary>
+        Task InitiateDisconnectAsync(DisconnectReason disconnectReason);
+
+        /// <summary>
+        ///  Drop tcp connection after a delay
+        /// </summary>        
+        Task DisconnectAsync(DisconnectReason disconnectReason, DisconnectType disconnectType, TimeSpan? delay = null);
+
+        event EventHandler<DisconnectEventArgs>  PeerDisconnected;
     }
 }

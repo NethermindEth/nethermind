@@ -17,6 +17,8 @@
  */
 
 using Nethermind.Core;
+using Nethermind.Discovery.RoutingTable;
+using Nethermind.Network.P2P;
 
 namespace Nethermind.Discovery
 {
@@ -93,6 +95,11 @@ namespace Nethermind.Discovery
         int DiscoveryInterval { get; }
 
         /// <summary>
+        /// Time between persisting discovered nodes in miliseconds
+        /// </summary>
+        int DiscoveryPersistanceInterval { get; }
+
+        /// <summary>
         /// Time between discovery cicles in miliseconds
         /// </summary>
         int DiscoveryNewCycleWaitTime { get; }
@@ -105,7 +112,7 @@ namespace Nethermind.Discovery
         /// <summary>
         /// Boot nodes connection details
         /// </summary>
-        Bootnode[] Bootnodes { get; }
+        NetworkNode[] NetworkNodes { get; }
 
         /// <summary>
         /// Key Pass
@@ -136,5 +143,40 @@ namespace Nethermind.Discovery
         /// Count of NodeLifecycleManagers to remove in one cleanup cycle
         /// </summary>
         int NodeLifecycleManagersCleaupCount { get; }
-    }
+
+        /// <summary>
+        /// Value of predefied reputation for trusted nodes
+        /// </summary>
+        long PredefiedReputation { get; }
+
+        /// <summary>
+        /// Local disconnect reasons for penalizing node reputation
+        /// </summary>
+        DisconnectReason[] PenalizedReputationLocalDisconnectReasons { get; }
+
+        /// <summary>
+        /// Remote disconnect reasons for penalizing node reputation
+        /// </summary>
+        DisconnectReason[] PenalizedReputationRemoteDisconnectReasons { get; }
+
+        /// <summary>
+        /// Time within which we penalized peer if disconnection happends due to too many peers
+        /// </summary>
+        long PenalizedReputationTooManyPeersTimeout { get; }
+
+        /// <summary>
+        /// List of trusted nodes - we connect to them and set predefined high reputation
+        /// </summary>
+        Node[] TrustedNodes { get; set; }
+
+        /// <summary>
+        /// Base path for discovery db
+        /// </summary>
+        string DbBasePath { get; set; }
+
+        /// <summary>
+        /// On/Off for discovery persistance
+        /// </summary>
+        bool IsDiscoveryNodesPersistenceOn { get; set; }
+}
 }

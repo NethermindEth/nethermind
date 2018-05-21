@@ -20,6 +20,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Network.Rlpx;
@@ -123,11 +124,15 @@ namespace Nethermind.Network.P2P
             // * If the packet is received by a node with higher version, it can enable backwards-compatibility logic or drop the connection.
             if (hello.P2PVersion < 4 || hello.P2PVersion > 5)
             {
-                Disconnect(DisconnectReason.IncompatibleP2PVersion);
+                //triggers disconnect on the session, which will trigger it on all protocol handlers
+                P2PSession.InitiateDisconnectAsync(DisconnectReason.IncompatibleP2PVersion);
+                //Disconnect(DisconnectReason.IncompatibleP2PVersion);
                 return;
             }
 
             ProtocolVersion = hello.P2PVersion;
+
+            //TODO Check required capabilities and disconnect if not supported
 
             foreach (Capability remotePeerCapability in hello.Capabilities)
             {
@@ -177,10 +182,8 @@ namespace Nethermind.Network.P2P
             Send(PongMessage.Instance);
         }
 
-
         public void Disconnect(DisconnectReason disconnectReason)
-        {
-            // TODO: advertise disconnect up the stack so we actually disconnect   
+        {  
             Logger.Info($"{P2PSession.RemoteNodeId} P2P disconnecting on {P2PSession.RemotePort} ({RemoteClientId}) [{disconnectReason}]");
             DisconnectMessage message = new DisconnectMessage(disconnectReason);
             Send(message);
@@ -189,6 +192,8 @@ namespace Nethermind.Network.P2P
         private void Close(int disconnectReason)
         {
             Logger.Info($"{P2PSession.RemoteNodeId} P2P received disconnect on {P2PSession.RemotePort} ({RemoteClientId}) [{disconnectReason}]");
+            //Received disconnect message, triggering direct TCP disconnection
+            P2PSession.DisconnectAsync((DisconnectReason) disconnectReason, DisconnectType.Remote);
         }
 
         private void HandlePong()

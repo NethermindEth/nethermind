@@ -166,11 +166,5 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>
-  <Target Name="AddRuntimeDependenciesToContent" Condition=" '$(TargetFrameworkIdentifier)' == '.NETCoreApp'" BeforeTargets="GetCopyToOutputDirectoryItems">
-    <ItemGroup>
-      <ContentWithTargetPath Include="$(ProjectDepsFilePath)" CopyToOutputDirectory="PreserveNewest" TargetPath="$(ProjectDepsFileName)" />
-      <ContentWithTargetPath Include="$(ProjectRuntimeConfigFilePath)" CopyToOutputDirectory="PreserveNewest" TargetPath="$(ProjectRuntimeConfigFileName)" />
-      <ContentWithTargetPath Include="$(ProjectRuntimeConfigFilePath.Substring(0, $([MSBuild]::Subtract($(ProjectRuntimeConfigFilePath.Length), 5)))).dev.json" CopyToOutputDirectory="PreserveNewest" TargetPath="$(ProjectRuntimeConfigFileName.Substring(0, $([MSBuild]::Subtract($(ProjectRuntimeConfigFileName.Length), 5)))).dev.json" />
-    </ItemGroup>
-  </Target>
+ 
 </Project>

@@ -20,12 +20,14 @@ using System;
 using System.Threading.Tasks;
 using Nethermind.Discovery.Messages;
 using Nethermind.Discovery.RoutingTable;
+using Nethermind.Discovery.Stats;
 
 namespace Nethermind.Discovery.Lifecycle
 {
     public interface INodeLifecycleManager
     {
         Node ManagedNode { get; }
+        INodeStats NodeStats { get; }
         NodeLifecycleState State { get; }
         void ProcessPingMessage(PingMessage discoveryMessage);
         void ProcessPongMessage(PongMessage discoveryMessage);

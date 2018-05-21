@@ -16,18 +16,18 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
-using System.Threading.Tasks;
-using Nethermind.Core.Crypto;
+using Nethermind.Network.P2P;
 
-namespace Nethermind.Network.Rlpx
+namespace Nethermind.Discovery.Stats
 {
-    public interface IRlpxPeer
+    public interface INodeStats
     {
-        Task Shutdown();
-        Task Init();
-        Task ConnectAsync(PublicKey remoteNodeId, string remoteHost, int remotePort);
+        void AddNodeStatsEvent(NodeStatsEvent nodeStatsEvent);
+        void AddNodeStatsDisconnectEvent(DisconnectType disconnectType, DisconnectReason disconnectReason);
 
-        event EventHandler<ConnectionInitializedEventArgs> ConnectionInitialized;
+        long CurrentNodeReputation { get; }
+        long CurrentPersistedNodeReputation { get; set; }
+        long NewPersistedNodeReputation { get; }
+        bool IsReputationPredefied { get; set; }
     }
 }

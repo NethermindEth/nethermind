@@ -63,7 +63,8 @@ namespace Nethermind.Runner
 
                 byte[] chainSpecData = File.ReadAllBytes(path);
                 ChainSpec chainSpec = chainSpecLoader.Load(chainSpecData);
-                discoveryConfigProvider.Bootnodes = chainSpec.Bootnodes;
+                discoveryConfigProvider.NetworkNodes = chainSpec.NetworkNodes;
+                discoveryConfigProvider.DbBasePath = initParams.BaseDbPath;
                 
                 Bootstrap.ConfigureContainer(configProvider, discoveryConfigProvider, PrivateKeyProvider, Logger, initParams);
 
@@ -74,12 +75,12 @@ namespace Nethermind.Runner
                     await _jsonRpcRunner.Start(initParams);
                 }
 
-//                if (initParams.DiscoveryEnabled)
-//                {
-//                    _discoveryRunner = Bootstrap.ServiceProvider.GetService<IDiscoveryRunner>();
-//                    _discoveryRunner.Start(initParams);
-//                }
-                
+                if (initParams.DiscoveryEnabled)
+                {
+                    _discoveryRunner = Bootstrap.ServiceProvider.GetService<IDiscoveryRunner>();
+                    await _discoveryRunner.Start(initParams);
+                }
+
                 _ethereumRunner = Bootstrap.ServiceProvider.GetService<IEthereumRunner>();
                 await _ethereumRunner.Start(initParams);
             }

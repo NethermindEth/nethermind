@@ -289,6 +289,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             _bodiesRequests.CompleteAdding();
         }
 
+        public void Disconnect(DisconnectReason disconnectReason)
+        {
+        }
+
         public event EventHandler ProtocolInitialized;
         public event EventHandler<ProtocolEventArgs> SubprotocolRequested;
 
