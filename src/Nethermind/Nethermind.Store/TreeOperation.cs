@@ -18,7 +18,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 
@@ -105,7 +104,7 @@ namespace Nethermind.Store
         }
 
         // TODO: this can be removed now but is lower priority temporarily while the patricia rewrite testing is in progress
-        private void UpdateHashes(Node node)
+        private void ConnectNodes(Node node)
         {
 //            Keccak previousRootHash = _tree.RootHash;
 
@@ -247,13 +246,13 @@ namespace Nethermind.Store
 
                 if (_updateValue == null)
                 {
-                    UpdateHashes(null);
+                    ConnectNodes(null);
                 }
                 else
                 {
                     Branch newBranch = new Branch(node.Nodes, _updateValue);
                     newBranch.IsDirty = true;
-                    UpdateHashes(newBranch);
+                    ConnectNodes(newBranch);
                 }
 
                 return _updateValue;
@@ -283,7 +282,7 @@ namespace Nethermind.Store
                 byte[] leafPath = _updatePath.Slice(_currentIndex, _updatePath.Length - _currentIndex);
                 Leaf leaf = new Leaf(new HexPrefix(true, leafPath), _updateValue);
                 leaf.IsDirty = true;
-                UpdateHashes(leaf);
+                ConnectNodes(leaf);
 
                 return _updateValue;
             }
@@ -327,7 +326,7 @@ namespace Nethermind.Store
 
                 if (_updateValue == null)
                 {
-                    UpdateHashes(null);
+                    ConnectNodes(null);
                     return _updateValue;
                 }
 
@@ -335,7 +334,7 @@ namespace Nethermind.Store
                 {
                     Leaf newLeaf = new Leaf(new HexPrefix(true, RemainingUpdatePath), _updateValue);
                     newLeaf.IsDirty = true;
-                    UpdateHashes(newLeaf);
+                    ConnectNodes(newLeaf);
                     return _updateValue;
                 }
 
@@ -383,7 +382,7 @@ namespace Nethermind.Store
             Leaf leaf = new Leaf(new HexPrefix(true, leafPath), longerPathValue);
             leaf.IsDirty = true;
             _nodeStack.Push(new StackedNode(branch, longerPath[extensionLength]));
-            UpdateHashes(leaf);
+            ConnectNodes(leaf);
 
             return _updateValue;
         }
@@ -452,7 +451,7 @@ namespace Nethermind.Store
                 branch.Nodes[node.Path[extensionLength]] = node.NextNodeRef;
             }
 
-            UpdateHashes(branch);
+            ConnectNodes(branch);
             return _updateValue;
         }
     }

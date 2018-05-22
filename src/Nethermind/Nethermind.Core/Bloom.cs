@@ -18,7 +18,6 @@
 
 using System;
 using System.Collections;
-using System.Diagnostics;
 using System.Text;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;

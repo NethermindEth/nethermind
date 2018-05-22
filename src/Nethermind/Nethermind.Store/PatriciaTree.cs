@@ -18,7 +18,6 @@
 
 using System;
 using System.Diagnostics;
-using System.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
@@ -37,83 +36,46 @@ namespace Nethermind.Store
                 return;
             }
 
-            Commit(RootRef, true);
+            if (RootRef.IsDirty)
+            {
+                Commit(RootRef, true);
 
-            // reset objects
-            Keccak keccak = RootRef.KeccakOrRlp.GetOrComputeKeccak();
-            SetRootHash(keccak, true);
+                // reset objects
+                Keccak keccak = RootRef.KeccakOrRlp.GetOrComputeKeccak();
+                SetRootHash(keccak, true);
+            }
         }
 
         private void Commit(NodeRef nodeRef, bool isRoot)
         {
             if (nodeRef.IsDirty)
             {
-                Commit(nodeRef.Node); // this will commit subnodes
+                Node node = nodeRef.Node;
+                if (node is Branch branch)
+                {
+                    for (int i = 0; i < 16; i++)
+                    {
+                        NodeRef subnode = branch.Nodes[i];
+                        if (subnode?.IsDirty ?? false)
+                        {
+                            Commit(branch.Nodes[i], false);
+                        }
+                    }
+                }
+                else if (node is Extension extension)
+                {
+                    if (extension.NextNodeRef.IsDirty)
+                    {
+                        Commit(extension.NextNodeRef, false);
+                    }
+                }
+
                 nodeRef.Node.IsDirty = false;
                 nodeRef.ResolveKey();
-                if (nodeRef.KeccakOrRlp.IsKeccak)
+                if (nodeRef.KeccakOrRlp.IsKeccak || isRoot)
                 {
                     _db.Set(nodeRef.KeccakOrRlp.GetOrComputeKeccak(), nodeRef.FullRlp.Bytes);
                 }
-                else
-                {
-                    if (isRoot)
-                    {
-                        _db.Set(nodeRef.KeccakOrRlp.GetOrComputeKeccak(), nodeRef.FullRlp.Bytes);    
-                    }
-                    // this is stored on the branch / extension as a RLP value
-                }
-            }
-        }
-        
-        private void Commit(Node node)
-        {
-            if (!node.IsDirty)
-            {
-                throw new InvalidOperationException("Committing a node that is not dirty");
-            }
-            
-            if (node is Branch branch)
-            {
-                Commit(branch);
-            }
-            else if (node is Extension extension)
-            {
-                Commit(extension);
-            }
-            else if (node is Leaf leaf)
-            {
-                // ignore
-            }
-        }
-        
-        private void Commit(Branch branch)
-        {
-            if (!branch.IsDirty)
-            {
-                throw new InvalidOperationException("Committing a node that is not dirty");
-            }
-
-            for (int i = 0; i < 16; i++)
-            {
-                NodeRef nodeRef = branch.Nodes[i];
-                if (nodeRef?.IsDirty ?? false)
-                {
-                    Commit(branch.Nodes[i], false);
-                }
-            }
-        }
-        
-        private void Commit(Extension extension)
-        {
-            if (!extension.IsDirty)
-            {
-                throw new InvalidOperationException("Committing a node that is not dirty");
-            }
-
-            if (extension.NextNodeRef.IsDirty)
-            {
-                Commit(extension.NextNodeRef, false);
             }
         }
 

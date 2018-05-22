@@ -59,6 +59,19 @@ namespace Nethermind.Store
         
         public Node Node { get; set; }
         public bool IsRoot { get; set; }
-        public bool IsDirty => Node != null && Node.IsDirty; // either unresolved (so just a reference to something in DB) or a new node (marked dirty)
+
+        public bool IsDirty
+        {
+            get
+            {
+                // either unresolved (so just a reference to something in DB) or a new node (marked dirty)
+                if (Node == null)
+                {
+                    return false;
+                }
+
+                return Node.IsDirty;
+            }
+        }
     }
 }

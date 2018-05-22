@@ -19,6 +19,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -73,6 +74,12 @@ namespace Nethermind.Evm
         // can refactor and integrate the other call
         public (byte[] output, TransactionSubstate) Run(EvmState state, IReleaseSpec releaseSpec, TransactionTrace trace)
         {
+            // TODO: review the concept commented below
+            //if (state.Env.CodeInfo.MachineCode.Length == 0 && state.ExecutionType == ExecutionType.Transaction)
+            //{
+            //    return (Bytes.Empty, new TransactionSubstate(0, new Collection<Address>(), new Collection<LogEntry>(), false));
+            //}
+
             _instructionCounter = 0;
             _traceEntry = null;
             _trace = trace;
