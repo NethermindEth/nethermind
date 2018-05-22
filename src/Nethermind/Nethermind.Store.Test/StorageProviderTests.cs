@@ -31,11 +31,12 @@ namespace Nethermind.Store.Test
         private static readonly ILogger Logger = NullLogger.Instance;
         private readonly Address _address1 = new Address(Keccak.Compute("1"));
         private readonly Address _address2 = new Address(Keccak.Compute("2"));
-        private readonly IStateProvider _stateProvider = new StateProvider(new StateTree(new MemDb()), Logger, Substitute.For<IDb>());
+        private IStateProvider _stateProvider;
 
         [SetUp]
         public void Setup()
         {
+            _stateProvider = new StateProvider(new StateTree(new MemDb()), Logger, Substitute.For<IDb>());
             _stateProvider.CreateAccount(_address1, 0);
             _stateProvider.CreateAccount(_address2, 0);
             _stateProvider.Commit(Frontier.Instance);
