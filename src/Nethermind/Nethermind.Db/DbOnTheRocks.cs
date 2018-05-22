@@ -55,9 +55,9 @@ namespace Nethermind.Db
 
         public DbOnTheRocks(string dbPath, byte[] prefix = null) // TODO: check column families
         {
-            if (!Directory.Exists("db"))
+            if (!Directory.Exists(dbPath))
             {
-                Directory.CreateDirectory("db");
+                Directory.CreateDirectory(dbPath);
             }
 
             // options are based mainly from EtheruemJ at the moment
@@ -182,11 +182,25 @@ namespace Nethermind.Db
                 byte[] prefixedIndex = _prefix == null ? key : Bytes.Concat(_prefix, key);
                 if (_currentBatch != null)
                 {
-                    _currentBatch.Put(prefixedIndex, value);
+                    if (value == null)
+                    {
+                        _currentBatch.Delete(prefixedIndex);
+                    }
+                    else
+                    {
+                        _currentBatch.Put(prefixedIndex, value);
+                    }
                 }
                 else
                 {
-                    _db.Put(prefixedIndex, value);
+                    if (value == null)
+                    {
+                        _db.Remove(prefixedIndex);
+                    }
+                    else
+                    {
+                        _db.Put(prefixedIndex, value);
+                    }
                 }
             }
         }

@@ -22,7 +22,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Numerics;
-using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Difficulty;
@@ -192,7 +191,7 @@ namespace Nethermind.PerfTest
 
             public async Task LoadBlocksFromDb(BigInteger? startBlockNumber, int batchSize = BlockTree.DbLoadBatchSize, int maxBlocksToLoad = int.MaxValue)
             {
-                await _blockTree.LoadBlocksFromDb(startBlockNumber, 100000, 100000);
+                await _blockTree.LoadBlocksFromDb(startBlockNumber, batchSize, maxBlocksToLoad);
             }
 
             public AddBlockResult SuggestBlock(Block block)
@@ -275,6 +274,8 @@ namespace Nethermind.PerfTest
 
         private static readonly string FullBlocksDbPath = Path.Combine(DbBasePath, DbOnTheRocks.BlocksDbPath);
         private static readonly string FullBlockInfosDbPath = Path.Combine(DbBasePath, DbOnTheRocks.BlockInfosDbPath);
+
+        private const int BlocksToLoad = 100_000;
 
         private static async Task RunRopstenBlocks()
         {
@@ -362,7 +363,7 @@ namespace Nethermind.PerfTest
                 }
 
                 totalGas += currentHead.GasUsed;
-                if (args.Block.Number % 1000 == 999)
+                if (args.Block.Number % 10000 == 9999)
                 {
                     stopwatch.Stop();
                     long ns = 1_000_000_000L * stopwatch.ElapsedTicks / Stopwatch.Frequency;
@@ -407,13 +408,13 @@ namespace Nethermind.PerfTest
             TaskCompletionSource<object> completionSource = new TaskCompletionSource<object>();
             blockTree.NewBestSuggestedBlock += (sender, args) =>
             {
-                if (args.Block.Number == 100000)
+                if (args.Block.Number == BlocksToLoad)
                 {
                     completionSource.SetResult(null);
                 }
             };
 
-            await Task.WhenAny(completionSource.Task, blockTree.LoadBlocksFromDb(0));
+            await Task.WhenAny(completionSource.Task, blockTree.LoadBlocksFromDb(0, BlocksToLoad, BlocksToLoad));
             blockchainProcessor.Process(blockTree.FindBlock(blockTree.Genesis.Hash, true));
 
             stopwatch.Start();
@@ -433,11 +434,6 @@ namespace Nethermind.PerfTest
 
             stopwatch.Stop();
             Console.ReadLine();
-        }
-
-        private static void BlockTree_NewBestSuggestedBlock(object sender, BlockEventArgs e)
-        {
-            throw new NotImplementedException();
         }
 
         private static void RunTestCase(string name, ExecutionEnvironment env, int iterations)

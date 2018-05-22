@@ -294,9 +294,10 @@ namespace Nethermind.Store
 
         private byte[] TraverseLeaf(Leaf node)
         {
-            (byte[] shorterPath, byte[] longerPath) = RemainingUpdatePath.Length - node.Path.Length < 0
-                ? (RemainingUpdatePath, node.Path)
-                : (node.Path, RemainingUpdatePath);
+            byte[] remaining = RemainingUpdatePath;
+            (byte[] shorterPath, byte[] longerPath) = remaining.Length - node.Path.Length < 0
+                ? (remaining, node.Path)
+                : (node.Path, remaining);
 
             byte[] shorterPathValue;
             byte[] longerPathValue;
@@ -332,7 +333,7 @@ namespace Nethermind.Store
 
                 if (!Bytes.UnsafeCompare(node.Value, _updateValue))
                 {
-                    Leaf newLeaf = new Leaf(new HexPrefix(true, RemainingUpdatePath), _updateValue);
+                    Leaf newLeaf = new Leaf(new HexPrefix(true, remaining), _updateValue);
                     newLeaf.IsDirty = true;
                     ConnectNodes(newLeaf);
                     return _updateValue;
@@ -389,8 +390,9 @@ namespace Nethermind.Store
 
         private byte[] TraverseExtension(Extension node)
         {
+            byte[] remaining = RemainingUpdatePath;
             int extensionLength = 0;
-            for (int i = 0; i < Math.Min(RemainingUpdatePath.Length, node.Path.Length) && RemainingUpdatePath[i] == node.Path[i]; i++, extensionLength++)
+            for (int i = 0; i < Math.Min(remaining.Length, node.Path.Length) && remaining[i] == node.Path[i]; i++, extensionLength++)
             {
             }
 
@@ -427,16 +429,16 @@ namespace Nethermind.Store
 
             Branch branch = new Branch();
             branch.IsDirty = true;
-            if (extensionLength == RemainingUpdatePath.Length)
+            if (extensionLength == remaining.Length)
             {
                 branch.Value = _updateValue;
             }
             else
             {
-                byte[] path = RemainingUpdatePath.Slice(extensionLength + 1, RemainingUpdatePath.Length - extensionLength - 1);
+                byte[] path = remaining.Slice(extensionLength + 1, remaining.Length - extensionLength - 1);
                 Leaf shortLeaf = new Leaf(new HexPrefix(true, path), _updateValue);
                 shortLeaf.IsDirty = true;
-                branch.Nodes[RemainingUpdatePath[extensionLength]] = new NodeRef(shortLeaf);
+                branch.Nodes[remaining[extensionLength]] = new NodeRef(shortLeaf);
             }
 
             if (node.Path.Length - extensionLength > 1)
