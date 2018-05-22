@@ -269,19 +269,19 @@ namespace Nethermind.Store
 
         public byte[] Get(byte[] rawKey)
         {
-            return new TreeOperation(this, Nibbles.FromBytes(rawKey), null, false).Run();
+            return new TreeOperation(this, Nibbles.BytesToNibbleBytes(rawKey), null, false).Run();
         }
 
         [DebuggerStepThrough]
         public void Set(byte[] rawKey, byte[] value)
         {
-            Set(Nibbles.FromBytes(rawKey), value);
+            new TreeOperation(this, Nibbles.BytesToNibbleBytes(rawKey), value, true).Run();
         }
 
         [DebuggerStepThrough]
         public void Set(byte[] rawKey, Rlp value)
         {
-            Set(Nibbles.FromBytes(rawKey), value == null ? new byte[0] : value.Bytes);
+            new TreeOperation(this, Nibbles.BytesToNibbleBytes(rawKey), value == null ? new byte[0] : value.Bytes, true).Run();
         }
 
         internal Node GetNode(KeccakOrRlp keccakOrRlp)

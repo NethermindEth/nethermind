@@ -40,12 +40,8 @@ namespace Nethermind.Core.Encoding
         private static readonly Dictionary<RuntimeTypeHandle, IRlpDecoder> Decoders =
             new Dictionary<RuntimeTypeHandle, IRlpDecoder>
             {
-                [typeof(Account).TypeHandle] = new AccountDecoder(),
-                [typeof(Block).TypeHandle] = new BlockDecoder(),
-                [typeof(BlockHeader).TypeHandle] = new BlockHeaderDecoder(),
                 [typeof(BlockInfo).TypeHandle] = new BlockInfoDecoder(),
                 [typeof(ChainLevelInfo).TypeHandle] = new ChainLevelDecoder(),
-                [typeof(Transaction).TypeHandle] = new TransactionDecoder(),
                 [typeof(TransactionReceipt).TypeHandle] = new TransactionReceiptDecoder(),
                 [typeof(LogEntry).TypeHandle] = new LogEntryDecoder()
             };

@@ -282,22 +282,6 @@ namespace Nethermind.Core.Extensions
             return result;
         }
 
-        public static byte[] ReverseInPlace(this byte[] bytes)
-        {
-            Array.Reverse(bytes);
-            return bytes;
-        }
-
-        // seems that Reverse and additional allocation makes it slower than iteration
-        ////public static BigInteger ToUnsignedBigIntegerSlower(this byte[] bytes, Endianness endianness = Endianness.Big)
-        ////{
-        ////    byte[] unsignedResult = new byte[bytes.Length + 1];
-        ////    Buffer.BlockCopy(bytes, 0, unsignedResult, 1, bytes.Length);
-        ////    Array.Reverse(unsignedResult);
-
-        ////    return new BigInteger(unsignedResult);
-        ////}
-
         public static BigInteger ToUnsignedBigInteger(this Hex hex, Endianness endianness = Endianness.Big)
         {
             return ((byte[])hex).ToUnsignedBigInteger();

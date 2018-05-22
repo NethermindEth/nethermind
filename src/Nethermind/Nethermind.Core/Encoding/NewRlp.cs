@@ -24,11 +24,6 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.Core.Encoding
 {
-    public interface INewRlpDecoder<out T> : IRlpDecoder
-    {
-        T Decode(NewRlp.DecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
-    }
-
     /// <summary>
     /// https://github.com/ethereum/wiki/wiki/RLP
     /// </summary>

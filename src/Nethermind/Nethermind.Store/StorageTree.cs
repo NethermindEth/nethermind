@@ -75,7 +75,7 @@ namespace Nethermind.Store
         {
             if (value.IsZero())
             {
-                Set(GetKey(index), new byte[] { });
+                Set(GetKey(index), Bytes.Empty);
             }
             else
             {

@@ -33,6 +33,19 @@ namespace Nethermind.Store
 
         private readonly Stack<StackedNode> _nodeStack = new Stack<StackedNode>();
 
+        public TreeOperation(PatriciaTree tree, byte[] looseByteArrayOfNibbles, byte[] updateValue, bool isUpdate, bool ignoreMissingDelete = true)
+        {
+            _tree = tree;
+            _updatePath = looseByteArrayOfNibbles;
+            if (isUpdate)
+            {
+                _updateValue = updateValue.Length == 0 ? null : updateValue;
+            }
+
+            _isUpdate = isUpdate;
+            _ignoreMissingDelete = ignoreMissingDelete;
+        }
+
         public TreeOperation(PatriciaTree tree, Nibble[] updatePath, byte[] updateValue, bool isUpdate, bool ignoreMissingDelete = true)
         {
             _tree = tree;

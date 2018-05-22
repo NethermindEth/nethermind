@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -18,22 +18,8 @@
 
 namespace Nethermind.Core.Encoding
 {
-    public class AccountDecoder : IRlpDecoder<Account>
+    public interface INewRlpDecoder<out T> : IRlpDecoder
     {
-        public Account Decode(Rlp rlp)
-        {
-            DecodedRlp data = Rlp.Decode(rlp);
-            return Decode(data);
-        }
-
-        public Account Decode(DecodedRlp data)
-        {
-            Account account = new Account();
-            account.Nonce = data.GetUnsignedBigInteger(0);
-            account.Balance = data.GetUnsignedBigInteger(1);
-            account.StorageRoot = data.GetKeccak(2);
-            account.CodeHash = data.GetKeccak(3);
-            return account;
-        }
+        T Decode(NewRlp.DecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
     }
 }

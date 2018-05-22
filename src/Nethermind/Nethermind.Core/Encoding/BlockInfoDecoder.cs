@@ -16,8 +16,6 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Core.Crypto;
-
 namespace Nethermind.Core.Encoding
 {
     public class BlockInfoDecoder : IRlpDecoder<BlockInfo>

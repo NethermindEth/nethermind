@@ -35,6 +35,18 @@ namespace Nethermind.Core.Extensions
             return nibbles;
         }
 
+        public static byte[] BytesToNibbleBytes(params byte[] bytes)
+        {
+            byte[] nibbles = new byte[2 * bytes.Length];
+            for (int i = 0; i < bytes.Length; i++)
+            {
+                nibbles[i * 2] = (byte)((bytes[i] & 240) >> 4);
+                nibbles[i * 2 + 1] = (byte)(bytes[i] & 15);
+            }
+
+            return nibbles;
+        }
+
         public static Nibble[] FromBytes(byte @byte)
         {
             return new[] {new Nibble((byte) (@byte & 240)), new Nibble((byte) (@byte & 15))};
