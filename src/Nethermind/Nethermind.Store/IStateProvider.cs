@@ -58,5 +58,7 @@ namespace Nethermind.Store
         Keccak UpdateCode(byte[] code);
 
         void ClearCaches(); // TODO: temp while designing DB <-> store interaction
+
+        void CommitTree();
     }
 }

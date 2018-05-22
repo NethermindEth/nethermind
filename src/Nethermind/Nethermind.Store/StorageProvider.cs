@@ -241,6 +241,14 @@ namespace Nethermind.Store
             _storages.Clear();
         }
 
+        public void CommitTrees()
+        {
+            foreach (KeyValuePair<Address, StorageTree> storage in _storages)
+            {
+                storage.Value.Commit();
+            }
+        }
+
         private StorageTree GetOrCreateStorage(Address address)
         {
             if (!_storages.ContainsKey(address))

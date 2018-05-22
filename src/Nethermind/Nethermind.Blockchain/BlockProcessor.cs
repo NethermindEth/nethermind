@@ -98,6 +98,8 @@ namespace Nethermind.Blockchain
                 receiptTree?.Set(Rlp.Encode(i).Bytes, receiptRlp);
             }
 
+            receiptTree?.UpdateRootHash();
+
             block.Receipts = receipts;
             block.Header.ReceiptsRoot = receiptTree?.RootHash ?? PatriciaTree.EmptyTreeHash;
             block.Header.Bloom = receipts.Length > 0 ? TransactionProcessor.BuildBloom(receipts.SelectMany(r => r.Logs).ToArray()) : Bloom.Empty; // TODO not tested anywhere at the time of writing
@@ -117,6 +119,7 @@ namespace Nethermind.Blockchain
                 txTree.Set(Rlp.Encode(i).Bytes, transactionRlp);
             }
 
+            txTree.UpdateRootHash();
             return txTree.RootHash;
         }
 
@@ -271,6 +274,8 @@ namespace Nethermind.Blockchain
                 _logger.Debug($"Committing block - state root {_stateProvider.StateRoot}");
             }
 
+            _stateProvider.CommitTree();
+            _storageProvider.CommitTrees();
             _dbProvider.Commit(_specProvider.GetSpec(suggestedBlock.Number));
             return processedBlock;
         }

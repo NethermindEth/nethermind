@@ -22,7 +22,6 @@ using System.Numerics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Encoding;
 using Nethermind.Core.Specs;
 
 [assembly: InternalsVisibleTo("Nethermind.Store.Test")]
@@ -572,6 +571,11 @@ namespace Nethermind.Store
             _currentPosition = -1;
             _committedThisRound.Clear();
             Array.Clear(_changes, 0, _changes.Length);
+        }
+
+        public void CommitTree()
+        {
+            _state.Commit();
         }
     }
 }
