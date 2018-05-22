@@ -38,7 +38,9 @@ namespace Nethermind.Store
 
             if (RootRef.IsDirty)
             {
+                _db.StartBatch();
                 Commit(RootRef, true);
+                _db.CommitBatch();
 
                 // reset objects
                 Keccak keccak = RootRef.KeccakOrRlp.GetOrComputeKeccak();

@@ -47,6 +47,14 @@ namespace Nethermind.Store
             _db.Remove(key);
         }
 
+        public void StartBatch()
+        {
+        }
+
+        public void CommitBatch()
+        {
+        }
+
         public ICollection<byte[]> Keys => _db.Keys;
         public ICollection<byte[]> Values => _db.Values;
 

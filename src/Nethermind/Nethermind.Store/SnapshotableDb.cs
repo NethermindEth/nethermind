@@ -134,6 +134,16 @@ namespace Nethermind.Store
             PushDelete(new Keccak(key));
         }
 
+        public void StartBatch()
+        {
+            _db.StartBatch();
+        }
+
+        public void CommitBatch()
+        {
+            _db.CommitBatch();
+        }
+
         // TODO: implement
         public ICollection<byte[]> Keys => throw new NotImplementedException();
 

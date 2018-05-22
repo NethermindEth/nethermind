@@ -60,9 +60,28 @@ namespace Nethermind.Db
                 Directory.CreateDirectory("db");
             }
 
+            // options are based mainly from EtheruemJ at the moment
             _prefix = prefix;
+
+            //BlockBasedTableOptions tableOptions = new BlockBasedTableOptions();
+            //tableOptions.SetPinL0FilterAndIndexBlocksInCache(true);
+            //tableOptions.SetBlockSize(16 * 1024);
+            //tableOptions.SetCacheIndexAndFilterBlocks(true);
+            //tableOptions.SetFilterPolicy(BloomFilterPolicy.Create(10, false));
+            //tableOptions.SetFormatVersion(2);
+
             DbOptions options = new DbOptions();
             options.SetCreateIfMissing(true);
+            options.OptimizeForPointLookup(32);
+            //options.SetCompression(CompressionTypeEnum.rocksdb_snappy_compression);
+            //options.SetLevelCompactionDynamicLevelBytes(true);
+            //options.SetMaxBackgroundCompactions(4);
+            //options.SetMaxBackgroundFlushes(2);
+            //options.SetMaxOpenFiles(32);
+            //options.SetBlockBasedTableFactory(tableOptions);
+
+            SliceTransform transform = SliceTransform.CreateFixedPrefix(16);
+            options.SetPrefixExtractor(transform);
 
             _db = DbsByPath.GetOrAdd(dbPath, path => RocksDb.Open(options, Path.Combine("db", path)));
 
@@ -99,68 +118,95 @@ namespace Nethermind.Db
                 switch (_dbInstance)
                 {
                     case DbInstance.State:
-                        Metrics.StateDbReads++;
-                        break;
+                    Metrics.StateDbReads++;
+                    break;
                     case DbInstance.Storage:
-                        Metrics.StorageDbReads++;
-                        break;
+                    Metrics.StorageDbReads++;
+                    break;
                     case DbInstance.BlockInfo:
-                        Metrics.BlockInfosDbReads++;
-                        break;
+                    Metrics.BlockInfosDbReads++;
+                    break;
                     case DbInstance.Block:
-                        Metrics.BlocksDbReads++;
-                        break;
+                    Metrics.BlocksDbReads++;
+                    break;
                     case DbInstance.Code:
-                        Metrics.CodeDbReads++;
-                        break;
+                    Metrics.CodeDbReads++;
+                    break;
                     case DbInstance.Receipts:
-                        Metrics.ReceiptsDbReads++;
-                        break;
+                    Metrics.ReceiptsDbReads++;
+                    break;
                     case DbInstance.Other:
-                        Metrics.OtherDbReads++;
-                        break;
+                    Metrics.OtherDbReads++;
+                    break;
                     default:
-                        throw new ArgumentOutOfRangeException();
+                    throw new ArgumentOutOfRangeException();
                 }
 
-                return _db.Get(_prefix == null ? key : Bytes.Concat(_prefix, key));
+                byte[] prefixedKey = _prefix == null ? key : Bytes.Concat(_prefix, key);
+                if (_currentBatch != null)
+                {
+                    return _currentBatch.Get(prefixedKey);
+                }
+
+                return _db.Get(prefixedKey);
             }
             set
             {
                 switch (_dbInstance)
                 {
                     case DbInstance.State:
-                        Metrics.StateDbWrites++;
-                        break;
+                    Metrics.StateDbWrites++;
+                    break;
                     case DbInstance.Storage:
-                        Metrics.StorageDbWrites++;
-                        break;
+                    Metrics.StorageDbWrites++;
+                    break;
                     case DbInstance.BlockInfo:
-                        Metrics.BlockInfosDbWrites++;
-                        break;
+                    Metrics.BlockInfosDbWrites++;
+                    break;
                     case DbInstance.Block:
-                        Metrics.BlocksDbWrites++;
-                        break;
+                    Metrics.BlocksDbWrites++;
+                    break;
                     case DbInstance.Code:
-                        Metrics.CodeDbWrites++;
-                        break;
+                    Metrics.CodeDbWrites++;
+                    break;
                     case DbInstance.Receipts:
-                        Metrics.ReceiptsDbWrites++;
-                        break;
+                    Metrics.ReceiptsDbWrites++;
+                    break;
                     case DbInstance.Other:
-                        Metrics.OtherDbWrites++;
-                        break;
+                    Metrics.OtherDbWrites++;
+                    break;
                     default:
-                        throw new ArgumentOutOfRangeException();
+                    throw new ArgumentOutOfRangeException();
                 }
 
-                _db.Put(_prefix == null ? key : Bytes.Concat(_prefix, key), value);
+                byte[] prefixedIndex = _prefix == null ? key : Bytes.Concat(_prefix, key);
+                if (_currentBatch != null)
+                {
+                    _currentBatch.Put(prefixedIndex, value);
+                }
+                else
+                {
+                    _db.Put(prefixedIndex, value);
+                }
             }
         }
 
         public void Remove(byte[] key)
         {
             _db.Remove(_prefix == null ? key : Bytes.Concat(_prefix, key));
+        }
+
+        private WriteBatchWithIndex _currentBatch;
+
+        public void StartBatch()
+        {
+            _currentBatch = new WriteBatchWithIndex();
+        }
+
+        public void CommitBatch()
+        {
+            _db.Write(_currentBatch);
+            _currentBatch = null;
         }
 
         public ICollection<byte[]> Keys

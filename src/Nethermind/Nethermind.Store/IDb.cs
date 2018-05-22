@@ -30,6 +30,10 @@ namespace Nethermind.Store
         
         void Remove(byte[] key);
 
+        void StartBatch();
+
+        void CommitBatch();
+
         ICollection<byte[]> Keys { get; }
 
         ICollection<byte[]> Values { get; }
