@@ -18,6 +18,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Numerics;
 using Nethermind.Core.Crypto;
@@ -26,9 +27,9 @@ using Nethermind.Core.Extensions;
 namespace Nethermind.Core.Encoding
 {
     /// <summary>
-    /// https://github.com/ethereum/wiki/wiki/RLP
+    ///     https://github.com/ethereum/wiki/wiki/RLP
     /// </summary>
-    //[DebuggerStepThrough]
+    [DebuggerStepThrough]
     public class Rlp : IEquatable<Rlp>
     {
         public static readonly Rlp OfEmptyByteArray = new Rlp(128);
@@ -94,13 +95,13 @@ namespace Nethermind.Core.Encoding
 
             return rlp.As<T>();
         }
-        
+
         public static T[] DecodeArray<T>(Rlp rlp, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             DecodedRlp decodedRlp = Decode(rlp);
             return DecodeArray<T>(decodedRlp, rlpBehaviors);
         }
-        
+
         public static T[] DecodeArray<T>(DecodedRlp rlp, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             T[] array = new T[rlp.Items.Count];
@@ -126,7 +127,7 @@ namespace Nethermind.Core.Encoding
 
         private static Rlp[] ExtractRlpList(DecoderContext context)
         {
-            var result = new List<Rlp>();
+            List<Rlp> result = new List<Rlp>();
 
             while (context.CurrentIndex < context.MaxIndex)
             {
@@ -156,7 +157,7 @@ namespace Nethermind.Core.Encoding
                 if (prefix <= 183)
                 {
                     int length = prefix - 128;
-                    var content = context.Pop(length);
+                    byte[] content = context.Pop(length);
                     if (content.Length == 1 && content[0] < 128)
                     {
                         throw new RlpException($"Unexpected byte value {content[0]}");
@@ -187,8 +188,8 @@ namespace Nethermind.Core.Encoding
                     }
                 }
 
-                var data = context.Pop(concatenationLength);
-                var itemBytes = new[] {prefix};
+                byte[] data = context.Pop(concatenationLength);
+                byte[] itemBytes = {prefix};
                 if (lenghtBytes != null)
                 {
                     itemBytes = itemBytes.Concat(lenghtBytes).ToArray();
@@ -415,11 +416,13 @@ namespace Nethermind.Core.Encoding
         {
             return value ? new Rlp(1) : new Rlp(128);
         }
-        
+
+
         public static Rlp Encode(byte value)
         {
             return EncodeNumber(value);
         }
+
 
         public static Rlp Encode(long value)
         {
@@ -626,7 +629,7 @@ namespace Nethermind.Core.Encoding
             elements[1] = Encode(levelInfo.BlockInfos);
             return Encode(elements);
         }
-        
+
         public static Rlp Encode(BlockInfo blockInfo)
         {
             Rlp[] elements = new Rlp[4];
@@ -673,7 +676,6 @@ namespace Nethermind.Core.Encoding
 
         public static Rlp Encode(LogEntry logEntry)
         {
-            // TODO: can be slightly optimized in place
             return Encode(
                 Encode(logEntry.LoggersAddress),
                 Encode(logEntry.Topics),

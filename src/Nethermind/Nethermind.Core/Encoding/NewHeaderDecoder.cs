@@ -26,8 +26,12 @@ namespace Nethermind.Core.Encoding
     {
         public BlockHeader Decode(NewRlp.DecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
+            byte[] headerRlp = context.ReadSequenceRlp();
+            context.Position -= headerRlp.Length;
+
             long headerSequenceLength = context.ReadSequenceLength();
             long headerCheck = context.Position + headerSequenceLength;
+
             Keccak parentHash = context.ReadKeccak();
             Keccak ommersHash = context.ReadKeccak();
             Address beneficiary = context.ReadAddress();
@@ -66,7 +70,7 @@ namespace Nethermind.Core.Encoding
             blockHeader.GasUsed = (long)gasUsed;
             blockHeader.MixHash = mixHash;
             blockHeader.Nonce = (ulong)nonce;
-            blockHeader.Hash = BlockHeader.CalculateHash(blockHeader);
+            blockHeader.Hash = BlockHeader.CalculateHash(new Rlp(headerRlp));
             return blockHeader;
         }
     }

@@ -65,7 +65,9 @@ namespace Nethermind.Store
 
         public Keccak GetRoot(Address address)
         {
-            return GetOrCreateStorage(address).RootHash;
+            StorageTree storageTree = GetOrCreateStorage(address);
+            storageTree.UpdateRootHash();
+            return storageTree.RootHash;
         }
 
         public int TakeSnapshot()
@@ -237,6 +239,14 @@ namespace Nethermind.Store
             _committedThisRound.Clear();
             Array.Clear(_changes, 0, _changes.Length);
             _storages.Clear();
+        }
+
+        public void CommitTrees()
+        {
+            foreach (KeyValuePair<Address, StorageTree> storage in _storages)
+            {
+                storage.Value.Commit();
+            }
         }
 
         private StorageTree GetOrCreateStorage(Address address)

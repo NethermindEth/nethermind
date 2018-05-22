@@ -158,6 +158,7 @@ namespace Ethereum.Trie.Test
                 patriciaTree.Set(key, value);
             }
 
+            patriciaTree.UpdateRootHash();
             Assert.AreEqual(test.ExpectedRoot, patriciaTree.RootHash.ToString());
         }
 
@@ -177,6 +178,7 @@ namespace Ethereum.Trie.Test
                 new byte[] { 0x01, 0x01, 0x02 },
                 Rlp.Encode(new object[] { "hello" }));
 
+            patriciaTree.UpdateRootHash();
             Assert.AreEqual("0x15da97c42b7ed2e1c0c8dab6a6d7e3d9dc0a75580bbc4f1f29c33996d1415dcc",
                 patriciaTree.RootHash.ToString());
         }
@@ -189,6 +191,7 @@ namespace Ethereum.Trie.Test
                 new byte[] { 0x01, 0x01, 0x02 },
                 Rlp.Encode(new object[] { "hello" }));
 
+            patriciaTree.Commit();
             PatriciaTree another = new PatriciaTree(_db, patriciaTree.RootHash);
             Assert.AreEqual(((Leaf)patriciaTree.Root).Key.ToString(), ((Leaf)another.Root).Key.ToString());
             Assert.AreEqual(Keccak.Compute(((Leaf)patriciaTree.Root).Value),
@@ -207,6 +210,7 @@ namespace Ethereum.Trie.Test
                 new byte[] { 0x01, 0x01, 0x02 },
                 Rlp.Encode(new object[] { "hellothere" }));
 
+            patriciaTree.Commit();
             Assert.AreEqual("0x05e13d8be09601998499c89846ec5f3101a1ca09373a5f0b74021261af85d396",
                 patriciaTree.RootHash.ToString());
         }
@@ -225,9 +229,10 @@ namespace Ethereum.Trie.Test
 
             Extension extension = patriciaTree.Root as Extension;
             Assert.NotNull(extension);
-            Branch branch = patriciaTree.GetNode(extension.NextNode) as Branch;
+            Branch branch = extension.NextNodeRef?.Node as Branch;
             Assert.NotNull(branch);
 
+            patriciaTree.UpdateRootHash();
             Assert.AreEqual("0xb5e187f15f1a250e51a78561e29ccfc0a7f48e06d19ce02f98dd61159e81f71d",
                 patriciaTree.RootHash.ToString());
         }
@@ -246,7 +251,7 @@ namespace Ethereum.Trie.Test
 
             Extension extension = patriciaTree.Root as Extension;
             Assert.NotNull(extension);
-            Branch branch = patriciaTree.GetNode(extension.NextNode) as Branch;
+            Branch branch = extension.NextNodeRef?.Node as Branch;
             Assert.NotNull(branch);
         }
 
@@ -264,9 +269,10 @@ namespace Ethereum.Trie.Test
 
             Extension extension = patriciaTree.Root as Extension;
             Assert.NotNull(extension);
-            Branch branch = patriciaTree.GetNode(extension.NextNode) as Branch;
+            Branch branch = extension.NextNodeRef?.Node as Branch;
             Assert.NotNull(branch);
 
+            patriciaTree.UpdateRootHash();
             Assert.AreEqual("0x17fe8af9c6e73de00ed5fd45d07e88b0c852da5dd4ee43870a26c39fc0ec6fb3",
                 patriciaTree.RootHash.ToString());
         }
@@ -287,6 +293,7 @@ namespace Ethereum.Trie.Test
                 new byte[] { 0x01, 0x01, 0x02, 0x57 },
                 Rlp.Encode(new object[] { "jimbojones" }));
 
+            patriciaTree.Commit();
             Assert.AreEqual("0xfcb2e3098029e816b04d99d7e1bba22d7b77336f9fe8604f2adfb04bcf04a727",
                 patriciaTree.RootHash.ToString());
         }
@@ -303,6 +310,7 @@ namespace Ethereum.Trie.Test
         {
             PatriciaTree patriciaTree = new PatriciaTree(_db);
             patriciaTree.Set(Keccak.Compute("1").Bytes, new byte[0]);
+            patriciaTree.Commit();
             Assert.AreEqual(PatriciaTree.EmptyTreeHash, patriciaTree.RootHash);
         }
 
@@ -310,7 +318,7 @@ namespace Ethereum.Trie.Test
         public void Assigning_null_value_in_branch_throws_an_exception()
         {
             // ReSharper disable once ObjectCreationAsStatement
-            Assert.Throws<ArgumentNullException>(() => new Branch(new KeccakOrRlp[16], null));
+            Assert.Throws<ArgumentNullException>(() => new Branch(new NodeRef[16], null));
 
             Branch branch = new Branch();
             Assert.Throws<ArgumentNullException>(() => branch.Value = null);
@@ -333,8 +341,10 @@ namespace Ethereum.Trie.Test
             PatriciaTree patriciaTree = new PatriciaTree(_db);
             patriciaTree.Set(new Nibble[] { 1, 2, 3, 4 }, new byte[] { 1 });
             patriciaTree.Set(new Nibble[] { 1, 2, 3, 4, 5 }, new byte[] { 2 });
+            patriciaTree.UpdateRootHash();
             Keccak rootBefore = patriciaTree.RootHash;
             patriciaTree.Set(new Nibble[] { 1, 2, 3 }, new byte[] { });
+            patriciaTree.UpdateRootHash();
             Assert.AreEqual(rootBefore, patriciaTree.RootHash);
         }
 
@@ -344,8 +354,10 @@ namespace Ethereum.Trie.Test
             PatriciaTree patriciaTree = new PatriciaTree(_db);
             patriciaTree.Set(Keccak.Compute("1234567").Bytes, new byte[] { 1 });
             patriciaTree.Set(Keccak.Compute("1234501").Bytes, new byte[] { 2 });
+            patriciaTree.UpdateRootHash();
             Keccak rootBefore = patriciaTree.RootHash;
             patriciaTree.Set(Keccak.Compute("1234502").Bytes, new byte[0]);
+            patriciaTree.UpdateRootHash();
             Assert.AreEqual(rootBefore, patriciaTree.RootHash);
         }
 
@@ -353,9 +365,9 @@ namespace Ethereum.Trie.Test
         public void Lookup_in_empty_tree()
         {
             PatriciaTree tree = new PatriciaTree(new MemDb());
-            Assert.AreEqual(tree.Root, null);
+            Assert.AreEqual(tree.RootRef, null);
             tree.Get(new byte[] { 1 });
-            Assert.AreEqual(tree.Root, null);
+            Assert.AreEqual(tree.RootRef, null);
         }
 
         public class TrieTestJson

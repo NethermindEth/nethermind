@@ -26,6 +26,7 @@ using System.Runtime.CompilerServices;
 namespace Nethermind.Core.Extensions
 {
     // TODO: move to ByteArrayExtensions and ByteExtensions
+    [DebuggerStepThrough]
     public static class Bytes
     {
         public static readonly IEqualityComparer<byte[]> EqualityComparer = new BytesEqualityComparer();

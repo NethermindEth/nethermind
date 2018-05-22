@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Diagnostics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
@@ -27,14 +28,17 @@ namespace Nethermind.Store
     {   
         private readonly NewAccountDecoder _decoder = new NewAccountDecoder();
         
+        [DebuggerStepThrough]
         public StateTree(IDb db) : base(db)
         {
         }
 
+        [DebuggerStepThrough]
         public StateTree(Keccak rootHash, IDb db) : base(db, rootHash)
         {
         }
 
+        [DebuggerStepThrough]
         public Account Get(Address address)
         {
             byte[] bytes = Get(Keccak.Compute((byte[])address.Hex).Bytes);
@@ -45,15 +49,30 @@ namespace Nethermind.Store
 
             return _decoder.Decode(bytes.AsRlpContext());
         }
-
-        public void Set(Address address, Account account)
+        
+        [DebuggerStepThrough]
+        internal Account Get(Keccak keccak) // for testing
         {
-            Set(Keccak.Compute((byte[])address.Hex), account == null ? null : Rlp.Encode(account));
+            byte[] bytes = Get(keccak.Bytes);
+            if (bytes == null)
+            {
+                return null;
+            }
+
+            return _decoder.Decode(bytes.AsRlpContext());
         }
 
-        public void Set(Keccak addressHash, Rlp rlp)
+        [DebuggerStepThrough]
+        public void Set(Address address, Account account)
         {
-            base.Set(addressHash.Bytes, rlp);
+            Keccak keccak = Keccak.Compute((byte[])address.Hex);
+            Set(keccak.Bytes, account == null ? null : Rlp.Encode(account));
+        }
+        
+        [DebuggerStepThrough]
+        internal void Set(Keccak keccak, Account account) // for testing
+        {
+            Set(keccak.Bytes, account == null ? null : Rlp.Encode(account));
         }
     }
 }

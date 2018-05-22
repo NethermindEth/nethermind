@@ -121,7 +121,8 @@ namespace Nethermind.Core.Extensions
         public static int GetXxHashCode(this byte[] bytes)
         {
             LazyInitializer.EnsureInitialized(ref _xxHash, XXHash32.Create);
-            return BitConverter.ToInt32(_xxHash.ComputeHash(bytes), 0);
+            byte[] hash = _xxHash.ComputeHash(bytes);
+            return (hash[0] >> 24) | (hash[1] >> 16) | (hash[2] >> 8) | hash[3];
         }
     }
 }

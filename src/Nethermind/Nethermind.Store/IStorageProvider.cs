@@ -30,5 +30,7 @@ namespace Nethermind.Store
         Keccak GetRoot(Address address);
         
         void ClearCaches(); // TODO: temp while designing DB <-> store interaction
+
+        void CommitTrees();
     }
 }

@@ -65,6 +65,11 @@ namespace Nethermind.Core
         public BigInteger? TotalDifficulty { get; set; }
         public BigInteger? TotalTransactions { get; set; }
 
+        public static Keccak CalculateHash(Rlp headerRlp)
+        {
+            return Keccak.Compute(headerRlp);
+        }
+
         public static Keccak CalculateHash(BlockHeader header)
         {
             return Keccak.Compute(Rlp.Encode(header));

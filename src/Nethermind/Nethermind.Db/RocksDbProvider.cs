@@ -29,6 +29,7 @@ namespace Nethermind.Db
     {
         private readonly ISnapshotableDb _stateDb;
         private readonly ISnapshotableDb _codeDb;
+        // TODO: replace with one storage DB
         private readonly Dictionary<Address, ISnapshotableDb> _storageDbs = new Dictionary<Address, ISnapshotableDb>();
         private IEnumerable<ISnapshotableDb> AllDbs
         {
@@ -68,8 +69,6 @@ namespace Nethermind.Db
         private readonly string _dbBasePath;
         private readonly ILogger _logger;
 
-        internal Stack<Dictionary<ISnapshotableDb, int>> Snapshots { get; } = new Stack<Dictionary<ISnapshotableDb, int>>();
-
         public RocksDbProvider(string dbBasePath, ILogger logger)
         {
             _logger = logger;
@@ -81,50 +80,24 @@ namespace Nethermind.Db
         public void Restore(int snapshot)
         {
             if (_logger.IsDebugEnabled) _logger.Debug($"Restoring all DBs to {snapshot}");
-
-            while (Snapshots.Count != snapshot)
-            {
-                Snapshots.Pop();
-            }
-
-            Dictionary<ISnapshotableDb, int> dbSnapshots = Snapshots.Pop();
             foreach (ISnapshotableDb db in AllDbs)
             {
-                db.Restore(dbSnapshots.ContainsKey(db) ? dbSnapshots[db] : -1);
+                db.Restore(-1);
             }
         }
 
         public void Commit(IReleaseSpec spec)
         {
             if (_logger.IsDebugEnabled) _logger.Debug("Committing all DBs");
-
             foreach (ISnapshotableDb db in AllDbs)
             {
                 db.Commit(spec);
             }
-
-            Snapshots.Pop();
         }
 
         public int TakeSnapshot()
         {
-            Dictionary<ISnapshotableDb, int> dbSnapshots = new Dictionary<ISnapshotableDb, int>();
-            foreach (ISnapshotableDb db in AllDbs)
-            {
-                int dbSnapshot = db.TakeSnapshot();
-                if (dbSnapshot == -1)
-                {
-                    continue;
-                }
-
-                dbSnapshots.Add(db, dbSnapshot);
-            }
-
-            Snapshots.Push(dbSnapshots);
-
-            int snapshot = Snapshots.Count;
-            if (_logger.IsDebugEnabled) _logger.Debug($"Taking DB snapshot at {snapshot}");
-            return snapshot;
+            return -1;
         }
     }
 }
