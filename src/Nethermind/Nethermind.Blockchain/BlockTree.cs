@@ -32,7 +32,10 @@ namespace Nethermind.Blockchain
 {
     public class BlockTree : IBlockTree
     {
-        private readonly BlockCache _blockCache = new BlockCache(16);
+        // TODO: automatically wrap DBs with caches
+        private readonly LruCache<Keccak, Block> _blockCache = new LruCache<Keccak, Block>(8);
+        private readonly LruCache<BigInteger, ChainLevelInfo> _blockInfoCache = new LruCache<BigInteger, ChainLevelInfo>(8);
+        private readonly LruCache<Keccak, TransactionReceipt[]> _receiptsCache = new LruCache<Keccak, TransactionReceipt[]>(8);
 
         private const int MaxQueueSize = 1_000_000;
         
@@ -272,6 +275,7 @@ namespace Nethermind.Blockchain
             if (receipts != null)
             {
                 IReleaseSpec spec = _specProvider.GetSpec(number);
+                _receiptsCache.Set(blockHash, receipts);
                 _receiptsDb.Set(blockHash, Rlp.Encode(receipts.Select(r => Rlp.Encode(r, spec.IsEip658Enabled)).ToArray()).Bytes);
             }
         }
@@ -419,25 +423,25 @@ namespace Nethermind.Blockchain
                 level = new ChainLevelInfo(false, new[] {blockInfo});
             }
 
-            _blockInfoDb.Set(number, Rlp.Encode(level).Bytes);
+            UpdateLevel(number, level);
         }
 
         private void UpdateLevel(BigInteger number, ChainLevelInfo level)
         {
+            _blockInfoCache.Set(number, level);
             _blockInfoDb.Set(number, Rlp.Encode(level).Bytes);
         }
 
         private (BlockInfo Info, ChainLevelInfo Level) LoadInfo(BigInteger number, Keccak blockHash)
         {
-            byte[] levelBytes = _blockInfoDb.Get(number);
-            if (levelBytes == null)
+            ChainLevelInfo chainLevelInfo = LoadLevel(number);
+            if (chainLevelInfo == null)
             {
                 return (null, null);
             }
 
-            ChainLevelInfo level = Rlp.Decode<ChainLevelInfo>(new Rlp(levelBytes));
-            int? index = FindIndex(blockHash, level);
-            return index.HasValue ? (level.BlockInfos[index.Value], level) : (null, level);
+            int? index = FindIndex(blockHash, chainLevelInfo);
+            return index.HasValue ? (chainLevelInfo.BlockInfos[index.Value], chainLevelInfo) : (null, chainLevelInfo);
         }
 
         private int? FindIndex(Keccak blockHash, ChainLevelInfo level)
@@ -455,8 +459,19 @@ namespace Nethermind.Blockchain
 
         private ChainLevelInfo LoadLevel(BigInteger number)
         {
-            byte[] data = _blockInfoDb.Get(number);
-            return data == null ? null : Rlp.Decode<ChainLevelInfo>(new Rlp(data));
+            ChainLevelInfo chainLevelInfo = _blockInfoCache.Get(number);
+            if (chainLevelInfo == null)
+            {
+                byte[] levelBytes = _blockInfoDb.Get(number);
+                if (levelBytes == null)
+                {
+                    return null;
+                }
+
+                chainLevelInfo = Rlp.Decode<ChainLevelInfo>(new Rlp(levelBytes));
+            }
+
+            return chainLevelInfo;
         }
 
         // TODO: use headers store or some simplified RLP decoder for number only or hash to number store
@@ -530,17 +545,14 @@ namespace Nethermind.Blockchain
                 block.Header.TotalTransactions = blockInfo.TotalTransactions;
             }
 
-            byte[] receiptsData = _receiptsDb.Get(block.Hash);
-            if (receiptsData != null)
+            TransactionReceipt[] receipts = _receiptsCache.Get(block.Hash);
+            if (receipts == null)
             {
-                TransactionReceipt[] receipts = Rlp.DecodeArray<TransactionReceipt>(new Rlp(receiptsData));
-                block.Receipts = receipts;
-            }
-            else
-            {
-                block.Receipts = new TransactionReceipt[0];
+                byte[] receiptsData = _receiptsDb.Get(block.Hash);
+                receipts = receiptsData == null ? null : Rlp.DecodeArray<TransactionReceipt>(new Rlp(receiptsData));
             }
 
+            block.Receipts = receipts ?? new TransactionReceipt[0];
             return (block, blockInfo, level);
         }
 
