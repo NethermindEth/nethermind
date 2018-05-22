@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.Core;
 using Nethermind.Core.Specs;
 
 namespace Nethermind.Evm
@@ -23,5 +24,6 @@ namespace Nethermind.Evm
     public interface IVirtualMachine
     {
         (byte[] output, TransactionSubstate) Run(EvmState state, IReleaseSpec spec, TransactionTrace trace);
+        CodeInfo GetCachedCodeInfo(Address codeSource); // TODO: this needs to be removed when we refine the API around making calls
     }
 }

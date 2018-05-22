@@ -45,8 +45,6 @@ namespace Nethermind.Evm
         private static readonly byte[] EmptyBytes = new byte[0];
         private static readonly byte[] BytesOne = { 1 };
         private static readonly byte[] BytesZero = { 0 };
-        private static BitArray _bits1 = new BitArray(256);
-        private static BitArray _bits2 = new BitArray(256);
         private readonly IBlockhashProvider _blockhashProvider;
         private readonly ISpecProvider _specProvider;
         private readonly ILogger _logger;
@@ -59,6 +57,7 @@ namespace Nethermind.Evm
         private int _instructionCounter;
         private TransactionTrace _trace;
         private TransactionTraceEntry _traceEntry;
+        private readonly LruCache<Keccak, CodeInfo> _codeCache = new LruCache<Keccak, CodeInfo>(32 * 1024);
 
         public VirtualMachine(ISpecProvider specProvider, IStateProvider stateProvider, IStorageProvider storageProvider, IBlockhashProvider blockhashProvider, ILogger logger)
         {
@@ -889,15 +888,15 @@ namespace Nethermind.Evm
                             }
 
                             byte[] b = PopBytes();
-                            b.ToBigEndianBitArray256(ref _bits1);
+                            BitArray bits1 = b.ToBigEndianBitArray256(); 
                             int bitPosition = Math.Max(0, 248 - 8 * (int)a);
-                            bool isSet = _bits1[bitPosition];
+                            bool isSet = bits1[bitPosition];
                             for (int i = 0; i < bitPosition; i++)
                             {
-                                _bits1[i] = isSet;
+                                bits1[i] = isSet;
                             }
 
-                            PushBytes(_bits1.ToBytes());
+                            PushBytes(bits1.ToBytes());
                             break;
                         }
                     case Instruction.LT:
@@ -950,25 +949,25 @@ namespace Nethermind.Evm
                     case Instruction.AND:
                         {
                             UpdateGas(GasCostOf.VeryLow, ref gasAvailable);
-                            PopBytes().ToBigEndianBitArray256(ref _bits1);
-                            PopBytes().ToBigEndianBitArray256(ref _bits2);
-                            PushBytes(_bits1.And(_bits2).ToBytes());
+                            BitArray bits1 = PopBytes().ToBigEndianBitArray256();
+                            BitArray bits2 = PopBytes().ToBigEndianBitArray256();
+                            PushBytes(bits1.And(bits2).ToBytes());
                             break;
                         }
                     case Instruction.OR:
                         {
                             UpdateGas(GasCostOf.VeryLow, ref gasAvailable);
-                            PopBytes().ToBigEndianBitArray256(ref _bits1);
-                            PopBytes().ToBigEndianBitArray256(ref _bits2);
-                            PushBytes(_bits1.Or(_bits2).ToBytes());
+                            BitArray bits1 = PopBytes().ToBigEndianBitArray256();
+                            BitArray bits2 = PopBytes().ToBigEndianBitArray256();
+                            PushBytes(bits1.Or(bits2).ToBytes());
                             break;
                         }
                     case Instruction.XOR:
                         {
                             UpdateGas(GasCostOf.VeryLow, ref gasAvailable);
-                            PopBytes().ToBigEndianBitArray256(ref _bits1);
-                            PopBytes().ToBigEndianBitArray256(ref _bits2);
-                            PushBytes(_bits1.Xor(_bits2).ToBytes());
+                            BitArray bits1 = PopBytes().ToBigEndianBitArray256();
+                            BitArray bits2 = PopBytes().ToBigEndianBitArray256();
+                            PushBytes(bits1.Xor(bits2).ToBytes());
                             break;
                         }
                     case Instruction.NOT:
@@ -1740,7 +1739,7 @@ namespace Nethermind.Evm
                             callEnv.TransferValue = transferValue;
                             callEnv.Value = callValue;
                             callEnv.InputData = callData;
-                            callEnv.CodeInfo = isPrecompile ? new CodeInfo(codeSource) : new CodeInfo(_state.GetCode(codeSource));
+                            callEnv.CodeInfo = isPrecompile ? new CodeInfo(codeSource) : GetCachedCodeInfo(codeSource);
 
                             BigInteger callGas = transferValue.IsZero ? gasLimitUl : gasLimitUl + GasCostOf.CallStipend;
                             if (_logger.IsDebugEnabled)
@@ -1868,6 +1867,19 @@ namespace Nethermind.Evm
 
             UpdateCurrentState();
             return CallResult.Empty;
+        }
+
+        public CodeInfo GetCachedCodeInfo(Address codeSource)
+        {
+            Keccak codeHash = _state.GetCodeHash(codeSource);
+            CodeInfo cachedCodeInfo = _codeCache.Get(codeHash);
+            if (cachedCodeInfo == null)
+            {
+                cachedCodeInfo = new CodeInfo(_state.GetCode(codeHash));
+                _codeCache.Set(codeHash, cachedCodeInfo);
+            }
+
+            return cachedCodeInfo;
         }
     }
 

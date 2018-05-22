@@ -200,7 +200,7 @@ namespace Nethermind.Evm
                     }
                 }
 
-                if (transaction.IsTransfer)
+                if (transaction.IsTransfer) // TODO: this is never called and wrong, to be removed
                 {
                     _stateProvider.UpdateBalance(sender, -value, spec);
                     _stateProvider.UpdateBalance(recipient, value, spec);
@@ -218,7 +218,7 @@ namespace Nethermind.Evm
                     env.CurrentBlock = block;
                     env.GasPrice = gasPrice;
                     env.InputData = data ?? new byte[0];
-                    env.CodeInfo = isPrecompile ? new CodeInfo(recipient) : new CodeInfo(machineCode ?? _stateProvider.GetCode(recipient));
+                    env.CodeInfo = isPrecompile ? new CodeInfo(recipient) : machineCode == null ? _virtualMachine.GetCachedCodeInfo(recipient) : new CodeInfo(machineCode);
                     env.Originator = sender;
 
                     ExecutionType executionType = isPrecompile

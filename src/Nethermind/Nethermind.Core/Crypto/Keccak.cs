@@ -151,7 +151,7 @@ namespace Nethermind.Core.Crypto
 
                 hash = hash ^ Bytes[0] * p;
                 hash = hash ^ Bytes[Size / 2] * p;
-                hash = hash ^ Bytes[31] * p;
+                hash = hash ^ Bytes[Size - 1] * p;
                 return hash;
             }
         }

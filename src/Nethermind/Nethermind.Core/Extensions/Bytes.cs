@@ -76,9 +76,7 @@ namespace Nethermind.Core.Extensions
                 return true;
             }
 
-            if (a1 == null || a2 ==
-                
-                null || a1.Length != a2.Length)
+            if (a1 == null || a2 == null || a1.Length != a2.Length)
             {
                 return false;
             }
@@ -413,57 +411,52 @@ namespace Nethermind.Core.Extensions
             return result;
         }
 
+        private static byte Reverse(byte b) {
+            b = (byte)((b & 0xF0) >> 4 | (b & 0x0F) << 4);
+            b = (byte)((b & 0xCC) >> 2 | (b & 0x33) << 2);
+            b = (byte)((b & 0xAA) >> 1 | (b & 0x55) << 1);
+            return b;
+        }
+        
         public static byte[] ToBytes(this BitArray bits)
         {
             if (bits.Length % 8 != 0)
             {
                 throw new ArgumentException(nameof(bits));
             }
-
+            
             byte[] bytes = new byte[bits.Length / 8];
-            for (int i = 0; i < bits.Length; i++)
+            bits.CopyTo(bytes, 0);
+            for (int i = 0; i < bytes.Length; i++)
             {
-                if (bits[i])
-                {
-                    bytes[i / 8] |= (byte)(1 << (7 - i % 8));
-                }
+                bytes[i] = Reverse(bytes[i]);
             }
-
+            
             return bytes;
-        }
-
-        public static void ToBigEndianBitArray256(this byte[] bytes, ref BitArray bitArray)
-        {
-            bitArray.SetAll(false);
-            int startIndex = 256 - bytes.Length * 8;
-            for (int i = startIndex; i < 256; i++)
-            {
-                bitArray[i] = bytes[(i - startIndex) / 8].GetBit(i % 8);
-            }
-        }
-
-        public static void ToBigEndianBitArray2048(this byte[] bytes, ref BitArray bitArray)
-        {
-            bitArray.SetAll(false);
-            int startIndex = 2048 - bytes.Length * 8;
-            for (int i = startIndex; i < 2048; i++)
-            {
-                bitArray[i] = bytes[(i - startIndex) / 8].GetBit(i % 8);
-            }
         }
 
         public static BitArray ToBigEndianBitArray256(this byte[] bytes)
         {
-            BitArray bitArray = new BitArray(256);
-            ToBigEndianBitArray256(bytes, ref bitArray);
-            return bitArray;
+            byte[] inverted = new byte[32];
+            int startIndex = 32 - bytes.Length;
+            for (int i = startIndex; i < inverted.Length; i++)
+            {
+                inverted[i] = Reverse(bytes[i - startIndex]);
+            }
+            
+            return new BitArray(inverted);
         }
 
         public static BitArray ToBigEndianBitArray2048(this byte[] bytes)
         {
-            BitArray bitArray = new BitArray(2048);
-            ToBigEndianBitArray2048(bytes, ref bitArray);
-            return bitArray;
+            byte[] inverted = new byte[256];
+            int startIndex = 256 - bytes.Length;
+            for (int i = startIndex; i < inverted.Length; i++)
+            {
+                inverted[i] = Reverse(bytes[i - startIndex]);
+            }
+            
+            return new BitArray(inverted);
         }
     }
 }

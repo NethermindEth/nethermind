@@ -48,6 +48,11 @@ namespace Nethermind.Core
         {
             return Keccak.Compute(Rlp.Encode(transaction));
         }
+        
+        public static Keccak CalculateHash(Rlp rlp)
+        {
+            return Keccak.Compute(rlp);
+        }
 
         public string ToString(string indent)
         {

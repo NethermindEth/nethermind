@@ -23,7 +23,6 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.Evm
 {
-    // TODO: test this now after jd were moved here
     public class CodeInfo
     {
         private BitArray _validJumpDestinations;
@@ -31,7 +30,6 @@ namespace Nethermind.Evm
         public CodeInfo(byte[] code)
         {
             MachineCode = code;
-            // jump destinations
         }
         
         public CodeInfo(Address precompileAddress)

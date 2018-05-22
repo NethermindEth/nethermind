@@ -537,10 +537,10 @@ namespace Nethermind.Core.Encoding
             public DecoderContext(byte[] data)
             {
                 _data = data;
-                Position = 0;
             }
 
             private readonly byte[] _data;
+            public byte[] Data => _data;
             public int Position { get; set; }
             public int Length => _data.Length;
             public bool IsNull => _data == null; // TODO: temp 16/05/2018

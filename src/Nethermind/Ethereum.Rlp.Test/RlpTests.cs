@@ -17,6 +17,7 @@
  */
 
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -24,6 +25,7 @@ using Ethereum.Test.Base;
 using Nethermind.Core;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
 
 namespace Ethereum.Rlp.Test

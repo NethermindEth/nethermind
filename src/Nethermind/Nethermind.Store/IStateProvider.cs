@@ -43,6 +43,8 @@ namespace Nethermind.Store
         
         Keccak GetStorageRoot(Address address);
 
+        Keccak GetCodeHash(Address address);
+        
         byte[] GetCode(Address address);
 
         byte[] GetCode(Keccak codeHash);
@@ -57,7 +59,7 @@ namespace Nethermind.Store
 
         Keccak UpdateCode(byte[] code);
 
-        void ClearCaches(); // TODO: temp while designing DB <-> store interaction
+        void Reset();
 
         void CommitTree();
     }

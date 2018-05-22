@@ -28,14 +28,14 @@ using Nethermind.Core.Specs;
 
 namespace Nethermind.Store
 {
-    // TODO: separate CodeProvider out
+    // TODO: separate CodeProvider out?
     public class StateProvider : IStateProvider
     {
         private const int StartCapacity = 1024;
 
-        private readonly LruCache<Address, Account> _stateCache = new LruCache<Address, Account>(1024 * 1024); // ~100MB
-        private readonly Dictionary<Address, Stack<int>> _cache = new Dictionary<Address, Stack<int>>();
+        private readonly LruCache<Address, Account> _longTermCache = new LruCache<Address, Account>(1024 * 1024); // ~100MB
 
+        private readonly Dictionary<Address, Stack<int>> _intraBlockCache = new Dictionary<Address, Stack<int>>();
         private readonly HashSet<Address> _committedThisRound = new HashSet<Address>();
 
         private readonly List<Change> _keptInCache = new List<Change>();
@@ -63,9 +63,9 @@ namespace Nethermind.Store
 
         public bool AccountExists(Address address)
         {
-            if (_cache.ContainsKey(address))
+            if (_intraBlockCache.ContainsKey(address))
             {
-                return _changes[_cache[address].Peek()].ChangeType != ChangeType.Delete;
+                return _changes[_intraBlockCache[address].Peek()].ChangeType != ChangeType.Delete;
             }
 
             return GetAndAddToCache(address) != null;
@@ -202,6 +202,12 @@ namespace Nethermind.Store
             return codeHash;
         }
 
+        public Keccak GetCodeHash(Address address)
+        {
+            Account account = GetThroughCache(address);
+            return account?.CodeHash ?? Keccak.OfAnEmptyString;
+        }
+
         public byte[] GetCode(Keccak codeHash)
         {
             if (codeHash == Keccak.OfAnEmptyString)
@@ -258,16 +264,16 @@ namespace Nethermind.Store
             for (int i = 0; i < _currentPosition - snapshot; i++)
             {
                 Change change = _changes[_currentPosition - i];
-                if (_cache[change.Address].Count == 1)
+                if (_intraBlockCache[change.Address].Count == 1)
                 {
                     if (change.ChangeType == ChangeType.JustCache)
                     {
-                        int actualPosition = _cache[change.Address].Pop();
+                        int actualPosition = _intraBlockCache[change.Address].Pop();
                         if (actualPosition != _currentPosition - i)
                         {
                             throw new InvalidOperationException($"Expected actual position {actualPosition} to be equal to {_currentPosition} - {i}");
                         }
-                        
+
                         _keptInCache.Add(change);
                         _changes[actualPosition] = null;
                         continue;
@@ -275,15 +281,15 @@ namespace Nethermind.Store
                 }
 
                 _changes[_currentPosition - i] = null; // TODO: temp, ???
-                int forChecking = _cache[change.Address].Pop();
+                int forChecking = _intraBlockCache[change.Address].Pop();
                 if (forChecking != _currentPosition - i)
                 {
                     throw new InvalidOperationException($"Expected checked value {forChecking} to be equal to {_currentPosition} - {i}");
                 }
 
-                if (_cache[change.Address].Count == 0)
+                if (_intraBlockCache[change.Address].Count == 0)
                 {
-                    _cache.Remove(change.Address);
+                    _intraBlockCache.Remove(change.Address);
                 }
             }
 
@@ -292,7 +298,7 @@ namespace Nethermind.Store
             {
                 _currentPosition++;
                 _changes[_currentPosition] = kept;
-                _cache[kept.Address].Push(_currentPosition);
+                _intraBlockCache[kept.Address].Push(_currentPosition);
             }
 
             _keptInCache.Clear();
@@ -331,7 +337,7 @@ namespace Nethermind.Store
             {
                 throw new InvalidOperationException($"Change at current position {_currentPosition} was null when commiting {nameof(StateProvider)}");
             }
-            
+
             if (_changes[_currentPosition + 1] != null)
             {
                 throw new InvalidOperationException($"Change after current position ({_currentPosition} + 1) was not null when commiting {nameof(StateProvider)}");
@@ -345,7 +351,7 @@ namespace Nethermind.Store
                     continue;
                 }
 
-                int forAssertion = _cache[change.Address].Pop();
+                int forAssertion = _intraBlockCache[change.Address].Pop();
                 if (forAssertion != _currentPosition - i)
                 {
                     throw new InvalidOperationException($"Expected checked value {forAssertion} to be equal to {_currentPosition} - {i}");
@@ -405,9 +411,9 @@ namespace Nethermind.Store
                         }
 
                         bool wasItCreatedNow = false;
-                        while (_cache[change.Address].Count > 0)
+                        while (_intraBlockCache[change.Address].Count > 0)
                         {
-                            int previousOne = _cache[change.Address].Pop();
+                            int previousOne = _intraBlockCache[change.Address].Pop();
                             wasItCreatedNow |= _changes[previousOne].ChangeType == ChangeType.New;
                             if (wasItCreatedNow)
                             {
@@ -431,18 +437,18 @@ namespace Nethermind.Store
             _changes = new Change[_capacity];
             _currentPosition = -1;
             _committedThisRound.Clear();
-            _cache.Clear();
+            _intraBlockCache.Clear();
             _state.UpdateRootHash();
         }
 
         private Account GetState(Address address)
         {
-            Account cached = _stateCache.Get(address);
+            Account cached = _longTermCache.Get(address);
             if (cached != null)
             {
                 return cached;
             }
-            
+
             Metrics.StateTreeReads++;
             Account account = _state.Get(address);
             if (account == null)
@@ -450,13 +456,13 @@ namespace Nethermind.Store
                 return null;
             }
 
-            _stateCache.Set(address, account);
+            _longTermCache.Set(address, account);
             return account;
         }
 
         private void SetState(Address address, Account account)
         {
-            _stateCache.Set(address, account);
+            _longTermCache.Set(address, account);
             Metrics.StateTreeWrites++;
             _state.Set(address, account);
         }
@@ -474,9 +480,9 @@ namespace Nethermind.Store
 
         private Account GetThroughCache(Address address)
         {
-            if (_cache.ContainsKey(address))
+            if (_intraBlockCache.ContainsKey(address))
             {
-                return _changes[_cache[address].Peek()].Account;
+                return _changes[_intraBlockCache[address].Peek()].Account;
             }
 
             Account account = GetAndAddToCache(address);
@@ -507,7 +513,7 @@ namespace Nethermind.Store
         {
             SetupCache(address);
             IncrementPosition();
-            _cache[address].Push(_currentPosition);
+            _intraBlockCache[address].Push(_currentPosition);
             _changes[_currentPosition] = new Change(changeType, address, touchedAccount);
         }
 
@@ -515,7 +521,7 @@ namespace Nethermind.Store
         {
             SetupCache(address);
             IncrementPosition();
-            _cache[address].Push(_currentPosition);
+            _intraBlockCache[address].Push(_currentPosition);
             _changes[_currentPosition] = new Change(ChangeType.New, address, account);
         }
 
@@ -531,9 +537,9 @@ namespace Nethermind.Store
 
         private void SetupCache(Address address)
         {
-            if (!_cache.ContainsKey(address))
+            if (!_intraBlockCache.ContainsKey(address))
             {
-                _cache[address] = new Stack<int>();
+                _intraBlockCache[address] = new Stack<int>();
             }
         }
 
@@ -560,14 +566,14 @@ namespace Nethermind.Store
             public Account Account { get; }
         }
 
-        public void ClearCaches()
+        public void Reset()
         {
             if (_logger.IsDebugEnabled)
             {
                 _logger.Debug("  CLEARING STATE PROVIDER CACHES");
             }
 
-            _cache.Clear();
+            _intraBlockCache.Clear();
             _currentPosition = -1;
             _committedThisRound.Clear();
             Array.Clear(_changes, 0, _changes.Length);

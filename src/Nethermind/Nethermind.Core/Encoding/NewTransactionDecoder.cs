@@ -70,7 +70,7 @@ namespace Nethermind.Core.Encoding
 
                 Signature signature = new Signature(r, s, v);
                 transaction.Signature = signature;
-                transaction.Hash = Transaction.CalculateHash(transaction);
+                transaction.Hash = Transaction.CalculateHash(new Rlp(context.Data));
             }
 
             if (rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraData))

@@ -132,7 +132,7 @@ namespace Nethermind.Blockchain
             {
                 // discarding one of the branches
                 _storageProvider.ClearCaches();
-                _stateProvider.ClearCaches();
+                _stateProvider.Reset();
                 _stateProvider.StateRoot = branchStateRoot;
             }
 
@@ -154,7 +154,7 @@ namespace Nethermind.Blockchain
 
                     _dbProvider.Restore(dbSnapshot);
                     _storageProvider.ClearCaches();
-                    _stateProvider.ClearCaches();
+                    _stateProvider.Reset();
                     _stateProvider.StateRoot = snapshotStateRoot;
 
                     if (_logger.IsDebugEnabled)
@@ -174,7 +174,7 @@ namespace Nethermind.Blockchain
 
                 _dbProvider.Restore(dbSnapshot);
                 _storageProvider.ClearCaches();
-                _stateProvider.ClearCaches();
+                _stateProvider.Reset();
                 _stateProvider.StateRoot = snapshotStateRoot;
 
                 if (_logger.IsDebugEnabled)

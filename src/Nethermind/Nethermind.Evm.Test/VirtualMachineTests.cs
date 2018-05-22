@@ -67,7 +67,7 @@ namespace Nethermind.Evm.Test
         public void TearDown()
         {
             _storageProvider.ClearCaches();
-            _stateProvider.ClearCaches();
+            _stateProvider.Reset();
             _stateProvider.StateRoot = _stateRoot;
 
             _storageDbProvider.Restore(_storageDbSnapshot);

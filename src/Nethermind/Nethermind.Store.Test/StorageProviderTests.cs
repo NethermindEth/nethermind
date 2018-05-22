@@ -206,7 +206,7 @@ namespace Nethermind.Store.Test
             _stateProvider.Commit(Frontier.Instance);
             
             // revert
-            _stateProvider.ClearCaches();
+            _stateProvider.Reset();
             storageProvider.ClearCaches();
             _stateProvider.StateRoot = stateRoot;
             
