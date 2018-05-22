@@ -433,6 +433,7 @@ namespace Nethermind.Store
             _currentPosition = -1;
             _committedThisRound.Clear();
             _cache.Clear();
+            _state.UpdateRootHash();
         }
 
         private Account GetState(Address address)

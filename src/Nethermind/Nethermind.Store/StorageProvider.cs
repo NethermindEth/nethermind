@@ -65,7 +65,9 @@ namespace Nethermind.Store
 
         public Keccak GetRoot(Address address)
         {
-            return GetOrCreateStorage(address).RootHash;
+            StorageTree storageTree = GetOrCreateStorage(address);
+            storageTree.UpdateRootHash();
+            return storageTree.RootHash;
         }
 
         public int TakeSnapshot()
