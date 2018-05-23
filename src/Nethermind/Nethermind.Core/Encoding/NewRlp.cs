@@ -538,7 +538,6 @@ namespace Nethermind.Core.Encoding
             public byte[] Data => _data;
             public int Position { get; set; }
             public int Length => _data.Length;
-            public bool IsNull => _data == null; // TODO: temp 16/05/2018
 
             public bool IsSequenceNext()
             {

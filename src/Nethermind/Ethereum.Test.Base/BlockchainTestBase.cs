@@ -258,8 +258,8 @@ namespace Ethereum.Test.Base
                 try
                 {
                     TestBlockJson testBlockJson = test.Blocks[i];
-                    Rlp rlp = new Rlp(Hex.ToBytes(testBlockJson.Rlp));
-                    Block suggestedBlock = Rlp.Decode<Block>(rlp);
+                    var rlpContext = Hex.ToBytes(testBlockJson.Rlp).AsRlpContext();
+                    Block suggestedBlock = NewRlp.Decode<Block>(rlpContext);
                     Assert.AreEqual(new Keccak(testBlockJson.BlockHeader.Hash), suggestedBlock.Header.Hash, "hash of the block");
                     for (int ommerIndex = 0; ommerIndex < suggestedBlock.Ommers.Length; ommerIndex++)
                     {
