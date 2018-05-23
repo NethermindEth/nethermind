@@ -2693,7 +2693,10 @@ namespace Nethermind.HashLib.Crypto.SHA3
 
         protected override byte[] GetResult()
         {
-            return Converters.ConvertULongsToBytes(m_state).SubArray(0, HashSize);
+            byte[] result = new byte[HashSize];
+            Buffer.BlockCopy(m_state, 0, result, 0, HashSize);
+            return result;
+            //return Converters.ConvertULongsToBytes(m_state).SubArray(0, HashSize);
         }
 
         protected override uint[] GetResultUInts()

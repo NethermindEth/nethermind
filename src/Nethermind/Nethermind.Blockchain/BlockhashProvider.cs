@@ -17,7 +17,6 @@
  */
 
 using System.Numerics;
-using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm;
@@ -35,20 +34,25 @@ namespace Nethermind.Blockchain
 
         public Keccak GetBlockhash(Keccak blockHash, BigInteger number)
         {
-            Block block = _chain.FindBlock(blockHash, false);
-            if (number > block.Header.Number)
+            //Block block = _chain.FindHeader(blockHash, false);
+            BlockHeader header = _chain.FindHeader(blockHash);
+            if (number > header.Number)
             {
                 return null;
             }
 
             for (int i = 0; i < 256; i++)
             {
-                if (number == block.Header.Number)
+                if (number == header.Number)
                 {
-                    return block.Header.Hash;
+                    return header.Hash;
                 }
 
-                block = _chain.FindParent(block.Header);
+                header = _chain.FindHeader(header.ParentHash);
+                if (_chain.IsMainChain(header.Hash))
+                {
+                    header = _chain.FindHeader(number);
+                }
             }
 
             return null;

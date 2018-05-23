@@ -35,6 +35,7 @@ namespace Nethermind.Blockchain
         AddBlockResult SuggestBlock(Block block);
         Block FindBlock(Keccak blockHash, bool mainChainOnly);
         BlockHeader FindHeader(Keccak blockHash);
+        BlockHeader FindHeader(BigInteger blockNumber);
         Block[] FindBlocks(Keccak blockHash, int numberOfBlocks, int skip, bool reverse);
         Block FindBlock(BigInteger blockNumber);
         bool IsMainChain(Keccak blockHash);

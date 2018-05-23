@@ -247,12 +247,18 @@ namespace Nethermind.Store
         {
             if (decoderContext.IsSequenceNext())
             {
-                KeccakOrRlp keccakOrRlp = new KeccakOrRlp(new Rlp(decoderContext.ReadSequenceRlp()));
+                byte[] sequenceBytes = decoderContext.ReadSequenceRlp();
+                if (sequenceBytes.Length >= 32)
+                {
+                    throw new InvalidOperationException();
+                }
+
+                KeccakOrRlp keccakOrRlp = new KeccakOrRlp(new Rlp(sequenceBytes));
                 return new NodeRef(keccakOrRlp);
             }
 
-            byte[] bytes = decoderContext.ReadByteArray();
-            return bytes.Length == 0 ? null : new NodeRef(new KeccakOrRlp(new Keccak(bytes)));
+            Keccak keccak = decoderContext.ReadKeccak();
+            return keccak == null ? null : new NodeRef(new KeccakOrRlp(keccak));
         }
 
         [DebuggerStepThrough]

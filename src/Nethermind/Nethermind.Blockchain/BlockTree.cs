@@ -33,16 +33,16 @@ namespace Nethermind.Blockchain
     public class BlockTree : IBlockTree
     {
         // TODO: automatically wrap DBs with caches
-        private readonly LruCache<Keccak, Block> _blockCache = new LruCache<Keccak, Block>(8);
-        private readonly LruCache<BigInteger, ChainLevelInfo> _blockInfoCache = new LruCache<BigInteger, ChainLevelInfo>(8);
-        private readonly LruCache<Keccak, TransactionReceipt[]> _receiptsCache = new LruCache<Keccak, TransactionReceipt[]>(8);
+        private readonly LruCache<Keccak, Block> _blockCache = new LruCache<Keccak, Block>(64);
+        private readonly LruCache<BigInteger, ChainLevelInfo> _blockInfoCache = new LruCache<BigInteger, ChainLevelInfo>(64);
+        private readonly LruCache<Keccak, TransactionReceipt[]> _receiptsCache = new LruCache<Keccak, TransactionReceipt[]>(64);
 
         private const int MaxQueueSize = 1_000_000;
-        
+
         public const int DbLoadBatchSize = 1000;
-        
+
         private BigInteger _currentDbLoadBatchEnd;
-        
+
         private readonly IDb _blockDb;
 
         private readonly NewBlockDecoder _blockDecoder = new NewBlockDecoder();
@@ -78,8 +78,8 @@ namespace Nethermind.Blockchain
                 Genesis = genesisBlock.Header;
                 LoadHeadBlock();
             }
-        } 
-        
+        }
+
         public async Task LoadBlocksFromDb(BigInteger? startBlockNumber = null, int batchSize = DbLoadBatchSize, int maxBlocksToLoad = int.MaxValue)
         {
             if (startBlockNumber == null)
@@ -113,9 +113,9 @@ namespace Nethermind.Blockchain
                 {
                     if (_logger.IsInfoEnabled)
                     {
-                        _logger.Info($"Loaded {i + 1} blocks, waiting for processor.");       
+                        _logger.Info($"Loaded {i + 1} blocks, waiting for processor.");
                     }
-                    
+
                     _dbBatchProcessed = new TaskCompletionSource<object>();
                     _currentDbLoadBatchEnd = blockNumber;
                     await _dbBatchProcessed.Task;
@@ -229,7 +229,7 @@ namespace Nethermind.Blockchain
             return result;
         }
 
-        public Block FindBlock(BigInteger blockNumber)
+        private Keccak GetBlockhashOnMain(BigInteger blockNumber)
         {
             if (blockNumber.Sign < 0)
             {
@@ -242,7 +242,18 @@ namespace Nethermind.Blockchain
                 return null;
             }
 
-            return Load(level.BlockInfos[0].BlockHash).Block;
+            if (level.HasBlockOnMainChain)
+            {
+                return level.BlockInfos[0].BlockHash;
+            }
+
+            return null;
+        }
+
+        public Block FindBlock(BigInteger blockNumber)
+        {
+            Keccak hash = GetBlockhashOnMain(blockNumber);
+            return Load(hash).Block;
         }
 
         public bool IsMainChain(Keccak blockHash)
@@ -306,7 +317,7 @@ namespace Nethermind.Blockchain
         }
 
         private TaskCompletionSource<object> _dbBatchProcessed;
-        
+
         private void MoveToMain(ChainLevelInfo level, Block block)
         {
             int? index = FindIndex(block.Hash, level);
@@ -420,7 +431,7 @@ namespace Nethermind.Blockchain
             }
             else
             {
-                level = new ChainLevelInfo(false, new[] {blockInfo});
+                level = new ChainLevelInfo(false, new[] { blockInfo });
             }
 
             UpdateLevel(number, level);
@@ -512,6 +523,12 @@ namespace Nethermind.Blockchain
             header.TotalDifficulty = blockInfo.TotalDifficulty;
 
             return header;
+        }
+
+        public BlockHeader FindHeader(BigInteger number)
+        {
+            Keccak hash = GetBlockhashOnMain(number);
+            return FindHeader(hash);
         }
 
         private (Block Block, BlockInfo Info, ChainLevelInfo Level) Load(Keccak blockHash)

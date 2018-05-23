@@ -209,6 +209,11 @@ namespace Nethermind.PerfTest
                 return _blockTree.FindHeader(blockHash);
             }
 
+            public BlockHeader FindHeader(BigInteger number)
+            {
+                return _blockTree.FindHeader(number);
+            }
+
             public Block[] FindBlocks(Keccak blockHash, int numberOfBlocks, int skip, bool reverse)
             {
                 return _blockTree.FindBlocks(blockHash, numberOfBlocks, skip, reverse);
@@ -405,20 +410,26 @@ namespace Nethermind.PerfTest
                 }
             };
 
+            bool isStarted = false;
+
             TaskCompletionSource<object> completionSource = new TaskCompletionSource<object>();
             blockTree.NewBestSuggestedBlock += (sender, args) =>
             {
+                if (!isStarted)
+                {
+                    blockchainProcessor.Process(blockTree.FindBlock(blockTree.Genesis.Hash, true));
+                    stopwatch.Start();
+                    blockchainProcessor.Start();
+                    isStarted = true;
+                }
+
                 if (args.Block.Number == BlocksToLoad)
                 {
                     completionSource.SetResult(null);
                 }
             };
 
-            await Task.WhenAny(completionSource.Task, blockTree.LoadBlocksFromDb(0, BlocksToLoad, BlocksToLoad));
-            blockchainProcessor.Process(blockTree.FindBlock(blockTree.Genesis.Hash, true));
-
-            stopwatch.Start();
-            blockchainProcessor.Start();
+            await Task.WhenAny(completionSource.Task, blockTree.LoadBlocksFromDb(0, 10000, BlocksToLoad));
 
             await blockchainProcessor.StopAsync(true).ContinueWith(
                 t =>
