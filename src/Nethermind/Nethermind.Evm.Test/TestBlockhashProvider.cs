@@ -17,13 +17,14 @@
  */
 
 using System.Numerics;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Evm.Test
 {
     public class TestBlockhashProvider : IBlockhashProvider
     {
-        public Keccak GetBlockhash(Keccak blockHash, BigInteger number)
+        public Keccak GetBlockhash(BlockHeader currentBlock, BigInteger number)
         {
             return Keccak.Compute(number.ToString());
         }
