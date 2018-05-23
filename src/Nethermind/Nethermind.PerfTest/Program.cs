@@ -133,6 +133,7 @@ namespace Nethermind.PerfTest
                 if (t.IsFaulted)
                 {
                     _logger.Error("test failed", t.Exception);
+                    _logger.Error("inner", t.Exception?.InnerException);
                     Console.ReadLine();
                 }
             });
@@ -280,7 +281,7 @@ namespace Nethermind.PerfTest
         private static readonly string FullBlocksDbPath = Path.Combine(DbBasePath, DbOnTheRocks.BlocksDbPath);
         private static readonly string FullBlockInfosDbPath = Path.Combine(DbBasePath, DbOnTheRocks.BlockInfosDbPath);
 
-        private const int BlocksToLoad = 100_000;
+        private const int BlocksToLoad = 1_000_000;
 
         private static async Task RunRopstenBlocks()
         {
@@ -437,6 +438,7 @@ namespace Nethermind.PerfTest
                     if (t.IsFaulted)
                     {
                         _logger.Error("processing failed", t.Exception);
+                        _logger.Error("inner", t.Exception.InnerException);
                         Console.ReadLine();
                     }
 

@@ -17,12 +17,13 @@
  */
 
 using System.Numerics;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Evm
 {
     public interface IBlockhashProvider
     {
-        Keccak GetBlockhash(Keccak blockHash, BigInteger number);
+        Keccak GetBlockhash(BlockHeader currentBlock, BigInteger number);
     }
 }

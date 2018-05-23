@@ -229,7 +229,7 @@ namespace Nethermind.Blockchain
             return result;
         }
 
-        private Keccak GetBlockhashOnMain(BigInteger blockNumber)
+        private Keccak GetBlockHashOnMain(BigInteger blockNumber)
         {
             if (blockNumber.Sign < 0)
             {
@@ -246,13 +246,20 @@ namespace Nethermind.Blockchain
             {
                 return level.BlockInfos[0].BlockHash;
             }
+            else
+            {
+                if (level.BlockInfos.Length > 0)
+                {
+                    throw new InvalidOperationException("Unexpected request by number for a block that is not on the main chain");
+                }
+            }
 
             return null;
         }
 
         public Block FindBlock(BigInteger blockNumber)
         {
-            Keccak hash = GetBlockhashOnMain(blockNumber);
+            Keccak hash = GetBlockHashOnMain(blockNumber);
             return Load(hash).Block;
         }
 
@@ -527,7 +534,12 @@ namespace Nethermind.Blockchain
 
         public BlockHeader FindHeader(BigInteger number)
         {
-            Keccak hash = GetBlockhashOnMain(number);
+            Keccak hash = GetBlockHashOnMain(number);
+            if (hash == null)
+            {
+                return null;
+            }
+
             return FindHeader(hash);
         }
 

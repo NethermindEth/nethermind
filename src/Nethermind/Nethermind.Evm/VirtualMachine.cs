@@ -1157,7 +1157,8 @@ namespace Nethermind.Evm
                         {
                             UpdateGas(GasCostOf.BlockHash, ref gasAvailable);
                             BigInteger a = PopUInt();
-                            PushBytes(_blockhashProvider.GetBlockhash(env.CurrentBlock.ParentHash, a)?.Bytes ?? BytesZero);
+                            PushBytes(_blockhashProvider.GetBlockhash(env.CurrentBlock, a)?.Bytes ?? BytesZero);
+                            
                             break;
                         }
                     case Instruction.COINBASE:
@@ -1265,7 +1266,7 @@ namespace Nethermind.Evm
 
                             if (isValueChanged)
                             {
-                                byte[] newValue = isNewValueZero ? new byte[] { 0 } : data;
+                                byte[] newValue = isNewValueZero ? BytesZero : data;
                                 _storage.Set(storageAddress, newValue);
                                 if (_logger.IsDebugEnabled)
                                 {

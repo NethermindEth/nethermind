@@ -19,7 +19,6 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using Nethermind.Evm;
 
 namespace Nethermind.Blockchain.Test.Runner
 {
