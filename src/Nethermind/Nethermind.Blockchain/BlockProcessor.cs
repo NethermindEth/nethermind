@@ -91,7 +91,7 @@ namespace Nethermind.Blockchain
 
         private void SetReceipts(Block block, TransactionReceipt[] receipts)
         {
-            PatriciaTree receiptTree = receipts.Length > 0 ? new PatriciaTree() : null;
+            PatriciaTree receiptTree = receipts.Length > 0 ? new PatriciaTree(NullDb.Instance) : null;
             for (int i = 0; i < receipts.Length; i++)
             {
                 Rlp receiptRlp = Rlp.Encode(receipts[i], _specProvider.GetSpec(block.Header.Number).IsEip658Enabled);
@@ -274,8 +274,12 @@ namespace Nethermind.Blockchain
                 _logger.Debug($"Committing block - state root {_stateProvider.StateRoot}");
             }
 
+            IDb db = _dbProvider.GetOrCreateStateDb(); // TODO: now totally synchronous but would need to pass the batch object / some sync item
+            db.StartBatch();
             _stateProvider.CommitTree();
             _storageProvider.CommitTrees();
+            db.CommitBatch();
+            
             _dbProvider.Commit(_specProvider.GetSpec(suggestedBlock.Number));
             return processedBlock;
         }

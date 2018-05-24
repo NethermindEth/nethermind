@@ -16,7 +16,6 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Collections.Generic;
 using System.IO;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -29,36 +28,10 @@ namespace Nethermind.Db
     {
         private readonly ISnapshotableDb _stateDb;
         private readonly ISnapshotableDb _codeDb;
-        // TODO: replace with one storage DB
-        private readonly Dictionary<Address, ISnapshotableDb> _storageDbs = new Dictionary<Address, ISnapshotableDb>();
-        private IEnumerable<ISnapshotableDb> AllDbs
-        {
-            get
-            {
-                yield return _stateDb;
-                yield return _codeDb;
-                foreach (ISnapshotableDb storageDb in _storageDbs.Values)
-                {
-                    yield return storageDb;
-                }
-            }
-        }
 
         public ISnapshotableDb GetOrCreateStateDb()
         {
             return _stateDb;
-        }
-
-        public ISnapshotableDb GetOrCreateStorageDb(Address address)
-        {
-            if (!_storageDbs.ContainsKey(address))
-            {
-                var path = Path.Combine(_dbBasePath, DbOnTheRocks.StorageDbPath);
-                var db = new DbOnTheRocks(path, address.Hex);
-                _storageDbs[address] = new SnapshotableDb(db);
-            }
-
-            return _storageDbs[address];
         }
 
         public ISnapshotableDb GetOrCreateCodeDb()
@@ -66,33 +39,27 @@ namespace Nethermind.Db
             return _codeDb;
         }
 
-        private readonly string _dbBasePath;
         private readonly ILogger _logger;
 
         public RocksDbProvider(string dbBasePath, ILogger logger)
         {
             _logger = logger;
-            _dbBasePath = dbBasePath;
-            _stateDb = new SnapshotableDb(new DbOnTheRocks(Path.Combine(_dbBasePath, DbOnTheRocks.StateDbPath)));
-            _codeDb = new SnapshotableDb(new DbOnTheRocks(Path.Combine(_dbBasePath, DbOnTheRocks.CodeDbPath)));
+            _stateDb = new SnapshotableDb(new DbOnTheRocks(Path.Combine(dbBasePath, DbOnTheRocks.StateDbPath)));
+            _codeDb = new SnapshotableDb(new DbOnTheRocks(Path.Combine(dbBasePath, DbOnTheRocks.CodeDbPath)));
         }
 
         public void Restore(int snapshot)
         {
             if (_logger.IsDebugEnabled) _logger.Debug($"Restoring all DBs to {snapshot}");
-            foreach (ISnapshotableDb db in AllDbs)
-            {
-                db.Restore(-1);
-            }
+            _stateDb.Restore(-1);
+            _codeDb.Restore(-1);
         }
 
         public void Commit(IReleaseSpec spec)
         {
             if (_logger.IsDebugEnabled) _logger.Debug("Committing all DBs");
-            foreach (ISnapshotableDb db in AllDbs)
-            {
-                db.Commit(spec);
-            }
+            _stateDb.Commit(spec);
+            _codeDb.Commit(spec);
         }
 
         public int TakeSnapshot()

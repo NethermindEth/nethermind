@@ -31,7 +31,6 @@ namespace Nethermind.Store.Test
             MemDbProvider provider = new MemDbProvider(NullLogger.Instance);
             provider.GetOrCreateCodeDb();
             provider.GetOrCreateStateDb();
-            provider.GetOrCreateStorageDb(Address.Zero);
             for (int i = 0; i < 1000; i++)
             {
                 provider.TakeSnapshot();
@@ -47,7 +46,6 @@ namespace Nethermind.Store.Test
             MemDbProvider provider = new MemDbProvider(NullLogger.Instance);
             provider.GetOrCreateCodeDb();
             provider.GetOrCreateStateDb();
-            provider.GetOrCreateStorageDb(Address.Zero);
             for (int i = 0; i < 1000; i++)
             {
                 int snapshot = provider.TakeSnapshot();

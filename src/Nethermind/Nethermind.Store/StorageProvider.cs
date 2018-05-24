@@ -253,7 +253,7 @@ namespace Nethermind.Store
         {
             if (!_storages.ContainsKey(address))
             {
-                _storages[address] = new StorageTree(_dbProvider.GetOrCreateStorageDb(address), _stateProvider.GetStorageRoot(address));
+                _storages[address] = new StorageTree(_dbProvider.GetOrCreateStateDb(), _stateProvider.GetStorageRoot(address));
             }
 
             return GetStorage(address);

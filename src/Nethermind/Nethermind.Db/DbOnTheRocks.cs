@@ -20,7 +20,6 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
-using Nethermind.Core.Extensions;
 using Nethermind.Store;
 using RocksDbSharp;
 
@@ -40,20 +39,10 @@ namespace Nethermind.Db
 
         private readonly RocksDb _db;
         private readonly DbInstance _dbInstance;
-        private readonly byte[] _prefix;
 
-        private enum DbInstance
-        {
-            State,
-            Storage,
-            BlockInfo,
-            Block,
-            Code,
-            Receipts,
-            Other
-        }
+        private WriteBatchWithIndex _currentBatch;
 
-        public DbOnTheRocks(string dbPath, byte[] prefix = null) // TODO: check column families
+        public DbOnTheRocks(string dbPath) // TODO: check column families
         {
             if (!Directory.Exists(dbPath))
             {
@@ -61,7 +50,6 @@ namespace Nethermind.Db
             }
 
             // options are based mainly from EtheruemJ at the moment
-            _prefix = prefix;
 
             //BlockBasedTableOptions tableOptions = new BlockBasedTableOptions();
             //tableOptions.SetPinL0FilterAndIndexBlocksInCache(true);
@@ -80,14 +68,14 @@ namespace Nethermind.Db
             //options.SetMaxOpenFiles(32);
             //options.SetBlockBasedTableFactory(tableOptions);
 
-            SliceTransform transform = SliceTransform.CreateFixedPrefix(16);
-            options.SetPrefixExtractor(transform);
+            //SliceTransform transform = SliceTransform.CreateFixedPrefix(16);
+            //options.SetPrefixExtractor(transform);
 
             _db = DbsByPath.GetOrAdd(dbPath, path => RocksDb.Open(options, Path.Combine("db", path)));
 
             if (dbPath.EndsWith(StateDbPath))
             {
-                _dbInstance = _prefix == null ? DbInstance.State : DbInstance.Storage;
+                _dbInstance = DbInstance.State;
             }
             else if (dbPath.EndsWith(BlockInfosDbPath))
             {
@@ -118,88 +106,86 @@ namespace Nethermind.Db
                 switch (_dbInstance)
                 {
                     case DbInstance.State:
-                    Metrics.StateDbReads++;
-                    break;
+                        Metrics.StateDbReads++;
+                        break;
                     case DbInstance.Storage:
-                    Metrics.StorageDbReads++;
-                    break;
+                        Metrics.StorageDbReads++;
+                        break;
                     case DbInstance.BlockInfo:
-                    Metrics.BlockInfosDbReads++;
-                    break;
+                        Metrics.BlockInfosDbReads++;
+                        break;
                     case DbInstance.Block:
-                    Metrics.BlocksDbReads++;
-                    break;
+                        Metrics.BlocksDbReads++;
+                        break;
                     case DbInstance.Code:
-                    Metrics.CodeDbReads++;
-                    break;
+                        Metrics.CodeDbReads++;
+                        break;
                     case DbInstance.Receipts:
-                    Metrics.ReceiptsDbReads++;
-                    break;
+                        Metrics.ReceiptsDbReads++;
+                        break;
                     case DbInstance.Other:
-                    Metrics.OtherDbReads++;
-                    break;
+                        Metrics.OtherDbReads++;
+                        break;
                     default:
-                    throw new ArgumentOutOfRangeException();
+                        throw new ArgumentOutOfRangeException();
                 }
 
-                byte[] prefixedKey = _prefix == null ? key : Bytes.Concat(_prefix, key);
                 if (_currentBatch != null)
                 {
-                    return _currentBatch.Get(prefixedKey);
+                    return _currentBatch.Get(key);
                 }
 
-                return _db.Get(prefixedKey);
+                return _db.Get(key);
             }
             set
             {
                 switch (_dbInstance)
                 {
                     case DbInstance.State:
-                    Metrics.StateDbWrites++;
-                    break;
+                        Metrics.StateDbWrites++;
+                        break;
                     case DbInstance.Storage:
-                    Metrics.StorageDbWrites++;
-                    break;
+                        Metrics.StorageDbWrites++;
+                        break;
                     case DbInstance.BlockInfo:
-                    Metrics.BlockInfosDbWrites++;
-                    break;
+                        Metrics.BlockInfosDbWrites++;
+                        break;
                     case DbInstance.Block:
-                    Metrics.BlocksDbWrites++;
-                    break;
+                        Metrics.BlocksDbWrites++;
+                        break;
                     case DbInstance.Code:
-                    Metrics.CodeDbWrites++;
-                    break;
+                        Metrics.CodeDbWrites++;
+                        break;
                     case DbInstance.Receipts:
-                    Metrics.ReceiptsDbWrites++;
-                    break;
+                        Metrics.ReceiptsDbWrites++;
+                        break;
                     case DbInstance.Other:
-                    Metrics.OtherDbWrites++;
-                    break;
+                        Metrics.OtherDbWrites++;
+                        break;
                     default:
-                    throw new ArgumentOutOfRangeException();
+                        throw new ArgumentOutOfRangeException();
                 }
 
-                byte[] prefixedIndex = _prefix == null ? key : Bytes.Concat(_prefix, key);
                 if (_currentBatch != null)
                 {
                     if (value == null)
                     {
-                        _currentBatch.Delete(prefixedIndex);
+                        _currentBatch.Delete(key);
                     }
                     else
                     {
-                        _currentBatch.Put(prefixedIndex, value);
+                        _currentBatch.Put(key, value);
                     }
                 }
                 else
                 {
                     if (value == null)
                     {
-                        _db.Remove(prefixedIndex);
+                        _db.Remove(key);
                     }
                     else
                     {
-                        _db.Put(prefixedIndex, value);
+                        _db.Put(key, value);
                     }
                 }
             }
@@ -207,10 +193,8 @@ namespace Nethermind.Db
 
         public void Remove(byte[] key)
         {
-            _db.Remove(_prefix == null ? key : Bytes.Concat(_prefix, key));
+            _db.Remove(key);
         }
-
-        private WriteBatchWithIndex _currentBatch;
 
         public void StartBatch()
         {
@@ -235,19 +219,30 @@ namespace Nethermind.Db
 
         private ICollection<byte[]> GetKeysOrValues(Func<Iterator, byte[]> selector)
         {
-            var readOptions = new ReadOptions();
-            var items = new List<byte[]>();
-            using (var iter = _db.NewIterator(readOptions: readOptions))
+            ReadOptions readOptions = new ReadOptions();
+            List<byte[]> items = new List<byte[]>();
+            using (Iterator iter = _db.NewIterator(readOptions: readOptions))
             {
                 while (iter.Valid())
                 {
-                    var item = selector.Invoke(iter);
+                    byte[] item = selector.Invoke(iter);
                     items.Add(item);
                     iter.Next();
                 }
             }
 
             return items;
+        }
+
+        private enum DbInstance
+        {
+            State,
+            Storage,
+            BlockInfo,
+            Block,
+            Code,
+            Receipts,
+            Other
         }
     }
 }

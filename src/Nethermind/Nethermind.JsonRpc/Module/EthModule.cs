@@ -698,7 +698,7 @@ namespace Nethermind.JsonRpc.Module
 
         private Account GetAccount(Address address, Keccak stateRoot)
         {
-            var stateTree = new StateTree(stateRoot, _db);
+            var stateTree = new StateTree(_db, stateRoot);
             return stateTree.Get(address);
         }
 

@@ -29,7 +29,7 @@ namespace Nethermind.Store
     [DebuggerDisplay("{RootHash}")]
     public class PatriciaTree
     {
-        public void Commit()
+        public void Commit(bool wrapInBatch = true)
         {
             if (RootRef == null)
             {
@@ -38,9 +38,7 @@ namespace Nethermind.Store
 
             if (RootRef.IsDirty)
             {
-                _db.StartBatch();
                 Commit(RootRef, true);
-                _db.CommitBatch();
 
                 // reset objects
                 Keccak keccak = RootRef.KeccakOrRlp.GetOrComputeKeccak();
@@ -109,7 +107,7 @@ namespace Nethermind.Store
             : this(new MemDb(), EmptyTreeHash)
         {
         }
-
+        
         public PatriciaTree(IDb db)
             : this(db, EmptyTreeHash)
         {

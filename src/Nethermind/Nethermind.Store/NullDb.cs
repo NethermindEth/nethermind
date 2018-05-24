@@ -16,23 +16,43 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
+using System.Collections.Generic;
+using System.Threading;
 
 namespace Nethermind.Store
 {
-    public class SecurePatriciaTree : PatriciaTree
+    public class NullDb : IDb
     {
-        public SecurePatriciaTree(IDb db)
-            :base(db)
+        private NullDb()
         {
         }
 
-        public override void Set(Nibble[] rawKey, byte[] value)
+        private static NullDb _instance;
+        
+        public static NullDb Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new NullDb());
+
+        public byte[] this[byte[] key]
         {
-            Keccak keccak = Keccak.Compute(rawKey.ToPackedByteArray());
-            base.Set(Nibbles.FromBytes(keccak.Bytes), value);
+            get => null;
+            set => throw new System.NotSupportedException();
         }
+
+        public void Remove(byte[] key)
+        {
+            throw new System.NotSupportedException();
+        }
+
+        public void StartBatch()
+        {
+            throw new System.NotSupportedException();
+        }
+
+        public void CommitBatch()
+        {
+            throw new System.NotSupportedException();
+        }
+
+        public ICollection<byte[]> Keys { get; }
+        public ICollection<byte[]> Values { get; }
     }
 }

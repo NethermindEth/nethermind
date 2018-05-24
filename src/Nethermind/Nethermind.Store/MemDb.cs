@@ -17,6 +17,7 @@
  */
 
 using System.Collections.Generic;
+using System.ComponentModel;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Store

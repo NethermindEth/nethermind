@@ -34,7 +34,7 @@ namespace Nethermind.Store
         }
 
         [DebuggerStepThrough]
-        public StateTree(Keccak rootHash, IDb db) : base(db, rootHash)
+        public StateTree(IDb db, Keccak rootHash) : base(db, rootHash)
         {
         }
 
