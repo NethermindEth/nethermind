@@ -177,7 +177,7 @@ namespace Ethereum.Transaction.Test
             try
             {
                 Rlp rlp = new Rlp(Hex.ToBytes(test.Rlp));
-                transaction = Rlp.Decode<Nethermind.Core.Transaction>(rlp);
+                transaction = NewRlp.Decode<Nethermind.Core.Transaction>(rlp);
             }
             catch (Exception)
             {

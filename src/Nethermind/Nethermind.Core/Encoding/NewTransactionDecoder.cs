@@ -76,7 +76,7 @@ namespace Nethermind.Core.Encoding
                 transaction.Hash = Transaction.CalculateHash(new Rlp(transactionSequence)); // TODO: span
             }
 
-            if (rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraData))
+            if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraData))
             {
                 context.Check(lastCheck);
             }
