@@ -25,7 +25,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
     {
         public byte[] Serialize(NewBlockMessage message)
         {
-            return Rlp.Encode(message.Block, message.TotalDifficulty).Bytes;
+            return Rlp.Encode(
+                Rlp.Encode(message.Block),
+                Rlp.Encode(message.TotalDifficulty)).Bytes;
         }
 
         public NewBlockMessage Deserialize(byte[] bytes)

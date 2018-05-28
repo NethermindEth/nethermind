@@ -28,10 +28,10 @@ namespace Nethermind.Core.Test
         [Test]
         public void Serialized_form_is_same_as_input_when_input_length_is_1_and_value_is_less_than_128()
         {
-            Assert.AreEqual(0, Rlp.Encode(new byte[] {0})[0], "0");
-            Assert.AreEqual(127, Rlp.Encode(new byte[] {127})[0], "127");
-            Assert.AreEqual(128, Rlp.Encode(new byte[] {})[0], "128");
-            Assert.AreEqual(1, Rlp.Encode(new byte[] {1})[0], "1");
+            Assert.AreEqual(0, Rlp.Encode(new byte[] { 0 })[0], "0");
+            Assert.AreEqual(127, Rlp.Encode(new byte[] { 127 })[0], "127");
+            Assert.AreEqual(128, Rlp.Encode(new byte[] { })[0], "128");
+            Assert.AreEqual(1, Rlp.Encode(new byte[] { 1 })[0], "1");
         }
 
         [Test]
@@ -85,29 +85,31 @@ namespace Nethermind.Core.Test
         [Test]
         public void Serializing_sequences()
         {
-            Rlp output = Rlp.Encode(255L, new byte[] {255});
-            Assert.AreEqual(new byte[] {196, 129, 255, 129, 255}, output.Bytes);
+            Rlp output = Rlp.Encode(
+                Rlp.Encode(255L),
+                Rlp.Encode(new byte[] { 255 }));
+            Assert.AreEqual(new byte[] { 196, 129, 255, 129, 255 }, output.Bytes);
         }
 
         [Test]
         public void Serializing_empty_sequence()
         {
-            Rlp output = Rlp.Encode(new object[0]);
-            Assert.AreEqual(new byte[] {192}, output.Bytes);
+            Rlp output = Rlp.Encode(new Rlp[] { });
+            Assert.AreEqual(new byte[] { 192 }, output.Bytes);
         }
 
         [Test]
         public void Serializing_sequence_with_one_int_regression()
         {
-            Rlp output = Rlp.Encode(new List<object> {1});
-            Assert.AreEqual(new byte[] {193, 1}, output.Bytes);
+            Rlp output = Rlp.Encode(new[] { Rlp.Encode(1) });
+            Assert.AreEqual(new byte[] { 193, 1 }, output.Bytes);
         }
 
         [Test]
         public void Serializing_object_int_regression()
         {
-            Rlp output = Rlp.Encode((object)1);
-            Assert.AreEqual(new byte[] {1}, output.Bytes);
+            Rlp output = Rlp.Encode(new Rlp[] { Rlp.Encode(1) });
+            Assert.AreEqual(new byte[] { 1 }, output.Bytes);
         }
     }
 }

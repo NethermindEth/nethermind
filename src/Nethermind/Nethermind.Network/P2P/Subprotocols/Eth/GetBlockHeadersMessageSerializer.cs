@@ -26,9 +26,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         {
             return Rlp.Encode(
                 message.StartingBlockHash == null ? Rlp.Encode(message.StartingBlockNumber) : Rlp.Encode(message.StartingBlockHash),
-                message.MaxHeaders,
-                message.Skip,
-                message.Reverse
+                Rlp.Encode(message.MaxHeaders),
+                Rlp.Encode(message.Skip),
+                Rlp.Encode(message.Reverse)
             ).Bytes;
         }
 

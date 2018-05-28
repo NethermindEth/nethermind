@@ -36,7 +36,7 @@ namespace Nethermind.Discovery.Serializers
         {
             byte[] typeBytes = { (byte)message.MessageType };
             byte[] data = Rlp.Encode(
-                message.SearchedNodeId,
+                Rlp.Encode(message.SearchedNodeId),
                 //verify if encoding is correct
                 Rlp.Encode(message.ExpirationTime)
             ).Bytes;

@@ -35,8 +35,8 @@ namespace Nethermind.Discovery.Serializers
         public byte[] Serialize(PingMessage message)
         {
             byte[] typeBytes = { (byte)message.MessageType };
-            Rlp source = GetRlpAddress(message.SourceAddress);
-            Rlp destination = GetRlpAddress(message.DestinationAddress);
+            Rlp source = Encode(message.SourceAddress);
+            Rlp destination = Encode(message.DestinationAddress);
             byte[] data = Rlp.Encode(
                 Rlp.Encode(message.Version),
                 source,

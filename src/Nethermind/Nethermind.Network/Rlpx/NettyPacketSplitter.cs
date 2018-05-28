@@ -56,19 +56,25 @@ namespace Nethermind.Network.Rlpx
                 frame[0] = (byte)(framePayloadSize >> 16);
                 frame[1] = (byte)(framePayloadSize >> 8);
                 frame[2] = (byte)framePayloadSize;
-                List<object> headerDataItems = new List<object>();
                 
-                // seems that with adaptive message IDs we always send protocol ID as 0
-//                headerDataItems.Add(message.Protocol);
-                headerDataItems.Add(0);
+                Rlp[] headerDataItems;
                 if (framesCount > 1)
                 {
-                    headerDataItems.Add(_contextId);
+                    headerDataItems = new Rlp[3];
+                    headerDataItems[1] = Rlp.Encode(_contextId);
                     if (i == 0)
                     {
-                        headerDataItems.Add(totalPayloadSize);
+                        headerDataItems[2] = Rlp.Encode(totalPayloadSize);
                     }
                 }
+                else
+                {
+                    headerDataItems = new Rlp[1];
+                }
+
+                // adaptive message IDs we always send protocol ID as 0
+                // headerDataItems[0] = message.Protocol;
+                headerDataItems[0] = Rlp.Encode(0);
 
                 // TODO: rlp into existing array
                 int framePacketTypeSize = i == 0 ? packetTypeData.Length : 0;

@@ -174,9 +174,6 @@ namespace Nethermind.Core.Encoding
             return result.ToArray();
         }
 
-        // TODO: optimize so the list is not created for every single call to Rlp.Decode()
-        // TODO: intorduce typed Encode / Decode
-
         private static DecodedRlp Decode(DecoderContext context, bool allowExtraData)
         {
             DecodedRlp CheckAndReturnSingle(object singleItem, DecoderContext contextToCheck)
@@ -297,10 +294,10 @@ namespace Nethermind.Core.Encoding
             return BitConverter.ToInt32(padded, 0);
         }
 
-        public static Rlp Encode<T>(List<T> sequence)
+        public static Rlp Encode(Transaction[] sequence)
         {
-            Rlp[] rlpSequence = new Rlp[sequence.Count];
-            for (int i = 0; i < sequence.Count; i++)
+            Rlp[] rlpSequence = new Rlp[sequence.Length];
+            for (int i = 0; i < sequence.Length; i++)
             {
                 rlpSequence[i] = Encode(sequence[i]);
             }
@@ -308,7 +305,40 @@ namespace Nethermind.Core.Encoding
             return Encode(rlpSequence);
         }
 
-        public static Rlp Encode<T>(T[] sequence)
+        public static Rlp Encode(Keccak[] sequence)
+        {
+            Rlp[] rlpSequence = new Rlp[sequence.Length];
+            for (int i = 0; i < sequence.Length; i++)
+            {
+                rlpSequence[i] = Encode(sequence[i]);
+            }
+
+            return Encode(rlpSequence);
+        }
+
+        public static Rlp Encode(LogEntry[] sequence)
+        {
+            Rlp[] rlpSequence = new Rlp[sequence.Length];
+            for (int i = 0; i < sequence.Length; i++)
+            {
+                rlpSequence[i] = Encode(sequence[i]);
+            }
+
+            return Encode(rlpSequence);
+        }
+
+        public static Rlp Encode(BlockInfo[] sequence)
+        {
+            Rlp[] rlpSequence = new Rlp[sequence.Length];
+            for (int i = 0; i < sequence.Length; i++)
+            {
+                rlpSequence[i] = Encode(sequence[i]);
+            }
+
+            return Encode(rlpSequence);
+        }
+
+        public static Rlp Encode(BlockHeader[] sequence)
         {
             Rlp[] rlpSequence = new Rlp[sequence.Length];
             for (int i = 0; i < sequence.Length; i++)
@@ -327,33 +357,35 @@ namespace Nethermind.Core.Encoding
                 contentLength += sequence[i].Length;
             }
 
-            byte[] content = new byte[contentLength];
-            int offset = 0;
+            byte[] serializedLength = null;
+            byte prefix;
+            if (contentLength < 56)
+            {
+                prefix = (byte)(192 + contentLength);
+            }
+            else
+            {
+                serializedLength = SerializeLength(contentLength);
+                prefix = (byte)(247 + serializedLength.Length);
+            }
+
+            int lengthOfPrefixAndSerializedLength = 1 + (serializedLength?.Length ?? 0);
+            byte[] allBytes = new byte[lengthOfPrefixAndSerializedLength + contentLength];
+            allBytes[0] = prefix;
+            int offset = 1;
+            if (serializedLength != null)
+            {
+                Buffer.BlockCopy(serializedLength, 0, allBytes, offset, serializedLength.Length);
+                offset += serializedLength.Length;
+            }
+
             for (int i = 0; i < sequence.Length; i++)
             {
-                Buffer.BlockCopy(sequence[i].Bytes, 0, content, offset, sequence[i].Length);
+                Buffer.BlockCopy(sequence[i].Bytes, 0, allBytes, offset, sequence[i].Length);
                 offset += sequence[i].Length;
             }
 
-            if (contentLength < 56)
-            {
-                return new Rlp(Extensions.Bytes.Concat((byte)(192 + contentLength), content));
-            }
-
-            byte[] serializedLength = SerializeLength(contentLength);
-            byte prefix = (byte)(247 + serializedLength.Length);
-            return new Rlp(Extensions.Bytes.Concat(prefix, serializedLength, content));
-        }
-
-        public static Rlp Encode(params object[] sequence)
-        {
-            Rlp[] rlpSequence = new Rlp[sequence.Length];
-            for (int i = 0; i < sequence.Length; i++)
-            {
-                rlpSequence[i] = Encode(sequence[i]);
-            }
-
-            return Encode(rlpSequence);
+            return new Rlp(allBytes);
         }
 
         private static Rlp EncodeNumber(long item)
@@ -432,81 +464,81 @@ namespace Nethermind.Core.Encoding
             return bigInteger == 0 ? OfEmptyByteArray : Encode(bigInteger.ToBigEndianByteArray());
         }
 
-        public static Rlp Encode(DecodedRlp decodedRlp)
-        {
-            return Encode(decodedRlp.IsSequence ? decodedRlp.Items.ToArray() : decodedRlp.SingleItem);
-        }
+        //public static Rlp Encode(DecodedRlp decodedRlp)
+        //{
+        //    return Encode(decodedRlp.IsSequence ? decodedRlp.Items.ToArray() : decodedRlp.SingleItem);
+        //}
 
-        public static Rlp Encode(object item)
-        {
-            // TODO: review this nonsense later, can it be removed now?
-            switch (item)
-            {
-                case byte singleByte:
-                if (singleByte == 0)
-                {
-                    return OfEmptyByteArray;
-                }
-                else if (singleByte < 128)
-                {
-                    return new Rlp(singleByte);
-                }
-                else
-                {
-                    return Encode(new[] { singleByte });
-                }
-                case short _:
-                return EncodeNumber((short)item);
-                case int _:
-                return EncodeNumber((int)item);
-                case ushort _:
-                return EncodeNumber((ushort)item);
-                case uint _:
-                return EncodeNumber((uint)item);
-                case long _:
-                return EncodeNumber((long)item);
-                case null:
-                return OfEmptyByteArray;
-                case BigInteger bigInt:
-                return Encode(bigInt);
-                case string s:
-                return Encode(s);
-                case Rlp rlp:
-                return rlp;
-                case ulong ulongNumber:
-                return Encode(ulongNumber.ToBigEndianByteArray());
-                case byte[] byteArray:
-                return Encode(byteArray);
-                case Keccak keccak:
-                return Encode(keccak);
-                case Keccak[] keccakArray:
-                return Encode(keccakArray);
-                case object[] objects:
-                return Encode(objects);
-                case Address address:
-                return Encode(address);
-                case LogEntry logEntry:
-                return Encode(logEntry);
-                case Block block:
-                return Encode(block);
-                case BlockHeader header:
-                return Encode(header);
-                case BlockInfo blockInfo:
-                return Encode(blockInfo);
-                case ChainLevelInfo levelInfo:
-                return Encode(levelInfo);
-                case Bloom bloom:
-                return Encode(bloom);
-                case Transaction transaction:
-                return Encode(transaction);
-                case NetworkNode node:
-                return Encode(node);
-                case DecodedRlp decoded:
-                return Encode(decoded);
-            }
+        //public static Rlp Encode(object item)
+        //{
+        //    // TODO: review this nonsense later, can it be removed now?
+        //    switch (item)
+        //    {
+        //        case byte singleByte:
+        //        if (singleByte == 0)
+        //        {
+        //            return OfEmptyByteArray;
+        //        }
+        //        else if (singleByte < 128)
+        //        {
+        //            return new Rlp(singleByte);
+        //        }
+        //        else
+        //        {
+        //            return Encode(new[] { singleByte });
+        //        }
+        //        case short _:
+        //        return EncodeNumber((short)item);
+        //        case int _:
+        //        return EncodeNumber((int)item);
+        //        case ushort _:
+        //        return EncodeNumber((ushort)item);
+        //        case uint _:
+        //        return EncodeNumber((uint)item);
+        //        case long _:
+        //        return EncodeNumber((long)item);
+        //        case null:
+        //        return OfEmptyByteArray;
+        //        case BigInteger bigInt:
+        //        return Encode(bigInt);
+        //        case string s:
+        //        return Encode(s);
+        //        case Rlp rlp:
+        //        return rlp;
+        //        case ulong ulongNumber:
+        //        return Encode(ulongNumber.ToBigEndianByteArray());
+        //        case byte[] byteArray:
+        //        return Encode(byteArray);
+        //        case Keccak keccak:
+        //        return Encode(keccak);
+        //        case Keccak[] keccakArray:
+        //        return Encode(keccakArray);
+        //        case object[] objects:
+        //        return Encode(objects);
+        //        case Address address:
+        //        return Encode(address);
+        //        case LogEntry logEntry:
+        //        return Encode(logEntry);
+        //        case Block block:
+        //        return Encode(block);
+        //        case BlockHeader header:
+        //        return Encode(header);
+        //        case BlockInfo blockInfo:
+        //        return Encode(blockInfo);
+        //        case ChainLevelInfo levelInfo:
+        //        return Encode(levelInfo);
+        //        case Bloom bloom:
+        //        return Encode(bloom);
+        //        case Transaction transaction:
+        //        return Encode(transaction);
+        //        case NetworkNode node:
+        //        return Encode(node);
+        //        case DecodedRlp decoded:
+        //        return Encode(decoded);
+        //    }
 
-            throw new NotSupportedException($"RLP does not support items of type {item.GetType().Name}");
-        }
+        //    throw new NotSupportedException($"RLP does not support items of type {item.GetType().Name}");
+        //}
 
         public static Rlp Encode(string s)
         {
@@ -699,7 +731,8 @@ namespace Nethermind.Core.Encoding
             }
             else
             {
-                sequence[6] = Encode(transaction.Signature?.V);
+                // TODO: below obviously fails when Signature is null
+                sequence[6] = transaction.Signature == null ? OfEmptyByteArray : Encode(transaction.Signature.V);
                 sequence[7] = Encode(transaction.Signature?.R.WithoutLeadingZeros()); // TODO: consider storing R and S differently
                 sequence[8] = Encode(transaction.Signature?.S.WithoutLeadingZeros()); // TODO: consider storing R and S differently
             }
@@ -718,11 +751,6 @@ namespace Nethermind.Core.Encoding
             result[0] = 160;
             Buffer.BlockCopy(keccak.Bytes, 0, result, 1, 32);
             return new Rlp(result);
-        }
-
-        public static Keccak DecodeKeccak(Rlp rlp)
-        {
-            return new Keccak(rlp.Bytes.Slice(1, 32));
         }
 
         public static Rlp Encode(Address address)

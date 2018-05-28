@@ -31,8 +31,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             return Rlp.Encode(
                 message.BlockHashes.Select(bh =>
                     Rlp.Encode(
-                        bh.Item1,
-                        bh.Item2)).ToArray()
+                        Rlp.Encode(bh.Item1),
+                        Rlp.Encode(bh.Item2))).ToArray()
             ).Bytes;
         }
 

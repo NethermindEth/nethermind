@@ -28,11 +28,13 @@ namespace Nethermind.Network.P2P
         public byte[] Serialize(HelloMessage message)
         {
             return Rlp.Encode(
-                message.P2PVersion,
-                message.ClientId,
-                message.Capabilities.Select(c => Rlp.Encode(c.ProtocolCode.ToLowerInvariant(), c.Version)).ToArray(),
-                message.ListenPort,
-                message.NodeId.PrefixedBytes
+                Rlp.Encode(message.P2PVersion),
+                Rlp.Encode(message.ClientId),
+                Rlp.Encode(message.Capabilities.Select(c => Rlp.Encode(
+                    Rlp.Encode(c.ProtocolCode.ToLowerInvariant()),
+                    Rlp.Encode(c.Version))).ToArray()),
+                Rlp.Encode(message.ListenPort),
+                Rlp.Encode(message.NodeId.PrefixedBytes)
             ).Bytes;
         }
 

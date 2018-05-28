@@ -157,7 +157,7 @@ namespace Nethermind.Store
             Metrics.TreeNodeRlpEncodings++;
             if (node is Leaf leaf)
             {
-                Rlp result = Rlp.Encode(leaf.Key.ToBytes(), leaf.Value);
+                Rlp result = Rlp.Encode(Rlp.Encode(leaf.Key.ToBytes()), Rlp.Encode(leaf.Value));
                 return result;
             }
 
@@ -188,7 +188,9 @@ namespace Nethermind.Store
 
             if (node is Extension extension)
             {
-                return Rlp.Encode(extension.Key.ToBytes(), RlpEncode(extension.NextNodeRef));
+                return Rlp.Encode(
+                    Rlp.Encode(extension.Key.ToBytes()),
+                    RlpEncode(extension.NextNodeRef));
             }
 
             throw new InvalidOperationException($"Unknown node type {node?.GetType().Name}");

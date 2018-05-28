@@ -25,10 +25,7 @@ namespace Nethermind.Network.P2P
         public byte[] Serialize(DisconnectMessage message)
         {
             return Rlp.Encode(
-                new object[]
-                {
-                    (byte)message.Reason
-                }
+                Rlp.Encode((byte)message.Reason) // sic!, as a list of 1 element
             ).Bytes;
         }
 

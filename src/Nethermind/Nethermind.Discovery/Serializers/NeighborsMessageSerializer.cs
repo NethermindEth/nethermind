@@ -55,8 +55,9 @@ namespace Nethermind.Discovery.Serializers
                 }
             }
 
+            Rlp firstItem = nodes == null ? Rlp.Encode(new[] {OffsetShortList}) : Rlp.Encode(nodes);
             byte[] data = Rlp.Encode(
-                nodes ?? (object)new[] { OffsetShortList },
+                firstItem,
                 //TODO verify if encoding is correct
                 Rlp.Encode(message.ExpirationTime)
             ).Bytes;

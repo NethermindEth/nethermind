@@ -77,7 +77,7 @@ namespace Nethermind.Discovery.Serializers
             return (message, mdc, data);
         }
 
-        protected Rlp GetRlpAddress(IPEndPoint address)
+        protected Rlp Encode(IPEndPoint address)
         {
             return Rlp.Encode(
                 Rlp.Encode(address.Address.GetAddressBytes()),
