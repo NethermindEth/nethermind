@@ -17,7 +17,6 @@
  */
 
 using System;
-using System.Collections.Concurrent;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
@@ -31,7 +30,7 @@ namespace Nethermind.Mining
 {
     public class Ethash : IEthash
     {
-        private readonly ConcurrentDictionary<uint, IEthashDataSet> _cacheCache = new ConcurrentDictionary<uint, IEthashDataSet>();
+        private readonly LruCache<uint, IEthashDataSet> _cacheCache = new LruCache<uint, IEthashDataSet>(2);
 
         public const int WordBytes = 4; // bytes in word
         public static uint DatasetBytesInit = (uint)BigInteger.Pow(2, 30); // bytes in dataset at genesis
@@ -184,8 +183,6 @@ namespace Nethermind.Mining
             return BitConverter.ToUInt32(BitConverter.IsLittleEndian ? bytes : Bytes.Reverse(bytes), (int)offset * 4);
         }
 
-        private const int CacheCacheSizeLimit = 6;
-
         public bool Validate(BlockHeader header)
         {
             uint epoch = GetEpoch(header.Number);
@@ -205,38 +202,17 @@ namespace Nethermind.Mining
         
         private IEthashDataSet GetOrAddCache(uint epoch)
         {
-            uint? epochToRemove = null;
-            IEthashDataSet cache = _cacheCache.GetOrAdd(epoch, e =>
+            IEthashDataSet dataSet = _cacheCache.Get(epoch);
+            if (dataSet == null)
             {
-                // TODO: naive, PoC
-                if (_cacheCache.Count > CacheCacheSizeLimit)
-                {
-                    int indextToRemove = Random.Next(CacheCacheSizeLimit);
-                    {
-                        int index = 0;
-                        foreach (uint epochInCache in _cacheCache.Keys)
-                        {
-                            if (index++ == indextToRemove)
-                            {
-                                epochToRemove = epochInCache;
-                            }
-                        }
-                    }
-                }
-
                 uint cacheSize = GetCacheSize(epoch);
                 Keccak seed = GetSeedHash(epoch);
                 Console.WriteLine($"Building cache for epoch {epoch}");
-                return new EthashCache(cacheSize, seed.Bytes);
-            });
-
-            if (epochToRemove.HasValue)
-            {
-                Console.WriteLine($"Removing cache for epoch {epochToRemove}");
-                _cacheCache.TryRemove(epochToRemove.Value, out IEthashDataSet removedItem);
+                dataSet = new EthashCache(cacheSize, seed.Bytes);
+                _cacheCache.Set(epoch, dataSet);
             }
-
-            return cache;
+           
+            return dataSet;
         }
 
         private static Keccak GetTruncatedHash(BlockHeader header)

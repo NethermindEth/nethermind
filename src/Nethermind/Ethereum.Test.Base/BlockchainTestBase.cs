@@ -331,11 +331,10 @@ namespace Ethereum.Test.Base
                 {
                     _chainLogger?.Info(ex.ToString());
                 }
-
-                stopwatch?.Stop(); // TODO: this stopwatch does not have any meaning any more (temporarily)
             }
 
             await blockchainProcessor.StopAsync(true);
+            stopwatch?.Stop();
 
             RunAssertions(test, blockTree.RetrieveHeadBlock(), storageProvider, stateProvider);
         }

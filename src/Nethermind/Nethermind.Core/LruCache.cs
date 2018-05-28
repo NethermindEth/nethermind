@@ -19,7 +19,7 @@
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 
-namespace Nethermind.Store
+namespace Nethermind.Core
 {
     /// <summary>
     /// https://stackoverflow.com/questions/754233/is-it-there-any-lru-implementation-of-idictionary

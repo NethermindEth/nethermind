@@ -16,12 +16,10 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Store;
 using NUnit.Framework;
 
-namespace Nethermind.Store.Test
+namespace Nethermind.Core.Test
 {
     [TestFixture]
     public class LruCacheTests
