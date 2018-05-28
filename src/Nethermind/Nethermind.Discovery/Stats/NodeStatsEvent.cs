@@ -29,21 +29,8 @@ namespace Nethermind.Discovery.Stats
         DiscoveryFindNodeOut,
         DiscoveryFindNodeIn,
 
-        RlpxConnectionAttempts,
-        RlpxAuthMessagesSent,
-        RlpxOutHello,
-        RlpxInHello,
-        RlpxHandshake,
-        RlpxOutMessages,
-        RlpxInMessages,
-
-        EthHandshake,
-        EthInbound,
-        EthOutbound,
-
-        Eth63NodesRequested,
-        Eth63NodesReceived,
-        Eth63NodesRetrieveTime,
+        P2PInitialized,
+        Eth62Initialized,
 
         Disconnect
     }

@@ -16,8 +16,6 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Collections.Generic;
-
 namespace Nethermind.Store
 {
     public interface IDb
@@ -33,9 +31,5 @@ namespace Nethermind.Store
         void StartBatch();
 
         void CommitBatch();
-
-        ICollection<byte[]> Keys { get; }
-
-        ICollection<byte[]> Values { get; }
     }
 }

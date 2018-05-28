@@ -122,13 +122,15 @@ namespace Nethermind.Network.P2P
             // * If such a packet is received by a node with lower version, it will blindly assume that the remote end is backwards-compatible and respond with the old handshake.
             // * If the packet is received by a node with equal version, new features of the protocol can be used.
             // * If the packet is received by a node with higher version, it can enable backwards-compatibility logic or drop the connection.
-            if (hello.P2PVersion < 4 || hello.P2PVersion > 5)
-            {
-                //triggers disconnect on the session, which will trigger it on all protocol handlers
-                P2PSession.InitiateDisconnectAsync(DisconnectReason.IncompatibleP2PVersion);
-                //Disconnect(DisconnectReason.IncompatibleP2PVersion);
-                return;
-            }
+            
+            //Moved that validation to PeerManager
+            //if (hello.P2PVersion < 4 || hello.P2PVersion > 5)
+            //{
+            //    //triggers disconnect on the session, which will trigger it on all protocol handlers
+            //    P2PSession.InitiateDisconnectAsync(DisconnectReason.IncompatibleP2PVersion);
+            //    //Disconnect(DisconnectReason.IncompatibleP2PVersion);
+            //    return;
+            //}
 
             ProtocolVersion = hello.P2PVersion;
 
@@ -152,7 +154,13 @@ namespace Nethermind.Network.P2P
                 throw new InvalidOperationException($"Handling {nameof(HelloMessage)} from peer before sending our own");
             }
             
-            ProtocolInitialized?.Invoke(this, EventArgs.Empty);
+            var eventArgs = new P2PProtocolInitializedEventArgs(this)
+            {
+                P2PVersion = hello.P2PVersion,
+                ClientId = hello.ClientId,
+                Capabilities = hello.Capabilities
+            };
+            ProtocolInitialized?.Invoke(this, eventArgs);
         }
 
         private static readonly List<Capability> SupportedCapabilities = new List<Capability>
@@ -208,7 +216,7 @@ namespace Nethermind.Network.P2P
             Send(PingMessage.Instance);
         }
 
-        public event EventHandler ProtocolInitialized;
+        public event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized;
         public event EventHandler<ProtocolEventArgs> SubprotocolRequested;
     }
 }

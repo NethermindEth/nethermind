@@ -46,7 +46,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Par
             throw new NotImplementedException();
         }
 
-        public event EventHandler ProtocolInitialized;
+        public event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized;
         public event EventHandler<ProtocolEventArgs> SubprotocolRequested;
     }
 }

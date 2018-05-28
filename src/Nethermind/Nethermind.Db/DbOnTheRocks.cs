@@ -18,7 +18,6 @@
 
 using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.IO;
 using Nethermind.Store;
 using RocksDbSharp;
@@ -37,7 +36,7 @@ namespace Nethermind.Db
 
         private static readonly ConcurrentDictionary<string, RocksDb> DbsByPath = new ConcurrentDictionary<string, RocksDb>();
 
-        private readonly RocksDb _db;
+        protected readonly RocksDb _db;
         private readonly DbInstance _dbInstance;
 
         private WriteBatchWithIndex _currentBatch;
@@ -205,34 +204,7 @@ namespace Nethermind.Db
         {
             _db.Write(_currentBatch);
             _currentBatch = null;
-        }
-
-        public ICollection<byte[]> Keys
-        {
-            get { return GetKeysOrValues(x => x.Key()); }
-        }
-
-        public ICollection<byte[]> Values
-        {
-            get { return GetKeysOrValues(x => x.Value()); }
-        }
-
-        private ICollection<byte[]> GetKeysOrValues(Func<Iterator, byte[]> selector)
-        {
-            ReadOptions readOptions = new ReadOptions();
-            List<byte[]> items = new List<byte[]>();
-            using (Iterator iter = _db.NewIterator(readOptions: readOptions))
-            {
-                while (iter.Valid())
-                {
-                    byte[] item = selector.Invoke(iter);
-                    items.Add(item);
-                    iter.Next();
-                }
-            }
-
-            return items;
-        }
+        }        
 
         private enum DbInstance
         {

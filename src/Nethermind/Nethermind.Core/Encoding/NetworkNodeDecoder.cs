@@ -16,19 +16,24 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
+using Nethermind.Core.Extensions;
+
 namespace Nethermind.Core.Encoding
 {
-    public class NetworkNodeDecoder : IRlpDecoder<NetworkNode>
+    public class NetworkNodeDecoder : INewRlpDecoder<NetworkNode>
     {
-        public NetworkNode Decode(DecodedRlp rlp)
+        public NetworkNode Decode(NewRlp.DecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            var publicKey = new Hex(rlp.GetBytes(0));
-            var ip = rlp.GetString(1);
-            var port = rlp.GetInt(2);
-            var description = rlp.GetString(3);
-            var reputation = rlp.GetLong(4);
+            context.ReadSequenceLength();
 
-            var networkNode = new NetworkNode(publicKey, ip, port, description, reputation);    
+            var publicKey = new Hex(context.ReadByteArray());
+            var ip = System.Text.Encoding.UTF8.GetString(context.ReadByteArray());
+            var port = context.ReadByteArray().ToInt32();
+            var description = System.Text.Encoding.UTF8.GetString(context.ReadByteArray());
+            var reputation = context.ReadByteArray().ToInt64();
+
+            var networkNode = new NetworkNode(publicKey, ip != string.Empty ? ip : null, port, description != string.Empty ? description : null, reputation);
             return networkNode;
         }
     }

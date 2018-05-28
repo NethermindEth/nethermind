@@ -42,6 +42,7 @@ namespace Nethermind.Core.Encoding
                 [typeof(Block).TypeHandle] = new NewBlockDecoder(),
                 [typeof(BlockHeader).TypeHandle] = new NewHeaderDecoder(),
                 [typeof(Transaction).TypeHandle] = new NewTransactionDecoder(),
+                [typeof(NetworkNode).TypeHandle] = new NetworkNodeDecoder(),
             };
 
         public NewRlp(byte singleByte)
@@ -291,6 +292,8 @@ namespace Nethermind.Core.Encoding
                 return Encode(transaction);
                 case DecodedRlp decoded:
                 return Encode(decoded);
+                case NetworkNode node:
+                return Encode(node);
             }
 
             throw new NotSupportedException($"RLP does not support items of type {item.GetType().Name}");
@@ -510,6 +513,17 @@ namespace Nethermind.Core.Encoding
             result[0] = 148;
             Buffer.BlockCopy(address.Hex, 0, result, 1, 20);
             return new Rlp(result);
+        }
+
+        public static Rlp Encode(NetworkNode network)
+        {
+            Rlp[] elements = new Rlp[5];
+            elements[0] = Encode(network.PublicKey.Bytes);
+            elements[1] = Encode(network.Host??string.Empty);
+            elements[2] = Encode(network.Port);
+            elements[3] = Encode(network.Description??string.Empty);
+            elements[4] = Encode(network.Reputation);
+            return Encode(elements);
         }
 
         public string ToString(bool withZeroX)

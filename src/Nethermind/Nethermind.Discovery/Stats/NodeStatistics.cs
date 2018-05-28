@@ -23,6 +23,9 @@ using Nethermind.Network.P2P;
 
 namespace Nethermind.Discovery.Stats
 {
+    /// <summary>
+    /// Initial version of Reputation calculation mostly based on EthereumJ impl
+    /// </summary>
     public class NodeStats : INodeStats
     {
         private readonly IDiscoveryConfigurationProvider _configurationProvider;
@@ -56,6 +59,11 @@ namespace Nethermind.Discovery.Stats
             _lastDisconnects[disconnectType] = (disconnectReason, DateTime.Now);
         }
 
+        public bool DidEventHappen(NodeStatsEvent nodeStatsEvent)
+        {
+            return _stats[nodeStatsEvent].Value > 0;
+        }
+
         public long CurrentNodeReputation => CalculateCurrentReputation();
 
         public long CurrentPersistedNodeReputation { get; set; }
@@ -79,9 +87,8 @@ namespace Nethermind.Discovery.Stats
             discoveryReputation += Math.Min(_stats[NodeStatsEvent.DiscoveryNeighboursIn].Value, 10) * 2;
 
             long rlpxReputation = 0;
-            rlpxReputation += _stats[NodeStatsEvent.RlpxAuthMessagesSent].Value > 0 ? 10 : 0;
-            rlpxReputation += _stats[NodeStatsEvent.RlpxHandshake].Value > 0 ? 20 : 0;
-            rlpxReputation += Math.Min(_stats[NodeStatsEvent.RlpxInMessages].Value, 10) * 3;
+            rlpxReputation += _stats[NodeStatsEvent.P2PInitialized].Value > 0 ? 10 : 0;
+            rlpxReputation += _stats[NodeStatsEvent.Eth62Initialized].Value > 0 ? 20 : 0;
 
             if (_lastDisconnects.Any())
             {

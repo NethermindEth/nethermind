@@ -153,6 +153,7 @@ namespace Nethermind.Network.P2P
         }
 
         public event EventHandler<DisconnectEventArgs> PeerDisconnected;
+        public event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized;
 
         private (string, int) ResolveMessageCode(int adaptiveId)
         {
@@ -188,6 +189,7 @@ namespace Nethermind.Network.P2P
                         {
                             _logger.Info($"{RemoteNodeId} {protocolHandler.ProtocolCode} v{protocolHandler.ProtocolVersion} established - Disabling Snappy");
                         }
+                        ProtocolInitialized?.Invoke(this, args);
                     };
                     break;
                 case Protocol.Eth:
@@ -199,7 +201,11 @@ namespace Nethermind.Network.P2P
                     protocolHandler = version == 62
                         ? new Eth62ProtocolHandler(this, _serializer, _syncManager, _logger)
                         : new Eth63ProtocolHandler(this, _serializer, _syncManager, _logger);
-                    protocolHandler.ProtocolInitialized += async (sender, args) => { await _syncManager.AddPeer((Eth62ProtocolHandler)protocolHandler); };
+                    protocolHandler.ProtocolInitialized += (sender, args) =>
+                    {
+                        //await _syncManager.AddPeer((Eth62ProtocolHandler)protocolHandler);
+                        ProtocolInitialized?.Invoke(this, args);
+                    };
                     break;
                 default:
                     throw new NotSupportedException();

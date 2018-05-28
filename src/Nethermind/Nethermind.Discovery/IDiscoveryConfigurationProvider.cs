@@ -93,7 +93,7 @@ namespace Nethermind.Discovery
         /// Time between running dicovery processes in miliseconds
         /// </summary>
         int DiscoveryInterval { get; }
-
+        
         /// <summary>
         /// Time between persisting discovered nodes in miliseconds
         /// </summary>
@@ -178,5 +178,15 @@ namespace Nethermind.Discovery
         /// On/Off for discovery persistance
         /// </summary>
         bool IsDiscoveryNodesPersistenceOn { get; set; }
-}
+
+        /// <summary>
+        /// Time between running peer update in miliseconds
+        /// </summary>
+        int ActivePeerUpdateInterval { get; }
+
+        /// <summary>
+        /// Max amount of active peers on the tcp level 
+        /// </summary>
+        int ActivePeersMaxCount { get; }
+    }
 }

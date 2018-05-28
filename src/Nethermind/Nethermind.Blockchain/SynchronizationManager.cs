@@ -227,7 +227,7 @@ namespace Nethermind.Blockchain
 
         public void RemovePeer(ISynchronizationPeer synchronizationPeer)
         {
-            throw new NotImplementedException();
+            //throw new NotImplementedException();
         }
 
         public void Start()

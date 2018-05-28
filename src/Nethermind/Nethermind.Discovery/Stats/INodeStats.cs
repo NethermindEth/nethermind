@@ -25,6 +25,8 @@ namespace Nethermind.Discovery.Stats
         void AddNodeStatsEvent(NodeStatsEvent nodeStatsEvent);
         void AddNodeStatsDisconnectEvent(DisconnectType disconnectType, DisconnectReason disconnectReason);
 
+        bool DidEventHappen(NodeStatsEvent nodeStatsEvent);
+
         long CurrentNodeReputation { get; }
         long CurrentPersistedNodeReputation { get; set; }
         long NewPersistedNodeReputation { get; }

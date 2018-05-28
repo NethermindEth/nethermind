@@ -43,5 +43,6 @@ namespace Nethermind.Network.P2P
         Task DisconnectAsync(DisconnectReason disconnectReason, DisconnectType disconnectType, TimeSpan? delay = null);
 
         event EventHandler<DisconnectEventArgs>  PeerDisconnected;
+        event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized;
     }
 }

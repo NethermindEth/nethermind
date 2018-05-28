@@ -168,8 +168,17 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             {
                 throw new InvalidOperationException($"Received status from {P2PSession.RemoteNodeId} before calling Init");
             }
-            
-            ProtocolInitialized?.Invoke(this, EventArgs.Empty);
+
+            var eventArgs = new Eth62ProtocolInitializedEventArgs(this)
+            {
+                ChainId = status.ChainId,
+                BestHash = status.BestHash,
+                GenesisHash = status.GenesisHash,
+                Protocol = status.Protocol,
+                ProtocolVersion = status.ProtocolVersion,
+                TotalDifficulty = status.TotalDifficulty
+            };
+            ProtocolInitialized?.Invoke(this, eventArgs);
         }
 
         private void Handle(TransactionsMessage msg)
@@ -293,7 +302,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         {
         }
 
-        public event EventHandler ProtocolInitialized;
+        public event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized;
         public event EventHandler<ProtocolEventArgs> SubprotocolRequested;
 
         private readonly BlockingCollection<Request<GetBlockHeadersMessage, BlockHeader[]>> _headersRequests

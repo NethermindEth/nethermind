@@ -16,9 +16,17 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Collections.Generic;
+using System.Threading.Tasks;
+
 namespace Nethermind.Discovery
 {
     public interface IPeerManager
     {
+        void StartPeerTimer();
+        void StopPeerTimer();
+        Task RunPeerUpdate();
+        IReadOnlyCollection<Peer> NewPeers { get; }
+        IReadOnlyCollection<Peer> ActivePeers { get; }
     }
 }

@@ -15,13 +15,13 @@ namespace Nethermind.Discovery
     {
         private readonly IDiscoveryConfigurationProvider _configurationProvider;
         private readonly INodeFactory _nodeFactory;
-        private readonly IDb _discoveryDb;
+        private readonly IFullDb _discoveryDb;
 
         public DiscoveryStorage(IDiscoveryConfigurationProvider configurationProvider, INodeFactory nodeFactory)
         {
             _configurationProvider = configurationProvider;
             _nodeFactory = nodeFactory;
-            _discoveryDb = new DbOnTheRocks(Path.Combine(_configurationProvider.DbBasePath, DbOnTheRocks.PeersDbPath));
+            _discoveryDb = new FullDbOnTheRocks(Path.Combine(_configurationProvider.DbBasePath, DbOnTheRocks.PeersDbPath));
         }
 
         public (Node Node, long PersistedReputation)[] GetPersistedNodes()
@@ -44,7 +44,7 @@ namespace Nethermind.Discovery
                 var manager = nodes[i];
                 var node = manager.ManagedNode;
                 var networkNode = new NetworkNode(node.Id.Bytes, node.Host, node.Port, node.Description, manager.NodeStats.NewPersistedNodeReputation);
-                _discoveryDb[networkNode.PublicKey.Bytes] = Rlp.Encode(networkNode).Bytes;
+                _discoveryDb[networkNode.PublicKey.Bytes] = NewRlp.Encode(networkNode).Bytes;
             }
 
             //delete removed nodes
@@ -62,7 +62,7 @@ namespace Nethermind.Discovery
 
         private (Node, long) GetNode(byte[] networkNodeRaw)
         {
-            var persistedNode = Rlp.Decode<NetworkNode>(new Rlp(networkNodeRaw));
+            var persistedNode = NewRlp.Decode<NetworkNode>(networkNodeRaw);
             var node = _nodeFactory.CreateNode(persistedNode.PublicKey, persistedNode.Host, persistedNode.Port);
             node.Description = persistedNode.Description;
             return (node, persistedNode.Reputation);

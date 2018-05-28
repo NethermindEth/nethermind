@@ -29,7 +29,7 @@ using NUnit.Framework;
 namespace Nethermind.Discovery.Test
 {
     [TestFixture]
-    public class EIP8DiscoveryTest
+    public class EIP8DiscoveryTests
     {
         private readonly PrivateKey _privateKey = new PrivateKey("b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291");
         private IMessageSerializationService _messageSerializationService;
