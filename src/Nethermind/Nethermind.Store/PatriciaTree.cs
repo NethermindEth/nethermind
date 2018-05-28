@@ -48,34 +48,31 @@ namespace Nethermind.Store
 
         private void Commit(NodeRef nodeRef, bool isRoot)
         {
-            if (nodeRef.IsDirty)
+            Node node = nodeRef.Node;
+            if (node is Branch branch)
             {
-                Node node = nodeRef.Node;
-                if (node is Branch branch)
+                for (int i = 0; i < 16; i++)
                 {
-                    for (int i = 0; i < 16; i++)
+                    NodeRef subnode = branch.Nodes[i];
+                    if (subnode?.IsDirty ?? false)
                     {
-                        NodeRef subnode = branch.Nodes[i];
-                        if (subnode?.IsDirty ?? false)
-                        {
-                            Commit(branch.Nodes[i], false);
-                        }
+                        Commit(branch.Nodes[i], false);
                     }
                 }
-                else if (node is Extension extension)
+            }
+            else if (node is Extension extension)
+            {
+                if (extension.NextNodeRef.IsDirty)
                 {
-                    if (extension.NextNodeRef.IsDirty)
-                    {
-                        Commit(extension.NextNodeRef, false);
-                    }
+                    Commit(extension.NextNodeRef, false);
                 }
+            }
 
-                nodeRef.Node.IsDirty = false;
-                nodeRef.ResolveKey();
-                if (nodeRef.KeccakOrRlp.IsKeccak || isRoot)
-                {
-                    _db.Set(nodeRef.KeccakOrRlp.GetOrComputeKeccak(), nodeRef.FullRlp.Bytes);
-                }
+            nodeRef.Node.IsDirty = false;
+            nodeRef.ResolveKey();
+            if (nodeRef.KeccakOrRlp.IsKeccak || isRoot)
+            {
+                _db.Set(nodeRef.KeccakOrRlp.GetOrComputeKeccak(), nodeRef.FullRlp.Bytes);
             }
         }
 
@@ -93,7 +90,7 @@ namespace Nethermind.Store
         private readonly IDb _db;
 
         internal NodeRef RootRef;
-        
+
         internal Node Root
         {
             get
@@ -107,7 +104,7 @@ namespace Nethermind.Store
             : this(new MemDb(), EmptyTreeHash)
         {
         }
-        
+
         public PatriciaTree(IDb db)
             : this(db, EmptyTreeHash)
         {
@@ -306,66 +303,66 @@ namespace Nethermind.Store
         // TODO: this would only be needed with pruning?
         internal void DeleteNode(KeccakOrRlp hash, bool ignoreChildren = false)
         {
-//            if (hash == null || !hash.IsKeccak)
-//            {
-//                return;
-//            }
-//
-//            Keccak thisNodeKeccak = hash.GetOrComputeKeccak();
-//            Node node = ignoreChildren ? null : RlpDecode(new Rlp(_db[thisNodeKeccak]));
-//            _db.Remove(thisNodeKeccak);
-//
-//            if (ignoreChildren)
-//            {
-//                return;
-//            }
-//
-//            if (node is Extension extension)
-//            {
-//                DeleteNode(extension.NextNodeRef, true);
-//                _db.Remove(hash.GetOrComputeKeccak());
-//            }
-//
-//            if (node is Branch branch)
-//            {
-//                foreach (KeccakOrRlp subnode in branch.Nodes)
-//                {
-//                    DeleteNode(subnode, true);
-//                }
-//            }
+            //            if (hash == null || !hash.IsKeccak)
+            //            {
+            //                return;
+            //            }
+            //
+            //            Keccak thisNodeKeccak = hash.GetOrComputeKeccak();
+            //            Node node = ignoreChildren ? null : RlpDecode(new Rlp(_db[thisNodeKeccak]));
+            //            _db.Remove(thisNodeKeccak);
+            //
+            //            if (ignoreChildren)
+            //            {
+            //                return;
+            //            }
+            //
+            //            if (node is Extension extension)
+            //            {
+            //                DeleteNode(extension.NextNodeRef, true);
+            //                _db.Remove(hash.GetOrComputeKeccak());
+            //            }
+            //
+            //            if (node is Branch branch)
+            //            {
+            //                foreach (KeccakOrRlp subnode in branch.Nodes)
+            //                {
+            //                    DeleteNode(subnode, true);
+            //                }
+            //            }
         }
 
-//        internal KeccakOrRlp StoreNode(Node node, bool isRoot = false)
-//        {
-//            if (isRoot && node == null)
-//            {
-////                DeleteNode(new KeccakOrRlp(RootHash));
-//                RootRef = null;
-////                _db.Remove(RootHash);
-//                RootHash = EmptyTreeHash;
-//                return new KeccakOrRlp(EmptyTreeHash);
-//            }
-//
-//            if (node == null)
-//            {
-//                return null;
-//            }
-//
-//            Rlp rlp = RlpEncode(node);
-//            KeccakOrRlp key = new KeccakOrRlp(rlp);
-//            if (key.IsKeccak || isRoot)
-//            {
-//                Keccak keyKeccak = key.GetOrComputeKeccak();
-//                _db[keyKeccak.Bytes] = rlp.Bytes;
-//
-//                if (isRoot)
-//                {
-//                    RootRef = node;
-//                    RootHash = keyKeccak;
-//                }
-//            }
-//
-//            return key;
-//        }
+        //        internal KeccakOrRlp StoreNode(Node node, bool isRoot = false)
+        //        {
+        //            if (isRoot && node == null)
+        //            {
+        ////                DeleteNode(new KeccakOrRlp(RootHash));
+        //                RootRef = null;
+        ////                _db.Remove(RootHash);
+        //                RootHash = EmptyTreeHash;
+        //                return new KeccakOrRlp(EmptyTreeHash);
+        //            }
+        //
+        //            if (node == null)
+        //            {
+        //                return null;
+        //            }
+        //
+        //            Rlp rlp = RlpEncode(node);
+        //            KeccakOrRlp key = new KeccakOrRlp(rlp);
+        //            if (key.IsKeccak || isRoot)
+        //            {
+        //                Keccak keyKeccak = key.GetOrComputeKeccak();
+        //                _db[keyKeccak.Bytes] = rlp.Bytes;
+        //
+        //                if (isRoot)
+        //                {
+        //                    RootRef = node;
+        //                    RootHash = keyKeccak;
+        //                }
+        //            }
+        //
+        //            return key;
+        //        }
     }
 }
