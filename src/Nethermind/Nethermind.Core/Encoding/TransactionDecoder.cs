@@ -22,7 +22,7 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.Core.Encoding
 {
-    public class NewTransactionDecoder : INewRlpDecoder<Transaction>
+    public class TransactionDecoder : IRlpDecoder<Transaction>
     {
         public Transaction Decode(NewRlp.DecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {

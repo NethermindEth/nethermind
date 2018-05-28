@@ -18,7 +18,7 @@
 
 namespace Nethermind.Core.Encoding
 {
-    public class NewAccountDecoder : INewRlpDecoder<Account>
+    public class AccountDecoder : IRlpDecoder<Account>
     {
         public Account Decode(NewRlp.DecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {

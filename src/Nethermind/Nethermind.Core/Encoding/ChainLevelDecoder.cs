@@ -16,16 +16,32 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Collections.Generic;
+
 namespace Nethermind.Core.Encoding
 {
     public class ChainLevelDecoder : IRlpDecoder<ChainLevelInfo>
     {
-        public ChainLevelInfo Decode(DecodedRlp rlp)
+        public ChainLevelInfo Decode(NewRlp.DecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            bool hasBlockOnMainChain = rlp.GetBool(0);
-            BlockInfo[] blockInfos = rlp.GetComplexObjectArray<BlockInfo>(1);
-            ChainLevelInfo blockInfo = new ChainLevelInfo(hasBlockOnMainChain, blockInfos);
-            return blockInfo;
+            long lastCheck = context.ReadSequenceLength() + context.Position;
+            bool hasMainChainBlock = context.ReadBool();
+            
+            List<BlockInfo> blockInfos = new List<BlockInfo>();
+            
+            context.ReadSequenceLength();
+            while (context.Position < lastCheck)
+            {
+                blockInfos.Add(NewRlp.Decode<BlockInfo>(context, RlpBehaviors.AllowExtraData));
+            }
+
+            if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraData))
+            {
+                context.Check(lastCheck);
+            }
+
+            ChainLevelInfo info = new ChainLevelInfo(hasMainChainBlock, blockInfos.ToArray());
+            return info;
         }
     }
 }

@@ -16,12 +16,11 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Core.Encoding
 {
-    public class NetworkNodeDecoder : INewRlpDecoder<NetworkNode>
+    public class NetworkNodeDecoder : IRlpDecoder<NetworkNode>
     {
         public NetworkNode Decode(NewRlp.DecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {

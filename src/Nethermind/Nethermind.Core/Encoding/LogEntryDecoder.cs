@@ -16,26 +16,31 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Core.Encoding
 {
     public class LogEntryDecoder : IRlpDecoder<LogEntry>
     {
-        public LogEntry Decode(DecodedRlp rlp)
+        public LogEntry Decode(NewRlp.DecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            Address address = rlp.GetAddress(0);
-            DecodedRlp topicSequence = rlp.GetSequence(1);
-            Keccak[] topics = new Keccak[topicSequence.Length];
+            if (rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraData))
+            {
+                throw new NotSupportedException("Not handling RlpBehaviours with log entries...");
+            }
+
+            Address address = context.ReadAddress();
+            long sequenceLength = context.ReadSequenceLength();
+            Keccak[] topics = new Keccak[sequenceLength / 33];
             for (int i = 0; i < topics.Length; i++)
             {
-                topics[i] = topicSequence.GetKeccak(i);
+                topics[i] = context.ReadKeccak();
             }
-            
-            byte[] data = rlp.GetBytes(2);
 
-            LogEntry logEntry = new LogEntry(address, data, topics);
-            return logEntry;
+            byte[] data = context.ReadByteArray();
+            
+            return new LogEntry(address, data, topics);
         }
     }
 }

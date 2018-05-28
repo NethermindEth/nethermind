@@ -18,7 +18,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
 using System.Numerics;
 using Nethermind.Core.Crypto;
@@ -29,26 +28,16 @@ namespace Nethermind.Core.Encoding
     /// <summary>
     ///     https://github.com/ethereum/wiki/wiki/RLP
     /// </summary>
-    [DebuggerStepThrough]
+    //[DebuggerStepThrough]
     public class Rlp : IEquatable<Rlp>
     {
         public static readonly Rlp OfEmptyByteArray = new Rlp(128);
 
         public static readonly Rlp OfEmptySequence = new Rlp(192);
 
-        // TODO: discover decoders, use them for encoding as well
-        private static readonly Dictionary<RuntimeTypeHandle, IRlpDecoder> Decoders =
-            new Dictionary<RuntimeTypeHandle, IRlpDecoder>
-            {
-                [typeof(BlockInfo).TypeHandle] = new BlockInfoDecoder(),
-                [typeof(ChainLevelInfo).TypeHandle] = new ChainLevelDecoder(),
-                [typeof(TransactionReceipt).TypeHandle] = new TransactionReceiptDecoder(),
-                [typeof(LogEntry).TypeHandle] = new LogEntryDecoder()
-            };
-
         public Rlp(byte singleByte)
         {
-            Bytes = new[] {singleByte};
+            Bytes = new[] { singleByte };
         }
 
         public Rlp(byte[] bytes)
@@ -84,11 +73,6 @@ namespace Nethermind.Core.Encoding
 
         public static T Decode<T>(DecodedRlp rlp, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (Decoders.ContainsKey(typeof(T).TypeHandle))
-            {
-                return ((IRlpDecoder<T>)Decoders[typeof(T).TypeHandle]).Decode(rlp);
-            }
-
             return rlp.As<T>();
         }
 
@@ -103,14 +87,7 @@ namespace Nethermind.Core.Encoding
             T[] array = new T[rlp.Items.Count];
             for (int i = 0; i < array.Length; i++)
             {
-                if (Decoders.ContainsKey(typeof(T).TypeHandle))
-                {
-                    array[i] = ((IRlpDecoder<T>)Decoders[typeof(T).TypeHandle]).Decode(rlp.GetSequence(i));
-                }
-                else
-                {
-                    array[i] = (T)rlp.Items[i];
-                }
+                array[i] = (T)rlp.Items[i];
             }
 
             return array;
@@ -134,13 +111,13 @@ namespace Nethermind.Core.Encoding
 
                 if (prefix == 0)
                 {
-                    result.Add(new Rlp(new byte[] {0}));
+                    result.Add(new Rlp(new byte[] { 0 }));
                     continue;
                 }
 
                 if (prefix < 128)
                 {
-                    result.Add(new Rlp(new[] {prefix}));
+                    result.Add(new Rlp(new[] { prefix }));
                     continue;
                 }
 
@@ -159,7 +136,7 @@ namespace Nethermind.Core.Encoding
                         throw new RlpException($"Unexpected byte value {content[0]}");
                     }
 
-                    result.Add(new Rlp(new[] {prefix}.Concat(content).ToArray()));
+                    result.Add(new Rlp(new[] { prefix }.Concat(content).ToArray()));
                     continue;
                 }
 
@@ -185,7 +162,7 @@ namespace Nethermind.Core.Encoding
                 }
 
                 byte[] data = context.Pop(concatenationLength);
-                byte[] itemBytes = {prefix};
+                byte[] itemBytes = { prefix };
                 if (lenghtBytes != null)
                 {
                     itemBytes = itemBytes.Concat(lenghtBytes).ToArray();
@@ -226,12 +203,12 @@ namespace Nethermind.Core.Encoding
 
             if (prefix == 0)
             {
-                return CheckAndReturnSingle(new byte[] {0}, context);
+                return CheckAndReturnSingle(new byte[] { 0 }, context);
             }
 
             if (prefix < 128)
             {
-                return CheckAndReturnSingle(new[] {prefix}, context);
+                return CheckAndReturnSingle(new[] { prefix }, context);
             }
 
             if (prefix == 128)
@@ -397,7 +374,7 @@ namespace Nethermind.Core.Encoding
 
             if (value <= byte.MaxValue)
             {
-                return Encode(new[] {Convert.ToByte(value)});
+                return Encode(new[] { Convert.ToByte(value) });
             }
 
             if (value <= short.MaxValue)
@@ -466,66 +443,66 @@ namespace Nethermind.Core.Encoding
             switch (item)
             {
                 case byte singleByte:
-                    if (singleByte == 0)
-                    {
-                        return OfEmptyByteArray;
-                    }
-                    else if (singleByte < 128)
-                    {
-                        return new Rlp(singleByte);
-                    }
-                    else
-                    {
-                        return Encode(new[] {singleByte});
-                    }
-                case short _:
-                    return EncodeNumber((short)item);
-                case int _:
-                    return EncodeNumber((int)item);
-                case ushort _:
-                    return EncodeNumber((ushort)item);
-                case uint _:
-                    return EncodeNumber((uint)item);
-                case long _:
-                    return EncodeNumber((long)item);
-                case null:
+                if (singleByte == 0)
+                {
                     return OfEmptyByteArray;
+                }
+                else if (singleByte < 128)
+                {
+                    return new Rlp(singleByte);
+                }
+                else
+                {
+                    return Encode(new[] { singleByte });
+                }
+                case short _:
+                return EncodeNumber((short)item);
+                case int _:
+                return EncodeNumber((int)item);
+                case ushort _:
+                return EncodeNumber((ushort)item);
+                case uint _:
+                return EncodeNumber((uint)item);
+                case long _:
+                return EncodeNumber((long)item);
+                case null:
+                return OfEmptyByteArray;
                 case BigInteger bigInt:
-                    return Encode(bigInt);
+                return Encode(bigInt);
                 case string s:
-                    return Encode(s);
+                return Encode(s);
                 case Rlp rlp:
-                    return rlp;
+                return rlp;
                 case ulong ulongNumber:
-                    return Encode(ulongNumber.ToBigEndianByteArray());
+                return Encode(ulongNumber.ToBigEndianByteArray());
                 case byte[] byteArray:
-                    return Encode(byteArray);
+                return Encode(byteArray);
                 case Keccak keccak:
-                    return Encode(keccak);
+                return Encode(keccak);
                 case Keccak[] keccakArray:
-                    return Encode(keccakArray);
+                return Encode(keccakArray);
                 case object[] objects:
-                    return Encode(objects);
+                return Encode(objects);
                 case Address address:
-                    return Encode(address);
+                return Encode(address);
                 case LogEntry logEntry:
-                    return Encode(logEntry);
+                return Encode(logEntry);
                 case Block block:
-                    return Encode(block);
+                return Encode(block);
                 case BlockHeader header:
-                    return Encode(header);
+                return Encode(header);
                 case BlockInfo blockInfo:
-                    return Encode(blockInfo);
+                return Encode(blockInfo);
                 case ChainLevelInfo levelInfo:
-                    return Encode(levelInfo);
+                return Encode(levelInfo);
                 case Bloom bloom:
-                    return Encode(bloom);
+                return Encode(bloom);
                 case Transaction transaction:
-                    return Encode(transaction);
+                return Encode(transaction);
                 case NetworkNode node:
-                    return Encode(node);
+                return Encode(node);
                 case DecodedRlp decoded:
-                    return Encode(decoded);
+                return Encode(decoded);
             }
 
             throw new NotSupportedException($"RLP does not support items of type {item.GetType().Name}");

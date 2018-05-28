@@ -16,17 +16,17 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Collections.Generic;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 
 namespace Nethermind.Core.Encoding
 {
     public class TransactionReceiptDecoder : IRlpDecoder<TransactionReceipt>
     {
-        public TransactionReceipt Decode(DecodedRlp rlp)
+        public TransactionReceipt Decode(NewRlp.DecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             TransactionReceipt receipt = new TransactionReceipt();
-            byte[] firstItem = rlp.GetBytes(0);
+            byte[] firstItem = context.ReadByteArray();
             if (firstItem.Length == 1)
             {
                 receipt.StatusCode = firstItem[0];
@@ -36,10 +36,23 @@ namespace Nethermind.Core.Encoding
                 receipt.PostTransactionState = firstItem.Length == 0 ? null : new Keccak(firstItem);
             }
 
-            receipt.GasUsed = rlp.GetInt(1);
-            receipt.Bloom = new Bloom(rlp.GetBytes(2).ToBigEndianBitArray2048());
-            receipt.Logs = rlp.GetComplexObjectArray<LogEntry>(3);
+            receipt.GasUsed = (long)context.ReadUBigInt(); // TODO: review
+            receipt.Bloom = context.ReadBloom();
 
+            long lastCheck = context.ReadSequenceLength() + context.Position;
+            List<LogEntry> logEntries = new List<LogEntry>();
+            
+            while (context.Position < lastCheck)
+            {
+                logEntries.Add(NewRlp.Decode<LogEntry>(context, RlpBehaviors.AllowExtraData));
+            }
+
+            if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraData))
+            {
+                context.Check(lastCheck);
+            }
+
+            receipt.Logs = logEntries.ToArray();
             return receipt;
         }
     }

@@ -18,7 +18,7 @@
 
 namespace Nethermind.Core
 {
-    public class ChainLevelInfo
+    public class ChainLevelInfo // TODO: move to blockchain namespace
     {
         public ChainLevelInfo(bool hasBlockInMainChain,  BlockInfo[] blockInfos)
         {

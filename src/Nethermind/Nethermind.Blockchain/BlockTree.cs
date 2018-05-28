@@ -45,7 +45,7 @@ namespace Nethermind.Blockchain
 
         private readonly IDb _blockDb;
 
-        private readonly NewBlockDecoder _blockDecoder = new NewBlockDecoder();
+        private readonly BlockDecoder _blockDecoder = new BlockDecoder();
         private readonly IDb _blockInfoDb;
         private readonly ILogger _logger;
         private readonly IDb _receiptsDb;
@@ -486,7 +486,7 @@ namespace Nethermind.Blockchain
                     return null;
                 }
 
-                chainLevelInfo = Rlp.Decode<ChainLevelInfo>(new Rlp(levelBytes));
+                chainLevelInfo = NewRlp.Decode<ChainLevelInfo>(new Rlp(levelBytes));
             }
 
             return chainLevelInfo;

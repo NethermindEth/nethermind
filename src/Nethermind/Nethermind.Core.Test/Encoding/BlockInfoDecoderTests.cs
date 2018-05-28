@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,26 +16,31 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.Core.Encoding
+using System.Numerics;
+using Nethermind.Core.Encoding;
+using Nethermind.Core.Test.Builders;
+using NUnit.Framework;
+
+namespace Nethermind.Core.Test.Encoding
 {
-    public class BlockInfoDecoder : IRlpDecoder<BlockInfo>
+    [TestFixture]
+    public class BlockInfoDecoderTests
     {
-        public BlockInfo Decode(NewRlp.DecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        [Test]
+        public void Can_do_roundtrip()
         {
-            long lastCheck = context.ReadSequenceLength() + context.Position;
-
             BlockInfo blockInfo = new BlockInfo();
-            blockInfo.BlockHash = context.ReadKeccak();
-            blockInfo.WasProcessed = context.ReadBool();
-            blockInfo.TotalDifficulty = context.ReadUBigInt();
-            blockInfo.TotalTransactions = context.ReadUBigInt();
+            blockInfo.BlockHash = TestObject.KeccakA;
+            blockInfo.TotalDifficulty = 1;
+            blockInfo.TotalTransactions = 1;
+            blockInfo.WasProcessed = true;
 
-            if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraData))
-            {
-                context.Check(lastCheck);
-            }
-
-            return blockInfo;
+            Rlp rlp = Rlp.Encode(blockInfo);
+            BlockInfo decoded = NewRlp.Decode<BlockInfo>(rlp);
+            Assert.True(decoded.WasProcessed, "0 processed");
+            Assert.AreEqual(TestObject.KeccakA, decoded.BlockHash, "block hash");
+            Assert.AreEqual(BigInteger.One, decoded.TotalDifficulty, "difficulty");
+            Assert.AreEqual(BigInteger.One, decoded.TotalTransactions, "txs");
         }
     }
 }

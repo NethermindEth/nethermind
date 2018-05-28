@@ -44,7 +44,7 @@ namespace Nethermind.Discovery
                 var manager = nodes[i];
                 var node = manager.ManagedNode;
                 var networkNode = new NetworkNode(node.Id.Bytes, node.Host, node.Port, node.Description, manager.NodeStats.NewPersistedNodeReputation);
-                _discoveryDb[networkNode.PublicKey.Bytes] = NewRlp.Encode(networkNode).Bytes;
+                _discoveryDb[networkNode.PublicKey.Bytes] = Rlp.Encode(networkNode).Bytes;
             }
 
             //delete removed nodes

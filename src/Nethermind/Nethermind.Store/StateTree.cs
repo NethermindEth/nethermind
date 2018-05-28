@@ -26,7 +26,7 @@ namespace Nethermind.Store
 {
     public class StateTree : PatriciaTree
     {   
-        private readonly NewAccountDecoder _decoder = new NewAccountDecoder();
+        private readonly AccountDecoder _decoder = new AccountDecoder();
         
         [DebuggerStepThrough]
         public StateTree(IDb db) : base(db)

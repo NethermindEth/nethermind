@@ -22,7 +22,7 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Core.Encoding
 {
-    public class NewHeaderDecoder : INewRlpDecoder<BlockHeader>
+    public class HeaderDecoder : IRlpDecoder<BlockHeader>
     {
         public BlockHeader Decode(NewRlp.DecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
@@ -38,7 +38,7 @@ namespace Nethermind.Core.Encoding
             Keccak stateRoot = context.ReadKeccak();
             Keccak transactionsRoot = context.ReadKeccak();
             Keccak receiptsRoot = context.ReadKeccak();
-            Bloom bloom = context.DecodeBloom();
+            Bloom bloom = context.ReadBloom();
             BigInteger difficulty = context.ReadUBigInt();
             BigInteger number = context.ReadUBigInt();
             BigInteger gasLimit = context.ReadUBigInt();

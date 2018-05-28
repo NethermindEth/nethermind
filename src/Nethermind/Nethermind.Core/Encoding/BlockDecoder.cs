@@ -20,7 +20,7 @@ using System.Collections.Generic;
 
 namespace Nethermind.Core.Encoding
 {
-    public class NewBlockDecoder : INewRlpDecoder<Block>
+    public class BlockDecoder : IRlpDecoder<Block>
     {
         public Block Decode(NewRlp.DecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {

@@ -18,7 +18,7 @@
 
 namespace Nethermind.Core.Encoding
 {
-    public interface INewRlpDecoder<out T> : IRlpDecoder
+    public interface IRlpDecoder<out T> : IRlpDecoder
     {
         T Decode(NewRlp.DecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
     }
