@@ -33,7 +33,7 @@ namespace Nethermind.Store
         public LruCache(int capacity)
         {
             _capacity = capacity;
-            _cacheMap = new Dictionary<TKey, LinkedListNode<LruCacheItem>>(_capacity);
+            _cacheMap = new Dictionary<TKey, LinkedListNode<LruCacheItem>>(); // do not initialize it at the full capacity
             _lruList = new LinkedList<LruCacheItem>();
         }
 

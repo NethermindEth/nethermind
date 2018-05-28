@@ -18,6 +18,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading.Tasks;
 
 namespace Nethermind.Blockchain.Test.Runner
@@ -51,20 +52,22 @@ namespace Nethermind.Blockchain.Test.Runner
                 string command = input[0];
                 string testWildcard = input.Length <= 1 ? null : input[1];
 
+                Stopwatch stopwatch = new Stopwatch();
                 if (command == "p")
                 {
 #if DEBUG
                     Console.WriteLine("Performance test should not run in the DEBUG mode");
 #else
+                    stopwatch.Start();
                     await Run(new PerfTest(), testWildcard);
 #endif
                 }
                 else
                 {
+                    stopwatch.Start();
                     await Run(new BugHunter(), testWildcard);
                 }
-
-                Console.WriteLine($"HELLO HELLO HELLO?");
+                stopwatch.Stop();
                 
                 foreach (string failingTest in AllFailingTests)
                 {
@@ -75,6 +78,7 @@ namespace Nethermind.Blockchain.Test.Runner
                 }
 
                 Console.WriteLine($"FINISHED {_totalMs}ms, FAILURES {AllFailingTests.Count}");
+                Console.WriteLine($"TOTAL TEST PROGRAM EXECUTION TIME: {stopwatch.Elapsed.TotalSeconds} SECONDS");
                 Console.WriteLine("Press ENTER to continue");
                 AllFailingTests.Clear();
                 Console.ReadLine();
