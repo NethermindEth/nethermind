@@ -31,11 +31,12 @@ namespace Nethermind.Store
     // TODO: separate CodeProvider out?
     public class StateProvider : IStateProvider
     {
-        private const int StartCapacity = 1024;
+        private const int StartCapacity = 8;
 
         private readonly LruCache<Address, Account> _longTermCache = new LruCache<Address, Account>(1024 * 1024); // ~100MB
 
         private readonly Dictionary<Address, Stack<int>> _intraBlockCache = new Dictionary<Address, Stack<int>>();
+
         private readonly HashSet<Address> _committedThisRound = new HashSet<Address>();
 
         private readonly List<Change> _keptInCache = new List<Change>();
@@ -433,7 +434,7 @@ namespace Nethermind.Store
                 }
             }
 
-            _capacity = StartCapacity;
+            _capacity = Math.Max(StartCapacity, _capacity / 2);
             _changes = new Change[_capacity];
             _currentPosition = -1;
             _committedThisRound.Clear();

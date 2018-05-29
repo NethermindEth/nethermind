@@ -36,7 +36,7 @@ namespace Nethermind.Core.Test.Encoding
             blockInfo.WasProcessed = true;
 
             Rlp rlp = Rlp.Encode(blockInfo);
-            BlockInfo decoded = NewRlp.Decode<BlockInfo>(rlp);
+            BlockInfo decoded = Rlp.Decode<BlockInfo>(rlp);
             Assert.True(decoded.WasProcessed, "0 processed");
             Assert.AreEqual(TestObject.KeccakA, decoded.BlockHash, "block hash");
             Assert.AreEqual(BigInteger.One, decoded.TotalDifficulty, "difficulty");

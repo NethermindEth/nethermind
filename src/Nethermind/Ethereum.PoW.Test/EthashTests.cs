@@ -72,7 +72,7 @@ namespace Ethereum.PoW.Test
             Assert.AreEqual(test.Nonce, blockHeader.Nonce, "header nonce vs test nonce");
             Assert.AreEqual(test.MixHash.Bytes, blockHeader.MixHash.Bytes, "header mix hash vs test mix hash");
             
-            Keccak headerHash = Keccak.Compute(Rlp.Encode(blockHeader, false));
+            Keccak headerHash = Keccak.Compute(Rlp.Encode(blockHeader, RlpBehaviors.ExcludeBlockMixHashAndNonce));
             Assert.AreEqual(test.HeaderHash, headerHash, "header hash");
 
             // seed is correct

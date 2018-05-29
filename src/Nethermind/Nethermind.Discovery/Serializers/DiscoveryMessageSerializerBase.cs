@@ -55,7 +55,7 @@ namespace Nethermind.Discovery.Serializers
             return Bytes.Concat(mdc, signatureBytes, type, data);
         }
 
-        protected (T Message, byte[] Mdc, byte[] Data) Deserialize<T>(byte[] msg) where T : DiscoveryMessage
+        protected (T Message, byte[] Mdc, byte[] Data) PrepareForDeserialization<T>(byte[] msg) where T : DiscoveryMessage
         {
             if (msg.Length < 98)
             {
@@ -72,6 +72,7 @@ namespace Nethermind.Discovery.Serializers
             {
                 throw new NetworkingException("Invalid MDC");
             }
+
             var nodeId = NodeIdResolver.GetNodeId(signature.Slice(0, 64), signature[64], type, data);
             var message = MessageFactory.CreateIncomingMessage<T>(nodeId);
             return (message, mdc, data);
@@ -88,7 +89,7 @@ namespace Nethermind.Discovery.Serializers
             );
         }
 
-        protected Rlp GetRlpAddressAndId(IPEndPoint address, byte[] id)
+        protected Rlp SerializeNode(IPEndPoint address, byte[] id)
         {
             return Rlp.Encode(
                 Rlp.Encode(address.Address.GetAddressBytes()),
@@ -100,9 +101,9 @@ namespace Nethermind.Discovery.Serializers
             );
         }
 
-        protected IPEndPoint GetAddress(byte[] ip, byte[] port)
+        protected IPEndPoint GetAddress(byte[] ip, int port)
         {
-            return new IPEndPoint(new IPAddress(ip), port.ToInt32());
+            return new IPEndPoint(new IPAddress(ip), port);
         }
     }
 }

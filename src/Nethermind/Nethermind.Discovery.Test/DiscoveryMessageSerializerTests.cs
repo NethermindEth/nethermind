@@ -22,7 +22,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Discovery.Messages;
 using Nethermind.Discovery.RoutingTable;
-using Nethermind.Discovery.Serializers;
 using Nethermind.Network;
 using Nethermind.Network.Test.Builders;
 using NUnit.Framework;

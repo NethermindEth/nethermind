@@ -120,7 +120,7 @@ namespace Nethermind.PerfTest
                 //)
             };
 
-        private static VirtualMachine Machine;
+        private static VirtualMachine _machine;
 
         static Program()
         {
@@ -147,7 +147,7 @@ namespace Nethermind.PerfTest
             StateTree stateTree = new StateTree(memDbProvider.GetOrCreateStateDb());
             IStateProvider stateProvider = new StateProvider(stateTree, logger, memDbProvider.GetOrCreateCodeDb());
             IBlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), new MemDb(), FrontierSpecProvider.Instance, logger);
-            Machine = new VirtualMachine(FrontierSpecProvider.Instance, stateProvider, new StorageProvider(memDbProvider, stateProvider, logger), new BlockhashProvider(blockTree), NullLogger.Instance);
+            _machine = new VirtualMachine(FrontierSpecProvider.Instance, stateProvider, new StorageProvider(memDbProvider, stateProvider, logger), new BlockhashProvider(blockTree), NullLogger.Instance);
 
             Stopwatch stopwatch = new Stopwatch();
             stopwatch.Start();
@@ -461,7 +461,7 @@ namespace Nethermind.PerfTest
             stopwatch.Start();
             for (int i = 0; i < iterations; i++)
             {
-                Machine.Run(new EvmState(1_000_000_000L, env, ExecutionType.Transaction, false), Olympic.Instance, null);
+                _machine.Run(new EvmState(1_000_000_000L, env, ExecutionType.Transaction, false), Olympic.Instance, null);
             }
 
             stopwatch.Stop();

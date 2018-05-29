@@ -18,6 +18,7 @@
 
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Network.Rlpx.Handshake
 {
@@ -49,12 +50,11 @@ namespace Nethermind.Network.Rlpx.Handshake
 
         public AckEip8Message Deserialize(byte[] bytes)
         {
-            Rlp rlp = new Rlp(bytes);
-            DecodedRlp decodedRaw = Rlp.Decode(rlp, RlpBehaviors.AllowExtraData);
-
+            Rlp.DecoderContext context = bytes.AsRlpContext();
             AckEip8Message authEip8Message = new AckEip8Message();
-            authEip8Message.EphemeralPublicKey = new PublicKey(decodedRaw.GetBytes(0));
-            authEip8Message.Nonce = decodedRaw.GetBytes(1);
+            context.ReadSequenceLength();
+            authEip8Message.EphemeralPublicKey = new PublicKey(context.DecodeByteArray());
+            authEip8Message.Nonce = context.DecodeByteArray();
             // TODO: check the version? /Postel
             return authEip8Message;
         }

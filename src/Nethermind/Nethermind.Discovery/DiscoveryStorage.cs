@@ -62,7 +62,7 @@ namespace Nethermind.Discovery
 
         private (Node, long) GetNode(byte[] networkNodeRaw)
         {
-            var persistedNode = NewRlp.Decode<NetworkNode>(networkNodeRaw);
+            var persistedNode = Rlp.Decode<NetworkNode>(networkNodeRaw);
             var node = _nodeFactory.CreateNode(persistedNode.PublicKey, persistedNode.Host, persistedNode.Port);
             node.Description = persistedNode.Description;
             return (node, persistedNode.Reputation);

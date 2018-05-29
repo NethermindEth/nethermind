@@ -22,17 +22,17 @@ namespace Nethermind.Core.Encoding
 {
     public class ChainLevelDecoder : IRlpDecoder<ChainLevelInfo>
     {
-        public ChainLevelInfo Decode(NewRlp.DecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public ChainLevelInfo Decode(Rlp.DecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            long lastCheck = context.ReadSequenceLength() + context.Position;
-            bool hasMainChainBlock = context.ReadBool();
-            
+            int lastCheck = context.ReadSequenceLength() + context.Position;
+            bool hasMainChainBlock = context.DecodeBool();
+
             List<BlockInfo> blockInfos = new List<BlockInfo>();
-            
+
             context.ReadSequenceLength();
             while (context.Position < lastCheck)
             {
-                blockInfos.Add(NewRlp.Decode<BlockInfo>(context, RlpBehaviors.AllowExtraData));
+                blockInfos.Add(Rlp.Decode<BlockInfo>(context, RlpBehaviors.AllowExtraData));
             }
 
             if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraData))
@@ -42,6 +42,14 @@ namespace Nethermind.Core.Encoding
 
             ChainLevelInfo info = new ChainLevelInfo(hasMainChainBlock, blockInfos.ToArray());
             return info;
+        }
+
+        public Rlp Encode(ChainLevelInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            Rlp[] elements = new Rlp[2];
+            elements[0] = Rlp.Encode(item.HasBlockOnMainChain);
+            elements[1] = Rlp.Encode(item.BlockInfos);
+            return Rlp.Encode(elements);
         }
     }
 }

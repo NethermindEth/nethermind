@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
@@ -47,13 +48,12 @@ namespace Nethermind.Discovery.Serializers
 
         public FindNodeMessage Deserialize(byte[] msg)
         {
-            var results = Deserialize<FindNodeMessage>(msg);
+            var results = PrepareForDeserialization<FindNodeMessage>(msg);
+            Rlp.DecoderContext context = results.Data.AsRlpContext();
 
-            var rlp = new Rlp(results.Data);
-            DecodedRlp raw = Rlp.Decode(rlp, RlpBehaviors.AllowExtraData);
-
-            var searchedNodeId = raw.GetBytes(0);
-            var expireTime = raw.GetBytes(1).ToInt64();
+            context.ReadSequenceLength();
+            var searchedNodeId = context.DecodeByteArray();
+            var expireTime = context.DecodeLong();
 
             var message = results.Message;
             message.SearchedNodeId = searchedNodeId;

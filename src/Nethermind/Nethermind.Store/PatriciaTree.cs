@@ -25,7 +25,6 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.Store
 {
-    // TODO: I guess it is a very slow and Keccak-heavy implementation, the first one to pass tests
     [DebuggerDisplay("{RootHash}")]
     public class PatriciaTree
     {
@@ -199,7 +198,7 @@ namespace Nethermind.Store
         internal static Node RlpDecode(Rlp bytes)
         {
             Metrics.TreeNodeRlpDecodings++;
-            NewRlp.DecoderContext context = bytes.Bytes.AsRlpContext();
+            Rlp.DecoderContext context = bytes.Bytes.AsRlpContext();
 
             context.ReadSequenceLength();
             int numberOfItems = context.ReadNumberOfItemsRemaining();
@@ -213,13 +212,13 @@ namespace Nethermind.Store
                     nodes[i] = DecodeChildNode(context);
                 }
 
-                byte[] value = context.ReadByteArray();
+                byte[] value = context.DecodeByteArray();
                 Branch branch = new Branch(nodes, value);
                 result = branch;
             }
             else if (numberOfItems == 2)
             {
-                HexPrefix key = HexPrefix.FromBytes(context.ReadByteArray());
+                HexPrefix key = HexPrefix.FromBytes(context.DecodeByteArray());
                 bool isExtension = key.IsExtension;
                 if (isExtension)
                 {
@@ -228,7 +227,7 @@ namespace Nethermind.Store
                 }
                 else
                 {
-                    Leaf leaf = new Leaf(key, context.ReadByteArray());
+                    Leaf leaf = new Leaf(key, context.DecodeByteArray());
                     result = leaf;
                 }
             }
@@ -240,7 +239,7 @@ namespace Nethermind.Store
             return result;
         }
 
-        private static NodeRef DecodeChildNode(NewRlp.DecoderContext decoderContext)
+        private static NodeRef DecodeChildNode(Rlp.DecoderContext decoderContext)
         {
             if (decoderContext.IsSequenceNext())
             {
@@ -254,7 +253,7 @@ namespace Nethermind.Store
                 return new NodeRef(keccakOrRlp);
             }
 
-            Keccak keccak = decoderContext.ReadKeccak();
+            Keccak keccak = decoderContext.DecodeKeccak();
             return keccak == null ? null : new NodeRef(new KeccakOrRlp(keccak));
         }
 

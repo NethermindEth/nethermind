@@ -23,10 +23,10 @@ namespace Nethermind.Core.Encoding
 {
     public class TransactionReceiptDecoder : IRlpDecoder<TransactionReceipt>
     {
-        public TransactionReceipt Decode(NewRlp.DecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public TransactionReceipt Decode(Rlp.DecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             TransactionReceipt receipt = new TransactionReceipt();
-            byte[] firstItem = context.ReadByteArray();
+            byte[] firstItem = context.DecodeByteArray();
             if (firstItem.Length == 1)
             {
                 receipt.StatusCode = firstItem[0];
@@ -36,15 +36,15 @@ namespace Nethermind.Core.Encoding
                 receipt.PostTransactionState = firstItem.Length == 0 ? null : new Keccak(firstItem);
             }
 
-            receipt.GasUsed = (long)context.ReadUBigInt(); // TODO: review
-            receipt.Bloom = context.ReadBloom();
+            receipt.GasUsed = (long)context.DecodeUBigInt(); // TODO: review
+            receipt.Bloom = context.DecodeBloom();
 
-            long lastCheck = context.ReadSequenceLength() + context.Position;
+            int lastCheck = context.ReadSequenceLength() + context.Position;
             List<LogEntry> logEntries = new List<LogEntry>();
-            
+
             while (context.Position < lastCheck)
             {
-                logEntries.Add(NewRlp.Decode<LogEntry>(context, RlpBehaviors.AllowExtraData));
+                logEntries.Add(Rlp.Decode<LogEntry>(context, RlpBehaviors.AllowExtraData));
             }
 
             if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraData))
@@ -54,6 +54,15 @@ namespace Nethermind.Core.Encoding
 
             receipt.Logs = logEntries.ToArray();
             return receipt;
+        }
+
+        public Rlp Encode(TransactionReceipt item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            return Rlp.Encode(
+                rlpBehaviors.HasFlag(RlpBehaviors.Eip658Receipts) ? Rlp.Encode(item.StatusCode) : Rlp.Encode(item.PostTransactionState),
+                Rlp.Encode(item.GasUsed),
+                Rlp.Encode(item.Bloom),
+                Rlp.Encode(item.Logs));
         }
     }
 }

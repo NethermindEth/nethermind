@@ -16,7 +16,9 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth
 {
@@ -36,19 +38,23 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         {
             GetBlockHeadersMessage message = new GetBlockHeadersMessage();
 
-            DecodedRlp decodedRlp = Rlp.Decode(new Rlp(bytes));
-            if (decodedRlp.GetBytes(0).Length == 32)
+            Rlp.DecoderContext context = bytes.AsRlpContext();
+            context.ReadSequenceLength();
+            int position = context.Position;
+            byte[] startingBytes = context.DecodeByteArray();
+            context.Position = position;
+            if (startingBytes.Length == 32)
             {
-                message.StartingBlockHash = decodedRlp.GetKeccak(0);
+                message.StartingBlockHash = context.DecodeKeccak();
             }
             else
             {
-                message.StartingBlockNumber = decodedRlp.GetUnsignedBigInteger(0);
+                message.StartingBlockNumber = context.DecodeUBigInt();
             }
 
-            message.MaxHeaders = decodedRlp.GetInt(1);
-            message.Skip = decodedRlp.GetInt(2);
-            message.Reverse = decodedRlp.GetInt(3);
+            message.MaxHeaders = context.DecodeInt();
+            message.Skip = context.DecodeInt();
+            message.Reverse = context.DecodeInt();
             return message;
         }
     }

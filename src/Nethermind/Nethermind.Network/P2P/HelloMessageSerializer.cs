@@ -20,6 +20,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Network.P2P
 {
@@ -40,22 +41,22 @@ namespace Nethermind.Network.P2P
 
         public HelloMessage Deserialize(byte[] bytes)
         {
-            DecodedRlp decoded = Rlp.Decode(new Rlp(bytes));
+            Rlp.DecoderContext context = bytes.AsRlpContext();
+            context.ReadSequenceLength();
+
             HelloMessage helloMessage = new HelloMessage();
-            helloMessage.P2PVersion = decoded.GetByte(0);
-            helloMessage.ClientId = decoded.GetString(1);
-            helloMessage.Capabilities = new List<Capability>();
-            DecodedRlp decodedCapabilities = decoded.GetSequence(2);
-            for (int i = 0; i < decodedCapabilities.Length; i++)
+            helloMessage.P2PVersion = context.DecodeByte();
+            helloMessage.ClientId = context.DecodeString();
+            helloMessage.Capabilities = context.DecodeArray(ctx =>
             {
-                DecodedRlp capability = decodedCapabilities.GetSequence(i);
-                string protocolCode = capability.GetString(0);
-                int version = capability.GetByte(1);
-                helloMessage.Capabilities.Add(new Capability(protocolCode, version));
-            }
+                ctx.ReadSequenceLength();
+                string protocolCode = ctx.DecodeString();
+                int version = ctx.DecodeByte();
+                return new Capability(protocolCode, version);
+            }).ToList();
             
-            helloMessage.ListenPort = decoded.GetInt(3);
-            helloMessage.NodeId = new PublicKey(decoded.GetBytes(4));
+            helloMessage.ListenPort = context.DecodeInt();
+            helloMessage.NodeId = new PublicKey(context.DecodeByteArray());
             return helloMessage;
         }
     }

@@ -22,29 +22,29 @@ namespace Nethermind.Core.Encoding
 {
     public class BlockDecoder : IRlpDecoder<Block>
     {
-        public Block Decode(NewRlp.DecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public Block Decode(Rlp.DecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            long sequenceLength = context.ReadSequenceLength();
-            long blockCheck = context.Position + sequenceLength;
+            int sequenceLength = context.ReadSequenceLength();
+            int blockCheck = context.Position + sequenceLength;
 
-            BlockHeader header = NewRlp.Decode<BlockHeader>(context);
+            BlockHeader header = Rlp.Decode<BlockHeader>(context);
 
-            long transactionsSequenceLength = context.ReadSequenceLength();
-            long transactionsCheck = context.Position + transactionsSequenceLength;
+            int transactionsSequenceLength = context.ReadSequenceLength();
+            int transactionsCheck = context.Position + transactionsSequenceLength;
             List<Transaction> transactions = new List<Transaction>();
             while (context.Position < transactionsCheck)
             {
-                transactions.Add(NewRlp.Decode<Transaction>(context));
+                transactions.Add(Rlp.Decode<Transaction>(context));
             }
 
             context.Check(transactionsCheck);
 
-            long ommersSequenceLength = context.ReadSequenceLength();
-            long ommersCheck = context.Position + ommersSequenceLength;
+            int ommersSequenceLength = context.ReadSequenceLength();
+            int ommersCheck = context.Position + ommersSequenceLength;
             List<BlockHeader> ommerHeaders = new List<BlockHeader>();
             while (context.Position < ommersCheck)
             {
-                ommerHeaders.Add(NewRlp.Decode<BlockHeader>(context, rlpBehaviors));
+                ommerHeaders.Add(Rlp.Decode<BlockHeader>(context, rlpBehaviors));
             }
 
             context.Check(ommersCheck);
@@ -55,6 +55,14 @@ namespace Nethermind.Core.Encoding
             }
 
             return new Block(header, transactions, ommerHeaders);
+        }
+
+        public Rlp Encode(Block item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            return Rlp.Encode(
+                Rlp.Encode(item.Header),
+                Rlp.Encode(item.Transactions),
+                Rlp.Encode(item.Ommers));
         }
     }
 }

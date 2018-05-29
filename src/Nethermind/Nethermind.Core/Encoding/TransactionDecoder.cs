@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Numerics;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -24,33 +25,33 @@ namespace Nethermind.Core.Encoding
 {
     public class TransactionDecoder : IRlpDecoder<Transaction>
     {
-        public Transaction Decode(NewRlp.DecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public Transaction Decode(Rlp.DecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             byte[] transactionSequence = context.ReadSequenceRlp(); // TODO: span
             context.Position -= transactionSequence.Length;
 
-            long transactionLength = context.ReadSequenceLength();
-            long lastCheck = context.Position + transactionLength;
+            int transactionLength = context.ReadSequenceLength();
+            int lastCheck = context.Position + transactionLength;
             Transaction transaction = new Transaction();
-            transaction.Nonce = context.ReadUBigInt();
-            transaction.GasPrice = context.ReadUBigInt();
-            transaction.GasLimit = context.ReadUBigInt();
-            transaction.To = context.ReadAddress();
-            transaction.Value = context.ReadUBigInt();
+            transaction.Nonce = context.DecodeUBigInt();
+            transaction.GasPrice = context.DecodeUBigInt();
+            transaction.GasLimit = context.DecodeUBigInt();
+            transaction.To = context.DecodeAddress();
+            transaction.Value = context.DecodeUBigInt();
             if (transaction.To == null)
             {
-                transaction.Init = context.ReadByteArray();
+                transaction.Init = context.DecodeByteArray();
             }
             else
             {
-                transaction.Data = context.ReadByteArray();
+                transaction.Data = context.DecodeByteArray();
             }
 
             if (context.Position < lastCheck)
             {
-                byte[] vBytes = context.ReadByteArray();
-                byte[] rBytes = context.ReadByteArray();
-                byte[] sBytes = context.ReadByteArray();
+                byte[] vBytes = context.DecodeByteArray();
+                byte[] rBytes = context.DecodeByteArray();
+                byte[] sBytes = context.DecodeByteArray();
 
                 if (vBytes[0] == 0 || rBytes[0] == 0 || sBytes[0] == 0)
                 {
@@ -82,6 +83,11 @@ namespace Nethermind.Core.Encoding
             }
 
             return transaction;
+        }
+
+        public Rlp Encode(Transaction item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            return Rlp.Encode(item, false);
         }
     }
 }

@@ -18,6 +18,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Encoding;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth
 {
@@ -31,14 +32,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         public BlockHeadersMessage Deserialize(byte[] bytes)
         {
             BlockHeadersMessage message = new BlockHeadersMessage();
-            DecodedRlp decodedRlp = Rlp.Decode(new Rlp(bytes));
-            BlockHeader[] headers = new BlockHeader[decodedRlp.Length];
-            for (int i = 0; i < decodedRlp.Length; i++)
-            {
-                headers[i] = Rlp.Decode<BlockHeader>(decodedRlp.GetSequence(i));
-            }
-
-            message.BlockHeaders = headers;
+            Rlp.DecoderContext context = bytes.AsRlpContext();
+            message.BlockHeaders = Rlp.DecodeArray<BlockHeader>(context);
             return message;
         }
     }

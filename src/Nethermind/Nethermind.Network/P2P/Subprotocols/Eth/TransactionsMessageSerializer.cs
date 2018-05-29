@@ -18,6 +18,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Encoding;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth
 {
@@ -30,16 +31,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         public TransactionsMessage Deserialize(byte[] bytes)
         {
-            DecodedRlp decodedRlp = Rlp.Decode(new Rlp(bytes));
-            Transaction[] transactions = new Transaction[decodedRlp.Length];
-            for (int i = 0; i < decodedRlp.Length; i++)
-            {
-                DecodedRlp transactionRlp = decodedRlp.GetSequence(i);
-                transactions[i] = Rlp.Decode<Transaction>(transactionRlp);
-            }
-            
             TransactionsMessage message = new TransactionsMessage();
-            message.Transactions = transactions;
+            message.Transactions = Rlp.DecodeArray<Transaction>(bytes.AsRlpContext());
             return message;
         }
     }

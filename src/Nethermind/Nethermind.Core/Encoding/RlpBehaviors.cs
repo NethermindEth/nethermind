@@ -25,6 +25,8 @@ namespace Nethermind.Core.Encoding
     {
         None,
         AllowExtraData,
+        ExcludeBlockMixHashAndNonce,
+        Eip658Receipts,
         All
     }
 }

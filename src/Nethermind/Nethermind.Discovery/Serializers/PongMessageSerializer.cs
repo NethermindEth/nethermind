@@ -47,17 +47,20 @@ namespace Nethermind.Discovery.Serializers
 
         public PongMessage Deserialize(byte[] msg)
         {
-            var results = Deserialize<PongMessage>(msg);
+            var results = PrepareForDeserialization<PongMessage>(msg);
 
-            var rlp = new Rlp(results.Data);
-            var decodedRaw = Rlp.Decode(rlp, RlpBehaviors.AllowExtraData);
+            var rlp = results.Data.AsRlpContext();
 
-            var token = decodedRaw.GetBytes(1);
-            var expireTime = decodedRaw.GetBytes(2).ToInt64();
+            rlp.ReadSequenceLength();
+            rlp.ReadSequenceLength();
+            GetAddress(rlp.DecodeByteArray(), rlp.DecodeInt());
+            rlp.DecodeInt(); // UDP port
+            var token = rlp.DecodeByteArray();
+            var expirationTime = rlp.DecodeLong();
 
             var message = results.Message;
             message.PingMdc = token;
-            message.ExpirationTime = expireTime;
+            message.ExpirationTime = expirationTime;
 
             return message;
         }

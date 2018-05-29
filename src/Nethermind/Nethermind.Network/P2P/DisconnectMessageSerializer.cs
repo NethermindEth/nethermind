@@ -17,6 +17,7 @@
  */
 
 using Nethermind.Core.Encoding;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Network.P2P
 {
@@ -31,8 +32,8 @@ namespace Nethermind.Network.P2P
 
         public DisconnectMessage Deserialize(byte[] bytes)
         {
-            DecodedRlp decoded = Rlp.Decode(new Rlp(bytes));
-            int reason = decoded.GetInt(0);
+            Rlp.DecoderContext context = bytes.AsRlpContext();
+            int reason = context.DecodeInt();
             DisconnectMessage disconnectMessage = new DisconnectMessage(reason);
             return disconnectMessage;
         }

@@ -17,6 +17,7 @@
  */
 
 using Nethermind.Core.Encoding;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth
 {
@@ -36,12 +37,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         public StatusMessage Deserialize(byte[] bytes)
         {
             StatusMessage statusMessage = new StatusMessage();
-            DecodedRlp decoded = Rlp.Decode(new Rlp(bytes));
-            statusMessage.ProtocolVersion = decoded.GetByte(0);
-            statusMessage.ChainId = decoded.GetInt(1);
-            statusMessage.TotalDifficulty = decoded.GetUnsignedBigInteger(2);
-            statusMessage.BestHash = decoded.GetKeccak(3);
-            statusMessage.GenesisHash = decoded.GetKeccak(4);
+            Rlp.DecoderContext context = bytes.AsRlpContext();
+            context.ReadSequenceLength();
+            statusMessage.ProtocolVersion = context.DecodeByte();
+            statusMessage.ChainId = context.DecodeInt();
+            statusMessage.TotalDifficulty = context.DecodeUBigInt();
+            statusMessage.BestHash = context.DecodeKeccak();
+            statusMessage.GenesisHash = context.DecodeKeccak();
             return statusMessage;
         }
     }

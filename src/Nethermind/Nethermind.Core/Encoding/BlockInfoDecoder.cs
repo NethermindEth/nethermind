@@ -20,15 +20,15 @@ namespace Nethermind.Core.Encoding
 {
     public class BlockInfoDecoder : IRlpDecoder<BlockInfo>
     {
-        public BlockInfo Decode(NewRlp.DecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        public BlockInfo Decode(Rlp.DecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            long lastCheck = context.ReadSequenceLength() + context.Position;
+            int lastCheck = context.ReadSequenceLength() + context.Position;
 
             BlockInfo blockInfo = new BlockInfo();
-            blockInfo.BlockHash = context.ReadKeccak();
-            blockInfo.WasProcessed = context.ReadBool();
-            blockInfo.TotalDifficulty = context.ReadUBigInt();
-            blockInfo.TotalTransactions = context.ReadUBigInt();
+            blockInfo.BlockHash = context.DecodeKeccak();
+            blockInfo.WasProcessed = context.DecodeBool();
+            blockInfo.TotalDifficulty = context.DecodeUBigInt();
+            blockInfo.TotalTransactions = context.DecodeUBigInt();
 
             if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraData))
             {
@@ -36,6 +36,16 @@ namespace Nethermind.Core.Encoding
             }
 
             return blockInfo;
+        }
+
+        public Rlp Encode(BlockInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            Rlp[] elements = new Rlp[4];
+            elements[0] = Rlp.Encode(item.BlockHash);
+            elements[1] = Rlp.Encode(item.WasProcessed);
+            elements[2] = Rlp.Encode(item.TotalDifficulty);
+            elements[3] = Rlp.Encode(item.TotalTransactions);
+            return Rlp.Encode(elements);
         }
     }
 }

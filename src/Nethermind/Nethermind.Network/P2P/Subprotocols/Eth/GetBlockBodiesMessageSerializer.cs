@@ -18,6 +18,7 @@
 
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth
 {
@@ -30,13 +31,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         public GetBlockBodiesMessage Deserialize(byte[] bytes)
         {
-            DecodedRlp decodedRlp = Rlp.Decode(new Rlp(bytes));
-            Keccak[] hashes = new Keccak[decodedRlp.Length];
-            for (int i = 0; i < hashes.Length; i++)
-            {
-                hashes[i] = decodedRlp.GetKeccak(i);
-            }
-            
+            Rlp.DecoderContext context = bytes.AsRlpContext();
+            Keccak[] hashes = context.DecodeArray(ctx => context.DecodeKeccak());
             return new GetBlockBodiesMessage(hashes);
         }
     }

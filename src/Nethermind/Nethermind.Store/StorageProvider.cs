@@ -26,7 +26,7 @@ namespace Nethermind.Store
 {
     public class StorageProvider : IStorageProvider
     {
-        internal const int StartCapacity = 512;
+        internal const int StartCapacity = 16;
 
         private readonly Dictionary<StorageAddress, Stack<int>> _cache = new Dictionary<StorageAddress, Stack<int>>();
 
@@ -220,7 +220,7 @@ namespace Nethermind.Store
                 }
             }
 
-            _capacity = StartCapacity;
+            _capacity = Math.Max(StartCapacity, _capacity / 2);
             _changes = new Change[_capacity];
             _currentPosition = -1;
             _committedThisRound.Clear();

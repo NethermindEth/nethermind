@@ -18,6 +18,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Encoding;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth
 {
@@ -32,10 +33,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         public NewBlockMessage Deserialize(byte[] bytes)
         {
-            DecodedRlp decodedRlp = Rlp.Decode(new Rlp(bytes));
+            Rlp.DecoderContext context = bytes.AsRlpContext();
             NewBlockMessage message = new NewBlockMessage();
-            message.Block = Rlp.Decode<Block>(decodedRlp.GetSequence(0));
-            message.TotalDifficulty = decodedRlp.GetUnsignedBigInteger(1);
+            context.ReadSequenceLength();
+            message.Block = Rlp.Decode<Block>(context);
+            message.TotalDifficulty = context.DecodeUBigInt();
             return message;
         }
     }

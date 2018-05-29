@@ -45,7 +45,7 @@ namespace Nethermind.Core.Test.Encoding
             chainLevelInfo.HasBlockOnMainChain = true;
 
             Rlp rlp = Rlp.Encode(chainLevelInfo);
-            ChainLevelInfo decoded = NewRlp.Decode<ChainLevelInfo>(rlp);
+            ChainLevelInfo decoded = Rlp.Decode<ChainLevelInfo>(rlp);
             Assert.True(decoded.HasBlockOnMainChain, "has block on the main chain");
             Assert.True(decoded.BlockInfos[0].WasProcessed, "0 processed");
             Assert.False(decoded.BlockInfos[1].WasProcessed, "1 not processed");

@@ -64,7 +64,6 @@ namespace Nethermind.Store
         {
             get
             {
-                // either unresolved (so just a reference to something in DB) or a new node (marked dirty)
                 if (Node == null)
                 {
                     return false;

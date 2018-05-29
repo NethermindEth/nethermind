@@ -16,7 +16,6 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -31,10 +30,6 @@ namespace Nethermind.Discovery.Serializers
 {
     public class NeighborsMessageSerializer : DiscoveryMessageSerializerBase, IMessageSerializer<NeighborsMessage>
     {
-        //TODO config if we have it anywhere else
-        //private static final int OFFSET_SHORT_LIST = 0xc0; from EthereumJ
-        private static readonly byte OffsetShortList = 0xc0;
-
         public NeighborsMessageSerializer(ISigner signer, IPrivateKeyProvider privateKeyProvider, IDiscoveryMessageFactory messageFactory, INodeIdResolver nodeIdResolver, INodeFactory nodeFactory) : base(signer, privateKeyProvider, messageFactory, nodeIdResolver, nodeFactory)
         {
         }
@@ -50,14 +45,13 @@ namespace Nethermind.Discovery.Serializers
                 for (var i = 0; i < message.Nodes.Length; i++)
                 {
                     var node = message.Nodes[i];
-                    var serializedNode = GetRlpAddressAndId(node.Address, node.Id.Bytes);
+                    var serializedNode = SerializeNode(node.Address, node.Id.Bytes);
                     nodes[i] = serializedNode;
                 }
             }
-
-            Rlp firstItem = nodes == null ? Rlp.Encode(new[] {OffsetShortList}) : Rlp.Encode(nodes);
+            
             byte[] data = Rlp.Encode(
-                firstItem,
+                nodes == null ? Rlp.OfEmptySequence : Rlp.Encode(nodes),
                 //TODO verify if encoding is correct
                 Rlp.Encode(message.ExpirationTime)
             ).Bytes;
@@ -68,52 +62,35 @@ namespace Nethermind.Discovery.Serializers
 
         public NeighborsMessage Deserialize(byte[] msg)
         {
-            var results = Deserialize<NeighborsMessage>(msg);
+            var results = PrepareForDeserialization<NeighborsMessage>(msg);
 
-            var rlp = new Rlp(results.Data);
-            var decodedRaw = Rlp.Decode(rlp, RlpBehaviors.AllowExtraData);
+            var rlp = results.Data.AsRlpContext();
+            rlp.ReadSequenceLength();
+            var nodes = DeserializeNodes(rlp);
 
-            var nodes = DeserializeNodes(decodedRaw);
-
-            var expireTime = decodedRaw.GetBytes(1).ToInt64();
+            var expirationTime = rlp.DecodeLong();
             var message = results.Message;
-            message.Nodes = nodes.ToArray();
-            message.ExpirationTime = expireTime;
+            message.Nodes = nodes;
+            message.ExpirationTime = expirationTime;
 
             return message;
         }
 
-        private List<Node> DeserializeNodes(DecodedRlp decodedRaw)
+        private Node[] DeserializeNodes(Rlp.DecoderContext context)
         {
-            if (!(decodedRaw.Items[0] is DecodedRlp))
+            return context.DecodeArray(ctx =>
             {
-                return new List<Node>();
-            }
-
-            var decodedRlp = (DecodedRlp)decodedRaw.Items[0];
-            var decodedNodes = decodedRlp != null
-                ? (decodedRlp.IsSequence ? decodedRlp.Items : new List<object> { decodedRlp.SingleItem })
-                : new List<object>();
-
-            var nodes = new List<Node>();
-            for (var i = 0; i < decodedNodes.Count; i++)
-            {
-                DecodedRlp nodeRaw = (DecodedRlp) decodedNodes[i];
-                if (i == 0 && !nodeRaw.IsSequence && ((byte[]) nodeRaw.SingleItem)[0] == OffsetShortList)
+                int lastPosition = ctx.ReadSequenceLength() + ctx.Position;
+                int count = ctx.ReadNumberOfItemsRemaining(lastPosition);
+                var address = GetAddress(ctx.DecodeByteArray(), ctx.DecodeInt());
+                if (count > 3)
                 {
-                    break;
+                    ctx.DecodeInt();
                 }
 
-                var address = GetAddress(nodeRaw.GetBytes(0), nodeRaw.GetBytes(1));
-                //TODO confirm it is correct - based on EthereumJ
-                var idRaw = nodeRaw.Length > 3 ? nodeRaw.GetBytes(3) : nodeRaw.GetBytes(2);
-                byte[] id = idRaw;
-
-                var node = NodeFactory.CreateNode(new PublicKey(id), address);
-                nodes.Add(node);
-            }
-
-            return nodes;
+                byte[] id = ctx.DecodeByteArray();
+                return NodeFactory.CreateNode(new PublicKey(id), address);
+            });
         }
     }
 }

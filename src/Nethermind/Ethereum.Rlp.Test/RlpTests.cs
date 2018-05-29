@@ -97,20 +97,20 @@ namespace Ethereum.Rlp.Test
         //    Assert.AreEqual(serializedHex, serializedAgainHex);
         //}
 
-        [TestCaseSource(nameof(LoadInvalidTests))]
-        public void TestInvalid(RlpTest test)
-        {
-            Nethermind.Core.Encoding.Rlp invalidBytes = new Nethermind.Core.Encoding.Rlp(Hex.ToBytes(test.Output));
-            Assert.Throws<RlpException>(
-                () => Nethermind.Core.Encoding.Rlp.Decode(invalidBytes));
-        }
+        //[TestCaseSource(nameof(LoadInvalidTests))]
+        //public void TestInvalid(RlpTest test)
+        //{
+        //    Nethermind.Core.Encoding.Rlp invalidBytes = new Nethermind.Core.Encoding.Rlp(Hex.ToBytes(test.Output));
+        //    Assert.Throws<RlpException>(
+        //        () => Nethermind.Core.Encoding.Rlp.Decode(invalidBytes, RlpBehaviors.None));
+        //}
 
-        [TestCaseSource(nameof(LoadRandomTests))]
-        public void TestRandom(RlpTest test)
-        {
-            Nethermind.Core.Encoding.Rlp validBytes = new Nethermind.Core.Encoding.Rlp(Hex.ToBytes(test.Output));
-            Nethermind.Core.Encoding.Rlp.Decode(validBytes);
-        }
+        //[TestCaseSource(nameof(LoadRandomTests))]
+        //public void TestRandom(RlpTest test)
+        //{
+        //    Nethermind.Core.Encoding.Rlp validBytes = new Nethermind.Core.Encoding.Rlp(Hex.ToBytes(test.Output));
+        //    Nethermind.Core.Encoding.Rlp.Decode(validBytes);
+        //}
 
         [Test]
         public void TestEmpty()
@@ -178,7 +178,7 @@ namespace Ethereum.Rlp.Test
             for (int i = 0; i < iterations; i++)
             {
                 block = Nethermind.Core.Encoding.Rlp.Decode<Block>(new Nethermind.Core.Encoding.Rlp(bytes));
-                perfBlock = NewRlp.Decode<Block>(bytes?.AsRlpContext());
+                perfBlock = Nethermind.Core.Encoding.Rlp.Decode<Block>(bytes?.AsRlpContext());
             }
             
             Stopwatch stopwatch = new Stopwatch();
@@ -194,7 +194,7 @@ namespace Ethereum.Rlp.Test
             stopwatch.Restart();
             for (int i = 0; i < iterations; i++)
             {
-                perfBlock = NewRlp.Decode<Block>(bytes?.AsRlpContext());
+                perfBlock = Nethermind.Core.Encoding.Rlp.Decode<Block>(bytes?.AsRlpContext());
             }
 
             stopwatch.Stop();

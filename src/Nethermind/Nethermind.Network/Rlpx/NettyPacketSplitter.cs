@@ -60,12 +60,17 @@ namespace Nethermind.Network.Rlpx
                 Rlp[] headerDataItems;
                 if (framesCount > 1)
                 {
-                    headerDataItems = new Rlp[3];
-                    headerDataItems[1] = Rlp.Encode(_contextId);
                     if (i == 0)
                     {
+                        headerDataItems = new Rlp[3];
                         headerDataItems[2] = Rlp.Encode(totalPayloadSize);
                     }
+                    else
+                    {
+                        headerDataItems = new Rlp[2];
+                    }
+
+                    headerDataItems[1] = Rlp.Encode(_contextId);
                 }
                 else
                 {

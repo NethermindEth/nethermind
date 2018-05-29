@@ -294,7 +294,7 @@ namespace Nethermind.Blockchain
             {
                 IReleaseSpec spec = _specProvider.GetSpec(number);
                 _receiptsCache.Set(blockHash, receipts);
-                _receiptsDb.Set(blockHash, Rlp.Encode(receipts.Select(r => Rlp.Encode(r, spec.IsEip658Enabled)).ToArray()).Bytes);
+                _receiptsDb.Set(blockHash, Rlp.Encode(receipts.Select(r => Rlp.Encode(r, spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None)).ToArray()).Bytes);
             }
         }
 
@@ -486,7 +486,7 @@ namespace Nethermind.Blockchain
                     return null;
                 }
 
-                chainLevelInfo = NewRlp.Decode<ChainLevelInfo>(new Rlp(levelBytes));
+                chainLevelInfo = Rlp.Decode<ChainLevelInfo>(new Rlp(levelBytes));
             }
 
             return chainLevelInfo;
@@ -578,7 +578,7 @@ namespace Nethermind.Blockchain
             if (receipts == null)
             {
                 byte[] receiptsData = _receiptsDb.Get(block.Hash);
-                receipts = receiptsData == null ? null : Rlp.DecodeArray<TransactionReceipt>(new Rlp(receiptsData));
+                receipts = receiptsData == null ? null : Rlp.DecodeArray<TransactionReceipt>(receiptsData.AsRlpContext());
             }
 
             block.Receipts = receipts ?? new TransactionReceipt[0];

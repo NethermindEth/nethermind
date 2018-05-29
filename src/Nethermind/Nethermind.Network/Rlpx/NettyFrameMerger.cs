@@ -49,10 +49,12 @@ namespace Nethermind.Network.Rlpx
                 _logger.Trace("Merging frames");
             }
 
-            DecodedRlp headerBodyItems = Rlp.Decode(new Rlp(input.Slice(3, 13)), RlpBehaviors.AllowExtraData);
-            // int protocolType = headerBodyItems.GetInt(0); // not needed - adaptive IDs
-            int? contextId = headerBodyItems.Length > 1 ? headerBodyItems.GetInt(1) : (int?)null;
-            int? totalPacketSize = headerBodyItems.Length > 2 ? headerBodyItems.GetInt(2) : (int?)null;
+            Rlp.DecoderContext headerBodyItems = input.Slice(3, 13).AsRlpContext();
+            int headerDataEnd = headerBodyItems.ReadSequenceLength() + headerBodyItems.Position;
+            int numberOfItems = headerBodyItems.ReadNumberOfItemsRemaining(headerDataEnd);
+            int protocolType = headerBodyItems.DecodeInt(); // not needed - adaptive IDs
+            int? contextId = numberOfItems > 1 ? headerBodyItems.DecodeInt() : (int?)null;
+            int? totalPacketSize = numberOfItems > 2 ? headerBodyItems.DecodeInt() : (int?)null;
 
             bool isChunked = totalPacketSize.HasValue
                              || contextId.HasValue && _currentSizes.ContainsKey(contextId.Value);
@@ -122,9 +124,8 @@ namespace Nethermind.Network.Rlpx
 
         private static int GetPacketType(byte[] input)
         {
-            Rlp packetTypeRlp = new Rlp(input.Slice(32, 1));
-            int packetType = Rlp.Decode<byte[]>(packetTypeRlp).ToInt32();
-            return packetType;
+            int packetTypeRlp = input[32];
+            return packetTypeRlp == 128 ? 0 : packetTypeRlp;
         }
     }
 }

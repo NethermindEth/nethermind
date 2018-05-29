@@ -21,7 +21,6 @@ using System.Diagnostics;
 using System.Numerics;
 using System.Threading;
 using Nethermind.Core;
-using Nethermind.Store;
 
 namespace Nethermind.Evm
 {

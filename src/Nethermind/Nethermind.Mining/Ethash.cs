@@ -217,7 +217,7 @@ namespace Nethermind.Mining
 
         private static Keccak GetTruncatedHash(BlockHeader header)
         {
-            Keccak headerHashed = Keccak.Compute(Rlp.Encode(header, false)); // sic! Keccak here not Keccak512  // this tests fine
+            Keccak headerHashed = Keccak.Compute(Rlp.Encode(header, RlpBehaviors.ExcludeBlockMixHashAndNonce)); // sic! Keccak here not Keccak512
             return headerHashed;
         }
 
