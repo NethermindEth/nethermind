@@ -189,6 +189,7 @@ namespace Nethermind.Network.Rlpx
             //Only for remote connection
             if (remoteId != null)
             {
+                p2PSession.RemoteNodeId = remoteId;
                 ConnectionInitialized?.Invoke(this, new ConnectionInitializedEventArgs(p2PSession));
             }
 

@@ -34,8 +34,12 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Specs.ChainSpec;
 using Nethermind.Db;
 using Nethermind.Discovery;
+using Nethermind.Discovery.Lifecycle;
+using Nethermind.Discovery.Messages;
 using Nethermind.Discovery.RoutingTable;
+using Nethermind.Discovery.Serializers;
 using Nethermind.Evm;
+using Nethermind.KeyStore;
 using Nethermind.Network;
 using Nethermind.Network.Crypto;
 using Nethermind.Network.P2P;
@@ -44,28 +48,35 @@ using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Runner.Data;
 using Nethermind.Store;
+using PingMessageSerializer = Nethermind.Network.P2P.PingMessageSerializer;
+using PongMessageSerializer = Nethermind.Network.P2P.PongMessageSerializer;
 
 namespace Nethermind.Runner.Runners
 {
     public class EthereumRunner : IEthereumRunner
     {
-        private readonly IDiscoveryManager _discoveryManager;
         private IBlockchainProcessor _blockchainProcessor;
         private IRlpxPeer _localPeer;
         private IPeerManager _peerManager;
         private PrivateKey _privateKey;
         private ISynchronizationManager _syncManager;
         private ITransactionTracer _tracer;
+        private IDiscoveryApp _discoveryApp;
+        private IDiscoveryConfigurationProvider _discoveryConfigurationProvider;
+        private IMessageSerializationService _messageSerializationService;
+        private ISigner _signer;
+        private ICryptoRandom _cryptoRandom;
 
         private static ILogger _defaultLogger = new NLogLogger("default");
         private static ILogger _evmLogger = new NLogLogger("evm");
         private static ILogger _stateLogger = new NLogLogger("state");
         private static ILogger _chainLogger = new NLogLogger("chain");
         private static ILogger _networkLogger = new NLogLogger("net");
+        private static ILogger _discoveryLogger = new NLogLogger("discovery");
 
-        public EthereumRunner(IDiscoveryManager discoveryManager)
+        public EthereumRunner(IDiscoveryConfigurationProvider configurationProvider)
         {
-            _discoveryManager = discoveryManager;
+            _discoveryConfigurationProvider = configurationProvider;
         }
 
         public async Task Start(InitParams initParams)
@@ -83,7 +94,7 @@ namespace Nethermind.Runner.Runners
             _tracer = initParams.TransactionTracingEnabled ? new TransactionTracer(initParams.BaseTracingPath, new UnforgivingJsonSerializer()) : NullTracer.Instance; 
             
             ChainSpec chainSpec = LoadChainSpec(initParams.ChainSpecPath);
-            await InitBlockchain(chainSpec, initParams.IsMining ?? false, initParams.FakeMiningDelay ?? 12000, initParams.SynchronizationEnabled, initParams.P2PPort ?? 30303);
+            await InitBlockchain(chainSpec, initParams.IsMining ?? false, initParams.FakeMiningDelay ?? 12000, initParams.SynchronizationEnabled, initParams.P2PPort ?? 30303, initParams);
             _defaultLogger.Info("Ethereum initialization completed"); // TODO: this is not done very well, start should be async as well
         }
 
@@ -114,7 +125,7 @@ namespace Nethermind.Runner.Runners
 
         private static string _dbBasePath;
 
-        private async Task InitBlockchain(ChainSpec chainSpec, bool isMining, int miningDelay, bool shouldSynchronize, int listenPort)
+        private async Task InitBlockchain(ChainSpec chainSpec, bool isMining, int miningDelay, bool shouldSynchronize, int listenPort, InitParams initParams)
         {
             /* spec */
             var blockMiningTime = TimeSpan.FromMilliseconds(miningDelay);
@@ -240,6 +251,11 @@ namespace Nethermind.Runner.Runners
                             _networkLogger);
 
                         _syncManager.Start();
+
+                        if (initParams.DiscoveryEnabled)
+                        {
+                            await InitDiscovery(initParams);
+                        }
                     }
                 }
             });
@@ -248,35 +264,35 @@ namespace Nethermind.Runner.Runners
         private async Task InitNet(ChainSpec chainSpec, int listenPort)
         {
             /* tools */
-            var serializationService = new MessageSerializationService();
-            var cryptoRandom = new CryptoRandom();
-            var signer = new Signer();
+            _messageSerializationService = new MessageSerializationService();
+            _cryptoRandom = new CryptoRandom();
+            _signer = new Signer();
 
             /* rlpx */
-            var eciesCipher = new EciesCipher(cryptoRandom);
-            var eip8Pad = new Eip8MessagePad(cryptoRandom);
-            serializationService.Register(new AuthEip8MessageSerializer(eip8Pad));
-            serializationService.Register(new AckEip8MessageSerializer(eip8Pad));
-            var encryptionHandshakeServiceA = new EncryptionHandshakeService(serializationService, eciesCipher, cryptoRandom, signer, _privateKey, _networkLogger);
+            var eciesCipher = new EciesCipher(_cryptoRandom);
+            var eip8Pad = new Eip8MessagePad(_cryptoRandom);
+            _messageSerializationService.Register(new AuthEip8MessageSerializer(eip8Pad));
+            _messageSerializationService.Register(new AckEip8MessageSerializer(eip8Pad));
+            var encryptionHandshakeServiceA = new EncryptionHandshakeService(_messageSerializationService, eciesCipher, _cryptoRandom, _signer, _privateKey, _networkLogger);
 
             /* p2p */
-            serializationService.Register(new HelloMessageSerializer());
-            serializationService.Register(new DisconnectMessageSerializer());
-            serializationService.Register(new PingMessageSerializer());
-            serializationService.Register(new PongMessageSerializer());
+            _messageSerializationService.Register(new HelloMessageSerializer());
+            _messageSerializationService.Register(new DisconnectMessageSerializer());
+            _messageSerializationService.Register(new PingMessageSerializer());
+            _messageSerializationService.Register(new PongMessageSerializer());
 
             /* eth */
-            serializationService.Register(new StatusMessageSerializer());
-            serializationService.Register(new TransactionsMessageSerializer());
-            serializationService.Register(new GetBlockHeadersMessageSerializer());
-            serializationService.Register(new NewBlockHashesMessageSerializer());
-            serializationService.Register(new GetBlockBodiesMessageSerializer());
-            serializationService.Register(new BlockHeadersMessageSerializer());
-            serializationService.Register(new BlockBodiesMessageSerializer());
-            serializationService.Register(new NewBlockMessageSerializer());
+            _messageSerializationService.Register(new StatusMessageSerializer());
+            _messageSerializationService.Register(new TransactionsMessageSerializer());
+            _messageSerializationService.Register(new GetBlockHeadersMessageSerializer());
+            _messageSerializationService.Register(new NewBlockHashesMessageSerializer());
+            _messageSerializationService.Register(new GetBlockBodiesMessageSerializer());
+            _messageSerializationService.Register(new BlockHeadersMessageSerializer());
+            _messageSerializationService.Register(new BlockBodiesMessageSerializer());
+            _messageSerializationService.Register(new NewBlockMessageSerializer());
 
             _networkLogger.Info("Initializing server...");
-            _localPeer = new RlpxPeer(_privateKey.PublicKey, listenPort, encryptionHandshakeServiceA, serializationService, _syncManager, _networkLogger);
+            _localPeer = new RlpxPeer(_privateKey.PublicKey, listenPort, encryptionHandshakeServiceA, _messageSerializationService, _syncManager, _networkLogger);
             await _localPeer.Init();
 
             // https://stackoverflow.com/questions/6803073/get-local-ip-address?utm_medium=organic&utm_source=google_rich_qa&utm_campaign=google_rich_qa
@@ -293,61 +309,66 @@ namespace Nethermind.Runner.Runners
             _networkLogger.Info($"Node is up and listening on {localIp}:{listenPort}... press ENTER to exit");
             _networkLogger.Info($"enode://{_privateKey.PublicKey.ToString(false)}@{localIp}:{listenPort}");
 
-            //_peerManager = new PeerManager(_localPeer, _discoveryManager, _networkLogger, new NodeFactory());
+            //foreach (NetworkNode bootnode in chainSpec.NetworkNodes)
+            //{
+            //    bootnode.Host = bootnode.Host == "127.0.0.1" ? localIp : bootnode.Host;
+            //    _networkLogger.Info($"Connecting to {bootnode.Description}@{bootnode.Host}:{bootnode.Port}");
+            //    await _localPeer.ConnectAsync(bootnode.PublicKey, bootnode.Host, bootnode.Port).ContinueWith(
+            //        t =>
+            //        {
+            //            if (t.IsFaulted)
+            //            {
+            //                _networkLogger.Error($"Connection to {bootnode.Description}@{bootnode.Host}:{bootnode.Port} failed.", t.Exception);
+            //            }
+            //            else
+            //            {
+            //                _networkLogger.Info($"Established connection with {bootnode.Description}@{bootnode.Host}:{bootnode.Port}");
+            //            }
+            //        });
 
-            foreach (NetworkNode bootnode in chainSpec.NetworkNodes)
-            {
-                bootnode.Host = bootnode.Host == "127.0.0.1" ? localIp : bootnode.Host;
-                _networkLogger.Info($"Connecting to {bootnode.Description}@{bootnode.Host}:{bootnode.Port}");
-                await _localPeer.ConnectAsync(bootnode.PublicKey, bootnode.Host, bootnode.Port).ContinueWith(
-                    t =>
-                    {
-                        if (t.IsFaulted)
-                        {
-                            _networkLogger.Error($"Connection to {bootnode.Description}@{bootnode.Host}:{bootnode.Port} failed.", t.Exception);
-                        }
-                        else
-                        {
-                            _networkLogger.Info($"Established connection with {bootnode.Description}@{bootnode.Host}:{bootnode.Port}");
-                        }
-                    });
-
-                _networkLogger.Info("Testnet connected...");
-            }
+            //    _networkLogger.Info("Testnet connected...");
+            //}
         }
 
-        private static Block Convert(TestGenesisJson headerJson, Keccak stateRoot)
-        {
-            if (headerJson == null)
+        private Task InitDiscovery(InitParams initParams)
+        {            
+            _discoveryLogger.Info("Initializing Discovery");
+            if (initParams.DiscoveryPort.HasValue)
             {
-                return null;
+                _discoveryConfigurationProvider.MasterPort = initParams.DiscoveryPort.Value;
             }
 
-            var header = new BlockHeader(
-                new Keccak(headerJson.ParentHash),
-                Keccak.OfAnEmptySequenceRlp,
-                new Address(headerJson.Coinbase),
-                Hex.ToBytes(headerJson.Difficulty).ToUnsignedBigInteger(),
-                0,
-                (long)Hex.ToBytes(headerJson.GasLimit).ToUnsignedBigInteger(),
-                Hex.ToBytes(headerJson.Timestamp).ToUnsignedBigInteger(),
-                Hex.ToBytes(headerJson.ExtraData)
-            )
-            {
-                Bloom = Bloom.Empty,
-                MixHash = new Keccak(headerJson.MixHash),
-                Nonce = (ulong)Hex.ToBytes(headerJson.Nonce).ToUnsignedBigInteger(),
-                ReceiptsRoot = Keccak.EmptyTreeHash,
-                StateRoot = Keccak.EmptyTreeHash,
-                TransactionsRoot = Keccak.EmptyTreeHash
-            };
+            var privateKeyProvider = new PrivateKeyProvider(_privateKey);
+            var discoveryMessageFactory = new DiscoveryMessageFactory(_discoveryConfigurationProvider);
+            var nodeIdResolver = new NodeIdResolver(_signer);
+            var nodeFactory = new NodeFactory();
+            IDiscoveryMsgSerializersProvider msgSerializersProvider = new DiscoveryMsgSerializersProvider(_messageSerializationService, _signer, privateKeyProvider, discoveryMessageFactory, nodeIdResolver, nodeFactory);
+            msgSerializersProvider.RegisterDiscoverySerializers();
 
-            header.StateRoot = stateRoot;
-            header.Hash = BlockHeader.CalculateHash(header);
+            var configProvider = new ConfigurationProvider();
+            var jsonSerializer = new JsonSerializer(_discoveryLogger);
+            var encrypter = new AesEncrypter(configProvider, _discoveryLogger);
+            var keyStore = new FileKeyStore(configProvider, jsonSerializer, encrypter, _cryptoRandom, _discoveryLogger);
+            var nodeDistanceCalculator = new NodeDistanceCalculator(_discoveryConfigurationProvider);
+            var nodeTable = new NodeTable(_discoveryConfigurationProvider, nodeFactory, keyStore, _discoveryLogger, nodeDistanceCalculator);
 
-            var block = new Block(header);
-            return block;
-            //0xbd008bffd224489523896ed37442e90b4a7a3218127dafdfed9d503d95e3e1f3
+            var evictionManager = new EvictionManager(nodeTable, _discoveryLogger);
+            var nodeLifeCycleFactory = new NodeLifecycleManagerFactory(nodeFactory, nodeTable, _discoveryLogger, _discoveryConfigurationProvider, discoveryMessageFactory, evictionManager);
+            var discoveryManager = new DiscoveryManager(_discoveryLogger, _discoveryConfigurationProvider, nodeLifeCycleFactory, nodeFactory, nodeTable);
+
+            var nodesLocator = new NodesLocator(nodeTable, discoveryManager, _discoveryConfigurationProvider, _discoveryLogger);
+            var discoveryStorage = new DiscoveryStorage(_discoveryConfigurationProvider, nodeFactory);
+            _discoveryApp = new DiscoveryApp(_discoveryConfigurationProvider, nodesLocator, _discoveryLogger, discoveryManager, nodeFactory, nodeTable, _messageSerializationService, _cryptoRandom, discoveryStorage);
+
+            var peerManager = new PeerManager(_localPeer, discoveryManager, _discoveryLogger, nodeFactory, _discoveryConfigurationProvider, _syncManager);
+            peerManager.StartPeerTimer();
+
+            _discoveryApp.Start(_privateKey.PublicKey);
+
+            _discoveryLogger.Info("Discovery initialization completed");
+
+            return Task.CompletedTask;
         }
+
     }
 }

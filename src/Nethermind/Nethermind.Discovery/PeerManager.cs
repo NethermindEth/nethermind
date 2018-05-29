@@ -66,7 +66,7 @@ namespace Nethermind.Discovery
             _synchronizationManager = synchronizationManager;
             _discoveryManager = discoveryManager;
 
-            discoveryManager.NodeDiscovered += OnNodeDiscovered;
+            discoveryManager.NodeDiscovered += async (s, e) => await OnNodeDiscovered(s, e);
             localPeer.ConnectionInitialized += OnRemoteConnectionInitialized;
         }
 
@@ -106,6 +106,17 @@ namespace Nethermind.Discovery
             }
 
             var availibleActiveCount = _configurationProvider.ActivePeersMaxCount - _activePeers.Count;
+
+            //Step1 - initialize tcp connection for new nodes
+            //TODO add logic to avoid reconnection or a specified amount of time, of callback if connection fails and removing from new nodes
+            //TODO Consider changing logic to get here availible nodes from discovery intead of uning discovered callback
+            //if (availibleActiveCount > 0)
+            //{
+            //    var notConnectedNewNodes = _newPeers.Where(x => x.Value.Session == null).ToArray();
+            //}
+
+            //Step2 - move candidates with eth62 initialized to Active nodes
+
             var allCandidates = _newPeers.Where(x => x.Value.NodeStats.DidEventHappen(NodeStatsEvent.Eth62Initialized)).ToArray();
             var newActiveCount = 0;
             var disconnectedCount = 0;
@@ -284,7 +295,7 @@ namespace Nethermind.Discovery
             }
         }
 
-        private void OnNodeDiscovered(object sender, NodeEventArgs nodeEventArgs)
+        private async Task OnNodeDiscovered(object sender, NodeEventArgs nodeEventArgs)
         {
             var id = nodeEventArgs.Manager.ManagedNode.Id;
             if (_newPeers.ContainsKey(id) || _activePeers.ContainsKey(id))
@@ -294,6 +305,9 @@ namespace Nethermind.Discovery
 
             var peer = new Peer(nodeEventArgs.Manager);
             _newPeers.AddOrUpdate(id, peer, (x, y) => y);
+
+            await _localPeer.ConnectAsync(peer.Node.Id, peer.Node.Host, peer.Node.Port);
+
             if (_logger.IsInfoEnabled)
             {
                 _logger.Info($"Adding newly discovered node to New collection {id.ToString(false)}@{nodeEventArgs.Manager.ManagedNode.Host}:{nodeEventArgs.Manager.ManagedNode.Port}");

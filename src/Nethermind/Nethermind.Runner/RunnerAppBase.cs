@@ -18,6 +18,7 @@
 
 using System;
 using System.IO;
+using System.Linq;
 using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
@@ -26,6 +27,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Core;
 using Nethermind.Core.Specs.ChainSpec;
 using Nethermind.Discovery;
+using Nethermind.Discovery.RoutingTable;
 using Nethermind.JsonRpc;
 using Nethermind.Network;
 using Nethermind.Runner.Runners;
@@ -46,53 +48,6 @@ namespace Nethermind.Runner
             PrivateKeyProvider = privateKeyProvider;
         }
 
-        protected async Task StartRunners(InitParams initParams)
-        {
-            try
-            {
-                //Configuring app DI
-                var configProvider = new ConfigurationProvider();
-                var discoveryConfigProvider = new DiscoveryConfigurationProvider(new NetworkHelper(Logger));
-                ChainSpecLoader chainSpecLoader = new ChainSpecLoader(new UnforgivingJsonSerializer());
-
-                string path = initParams.ChainSpecPath;
-                if (!Path.IsPathRooted(path))
-                {
-                    path = Path.Combine(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, path));
-                }
-
-                byte[] chainSpecData = File.ReadAllBytes(path);
-                ChainSpec chainSpec = chainSpecLoader.Load(chainSpecData);
-                discoveryConfigProvider.NetworkNodes = chainSpec.NetworkNodes;
-                discoveryConfigProvider.DbBasePath = initParams.BaseDbPath;
-                
-                Bootstrap.ConfigureContainer(configProvider, discoveryConfigProvider, PrivateKeyProvider, Logger, initParams);
-
-                if (initParams.JsonRpcEnabled)
-                {
-                    //It needs to run first to finalize objects registration in the container
-                    _jsonRpcRunner = new JsonRpcRunner(configProvider, Logger);
-                    await _jsonRpcRunner.Start(initParams);
-                }
-
-                if (initParams.DiscoveryEnabled)
-                {
-                    _discoveryRunner = Bootstrap.ServiceProvider.GetService<IDiscoveryRunner>();
-                    await _discoveryRunner.Start(initParams);
-                }
-
-                _ethereumRunner = Bootstrap.ServiceProvider.GetService<IEthereumRunner>();
-                await _ethereumRunner.Start(initParams);
-            }
-            catch (Exception e)
-            {
-                Logger.Error("Error while starting Nethermind.Runner", e);
-                throw;
-            }
-        }
-
-        protected abstract (CommandLineApplication, Func<InitParams>) BuildCommandLineApp();
-
         public void Run(string[] args)
         {
             (var app, var buildInitParams) = BuildCommandLineApp();
@@ -101,7 +56,7 @@ namespace Nethermind.Runner
             {
                 var initParams = buildInitParams();
                 Console.Title = initParams.LogFileName;
-                
+
                 Logger.Info($"Running Hive Nethermind Runner, parameters: {initParams}");
 
                 Task userCancelTask = Task.Factory.StartNew(() =>
@@ -132,6 +87,53 @@ namespace Nethermind.Runner
             appClosed.WaitOne();
         }
 
+        protected async Task StartRunners(InitParams initParams)
+        {
+            try
+            {
+                //Configuring app DI
+                var configProvider = new ConfigurationProvider();
+                var discoveryConfigProvider = new DiscoveryConfigurationProvider(new NetworkHelper(Logger));
+                ChainSpecLoader chainSpecLoader = new ChainSpecLoader(new UnforgivingJsonSerializer());
+
+                string path = initParams.ChainSpecPath;
+                if (!Path.IsPathRooted(path))
+                {
+                    path = Path.Combine(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, path));
+                }
+
+                byte[] chainSpecData = File.ReadAllBytes(path);
+                ChainSpec chainSpec = chainSpecLoader.Load(chainSpecData);
+                discoveryConfigProvider.TrustedNodes = chainSpec.NetworkNodes.Select(GetNode).ToArray();
+                discoveryConfigProvider.DbBasePath = initParams.BaseDbPath;
+                
+                Bootstrap.ConfigureContainer(configProvider, discoveryConfigProvider, PrivateKeyProvider, Logger, initParams);
+
+                if (initParams.JsonRpcEnabled)
+                {
+                    //It needs to run first to finalize objects registration in the container
+                    _jsonRpcRunner = new JsonRpcRunner(configProvider, Logger);
+                    await _jsonRpcRunner.Start(initParams);
+                }
+
+                //if (initParams.DiscoveryEnabled)
+                //{
+                //    _discoveryRunner = Bootstrap.ServiceProvider.GetService<IDiscoveryRunner>();
+                //    await _discoveryRunner.Start(initParams);
+                //}
+
+                _ethereumRunner = Bootstrap.ServiceProvider.GetService<IEthereumRunner>();
+                await _ethereumRunner.Start(initParams);
+            }
+            catch (Exception e)
+            {
+                Logger.Error("Error while starting Nethermind.Runner", e);
+                throw;
+            }
+        }
+
+        protected abstract (CommandLineApplication, Func<InitParams>) BuildCommandLineApp();
+
         protected async Task StopAsync()
         {
             await _jsonRpcRunner.StopAsync();
@@ -157,6 +159,16 @@ namespace Nethermind.Runner
             }
 
             throw new Exception($"Incorrect argument value, arg: {argName}, value: {rawValue}");
+        }
+
+        private Node GetNode(NetworkNode networkNode)
+        {
+            var node = new Node(networkNode.PublicKey)
+            {
+                Description = networkNode.Description
+            };
+            node.InitializeAddress(networkNode.Host, networkNode.Port);
+            return node;
         }
     }
 }

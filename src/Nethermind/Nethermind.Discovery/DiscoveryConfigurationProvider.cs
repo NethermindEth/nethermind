@@ -58,7 +58,7 @@ namespace Nethermind.Discovery
         public int DiscoveryNewCycleWaitTime => 50;
         public int RefreshInterval => 7200;
 
-        public NetworkNode[] NetworkNodes { get; set; }
+        public Node[] BootNodes { get; set; }
 
         public string KeyPass => "TestPass";
         public int UdpChannelCloseTimeout => 10000;
@@ -84,7 +84,7 @@ namespace Nethermind.Discovery
         public Node[] TrustedNodes { get; set; }
         public string DbBasePath { get; set; }
         public bool IsDiscoveryNodesPersistenceOn { get; set; }
-        public int ActivePeerUpdateInterval => 1000;
+        public int ActivePeerUpdateInterval => 5000;
         public int ActivePeersMaxCount => 200;
     }
 }
