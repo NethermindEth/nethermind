@@ -96,7 +96,11 @@ namespace Nethermind.Core.Crypto
                 throw new NotSupportedException();
             }
 
-            LazyInitializer.EnsureInitialized(ref _hash, Init);
+            if (_hash == null) // avoid allocating Init func
+            {
+                LazyInitializer.EnsureInitialized(ref _hash, Init);
+            }
+
             return _hash.ComputeBytesToUint(input);
         }
 
@@ -107,7 +111,11 @@ namespace Nethermind.Core.Crypto
                 throw new NotSupportedException();
             }
 
-            LazyInitializer.EnsureInitialized(ref _hash, Init);
+            if (_hash == null)
+            {
+                LazyInitializer.EnsureInitialized(ref _hash, Init);
+            }
+
             return _hash.ComputeUIntsToUint(input);
         }
 
@@ -118,7 +126,11 @@ namespace Nethermind.Core.Crypto
         
         private static Keccak512 InternalCompute(byte[] input)
         {
-            LazyInitializer.EnsureInitialized(ref _hash, Init);
+            if (_hash == null)
+            {
+                LazyInitializer.EnsureInitialized(ref _hash, Init);
+            }
+
             return new Keccak512(_hash.ComputeBytes(input).GetBytes());
         }
 

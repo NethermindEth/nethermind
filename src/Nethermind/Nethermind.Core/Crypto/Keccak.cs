@@ -112,7 +112,11 @@ namespace Nethermind.Core.Crypto
         
         private static Keccak InternalCompute(byte[] input)
         {
-            LazyInitializer.EnsureInitialized(ref _hash, Init);
+            if (_hash == null) // avoid allocating Init func
+            {
+                LazyInitializer.EnsureInitialized(ref _hash, Init);
+            }
+
             return new Keccak(_hash.ComputeBytes(input).GetBytes());
         }
 

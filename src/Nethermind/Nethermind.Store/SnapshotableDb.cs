@@ -266,7 +266,7 @@ namespace Nethermind.Store
                 }
             }
 
-            _capacity = InitialCapacity;
+            _capacity = Math.Max(_capacity / 2, InitialCapacity);
             _changes = new Change[_capacity];
             _currentPosition = -1;
             _committedThisRound.Clear();

@@ -36,6 +36,11 @@ namespace Nethermind.Evm
 
         public void SaveWord(BigInteger location, byte[] word)
         {
+            if (word.Length == 0)
+            {
+                throw new Exception("asdad");
+            }
+
             _memory.Position = (long)location;
             if (word.Length < WordSize)
             {

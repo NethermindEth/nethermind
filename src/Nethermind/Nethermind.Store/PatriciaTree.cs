@@ -100,7 +100,7 @@ namespace Nethermind.Store
         }
 
         public PatriciaTree()
-            : this(new MemDb(), EmptyTreeHash)
+            : this(NullDb.Instance, EmptyTreeHash)
         {
         }
 
