@@ -27,9 +27,10 @@ namespace Nethermind.Evm
     [DebuggerDisplay("{ExecutionType} to {Env.ExecutingAccount}, G {GasAvailable} R {Refund} PC {ProgramCounter} OUT {OutputDestination}:{OutputLength}")]
     public class EvmState
     {
-        public readonly byte[][] BytesOnStack = new byte[VirtualMachine.MaxStackSize][];
-        public readonly bool[] IntPositions = new bool[VirtualMachine.MaxStackSize];
-        public readonly BigInteger[] IntsOnStack = new BigInteger[VirtualMachine.MaxStackSize];
+        private const int InitialStackSize = 64;
+        public byte[][] BytesOnStack = new byte[InitialStackSize][];
+        public bool[] IntPositions = new bool[InitialStackSize];
+        public BigInteger[] IntsOnStack = new BigInteger[InitialStackSize];
 
         private HashSet<Address> _destroyList = new HashSet<Address>();
         private List<LogEntry> _logs = new List<LogEntry>();

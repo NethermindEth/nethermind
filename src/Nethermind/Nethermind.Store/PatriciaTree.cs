@@ -288,16 +288,7 @@ namespace Nethermind.Store
 
         internal Node GetNode(KeccakOrRlp keccakOrRlp)
         {
-            Rlp rlp = null;
-            try
-            {
-                rlp = new Rlp(keccakOrRlp.IsKeccak ? _db[keccakOrRlp.GetOrComputeKeccak().Bytes] : keccakOrRlp.Bytes);
-            }
-            catch (Exception e)
-            {
-                Console.WriteLine(e);
-            }
-
+            Rlp rlp = new Rlp(keccakOrRlp.IsKeccak ? _db[keccakOrRlp.GetOrComputeKeccak().Bytes] : keccakOrRlp.Bytes);
             return RlpDecode(rlp);
         }
 

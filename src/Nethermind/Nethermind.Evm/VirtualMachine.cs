@@ -391,11 +391,24 @@ namespace Nethermind.Evm
                 code = env.CodeInfo.MachineCode;
             }
 
+            void StackUp()
+            {
+                if (stackHead >= intPositions.Length)
+                {
+                    Array.Resize(ref intPositions, Math.Min(MaxStackSize, intPositions.Length * 2));
+                    Array.Resize(ref intsOnStack, Math.Min(MaxStackSize, intsOnStack.Length * 2));
+                    Array.Resize(ref bytesOnStack, Math.Min(MaxStackSize, bytesOnStack.Length * 2));
+                }
+            }
+
             void UpdateCurrentState()
             {
                 evmState.ProgramCounter = programCounter;
                 evmState.GasAvailable = gasAvailable;
                 evmState.StackHead = stackHead;
+                evmState.BytesOnStack = bytesOnStack;
+                evmState.IntPositions = intPositions;
+                evmState.IntsOnStack = intsOnStack;
             }
 
             void StartInstructionTrace(Instruction instruction)
@@ -464,7 +477,7 @@ namespace Nethermind.Evm
 
                 intPositions[stackHead] = false;
                 bytesOnStack[stackHead] = value;
-                stackHead++;
+                stackHead++; StackUp();
                 if (stackHead >= MaxStackSize)
                 {
                     throw new EvmStackOverflowException();
@@ -480,7 +493,7 @@ namespace Nethermind.Evm
 
                 intPositions[stackHead] = true;
                 intsOnStack[stackHead] = value;
-                stackHead++;
+                stackHead++; StackUp();
                 if (stackHead >= MaxStackSize)
                 {
                     throw new EvmStackOverflowException();
@@ -515,7 +528,7 @@ namespace Nethermind.Evm
                     intPositions[stackHead] = false;
                 }
 
-                stackHead++;
+                stackHead++; StackUp();
                 if (stackHead >= MaxStackSize)
                 {
                     throw new EvmStackOverflowException();

@@ -183,8 +183,6 @@ namespace Nethermind.Store
 
         public void IncrementNonce(Address address)
         {
-            //if (ShouldLog.State) Console.WriteLine($"  SETTING NONCE of {address}");
-
             Account account = GetThroughCache(address);
             Account changedAccount = account.WithChangedNonce(account.Nonce + 1);
             PushUpdate(address, changedAccount);
