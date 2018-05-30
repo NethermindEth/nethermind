@@ -203,6 +203,7 @@ namespace Nethermind.Db
         public void CommitBatch()
         {
             _db.Write(_currentBatch);
+            _currentBatch.Dispose();
             _currentBatch = null;
         }        
 
