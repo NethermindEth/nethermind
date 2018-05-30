@@ -50,12 +50,12 @@ namespace Nethermind.Db
 
             // options are based mainly from EtheruemJ at the moment
 
-            //BlockBasedTableOptions tableOptions = new BlockBasedTableOptions();
+            BlockBasedTableOptions tableOptions = new BlockBasedTableOptions();
             //tableOptions.SetPinL0FilterAndIndexBlocksInCache(true);
-            //tableOptions.SetBlockSize(16 * 1024);
+            tableOptions.SetBlockSize(16 * 1024);
             //tableOptions.SetCacheIndexAndFilterBlocks(true);
-            //tableOptions.SetFilterPolicy(BloomFilterPolicy.Create(10, false));
-            //tableOptions.SetFormatVersion(2);
+            tableOptions.SetFilterPolicy(BloomFilterPolicy.Create(10, false));
+            tableOptions.SetFormatVersion(2);
 
             DbOptions options = new DbOptions();
             options.SetCreateIfMissing(true);
@@ -65,7 +65,11 @@ namespace Nethermind.Db
             //options.SetMaxBackgroundCompactions(4);
             //options.SetMaxBackgroundFlushes(2);
             //options.SetMaxOpenFiles(32);
-            //options.SetBlockBasedTableFactory(tableOptions);
+            //options.SetDbWriteBufferSize(1024 * 1024 * 16);
+            options.SetWriteBufferSize(1024 * 1024 * 16);
+            options.SetMaxWriteBufferNumber(6);
+            options.SetMinWriteBufferNumberToMerge(2);
+            options.SetBlockBasedTableFactory(tableOptions);
 
             //SliceTransform transform = SliceTransform.CreateFixedPrefix(16);
             //options.SetPrefixExtractor(transform);

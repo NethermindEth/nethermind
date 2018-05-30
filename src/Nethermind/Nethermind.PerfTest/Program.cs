@@ -369,7 +369,7 @@ namespace Nethermind.PerfTest
                 }
 
                 totalGas += currentHead.GasUsed;
-                if (args.Block.Number % 100000 == 99999)
+                if (args.Block.Number % 10000 == 9999)
                 {
                     stopwatch.Stop();
                     long ns = 1_000_000_000L * stopwatch.ElapsedTicks / Stopwatch.Frequency;
