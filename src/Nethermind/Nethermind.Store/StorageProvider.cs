@@ -38,7 +38,7 @@ namespace Nethermind.Store
         
         private readonly IStateProvider _stateProvider;
 
-        private readonly LruCache<StorageAddress, byte[]> _storageCache = new LruCache<StorageAddress, byte[]>(1024 * 32 * 10); // ~100MB
+        //private readonly LruCache<StorageAddress, byte[]> _storageCache = new LruCache<StorageAddress, byte[]>(1024 * 32 * 10); // ~100MB
 
         private readonly Dictionary<Address, StorageTree> _storages = new Dictionary<Address, StorageTree>();
 
@@ -129,7 +129,7 @@ namespace Nethermind.Store
                 if (_cache[change.StorageAddress].Count == 0)
                 {
                     _cache.Remove(change.StorageAddress);
-                    _storageCache.Set(change.StorageAddress, null);
+                    //_storageCache.Set(change.StorageAddress, null);
                 }
             }
 
@@ -138,7 +138,7 @@ namespace Nethermind.Store
             {
                 _currentPosition++;
                 _changes[_currentPosition] = kept;
-                _storageCache.Set(kept.StorageAddress, kept.Value);
+                //_storageCache.Set(kept.StorageAddress, kept.Value);
                 _cache[kept.StorageAddress].Push(_currentPosition);
             }
         }
@@ -203,7 +203,7 @@ namespace Nethermind.Store
                         StorageTree tree = GetOrCreateStorage(change.StorageAddress.Address);
                         Metrics.StorageTreeWrites++;
                         tree.Set(change.StorageAddress.Index, change.Value);
-                        _storageCache.Set(change.StorageAddress, change.Value);
+                        //_storageCache.Set(change.StorageAddress, change.Value);
                         break;
                     default:
                         throw new ArgumentOutOfRangeException();
@@ -276,18 +276,18 @@ namespace Nethermind.Store
 
         private byte[] GetAndAddToCache(StorageAddress storageAddress)
         {
-            byte[] cached = _storageCache.Get(storageAddress);
-            if (cached != null)
-            {
-                return cached;
-            }
+            //byte[] cached = _storageCache.Get(storageAddress);
+            //if (cached != null)
+            //{
+            //    return cached;
+            //}
 
             StorageTree tree = GetOrCreateStorage(storageAddress.Address);
 
             Metrics.StorageTreeReads++;
             byte[] value = tree.Get(storageAddress.Index);
             PushJustCache(storageAddress, value);
-            _storageCache.Set(storageAddress, value);
+            //_storageCache.Set(storageAddress, value);
             return value;
         }
 

@@ -33,7 +33,7 @@ namespace Nethermind.Store
     {
         private const int StartCapacity = 8;
 
-        private readonly LruCache<Address, Account> _longTermCache = new LruCache<Address, Account>(1024 * 1024); // ~100MB
+        //private readonly LruCache<Address, Account> _longTermCache = new LruCache<Address, Account>(1024 * 1024); // ~100MB
 
         private readonly Dictionary<Address, Stack<int>> _intraBlockCache = new Dictionary<Address, Stack<int>>();
 
@@ -442,26 +442,21 @@ namespace Nethermind.Store
 
         private Account GetState(Address address)
         {
-            Account cached = _longTermCache.Get(address);
-            if (cached != null)
-            {
-                return cached;
-            }
+            //Account cached = _longTermCache.Get(address);
+            //if (cached != null)
+            //{
+            //    return cached;
+            //}
 
             Metrics.StateTreeReads++;
             Account account = _state.Get(address);
-            if (account == null)
-            {
-                return null;
-            }
-
-            _longTermCache.Set(address, account);
+            //_longTermCache.Set(address, account);
             return account;
         }
 
         private void SetState(Address address, Account account)
         {
-            _longTermCache.Set(address, account);
+            //_longTermCache.Set(address, account);
             Metrics.StateTreeWrites++;
             _state.Set(address, account);
         }
