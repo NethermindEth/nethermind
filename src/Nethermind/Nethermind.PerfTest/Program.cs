@@ -163,7 +163,7 @@ namespace Nethermind.PerfTest
             }
 
             stopwatch.Stop();
-            long ns = 1_000_000_000L * stopwatch.ElapsedTicks / Stopwatch.Frequency;
+            long ns = 1_000_000_000L * (stopwatch.ElapsedTicks / Stopwatch.Frequency);
             long ms = 1_000L * stopwatch.ElapsedTicks / Stopwatch.Frequency;
             Console.WriteLine($"TOTAL (ns): " + ns);
             Console.WriteLine($"TOTAL (ms): " + ms);
@@ -282,7 +282,7 @@ namespace Nethermind.PerfTest
         private static readonly string FullBlocksDbPath = Path.Combine(DbBasePath, DbOnTheRocks.BlocksDbPath);
         private static readonly string FullBlockInfosDbPath = Path.Combine(DbBasePath, DbOnTheRocks.BlockInfosDbPath);
 
-        private const int BlocksToLoad = 3_000_000;
+        private const int BlocksToLoad = 100_000;
 
         private static async Task RunRopstenBlocks()
         {
@@ -373,10 +373,8 @@ namespace Nethermind.PerfTest
                 if (args.Block.Number % 10000 == 9999)
                 {
                     stopwatch.Stop();
-                    long ns = 1_000_000_000L * stopwatch.ElapsedTicks / Stopwatch.Frequency;
                     long ms = 1_000L * stopwatch.ElapsedTicks / Stopwatch.Frequency;
                     BigInteger number = args.Block.Number + 1;
-                    _logger.Warn($"TOTAL after {number} (ns)     : " + ns);
                     _logger.Warn($"TOTAL after {number} (ms)     : " + ms);
                     _logger.Warn($"TOTAL after {number} blocks/s : {(decimal)currentHead.Number / (ms / 1000m),5}");
                     _logger.Warn($"TOTAL after {number} Mgas/s   : {((decimal)totalGas / 1000000) / (ms / 1000m),5}");

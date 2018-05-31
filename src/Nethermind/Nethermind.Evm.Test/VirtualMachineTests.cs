@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Diagnostics;
 using System.Numerics;
 using Nethermind.Core;
@@ -419,6 +420,78 @@ namespace Nethermind.Evm.Test
         public void SaveTrace(Keccak hash, TransactionTrace trace)
         {
             _trace = trace;
+        }
+
+        [Test]
+        public void Ropsten_attack_contract_test()
+        {
+            throw new NotImplementedException();
+//PUSH1 0x60
+//PUSH1 0x40
+//MSTORE
+//PUSH4 0xffffffff
+//PUSH1 0xe0
+//PUSH1 0x02
+//EXP
+//PUSH1 0x00
+//CALLDATALOAD
+//DIV
+//AND
+//PUSH4 0x9fe12a6a
+//DUP2
+//EQ
+//PUSH1 0x22
+//JUMPI
+//JUMPDEST
+//PUSH1 0x00
+//JUMP
+//JUMPDEST
+//CALLVALUE
+//PUSH1 0x00
+//JUMPI
+//PUSH1 0x38
+//PUSH1 0x04
+//CALLDATALOAD
+//PUSH1 0x24
+//CALLDATALOAD
+//PUSH1 0xff
+//PUSH1 0x44
+//CALLDATALOAD
+//AND
+//PUSH1 0x3a
+//JUMP
+//JUMPDEST
+//STOP
+//JUMPDEST
+//PUSH1 0x40
+//DUP1
+//MLOAD
+//PUSH1 0xff
+//DUP4
+//AND
+//DUP2
+//MSTORE
+//SWAP1
+//MLOAD
+//DUP4
+//SWAP2
+//DUP6
+//SWAP2
+//PUSH32 0x2f554056349a3530a4cabe3891d711b94a109411500421e48fc5256d660d7a79
+//SWAP2
+//DUP2
+//SWAP1
+//SUB
+//PUSH1 0x20
+//ADD
+//SWAP1
+//LOG3
+//JUMPDEST
+//POP
+//POP
+//POP
+//JUMP
+//STOP
         }
     }
 }
