@@ -252,13 +252,14 @@ namespace Nethermind.PerfTest
 
             public bool WasProcessed(Keccak blockHash)
             {
-                return _processed.ContainsKey(blockHash) && _blockTree.WasProcessed(blockHash); // to mimic the reads at least
+                return false;
+                //return _processed.ContainsKey(blockHash) && _blockTree.WasProcessed(blockHash); // to mimic the reads at least
             }
 
             public void MarkAsProcessed(Keccak blockHash, TransactionReceipt[] receipts = null)
             {
-                const byte ignored = 1;
-                _processed.TryAdd(blockHash, ignored);
+                //const byte ignored = 1;
+                //_processed.TryAdd(blockHash, ignored);
             }
 
             public event EventHandler<BlockEventArgs> NewBestSuggestedBlock;
@@ -281,7 +282,7 @@ namespace Nethermind.PerfTest
         private static readonly string FullBlocksDbPath = Path.Combine(DbBasePath, DbOnTheRocks.BlocksDbPath);
         private static readonly string FullBlockInfosDbPath = Path.Combine(DbBasePath, DbOnTheRocks.BlockInfosDbPath);
 
-        private const int BlocksToLoad = 100_000;
+        private const int BlocksToLoad = 3_000_000;
 
         private static async Task RunRopstenBlocks()
         {

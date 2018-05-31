@@ -37,7 +37,7 @@ namespace Nethermind.Blockchain
         private readonly LruCache<BigInteger, ChainLevelInfo> _blockInfoCache = new LruCache<BigInteger, ChainLevelInfo>(64);
         private readonly LruCache<Keccak, TransactionReceipt[]> _receiptsCache = new LruCache<Keccak, TransactionReceipt[]>(64);
 
-        private const int MaxQueueSize = 1_000_000;
+        private const int MaxQueueSize = 3_000_000;
 
         public const int DbLoadBatchSize = 1000;
 

@@ -247,6 +247,8 @@ namespace Nethermind.Store
             {
                 storage.Value.Commit();
             }
+
+            _storages.Clear();
         }
 
         private StorageTree GetOrCreateStorage(Address address)

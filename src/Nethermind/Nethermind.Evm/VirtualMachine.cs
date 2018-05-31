@@ -56,7 +56,7 @@ namespace Nethermind.Evm
         private int _instructionCounter;
         private TransactionTrace _trace;
         private TransactionTraceEntry _traceEntry;
-        private readonly LruCache<Keccak, CodeInfo> _codeCache = new LruCache<Keccak, CodeInfo>(32 * 1024);
+        private readonly LruCache<Keccak, CodeInfo> _codeCache = new LruCache<Keccak, CodeInfo>(4 * 1024);
 
         public VirtualMachine(ISpecProvider specProvider, IStateProvider stateProvider, IStorageProvider storageProvider, IBlockhashProvider blockhashProvider, ILogger logger)
         {
