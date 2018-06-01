@@ -39,7 +39,7 @@ namespace Nethermind.Core.Encoding
         /// </summary>
         internal Rlp(byte singleByte)
         {
-            Bytes = new[] { singleByte };
+            Bytes = new[] {singleByte};
         }
 
         public Rlp(byte[] bytes)
@@ -108,12 +108,17 @@ namespace Nethermind.Core.Encoding
 
         public static Rlp Encode<T>(T item, RlpBehaviors behaviors = RlpBehaviors.None)
         {
+            if (item is Rlp rlp)
+            {
+                return Encode(new [] {rlp});
+            }
+
             if (Decoders.ContainsKey(typeof(T).TypeHandle))
             {
                 return ((IRlpDecoder<T>)Decoders[typeof(T).TypeHandle]).Encode(item, behaviors);
             }
 
-            throw new RlpException($"{nameof(Rlp)} does not support decoding {typeof(T).Name}");
+            throw new RlpException($"{nameof(Rlp)} does not support encoding {typeof(T).Name}");
         }
 
         public static Rlp Encode<T>(T[] items, RlpBehaviors behaviors = RlpBehaviors.None)
@@ -186,7 +191,7 @@ namespace Nethermind.Core.Encoding
 
             if (value <= byte.MaxValue)
             {
-                return Encode(new[] { Convert.ToByte(value) });
+                return Encode(new[] {Convert.ToByte(value)});
             }
 
             if (value <= short.MaxValue)
@@ -214,7 +219,7 @@ namespace Nethermind.Core.Encoding
                 return new Rlp(value);
             }
 
-            return Encode(new[] { value });
+            return Encode(new[] {value});
         }
 
         public static Rlp Encode(long value)
@@ -290,7 +295,7 @@ namespace Nethermind.Core.Encoding
         {
             if (value < 1 << 8)
             {
-                return new[] { (byte)value };
+                return new[] {(byte)value};
             }
 
             if (value < 1 << 16)
@@ -696,12 +701,12 @@ namespace Nethermind.Core.Encoding
                 int prefix = ReadByte();
                 if (prefix == 0)
                 {
-                    return new byte[] { 0 };
+                    return new byte[] {0};
                 }
 
                 if (prefix < 128)
                 {
-                    return new[] { (byte)prefix };
+                    return new[] {(byte)prefix};
                 }
 
                 if (prefix == 128)

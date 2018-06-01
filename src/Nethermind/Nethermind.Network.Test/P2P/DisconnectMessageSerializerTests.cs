@@ -16,27 +16,22 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Core.Encoding;
-using Nethermind.Core.Extensions;
+using Nethermind.Network.P2P;
+using NUnit.Framework;
 
-namespace Nethermind.Network.P2P
+namespace Nethermind.Network.Test.P2P
 {
-    public class DisconnectMessageSerializer : IMessageSerializer<DisconnectMessage>
+    [TestFixture]
+    public class DisconnectMessageSerializerTests
     {
-        public byte[] Serialize(DisconnectMessage message)
+        [Test]
+        public void Can_do_roundtrip()
         {
-            return Rlp.Encode(
-                Rlp.Encode((byte)message.Reason) // sic!, as a list of 1 element
-            ).Bytes;
-        }
-
-        public DisconnectMessage Deserialize(byte[] bytes)
-        {
-            Rlp.DecoderContext context = bytes.AsRlpContext();
-            context.ReadSequenceLength();
-            int reason = context.DecodeInt();
-            DisconnectMessage disconnectMessage = new DisconnectMessage(reason);
-            return disconnectMessage;
+            DisconnectMessage msg = new DisconnectMessage(DisconnectReason.AlreadyConnected);
+            DisconnectMessageSerializer serializer = new DisconnectMessageSerializer();
+            byte[] serialized = serializer.Serialize(msg);
+            DisconnectMessage deserialized = serializer.Deserialize(serialized);
+            Assert.AreEqual( msg.Reason, deserialized.Reason);
         }
     }
 }

@@ -244,7 +244,6 @@ namespace Nethermind.Runner.Runners
                     
                     if (shouldSynchronize)
                     {
-                        await InitNet(chainSpec, listenPort);
                         // TODO: only start sync manager after queued blocks are processed
                         _syncManager = new SynchronizationManager(
                             blockTree,
@@ -263,6 +262,8 @@ namespace Nethermind.Runner.Runners
                     }
                 }
             });
+            
+            await InitNet(chainSpec, listenPort);
         }
         
         private async Task InitNet(ChainSpec chainSpec, int listenPort)
@@ -313,25 +314,25 @@ namespace Nethermind.Runner.Runners
             _networkLogger.Info($"Node is up and listening on {localIp}:{listenPort}... press ENTER to exit");
             _networkLogger.Info($"enode://{_privateKey.PublicKey.ToString(false)}@{localIp}:{listenPort}");
 
-            //foreach (NetworkNode bootnode in chainSpec.NetworkNodes)
-            //{
-            //    bootnode.Host = bootnode.Host == "127.0.0.1" ? localIp : bootnode.Host;
-            //    _networkLogger.Info($"Connecting to {bootnode.Description}@{bootnode.Host}:{bootnode.Port}");
-            //    await _localPeer.ConnectAsync(bootnode.PublicKey, bootnode.Host, bootnode.Port).ContinueWith(
-            //        t =>
-            //        {
-            //            if (t.IsFaulted)
-            //            {
-            //                _networkLogger.Error($"Connection to {bootnode.Description}@{bootnode.Host}:{bootnode.Port} failed.", t.Exception);
-            //            }
-            //            else
-            //            {
-            //                _networkLogger.Info($"Established connection with {bootnode.Description}@{bootnode.Host}:{bootnode.Port}");
-            //            }
-            //        });
+            foreach (NetworkNode bootnode in chainSpec.NetworkNodes)
+            {
+                bootnode.Host = bootnode.Host == "127.0.0.1" ? localIp : bootnode.Host;
+                _networkLogger.Info($"Connecting to {bootnode.Description}@{bootnode.Host}:{bootnode.Port}");
+                await _localPeer.ConnectAsync(bootnode.PublicKey, bootnode.Host, bootnode.Port).ContinueWith(
+                    t =>
+                    {
+                        if (t.IsFaulted)
+                        {
+                            _networkLogger.Error($"Connection to {bootnode.Description}@{bootnode.Host}:{bootnode.Port} failed.", t.Exception);
+                        }
+                        else
+                        {
+                            _networkLogger.Info($"Established connection with {bootnode.Description}@{bootnode.Host}:{bootnode.Port}");
+                        }
+                    });
 
-            //    _networkLogger.Info("Testnet connected...");
-            //}
+                _networkLogger.Info("Testnet connected...");
+            }
         }
 
         private Task InitDiscovery(InitParams initParams)
