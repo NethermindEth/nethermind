@@ -19,6 +19,7 @@
 using System;
 using System.Linq;
 using System.Numerics;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
@@ -80,7 +81,7 @@ namespace Nethermind.Blockchain
             }
         }
 
-        public async Task LoadBlocksFromDb(BigInteger? startBlockNumber = null, int batchSize = DbLoadBatchSize, int maxBlocksToLoad = int.MaxValue)
+        public async Task LoadBlocksFromDb(CancellationToken cancellationToken, BigInteger? startBlockNumber = null, int batchSize = DbLoadBatchSize, int maxBlocksToLoad = int.MaxValue)
         {
             if (startBlockNumber == null)
             {
@@ -91,25 +92,30 @@ namespace Nethermind.Blockchain
                 Head = startBlockNumber == 0 ? null : FindBlock(startBlockNumber.Value - 1)?.Header;
             }
 
-            if (_logger.IsInfoEnabled)
-            {
-                _logger.Info($"Loading blocks from DB (starting from {startBlockNumber}).");
-            }
-
             BigInteger blocksToLoad = BigInteger.Min(FindNumberOfBlocksToLoadFromDb(), maxBlocksToLoad);
-            if (_logger.IsInfoEnabled)
+            if (blocksToLoad == 0)
             {
-                _logger.Info($"Found {blocksToLoad} blocks to load starting from current head block {Head?.ToString(BlockHeader.Format.Short)}.");
+                if (_logger.IsInfoEnabled) _logger.Info("Found no blocks to load from DB.");
+            }
+            else
+            {
+                if (_logger.IsInfoEnabled) _logger.Info($"Found {blocksToLoad} blocks to load starting from current head block {Head?.ToString(BlockHeader.Format.Short)}.");
             }
 
+            BigInteger blockNumber = startBlockNumber.Value;
             for (int i = 0; i < blocksToLoad; i++)
             {
-                BigInteger blockNumber = startBlockNumber.Value + i + 1;
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    break;
+                }
+
+                blockNumber++;
                 Block block = FindBlock(blockNumber);
                 BestSuggested = block.Header;
                 NewBestSuggestedBlock?.Invoke(this, new BlockEventArgs(block));
 
-                if (i % batchSize == batchSize - 1)
+                if (i % batchSize == batchSize - 1 && !(i == blocksToLoad - 1))
                 {
                     if (_logger.IsInfoEnabled)
                     {
@@ -117,14 +123,21 @@ namespace Nethermind.Blockchain
                     }
 
                     _dbBatchProcessed = new TaskCompletionSource<object>();
-                    _currentDbLoadBatchEnd = blockNumber;
-                    await _dbBatchProcessed.Task;
+                    using (cancellationToken.Register(() => _dbBatchProcessed.SetCanceled()))
+                    {
+                        _currentDbLoadBatchEnd = blockNumber;
+                        await _dbBatchProcessed.Task;
+                    }
                 }
             }
 
+            if (cancellationToken.IsCancellationRequested)
+            {
+                _logger.Info($"Cancelled loading blocks from DB at block {blockNumber}");
+            }
             if (_logger.IsInfoEnabled)
             {
-                _logger.Info("Finished loading blocks from DB. Current best suggested block");
+                _logger.Info($"Completed loading blocks from DB at block {blockNumber}");
             }
         }
 
@@ -361,7 +374,6 @@ namespace Nethermind.Blockchain
             }
         }
 
-        // TODO: this is all temp while we test full chain sync
         private BigInteger FindNumberOfBlocksToLoadFromDb()
         {
             BigInteger headNumber = Head?.Number ?? -1;

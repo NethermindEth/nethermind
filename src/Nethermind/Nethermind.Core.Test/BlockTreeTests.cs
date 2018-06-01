@@ -17,6 +17,8 @@
  */
 
 using System;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
@@ -409,7 +411,7 @@ namespace Nethermind.Core.Test
         }
 
         [Test]
-        public void Can_load_blocks_from_db()
+        public async Task Can_load_blocks_from_db()
         {
             for (int chainLength = 1; chainLength <= 32; chainLength++)
             {
@@ -431,7 +433,7 @@ namespace Nethermind.Core.Test
                 blocksDb.Set(Keccak.Zero, Rlp.Encode(genesisBlock).Bytes);
 
                 BlockTree blockTree = new BlockTree(blocksDb, blockInfosDb, new MemDb(), OlympicSpecProvider.Instance, NullLogger.Instance);
-                blockTree.LoadBlocksFromDb();
+                await blockTree.LoadBlocksFromDb(CancellationToken.None);
 
                 Assert.AreEqual(genesisBlock.Hash, blockTree.Genesis?.Hash, $"genesis {chainLength}");
                 Assert.AreEqual(blockTree.BestSuggested.Hash, testTree.Head.Hash, $"head {chainLength}");
@@ -439,7 +441,7 @@ namespace Nethermind.Core.Test
         }
         
         [Test]
-        public void Can_load_blocks_from_db_odd()
+        public async Task Can_load_blocks_from_db_odd()
         {
             for (int chainLength = 2; chainLength <= 32; chainLength++)
             {
@@ -461,7 +463,7 @@ namespace Nethermind.Core.Test
                 blocksDb.Set(Keccak.Zero, Rlp.Encode(testTree.FindBlock(1)).Bytes);
 
                 BlockTree blockTree = new BlockTree(blocksDb, blockInfosDb, new MemDb(), OlympicSpecProvider.Instance, NullLogger.Instance);
-                blockTree.LoadBlocksFromDb();
+                await blockTree.LoadBlocksFromDb(CancellationToken.None);
 
                 Assert.AreEqual(genesisBlock.Hash, blockTree.Genesis?.Hash, $"genesis {chainLength}");
                 Assert.AreEqual(blockTree.BestSuggested.Hash, testTree.Head.Hash, $"head {chainLength}");

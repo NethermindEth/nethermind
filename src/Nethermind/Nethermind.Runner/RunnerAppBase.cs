@@ -72,8 +72,8 @@ namespace Nethermind.Runner
                     }
                 });
 
-                Task runnersTask = StartRunners(initParams);
-                await Task.WhenAny(userCancelTask, runnersTask);
+                await StartRunners(initParams);
+                await userCancelTask;
 
                 Console.WriteLine("Closing, please wait until all functions are stopped properly...");
                 StopAsync().Wait();

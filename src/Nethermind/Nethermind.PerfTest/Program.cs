@@ -22,6 +22,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Numerics;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Difficulty;
@@ -190,9 +191,9 @@ namespace Nethermind.PerfTest
             public BlockHeader BestSuggested => _blockTree.BestSuggested;
             public BlockHeader Head => _blockTree.Head;
 
-            public async Task LoadBlocksFromDb(BigInteger? startBlockNumber, int batchSize = BlockTree.DbLoadBatchSize, int maxBlocksToLoad = int.MaxValue)
+            public async Task LoadBlocksFromDb(CancellationToken cancellationToken, BigInteger? startBlockNumber, int batchSize = BlockTree.DbLoadBatchSize, int maxBlocksToLoad = int.MaxValue)
             {
-                await _blockTree.LoadBlocksFromDb(startBlockNumber, batchSize, maxBlocksToLoad);
+                await _blockTree.LoadBlocksFromDb(cancellationToken, startBlockNumber, batchSize, maxBlocksToLoad);
             }
 
             public AddBlockResult SuggestBlock(Block block)
@@ -429,7 +430,7 @@ namespace Nethermind.PerfTest
                 }
             };
 
-            await Task.WhenAny(completionSource.Task, blockTree.LoadBlocksFromDb(0, 10000, BlocksToLoad));
+            await Task.WhenAny(completionSource.Task, blockTree.LoadBlocksFromDb(CancellationToken.None, 0, 10000, BlocksToLoad));
 
             await blockchainProcessor.StopAsync(true).ContinueWith(
                 t =>

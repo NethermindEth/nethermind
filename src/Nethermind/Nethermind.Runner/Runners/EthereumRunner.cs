@@ -23,6 +23,7 @@ using System.IO;
 using System.Net;
 using System.Net.Sockets;
 using System.Numerics;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Difficulty;
@@ -66,6 +67,7 @@ namespace Nethermind.Runner.Runners
         private IMessageSerializationService _messageSerializationService;
         private ISigner _signer;
         private ICryptoRandom _cryptoRandom;
+        private CancellationTokenSource _runnerCancellation;
 
         private static ILogger _defaultLogger = new NLogLogger("default");
         private static ILogger _evmLogger = new NLogLogger("evm");
@@ -81,6 +83,7 @@ namespace Nethermind.Runner.Runners
 
         public async Task Start(InitParams initParams)
         {
+            _runnerCancellation = new CancellationTokenSource();
             _defaultLogger = new NLogLogger(initParams.LogFileName, "default");
             _evmLogger = new NLogLogger(initParams.LogFileName, "evm");
             _stateLogger = new NLogLogger(initParams.LogFileName, "state");
@@ -101,6 +104,7 @@ namespace Nethermind.Runner.Runners
         public async Task StopAsync()
         {
             _networkLogger.Info("Shutting down...");
+            _runnerCancellation.Cancel();
             _networkLogger.Info("Stopping sync manager...");
             await (_syncManager?.StopAsync() ?? Task.CompletedTask);
             _networkLogger.Info("Stopping blockchain processor...");
@@ -214,7 +218,7 @@ namespace Nethermind.Runner.Runners
             sealEngine.IsMining = isMining;
 
             _blockchainProcessor.Start();
-            await blockTree.LoadBlocksFromDb().ContinueWith(async t =>
+            await blockTree.LoadBlocksFromDb(_runnerCancellation.Token).ContinueWith(async t =>
             {
 
                 if (t.IsFaulted)
