@@ -75,6 +75,7 @@ namespace Nethermind.Discovery.Test
             };
             p2pSession.TriggerProtocolInitialized(args);
             Assert.IsTrue(_peerManager.NewPeers.First().NodeStats.DidEventHappen(NodeStatsEvent.Eth62Initialized));
+            Assert.NotNull(_peerManager.NewPeers.First().Eth62ProtocolHandler);
 
             //make sure node was moved to active
             var task = _peerManager.RunPeerUpdate();

@@ -206,12 +206,25 @@ namespace Nethermind.Blockchain
 
         private Block ProcessOne(Block suggestedBlock, bool tryOnly) // TODO: refactor
         {
-            if (suggestedBlock.IsGenesis)
+            IDb db = _dbProvider.GetOrCreateStateDb(); // TODO: now totally synchronous but would need to pass the batch object / some sync item
+            Block processedBlock = suggestedBlock;
+            if (!suggestedBlock.IsGenesis)
             {
-                return suggestedBlock;
+                processedBlock = ProcessNonGenesis(suggestedBlock, tryOnly);
             }
 
-            // TODO: unimportant but out of curiosity, is the check faster than cast to nullable?
+            db.StartBatch();
+            _stateProvider.CommitTree();
+            _storageProvider.CommitTrees();
+            db.CommitBatch();
+            
+            _dbProvider.Commit(_specProvider.GetSpec(suggestedBlock.Number));
+            return processedBlock;
+        }
+
+        private Block ProcessNonGenesis(Block suggestedBlock, bool tryOnly)
+        {
+// TODO: unimportant but out of curiosity, is the check faster than cast to nullable?
             if (_specProvider.DaoBlockNumber.HasValue && _specProvider.DaoBlockNumber.Value == suggestedBlock.Header.Number)
             {
                 if (_logger.IsInfoEnabled)
@@ -274,13 +287,6 @@ namespace Nethermind.Blockchain
                 _logger.Debug($"Committing block - state root {_stateProvider.StateRoot}");
             }
 
-            IDb db = _dbProvider.GetOrCreateStateDb(); // TODO: now totally synchronous but would need to pass the batch object / some sync item
-            db.StartBatch();
-            _stateProvider.CommitTree();
-            _storageProvider.CommitTrees();
-            db.CommitBatch();
-            
-            _dbProvider.Commit(_specProvider.GetSpec(suggestedBlock.Number));
             return processedBlock;
         }
 

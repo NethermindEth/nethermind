@@ -36,7 +36,6 @@ using Nethermind.Network.Rlpx;
 namespace Nethermind.Discovery
 {
     /// <summary>
-    /// Responsible for periodically getting best peers from Dicovery Manager and updating SynchManager
     /// </summary>
     public class PeerManager : IPeerManager
     {
@@ -78,7 +77,14 @@ namespace Nethermind.Discovery
             }
 
             _peerTimer = new Timer(_configurationProvider.ActivePeerUpdateInterval);
-            _peerTimer.Elapsed += async (sender, e) => await RunPeerUpdate();
+            _peerTimer.AutoReset = false;
+            _peerTimer.Elapsed += async (sender, e) =>
+            {
+                _peerTimer.Enabled = false;
+                await RunPeerUpdate();
+                _peerTimer.Enabled = true;
+            };
+            
             _peerTimer.Start();
         }
 
@@ -139,9 +145,12 @@ namespace Nethermind.Discovery
                 newActiveCount++;
             }
 
-            if (_logger.IsInfoEnabled)
+            if (newActiveCount != 0 || disconnectedCount != 0)
             {
-                _logger.Info($"Added {newActiveCount} active peers. Disconnected: {disconnectedCount}");
+                if (_logger.IsInfoEnabled)
+                {
+                    _logger.Info($"Added {newActiveCount} active peers. Disconnected: {disconnectedCount}");
+                }
             }
         }
 
@@ -203,13 +212,14 @@ namespace Nethermind.Discovery
                         }
                         peer.NodeStats.AddNodeStatsEvent(NodeStatsEvent.P2PInitialized);
                         break;
-                    case Eth62ProtocolHandler _:
+                    case Eth62ProtocolHandler ethProtocolhandler:
                         result = await ValidateProtocol(Protocol.Eth, peer, e);
                         if (!result)
                         {
                             return;
                         }
                         peer.NodeStats.AddNodeStatsEvent(NodeStatsEvent.Eth62Initialized);
+                        peer.Eth62ProtocolHandler = ethProtocolhandler;
                         break;
                 }
                 if (_logger.IsInfoEnabled)

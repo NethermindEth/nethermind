@@ -39,8 +39,6 @@ namespace Nethermind.Network.Rlpx
     // TODO: integration tests for this one
     public class RlpxPeer : IRlpxPeer
     {
-        private readonly Dictionary<PublicKey, IP2PSession> _remotePeers = new Dictionary<PublicKey, IP2PSession>();
-
         private const int PeerConnectionTimeout = 10000;
         private readonly int _localPort;
         private readonly IEncryptionHandshakeService _encryptionHandshakeService;
@@ -61,12 +59,12 @@ namespace Nethermind.Network.Rlpx
             ISynchronizationManager synchronizationManager,
             ILogger logger)
         {
-            LocalNodeId = localNodeId;
-            _localPort = localPort;
-            _encryptionHandshakeService = encryptionHandshakeService;
-            _serializationService = serializationService;
-            _synchronizationManager = synchronizationManager;
-            _logger = logger;
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _synchronizationManager = synchronizationManager ?? throw new ArgumentNullException(nameof(synchronizationManager));
+            _encryptionHandshakeService = encryptionHandshakeService ?? throw new ArgumentNullException(nameof(encryptionHandshakeService));
+            _serializationService = serializationService ?? throw new ArgumentNullException(nameof(serializationService));
+            LocalNodeId = localNodeId ?? throw new ArgumentNullException(nameof(localNodeId));
+            _localPort = localPort;            
         }
 
         public PublicKey LocalNodeId { get; }

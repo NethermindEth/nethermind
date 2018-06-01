@@ -171,6 +171,7 @@ namespace Nethermind.Runner.Runners
             var rewardCalculator = new RewardCalculator(specProvider);
             var blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, transactionProcessor, dbProvider, stateProvider, storageProvider, transactionStore, _chainLogger);
             _blockchainProcessor = new BlockchainProcessor(blockTree, sealEngine, transactionStore, difficultyCalculator, blockProcessor, _chainLogger);
+            _blockchainProcessor.Start();
             
             var expectedGenesisHash = "0x41941023680923e0fe4d74a34bdac8141f2540e3ae90623718e47d66d1ca4a2d";
             if (blockTree.Genesis == null)
@@ -187,9 +188,18 @@ namespace Nethermind.Runner.Runners
                 genesis.Header.StateRoot = stateProvider.StateRoot;
                 genesis.Header.Hash = BlockHeader.CalculateHash(genesis.Header);
                 
+                ManualResetEvent genesisProcessedEvent = new ManualResetEvent(false);
                 if (blockTree.Genesis == null)
                 {
+                    void GenesisProcessed(object sender, BlockEventArgs args)
+                    {
+                        genesisProcessedEvent.Set();
+                    }
+
+                    blockTree.NewHeadBlock += GenesisProcessed;
                     blockTree.SuggestBlock(genesis);
+                    genesisProcessedEvent.WaitOne();
+                    blockTree.NewHeadBlock -= GenesisProcessed;
                 }
                 
                 // we are adding test transactions account so the state root will change (not an actual ropsten at the moment)
@@ -217,7 +227,6 @@ namespace Nethermind.Runner.Runners
             /* start test processing */
             sealEngine.IsMining = isMining;
 
-            _blockchainProcessor.Start();
             await blockTree.LoadBlocksFromDb(_runnerCancellation.Token).ContinueWith(async t =>
             {
 
@@ -255,15 +264,11 @@ namespace Nethermind.Runner.Runners
 
                         _syncManager.Start();
 
-                        if (initParams.DiscoveryEnabled)
-                        {
-                            await InitDiscovery(initParams);
-                        }
+                        await InitNet(chainSpec, listenPort);
+                        await InitDiscovery(initParams);
                     }
                 }
             });
-            
-            await InitNet(chainSpec, listenPort);
         }
         
         private async Task InitNet(ChainSpec chainSpec, int listenPort)
@@ -313,26 +318,6 @@ namespace Nethermind.Runner.Runners
 
             _networkLogger.Info($"Node is up and listening on {localIp}:{listenPort}... press ENTER to exit");
             _networkLogger.Info($"enode://{_privateKey.PublicKey.ToString(false)}@{localIp}:{listenPort}");
-
-            foreach (NetworkNode bootnode in chainSpec.NetworkNodes)
-            {
-                bootnode.Host = bootnode.Host == "127.0.0.1" ? localIp : bootnode.Host;
-                _networkLogger.Info($"Connecting to {bootnode.Description}@{bootnode.Host}:{bootnode.Port}");
-                await _localPeer.ConnectAsync(bootnode.PublicKey, bootnode.Host, bootnode.Port).ContinueWith(
-                    t =>
-                    {
-                        if (t.IsFaulted)
-                        {
-                            _networkLogger.Error($"Connection to {bootnode.Description}@{bootnode.Host}:{bootnode.Port} failed.", t.Exception);
-                        }
-                        else
-                        {
-                            _networkLogger.Info($"Established connection with {bootnode.Description}@{bootnode.Host}:{bootnode.Port}");
-                        }
-                    });
-
-                _networkLogger.Info("Testnet connected...");
-            }
         }
 
         private Task InitDiscovery(InitParams initParams)

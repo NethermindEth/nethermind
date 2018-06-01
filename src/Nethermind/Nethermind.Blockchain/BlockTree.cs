@@ -28,6 +28,7 @@ using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Store;
+using NLog.LayoutRenderers;
 
 namespace Nethermind.Blockchain
 {
@@ -111,7 +112,25 @@ namespace Nethermind.Blockchain
                 }
 
                 blockNumber++;
-                Block block = FindBlock(blockNumber);
+                ChainLevelInfo level = LoadLevel(blockNumber);
+                BigInteger maxDifficultySoFar = 0;
+                BlockInfo maxDifficultyBlock = null;
+                for (int blockIndex = 0; blockIndex < level.BlockInfos.Length; blockIndex++)
+                {
+                    if (level.BlockInfos[blockIndex].TotalDifficulty > maxDifficultySoFar)
+                    {
+                        maxDifficultyBlock = level.BlockInfos[blockIndex];
+                        maxDifficultySoFar = maxDifficultyBlock.TotalDifficulty;
+                    }
+                }
+
+                if (maxDifficultyBlock == null)
+                {
+                    throw new InvalidOperationException($"Expected at least one block at level {blockNumber}");
+                }
+
+                Block block = FindBlock(maxDifficultyBlock.BlockHash, false);
+
                 BestSuggested = block.Header;
                 NewBestSuggestedBlock?.Invoke(this, new BlockEventArgs(block));
 
@@ -135,6 +154,7 @@ namespace Nethermind.Blockchain
             {
                 _logger.Info($"Cancelled loading blocks from DB at block {blockNumber}");
             }
+
             if (_logger.IsInfoEnabled)
             {
                 _logger.Info($"Completed loading blocks from DB at block {blockNumber}");
@@ -450,7 +470,7 @@ namespace Nethermind.Blockchain
             }
             else
             {
-                level = new ChainLevelInfo(false, new[] { blockInfo });
+                level = new ChainLevelInfo(false, new[] {blockInfo});
             }
 
             UpdateLevel(number, level);
