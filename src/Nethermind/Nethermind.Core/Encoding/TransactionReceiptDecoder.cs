@@ -26,6 +26,7 @@ namespace Nethermind.Core.Encoding
         public TransactionReceipt Decode(Rlp.DecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             TransactionReceipt receipt = new TransactionReceipt();
+            context.ReadSequenceLength();
             byte[] firstItem = context.DecodeByteArray();
             if (firstItem.Length == 1)
             {

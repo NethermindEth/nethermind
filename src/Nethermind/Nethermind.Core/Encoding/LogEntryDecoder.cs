@@ -25,11 +25,7 @@ namespace Nethermind.Core.Encoding
     {
         public LogEntry Decode(Rlp.DecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraData))
-            {
-                throw new NotSupportedException("Not handling RlpBehaviours with log entries...");
-            }
-
+            context.ReadSequenceLength();
             Address address = context.DecodeAddress();
             long sequenceLength = context.ReadSequenceLength();
             Keccak[] topics = new Keccak[sequenceLength / 33];
