@@ -14,7 +14,7 @@ namespace Nethermind.Db
 
         private static readonly ConcurrentDictionary<string, RocksDb> DbsByPath = new ConcurrentDictionary<string, RocksDb>();
 
-        protected readonly RocksDb _db;
+        private readonly RocksDb _db;
         private readonly DbInstance _dbInstance;
 
         private WriteBatchWithIndex _currentBatch;
