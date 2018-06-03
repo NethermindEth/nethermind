@@ -31,10 +31,12 @@ namespace Nethermind.Store
         private readonly bool _isUpdate;
         private readonly bool _ignoreMissingDelete;
 
-        private readonly Stack<StackedNode> _nodeStack = new Stack<StackedNode>();
+        private static readonly Stack<StackedNode> NodeStack = new Stack<StackedNode>(); // TODO: if switching to parallel then need to pool tree operations with separate node stacks?, if...
 
         public TreeOperation(PatriciaTree tree, byte[] looseByteArrayOfNibbles, byte[] updateValue, bool isUpdate, bool ignoreMissingDelete = true)
         {
+            NodeStack.Clear();
+
             _tree = tree;
             _updatePath = looseByteArrayOfNibbles;
             if (isUpdate)
@@ -121,17 +123,17 @@ namespace Nethermind.Store
         {
 //            Keccak previousRootHash = _tree.RootHash;
 
-            bool isRoot = _nodeStack.Count == 0;
+            bool isRoot = NodeStack.Count == 0;
             NodeRef nextNodeRef = node == null ? null : new NodeRef(node, isRoot);
             Node nextNode = node;
 
             // nodes should immutable here I guess
             while (!isRoot)
             {
-                StackedNode parentOnStack = _nodeStack.Pop();
+                StackedNode parentOnStack = NodeStack.Pop();
                 node = parentOnStack.Node;
 
-                isRoot = _nodeStack.Count == 0;
+                isRoot = NodeStack.Count == 0;
 
                 if (node is Leaf leaf)
                 {
@@ -140,26 +142,35 @@ namespace Nethermind.Store
 
                 if (node is Branch branch)
                 {
-                    node.IsDirty = true;
-//                    _tree.DeleteNode(branch.Nodes[parentOnStack.PathIndex], true);
-                    branch.Nodes[parentOnStack.PathIndex] = nextNodeRef;
-                    if (branch.IsValid)
+                    Branch newBranch = new Branch();
+                    newBranch.IsDirty = true;
+                    for (int i = 0; i < 16; i++)
                     {
-                        nextNodeRef = new NodeRef(branch, isRoot);
-                        nextNode = branch;
+                        newBranch.Nodes[i] = branch.Nodes[i];
+                    }
+
+                    newBranch.Value = branch.Value;
+                    newBranch.Nodes[parentOnStack.PathIndex] = nextNodeRef;
+
+//                    _tree.DeleteNode(branch.Nodes[parentOnStack.PathIndex], true);
+                    if (newBranch.IsValid)
+                    {
+                        nextNodeRef = new NodeRef(newBranch, isRoot);
+                        nextNode = newBranch;
                     }
                     else
                     {
-                        if (branch.Value.Length != 0)
+                        if (newBranch.Value.Length != 0)
                         {
-                            Leaf leafFromBranch = new Leaf(new HexPrefix(true), branch.Value);
+                            Leaf leafFromBranch = new Leaf(new HexPrefix(true), newBranch.Value);
+                            leafFromBranch.IsDirty = true;
                             nextNodeRef = new NodeRef(leafFromBranch, isRoot);
                             nextNode = leafFromBranch;
                         }
                         else
                         {
-                            int childNodeIndex = Array.FindIndex(branch.Nodes, n => n != null);
-                            NodeRef childNodeRef = branch.Nodes[childNodeIndex];
+                            int childNodeIndex = Array.FindIndex(newBranch.Nodes, n => n != null);
+                            NodeRef childNodeRef = newBranch.Nodes[childNodeIndex];
                             if (childNodeRef == null)
                             {
                                 throw new InvalidOperationException("Before updating branch should have had at least two non-empty children");
@@ -221,15 +232,15 @@ namespace Nethermind.Store
                     }
                     else if (nextNode is Branch)
                     {
-                        // TODO: review modification of an existing node...
-                        extension.NextNodeRef = nextNodeRef;
-                        extension.IsDirty = true;
-                        nextNodeRef = new NodeRef(extension, isRoot);
-                        nextNode = extension;
+                        Extension newExtension = new Extension(extension.Key);
+                        newExtension.IsDirty = true;
+                        newExtension.NextNodeRef = nextNodeRef;
+                        nextNodeRef = new NodeRef(newExtension, isRoot);
+                        nextNode = newExtension;
                     }
                     else
                     {
-                        throw new InvalidOperationException($"Unknown node type {nextNode.GetType().Name}");
+                        throw new InvalidOperationException($"Unknown node type {nextNode?.GetType().Name}");
                     }
                 }
                 else
@@ -272,7 +283,7 @@ namespace Nethermind.Store
             }
 
             NodeRef nextNodeRef = node.Nodes[_updatePath[_currentIndex]];
-            _nodeStack.Push(new StackedNode(node, _updatePath[_currentIndex]));
+            NodeStack.Push(new StackedNode(node, _updatePath[_currentIndex]));
             _currentIndex++;
 
             if (nextNodeRef == null)
@@ -375,7 +386,7 @@ namespace Nethermind.Store
                 byte[] extensionPath = longerPath.Slice(0, extensionLength);
                 Extension extension = new Extension(new HexPrefix(false, extensionPath));
                 extension.IsDirty = true;
-                _nodeStack.Push(new StackedNode(extension, 0));
+                NodeStack.Push(new StackedNode(extension, 0));
             }
 
             Branch branch = new Branch();
@@ -395,7 +406,7 @@ namespace Nethermind.Store
             byte[] leafPath = longerPath.Slice(extensionLength + 1, longerPath.Length - extensionLength - 1);
             Leaf leaf = new Leaf(new HexPrefix(true, leafPath), longerPathValue);
             leaf.IsDirty = true;
-            _nodeStack.Push(new StackedNode(branch, longerPath[extensionLength]));
+            NodeStack.Push(new StackedNode(branch, longerPath[extensionLength]));
             ConnectNodes(leaf);
 
             return _updateValue;
@@ -412,7 +423,7 @@ namespace Nethermind.Store
             if (extensionLength == node.Path.Length)
             {
                 _currentIndex += extensionLength;
-                _nodeStack.Push(new StackedNode(node, 0));
+                NodeStack.Push(new StackedNode(node, 0));
                 node.NextNodeRef.ResolveNode(_tree);
                 return TraverseNode(node.NextNodeRef.Node);
             }
@@ -437,7 +448,7 @@ namespace Nethermind.Store
                 byte[] extensionPath = node.Path.Slice(0, extensionLength);
                 Extension extension = new Extension(new HexPrefix(false, extensionPath));
                 extension.IsDirty = true;
-                _nodeStack.Push(new StackedNode(extension, 0));
+                NodeStack.Push(new StackedNode(extension, 0));
             }
 
             Branch branch = new Branch();
