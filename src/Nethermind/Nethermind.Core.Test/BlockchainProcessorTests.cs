@@ -74,7 +74,7 @@ namespace Nethermind.Core.Test
             var ethereumSigner = new EthereumSigner(specProvider, logger);
             var transactionStore = new TransactionStore();
             var blockhashProvider = new BlockhashProvider(blockTree);
-            var virtualMachine = new VirtualMachine(specProvider, stateProvider, storageProvider, blockhashProvider, logger);
+            var virtualMachine = new VirtualMachine(stateProvider, storageProvider, blockhashProvider, logger);
             var processor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, ethereumSigner, NullTracer.Instance, logger);
             var rewardCalculator = new RewardCalculator(specProvider);
             var blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, processor, storageDbProvider, stateProvider, storageProvider, transactionStore, logger);

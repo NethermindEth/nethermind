@@ -226,11 +226,14 @@ namespace Nethermind.Evm
                         : transaction.IsContractCreation
                             ? ExecutionType.DirectCreate
                             : ExecutionType.Transaction;
-                    EvmState state = new EvmState(unspentGas, env, executionType, false);
 
-                    (byte[] output, TransactionSubstate substate) = _virtualMachine.Run(state, spec, trace);
-
-                    unspentGas = state.GasAvailable;
+                    TransactionSubstate substate;
+                    byte[] output;
+                    using (EvmState state = new EvmState(unspentGas, env, executionType, false))
+                    {
+                        (output, substate) = _virtualMachine.Run(state, spec, trace);
+                        unspentGas = state.GasAvailable;
+                    }
 
                     if (substate.ShouldRevert)
                     {

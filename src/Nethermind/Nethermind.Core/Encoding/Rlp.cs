@@ -414,6 +414,11 @@ namespace Nethermind.Core.Encoding
                 offset += sequence[i].Length;
             }
 
+            if (allBytes.Length > 85000)
+            {
+
+            }
+
             return new Rlp(allBytes);
         }
 
