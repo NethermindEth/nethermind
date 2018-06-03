@@ -138,11 +138,13 @@ namespace Nethermind.Discovery
             {
                 _logger.Info($"RunPeerUpdate | Tried: {candidates.Length}, Added {newActiveNodes} active peers, current new peers: {_newPeers.Count}");
 
-                if (_logCounter % 10 == 0)
+                if (_logCounter % 120 == 0)
                 {
                     //TODO add info about cababilities, clientId, etc to NodeStats and print it here
                     _logger.Info($"All active peers: \n{string.Join('\n', ActivePeers.Select(x => $"{x.Node.ToString()} | P2PInitialized: {x.NodeStats.DidEventHappen(NodeStatsEvent.P2PInitialized)} | Eth62Initialized: {x.NodeStats.DidEventHappen(NodeStatsEvent.Eth62Initialized)}"))}");
                 }
+
+                _logCounter++;
             }
         }
 
