@@ -134,7 +134,7 @@ namespace Nethermind.Runner
             services.AddSingleton<IDiscoveryMsgSerializersProvider, DiscoveryMsgSerializersProvider>();
             services.AddSingleton<IDiscoveryApp, DiscoveryApp>();
 
-            services.AddSingleton<IDiscoveryRunner, DiscoveryRunner>();
+            //services.AddSingleton<IDiscoveryRunner, DiscoveryRunner>();
             if (initParams.EthereumRunnerType == EthereumRunnerType.Hive)
             {
                 services.AddSingleton<IEthereumRunner, HiveEthereumRunner>();

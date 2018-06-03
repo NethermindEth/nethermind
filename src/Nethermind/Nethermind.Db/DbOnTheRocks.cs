@@ -32,7 +32,6 @@ namespace Nethermind.Db
         public const string BlocksDbPath = "blocks";
         public const string ReceiptsDbPath = "receipts";
         public const string BlockInfosDbPath = "blockInfos";
-        public const string PeersDbPath = "peers";
 
         private static readonly ConcurrentDictionary<string, RocksDb> DbsByPath = new ConcurrentDictionary<string, RocksDb>();
 

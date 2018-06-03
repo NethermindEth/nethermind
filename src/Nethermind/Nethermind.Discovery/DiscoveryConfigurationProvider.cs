@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.IO;
 using System.Net;
 using Nethermind.Core;
 using Nethermind.Discovery.RoutingTable;
@@ -35,6 +36,8 @@ namespace Nethermind.Discovery
             MasterHost = networkHelper.GetLocalIp()?.ToString() ?? "127.0.0.1";
             MasterPort = 30304;
             IsDiscoveryNodesPersistenceOn = true;
+            IsPeersPersistenceOn = true;
+            DbBasePath = Path.GetTempPath();
         }
 
         public int BucketSize { get; set; }
@@ -54,7 +57,7 @@ namespace Nethermind.Discovery
         public int BootNodePongTimeout => 100000;
         public int PingRetryCount => 3;
         public int DiscoveryInterval => 30000;
-        public int DiscoveryPersistanceInterval => 3000;
+        public int DiscoveryPersistanceInterval => 5000;
         public int DiscoveryNewCycleWaitTime => 50;
         public int RefreshInterval => 7200;
 
@@ -81,10 +84,12 @@ namespace Nethermind.Discovery
         };
 
         public long PenalizedReputationTooManyPeersTimeout => 10 * 1000;
-        public Node[] TrustedNodes { get; set; }
+        public Node[] TrustedPeers { get; set; }
         public string DbBasePath { get; set; }
         public bool IsDiscoveryNodesPersistenceOn { get; set; }
+        public bool IsPeersPersistenceOn { get; set; }
         public int ActivePeerUpdateInterval => 5000;
-        public int ActivePeersMaxCount => 200;
+        public int ActivePeersMaxCount => 25;
+        public int PeersPersistanceInterval => 5000;
     }
 }

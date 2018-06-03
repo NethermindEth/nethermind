@@ -24,6 +24,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Discovery.Lifecycle;
 using Nethermind.Discovery.Messages;
 using Nethermind.Discovery.RoutingTable;
+using Nethermind.Discovery.Stats;
 using Nethermind.KeyStore;
 using Nethermind.Network;
 using NSubstitute;
@@ -70,11 +71,11 @@ namespace Nethermind.Discovery.Test
             _nodeTable.Initialize();
 
             var evictionManager = new EvictionManager(_nodeTable, logger);
-            var lifecycleFactory = new NodeLifecycleManagerFactory(_nodeFactory, _nodeTable, logger, _configurationProvider, new DiscoveryMessageFactory(_configurationProvider), evictionManager);
+            var lifecycleFactory = new NodeLifecycleManagerFactory(_nodeFactory, _nodeTable, logger, _configurationProvider, new DiscoveryMessageFactory(_configurationProvider), evictionManager, new NodeStatsProvider(_configurationProvider));
 
             _udpClient = Substitute.For<IMessageSender>();
 
-            _discoveryManager = new DiscoveryManager(logger, _configurationProvider, lifecycleFactory, _nodeFactory, _nodeTable);
+            _discoveryManager = new DiscoveryManager(logger, _configurationProvider, lifecycleFactory, _nodeFactory, _nodeTable, new DiscoveryStorage(_configurationProvider, _nodeFactory, logger));
             _discoveryManager.MessageSender = _udpClient;
         }
 

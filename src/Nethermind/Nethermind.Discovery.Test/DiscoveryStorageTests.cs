@@ -27,14 +27,14 @@ namespace Nethermind.Discovery.Test
             _configurationProvider = new DiscoveryConfigurationProvider(new NetworkHelper(logger));
             _configurationProvider.DbBasePath = Path.Combine(Path.GetTempPath(), "DiscoveryStorageTests");
 
-            var dbPath = Path.Combine(_configurationProvider.DbBasePath, DbOnTheRocks.PeersDbPath);
+            var dbPath = Path.Combine(_configurationProvider.DbBasePath, FullDbOnTheRocks.DiscoveryNodesDbPath);
             if (Directory.Exists(dbPath))
             {
                 Directory.GetFiles(dbPath).ToList().ForEach(File.Delete);
             }
 
             _nodeFactory = new NodeFactory();
-            _discoveryStorage = new DiscoveryStorage(_configurationProvider, _nodeFactory);
+            _discoveryStorage = new DiscoveryStorage(_configurationProvider, _nodeFactory, logger);
         }
 
         [Test]
@@ -56,10 +56,33 @@ namespace Nethermind.Discovery.Test
 
             var managers = nodes.Select(CreateLifecycleManager).ToArray();
             
-            _discoveryStorage.PersistNodes(managers);
+            _discoveryStorage.StartBatch();
+            _discoveryStorage.UpdateNodes(managers);     
+            _discoveryStorage.Commit();
 
             persistedNodes = _discoveryStorage.GetPersistedNodes();
             foreach (var manager in managers)
+            {
+                var persistedNode = persistedNodes.FirstOrDefault(x => x.Node.Id.Equals(manager.ManagedNode.Id));
+                Assert.IsNotNull(persistedNode);
+                Assert.AreEqual(manager.ManagedNode.Port, persistedNode.Node.Port);
+                Assert.AreEqual(manager.ManagedNode.Host, persistedNode.Node.Host);
+                Assert.AreEqual(manager.ManagedNode.Description, persistedNode.Node.Description);
+                Assert.AreEqual(manager.NodeStats.CurrentNodeReputation, persistedNode.PersistedReputation);
+            }
+
+            _discoveryStorage.StartBatch();
+            _discoveryStorage.RemoveNodes(new[] { managers.First() });
+            _discoveryStorage.Commit();
+
+            persistedNodes = _discoveryStorage.GetPersistedNodes();
+            foreach (var manager in managers.Take(1))
+            {
+                var persistedNode = persistedNodes.FirstOrDefault(x => x.Node.Id.Equals(manager.ManagedNode.Id));
+                Assert.IsNull(persistedNode.Node);
+            }
+
+            foreach (var manager in managers.Skip(1))
             {
                 var persistedNode = persistedNodes.FirstOrDefault(x => x.Node.Id.Equals(manager.ManagedNode.Id));
                 Assert.IsNotNull(persistedNode);

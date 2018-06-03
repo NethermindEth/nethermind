@@ -23,8 +23,8 @@ namespace Nethermind.Discovery
 {
     public interface IPeerManager
     {
-        void StartPeerTimer();
-        void StopPeerTimer();
+        void Start();
+        void Stop();
         Task RunPeerUpdate();
         IReadOnlyCollection<Peer> NewPeers { get; }
         IReadOnlyCollection<Peer> ActivePeers { get; }

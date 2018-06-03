@@ -66,6 +66,7 @@ namespace Nethermind.Discovery
             _messageSerializationService = messageSerializationService;
             _cryptoRandom = cryptoRandom;
             _discoveryStorage = discoveryStorage;
+            _discoveryStorage.StartBatch();
         }
 
         public void Start(PublicKey masterPublicKey)
@@ -164,30 +165,10 @@ namespace Nethermind.Discovery
         {
             try
             {
-                //Step 1 - load configured trusted peers
-                var trustedNodes = _configurationProvider.TrustedNodes;
-                if (trustedNodes != null && trustedNodes.Any())
-                {
-                    _logger.Info("Initializing trusted nodes.");
-                    foreach (var trustedNode in trustedNodes)
-                    {
-                        var manager = _discoveryManager.GetNodeLifecycleManager(trustedNode);
-                        manager.NodeStats.IsReputationPredefied = true;
-                    }
-                }
+                //Step 1 - read nodes and stats from db
+                AddPersistedNodes();
 
-                //Step 2 - read nodes and stats from db
-                if (_configurationProvider.IsDiscoveryNodesPersistenceOn)
-                {
-                    var nodes = _discoveryStorage.GetPersistedNodes();
-                    foreach (var node in nodes)
-                    {
-                        var manager = _discoveryManager.GetNodeLifecycleManager(node.Node);
-                        manager.NodeStats.CurrentPersistedNodeReputation = node.PersistedReputation;
-                    }
-                }
-
-                //Step 3 - initialize bootNodes
+                //Step 2 - initialize bootNodes
                 _logger.Info("Initializing bootnodes.");
                 while (true)
                 {
@@ -203,14 +184,14 @@ namespace Nethermind.Discovery
                     {
                         break;
                     }
+                    _logger.Warn("Could not communicate with any nodes.");
                     await Task.Delay(1000);
                 }
+                InitializeDiscoveryPersistanceTimer();
+                //InitializeDiscoveryTimer();
+                //InitializeRefreshTimer(); 
 
                 await RunDiscoveryAsync();
-
-                //InitializeDiscoveryTimer();
-                //InitializeRefreshTimer();
-                InitializeDiscoveryPersistanceTimer();
             }
             catch (Exception e)
             {
@@ -218,11 +199,40 @@ namespace Nethermind.Discovery
             }
         }
 
+        private void AddPersistedNodes()
+        {
+            if (!_configurationProvider.IsDiscoveryNodesPersistenceOn)
+            {
+                return;
+            }
+
+            var nodes = _discoveryStorage.GetPersistedNodes();
+            foreach (var node in nodes)
+            {
+                var manager = _discoveryManager.GetNodeLifecycleManager(node.Node, true);
+                manager.NodeStats.CurrentPersistedNodeReputation = node.PersistedReputation;
+                if (_logger.IsDebugEnabled)
+                {
+                    _logger.Debug($"Adding persisted node {node.Node.Id.ToString(false)}@{node.Node.Host}:{node.Node.Port}");
+                }
+            }
+
+            if (_logger.IsInfoEnabled)
+            {
+                _logger.Info($"Added persisted discovery nodes: {nodes.Length}");
+            }
+        }
+
         private void InitializeDiscoveryTimer()
         {
             _logger.Info("Starting discovery timer");
-            _discoveryTimer = new Timer(_configurationProvider.DiscoveryInterval);
-            _discoveryTimer.Elapsed += async (sender, e) => await RunDiscoveryAsync();
+            _discoveryTimer = new Timer(_configurationProvider.DiscoveryInterval) {AutoReset = false};
+            _discoveryTimer.Elapsed += async (sender, e) =>
+            {
+                _discoveryTimer.Enabled = false;
+                await RunDiscoveryAsync();
+                _discoveryTimer.Enabled = true;
+            };
             _discoveryTimer.Start();
         }
         
@@ -242,8 +252,13 @@ namespace Nethermind.Discovery
         private void InitializeRefreshTimer()
         {
             _logger.Info("Starting refresh timer");
-            _refreshTimer = new Timer(_configurationProvider.RefreshInterval);
-            _refreshTimer.Elapsed += async (sender, e) => await RunRefreshAsync();
+            _refreshTimer = new Timer(_configurationProvider.RefreshInterval) {AutoReset = false};
+            _refreshTimer.Elapsed += async (sender, e) =>
+            {
+                _refreshTimer.Enabled = false;
+                await RunRefreshAsync();
+                _refreshTimer.Enabled = true;
+            };
             _refreshTimer.Start();
         }
 
@@ -263,8 +278,13 @@ namespace Nethermind.Discovery
         private void InitializeDiscoveryPersistanceTimer()
         {
             _logger.Info("Starting discovery persistance timer");
-            _discoveryPersistanceTimer = new Timer(_configurationProvider.DiscoveryInterval);
-            _discoveryPersistanceTimer.Elapsed += async (sender, e) => await RunDiscoveryPersistanceAsync();
+            _discoveryPersistanceTimer = new Timer(_configurationProvider.DiscoveryPersistanceInterval) {AutoReset = false};
+            _discoveryPersistanceTimer.Elapsed += async (sender, e) =>
+            {
+                _discoveryPersistanceTimer.Enabled = false;
+                await Task.Run(() => RunDiscoveryCommit()); 
+                _discoveryPersistanceTimer.Enabled = true;
+            };
             _discoveryPersistanceTimer.Start();
         }
 
@@ -313,8 +333,8 @@ namespace Nethermind.Discovery
                 if (_logger.IsWarnEnabled)
                 {
                     _logger.Warn("No bootnodes specified in configuration");
-                    return false;
                 }
+                return false;
             }
             var managers = new INodeLifecycleManager[bootNodes.Length];
             for (var i = 0; i < bootNodes.Length; i++)
@@ -367,21 +387,34 @@ namespace Nethermind.Discovery
 
         private async Task RunDiscoveryAsync()
         {
-            _logger.Info("Running discovery process.");
+            if (_logger.IsInfoEnabled)
+            {
+                _logger.Info("Running discovery process.");
+            }
+            
             await _nodesLocator.LocateNodesAsync();
         }
 
         private async Task RunRefreshAsync()
         {
-            _logger.Info("Running refresh process.");
+            if (_logger.IsInfoEnabled)
+            {
+                _logger.Info("Running refresh process.");
+            }
+            
             var randomId = _cryptoRandom.GenerateRandomBytes(64);
             await _nodesLocator.LocateNodesAsync(randomId);
         }
 
-        private async Task RunDiscoveryPersistanceAsync()
+        private void RunDiscoveryCommit()
         {
-            _logger.Info("Running discovery persitance process.");
-            await _discoveryStorage.PersistNodesAsync(_discoveryManager.GetNodeLifecycleManagers().ToArray());
+            if (_logger.IsInfoEnabled)
+            {
+                _logger.Info("Running discovery commit process.");
+            }
+            
+            _discoveryStorage.Commit();
+            _discoveryStorage.StartBatch();
         }
     }
 }

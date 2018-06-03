@@ -30,6 +30,6 @@ namespace Nethermind.Discovery.Stats
         long CurrentNodeReputation { get; }
         long CurrentPersistedNodeReputation { get; set; }
         long NewPersistedNodeReputation { get; }
-        bool IsReputationPredefied { get; set; }
+        bool IsTrustedPeer { get; set; }
     }
 }

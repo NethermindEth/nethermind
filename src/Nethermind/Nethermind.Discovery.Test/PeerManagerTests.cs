@@ -46,10 +46,10 @@ namespace Nethermind.Discovery.Test
             var nodeTable = new NodeTable(_configurationProvider, _nodeFactory, Substitute.For<IKeyStore>(), _logger, new NodeDistanceCalculator(_configurationProvider));
             nodeTable.Initialize(key);
 
-            _discoveryManager = new DiscoveryManager(_logger, _configurationProvider, new NodeLifecycleManagerFactory(_nodeFactory, nodeTable, _logger, _configurationProvider, new DiscoveryMessageFactory(_configurationProvider), Substitute.For<IEvictionManager>()), _nodeFactory, nodeTable);
+            _discoveryManager = new DiscoveryManager(_logger, _configurationProvider, new NodeLifecycleManagerFactory(_nodeFactory, nodeTable, _logger, _configurationProvider, new DiscoveryMessageFactory(_configurationProvider), Substitute.For<IEvictionManager>(), new NodeStatsProvider(_configurationProvider)), _nodeFactory, nodeTable, new DiscoveryStorage(_configurationProvider, _nodeFactory, _logger));
             _discoveryManager.MessageSender = Substitute.For<IMessageSender>();
 
-            _peerManager = new PeerManager(_localPeer, _discoveryManager, _logger, _nodeFactory, _configurationProvider, _synchronizationManager);
+            _peerManager = new PeerManager(_localPeer, _discoveryManager, _logger, _configurationProvider, _synchronizationManager, new NodeStatsProvider(_configurationProvider), new PeerStorage(_configurationProvider, _nodeFactory, _logger));
         }
 
         [Test]
@@ -65,7 +65,7 @@ namespace Nethermind.Discovery.Test
                 Capabilities = new[] {new Capability(Protocol.Eth, 62)}.ToList()
             };
             p2pSession.TriggerProtocolInitialized(p2pArgs);
-            Assert.IsTrue(_peerManager.NewPeers.First().NodeStats.DidEventHappen(NodeStatsEvent.P2PInitialized));
+            Assert.IsTrue(_peerManager.ActivePeers.First().NodeStats.DidEventHappen(NodeStatsEvent.P2PInitialized));
 
             //trigger eth62 initialization
             var eth62 = new Eth62ProtocolHandler(p2pSession, new MessageSerializationService(), _synchronizationManager, _logger);
@@ -74,14 +74,8 @@ namespace Nethermind.Discovery.Test
                 ChainId = _synchronizationManager.ChainId
             };
             p2pSession.TriggerProtocolInitialized(args);
-            Assert.IsTrue(_peerManager.NewPeers.First().NodeStats.DidEventHappen(NodeStatsEvent.Eth62Initialized));
-            Assert.NotNull(_peerManager.NewPeers.First().Eth62ProtocolHandler);
-
-            //make sure node was moved to active
-            var task = _peerManager.RunPeerUpdate();
-            task.Wait();
-            Assert.AreEqual(0, _peerManager.NewPeers.Count);
-            Assert.AreEqual(1, _peerManager.ActivePeers.Count);
+            Assert.IsTrue(_peerManager.ActivePeers.First().NodeStats.DidEventHappen(NodeStatsEvent.Eth62Initialized));
+            Assert.NotNull(_peerManager.ActivePeers.First().SynchronizationPeer);
 
             //verify active peer was added to synch manager
             _synchronizationManager.Received(1).AddPeer(Arg.Any<ISynchronizationPeer>());
@@ -154,26 +148,21 @@ namespace Nethermind.Discovery.Test
             Assert.AreEqual(1, _peerManager.NewPeers.Count);
             Assert.AreEqual(node.Id, _peerManager.NewPeers.First().Node.Id);
 
-            //make sure node was not moved to active (not initialized)
+            //trigger connection start
             var task = _peerManager.RunPeerUpdate();
             task.Wait();
-            Assert.AreEqual(1, _peerManager.NewPeers.Count);
-            Assert.AreEqual(0, _peerManager.ActivePeers.Count);
+            Assert.AreEqual(1, _localPeer.ConnectionAsyncCallsCounter);
+            Assert.AreEqual(0, _peerManager.NewPeers.Count);
+            Assert.AreEqual(1, _peerManager.ActivePeers.Count);
 
             //trigger connection initialized
             var p2pSession = new TestP2PSession();
             p2pSession.RemoteNodeId = node.Id;
             _localPeer.TriggerConnectionInitialized(p2pSession);
 
-            Assert.AreEqual(1, _peerManager.NewPeers.Count);
-            var peer = _peerManager.NewPeers.First();
+            var peer = _peerManager.ActivePeers.First();
             Assert.IsNotNull(peer.Session);
 
-            //make sure node was not moved to active (eth62 is not yet initialized)
-            task = _peerManager.RunPeerUpdate();
-            task.Wait();
-            Assert.AreEqual(1, _peerManager.NewPeers.Count);
-            Assert.AreEqual(0, _peerManager.ActivePeers.Count);
             return p2pSession;
         }
     }
@@ -226,6 +215,8 @@ namespace Nethermind.Discovery.Test
 
     public class TestRlpxPeer : IRlpxPeer
     {
+        public int ConnectionAsyncCallsCounter = 0;
+
         public Task Shutdown()
         {
             return Task.CompletedTask;
@@ -243,6 +234,7 @@ namespace Nethermind.Discovery.Test
 
         public Task ConnectAsync(PublicKey remoteNodeId, string remoteHost, int remotePort)
         {
+            ConnectionAsyncCallsCounter++;
             return Task.CompletedTask;
         }
 

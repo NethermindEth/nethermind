@@ -40,7 +40,7 @@ namespace Nethermind.Discovery.Stats
 
         private void Initialize()
         {
-            IsReputationPredefied = false;
+            IsTrustedPeer = false;
             _stats = new Dictionary<NodeStatsEvent, AtomicLong>();
             foreach (NodeStatsEvent statType in Enum.GetValues(typeof(NodeStatsEvent)))
             {
@@ -70,14 +70,14 @@ namespace Nethermind.Discovery.Stats
 
         public long NewPersistedNodeReputation => IsReputationPenalized() ? 0 : (CurrentPersistedNodeReputation + CalculateSessionReputation()) / 2;
 
-        public bool IsReputationPredefied { get; set; }
+        public bool IsTrustedPeer { get; set; }
 
         private long CalculateCurrentReputation()
         {
             return IsReputationPenalized()
                 ? 0
                 : CurrentPersistedNodeReputation / 2 + CalculateSessionReputation() +
-                  (IsReputationPredefied ? _configurationProvider.PredefiedReputation : 0);
+                  (IsTrustedPeer ? _configurationProvider.PredefiedReputation : 0);
         }
 
         private long CalculateSessionReputation()

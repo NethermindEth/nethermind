@@ -1,4 +1,5 @@
-﻿using Nethermind.Discovery.Lifecycle;
+﻿using Nethermind.Blockchain;
+using Nethermind.Discovery.Lifecycle;
 using Nethermind.Discovery.RoutingTable;
 using Nethermind.Discovery.Stats;
 using Nethermind.Network.P2P;
@@ -8,6 +9,12 @@ namespace Nethermind.Discovery
 {
     public class Peer
     {
+        public Peer(Node node, INodeStats nodeStats)
+        {
+            Node = node;
+            NodeStats = nodeStats;
+        }
+
         public Peer(INodeLifecycleManager manager)
         {
             Node = manager.ManagedNode;
@@ -16,9 +23,9 @@ namespace Nethermind.Discovery
         }
 
         public Node Node { get; }
-        public INodeLifecycleManager NodeLifecycleManager { get; }
+        public INodeLifecycleManager NodeLifecycleManager { get; set; }
         public INodeStats NodeStats { get; }
         public IP2PSession Session { get; set; }
-        public Eth62ProtocolHandler Eth62ProtocolHandler { get; set; }
+        public ISynchronizationPeer SynchronizationPeer { get; set; }
     }
 }

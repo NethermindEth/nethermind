@@ -36,7 +36,7 @@ namespace Nethermind.Runner
 {
     public abstract class RunnerAppBase
     {
-        protected readonly ILogger Logger;
+        protected ILogger Logger;
         protected readonly IPrivateKeyProvider PrivateKeyProvider;
         private IJsonRpcRunner _jsonRpcRunner = NullRunner.Instance;
         private IEthereumRunner _ethereumRunner = NullRunner.Instance;
@@ -55,9 +55,11 @@ namespace Nethermind.Runner
             app.OnExecute(async () =>
             {
                 var initParams = buildInitParams();
+                Logger = new NLogLogger(initParams.LogFileName, "default");
+
                 Console.Title = initParams.LogFileName;
 
-                Logger.Info($"Running Hive Nethermind Runner, parameters: {initParams}");
+                Logger.Info($"Running Nethermind Runner, parameters: {initParams}");
 
                 Task userCancelTask = Task.Factory.StartNew(() =>
                 {
@@ -93,7 +95,8 @@ namespace Nethermind.Runner
             {
                 //Configuring app DI
                 var configProvider = new ConfigurationProvider();
-                var discoveryConfigProvider = new DiscoveryConfigurationProvider(new NetworkHelper(Logger));
+                var networkHelper = new NetworkHelper(Logger);
+                var discoveryConfigProvider = new DiscoveryConfigurationProvider(networkHelper);
                 ChainSpecLoader chainSpecLoader = new ChainSpecLoader(new UnforgivingJsonSerializer());
 
                 string path = initParams.ChainSpecPath;
@@ -104,26 +107,31 @@ namespace Nethermind.Runner
 
                 byte[] chainSpecData = File.ReadAllBytes(path);
                 ChainSpec chainSpec = chainSpecLoader.Load(chainSpecData);
-                discoveryConfigProvider.TrustedNodes = chainSpec.NetworkNodes.Select(GetNode).ToArray();
+                var nodes = chainSpec.NetworkNodes.Select(GetNode).ToArray();
+
+                discoveryConfigProvider.TrustedPeers = nodes;
+                discoveryConfigProvider.BootNodes = nodes;
                 discoveryConfigProvider.DbBasePath = initParams.BaseDbPath;
                 
-                Bootstrap.ConfigureContainer(configProvider, discoveryConfigProvider, PrivateKeyProvider, Logger, initParams);
+                //Bootstrap.ConfigureContainer(configProvider, discoveryConfigProvider, PrivateKeyProvider, Logger, initParams);
 
+                _ethereumRunner = new EthereumRunner(discoveryConfigProvider, networkHelper);
+                //_ethereumRunner = Bootstrap.ServiceProvider.GetService<IEthereumRunner>();
+                await _ethereumRunner.Start(initParams);
+
+                //TODO integrate jsonRpc - get all needed interfaces from ehtereum Runner
                 if (initParams.JsonRpcEnabled)
                 {
-                    //It needs to run first to finalize objects registration in the container
                     _jsonRpcRunner = new JsonRpcRunner(configProvider, Logger);
-                    await _jsonRpcRunner.Start(initParams);
+                    //await _jsonRpcRunner.Start(initParams);
                 }
-
-                //if (initParams.DiscoveryEnabled)
-                //{
-                //    _discoveryRunner = Bootstrap.ServiceProvider.GetService<IDiscoveryRunner>();
-                //    await _discoveryRunner.Start(initParams);
-                //}
-
-                _ethereumRunner = Bootstrap.ServiceProvider.GetService<IEthereumRunner>();
-                await _ethereumRunner.Start(initParams);
+                else
+                {
+                    if (Logger.IsInfoEnabled)
+                    {
+                        Logger.Info("Json RPC is disabled");
+                    }
+                }
             }
             catch (Exception e)
             {

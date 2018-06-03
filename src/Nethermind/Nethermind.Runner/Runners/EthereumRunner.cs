@@ -39,6 +39,7 @@ using Nethermind.Discovery.Lifecycle;
 using Nethermind.Discovery.Messages;
 using Nethermind.Discovery.RoutingTable;
 using Nethermind.Discovery.Serializers;
+using Nethermind.Discovery.Stats;
 using Nethermind.Evm;
 using Nethermind.KeyStore;
 using Nethermind.Network;
@@ -68,6 +69,10 @@ namespace Nethermind.Runner.Runners
         private ISigner _signer;
         private ICryptoRandom _cryptoRandom;
         private CancellationTokenSource _runnerCancellation;
+        private INetworkHelper _networkHelper;
+        private INodeFactory _nodeFactory;
+        private INodeStatsProvider _nodeStatsProvider;
+        private IDiscoveryManager _discoveryManager;
 
         private static ILogger _defaultLogger = new NLogLogger("default");
         private static ILogger _evmLogger = new NLogLogger("evm");
@@ -76,9 +81,10 @@ namespace Nethermind.Runner.Runners
         private static ILogger _networkLogger = new NLogLogger("net");
         private static ILogger _discoveryLogger = new NLogLogger("discovery");
 
-        public EthereumRunner(IDiscoveryConfigurationProvider configurationProvider)
+        public EthereumRunner(IDiscoveryConfigurationProvider configurationProvider, INetworkHelper networkHelper)
         {
             _discoveryConfigurationProvider = configurationProvider;
+            _networkHelper = networkHelper;
         }
 
         public async Task Start(InitParams initParams)
@@ -89,6 +95,7 @@ namespace Nethermind.Runner.Runners
             _stateLogger = new NLogLogger(initParams.LogFileName, "state");
             _chainLogger = new NLogLogger(initParams.LogFileName, "chain");
             _networkLogger = new NLogLogger(initParams.LogFileName, "net");
+            _discoveryLogger = new NLogLogger(initParams.LogFileName, "discovery");
 
             _defaultLogger.Info("Initializing Ethereum");
             _privateKey = new PrivateKey(initParams.TestNodeKey);
@@ -265,7 +272,24 @@ namespace Nethermind.Runner.Runners
                         _syncManager.Start();
 
                         await InitNet(chainSpec, listenPort);
-                        await InitDiscovery(initParams);
+
+                        //create shared objects between discovery and peer manager
+                        _nodeFactory = new NodeFactory();
+                        _nodeStatsProvider = new NodeStatsProvider(_discoveryConfigurationProvider);
+
+                        if (initParams.DiscoveryEnabled)
+                        {
+                            await InitDiscovery(initParams);
+                        }
+                        else
+                        {
+                            if (_discoveryLogger.IsInfoEnabled)
+                            {
+                                _discoveryLogger.Info("Discovery is disabled");
+                            }
+                        }
+
+                        await InitPeerManager();
                     }
                 }
             });
@@ -305,24 +329,39 @@ namespace Nethermind.Runner.Runners
             _localPeer = new RlpxPeer(_privateKey.PublicKey, listenPort, encryptionHandshakeServiceA, _messageSerializationService, _syncManager, _networkLogger);
             await _localPeer.Init();
 
-            // https://stackoverflow.com/questions/6803073/get-local-ip-address?utm_medium=organic&utm_source=google_rich_qa&utm_campaign=google_rich_qa
-            string localIp;
-            //TODO you can use NetworkHelper for that - I use it in the same way in discovery - i changed it to lazy load impl so we can find it once and share between discovery and peer
-            using (Socket socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, 0))
-            {
-                socket.Connect("8.8.8.8", 65530);
-                IPEndPoint endPoint = socket.LocalEndPoint as IPEndPoint;
-                Debug.Assert(endPoint != null, "null endpoint when connecting a UDP socket");
-                localIp = endPoint.Address.ToString();
-            }
+            //// https://stackoverflow.com/questions/6803073/get-local-ip-address?utm_medium=organic&utm_source=google_rich_qa&utm_campaign=google_rich_qa
+            //string localIp;
+            ////TODO you can use NetworkHelper for that - I use it in the same way in discovery - i changed it to lazy load impl so we can find it once and share between discovery and peer
+            //using (Socket socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, 0))
+            //{
+            //    socket.Connect("8.8.8.8", 65530);
+            //    IPEndPoint endPoint = socket.LocalEndPoint as IPEndPoint;
+            //    Debug.Assert(endPoint != null, "null endpoint when connecting a UDP socket");
+            //    localIp = endPoint.Address.ToString();
+            //}
 
+            var localIp = _networkHelper.GetLocalIp();
             _networkLogger.Info($"Node is up and listening on {localIp}:{listenPort}... press ENTER to exit");
             _networkLogger.Info($"enode://{_privateKey.PublicKey.ToString(false)}@{localIp}:{listenPort}");
+        }
+
+        private Task InitPeerManager()
+        {
+            _networkLogger.Info("Initializing Peer Manager");
+
+            var peerStorage = new PeerStorage(_discoveryConfigurationProvider, _nodeFactory, _networkLogger);
+            var peerManager = new PeerManager(_localPeer, _discoveryManager, _networkLogger, _discoveryConfigurationProvider, _syncManager, _nodeStatsProvider, peerStorage);
+            peerManager.Start();
+
+            _networkLogger.Info("Peer Manager initialization completed");
+
+            return Task.CompletedTask;
         }
 
         private Task InitDiscovery(InitParams initParams)
         {            
             _discoveryLogger.Info("Initializing Discovery");
+
             if (initParams.DiscoveryPort.HasValue)
             {
                 _discoveryConfigurationProvider.MasterPort = initParams.DiscoveryPort.Value;
@@ -331,8 +370,8 @@ namespace Nethermind.Runner.Runners
             var privateKeyProvider = new PrivateKeyProvider(_privateKey);
             var discoveryMessageFactory = new DiscoveryMessageFactory(_discoveryConfigurationProvider);
             var nodeIdResolver = new NodeIdResolver(_signer);
-            var nodeFactory = new NodeFactory();
-            IDiscoveryMsgSerializersProvider msgSerializersProvider = new DiscoveryMsgSerializersProvider(_messageSerializationService, _signer, privateKeyProvider, discoveryMessageFactory, nodeIdResolver, nodeFactory);
+           
+            IDiscoveryMsgSerializersProvider msgSerializersProvider = new DiscoveryMsgSerializersProvider(_messageSerializationService, _signer, privateKeyProvider, discoveryMessageFactory, nodeIdResolver, _nodeFactory);
             msgSerializersProvider.RegisterDiscoverySerializers();
 
             var configProvider = new ConfigurationProvider();
@@ -340,19 +379,16 @@ namespace Nethermind.Runner.Runners
             var encrypter = new AesEncrypter(configProvider, _discoveryLogger);
             var keyStore = new FileKeyStore(configProvider, jsonSerializer, encrypter, _cryptoRandom, _discoveryLogger);
             var nodeDistanceCalculator = new NodeDistanceCalculator(_discoveryConfigurationProvider);
-            var nodeTable = new NodeTable(_discoveryConfigurationProvider, nodeFactory, keyStore, _discoveryLogger, nodeDistanceCalculator);
-
+            var nodeTable = new NodeTable(_discoveryConfigurationProvider, _nodeFactory, keyStore, _discoveryLogger, nodeDistanceCalculator);
+            
             var evictionManager = new EvictionManager(nodeTable, _discoveryLogger);
-            var nodeLifeCycleFactory = new NodeLifecycleManagerFactory(nodeFactory, nodeTable, _discoveryLogger, _discoveryConfigurationProvider, discoveryMessageFactory, evictionManager);
-            var discoveryManager = new DiscoveryManager(_discoveryLogger, _discoveryConfigurationProvider, nodeLifeCycleFactory, nodeFactory, nodeTable);
+            var nodeLifeCycleFactory = new NodeLifecycleManagerFactory(_nodeFactory, nodeTable, _discoveryLogger, _discoveryConfigurationProvider, discoveryMessageFactory, evictionManager, _nodeStatsProvider);
 
-            var nodesLocator = new NodesLocator(nodeTable, discoveryManager, _discoveryConfigurationProvider, _discoveryLogger);
-            var discoveryStorage = new DiscoveryStorage(_discoveryConfigurationProvider, nodeFactory);
-            _discoveryApp = new DiscoveryApp(_discoveryConfigurationProvider, nodesLocator, _discoveryLogger, discoveryManager, nodeFactory, nodeTable, _messageSerializationService, _cryptoRandom, discoveryStorage);
+            var discoveryStorage = new DiscoveryStorage(_discoveryConfigurationProvider, _nodeFactory, _discoveryLogger);
+            _discoveryManager = new DiscoveryManager(_discoveryLogger, _discoveryConfigurationProvider, nodeLifeCycleFactory, _nodeFactory, nodeTable, discoveryStorage);
 
-            var peerManager = new PeerManager(_localPeer, discoveryManager, _discoveryLogger, nodeFactory, _discoveryConfigurationProvider, _syncManager);
-            peerManager.StartPeerTimer();
-
+            var nodesLocator = new NodesLocator(nodeTable, _discoveryManager, _discoveryConfigurationProvider, _discoveryLogger);
+            _discoveryApp = new DiscoveryApp(_discoveryConfigurationProvider, nodesLocator, _discoveryLogger, _discoveryManager, _nodeFactory, nodeTable, _messageSerializationService, _cryptoRandom, discoveryStorage);
             _discoveryApp.Start(_privateKey.PublicKey);
 
             _discoveryLogger.Info("Discovery initialization completed");

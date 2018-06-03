@@ -81,8 +81,6 @@ namespace Nethermind.Discovery
 
         protected override void ChannelRead0(IChannelHandlerContext ctx, DatagramPacket packet)
         {
-            _logger.Info("Received message");
-
             var content = packet.Content;
             var address = packet.Sender;
 
@@ -100,8 +98,10 @@ namespace Nethermind.Discovery
                 _logger.Error($"Unsupported message type: {typeRaw}, sender: {address}");
                 return;
             }
-
+            
             var type = (MessageType)typeRaw;
+            _logger.Info($"Received message: {type}");
+
             DiscoveryMessage message;
 
             try

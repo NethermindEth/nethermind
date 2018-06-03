@@ -7,7 +7,12 @@ namespace Nethermind.Discovery
     public interface IDiscoveryStorage
     {
         (Node Node, long PersistedReputation)[] GetPersistedNodes();
-        void PersistNodes(INodeLifecycleManager[] nodes);
-        Task PersistNodesAsync(INodeLifecycleManager[] nodes);
+        void UpdateNodes(INodeLifecycleManager[] nodes);
+        void RemoveNodes(INodeLifecycleManager[] nodes);
+        void StartBatch();
+        void Commit();
+
+        //void PersistNodes(INodeLifecycleManager[] nodes);
+        //Task PersistNodesAsync(INodeLifecycleManager[] nodes);
     }
 }

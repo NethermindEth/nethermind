@@ -40,6 +40,7 @@ namespace Nethermind.Discovery
         private readonly INodeLifecycleManagerFactory _nodeLifecycleManagerFactory;
         private readonly ConcurrentDictionary<string, INodeLifecycleManager> _nodeLifecycleManagers = new ConcurrentDictionary<string, INodeLifecycleManager>();
         private readonly INodeTable _nodeTable;
+        private readonly IDiscoveryStorage _discoveryStorage;
 
         private readonly ConcurrentDictionary<MessageTypeKey, ManualResetEvent> _waitingEvents = new ConcurrentDictionary<MessageTypeKey, ManualResetEvent>();
         private IMessageSender _messageSender;
@@ -48,13 +49,14 @@ namespace Nethermind.Discovery
             ILogger logger,
             IDiscoveryConfigurationProvider configurationProvider,
             INodeLifecycleManagerFactory nodeLifecycleManagerFactory,
-            INodeFactory nodeFactory, INodeTable nodeTable)
+            INodeFactory nodeFactory, INodeTable nodeTable, IDiscoveryStorage discoveryStorage)
         {
             _logger = logger;
             _configurationProvider = configurationProvider;
             _nodeLifecycleManagerFactory = nodeLifecycleManagerFactory;
             _nodeFactory = nodeFactory;
             _nodeTable = nodeTable;
+            _discoveryStorage = discoveryStorage;
             _nodeLifecycleManagerFactory.DiscoveryManager = this;
         }
 
@@ -104,20 +106,18 @@ namespace Nethermind.Discovery
             }
         }
 
-        public INodeLifecycleManager GetNodeLifecycleManager(Node node)
+        public INodeLifecycleManager GetNodeLifecycleManager(Node node, bool isPersisted = false)
         {
             return _nodeLifecycleManagers.GetOrAdd(node.IdHashText, x =>
             {
                 var manager = _nodeLifecycleManagerFactory.CreateNodeLifecycleManager(node);
+                if (!isPersisted)
+                {
+                    _discoveryStorage.UpdateNodes(new[] { manager });
+                }
                 OnNewNode(manager);
                 return manager;
             });
-        }
-
-        public INodeLifecycleManager GetNodeLifecycleManager(PublicKey nodeId)
-        {
-            var node = new Node(nodeId);
-            return _nodeLifecycleManagers.TryGetValue(node.IdHashText, out INodeLifecycleManager manager) ? manager : null;
         }
 
         public void SendMessage(DiscoveryMessage discoveryMessage)
@@ -233,10 +233,12 @@ namespace Nethermind.Discovery
         private int RemoveManagers(KeyValuePair<string, INodeLifecycleManager>[] items, int count)
         {
             int removeCount = 0;
-            for (int i = 0; i < count; i++)
+            for (var i = 0; i < count; i++)
             {
-                if (_nodeLifecycleManagers.TryRemove(items[i].Key, out var _))
+                var item = items[i];
+                if (_nodeLifecycleManagers.TryRemove(item.Key, out var _))
                 {
+                    _discoveryStorage.RemoveNodes(new[] { item.Value });
                     removeCount++;
                 }
             }
