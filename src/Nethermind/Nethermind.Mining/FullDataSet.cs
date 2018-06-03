@@ -16,8 +16,6 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
-
 namespace Nethermind.Mining
 {
     public class FullDataSet : IEthashDataSet
@@ -28,13 +26,13 @@ namespace Nethermind.Mining
 
         public FullDataSet(ulong setSize, IEthashDataSet cache)
         {
-            Console.WriteLine($"building data set of length {setSize}"); // TODO: temp, remove
+            //Console.WriteLine($"building data set of length {setSize}"); // TODO: temp, remove
             Data = new uint[(uint)(setSize / Ethash.HashBytes)][];
             for (uint i = 0; i < Data.Length; i++)
             {
                 if (i % 100000 == 0)
                 {
-                    Console.WriteLine($"building data set of length {setSize}, built {i}"); // TODO: temp, remove
+                    //Console.WriteLine($"building data set of length {setSize}, built {i}"); // TODO: temp, remove
                 }
 
                 Data[i] = cache.CalcDataSetItem(i);

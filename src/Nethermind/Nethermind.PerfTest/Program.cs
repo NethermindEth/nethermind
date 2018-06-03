@@ -303,7 +303,7 @@ namespace Nethermind.PerfTest
             _logger.Info("State DBs deleted");
 
             /* spec */
-            var sealEngine = new EthashSealEngine(new Ethash(), _logger);
+            var sealEngine = new EthashSealEngine(new Ethash(_logger), _logger);
             var specProvider = RopstenSpecProvider.Instance;
 
             var blocksDb = new DbOnTheRocks(FullBlocksDbPath);

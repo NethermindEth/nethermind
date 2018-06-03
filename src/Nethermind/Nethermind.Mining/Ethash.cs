@@ -30,6 +30,13 @@ namespace Nethermind.Mining
 {
     public class Ethash : IEthash
     {
+        private readonly ILogger _logger;
+
+        public Ethash(ILogger logger)
+        {
+            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        }
+
         private readonly LruCache<uint, IEthashDataSet> _cacheCache = new LruCache<uint, IEthashDataSet>(2);
 
         public const int WordBytes = 4; // bytes in word
@@ -207,7 +214,7 @@ namespace Nethermind.Mining
             {
                 uint cacheSize = GetCacheSize(epoch);
                 Keccak seed = GetSeedHash(epoch);
-                Console.WriteLine($"Building cache for epoch {epoch}");
+                if(_logger.IsDebugEnabled) _logger.Debug($"Building cache for epoch {epoch}");
                 dataSet = new EthashCache(cacheSize, seed.Bytes);
                 _cacheCache.Set(epoch, dataSet);
             }

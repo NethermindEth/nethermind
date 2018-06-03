@@ -45,7 +45,7 @@ namespace Nethermind.Core.Test
         [SetUp]
         public async Task Setup()
         {
-            _ethash = new EthashSealEngine(new Ethash(), NullLogger.Instance);
+            _ethash = new EthashSealEngine(new Ethash(NullLogger.Instance), NullLogger.Instance);
             _testLogger = new TestLogger();
             BlockTree blockStore = new BlockTree(new MemDb(), new MemDb(), new MemDb(), FrontierSpecProvider.Instance, NullLogger.Instance);
             DifficultyCalculator calculator = new DifficultyCalculator(new SingleReleaseSpecProvider(Frontier.Instance, ChainId.MainNet));   

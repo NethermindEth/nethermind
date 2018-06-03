@@ -76,7 +76,7 @@ namespace Ethereum.PoW.Test
             Assert.AreEqual(test.HeaderHash, headerHash, "header hash");
 
             // seed is correct
-            Ethash ethash = new Ethash();
+            Ethash ethash = new Ethash(NullLogger.Instance);
             uint epoch = Ethash.GetEpoch(blockHeader.Number);
             Assert.AreEqual(test.Seed, Ethash.GetSeedHash(epoch), "seed");
 

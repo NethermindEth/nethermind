@@ -26,7 +26,6 @@ using System.Timers;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Discovery.RoutingTable;
 using Nethermind.Discovery.Stats;
 using Nethermind.Network;
 using Nethermind.Network.P2P;
