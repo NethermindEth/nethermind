@@ -57,7 +57,7 @@ namespace Nethermind.Discovery
         public int BootNodePongTimeout => 100000;
         public int PingRetryCount => 3;
         public int DiscoveryInterval => 30000;
-        public int DiscoveryPersistanceInterval => 5000;
+        public int DiscoveryPersistanceInterval => 1000 * 60 * 5;
         public int DiscoveryNewCycleWaitTime => 50;
         public int RefreshInterval => 7200;
 
@@ -88,7 +88,7 @@ namespace Nethermind.Discovery
         public string DbBasePath { get; set; }
         public bool IsDiscoveryNodesPersistenceOn { get; set; }
         public bool IsPeersPersistenceOn { get; set; }
-        public int ActivePeerUpdateInterval => 1000 * 60 * 5;
+        public int ActivePeerUpdateInterval => 5000;
         public int ActivePeersMaxCount => 25;
         public int PeersPersistanceInterval => 1000 * 60 * 5;
     }
