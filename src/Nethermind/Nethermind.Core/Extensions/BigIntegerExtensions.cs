@@ -31,6 +31,7 @@ namespace Nethermind.Core.Extensions
             return BigInteger.Abs(@this);
         }
 
+        // TODO: remove PadLeft here (and test) - 0.3% allocations
         public static byte[] ToBigEndianByteArray(this BigInteger bigInteger, int outputLength = -1)
         {
             byte[] fromBigInteger = bigInteger.ToByteArray();

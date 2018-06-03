@@ -20,16 +20,19 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Numerics;
+using Microsoft.IO;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Evm
 {
-    public class EvmMemory
+    public class EvmMemory : IDisposable
     {
         public const int WordSize = 32;
 
         private static readonly byte[] EmptyBytes = new byte[0];
+        //private static readonly RecyclableMemoryStreamManager StreamManager = new RecyclableMemoryStreamManager(); // TODO: investigate block 12173 on Ropsten - why it fails with recyclables
+        //private readonly MemoryStream _memory = StreamManager.GetStream();
         private readonly MemoryStream _memory = new MemoryStream();
 
         public long Size { get; private set; }
@@ -178,6 +181,11 @@ namespace Nethermind.Evm
             }
 
             return memoryTrace;
+        }
+
+        public void Dispose()
+        {
+            _memory?.Dispose();
         }
     }
 }

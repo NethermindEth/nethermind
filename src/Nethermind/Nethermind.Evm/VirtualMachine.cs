@@ -45,7 +45,6 @@ namespace Nethermind.Evm
         private static readonly byte[] BytesOne = { 1 };
         private static readonly byte[] BytesZero = { 0 };
         private readonly IBlockhashProvider _blockhashProvider;
-        private readonly ISpecProvider _specProvider;
         private readonly ILogger _logger;
         private readonly IStateProvider _state;
         private readonly IStorageProvider _storage;
@@ -58,10 +57,9 @@ namespace Nethermind.Evm
         private TransactionTraceEntry _traceEntry;
         private readonly LruCache<Keccak, CodeInfo> _codeCache = new LruCache<Keccak, CodeInfo>(4 * 1024);
 
-        public VirtualMachine(ISpecProvider specProvider, IStateProvider stateProvider, IStorageProvider storageProvider, IBlockhashProvider blockhashProvider, ILogger logger)
+        public VirtualMachine(IStateProvider stateProvider, IStorageProvider storageProvider, IBlockhashProvider blockhashProvider, ILogger logger)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-            _specProvider = specProvider;
             _state = stateProvider;
             _storage = storageProvider;
             _blockhashProvider = blockhashProvider;
@@ -217,6 +215,8 @@ namespace Nethermind.Evm
                         previousCallOutputDestination = previousState.OutputDestination;
                         _returnDataBuffer = callResult.Output;
                     }
+                    
+                    previousState.Dispose();
                 }
                 catch (Exception ex) when (ex is EvmException || ex is OverflowException)
                 {
@@ -244,6 +244,7 @@ namespace Nethermind.Evm
                     previousCallOutputDestination = BigInteger.Zero;
                     _returnDataBuffer = Bytes.Empty;
 
+                    currentState.Dispose();
                     currentState = _stateStack.Pop();
                     currentState.IsContinuation = true;
                 }
@@ -391,24 +392,11 @@ namespace Nethermind.Evm
                 code = env.CodeInfo.MachineCode;
             }
 
-            void StackUp()
-            {
-                if (stackHead >= intPositions.Length)
-                {
-                    Array.Resize(ref intPositions, Math.Min(MaxStackSize, intPositions.Length * 2));
-                    Array.Resize(ref intsOnStack, Math.Min(MaxStackSize, intsOnStack.Length * 2));
-                    Array.Resize(ref bytesOnStack, Math.Min(MaxStackSize, bytesOnStack.Length * 2));
-                }
-            }
-
             void UpdateCurrentState()
             {
                 evmState.ProgramCounter = programCounter;
                 evmState.GasAvailable = gasAvailable;
                 evmState.StackHead = stackHead;
-                evmState.BytesOnStack = bytesOnStack;
-                evmState.IntPositions = intPositions;
-                evmState.IntsOnStack = intsOnStack;
             }
 
             void StartInstructionTrace(Instruction instruction)
@@ -477,7 +465,7 @@ namespace Nethermind.Evm
 
                 intPositions[stackHead] = false;
                 bytesOnStack[stackHead] = value;
-                stackHead++; StackUp();
+                stackHead++;
                 if (stackHead >= MaxStackSize)
                 {
                     throw new EvmStackOverflowException();
@@ -493,7 +481,7 @@ namespace Nethermind.Evm
 
                 intPositions[stackHead] = true;
                 intsOnStack[stackHead] = value;
-                stackHead++; StackUp();
+                stackHead++;
                 if (stackHead >= MaxStackSize)
                 {
                     throw new EvmStackOverflowException();
@@ -528,7 +516,7 @@ namespace Nethermind.Evm
                     intPositions[stackHead] = false;
                 }
 
-                stackHead++; StackUp();
+                stackHead++;
                 if (stackHead >= MaxStackSize)
                 {
                     throw new EvmStackOverflowException();
@@ -1015,7 +1003,8 @@ namespace Nethermind.Evm
                             }
 
                             int adjustedPosition = bytes.Length - 32 + (int)position;
-                            PushBytes(adjustedPosition < 0 ? BytesZero : bytes.Slice(adjustedPosition, 1));
+                            PushInt(adjustedPosition < 0 ? BigInteger.Zero : new BigInteger(bytes[adjustedPosition]));
+                            //PushBytes(adjustedPosition < 0 ? BytesZero : bytes.Slice(adjustedPosition, 1));
                             break;
                         }
                     case Instruction.SHA3:

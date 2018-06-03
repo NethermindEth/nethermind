@@ -67,13 +67,17 @@ namespace Nethermind.Store
                 }
             }
 
-            nodeRef.Node.IsDirty = false;
+            node.IsDirty = false;
             nodeRef.ResolveKey();
             if (nodeRef.KeccakOrRlp.IsKeccak || isRoot)
             {
-                _db.Set(nodeRef.KeccakOrRlp.GetOrComputeKeccak(), nodeRef.FullRlp.Bytes);
+                Keccak keccak = nodeRef.KeccakOrRlp.GetOrComputeKeccak();
+                NodeCache.Set(keccak, node);
+                _db.Set(keccak, nodeRef.FullRlp.Bytes);
             }
         }
+
+        private static readonly LruCache<Keccak, Node> NodeCache = new LruCache<Keccak, Node>(1024);
 
         public void UpdateRootHash()
         {
@@ -288,7 +292,26 @@ namespace Nethermind.Store
 
         internal Node GetNode(KeccakOrRlp keccakOrRlp)
         {
-            Rlp rlp = new Rlp(keccakOrRlp.IsKeccak ? _db[keccakOrRlp.GetOrComputeKeccak().Bytes] : keccakOrRlp.Bytes);
+            Rlp rlp;
+            if (keccakOrRlp.IsKeccak)
+            {
+                Keccak keccak = keccakOrRlp.GetOrComputeKeccak();
+                Node node = null;
+                node = NodeCache.Get(keccak);
+                if (node == null)
+                {
+                    rlp = new Rlp(_db[keccak.Bytes]);
+                }
+                else
+                {
+                    return node;
+                }
+            }
+            else
+            {
+                rlp = new Rlp(keccakOrRlp.IsKeccak ? _db[keccakOrRlp.GetOrComputeKeccak().Bytes] : keccakOrRlp.Bytes);    
+            }
+
             return RlpDecode(rlp);
         }
 

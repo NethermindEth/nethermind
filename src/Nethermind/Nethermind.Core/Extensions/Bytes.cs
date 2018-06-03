@@ -26,7 +26,7 @@ using System.Runtime.CompilerServices;
 namespace Nethermind.Core.Extensions
 {
     // TODO: move to ByteArrayExtensions and ByteExtensions
-    [DebuggerStepThrough]
+    //[DebuggerStepThrough]
     public static class Bytes
     {
         public static readonly IEqualityComparer<byte[]> EqualityComparer = new BytesEqualityComparer();
@@ -289,6 +289,31 @@ namespace Nethermind.Core.Extensions
 
         public static BigInteger ToUnsignedBigInteger(this byte[] bytes, Endianness endianness = Endianness.Big)
         {
+            if (bytes.Length == 0)
+            {
+                return BigInteger.Zero;
+            }
+
+            if (bytes.Length == 1)
+            {
+                return new BigInteger(bytes[0]);
+            }
+
+            if (bytes.Length == 2)
+            {
+                return new BigInteger(bytes[1] + (bytes[0] << 8));
+            }
+
+            if (bytes.Length == 3)
+            {
+                return new BigInteger(bytes[2] + (bytes[1] << 8) + (bytes[0] << 16));
+            }
+
+            if (bytes.Length == 4)
+            {
+                return new BigInteger(bytes[3] + (bytes[2] << 8) + (bytes[1] << 16) + (uint)(bytes[0] << 24));
+            }
+
             if (BitConverter.IsLittleEndian && endianness == Endianness.Big || !BitConverter.IsLittleEndian && endianness == Endianness.Little)
             {
                 byte[] unsignedResult = new byte[bytes.Length + 1];

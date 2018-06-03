@@ -28,7 +28,6 @@ using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Store;
-using NLog.LayoutRenderers;
 
 namespace Nethermind.Blockchain
 {
@@ -422,8 +421,17 @@ namespace Nethermind.Blockchain
             byte[] data = _blockDb.Get(Keccak.Zero);
             if (data != null)
             {
-                Block block = _blockDecoder.Decode(data.AsRlpContext(), RlpBehaviors.AllowExtraData);
-                Head = BestSuggested = block.Header;
+                BlockHeader headBlockHeader;
+                try
+                {
+                    headBlockHeader = Rlp.Decode<BlockHeader>(data.AsRlpContext(), RlpBehaviors.AllowExtraData);
+                }
+                catch (Exception e)
+                {
+                    headBlockHeader = Rlp.Decode<Block>(data.AsRlpContext(), RlpBehaviors.AllowExtraData).Header;
+                }
+                
+                Head = BestSuggested = headBlockHeader;
             }
         }
 
@@ -441,7 +449,7 @@ namespace Nethermind.Blockchain
         private void UpdateHeadBlock(Block block)
         {
             Head = block.Header;
-            _blockDb.Set(Keccak.Zero, Rlp.Encode(block).Bytes);
+            _blockDb.Set(Keccak.Zero, Rlp.Encode(Head).Bytes);
             NewHeadBlock?.Invoke(this, new BlockEventArgs(block));
             if (_dbBatchProcessed != null)
             {

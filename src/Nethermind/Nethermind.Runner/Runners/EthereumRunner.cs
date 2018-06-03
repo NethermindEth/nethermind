@@ -173,7 +173,7 @@ namespace Nethermind.Runner.Runners
 
             /* blockchain processing */
             var blockhashProvider = new BlockhashProvider(blockTree);
-            var virtualMachine = new VirtualMachine(specProvider, stateProvider, storageProvider, blockhashProvider, _evmLogger);
+            var virtualMachine = new VirtualMachine(stateProvider, storageProvider, blockhashProvider, _evmLogger);
             var transactionProcessor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, ethereumSigner, _tracer, _chainLogger);
             var rewardCalculator = new RewardCalculator(specProvider);
             var blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, transactionProcessor, dbProvider, stateProvider, storageProvider, transactionStore, _chainLogger);

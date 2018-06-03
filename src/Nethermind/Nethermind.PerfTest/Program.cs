@@ -148,7 +148,7 @@ namespace Nethermind.PerfTest
             StateTree stateTree = new StateTree(memDbProvider.GetOrCreateStateDb());
             IStateProvider stateProvider = new StateProvider(stateTree, logger, memDbProvider.GetOrCreateCodeDb());
             IBlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), new MemDb(), FrontierSpecProvider.Instance, logger);
-            _machine = new VirtualMachine(FrontierSpecProvider.Instance, stateProvider, new StorageProvider(memDbProvider, stateProvider, logger), new BlockhashProvider(blockTree), NullLogger.Instance);
+            _machine = new VirtualMachine(stateProvider, new StorageProvider(memDbProvider, stateProvider, logger), new BlockhashProvider(blockTree), NullLogger.Instance);
 
             Stopwatch stopwatch = new Stopwatch();
             stopwatch.Start();
@@ -329,7 +329,7 @@ namespace Nethermind.PerfTest
             var ethereumSigner = new EthereumSigner(specProvider, _logger);
             var transactionStore = new TransactionStore();
             var blockhashProvider = new BlockhashProvider(blockTree);
-            var virtualMachine = new VirtualMachine(specProvider, stateProvider, storageProvider, blockhashProvider, _logger);
+            var virtualMachine = new VirtualMachine(stateProvider, storageProvider, blockhashProvider, _logger);
             var processor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, ethereumSigner, NullTracer.Instance, _logger);
             var rewardCalculator = new RewardCalculator(specProvider);
             var blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, processor, dbProvider, stateProvider, storageProvider, transactionStore, _logger);

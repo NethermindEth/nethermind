@@ -35,10 +35,11 @@ namespace Nethermind.Db
 
         private static readonly ConcurrentDictionary<string, RocksDb> DbsByPath = new ConcurrentDictionary<string, RocksDb>();
 
-        protected readonly RocksDb _db;
+        private readonly RocksDb _db;
+
         private readonly DbInstance _dbInstance;
 
-        private WriteBatchWithIndex _currentBatch;
+        private WriteBatch _currentBatch;
 
         public DbOnTheRocks(string dbPath) // TODO: check column families
         {
@@ -134,7 +135,8 @@ namespace Nethermind.Db
 
                 if (_currentBatch != null)
                 {
-                    return _currentBatch.Get(key);
+                    throw new NotSupportedException("Index not needed, am I right?");
+                    //return _currentBatch.Get(key);
                 }
 
                 return _db.Get(key);
@@ -200,7 +202,7 @@ namespace Nethermind.Db
 
         public void StartBatch()
         {
-            _currentBatch = new WriteBatchWithIndex();
+            _currentBatch = new WriteBatch();
         }
 
         public void CommitBatch()
