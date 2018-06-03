@@ -88,8 +88,8 @@ namespace Nethermind.Discovery
         public string DbBasePath { get; set; }
         public bool IsDiscoveryNodesPersistenceOn { get; set; }
         public bool IsPeersPersistenceOn { get; set; }
-        public int ActivePeerUpdateInterval => 5000;
+        public int ActivePeerUpdateInterval => 1000 * 60 * 5;
         public int ActivePeersMaxCount => 25;
-        public int PeersPersistanceInterval => 5000;
+        public int PeersPersistanceInterval => 1000 * 60 * 5;
     }
 }
