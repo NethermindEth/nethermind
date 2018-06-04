@@ -1,6 +1,6 @@
 {
   "TransactionTracingEnabled": false,
-  "BaseTracingPath": "logs",
+  "BaseTracingPath": "traces",
   "JsonRpcEnabled": false,
   "DiscoveryEnabled": true,
   "SynchronizationEnabled": true,
@@ -9,10 +9,9 @@
   "HttpHost": "127.0.0.1",
   "HttpPort": 8002,
   "IsMining": false,
-  "FakeMiningDelay": 12000,
-  "ChainSpecPath": "Chains\\nethermind_alpha.json",
-  "BaseDbPath": "D:\\chains\\Nethermind\\ropsten\\full",
+  "ChainSpecPath": "chainspec\\mainnet.json",
+  "BaseDbPath": "D:\\chains\\Nethermind\\mainnet\\full",
   "TestNodeKey": "020102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f",
-  "LogFileName": "runner.logs.txt",
+  "LogFileName": "mainnet.logs.txt",
   "JsonRpcEnabledModules": [ "Eth", "Net", "Web3", "Db", "Shh" ]
 }
