@@ -72,12 +72,12 @@ namespace Nethermind.Store
             if (nodeRef.KeccakOrRlp.IsKeccak || isRoot)
             {
                 Keccak keccak = nodeRef.KeccakOrRlp.GetOrComputeKeccak();
-                NodeCache.Set(keccak, node);
+                NodeCache.Set(keccak, nodeRef.FullRlp);
                 _db.Set(keccak, nodeRef.FullRlp.Bytes);
             }
         }
 
-        private static readonly LruCache<Keccak, Node> NodeCache = new LruCache<Keccak, Node>(8 * 1024);
+        private static readonly LruCache<Keccak, Rlp> NodeCache = new LruCache<Keccak, Rlp>(8 * 1024);
 
         public void UpdateRootHash()
         {
@@ -296,20 +296,11 @@ namespace Nethermind.Store
             if (keccakOrRlp.IsKeccak)
             {
                 Keccak keccak = keccakOrRlp.GetOrComputeKeccak();
-                Node node = null;
-                node = NodeCache.Get(keccak);
-                if (node == null)
-                {
-                    rlp = new Rlp(_db[keccak.Bytes]);
-                }
-                else
-                {
-                    return node;
-                }
+                rlp = NodeCache.Get(keccak) ?? new Rlp(_db[keccak.Bytes]);
             }
             else
             {
-                rlp = new Rlp(keccakOrRlp.IsKeccak ? _db[keccakOrRlp.GetOrComputeKeccak().Bytes] : keccakOrRlp.Bytes);    
+                rlp = new Rlp(keccakOrRlp.Bytes);  
             }
 
             return RlpDecode(rlp);
