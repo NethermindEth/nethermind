@@ -222,7 +222,7 @@ namespace Nethermind.Runner.Runners
 
             if (!string.IsNullOrWhiteSpace(initParams.ExpectedGenesisHash) && blockTree.Genesis.Hash != new Keccak(initParams.ExpectedGenesisHash))
             {
-                throw new Exception($"Unexpected genesis hash, expected {initParams.ExpectedGenesisHash}, but was {chainSpec.Genesis.Hash}");
+                throw new Exception($"Unexpected genesis hash, expected {initParams.ExpectedGenesisHash}, but was {blockTree.Genesis.Hash}");
             }
 
             if (isMining)

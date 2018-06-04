@@ -74,7 +74,10 @@ namespace Nethermind.Core.Specs.ChainSpec
             chainSpec.Allocations = new Dictionary<Address, BigInteger>();
             foreach (KeyValuePair<string, ChainSpecAccountJson> account in chainSpecJson.Accounts)
             {
-                chainSpec.Allocations[new Address(account.Key)] = BigInteger.Parse(account.Value?.Balance ?? "0");
+                if (account.Value.Balance != null)
+                {
+                    chainSpec.Allocations[new Address(account.Key)] = BigInteger.Parse(account.Value.Balance);    
+                }
             }
             
             chainSpec.NetworkNodes = new NetworkNode[chainSpecJson.Nodes.Length];
