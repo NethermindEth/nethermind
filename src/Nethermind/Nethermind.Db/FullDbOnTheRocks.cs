@@ -52,7 +52,7 @@ namespace Nethermind.Db
             //SliceTransform transform = SliceTransform.CreateFixedPrefix(16);
             //options.SetPrefixExtractor(transform);
 
-            _db = DbsByPath.GetOrAdd(dbPath, path => RocksDb.Open(options, Path.Combine("db", path)));
+            _db = DbsByPath.GetOrAdd(dbPath, path => RocksDb.Open(options, path));
 
             if (dbPath.EndsWith(DiscoveryNodesDbPath))
             {
