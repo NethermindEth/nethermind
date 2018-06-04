@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Linq;
 using System.Numerics;
 using Nethermind.Core.Crypto;
 
@@ -71,6 +72,12 @@ namespace Nethermind.Core.Test.Builders
         {
             return WithParent(block.Header);
         }
+        
+        public BlockBuilder WithOmmers(params Block[] ommers)
+        {
+            TestObjectInternal.Ommers = ommers.Select(o => o.Header).ToArray();
+            return this;
+        }
 
         public BlockBuilder WithParentHash(Keccak parent)
         {
@@ -78,7 +85,7 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public BlockBuilder Genesis => WithNumber(0);
+        public BlockBuilder Genesis => WithNumber(0).WithParentHash(Keccak.Zero).WithMixHash(Keccak.Zero);
 
         protected override void BeforeReturn()
         {

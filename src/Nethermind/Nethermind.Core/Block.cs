@@ -45,7 +45,7 @@ namespace Nethermind.Core
         public BlockInfo BlockInfo { get; set; }
         public Transaction[] Transactions { get; set; }
         public TransactionReceipt[] Receipts { get; set; }
-        public BlockHeader[] Ommers { get; }
+        public BlockHeader[] Ommers { get; set; }
         public Keccak Hash => Header.Hash;
         public long GasLimit => Header.GasLimit;
         public BigInteger GasUsed => Header.GasUsed;

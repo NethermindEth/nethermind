@@ -20,6 +20,7 @@ namespace Nethermind.Core.Test.Builders
 {
     public partial class Build
     {
+        public BlockTreeBuilder BlockTree() => new BlockTreeBuilder();
         public BlockTreeBuilder BlockTree(Block genesisBlock) => new BlockTreeBuilder(genesisBlock);
     }
 }

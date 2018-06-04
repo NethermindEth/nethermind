@@ -46,6 +46,7 @@ namespace Nethermind.Core.Test.Builders
         
         public BlockHeaderBuilder WithParent(BlockHeader parentHeader)
         {
+            TestObjectInternal.ParentHash = parentHeader.Hash;
             TestObjectInternal.Number = parentHeader.Number + 1;
             TestObjectInternal.GasLimit = parentHeader.GasLimit;
             return this;

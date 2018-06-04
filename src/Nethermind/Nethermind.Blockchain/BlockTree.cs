@@ -585,6 +585,11 @@ namespace Nethermind.Blockchain
 
         private (Block Block, BlockInfo Info, ChainLevelInfo Level) Load(Keccak blockHash)
         {
+            if (blockHash == Keccak.Zero)
+            {
+                return (null, null, null);
+            }
+            
             Block block = _blockCache.Get(blockHash);
             if (block == null)
             {

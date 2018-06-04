@@ -18,6 +18,8 @@
 
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Validators;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Encoding;
 using Nethermind.Core.Specs;
 using Nethermind.Store;
 
@@ -27,10 +29,18 @@ namespace Nethermind.Core.Test.Builders
     {
         private readonly Block _genesisBlock;
 
+        public BlockTreeBuilder()
+            : this(Build.A.Block.Genesis.TestObject)
+        {
+        }
+
         public BlockTreeBuilder(Block genesisBlock)
         {
+            MemDb blocksDb = new MemDb(); // so we automatically include in all tests my questionable decision of storing Head block header at 00...
+            blocksDb.Set(Keccak.Zero, Rlp.Encode(Build.A.BlockHeader.TestObject).Bytes);
+            
             _genesisBlock = genesisBlock;
-            TestObjectInternal = new BlockTree(new MemDb(), new MemDb(), new MemDb(), RopstenSpecProvider.Instance, NullLogger.Instance);
+            TestObjectInternal = new BlockTree(blocksDb, new MemDb(), new MemDb(), RopstenSpecProvider.Instance, NullLogger.Instance);
         }
 
         public BlockTreeBuilder OfChainLength(int chainLength, int splitBlockNumber = 0, int splitVariant = 0)
@@ -43,7 +53,7 @@ namespace Nethermind.Core.Test.Builders
                 TestObjectInternal.MoveToMain(previous.Hash);
                 previous = Build.A.Block.WithNumber(i + 1).WithParent(previous).WithDifficulty(BlockHeaderBuilder.DefaultDifficulty - splitVariant).TestObject;
             }
-            
+
             return this;
         }
 

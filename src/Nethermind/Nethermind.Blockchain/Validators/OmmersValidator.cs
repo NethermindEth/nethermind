@@ -23,13 +23,13 @@ namespace Nethermind.Blockchain.Validators
 {
     public class OmmersValidator : IOmmersValidator
     {
-        private readonly IBlockTree _chain;
+        private readonly IBlockTree _blockTree;
         private readonly IHeaderValidator _headerValidator;
         private readonly ILogger _logger;
 
-        public OmmersValidator(IBlockTree chain, IHeaderValidator headerValidator, ILogger logger)
+        public OmmersValidator(IBlockTree blockTree, IHeaderValidator headerValidator, ILogger logger)
         {
-            _chain = chain;
+            _blockTree = blockTree;
             _headerValidator = headerValidator;
             _logger = logger;
         }
@@ -62,7 +62,7 @@ namespace Nethermind.Blockchain.Validators
                     return false;
                 }
 
-                Block ancestor = _chain.FindBlock(header.ParentHash, false);
+                Block ancestor = _blockTree.FindBlock(header.ParentHash, false);
                 for (int i = 0; i < 5; i++)
                 {
                     if (ancestor == null)
@@ -76,7 +76,7 @@ namespace Nethermind.Blockchain.Validators
                         return false;
                     }
                     
-                    ancestor = _chain.FindBlock(ancestor.Header.ParentHash, false);
+                    ancestor = _blockTree.FindBlock(ancestor.Header.ParentHash, false);
                 }
             }
 
@@ -95,7 +95,7 @@ namespace Nethermind.Blockchain.Validators
                 return false;
             }
             
-            BlockHeader parent = _chain.FindBlock(header.ParentHash, false)?.Header;
+            BlockHeader parent = _blockTree.FindBlock(header.ParentHash, false)?.Header;
             if (parent == null)
             {
                 return false;
