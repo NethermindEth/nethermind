@@ -2,7 +2,7 @@
   "TransactionTracingEnabled": false,
   "BaseTracingPath": "traces",
   "JsonRpcEnabled": false,
-  "DiscoveryEnabled": true,
+  "DiscoveryEnabled": false,
   "SynchronizationEnabled": true,
   "DiscoveryPort": 30312,
   "P2PPort": 30312,
