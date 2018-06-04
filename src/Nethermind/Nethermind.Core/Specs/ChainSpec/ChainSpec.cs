@@ -19,10 +19,12 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Numerics;
-using Nethermind.HashLib.Crypto.SHA3;
 
 namespace Nethermind.Core.Specs.ChainSpec
 {
+    /// <summary>
+    /// TODO: ChainSpec files (.json) were copied from Parity repository (https://github.com/paritytech/parity), need to review 
+    /// </summary>
     [DebuggerDisplay("{Name}, ChainId = {ChainId}")]
     public class ChainSpec
     {

@@ -44,6 +44,7 @@ namespace Nethermind.Runner
         public string KeysDir { get; set; }
         public string TestNodeKey { get; set; }
         public string LogFileName { get; set; }
+        public string ExpectedGenesisHash { get; set; }
         public BigInteger? HomesteadBlockNr { get; set; }
         public EthereumRunnerType EthereumRunnerType { get; set; }
         public string[] JsonRpcEnabledModules { get; set; }

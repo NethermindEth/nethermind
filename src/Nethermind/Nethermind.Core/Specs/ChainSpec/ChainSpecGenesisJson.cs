@@ -29,5 +29,6 @@ namespace Nethermind.Core.Specs.ChainSpec
         public string ParentHash { get; set; }
         public string ExtraData { get; set; }
         public string GasLimit { get; set; }
+        public string StateRoot { get; set; }
     }
 }

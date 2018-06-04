@@ -60,5 +60,11 @@ namespace Nethermind.Core.Specs
         public BigInteger? DaoBlockNumber { get; } = new BigInteger(1920000);
         
         public int ChainId => 1;
+        
+        private MainNetSpecProvider()
+        {
+        }
+        
+        public static MainNetSpecProvider Instance = new MainNetSpecProvider();
     }
 }

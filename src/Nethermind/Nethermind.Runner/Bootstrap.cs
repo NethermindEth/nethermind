@@ -62,7 +62,7 @@ namespace Nethermind.Runner
 
             var specProvider = homesteadBlockNr.HasValue
                 ? (ISpecProvider)new CustomSpecProvider((0, Frontier.Instance), (homesteadBlockNr.Value, Homestead.Instance))
-                : new MainNetSpecProvider();
+                : MainNetSpecProvider.Instance;
 
             var ethereumRelease = specProvider.GetSpec(1);
             var chainId = ChainId.MainNet;
