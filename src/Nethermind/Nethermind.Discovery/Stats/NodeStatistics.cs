@@ -19,6 +19,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Core;
 using Nethermind.Network.P2P;
 
 namespace Nethermind.Discovery.Stats
@@ -36,17 +37,6 @@ namespace Nethermind.Discovery.Stats
         {
             _configurationProvider = configurationProvider;
             Initialize();
-        }
-
-        private void Initialize()
-        {
-            IsTrustedPeer = false;
-            _stats = new Dictionary<NodeStatsEvent, AtomicLong>();
-            foreach (NodeStatsEvent statType in Enum.GetValues(typeof(NodeStatsEvent)))
-            {
-                _stats[statType] = new AtomicLong();
-            }
-            _lastDisconnects = new Dictionary<DisconnectType, (DisconnectReason DisconnectReason, DateTime DisconnectTime)>();
         }
 
         public void AddNodeStatsEvent(NodeStatsEvent nodeStatsEvent)
@@ -71,6 +61,8 @@ namespace Nethermind.Discovery.Stats
         public long NewPersistedNodeReputation => IsReputationPenalized() ? 0 : (CurrentPersistedNodeReputation + CalculateSessionReputation()) / 2;
 
         public bool IsTrustedPeer { get; set; }
+
+        public NodeDetails NodeDetails { get; private set; }
 
         private long CalculateCurrentReputation()
         {
@@ -155,6 +147,18 @@ namespace Nethermind.Discovery.Stats
             }
 
             return false;
+        }
+
+        private void Initialize()
+        {
+            NodeDetails = new NodeDetails();
+            IsTrustedPeer = false;
+            _stats = new Dictionary<NodeStatsEvent, AtomicLong>();
+            foreach (NodeStatsEvent statType in Enum.GetValues(typeof(NodeStatsEvent)))
+            {
+                _stats[statType] = new AtomicLong();
+            }
+            _lastDisconnects = new Dictionary<DisconnectType, (DisconnectReason DisconnectReason, DateTime DisconnectTime)>();
         }
     }
 }

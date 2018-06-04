@@ -18,7 +18,7 @@
 
 using System.Threading;
 
-namespace Nethermind.Discovery.Stats
+namespace Nethermind.Core
 {
     public class AtomicLong
     {

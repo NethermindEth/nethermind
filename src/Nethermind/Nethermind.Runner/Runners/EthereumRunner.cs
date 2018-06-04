@@ -73,6 +73,7 @@ namespace Nethermind.Runner.Runners
         private INodeFactory _nodeFactory;
         private INodeStatsProvider _nodeStatsProvider;
         private IDiscoveryManager _discoveryManager;
+        private IPerfService _perfService;
 
         private static ILogger _defaultLogger = new NLogLogger("default");
         private static ILogger _evmLogger = new NLogLogger("evm");
@@ -102,7 +103,8 @@ namespace Nethermind.Runner.Runners
             _dbBasePath = initParams.BaseDbPath ?? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "db");
 
             _tracer = initParams.TransactionTracingEnabled ? new TransactionTracer(initParams.BaseTracingPath, new UnforgivingJsonSerializer()) : NullTracer.Instance; 
-            
+            _perfService = new PerfService(_defaultLogger);
+
             ChainSpec chainSpec = LoadChainSpec(initParams.ChainSpecPath);
             await InitBlockchain(chainSpec, initParams.IsMining ?? false, initParams.FakeMiningDelay ?? 12000, initParams.SynchronizationEnabled, initParams.P2PPort ?? 30303, initParams);
             _defaultLogger.Info("Ethereum initialization completed"); // TODO: this is not done very well, start should be async as well
@@ -345,17 +347,15 @@ namespace Nethermind.Runner.Runners
             _networkLogger.Info($"enode://{_privateKey.PublicKey.ToString(false)}@{localIp}:{listenPort}");
         }
 
-        private Task InitPeerManager()
+        private async Task InitPeerManager()
         {
             _networkLogger.Info("Initializing Peer Manager");
 
-            var peerStorage = new PeerStorage(_discoveryConfigurationProvider, _nodeFactory, _networkLogger);
-            var peerManager = new PeerManager(_localPeer, _discoveryManager, _networkLogger, _discoveryConfigurationProvider, _syncManager, _nodeStatsProvider, peerStorage);
-            peerManager.Start();
+            var peerStorage = new PeerStorage(_discoveryConfigurationProvider, _nodeFactory, _networkLogger, _perfService);
+            var peerManager = new PeerManager(_localPeer, _discoveryManager, _networkLogger, _discoveryConfigurationProvider, _syncManager, _nodeStatsProvider, peerStorage, _perfService);
+            await peerManager.Start();
 
             _networkLogger.Info("Peer Manager initialization completed");
-
-            return Task.CompletedTask;
         }
 
         private Task InitDiscovery(InitParams initParams)
@@ -384,7 +384,7 @@ namespace Nethermind.Runner.Runners
             var evictionManager = new EvictionManager(nodeTable, _discoveryLogger);
             var nodeLifeCycleFactory = new NodeLifecycleManagerFactory(_nodeFactory, nodeTable, _discoveryLogger, _discoveryConfigurationProvider, discoveryMessageFactory, evictionManager, _nodeStatsProvider);
 
-            var discoveryStorage = new DiscoveryStorage(_discoveryConfigurationProvider, _nodeFactory, _discoveryLogger);
+            var discoveryStorage = new DiscoveryStorage(_discoveryConfigurationProvider, _nodeFactory, _discoveryLogger, _perfService);
             _discoveryManager = new DiscoveryManager(_discoveryLogger, _discoveryConfigurationProvider, nodeLifeCycleFactory, _nodeFactory, nodeTable, discoveryStorage);
 
             var nodesLocator = new NodesLocator(nodeTable, _discoveryManager, _discoveryConfigurationProvider, _discoveryLogger);

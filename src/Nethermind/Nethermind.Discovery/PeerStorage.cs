@@ -12,16 +12,18 @@ namespace Nethermind.Discovery
     {
         private readonly IDiscoveryConfigurationProvider _configurationProvider;
         private readonly INodeFactory _nodeFactory;
+        private readonly IPerfService _perfService;
         private readonly IFullDb _db;
         private readonly ILogger _logger;
         private long _updateCounter = 0;
         private long _removeCounter = 0;
 
-        public PeerStorage(IDiscoveryConfigurationProvider configurationProvider, INodeFactory nodeFactory, ILogger logger)
+        public PeerStorage(IDiscoveryConfigurationProvider configurationProvider, INodeFactory nodeFactory, ILogger logger, IPerfService perfService)
         {
             _configurationProvider = configurationProvider;
             _nodeFactory = nodeFactory;
             _logger = logger;
+            _perfService = perfService;
             _db = new FullDbOnTheRocks(Path.Combine(_configurationProvider.DbBasePath, FullDbOnTheRocks.PeersDbPath));
         }
 
@@ -60,11 +62,18 @@ namespace Nethermind.Discovery
 
         public void Commit()
         {
+            var key = _perfService.StartPerfCalc();
             if (_logger.IsInfoEnabled)
             {
                 _logger.Info($"Commiting peers, updates: {_updateCounter}, removes: {_removeCounter}");
             }
             _db.CommitBatch();
+            _perfService.EndPerfCalc(key, "PeerStorage commit");
+        }
+
+        public bool AnyPendingChange()
+        {
+            return _updateCounter > 0 || _removeCounter > 0;
         }
 
         private (Node, long) GetNode(byte[] networkNodeRaw)

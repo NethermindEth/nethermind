@@ -408,11 +408,11 @@ namespace Nethermind.Discovery
 
         private void RunDiscoveryCommit()
         {
-            if (_logger.IsInfoEnabled)
+            if (!_discoveryStorage.AnyPendingChange())
             {
-                _logger.Info("Running discovery commit process.");
+                return;
             }
-            
+
             _discoveryStorage.Commit();
             _discoveryStorage.StartBatch();
         }

@@ -30,7 +30,7 @@ namespace Nethermind.Discovery.Test
             }
 
             _nodeFactory = new NodeFactory();
-            _peerStorage = new PeerStorage(_configurationProvider, _nodeFactory, logger);
+            _peerStorage = new PeerStorage(_configurationProvider, _nodeFactory, logger, new PerfService(logger));
         }
 
         [Test]

@@ -10,5 +10,6 @@ namespace Nethermind.Discovery
         void RemovePeers(Peer[] nodes);
         void StartBatch();
         void Commit();
+        bool AnyPendingChange();
     }
 }

@@ -48,7 +48,11 @@ namespace Nethermind.Discovery
         private Timer _activePeersTimer;
         private Timer _peerPersistanceTimer;
         private readonly bool _isDiscoveryEnabled;
-        private int _logCounter = 0;
+        private int _logCounter = 1;
+        private bool _isInitialized = false;
+        private bool _isPeerUpdateInProgress = false;
+        private readonly object _isPeerUpdateInProgressLock = new object();
+        private readonly IPerfService _perfService;
 
         private readonly ConcurrentDictionary<PublicKey, Peer> _activePeers = new ConcurrentDictionary<PublicKey, Peer>();
         private readonly ConcurrentDictionary<PublicKey, Peer> _newPeers = new ConcurrentDictionary<PublicKey, Peer>();
@@ -59,7 +63,7 @@ namespace Nethermind.Discovery
         //TODO Move Discover to Network
         //TODO update runner to run discovery
 
-        public PeerManager(IRlpxPeer localPeer, IDiscoveryManager discoveryManager, ILogger logger, IDiscoveryConfigurationProvider configurationProvider, ISynchronizationManager synchronizationManager, INodeStatsProvider nodeStatsProvider, IPeerStorage peerStorage)
+        public PeerManager(IRlpxPeer localPeer, IDiscoveryManager discoveryManager, ILogger logger, IDiscoveryConfigurationProvider configurationProvider, ISynchronizationManager synchronizationManager, INodeStatsProvider nodeStatsProvider, IPeerStorage peerStorage, IPerfService perfService)
         {
             _localPeer = localPeer;
             _logger = logger;
@@ -67,18 +71,19 @@ namespace Nethermind.Discovery
             _synchronizationManager = synchronizationManager;
             _nodeStatsProvider = nodeStatsProvider;
             _discoveryManager = discoveryManager;
+            _perfService = perfService;
             _isDiscoveryEnabled = _discoveryManager != null;
 
             if (_isDiscoveryEnabled)
             {
-                discoveryManager.NodeDiscovered += OnNodeDiscovered;
+                discoveryManager.NodeDiscovered += async (s, e) => await OnNodeDiscovered(s, e);
             }
             localPeer.ConnectionInitialized += OnRemoteConnectionInitialized;
             _peerStorage = peerStorage;
             _peerStorage.StartBatch();
         }
 
-        public void Start()
+        public async Task Start()
         {
             //Step 1 - load configured trusted peers
             AddTrustedPeers();
@@ -87,20 +92,39 @@ namespace Nethermind.Discovery
             AddPersistedPeers();
 
             //Step 3 - start active peers timer
-            StartActivePeersTimer();
-
-            //Step 4 - start peer persistance timer
+            //StartActivePeersTimer();
+            
+            //Step 3 - start peer persistance timer
             StartPeerPersistanceTimer();
+
+            //Step 4 - Running initial peer update
+            await RunPeerUpdate();
+
+            _isInitialized = true;
         }
 
-        public void Stop()
+        public Task Stop()
         {
-            StopActivePeersTimer();
+            //StopActivePeersTimer();
             StopPeerPersistanceTimer();
+
+            return Task.CompletedTask;
         }
         
         public async Task RunPeerUpdate()
         {
+            lock (_isPeerUpdateInProgressLock)
+            {
+                if (_isPeerUpdateInProgress)
+                {
+                    return;
+                }
+
+                _isPeerUpdateInProgress = true;
+            }
+
+            var key = _perfService.StartPerfCalc();
+
             var availibleActiveCount = _configurationProvider.ActivePeersMaxCount - _activePeers.Count;
             if (availibleActiveCount <= 0)
             {
@@ -135,16 +159,19 @@ namespace Nethermind.Discovery
 
             if (_logger.IsInfoEnabled)
             {
-                _logger.Info($"RunPeerUpdate | Tried: {candidates.Length}, Added {newActiveNodes} active peers, current new peers: {_newPeers.Count}");
+                _logger.Info($"RunPeerUpdate | Tried: {candidates.Length}, Added {newActiveNodes} active peers, current new peers: {_newPeers.Count}, current active peers: {_activePeers.Count}");
 
-                if (_logCounter % 120 == 0)
+                if (_logCounter % 5 == 0)
                 {
-                    //TODO add info about cababilities, clientId, etc to NodeStats and print it here
-                    _logger.Info($"All active peers: \n{string.Join('\n', ActivePeers.Select(x => $"{x.Node.ToString()} | P2PInitialized: {x.NodeStats.DidEventHappen(NodeStatsEvent.P2PInitialized)} | Eth62Initialized: {x.NodeStats.DidEventHappen(NodeStatsEvent.Eth62Initialized)}"))}");
+                    //TODO Change to debug after testing
+                    _logger.Info($"\n\nAll active peers: \n{string.Join('\n', ActivePeers.Select(x => $"{x.Node.ToString()} | P2PInitialized: {x.NodeStats.DidEventHappen(NodeStatsEvent.P2PInitialized)} | Eth62Initialized: {x.NodeStats.DidEventHappen(NodeStatsEvent.Eth62Initialized)} | ClientId: {x.NodeStats.NodeDetails.ClientId}"))} \n\n");
                 }
 
                 _logCounter++;
             }
+
+            _perfService.EndPerfCalc(key, "RunPeerUpdate");
+            _isPeerUpdateInProgress = false;
         }
 
         private async Task<bool> InitializePeerConnection(Peer candidate)
@@ -283,7 +310,8 @@ namespace Nethermind.Discovery
                 {
                     case P2PProtocolHandler _:
                         //TODO test log
-                        _logger.Info($"ETH62TESTCLIENTID: {((P2PProtocolInitializedEventArgs)e).ClientId}");
+                        //_logger.Info($"ETH62TESTCLIENTID: {((P2PProtocolInitializedEventArgs)e).ClientId}");
+                        peer.NodeStats.NodeDetails.ClientId = ((P2PProtocolInitializedEventArgs)e).ClientId;
                         var result = await ValidateProtocol(Protocol.P2P, peer, e);
                         if (!result)
                         {
@@ -379,7 +407,7 @@ namespace Nethermind.Discovery
             return true;
         }
 
-        private void OnPeerDisconnected(object sender, DisconnectEventArgs e)
+        private async void OnPeerDisconnected(object sender, DisconnectEventArgs e)
         {
             var peer = (IP2PSession) sender;
             peer.PeerDisconnected -= OnPeerDisconnected;
@@ -395,6 +423,11 @@ namespace Nethermind.Discovery
                 {
                     _logger.Info($"Removing Active Peer on disconnect {peer.RemoteNodeId.ToString(false)}");
                 }
+
+                if (_isInitialized)
+                {
+                    await RunPeerUpdate();
+                }
             }
 
             if (_newPeers.TryRemove(peer.RemoteNodeId, out removedPeer))
@@ -407,7 +440,7 @@ namespace Nethermind.Discovery
             }
         }
 
-        private void OnNodeDiscovered(object sender, NodeEventArgs nodeEventArgs)
+        private async Task OnNodeDiscovered(object sender, NodeEventArgs nodeEventArgs)
         {
             var id = nodeEventArgs.Manager.ManagedNode.Id;
             if (_newPeers.ContainsKey(id) || _activePeers.ContainsKey(id))
@@ -424,6 +457,11 @@ namespace Nethermind.Discovery
             if (_logger.IsInfoEnabled)
             {
                 _logger.Info($"Adding newly discovered node to New collection {id.ToString(false)}@{nodeEventArgs.Manager.ManagedNode.Host}:{nodeEventArgs.Manager.ManagedNode.Port}");
+            }
+
+            if (_isInitialized)
+            {
+                await RunPeerUpdate();
             }
         }
 
@@ -497,11 +535,11 @@ namespace Nethermind.Discovery
 
         private void RunPeerCommit()
         {
-            if (_logger.IsInfoEnabled)
+            if (!_peerStorage.AnyPendingChange())
             {
-                _logger.Info("Running peers commit process.");
+                return;
             }
-            
+
             _peerStorage.Commit();
             _peerStorage.StartBatch();
         }

@@ -71,7 +71,7 @@ namespace Nethermind.Discovery.Test
 
             _nodes = new[] { _nodeFactory.CreateNode("192.168.1.18", 1), _nodeFactory.CreateNode("192.168.1.19", 2) };
 
-            _discoveryManager = new DiscoveryManager(logger, config, lifecycleFactory, _nodeFactory, _nodeTable, new DiscoveryStorage(config, _nodeFactory, logger));
+            _discoveryManager = new DiscoveryManager(logger, config, lifecycleFactory, _nodeFactory, _nodeTable, new DiscoveryStorage(config, _nodeFactory, logger, new PerfService(logger)));
             _discoveryManager.MessageSender = _messageSender;
         }
 

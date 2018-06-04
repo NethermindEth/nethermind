@@ -220,14 +220,23 @@ namespace Nethermind.Blockchain
                 {
                     _logger.Error($"{nameof(AddPeer)} failed.", t.Exception);
                 }
+                else
+                {
+                    RunSync();
+                }
             });
-
-            RunSync();
         }
 
         public void RemovePeer(ISynchronizationPeer synchronizationPeer)
         {
-            //throw new NotImplementedException();
+            if (!_peers.TryRemove(synchronizationPeer.NodeId, out var _))
+            {
+                return;
+            }
+            if (_logger.IsInfoEnabled)
+            {
+                _logger.Info($"Removing synchronization peer {synchronizationPeer.NodeId}");
+            }
         }
 
         public void Start()

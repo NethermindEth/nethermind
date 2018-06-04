@@ -75,7 +75,7 @@ namespace Nethermind.Discovery.Test
 
             _udpClient = Substitute.For<IMessageSender>();
 
-            _discoveryManager = new DiscoveryManager(logger, _configurationProvider, lifecycleFactory, _nodeFactory, _nodeTable, new DiscoveryStorage(_configurationProvider, _nodeFactory, logger));
+            _discoveryManager = new DiscoveryManager(logger, _configurationProvider, lifecycleFactory, _nodeFactory, _nodeTable, new DiscoveryStorage(_configurationProvider, _nodeFactory, logger, new PerfService(logger)));
             _discoveryManager.MessageSender = _udpClient;
         }
 

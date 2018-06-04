@@ -34,7 +34,7 @@ namespace Nethermind.Discovery.Test
             }
 
             _nodeFactory = new NodeFactory();
-            _discoveryStorage = new DiscoveryStorage(_configurationProvider, _nodeFactory, logger);
+            _discoveryStorage = new DiscoveryStorage(_configurationProvider, _nodeFactory, logger, new PerfService(logger));
         }
 
         [Test]
