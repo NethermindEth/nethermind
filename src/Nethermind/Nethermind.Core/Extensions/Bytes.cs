@@ -30,7 +30,7 @@ namespace Nethermind.Core.Extensions
     public static class Bytes
     {
         public static readonly IEqualityComparer<byte[]> EqualityComparer = new BytesEqualityComparer();
-        
+
         private class BytesEqualityComparer : EqualityComparer<byte[]>
         {
             public override bool Equals(byte[] x, byte[] y)
@@ -43,7 +43,7 @@ namespace Nethermind.Core.Extensions
                 return obj.GetXxHashCode();
             }
         }
-        
+
         public static readonly byte[] Empty = new byte[0]; // consider immutable 
 
         public enum Endianness
@@ -181,7 +181,7 @@ namespace Nethermind.Core.Extensions
                 }
             }
 
-            return new byte[] {0};
+            return new byte[] { 0 };
         }
 
         public static byte[] Concat(byte prefix, byte[] bytes)
@@ -238,7 +238,7 @@ namespace Nethermind.Core.Extensions
             {
                 return bytes.Slice(0, length);
             }
-            
+
             byte[] result = new byte[length];
             Buffer.BlockCopy(bytes, 0, result, 0, bytes.Length);
             return result;
@@ -289,43 +289,7 @@ namespace Nethermind.Core.Extensions
 
         public static BigInteger ToUnsignedBigInteger(this byte[] bytes, Endianness endianness = Endianness.Big)
         {
-            if (bytes.Length == 0)
-            {
-                return BigInteger.Zero;
-            }
-
-            if (bytes.Length == 1)
-            {
-                return new BigInteger(bytes[0]);
-            }
-
-            if (bytes.Length == 2)
-            {
-                return new BigInteger(bytes[1] + (bytes[0] << 8));
-            }
-
-            if (bytes.Length == 3)
-            {
-                return new BigInteger(bytes[2] + (bytes[1] << 8) + (bytes[0] << 16));
-            }
-
-            if (bytes.Length == 4)
-            {
-                return new BigInteger(bytes[3] + (bytes[2] << 8) + (bytes[1] << 16) + (uint)(bytes[0] << 24));
-            }
-
-            if (BitConverter.IsLittleEndian && endianness == Endianness.Big || !BitConverter.IsLittleEndian && endianness == Endianness.Little)
-            {
-                byte[] unsignedResult = new byte[bytes.Length + 1];
-                for (int i = 0; i < bytes.Length; i++)
-                {
-                    unsignedResult[bytes.Length - i - 1] = bytes[i];
-                }
-
-                return new BigInteger(unsignedResult);
-            }
-
-            return new BigInteger(bytes);
+            return new BigInteger(bytes.AsSpan(), true, endianness == Endianness.Big);
         }
 
         /// <summary>
@@ -374,6 +338,11 @@ namespace Nethermind.Core.Extensions
 
         public static BigInteger ToSignedBigInteger(this byte[] bytes, int byteLength, Endianness endianness = Endianness.Big)
         {
+            if (bytes.Length == byteLength)
+            {
+                return new BigInteger(bytes.AsSpan(), false, endianness == Endianness.Big);
+            }
+
             Debug.Assert(bytes.Length <= byteLength, $"{nameof(ToSignedBigInteger)} expects {nameof(byteLength)} parameter to be less than length of the {bytes}");
             bool needToExpand = bytes.Length != byteLength;
             byte[] bytesToUse = needToExpand ? new byte[byteLength] : bytes;
@@ -381,7 +350,7 @@ namespace Nethermind.Core.Extensions
             {
                 Buffer.BlockCopy(bytes, 0, bytesToUse, byteLength - bytes.Length, bytes.Length);
             }
-            
+
             if (BitConverter.IsLittleEndian && endianness == Endianness.Big || !BitConverter.IsLittleEndian && endianness == Endianness.Little)
             {
                 byte[] signedResult = new byte[byteLength];
@@ -420,27 +389,28 @@ namespace Nethermind.Core.Extensions
             return result;
         }
 
-        private static byte Reverse(byte b) {
+        private static byte Reverse(byte b)
+        {
             b = (byte)((b & 0xF0) >> 4 | (b & 0x0F) << 4);
             b = (byte)((b & 0xCC) >> 2 | (b & 0x33) << 2);
             b = (byte)((b & 0xAA) >> 1 | (b & 0x55) << 1);
             return b;
         }
-        
+
         public static byte[] ToBytes(this BitArray bits)
         {
             if (bits.Length % 8 != 0)
             {
                 throw new ArgumentException(nameof(bits));
             }
-            
+
             byte[] bytes = new byte[bits.Length / 8];
             bits.CopyTo(bytes, 0);
             for (int i = 0; i < bytes.Length; i++)
             {
                 bytes[i] = Reverse(bytes[i]);
             }
-            
+
             return bytes;
         }
 
@@ -452,7 +422,7 @@ namespace Nethermind.Core.Extensions
             {
                 inverted[i] = Reverse(bytes[i - startIndex]);
             }
-            
+
             return new BitArray(inverted);
         }
 
@@ -464,7 +434,7 @@ namespace Nethermind.Core.Extensions
             {
                 inverted[i] = Reverse(bytes[i - startIndex]);
             }
-            
+
             return new BitArray(inverted);
         }
     }

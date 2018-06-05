@@ -33,7 +33,8 @@ namespace Nethermind.HashLib
 
         public byte[] GetBytes()
         {
-            return m_hash.ToArray();
+            //return m_hash.ToArray();
+            return m_hash;
         }
 
         public uint GetUInt()
