@@ -18,6 +18,7 @@
 
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Core
 {
@@ -33,7 +34,9 @@ namespace Nethermind.Core
         public LruCache(int capacity)
         {
             _capacity = capacity;
-            _cacheMap = new Dictionary<TKey, LinkedListNode<LruCacheItem>>(); // do not initialize it at the full capacity
+            _cacheMap = typeof(TKey) == typeof(byte[])
+                ? new Dictionary<TKey, LinkedListNode<LruCacheItem>>((IEqualityComparer<TKey>)Bytes.EqualityComparer)
+                : new Dictionary<TKey, LinkedListNode<LruCacheItem>>(); // do not initialize it at the full capacity
             _lruList = new LinkedList<LruCacheItem>();
         }
 
@@ -54,6 +57,11 @@ namespace Nethermind.Core
         [MethodImpl(MethodImplOptions.Synchronized)]
         public void Set(TKey key, TValue val)
         {
+            if (val == null)
+            {
+                Delete(key);
+            }
+
             if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem> node))
             {
                 node.Value.Value = val;
@@ -71,6 +79,16 @@ namespace Nethermind.Core
                 LinkedListNode<LruCacheItem> newNode = new LinkedListNode<LruCacheItem>(cacheItem);
                 _lruList.AddLast(newNode);
                 _cacheMap.Add(key, newNode);
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.Synchronized)]
+        public void Delete(TKey key)
+        {
+            if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem> node))
+            {
+                _lruList.Remove(node);
+                _cacheMap.Remove(key);
             }
         }
 

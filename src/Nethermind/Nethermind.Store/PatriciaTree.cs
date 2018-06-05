@@ -78,6 +78,7 @@ namespace Nethermind.Store
         }
 
         private static readonly LruCache<Keccak, Rlp> NodeCache = new LruCache<Keccak, Rlp>(16 * 1024);
+        private static readonly LruCache<byte[], byte[]> ValueCache = new LruCache<byte[], byte[]>(16 * 1024);
 
         public void UpdateRootHash()
         {
@@ -264,29 +265,39 @@ namespace Nethermind.Store
         [DebuggerStepThrough]
         public void Set(Nibble[] nibbles, Rlp rlp)
         {
+            throw new NotSupportedException();
             Set(nibbles, rlp.Bytes);
         }
 
         [DebuggerStepThrough]
         public virtual void Set(Nibble[] nibbles, byte[] value)
         {
+            throw new NotSupportedException();
             new TreeOperation(this, nibbles, value, true).Run();
         }
 
         public byte[] Get(byte[] rawKey)
         {
+            byte[] value = ValueCache.Get(rawKey);
+            if (value != null)
+            {
+                return value;
+            }
+
             return new TreeOperation(this, Nibbles.BytesToNibbleBytes(rawKey), null, false).Run();
         }
 
         [DebuggerStepThrough]
         public void Set(byte[] rawKey, byte[] value)
         {
+            ValueCache.Delete(rawKey);
             new TreeOperation(this, Nibbles.BytesToNibbleBytes(rawKey), value, true).Run();
         }
 
         [DebuggerStepThrough]
         public void Set(byte[] rawKey, Rlp value)
         {
+            ValueCache.Delete(rawKey);
             new TreeOperation(this, Nibbles.BytesToNibbleBytes(rawKey), value == null ? new byte[0] : value.Bytes, true).Run();
         }
 

@@ -426,9 +426,9 @@ namespace Ethereum.Test.Base
                 differences.Add($"GAS USED exp: {testHeader?.GasUsed ?? 0}, actual: {gasUsed}");
             }
 
-            if (headBlock.Transactions.Any() && testHeader.Bloom.ToString() != headBlock.Receipts.Last().Bloom.ToString())
+            if (headBlock.Transactions.Any() && testHeader.Bloom.ToString() != headBlock.Header.Bloom.ToString())
             {
-                differences.Add($"BLOOM exp: {testHeader.Bloom}, actual: {headBlock.Receipts.Last().Bloom}");
+                differences.Add($"BLOOM exp: {testHeader.Bloom}, actual: {headBlock.Header.Bloom}");
             }
 
             if (testHeader.StateRoot != stateProvider.StateRoot)
