@@ -173,12 +173,6 @@ namespace Nethermind.Blockchain
 
         public AddBlockResult SuggestBlock(Block block)
         {
-            // TODO: review where the ChainId should be set
-            foreach (Transaction transaction in block.Transactions)
-            {
-                transaction.ChainId = ChainId;
-            }
-
             if (block.Number == 0)
             {
                 if (BestSuggested != null)

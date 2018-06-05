@@ -17,6 +17,7 @@
  */
 
 using System;
+using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
@@ -207,6 +208,9 @@ namespace Nethermind.Mining
             GetOrAddCache(epoch);
         }
         
+        private readonly Stopwatch _cacheStopwatch = new Stopwatch();
+        
+        // TODO: in a separate thread
         private IEthashDataSet GetOrAddCache(uint epoch)
         {
             IEthashDataSet dataSet = _cacheCache.Get(epoch);
@@ -214,8 +218,11 @@ namespace Nethermind.Mining
             {
                 uint cacheSize = GetCacheSize(epoch);
                 Keccak seed = GetSeedHash(epoch);
-                if(_logger.IsDebugEnabled) _logger.Debug($"Building cache for epoch {epoch}");
+                if(_logger.IsInfoEnabled) _logger.Info($"Building cache for epoch {epoch}");
+                _cacheStopwatch.Restart();
                 dataSet = new EthashCache(cacheSize, seed.Bytes);
+                _cacheStopwatch.Stop();
+                if(_logger.IsInfoEnabled) _logger.Info($"Cache for epoch {epoch} built in {_cacheStopwatch.ElapsedMilliseconds}ms");
                 _cacheCache.Set(epoch, dataSet);
             }
            

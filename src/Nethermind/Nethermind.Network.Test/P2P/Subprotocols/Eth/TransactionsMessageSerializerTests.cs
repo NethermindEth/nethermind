@@ -31,7 +31,6 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
         {
             TransactionsMessageSerializer serializer = new TransactionsMessageSerializer();
             Transaction transaction = new Transaction();
-            transaction.ChainId = ChainId.MainNet;
             transaction.Data = new byte[] {1, 2, 3};
             transaction.GasLimit = 10;
             transaction.GasPrice = 100;

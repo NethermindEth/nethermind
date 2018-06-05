@@ -500,7 +500,6 @@ namespace Ethereum.Test.Base
         private static Transaction Convert(TransactionJson transactionJson)
         {
             Transaction transaction = new Transaction();
-            transaction.ChainId = ChainId.MainNet;
             transaction.Value = Hex.ToBytes(transactionJson.Value).ToUnsignedBigInteger();
             transaction.GasLimit = Hex.ToBytes(transactionJson.GasLimit).ToUnsignedBigInteger();
             transaction.GasPrice = Hex.ToBytes(transactionJson.GasPrice).ToUnsignedBigInteger();

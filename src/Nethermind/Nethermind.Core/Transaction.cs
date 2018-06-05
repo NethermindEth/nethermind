@@ -27,7 +27,6 @@ namespace Nethermind.Core
     [DebuggerDisplay("{Hash}, Value: {Value}, To: {To}, Gas: {GasLimit}")]
     public class Transaction
     {
-        public int ChainId { get; set; }
         public BigInteger Nonce { get; set; }
         public BigInteger GasPrice { get; set; }
         public BigInteger GasLimit { get; set; }
@@ -57,7 +56,6 @@ namespace Nethermind.Core
         public string ToString(string indent)
         {
             StringBuilder builder = new StringBuilder();
-            builder.AppendLine($"{indent}ChainId: {ChainId}");
             builder.AppendLine($"{indent}Gas Price: {GasPrice}");
             builder.AppendLine($"{indent}Gas Limit: {GasLimit}");
             builder.AppendLine($"{indent}To: {To}");
