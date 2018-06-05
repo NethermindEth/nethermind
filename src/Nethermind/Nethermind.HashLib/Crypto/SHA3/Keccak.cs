@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using Nethermind.HashLib.Extensions;
 
 namespace Nethermind.HashLib.Crypto.SHA3
@@ -49,8 +50,10 @@ namespace Nethermind.HashLib.Crypto.SHA3
 
         protected override void TransformBlock(byte[] a_data, int a_index)
         {
-            ulong[] data = Converters.ConvertBytesToULongs(a_data, a_index, BlockSize);
-
+            // TODO: review discussions on whether it is always safe (should be)
+            ReadOnlySpan<ulong> data = MemoryMarshal.Cast<byte, ulong>(a_data.AsSpan(a_index, BlockSize));
+            //ulong[] data= Converters.ConvertBytesToULongs(a_data, a_index, BlockSize);
+            
             for (int j = 0; j<BlockSize / 8; j++)
                 m_state[j] ^= data[j];
 
