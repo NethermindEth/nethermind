@@ -36,7 +36,6 @@ namespace Nethermind.Blockchain
         // TODO: automatically wrap DBs with caches
         private readonly LruCache<Keccak, Block> _blockCache = new LruCache<Keccak, Block>(64);
         private readonly LruCache<BigInteger, ChainLevelInfo> _blockInfoCache = new LruCache<BigInteger, ChainLevelInfo>(64);
-        private readonly LruCache<Keccak, TransactionReceipt[]> _receiptsCache = new LruCache<Keccak, TransactionReceipt[]>(64);
 
         private const int MaxQueueSize = 3_000_000;
 
@@ -200,7 +199,7 @@ namespace Nethermind.Blockchain
             }
 
             _blockDb.Set(block.Hash, Rlp.Encode(block).Bytes);
-            _blockCache.Set(block.Hash, block);
+            //_blockCache.Set(block.Hash, block);
 
             // TODO: when reviewing the entire data chain need to look at the transactional storing of level and block
             SetTotalDifficulty(block);
@@ -319,7 +318,6 @@ namespace Nethermind.Blockchain
             if (receipts != null)
             {
                 IReleaseSpec spec = _specProvider.GetSpec(number);
-                _receiptsCache.Set(blockHash, receipts);
                 _receiptsDb.Set(blockHash, Rlp.Encode(receipts.Select(r => Rlp.Encode(r, spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None)).ToArray()).Bytes);
             }
         }
@@ -535,12 +533,14 @@ namespace Nethermind.Blockchain
                 return block.Number;
             }
 
-            block = _blockDecoder.Decode(_blockDb.Get(blockHash).AsRlpContext(), RlpBehaviors.AllowExtraData);
-            if (block == null)
+            byte[] blockData = _blockDb.Get(blockHash);
+            if (blockData == null)
             {
                 throw new InvalidOperationException($"Not able to retrieve block number for an unknown block {blockHash}");
             }
 
+            block = _blockDecoder.Decode(blockData.AsRlpContext(), RlpBehaviors.AllowExtraData);
+            _blockCache.Set(blockHash, block);
             return block.Number;
         }
 
@@ -556,6 +556,7 @@ namespace Nethermind.Blockchain
                 }
 
                 block = _blockDecoder.Decode(data.AsRlpContext(), RlpBehaviors.AllowExtraData);
+                _blockCache.Set(blockHash, block);
             }
 
             BlockHeader header = block.Header;
@@ -613,14 +614,6 @@ namespace Nethermind.Blockchain
                 block.Header.TotalTransactions = blockInfo.TotalTransactions;
             }
 
-            TransactionReceipt[] receipts = _receiptsCache.Get(block.Hash);
-            if (receipts == null)
-            {
-                byte[] receiptsData = _receiptsDb.Get(block.Hash);
-                receipts = receiptsData == null ? null : Rlp.DecodeArray<TransactionReceipt>(receiptsData.AsRlpContext());
-            }
-
-            block.Receipts = receipts ?? new TransactionReceipt[0];
             return (block, blockInfo, level);
         }
 

@@ -100,7 +100,6 @@ namespace Nethermind.Blockchain
 
             receiptTree?.UpdateRootHash();
 
-            block.Receipts = receipts;
             block.Header.ReceiptsRoot = receiptTree?.RootHash ?? PatriciaTree.EmptyTreeHash;
             block.Header.Bloom = receipts.Length > 0 ? TransactionProcessor.BuildBloom(receipts.SelectMany(r => r.Logs).ToArray()) : Bloom.Empty; // TODO not tested anywhere at the time of writing
         }

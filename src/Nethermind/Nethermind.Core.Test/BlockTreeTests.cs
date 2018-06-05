@@ -381,17 +381,6 @@ namespace Nethermind.Core.Test
         }
 
         [Test]
-        public void Restores_receipts()
-        {
-            BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), new MemDb(), OlympicSpecProvider.Instance, NullLogger.Instance);
-            Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
-            AddToMain(blockTree, block0);
-
-            Block restored = blockTree.FindBlock(blockTree.Genesis.Hash, false);
-            Assert.AreEqual(1, restored.Receipts.Length);
-        }
-
-        [Test]
         public void Can_init_head_block_from_db()
         {
             Block genesisBlock = Build.A.Block.Genesis.TestObject;
