@@ -56,8 +56,12 @@ namespace Nethermind.Store
 
         public Keccak StateRoot
         {
-            get => _state.RootHash;
-            set => _state.RootHash = value;
+            get
+            {
+                _state.UpdateRootHash();
+                return _state.RootHash;
+            }
+            set =>_state.RootHash = value;
         }
 
         private readonly StateTree _state;
@@ -437,7 +441,7 @@ namespace Nethermind.Store
             _currentPosition = -1;
             _committedThisRound.Clear();
             _intraBlockCache.Clear();
-            _state.UpdateRootHash();
+            //_state.UpdateRootHash(); // why here?
         }
 
         private Account GetState(Address address)

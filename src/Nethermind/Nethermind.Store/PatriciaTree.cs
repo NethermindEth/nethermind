@@ -130,6 +130,11 @@ namespace Nethermind.Store
 
         private void SetRootHash(Keccak value, bool resetObjects)
         {
+            if (_rootHash == value)
+            {
+                return;
+            }
+
             _rootHash = value;
             if (_rootHash == Keccak.EmptyTreeHash)
             {
