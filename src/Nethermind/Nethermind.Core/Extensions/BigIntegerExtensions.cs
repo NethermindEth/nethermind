@@ -31,37 +31,17 @@ namespace Nethermind.Core.Extensions
             return BigInteger.Abs(@this);
         }
 
-        // TODO: remove PadLeft here (and test) - 0.3% allocations
         public static byte[] ToBigEndianByteArray(this BigInteger bigInteger, int outputLength = -1)
         {
-            byte[] fromBigInteger = bigInteger.ToByteArray();
-            int trailingZeros = fromBigInteger.TrailingZerosCount();
-            if (fromBigInteger.Length == trailingZeros)
+            byte[] result = bigInteger.ToByteArray(false, true);
+            if (result[0] == 0 && result.Length != 1)
             {
-                return new byte[outputLength == -1 ? 1 : outputLength];
-            }
-
-            byte[] result = new byte[fromBigInteger.Length - trailingZeros];
-            for (int i = 0; i < result.Length; i++)
-            {
-                result[fromBigInteger.Length - trailingZeros - 1 - i] = fromBigInteger[i];
-            }
-
-            if (bigInteger.Sign < 0 && outputLength != -1)
-            {
-                byte[] newResult = new byte[outputLength];
-                Buffer.BlockCopy(result, 0, newResult, outputLength - result.Length, result.Length);
-                for (int i = 0; i < outputLength - result.Length; i++)
-                {
-                    newResult[i] = 0xff;
-                }
-
-                return newResult;
+                result = result.Slice(1, result.Length - 1);
             }
 
             if (outputLength != -1)
             {
-                return result.PadLeft(outputLength);
+                result = result.PadLeft(outputLength, bigInteger.Sign < 0 ? (byte)0xff : (byte)0x00);
             }
 
             return result;
@@ -109,7 +89,7 @@ namespace Nethermind.Core.Extensions
             {
                 throw new ArgumentException($"nameof(n) should be positive", nameof(n));
             }
-            
+
             if (n == 0)
             {
                 return 0;
