@@ -60,17 +60,6 @@ namespace Nethermind.Store
         public Node Node { get; set; }
         public bool IsRoot { get; set; }
 
-        public bool IsDirty
-        {
-            get
-            {
-                if (Node == null)
-                {
-                    return false;
-                }
-
-                return Node.IsDirty;
-            }
-        }
+        public bool IsDirty => Node != null && Node.IsDirty;
     }
 }

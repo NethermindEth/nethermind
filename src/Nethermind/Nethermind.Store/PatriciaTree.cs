@@ -17,6 +17,7 @@
  */
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -28,6 +29,53 @@ namespace Nethermind.Store
     [DebuggerDisplay("{RootHash}")]
     public class PatriciaTree
     {
+        private static readonly LruCache<Keccak, Rlp> NodeCache = new LruCache<Keccak, Rlp>(64 * 1024);
+        private static readonly LruCache<byte[], byte[]> ValueCache = new LruCache<byte[], byte[]>(128 * 1024);
+
+        /// <summary>
+        ///     0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421
+        /// </summary>
+        public static readonly Keccak EmptyTreeHash = Keccak.EmptyTreeHash;
+
+        private static readonly Stack<StackedNode> NodeStack = new Stack<StackedNode>(); // TODO: if switching to parallel then need to pool tree operations with separate node stacks?, if...
+
+        private readonly IDb _db;
+
+        private Keccak _rootHash;
+
+        internal NodeRef RootRef;
+
+        public PatriciaTree()
+            : this(NullDb.Instance, EmptyTreeHash)
+        {
+        }
+
+        public PatriciaTree(IDb db)
+            : this(db, EmptyTreeHash)
+        {
+        }
+
+        public PatriciaTree(IDb db, Keccak rootHash)
+        {
+            _db = db;
+            RootHash = rootHash;
+        }
+
+        internal Node Root
+        {
+            get
+            {
+                RootRef?.ResolveNode(this);
+                return RootRef?.Node;
+            }
+        }
+
+        public Keccak RootHash
+        {
+            get => _rootHash;
+            set => SetRootHash(value, true);
+        }
+
         public void Commit(bool wrapInBatch = true)
         {
             if (RootRef == null)
@@ -77,55 +125,10 @@ namespace Nethermind.Store
             }
         }
 
-        private static readonly LruCache<Keccak, Rlp> NodeCache = new LruCache<Keccak, Rlp>(64 * 1024);
-        private static readonly LruCache<byte[], byte[]> ValueCache = new LruCache<byte[], byte[]>(128 * 1024);
-
         public void UpdateRootHash()
         {
             RootRef?.ResolveKey();
             SetRootHash(RootRef?.KeccakOrRlp.GetOrComputeKeccak() ?? EmptyTreeHash, false);
-        }
-
-        /// <summary>
-        ///     0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421
-        /// </summary>
-        public static readonly Keccak EmptyTreeHash = Keccak.EmptyTreeHash;
-
-        private readonly IDb _db;
-
-        internal NodeRef RootRef;
-
-        internal Node Root
-        {
-            get
-            {
-                RootRef?.ResolveNode(this);
-                return RootRef?.Node;
-            }
-        }
-
-        public PatriciaTree()
-            : this(NullDb.Instance, EmptyTreeHash)
-        {
-        }
-
-        public PatriciaTree(IDb db)
-            : this(db, EmptyTreeHash)
-        {
-        }
-
-        public PatriciaTree(IDb db, Keccak rootHash)
-        {
-            _db = db;
-            RootHash = rootHash;
-        }
-
-        private Keccak _rootHash;
-
-        public Keccak RootHash
-        {
-            get => _rootHash;
-            set => SetRootHash(value, true);
         }
 
         private void SetRootHash(Keccak value, bool resetObjects)
@@ -278,7 +281,7 @@ namespace Nethermind.Store
         public virtual void Set(Nibble[] nibbles, byte[] value)
         {
             throw new NotSupportedException();
-            new TreeOperation(this, nibbles, value, true).Run();
+            Run(nibbles.ToLooseByteArray(), value, true);
         }
 
         public byte[] Get(byte[] rawKey)
@@ -289,21 +292,21 @@ namespace Nethermind.Store
                 return value;
             }
 
-            return new TreeOperation(this, Nibbles.BytesToNibbleBytes(rawKey), null, false).Run();
+            return Run(Nibbles.BytesToNibbleBytes(rawKey), null, false);
         }
 
         [DebuggerStepThrough]
         public void Set(byte[] rawKey, byte[] value)
         {
             ValueCache.Delete(rawKey);
-            new TreeOperation(this, Nibbles.BytesToNibbleBytes(rawKey), value, true).Run();
+            Run(Nibbles.BytesToNibbleBytes(rawKey), value, true);
         }
 
         [DebuggerStepThrough]
         public void Set(byte[] rawKey, Rlp value)
         {
             ValueCache.Delete(rawKey);
-            new TreeOperation(this, Nibbles.BytesToNibbleBytes(rawKey), value == null ? new byte[0] : value.Bytes, true).Run();
+            Run(Nibbles.BytesToNibbleBytes(rawKey), value == null ? new byte[0] : value.Bytes, true);
         }
 
         internal Node GetNode(KeccakOrRlp keccakOrRlp)
@@ -316,7 +319,7 @@ namespace Nethermind.Store
             }
             else
             {
-                rlp = new Rlp(keccakOrRlp.Bytes);  
+                rlp = new Rlp(keccakOrRlp.Bytes);
             }
 
             return RlpDecode(rlp);
@@ -354,37 +357,510 @@ namespace Nethermind.Store
             //            }
         }
 
-        //        internal KeccakOrRlp StoreNode(Node node, bool isRoot = false)
-        //        {
-        //            if (isRoot && node == null)
-        //            {
-        ////                DeleteNode(new KeccakOrRlp(RootHash));
-        //                RootRef = null;
-        ////                _db.Remove(RootHash);
-        //                RootHash = EmptyTreeHash;
-        //                return new KeccakOrRlp(EmptyTreeHash);
-        //            }
-        //
-        //            if (node == null)
-        //            {
-        //                return null;
-        //            }
-        //
-        //            Rlp rlp = RlpEncode(node);
-        //            KeccakOrRlp key = new KeccakOrRlp(rlp);
-        //            if (key.IsKeccak || isRoot)
-        //            {
-        //                Keccak keyKeccak = key.GetOrComputeKeccak();
-        //                _db[keyKeccak.Bytes] = rlp.Bytes;
-        //
-        //                if (isRoot)
-        //                {
-        //                    RootRef = node;
-        //                    RootHash = keyKeccak;
-        //                }
-        //            }
-        //
-        //            return key;
-        //        }
+        //public TreeOperation(PatriciaTree tree, byte[] looseByteArrayOfNibbles, byte[] updateValue, bool isUpdate, bool ignoreMissingDelete = true)
+        //{
+        //    if (isUpdate)
+        //    {
+        //        NodeStack.Clear();
+        //    }
+
+        //    _tree = tree;
+        //    context.UpdatePath = looseByteArrayOfNibbles;
+        //    if (isUpdate)
+        //    {
+        //        context.UpdateValue = updateValue.Length == 0 ? null : updateValue;
+        //    }
+
+        //    context.IsUpdate = isUpdate;
+        //    context.IgnoreMissingDelete = ignoreMissingDelete;
+        //}
+
+        //public TreeOperation(PatriciaTree tree, Nibble[] updatePath, byte[] updateValue, bool isUpdate, bool ignoreMissingDelete = true)
+        //{
+        //    _tree = tree;
+        //    context.UpdatePath = updatePath.ToLooseByteArray();
+        //    if (isUpdate)
+        //    {
+        //        context.UpdateValue = updateValue.Length == 0 ? null : updateValue;
+        //    }
+
+        //    context.IsUpdate = isUpdate;
+        //    context.IgnoreMissingDelete = ignoreMissingDelete;
+        //}
+
+        public byte[] Run(byte[] updatePath, byte[] updateValue, bool isUpdate, bool ignoreMissingDelete = true)
+        {
+            if (isUpdate)
+            {
+                NodeStack.Clear();
+            }
+
+            if (isUpdate && updateValue.Length == 0)
+            {
+                updateValue = null;
+            }
+
+            if (RootRef == null)
+            {
+                if (!isUpdate || updateValue == null)
+                {
+                    return null;
+                }
+
+                Leaf leaf = new Leaf(new HexPrefix(true, updatePath), updateValue);
+                leaf.IsDirty = true;
+                RootRef = new NodeRef(leaf, true);
+                return updateValue;
+            }
+
+            RootRef.ResolveNode(this);
+            TraverseContext context = new TraverseContext(updatePath, updateValue, isUpdate, ignoreMissingDelete);
+            return TraverseNode(RootRef.Node, context);
+        }
+
+        private byte[] TraverseNode(Node node, TraverseContext context)
+        {
+            if (node is Leaf leaf)
+            {
+                return TraverseLeaf(leaf, context);
+            }
+
+            if (node is Branch branch)
+            {
+                return TraverseBranch(branch, context);
+            }
+
+            if (node is Extension extension)
+            {
+                return TraverseExtension(extension, context);
+            }
+
+            throw new NotImplementedException($"Unknown node type {typeof(Node).Name}");
+        }
+
+        // TODO: this can be removed now but is lower priority temporarily while the patricia rewrite testing is in progress
+        private void ConnectNodes(Node node)
+        {
+//            Keccak previousRootHash = _tree.RootHash;
+
+            bool isRoot = NodeStack.Count == 0;
+            NodeRef nextNodeRef = node == null ? null : new NodeRef(node, isRoot);
+            Node nextNode = node;
+
+            // nodes should immutable here I guess
+            while (!isRoot)
+            {
+                StackedNode parentOnStack = NodeStack.Pop();
+                node = parentOnStack.Node;
+
+                isRoot = NodeStack.Count == 0;
+
+                if (node is Leaf leaf)
+                {
+                    throw new InvalidOperationException($"{nameof(Leaf)} {leaf} cannot be a parent of {nextNodeRef}");
+                }
+
+                if (node is Branch branch)
+                {
+//                    _tree.DeleteNode(branch.Nodes[parentOnStack.PathIndex], true);
+                    if (!(nextNodeRef == null && !branch.IsValidWithOneNodeLess))
+                    {
+                        Branch newBranch = new Branch();
+                        newBranch.IsDirty = true;
+                        for (int i = 0; i < 16; i++)
+                        {
+                            newBranch.Nodes[i] = branch.Nodes[i];
+                        }
+
+                        newBranch.Value = branch.Value;
+                        newBranch.Nodes[parentOnStack.PathIndex] = nextNodeRef;
+
+                        nextNodeRef = new NodeRef(newBranch, isRoot);
+                        nextNode = newBranch;
+                    }
+                    else
+                    {
+                        if (branch.Value.Length != 0)
+                        {
+                            Leaf leafFromBranch = new Leaf(new HexPrefix(true), branch.Value);
+                            leafFromBranch.IsDirty = true;
+                            nextNodeRef = new NodeRef(leafFromBranch, isRoot);
+                            nextNode = leafFromBranch;
+                        }
+                        else
+                        {
+                            int childNodeIndex = 0;
+                            for (int i = 0; i < 16; i++)
+                            {
+                                if (i != parentOnStack.PathIndex && branch.Nodes[i] != null)
+                                {
+                                    childNodeIndex = i;
+                                    break;
+                                }
+                            }
+
+                            NodeRef childNodeRef = branch.Nodes[childNodeIndex];
+                            if (childNodeRef == null)
+                            {
+                                throw new InvalidOperationException("Before updating branch should have had at least two non-empty children");
+                            }
+
+                            // need to restore this node now?
+                            if (childNodeRef.Node == null)
+                            {
+                            }
+
+                            childNodeRef.ResolveNode(this);
+                            Node childNode = childNodeRef.Node;
+                            if (childNode is Branch)
+                            {
+                                Extension extensionFromBranch = new Extension(new HexPrefix(false, (byte)childNodeIndex), childNodeRef);
+                                extensionFromBranch.IsDirty = true;
+                                nextNodeRef = new NodeRef(extensionFromBranch, isRoot);
+                                nextNode = extensionFromBranch;
+                            }
+                            else if (childNode is Extension childExtension)
+                            {
+//                                _tree.DeleteNode(childNodeHash, true);
+                                Extension extensionFromBranch = new Extension(new HexPrefix(false, Bytes.Concat((byte)childNodeIndex, childExtension.Path)), childExtension.NextNodeRef);
+                                extensionFromBranch.IsDirty = true;
+                                nextNodeRef = new NodeRef(extensionFromBranch, isRoot);
+                                nextNode = extensionFromBranch;
+                            }
+                            else if (childNode is Leaf childLeaf)
+                            {
+//                                _tree.DeleteNode(childNodeHash, true);
+                                Leaf leafFromBranch = new Leaf(new HexPrefix(true, Bytes.Concat((byte)childNodeIndex, childLeaf.Path)), childLeaf.Value);
+                                leafFromBranch.IsDirty = true;
+                                nextNodeRef = new NodeRef(leafFromBranch, isRoot);
+                                nextNode = leafFromBranch;
+                            }
+                            else
+                            {
+                                throw new InvalidOperationException($"Unknown node type {nextNode.GetType().Name}");
+                            }
+                        }
+                    }
+                }
+                else if (node is Extension extension)
+                {
+//                    _tree.DeleteNode(extension.NextNodeRef, true);
+                    if (nextNode is Leaf childLeaf)
+                    {
+                        Leaf leafFromExtension = new Leaf(new HexPrefix(true, Bytes.Concat(extension.Path, childLeaf.Path)), childLeaf.Value);
+                        leafFromExtension.IsDirty = true;
+                        nextNodeRef = new NodeRef(leafFromExtension, isRoot);
+                        nextNode = leafFromExtension;
+                    }
+                    else if (nextNode is Extension childExtension)
+                    {
+                        Extension extensionFromExtension = new Extension(new HexPrefix(false, Bytes.Concat(extension.Path, childExtension.Path)), childExtension.NextNodeRef);
+                        extensionFromExtension.IsDirty = true;
+                        nextNodeRef = new NodeRef(extensionFromExtension, isRoot);
+                        nextNode = extensionFromExtension;
+                    }
+                    else if (nextNode is Branch)
+                    {
+                        Extension newExtension = new Extension(extension.Key);
+                        newExtension.IsDirty = true;
+                        newExtension.NextNodeRef = nextNodeRef;
+                        nextNodeRef = new NodeRef(newExtension, isRoot);
+                        nextNode = newExtension;
+                    }
+                    else
+                    {
+                        throw new InvalidOperationException($"Unknown node type {nextNode?.GetType().Name}");
+                    }
+                }
+                else
+                {
+                    throw new InvalidOperationException($"Unknown node type {node.GetType().Name}");
+                }
+            }
+
+            if (!nextNodeRef?.IsRoot ?? false)
+            {
+                throw new InvalidOperationException("Non-root being made root");
+            }
+
+            RootRef = nextNodeRef;
+
+//            _tree.DeleteNode(new KeccakOrRlp(previousRootHash), true);
+        }
+
+        private byte[] TraverseBranch(Branch node, TraverseContext context)
+        {
+            if (context.RemainingUpdatePathLength == 0)
+            {
+                if (!context.IsUpdate)
+                {
+                    return node.Value;
+                }
+
+                if (context.UpdateValue == null)
+                {
+                    if (node.Value == null)
+                    {
+                        return null;
+                    }
+
+                    ConnectNodes(null);
+                }
+                else if (Bytes.UnsafeCompare(context.UpdateValue, node.Value))
+                {
+                    return context.UpdateValue;
+                }
+                else
+                {
+                    Branch newBranch = new Branch(node.Nodes, context.UpdateValue);
+                    newBranch.IsDirty = true;
+                    ConnectNodes(newBranch);
+                }
+
+                return context.UpdateValue;
+            }
+
+            NodeRef nextNodeRef = node.Nodes[context.UpdatePath[context.CurrentIndex]];
+            if (context.IsUpdate)
+            {
+                NodeStack.Push(new StackedNode(node, context.UpdatePath[context.CurrentIndex]));
+            }
+
+            context.CurrentIndex++;
+
+            if (nextNodeRef == null)
+            {
+                if (!context.IsUpdate)
+                {
+                    return null;
+                }
+
+                if (context.UpdateValue == null)
+                {
+                    if (context.IgnoreMissingDelete)
+                    {
+                        return null;
+                    }
+
+                    throw new InvalidOperationException($"Could not find the leaf node to delete: {Hex.FromBytes(context.UpdatePath, false)}");
+                }
+
+                byte[] leafPath = context.UpdatePath.Slice(context.CurrentIndex, context.UpdatePath.Length - context.CurrentIndex);
+                Leaf leaf = new Leaf(new HexPrefix(true, leafPath), context.UpdateValue);
+                leaf.IsDirty = true;
+                ConnectNodes(leaf);
+
+                return context.UpdateValue;
+            }
+
+            nextNodeRef.ResolveNode(this);
+            Node nextNode = nextNodeRef.Node;
+            return TraverseNode(nextNode, context);
+        }
+
+        private byte[] TraverseLeaf(Leaf node, TraverseContext context)
+        {
+            byte[] remaining = context.GetRemainingUpdatePath();
+            (byte[] shorterPath, byte[] longerPath) = remaining.Length - node.Path.Length < 0
+                ? (remaining, node.Path)
+                : (node.Path, remaining);
+
+            byte[] shorterPathValue;
+            byte[] longerPathValue;
+
+            if (Bytes.UnsafeCompare(shorterPath, node.Path))
+            {
+                shorterPathValue = node.Value;
+                longerPathValue = context.UpdateValue;
+            }
+            else
+            {
+                shorterPathValue = context.UpdateValue;
+                longerPathValue = node.Value;
+            }
+
+            int extensionLength = 0;
+            for (int i = 0; i < Math.Min(shorterPath.Length, longerPath.Length) && shorterPath[i] == longerPath[i]; i++, extensionLength++)
+            {
+            }
+
+            if (extensionLength == shorterPath.Length && extensionLength == longerPath.Length)
+            {
+                if (!context.IsUpdate)
+                {
+                    return node.Value;
+                }
+
+                if (context.UpdateValue == null)
+                {
+                    ConnectNodes(null);
+                    return context.UpdateValue;
+                }
+
+                if (!Bytes.UnsafeCompare(node.Value, context.UpdateValue))
+                {
+                    Leaf newLeaf = new Leaf(new HexPrefix(true, remaining), context.UpdateValue);
+                    newLeaf.IsDirty = true;
+                    ConnectNodes(newLeaf);
+                    return context.UpdateValue;
+                }
+
+                return context.UpdateValue;
+            }
+
+            if (!context.IsUpdate)
+            {
+                return null;
+            }
+
+            if (context.UpdateValue == null)
+            {
+                if (context.IgnoreMissingDelete)
+                {
+                    return null;
+                }
+
+                throw new InvalidOperationException($"Could not find the leaf node to delete: {Hex.FromBytes(context.UpdatePath, false)}");
+            }
+
+            if (extensionLength != 0)
+            {
+                byte[] extensionPath = longerPath.Slice(0, extensionLength);
+                Extension extension = new Extension(new HexPrefix(false, extensionPath));
+                extension.IsDirty = true;
+                NodeStack.Push(new StackedNode(extension, 0));
+            }
+
+            Branch branch = new Branch();
+            branch.IsDirty = true;
+            if (extensionLength == shorterPath.Length)
+            {
+                branch.Value = shorterPathValue;
+            }
+            else
+            {
+                byte[] shortLeafPath = shorterPath.Slice(extensionLength + 1, shorterPath.Length - extensionLength - 1);
+                Leaf shortLeaf = new Leaf(new HexPrefix(true, shortLeafPath), shorterPathValue);
+                shortLeaf.IsDirty = true;
+                branch.Nodes[shorterPath[extensionLength]] = new NodeRef(shortLeaf);
+            }
+
+            byte[] leafPath = longerPath.Slice(extensionLength + 1, longerPath.Length - extensionLength - 1);
+            Leaf leaf = new Leaf(new HexPrefix(true, leafPath), longerPathValue);
+            leaf.IsDirty = true;
+            NodeStack.Push(new StackedNode(branch, longerPath[extensionLength]));
+            ConnectNodes(leaf);
+
+            return context.UpdateValue;
+        }
+
+        private byte[] TraverseExtension(Extension node, TraverseContext context)
+        {
+            byte[] remaining = context.GetRemainingUpdatePath();
+            int extensionLength = 0;
+            for (int i = 0; i < Math.Min(remaining.Length, node.Path.Length) && remaining[i] == node.Path[i]; i++, extensionLength++)
+            {
+            }
+
+            if (extensionLength == node.Path.Length)
+            {
+                context.CurrentIndex += extensionLength;
+                if (context.IsUpdate)
+                {
+                    NodeStack.Push(new StackedNode(node, 0));
+                }
+
+                node.NextNodeRef.ResolveNode(this);
+                return TraverseNode(node.NextNodeRef.Node, context);
+            }
+
+            if (!context.IsUpdate)
+            {
+                return null;
+            }
+
+            if (context.UpdateValue == null)
+            {
+                if (context.IgnoreMissingDelete)
+                {
+                    return null;
+                }
+
+                throw new InvalidOperationException("Could find the leaf node to delete: {Hex.FromBytes(context.UpdatePath, false)}");
+            }
+
+            if (extensionLength != 0)
+            {
+                byte[] extensionPath = node.Path.Slice(0, extensionLength);
+                Extension extension = new Extension(new HexPrefix(false, extensionPath));
+                extension.IsDirty = true;
+                NodeStack.Push(new StackedNode(extension, 0));
+            }
+
+            Branch branch = new Branch();
+            branch.IsDirty = true;
+            if (extensionLength == remaining.Length)
+            {
+                branch.Value = context.UpdateValue;
+            }
+            else
+            {
+                byte[] path = remaining.Slice(extensionLength + 1, remaining.Length - extensionLength - 1);
+                Leaf shortLeaf = new Leaf(new HexPrefix(true, path), context.UpdateValue);
+                shortLeaf.IsDirty = true;
+                branch.Nodes[remaining[extensionLength]] = new NodeRef(shortLeaf);
+            }
+
+            if (node.Path.Length - extensionLength > 1)
+            {
+                byte[] extensionPath = node.Path.Slice(extensionLength + 1, node.Path.Length - extensionLength - 1);
+                Extension secondExtension = new Extension(new HexPrefix(false, extensionPath), node.NextNodeRef);
+                secondExtension.IsDirty = true;
+                branch.Nodes[node.Path[extensionLength]] = new NodeRef(secondExtension);
+            }
+            else
+            {
+                branch.Nodes[node.Path[extensionLength]] = node.NextNodeRef;
+            }
+
+            ConnectNodes(branch);
+            return context.UpdateValue;
+        }
+
+        private struct TraverseContext
+        {
+            public byte[] UpdatePath { get; }
+            public byte[] UpdateValue { get; }
+            public bool IsUpdate { get; }
+            public bool IgnoreMissingDelete { get; }
+            public int CurrentIndex { get; set; }
+            public int RemainingUpdatePathLength => UpdatePath.Length - CurrentIndex;
+
+            public byte[] GetRemainingUpdatePath()
+            {
+                return UpdatePath.Slice(CurrentIndex, RemainingUpdatePathLength);
+            }
+
+            public TraverseContext(byte[] updatePath, byte[] updateValue, bool isUpdate, bool ignoreMissingDelete = true)
+            {
+                UpdatePath = updatePath;
+                UpdateValue = updateValue;
+                IsUpdate = isUpdate;
+                IgnoreMissingDelete = ignoreMissingDelete;
+                CurrentIndex = 0;
+            }
+        }
+
+        private struct StackedNode
+        {
+            public StackedNode(Node node, int pathIndex)
+            {
+                Node = node;
+                PathIndex = pathIndex;
+            }
+
+            public Node Node { get; }
+            public int PathIndex { get; }
+        }
     }
 }

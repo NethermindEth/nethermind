@@ -50,7 +50,6 @@ namespace Nethermind.Store
             set => _value = value ?? throw new ArgumentNullException(nameof(value));
         }
 
-        public bool IsValid => (Value.Length > 0 ? 1 : 0) + Nodes.Count(n => n != null) > 1;
         public bool IsValidWithOneNodeLess => (Value.Length > 0 ? 1 : 0) + Nodes.Count(n => n != null) - 1 > 1;
 
         public override string ToString()
