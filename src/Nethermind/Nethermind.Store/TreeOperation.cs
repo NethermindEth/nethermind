@@ -142,35 +142,44 @@ namespace Nethermind.Store
 
                 if (node is Branch branch)
                 {
-                    Branch newBranch = new Branch();
-                    newBranch.IsDirty = true;
-                    for (int i = 0; i < 16; i++)
-                    {
-                        newBranch.Nodes[i] = branch.Nodes[i];
-                    }
-
-                    newBranch.Value = branch.Value;
-                    newBranch.Nodes[parentOnStack.PathIndex] = nextNodeRef;
-
 //                    _tree.DeleteNode(branch.Nodes[parentOnStack.PathIndex], true);
-                    if (newBranch.IsValid)
+                    if (!(nextNodeRef == null && !branch.IsValidWithOneNodeLess))
                     {
+                        Branch newBranch = new Branch();
+                        newBranch.IsDirty = true;
+                        for (int i = 0; i < 16; i++)
+                        {
+                            newBranch.Nodes[i] = branch.Nodes[i];
+                        }
+
+                        newBranch.Value = branch.Value;
+                        newBranch.Nodes[parentOnStack.PathIndex] = nextNodeRef;
+
                         nextNodeRef = new NodeRef(newBranch, isRoot);
                         nextNode = newBranch;
                     }
                     else
                     {
-                        if (newBranch.Value.Length != 0)
+                        if (branch.Value.Length != 0)
                         {
-                            Leaf leafFromBranch = new Leaf(new HexPrefix(true), newBranch.Value);
+                            Leaf leafFromBranch = new Leaf(new HexPrefix(true), branch.Value);
                             leafFromBranch.IsDirty = true;
                             nextNodeRef = new NodeRef(leafFromBranch, isRoot);
                             nextNode = leafFromBranch;
                         }
                         else
                         {
-                            int childNodeIndex = Array.FindIndex(newBranch.Nodes, n => n != null);
-                            NodeRef childNodeRef = newBranch.Nodes[childNodeIndex];
+                            int childNodeIndex = 0;
+                            for (int i = 0; i < 16; i++)
+                            {
+                                if (i != parentOnStack.PathIndex && branch.Nodes[i] != null)
+                                {
+                                    childNodeIndex = i;
+                                    break;
+                                }
+                            }
+
+                            NodeRef childNodeRef = branch.Nodes[childNodeIndex];
                             if (childNodeRef == null)
                             {
                                 throw new InvalidOperationException("Before updating branch should have had at least two non-empty children");
@@ -270,7 +279,16 @@ namespace Nethermind.Store
 
                 if (_updateValue == null)
                 {
+                    if (node.Value == null)
+                    {
+                        return null;
+                    }
+
                     ConnectNodes(null);
+                }
+                else if (Bytes.UnsafeCompare(_updateValue, node.Value))
+                {
+                    return _updateValue;
                 }
                 else
                 {
