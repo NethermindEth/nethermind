@@ -325,69 +325,6 @@ namespace Nethermind.Store
             return RlpDecode(rlp);
         }
 
-        // TODO: this would only be needed with pruning?
-        internal void DeleteNode(KeccakOrRlp hash, bool ignoreChildren = false)
-        {
-            //            if (hash == null || !hash.IsKeccak)
-            //            {
-            //                return;
-            //            }
-            //
-            //            Keccak thisNodeKeccak = hash.GetOrComputeKeccak();
-            //            Node node = ignoreChildren ? null : RlpDecode(new Rlp(_db[thisNodeKeccak]));
-            //            _db.Remove(thisNodeKeccak);
-            //
-            //            if (ignoreChildren)
-            //            {
-            //                return;
-            //            }
-            //
-            //            if (node is Extension extension)
-            //            {
-            //                DeleteNode(extension.NextNodeRef, true);
-            //                _db.Remove(hash.GetOrComputeKeccak());
-            //            }
-            //
-            //            if (node is Branch branch)
-            //            {
-            //                foreach (KeccakOrRlp subnode in branch.Nodes)
-            //                {
-            //                    DeleteNode(subnode, true);
-            //                }
-            //            }
-        }
-
-        //public TreeOperation(PatriciaTree tree, byte[] looseByteArrayOfNibbles, byte[] updateValue, bool isUpdate, bool ignoreMissingDelete = true)
-        //{
-        //    if (isUpdate)
-        //    {
-        //        NodeStack.Clear();
-        //    }
-
-        //    _tree = tree;
-        //    context.UpdatePath = looseByteArrayOfNibbles;
-        //    if (isUpdate)
-        //    {
-        //        context.UpdateValue = updateValue.Length == 0 ? null : updateValue;
-        //    }
-
-        //    context.IsUpdate = isUpdate;
-        //    context.IgnoreMissingDelete = ignoreMissingDelete;
-        //}
-
-        //public TreeOperation(PatriciaTree tree, Nibble[] updatePath, byte[] updateValue, bool isUpdate, bool ignoreMissingDelete = true)
-        //{
-        //    _tree = tree;
-        //    context.UpdatePath = updatePath.ToLooseByteArray();
-        //    if (isUpdate)
-        //    {
-        //        context.UpdateValue = updateValue.Length == 0 ? null : updateValue;
-        //    }
-
-        //    context.IsUpdate = isUpdate;
-        //    context.IgnoreMissingDelete = ignoreMissingDelete;
-        //}
-
         public byte[] Run(byte[] updatePath, byte[] updateValue, bool isUpdate, bool ignoreMissingDelete = true)
         {
             if (isUpdate)
