@@ -38,11 +38,13 @@ namespace Nethermind.Blockchain
     {
         private static readonly BigInteger MinGasPriceForMining = 1;
         private readonly IBlockProcessor _blockProcessor;
+        private readonly IEthereumSigner _signer;
         private readonly IBlockTree _blockTree;
         private readonly IDifficultyCalculator _difficultyCalculator;
         private readonly ILogger _logger;
         private readonly ISealEngine _sealEngine;
 
+        private readonly BlockingCollection<Block> _recoveryQueue = new BlockingCollection<Block>(new ConcurrentQueue<Block>());
         private readonly BlockingCollection<Block> _blockQueue = new BlockingCollection<Block>(new ConcurrentQueue<Block>());
         private readonly ITransactionStore _transactionStore;
 
@@ -52,6 +54,7 @@ namespace Nethermind.Blockchain
             ITransactionStore transactionStore,
             IDifficultyCalculator difficultyCalculator,
             IBlockProcessor blockProcessor,
+            IEthereumSigner signer,
             ILogger logger)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
@@ -62,6 +65,7 @@ namespace Nethermind.Blockchain
             _difficultyCalculator = difficultyCalculator;
             _sealEngine = sealEngine;
             _blockProcessor = blockProcessor;
+            _signer = signer;
         }
 
         private void OnNewBestBlock(object sender, BlockEventArgs blockEventArgs)
@@ -78,12 +82,15 @@ namespace Nethermind.Blockchain
         private CancellationTokenSource _loopCancellationSource;
         private CancellationTokenSource _miningCancellation;
 
+        private Task _recoveryTask;
         private Task _processorTask;
 
         public async Task StopAsync(bool processRamainingBlocks)
         {
             if (processRamainingBlocks)
             {
+                _recoveryQueue.CompleteAdding();
+                await _recoveryTask;
                 _blockQueue.CompleteAdding();
             }
             else
@@ -91,12 +98,43 @@ namespace Nethermind.Blockchain
                 _loopCancellationSource.Cancel();
             }
 
-            await _processorTask;
+            await Task.WhenAll(_recoveryTask, _processorTask);
         }
 
         public void Start()
         {
             _loopCancellationSource = new CancellationTokenSource();
+            _recoveryTask = Task.Factory.StartNew(
+                RunRecoveryLoop,
+                _loopCancellationSource.Token,
+                TaskCreationOptions.None,
+                TaskScheduler.Default).ContinueWith(t =>
+            {
+                if (t.IsFaulted)
+                {
+                    if (_logger.IsErrorEnabled)
+                    {
+                        _logger.Error($"{nameof(BlockchainProcessor)} encountered an exception.", t.Exception);
+                    }
+
+                    throw t.Exception;
+                }
+                else if (t.IsCanceled)
+                {
+                    if (_logger.IsInfoEnabled)
+                    {
+                        _logger.Info($"{nameof(BlockchainProcessor)} stopped.");
+                    }
+                }
+                else if (t.IsCompleted)
+                {
+                    if (_logger.IsInfoEnabled)
+                    {
+                        _logger.Info($"{nameof(BlockchainProcessor)} complete.");
+                    }
+                }
+            });
+
             _processorTask = Task.Factory.StartNew(
                 RunProcessingLoop,
                 _loopCancellationSource.Token,
@@ -127,6 +165,26 @@ namespace Nethermind.Blockchain
                     }
                 }
             });
+        }
+
+        private void RunRecoveryLoop()
+        {   
+            if (_logger.IsInfoEnabled)
+            {
+                _processingWatch.Start();
+                _logger.Info($"Starting recovery loop - {_blockQueue.Count} blocks waiting in the queue.");
+            }
+
+            foreach (Block block in _recoveryQueue.GetConsumingEnumerable(_loopCancellationSource.Token))
+            {
+                if (_logger.IsInfoEnabled)
+                {
+                    _logger.Debug($"Recovering addresses for block {block.ToString(Block.Format.Short)}).");
+                }
+
+                _signer.RecoverAddresses(block);
+                _blockQueue.Add(block);
+            }
         }
 
         private void RunProcessingLoop()
@@ -190,7 +248,7 @@ namespace Nethermind.Blockchain
                 _logger.Debug($"Enqueuing a new block {block.ToString(Block.Format.Short)} for processing.");
             }
 
-            _blockQueue.Add(block);
+            _recoveryQueue.Add(block);
 
             if (_logger.IsDebugEnabled)
             {

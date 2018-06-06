@@ -330,10 +330,10 @@ namespace Nethermind.PerfTest
             var transactionStore = new TransactionStore();
             var blockhashProvider = new BlockhashProvider(blockTree);
             var virtualMachine = new VirtualMachine(stateProvider, storageProvider, blockhashProvider, _logger);
-            var processor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, ethereumSigner, NullTracer.Instance, _logger);
+            var processor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, NullTracer.Instance, _logger);
             var rewardCalculator = new RewardCalculator(specProvider);
             var blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, processor, dbProvider, stateProvider, storageProvider, transactionStore, _logger);
-            var blockchainProcessor = new BlockchainProcessor(blockTree, sealEngine, transactionStore, difficultyCalculator, blockProcessor, _logger);
+            var blockchainProcessor = new BlockchainProcessor(blockTree, sealEngine, transactionStore, difficultyCalculator, blockProcessor, ethereumSigner, _logger);
 
             /* load ChainSpec and init */
             ChainSpecLoader loader = new ChainSpecLoader(new UnforgivingJsonSerializer());

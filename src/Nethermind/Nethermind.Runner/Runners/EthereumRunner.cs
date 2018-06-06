@@ -185,10 +185,10 @@ namespace Nethermind.Runner.Runners
             /* blockchain processing */
             BlockhashProvider blockhashProvider = new BlockhashProvider(blockTree);
             VirtualMachine virtualMachine = new VirtualMachine(stateProvider, storageProvider, blockhashProvider, _evmLogger);
-            TransactionProcessor transactionProcessor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, ethereumSigner, _tracer, _chainLogger);
+            TransactionProcessor transactionProcessor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, _tracer, _chainLogger);
             RewardCalculator rewardCalculator = new RewardCalculator(specProvider);
             BlockProcessor blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, transactionProcessor, dbProvider, stateProvider, storageProvider, transactionStore, _chainLogger);
-            _blockchainProcessor = new BlockchainProcessor(blockTree, sealEngine, transactionStore, difficultyCalculator, blockProcessor, _chainLogger);
+            _blockchainProcessor = new BlockchainProcessor(blockTree, sealEngine, transactionStore, difficultyCalculator, blockProcessor, ethereumSigner, _chainLogger);
             _blockchainProcessor.Start();
 
             if (blockTree.Genesis == null)

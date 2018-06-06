@@ -25,6 +25,7 @@ namespace Nethermind.Core.Crypto
         void Sign(PrivateKey privateKey, Transaction transaction, BigInteger blockNumber);
         Address RecoverAddress(Transaction transaction, BigInteger blockNumber);
         Address RecoverAddress(Signature signature, Keccak message);
+        void RecoverAddresses(Block block);
         bool Verify(Address sender, Transaction transaction, BigInteger blockNumber);
     }
 }

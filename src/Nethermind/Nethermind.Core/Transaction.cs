@@ -34,6 +34,7 @@ namespace Nethermind.Core
         public BigInteger Value { get; set; }
         public byte[] Data { get; set; }
         public byte[] Init { get; set; }
+        public Address SenderAddress { get; set; }
         public Signature Signature { get; set; }
         public bool IsSigned => Signature != null;
         public bool IsContractCreation => Init != null;

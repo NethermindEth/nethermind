@@ -37,16 +37,14 @@ namespace Nethermind.Evm
         private readonly IStorageProvider _storageProvider;
         private readonly ISpecProvider _specProvider;
         private readonly IVirtualMachine _virtualMachine;
-        private readonly IEthereumSigner _signer;
         private readonly ITransactionTracer _tracer;
 
-        public TransactionProcessor(ISpecProvider specProvider, IStateProvider stateProvider, IStorageProvider storageProvider, IVirtualMachine virtualMachine, IEthereumSigner signer, ITransactionTracer tracer, ILogger logger)
+        public TransactionProcessor(ISpecProvider specProvider, IStateProvider stateProvider, IStorageProvider storageProvider, IVirtualMachine virtualMachine, ITransactionTracer tracer, ILogger logger)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _tracer = tracer ?? throw new ArgumentNullException(nameof(tracer));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _virtualMachine = virtualMachine ?? throw new ArgumentNullException(nameof(virtualMachine));
-            _signer = signer ?? throw new ArgumentNullException(nameof(signer));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
             _storageProvider = storageProvider ?? throw new ArgumentNullException(nameof(storageProvider));            
         }
@@ -81,7 +79,7 @@ namespace Nethermind.Evm
             byte[] machineCode = transaction.Init;
             byte[] data = transaction.Data ?? Bytes.Empty;
 
-            Address sender = _signer.RecoverAddress(transaction, block.Number);
+            Address sender = transaction.SenderAddress;
             if (_logger.IsDebugEnabled)
             {
                 _logger.Debug($"SPEC: {spec.GetType().Name}");
