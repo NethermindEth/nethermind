@@ -111,12 +111,9 @@ namespace Nethermind.Evm
         
         private static readonly StackPool _stackPool = new StackPool();
 
-//        private const int InitialStackSize = 64;
         public byte[][] BytesOnStack = _stackPool.RentBytesOnStack();
         public bool[] IntPositions = _stackPool.RentIntPositions();
         public BigInteger[] IntsOnStack = _stackPool.RentIntsOnStack();
-
-//        private static ArrayPool<byte[]> _arrayPool = ArrayPool<byte[]>.Shared;
 
         private HashSet<Address> _destroyList = new HashSet<Address>();
         private List<LogEntry> _logs = new List<LogEntry>();
@@ -164,7 +161,8 @@ namespace Nethermind.Evm
         public int StorageSnapshot { get; }
 
         public long Refund { get; set; }
-        public EvmMemory Memory { get; } = new EvmMemory();
+        public EvmPooledMemory Memory { get; } = new EvmPooledMemory();
+        //public EvmMemory Memory { get; } = new EvmMemory();
 
         public HashSet<Address> DestroyList
         {

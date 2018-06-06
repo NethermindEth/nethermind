@@ -272,10 +272,9 @@ namespace Nethermind.Blockchain
 
             if (!tryOnly && !_blockValidator.ValidateProcessedBlock(processedBlock, suggestedBlock))
             {
-                if (_logger.IsInfoEnabled)
+                if (_logger.IsErrorEnabled)
                 {
-                    _logger.Info($"Processed block is not valid {processedBlock.ToString(Block.Format.Short)}");
-                    _logger.Debug("Throwing invalid block");
+                    _logger.Error($"Processed block is not valid {processedBlock.ToString(Block.Format.Short)}");
                 }
 
                 throw new InvalidBlockException($"{processedBlock}");

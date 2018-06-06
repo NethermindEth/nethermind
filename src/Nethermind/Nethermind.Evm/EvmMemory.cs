@@ -20,19 +20,16 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Numerics;
-using Microsoft.IO;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Evm
 {
-    public class EvmMemory : IDisposable
+    public class EvmMemory : IEvmMemory
     {
         public const int WordSize = 32;
 
         private static readonly byte[] EmptyBytes = new byte[0];
-        //private static readonly RecyclableMemoryStreamManager StreamManager = new RecyclableMemoryStreamManager(); // TODO: investigate block 12173 on Ropsten - why it fails with recyclables
-        //private readonly MemoryStream _memory = StreamManager.GetStream();
         private readonly MemoryStream _memory = new MemoryStream();
 
         public long Size { get; private set; }
@@ -118,6 +115,21 @@ namespace Nethermind.Evm
             return buffer;
         }
 
+        private void UpdateSizeWithoutAllocating(long position)
+        {
+            long memoryLength = position;
+            if (memoryLength > Size)
+            {
+                long remainder = memoryLength % 32;
+                if (remainder != 0)
+                {
+                    memoryLength += 32L - remainder;
+                }
+
+                Size = memoryLength;
+            }
+        }
+
         private void UpdateSize()
         {
             long memoryLength = _memory.Position;
@@ -159,8 +171,7 @@ namespace Nethermind.Evm
                     throw new OutOfGasException();
                 }
 
-                _memory.Position = (long)roughPosition;
-                UpdateSize();
+                UpdateSizeWithoutAllocating((long)roughPosition);
 
                 return (long)cost;
             }

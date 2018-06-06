@@ -1,14 +1,13 @@
-﻿
-using NUnit.Framework;
+﻿using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
 {
     [TestFixture]
-    public class EvmMemoryTests : EvmMemoryTestsBase
+    public class EvmPooledMemoryTests : EvmMemoryTestsBase
     {
         protected override IEvmMemory CreateEvmMemory()
         {
-            return new EvmMemory();
+            return new EvmPooledMemory();
         }
     }
 }

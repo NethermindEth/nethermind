@@ -114,7 +114,7 @@ namespace Nethermind.Blockchain
                 {
                     if (_logger.IsErrorEnabled)
                     {
-                        _logger.Error($"{nameof(BlockchainProcessor)} encountered an exception.", t.Exception);
+                        _logger.Error($"{nameof(BlockchainProcessor)} encountered an exception.", t.Exception.InnerException);
                     }
 
                     throw t.Exception;
