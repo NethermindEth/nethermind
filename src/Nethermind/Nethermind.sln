@@ -84,6 +84,7 @@ EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Chains", "Chains", "{D75E83BB-6092-45A4-B751-D05D4A6ED995}"
 	ProjectSection(SolutionItems) = preProject
 		Chains\foundation.json = Chains\foundation.json
+		Chains\foundation_through_vm5.json = Chains\foundation_through_vm5.json
 		Chains\kovan.json = Chains\kovan.json
 		Chains\morden.json = Chains\morden.json
 		Chains\nethermind_alpha.json = Chains\nethermind_alpha.json
@@ -98,7 +99,6 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Chains", "Chains", "{D75E83
 		Chains\ropsten_through_vm4.json = Chains\ropsten_through_vm4.json
 		Chains\ropsten_through_vm5.json = Chains\ropsten_through_vm5.json
 		Chains\some_node.json = Chains\some_node.json
-		Chains\foundation_through_vm5.json = Chains\foundation_through_vm5.json
 	EndProjectSection
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.RunnerSpawner", "Nethermind.RunnerSpawner\Nethermind.RunnerSpawner.csproj", "{7285ABAE-A946-437E-A6DD-F1DECFE7F8D5}"
@@ -108,9 +108,6 @@ EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Store.Test", "Nethermind.Store.Test\Nethermind.Store.Test.csproj", "{0A927E80-884F-4F41-BC5E-1825D32726DB}"
 EndProject
 Global
-	GlobalSection(Performance) = preSolution
-		HasPerformanceSessions = true
-	EndGlobalSection
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
 		Release|Any CPU = Release|Any CPU
@@ -290,6 +287,9 @@ Global
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {092CA5E3-6180-4ED7-A3CB-9B57FAC2AA85}
+	EndGlobalSection
+	GlobalSection(Performance) = preSolution
+		HasPerformanceSessions = true
 	EndGlobalSection
 	GlobalSection(Performance) = preSolution
 		HasPerformanceSessions = true

@@ -170,7 +170,7 @@ namespace Ethereum.Transaction.Test
 
         private void RunTest(TransactionTest test, IReleaseSpec spec)
         {
-            TestContext.CurrentContext.Test.Properties.Set("Category", test.Network);
+            //TestContext.CurrentContext.Test.Properties.Set("Category", test.Network); // no longer public
 
             ValidTransactionTest validTest = test as ValidTransactionTest;
             Nethermind.Core.Transaction transaction;

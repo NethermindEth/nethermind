@@ -13,12 +13,7 @@
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Extensions.Data.xxHash.core20" Version="1.0.2.1" />
-    <PackageReference Include="Newtonsoft.Json" Version="11.0.1" />
-    <PackageReference Include="NLog.Config" Version="4.5.3" />
-  </ItemGroup>
-  <ItemGroup>
-    <Reference Include="System.Memory, Version=4.0.1.0, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51">
-      <HintPath>..\..\..\..\..\Users\tksta\.nuget\packages\system.memory\4.5.0-preview1-26216-02\ref\netstandard2.0\System.Memory.dll</HintPath>
-    </Reference>
+    <PackageReference Include="Newtonsoft.Json" Version="11.0.2" />
+    <PackageReference Include="NLog.Config" Version="4.5.6" />
   </ItemGroup>
 </Project>

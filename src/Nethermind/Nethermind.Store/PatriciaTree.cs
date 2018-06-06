@@ -77,8 +77,8 @@ namespace Nethermind.Store
             }
         }
 
-        private static readonly LruCache<Keccak, Rlp> NodeCache = new LruCache<Keccak, Rlp>(16 * 1024);
-        private static readonly LruCache<byte[], byte[]> ValueCache = new LruCache<byte[], byte[]>(16 * 1024);
+        private static readonly LruCache<Keccak, Rlp> NodeCache = new LruCache<Keccak, Rlp>(64 * 1024);
+        private static readonly LruCache<byte[], byte[]> ValueCache = new LruCache<byte[], byte[]>(128 * 1024);
 
         public void UpdateRootHash()
         {

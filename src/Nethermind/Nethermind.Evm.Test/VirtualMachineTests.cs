@@ -46,7 +46,7 @@ namespace Nethermind.Evm.Test
             IBlockhashProvider blockhashProvider = new TestBlockhashProvider();
             IVirtualMachine virtualMachine = new VirtualMachine(_stateProvider, _storageProvider, blockhashProvider, logger);
             
-            _processor = new TransactionProcessor(_spec, _stateProvider, _storageProvider, virtualMachine, _ethereumSigner, this, logger);
+            _processor = new TransactionProcessor(_spec, _stateProvider, _storageProvider, virtualMachine, this, logger);
         }
         
         [SetUp]
