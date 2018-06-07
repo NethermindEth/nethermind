@@ -27,7 +27,6 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 
 namespace Nethermind.Blockchain
 {
@@ -36,7 +35,7 @@ namespace Nethermind.Blockchain
     {
         public static readonly TimeSpan SyncTimeout = TimeSpan.FromSeconds(10);
 
-        public const int BatchSize = 8; // when syncing, we got disconnected on 16 because of the too big Snappy message, need to dynamically adjust
+        public const int BatchSize = 24; // when syncing, we got disconnected on 16 because of the too big Snappy message, need to dynamically adjust
         private readonly IBlockValidator _blockValidator;
         private readonly IHeaderValidator _headerValidator;
         private readonly ILogger _logger;
@@ -341,12 +340,12 @@ namespace Nethermind.Blockchain
                         isCommonAncestorKnown = true;
                     }
 
-                    if (_logger.IsDebugEnabled) _logger.Debug($"Sending sync request to peer with best {peerInfo.NumberAvailable} (I received {peerInfo.NumberReceived}), is synced {peerInfo.IsSynced}");
-
                     BigInteger blocksLeft = peerInfo.NumberAvailable - peerInfo.NumberReceived;
                     // TODO: fault handling on tasks
 
-                    Task<BlockHeader[]> headersTask = peer.GetBlockHeaders(peerInfo.NumberReceived, (int)BigInteger.Min(blocksLeft + 1, BatchSize), 0);
+                    int blocksToRequest = (int)BigInteger.Min(blocksLeft + 1, BatchSize);
+                    if (_logger.IsInfoEnabled) _logger.Info($"Sync request to peer with {peerInfo.NumberAvailable} blocks. Got {peerInfo.NumberReceived} and asking for {blocksToRequest} more.");
+                    Task<BlockHeader[]> headersTask = peer.GetBlockHeaders(peerInfo.NumberReceived, blocksToRequest, 0);
                     _currentSyncTask = headersTask;
                     BlockHeader[] headers = await headersTask;
                     if (_currentSyncTask.IsCanceled)
