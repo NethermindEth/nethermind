@@ -344,7 +344,7 @@ namespace Nethermind.Blockchain
                     // TODO: fault handling on tasks
 
                     int blocksToRequest = (int)BigInteger.Min(blocksLeft + 1, BatchSize);
-                    if (_logger.IsInfoEnabled) _logger.Info($"Sync request to peer with {peerInfo.NumberAvailable} blocks. Got {peerInfo.NumberReceived} and asking for {blocksToRequest} more.");
+                    if (_logger.IsDebugEnabled) _logger.Debug($"Sync request to peer with {peerInfo.NumberAvailable} blocks. Got {peerInfo.NumberReceived} and asking for {blocksToRequest} more.");
                     Task<BlockHeader[]> headersTask = peer.GetBlockHeaders(peerInfo.NumberReceived, blocksToRequest, 0);
                     _currentSyncTask = headersTask;
                     BlockHeader[] headers = await headersTask;
