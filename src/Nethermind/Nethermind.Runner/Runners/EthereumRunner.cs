@@ -279,7 +279,13 @@ namespace Nethermind.Runner.Runners
 
                         _syncManager.Start();
 
-                        await InitNet(listenPort);
+                        await InitNet(listenPort).ContinueWith(initNetTask =>
+                        {
+                            if (initNetTask.IsFaulted)
+                            {
+                                _networkLogger.Error("Unable to initialize network layer.", initNetTask.Exception);
+                            }
+                        });
 
                         // create shared objects between discovery and peer manager
                         _nodeFactory = new NodeFactory();
@@ -287,14 +293,26 @@ namespace Nethermind.Runner.Runners
 
                         if (initParams.DiscoveryEnabled)
                         {
-                            await InitDiscovery(initParams);
+                            await InitDiscovery(initParams).ContinueWith(initDiscoveryTask =>
+                            {
+                                if (initDiscoveryTask.IsFaulted)
+                                {
+                                    _networkLogger.Error("Unable to initialize discovery protocol.", initDiscoveryTask.Exception);
+                                }
+                            });
                         }
                         else if (_discoveryLogger.IsInfoEnabled)
                         {
-                            _discoveryLogger.Info("Discovery is disabled");
+                            _discoveryLogger.Info("Discovery protocol disabled");
                         }
 
-                        await InitPeerManager();
+                        await InitPeerManager().ContinueWith(initPeerManagerTask =>
+                        {
+                            if (initPeerManagerTask.IsFaulted)
+                            {
+                                _networkLogger.Error("Unable to initialize peer manager.", initPeerManagerTask.Exception);
+                            }
+                        });
                     }
                 }
             });
