@@ -127,7 +127,7 @@ namespace Nethermind.Blockchain.Validators
             bool extraDataValid = isOmmer
                                   || _daoBlockNumber == null
                                   || header.Number < _daoBlockNumber
-                                  || header.Number > _daoBlockNumber + 10
+                                  || header.Number >= _daoBlockNumber + 10
                                   || new Hex(header.ExtraData).Equals(DaoExtraData);
             if (!extraDataValid)
             {
