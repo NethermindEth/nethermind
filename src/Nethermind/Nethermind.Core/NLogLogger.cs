@@ -25,6 +25,7 @@ namespace Nethermind.Core
 {
     public class NLogLogger : ILogger
     {
+        private readonly string _loggerName;
         public bool IsErrorEnabled { get; }
         public bool IsWarnEnabled { get; }
         public bool IsInfoEnabled { get; }
@@ -40,6 +41,7 @@ namespace Nethermind.Core
 
         public NLogLogger(string fileName, string loggerName = null)
         {
+            _loggerName = loggerName;
             if (!Directory.Exists("logs"))
             {
                 Directory.CreateDirectory("logs");
@@ -71,7 +73,16 @@ namespace Nethermind.Core
             IsDebugEnabled = _logger.IsDebugEnabled;
             IsTraceEnabled = _logger.IsTraceEnabled;
             IsErrorEnabled = _logger.IsErrorEnabled || _logger.IsFatalEnabled;
-    }
+        }
+
+        public void LogLoggerInfo()
+        {
+            Trace($"{_loggerName} TRACE enabled");
+            Debug($"{_loggerName} DEBUG enabled");
+            Info($"{_loggerName} INFO enabled");
+            Warn($"{_loggerName} WARN enabled");
+            Error($"{_loggerName} ERROR enabled");
+        }
 
         public void Log(string text)
         {

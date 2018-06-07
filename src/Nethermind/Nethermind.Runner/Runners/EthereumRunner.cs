@@ -53,12 +53,12 @@ namespace Nethermind.Runner.Runners
 {
     public class EthereumRunner : IEthereumRunner
     {
-        private static ILogger _defaultLogger = new NLogLogger("default");
-        private static ILogger _evmLogger = new NLogLogger("evm");
-        private static ILogger _stateLogger = new NLogLogger("state");
-        private static ILogger _chainLogger = new NLogLogger("chain");
-        private static ILogger _networkLogger = new NLogLogger("net");
-        private static ILogger _discoveryLogger = new NLogLogger("discovery");
+        private static NLogLogger _defaultLogger = new NLogLogger("default");
+        private static NLogLogger _evmLogger = new NLogLogger("evm");
+        private static NLogLogger _stateLogger = new NLogLogger("state");
+        private static NLogLogger _chainLogger = new NLogLogger("chain");
+        private static NLogLogger _networkLogger = new NLogLogger("net");
+        private static NLogLogger _discoveryLogger = new NLogLogger("discovery");
 
         private static string _dbBasePath;
         private readonly IDiscoveryConfigurationProvider _discoveryConfigurationProvider;
@@ -93,6 +93,13 @@ namespace Nethermind.Runner.Runners
             _chainLogger = new NLogLogger(initParams.LogFileName, "chain");
             _networkLogger = new NLogLogger(initParams.LogFileName, "net");
             _discoveryLogger = new NLogLogger(initParams.LogFileName, "discovery");
+
+            _defaultLogger.LogLoggerInfo();
+            _evmLogger.LogLoggerInfo();
+            _stateLogger.LogLoggerInfo();
+            _chainLogger.LogLoggerInfo();
+            _networkLogger.LogLoggerInfo();
+            _discoveryLogger.LogLoggerInfo();
 
             _defaultLogger.Info("Initializing Ethereum");
             _privateKey = new PrivateKey(initParams.TestNodeKey);
