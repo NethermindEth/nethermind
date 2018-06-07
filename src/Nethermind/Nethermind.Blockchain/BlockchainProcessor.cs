@@ -380,7 +380,7 @@ namespace Nethermind.Blockchain
                 decimal totalMgasPerSecond = _currentTotalMGas / currentMs * 1000;
                 decimal txps = chunkTx / (decimal)chunkMs * 1000;
 //                _logger.Info($"Processed block {suggestedBlock.ToString(Block.Format.Short)} in {microSeconds,12:N0}μs, guse={gasPercentage,7:P2}, mgas={mgas,6:F2}, mgasps={mgasPerSecond,9:F2}");
-                _logger.Info($"Processed blocks up to {suggestedBlock.Number,9} in {chunkMs,7:N0}ms, tx={chunkTx,5} mgas={chunkMGas,8:F2}, mgasps={mgasPerSecond,7:F2}, txps={txps,7:F2}, total mgasps={totalMgasPerSecond,7:F2}");
+                _logger.Info($"Processed blocks up to {suggestedBlock.Number,9} in {chunkMs,7:N0}ms, tx={chunkTx,5} mgas={chunkMGas,8:F2}, mgasps={mgasPerSecond,7:F2}, txps={txps,7:F2}, total mgasps={totalMgasPerSecond,7:F2}, queue={_blockQueue.Count}");
                 _lastTotalMGas = _currentTotalMGas;
                 _lastElapsedMs = currentMs;
                 _lastTotalTx = _currentTotalTx;                
