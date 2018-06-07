@@ -102,6 +102,9 @@ namespace Nethermind.Runner.Runners
             _discoveryLogger.LogLoggerInfo();
 
             _defaultLogger.Info("Initializing Ethereum");
+            _defaultLogger.Info($"Server GC           : {System.Runtime.GCSettings.IsServerGC}");
+            _defaultLogger.Info($"GC latency mode     : {System.Runtime.GCSettings.LatencyMode}");
+            _defaultLogger.Info($"LOH compaction mode : {System.Runtime.GCSettings.LargeObjectHeapCompactionMode}");
             _privateKey = new PrivateKey(initParams.TestNodeKey);
             _dbBasePath = initParams.BaseDbPath ?? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "db");
 

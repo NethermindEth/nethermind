@@ -384,6 +384,8 @@ namespace Nethermind.PerfTest
                     _logger.Warn($"TOTAL after {number} GC (0)   : {GC.CollectionCount(0)}");
                     _logger.Warn($"TOTAL after {number} GC (1)   : {GC.CollectionCount(1)}");
                     _logger.Warn($"TOTAL after {number} GC (2)   : {GC.CollectionCount(2)}");
+                    _logger.Warn($"Is server GC at {number}      : {System.Runtime.GCSettings.IsServerGC}");
+                    _logger.Warn($"GC latency mode at {number}   : {System.Runtime.GCSettings.LatencyMode}");
 
                     _logger.Warn($"TOTAL after {number} blocks DB reads      : {Metrics.BlocksDbReads}");
                     _logger.Warn($"TOTAL after {number} blocks DB writes     : {Metrics.BlocksDbWrites}");
