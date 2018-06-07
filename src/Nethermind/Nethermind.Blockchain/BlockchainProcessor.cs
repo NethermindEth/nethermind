@@ -90,7 +90,14 @@ namespace Nethermind.Blockchain
             if (processRamainingBlocks)
             {
                 _recoveryQueue.CompleteAdding();
-                await _recoveryTask;
+                await _recoveryTask.ContinueWith(t =>
+                {
+                    if (t.IsFaulted)
+                    {
+                        _logger.Error("Transaction sender recovery task failure.", t.Exception);
+                    }
+                });
+
                 _blockQueue.CompleteAdding();
             }
             else
@@ -114,23 +121,21 @@ namespace Nethermind.Blockchain
                 {
                     if (_logger.IsErrorEnabled)
                     {
-                        _logger.Error($"{nameof(BlockchainProcessor)} encountered an exception.", t.Exception.InnerException);
+                        _logger.Error("Sender address recovery encountered an exception.", t.Exception);
                     }
-
-                    throw t.Exception;
                 }
                 else if (t.IsCanceled)
                 {
                     if (_logger.IsInfoEnabled)
                     {
-                        _logger.Info($"{nameof(BlockchainProcessor)} stopped.");
+                        _logger.Info("Sender address recovery stopped.");
                     }
                 }
                 else if (t.IsCompleted)
                 {
                     if (_logger.IsInfoEnabled)
                     {
-                        _logger.Info($"{nameof(BlockchainProcessor)} complete.");
+                        _logger.Info("Sender address recovery complete.");
                     }
                 }
             });
@@ -147,8 +152,6 @@ namespace Nethermind.Blockchain
                     {
                         _logger.Error($"{nameof(BlockchainProcessor)} encountered an exception.", t.Exception);
                     }
-
-                    throw t.Exception;
                 }
                 else if (t.IsCanceled)
                 {
@@ -341,14 +344,20 @@ namespace Nethermind.Blockchain
 
         private Keccak GetTransactionsRoot(List<Transaction> transactions)
         {
-            PatriciaTree tranTree = new PatriciaTree();
+            if (transactions.Count == 0)
+            {
+                return PatriciaTree.EmptyTreeHash;
+            }
+
+            PatriciaTree txTree = new PatriciaTree();
             for (int i = 0; i < transactions.Count; i++)
             {
                 Rlp transactionRlp = Rlp.Encode(transactions[i]);
-                tranTree.Set(Rlp.Encode(i).Bytes, transactionRlp);
+                txTree.Set(Rlp.Encode(i).Bytes, transactionRlp);
             }
 
-            return tranTree.RootHash;
+            txTree.UpdateRootHash();
+            return txTree.RootHash;
         }
 
         private readonly Stopwatch _processingWatch = new Stopwatch(); // TODO: TEMP?

@@ -1,9 +1,9 @@
 {
-  "TransactionTracingEnabled": false,
+  "TransactionTracingEnabled": true,
   "BaseTracingPath": "D:\\tx_traces\\nethermind",
   "JsonRpcEnabled": false,
   "DiscoveryEnabled": false,
-  "SynchronizationEnabled": true,
+  "SynchronizationEnabled": false,
   "DiscoveryPort": 30312,
   "P2PPort": 30312,
   "HttpHost": "127.0.0.1",

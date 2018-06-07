@@ -25,7 +25,7 @@ namespace Nethermind.Store
     public class SecurePatriciaTree : PatriciaTree
     {
         public SecurePatriciaTree(IDb db)
-            :base(db)
+            :base(db, Keccak.EmptyTreeHash, false)
         {
         }
 

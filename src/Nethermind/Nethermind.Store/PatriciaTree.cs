@@ -17,8 +17,10 @@
  */
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
@@ -37,27 +39,30 @@ namespace Nethermind.Store
         /// </summary>
         public static readonly Keccak EmptyTreeHash = Keccak.EmptyTreeHash;
 
+        /// <summary>
+        /// Note at the moment this can be static because we never add to any two different Patricia trees in parallel
+        /// THis would be receipts, transactions, state, storage - all of them are sequential so only on etree at the time uses NodeStack
+        /// </summary>
         private static readonly Stack<StackedNode> NodeStack = new Stack<StackedNode>(); // TODO: if switching to parallel then need to pool tree operations with separate node stacks?, if...
 
+        private static readonly ConcurrentQueue<Exception> CommitExceptions = new ConcurrentQueue<Exception>();
+
         private readonly IDb _db;
+        private readonly bool _parallelizeBranches;
 
         private Keccak _rootHash;
 
         internal NodeRef RootRef;
 
         public PatriciaTree()
-            : this(NullDb.Instance, EmptyTreeHash)
+            : this(NullDb.Instance, EmptyTreeHash, false)
         {
         }
 
-        public PatriciaTree(IDb db)
-            : this(db, EmptyTreeHash)
-        {
-        }
-
-        public PatriciaTree(IDb db, Keccak rootHash)
+        public PatriciaTree(IDb db, Keccak rootHash, bool parallelizeBranches)
         {
             _db = db;
+            _parallelizeBranches = parallelizeBranches;
             RootHash = rootHash;
         }
 
@@ -85,7 +90,12 @@ namespace Nethermind.Store
 
             if (RootRef.IsDirty)
             {
+                CurrentCommit.Clear();
                 Commit(RootRef, true);
+                foreach (NodeRef nodeRef in CurrentCommit)
+                {
+                    _db.Set(nodeRef.KeccakOrRlp.GetOrComputeKeccak(), nodeRef.FullRlp.Bytes);
+                }
 
                 // reset objects
                 Keccak keccak = RootRef.KeccakOrRlp.GetOrComputeKeccak();
@@ -93,17 +103,63 @@ namespace Nethermind.Store
             }
         }
 
+        private static readonly ConcurrentBag<NodeRef> CurrentCommit = new ConcurrentBag<NodeRef>();
+
         private void Commit(NodeRef nodeRef, bool isRoot)
         {
             Node node = nodeRef.Node;
             if (node is Branch branch)
             {
-                for (int i = 0; i < 16; i++)
+                // idea from EthereumJ - testing parallel branches
+                if (!_parallelizeBranches || !isRoot)
                 {
-                    NodeRef subnode = branch.Nodes[i];
-                    if (subnode?.IsDirty ?? false)
+                    for (int i = 0; i < 16; i++)
                     {
-                        Commit(branch.Nodes[i], false);
+                        NodeRef subnode = branch.Nodes[i];
+                        if (subnode?.IsDirty ?? false)
+                        {
+                            Commit(branch.Nodes[i], false);
+                        }
+                    }
+                }
+                else
+                {
+                    List<NodeRef> nodesToCommit = new List<NodeRef>();
+                    for (int i = 0; i < 16; i++)
+                    {
+                        NodeRef subnode = branch.Nodes[i];
+                        if (subnode?.IsDirty ?? false)
+                        {
+                            nodesToCommit.Add(branch.Nodes[i]);
+                        }
+                    }
+
+                    if (nodesToCommit.Count >= 4)
+                    {
+                        CommitExceptions.Clear();
+                        Parallel.For(0, nodesToCommit.Count, i =>
+                        {
+                            try
+                            {
+                                Commit(nodesToCommit[i], false);
+                            }
+                            catch (Exception e)
+                            {
+                                CommitExceptions.Enqueue(e);
+                            }
+                        });
+
+                        if (CommitExceptions.Count > 0)
+                        {
+                            throw new AggregateException(CommitExceptions);
+                        }
+                    }
+                    else
+                    {
+                        for (int i = 0; i < nodesToCommit.Count; i++)
+                        {
+                            Commit(nodesToCommit[i], false);
+                        }
                     }
                 }
             }
@@ -121,7 +177,7 @@ namespace Nethermind.Store
             {
                 Keccak keccak = nodeRef.KeccakOrRlp.GetOrComputeKeccak();
                 NodeCache.Set(keccak, nodeRef.FullRlp);
-                _db.Set(keccak, nodeRef.FullRlp.Bytes);
+                CurrentCommit.Add(nodeRef);
             }
         }
 
@@ -378,7 +434,7 @@ namespace Nethermind.Store
         // TODO: this can be removed now but is lower priority temporarily while the patricia rewrite testing is in progress
         private void ConnectNodes(Node node)
         {
-//            Keccak previousRootHash = _tree.RootHash;
+            //            Keccak previousRootHash = _tree.RootHash;
 
             bool isRoot = NodeStack.Count == 0;
             NodeRef nextNodeRef = node == null ? null : new NodeRef(node, isRoot);
@@ -399,7 +455,7 @@ namespace Nethermind.Store
 
                 if (node is Branch branch)
                 {
-//                    _tree.DeleteNode(branch.Nodes[parentOnStack.PathIndex], true);
+                    //                    _tree.DeleteNode(branch.Nodes[parentOnStack.PathIndex], true);
                     if (!(nextNodeRef == null && !branch.IsValidWithOneNodeLess))
                     {
                         Branch newBranch = new Branch();
@@ -458,7 +514,7 @@ namespace Nethermind.Store
                             }
                             else if (childNode is Extension childExtension)
                             {
-//                                _tree.DeleteNode(childNodeHash, true);
+                                //                                _tree.DeleteNode(childNodeHash, true);
                                 Extension extensionFromBranch = new Extension(new HexPrefix(false, Bytes.Concat((byte)childNodeIndex, childExtension.Path)), childExtension.NextNodeRef);
                                 extensionFromBranch.IsDirty = true;
                                 nextNodeRef = new NodeRef(extensionFromBranch, isRoot);
@@ -466,7 +522,7 @@ namespace Nethermind.Store
                             }
                             else if (childNode is Leaf childLeaf)
                             {
-//                                _tree.DeleteNode(childNodeHash, true);
+                                //                                _tree.DeleteNode(childNodeHash, true);
                                 Leaf leafFromBranch = new Leaf(new HexPrefix(true, Bytes.Concat((byte)childNodeIndex, childLeaf.Path)), childLeaf.Value);
                                 leafFromBranch.IsDirty = true;
                                 nextNodeRef = new NodeRef(leafFromBranch, isRoot);
@@ -481,7 +537,7 @@ namespace Nethermind.Store
                 }
                 else if (node is Extension extension)
                 {
-//                    _tree.DeleteNode(extension.NextNodeRef, true);
+                    //                    _tree.DeleteNode(extension.NextNodeRef, true);
                     if (nextNode is Leaf childLeaf)
                     {
                         Leaf leafFromExtension = new Leaf(new HexPrefix(true, Bytes.Concat(extension.Path, childLeaf.Path)), childLeaf.Value);
@@ -522,7 +578,7 @@ namespace Nethermind.Store
 
             RootRef = nextNodeRef;
 
-//            _tree.DeleteNode(new KeccakOrRlp(previousRootHash), true);
+            //            _tree.DeleteNode(new KeccakOrRlp(previousRootHash), true);
         }
 
         private byte[] TraverseBranch(Branch node, TraverseContext context)

@@ -91,7 +91,7 @@ namespace Nethermind.Blockchain
 
         private void SetReceipts(Block block, TransactionReceipt[] receipts)
         {
-            PatriciaTree receiptTree = receipts.Length > 0 ? new PatriciaTree(NullDb.Instance) : null;
+            PatriciaTree receiptTree = receipts.Length > 0 ? new PatriciaTree(NullDb.Instance, Keccak.EmptyTreeHash, false) : null;
             for (int i = 0; i < receipts.Length; i++)
             {
                 Rlp receiptRlp = Rlp.Encode(receipts[i], _specProvider.GetSpec(block.Header.Number).IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None);

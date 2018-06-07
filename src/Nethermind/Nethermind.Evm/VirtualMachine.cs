@@ -168,6 +168,7 @@ namespace Nethermind.Evm
                             if (gasAvailableForCodeDeposit >= codeDepositGasCost)
                             {
                                 Keccak codeHash = _state.UpdateCode(callResult.Output);
+
                                 _state.UpdateCodeHash(callCodeOwner, codeHash, spec);
                                 previousCallResult = callCodeOwner.Hex;
 
@@ -1111,7 +1112,7 @@ namespace Nethermind.Evm
                         {
                             UpdateGas(spec.IsEip150Enabled ? GasCostOf.ExtCodeSizeEip150 : GasCostOf.ExtCodeSize, ref gasAvailable);
                             Address address = PopAddress();
-                            byte[] accountCode = _state.GetCode(address);
+                            byte[] accountCode = GetCachedCodeInfo(address)?.MachineCode;
                             PushInt(accountCode?.Length ?? BigInteger.Zero);
                             break;
                         }
@@ -1124,7 +1125,7 @@ namespace Nethermind.Evm
                             UpdateGas((spec.IsEip150Enabled ? GasCostOf.ExtCodeEip150 : GasCostOf.ExtCode) + GasCostOf.Memory * EvmMemory.Div32Ceiling(length),
                                 ref gasAvailable);
                             UpdateMemoryCost(dest, length);
-                            byte[] externalCode = _state.GetCode(address);
+                            byte[] externalCode = GetCachedCodeInfo(address)?.MachineCode;
                             byte[] callDataSlice = externalCode.SliceWithZeroPadding(src, (int)length);
                             evmState.Memory.Save(dest, callDataSlice);
                             break;
@@ -1542,7 +1543,7 @@ namespace Nethermind.Evm
                             UpdateGas(callGas, ref gasAvailable);
 
                             bool accountExists = _state.AccountExists(contractAddress);
-                            if (accountExists && (_state.GetCode(contractAddress).Length != 0 || _state.GetNonce(contractAddress) != 0))
+                            if (accountExists && ((GetCachedCodeInfo(contractAddress)?.MachineCode?.Length ?? 0) != 0 || _state.GetNonce(contractAddress) != 0))
                             {
                                 if (_logger.IsDebugEnabled)
                                 {
@@ -1884,7 +1885,13 @@ namespace Nethermind.Evm
             CodeInfo cachedCodeInfo = _codeCache.Get(codeHash);
             if (cachedCodeInfo == null)
             {
-                cachedCodeInfo = new CodeInfo(_state.GetCode(codeHash));
+                byte[] code = _state.GetCode(codeHash);
+                if (code == null)
+                {
+                    return null;
+                }
+
+                cachedCodeInfo = new CodeInfo(code);
                 _codeCache.Set(codeHash, cachedCodeInfo);
             }
 

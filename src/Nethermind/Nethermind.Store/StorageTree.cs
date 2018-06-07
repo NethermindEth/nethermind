@@ -40,11 +40,11 @@ namespace Nethermind.Store
             }
         }
 
-        public StorageTree(IDb db) : base(db)
+        public StorageTree(IDb db) : base(db, Keccak.EmptyTreeHash, false)
         {
         }
 
-        public StorageTree(IDb db, Keccak rootHash) : base(db, rootHash)
+        public StorageTree(IDb db, Keccak rootHash) : base(db, rootHash, false)
         {
         }
 

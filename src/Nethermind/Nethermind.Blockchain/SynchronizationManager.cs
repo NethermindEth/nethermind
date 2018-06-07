@@ -300,7 +300,6 @@ namespace Nethermind.Blockchain
                     if (_logger.IsErrorEnabled)
                     {
                         _logger.Error($"Error in the sync process", t.Exception);
-                        throw t.Exception;
                     }
                 }
                 else if (t.IsCompleted)

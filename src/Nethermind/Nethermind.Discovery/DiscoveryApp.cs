@@ -150,6 +150,7 @@ namespace Nethermind.Discovery
                 {
                     if (t.IsFaulted)
                     {
+                        _logger.Info($"Cannot activate channel.");
                         throw t.Exception;
                     }
                     
