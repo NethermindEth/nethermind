@@ -35,7 +35,7 @@ namespace Nethermind.Blockchain
     {
         public static readonly TimeSpan SyncTimeout = TimeSpan.FromSeconds(10);
 
-        public const int BatchSize = 24; // when syncing, we got disconnected on 16 because of the too big Snappy message, need to dynamically adjust
+        public const int BatchSize = 8; // when syncing, we got disconnected on 16 because of the too big Snappy message, need to dynamically adjust
         private readonly IBlockValidator _blockValidator;
         private readonly IHeaderValidator _headerValidator;
         private readonly ILogger _logger;
