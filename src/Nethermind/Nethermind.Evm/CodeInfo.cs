@@ -43,7 +43,7 @@ namespace Nethermind.Evm
         public Address PrecompileAddress { get; set; }
         public BigInteger PrecompileId { get; set; }
 
-        public void ValidateJump(int destination)
+        public bool ValidateJump(int destination)
         {
             if (_validJumpDestinations == null)
             {
@@ -52,8 +52,10 @@ namespace Nethermind.Evm
 
             if (destination < 0 || destination >= MachineCode.Length || !_validJumpDestinations.Get(destination))
             {
-                throw new InvalidJumpDestinationException();
+                return false;
             }
+
+            return true;
         }
 
         private void CalculateJumpDestinations()

@@ -37,7 +37,6 @@ namespace Nethermind.Evm
 
         private byte[] _memory;
         public long Length { get; private set; }
-
         public long Size { get; private set; }
 
         public void SaveWord(BigInteger location, byte[] word)

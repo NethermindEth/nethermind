@@ -115,8 +115,8 @@ namespace Nethermind.Evm
         public bool[] IntPositions;
         public BigInteger[] IntsOnStack;
 
-        private HashSet<Address> _destroyList = new HashSet<Address>();
-        private List<LogEntry> _logs = new List<LogEntry>();
+        private HashSet<Address> _destroyList;
+        private List<LogEntry> _logs;
         public int StackHead = 0;
 
         public EvmState(long gasAvailable, ExecutionEnvironment env, ExecutionType executionType, bool isContinuation)
@@ -159,9 +159,8 @@ namespace Nethermind.Evm
         public bool IsContinuation { get; set; }
         public int StateSnapshot { get; }
         public int StorageSnapshot { get; }
-
         public long Refund { get; set; }
-        public EvmPooledMemory Memory { get; } = new EvmPooledMemory();
+        public EvmPooledMemory Memory { get; private set; }
 
         public HashSet<Address> DestroyList
         {
@@ -178,13 +177,14 @@ namespace Nethermind.Evm
             if (BytesOnStack != null) _stackPool.ReturnBytesOnStack(BytesOnStack);
             if (IntsOnStack != null) _stackPool.ReturnIntsOnStack(IntsOnStack);
             if (IntPositions != null) _stackPool.ReturnIntPositions(IntPositions);
-            Memory.Dispose();
+            Memory?.Dispose();
         }
 
         public void InitStacks()
         {
             if (BytesOnStack == null)
             {
+                Memory = new EvmPooledMemory();
                 BytesOnStack = _stackPool.RentBytesOnStack();
                 IntPositions = _stackPool.RentIntPositions();
                 IntsOnStack = _stackPool.RentIntsOnStack();

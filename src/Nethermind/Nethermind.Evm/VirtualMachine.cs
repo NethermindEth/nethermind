@@ -42,20 +42,20 @@ namespace Nethermind.Evm
         public static readonly BigInteger BigInt32 = 32;
         public static readonly BigInteger BigIntMaxInt = int.MaxValue;
         private static readonly byte[] EmptyBytes = new byte[0];
-        private static readonly byte[] BytesOne = { 1 };
-        private static readonly byte[] BytesZero = { 0 };
+        private static readonly byte[] BytesOne = {1};
+        private static readonly byte[] BytesZero = {0};
         private readonly IBlockhashProvider _blockhashProvider;
+        private readonly LruCache<Keccak, CodeInfo> _codeCache = new LruCache<Keccak, CodeInfo>(4 * 1024);
         private readonly ILogger _logger;
         private readonly IStateProvider _state;
+        private readonly Stack<EvmState> _stateStack = new Stack<EvmState>();
         private readonly IStorageProvider _storage;
+        private int _instructionCounter;
+        private Address _parityTouchBugAccount;
         private Dictionary<BigInteger, IPrecompiledContract> _precompiles;
         private byte[] _returnDataBuffer = EmptyBytes;
-        private readonly Stack<EvmState> _stateStack = new Stack<EvmState>();
-        private Address _parityTouchBugAccount;
-        private int _instructionCounter;
         private TransactionTrace _trace;
         private TransactionTraceEntry _traceEntry;
-        private readonly LruCache<Keccak, CodeInfo> _codeCache = new LruCache<Keccak, CodeInfo>(4 * 1024);
 
         public VirtualMachine(IStateProvider stateProvider, IStorageProvider storageProvider, IBlockhashProvider blockhashProvider, ILogger logger)
         {
@@ -172,7 +172,6 @@ namespace Nethermind.Evm
                     EvmState previousState = currentState;
                     currentState = _stateStack.Pop();
                     currentState.IsContinuation = true;
-                    long gasAvailableForCodeDeposit = previousState.GasAvailable; // TODO: refactor, this is to fix 61363 Ropsten
                     currentState.GasAvailable += previousState.GasAvailable;
 
                     if (!callResult.ShouldRevert)
@@ -190,6 +189,7 @@ namespace Nethermind.Evm
                             currentState.Logs.Add(logEntry);
                         }
 
+                        long gasAvailableForCodeDeposit = previousState.GasAvailable; // TODO: refactor, this is to fix 61363 Ropsten
                         if (previousState.ExecutionType == ExecutionType.Create || previousState.ExecutionType == ExecutionType.DirectCreate)
                         {
                             long codeDepositGasCost = GasCostOf.CodeDeposit * callResult.Output.Length;
@@ -231,7 +231,6 @@ namespace Nethermind.Evm
                         else
                         {
                             previousCallResult = callResult.PrecompileSuccess.HasValue ? (callResult.PrecompileSuccess.Value ? StatusCode.SuccessBytes : StatusCode.FailureBytes) : StatusCode.SuccessBytes;
-                            // TODO: can remove the line below now after have the buffer
                             previousCallOutput = callResult.Output.SliceWithZeroPadding(0, Math.Min(callResult.Output.Length, (int)previousState.OutputLength));
                             previousCallOutputDestination = previousState.OutputDestination;
                             _returnDataBuffer = callResult.Output;
@@ -290,6 +289,25 @@ namespace Nethermind.Evm
                     currentState.IsContinuation = true;
                 }
             }
+        }
+
+        public CodeInfo GetCachedCodeInfo(Address codeSource)
+        {
+            Keccak codeHash = _state.GetCodeHash(codeSource);
+            CodeInfo cachedCodeInfo = _codeCache.Get(codeHash);
+            if (cachedCodeInfo == null)
+            {
+                byte[] code = _state.GetCode(codeHash);
+                if (code == null)
+                {
+                    return null;
+                }
+
+                cachedCodeInfo = new CodeInfo(code);
+                _codeCache.Set(codeHash, cachedCodeInfo);
+            }
+
+            return cachedCodeInfo;
         }
 
         private void InitializePrecompiledContracts()
@@ -375,10 +393,18 @@ namespace Nethermind.Evm
                 throw new OutOfGasException();
             }
 
-            //if(!UpdateGas(baseGasCost, ref gasAvailable)) return PrepareException(instruction, gasBefore);
-            //if(!UpdateGas(dataGasCost, ref gasAvailable)) return PrepareException(instruction, gasBefore);
-            if (!UpdateGas(baseGasCost, ref gasAvailable)) throw new OutOfGasException();
-            if (!UpdateGas(dataGasCost, ref gasAvailable)) throw new OutOfGasException();
+            //if(!UpdateGas(baseGasCost, ref gasAvailable)) return CallResult.Exception;
+            //if(!UpdateGas(dataGasCost, ref gasAvailable)) return CallResult.Exception;
+            if (!UpdateGas(baseGasCost, ref gasAvailable))
+            {
+                throw new OutOfGasException();
+            }
+
+            if (!UpdateGas(dataGasCost, ref gasAvailable))
+            {
+                throw new OutOfGasException();
+            }
+
             state.GasAvailable = gasAvailable;
 
             try
@@ -730,7 +756,10 @@ namespace Nethermind.Evm
                     _logger.Debug($"  MEMORY COST {memoryCost}");
                 }
 
-                if (!UpdateGas(memoryCost, ref gasAvailable)) throw new OutOfGasException();
+                if (!UpdateGas(memoryCost, ref gasAvailable))
+                {
+                    throw new OutOfGasException();
+                }
             }
 
             if (previousCallResult != null)
@@ -766,645 +795,877 @@ namespace Nethermind.Evm
                 switch (instruction)
                 {
                     case Instruction.STOP:
-                        {
-                            UpdateCurrentState();
-                            EndInstructionTrace();
-                            return CallResult.Empty;
-                        }
+                    {
+                        UpdateCurrentState();
+                        EndInstructionTrace();
+                        return CallResult.Empty;
+                    }
                     case Instruction.ADD:
+                    {
+                        if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable))
                         {
-                            if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return PrepareException(instruction, gasBefore);
-                            BigInteger a = PopUInt();
-                            BigInteger b = PopUInt();
-                            BigInteger res = a + b;
-                            PushInt(res >= P256Int ? res - P256Int : res);
-                            break;
+                            return CallResult.OutOfGasException;
                         }
+
+                        BigInteger a = PopUInt();
+                        BigInteger b = PopUInt();
+                        BigInteger res = a + b;
+                        PushInt(res >= P256Int ? res - P256Int : res);
+                        break;
+                    }
                     case Instruction.MUL:
+                    {
+                        if (!UpdateGas(GasCostOf.Low, ref gasAvailable))
                         {
-                            if (!UpdateGas(GasCostOf.Low, ref gasAvailable)) return PrepareException(instruction, gasBefore);
-                            BigInteger a = PopUInt();
-                            BigInteger b = PopUInt();
-                            PushInt(BigInteger.Remainder(a * b, P256Int));
-                            break;
+                            return CallResult.OutOfGasException;
                         }
+
+                        BigInteger a = PopUInt();
+                        BigInteger b = PopUInt();
+                        PushInt(BigInteger.Remainder(a * b, P256Int));
+                        break;
+                    }
                     case Instruction.SUB:
+                    {
+                        if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable))
                         {
-                            if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return PrepareException(instruction, gasBefore);
-                            BigInteger a = PopUInt();
-                            BigInteger b = PopUInt();
-                            BigInteger res = a - b;
-                            if (res < BigInteger.Zero)
-                            {
-                                res += P256Int;
-                            }
-
-                            PushInt(res);
-                            break;
+                            return CallResult.OutOfGasException;
                         }
+
+                        BigInteger a = PopUInt();
+                        BigInteger b = PopUInt();
+                        BigInteger res = a - b;
+                        if (res < BigInteger.Zero)
+                        {
+                            res += P256Int;
+                        }
+
+                        PushInt(res);
+                        break;
+                    }
                     case Instruction.DIV:
+                    {
+                        if (!UpdateGas(GasCostOf.Low, ref gasAvailable))
                         {
-                            if (!UpdateGas(GasCostOf.Low, ref gasAvailable)) return PrepareException(instruction, gasBefore);
-                            BigInteger a = PopUInt();
-                            BigInteger b = PopUInt();
-                            PushInt(b == BigInteger.Zero ? BigInteger.Zero : BigInteger.Divide(a, b));
-                            break;
+                            return CallResult.OutOfGasException;
                         }
+
+                        BigInteger a = PopUInt();
+                        BigInteger b = PopUInt();
+                        PushInt(b == BigInteger.Zero ? BigInteger.Zero : BigInteger.Divide(a, b));
+                        break;
+                    }
                     case Instruction.SDIV:
+                    {
+                        if (!UpdateGas(GasCostOf.Low, ref gasAvailable))
                         {
-                            if (!UpdateGas(GasCostOf.Low, ref gasAvailable)) return PrepareException(instruction, gasBefore);
-                            BigInteger a = PopInt();
-                            BigInteger b = PopInt();
-                            if (b == BigInteger.Zero)
-                            {
-                                PushInt(BigInteger.Zero);
-                            }
-                            else if (b == BigInteger.MinusOne && a == P255Int)
-                            {
-                                PushInt(P255);
-                            }
-                            else
-                            {
-                                PushBytes(BigInteger.Divide(a, b).ToBigEndianByteArray(32));
-                            }
-
-                            break;
+                            return CallResult.OutOfGasException;
                         }
+
+                        BigInteger a = PopInt();
+                        BigInteger b = PopInt();
+                        if (b == BigInteger.Zero)
+                        {
+                            PushInt(BigInteger.Zero);
+                        }
+                        else if (b == BigInteger.MinusOne && a == P255Int)
+                        {
+                            PushInt(P255);
+                        }
+                        else
+                        {
+                            PushBytes(BigInteger.Divide(a, b).ToBigEndianByteArray(32));
+                        }
+
+                        break;
+                    }
                     case Instruction.MOD:
+                    {
+                        if (!UpdateGas(GasCostOf.Low, ref gasAvailable))
                         {
-                            if (!UpdateGas(GasCostOf.Low, ref gasAvailable)) return PrepareException(instruction, gasBefore);
-                            BigInteger a = PopUInt();
-                            BigInteger b = PopUInt();
-                            PushInt(b == BigInteger.Zero ? BigInteger.Zero : BigInteger.Remainder(a, b));
-                            break;
+                            return CallResult.OutOfGasException;
                         }
+
+                        BigInteger a = PopUInt();
+                        BigInteger b = PopUInt();
+                        PushInt(b == BigInteger.Zero ? BigInteger.Zero : BigInteger.Remainder(a, b));
+                        break;
+                    }
                     case Instruction.SMOD:
+                    {
+                        if (!UpdateGas(GasCostOf.Low, ref gasAvailable))
                         {
-                            if (!UpdateGas(GasCostOf.Low, ref gasAvailable)) return PrepareException(instruction, gasBefore);
-                            BigInteger a = PopInt();
-                            BigInteger b = PopInt();
-                            if (b == BigInteger.Zero)
-                            {
-                                PushInt(BigInteger.Zero);
-                            }
-                            else
-                            {
-                                PushBytes((a.Sign * BigInteger.Remainder(a.Abs(), b.Abs()))
-                                    .ToBigEndianByteArray(32));
-                            }
-
-                            break;
+                            return CallResult.OutOfGasException;
                         }
+
+                        BigInteger a = PopInt();
+                        BigInteger b = PopInt();
+                        if (b == BigInteger.Zero)
+                        {
+                            PushInt(BigInteger.Zero);
+                        }
+                        else
+                        {
+                            PushBytes((a.Sign * BigInteger.Remainder(a.Abs(), b.Abs()))
+                                .ToBigEndianByteArray(32));
+                        }
+
+                        break;
+                    }
                     case Instruction.ADDMOD:
+                    {
+                        if (!UpdateGas(GasCostOf.Mid, ref gasAvailable))
                         {
-                            if (!UpdateGas(GasCostOf.Mid, ref gasAvailable)) return PrepareException(instruction, gasBefore);
-                            BigInteger a = PopUInt();
-                            BigInteger b = PopUInt();
-                            BigInteger mod = PopUInt();
-                            PushInt(mod == BigInteger.Zero ? BigInteger.Zero : BigInteger.Remainder(a + b, mod));
-                            break;
+                            return CallResult.OutOfGasException;
                         }
+
+                        BigInteger a = PopUInt();
+                        BigInteger b = PopUInt();
+                        BigInteger mod = PopUInt();
+                        PushInt(mod == BigInteger.Zero ? BigInteger.Zero : BigInteger.Remainder(a + b, mod));
+                        break;
+                    }
                     case Instruction.MULMOD:
+                    {
+                        if (!UpdateGas(GasCostOf.Mid, ref gasAvailable))
                         {
-                            if (!UpdateGas(GasCostOf.Mid, ref gasAvailable)) return PrepareException(instruction, gasBefore);
-                            BigInteger a = PopUInt();
-                            BigInteger b = PopUInt();
-                            BigInteger mod = PopUInt();
-                            PushInt(mod == BigInteger.Zero ? BigInteger.Zero : BigInteger.Remainder(a * b, mod));
-                            break;
+                            return CallResult.OutOfGasException;
                         }
+
+                        BigInteger a = PopUInt();
+                        BigInteger b = PopUInt();
+                        BigInteger mod = PopUInt();
+                        PushInt(mod == BigInteger.Zero ? BigInteger.Zero : BigInteger.Remainder(a * b, mod));
+                        break;
+                    }
                     case Instruction.EXP:
+                    {
+                        if (!UpdateGas(GasCostOf.Exp, ref gasAvailable))
                         {
-                            if (!UpdateGas(GasCostOf.Exp, ref gasAvailable)) return PrepareException(instruction, gasBefore);
-                            BigInteger baseInt = PopUInt();
-                            BigInteger exp = PopUInt();
-                            if (exp > BigInteger.Zero)
-                            {
-                                int expSize = (int)BigInteger.Log(exp, 256);
-                                BigInteger expSizeTest = BigInteger.Pow(BigInt256, expSize);
-                                BigInteger expSizeTestInc = expSizeTest * BigInt256;
-                                if (expSizeTest > exp)
-                                {
-                                    expSize--;
-                                }
-                                else if (expSizeTestInc <= exp)
-                                {
-                                    expSize++;
-                                }
+                            return CallResult.OutOfGasException;
+                        }
 
-                                if (!UpdateGas((spec.IsEip160Enabled ? GasCostOf.ExpByteEip160 : GasCostOf.ExpByte) * (1L + expSize), ref gasAvailable)) return PrepareException(instruction, gasBefore);
-                            }
-                            else
+                        BigInteger baseInt = PopUInt();
+                        BigInteger exp = PopUInt();
+                        if (exp > BigInteger.Zero)
+                        {
+                            int expSize = (int)BigInteger.Log(exp, 256);
+                            BigInteger expSizeTest = BigInteger.Pow(BigInt256, expSize);
+                            BigInteger expSizeTestInc = expSizeTest * BigInt256;
+                            if (expSizeTest > exp)
                             {
-                                PushInt(BigInteger.One);
-                                break;
+                                expSize--;
+                            }
+                            else if (expSizeTestInc <= exp)
+                            {
+                                expSize++;
                             }
 
-                            if (baseInt == BigInteger.Zero)
+                            if (!UpdateGas((spec.IsEip160Enabled ? GasCostOf.ExpByteEip160 : GasCostOf.ExpByte) * (1L + expSize), ref gasAvailable))
                             {
-                                PushInt(BigInteger.Zero);
+                                return CallResult.OutOfGasException;
                             }
-                            else if (baseInt == BigInteger.One)
-                            {
-                                PushInt(BigInteger.One);
-                            }
-                            else
-                            {
-                                PushInt(BigInteger.ModPow(baseInt, exp, P256Int));
-                            }
-
+                        }
+                        else
+                        {
+                            PushInt(BigInteger.One);
                             break;
                         }
+
+                        if (baseInt == BigInteger.Zero)
+                        {
+                            PushInt(BigInteger.Zero);
+                        }
+                        else if (baseInt == BigInteger.One)
+                        {
+                            PushInt(BigInteger.One);
+                        }
+                        else
+                        {
+                            PushInt(BigInteger.ModPow(baseInt, exp, P256Int));
+                        }
+
+                        break;
+                    }
                     case Instruction.SIGNEXTEND:
+                    {
+                        if (!UpdateGas(GasCostOf.Low, ref gasAvailable))
                         {
-                            if (!UpdateGas(GasCostOf.Low, ref gasAvailable)) return PrepareException(instruction, gasBefore);
-                            BigInteger a = PopUInt(); // TODO: check if there is spec for handling too big numbers
-                            if (a >= BigInt32)
-                            {
-                                break;
-                            }
+                            return CallResult.OutOfGasException;
+                        }
 
-                            byte[] b = PopBytes();
-                            BitArray bits1 = b.ToBigEndianBitArray256();
-                            int bitPosition = Math.Max(0, 248 - 8 * (int)a);
-                            bool isSet = bits1[bitPosition];
-                            for (int i = 0; i < bitPosition; i++)
-                            {
-                                bits1[i] = isSet;
-                            }
-
-                            PushBytes(bits1.ToBytes());
+                        BigInteger a = PopUInt();
+                        if (a >= BigInt32)
+                        {
                             break;
                         }
+
+                        byte[] b = PopBytes();
+                        BitArray bits1 = b.ToBigEndianBitArray256();
+                        int bitPosition = Math.Max(0, 248 - 8 * (int)a);
+                        bool isSet = bits1[bitPosition];
+                        for (int i = 0; i < bitPosition; i++)
+                        {
+                            bits1[i] = isSet;
+                        }
+
+                        PushBytes(bits1.ToBytes());
+                        break;
+                    }
                     case Instruction.LT:
+                    {
+                        if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable))
                         {
-                            if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return PrepareException(instruction, gasBefore);
-                            BigInteger a = PopUInt();
-                            BigInteger b = PopUInt();
-                            PushInt(a < b ? BigInteger.One : BigInteger.Zero);
-                            break;
+                            return CallResult.OutOfGasException;
                         }
+
+                        BigInteger a = PopUInt();
+                        BigInteger b = PopUInt();
+                        PushInt(a < b ? BigInteger.One : BigInteger.Zero);
+                        break;
+                    }
                     case Instruction.GT:
+                    {
+                        if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable))
                         {
-                            if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return PrepareException(instruction, gasBefore);
-                            BigInteger a = PopUInt();
-                            BigInteger b = PopUInt();
-                            PushInt(a > b ? BigInteger.One : BigInteger.Zero);
-                            break;
+                            return CallResult.OutOfGasException;
                         }
+
+                        BigInteger a = PopUInt();
+                        BigInteger b = PopUInt();
+                        PushInt(a > b ? BigInteger.One : BigInteger.Zero);
+                        break;
+                    }
                     case Instruction.SLT:
+                    {
+                        if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable))
                         {
-                            if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return PrepareException(instruction, gasBefore);
-                            BigInteger a = PopInt();
-                            BigInteger b = PopInt();
-                            PushInt(BigInteger.Compare(a, b) < 0 ? BigInteger.One : BigInteger.Zero);
-                            break;
+                            return CallResult.OutOfGasException;
                         }
+
+                        BigInteger a = PopInt();
+                        BigInteger b = PopInt();
+                        PushInt(BigInteger.Compare(a, b) < 0 ? BigInteger.One : BigInteger.Zero);
+                        break;
+                    }
                     case Instruction.SGT:
+                    {
+                        if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable))
                         {
-                            if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return PrepareException(instruction, gasBefore);
-                            BigInteger a = PopInt();
-                            BigInteger b = PopInt();
-                            PushInt(a > b ? BigInteger.One : BigInteger.Zero);
-                            break;
+                            return CallResult.OutOfGasException;
                         }
+
+                        BigInteger a = PopInt();
+                        BigInteger b = PopInt();
+                        PushInt(a > b ? BigInteger.One : BigInteger.Zero);
+                        break;
+                    }
                     case Instruction.EQ:
+                    {
+                        if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable))
                         {
-                            if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return PrepareException(instruction, gasBefore);
-                            BigInteger a = PopUInt();
-                            BigInteger b = PopUInt();
-                            PushInt(a == b ? BigInteger.One : BigInteger.Zero);
-                            break;
+                            return CallResult.OutOfGasException;
                         }
+
+                        BigInteger a = PopUInt();
+                        BigInteger b = PopUInt();
+                        PushInt(a == b ? BigInteger.One : BigInteger.Zero);
+                        break;
+                    }
                     case Instruction.ISZERO:
+                    {
+                        if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable))
                         {
-                            if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return PrepareException(instruction, gasBefore);
-                            BigInteger a = PopInt();
-                            PushInt(a.IsZero ? BigInteger.One : BigInteger.Zero);
-                            break;
+                            return CallResult.OutOfGasException;
                         }
+
+                        BigInteger a = PopInt();
+                        PushInt(a.IsZero ? BigInteger.One : BigInteger.Zero);
+                        break;
+                    }
                     case Instruction.AND:
+                    {
+                        if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable))
                         {
-                            if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return PrepareException(instruction, gasBefore);
-                            BitArray bits1 = PopBytes().ToBigEndianBitArray256();
-                            BitArray bits2 = PopBytes().ToBigEndianBitArray256();
-                            PushBytes(bits1.And(bits2).ToBytes());
-                            break;
+                            return CallResult.OutOfGasException;
                         }
+
+                        BitArray bits1 = PopBytes().ToBigEndianBitArray256();
+                        BitArray bits2 = PopBytes().ToBigEndianBitArray256();
+                        PushBytes(bits1.And(bits2).ToBytes());
+                        break;
+                    }
                     case Instruction.OR:
+                    {
+                        if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable))
                         {
-                            if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return PrepareException(instruction, gasBefore);
-                            BitArray bits1 = PopBytes().ToBigEndianBitArray256();
-                            BitArray bits2 = PopBytes().ToBigEndianBitArray256();
-                            PushBytes(bits1.Or(bits2).ToBytes());
-                            break;
+                            return CallResult.OutOfGasException;
                         }
+
+                        BitArray bits1 = PopBytes().ToBigEndianBitArray256();
+                        BitArray bits2 = PopBytes().ToBigEndianBitArray256();
+                        PushBytes(bits1.Or(bits2).ToBytes());
+                        break;
+                    }
                     case Instruction.XOR:
+                    {
+                        if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable))
                         {
-                            if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return PrepareException(instruction, gasBefore);
-                            BitArray bits1 = PopBytes().ToBigEndianBitArray256();
-                            BitArray bits2 = PopBytes().ToBigEndianBitArray256();
-                            PushBytes(bits1.Xor(bits2).ToBytes());
-                            break;
+                            return CallResult.OutOfGasException;
                         }
+
+                        BitArray bits1 = PopBytes().ToBigEndianBitArray256();
+                        BitArray bits2 = PopBytes().ToBigEndianBitArray256();
+                        PushBytes(bits1.Xor(bits2).ToBytes());
+                        break;
+                    }
                     case Instruction.NOT:
+                    {
+                        if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable))
                         {
-                            if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return PrepareException(instruction, gasBefore);
-                            byte[] bytes = PopBytes();
-                            byte[] res = new byte[32];
-                            for (int i = 0; i < 32; ++i)
+                            return CallResult.OutOfGasException;
+                        }
+
+                        byte[] bytes = PopBytes();
+                        byte[] res = new byte[32];
+                        for (int i = 0; i < 32; ++i)
+                        {
+                            if (bytes.Length < 32 - i)
                             {
-                                if (bytes.Length < 32 - i)
-                                {
-                                    res[i] = 0xff;
-                                }
-                                else
-                                {
-                                    res[i] = (byte)~bytes[i - (32 - bytes.Length)];
-                                }
-                            }
-
-                            PushBytes(res.WithoutLeadingZeros());
-                            break;
-                        }
-                    case Instruction.BYTE:
-                        {
-                            if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return PrepareException(instruction, gasBefore);
-                            BigInteger position = PopUInt();
-                            byte[] bytes = PopBytes();
-
-                            if (position >= BigInt32)
-                            {
-                                PushBytes(BytesZero);
-                                break;
-                            }
-
-                            int adjustedPosition = bytes.Length - 32 + (int)position;
-                            PushInt(adjustedPosition < 0 ? BigInteger.Zero : new BigInteger(bytes[adjustedPosition]));
-                            //PushBytes(adjustedPosition < 0 ? BytesZero : bytes.Slice(adjustedPosition, 1));
-                            break;
-                        }
-                    case Instruction.SHA3:
-                        {
-                            BigInteger memSrc = PopUInt();
-                            BigInteger memLength = PopUInt();
-                            UpdateGas(GasCostOf.Sha3 + GasCostOf.Sha3Word * EvmMemory.Div32Ceiling(memLength),
-                                ref gasAvailable);
-                            UpdateMemoryCost(memSrc, memLength);
-
-                            byte[] memData = evmState.Memory.Load(memSrc, memLength);
-                            PushBytes(Keccak.Compute(memData).Bytes);
-                            break;
-                        }
-                    case Instruction.ADDRESS:
-                        {
-                            if (!UpdateGas(GasCostOf.Base, ref gasAvailable)) return PrepareException(instruction, gasBefore);
-                            PushBytes(env.ExecutingAccount.Hex);
-                            break;
-                        }
-                    case Instruction.BALANCE:
-                        {
-                            if (!UpdateGas(spec.IsEip150Enabled ? GasCostOf.BalanceEip150 : GasCostOf.Balance, ref gasAvailable)) return PrepareException(instruction, gasBefore);
-                            Address address = PopAddress();
-                            BigInteger balance = _state.GetBalance(address);
-                            PushInt(balance);
-                            break;
-                        }
-                    case Instruction.CALLER:
-                        {
-                            if (!UpdateGas(GasCostOf.Base, ref gasAvailable)) return PrepareException(instruction, gasBefore);
-                            PushBytes(env.Sender.Hex);
-                            break;
-                        }
-                    case Instruction.CALLVALUE:
-                        {
-                            if (!UpdateGas(GasCostOf.Base, ref gasAvailable)) return PrepareException(instruction, gasBefore);
-                            PushInt(env.Value);
-                            break;
-                        }
-                    case Instruction.ORIGIN:
-                        {
-                            if (!UpdateGas(GasCostOf.Base, ref gasAvailable)) return PrepareException(instruction, gasBefore);
-                            PushBytes(env.Originator.Hex);
-                            break;
-                        }
-                    case Instruction.CALLDATALOAD:
-                        {
-                            if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return PrepareException(instruction, gasBefore);
-                            BigInteger src = PopUInt();
-                            PushBytes(env.InputData.SliceWithZeroPadding(src, 32));
-                            break;
-                        }
-                    case Instruction.CALLDATASIZE:
-                        {
-                            if (!UpdateGas(GasCostOf.Base, ref gasAvailable)) return PrepareException(instruction, gasBefore);
-                            PushInt(env.InputData.Length);
-                            break;
-                        }
-                    case Instruction.CALLDATACOPY:
-                        {
-                            BigInteger dest = PopUInt();
-                            BigInteger src = PopUInt();
-                            BigInteger length = PopUInt();
-                            UpdateGas(GasCostOf.VeryLow + GasCostOf.Memory * EvmMemory.Div32Ceiling(length),
-                                ref gasAvailable);
-                            UpdateMemoryCost(dest, length);
-
-                            byte[] callDataSlice = env.InputData.SliceWithZeroPadding(src, (int)length);
-                            evmState.Memory.Save(dest, callDataSlice);
-                            break;
-                        }
-                    case Instruction.CODESIZE:
-                        {
-                            if (!UpdateGas(GasCostOf.Base, ref gasAvailable)) return PrepareException(instruction, gasBefore);
-                            PushInt(code.Length);
-                            break;
-                        }
-                    case Instruction.CODECOPY:
-                        {
-                            BigInteger dest = PopUInt();
-                            BigInteger src = PopUInt();
-                            BigInteger length = PopUInt();
-                            if (!UpdateGas(GasCostOf.VeryLow + GasCostOf.Memory * EvmMemory.Div32Ceiling(length), ref gasAvailable)) return PrepareException(instruction, gasBefore);
-                            UpdateMemoryCost(dest, length);
-                            byte[] callDataSlice = code.SliceWithZeroPadding(src, (int)length);
-                            evmState.Memory.Save(dest, callDataSlice);
-                            break;
-                        }
-                    case Instruction.GASPRICE:
-                        {
-                            if (!UpdateGas(GasCostOf.Base, ref gasAvailable)) return PrepareException(instruction, gasBefore);
-                            PushInt(env.GasPrice);
-                            break;
-                        }
-                    case Instruction.EXTCODESIZE:
-                        {
-                            if (!UpdateGas(spec.IsEip150Enabled ? GasCostOf.ExtCodeSizeEip150 : GasCostOf.ExtCodeSize, ref gasAvailable)) return PrepareException(instruction, gasBefore);
-                            Address address = PopAddress();
-                            byte[] accountCode = GetCachedCodeInfo(address)?.MachineCode;
-                            PushInt(accountCode?.Length ?? BigInteger.Zero);
-                            break;
-                        }
-                    case Instruction.EXTCODECOPY:
-                        {
-                            Address address = PopAddress();
-                            BigInteger dest = PopUInt();
-                            BigInteger src = PopUInt();
-                            BigInteger length = PopUInt();
-                            UpdateGas((spec.IsEip150Enabled ? GasCostOf.ExtCodeEip150 : GasCostOf.ExtCode) + GasCostOf.Memory * EvmMemory.Div32Ceiling(length),
-                                ref gasAvailable);
-                            UpdateMemoryCost(dest, length);
-                            byte[] externalCode = GetCachedCodeInfo(address)?.MachineCode;
-                            byte[] callDataSlice = externalCode.SliceWithZeroPadding(src, (int)length);
-                            evmState.Memory.Save(dest, callDataSlice);
-                            break;
-                        }
-                    case Instruction.RETURNDATASIZE:
-                        {
-                            if (!spec.IsEip211Enabled)
-                            {
-                                Metrics.EvmExceptions++;
-                                return PrepareException(instruction, gasBefore);
-                                //throw new InvalidInstructionException((byte)instruction);
-                            }
-
-                            if (!UpdateGas(GasCostOf.Base, ref gasAvailable)) return PrepareException(instruction, gasBefore);
-                            PushInt(_returnDataBuffer.Length);
-                            break;
-                        }
-                    case Instruction.RETURNDATACOPY:
-                        {
-                            if (!spec.IsEip211Enabled)
-                            {
-                                Metrics.EvmExceptions++;
-                                return PrepareException(instruction, gasBefore);
-                                //throw new InvalidInstructionException((byte)instruction);
-                            }
-
-                            BigInteger dest = PopUInt();
-                            BigInteger src = PopUInt();
-                            BigInteger length = PopUInt();
-                            if (!UpdateGas(GasCostOf.VeryLow + GasCostOf.Memory * EvmMemory.Div32Ceiling(length), ref gasAvailable)) return PrepareException(instruction, gasBefore);
-                            UpdateMemoryCost(dest, length);
-
-                            if (src + length > _returnDataBuffer.Length)
-                            {
-                                Metrics.EvmExceptions++;
-                                return PrepareException(instruction, gasBefore);
-                                //throw new EvmAccessViolationException();
-                            }
-
-                            byte[] returnDataSlice = _returnDataBuffer.SliceWithZeroPadding(src, (int)length);
-                            evmState.Memory.Save(dest, returnDataSlice);
-                            break;
-                        }
-                    case Instruction.BLOCKHASH:
-                        {
-                            if (!UpdateGas(GasCostOf.BlockHash, ref gasAvailable)) return PrepareException(instruction, gasBefore);
-                            BigInteger a = PopUInt();
-                            PushBytes(_blockhashProvider.GetBlockhash(env.CurrentBlock, a)?.Bytes ?? BytesZero);
-
-                            break;
-                        }
-                    case Instruction.COINBASE:
-                        {
-                            if (!UpdateGas(GasCostOf.Base, ref gasAvailable)) return PrepareException(instruction, gasBefore);
-                            PushBytes(env.CurrentBlock.Beneficiary.Hex);
-                            break;
-                        }
-                    case Instruction.DIFFICULTY:
-                        {
-                            if (!UpdateGas(GasCostOf.Base, ref gasAvailable)) return PrepareException(instruction, gasBefore);
-                            PushInt(env.CurrentBlock.Difficulty);
-                            break;
-                        }
-                    case Instruction.TIMESTAMP:
-                        {
-                            if (!UpdateGas(GasCostOf.Base, ref gasAvailable)) return PrepareException(instruction, gasBefore);
-                            PushInt(env.CurrentBlock.Timestamp);
-                            break;
-                        }
-                    case Instruction.NUMBER:
-                        {
-                            if (!UpdateGas(GasCostOf.Base, ref gasAvailable)) return PrepareException(instruction, gasBefore);
-                            PushInt(env.CurrentBlock.Number);
-                            break;
-                        }
-                    case Instruction.GASLIMIT:
-                        {
-                            if (!UpdateGas(GasCostOf.Base, ref gasAvailable)) return PrepareException(instruction, gasBefore);
-                            PushInt(env.CurrentBlock.GasLimit);
-                            break;
-                        }
-                    case Instruction.POP:
-                        {
-                            if (!UpdateGas(GasCostOf.Base, ref gasAvailable)) return PrepareException(instruction, gasBefore);
-                            PopLimbo();
-                            break;
-                        }
-                    case Instruction.MLOAD:
-                        {
-                            if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return PrepareException(instruction, gasBefore);
-                            BigInteger memPosition = PopUInt();
-                            UpdateMemoryCost(memPosition, BigInt32);
-                            byte[] memData = evmState.Memory.Load(memPosition);
-                            PushBytes(memData);
-                            break;
-                        }
-                    case Instruction.MSTORE:
-                        {
-                            if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return PrepareException(instruction, gasBefore);
-                            BigInteger memPosition = PopUInt();
-                            byte[] data = PopBytes();
-                            UpdateMemoryCost(memPosition, BigInt32);
-                            evmState.Memory.SaveWord(memPosition, data);
-                            break;
-                        }
-                    case Instruction.MSTORE8:
-                        {
-                            if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return PrepareException(instruction, gasBefore);
-                            BigInteger memPosition = PopUInt();
-                            byte[] data = PopBytes();
-                            UpdateMemoryCost(memPosition, BigInteger.One);
-                            evmState.Memory.SaveByte(memPosition, data);
-                            break;
-                        }
-                    case Instruction.SLOAD:
-                        {
-                            if (!UpdateGas(spec.IsEip150Enabled ? GasCostOf.SLoadEip150 : GasCostOf.SLoad, ref gasAvailable)) return PrepareException(instruction, gasBefore);
-                            BigInteger storageIndex = PopUInt();
-                            byte[] value = _storage.Get(new StorageAddress(env.ExecutingAccount, storageIndex));
-                            PushBytes(value);
-                            break;
-                        }
-                    case Instruction.SSTORE:
-                        {
-                            if (evmState.IsStatic)
-                            {
-                                Metrics.EvmExceptions++;
-                                return PrepareException(instruction, gasBefore);
-                                //throw new StaticCallViolationException();
-                            }
-
-                            BigInteger storageIndex = PopUInt();
-                            byte[] data = PopBytes().WithoutLeadingZeros();
-
-                            bool isNewValueZero = data.IsZero();
-
-                            StorageAddress storageAddress = new StorageAddress(env.ExecutingAccount, storageIndex);
-                            byte[] previousValue = _storage.Get(storageAddress);
-
-                            bool isValueChanged = !(isNewValueZero && previousValue.IsZero()) ||
-                                                  !Bytes.UnsafeCompare(previousValue, data);
-
-
-                            if (isNewValueZero)
-                            {
-                                if (!UpdateGas(GasCostOf.SReset, ref gasAvailable)) return PrepareException(instruction, gasBefore);
-                                if (isValueChanged)
-                                {
-                                    evmState.Refund += RefundOf.SClear;
-                                }
+                                res[i] = 0xff;
                             }
                             else
                             {
-                                if (!UpdateGas(previousValue.IsZero() ? GasCostOf.SSet : GasCostOf.SReset, ref gasAvailable)) return PrepareException(instruction, gasBefore);
+                                res[i] = (byte)~bytes[i - (32 - bytes.Length)];
+                            }
+                        }
+
+                        PushBytes(res.WithoutLeadingZeros());
+                        break;
+                    }
+                    case Instruction.BYTE:
+                    {
+                        if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable))
+                        {
+                            return CallResult.OutOfGasException;
+                        }
+
+                        BigInteger position = PopUInt();
+                        byte[] bytes = PopBytes();
+
+                        if (position >= BigInt32)
+                        {
+                            PushBytes(BytesZero);
+                            break;
+                        }
+
+                        int adjustedPosition = bytes.Length - 32 + (int)position;
+                        PushInt(adjustedPosition < 0 ? BigInteger.Zero : new BigInteger(bytes[adjustedPosition]));
+                        //PushBytes(adjustedPosition < 0 ? BytesZero : bytes.Slice(adjustedPosition, 1));
+                        break;
+                    }
+                    case Instruction.SHA3:
+                    {
+                        BigInteger memSrc = PopUInt();
+                        BigInteger memLength = PopUInt();
+                        if (!UpdateGas(GasCostOf.Sha3 + GasCostOf.Sha3Word * EvmMemory.Div32Ceiling(memLength),
+                            ref gasAvailable))
+                        {
+                            return CallResult.OutOfGasException;
+                        }
+
+                        UpdateMemoryCost(memSrc, memLength);
+
+                        byte[] memData = evmState.Memory.Load(memSrc, memLength);
+                        PushBytes(Keccak.Compute(memData).Bytes);
+                        break;
+                    }
+                    case Instruction.ADDRESS:
+                    {
+                        if (!UpdateGas(GasCostOf.Base, ref gasAvailable))
+                        {
+                            return CallResult.OutOfGasException;
+                        }
+
+                        PushBytes(env.ExecutingAccount.Hex);
+                        break;
+                    }
+                    case Instruction.BALANCE:
+                    {
+                        if (!UpdateGas(spec.IsEip150Enabled ? GasCostOf.BalanceEip150 : GasCostOf.Balance, ref gasAvailable))
+                        {
+                            return CallResult.OutOfGasException;
+                        }
+
+                        Address address = PopAddress();
+                        BigInteger balance = _state.GetBalance(address);
+                        PushInt(balance);
+                        break;
+                    }
+                    case Instruction.CALLER:
+                    {
+                        if (!UpdateGas(GasCostOf.Base, ref gasAvailable))
+                        {
+                            return CallResult.OutOfGasException;
+                        }
+
+                        PushBytes(env.Sender.Hex);
+                        break;
+                    }
+                    case Instruction.CALLVALUE:
+                    {
+                        if (!UpdateGas(GasCostOf.Base, ref gasAvailable))
+                        {
+                            return CallResult.OutOfGasException;
+                        }
+
+                        PushInt(env.Value);
+                        break;
+                    }
+                    case Instruction.ORIGIN:
+                    {
+                        if (!UpdateGas(GasCostOf.Base, ref gasAvailable))
+                        {
+                            return CallResult.OutOfGasException;
+                        }
+
+                        PushBytes(env.Originator.Hex);
+                        break;
+                    }
+                    case Instruction.CALLDATALOAD:
+                    {
+                        if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable))
+                        {
+                            return CallResult.OutOfGasException;
+                        }
+
+                        BigInteger src = PopUInt();
+                        PushBytes(env.InputData.SliceWithZeroPadding(src, 32));
+                        break;
+                    }
+                    case Instruction.CALLDATASIZE:
+                    {
+                        if (!UpdateGas(GasCostOf.Base, ref gasAvailable))
+                        {
+                            return CallResult.OutOfGasException;
+                        }
+
+                        PushInt(env.InputData.Length);
+                        break;
+                    }
+                    case Instruction.CALLDATACOPY:
+                    {
+                        BigInteger dest = PopUInt();
+                        BigInteger src = PopUInt();
+                        BigInteger length = PopUInt();
+                        if (!UpdateGas(GasCostOf.VeryLow + GasCostOf.Memory * EvmMemory.Div32Ceiling(length),
+                            ref gasAvailable))
+                        {
+                            return CallResult.OutOfGasException;
+                        }
+
+                        UpdateMemoryCost(dest, length);
+
+                        byte[] callDataSlice = env.InputData.SliceWithZeroPadding(src, (int)length);
+                        evmState.Memory.Save(dest, callDataSlice);
+                        break;
+                    }
+                    case Instruction.CODESIZE:
+                    {
+                        if (!UpdateGas(GasCostOf.Base, ref gasAvailable))
+                        {
+                            return CallResult.OutOfGasException;
+                        }
+
+                        PushInt(code.Length);
+                        break;
+                    }
+                    case Instruction.CODECOPY:
+                    {
+                        BigInteger dest = PopUInt();
+                        BigInteger src = PopUInt();
+                        BigInteger length = PopUInt();
+                        if (!UpdateGas(GasCostOf.VeryLow + GasCostOf.Memory * EvmMemory.Div32Ceiling(length), ref gasAvailable))
+                        {
+                            return CallResult.OutOfGasException;
+                        }
+
+                        UpdateMemoryCost(dest, length);
+                        byte[] callDataSlice = code.SliceWithZeroPadding(src, (int)length);
+                        evmState.Memory.Save(dest, callDataSlice);
+                        break;
+                    }
+                    case Instruction.GASPRICE:
+                    {
+                        if (!UpdateGas(GasCostOf.Base, ref gasAvailable))
+                        {
+                            return CallResult.OutOfGasException;
+                        }
+
+                        PushInt(env.GasPrice);
+                        break;
+                    }
+                    case Instruction.EXTCODESIZE:
+                    {
+                        if (!UpdateGas(spec.IsEip150Enabled ? GasCostOf.ExtCodeSizeEip150 : GasCostOf.ExtCodeSize, ref gasAvailable))
+                        {
+                            return CallResult.OutOfGasException;
+                        }
+
+                        Address address = PopAddress();
+                        byte[] accountCode = GetCachedCodeInfo(address)?.MachineCode;
+                        PushInt(accountCode?.Length ?? BigInteger.Zero);
+                        break;
+                    }
+                    case Instruction.EXTCODECOPY:
+                    {
+                        Address address = PopAddress();
+                        BigInteger dest = PopUInt();
+                        BigInteger src = PopUInt();
+                        BigInteger length = PopUInt();
+                        if (!UpdateGas((spec.IsEip150Enabled ? GasCostOf.ExtCodeEip150 : GasCostOf.ExtCode) + GasCostOf.Memory * EvmMemory.Div32Ceiling(length),
+                            ref gasAvailable))
+                        {
+                            return CallResult.OutOfGasException;
+                        }
+
+                        UpdateMemoryCost(dest, length);
+                        byte[] externalCode = GetCachedCodeInfo(address)?.MachineCode;
+                        byte[] callDataSlice = externalCode.SliceWithZeroPadding(src, (int)length);
+                        evmState.Memory.Save(dest, callDataSlice);
+                        break;
+                    }
+                    case Instruction.RETURNDATASIZE:
+                    {
+                        if (!spec.IsEip211Enabled)
+                        {
+                            Metrics.EvmExceptions++;
+                            return CallResult.InvalidInstructionException;
+                        }
+
+                        if (!UpdateGas(GasCostOf.Base, ref gasAvailable))
+                        {
+                            return CallResult.OutOfGasException;
+                        }
+
+                        PushInt(_returnDataBuffer.Length);
+                        break;
+                    }
+                    case Instruction.RETURNDATACOPY:
+                    {
+                        if (!spec.IsEip211Enabled)
+                        {
+                            Metrics.EvmExceptions++;
+                            return CallResult.InvalidInstructionException;
+                        }
+
+                        BigInteger dest = PopUInt();
+                        BigInteger src = PopUInt();
+                        BigInteger length = PopUInt();
+                        if (!UpdateGas(GasCostOf.VeryLow + GasCostOf.Memory * EvmMemory.Div32Ceiling(length), ref gasAvailable))
+                        {
+                            return CallResult.OutOfGasException;
+                        }
+
+                        UpdateMemoryCost(dest, length);
+
+                        if (src + length > _returnDataBuffer.Length)
+                        {
+                            Metrics.EvmExceptions++;
+                            return CallResult.AccessViolationException;
+                        }
+
+                        byte[] returnDataSlice = _returnDataBuffer.SliceWithZeroPadding(src, (int)length);
+                        evmState.Memory.Save(dest, returnDataSlice);
+                        break;
+                    }
+                    case Instruction.BLOCKHASH:
+                    {
+                        if (!UpdateGas(GasCostOf.BlockHash, ref gasAvailable))
+                        {
+                            return CallResult.OutOfGasException;
+                        }
+
+                        BigInteger a = PopUInt();
+                        PushBytes(_blockhashProvider.GetBlockhash(env.CurrentBlock, a)?.Bytes ?? BytesZero);
+
+                        break;
+                    }
+                    case Instruction.COINBASE:
+                    {
+                        if (!UpdateGas(GasCostOf.Base, ref gasAvailable))
+                        {
+                            return CallResult.OutOfGasException;
+                        }
+
+                        PushBytes(env.CurrentBlock.Beneficiary.Hex);
+                        break;
+                    }
+                    case Instruction.DIFFICULTY:
+                    {
+                        if (!UpdateGas(GasCostOf.Base, ref gasAvailable))
+                        {
+                            return CallResult.OutOfGasException;
+                        }
+
+                        PushInt(env.CurrentBlock.Difficulty);
+                        break;
+                    }
+                    case Instruction.TIMESTAMP:
+                    {
+                        if (!UpdateGas(GasCostOf.Base, ref gasAvailable))
+                        {
+                            return CallResult.OutOfGasException;
+                        }
+
+                        PushInt(env.CurrentBlock.Timestamp);
+                        break;
+                    }
+                    case Instruction.NUMBER:
+                    {
+                        if (!UpdateGas(GasCostOf.Base, ref gasAvailable))
+                        {
+                            return CallResult.OutOfGasException;
+                        }
+
+                        PushInt(env.CurrentBlock.Number);
+                        break;
+                    }
+                    case Instruction.GASLIMIT:
+                    {
+                        if (!UpdateGas(GasCostOf.Base, ref gasAvailable))
+                        {
+                            return CallResult.OutOfGasException;
+                        }
+
+                        PushInt(env.CurrentBlock.GasLimit);
+                        break;
+                    }
+                    case Instruction.POP:
+                    {
+                        if (!UpdateGas(GasCostOf.Base, ref gasAvailable))
+                        {
+                            return CallResult.OutOfGasException;
+                        }
+
+                        PopLimbo();
+                        break;
+                    }
+                    case Instruction.MLOAD:
+                    {
+                        if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable))
+                        {
+                            return CallResult.OutOfGasException;
+                        }
+
+                        BigInteger memPosition = PopUInt();
+                        UpdateMemoryCost(memPosition, BigInt32);
+                        byte[] memData = evmState.Memory.Load(memPosition);
+                        PushBytes(memData);
+                        break;
+                    }
+                    case Instruction.MSTORE:
+                    {
+                        if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable))
+                        {
+                            return CallResult.OutOfGasException;
+                        }
+
+                        BigInteger memPosition = PopUInt();
+                        byte[] data = PopBytes();
+                        UpdateMemoryCost(memPosition, BigInt32);
+                        evmState.Memory.SaveWord(memPosition, data);
+                        break;
+                    }
+                    case Instruction.MSTORE8:
+                    {
+                        if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable))
+                        {
+                            return CallResult.OutOfGasException;
+                        }
+
+                        BigInteger memPosition = PopUInt();
+                        byte[] data = PopBytes();
+                        UpdateMemoryCost(memPosition, BigInteger.One);
+                        evmState.Memory.SaveByte(memPosition, data);
+                        break;
+                    }
+                    case Instruction.SLOAD:
+                    {
+                        if (!UpdateGas(spec.IsEip150Enabled ? GasCostOf.SLoadEip150 : GasCostOf.SLoad, ref gasAvailable))
+                        {
+                            return CallResult.OutOfGasException;
+                        }
+
+                        BigInteger storageIndex = PopUInt();
+                        byte[] value = _storage.Get(new StorageAddress(env.ExecutingAccount, storageIndex));
+                        PushBytes(value);
+                        break;
+                    }
+                    case Instruction.SSTORE:
+                    {
+                        if (evmState.IsStatic)
+                        {
+                            Metrics.EvmExceptions++;
+                            return CallResult.StaticCallViolationException;
+                        }
+
+                        BigInteger storageIndex = PopUInt();
+                        byte[] data = PopBytes().WithoutLeadingZeros();
+
+                        bool isNewValueZero = data.IsZero();
+
+                        StorageAddress storageAddress = new StorageAddress(env.ExecutingAccount, storageIndex);
+                        byte[] previousValue = _storage.Get(storageAddress);
+
+                        bool isValueChanged = !(isNewValueZero && previousValue.IsZero()) ||
+                                              !Bytes.UnsafeCompare(previousValue, data);
+
+
+                        if (isNewValueZero)
+                        {
+                            if (!UpdateGas(GasCostOf.SReset, ref gasAvailable))
+                            {
+                                return CallResult.OutOfGasException;
                             }
 
                             if (isValueChanged)
                             {
-                                byte[] newValue = isNewValueZero ? BytesZero : data;
-                                _storage.Set(storageAddress, newValue);
-                                if (_logger.IsDebugEnabled)
-                                {
-                                    _logger.Debug($"  UPDATING STORAGE: {env.ExecutingAccount} {storageIndex} {Hex.FromBytes(newValue, true)}");
-                                }
+                                evmState.Refund += RefundOf.SClear;
                             }
-
-                            if (_trace != null)
-                            {
-                                _traceEntry.Storage[new Hex(storageIndex.ToBigEndianByteArray().PadLeft(32))] = new Hex(data.PadLeft(32));
-                            }
-
-                            break;
                         }
-                    case Instruction.JUMP:
+                        else
                         {
-                            if (!UpdateGas(GasCostOf.Mid, ref gasAvailable)) return PrepareException(instruction, gasBefore);
-                            bigReg = PopUInt();
-                            if (bigReg > BigIntMaxInt)
+                            if (!UpdateGas(previousValue.IsZero() ? GasCostOf.SSet : GasCostOf.SReset, ref gasAvailable))
                             {
-                                Metrics.EvmExceptions++;
-                                return PrepareException(instruction, gasBefore);
-                                //throw new InvalidJumpDestinationException();
+                                return CallResult.OutOfGasException;
                             }
+                        }
 
-                            int dest = (int)bigReg;
-                            env.CodeInfo.ValidateJump(dest);
+                        if (isValueChanged)
+                        {
+                            byte[] newValue = isNewValueZero ? BytesZero : data;
+                            _storage.Set(storageAddress, newValue);
+                            if (_logger.IsDebugEnabled)
+                            {
+                                _logger.Debug($"  UPDATING STORAGE: {env.ExecutingAccount} {storageIndex} {Hex.FromBytes(newValue, true)}");
+                            }
+                        }
+
+                        if (_trace != null)
+                        {
+                            _traceEntry.Storage[new Hex(storageIndex.ToBigEndianByteArray().PadLeft(32))] = new Hex(data.PadLeft(32));
+                        }
+
+                        break;
+                    }
+                    case Instruction.JUMP:
+                    {
+                        if (!UpdateGas(GasCostOf.Mid, ref gasAvailable))
+                        {
+                            return CallResult.OutOfGasException;
+                        }
+
+                        bigReg = PopUInt();
+                        if (bigReg > BigIntMaxInt)
+                        {
+                            Metrics.EvmExceptions++;
+                            return CallResult.InvalidJumpDestination;
+                        }
+
+                        int dest = (int)bigReg;
+                        env.CodeInfo.ValidateJump(dest);
+
+                        programCounter = dest;
+                        break;
+                    }
+                    case Instruction.JUMPI:
+                    {
+                        if (!UpdateGas(GasCostOf.High, ref gasAvailable))
+                        {
+                            return CallResult.OutOfGasException;
+                        }
+
+                        bigReg = PopUInt();
+                        if (bigReg > BigIntMaxInt)
+                        {
+                            Metrics.EvmExceptions++;
+                            return CallResult.InvalidJumpDestination;
+                        }
+
+                        int dest = (int)bigReg;
+                        BigInteger condition = PopUInt();
+                        if (condition > BigInteger.Zero)
+                        {
+                            if (!env.CodeInfo.ValidateJump(dest))
+                            {
+                                return CallResult.InvalidJumpDestination; // TODO: add a test, validating inside the condition was not covered by existing tests and fails on 61363 Ropsten
+                            }
 
                             programCounter = dest;
-                            break;
                         }
-                    case Instruction.JUMPI:
-                        {
-                            if (!UpdateGas(GasCostOf.High, ref gasAvailable)) return PrepareException(instruction, gasBefore);
-                            bigReg = PopUInt();
-                            if (bigReg > BigIntMaxInt)
-                            {
-                                Metrics.EvmExceptions++;
-                                return PrepareException(instruction, gasBefore);
-                                //throw new InvalidJumpDestinationException();
-                            }
 
-                            int dest = (int)bigReg;
-                            BigInteger condition = PopUInt();
-                            if (condition > BigInteger.Zero)
-                            {
-                                env.CodeInfo.ValidateJump(dest); // TODO: add a test, validating inside the condition was not covered by existing tests and fails on 61363 Ropsten
-                                programCounter = dest;
-                            }
-
-                            break;
-                        }
+                        break;
+                    }
                     case Instruction.PC:
+                    {
+                        if (!UpdateGas(GasCostOf.Base, ref gasAvailable))
                         {
-                            if (!UpdateGas(GasCostOf.Base, ref gasAvailable)) return PrepareException(instruction, gasBefore);
-                            PushInt(programCounter - 1L);
-                            break;
+                            return CallResult.OutOfGasException;
                         }
-                    case Instruction.MSIZE:
-                        {
-                            if (!UpdateGas(GasCostOf.Base, ref gasAvailable)) return PrepareException(instruction, gasBefore);
-                            PushInt(evmState.Memory.Size);
-                            break;
-                        }
-                    case Instruction.GAS:
-                        {
-                            if (!UpdateGas(GasCostOf.Base, ref gasAvailable)) return PrepareException(instruction, gasBefore);
-                            PushInt(gasAvailable);
-                            break;
-                        }
-                    case Instruction.JUMPDEST:
-                        {
-                            if (!UpdateGas(GasCostOf.JumpDest, ref gasAvailable)) return PrepareException(instruction, gasBefore);
-                            break;
-                        }
-                    case Instruction.PUSH1:
-                        {
-                            if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return PrepareException(instruction, gasBefore);
-                            int programCounterInt = (int)programCounter;
-                            if (programCounterInt >= code.Length)
-                            {
-                                PushBytes(EmptyBytes);
-                            }
-                            else
-                            {
-                                PushInt(code[programCounterInt]);
-                            }
 
-                            programCounter++;
-                            break;
+                        PushInt(programCounter - 1L);
+                        break;
+                    }
+                    case Instruction.MSIZE:
+                    {
+                        if (!UpdateGas(GasCostOf.Base, ref gasAvailable))
+                        {
+                            return CallResult.OutOfGasException;
                         }
+
+                        PushInt(evmState.Memory.Size);
+                        break;
+                    }
+                    case Instruction.GAS:
+                    {
+                        if (!UpdateGas(GasCostOf.Base, ref gasAvailable))
+                        {
+                            return CallResult.OutOfGasException;
+                        }
+
+                        PushInt(gasAvailable);
+                        break;
+                    }
+                    case Instruction.JUMPDEST:
+                    {
+                        if (!UpdateGas(GasCostOf.JumpDest, ref gasAvailable))
+                        {
+                            return CallResult.OutOfGasException;
+                        }
+
+                        break;
+                    }
+                    case Instruction.PUSH1:
+                    {
+                        if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable))
+                        {
+                            return CallResult.OutOfGasException;
+                        }
+
+                        int programCounterInt = (int)programCounter;
+                        if (programCounterInt >= code.Length)
+                        {
+                            PushBytes(EmptyBytes);
+                        }
+                        else
+                        {
+                            PushInt(code[programCounterInt]);
+                        }
+
+                        programCounter++;
+                        break;
+                    }
                     case Instruction.PUSH2:
                     case Instruction.PUSH3:
                     case Instruction.PUSH4:
@@ -1436,19 +1697,23 @@ namespace Nethermind.Evm
                     case Instruction.PUSH30:
                     case Instruction.PUSH31:
                     case Instruction.PUSH32:
+                    {
+                        if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable))
                         {
-                            if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return PrepareException(instruction, gasBefore);
-                            int length = instruction - Instruction.PUSH1 + 1;
-                            int programCounterInt = (int)programCounter;
-                            int usedFromCode = Math.Min(code.Length - programCounterInt, length);
-
-                            PushBytes(usedFromCode != length
-                                ? code.Slice(programCounterInt, usedFromCode).PadRight(length)
-                                : code.Slice(programCounterInt, usedFromCode));
-
-                            programCounter += length;
-                            break;
+                            return CallResult.OutOfGasException;
                         }
+
+                        int length = instruction - Instruction.PUSH1 + 1;
+                        int programCounterInt = (int)programCounter;
+                        int usedFromCode = Math.Min(code.Length - programCounterInt, length);
+
+                        PushBytes(usedFromCode != length
+                            ? code.Slice(programCounterInt, usedFromCode).PadRight(length)
+                            : code.Slice(programCounterInt, usedFromCode));
+
+                        programCounter += length;
+                        break;
+                    }
                     case Instruction.DUP1:
                     case Instruction.DUP2:
                     case Instruction.DUP3:
@@ -1465,11 +1730,15 @@ namespace Nethermind.Evm
                     case Instruction.DUP14:
                     case Instruction.DUP15:
                     case Instruction.DUP16:
+                    {
+                        if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable))
                         {
-                            if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return PrepareException(instruction, gasBefore);
-                            Dup(instruction - Instruction.DUP1 + 1);
-                            break;
+                            return CallResult.OutOfGasException;
                         }
+
+                        Dup(instruction - Instruction.DUP1 + 1);
+                        break;
+                    }
                     case Instruction.SWAP1:
                     case Instruction.SWAP2:
                     case Instruction.SWAP3:
@@ -1486,416 +1755,448 @@ namespace Nethermind.Evm
                     case Instruction.SWAP14:
                     case Instruction.SWAP15:
                     case Instruction.SWAP16:
+                    {
+                        if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable))
                         {
-                            if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return PrepareException(instruction, gasBefore);
-                            Swap(instruction - Instruction.SWAP1 + 2);
-                            break;
+                            return CallResult.OutOfGasException;
                         }
+
+                        Swap(instruction - Instruction.SWAP1 + 2);
+                        break;
+                    }
                     case Instruction.LOG0:
                     case Instruction.LOG1:
                     case Instruction.LOG2:
                     case Instruction.LOG3:
                     case Instruction.LOG4:
+                    {
+                        if (evmState.IsStatic)
                         {
-                            if (evmState.IsStatic)
-                            {
-                                Metrics.EvmExceptions++;
-                                return PrepareException(instruction, gasBefore);
-                                //throw new StaticCallViolationException();
-                            }
+                            Metrics.EvmExceptions++;
+                            return CallResult.StaticCallViolationException;
+                        }
 
-                            BigInteger memoryPos = PopUInt();
-                            BigInteger length = PopUInt();
-                            long topicsCount = instruction - Instruction.LOG0;
-                            UpdateMemoryCost(memoryPos, length);
-                            if (!UpdateGas(
-                                GasCostOf.Log + topicsCount * GasCostOf.LogTopic +
-                                (long)length * GasCostOf.LogData, ref gasAvailable)) return PrepareException(instruction, gasBefore);
+                        BigInteger memoryPos = PopUInt();
+                        BigInteger length = PopUInt();
+                        long topicsCount = instruction - Instruction.LOG0;
+                        UpdateMemoryCost(memoryPos, length);
+                        if (!UpdateGas(
+                            GasCostOf.Log + topicsCount * GasCostOf.LogTopic +
+                            (long)length * GasCostOf.LogData, ref gasAvailable))
+                        {
+                            return CallResult.OutOfGasException;
+                        }
 
-                            byte[] data = evmState.Memory.Load(memoryPos, length);
-                            Keccak[] topics = new Keccak[topicsCount];
-                            for (int i = 0; i < topicsCount; i++)
-                            {
-                                topics[i] = new Keccak(PopBytes().PadLeft(32));
-                            }
+                        byte[] data = evmState.Memory.Load(memoryPos, length);
+                        Keccak[] topics = new Keccak[topicsCount];
+                        for (int i = 0; i < topicsCount; i++)
+                        {
+                            topics[i] = new Keccak(PopBytes().PadLeft(32));
+                        }
 
-                            LogEntry logEntry = new LogEntry(
-                                env.ExecutingAccount,
-                                data,
-                                topics);
-                            evmState.Logs.Add(logEntry);
+                        LogEntry logEntry = new LogEntry(
+                            env.ExecutingAccount,
+                            data,
+                            topics);
+                        evmState.Logs.Add(logEntry);
+                        break;
+                    }
+                    case Instruction.CREATE:
+                    {
+                        if (evmState.IsStatic)
+                        {
+                            Metrics.EvmExceptions++;
+                            return CallResult.StaticCallViolationException;
+                        }
+
+                        // TODO: happens in CREATE_empty000CreateInitCode_Transaction but probably has to be handled differently
+                        if (!_state.AccountExists(env.ExecutingAccount))
+                        {
+                            _state.CreateAccount(env.ExecutingAccount, BigInteger.Zero);
+                        }
+
+                        BigInteger value = PopUInt();
+                        BigInteger memoryPositionOfInitCode = PopUInt();
+                        BigInteger initCodeLength = PopUInt();
+
+                        if (!UpdateGas(GasCostOf.Create, ref gasAvailable))
+                        {
+                            return CallResult.OutOfGasException;
+                        }
+
+                        UpdateMemoryCost(memoryPositionOfInitCode, initCodeLength);
+
+                        // TODO: copy pasted from CALL / DELEGATECALL, need to move it outside?
+                        if (env.CallDepth >= MaxCallDepth) // TODO: fragile ordering / potential vulnerability for different clients
+                        {
+                            // TODO: need a test for this
+                            _returnDataBuffer = EmptyBytes;
+                            PushInt(BigInteger.Zero);
                             break;
                         }
-                    case Instruction.CREATE:
+
+                        byte[] initCode = evmState.Memory.Load(memoryPositionOfInitCode, initCodeLength);
+                        Keccak contractAddressKeccak =
+                            Keccak.Compute(
+                                Rlp.Encode(
+                                    Rlp.Encode(env.ExecutingAccount),
+                                    Rlp.Encode(_state.GetNonce(env.ExecutingAccount))));
+                        Address contractAddress = new Address(contractAddressKeccak);
+
+                        BigInteger balance = _state.GetBalance(env.ExecutingAccount);
+                        if (value > _state.GetBalance(env.ExecutingAccount))
                         {
-                            if (evmState.IsStatic)
-                            {
-                                Metrics.EvmExceptions++;
-                                return PrepareException(instruction, gasBefore);
-                                //throw new StaticCallViolationException();
-                            }
-
-                            // TODO: happens in CREATE_empty000CreateInitCode_Transaction but probably has to be handled differently
-                            if (!_state.AccountExists(env.ExecutingAccount))
-                            {
-                                _state.CreateAccount(env.ExecutingAccount, BigInteger.Zero);
-                            }
-
-                            BigInteger value = PopUInt();
-                            BigInteger memoryPositionOfInitCode = PopUInt();
-                            BigInteger initCodeLength = PopUInt();
-
-                            if (!UpdateGas(GasCostOf.Create, ref gasAvailable)) return PrepareException(instruction, gasBefore);
-                            UpdateMemoryCost(memoryPositionOfInitCode, initCodeLength);
-
-                            // TODO: copy pasted from CALL / DELEGATECALL, need to move it outside?
-                            if (env.CallDepth >= MaxCallDepth) // TODO: fragile ordering / potential vulnerability for different clients
-                            {
-                                // TODO: need a test for this
-                                _returnDataBuffer = EmptyBytes;
-                                PushInt(BigInteger.Zero);
-                                break;
-                            }
-
-                            byte[] initCode = evmState.Memory.Load(memoryPositionOfInitCode, initCodeLength);
-                            Keccak contractAddressKeccak =
-                                Keccak.Compute(
-                                    Rlp.Encode(
-                                        Rlp.Encode(env.ExecutingAccount),
-                                        Rlp.Encode(_state.GetNonce(env.ExecutingAccount))));
-                            Address contractAddress = new Address(contractAddressKeccak);
-
-                            BigInteger balance = _state.GetBalance(env.ExecutingAccount);
-                            if (value > _state.GetBalance(env.ExecutingAccount))
-                            {
-                                if (_logger.IsDebugEnabled)
-                                {
-                                    _logger.Debug($"Insufficient balance when calling create - value = {value} > {balance} = balance");
-                                }
-
-                                PushInt(BigInteger.Zero);
-                                break;
-                            }
-
-                            _state.IncrementNonce(env.ExecutingAccount);
-
-                            long callGas = spec.IsEip150Enabled ? gasAvailable - gasAvailable / 64L : gasAvailable;
-                            if (!UpdateGas(callGas, ref gasAvailable)) return PrepareException(instruction, gasBefore);
-
-                            bool accountExists = _state.AccountExists(contractAddress);
-                            if (accountExists && ((GetCachedCodeInfo(contractAddress)?.MachineCode?.Length ?? 0) != 0 || _state.GetNonce(contractAddress) != 0))
-                            {
-                                if (_logger.IsDebugEnabled)
-                                {
-                                    _logger.Debug($"Contract collision at {contractAddress}"); // the account already owns the contract with the code
-                                }
-
-                                PushInt(BigInteger.Zero); // TODO: this push 0 approach should be replaced with some proper approach to call result
-                                break;
-                            }
-
-                            int stateSnapshot = _state.TakeSnapshot();
-                            int storageSnapshot = _storage.TakeSnapshot();
-
-                            _state.UpdateBalance(env.ExecutingAccount, -value, spec);
                             if (_logger.IsDebugEnabled)
                             {
-                                _logger.Debug("  INIT: " + contractAddress);
+                                _logger.Debug($"Insufficient balance when calling create - value = {value} > {balance} = balance");
                             }
 
-                            ExecutionEnvironment callEnv = new ExecutionEnvironment();
-                            callEnv.TransferValue = value;
-                            callEnv.Value = value;
-                            callEnv.Sender = env.ExecutingAccount;
-                            callEnv.Originator = env.Originator;
-                            callEnv.CallDepth = env.CallDepth + 1;
-                            callEnv.CurrentBlock = env.CurrentBlock;
-                            callEnv.GasPrice = env.GasPrice;
-                            callEnv.ExecutingAccount = contractAddress;
-                            callEnv.CodeInfo = new CodeInfo(initCode);
-                            callEnv.InputData = Bytes.Empty;
-                            EvmState callState = new EvmState(
-                                callGas,
-                                callEnv,
-                                ExecutionType.Create,
-                                stateSnapshot,
-                                storageSnapshot,
-                                0L,
-                                0L,
-                                evmState.IsStatic,
-                                false);
-
-                            UpdateCurrentState();
-                            EndInstructionTrace();
-                            if (_logger.IsDebugEnabled)
-                            {
-                                LogInstructionResult(instruction, gasBefore);
-                            }
-
-                            return new CallResult(callState);
+                            PushInt(BigInteger.Zero);
+                            break;
                         }
+
+                        _state.IncrementNonce(env.ExecutingAccount);
+
+                        long callGas = spec.IsEip150Enabled ? gasAvailable - gasAvailable / 64L : gasAvailable;
+                        if (!UpdateGas(callGas, ref gasAvailable))
+                        {
+                            return CallResult.OutOfGasException;
+                        }
+
+                        bool accountExists = _state.AccountExists(contractAddress);
+                        if (accountExists && ((GetCachedCodeInfo(contractAddress)?.MachineCode?.Length ?? 0) != 0 || _state.GetNonce(contractAddress) != 0))
+                        {
+                            if (_logger.IsDebugEnabled)
+                            {
+                                _logger.Debug($"Contract collision at {contractAddress}"); // the account already owns the contract with the code
+                            }
+
+                            PushInt(BigInteger.Zero); // TODO: this push 0 approach should be replaced with some proper approach to call result
+                            break;
+                        }
+
+                        int stateSnapshot = _state.TakeSnapshot();
+                        int storageSnapshot = _storage.TakeSnapshot();
+
+                        _state.UpdateBalance(env.ExecutingAccount, -value, spec);
+                        if (_logger.IsDebugEnabled)
+                        {
+                            _logger.Debug("  INIT: " + contractAddress);
+                        }
+
+                        ExecutionEnvironment callEnv = new ExecutionEnvironment();
+                        callEnv.TransferValue = value;
+                        callEnv.Value = value;
+                        callEnv.Sender = env.ExecutingAccount;
+                        callEnv.Originator = env.Originator;
+                        callEnv.CallDepth = env.CallDepth + 1;
+                        callEnv.CurrentBlock = env.CurrentBlock;
+                        callEnv.GasPrice = env.GasPrice;
+                        callEnv.ExecutingAccount = contractAddress;
+                        callEnv.CodeInfo = new CodeInfo(initCode);
+                        callEnv.InputData = Bytes.Empty;
+                        EvmState callState = new EvmState(
+                            callGas,
+                            callEnv,
+                            ExecutionType.Create,
+                            stateSnapshot,
+                            storageSnapshot,
+                            0L,
+                            0L,
+                            evmState.IsStatic,
+                            false);
+
+                        UpdateCurrentState();
+                        EndInstructionTrace();
+                        if (_logger.IsDebugEnabled)
+                        {
+                            LogInstructionResult(instruction, gasBefore);
+                        }
+
+                        return new CallResult(callState);
+                    }
                     case Instruction.RETURN:
+                    {
+                        BigInteger memoryPos = PopUInt();
+                        BigInteger length = PopUInt();
+
+                        UpdateMemoryCost(memoryPos, length);
+                        byte[] returnData = evmState.Memory.Load(memoryPos, length);
+
+                        UpdateCurrentState();
+                        EndInstructionTrace();
+                        if (_logger.IsDebugEnabled)
                         {
-                            //long gasCost = GasCostOf.Zero;
-                            BigInteger memoryPos = PopUInt();
-                            BigInteger length = PopUInt();
-
-                            //if(!UpdateGas(gasCost, ref gasAvailable)) return PrepareException(instruction, gasBefore);
-                            UpdateMemoryCost(memoryPos, length);
-                            byte[] returnData = evmState.Memory.Load(memoryPos, length);
-
-                            UpdateCurrentState();
-                            EndInstructionTrace();
-                            if (_logger.IsDebugEnabled)
-                            {
-                                LogInstructionResult(instruction, gasBefore);
-                            }
-
-                            return new CallResult(returnData);
+                            LogInstructionResult(instruction, gasBefore);
                         }
+
+                        return new CallResult(returnData);
+                    }
                     case Instruction.CALL:
                     case Instruction.CALLCODE:
                     case Instruction.DELEGATECALL:
                     case Instruction.STATICCALL:
+                    {
+                        if (instruction == Instruction.DELEGATECALL && !spec.IsEip7Enabled ||
+                            instruction == Instruction.STATICCALL && !spec.IsEip214Enabled)
                         {
-                            if (instruction == Instruction.DELEGATECALL && !spec.IsEip7Enabled ||
-                                instruction == Instruction.STATICCALL && !spec.IsEip214Enabled)
-                            {
-                                Metrics.EvmExceptions++;
-                                return PrepareException(instruction, gasBefore);
-                                //throw new InvalidInstructionException((byte)instruction);
-                            }
+                            Metrics.EvmExceptions++;
+                            return CallResult.InvalidInstructionException;
+                        }
 
-                            BigInteger gasLimit = PopUInt();
-                            Address codeSource = PopAddress();
-                            BigInteger callValue;
-                            switch (instruction)
-                            {
-                                case Instruction.STATICCALL:
+                        BigInteger gasLimit = PopUInt();
+                        Address codeSource = PopAddress();
+                        BigInteger callValue;
+                        switch (instruction)
+                        {
+                            case Instruction.STATICCALL:
                                 callValue = BigInteger.Zero;
                                 break;
-                                case Instruction.DELEGATECALL:
+                            case Instruction.DELEGATECALL:
                                 callValue = env.Value;
                                 break;
-                                default:
+                            default:
                                 callValue = PopUInt();
                                 break;
-                            }
-
-                            BigInteger transferValue = instruction == Instruction.DELEGATECALL ? BigInteger.Zero : callValue;
-                            BigInteger dataOffset = PopUInt();
-                            BigInteger dataLength = PopUInt();
-                            BigInteger outputOffset = PopUInt();
-                            BigInteger outputLength = PopUInt();
-
-                            if (evmState.IsStatic && !transferValue.IsZero && instruction != Instruction.CALLCODE)
-                            {
-                                Metrics.EvmExceptions++;
-                                return PrepareException(instruction, gasBefore);
-                                //throw new StaticCallViolationException();
-                            }
-
-                            bool isPrecompile = codeSource.IsPrecompiled(spec);
-                            Address sender = instruction == Instruction.DELEGATECALL ? env.Sender : env.ExecutingAccount;
-                            Address target = instruction == Instruction.CALL || instruction == Instruction.STATICCALL ? codeSource : env.ExecutingAccount;
-
-                            if (_logger.IsDebugEnabled)
-                            {
-                                _logger.Debug($"  SENDER {sender}");
-                                _logger.Debug($"  CODE SOURCE {codeSource}");
-                                _logger.Debug($"  TARGET {target}");
-                                _logger.Debug($"  VALUE {callValue}");
-                                _logger.Debug($"  TRANSFER_VALUE {transferValue}");
-                            }
-
-                            long gasExtra = 0L;
-
-                            if (!transferValue.IsZero)
-                            {
-                                gasExtra += GasCostOf.CallValue;
-                            }
-
-                            if (!spec.IsEip158Enabled && !_state.AccountExists(target))
-                            {
-                                gasExtra += GasCostOf.NewAccount;
-                            }
-
-                            if (spec.IsEip158Enabled && transferValue != 0 && _state.IsDeadAccount(target))
-                            {
-                                gasExtra += GasCostOf.NewAccount;
-                            }
-
-                            if (!UpdateGas(spec.IsEip150Enabled ? GasCostOf.CallOrCallCodeEip150 : GasCostOf.CallOrCallCode, ref gasAvailable)) return PrepareException(instruction, gasBefore);
-                            UpdateMemoryCost(dataOffset, dataLength);
-                            UpdateMemoryCost(outputOffset, outputLength);
-                            if (!UpdateGas(gasExtra, ref gasAvailable)) return PrepareException(instruction, gasBefore);
-
-                            if (spec.IsEip150Enabled)
-                            {
-                                gasLimit = BigInteger.Min(gasAvailable - gasAvailable / 64L, gasLimit);
-                            }
-
-                            long gasLimitUl = (long)gasLimit;
-                            if (!UpdateGas(gasLimitUl, ref gasAvailable)) return PrepareException(instruction, gasBefore);
-
-                            if (!transferValue.IsZero)
-                            {
-                                gasLimitUl += GasCostOf.CallStipend;
-                            }
-
-                            if (env.CallDepth >= MaxCallDepth || (!transferValue.IsZero && _state.GetBalance(env.ExecutingAccount) < transferValue))
-                            {
-                                RefundGas(gasLimitUl, ref gasAvailable);
-                                //evmState.Memory.Save(outputOffset, new byte[(int)outputLength]); // TODO: probably should not save memory here
-                                _returnDataBuffer = EmptyBytes;
-                                PushInt(BigInteger.Zero);
-                                if (_logger.IsDebugEnabled)
-                                {
-                                    _logger.Debug("  FAIL - CALL DEPTH");
-                                }
-
-                                break;
-                            }
-
-                            byte[] callData = evmState.Memory.Load(dataOffset, dataLength);
-                            int stateSnapshot = _state.TakeSnapshot();
-                            int storageSnapshot = _storage.TakeSnapshot();
-                            _state.UpdateBalance(sender, -transferValue, spec);
-
-                            ExecutionEnvironment callEnv = new ExecutionEnvironment();
-                            callEnv.CallDepth = env.CallDepth + 1;
-                            callEnv.CurrentBlock = env.CurrentBlock;
-                            callEnv.GasPrice = env.GasPrice;
-                            callEnv.Originator = env.Originator;
-                            callEnv.Sender = sender;
-                            callEnv.ExecutingAccount = target;
-                            callEnv.TransferValue = transferValue;
-                            callEnv.Value = callValue;
-                            callEnv.InputData = callData;
-                            callEnv.CodeInfo = isPrecompile ? new CodeInfo(codeSource) : GetCachedCodeInfo(codeSource);
-
-                            if (_logger.IsDebugEnabled)
-                            {
-                                _logger.Debug($"  CALL_GAS {gasLimitUl}");
-                            }
-
-                            EvmState callState = new EvmState(
-                                gasLimitUl,
-                                callEnv,
-                                isPrecompile ? ExecutionType.Precompile : (instruction == Instruction.CALL || instruction == Instruction.STATICCALL ? ExecutionType.Call : ExecutionType.Callcode),
-                                stateSnapshot,
-                                storageSnapshot,
-                                (long)outputOffset,
-                                (long)outputLength,
-                                instruction == Instruction.STATICCALL || evmState.IsStatic,
-                                false);
-
-                            UpdateCurrentState();
-                            EndInstructionTrace();
-                            if (_logger.IsDebugEnabled)
-                            {
-                                LogInstructionResult(instruction, gasBefore);
-                            }
-
-                            return new CallResult(callState);
                         }
+
+                        BigInteger transferValue = instruction == Instruction.DELEGATECALL ? BigInteger.Zero : callValue;
+                        BigInteger dataOffset = PopUInt();
+                        BigInteger dataLength = PopUInt();
+                        BigInteger outputOffset = PopUInt();
+                        BigInteger outputLength = PopUInt();
+
+                        if (evmState.IsStatic && !transferValue.IsZero && instruction != Instruction.CALLCODE)
+                        {
+                            Metrics.EvmExceptions++;
+                            return CallResult.StaticCallViolationException;
+                        }
+
+                        bool isPrecompile = codeSource.IsPrecompiled(spec);
+                        Address sender = instruction == Instruction.DELEGATECALL ? env.Sender : env.ExecutingAccount;
+                        Address target = instruction == Instruction.CALL || instruction == Instruction.STATICCALL ? codeSource : env.ExecutingAccount;
+
+                        if (_logger.IsDebugEnabled)
+                        {
+                            _logger.Debug($"  SENDER {sender}");
+                            _logger.Debug($"  CODE SOURCE {codeSource}");
+                            _logger.Debug($"  TARGET {target}");
+                            _logger.Debug($"  VALUE {callValue}");
+                            _logger.Debug($"  TRANSFER_VALUE {transferValue}");
+                        }
+
+                        long gasExtra = 0L;
+
+                        if (!transferValue.IsZero)
+                        {
+                            gasExtra += GasCostOf.CallValue;
+                        }
+
+                        if (!spec.IsEip158Enabled && !_state.AccountExists(target))
+                        {
+                            gasExtra += GasCostOf.NewAccount;
+                        }
+
+                        if (spec.IsEip158Enabled && transferValue != 0 && _state.IsDeadAccount(target))
+                        {
+                            gasExtra += GasCostOf.NewAccount;
+                        }
+
+                        if (!UpdateGas(spec.IsEip150Enabled ? GasCostOf.CallOrCallCodeEip150 : GasCostOf.CallOrCallCode, ref gasAvailable))
+                        {
+                            return CallResult.OutOfGasException;
+                        }
+
+                        UpdateMemoryCost(dataOffset, dataLength);
+                        UpdateMemoryCost(outputOffset, outputLength);
+                        if (!UpdateGas(gasExtra, ref gasAvailable))
+                        {
+                            return CallResult.OutOfGasException;
+                        }
+
+                        if (spec.IsEip150Enabled)
+                        {
+                            gasLimit = BigInteger.Min(gasAvailable - gasAvailable / 64L, gasLimit);
+                        }
+
+                        long gasLimitUl = (long)gasLimit;
+                        if (!UpdateGas(gasLimitUl, ref gasAvailable))
+                        {
+                            return CallResult.OutOfGasException;
+                        }
+
+                        if (!transferValue.IsZero)
+                        {
+                            gasLimitUl += GasCostOf.CallStipend;
+                        }
+
+                        if (env.CallDepth >= MaxCallDepth || !transferValue.IsZero && _state.GetBalance(env.ExecutingAccount) < transferValue)
+                        {
+                            RefundGas(gasLimitUl, ref gasAvailable);
+                            //evmState.Memory.Save(outputOffset, new byte[(int)outputLength]); // TODO: probably should not save memory here
+                            _returnDataBuffer = EmptyBytes;
+                            PushInt(BigInteger.Zero);
+                            if (_logger.IsDebugEnabled)
+                            {
+                                _logger.Debug("  FAIL - CALL DEPTH");
+                            }
+
+                            break;
+                        }
+
+                        byte[] callData = evmState.Memory.Load(dataOffset, dataLength);
+                        int stateSnapshot = _state.TakeSnapshot();
+                        int storageSnapshot = _storage.TakeSnapshot();
+                        _state.UpdateBalance(sender, -transferValue, spec);
+
+                        ExecutionEnvironment callEnv = new ExecutionEnvironment();
+                        callEnv.CallDepth = env.CallDepth + 1;
+                        callEnv.CurrentBlock = env.CurrentBlock;
+                        callEnv.GasPrice = env.GasPrice;
+                        callEnv.Originator = env.Originator;
+                        callEnv.Sender = sender;
+                        callEnv.ExecutingAccount = target;
+                        callEnv.TransferValue = transferValue;
+                        callEnv.Value = callValue;
+                        callEnv.InputData = callData;
+                        callEnv.CodeInfo = isPrecompile ? new CodeInfo(codeSource) : GetCachedCodeInfo(codeSource);
+
+                        if (_logger.IsDebugEnabled)
+                        {
+                            _logger.Debug($"  CALL_GAS {gasLimitUl}");
+                        }
+
+                        EvmState callState = new EvmState(
+                            gasLimitUl,
+                            callEnv,
+                            isPrecompile ? ExecutionType.Precompile : (instruction == Instruction.CALL || instruction == Instruction.STATICCALL ? ExecutionType.Call : ExecutionType.Callcode),
+                            stateSnapshot,
+                            storageSnapshot,
+                            (long)outputOffset,
+                            (long)outputLength,
+                            instruction == Instruction.STATICCALL || evmState.IsStatic,
+                            false);
+
+                        UpdateCurrentState();
+                        EndInstructionTrace();
+                        if (_logger.IsDebugEnabled)
+                        {
+                            LogInstructionResult(instruction, gasBefore);
+                        }
+
+                        return new CallResult(callState);
+                    }
                     case Instruction.REVERT:
+                    {
+                        if (!spec.IsEip140Enabled)
                         {
-                            if (!spec.IsEip140Enabled)
-                            {
-                                Metrics.EvmExceptions++;
-                                return PrepareException(instruction, gasBefore);
-                                //throw new InvalidInstructionException((byte)instruction);
-                            }
-
-                            long gasCost = GasCostOf.Zero;
-                            BigInteger memoryPos = PopUInt();
-                            BigInteger length = PopUInt();
-
-                            if (!UpdateGas(gasCost, ref gasAvailable)) return PrepareException(instruction, gasBefore);
-                            UpdateMemoryCost(memoryPos, length);
-                            byte[] errorDetails = evmState.Memory.Load(memoryPos, length);
-
-                            UpdateCurrentState();
-                            EndInstructionTrace();
-                            if (_logger.IsDebugEnabled)
-                            {
-                                LogInstructionResult(instruction, gasBefore);
-                            }
-
-                            return new CallResult(errorDetails, true);
+                            Metrics.EvmExceptions++;
+                            return CallResult.InvalidInstructionException;
                         }
+
+                        long gasCost = GasCostOf.Zero;
+                        BigInteger memoryPos = PopUInt();
+                        BigInteger length = PopUInt();
+
+                        if (!UpdateGas(gasCost, ref gasAvailable))
+                        {
+                            return CallResult.OutOfGasException;
+                        }
+
+                        UpdateMemoryCost(memoryPos, length);
+                        byte[] errorDetails = evmState.Memory.Load(memoryPos, length);
+
+                        UpdateCurrentState();
+                        EndInstructionTrace();
+                        if (_logger.IsDebugEnabled)
+                        {
+                            LogInstructionResult(instruction, gasBefore);
+                        }
+
+                        return new CallResult(errorDetails, true);
+                    }
                     case Instruction.INVALID:
+                    {
+                        if (!UpdateGas(GasCostOf.High, ref gasAvailable))
                         {
-                            if (!UpdateGas(GasCostOf.High, ref gasAvailable)) return PrepareException(instruction, gasBefore); // TODO: review tests - taken from Geth trace
-                            EndInstructionTrace();
-                            Metrics.EvmExceptions++;
-                            return PrepareException(instruction, gasBefore);
-                            //throw new InvalidInstructionException((byte)instruction);
+                            return CallResult.OutOfGasException;
                         }
+
+                        EndInstructionTrace();
+                        Metrics.EvmExceptions++;
+                        return CallResult.InvalidInstructionException;
+                    }
                     case Instruction.SELFDESTRUCT:
+                    {
+                        if (evmState.IsStatic)
                         {
-                            if (evmState.IsStatic)
-                            {
-                                Metrics.EvmExceptions++;
-                                return PrepareException(instruction, gasBefore);
-                                //throw new StaticCallViolationException();
-                            }
-
-                            if (!UpdateGas(spec.IsEip150Enabled ? GasCostOf.SelfDestructEip150 : GasCostOf.SelfDestruct, ref gasAvailable)) return PrepareException(instruction, gasBefore);
-                            Address inheritor = PopAddress();
-                            if (!evmState.DestroyList.Contains(env.ExecutingAccount))
-                            {
-                                evmState.DestroyList.Add(env.ExecutingAccount);
-                            }
-
-                            // TODO: review the change for Ropsten 468194 (lots of reciprocated selfdestruct calls)
-
-                            BigInteger ownerBalance = _state.GetBalance(env.ExecutingAccount);
-                            bool inheritorAccountExists = _state.AccountExists(inheritor);
-
-                            if (!spec.IsEip158Enabled && !inheritorAccountExists && spec.IsEip150Enabled)
-                            {
-                                if (!UpdateGas(GasCostOf.NewAccount, ref gasAvailable)) return PrepareException(instruction, gasBefore);
-                            }
-
-                            if (spec.IsEip158Enabled && ownerBalance != 0 && _state.IsDeadAccount(inheritor))
-                            {
-                                if (!UpdateGas(GasCostOf.NewAccount, ref gasAvailable)) return PrepareException(instruction, gasBefore);
-                            }
-
-                            if (!inheritorAccountExists)
-                            {
-                                _state.CreateAccount(inheritor, ownerBalance);
-                            }
-                            else if (!inheritor.Equals(env.ExecutingAccount))
-                            {
-                                _state.UpdateBalance(inheritor, ownerBalance, spec);
-                            }
-
-                            _state.UpdateBalance(env.ExecutingAccount, -ownerBalance, spec);
-
-                            UpdateCurrentState();
-                            EndInstructionTrace();
-                            if (_logger.IsDebugEnabled)
-                            {
-                                LogInstructionResult(instruction, gasBefore);
-                            }
-
-                            return CallResult.Empty;
-                        }
-                    default:
-                        {
-                            if (_logger.IsDebugEnabled)
-                            {
-                                _logger.Debug("UNKNOWN INSTRUCTION");
-                            }
-
-                            EndInstructionTrace();
                             Metrics.EvmExceptions++;
-                            return PrepareException(instruction, gasBefore);
-                            //throw new InvalidInstructionException((byte)instruction);
+                            return CallResult.StaticCallViolationException;
                         }
+
+                        if (!UpdateGas(spec.IsEip150Enabled ? GasCostOf.SelfDestructEip150 : GasCostOf.SelfDestruct, ref gasAvailable))
+                        {
+                            return CallResult.OutOfGasException;
+                        }
+
+                        Address inheritor = PopAddress();
+                        if (!evmState.DestroyList.Contains(env.ExecutingAccount))
+                        {
+                            evmState.DestroyList.Add(env.ExecutingAccount);
+                        }
+
+                        // TODO: review the change for Ropsten 468194 (lots of reciprocated selfdestruct calls)
+
+                        BigInteger ownerBalance = _state.GetBalance(env.ExecutingAccount);
+                        bool inheritorAccountExists = _state.AccountExists(inheritor);
+
+                        if (!spec.IsEip158Enabled && !inheritorAccountExists && spec.IsEip150Enabled)
+                        {
+                            if (!UpdateGas(GasCostOf.NewAccount, ref gasAvailable))
+                            {
+                                return CallResult.OutOfGasException;
+                            }
+                        }
+
+                        if (spec.IsEip158Enabled && ownerBalance != 0 && _state.IsDeadAccount(inheritor))
+                        {
+                            if (!UpdateGas(GasCostOf.NewAccount, ref gasAvailable))
+                            {
+                                return CallResult.OutOfGasException;
+                            }
+                        }
+
+                        if (!inheritorAccountExists)
+                        {
+                            _state.CreateAccount(inheritor, ownerBalance);
+                        }
+                        else if (!inheritor.Equals(env.ExecutingAccount))
+                        {
+                            _state.UpdateBalance(inheritor, ownerBalance, spec);
+                        }
+
+                        _state.UpdateBalance(env.ExecutingAccount, -ownerBalance, spec);
+
+                        UpdateCurrentState();
+                        EndInstructionTrace();
+                        if (_logger.IsDebugEnabled)
+                        {
+                            LogInstructionResult(instruction, gasBefore);
+                        }
+
+                        return CallResult.Empty;
+                    }
+                    default:
+                    {
+                        if (_logger.IsDebugEnabled)
+                        {
+                            _logger.Debug("UNKNOWN INSTRUCTION");
+                        }
+
+                        EndInstructionTrace();
+                        Metrics.EvmExceptions++;
+                        return CallResult.InvalidInstructionException;
+                    }
                 }
 
                 EndInstructionTrace();
@@ -1907,47 +2208,20 @@ namespace Nethermind.Evm
 
             UpdateCurrentState();
             return CallResult.Empty;
-
-            CallResult PrepareException(Instruction instruction, long gasBefore)
-            {
-                //UpdateCurrentState();
-                //EndInstructionTrace();
-                //if (_logger.IsDebugEnabled)
-                //{
-                //    LogInstructionResult(instruction, gasBefore);
-                //}
-
-                return CallResult.Exception;
-            }
-        }
-
-        public CodeInfo GetCachedCodeInfo(Address codeSource)
-        {
-            Keccak codeHash = _state.GetCodeHash(codeSource);
-            CodeInfo cachedCodeInfo = _codeCache.Get(codeHash);
-            if (cachedCodeInfo == null)
-            {
-                byte[] code = _state.GetCode(codeHash);
-                if (code == null)
-                {
-                    return null;
-                }
-
-                cachedCodeInfo = new CodeInfo(code);
-                _codeCache.Set(codeHash, cachedCodeInfo);
-            }
-
-            return cachedCodeInfo;
         }
     }
 
     public class CallResult
     {
-        public static CallResult Exception = new CallResult(StatusCode.FailureBytes) { IsException = true }; // TODO: refactor - testing for now
-
-        public bool ShouldRevert { get; }
+        public static CallResult Exception = new CallResult(StatusCode.FailureBytes) {IsException = true};
+        public static CallResult OutOfGasException = Exception;
+        public static CallResult AccessViolationException = Exception;
+        public static CallResult InvalidJumpDestination = Exception;
+        public static CallResult InvalidInstructionException = Exception;
+        public static CallResult StaticCallViolationException = Exception;
+        public static CallResult StackOverflowException = Exception; // TODO: use these to avoid CALL POP attacks
+        public static CallResult StackUnderflowException = Exception; // TODO: use these to avoid CALL POP attacks
         public static readonly CallResult Empty = new CallResult();
-        public bool? PrecompileSuccess { get; set; } // TODO: check this behaviour as it seems it is required and previously that was not the case
 
         public CallResult(EvmState stateToExecute)
         {
@@ -1963,6 +2237,9 @@ namespace Nethermind.Evm
             ShouldRevert = shouldRevert;
             Output = output;
         }
+
+        public bool ShouldRevert { get; }
+        public bool? PrecompileSuccess { get; set; } // TODO: check this behaviour as it seems it is required and previously that was not the case
 
         public EvmState StateToExecute { get; }
         public byte[] Output { get; } = Bytes.Empty;
