@@ -36,7 +36,7 @@ namespace Nethermind.Evm
             {
                 _capacity = capacity;
             }
-            
+
             private readonly Stack<byte[][]> _bytesOnStackPool = new Stack<byte[][]>();
             private readonly Stack<bool[]> _intPositionsPool = new Stack<bool[]>();
             private readonly Stack<BigInteger[]> _intsOnStackPool = new Stack<BigInteger[]>();
@@ -49,17 +49,17 @@ namespace Nethermind.Evm
             {
                 _bytesOnStackPool.Push(bytesOnStack);
             }
-            
+
             public void ReturnIntsOnStack(BigInteger[] intsOnStack)
             {
                 _intsOnStackPool.Push(intsOnStack);
             }
-            
+
             public void ReturnIntPositions(bool[] intPositions)
             {
                 _intPositionsPool.Push(intPositions);
             }
-            
+
             public byte[][] RentBytesOnStack()
             {
                 if (_bytesOnStackPool.Count == 0)
@@ -69,7 +69,7 @@ namespace Nethermind.Evm
                     {
                         throw new Exception();
                     }
-                    
+
                     _bytesOnStackPool.Push(new byte[VirtualMachine.MaxStackSize][]);
                 }
 
@@ -85,7 +85,7 @@ namespace Nethermind.Evm
                     {
                         throw new Exception();
                     }
-                    
+
                     _intsOnStackPool.Push(new BigInteger[VirtualMachine.MaxStackSize]);
                 }
 
@@ -101,19 +101,19 @@ namespace Nethermind.Evm
                     {
                         throw new Exception();
                     }
-                    
+
                     _intPositionsPool.Push(new bool[VirtualMachine.MaxStackSize]);
                 }
 
                 return _intPositionsPool.Pop();
             }
         }
-        
+
         private static readonly StackPool _stackPool = new StackPool();
 
-        public byte[][] BytesOnStack = _stackPool.RentBytesOnStack();
-        public bool[] IntPositions = _stackPool.RentIntPositions();
-        public BigInteger[] IntsOnStack = _stackPool.RentIntsOnStack();
+        public byte[][] BytesOnStack;
+        public bool[] IntPositions;
+        public BigInteger[] IntsOnStack;
 
         private HashSet<Address> _destroyList = new HashSet<Address>();
         private List<LogEntry> _logs = new List<LogEntry>();
@@ -162,7 +162,6 @@ namespace Nethermind.Evm
 
         public long Refund { get; set; }
         public EvmPooledMemory Memory { get; } = new EvmPooledMemory();
-        //public EvmMemory Memory { get; } = new EvmMemory();
 
         public HashSet<Address> DestroyList
         {
@@ -176,10 +175,20 @@ namespace Nethermind.Evm
 
         public void Dispose()
         {
-            _stackPool.ReturnBytesOnStack(BytesOnStack);
-            _stackPool.ReturnIntsOnStack(IntsOnStack);
-            _stackPool.ReturnIntPositions(IntPositions);
+            if (BytesOnStack != null) _stackPool.ReturnBytesOnStack(BytesOnStack);
+            if (IntsOnStack != null) _stackPool.ReturnIntsOnStack(IntsOnStack);
+            if (IntPositions != null) _stackPool.ReturnIntPositions(IntPositions);
             Memory.Dispose();
+        }
+
+        public void InitStacks()
+        {
+            if (BytesOnStack == null)
+            {
+                BytesOnStack = _stackPool.RentBytesOnStack();
+                IntPositions = _stackPool.RentIntPositions();
+                IntsOnStack = _stackPool.RentIntsOnStack();
+            }
         }
     }
 }
