@@ -65,6 +65,11 @@ namespace Nethermind.Evm
             Transaction transaction,
             BlockHeader block)
         {
+            if (block.Number == 45116)
+            {
+
+            }
+
             TransactionTrace trace = null;
             if (_tracer.IsTracingEnabled)
             {

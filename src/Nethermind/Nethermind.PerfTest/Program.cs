@@ -380,7 +380,7 @@ namespace Nethermind.PerfTest
                     _logger.Warn($"TOTAL after {number} (ms)     : " + ms);
                     _logger.Warn($"TOTAL after {number} blocks/s : {(decimal)currentHead.Number / (ms / 1000m),5}");
                     _logger.Warn($"TOTAL after {number} Mgas/s   : {((decimal)totalGas / 1000000) / (ms / 1000m),5}");
-                    _logger.Warn($"TOTAL after {number} mem (GC) : {GC.GetTotalMemory(true)}");
+                    _logger.Warn($"TOTAL after {number} mem (GC) : {GC.GetTotalMemory(false)}");
                     _logger.Warn($"TOTAL after {number} GC (0)   : {GC.CollectionCount(0)}");
                     _logger.Warn($"TOTAL after {number} GC (1)   : {GC.CollectionCount(1)}");
                     _logger.Warn($"TOTAL after {number} GC (2)   : {GC.CollectionCount(2)}");

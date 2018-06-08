@@ -1526,9 +1526,9 @@ namespace Nethermind.Evm
                             BigInteger length = PopUInt();
                             long topicsCount = instruction - Instruction.LOG0;
                             UpdateMemoryCost(memoryPos, length);
-                            UpdateGas(
+                            if(!UpdateGas(
                                 GasCostOf.Log + topicsCount * GasCostOf.LogTopic +
-                                (long)length * GasCostOf.LogData, ref gasAvailable);
+                                (long)length * GasCostOf.LogData, ref gasAvailable)) return PrepareException(instruction, gasBefore);
 
                             byte[] data = evmState.Memory.Load(memoryPos, length);
                             Keccak[] topics = new Keccak[topicsCount];
@@ -1928,12 +1928,12 @@ namespace Nethermind.Evm
 
             CallResult PrepareException(Instruction instruction, long gasBefore)
             {
-                UpdateCurrentState();
-                EndInstructionTrace();
-                if (_logger.IsDebugEnabled)
-                {
-                    LogInstructionResult(instruction, gasBefore);
-                }
+                //UpdateCurrentState();
+                //EndInstructionTrace();
+                //if (_logger.IsDebugEnabled)
+                //{
+                //    LogInstructionResult(instruction, gasBefore);
+                //}
 
                 return CallResult.Exception;
             }
