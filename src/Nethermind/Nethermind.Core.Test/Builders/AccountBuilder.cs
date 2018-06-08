@@ -24,12 +24,12 @@ namespace Nethermind.Core.Test.Builders
     {   
         public AccountBuilder()
         {
-            TestObjectInternal = new Account();
+            TestObjectInternal = Account.TotallyEmpty;
         }
 
         public AccountBuilder WithBalance(BigInteger balance)
         {
-            TestObjectInternal.Balance = balance;
+            TestObjectInternal = TestObjectInternal.WithChangedBalance(balance);
             return this;
         }
     }

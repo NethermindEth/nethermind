@@ -16,6 +16,9 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Numerics;
+using Nethermind.Core.Crypto;
+
 namespace Nethermind.Core.Encoding
 {
     public class AccountDecoder : IRlpDecoder<Account>
@@ -25,11 +28,11 @@ namespace Nethermind.Core.Encoding
             context.ReadSequenceLength();
             //long checkValue = context.ReadSequenceLength() + context.Position;
 
-            Account account = new Account();
-            account.Nonce = context.DecodeUBigInt();
-            account.Balance = context.DecodeUBigInt();
-            account.StorageRoot = context.DecodeKeccak();
-            account.CodeHash = context.DecodeKeccak();
+            BigInteger nonce = context.DecodeUBigInt();
+            BigInteger balance = context.DecodeUBigInt();
+            Keccak storageRoot = context.DecodeKeccak();
+            Keccak codeHash = context.DecodeKeccak();
+            Account account = new Account(nonce, balance, storageRoot, codeHash);
 
             //if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraData))
             //{

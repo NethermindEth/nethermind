@@ -62,17 +62,19 @@ namespace Nethermind.Store
             return _decoder.Decode(bytes.AsRlpContext());
         }
 
+        private static readonly Rlp EmptyAccountRlp = Rlp.Encode(Account.TotallyEmpty);
+
         [DebuggerStepThrough]
         public void Set(Address address, Account account)
         {
             Keccak keccak = Keccak.Compute((byte[])address.Hex);
-            Set(keccak.Bytes, account == null ? null : Rlp.Encode(account));
+            Set(keccak.Bytes, account == null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : Rlp.Encode(account));
         }
         
         [DebuggerStepThrough]
         internal void Set(Keccak keccak, Account account) // for testing
         {
-            Set(keccak.Bytes, account == null ? null : Rlp.Encode(account));
+            Set(keccak.Bytes, account == null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : Rlp.Encode(account));
         }
     }
 }

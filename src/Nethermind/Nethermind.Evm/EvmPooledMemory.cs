@@ -85,7 +85,7 @@ namespace Nethermind.Evm
 
         public byte[] Load(BigInteger location, BigInteger length)
         {
-            if (length == BigInteger.Zero)
+            if (length.IsZero)
             {
                 return EmptyBytes;
             }

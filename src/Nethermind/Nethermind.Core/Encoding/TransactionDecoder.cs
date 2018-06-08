@@ -67,7 +67,7 @@ namespace Nethermind.Core.Encoding
                 BigInteger r = rBytes.ToUnsignedBigInteger();
                 BigInteger s = sBytes.ToUnsignedBigInteger();
 
-                if (s == BigInteger.Zero && r == BigInteger.Zero)
+                if (s.IsZero && r.IsZero)
                 {
                     throw new RlpException("Both 'r' and 's' are zero when decoding a transaction.");
                 }

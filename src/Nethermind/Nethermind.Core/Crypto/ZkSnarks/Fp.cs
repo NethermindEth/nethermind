@@ -168,12 +168,12 @@ namespace Nethermind.Core.Crypto.ZkSnarks
 
         public static implicit operator Fp(BigInteger value)
         {
-            if (value == BigInteger.Zero)
+            if (value.IsZero)
             {
                 return Zero;
             }
             
-            if (value == BigInteger.One)
+            if (value.IsOne)
             {
                 return One;
             }

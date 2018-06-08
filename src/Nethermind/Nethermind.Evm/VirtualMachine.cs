@@ -70,12 +70,6 @@ namespace Nethermind.Evm
         // can refactor and integrate the other call
         public (byte[] output, TransactionSubstate) Run(EvmState state, IReleaseSpec releaseSpec, TransactionTrace trace)
         {
-            // TODO: review the concept commented below
-            //if (state.Env.CodeInfo.MachineCode.Length == 0 && state.ExecutionType == ExecutionType.Transaction)
-            //{
-            //    return (Bytes.Empty, new TransactionSubstate(0, new Collection<Address>(), new Collection<LogEntry>(), false));
-            //}
-
             _instructionCounter = 0;
             _traceEntry = null;
             _trace = trace;
@@ -852,7 +846,7 @@ namespace Nethermind.Evm
 
                         BigInteger a = PopUInt();
                         BigInteger b = PopUInt();
-                        PushInt(b == BigInteger.Zero ? BigInteger.Zero : BigInteger.Divide(a, b));
+                        PushInt(b.IsZero ? BigInteger.Zero : BigInteger.Divide(a, b));
                         break;
                     }
                     case Instruction.SDIV:
@@ -864,7 +858,7 @@ namespace Nethermind.Evm
 
                         BigInteger a = PopInt();
                         BigInteger b = PopInt();
-                        if (b == BigInteger.Zero)
+                        if (b.IsZero)
                         {
                             PushInt(BigInteger.Zero);
                         }
@@ -888,7 +882,7 @@ namespace Nethermind.Evm
 
                         BigInteger a = PopUInt();
                         BigInteger b = PopUInt();
-                        PushInt(b == BigInteger.Zero ? BigInteger.Zero : BigInteger.Remainder(a, b));
+                        PushInt(b.IsZero ? BigInteger.Zero : BigInteger.Remainder(a, b));
                         break;
                     }
                     case Instruction.SMOD:
@@ -900,7 +894,7 @@ namespace Nethermind.Evm
 
                         BigInteger a = PopInt();
                         BigInteger b = PopInt();
-                        if (b == BigInteger.Zero)
+                        if (b.IsZero)
                         {
                             PushInt(BigInteger.Zero);
                         }
@@ -922,7 +916,7 @@ namespace Nethermind.Evm
                         BigInteger a = PopUInt();
                         BigInteger b = PopUInt();
                         BigInteger mod = PopUInt();
-                        PushInt(mod == BigInteger.Zero ? BigInteger.Zero : BigInteger.Remainder(a + b, mod));
+                        PushInt(mod.IsZero ? BigInteger.Zero : BigInteger.Remainder(a + b, mod));
                         break;
                     }
                     case Instruction.MULMOD:
@@ -935,7 +929,7 @@ namespace Nethermind.Evm
                         BigInteger a = PopUInt();
                         BigInteger b = PopUInt();
                         BigInteger mod = PopUInt();
-                        PushInt(mod == BigInteger.Zero ? BigInteger.Zero : BigInteger.Remainder(a * b, mod));
+                        PushInt(mod.IsZero ? BigInteger.Zero : BigInteger.Remainder(a * b, mod));
                         break;
                     }
                     case Instruction.EXP:
@@ -972,11 +966,11 @@ namespace Nethermind.Evm
                             break;
                         }
 
-                        if (baseInt == BigInteger.Zero)
+                        if (baseInt.IsZero)
                         {
                             PushInt(BigInteger.Zero);
                         }
-                        else if (baseInt == BigInteger.One)
+                        else if (baseInt.IsOne)
                         {
                             PushInt(BigInteger.One);
                         }
@@ -2135,7 +2129,7 @@ namespace Nethermind.Evm
                             return CallResult.StaticCallViolationException;
                         }
 
-                        if (!UpdateGas(spec.IsEip150Enabled ? GasCostOf.SelfDestructEip150 : GasCostOf.SelfDestruct, ref gasAvailable))
+                        if (spec.IsEip150Enabled && !UpdateGas(GasCostOf.SelfDestructEip150, ref gasAvailable))
                         {
                             return CallResult.OutOfGasException;
                         }
@@ -2143,12 +2137,7 @@ namespace Nethermind.Evm
                         Metrics.SelfDestructs++;
 
                         Address inheritor = PopAddress();
-                        if (!evmState.DestroyList.Contains(env.ExecutingAccount))
-                        {
-                            evmState.DestroyList.Add(env.ExecutingAccount);
-                        }
-
-                        // TODO: review the change for Ropsten 468194 (lots of reciprocated selfdestruct calls)
+                        evmState.DestroyList.Add(env.ExecutingAccount);
 
                         BigInteger ownerBalance = _state.GetBalance(env.ExecutingAccount);
                         if (spec.IsEip158Enabled && ownerBalance != 0 && _state.IsDeadAccount(inheritor))

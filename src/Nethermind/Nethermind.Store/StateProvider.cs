@@ -132,7 +132,7 @@ namespace Nethermind.Store
 
         public void UpdateBalance(Address address, BigInteger balanceChange, IReleaseSpec releaseSpec)
         {
-            if (balanceChange == BigInteger.Zero)
+            if (balanceChange.IsZero)
             {
                 if (releaseSpec.IsEip158Enabled)
                 {
@@ -155,8 +155,8 @@ namespace Nethermind.Store
                 throw new InvalidOperationException("Updating balance of a non-existing account");
             }
 
-            BigInteger newbalance = account.Balance + balanceChange;
-            if (newbalance < 0)
+            BigInteger newBalance = account.Balance + balanceChange;
+            if (newBalance < 0)
             {
                 throw new InsufficientBalanceException();
             }
@@ -314,8 +314,7 @@ namespace Nethermind.Store
                 _logger.Debug($"  CREATING ACCOUNT: {address} with balance {balance}");
             }
 
-            Account account = new Account();
-            account.Balance = balance;
+            Account account = balance.IsZero ? Account.TotallyEmpty : new Account(balance);
             PushNew(address, account);
         }
 
