@@ -1510,6 +1510,12 @@ namespace Nethermind.Evm
                             return CallResult.StaticCallViolationException;
                         }
 
+                        // fail fast before the first storage read
+                        if (!UpdateGas(GasCostOf.SReset, ref gasAvailable))
+                        {
+                            return CallResult.OutOfGasException;
+                        }
+
                         BigInteger storageIndex = PopUInt();
                         byte[] data = PopBytes().WithoutLeadingZeros();
 
@@ -1524,11 +1530,7 @@ namespace Nethermind.Evm
 
                         if (isNewValueZero)
                         {
-                            if (!UpdateGas(GasCostOf.SReset, ref gasAvailable))
-                            {
-                                return CallResult.OutOfGasException;
-                            }
-
+                            // either case would be reset cost here first
                             if (isValueChanged)
                             {
                                 evmState.Refund += RefundOf.SClear;
@@ -1536,7 +1538,8 @@ namespace Nethermind.Evm
                         }
                         else
                         {
-                            if (!UpdateGas(previousValue.IsZero() ? GasCostOf.SSet : GasCostOf.SReset, ref gasAvailable))
+                            // if not zero would be reset cost here
+                            if (previousValue.IsZero() && !UpdateGas(GasCostOf.SSet - GasCostOf.SReset, ref gasAvailable))
                             {
                                 return CallResult.OutOfGasException;
                             }
@@ -1588,17 +1591,18 @@ namespace Nethermind.Evm
                         }
 
                         bigReg = PopUInt();
-                        if (bigReg > BigIntMaxInt)
-                        {
-                            Metrics.EvmExceptions++;
-                            throw new InvalidJumpDestinationException();
-                            return CallResult.InvalidJumpDestination;
-                        }
-
-                        int dest = (int)bigReg;
                         BigInteger condition = PopUInt();
                         if (condition > BigInteger.Zero)
                         {
+                            if (bigReg > BigIntMaxInt)
+                            {
+                                Metrics.EvmExceptions++;
+                                throw new InvalidJumpDestinationException();
+                                return CallResult.InvalidJumpDestination; // TODO: add a test, validating inside the condition was not covered by existing tests and fails on 0xf435a354924097686ea88dab3aac1dd464e6a3b387c77aeee94145b0fa5a63d2 mainnet
+                            }
+
+                            int dest = (int)bigReg;
+
                             if (!env.CodeInfo.ValidateJump(dest))
                             {
                                 throw new InvalidJumpDestinationException();
@@ -1839,13 +1843,6 @@ namespace Nethermind.Evm
                         }
 
                         byte[] initCode = evmState.Memory.Load(memoryPositionOfInitCode, initCodeLength);
-                        Keccak contractAddressKeccak =
-                            Keccak.Compute(
-                                Rlp.Encode(
-                                    Rlp.Encode(env.ExecutingAccount),
-                                    Rlp.Encode(_state.GetNonce(env.ExecutingAccount))));
-                        Address contractAddress = new Address(contractAddressKeccak);
-
                         BigInteger balance = _state.GetBalance(env.ExecutingAccount);
                         if (value > _state.GetBalance(env.ExecutingAccount))
                         {
@@ -1858,13 +1855,20 @@ namespace Nethermind.Evm
                             break;
                         }
 
-                        _state.IncrementNonce(env.ExecutingAccount);
-
                         long callGas = spec.IsEip150Enabled ? gasAvailable - gasAvailable / 64L : gasAvailable;
                         if (!UpdateGas(callGas, ref gasAvailable))
                         {
                             return CallResult.OutOfGasException;
                         }
+
+                        Keccak contractAddressKeccak =
+                            Keccak.Compute(
+                                Rlp.Encode(
+                                    Rlp.Encode(env.ExecutingAccount),
+                                    Rlp.Encode(_state.GetNonce(env.ExecutingAccount))));
+                        Address contractAddress = new Address(contractAddressKeccak);
+
+                        _state.IncrementNonce(env.ExecutingAccount);
 
                         bool accountExists = _state.AccountExists(contractAddress);
                         if (accountExists && ((GetCachedCodeInfo(contractAddress)?.MachineCode?.Length ?? 0) != 0 || _state.GetNonce(contractAddress) != 0))
@@ -2097,14 +2101,8 @@ namespace Nethermind.Evm
                             return CallResult.InvalidInstructionException;
                         }
 
-                        long gasCost = GasCostOf.Zero;
                         BigInteger memoryPos = PopUInt();
                         BigInteger length = PopUInt();
-
-                        if (!UpdateGas(gasCost, ref gasAvailable))
-                        {
-                            return CallResult.OutOfGasException;
-                        }
 
                         UpdateMemoryCost(memoryPos, length);
                         byte[] errorDetails = evmState.Memory.Load(memoryPos, length);
@@ -2142,6 +2140,8 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
+                        Metrics.SelfDestructs++;
+
                         Address inheritor = PopAddress();
                         if (!evmState.DestroyList.Contains(env.ExecutingAccount))
                         {
@@ -2151,9 +2151,7 @@ namespace Nethermind.Evm
                         // TODO: review the change for Ropsten 468194 (lots of reciprocated selfdestruct calls)
 
                         BigInteger ownerBalance = _state.GetBalance(env.ExecutingAccount);
-                        bool inheritorAccountExists = _state.AccountExists(inheritor);
-
-                        if (!spec.IsEip158Enabled && !inheritorAccountExists && spec.IsEip150Enabled)
+                        if (spec.IsEip158Enabled && ownerBalance != 0 && _state.IsDeadAccount(inheritor))
                         {
                             if (!UpdateGas(GasCostOf.NewAccount, ref gasAvailable))
                             {
@@ -2161,7 +2159,8 @@ namespace Nethermind.Evm
                             }
                         }
 
-                        if (spec.IsEip158Enabled && ownerBalance != 0 && _state.IsDeadAccount(inheritor))
+                        bool inheritorAccountExists = _state.AccountExists(inheritor);
+                        if (!spec.IsEip158Enabled && !inheritorAccountExists && spec.IsEip150Enabled)
                         {
                             if (!UpdateGas(GasCostOf.NewAccount, ref gasAvailable))
                             {

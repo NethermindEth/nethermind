@@ -373,6 +373,7 @@ namespace Nethermind.Blockchain
         private long _lastGen2;
         private long _lastTreeNodeRlp;
         private long _lastEvmExceptions;
+        private long _lastSelfDestructs;
 
         public void Process(Block suggestedBlock)
         {
@@ -395,6 +396,7 @@ namespace Nethermind.Blockchain
                 long currentStateDbWrites = Metrics.StateDbWrites;
                 long currentTreeNodeRlp = Metrics.TreeNodeRlpEncodings + Metrics.TreeNodeRlpDecodings;
                 long evmExceptions = Metrics.EvmExceptions;
+                long currentSelfDestructs = Metrics.SelfDestructs;
 
                 long chunkTx = _currentTotalTx - _lastTotalTx;
                 long chunkMs = currentMs - _lastElapsedMs;
@@ -406,7 +408,7 @@ namespace Nethermind.Blockchain
                 decimal txps = chunkTx / (decimal)chunkMs * 1000;
                 //                _logger.Info($"Processed block {suggestedBlock.ToString(Block.Format.Short)} in {microSeconds,12:N0}μs, guse={gasPercentage,7:P2}, mgas={mgas,6:F2}, mgasps={mgasPerSecond,9:F2}");
                 _logger.Info($"Processed blocks up to {suggestedBlock.Number,9} in {chunkMs,7:N0}ms, tx={chunkTx,5} mgas={chunkMGas,8:F2}, mgasps={mgasPerSecond,7:F2}, txps={txps,7:F2}, total mgasps={totalMgasPerSecond,7:F2}, queue={_blockQueue.Count}");
-                _logger.Info($"Gen0: {currentGen0 - _lastGen0,6}, Gen1: {currentGen1 - _lastGen1,6}, Gen2: {currentGen2 - _lastGen2,6}, mem: {currentMemory / 1000000,5}, reads: {currentStateDbReads - _lastStateDbReads,9}, writes: {currentStateDbWrites - _lastStateDbWrites,9}, rlp: {currentTreeNodeRlp - _lastTreeNodeRlp,9}, exceptions:{evmExceptions - _lastEvmExceptions}");
+                _logger.Info($"Gen0: {currentGen0 - _lastGen0,6}, Gen1: {currentGen1 - _lastGen1,6}, Gen2: {currentGen2 - _lastGen2,6}, mem: {currentMemory / 1000000,5}, reads: {currentStateDbReads - _lastStateDbReads,9}, writes: {currentStateDbWrites - _lastStateDbWrites,9}, rlp: {currentTreeNodeRlp - _lastTreeNodeRlp,9}, exceptions:{evmExceptions - _lastEvmExceptions}, selfdstrcs={currentSelfDestructs - _lastSelfDestructs}");
                 _lastTotalMGas = _currentTotalMGas;
                 _lastElapsedMs = currentMs;
                 _lastTotalTx = _currentTotalTx;
@@ -417,6 +419,7 @@ namespace Nethermind.Blockchain
                 _lastStateDbWrites = currentStateDbWrites;
                 _lastTreeNodeRlp = currentTreeNodeRlp;
                 _lastEvmExceptions = evmExceptions;
+                _lastSelfDestructs = currentSelfDestructs;
             }
         }
 

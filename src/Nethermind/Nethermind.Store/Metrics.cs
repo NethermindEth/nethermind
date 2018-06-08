@@ -48,5 +48,6 @@ namespace Nethermind.Store
         public static long PeersDbWrites { get; set; }
 
         public static long EvmExceptions { get; set; }
+        public static long SelfDestructs { get; set; }
     }
 } 
