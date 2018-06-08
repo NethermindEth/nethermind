@@ -141,11 +141,14 @@ namespace Nethermind.Evm
         {
             int tracePosition = 0;
             List<string> memoryTrace = new List<string>();
-            while (tracePosition < Size)
+            if (_memory != null)
             {
-                int sizeAvailable = Math.Min(WordSize, (int)Size - tracePosition);
-                memoryTrace.Add(new Hex(_memory.Slice(tracePosition, sizeAvailable)));
-                tracePosition = tracePosition + WordSize;
+                while (tracePosition < Size)
+                {
+                    int sizeAvailable = Math.Min(WordSize, (int)Size - tracePosition);
+                    memoryTrace.Add(new Hex(_memory.Slice(tracePosition, sizeAvailable)));
+                    tracePosition = tracePosition + WordSize;
+                }
             }
 
             return memoryTrace;

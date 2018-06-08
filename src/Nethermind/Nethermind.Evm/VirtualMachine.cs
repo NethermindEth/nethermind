@@ -223,7 +223,7 @@ namespace Nethermind.Evm
                         previousCallOutputDestination = previousState.OutputDestination;
                         _returnDataBuffer = callResult.Output;
                     }
-                    
+
                     previousState.Dispose();
                 }
                 catch (Exception ex) when (ex is EvmException || ex is OverflowException)
@@ -896,7 +896,7 @@ namespace Nethermind.Evm
                             }
 
                             byte[] b = PopBytes();
-                            BitArray bits1 = b.ToBigEndianBitArray256(); 
+                            BitArray bits1 = b.ToBigEndianBitArray256();
                             int bitPosition = Math.Max(0, 248 - 8 * (int)a);
                             bool isSet = bits1[bitPosition];
                             for (int i = 0; i < bitPosition; i++)
@@ -1168,7 +1168,7 @@ namespace Nethermind.Evm
                             UpdateGas(GasCostOf.BlockHash, ref gasAvailable);
                             BigInteger a = PopUInt();
                             PushBytes(_blockhashProvider.GetBlockhash(env.CurrentBlock, a)?.Bytes ?? BytesZero);
-                            
+
                             break;
                         }
                     case Instruction.COINBASE:
@@ -1308,10 +1308,6 @@ namespace Nethermind.Evm
                         }
                     case Instruction.JUMPI:
                         {
-                            if (_instructionCounter == 690 && gasAvailable < 8790 && gasAvailable > 8700)
-                            {
-                            }
-
                             UpdateGas(GasCostOf.High, ref gasAvailable);
                             bigReg = PopUInt();
                             if (bigReg > BigIntMaxInt)
@@ -1516,7 +1512,6 @@ namespace Nethermind.Evm
                                 break;
                             }
 
-
                             byte[] initCode = evmState.Memory.Load(memoryPositionOfInitCode, initCodeLength);
                             Keccak contractAddressKeccak =
                                 Keccak.Compute(
@@ -1681,27 +1676,28 @@ namespace Nethermind.Evm
                                 gasExtra += GasCostOf.NewAccount;
                             }
 
-                            if (!spec.IsEip150Enabled && gasLimit > gasAvailable)
-                            {
-                                throw new OutOfGasException(); // important to avoid casting
-                            }
-
                             UpdateGas(spec.IsEip150Enabled ? GasCostOf.CallOrCallCodeEip150 : GasCostOf.CallOrCallCode, ref gasAvailable);
                             UpdateMemoryCost(dataOffset, dataLength);
-                            byte[] callData = evmState.Memory.Load(dataOffset, dataLength);
                             UpdateMemoryCost(outputOffset, outputLength);
                             UpdateGas(gasExtra, ref gasAvailable);
 
-                            // this is like inline full execution of the call
-                            if (env.CallDepth >= MaxCallDepth) // TODO: fragile ordering / potential vulnerability for different clients
+                            if (spec.IsEip150Enabled)
                             {
-                                if (!transferValue.IsZero)
-                                {
-                                    RefundGas(GasCostOf.CallStipend, ref gasAvailable);
-                                }
+                                gasLimit = BigInteger.Min(gasAvailable - gasAvailable / 64L, gasLimit);
+                            }
 
-                                // TODO: need a test for this, do we need to save memory output here as well?
-                                evmState.Memory.Save(outputOffset, new byte[(int)outputLength]);
+                            long gasLimitUl = (long)gasLimit;
+                            UpdateGas(gasLimitUl, ref gasAvailable);
+
+                            if (!transferValue.IsZero)
+                            {
+                                gasLimitUl += GasCostOf.CallStipend;
+                            }
+
+                            if (env.CallDepth >= MaxCallDepth || (!transferValue.IsZero && _state.GetBalance(env.ExecutingAccount) < transferValue))
+                            {
+                                RefundGas(gasLimitUl, ref gasAvailable);
+                                //evmState.Memory.Save(outputOffset, new byte[(int)outputLength]); // TODO: probably should not save memory here
                                 _returnDataBuffer = EmptyBytes;
                                 PushInt(BigInteger.Zero);
                                 if (_logger.IsDebugEnabled)
@@ -1712,33 +1708,11 @@ namespace Nethermind.Evm
                                 break;
                             }
 
-                            // this is like inline full execution of the call
-                            // TODO: used to be callValue (instead of transferValue check), was it for purpose?
-                            if (!transferValue.IsZero && _state.GetBalance(env.ExecutingAccount) < transferValue)
-                            {
-                                RefundGas(GasCostOf.CallStipend, ref gasAvailable);
-                                evmState.Memory.Save(outputOffset, new byte[(int)outputLength]);
-                                _returnDataBuffer = EmptyBytes;
-                                PushInt(BigInteger.Zero);
-                                if (_logger.IsDebugEnabled)
-                                {
-                                    _logger.Debug($"  {instruction} FAIL - NOT ENOUGH BALANCE");
-                                }
-
-                                break;
-                            }
-
+                            byte[] callData = evmState.Memory.Load(dataOffset, dataLength);
                             int stateSnapshot = _state.TakeSnapshot();
                             int storageSnapshot = _storage.TakeSnapshot();
                             _state.UpdateBalance(sender, -transferValue, spec);
 
-                            if (spec.IsEip150Enabled)
-                            {
-                                gasLimit = BigInteger.Min(gasAvailable - gasAvailable / 64L, gasLimit);
-                            }
-
-                            long gasLimitUl = (long)gasLimit;
-                            UpdateGas(gasLimitUl, ref gasAvailable);
                             ExecutionEnvironment callEnv = new ExecutionEnvironment();
                             callEnv.CallDepth = env.CallDepth + 1;
                             callEnv.CurrentBlock = env.CurrentBlock;
@@ -1751,14 +1725,13 @@ namespace Nethermind.Evm
                             callEnv.InputData = callData;
                             callEnv.CodeInfo = isPrecompile ? new CodeInfo(codeSource) : GetCachedCodeInfo(codeSource);
 
-                            BigInteger callGas = transferValue.IsZero ? gasLimitUl : gasLimitUl + GasCostOf.CallStipend;
                             if (_logger.IsDebugEnabled)
                             {
-                                _logger.Debug($"  CALL_GAS {callGas}");
+                                _logger.Debug($"  CALL_GAS {gasLimitUl}");
                             }
 
                             EvmState callState = new EvmState(
-                                (long)callGas,
+                                gasLimitUl,
                                 callEnv,
                                 isPrecompile ? ExecutionType.Precompile : (instruction == Instruction.CALL || instruction == Instruction.STATICCALL ? ExecutionType.Call : ExecutionType.Callcode),
                                 stateSnapshot,
