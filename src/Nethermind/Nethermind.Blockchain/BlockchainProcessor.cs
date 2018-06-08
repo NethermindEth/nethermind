@@ -366,6 +366,12 @@ namespace Nethermind.Blockchain
         private long _lastTotalTx;
         private decimal _currentTotalMGas;
         private long _currentTotalTx;
+        private long _lastStateDbReads;
+        private long _lastStateDbWrites;
+        private long _lastGen0;
+        private long _lastGen1;
+        private long _lastGen2;
+        private long _lastTreeNodeRlp;
         
         public void Process(Block suggestedBlock)
         {
@@ -380,6 +386,14 @@ namespace Nethermind.Blockchain
             long currentMs = _processingWatch.ElapsedMilliseconds;
             if (currentMs > _lastElapsedMs + 10000) // 10s
             {
+                long currentGen0 = GC.CollectionCount(0);
+                long currentGen1 = GC.CollectionCount(1);
+                long currentGen2 = GC.CollectionCount(2);
+                long currentMemory = GC.GetTotalMemory(false);
+                long currentStateDbReads = Metrics.StateDbReads;
+                long currentStateDbWrites= Metrics.StateDbWrites;
+                long currentTreeNodeRlp = Metrics.TreeNodeRlpEncodings + Metrics.TreeNodeRlpDecodings; 
+                
                 long chunkTx = _currentTotalTx - _lastTotalTx;
                 long chunkMs = currentMs - _lastElapsedMs;
                 decimal chunkMGas = _currentTotalMGas - _lastTotalMGas;
@@ -390,9 +404,16 @@ namespace Nethermind.Blockchain
                 decimal txps = chunkTx / (decimal)chunkMs * 1000;
 //                _logger.Info($"Processed block {suggestedBlock.ToString(Block.Format.Short)} in {microSeconds,12:N0}μs, guse={gasPercentage,7:P2}, mgas={mgas,6:F2}, mgasps={mgasPerSecond,9:F2}");
                 _logger.Info($"Processed blocks up to {suggestedBlock.Number,9} in {chunkMs,7:N0}ms, tx={chunkTx,5} mgas={chunkMGas,8:F2}, mgasps={mgasPerSecond,7:F2}, txps={txps,7:F2}, total mgasps={totalMgasPerSecond,7:F2}, queue={_blockQueue.Count}");
+                _logger.Info($"Gen0: {currentGen0 - _lastGen0, 6}, Gen1: {currentGen1 - _lastGen1, 6}, Gen2: {currentGen2 - _lastGen2, 6}, mem: {currentMemory / 1000000, 5}, reads: {currentStateDbReads - _lastStateDbReads, 9}, writes: {currentStateDbWrites - _lastStateDbWrites, 9}, rlp: {currentTreeNodeRlp - _lastTreeNodeRlp, 9}");
                 _lastTotalMGas = _currentTotalMGas;
                 _lastElapsedMs = currentMs;
-                _lastTotalTx = _currentTotalTx;                
+                _lastTotalTx = _currentTotalTx;
+                _lastGen0 = currentGen0;
+                _lastGen1 = currentGen1;
+                _lastGen2 = currentGen2;
+                _lastStateDbReads = currentStateDbReads;
+                _lastStateDbWrites = currentStateDbWrites;
+                _lastTreeNodeRlp = currentTreeNodeRlp;
             }
         }
 
