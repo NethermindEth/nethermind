@@ -147,7 +147,7 @@ namespace Nethermind.Evm
 
                             if (currentState.ExecutionType == ExecutionType.Transaction || currentState.ExecutionType == ExecutionType.DirectPrecompile || currentState.ExecutionType == ExecutionType.DirectCreate)
                             {
-                                throw new EvmStackOverflowException();
+                                throw new EvmException();
                             }
 
                             previousCallResult = StatusCode.FailureBytes;
@@ -1570,11 +1570,12 @@ namespace Nethermind.Evm
                         if (bigReg > BigIntMaxInt)
                         {
                             Metrics.EvmExceptions++;
+                            throw new InvalidJumpDestinationException();
                             return CallResult.InvalidJumpDestination;
                         }
 
                         int dest = (int)bigReg;
-                        env.CodeInfo.ValidateJump(dest);
+                        if(!env.CodeInfo.ValidateJump(dest)) return CallResult.InvalidJumpDestination;
 
                         programCounter = dest;
                         break;
@@ -1590,6 +1591,7 @@ namespace Nethermind.Evm
                         if (bigReg > BigIntMaxInt)
                         {
                             Metrics.EvmExceptions++;
+                            throw new InvalidJumpDestinationException();
                             return CallResult.InvalidJumpDestination;
                         }
 
@@ -1599,6 +1601,7 @@ namespace Nethermind.Evm
                         {
                             if (!env.CodeInfo.ValidateJump(dest))
                             {
+                                throw new InvalidJumpDestinationException();
                                 return CallResult.InvalidJumpDestination; // TODO: add a test, validating inside the condition was not covered by existing tests and fails on 61363 Ropsten
                             }
 

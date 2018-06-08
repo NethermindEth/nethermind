@@ -52,6 +52,7 @@ namespace Nethermind.Evm
 
             if (destination < 0 || destination >= MachineCode.Length || !_validJumpDestinations.Get(destination))
             {
+                throw new InvalidJumpDestinationException();
                 return false;
             }
 

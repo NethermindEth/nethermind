@@ -20,7 +20,7 @@ using System;
 
 namespace Nethermind.Evm
 {
-    public abstract class EvmException : Exception
+    public class EvmException : Exception
     {
     }
 }
