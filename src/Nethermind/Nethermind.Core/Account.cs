@@ -65,11 +65,8 @@ namespace Nethermind.Core
         public BigInteger Balance { get; }
         public Keccak StorageRoot { get; }
         public Keccak CodeHash { get; }
-        public bool IsTotallyEmpty { get; } = false;
-        public bool IsEmpty =>
-            Balance.IsZero &&
-            Nonce.IsZero &&
-            CodeHash == Keccak.OfAnEmptyString;
+        public bool IsTotallyEmpty { get; }
+        public bool IsEmpty => IsTotallyEmpty || (Balance.IsZero && Nonce.IsZero && CodeHash == Keccak.OfAnEmptyString);
 
         public Account WithChangedBalance(BigInteger newBalance)
         {
