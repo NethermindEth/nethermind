@@ -46,5 +46,7 @@ namespace Nethermind.Store
         public static long DiscoveryNodesDbWrites { get; set; }
         public static long PeersDbReads { get; set; }
         public static long PeersDbWrites { get; set; }
+
+        public static long EvmExceptions { get; set; }
     }
 } 

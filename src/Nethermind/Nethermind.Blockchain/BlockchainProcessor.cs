@@ -74,7 +74,7 @@ namespace Nethermind.Blockchain
             {
                 throw new InvalidOperationException("New best block is null");
             }
-            
+
             _miningCancellation?.Cancel();
             EnqueueForProcessing(blockEventArgs.Block);
         }
@@ -171,7 +171,7 @@ namespace Nethermind.Blockchain
         }
 
         private void RunRecoveryLoop()
-        {   
+        {
             if (_logger.IsInfoEnabled)
             {
                 _processingWatch.Start();
@@ -191,7 +191,7 @@ namespace Nethermind.Blockchain
         }
 
         private void RunProcessingLoop()
-        {   
+        {
             if (_logger.IsInfoEnabled)
             {
                 _processingWatch.Start();
@@ -372,17 +372,18 @@ namespace Nethermind.Blockchain
         private long _lastGen1;
         private long _lastGen2;
         private long _lastTreeNodeRlp;
-        
+        private long _lastEvmExceptions;
+
         public void Process(Block suggestedBlock)
         {
-//            Stopwatch stopwatch = new Stopwatch(); // TODO: instrumentation
-//            stopwatch.Start();
+            //            Stopwatch stopwatch = new Stopwatch(); // TODO: instrumentation
+            //            stopwatch.Start();
             Process(suggestedBlock, false);
-//            stopwatch.Stop();
-//            
+            //            stopwatch.Stop();
+            //            
             _currentTotalMGas += (decimal)suggestedBlock.GasUsed / 1_000_000m;
             _currentTotalTx += suggestedBlock.Transactions.Length;
-//            
+            //            
             long currentMs = _processingWatch.ElapsedMilliseconds;
             if (currentMs > _lastElapsedMs + 10000) // 10s
             {
@@ -391,20 +392,21 @@ namespace Nethermind.Blockchain
                 long currentGen2 = GC.CollectionCount(2);
                 long currentMemory = GC.GetTotalMemory(false);
                 long currentStateDbReads = Metrics.StateDbReads;
-                long currentStateDbWrites= Metrics.StateDbWrites;
-                long currentTreeNodeRlp = Metrics.TreeNodeRlpEncodings + Metrics.TreeNodeRlpDecodings; 
-                
+                long currentStateDbWrites = Metrics.StateDbWrites;
+                long currentTreeNodeRlp = Metrics.TreeNodeRlpEncodings + Metrics.TreeNodeRlpDecodings;
+                long evmExceptions = Metrics.EvmExceptions;
+
                 long chunkTx = _currentTotalTx - _lastTotalTx;
                 long chunkMs = currentMs - _lastElapsedMs;
                 decimal chunkMGas = _currentTotalMGas - _lastTotalMGas;
-//                decimal gasPercentage = (decimal)suggestedBlock.GasUsed / suggestedBlock.GasLimit;
-//                decimal microSeconds = _processingWatch.ElapsedTicks * (1_000_000m / Stopwatch.Frequency);
+                //                decimal gasPercentage = (decimal)suggestedBlock.GasUsed / suggestedBlock.GasLimit;
+                //                decimal microSeconds = _processingWatch.ElapsedTicks * (1_000_000m / Stopwatch.Frequency);
                 decimal mgasPerSecond = chunkMGas / chunkMs * 1000;
                 decimal totalMgasPerSecond = _currentTotalMGas / currentMs * 1000;
                 decimal txps = chunkTx / (decimal)chunkMs * 1000;
-//                _logger.Info($"Processed block {suggestedBlock.ToString(Block.Format.Short)} in {microSeconds,12:N0}μs, guse={gasPercentage,7:P2}, mgas={mgas,6:F2}, mgasps={mgasPerSecond,9:F2}");
+                //                _logger.Info($"Processed block {suggestedBlock.ToString(Block.Format.Short)} in {microSeconds,12:N0}μs, guse={gasPercentage,7:P2}, mgas={mgas,6:F2}, mgasps={mgasPerSecond,9:F2}");
                 _logger.Info($"Processed blocks up to {suggestedBlock.Number,9} in {chunkMs,7:N0}ms, tx={chunkTx,5} mgas={chunkMGas,8:F2}, mgasps={mgasPerSecond,7:F2}, txps={txps,7:F2}, total mgasps={totalMgasPerSecond,7:F2}, queue={_blockQueue.Count}");
-                _logger.Info($"Gen0: {currentGen0 - _lastGen0, 6}, Gen1: {currentGen1 - _lastGen1, 6}, Gen2: {currentGen2 - _lastGen2, 6}, mem: {currentMemory / 1000000, 5}, reads: {currentStateDbReads - _lastStateDbReads, 9}, writes: {currentStateDbWrites - _lastStateDbWrites, 9}, rlp: {currentTreeNodeRlp - _lastTreeNodeRlp, 9}");
+                _logger.Info($"Gen0: {currentGen0 - _lastGen0,6}, Gen1: {currentGen1 - _lastGen1,6}, Gen2: {currentGen2 - _lastGen2,6}, mem: {currentMemory / 1000000,5}, reads: {currentStateDbReads - _lastStateDbReads,9}, writes: {currentStateDbWrites - _lastStateDbWrites,9}, rlp: {currentTreeNodeRlp - _lastTreeNodeRlp,9}, exceptions:{evmExceptions - _lastEvmExceptions}");
                 _lastTotalMGas = _currentTotalMGas;
                 _lastElapsedMs = currentMs;
                 _lastTotalTx = _currentTotalTx;
@@ -414,6 +416,7 @@ namespace Nethermind.Blockchain
                 _lastStateDbReads = currentStateDbReads;
                 _lastStateDbWrites = currentStateDbWrites;
                 _lastTreeNodeRlp = currentTreeNodeRlp;
+                _lastEvmExceptions = evmExceptions;
             }
         }
 
@@ -459,7 +462,7 @@ namespace Nethermind.Blockchain
                     blocksToBeAddedToMain.Add(toBeProcessed);
                     toBeProcessed = toBeProcessed.Number == 0 ? null : _blockTree.FindParent(toBeProcessed);
                     // TODO: need to remove the hardcoded head block store at keccak zero as it would be referenced by the genesis... 
-                    
+
                     if (toBeProcessed == null)
                     {
                         break;

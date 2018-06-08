@@ -108,6 +108,7 @@ namespace Nethermind.Evm
                         {
                             if (currentState.ExecutionType == ExecutionType.DirectPrecompile)
                             {
+                                Metrics.EvmExceptions++;
                                 // TODO: when direct / calls are treated same we should not need such differentiation
                                 throw new PrecompileExecutionFailureException();
                             }
@@ -125,6 +126,38 @@ namespace Nethermind.Evm
                             currentState = callResult.StateToExecute;
                             previousCallResult = null; // TODO: testing on ropsten sync, write VirtualMachineTest for this case as it was not covered by Ethereum tests (failing block 9411 on Ropsten https://ropsten.etherscan.io/vmtrace?txhash=0x666194d15c14c54fffafab1a04c08064af165870ef9a87f65711dcce7ed27fe1)
                             previousCallOutput = Bytes.Empty; // TODO: testing on ropsten sync, write VirtualMachineTest for this case as it was not covered by Ethereum tests
+                            continue;
+                        }
+
+                        if (callResult.IsException)
+                        {
+                            //if (_logger.IsDebugEnabled)
+                            //{
+                            //    _logger.Debug($"EXCEPTION ({ex.GetType().Name}) IN {currentState.ExecutionType} AT DEPTH {currentState.Env.CallDepth} - RESTORING SNAPSHOT");
+                            //}
+
+                            _state.Restore(currentState.StateSnapshot);
+                            _storage.Restore(currentState.StorageSnapshot);
+
+                            if (_parityTouchBugAccount != null)
+                            {
+                                _state.UpdateBalance(_parityTouchBugAccount, BigInteger.Zero, spec);
+                                _parityTouchBugAccount = null;
+                            }
+
+                            if (currentState.ExecutionType == ExecutionType.Transaction || currentState.ExecutionType == ExecutionType.DirectPrecompile || currentState.ExecutionType == ExecutionType.DirectCreate)
+                            {
+                                throw new EvmStackOverflowException();
+                            }
+
+                            previousCallResult = StatusCode.FailureBytes;
+                            previousCallOutput = Bytes.Empty;
+                            previousCallOutputDestination = BigInteger.Zero;
+                            _returnDataBuffer = Bytes.Empty;
+
+                            currentState.Dispose();
+                            currentState = _stateStack.Pop();
+                            currentState.IsContinuation = true;
                             continue;
                         }
                     }
@@ -274,7 +307,7 @@ namespace Nethermind.Evm
             };
         }
 
-        public void UpdateGas(long gasCost, ref long gasAvailable)
+        public bool UpdateGas(long gasCost, ref long gasAvailable)
         {
             if (_logger.IsDebugEnabled)
             {
@@ -283,10 +316,12 @@ namespace Nethermind.Evm
 
             if (gasAvailable < gasCost)
             {
-                throw new OutOfGasException();
+                Metrics.EvmExceptions++;
+                return false;
             }
 
             gasAvailable -= gasCost;
+            return true;
         }
 
         public void RefundGas(long refund, ref long gasAvailable)
@@ -336,11 +371,14 @@ namespace Nethermind.Evm
                     _parityTouchBugAccount = state.Env.ExecutingAccount;
                 }
 
+                Metrics.EvmExceptions++;
                 throw new OutOfGasException();
             }
 
-            UpdateGas(baseGasCost, ref gasAvailable);
-            UpdateGas(dataGasCost, ref gasAvailable);
+            //if(!UpdateGas(baseGasCost, ref gasAvailable)) return PrepareException(instruction, gasBefore);
+            //if(!UpdateGas(dataGasCost, ref gasAvailable)) return PrepareException(instruction, gasBefore);
+            if(!UpdateGas(baseGasCost, ref gasAvailable)) throw new OutOfGasException();
+            if(!UpdateGas(dataGasCost, ref gasAvailable)) throw new OutOfGasException();
             state.GasAvailable = gasAvailable;
 
             try
@@ -476,6 +514,7 @@ namespace Nethermind.Evm
                 stackHead++;
                 if (stackHead >= MaxStackSize)
                 {
+                    Metrics.EvmExceptions++;
                     throw new EvmStackOverflowException();
                 }
             }
@@ -492,6 +531,7 @@ namespace Nethermind.Evm
                 stackHead++;
                 if (stackHead >= MaxStackSize)
                 {
+                    Metrics.EvmExceptions++;
                     throw new EvmStackOverflowException();
                 }
             }
@@ -500,6 +540,7 @@ namespace Nethermind.Evm
             {
                 if (stackHead == 0)
                 {
+                    Metrics.EvmExceptions++;
                     throw new StackUnderflowException();
                 }
 
@@ -510,6 +551,7 @@ namespace Nethermind.Evm
             {
                 if (stackHead < depth)
                 {
+                    Metrics.EvmExceptions++;
                     throw new StackUnderflowException();
                 }
 
@@ -527,6 +569,7 @@ namespace Nethermind.Evm
                 stackHead++;
                 if (stackHead >= MaxStackSize)
                 {
+                    Metrics.EvmExceptions++;
                     throw new EvmStackOverflowException();
                 }
             }
@@ -535,6 +578,7 @@ namespace Nethermind.Evm
             {
                 if (stackHead < depth)
                 {
+                    Metrics.EvmExceptions++;
                     throw new StackUnderflowException();
                 }
 
@@ -580,6 +624,7 @@ namespace Nethermind.Evm
             {
                 if (stackHead == 0)
                 {
+                    Metrics.EvmExceptions++;
                     throw new StackUnderflowException();
                 }
 
@@ -616,6 +661,7 @@ namespace Nethermind.Evm
             {
                 if (stackHead == 0)
                 {
+                    Metrics.EvmExceptions++;
                     throw new StackUnderflowException();
                 }
 
@@ -644,6 +690,7 @@ namespace Nethermind.Evm
             {
                 if (stackHead == 0)
                 {
+                    Metrics.EvmExceptions++;
                     throw new StackUnderflowException();
                 }
 
@@ -691,7 +738,7 @@ namespace Nethermind.Evm
                     _logger.Debug($"  MEMORY COST {memoryCost}");
                 }
 
-                UpdateGas(memoryCost, ref gasAvailable);
+                if(!UpdateGas(memoryCost, ref gasAvailable)) throw new OutOfGasException();
             }
 
             if (previousCallResult != null)
@@ -744,7 +791,7 @@ namespace Nethermind.Evm
                         }
                     case Instruction.ADD:
                         {
-                            UpdateGas(GasCostOf.VeryLow, ref gasAvailable);
+                            if(!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return PrepareException(instruction, gasBefore);
                             BigInteger a = PopUInt();
                             BigInteger b = PopUInt();
                             BigInteger res = a + b;
@@ -753,7 +800,7 @@ namespace Nethermind.Evm
                         }
                     case Instruction.MUL:
                         {
-                            UpdateGas(GasCostOf.Low, ref gasAvailable);
+                            if(!UpdateGas(GasCostOf.Low, ref gasAvailable)) return PrepareException(instruction, gasBefore);
                             BigInteger a = PopUInt();
                             BigInteger b = PopUInt();
                             PushInt(BigInteger.Remainder(a * b, P256Int));
@@ -761,7 +808,7 @@ namespace Nethermind.Evm
                         }
                     case Instruction.SUB:
                         {
-                            UpdateGas(GasCostOf.VeryLow, ref gasAvailable);
+                            if(!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return PrepareException(instruction, gasBefore);
                             BigInteger a = PopUInt();
                             BigInteger b = PopUInt();
                             BigInteger res = a - b;
@@ -775,7 +822,7 @@ namespace Nethermind.Evm
                         }
                     case Instruction.DIV:
                         {
-                            UpdateGas(GasCostOf.Low, ref gasAvailable);
+                            if(!UpdateGas(GasCostOf.Low, ref gasAvailable)) return PrepareException(instruction, gasBefore);
                             BigInteger a = PopUInt();
                             BigInteger b = PopUInt();
                             PushInt(b == BigInteger.Zero ? BigInteger.Zero : BigInteger.Divide(a, b));
@@ -783,7 +830,7 @@ namespace Nethermind.Evm
                         }
                     case Instruction.SDIV:
                         {
-                            UpdateGas(GasCostOf.Low, ref gasAvailable);
+                            if(!UpdateGas(GasCostOf.Low, ref gasAvailable)) return PrepareException(instruction, gasBefore);
                             BigInteger a = PopInt();
                             BigInteger b = PopInt();
                             if (b == BigInteger.Zero)
@@ -803,7 +850,7 @@ namespace Nethermind.Evm
                         }
                     case Instruction.MOD:
                         {
-                            UpdateGas(GasCostOf.Low, ref gasAvailable);
+                            if(!UpdateGas(GasCostOf.Low, ref gasAvailable)) return PrepareException(instruction, gasBefore);
                             BigInteger a = PopUInt();
                             BigInteger b = PopUInt();
                             PushInt(b == BigInteger.Zero ? BigInteger.Zero : BigInteger.Remainder(a, b));
@@ -811,7 +858,7 @@ namespace Nethermind.Evm
                         }
                     case Instruction.SMOD:
                         {
-                            UpdateGas(GasCostOf.Low, ref gasAvailable);
+                            if(!UpdateGas(GasCostOf.Low, ref gasAvailable)) return PrepareException(instruction, gasBefore);
                             BigInteger a = PopInt();
                             BigInteger b = PopInt();
                             if (b == BigInteger.Zero)
@@ -828,7 +875,7 @@ namespace Nethermind.Evm
                         }
                     case Instruction.ADDMOD:
                         {
-                            UpdateGas(GasCostOf.Mid, ref gasAvailable);
+                            if(!UpdateGas(GasCostOf.Mid, ref gasAvailable)) return PrepareException(instruction, gasBefore);
                             BigInteger a = PopUInt();
                             BigInteger b = PopUInt();
                             BigInteger mod = PopUInt();
@@ -837,7 +884,7 @@ namespace Nethermind.Evm
                         }
                     case Instruction.MULMOD:
                         {
-                            UpdateGas(GasCostOf.Mid, ref gasAvailable);
+                            if(!UpdateGas(GasCostOf.Mid, ref gasAvailable)) return PrepareException(instruction, gasBefore);
                             BigInteger a = PopUInt();
                             BigInteger b = PopUInt();
                             BigInteger mod = PopUInt();
@@ -846,7 +893,7 @@ namespace Nethermind.Evm
                         }
                     case Instruction.EXP:
                         {
-                            UpdateGas(GasCostOf.Exp, ref gasAvailable);
+                            if(!UpdateGas(GasCostOf.Exp, ref gasAvailable)) return PrepareException(instruction, gasBefore);
                             BigInteger baseInt = PopUInt();
                             BigInteger exp = PopUInt();
                             if (exp > BigInteger.Zero)
@@ -863,7 +910,7 @@ namespace Nethermind.Evm
                                     expSize++;
                                 }
 
-                                UpdateGas((spec.IsEip160Enabled ? GasCostOf.ExpByteEip160 : GasCostOf.ExpByte) * (1L + expSize), ref gasAvailable);
+                                if(!UpdateGas((spec.IsEip160Enabled ? GasCostOf.ExpByteEip160 : GasCostOf.ExpByte) * (1L + expSize), ref gasAvailable)) return PrepareException(instruction, gasBefore);
                             }
                             else
                             {
@@ -888,7 +935,7 @@ namespace Nethermind.Evm
                         }
                     case Instruction.SIGNEXTEND:
                         {
-                            UpdateGas(GasCostOf.Low, ref gasAvailable);
+                            if(!UpdateGas(GasCostOf.Low, ref gasAvailable)) return PrepareException(instruction, gasBefore);
                             BigInteger a = PopUInt(); // TODO: check if there is spec for handling too big numbers
                             if (a >= BigInt32)
                             {
@@ -909,7 +956,7 @@ namespace Nethermind.Evm
                         }
                     case Instruction.LT:
                         {
-                            UpdateGas(GasCostOf.VeryLow, ref gasAvailable);
+                            if(!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return PrepareException(instruction, gasBefore);
                             BigInteger a = PopUInt();
                             BigInteger b = PopUInt();
                             PushInt(a < b ? BigInteger.One : BigInteger.Zero);
@@ -917,7 +964,7 @@ namespace Nethermind.Evm
                         }
                     case Instruction.GT:
                         {
-                            UpdateGas(GasCostOf.VeryLow, ref gasAvailable);
+                            if(!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return PrepareException(instruction, gasBefore);
                             BigInteger a = PopUInt();
                             BigInteger b = PopUInt();
                             PushInt(a > b ? BigInteger.One : BigInteger.Zero);
@@ -925,7 +972,7 @@ namespace Nethermind.Evm
                         }
                     case Instruction.SLT:
                         {
-                            UpdateGas(GasCostOf.VeryLow, ref gasAvailable);
+                            if(!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return PrepareException(instruction, gasBefore);
                             BigInteger a = PopInt();
                             BigInteger b = PopInt();
                             PushInt(BigInteger.Compare(a, b) < 0 ? BigInteger.One : BigInteger.Zero);
@@ -933,7 +980,7 @@ namespace Nethermind.Evm
                         }
                     case Instruction.SGT:
                         {
-                            UpdateGas(GasCostOf.VeryLow, ref gasAvailable);
+                            if(!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return PrepareException(instruction, gasBefore);
                             BigInteger a = PopInt();
                             BigInteger b = PopInt();
                             PushInt(a > b ? BigInteger.One : BigInteger.Zero);
@@ -941,7 +988,7 @@ namespace Nethermind.Evm
                         }
                     case Instruction.EQ:
                         {
-                            UpdateGas(GasCostOf.VeryLow, ref gasAvailable);
+                            if(!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return PrepareException(instruction, gasBefore);
                             BigInteger a = PopUInt();
                             BigInteger b = PopUInt();
                             PushInt(a == b ? BigInteger.One : BigInteger.Zero);
@@ -949,14 +996,14 @@ namespace Nethermind.Evm
                         }
                     case Instruction.ISZERO:
                         {
-                            UpdateGas(GasCostOf.VeryLow, ref gasAvailable);
+                            if(!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return PrepareException(instruction, gasBefore);
                             BigInteger a = PopInt();
                             PushInt(a.IsZero ? BigInteger.One : BigInteger.Zero);
                             break;
                         }
                     case Instruction.AND:
                         {
-                            UpdateGas(GasCostOf.VeryLow, ref gasAvailable);
+                            if(!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return PrepareException(instruction, gasBefore);
                             BitArray bits1 = PopBytes().ToBigEndianBitArray256();
                             BitArray bits2 = PopBytes().ToBigEndianBitArray256();
                             PushBytes(bits1.And(bits2).ToBytes());
@@ -964,7 +1011,7 @@ namespace Nethermind.Evm
                         }
                     case Instruction.OR:
                         {
-                            UpdateGas(GasCostOf.VeryLow, ref gasAvailable);
+                            if(!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return PrepareException(instruction, gasBefore);
                             BitArray bits1 = PopBytes().ToBigEndianBitArray256();
                             BitArray bits2 = PopBytes().ToBigEndianBitArray256();
                             PushBytes(bits1.Or(bits2).ToBytes());
@@ -972,7 +1019,7 @@ namespace Nethermind.Evm
                         }
                     case Instruction.XOR:
                         {
-                            UpdateGas(GasCostOf.VeryLow, ref gasAvailable);
+                            if(!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return PrepareException(instruction, gasBefore);
                             BitArray bits1 = PopBytes().ToBigEndianBitArray256();
                             BitArray bits2 = PopBytes().ToBigEndianBitArray256();
                             PushBytes(bits1.Xor(bits2).ToBytes());
@@ -980,7 +1027,7 @@ namespace Nethermind.Evm
                         }
                     case Instruction.NOT:
                         {
-                            UpdateGas(GasCostOf.VeryLow, ref gasAvailable);
+                            if(!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return PrepareException(instruction, gasBefore);
                             byte[] bytes = PopBytes();
                             byte[] res = new byte[32];
                             for (int i = 0; i < 32; ++i)
@@ -1000,7 +1047,7 @@ namespace Nethermind.Evm
                         }
                     case Instruction.BYTE:
                         {
-                            UpdateGas(GasCostOf.VeryLow, ref gasAvailable);
+                            if(!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return PrepareException(instruction, gasBefore);
                             BigInteger position = PopUInt();
                             byte[] bytes = PopBytes();
 
@@ -1029,13 +1076,13 @@ namespace Nethermind.Evm
                         }
                     case Instruction.ADDRESS:
                         {
-                            UpdateGas(GasCostOf.Base, ref gasAvailable);
+                            if(!UpdateGas(GasCostOf.Base, ref gasAvailable)) return PrepareException(instruction, gasBefore);
                             PushBytes(env.ExecutingAccount.Hex);
                             break;
                         }
                     case Instruction.BALANCE:
                         {
-                            UpdateGas(spec.IsEip150Enabled ? GasCostOf.BalanceEip150 : GasCostOf.Balance, ref gasAvailable);
+                            if(!UpdateGas(spec.IsEip150Enabled ? GasCostOf.BalanceEip150 : GasCostOf.Balance, ref gasAvailable)) return PrepareException(instruction, gasBefore);
                             Address address = PopAddress();
                             BigInteger balance = _state.GetBalance(address);
                             PushInt(balance);
@@ -1043,32 +1090,32 @@ namespace Nethermind.Evm
                         }
                     case Instruction.CALLER:
                         {
-                            UpdateGas(GasCostOf.Base, ref gasAvailable);
+                            if(!UpdateGas(GasCostOf.Base, ref gasAvailable)) return PrepareException(instruction, gasBefore);
                             PushBytes(env.Sender.Hex);
                             break;
                         }
                     case Instruction.CALLVALUE:
                         {
-                            UpdateGas(GasCostOf.Base, ref gasAvailable);
+                            if(!UpdateGas(GasCostOf.Base, ref gasAvailable)) return PrepareException(instruction, gasBefore);
                             PushInt(env.Value);
                             break;
                         }
                     case Instruction.ORIGIN:
                         {
-                            UpdateGas(GasCostOf.Base, ref gasAvailable);
+                            if(!UpdateGas(GasCostOf.Base, ref gasAvailable)) return PrepareException(instruction, gasBefore);
                             PushBytes(env.Originator.Hex);
                             break;
                         }
                     case Instruction.CALLDATALOAD:
                         {
-                            UpdateGas(GasCostOf.VeryLow, ref gasAvailable);
+                            if(!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return PrepareException(instruction, gasBefore);
                             BigInteger src = PopUInt();
                             PushBytes(env.InputData.SliceWithZeroPadding(src, 32));
                             break;
                         }
                     case Instruction.CALLDATASIZE:
                         {
-                            UpdateGas(GasCostOf.Base, ref gasAvailable);
+                            if(!UpdateGas(GasCostOf.Base, ref gasAvailable)) return PrepareException(instruction, gasBefore);
                             PushInt(env.InputData.Length);
                             break;
                         }
@@ -1087,7 +1134,7 @@ namespace Nethermind.Evm
                         }
                     case Instruction.CODESIZE:
                         {
-                            UpdateGas(GasCostOf.Base, ref gasAvailable);
+                            if(!UpdateGas(GasCostOf.Base, ref gasAvailable)) return PrepareException(instruction, gasBefore);
                             PushInt(code.Length);
                             break;
                         }
@@ -1096,7 +1143,7 @@ namespace Nethermind.Evm
                             BigInteger dest = PopUInt();
                             BigInteger src = PopUInt();
                             BigInteger length = PopUInt();
-                            UpdateGas(GasCostOf.VeryLow + GasCostOf.Memory * EvmMemory.Div32Ceiling(length), ref gasAvailable);
+                            if(!UpdateGas(GasCostOf.VeryLow + GasCostOf.Memory * EvmMemory.Div32Ceiling(length), ref gasAvailable)) return PrepareException(instruction, gasBefore);
                             UpdateMemoryCost(dest, length);
                             byte[] callDataSlice = code.SliceWithZeroPadding(src, (int)length);
                             evmState.Memory.Save(dest, callDataSlice);
@@ -1104,13 +1151,13 @@ namespace Nethermind.Evm
                         }
                     case Instruction.GASPRICE:
                         {
-                            UpdateGas(GasCostOf.Base, ref gasAvailable);
+                            if(!UpdateGas(GasCostOf.Base, ref gasAvailable)) return PrepareException(instruction, gasBefore);
                             PushInt(env.GasPrice);
                             break;
                         }
                     case Instruction.EXTCODESIZE:
                         {
-                            UpdateGas(spec.IsEip150Enabled ? GasCostOf.ExtCodeSizeEip150 : GasCostOf.ExtCodeSize, ref gasAvailable);
+                            if(!UpdateGas(spec.IsEip150Enabled ? GasCostOf.ExtCodeSizeEip150 : GasCostOf.ExtCodeSize, ref gasAvailable)) return PrepareException(instruction, gasBefore);
                             Address address = PopAddress();
                             byte[] accountCode = GetCachedCodeInfo(address)?.MachineCode;
                             PushInt(accountCode?.Length ?? BigInteger.Zero);
@@ -1134,10 +1181,12 @@ namespace Nethermind.Evm
                         {
                             if (!spec.IsEip211Enabled)
                             {
-                                throw new InvalidInstructionException((byte)instruction);
+                                Metrics.EvmExceptions++;
+                                return PrepareException(instruction, gasBefore);
+                                //throw new InvalidInstructionException((byte)instruction);
                             }
 
-                            UpdateGas(GasCostOf.Base, ref gasAvailable);
+                            if(!UpdateGas(GasCostOf.Base, ref gasAvailable)) return PrepareException(instruction, gasBefore);
                             PushInt(_returnDataBuffer.Length);
                             break;
                         }
@@ -1145,18 +1194,22 @@ namespace Nethermind.Evm
                         {
                             if (!spec.IsEip211Enabled)
                             {
-                                throw new InvalidInstructionException((byte)instruction);
+                                Metrics.EvmExceptions++;
+                                return PrepareException(instruction, gasBefore);
+                                //throw new InvalidInstructionException((byte)instruction);
                             }
 
                             BigInteger dest = PopUInt();
                             BigInteger src = PopUInt();
                             BigInteger length = PopUInt();
-                            UpdateGas(GasCostOf.VeryLow + GasCostOf.Memory * EvmMemory.Div32Ceiling(length), ref gasAvailable);
+                            if(!UpdateGas(GasCostOf.VeryLow + GasCostOf.Memory * EvmMemory.Div32Ceiling(length), ref gasAvailable)) return PrepareException(instruction, gasBefore);
                             UpdateMemoryCost(dest, length);
 
                             if (src + length > _returnDataBuffer.Length)
                             {
-                                throw new EvmAccessViolationException();
+                                Metrics.EvmExceptions++;
+                                return PrepareException(instruction, gasBefore);
+                                //throw new EvmAccessViolationException();
                             }
 
                             byte[] returnDataSlice = _returnDataBuffer.SliceWithZeroPadding(src, (int)length);
@@ -1165,7 +1218,7 @@ namespace Nethermind.Evm
                         }
                     case Instruction.BLOCKHASH:
                         {
-                            UpdateGas(GasCostOf.BlockHash, ref gasAvailable);
+                            if(!UpdateGas(GasCostOf.BlockHash, ref gasAvailable)) return PrepareException(instruction, gasBefore);
                             BigInteger a = PopUInt();
                             PushBytes(_blockhashProvider.GetBlockhash(env.CurrentBlock, a)?.Bytes ?? BytesZero);
 
@@ -1173,43 +1226,43 @@ namespace Nethermind.Evm
                         }
                     case Instruction.COINBASE:
                         {
-                            UpdateGas(GasCostOf.Base, ref gasAvailable);
+                            if(!UpdateGas(GasCostOf.Base, ref gasAvailable)) return PrepareException(instruction, gasBefore);
                             PushBytes(env.CurrentBlock.Beneficiary.Hex);
                             break;
                         }
                     case Instruction.DIFFICULTY:
                         {
-                            UpdateGas(GasCostOf.Base, ref gasAvailable);
+                            if(!UpdateGas(GasCostOf.Base, ref gasAvailable)) return PrepareException(instruction, gasBefore);
                             PushInt(env.CurrentBlock.Difficulty);
                             break;
                         }
                     case Instruction.TIMESTAMP:
                         {
-                            UpdateGas(GasCostOf.Base, ref gasAvailable);
+                            if(!UpdateGas(GasCostOf.Base, ref gasAvailable)) return PrepareException(instruction, gasBefore);
                             PushInt(env.CurrentBlock.Timestamp);
                             break;
                         }
                     case Instruction.NUMBER:
                         {
-                            UpdateGas(GasCostOf.Base, ref gasAvailable);
+                            if(!UpdateGas(GasCostOf.Base, ref gasAvailable)) return PrepareException(instruction, gasBefore);
                             PushInt(env.CurrentBlock.Number);
                             break;
                         }
                     case Instruction.GASLIMIT:
                         {
-                            UpdateGas(GasCostOf.Base, ref gasAvailable);
+                            if(!UpdateGas(GasCostOf.Base, ref gasAvailable)) return PrepareException(instruction, gasBefore);
                             PushInt(env.CurrentBlock.GasLimit);
                             break;
                         }
                     case Instruction.POP:
                         {
-                            UpdateGas(GasCostOf.Base, ref gasAvailable);
+                            if(!UpdateGas(GasCostOf.Base, ref gasAvailable)) return PrepareException(instruction, gasBefore);
                             PopLimbo();
                             break;
                         }
                     case Instruction.MLOAD:
                         {
-                            UpdateGas(GasCostOf.VeryLow, ref gasAvailable);
+                            if(!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return PrepareException(instruction, gasBefore);
                             BigInteger memPosition = PopUInt();
                             UpdateMemoryCost(memPosition, BigInt32);
                             byte[] memData = evmState.Memory.Load(memPosition);
@@ -1218,7 +1271,7 @@ namespace Nethermind.Evm
                         }
                     case Instruction.MSTORE:
                         {
-                            UpdateGas(GasCostOf.VeryLow, ref gasAvailable);
+                            if(!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return PrepareException(instruction, gasBefore);
                             BigInteger memPosition = PopUInt();
                             byte[] data = PopBytes();
                             UpdateMemoryCost(memPosition, BigInt32);
@@ -1227,7 +1280,7 @@ namespace Nethermind.Evm
                         }
                     case Instruction.MSTORE8:
                         {
-                            UpdateGas(GasCostOf.VeryLow, ref gasAvailable);
+                            if(!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return PrepareException(instruction, gasBefore);
                             BigInteger memPosition = PopUInt();
                             byte[] data = PopBytes();
                             UpdateMemoryCost(memPosition, BigInteger.One);
@@ -1236,7 +1289,7 @@ namespace Nethermind.Evm
                         }
                     case Instruction.SLOAD:
                         {
-                            UpdateGas(spec.IsEip150Enabled ? GasCostOf.SLoadEip150 : GasCostOf.SLoad, ref gasAvailable);
+                            if(!UpdateGas(spec.IsEip150Enabled ? GasCostOf.SLoadEip150 : GasCostOf.SLoad, ref gasAvailable)) return PrepareException(instruction, gasBefore);
                             BigInteger storageIndex = PopUInt();
                             byte[] value = _storage.Get(new StorageAddress(env.ExecutingAccount, storageIndex));
                             PushBytes(value);
@@ -1246,7 +1299,9 @@ namespace Nethermind.Evm
                         {
                             if (evmState.IsStatic)
                             {
-                                throw new StaticCallViolationException();
+                                Metrics.EvmExceptions++;
+                                return PrepareException(instruction, gasBefore);
+                                //throw new StaticCallViolationException();
                             }
 
                             BigInteger storageIndex = PopUInt();
@@ -1263,7 +1318,7 @@ namespace Nethermind.Evm
 
                             if (isNewValueZero)
                             {
-                                UpdateGas(GasCostOf.SReset, ref gasAvailable);
+                                if(!UpdateGas(GasCostOf.SReset, ref gasAvailable)) return PrepareException(instruction, gasBefore);
                                 if (isValueChanged)
                                 {
                                     evmState.Refund += RefundOf.SClear;
@@ -1271,7 +1326,7 @@ namespace Nethermind.Evm
                             }
                             else
                             {
-                                UpdateGas(previousValue.IsZero() ? GasCostOf.SSet : GasCostOf.SReset, ref gasAvailable);
+                                if(!UpdateGas(previousValue.IsZero() ? GasCostOf.SSet : GasCostOf.SReset, ref gasAvailable)) return PrepareException(instruction, gasBefore);
                             }
 
                             if (isValueChanged)
@@ -1293,11 +1348,13 @@ namespace Nethermind.Evm
                         }
                     case Instruction.JUMP:
                         {
-                            UpdateGas(GasCostOf.Mid, ref gasAvailable);
+                            if(!UpdateGas(GasCostOf.Mid, ref gasAvailable)) return PrepareException(instruction, gasBefore);
                             bigReg = PopUInt();
                             if (bigReg > BigIntMaxInt)
                             {
-                                throw new InvalidJumpDestinationException();
+                                Metrics.EvmExceptions++;
+                                return PrepareException(instruction, gasBefore);
+                                //throw new InvalidJumpDestinationException();
                             }
 
                             int dest = (int)bigReg;
@@ -1308,11 +1365,13 @@ namespace Nethermind.Evm
                         }
                     case Instruction.JUMPI:
                         {
-                            UpdateGas(GasCostOf.High, ref gasAvailable);
+                            if(!UpdateGas(GasCostOf.High, ref gasAvailable)) return PrepareException(instruction, gasBefore);
                             bigReg = PopUInt();
                             if (bigReg > BigIntMaxInt)
                             {
-                                throw new InvalidJumpDestinationException();
+                                Metrics.EvmExceptions++;
+                                return PrepareException(instruction, gasBefore);
+                                //throw new InvalidJumpDestinationException();
                             }
 
                             int dest = (int)bigReg;
@@ -1327,30 +1386,30 @@ namespace Nethermind.Evm
                         }
                     case Instruction.PC:
                         {
-                            UpdateGas(GasCostOf.Base, ref gasAvailable);
+                            if(!UpdateGas(GasCostOf.Base, ref gasAvailable)) return PrepareException(instruction, gasBefore);
                             PushInt(programCounter - 1L);
                             break;
                         }
                     case Instruction.MSIZE:
                         {
-                            UpdateGas(GasCostOf.Base, ref gasAvailable);
+                            if(!UpdateGas(GasCostOf.Base, ref gasAvailable)) return PrepareException(instruction, gasBefore);
                             PushInt(evmState.Memory.Size);
                             break;
                         }
                     case Instruction.GAS:
                         {
-                            UpdateGas(GasCostOf.Base, ref gasAvailable);
+                            if(!UpdateGas(GasCostOf.Base, ref gasAvailable)) return PrepareException(instruction, gasBefore);
                             PushInt(gasAvailable);
                             break;
                         }
                     case Instruction.JUMPDEST:
                         {
-                            UpdateGas(GasCostOf.JumpDest, ref gasAvailable);
+                            if(!UpdateGas(GasCostOf.JumpDest, ref gasAvailable)) return PrepareException(instruction, gasBefore);
                             break;
                         }
                     case Instruction.PUSH1:
                         {
-                            UpdateGas(GasCostOf.VeryLow, ref gasAvailable);
+                            if(!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return PrepareException(instruction, gasBefore);
                             int programCounterInt = (int)programCounter;
                             if (programCounterInt >= code.Length)
                             {
@@ -1396,7 +1455,7 @@ namespace Nethermind.Evm
                     case Instruction.PUSH31:
                     case Instruction.PUSH32:
                         {
-                            UpdateGas(GasCostOf.VeryLow, ref gasAvailable);
+                            if(!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return PrepareException(instruction, gasBefore);
                             int length = instruction - Instruction.PUSH1 + 1;
                             int programCounterInt = (int)programCounter;
                             int usedFromCode = Math.Min(code.Length - programCounterInt, length);
@@ -1425,7 +1484,7 @@ namespace Nethermind.Evm
                     case Instruction.DUP15:
                     case Instruction.DUP16:
                         {
-                            UpdateGas(GasCostOf.VeryLow, ref gasAvailable);
+                            if(!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return PrepareException(instruction, gasBefore);
                             Dup(instruction - Instruction.DUP1 + 1);
                             break;
                         }
@@ -1446,7 +1505,7 @@ namespace Nethermind.Evm
                     case Instruction.SWAP15:
                     case Instruction.SWAP16:
                         {
-                            UpdateGas(GasCostOf.VeryLow, ref gasAvailable);
+                            if(!UpdateGas(GasCostOf.VeryLow, ref gasAvailable)) return PrepareException(instruction, gasBefore);
                             Swap(instruction - Instruction.SWAP1 + 2);
                             break;
                         }
@@ -1458,7 +1517,9 @@ namespace Nethermind.Evm
                         {
                             if (evmState.IsStatic)
                             {
-                                throw new StaticCallViolationException();
+                                Metrics.EvmExceptions++;
+                                return PrepareException(instruction, gasBefore);
+                                //throw new StaticCallViolationException();
                             }
 
                             BigInteger memoryPos = PopUInt();
@@ -1487,7 +1548,9 @@ namespace Nethermind.Evm
                         {
                             if (evmState.IsStatic)
                             {
-                                throw new StaticCallViolationException();
+                                Metrics.EvmExceptions++;
+                                return PrepareException(instruction, gasBefore);
+                                //throw new StaticCallViolationException();
                             }
 
                             // TODO: happens in CREATE_empty000CreateInitCode_Transaction but probably has to be handled differently
@@ -1500,7 +1563,7 @@ namespace Nethermind.Evm
                             BigInteger memoryPositionOfInitCode = PopUInt();
                             BigInteger initCodeLength = PopUInt();
 
-                            UpdateGas(GasCostOf.Create, ref gasAvailable);
+                            if(!UpdateGas(GasCostOf.Create, ref gasAvailable)) return PrepareException(instruction, gasBefore);
                             UpdateMemoryCost(memoryPositionOfInitCode, initCodeLength);
 
                             // TODO: copy pasted from CALL / DELEGATECALL, need to move it outside?
@@ -1535,7 +1598,7 @@ namespace Nethermind.Evm
                             _state.IncrementNonce(env.ExecutingAccount);
 
                             long callGas = spec.IsEip150Enabled ? gasAvailable - gasAvailable / 64L : gasAvailable;
-                            UpdateGas(callGas, ref gasAvailable);
+                            if(!UpdateGas(callGas, ref gasAvailable)) return PrepareException(instruction, gasBefore);
 
                             bool accountExists = _state.AccountExists(contractAddress);
                             if (accountExists && ((GetCachedCodeInfo(contractAddress)?.MachineCode?.Length ?? 0) != 0 || _state.GetNonce(contractAddress) != 0))
@@ -1591,11 +1654,11 @@ namespace Nethermind.Evm
                         }
                     case Instruction.RETURN:
                         {
-                            long gasCost = GasCostOf.Zero;
+                            //long gasCost = GasCostOf.Zero;
                             BigInteger memoryPos = PopUInt();
                             BigInteger length = PopUInt();
 
-                            UpdateGas(gasCost, ref gasAvailable);
+                            //if(!UpdateGas(gasCost, ref gasAvailable)) return PrepareException(instruction, gasBefore);
                             UpdateMemoryCost(memoryPos, length);
                             byte[] returnData = evmState.Memory.Load(memoryPos, length);
 
@@ -1616,7 +1679,9 @@ namespace Nethermind.Evm
                             if (instruction == Instruction.DELEGATECALL && !spec.IsEip7Enabled ||
                                 instruction == Instruction.STATICCALL && !spec.IsEip214Enabled)
                             {
-                                throw new InvalidInstructionException((byte)instruction);
+                                Metrics.EvmExceptions++;
+                                return PrepareException(instruction, gasBefore);
+                                //throw new InvalidInstructionException((byte)instruction);
                             }
 
                             BigInteger gasLimit = PopUInt();
@@ -1643,7 +1708,9 @@ namespace Nethermind.Evm
 
                             if (evmState.IsStatic && !transferValue.IsZero && instruction != Instruction.CALLCODE)
                             {
-                                throw new StaticCallViolationException();
+                                Metrics.EvmExceptions++;
+                                return PrepareException(instruction, gasBefore);
+                                //throw new StaticCallViolationException();
                             }
 
                             bool isPrecompile = codeSource.IsPrecompiled(spec);
@@ -1676,10 +1743,10 @@ namespace Nethermind.Evm
                                 gasExtra += GasCostOf.NewAccount;
                             }
 
-                            UpdateGas(spec.IsEip150Enabled ? GasCostOf.CallOrCallCodeEip150 : GasCostOf.CallOrCallCode, ref gasAvailable);
+                            if(!UpdateGas(spec.IsEip150Enabled ? GasCostOf.CallOrCallCodeEip150 : GasCostOf.CallOrCallCode, ref gasAvailable)) return PrepareException(instruction, gasBefore);
                             UpdateMemoryCost(dataOffset, dataLength);
                             UpdateMemoryCost(outputOffset, outputLength);
-                            UpdateGas(gasExtra, ref gasAvailable);
+                            if(!UpdateGas(gasExtra, ref gasAvailable)) return PrepareException(instruction, gasBefore);
 
                             if (spec.IsEip150Enabled)
                             {
@@ -1687,7 +1754,7 @@ namespace Nethermind.Evm
                             }
 
                             long gasLimitUl = (long)gasLimit;
-                            UpdateGas(gasLimitUl, ref gasAvailable);
+                            if(!UpdateGas(gasLimitUl, ref gasAvailable)) return PrepareException(instruction, gasBefore);
 
                             if (!transferValue.IsZero)
                             {
@@ -1754,14 +1821,16 @@ namespace Nethermind.Evm
                         {
                             if (!spec.IsEip140Enabled)
                             {
-                                throw new InvalidInstructionException((byte)instruction);
+                                Metrics.EvmExceptions++;
+                                return PrepareException(instruction, gasBefore);
+                                //throw new InvalidInstructionException((byte)instruction);
                             }
 
                             long gasCost = GasCostOf.Zero;
                             BigInteger memoryPos = PopUInt();
                             BigInteger length = PopUInt();
 
-                            UpdateGas(gasCost, ref gasAvailable);
+                            if(!UpdateGas(gasCost, ref gasAvailable)) return PrepareException(instruction, gasBefore);
                             UpdateMemoryCost(memoryPos, length);
                             byte[] errorDetails = evmState.Memory.Load(memoryPos, length);
 
@@ -1776,18 +1845,22 @@ namespace Nethermind.Evm
                         }
                     case Instruction.INVALID:
                         {
-                            UpdateGas(GasCostOf.High, ref gasAvailable); // TODO: review tests - taken from Geth trace
+                            if(!UpdateGas(GasCostOf.High, ref gasAvailable)) return PrepareException(instruction, gasBefore); // TODO: review tests - taken from Geth trace
                             EndInstructionTrace();
-                            throw new InvalidInstructionException((byte)instruction);
+                            Metrics.EvmExceptions++;
+                            return PrepareException(instruction, gasBefore);
+                            //throw new InvalidInstructionException((byte)instruction);
                         }
                     case Instruction.SELFDESTRUCT:
                         {
                             if (evmState.IsStatic)
                             {
-                                throw new StaticCallViolationException();
+                                Metrics.EvmExceptions++;
+                                return PrepareException(instruction, gasBefore);
+                                //throw new StaticCallViolationException();
                             }
 
-                            UpdateGas(spec.IsEip150Enabled ? GasCostOf.SelfDestructEip150 : GasCostOf.SelfDestruct, ref gasAvailable);
+                            if(!UpdateGas(spec.IsEip150Enabled ? GasCostOf.SelfDestructEip150 : GasCostOf.SelfDestruct, ref gasAvailable)) return PrepareException(instruction, gasBefore);
                             Address inheritor = PopAddress();
                             if (!evmState.DestroyList.Contains(env.ExecutingAccount))
                             {
@@ -1801,12 +1874,12 @@ namespace Nethermind.Evm
 
                             if (!spec.IsEip158Enabled && !inheritorAccountExists && spec.IsEip150Enabled)
                             {
-                                UpdateGas(GasCostOf.NewAccount, ref gasAvailable);
+                                if(!UpdateGas(GasCostOf.NewAccount, ref gasAvailable)) return PrepareException(instruction, gasBefore);
                             }
 
                             if (spec.IsEip158Enabled && ownerBalance != 0 && _state.IsDeadAccount(inheritor))
                             {
-                                UpdateGas(GasCostOf.NewAccount, ref gasAvailable);
+                                if(!UpdateGas(GasCostOf.NewAccount, ref gasAvailable)) return PrepareException(instruction, gasBefore);
                             }
 
                             if (!inheritorAccountExists)
@@ -1837,7 +1910,9 @@ namespace Nethermind.Evm
                             }
 
                             EndInstructionTrace();
-                            throw new InvalidInstructionException((byte)instruction);
+                            Metrics.EvmExceptions++;
+                            return PrepareException(instruction, gasBefore);
+                            //throw new InvalidInstructionException((byte)instruction);
                         }
                 }
 
@@ -1850,6 +1925,18 @@ namespace Nethermind.Evm
 
             UpdateCurrentState();
             return CallResult.Empty;
+
+            CallResult PrepareException(Instruction instruction, long gasBefore)
+            {
+                UpdateCurrentState();
+                EndInstructionTrace();
+                if (_logger.IsDebugEnabled)
+                {
+                    LogInstructionResult(instruction, gasBefore);
+                }
+
+                return CallResult.Exception;
+            }
         }
 
         public CodeInfo GetCachedCodeInfo(Address codeSource)
@@ -1874,6 +1961,8 @@ namespace Nethermind.Evm
 
     public class CallResult
     {
+        public static CallResult Exception = new CallResult(StatusCode.FailureBytes) {IsException = true}; // TODO: refactor - testing for now
+
         public bool ShouldRevert { get; }
         public static readonly CallResult Empty = new CallResult();
         public bool? PrecompileSuccess { get; set; } // TODO: check this behaviour as it seems it is required and previously that was not the case
@@ -1896,5 +1985,6 @@ namespace Nethermind.Evm
         public EvmState StateToExecute { get; }
         public byte[] Output { get; } = Bytes.Empty;
         public bool IsReturn => StateToExecute == null;
+        public bool IsException { get; set; }
     }
 }

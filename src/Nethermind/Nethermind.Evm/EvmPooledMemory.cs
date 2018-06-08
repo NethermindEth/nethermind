@@ -22,6 +22,7 @@ using System.Collections.Generic;
 using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Store;
 
 namespace Nethermind.Evm
 {
@@ -108,6 +109,7 @@ namespace Nethermind.Evm
             BigInteger roughPosition = position + length;
             if (roughPosition > int.MaxValue)
             {
+                Metrics.EvmExceptions++;
                 throw new OutOfGasException();
             }
 
@@ -126,6 +128,7 @@ namespace Nethermind.Evm
 
                 if (cost > long.MaxValue)
                 {
+                    Metrics.EvmExceptions++;
                     throw new OutOfGasException();
                 }
 
@@ -168,6 +171,7 @@ namespace Nethermind.Evm
             BigInteger withCeiling = result + (rem > BigInteger.Zero ? BigInteger.One : BigInteger.Zero);
             if (withCeiling > VirtualMachine.BigIntMaxInt)
             {
+                Metrics.EvmExceptions++;
                 throw new OutOfGasException();
             }
 
