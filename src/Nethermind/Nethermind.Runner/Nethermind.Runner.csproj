@@ -16,7 +16,7 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.All" Version="2.1.0" />
     <PackageReference Include="Microsoft.Extensions.CommandLineUtils" Version="1.1.1" />
-    <PackageReference Include="NLog.Config" Version="4.5.6" />
+    <PackageReference Include="NLog" Version="4.5.6" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj">
@@ -27,7 +27,6 @@
       <Project>{0B52D472-A7B0-4AB6-AFE3-A644B90F53FC}</Project>
       <Name>Nethermind.Db</Name>
     </ProjectReference>
-    <ProjectReference Include="..\Nethermind.Discovery\Nethermind.Discovery.csproj" />
     <ProjectReference Include="..\Nethermind.JsonRpc\Nethermind.JsonRpc.csproj">
       <Project>{53D62515-72D1-4DEA-BC60-71BCC9C928E3}</Project>
       <Name>Nethermind.JsonRpc</Name>
@@ -62,7 +61,7 @@
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
     <None Update="NLog.config">
-      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Update="runner.config">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>

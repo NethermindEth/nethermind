@@ -19,10 +19,10 @@
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Discovery;
-using Nethermind.Discovery.Messages;
-using Nethermind.Discovery.RoutingTable;
-using Nethermind.Discovery.Serializers;
+using Nethermind.Network.Discovery;
+using Nethermind.Network.Discovery.Messages;
+using Nethermind.Network.Discovery.RoutingTable;
+using Nethermind.Network.Discovery.Serializers;
 using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.Rlpx.Handshake;
 

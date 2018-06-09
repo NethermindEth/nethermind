@@ -16,10 +16,6 @@
     <PackageReference Include="NUnit3TestAdapter" Version="3.10.0" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\Nethermind.Discovery\Nethermind.Discovery.csproj">
-      <Project>{D1DB830A-0FF8-4A38-AFA2-9D6023BB41F9}</Project>
-      <Name>Nethermind.Discovery</Name>
-    </ProjectReference>
     <ProjectReference Include="..\Nethermind.Network.Test\Nethermind.Network.Test.csproj" />
   </ItemGroup>
 </Project>

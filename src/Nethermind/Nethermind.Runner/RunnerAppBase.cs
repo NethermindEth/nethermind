@@ -26,10 +26,10 @@ using Microsoft.Extensions.CommandLineUtils;
 using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Core;
 using Nethermind.Core.Specs.ChainSpec;
-using Nethermind.Discovery;
-using Nethermind.Discovery.RoutingTable;
 using Nethermind.JsonRpc;
 using Nethermind.Network;
+using Nethermind.Network.Discovery;
+using Nethermind.Network.Discovery.RoutingTable;
 using Nethermind.Runner.Runners;
 
 namespace Nethermind.Runner

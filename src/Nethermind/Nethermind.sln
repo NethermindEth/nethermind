@@ -29,13 +29,9 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Db", "Nethermind
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Network", "Nethermind.Network\Nethermind.Network.csproj", "{0997F167-C2C4-4F17-99A6-AB1676827DC5}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Discovery", "Nethermind.Discovery\Nethermind.Discovery.csproj", "{D1DB830A-0FF8-4A38-AFA2-9D6023BB41F9}"
-EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.KeyStore", "Nethermind.KeyStore\Nethermind.KeyStore.csproj", "{31AFB372-BE97-4804-B2B9-AD4C515924B6}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.JsonRpc", "Nethermind.JsonRpc\Nethermind.JsonRpc.csproj", "{53D62515-72D1-4DEA-BC60-71BCC9C928E3}"
-EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Discovery.Test", "Nethermind.Discovery.Test\Nethermind.Discovery.Test.csproj", "{BD940BB1-14E6-4A09-899E-3FD44EF7EDA1}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Network.Test", "Nethermind.Network.Test\Nethermind.Network.Test.csproj", "{F6FDB712-1670-4B62-B341-EC6804815991}"
 EndProject
@@ -160,10 +156,6 @@ Global
 		{0997F167-C2C4-4F17-99A6-AB1676827DC5}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{0997F167-C2C4-4F17-99A6-AB1676827DC5}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{0997F167-C2C4-4F17-99A6-AB1676827DC5}.Release|Any CPU.Build.0 = Release|Any CPU
-		{D1DB830A-0FF8-4A38-AFA2-9D6023BB41F9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{D1DB830A-0FF8-4A38-AFA2-9D6023BB41F9}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{D1DB830A-0FF8-4A38-AFA2-9D6023BB41F9}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{D1DB830A-0FF8-4A38-AFA2-9D6023BB41F9}.Release|Any CPU.Build.0 = Release|Any CPU
 		{31AFB372-BE97-4804-B2B9-AD4C515924B6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{31AFB372-BE97-4804-B2B9-AD4C515924B6}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{31AFB372-BE97-4804-B2B9-AD4C515924B6}.Release|Any CPU.ActiveCfg = Release|Any CPU
@@ -172,9 +164,6 @@ Global
 		{53D62515-72D1-4DEA-BC60-71BCC9C928E3}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{53D62515-72D1-4DEA-BC60-71BCC9C928E3}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{53D62515-72D1-4DEA-BC60-71BCC9C928E3}.Release|Any CPU.Build.0 = Release|Any CPU
-		{BD940BB1-14E6-4A09-899E-3FD44EF7EDA1}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{BD940BB1-14E6-4A09-899E-3FD44EF7EDA1}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{BD940BB1-14E6-4A09-899E-3FD44EF7EDA1}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{F6FDB712-1670-4B62-B341-EC6804815991}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{F6FDB712-1670-4B62-B341-EC6804815991}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{F6FDB712-1670-4B62-B341-EC6804815991}.Release|Any CPU.ActiveCfg = Release|Any CPU

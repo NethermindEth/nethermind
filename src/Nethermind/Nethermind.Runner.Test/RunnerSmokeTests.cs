@@ -21,9 +21,9 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Discovery;
 using Nethermind.JsonRpc;
 using Nethermind.Network;
+using Nethermind.Network.Discovery;
 using Nethermind.Runner.Runners;
 using NUnit.Framework;
 
