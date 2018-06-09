@@ -21,7 +21,7 @@ using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Network.Discovery.Messages;
 using Nethermind.Network.Discovery.RoutingTable;
-using Nethermind.Network.Discovery.Stats;
+using Nethermind.Network.Stats;
 
 namespace Nethermind.Network.Discovery.Lifecycle
 {

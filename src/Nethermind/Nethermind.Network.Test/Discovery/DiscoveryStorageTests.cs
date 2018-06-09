@@ -5,7 +5,7 @@ using Nethermind.Db;
 using Nethermind.Network.Discovery;
 using Nethermind.Network.Discovery.Lifecycle;
 using Nethermind.Network.Discovery.RoutingTable;
-using Nethermind.Network.Discovery.Stats;
+using Nethermind.Network.Stats;
 using NSubstitute;
 using NUnit.Framework;
 

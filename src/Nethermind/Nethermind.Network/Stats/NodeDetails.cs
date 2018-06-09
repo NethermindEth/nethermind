@@ -1,6 +1,6 @@
 ﻿using Nethermind.Network.P2P;
 
-namespace Nethermind.Network.Discovery.Stats
+namespace Nethermind.Network.Stats
 {
     public class NodeDetails
     {

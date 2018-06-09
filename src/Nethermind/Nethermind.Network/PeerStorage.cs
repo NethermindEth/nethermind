@@ -21,10 +21,11 @@ using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Encoding;
 using Nethermind.Db;
+using Nethermind.Network.Discovery;
 using Nethermind.Network.Discovery.RoutingTable;
 using Nethermind.Store;
 
-namespace Nethermind.Network.Discovery
+namespace Nethermind.Network
 {
     public class PeerStorage : IPeerStorage
     {

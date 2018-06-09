@@ -1,7 +1,8 @@
 ﻿using System.Collections.Concurrent;
 using Nethermind.Core.Crypto;
+using Nethermind.Network.Discovery;
 
-namespace Nethermind.Network.Discovery.Stats
+namespace Nethermind.Network.Stats
 {
     public class NodeStatsProvider : INodeStatsProvider
     {

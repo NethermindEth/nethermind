@@ -25,12 +25,13 @@ using System.Timers;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Network.Discovery.Stats;
+using Nethermind.Network.Discovery;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.Rlpx;
+using Nethermind.Network.Stats;
 
-namespace Nethermind.Network.Discovery
+namespace Nethermind.Network
 {
     /// <summary>
     /// </summary>

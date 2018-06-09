@@ -1,6 +1,6 @@
 ﻿using Nethermind.Core.Crypto;
 
-namespace Nethermind.Network.Discovery.Stats
+namespace Nethermind.Network.Stats
 {
     public interface INodeStatsProvider
     {

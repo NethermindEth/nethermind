@@ -16,17 +16,17 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Network.Discovery.RoutingTable;
+using System.Collections.Generic;
+using System.Threading.Tasks;
 
-namespace Nethermind.Network.Discovery
+namespace Nethermind.Network
 {
-    public interface IPeerStorage
+    public interface IPeerManager
     {
-        (Node Node, long PersistedReputation)[] GetPersistedPeers();
-        void UpdatePeers(Peer[] peers);
-        void RemovePeers(Peer[] nodes);
-        void StartBatch();
-        void Commit();
-        bool AnyPendingChange();
+        Task Start();
+        Task Stop();
+        Task RunPeerUpdate();
+        IReadOnlyCollection<Peer> NewPeers { get; }
+        IReadOnlyCollection<Peer> ActivePeers { get; }
     }
 }

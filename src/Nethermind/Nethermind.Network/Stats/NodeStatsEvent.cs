@@ -16,7 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.Network.Discovery.Stats
+namespace Nethermind.Network.Stats
 {
     public enum NodeStatsEvent
     {

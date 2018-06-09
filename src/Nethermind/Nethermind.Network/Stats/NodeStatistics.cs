@@ -20,9 +20,10 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
+using Nethermind.Network.Discovery;
 using Nethermind.Network.P2P;
 
-namespace Nethermind.Network.Discovery.Stats
+namespace Nethermind.Network.Stats
 {
     /// <summary>
     /// Initial version of Reputation calculation mostly based on EthereumJ impl

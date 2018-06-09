@@ -4,7 +4,7 @@ using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Network.Discovery;
 using Nethermind.Network.Discovery.RoutingTable;
-using Nethermind.Network.Discovery.Stats;
+using Nethermind.Network.Stats;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.Discovery

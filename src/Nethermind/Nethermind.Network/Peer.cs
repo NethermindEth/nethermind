@@ -16,22 +16,33 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.Blockchain;
+using Nethermind.Network.Discovery.Lifecycle;
+using Nethermind.Network.Discovery.RoutingTable;
 using Nethermind.Network.P2P;
+using Nethermind.Network.Stats;
 
-namespace Nethermind.Network.Discovery.Stats
+namespace Nethermind.Network
 {
-    public interface INodeStats
+    public class Peer
     {
-        void AddNodeStatsEvent(NodeStatsEvent nodeStatsEvent);
-        void AddNodeStatsDisconnectEvent(DisconnectType disconnectType, DisconnectReason disconnectReason);
+        public Peer(Node node, INodeStats nodeStats)
+        {
+            Node = node;
+            NodeStats = nodeStats;
+        }
 
-        bool DidEventHappen(NodeStatsEvent nodeStatsEvent);
+        public Peer(INodeLifecycleManager manager)
+        {
+            Node = manager.ManagedNode;
+            NodeLifecycleManager = manager;
+            NodeStats = manager.NodeStats;
+        }
 
-        long CurrentNodeReputation { get; }
-        long CurrentPersistedNodeReputation { get; set; }
-        long NewPersistedNodeReputation { get; }
-        bool IsTrustedPeer { get; set; }
-
-        NodeDetails NodeDetails { get; }
+        public Node Node { get; }
+        public INodeLifecycleManager NodeLifecycleManager { get; set; }
+        public INodeStats NodeStats { get; }
+        public IP2PSession Session { get; set; }
+        public ISynchronizationPeer SynchronizationPeer { get; set; }
     }
 }
