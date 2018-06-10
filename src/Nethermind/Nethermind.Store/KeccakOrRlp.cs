@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 
@@ -50,6 +51,11 @@ namespace Nethermind.Store
 
         public byte[] Bytes => _rlp?.Bytes ?? _keccak.Bytes;
 
+        public Keccak GetKeccakOrThrow()
+        {
+            return _keccak ?? throw new InvalidOperationException("Unexpected null Keccak");
+        }
+        
         public Keccak GetOrComputeKeccak()
         {
             if (!IsKeccak)
@@ -61,6 +67,11 @@ namespace Nethermind.Store
             return _keccak;
         }
 
+        public Rlp GetRlpOrThrow()
+        {
+            return _rlp ?? throw new InvalidOperationException("Unexpected null RLP");
+        }
+        
         public Rlp GetOrEncodeRlp()
         {
             return _rlp ?? (_rlp = Rlp.Encode(_keccak));

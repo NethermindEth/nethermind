@@ -20,6 +20,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -220,6 +221,110 @@ namespace Nethermind.Store
             return nodeRef.KeccakOrRlp.GetOrEncodeRlp();
         }
 
+        private static Rlp RlpEncodeNoStreams(Branch branch)
+        {
+            return Rlp.Encode(
+                    RlpEncode(branch.Nodes[0]),
+                    RlpEncode(branch.Nodes[1]),
+                    RlpEncode(branch.Nodes[2]),
+                    RlpEncode(branch.Nodes[3]),
+                    RlpEncode(branch.Nodes[4]),
+                    RlpEncode(branch.Nodes[5]),
+                    RlpEncode(branch.Nodes[6]),
+                    RlpEncode(branch.Nodes[7]),
+                    RlpEncode(branch.Nodes[8]),
+                    RlpEncode(branch.Nodes[9]),
+                    RlpEncode(branch.Nodes[10]),
+                    RlpEncode(branch.Nodes[11]),
+                    RlpEncode(branch.Nodes[12]),
+                    RlpEncode(branch.Nodes[13]),
+                    RlpEncode(branch.Nodes[14]),
+                    RlpEncode(branch.Nodes[15]),
+                    Rlp.Encode(branch.Value)
+                );
+        }
+
+        private static Rlp RlpEncode(Branch branch)
+        {
+            using (MemoryStream stream = Rlp.StartEncoding())
+            {
+                int totalLength = 0;
+                for (int i = 0; i < 16; i++)
+                {
+                    NodeRef nodeRef = branch.Nodes[i];
+                    if (nodeRef == null)
+                    {
+                        totalLength += Rlp.LengthOfEmptyArrayRlp;
+                    }
+                    else
+                    {
+                        nodeRef.ResolveKey();
+                        if (nodeRef.KeccakOrRlp.IsKeccak)
+                        {
+                            totalLength += Rlp.LengthOfKeccakRlp;
+                        }
+                        else
+                        {
+                            totalLength += nodeRef.KeccakOrRlp.GetRlpOrThrow().Length;
+                        }
+                    }
+                }
+
+                totalLength += Rlp.LengthOfByteArray(branch.Value);
+
+                Rlp.StartSequence(stream, totalLength);
+                for (int i = 0; i < 16; i++)
+                {
+                    NodeRef nodeRef = branch.Nodes[i];
+                    if (nodeRef == null)
+                    {
+                        stream.Write(Rlp.OfEmptyByteArray.Bytes);
+                    }
+                    else
+                    {
+                        if (nodeRef.KeccakOrRlp.IsKeccak)
+                        {
+                            Rlp.Encode(stream, nodeRef.KeccakOrRlp.GetKeccakOrThrow());
+                        }
+                        else
+                        {
+                            stream.Write(nodeRef.KeccakOrRlp.GetRlpOrThrow().Bytes);
+                        }
+                    }
+                }
+
+                Rlp.Encode(stream, branch.Value);
+                byte[] result = stream.ToArray();
+
+                //byte[] alternative = Rlp.Encode(
+                //    RlpEncode(branch.Nodes[0]),
+                //    RlpEncode(branch.Nodes[1]),
+                //    RlpEncode(branch.Nodes[2]),
+                //    RlpEncode(branch.Nodes[3]),
+                //    RlpEncode(branch.Nodes[4]),
+                //    RlpEncode(branch.Nodes[5]),
+                //    RlpEncode(branch.Nodes[6]),
+                //    RlpEncode(branch.Nodes[7]),
+                //    RlpEncode(branch.Nodes[8]),
+                //    RlpEncode(branch.Nodes[9]),
+                //    RlpEncode(branch.Nodes[10]),
+                //    RlpEncode(branch.Nodes[11]),
+                //    RlpEncode(branch.Nodes[12]),
+                //    RlpEncode(branch.Nodes[13]),
+                //    RlpEncode(branch.Nodes[14]),
+                //    RlpEncode(branch.Nodes[15]),
+                //    Rlp.Encode(branch.Value)
+                //).Bytes;
+
+                //if (!Bytes.UnsafeCompare(alternative, result))
+                //{
+
+                //}
+
+                return new Rlp(result);
+            }
+        }
+
         internal static Rlp RlpEncode(Node node)
         {
             Metrics.TreeNodeRlpEncodings++;
@@ -231,27 +336,7 @@ namespace Nethermind.Store
 
             if (node is Branch branch)
             {
-                // Geth encoded a structure of nodes so child nodes are actual objects and not RLP of items,
-                // hence when RLP encoding nodes are not byte arrays but actual objects of format byte[][2] or their Keccak
-                Rlp result = Rlp.Encode(
-                    RlpEncode(branch.Nodes[0x0]),
-                    RlpEncode(branch.Nodes[0x1]),
-                    RlpEncode(branch.Nodes[0x2]),
-                    RlpEncode(branch.Nodes[0x3]),
-                    RlpEncode(branch.Nodes[0x4]),
-                    RlpEncode(branch.Nodes[0x5]),
-                    RlpEncode(branch.Nodes[0x6]),
-                    RlpEncode(branch.Nodes[0x7]),
-                    RlpEncode(branch.Nodes[0x8]),
-                    RlpEncode(branch.Nodes[0x9]),
-                    RlpEncode(branch.Nodes[0xa]),
-                    RlpEncode(branch.Nodes[0xb]),
-                    RlpEncode(branch.Nodes[0xc]),
-                    RlpEncode(branch.Nodes[0xd]),
-                    RlpEncode(branch.Nodes[0xe]),
-                    RlpEncode(branch.Nodes[0xf]),
-                    Rlp.Encode(branch.Value ?? new byte[0]));
-                return result;
+                return RlpEncode(branch);
             }
 
             if (node is Extension extension)
