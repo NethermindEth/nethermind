@@ -18,7 +18,9 @@
 
 using System;
 using System.Runtime.CompilerServices;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
+using Nethermind.Core.Extensions;
 
 [assembly: InternalsVisibleTo("Ethereum.Trie.Test")]
 
@@ -135,11 +137,73 @@ namespace Nethermind.Store
         public bool IsBranch => NodeType == NodeType.Branch;
         public bool IsExtension => NodeType == NodeType.Extension;
 
+        private static Node DecodeChildNode(Rlp.DecoderContext decoderContext)
+        {
+            if (decoderContext.IsSequenceNext())
+            {
+                byte[] sequenceBytes = decoderContext.ReadSequenceRlp();
+                if (sequenceBytes.Length >= 32)
+                {
+                    throw new InvalidOperationException();
+                }
+
+                KeccakOrRlp keccakOrRlp = new KeccakOrRlp(new Rlp(sequenceBytes));
+                return new Node(NodeType.Unknown, keccakOrRlp);
+            }
+
+            Keccak keccak = decoderContext.DecodeKeccak();
+            return keccak == null ? null : new Node(NodeType.Unknown, new KeccakOrRlp(keccak));
+        }
+
         public void ResolveNode(PatriciaTree tree)
         {
             if (NodeType == NodeType.Unknown)
             {
                 _fullRlp = tree.GetNode(KeccakOrRlp);
+            }
+            else
+            {
+                return;
+            }
+
+            Metrics.TreeNodeRlpDecodings++;
+            Rlp.DecoderContext context = _fullRlp.Bytes.AsRlpContext();
+
+            context.ReadSequenceLength();
+            int numberOfItems = context.ReadNumberOfItemsRemaining();
+
+            if (numberOfItems == 17)
+            {
+                Children = new Node[16];
+                for (int i = 0; i < 16; i++)
+                {
+                    Children[i] = DecodeChildNode(context);
+                }
+
+                Value = context.DecodeByteArray();
+                NodeType = NodeType.Branch;
+            }
+            else if (numberOfItems == 2)
+            {
+                Children = new Node[1];
+                HexPrefix key = HexPrefix.FromBytes(context.DecodeByteArray());
+                bool isExtension = key.IsExtension;
+                if (isExtension)
+                {
+                    Children[0] = DecodeChildNode(context);
+                    Key = key;
+                    NodeType = NodeType.Extension;
+                }
+                else
+                {
+                    Key = key;
+                    Value = context.DecodeByteArray();
+                    NodeType = NodeType.Leaf;
+                }
+            }
+            else
+            {
+                throw new InvalidOperationException($"Unexpected number of items = {numberOfItems} when decoding a node");
             }
         }
 

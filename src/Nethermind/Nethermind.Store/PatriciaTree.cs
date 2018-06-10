@@ -321,70 +321,70 @@ namespace Nethermind.Store
                     RlpEncodeRef(node.Children[0]));
             }
 
-            throw new InvalidOperationException($"Unknown node type {node?.GetType().Name}");
+            throw new InvalidOperationException($"Unknown node type {node.NodeType}");
         }
 
-        internal static Node RlpDecode(Rlp bytes)
-        {
-            Metrics.TreeNodeRlpDecodings++;
-            Rlp.DecoderContext context = bytes.Bytes.AsRlpContext();
+        //internal static Node RlpDecode(Rlp bytes)
+        //{
+        //    Metrics.TreeNodeRlpDecodings++;
+        //    Rlp.DecoderContext context = bytes.Bytes.AsRlpContext();
 
-            context.ReadSequenceLength();
-            int numberOfItems = context.ReadNumberOfItemsRemaining();
+        //    context.ReadSequenceLength();
+        //    int numberOfItems = context.ReadNumberOfItemsRemaining();
 
-            Node result;
-            if (numberOfItems == 17)
-            {
-                Node[] nodes = new Node[16];
-                for (int i = 0; i < 16; i++)
-                {
-                    nodes[i] = DecodeChildNode(context);
-                }
+        //    Node result;
+        //    if (numberOfItems == 17)
+        //    {
+        //        Node[] nodes = new Node[16];
+        //        for (int i = 0; i < 16; i++)
+        //        {
+        //            nodes[i] = DecodeChildNode(context);
+        //        }
 
-                byte[] value = context.DecodeByteArray();
-                Node branch = TreeFactory.CreateBranch(nodes, value, false);
-                result = branch;
-            }
-            else if (numberOfItems == 2)
-            {
-                HexPrefix key = HexPrefix.FromBytes(context.DecodeByteArray());
-                bool isExtension = key.IsExtension;
-                if (isExtension)
-                {
-                    Node extension = TreeFactory.CreateExtension(key, DecodeChildNode(context));
-                    result = extension;
-                }
-                else
-                {
-                    Node leaf = TreeFactory.CreateLeaf(key, context.DecodeByteArray());
-                    result = leaf;
-                }
-            }
-            else
-            {
-                throw new InvalidOperationException($"Unexpected number of items = {numberOfItems} when decoding a node");
-            }
+        //        byte[] value = context.DecodeByteArray();
+        //        Node branch = TreeFactory.CreateBranch(nodes, value, false);
+        //        result = branch;
+        //    }
+        //    else if (numberOfItems == 2)
+        //    {
+        //        HexPrefix key = HexPrefix.FromBytes(context.DecodeByteArray());
+        //        bool isExtension = key.IsExtension;
+        //        if (isExtension)
+        //        {
+        //            Node extension = TreeFactory.CreateExtension(key, DecodeChildNode(context));
+        //            result = extension;
+        //        }
+        //        else
+        //        {
+        //            Node leaf = TreeFactory.CreateLeaf(key, context.DecodeByteArray());
+        //            result = leaf;
+        //        }
+        //    }
+        //    else
+        //    {
+        //        throw new InvalidOperationException($"Unexpected number of items = {numberOfItems} when decoding a node");
+        //    }
 
-            return result;
-        }
+        //    return result;
+        //}
 
-        private static Node DecodeChildNode(Rlp.DecoderContext decoderContext)
-        {
-            if (decoderContext.IsSequenceNext())
-            {
-                byte[] sequenceBytes = decoderContext.ReadSequenceRlp();
-                if (sequenceBytes.Length >= 32)
-                {
-                    throw new InvalidOperationException();
-                }
+        //private static Node DecodeChildNode(Rlp.DecoderContext decoderContext)
+        //{
+        //    if (decoderContext.IsSequenceNext())
+        //    {
+        //        byte[] sequenceBytes = decoderContext.ReadSequenceRlp();
+        //        if (sequenceBytes.Length >= 32)
+        //        {
+        //            throw new InvalidOperationException();
+        //        }
 
-                KeccakOrRlp keccakOrRlp = new KeccakOrRlp(new Rlp(sequenceBytes));
-                return new Node(NodeType.Unknown, keccakOrRlp);
-            }
+        //        KeccakOrRlp keccakOrRlp = new KeccakOrRlp(new Rlp(sequenceBytes));
+        //        return new Node(NodeType.Unknown, keccakOrRlp);
+        //    }
 
-            Keccak keccak = decoderContext.DecodeKeccak();
-            return keccak == null ? null : new Node(NodeType.Unknown, new KeccakOrRlp(keccak));
-        }
+        //    Keccak keccak = decoderContext.DecodeKeccak();
+        //    return keccak == null ? null : new Node(NodeType.Unknown, new KeccakOrRlp(keccak));
+        //}
 
         [DebuggerStepThrough]
         public void Set(Nibble[] nibbles, Rlp rlp)
@@ -472,22 +472,22 @@ namespace Nethermind.Store
 
         private byte[] TraverseNode(Node node, TraverseContext context)
         {
-            if (node.NodeType == NodeType.Leaf)
+            if (node.IsLeaf)
             {
                 return TraverseLeaf(node, context);
             }
 
-            if (node.NodeType == NodeType.Branch)
+            if (node.IsBranch)
             {
                 return TraverseBranch(node, context);
             }
 
-            if (node.NodeType == NodeType.Extension)
+            if (node.IsExtension)
             {
                 return TraverseExtension(node, context);
             }
 
-            throw new NotImplementedException($"Unknown node type {typeof(Node).Name}");
+            throw new NotImplementedException($"Unknown node type {node.NodeType}");
         }
 
         // TODO: this can be removed now but is lower priority temporarily while the patricia rewrite testing is in progress
@@ -579,7 +579,7 @@ namespace Nethermind.Store
                             }
                             else
                             {
-                                throw new InvalidOperationException($"Unknown node type {nextNode.GetType().Name}");
+                                throw new InvalidOperationException($"Unknown node type {nextNode.NodeType}");
                             }
                         }
                     }
@@ -608,7 +608,7 @@ namespace Nethermind.Store
                     }
                     else
                     {
-                        throw new InvalidOperationException($"Unknown node type {nextNode?.GetType().Name}");
+                        throw new InvalidOperationException($"Unknown node type {nextNode.NodeType}");
                     }
                 }
                 else

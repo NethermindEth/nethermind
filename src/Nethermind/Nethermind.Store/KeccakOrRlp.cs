@@ -81,7 +81,7 @@ namespace Nethermind.Store
         {
             return IsKeccak
                 ? _keccak.ToString(true).Substring(0, 6)
-                : PatriciaTree.RlpDecode(new Rlp(Bytes)).ToString();
+                : new Rlp(Bytes).ToString();
         }
     }
 }
