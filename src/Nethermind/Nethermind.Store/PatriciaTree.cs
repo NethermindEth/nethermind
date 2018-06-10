@@ -314,68 +314,6 @@ namespace Nethermind.Store
             throw new InvalidOperationException($"Unknown node type {node.NodeType}");
         }
 
-        //internal static Node RlpDecode(Rlp bytes)
-        //{
-        //    Metrics.TreeNodeRlpDecodings++;
-        //    Rlp.DecoderContext context = bytes.Bytes.AsRlpContext();
-
-        //    context.ReadSequenceLength();
-        //    int numberOfItems = context.ReadNumberOfItemsRemaining();
-
-        //    Node result;
-        //    if (numberOfItems == 17)
-        //    {
-        //        Node[] nodes = new Node[16];
-        //        for (int i = 0; i < 16; i++)
-        //        {
-        //            nodes[i] = DecodeChildNode(context);
-        //        }
-
-        //        byte[] value = context.DecodeByteArray();
-        //        Node branch = TreeNodeFactory.CreateBranch(nodes, value, false);
-        //        result = branch;
-        //    }
-        //    else if (numberOfItems == 2)
-        //    {
-        //        HexPrefix key = HexPrefix.FromBytes(context.DecodeByteArray());
-        //        bool isExtension = key.IsExtension;
-        //        if (isExtension)
-        //        {
-        //            Node extension = TreeNodeFactory.CreateExtension(key, DecodeChildNode(context));
-        //            result = extension;
-        //        }
-        //        else
-        //        {
-        //            Node leaf = TreeNodeFactory.CreateLeaf(key, context.DecodeByteArray());
-        //            result = leaf;
-        //        }
-        //    }
-        //    else
-        //    {
-        //        throw new InvalidOperationException($"Unexpected number of items = {numberOfItems} when decoding a node");
-        //    }
-
-        //    return result;
-        //}
-
-        //private static Node DecodeChildNode(Rlp.DecoderContext decoderContext)
-        //{
-        //    if (decoderContext.IsSequenceNext())
-        //    {
-        //        byte[] sequenceBytes = decoderContext.ReadSequenceRlp();
-        //        if (sequenceBytes.Length >= 32)
-        //        {
-        //            throw new InvalidOperationException();
-        //        }
-
-        //        KeccakOrRlp keccakOrRlp = new KeccakOrRlp(new Rlp(sequenceBytes));
-        //        return new Node(NodeType.Unknown, keccakOrRlp);
-        //    }
-
-        //    Keccak keccak = decoderContext.DecodeKeccak();
-        //    return keccak == null ? null : new Node(NodeType.Unknown, new KeccakOrRlp(keccak));
-        //}
-
         [DebuggerStepThrough]
         public void Set(Nibble[] nibbles, Rlp rlp)
         {
