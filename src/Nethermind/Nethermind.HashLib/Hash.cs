@@ -210,6 +210,15 @@ namespace Nethermind.HashLib
             return result;
         }
 
+        public virtual HashResult ComputeBytes(Span<byte> a_data)
+        {
+            Initialize();
+            TransformBytes(a_data);
+            HashResult result = TransformFinal();
+            Initialize();
+            return result;
+        }
+
         public virtual uint[] ComputeBytesToUint(byte[] a_data)
         {
             Initialize();
@@ -505,6 +514,11 @@ namespace Nethermind.HashLib
             TransformBytes(a_data, 0, a_data.Length);
         }
 
+        public void TransformBytes(Span<byte> a_data)
+        {
+            TransformBytes(a_data, 0, a_data.Length);
+        }
+
         public void TransformBytes(byte[] a_data, int a_index)
         {
             Debug.Assert(a_index >= 0);
@@ -527,6 +541,12 @@ namespace Nethermind.HashLib
 
         public abstract void Initialize();
         public abstract void TransformBytes(byte[] a_data, int a_index, int a_length);
+        //public abstract void TransformBytes(Span<byte> a_data, int a_index, int a_length);
+        public virtual void TransformBytes(Span<byte> a_data, int a_index, int a_length)
+        {
+            throw new NotImplementedException();
+        }
+
         public abstract HashResult TransformFinal();
 
         public virtual uint[] TransformFinalUInts()

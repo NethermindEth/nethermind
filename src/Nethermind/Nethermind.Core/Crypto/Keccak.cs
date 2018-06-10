@@ -105,11 +105,32 @@ namespace Nethermind.Core.Crypto
             return InternalCompute(input);
         }
 
+        [DebuggerStepThrough]
+        public static Keccak Compute(Span<byte> input)
+        {
+            if (input == null || input.Length == 0)
+            {
+                return OfAnEmptyString;
+            }
+
+            return InternalCompute(input);
+        }
+
         private static HashLib.Crypto.SHA3.Keccak256 Init()
         {
             return HashFactory.Crypto.SHA3.CreateKeccak256();
         }
         
+        private static Keccak InternalCompute(Span<byte> input)
+        {
+            if (_hash == null) // avoid allocating Init func
+            {
+                LazyInitializer.EnsureInitialized(ref _hash, Init);
+            }
+
+            return new Keccak(_hash.ComputeBytes(input).GetBytes());
+        }
+
         private static Keccak InternalCompute(byte[] input)
         {
             if (_hash == null) // avoid allocating Init func

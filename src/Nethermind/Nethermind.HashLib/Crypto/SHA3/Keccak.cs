@@ -50,8 +50,13 @@ namespace Nethermind.HashLib.Crypto.SHA3
 
         protected override void TransformBlock(byte[] a_data, int a_index)
         {
+            TransformBlock(a_data.AsSpan(a_index, BlockSize), a_index);
+        }
+
+        protected override void TransformBlock(Span<byte> a_data, int a_index)
+        {
             // TODO: review discussions on whether it is always safe (should be)
-            ReadOnlySpan<ulong> data = MemoryMarshal.Cast<byte, ulong>(a_data.AsSpan(a_index, BlockSize));
+            ReadOnlySpan<ulong> data = MemoryMarshal.Cast<byte, ulong>(a_data);
             //ulong[] data= Converters.ConvertBytesToULongs(a_data, a_index, BlockSize);
             
             for (int j = 0; j<BlockSize / 8; j++)

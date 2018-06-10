@@ -19,6 +19,30 @@ namespace Nethermind.HashLib
             m_processed_bytes = 0;
         }
 
+        public override void TransformBytes(Span<byte> a_data, int a_index, int a_length)
+        {
+            Debug.Assert(a_index >= 0);
+            Debug.Assert(a_length >= 0);
+            Debug.Assert(a_index + a_length <= a_data.Length);
+
+            if (!m_buffer.IsEmpty)
+            {
+                if (m_buffer.Feed(a_data, ref a_index, ref a_length, ref m_processed_bytes))
+                    TransformBuffer();
+            }
+
+            while (a_length >= m_buffer.Length)
+            {
+                m_processed_bytes += (ulong)m_buffer.Length;
+                TransformBlock(a_data, a_index);
+                a_index += m_buffer.Length;
+                a_length -= m_buffer.Length;
+            }
+
+            if (a_length > 0)
+                m_buffer.Feed(a_data, ref a_index, ref a_length, ref m_processed_bytes);
+        }
+
         public override void TransformBytes(byte[] a_data, int a_index, int a_length)
         {
             Debug.Assert(a_index >= 0);
@@ -86,6 +110,12 @@ namespace Nethermind.HashLib
 
         protected abstract void Finish();
         protected abstract void TransformBlock(byte[] a_data, int a_index);
+        //protected abstract void TransformBlock(Span<byte> a_data, int a_index);
+        protected virtual void TransformBlock(Span<byte> a_data, int a_index)
+        {
+            throw new NotImplementedException();
+        }
+
         protected abstract byte[] GetResult();
 
         protected virtual uint[] GetResultUInts()

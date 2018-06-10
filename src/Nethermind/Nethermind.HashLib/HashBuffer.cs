@@ -65,6 +65,34 @@ namespace Nethermind.HashLib
             return IsFull;
         }
 
+        public bool Feed(Span<byte> a_data, ref int a_start_index, ref int a_length, ref ulong a_processed_bytes)
+        {
+            Debug.Assert(a_start_index >= 0);
+            Debug.Assert(a_length >= 0);
+            Debug.Assert(a_start_index + a_length <= a_data.Length);
+            Debug.Assert(!IsFull);
+
+            if (a_data.Length == 0)
+                return false;
+
+            if (a_length == 0)
+                return false;
+
+            int length = m_data.Length - m_pos;
+            if (length > a_length)
+                length = a_length;
+
+            Span<byte> m_span = m_data.AsSpan(m_pos, length);
+            a_data.Slice(a_start_index, length).CopyTo(m_span);
+
+            m_pos += length;
+            a_start_index += length;
+            a_length -= length;
+            a_processed_bytes += (ulong)length;
+
+            return IsFull;
+        }
+
         public bool Feed(byte[] a_data, int a_length)
         {
             Debug.Assert(a_length >= 0);
