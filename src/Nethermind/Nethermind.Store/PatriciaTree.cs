@@ -244,7 +244,7 @@ namespace Nethermind.Store
                 );
         }
 
-        private static Rlp RlpEncode(Branch branch)
+        private static Rlp RlpEncodeStream(Branch branch)
         {
             using (MemoryStream stream = Rlp.StartEncoding())
             {
@@ -296,33 +296,64 @@ namespace Nethermind.Store
                 Rlp.Encode(stream, branch.Value);
                 byte[] result = stream.ToArray();
 
-                //byte[] alternative = Rlp.Encode(
-                //    RlpEncode(branch.Nodes[0]),
-                //    RlpEncode(branch.Nodes[1]),
-                //    RlpEncode(branch.Nodes[2]),
-                //    RlpEncode(branch.Nodes[3]),
-                //    RlpEncode(branch.Nodes[4]),
-                //    RlpEncode(branch.Nodes[5]),
-                //    RlpEncode(branch.Nodes[6]),
-                //    RlpEncode(branch.Nodes[7]),
-                //    RlpEncode(branch.Nodes[8]),
-                //    RlpEncode(branch.Nodes[9]),
-                //    RlpEncode(branch.Nodes[10]),
-                //    RlpEncode(branch.Nodes[11]),
-                //    RlpEncode(branch.Nodes[12]),
-                //    RlpEncode(branch.Nodes[13]),
-                //    RlpEncode(branch.Nodes[14]),
-                //    RlpEncode(branch.Nodes[15]),
-                //    Rlp.Encode(branch.Value)
-                //).Bytes;
-
-                //if (!Bytes.UnsafeCompare(alternative, result))
-                //{
-
-                //}
-
                 return new Rlp(result);
             }
+        }
+
+        private static Rlp RlpEncode(Branch branch)
+        {
+            int contentLength = 0;
+            for (int i = 0; i < 16; i++)
+            {
+                NodeRef nodeRef = branch.Nodes[i];
+                if (nodeRef == null)
+                {
+                    contentLength += Rlp.LengthOfEmptyArrayRlp;
+                }
+                else
+                {
+                    nodeRef.ResolveKey();
+                    if (nodeRef.KeccakOrRlp.IsKeccak)
+                    {
+                        contentLength += Rlp.LengthOfKeccakRlp;
+                    }
+                    else
+                    {
+                        contentLength += nodeRef.KeccakOrRlp.GetRlpOrThrow().Length;
+                    }
+                }
+            }
+
+            contentLength += Rlp.LengthOfByteArray(branch.Value);
+            int sequenceLength = Rlp.GetSequenceRlpLength(contentLength);
+            byte[] result = new byte[sequenceLength];
+            int position = Rlp.StartSequence(result, 0, contentLength);
+            for (int i = 0; i < 16; i++)
+            {
+                NodeRef nodeRef = branch.Nodes[i];
+                if (nodeRef == null)
+                {
+                    result[position++] = Rlp.OfEmptyByteArray[0];
+                }
+                else
+                {
+                    if (nodeRef.KeccakOrRlp.IsKeccak)
+                    {
+                        result[position] = 160;
+                        Array.Copy(nodeRef.KeccakOrRlp.GetKeccakOrThrow().Bytes, 0, result, position + 1, 32);
+                        position += Rlp.LengthOfKeccakRlp;
+                    }
+                    else
+                    {
+                        byte[] rlpBytes = nodeRef.KeccakOrRlp.GetRlpOrThrow().Bytes;
+                        Array.Copy(rlpBytes, 0, result, position, rlpBytes.Length);
+                        position += rlpBytes.Length;
+                    }
+                }
+            }
+
+            Rlp.Encode(result, position, branch.Value);
+            return new Rlp(result);
         }
 
         internal static Rlp RlpEncode(Node node)

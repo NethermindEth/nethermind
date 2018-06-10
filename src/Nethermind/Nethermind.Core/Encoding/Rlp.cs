@@ -20,7 +20,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Numerics;
-using System.Text;
 using Microsoft.IO;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -297,6 +296,39 @@ namespace Nethermind.Core.Encoding
             }
         }
 
+        public static int Encode(byte[] buffer, int position, byte[] input)
+        {
+            if (input == null || input.Length == 0)
+            {
+                buffer[position++] = OfEmptyByteArray.Bytes[0];
+                return position;
+            }
+
+            if (input.Length == 1 && input[0] < 128)
+            {
+                buffer[position++] = input[0];
+                return position;
+            }
+
+            if (input.Length < 56)
+            {
+                byte smallPrefix = (byte)(input.Length + 128);
+                buffer[position++] = smallPrefix;
+            }
+            else
+            {
+                int lengthOfLength = LengthOfLength(input.Length);
+                byte prefix = (byte)(183 + lengthOfLength);
+                buffer[position++] = prefix;
+                SerializeLength(buffer, position, input.Length);
+            }
+
+            Array.Copy(input, 0, buffer, position, input.Length);
+            position += input.Length;
+
+            return position;
+        }
+
         public static Rlp Encode(byte[] input)
         {
             if (input.Length == 0)
@@ -344,6 +376,36 @@ namespace Nethermind.Core.Encoding
                 stream.WriteByte((byte)(value >> 8));
                 stream.WriteByte((byte)value);
             }
+        }
+
+        public static int SerializeLength(byte[] buffer, int position, int value)
+        {
+            if (value < 1 << 8)
+            {
+                buffer[position] = (byte)value;
+                return position + 1;
+            }
+
+            if (value < 1 << 16)
+            {
+                buffer[position] = (byte)(value >> 8);
+                buffer[position + 1] = ((byte)value);
+                return position + 2;
+            }
+
+            if (value < 1 << 24)
+            {
+                buffer[position] = (byte)(value >> 16);
+                buffer[position + 1] = ((byte)(value >> 8));
+                buffer[position + 2] = ((byte)value);
+                return position + 3;
+            }
+
+            buffer[position] = (byte)(value >> 24);
+            buffer[position + 1] = (byte)(value >> 16);
+            buffer[position + 2] = (byte)(value >> 8);
+            buffer[position + 3] = (byte)value;
+            return position + 4;
         }
 
         private static int LengthOfLength(int value)
@@ -471,28 +533,15 @@ namespace Nethermind.Core.Encoding
             return StreamManager.GetStream();
         }
 
-        public static void StartSequence(byte[] buffer, int sequenceLength)
+        public static int GetSequenceRlpLength(int contentLength)
         {
-            MemoryStream stream = new MemoryStream(buffer);
-            byte prefix;
-            long memorizedPosition1 = stream.Position;
-            long memorizedPosition2 = memorizedPosition1 + 1;
-            stream.Seek(memorizedPosition2, SeekOrigin.Begin);
-            if (sequenceLength < 56)
+            int totalLength = contentLength + 1;
+            if (contentLength >= 56)
             {
-                prefix = (byte)(192 + sequenceLength);
-            }
-            else
-            {
-                SerializeLength(stream, sequenceLength);
-                prefix = (byte)(247 + stream.Position - memorizedPosition2);
+                totalLength += LengthOfLength(contentLength);
             }
 
-            long memorizedPosition3 = stream.Position;
-            stream.Seek(memorizedPosition1, SeekOrigin.Begin);
-            stream.WriteByte(prefix);
-            stream.Seek(memorizedPosition3, SeekOrigin.Begin);
-            stream.Dispose();
+            return totalLength;
         }
 
         public static void StartSequence(MemoryStream stream, int sequenceLength)
@@ -515,6 +564,25 @@ namespace Nethermind.Core.Encoding
             stream.Seek(memorizedPosition1, SeekOrigin.Begin);
             stream.WriteByte(prefix);
             stream.Seek(memorizedPosition3, SeekOrigin.Begin);
+        }
+
+        public static int StartSequence(byte[] buffer, int position, int sequenceLength)
+        {
+            byte prefix;
+            int beforeLength = position + 1;
+            int afterLength = position + 1;
+            if (sequenceLength < 56)
+            {
+                prefix = (byte)(192 + sequenceLength);
+            }
+            else
+            {
+                afterLength = SerializeLength(buffer, beforeLength, sequenceLength);
+                prefix = (byte)(247 + afterLength - beforeLength);
+            }
+
+            buffer[position] = prefix;
+            return afterLength;
         }
 
         public static Rlp Encode(params Rlp[] sequence)
@@ -586,62 +654,6 @@ namespace Nethermind.Core.Encoding
 
             return LengthOfLength(array.Length) + 1 + array.Length;
         }
-
-        //        public class EncoderContext
-        //        {
-        //            private static readonly RecyclableMemoryStreamManager StreamManager = new RecyclableMemoryStreamManager();
-        //            private MemoryStream _messyStream;
-        //            private MemoryStream _stream;
-        //
-        //            public EncoderContext()
-        //            {
-        //                _stream = StreamManager.GetStream();
-        //                _messyStream = StreamManager.GetStream();
-        //            }
-        //            
-        //            public EncoderContext Encode(params Rlp[] sequence)
-        //            {
-        //                int contentLength = 0;
-        //                for (int i = 0; i < sequence.Length; i++)
-        //                {
-        //                    contentLength += sequence[i].Length;
-        //                }
-        //
-        //                byte[] serializedLength = null;
-        //                byte prefix;
-        //                if (contentLength < 56)
-        //                {
-        //                    prefix = (byte)(192 + contentLength);
-        //                }
-        //                else
-        //                {
-        //                    serializedLength = SerializeLength(contentLength);
-        //                    prefix = (byte)(247 + serializedLength.Length);
-        //                }
-        //
-        //                int lengthOfPrefixAndSerializedLength = 1 + (serializedLength?.Length ?? 0);
-        //                byte[] allBytes = new byte[lengthOfPrefixAndSerializedLength + contentLength];
-        //                allBytes[0] = prefix;
-        //                int offset = 1;
-        //                if (serializedLength != null)
-        //                {
-        //                    Buffer.BlockCopy(serializedLength, 0, allBytes, offset, serializedLength.Length);
-        //                    offset += serializedLength.Length;
-        //                }
-        //
-        //                for (int i = 0; i < sequence.Length; i++)
-        //                {
-        //                    Buffer.BlockCopy(sequence[i].Bytes, 0, allBytes, offset, sequence[i].Length);
-        //                    offset += sequence[i].Length;
-        //                }
-        //
-        //                if (allBytes.Length > 85000)
-        //                {
-        //                }
-        //
-        //                return new Rlp(allBytes);
-        //            }
-        //        }
 
         public class DecoderContext
         {
