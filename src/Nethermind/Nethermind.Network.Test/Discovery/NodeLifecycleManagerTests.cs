@@ -63,7 +63,7 @@ namespace Nethermind.Network.Test.Discovery
                 BucketsCount = 1
             };
             var configProvider = new ConfigurationProvider();
-            _nodeFactory = new NodeFactory();
+            _nodeFactory = new TreeFactory();
             var calculator = new NodeDistanceCalculator(_configurationProvider);
 
             _nodeTable = new NodeTable(_configurationProvider, _nodeFactory, new FileKeyStore(configProvider, new JsonSerializer(logger), new AesEncrypter(configProvider, logger), new CryptoRandom(), logger), logger, calculator);
