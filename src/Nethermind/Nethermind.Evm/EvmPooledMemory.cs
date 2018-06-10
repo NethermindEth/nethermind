@@ -83,6 +83,19 @@ namespace Nethermind.Evm
             return buffer;
         }
 
+        public Span<byte> LoadSpan(BigInteger location, BigInteger length)
+        {
+            if (length.IsZero)
+            {
+                return EmptyBytes;
+            }
+
+            long longLocation = (long)location;
+            UpdateSize(longLocation, (long)length);
+
+            return _memory.AsSpan().Slice((int)longLocation, (int)length);
+        }
+
         public byte[] Load(BigInteger location, BigInteger length)
         {
             if (length.IsZero)

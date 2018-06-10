@@ -1170,7 +1170,7 @@ namespace Nethermind.Evm
 
                         UpdateMemoryCost(memSrc, memLength);
 
-                        byte[] memData = evmState.Memory.Load(memSrc, memLength);
+                        Span<byte> memData = evmState.Memory.LoadSpan(memSrc, memLength);
                         PushBytes(Keccak.Compute(memData).Bytes);
                         break;
                     }
