@@ -26,62 +26,6 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.Store
 {
-    public enum NodeType
-    {
-        Unknown,
-        Branch,
-        Extension,
-        Leaf
-    }
-
-    internal static class TreeFactory
-    {
-        public static Node CreateBranch(bool isRoot = false)
-        {
-            return CreateBranch(new Node[16], new byte[0], isRoot);
-        }
-
-        public static Node CreateBranch(Node[] nodes, byte[] value, bool isRoot = false)
-        {
-            Node node = new Node(NodeType.Branch, isRoot);
-            node.Children = nodes;
-            node.Value = value;
-
-            if(value == null) throw new ArgumentNullException(nameof(value));
-            if(nodes == null) throw new ArgumentNullException(nameof(nodes));
-
-            if (nodes.Length != 16)
-            {
-                throw new ArgumentException($"{nameof(NodeType.Branch)} should have 16 child nodes", nameof(nodes));
-            }
-
-            return node;
-        }
-
-        public static Node CreateLeaf(HexPrefix key, byte[] value, bool isRoot = false)
-        {
-            Node node = new Node(NodeType.Leaf, isRoot);
-            node.Key = key;
-            node.Value = value;
-            return node;
-        }
-
-        public static Node CreateExtension(HexPrefix key, bool isRoot = false)
-        {
-            Node node = new Node(NodeType.Extension, isRoot);
-            node.Key = key;
-            return node;
-        }
-
-        public static Node CreateExtension(HexPrefix key, Node child, bool isRoot = false)
-        {
-            Node node = new Node(NodeType.Extension, isRoot);
-            node.Children[0] = child;
-            node.Key = key;
-            return node;
-        }
-    }
-
     internal class Node
     {
         public Node(NodeType nodeType, bool isRoot)
@@ -99,14 +43,22 @@ namespace Nethermind.Store
             }
         }
 
-        public Node(NodeType nodeType, KeccakOrRlp keccakOrRlp, bool isRoot = false)
+        public Node(NodeType nodeType, Keccak keccak, bool isRoot = false)
         {
             NodeType = nodeType;
-            KeccakOrRlp = keccakOrRlp;
+            Keccak = keccak;
+            IsRoot = isRoot;
+        }
+
+        public Node(NodeType nodeType, Rlp rlp, bool isRoot = false)
+        {
+            NodeType = nodeType;
+            _fullRlp = rlp;
             IsRoot = isRoot;
         }
 
         public Node[] Children { get; set; }
+
         public bool IsValidWithOneNodeLess
         {
             get
@@ -128,7 +80,9 @@ namespace Nethermind.Store
 
         public bool IsDirty { get; set; }
         public bool IsRoot { get; set; }
-        public KeccakOrRlp KeccakOrRlp { get; set; }
+        public Keccak Keccak { get; set; }
+        public Rlp RefRlp { get; set; }
+
         private Rlp _fullRlp;
         public Rlp FullRlp => _fullRlp;
         public NodeType NodeType { get; set; }
@@ -147,19 +101,21 @@ namespace Nethermind.Store
                     throw new InvalidOperationException();
                 }
 
-                KeccakOrRlp keccakOrRlp = new KeccakOrRlp(new Rlp(sequenceBytes));
-                return new Node(NodeType.Unknown, keccakOrRlp);
+                return new Node(NodeType.Unknown, new Rlp(sequenceBytes));
             }
 
             Keccak keccak = decoderContext.DecodeKeccak();
-            return keccak == null ? null : new Node(NodeType.Unknown, new KeccakOrRlp(keccak));
+            return keccak == null ? null : new Node(NodeType.Unknown, keccak);
         }
 
         public void ResolveNode(PatriciaTree tree)
         {
             if (NodeType == NodeType.Unknown)
             {
-                _fullRlp = tree.GetNode(KeccakOrRlp);
+                if (_fullRlp == null)
+                {
+                    _fullRlp = tree.GetNode(Keccak);
+                }
             }
             else
             {
@@ -209,11 +165,23 @@ namespace Nethermind.Store
 
         public void ResolveKey()
         {
-            if (KeccakOrRlp == null)
+            if (Keccak != null)
+            {
+                return;
+            }
+
+            if (_fullRlp == null)
             {
                 _fullRlp = PatriciaTree.RlpEncode(this);
-                KeccakOrRlp = new KeccakOrRlp(_fullRlp);
             }
+            
+            if (_fullRlp.Length < 32)
+            {
+                return;
+            }
+
+            Metrics.TreeNodeHashCalculations++;
+            Keccak = Keccak.Compute(_fullRlp);
         }
 
         public HexPrefix Key { get; set; }
