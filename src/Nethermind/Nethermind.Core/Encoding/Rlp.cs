@@ -621,10 +621,6 @@ namespace Nethermind.Core.Encoding
                 offset += sequence[i].Length;
             }
 
-            if (allBytes.Length > 85000)
-            {
-            }
-
             return new Rlp(allBytes);
         }
 
@@ -660,6 +656,7 @@ namespace Nethermind.Core.Encoding
             public DecoderContext(byte[] data)
             {
                 Data = data;
+                Position = 0;
             }
 
             public byte[] Data { get; }
@@ -775,12 +772,11 @@ namespace Nethermind.Core.Encoding
                 return Data[Position++];
             }
 
-            private byte[] Read(int length)
+            private Span<byte> Read(int length)
             {
-                byte[] bytes = new byte[length];
-                Buffer.BlockCopy(Data, Position, bytes, 0, length);
+                Span<byte> data = Data.AsSpan(Position, length);
                 Position += length;
-                return bytes;
+                return data;
             }
 
             public void Check(int nextCheck)
@@ -804,7 +800,7 @@ namespace Nethermind.Core.Encoding
                     throw new RlpException($"Unexpected prefix of {prefix} when decoding {nameof(Keccak)}");
                 }
 
-                byte[] buffer = Read(32);
+                byte[] buffer = Read(32).ToArray();
                 return new Keccak(buffer);
             }
 
@@ -821,20 +817,19 @@ namespace Nethermind.Core.Encoding
                     throw new RlpException($"Unexpected prefix of {prefix} when decoding {nameof(Address)}");
                 }
 
-                byte[] buffer = Read(20);
+                byte[] buffer = Read(20).ToArray();
                 return new Address(buffer);
             }
 
             public BigInteger DecodeUBigInt()
             {
-                byte[] bytes = DecodeByteArray();
+                Span<byte> bytes = DecodeByteArraySpan();
                 return bytes.ToUnsignedBigInteger();
             }
 
             public Bloom DecodeBloom()
             {
-                // TODO: check first bytes
-                byte[] bloomBytes = DecodeByteArray();
+                Span<byte> bloomBytes = DecodeByteArraySpan();
                 if (bloomBytes.Length == 0)
                 {
                     return null;
@@ -847,7 +842,7 @@ namespace Nethermind.Core.Encoding
             public byte[] ReadSequenceRlp()
             {
                 int positionBefore = Position;
-                int sequenceLength = (int)ReadSequenceLength();
+                int sequenceLength = ReadSequenceLength();
                 byte[] sequenceRlp = Data.Slice(positionBefore, Position - positionBefore + sequenceLength);
                 Position += sequenceLength;
                 return sequenceRlp;
@@ -856,7 +851,7 @@ namespace Nethermind.Core.Encoding
             public Span<byte> ReadSequenceSpan()
             {
                 int positionBefore = Position;
-                int sequenceLength = (int)ReadSequenceLength();
+                int sequenceLength = ReadSequenceLength();
                 Span<byte> sequenceRlp = Data.AsSpan(positionBefore, Position - positionBefore + sequenceLength);
                 Position += sequenceLength;
                 return sequenceRlp;
@@ -921,13 +916,13 @@ namespace Nethermind.Core.Encoding
 
             public string DecodeString()
             {
-                byte[] bytes = DecodeByteArray();
+                Span<byte> bytes = DecodeByteArraySpan();
                 return System.Text.Encoding.UTF8.GetString(bytes);
             }
 
             public byte DecodeByte()
             {
-                byte[] bytes = DecodeByteArray();
+                Span<byte> bytes = DecodeByteArraySpan();
                 return bytes.Length == 0 ? (byte)0 : bytes[0];
             }
 
@@ -944,6 +939,11 @@ namespace Nethermind.Core.Encoding
             }
 
             public byte[] DecodeByteArray()
+            {
+                return DecodeByteArraySpan().ToArray();
+            }
+
+            private Span<byte> DecodeByteArraySpan()
             {
                 int prefix = ReadByte();
                 if (prefix == 0)
@@ -964,7 +964,7 @@ namespace Nethermind.Core.Encoding
                 if (prefix <= 183)
                 {
                     int length = prefix - 128;
-                    byte[] buffer = Read(length);
+                    Span<byte> buffer = Read(length);
                     if (length == 1 && buffer[0] < 128)
                     {
                         throw new RlpException($"Unexpected byte value {buffer[0]}");
@@ -988,8 +988,7 @@ namespace Nethermind.Core.Encoding
                         throw new RlpException("Expected length greater or equal 56 and was {length}");
                     }
 
-                    byte[] buffer = Read(length);
-                    return buffer;
+                    return Read(length);
                 }
 
                 throw new RlpException($"Unexpected prefix value of {prefix} when decoding a byte array.");

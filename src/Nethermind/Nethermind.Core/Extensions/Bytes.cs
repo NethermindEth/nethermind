@@ -289,7 +289,12 @@ namespace Nethermind.Core.Extensions
 
         public static BigInteger ToUnsignedBigInteger(this byte[] bytes, Endianness endianness = Endianness.Big)
         {
-            return new BigInteger(bytes.AsSpan(), true, endianness == Endianness.Big);
+            return ToUnsignedBigInteger(bytes.AsSpan(), endianness);
+        }
+
+        public static BigInteger ToUnsignedBigInteger(this Span<byte> bytes, Endianness endianness = Endianness.Big)
+        {
+            return new BigInteger(bytes, true, endianness == Endianness.Big);
         }
 
         /// <summary>
@@ -427,6 +432,18 @@ namespace Nethermind.Core.Extensions
         }
 
         public static BitArray ToBigEndianBitArray2048(this byte[] bytes)
+        {
+            byte[] inverted = new byte[256];
+            int startIndex = 256 - bytes.Length;
+            for (int i = startIndex; i < inverted.Length; i++)
+            {
+                inverted[i] = Reverse(bytes[i - startIndex]);
+            }
+
+            return new BitArray(inverted);
+        }
+
+        public static BitArray ToBigEndianBitArray2048(this Span<byte> bytes)
         {
             byte[] inverted = new byte[256];
             int startIndex = 256 - bytes.Length;

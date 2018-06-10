@@ -244,62 +244,6 @@ namespace Nethermind.Store
                 );
         }
 
-        private static Rlp RlpEncodeStream(Branch branch)
-        {
-            using (MemoryStream stream = Rlp.StartEncoding())
-            {
-                int totalLength = 0;
-                for (int i = 0; i < 16; i++)
-                {
-                    NodeRef nodeRef = branch.Nodes[i];
-                    if (nodeRef == null)
-                    {
-                        totalLength += Rlp.LengthOfEmptyArrayRlp;
-                    }
-                    else
-                    {
-                        nodeRef.ResolveKey();
-                        if (nodeRef.KeccakOrRlp.IsKeccak)
-                        {
-                            totalLength += Rlp.LengthOfKeccakRlp;
-                        }
-                        else
-                        {
-                            totalLength += nodeRef.KeccakOrRlp.GetRlpOrThrow().Length;
-                        }
-                    }
-                }
-
-                totalLength += Rlp.LengthOfByteArray(branch.Value);
-
-                Rlp.StartSequence(stream, totalLength);
-                for (int i = 0; i < 16; i++)
-                {
-                    NodeRef nodeRef = branch.Nodes[i];
-                    if (nodeRef == null)
-                    {
-                        stream.Write(Rlp.OfEmptyByteArray.Bytes);
-                    }
-                    else
-                    {
-                        if (nodeRef.KeccakOrRlp.IsKeccak)
-                        {
-                            Rlp.Encode(stream, nodeRef.KeccakOrRlp.GetKeccakOrThrow());
-                        }
-                        else
-                        {
-                            stream.Write(nodeRef.KeccakOrRlp.GetRlpOrThrow().Bytes);
-                        }
-                    }
-                }
-
-                Rlp.Encode(stream, branch.Value);
-                byte[] result = stream.ToArray();
-
-                return new Rlp(result);
-            }
-        }
-
         private static Rlp RlpEncode(Branch branch)
         {
             int contentLength = 0;
