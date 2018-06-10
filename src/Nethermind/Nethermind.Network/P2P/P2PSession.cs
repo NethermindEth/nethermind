@@ -39,13 +39,10 @@ namespace Nethermind.Network.P2P
 
         private IChannelHandlerContext _context;
         private IPacketSender _packetSender;
-
-        public PublicKey LocalNodeId { get; }
-        public int LocalPort { get; }
-
+        
         private Func<int, (string, int)> _adaptiveCodeResolver;
         private Func<(string ProtocolCode, int PacketType), int> _adaptiveEncoder;
-
+        
         public P2PSession(
             PublicKey localNodeId,
             int localPort,
@@ -60,8 +57,12 @@ namespace Nethermind.Network.P2P
             LocalPort = localPort;
         }
 
+        public PublicKey LocalNodeId { get; }
+        public int LocalPort { get; }
         public PublicKey RemoteNodeId { get; set; }
-        public int RemotePort { get; set; }
+        public int? RemotePort { get; set; }
+        public string RemoteHost { get; set; }
+        public ClientConnectionType ClientConnectionType { get; set; }
 
         // TODO: this should be one level up
         public void EnableSnappy()

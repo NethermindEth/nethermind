@@ -139,7 +139,7 @@ namespace Nethermind.Network.Rlpx
 
         public async Task ConnectAsync(PublicKey remoteId, string host, int port)
         {
-            _logger.Info($"Connecting to {remoteId.ToString(false)}@{host}:{port}");
+            _logger.Info($"Connecting to {remoteId}@{host}:{port}");
 
             Bootstrap clientBootstrap = new Bootstrap();
             clientBootstrap.Group(_workerGroup);
@@ -156,45 +156,63 @@ namespace Nethermind.Network.Rlpx
             Task firstTask = await Task.WhenAny(connectTask, Task.Delay(5000));
             if (firstTask != connectTask)
             {
-                _logger.Error($"Connection to {remoteId.ToString(false)}@{host}:{port} timed out.");
+                _logger.Error($"Connection to {remoteId}@{host}:{port} timed out.");
             }
             else
             {
                 if (connectTask.IsFaulted)
                 {
-                    _logger.Error($"Error when connecting to {remoteId.ToString(false)}@{host}:{port}.", connectTask.Exception);
+                    _logger.Error($"Error when connecting to {remoteId}@{host}:{port}.", connectTask.Exception);
                     throw new NetworkingException($"Failed to connect to {remoteId}", connectTask.Exception);
                 }
 
-                _logger.Info($"Connected to {remoteId.ToString(false)}@{host}:{port}");
+                _logger.Info($"Connected to {remoteId}@{host}:{port}");
             }
         }
 
         public event EventHandler<ConnectionInitializedEventArgs> ConnectionInitialized;
 
-        private void InitializeChannel(IChannel channel, EncryptionHandshakeRole role, PublicKey remoteId)
+        private void InitializeChannel(IChannel channel, EncryptionHandshakeRole role, PublicKey remoteId = null, string remoteHost = null, int? remotePort = null)
         {
-            string inOut = remoteId == null ? "IN" : "OUT";
-            _logger.Debug($"Initializing {inOut} channel");
+            var connectionType = remoteId == null ? ClientConnectionType.In : ClientConnectionType.Out;
+            if (_logger.IsInfoEnabled)
+            {
+                _logger.Info($"Initializing {connectionType.ToString().ToUpper()} channel{(connectionType == ClientConnectionType.Out ? $": {remoteId}@{remoteHost}:{remoteId}" : string.Empty)}");
+            }
 
             P2PSession p2PSession = new P2PSession(
                 LocalNodeId,
                 _localPort,
                 _serializationService,
                 _synchronizationManager,
-                _logger);
+                _logger)
+            {
+                ClientConnectionType = connectionType
+            };
 
-            //Only for remote connection
-            if (remoteId != null)
+            //This is the first moment we get confirmed publicKey of remote node in case of outgoing connections
+            if (connectionType == ClientConnectionType.Out)
             {
                 p2PSession.RemoteNodeId = remoteId;
-                ConnectionInitialized?.Invoke(this, new ConnectionInitializedEventArgs(p2PSession));
+                p2PSession.RemoteHost = remoteHost;
+                p2PSession.RemotePort = remotePort;               
+                ConnectionInitialized?.Invoke(this, new ConnectionInitializedEventArgs(p2PSession, connectionType));
             }
 
+            var handshakeHandler = new NettyHandshakeHandler(_encryptionHandshakeService, p2PSession, role, remoteId, _logger);
+            handshakeHandler.HandshakeInitialized += (s, e) =>
+            {
+                //This is the first moment we get confirmed publicKey of remote node in case of incoming connections
+                if (connectionType == ClientConnectionType.In)
+                {
+                    ConnectionInitialized?.Invoke(this, new ConnectionInitializedEventArgs(p2PSession, connectionType));
+                }
+            };
+
             IChannelPipeline pipeline = channel.Pipeline;
-            pipeline.AddLast(new LoggingHandler(inOut, DotNetty.Handlers.Logging.LogLevel.TRACE));
+            pipeline.AddLast(new LoggingHandler(connectionType.ToString().ToUpper(), DotNetty.Handlers.Logging.LogLevel.TRACE));
             pipeline.AddLast("enc-handshake-dec", new LengthFieldBasedFrameDecoder(ByteOrder.BigEndian, ushort.MaxValue, 0, 2, 0, 0, true));
-            pipeline.AddLast("enc-handshake-handler", new NettyHandshakeHandler(_encryptionHandshakeService, p2PSession, role, remoteId, _logger));
+            pipeline.AddLast("enc-handshake-handler", handshakeHandler);
         }
     }
 }

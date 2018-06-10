@@ -357,7 +357,7 @@ namespace Nethermind.Runner.Runners
 
             IPAddress localIp = _networkHelper.GetLocalIp();
             _networkLogger.Info($"Node is up and listening on {localIp}:{listenPort}... press ENTER to exit");
-            _networkLogger.Info($"enode://{_privateKey.PublicKey.ToString(false)}@{localIp}:{listenPort}");
+            _networkLogger.Info($"enode://{_privateKey.PublicKey}@{localIp}:{listenPort}");
         }
 
         private async Task InitPeerManager()
@@ -365,7 +365,7 @@ namespace Nethermind.Runner.Runners
             _networkLogger.Info("Initializing Peer Manager");
 
             PeerStorage peerStorage = new PeerStorage(_discoveryConfigurationProvider, _nodeFactory, _networkLogger, _perfService);
-            PeerManager peerManager = new PeerManager(_localPeer, _discoveryManager, _networkLogger, _discoveryConfigurationProvider, _syncManager, _nodeStatsProvider, peerStorage, _perfService);
+            PeerManager peerManager = new PeerManager(_localPeer, _discoveryManager, _networkLogger, _discoveryConfigurationProvider, _syncManager, _nodeStatsProvider, peerStorage, _perfService, _nodeFactory);
             await peerManager.Start();
 
             _networkLogger.Info("Peer Manager initialization completed");

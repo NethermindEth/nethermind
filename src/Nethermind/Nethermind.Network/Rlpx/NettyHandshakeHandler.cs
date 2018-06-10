@@ -128,6 +128,7 @@ namespace Nethermind.Network.Rlpx
                 }
 
                 _ip2PSession.RemoteNodeId = _handshake.RemotePublicKey;
+                HandshakeInitialized?.Invoke(this, new HandshakeInitializedEventArgs());
 
                 FrameCipher frameCipher = new FrameCipher(_handshake.Secrets.AesSecret);
                 FrameMacProcessor macProcessor = new FrameMacProcessor(_handshake.Secrets);
@@ -166,5 +167,7 @@ namespace Nethermind.Network.Rlpx
         {
             if (_logger.IsDebugEnabled) _logger.Debug($"Handshake with {_remoteId} @ {context.Channel.RemoteAddress} finished. Removing {nameof(NettyHandshakeHandler)} from the pipeline");
         }
+
+        public event EventHandler<HandshakeInitializedEventArgs> HandshakeInitialized;
     }
 }

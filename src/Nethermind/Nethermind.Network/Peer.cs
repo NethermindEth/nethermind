@@ -20,6 +20,7 @@ using Nethermind.Blockchain;
 using Nethermind.Network.Discovery.Lifecycle;
 using Nethermind.Network.Discovery.RoutingTable;
 using Nethermind.Network.P2P;
+using Nethermind.Network.Rlpx;
 using Nethermind.Network.Stats;
 
 namespace Nethermind.Network
@@ -44,5 +45,6 @@ namespace Nethermind.Network
         public INodeStats NodeStats { get; }
         public IP2PSession Session { get; set; }
         public ISynchronizationPeer SynchronizationPeer { get; set; }
+        public ClientConnectionType ClientConnectionType { get; set; }
     }
 }

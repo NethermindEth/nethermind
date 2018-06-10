@@ -27,7 +27,10 @@ namespace Nethermind.Network.P2P
     public interface IP2PSession
     {
         PublicKey RemoteNodeId { get; set; }
-        int RemotePort { get; set; }
+        string RemoteHost { get; set; }
+        int? RemotePort { get; set; }
+        ClientConnectionType ClientConnectionType { get; set; }
+
         void ReceiveMessage(Packet packet);
         void DeliverMessage(Packet packet, bool priority = false);
         void Init(byte p2PVersion, IChannelHandlerContext context, IPacketSender packetSender);

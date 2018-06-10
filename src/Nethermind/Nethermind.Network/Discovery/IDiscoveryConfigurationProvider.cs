@@ -189,6 +189,11 @@ namespace Nethermind.Network.Discovery
         int ActivePeerUpdateInterval { get; }
 
         /// <summary>
+        /// On/Off for active peer timer - provides reconnections
+        /// </summary>
+        bool IsActivePeerTimerEnabled { get; }
+
+        /// <summary>
         /// Max amount of active peers on the tcp level 
         /// </summary>
         int ActivePeersMaxCount { get; }

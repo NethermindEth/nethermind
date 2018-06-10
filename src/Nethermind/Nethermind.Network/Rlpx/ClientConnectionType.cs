@@ -16,18 +16,11 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Collections.Generic;
-using System.Threading.Tasks;
-using Nethermind.Core.Crypto;
-
-namespace Nethermind.Network
+namespace Nethermind.Network.Rlpx
 {
-    public interface IPeerManager : IPeerStatusProvider
+    public enum ClientConnectionType
     {
-        Task Start();
-        Task Stop();
-        Task RunPeerUpdate();
-        IReadOnlyCollection<Peer> CandidatePeers { get; }
-        IReadOnlyCollection<Peer> ActivePeers { get; }
+        In,
+        Out
     }
 }

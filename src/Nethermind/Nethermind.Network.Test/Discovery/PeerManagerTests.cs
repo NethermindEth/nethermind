@@ -49,7 +49,7 @@ namespace Nethermind.Network.Test.Discovery
             _discoveryManager = new DiscoveryManager(_logger, _configurationProvider, new NodeLifecycleManagerFactory(_nodeFactory, nodeTable, _logger, _configurationProvider, new DiscoveryMessageFactory(_configurationProvider), Substitute.For<IEvictionManager>(), new NodeStatsProvider(_configurationProvider)), _nodeFactory, nodeTable, new DiscoveryStorage(_configurationProvider, _nodeFactory, _logger, new PerfService(_logger)));
             _discoveryManager.MessageSender = Substitute.For<IMessageSender>();
 
-            _peerManager = new PeerManager(_localPeer, _discoveryManager, _logger, _configurationProvider, _synchronizationManager, new NodeStatsProvider(_configurationProvider), new PeerStorage(_configurationProvider, _nodeFactory, _logger, new PerfService(_logger)), new PerfService(_logger));
+            _peerManager = new PeerManager(_localPeer, _discoveryManager, _logger, _configurationProvider, _synchronizationManager, new NodeStatsProvider(_configurationProvider), new PeerStorage(_configurationProvider, _nodeFactory, _logger, new PerfService(_logger)), new PerfService(_logger), _nodeFactory);
         }
 
         [Test]
@@ -58,7 +58,7 @@ namespace Nethermind.Network.Test.Discovery
             var p2pSession = InitializeNode();
 
             //trigger p2p initialization
-            var p2pProtocol = new P2PProtocolHandler(p2pSession, new MessageSerializationService(), p2pSession.RemoteNodeId, p2pSession.RemotePort, _logger);
+            var p2pProtocol = new P2PProtocolHandler(p2pSession, new MessageSerializationService(), p2pSession.RemoteNodeId, p2pSession.RemotePort ?? 0, _logger);
             var p2pArgs = new P2PProtocolInitializedEventArgs(p2pProtocol)
             {
                 P2PVersion = 4,
@@ -82,7 +82,7 @@ namespace Nethermind.Network.Test.Discovery
 
             //trigger disconnect
             p2pSession.TriggerPeerDisconnected();
-            Assert.AreEqual(0, _peerManager.NewPeers.Count);
+            Assert.AreEqual(0, _peerManager.CandidatePeers.Count);
             Assert.AreEqual(0, _peerManager.ActivePeers.Count);
 
             //verify active peer was removed from synch manager
@@ -95,7 +95,7 @@ namespace Nethermind.Network.Test.Discovery
             var p2pSession = InitializeNode();
 
             //trigger p2p initialization
-            var p2pProtocol = new P2PProtocolHandler(p2pSession, new MessageSerializationService(), p2pSession.RemoteNodeId, p2pSession.RemotePort, _logger);
+            var p2pProtocol = new P2PProtocolHandler(p2pSession, new MessageSerializationService(), p2pSession.RemoteNodeId, p2pSession.RemotePort??0, _logger);
             var p2pArgs = new P2PProtocolInitializedEventArgs(p2pProtocol)
             {
                 P2PVersion = 1,
@@ -112,7 +112,7 @@ namespace Nethermind.Network.Test.Discovery
             var p2pSession = InitializeNode();
 
             //trigger p2p initialization
-            var p2pProtocol = new P2PProtocolHandler(p2pSession, new MessageSerializationService(), p2pSession.RemoteNodeId, p2pSession.RemotePort, _logger);
+            var p2pProtocol = new P2PProtocolHandler(p2pSession, new MessageSerializationService(), p2pSession.RemoteNodeId, p2pSession.RemotePort ?? 0, _logger);
             var p2pArgs = new P2PProtocolInitializedEventArgs(p2pProtocol)
             {
                 P2PVersion = 5,
@@ -145,14 +145,14 @@ namespace Nethermind.Network.Test.Discovery
             _discoveryManager.GetNodeLifecycleManager(node);
 
             //verify new peer is added
-            Assert.AreEqual(1, _peerManager.NewPeers.Count);
-            Assert.AreEqual(node.Id, _peerManager.NewPeers.First().Node.Id);
+            Assert.AreEqual(1, _peerManager.CandidatePeers.Count);
+            Assert.AreEqual(node.Id, _peerManager.CandidatePeers.First().Node.Id);
 
             //trigger connection start
             var task = _peerManager.RunPeerUpdate();
             task.Wait();
             Assert.AreEqual(1, _localPeer.ConnectionAsyncCallsCounter);
-            Assert.AreEqual(0, _peerManager.NewPeers.Count);
+            Assert.AreEqual(0, _peerManager.CandidatePeers.Count);
             Assert.AreEqual(1, _peerManager.ActivePeers.Count);
 
             //trigger connection initialized
@@ -173,7 +173,10 @@ namespace Nethermind.Network.Test.Discovery
         public DisconnectReason DisconnectReason { get; set; }
 
         public PublicKey RemoteNodeId { get; set; }
-        public int RemotePort { get; set; }
+        public string RemoteHost { get; set; }
+        public int? RemotePort { get; set; }
+        public ClientConnectionType ClientConnectionType { get; set; }
+
         public void ReceiveMessage(Packet packet)
         {
 
@@ -224,7 +227,7 @@ namespace Nethermind.Network.Test.Discovery
 
         public void TriggerConnectionInitialized(IP2PSession session)
         {
-            ConnectionInitialized?.Invoke(this, new ConnectionInitializedEventArgs(session));
+            ConnectionInitialized?.Invoke(this, new ConnectionInitializedEventArgs(session, ClientConnectionType.Out));
         }
 
         public Task Init()

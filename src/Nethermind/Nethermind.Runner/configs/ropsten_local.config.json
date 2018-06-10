@@ -2,7 +2,7 @@
   "TransactionTracingEnabled": false,
   "BaseTracingPath": "F:\\IT\\projects\\Crypto\\tx_traces\\nethermind",
   "JsonRpcEnabled": false,
-  "DiscoveryEnabled": true,
+  "DiscoveryEnabled": false,
   "SynchronizationEnabled": true,
   "DiscoveryPort": 30312,
   "P2PPort": 30312,
@@ -12,7 +12,7 @@
   "FakeMiningDelay": 12000,
   "ChainSpecPath": "chainspec\\ropsten_local.json",
   "ExpectedGenesisHash": "0x41941023680923e0fe4d74a34bdac8141f2540e3ae90623718e47d66d1ca4a2d",
-  "BaseDbPath": "F:\\IT\\projects\\Crypto\\db\\ropsten\\full",
+  "BaseDbPath": "F:\\IT\\projects\\Crypto\\db\\ropsten\\local",
   "TestNodeKey": "020102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f",
   "LogFileName": "ropsten_local.config.logs.txt",
   "JsonRpcEnabledModules": [ "Eth", "Net", "Web3", "Db", "Shh" ]

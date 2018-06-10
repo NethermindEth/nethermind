@@ -212,7 +212,7 @@ namespace Nethermind.Network.Discovery
                 manager.NodeStats.CurrentPersistedNodeReputation = node.PersistedReputation;
                 if (_logger.IsDebugEnabled)
                 {
-                    _logger.Debug($"Adding persisted node {node.Node.Id.ToString(false)}@{node.Node.Host}:{node.Node.Port}");
+                    _logger.Debug($"Adding persisted node {node.Node.Id}@{node.Node.Host}:{node.Node.Port}");
                 }
             }
 
