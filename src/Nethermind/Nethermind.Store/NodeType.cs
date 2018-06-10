@@ -18,7 +18,7 @@
 
 namespace Nethermind.Store
 {
-    public enum NodeType
+    public enum NodeType : byte
     {
         Unknown,
         Branch,

@@ -28,11 +28,9 @@ namespace Nethermind.Store
 {
     internal class Node
     {
-        public Node(NodeType nodeType, bool isRoot)
+        public Node(NodeType nodeType)
         {
             NodeType = nodeType;
-            IsRoot = isRoot;
-
             if (NodeType == NodeType.Extension)
             {
                 Children = new Node[1];
@@ -43,18 +41,16 @@ namespace Nethermind.Store
             }
         }
 
-        public Node(NodeType nodeType, Keccak keccak, bool isRoot = false)
+        public Node(NodeType nodeType, Keccak keccak)
         {
             NodeType = nodeType;
             Keccak = keccak;
-            IsRoot = isRoot;
         }
 
-        public Node(NodeType nodeType, Rlp rlp, bool isRoot = false)
+        public Node(NodeType nodeType, Rlp rlp)
         {
             NodeType = nodeType;
-            _fullRlp = rlp;
-            IsRoot = isRoot;
+            FullRlp = rlp;
         }
 
         public Node[] Children { get; set; }
@@ -78,13 +74,10 @@ namespace Nethermind.Store
             }
         }
 
+        //public bool IsDirty => Keccak == null && FullRlp.Length >= 32; // possibly?
         public bool IsDirty { get; set; }
-        public bool IsRoot { get; set; }
         public Keccak Keccak { get; set; }
-        public Rlp RefRlp { get; set; }
-
-        private Rlp _fullRlp;
-        public Rlp FullRlp => _fullRlp;
+        public Rlp FullRlp { get; private set; }
         public NodeType NodeType { get; set; }
 
         public bool IsLeaf => NodeType == NodeType.Leaf;
@@ -112,9 +105,9 @@ namespace Nethermind.Store
         {
             if (NodeType == NodeType.Unknown)
             {
-                if (_fullRlp == null)
+                if (FullRlp == null)
                 {
-                    _fullRlp = tree.GetNode(Keccak);
+                    FullRlp = tree.GetNode(Keccak);
                 }
             }
             else
@@ -123,7 +116,7 @@ namespace Nethermind.Store
             }
 
             Metrics.TreeNodeRlpDecodings++;
-            Rlp.DecoderContext context = _fullRlp.Bytes.AsRlpContext();
+            Rlp.DecoderContext context = FullRlp.Bytes.AsRlpContext();
 
             context.ReadSequenceLength();
             int numberOfItems = context.ReadNumberOfItemsRemaining();
@@ -163,25 +156,31 @@ namespace Nethermind.Store
             }
         }
 
-        public void ResolveKey()
+        public void ResolveKey(bool isRoot)
         {
             if (Keccak != null)
             {
                 return;
             }
 
-            if (_fullRlp == null)
+            if (FullRlp == null)
             {
-                _fullRlp = PatriciaTree.RlpEncode(this);
+                FullRlp = PatriciaTree.RlpEncode(this);
             }
             
-            if (_fullRlp.Length < 32)
+            if (FullRlp.Length < 32)
             {
+                if (isRoot)
+                {
+                    Metrics.TreeNodeHashCalculations++;
+                    Keccak = Keccak.Compute(FullRlp);
+                }
+
                 return;
             }
 
             Metrics.TreeNodeHashCalculations++;
-            Keccak = Keccak.Compute(_fullRlp);
+            Keccak = Keccak.Compute(FullRlp);
         }
 
         public HexPrefix Key { get; set; }

@@ -22,14 +22,14 @@ namespace Nethermind.Store
 {
     internal static class TreeNodeFactory
     {
-        public static Node CreateBranch(bool isRoot = false)
+        public static Node CreateBranch()
         {
-            return CreateBranch(new Node[16], new byte[0], isRoot);
+            return CreateBranch(new Node[16], new byte[0]);
         }
 
-        public static Node CreateBranch(Node[] nodes, byte[] value, bool isRoot = false)
+        public static Node CreateBranch(Node[] nodes, byte[] value)
         {
-            Node node = new Node(NodeType.Branch, isRoot);
+            Node node = new Node(NodeType.Branch);
             node.Children = nodes;
             node.Value = value;
 
@@ -44,24 +44,24 @@ namespace Nethermind.Store
             return node;
         }
 
-        public static Node CreateLeaf(HexPrefix key, byte[] value, bool isRoot = false)
+        public static Node CreateLeaf(HexPrefix key, byte[] value)
         {
-            Node node = new Node(NodeType.Leaf, isRoot);
+            Node node = new Node(NodeType.Leaf);
             node.Key = key;
             node.Value = value;
             return node;
         }
 
-        public static Node CreateExtension(HexPrefix key, bool isRoot = false)
+        public static Node CreateExtension(HexPrefix key)
         {
-            Node node = new Node(NodeType.Extension, isRoot);
+            Node node = new Node(NodeType.Extension);
             node.Key = key;
             return node;
         }
 
-        public static Node CreateExtension(HexPrefix key, Node child, bool isRoot = false)
+        public static Node CreateExtension(HexPrefix key, Node child)
         {
-            Node node = new Node(NodeType.Extension, isRoot);
+            Node node = new Node(NodeType.Extension);
             node.Children[0] = child;
             node.Key = key;
             return node;
