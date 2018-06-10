@@ -24,7 +24,8 @@ namespace Nethermind.Core
     [DebuggerStepThrough]
     public struct Nibble
     {
-        private readonly byte _nibble;
+        // ReSharper disable once FieldCanBeMadeReadOnly.Local
+        private byte _nibble;
 
         public Nibble(char hexChar)
         {

@@ -17,6 +17,7 @@
  */
 
 
+using System;
 using System.Numerics;
 using Nethermind.Core.Crypto;
 
@@ -26,7 +27,7 @@ namespace Nethermind.Core.Encoding
     {
         public BlockHeader Decode(Rlp.DecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            byte[] headerRlp = context.ReadSequenceRlp();
+            var headerRlp = context.ReadSequenceSpan();
             context.Position -= headerRlp.Length;
 
             int headerSequenceLength = context.ReadSequenceLength();
@@ -70,7 +71,7 @@ namespace Nethermind.Core.Encoding
             blockHeader.GasUsed = (long)gasUsed;
             blockHeader.MixHash = mixHash;
             blockHeader.Nonce = (ulong)nonce;
-            blockHeader.Hash = BlockHeader.CalculateHash(new Rlp(headerRlp));
+            blockHeader.Hash = Keccak.Compute(headerRlp);
             return blockHeader;
         }
 

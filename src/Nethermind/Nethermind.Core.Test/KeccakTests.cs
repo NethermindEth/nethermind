@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using Nethermind.Core.Crypto;
 using NUnit.Framework;
 
@@ -60,6 +61,18 @@ namespace Nethermind.Core.Test
         {
             string result = Keccak.Zero.ToString();
             Assert.AreEqual("0x0000000000000000000000000000000000000000000000000000000000000000", result);
+        }
+
+        [Test]
+        public void Span()
+        {
+            byte[] byteArray = new byte[1024];
+            for (int i = 0; i < byteArray.Length; i++)
+            {
+                byteArray[i] = (byte)(i % 256);
+            }
+            
+            Assert.AreEqual(Keccak.Compute(byteArray), Keccak.Compute(byteArray.AsSpan()));
         }
     }
 }

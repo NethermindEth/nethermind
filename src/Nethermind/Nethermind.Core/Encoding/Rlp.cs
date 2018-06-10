@@ -620,6 +620,15 @@ namespace Nethermind.Core.Encoding
                 return sequenceRlp;
             }
 
+            public Span<byte> ReadSequenceSpan()
+            {
+                int positionBefore = Position;
+                int sequenceLength = (int)ReadSequenceLength();
+                Span<byte> sequenceRlp = Data.AsSpan(positionBefore, Position - positionBefore + sequenceLength);
+                Position += sequenceLength;
+                return sequenceRlp;
+            }
+
             public bool DecodeBool()
             {
                 int prefix = ReadByte();

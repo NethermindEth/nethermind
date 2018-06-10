@@ -45,21 +45,24 @@ namespace Nethermind.HashLib.Crypto.SHA3
         public Keccak(HashLib.HashSize a_hash_size)
             : base((int)a_hash_size, 200 - ((int)a_hash_size * 2))
         {
+            _blockSize = BlockSize;
             Initialize();
         }
 
         protected override void TransformBlock(byte[] a_data, int a_index)
         {
-            TransformBlock(a_data.AsSpan(a_index, BlockSize), a_index);
+            TransformBlock(a_data.AsSpan(), a_index);
         }
+
+        private int _blockSize;
 
         protected override void TransformBlock(Span<byte> a_data, int a_index)
         {
             // TODO: review discussions on whether it is always safe (should be)
-            ReadOnlySpan<ulong> data = MemoryMarshal.Cast<byte, ulong>(a_data);
+            ReadOnlySpan<ulong> data = MemoryMarshal.Cast<byte, ulong>(a_data.Slice(a_index, _blockSize));
             //ulong[] data= Converters.ConvertBytesToULongs(a_data, a_index, BlockSize);
             
-            for (int j = 0; j<BlockSize / 8; j++)
+            for (int j = 0; j < _blockSize / 8; j++)
                 m_state[j] ^= data[j];
 
             ulong Aba, Abe, Abi, Abo, Abu;
@@ -2688,7 +2691,7 @@ namespace Nethermind.HashLib.Crypto.SHA3
             int buffer_pos = m_buffer.Pos;
             byte[] block = m_buffer.GetBytesZeroPadded();
             block[buffer_pos] = 1;
-            block[BlockSize - 1] |= 128;
+            block[_blockSize - 1] |= 128;
 
             TransformBlock(block, 0);
 

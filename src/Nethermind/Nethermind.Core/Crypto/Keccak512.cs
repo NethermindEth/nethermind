@@ -48,7 +48,7 @@ namespace Nethermind.Core.Crypto
             Bytes = bytes;
         }
 
-        public static readonly Keccak512 OfAnEmptyString = InternalCompute(new byte[] { });
+        public static Keccak512 OfAnEmptyString = InternalCompute(new byte[] { });
 
         /// <returns>
         ///     <string>0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000</string>

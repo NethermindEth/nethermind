@@ -27,7 +27,7 @@ namespace Nethermind.Core.Encoding
     {
         public Transaction Decode(Rlp.DecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            byte[] transactionSequence = context.ReadSequenceRlp(); // TODO: span
+            var transactionSequence = context.ReadSequenceSpan();
             context.Position -= transactionSequence.Length;
 
             int transactionLength = context.ReadSequenceLength();
@@ -74,7 +74,7 @@ namespace Nethermind.Core.Encoding
 
                 Signature signature = new Signature(r, s, v);
                 transaction.Signature = signature;
-                transaction.Hash = Transaction.CalculateHash(new Rlp(transactionSequence)); // TODO: span
+                transaction.Hash = Keccak.Compute(transactionSequence);
             }
 
             if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraData))
