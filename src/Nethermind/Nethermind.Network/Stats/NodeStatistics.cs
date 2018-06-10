@@ -48,6 +48,7 @@ namespace Nethermind.Network.Stats
         public void AddNodeStatsDisconnectEvent(DisconnectType disconnectType, DisconnectReason disconnectReason)
         {
             _lastDisconnects[disconnectType] = (disconnectReason, DateTime.Now);
+            LastDisconnectTime = DateTime.Now;
         }
 
         public bool DidEventHappen(NodeStatsEvent nodeStatsEvent)
@@ -62,6 +63,8 @@ namespace Nethermind.Network.Stats
         public long NewPersistedNodeReputation => IsReputationPenalized() ? 0 : (CurrentPersistedNodeReputation + CalculateSessionReputation()) / 2;
 
         public bool IsTrustedPeer { get; set; }
+
+        public DateTime? LastDisconnectTime { get; set; }
 
         public NodeDetails NodeDetails { get; private set; }
 

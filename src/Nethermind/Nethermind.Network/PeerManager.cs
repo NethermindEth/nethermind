@@ -140,7 +140,7 @@ namespace Nethermind.Network
                 return;
             }
 
-            var candidates = _candidatePeers.Where(x => !_activePeers.ContainsKey(x.Key))
+            var candidates = _candidatePeers.Where(x => !_activePeers.ContainsKey(x.Key) && CheckLastDisconnect(x.Value))
                 .OrderBy(x => x.Value.NodeStats.IsTrustedPeer)
                 .ThenByDescending(x => x.Value.NodeStats.CurrentNodeReputation).ToArray();
 
@@ -189,6 +189,22 @@ namespace Nethermind.Network
 
             _perfService.EndPerfCalc(key, "RunPeerUpdate");
             _isPeerUpdateInProgress = false;
+        }
+
+        private bool CheckLastDisconnect(Peer peer)
+        {
+            if (!peer.NodeStats.LastDisconnectTime.HasValue)
+            {
+                return true;
+            }
+            var lastDisconnectTimePassed = DateTime.Now.Subtract(peer.NodeStats.LastDisconnectTime.Value).TotalMilliseconds;
+            var result = lastDisconnectTimePassed > _configurationProvider.DisconnectDelay;
+            if (!result && _logger.IsInfoEnabled)
+            {
+                _logger.Info($"Skipping connection to peer, due to disconnect delay, time from last disconnect: {lastDisconnectTimePassed}, delay: {_configurationProvider.DisconnectDelay}, peer: {peer.Node.Id}");
+            }
+
+            return result;
         }
 
         private async Task<bool> InitializePeerConnection(Peer candidate)

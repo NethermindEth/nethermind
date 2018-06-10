@@ -199,6 +199,11 @@ namespace Nethermind.Network.Discovery
         int ActivePeersMaxCount { get; }
 
         /// <summary>
+        /// Delay of connection retrying after disconnect
+        /// </summary>
+        int DisconnectDelay { get; }
+
+        /// <summary>
         /// Time between persisting peers in miliseconds
         /// </summary>
         int PeersPersistanceInterval { get; }

@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using Nethermind.Network.P2P;
 
 namespace Nethermind.Network.Stats
@@ -31,6 +32,7 @@ namespace Nethermind.Network.Stats
         long CurrentPersistedNodeReputation { get; set; }
         long NewPersistedNodeReputation { get; }
         bool IsTrustedPeer { get; set; }
+        DateTime? LastDisconnectTime { get; set; }
 
         NodeDetails NodeDetails { get; }
     }

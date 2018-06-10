@@ -156,18 +156,17 @@ namespace Nethermind.Network.Rlpx
             Task firstTask = await Task.WhenAny(connectTask, Task.Delay(5000));
             if (firstTask != connectTask)
             {
-                _logger.Error($"Connection to {remoteId}@{host}:{port} timed out.");
+                _logger.Error($"Connection timed out: {remoteId}@{host}:{port}");
+                throw new NetworkingException($"Failed to connect to {remoteId} (timeout)");
             }
-            else
-            {
-                if (connectTask.IsFaulted)
-                {
-                    _logger.Error($"Error when connecting to {remoteId}@{host}:{port}.", connectTask.Exception);
-                    throw new NetworkingException($"Failed to connect to {remoteId}", connectTask.Exception);
-                }
 
-                _logger.Info($"Connected to {remoteId}@{host}:{port}");
+            if (connectTask.IsFaulted)
+            {
+                _logger.Error($"Error when connecting to {remoteId}@{host}:{port}.", connectTask.Exception);
+                throw new NetworkingException($"Failed to connect to {remoteId}", connectTask.Exception);
             }
+
+            _logger.Info($"Connected to {remoteId}@{host}:{port}");
         }
 
         public event EventHandler<ConnectionInitializedEventArgs> ConnectionInitialized;

@@ -88,6 +88,7 @@ namespace Nethermind.Network.Discovery
         public int ActivePeerUpdateInterval => 10000;
         public bool IsActivePeerTimerEnabled => false;
         public int ActivePeersMaxCount => 25;
+        public int DisconnectDelay => 1000 * 5;
         public int PeersPersistanceInterval => 1000 * 60 * 5;
     }
 }
