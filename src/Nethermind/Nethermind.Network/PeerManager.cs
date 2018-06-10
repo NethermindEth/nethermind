@@ -449,6 +449,9 @@ namespace Nethermind.Network
 
             if (_activePeers.TryAdd(session.RemoteNodeId, peer))
             {
+                //add subsripton for disconnect for new active peer
+                peer.Session.PeerDisconnected += async (s, e) => await OnPeerDisconnected(s, e);
+
                 //we also add this node to candidates for future connection (if we dont have it yet)
                 _candidatePeers.TryAdd(session.RemoteNodeId, peer);
 

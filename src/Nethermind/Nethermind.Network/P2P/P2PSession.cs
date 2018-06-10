@@ -144,7 +144,15 @@ namespace Nethermind.Network.P2P
                 delay = new TimeSpan(0, 0, 0, 10);
             }
 
-            PeerDisconnected?.Invoke(this, new DisconnectEventArgs(disconnectReason, disconnectType));
+            if (PeerDisconnected != null)
+            {
+                PeerDisconnected.Invoke(this, new DisconnectEventArgs(disconnectReason, disconnectType));
+            }
+            else
+            {
+                _logger.Info("No subscriptions for PeerDisconnected");
+            }
+            
 
             await Task.Delay(delay.Value).ContinueWith(t =>
             {
