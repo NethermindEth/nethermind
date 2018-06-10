@@ -52,7 +52,7 @@ namespace Nethermind.Core.Extensions
 
         public static Rlp.DecoderContext AsRlpContext(this byte[] bytes)
         {
-            return bytes == null ? null : new Rlp.DecoderContext(bytes);
+            return bytes == null ? new Rlp.DecoderContext(Bytes.Empty) : new Rlp.DecoderContext(bytes);
         }
         
         public static byte[] Slice(this byte[] bytes, int startIndex)

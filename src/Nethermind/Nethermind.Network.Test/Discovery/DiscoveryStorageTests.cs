@@ -31,7 +31,7 @@ namespace Nethermind.Network.Test.Discovery
                 Directory.GetFiles(dbPath).ToList().ForEach(File.Delete);
             }
 
-            _nodeFactory = new NodeFactory();
+            _nodeFactory = new TreeFactory();
             _discoveryStorage = new DiscoveryStorage(_configurationProvider, _nodeFactory, logger, new PerfService(logger));
         }
 

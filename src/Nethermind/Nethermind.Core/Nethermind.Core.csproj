@@ -16,4 +16,9 @@
     <PackageReference Include="Newtonsoft.Json" Version="11.0.2" />
     <PackageReference Include="NLog.Config" Version="4.5.6" />
   </ItemGroup>
+  <ItemGroup>
+    <Reference Include="Microsoft.IO.RecyclableMemoryStream, Version=1.2.2.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35">
+      <HintPath>..\..\..\..\..\Users\tksta\.nuget\packages\microsoft.io.recyclablememorystream\1.2.2\lib\netstandard1.4\Microsoft.IO.RecyclableMemoryStream.dll</HintPath>
+    </Reference>
+  </ItemGroup>
 </Project>

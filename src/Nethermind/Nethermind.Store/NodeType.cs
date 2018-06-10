@@ -16,31 +16,13 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Diagnostics;
-using Nethermind.Core.Extensions;
-
 namespace Nethermind.Store
 {
-    internal class Leaf : Node
+    public enum NodeType : byte
     {
-        public Leaf()
-        {
-        }
-
-        [DebuggerStepThrough]
-        public Leaf(HexPrefix key, byte[] value)
-        {
-            Key = key;
-            Value = value;
-        }
-
-        public byte[] Path => Key.Path;
-        public HexPrefix Key { get; set; }
-        public byte[] Value { get; set; }
-
-        public override string ToString()
-        {
-            return $"[{Key}, {Value.ToHex()}]";
-        }
+        Unknown,
+        Branch,
+        Extension,
+        Leaf
     }
 }
