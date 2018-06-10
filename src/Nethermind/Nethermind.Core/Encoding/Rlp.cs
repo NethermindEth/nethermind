@@ -56,18 +56,18 @@ namespace Nethermind.Core.Encoding
         public int Length => Bytes.Length;
 
         // TODO: discover decoders, use them for encoding as well
-        private static readonly Dictionary<RuntimeTypeHandle, IRlpDecoder> Decoders =
-            new Dictionary<RuntimeTypeHandle, IRlpDecoder>
+        private static readonly Dictionary<Type, IRlpDecoder> Decoders =
+            new Dictionary<Type, IRlpDecoder>
             {
-                [typeof(Account).TypeHandle] = new AccountDecoder(),
-                [typeof(Block).TypeHandle] = new BlockDecoder(),
-                [typeof(BlockHeader).TypeHandle] = new HeaderDecoder(),
-                [typeof(BlockInfo).TypeHandle] = new BlockInfoDecoder(),
-                [typeof(ChainLevelInfo).TypeHandle] = new ChainLevelDecoder(),
-                [typeof(LogEntry).TypeHandle] = new LogEntryDecoder(),
-                [typeof(NetworkNode).TypeHandle] = new NetworkNodeDecoder(),
-                [typeof(Transaction).TypeHandle] = new TransactionDecoder(),
-                [typeof(TransactionReceipt).TypeHandle] = new TransactionReceiptDecoder(),
+                [typeof(Account)] = new AccountDecoder(),
+                [typeof(Block)] = new BlockDecoder(),
+                [typeof(BlockHeader)] = new HeaderDecoder(),
+                [typeof(BlockInfo)] = new BlockInfoDecoder(),
+                [typeof(ChainLevelInfo)] = new ChainLevelDecoder(),
+                [typeof(LogEntry)] = new LogEntryDecoder(),
+                [typeof(NetworkNode)] = new NetworkNodeDecoder(),
+                [typeof(Transaction)] = new TransactionDecoder(),
+                [typeof(TransactionReceipt)] = new TransactionReceiptDecoder(),
             };
 
         public static T Decode<T>(Rlp oldRlp, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -82,9 +82,9 @@ namespace Nethermind.Core.Encoding
 
         public static T[] DecodeArray<T>(DecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None) // TODO: move inside the context
         {
-            if (Decoders.ContainsKey(typeof(T).TypeHandle))
+            if (Decoders.ContainsKey(typeof(T)))
             {
-                IRlpDecoder<T> decoder = (IRlpDecoder<T>)Decoders[typeof(T).TypeHandle];
+                IRlpDecoder<T> decoder = (IRlpDecoder<T>)Decoders[typeof(T)];
                 int checkPosition = context.ReadSequenceLength() + context.Position;
                 T[] result = new T[context.ReadNumberOfItemsRemaining(checkPosition)];
                 for (int i = 0; i < result.Length; i++)
@@ -100,9 +100,9 @@ namespace Nethermind.Core.Encoding
 
         public static T Decode<T>(DecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (Decoders.ContainsKey(typeof(T).TypeHandle))
+            if (Decoders.ContainsKey(typeof(T)))
             {
-                return ((IRlpDecoder<T>)Decoders[typeof(T).TypeHandle]).Decode(context, rlpBehaviors);
+                return ((IRlpDecoder<T>)Decoders[typeof(T)]).Decode(context, rlpBehaviors);
             }
 
             throw new RlpException($"{nameof(Rlp)} does not support decoding {typeof(T).Name}");
@@ -115,9 +115,9 @@ namespace Nethermind.Core.Encoding
                 return Encode(new[] { rlp });
             }
 
-            if (Decoders.ContainsKey(typeof(T).TypeHandle))
+            if (Decoders.ContainsKey(typeof(T)))
             {
-                return ((IRlpDecoder<T>)Decoders[typeof(T).TypeHandle]).Encode(item, behaviors);
+                return ((IRlpDecoder<T>)Decoders[typeof(T)]).Encode(item, behaviors);
             }
 
             throw new RlpException($"{nameof(Rlp)} does not support encoding {typeof(T).Name}");
@@ -125,9 +125,9 @@ namespace Nethermind.Core.Encoding
 
         public static Rlp Encode<T>(T[] items, RlpBehaviors behaviors = RlpBehaviors.None)
         {
-            if (Decoders.ContainsKey(typeof(T).TypeHandle))
+            if (Decoders.ContainsKey(typeof(T)))
             {
-                IRlpDecoder<T> decoder = (IRlpDecoder<T>)Decoders[typeof(T).TypeHandle];
+                IRlpDecoder<T> decoder = (IRlpDecoder<T>)Decoders[typeof(T)];
                 Rlp[] rlpSequence = new Rlp[items.Length];
                 for (int i = 0; i < items.Length; i++)
                 {
