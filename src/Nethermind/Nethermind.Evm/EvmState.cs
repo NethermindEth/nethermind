@@ -37,30 +37,16 @@ namespace Nethermind.Evm
                 _capacity = capacity;
             }
 
-            private readonly Stack<byte[][]> _bytesOnStackPool = new Stack<byte[][]>();
-            private readonly Stack<bool[]> _intPositionsPool = new Stack<bool[]>();
-            private readonly Stack<BigInteger[]> _intsOnStackPool = new Stack<BigInteger[]>();
+            private readonly Stack<byte[]> _bytesOnStackPool = new Stack<byte[]>();
 
             private int _bytesOnStackCreated;
-            private int _intsOnStackCreated;
-            private int _intPositionsCreated;
 
-            public void ReturnBytesOnStack(byte[][] bytesOnStack)
+            public void ReturnBytesOnStack(byte[] bytesOnStack)
             {
                 _bytesOnStackPool.Push(bytesOnStack);
             }
 
-            public void ReturnIntsOnStack(BigInteger[] intsOnStack)
-            {
-                _intsOnStackPool.Push(intsOnStack);
-            }
-
-            public void ReturnIntPositions(bool[] intPositions)
-            {
-                _intPositionsPool.Push(intPositions);
-            }
-
-            public byte[][] RentBytesOnStack()
+            public byte[] RentBytesOnStack()
             {
                 if (_bytesOnStackPool.Count == 0)
                 {
@@ -70,50 +56,16 @@ namespace Nethermind.Evm
                         throw new Exception();
                     }
 
-                    _bytesOnStackPool.Push(new byte[VirtualMachine.MaxStackSize][]);
+                    _bytesOnStackPool.Push(new byte[VirtualMachine.MaxStackSize * 32]);
                 }
 
                 return _bytesOnStackPool.Pop();
-            }
-
-            public BigInteger[] RentIntsOnStack()
-            {
-                if (_intsOnStackPool.Count == 0)
-                {
-                    _intsOnStackCreated++;
-                    if (_intsOnStackCreated > _capacity)
-                    {
-                        throw new Exception();
-                    }
-
-                    _intsOnStackPool.Push(new BigInteger[VirtualMachine.MaxStackSize]);
-                }
-
-                return _intsOnStackPool.Pop();
-            }
-
-            public bool[] RentIntPositions()
-            {
-                if (_intPositionsPool.Count == 0)
-                {
-                    _intPositionsCreated++;
-                    if (_intPositionsCreated > _capacity)
-                    {
-                        throw new Exception();
-                    }
-
-                    _intPositionsPool.Push(new bool[VirtualMachine.MaxStackSize]);
-                }
-
-                return _intPositionsPool.Pop();
             }
         }
 
         private static readonly StackPool _stackPool = new StackPool();
 
-        public byte[][] BytesOnStack;
-        public bool[] IntPositions;
-        public BigInteger[] IntsOnStack;
+        public byte[] BytesOnStack;
 
         private HashSet<Address> _destroyList;
         private List<LogEntry> _logs;
@@ -175,8 +127,6 @@ namespace Nethermind.Evm
         public void Dispose()
         {
             if (BytesOnStack != null) _stackPool.ReturnBytesOnStack(BytesOnStack);
-            if (IntsOnStack != null) _stackPool.ReturnIntsOnStack(IntsOnStack);
-            if (IntPositions != null) _stackPool.ReturnIntPositions(IntPositions);
             Memory?.Dispose();
         }
 
@@ -186,8 +136,6 @@ namespace Nethermind.Evm
             {
                 Memory = new EvmPooledMemory();
                 BytesOnStack = _stackPool.RentBytesOnStack();
-                IntPositions = _stackPool.RentIntPositions();
-                IntsOnStack = _stackPool.RentIntsOnStack();
             }
         }
     }

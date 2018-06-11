@@ -41,6 +41,11 @@ namespace Nethermind.Evm
 
         public void SaveWord(BigInteger location, byte[] word)
         {
+            SaveWord(location, word.AsSpan());
+        }
+
+        public void SaveWord(BigInteger location, Span<byte> word)
+        {
             long longLocation = (long)location;
             UpdateSize(longLocation, 1);
 
@@ -49,7 +54,15 @@ namespace Nethermind.Evm
                 Array.Clear(_memory, (int)longLocation, WordSize - word.Length);
             }
 
-            Array.Copy(word, 0, _memory, longLocation + WordSize - word.Length, word.Length);
+            word.CopyTo(_memory.AsSpan().Slice((int)(longLocation + WordSize - word.Length), word.Length));
+        }
+
+        public void SaveByte(BigInteger location, byte value)
+        {
+            long longLocation = (long)location;
+            UpdateSize(longLocation, 1);
+
+            _memory[longLocation] = value;
         }
 
         public void SaveByte(BigInteger location, byte[] value)
@@ -60,6 +73,19 @@ namespace Nethermind.Evm
             _memory[longLocation] = value[value.Length - 1];
         }
 
+        public void Save(BigInteger location, Span<byte> value)
+        {
+            if (value.Length == 0)
+            {
+                return;
+            }
+
+            long longLocation = (long)location;
+            UpdateSize(longLocation, value.Length);
+
+            value.CopyTo(_memory.AsSpan().Slice((int)(longLocation), value.Length));
+        }
+        
         public void Save(BigInteger location, byte[] value)
         {
             if (value.Length == 0)
@@ -81,6 +107,14 @@ namespace Nethermind.Evm
             byte[] buffer = new byte[WordSize];
             Array.Copy(_memory, longLocation, buffer, 0, buffer.Length);
             return buffer;
+        }
+        
+        public Span<byte> LoadSpan(BigInteger location)
+        {
+            long longLocation = (long)location;
+            UpdateSize(longLocation, WordSize);
+
+            return _memory.AsSpan().Slice((int)longLocation, WordSize);
         }
 
         public Span<byte> LoadSpan(BigInteger location, BigInteger length)

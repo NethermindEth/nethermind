@@ -29,7 +29,7 @@ namespace Nethermind.Network.Test.Discovery
                 Directory.GetFiles(dbPath).ToList().ForEach(File.Delete);
             }
 
-            _nodeFactory = new TreeFactory();
+            _nodeFactory = new NodeFactory();
             _peerStorage = new PeerStorage(_configurationProvider, _nodeFactory, logger, new PerfService(logger));
         }
 

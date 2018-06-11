@@ -318,9 +318,9 @@ namespace Ethereum.Trie.Test
         public void Assigning_null_value_in_branch_throws_an_exception()
         {
             // ReSharper disable once ObjectCreationAsStatement
-            Assert.Throws<ArgumentNullException>(() => new Branch(new NodeRef[16], null));
+            Assert.Throws<ArgumentNullException>(() => TreeNodeFactory.CreateBranch(new Node[16], null));
 
-            Branch branch = new Branch();
+            Node branch = new Node(NodeType.Branch);
             Assert.Throws<ArgumentNullException>(() => branch.Value = null);
         }
 

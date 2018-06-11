@@ -119,7 +119,7 @@ namespace Nethermind.Network.Test.Discovery
         [Test]
         public void NeighborsMessageTest()
         {
-            var nodeFactory = new TreeFactory();
+            var nodeFactory = new NodeFactory();
 
             var message = new NeighborsMessage
             {

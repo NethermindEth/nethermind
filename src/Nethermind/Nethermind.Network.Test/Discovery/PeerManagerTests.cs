@@ -37,7 +37,7 @@ namespace Nethermind.Network.Test.Discovery
             _logger = new SimpleConsoleLogger();
             _configurationProvider = new DiscoveryConfigurationProvider(new NetworkHelper(_logger));
             _configurationProvider.DbBasePath = Path.Combine(Path.GetTempPath(), "PeerManagerTests");
-            _nodeFactory = new TreeFactory();
+            _nodeFactory = new NodeFactory();
             _localPeer = new TestRlpxPeer();
             var keyProvider = new PrivateKeyProvider(new CryptoRandom());
             var key = keyProvider.PrivateKey.PublicKey;

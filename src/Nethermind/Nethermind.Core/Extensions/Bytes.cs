@@ -370,6 +370,32 @@ namespace Nethermind.Core.Extensions
             return new BigInteger(bytesToUse);
         }
 
+        public static BigInteger ToSignedBigInteger(this Span<byte> bytes, int byteLength, Endianness endianness = Endianness.Big)
+        {
+            if (bytes.Length == byteLength)
+            {
+                return new BigInteger(bytes, false, endianness == Endianness.Big);
+            }
+
+            // Debug.Assert(bytes.Length <= byteLength, $"{nameof(Bytes.ToSignedBigInteger)} expects {nameof(byteLength)} parameter to be less than length of the {bytes}");
+            Span<byte> bytesToUse = new byte[byteLength].AsSpan();
+            bytes.CopyTo(bytesToUse.Slice(bytesToUse.Length - bytes.Length, bytes.Length));
+
+            if (BitConverter.IsLittleEndian && endianness == Endianness.Big || !BitConverter.IsLittleEndian && endianness == Endianness.Little)
+            {
+                bytesToUse.Reverse();
+                //byte[] signedResult = new byte[byteLength];
+                //for (int i = 0; i < byteLength; i++)
+                //{
+                //    signedResult[byteLength - i - 1] = bytesToUse[i];
+                //}
+
+                return new BigInteger(bytesToUse);
+            }
+
+            return new BigInteger(bytesToUse);
+        }
+
         public static ulong ToUInt64(this byte[] bytes, Endianness endianness = Endianness.Big)
         {
             if (BitConverter.IsLittleEndian && endianness == Endianness.Big || !BitConverter.IsLittleEndian && endianness == Endianness.Little)
@@ -420,6 +446,18 @@ namespace Nethermind.Core.Extensions
         }
 
         public static BitArray ToBigEndianBitArray256(this byte[] bytes)
+        {
+            byte[] inverted = new byte[32];
+            int startIndex = 32 - bytes.Length;
+            for (int i = startIndex; i < inverted.Length; i++)
+            {
+                inverted[i] = Reverse(bytes[i - startIndex]);
+            }
+
+            return new BitArray(inverted);
+        }
+
+        public static BitArray ToBigEndianBitArray256(this Span<byte> bytes)
         {
             byte[] inverted = new byte[32];
             int startIndex = 32 - bytes.Length;

@@ -56,7 +56,7 @@ namespace Nethermind.Network.Test.Discovery
             var configProvider = new ConfigurationProvider();
             
             _messageSender = Substitute.For<IMessageSender>();
-            _nodeFactory = new TreeFactory();
+            _nodeFactory = new NodeFactory();
             var calculator = new NodeDistanceCalculator(config);
 
             _nodeTable = new NodeTable(config, _nodeFactory, new FileKeyStore(configProvider, new JsonSerializer(logger), new AesEncrypter(configProvider, logger), new CryptoRandom(), logger), logger, calculator);
