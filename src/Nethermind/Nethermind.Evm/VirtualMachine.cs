@@ -523,7 +523,7 @@ namespace Nethermind.Evm
                     stack.Slice(stackHead * 32, 32).Clear();
                 }
 
-                value.CopyTo(stack.Slice(stackHead * 32 + paddingLength, value.Length));
+                value.CopyTo(stack.Slice(stackHead * 32 + 32 - paddingLength, value.Length));
                 stackHead++;
                 if (stackHead >= MaxStackSize)
                 {
@@ -1321,7 +1321,7 @@ namespace Nethermind.Evm
                         }
 
                         UpdateMemoryCost(dest, length);
-                        byte[] callDataSlice = code.ToArray().SliceWithZeroPadding(src, (int)length);
+                        Span<byte> callDataSlice = code.SliceWithZeroPadding(src, (int)length);
                         evmState.Memory.Save(dest, callDataSlice);
                         break;
                     }
@@ -1744,8 +1744,8 @@ namespace Nethermind.Evm
                         int programCounterInt = (int)programCounter;
                         int usedFromCode = Math.Min(code.Length - programCounterInt, length);
 
-                        PushBytes(code.ToArray().Slice(programCounterInt, usedFromCode).PadRight(length), bytesOnStack);
-                        //PushBytesRightPadded(code.Slice(programCounterInt, usedFromCode), length, bytesOnStack);
+                        //PushBytes(code.ToArray().Slice(programCounterInt, usedFromCode).PadRight(length), bytesOnStack);
+                        PushBytesRightPadded(code.Slice(programCounterInt, usedFromCode), length, bytesOnStack);
 
                         programCounter += length;
                         break;
