@@ -184,6 +184,19 @@ namespace Nethermind.Core.Extensions
             return new byte[] { 0 };
         }
 
+        public static Span<byte> WithoutLeadingZeros(this Span<byte> bytes)
+        {
+            for (int i = 0; i < bytes.Length; i++)
+            {
+                if (bytes[i] != 0)
+                {
+                    return bytes.Slice(i, bytes.Length - i);
+                }
+            }
+
+            return new byte[] { 0 };
+        }
+
         public static byte[] Concat(byte prefix, byte[] bytes)
         {
             byte[] result = new byte[1 + bytes.Length];

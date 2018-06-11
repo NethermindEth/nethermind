@@ -257,6 +257,7 @@ namespace Nethermind.Core.Encoding
 
         public static Rlp Encode(BigInteger bigInteger)
         {
+            // TODO: use span here
             return bigInteger == 0 ? OfEmptyByteArray : Encode(bigInteger.ToBigEndianByteArray());
         }
 

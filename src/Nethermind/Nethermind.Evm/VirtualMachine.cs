@@ -587,6 +587,36 @@ namespace Nethermind.Evm
                 }
             }
 
+            void PushSignedInt(BigInteger value, Span<byte> stack)
+            {
+                // TODO: test byte[33]
+
+                Span<byte> target = stack.Slice(stackHead * 32, 32);
+                int bytesToWrite = value.GetByteCount(false);
+                if (bytesToWrite != 32)
+                {
+                    if (value.Sign >= 0)
+                    {
+                        target.Clear();
+                    }
+                    else
+                    {
+                        target.Fill(0xff);
+                    }
+
+                    target = target.Slice(32 - bytesToWrite, bytesToWrite);
+                }
+
+                value.TryWriteBytes(target, out int bytesWritten, false, true);
+
+                stackHead++;
+                if (stackHead >= MaxStackSize)
+                {
+                    Metrics.EvmExceptions++;
+                    throw new EvmStackOverflowException();
+                }
+            }
+
             void PopLimbo()
             {
                 if (stackHead == 0)
@@ -829,7 +859,7 @@ namespace Nethermind.Evm
                         }
                         else
                         {
-                            PushBytes(BigInteger.Divide(a, b).ToBigEndianByteArray(32), bytesOnStack);
+                            PushSignedInt(BigInteger.Divide(a, b), bytesOnStack);
                         }
 
                         break;
@@ -861,8 +891,7 @@ namespace Nethermind.Evm
                         }
                         else
                         {
-                            PushBytes((a.Sign * BigInteger.Remainder(a.Abs(), b.Abs()))
-                                .ToBigEndianByteArray(32), bytesOnStack);
+                            PushSignedInt(a.Sign * BigInteger.Remainder(a.Abs(), b.Abs()), bytesOnStack);
                         }
 
                         break;
@@ -1547,7 +1576,7 @@ namespace Nethermind.Evm
                         }
 
                         BigInteger storageIndex = PopUInt(bytesOnStack);
-                        byte[] data = PopBytes(bytesOnStack).ToArray().WithoutLeadingZeros();
+                        byte[] data = PopBytes(bytesOnStack).WithoutLeadingZeros().ToArray();
 
                         bool isNewValueZero = data.IsZero();
 

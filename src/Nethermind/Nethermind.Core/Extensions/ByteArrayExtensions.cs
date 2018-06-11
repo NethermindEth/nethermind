@@ -76,6 +76,7 @@ namespace Nethermind.Core.Extensions
         
         public static byte[] SliceWithZeroPadding(this byte[] bytes, BigInteger startIndex, int length)
         {
+            // TODO: use span here
             if (startIndex >= bytes.Length)
             {
                 return new byte[length];

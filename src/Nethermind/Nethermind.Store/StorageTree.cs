@@ -26,7 +26,7 @@ namespace Nethermind.Store
 {
     public class StorageTree : PatriciaTree
     {
-        private static readonly BigInteger CacheSize = 8;
+        private static readonly BigInteger CacheSize = 1024;
 
         private static readonly int CacheSizeInt = (int)CacheSize;
 
