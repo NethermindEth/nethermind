@@ -25,9 +25,14 @@ namespace Nethermind.Evm
     public interface IEvmMemory : IDisposable
     {
         long Size { get; }
+        void SaveWord(BigInteger location, Span<byte> word);
         void SaveWord(BigInteger location, byte[] word);
+        void SaveByte(BigInteger location, byte value);
         void SaveByte(BigInteger location, byte[] value);
+        void Save(BigInteger location, Span<byte> value);
         void Save(BigInteger location, byte[] value);
+        Span<byte> LoadSpan(BigInteger location);
+        Span<byte> LoadSpan(BigInteger location, BigInteger length);
         byte[] Load(BigInteger location);
         byte[] Load(BigInteger location, BigInteger length);
         long CalculateMemoryCost(BigInteger position, BigInteger length);

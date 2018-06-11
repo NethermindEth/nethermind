@@ -75,10 +75,10 @@ namespace Nethermind.Network.Test.Builders
             Signer signer = new Signer();
             var privateKeyProvider = new PrivateKeyProvider(privateKey);
 
-            PingMessageSerializer pingSerializer = new PingMessageSerializer(signer, privateKeyProvider, new DiscoveryMessageFactory(config), new NodeIdResolver(signer), new TreeFactory());
-            PongMessageSerializer pongSerializer = new PongMessageSerializer(signer, privateKeyProvider, new DiscoveryMessageFactory(config), new NodeIdResolver(signer), new TreeFactory());
-            FindNodeMessageSerializer findNodeSerializer = new FindNodeMessageSerializer(signer, privateKeyProvider, new DiscoveryMessageFactory(config), new NodeIdResolver(signer), new TreeFactory());
-            NeighborsMessageSerializer neighborsSerializer = new NeighborsMessageSerializer(signer, privateKeyProvider, new DiscoveryMessageFactory(config), new NodeIdResolver(signer), new TreeFactory());
+            PingMessageSerializer pingSerializer = new PingMessageSerializer(signer, privateKeyProvider, new DiscoveryMessageFactory(config), new NodeIdResolver(signer), new NodeFactory());
+            PongMessageSerializer pongSerializer = new PongMessageSerializer(signer, privateKeyProvider, new DiscoveryMessageFactory(config), new NodeIdResolver(signer), new NodeFactory());
+            FindNodeMessageSerializer findNodeSerializer = new FindNodeMessageSerializer(signer, privateKeyProvider, new DiscoveryMessageFactory(config), new NodeIdResolver(signer), new NodeFactory());
+            NeighborsMessageSerializer neighborsSerializer = new NeighborsMessageSerializer(signer, privateKeyProvider, new DiscoveryMessageFactory(config), new NodeIdResolver(signer), new NodeFactory());
 
             return With(pingSerializer)
                 .With(pongSerializer)
