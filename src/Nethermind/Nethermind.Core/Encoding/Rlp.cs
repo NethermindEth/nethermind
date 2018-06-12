@@ -727,7 +727,55 @@ namespace Nethermind.Core.Encoding
                 int lengthOfConcatenationLength = prefix - 247;
                 Position += lengthOfConcatenationLength;
             }
-            
+
+            public (int, int) PeekPrefixAndContentLength()
+            {
+                int memorizedPosition = Position;
+                int prefix = ReadByte();
+                if (prefix <= 128)
+                {
+                    return (0, 1);
+                }
+
+                if (prefix <= 183)
+                {
+                    return (1, prefix - 128);
+                }
+
+                if (prefix < 192)
+                {
+                    int lengthOfLength = prefix - 183;
+                    if (lengthOfLength > 4)
+                    {
+                        // strange but needed to pass tests - seems that spec gives int64 length and tests int32 length
+                        throw new RlpException("Expected length of lenth less or equal 4");
+                    }
+
+                    int length = DeserializeLength(lengthOfLength);
+                    if (length < 56)
+                    {
+                        throw new RlpException("Expected length greater or equal 56 and was {length}");
+                    }
+
+                    return (lengthOfLength + 1, length);
+                }
+
+                if (prefix <= 247)
+                {
+                    return (1, prefix - 192);
+                }
+
+                int lengthOfContentLength = prefix - 247;
+                int contentLength = DeserializeLength(lengthOfContentLength);
+                if (contentLength < 56)
+                {
+                    throw new RlpException($"Expected length greater or equal 56 and got {contentLength}");
+                }
+
+                Position = memorizedPosition;
+                return (lengthOfContentLength + 1, contentLength);
+            }
+
             public int ReadSequenceLength()
             {
                 int prefix = ReadByte();
@@ -741,14 +789,14 @@ namespace Nethermind.Core.Encoding
                     return prefix - 192;
                 }
 
-                int lengthOfConcatenationLength = prefix - 247;
-                int concatenationLength = DeserializeLength(lengthOfConcatenationLength);
-                if (concatenationLength < 56)
+                int lengthOfContentLength = prefix - 247;
+                int contentLength = DeserializeLength(lengthOfContentLength);
+                if (contentLength < 56)
                 {
-                    throw new RlpException($"Expected length greater or equal 56 and got {concatenationLength}");
+                    throw new RlpException($"Expected length greater or equal 56 and got {contentLength}");
                 }
 
-                return concatenationLength;
+                return contentLength;
             }
 
             private int DeserializeLength(int lengthOfLength)
@@ -1023,6 +1071,9 @@ namespace Nethermind.Core.Encoding
                 {
                     DecodeByteArraySpan(); // TODO: confirm this is zero allocation now
                 }
+
+                //(int prefix, int content) = PeekPrefixAndContentLength();
+                //Position += prefix + content;
             }
         }
 
