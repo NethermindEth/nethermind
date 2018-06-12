@@ -195,12 +195,9 @@ namespace Nethermind.Store
             {
                 RootRef = null;
             }
-            else
+            else if (resetObjects)
             {
-                if (resetObjects)
-                {
-                    RootRef = new TrieNode(NodeType.Unknown, _rootHash);
-                }
+                RootRef = new TrieNode(NodeType.Unknown, _rootHash);
             }
         }
 
@@ -591,7 +588,7 @@ namespace Nethermind.Store
                     NodeStack.Push(new StackedNode(node, 0));
                 }
 
-                TrieNode next = node.GetChild(0); 
+                TrieNode next = node.GetChild(0);
                 next.ResolveNode(this);
                 return TraverseNode(next, context);
             }
