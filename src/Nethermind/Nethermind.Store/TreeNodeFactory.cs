@@ -20,29 +20,29 @@ namespace Nethermind.Store
 {
     internal static class TreeNodeFactory
     {
-        public static Node CreateBranch()
+        public static TrieNode CreateBranch()
         {
-            return new Node(NodeType.Branch);
+            return new TrieNode(NodeType.Branch);
         }
 
-        public static Node CreateLeaf(HexPrefix key, byte[] value)
+        public static TrieNode CreateLeaf(HexPrefix key, byte[] value)
         {
-            Node node = new Node(NodeType.Leaf);
+            TrieNode node = new TrieNode(NodeType.Leaf);
             node.Key = key;
             node.Value = value;
             return node;
         }
 
-        public static Node CreateExtension(HexPrefix key)
+        public static TrieNode CreateExtension(HexPrefix key)
         {
-            Node node = new Node(NodeType.Extension);
+            TrieNode node = new TrieNode(NodeType.Extension);
             node.Key = key;
             return node;
         }
 
-        public static Node CreateExtension(HexPrefix key, Node child)
+        public static TrieNode CreateExtension(HexPrefix key, TrieNode child)
         {
-            Node node = new Node(NodeType.Extension);
+            TrieNode node = new TrieNode(NodeType.Extension);
             node.SetChild(0, child);
             node.Key = key;
             return node;
