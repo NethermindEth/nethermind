@@ -55,6 +55,7 @@ namespace Nethermind.Network.P2P
             _logger = logger;
             LocalNodeId = localNodeId;
             LocalPort = localPort;
+            SessionId = Guid.NewGuid().ToString();
         }
 
         public PublicKey LocalNodeId { get; }
@@ -63,6 +64,7 @@ namespace Nethermind.Network.P2P
         public int? RemotePort { get; set; }
         public string RemoteHost { get; set; }
         public ClientConnectionType ClientConnectionType { get; set; }
+        public string SessionId { get; }
 
         // TODO: this should be one level up
         public void EnableSnappy()
@@ -146,7 +148,7 @@ namespace Nethermind.Network.P2P
 
             if (PeerDisconnected != null)
             {
-                PeerDisconnected.Invoke(this, new DisconnectEventArgs(disconnectReason, disconnectType));
+                PeerDisconnected.Invoke(this, new DisconnectEventArgs(disconnectReason, disconnectType, SessionId));
             }
             else
             {

@@ -314,6 +314,7 @@ namespace Nethermind.Network
             {
                 //If connection was initiated by remote peer we allow handshake to take place before potencially disconnecting
                 eventArgs.Session.ProtocolInitialized += async (s, e) => await OnProtocolInitialized(s, e);
+                eventArgs.Session.PeerDisconnected += async (s, e) => await OnPeerDisconnected(s, e);
                 if (_logger.IsInfoEnabled)
                 {
                     _logger.Info($"Initiated IN connection (handshake) for peer: {eventArgs.Session.RemoteNodeId}");
@@ -450,7 +451,7 @@ namespace Nethermind.Network
             if (_activePeers.TryAdd(session.RemoteNodeId, peer))
             {
                 //add subsripton for disconnect for new active peer
-                peer.Session.PeerDisconnected += async (s, e) => await OnPeerDisconnected(s, e);
+                //peer.Session.PeerDisconnected += async (s, e) => await OnPeerDisconnected(s, e);
 
                 //we also add this node to candidates for future connection (if we dont have it yet)
                 _candidatePeers.TryAdd(session.RemoteNodeId, peer);
@@ -532,15 +533,30 @@ namespace Nethermind.Network
         private async Task OnPeerDisconnected(object sender, DisconnectEventArgs e)
         {
             var peer = (IP2PSession) sender;
-            _logger.Info($"Peer disconnected event in PeerManager: {peer.RemoteNodeId}");
-
-            if (_activePeers.TryRemove(peer.RemoteNodeId, out var removedPeer))
+            if (_logger.IsInfoEnabled)
             {
-                removedPeer.NodeStats.AddNodeStatsDisconnectEvent(e.DisconnectType, e.DisconnectReason);
-                if (removedPeer.SynchronizationPeer != null)
+                _logger.Info($"Peer disconnected event in PeerManager: {peer.RemoteNodeId}");
+            }
+
+            if (_activePeers.TryGetValue(peer.RemoteNodeId, out var activePeer))
+            {
+                if (activePeer.Session.SessionId != e.SessionId)
                 {
-                    _synchronizationManager.RemovePeer(removedPeer.SynchronizationPeer);
+                    if (_logger.IsInfoEnabled)
+                    {
+                        _logger.Info($"Received disconnect on a different session than the active peer runs. Ignoring. Id: {activePeer.Node.Id}");
+                    }
+                    //TODO verify we do not want to change reputation here
+                    return;
                 }
+
+                _activePeers.TryRemove(peer.RemoteNodeId, out _);
+                activePeer.NodeStats.AddNodeStatsDisconnectEvent(e.DisconnectType, e.DisconnectReason);
+                if (activePeer.SynchronizationPeer != null)
+                {
+                    _synchronizationManager.RemovePeer(activePeer.SynchronizationPeer);
+                }
+
                 if (_logger.IsInfoEnabled)
                 {
                     _logger.Info($"Removing Active Peer on disconnect {peer.RemoteNodeId}");

@@ -30,6 +30,7 @@ namespace Nethermind.Network.P2P
         string RemoteHost { get; set; }
         int? RemotePort { get; set; }
         ClientConnectionType ClientConnectionType { get; set; }
+        string SessionId { get; }
 
         void ReceiveMessage(Packet packet);
         void DeliverMessage(Packet packet, bool priority = false);

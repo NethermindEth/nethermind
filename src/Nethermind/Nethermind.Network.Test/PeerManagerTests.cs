@@ -18,7 +18,7 @@ using Nethermind.Network.Stats;
 using NSubstitute;
 using NUnit.Framework;
 
-namespace Nethermind.Network.Test.Discovery
+namespace Nethermind.Network.Test
 {
     [TestFixture]
     public class PeerManagerTests
@@ -37,6 +37,10 @@ namespace Nethermind.Network.Test.Discovery
             _logger = new SimpleConsoleLogger();
             _configurationProvider = new DiscoveryConfigurationProvider(new NetworkHelper(_logger));
             _configurationProvider.DbBasePath = Path.Combine(Path.GetTempPath(), "PeerManagerTests");
+            if (!Directory.Exists(_configurationProvider.DbBasePath))
+            {
+                Directory.CreateDirectory(_configurationProvider.DbBasePath);
+            }
             _nodeFactory = new NodeFactory();
             _localPeer = new TestRlpxPeer();
             var keyProvider = new PrivateKeyProvider(new CryptoRandom());
@@ -152,7 +156,7 @@ namespace Nethermind.Network.Test.Discovery
             var task = _peerManager.RunPeerUpdate();
             task.Wait();
             Assert.AreEqual(1, _localPeer.ConnectionAsyncCallsCounter);
-            Assert.AreEqual(0, _peerManager.CandidatePeers.Count);
+            Assert.AreEqual(1, _peerManager.CandidatePeers.Count);
             Assert.AreEqual(1, _peerManager.ActivePeers.Count);
 
             //trigger connection initialized
@@ -177,6 +181,13 @@ namespace Nethermind.Network.Test.Discovery
         public int? RemotePort { get; set; }
         public ClientConnectionType ClientConnectionType { get; set; }
 
+        public string SessionId { get; }
+
+        public TestP2PSession()
+        {
+            SessionId = Guid.NewGuid().ToString();
+        }
+
         public void ReceiveMessage(Packet packet)
         {
 
@@ -189,7 +200,7 @@ namespace Nethermind.Network.Test.Discovery
 
         public void TriggerPeerDisconnected()
         {
-            PeerDisconnected?.Invoke(this, new DisconnectEventArgs(DisconnectReason.TooManyPeers, DisconnectType.Local));
+            PeerDisconnected?.Invoke(this, new DisconnectEventArgs(DisconnectReason.TooManyPeers, DisconnectType.Local, SessionId));
         }
 
         public void DeliverMessage(Packet packet, bool priority = false)

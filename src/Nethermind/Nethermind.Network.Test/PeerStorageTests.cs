@@ -7,7 +7,7 @@ using Nethermind.Network.Discovery.RoutingTable;
 using Nethermind.Network.Stats;
 using NUnit.Framework;
 
-namespace Nethermind.Network.Test.Discovery
+namespace Nethermind.Network.Test
 {
     [TestFixture]
     public class PeerStorageTests

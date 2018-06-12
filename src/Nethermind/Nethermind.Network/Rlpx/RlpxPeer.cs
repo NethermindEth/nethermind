@@ -152,8 +152,8 @@ namespace Nethermind.Network.Rlpx
 
             clientBootstrap.Handler(new ActionChannelInitializer<ISocketChannel>(ch => InitializeChannel(ch, EncryptionHandshakeRole.Initiator, remoteId)));
 
-            Task connectTask = clientBootstrap.ConnectAsync(new IPEndPoint(IPAddress.Parse(host), port));
-            Task firstTask = await Task.WhenAny(connectTask, Task.Delay(5000));
+            var connectTask = clientBootstrap.ConnectAsync(new IPEndPoint(IPAddress.Parse(host), port));
+            var firstTask = await Task.WhenAny(connectTask, Task.Delay(5000));
             if (firstTask != connectTask)
             {
                 _logger.Error($"Connection timed out: {remoteId}@{host}:{port}");
@@ -212,6 +212,15 @@ namespace Nethermind.Network.Rlpx
             pipeline.AddLast(new LoggingHandler(connectionType.ToString().ToUpper(), DotNetty.Handlers.Logging.LogLevel.TRACE));
             pipeline.AddLast("enc-handshake-dec", new LengthFieldBasedFrameDecoder(ByteOrder.BigEndian, ushort.MaxValue, 0, 2, 0, 0, true));
             pipeline.AddLast("enc-handshake-handler", handshakeHandler);
+
+            channel.CloseCompletion.ContinueWith(async x =>
+            {
+                if (_logger.IsInfoEnabled)
+                {
+                    _logger.Info($"TESTEST Channel disconnection: {p2PSession.RemoteNodeId}");
+                }
+                await p2PSession.DisconnectAsync(DisconnectReason.ClientQuitting, DisconnectType.Remote);
+            });
         }
     }
 }
