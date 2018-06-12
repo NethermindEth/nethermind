@@ -175,7 +175,6 @@ namespace Nethermind.Store
             nodeRef.ResolveKey(isRoot);
             if (nodeRef.FullRlp != null && nodeRef.FullRlp.Length >= 32)
             {
-                ;
                 NodeCache.Set(nodeRef.Keccak, nodeRef.FullRlp);
                 CurrentCommit.Add(nodeRef);
             }

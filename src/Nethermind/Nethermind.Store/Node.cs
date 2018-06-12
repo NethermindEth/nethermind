@@ -479,6 +479,7 @@ namespace Nethermind.Store
                         Span<byte> nextItem = context.PeekNextItem();
                         nextItem.CopyTo(destination.Slice(position, nextItem.Length));
                         position += nextItem.Length;
+                        context.Position += nextItem.Length;
                     }
                     else
                     {
