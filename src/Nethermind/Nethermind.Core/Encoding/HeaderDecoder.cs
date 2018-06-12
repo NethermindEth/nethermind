@@ -27,8 +27,7 @@ namespace Nethermind.Core.Encoding
     {
         public BlockHeader Decode(Rlp.DecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            var headerRlp = context.ReadSequenceSpan();
-            context.Position -= headerRlp.Length;
+            var headerRlp = context.PeekNextItem();
 
             int headerSequenceLength = context.ReadSequenceLength();
             int headerCheck = context.Position + headerSequenceLength;

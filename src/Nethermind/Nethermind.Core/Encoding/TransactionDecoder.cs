@@ -27,8 +27,7 @@ namespace Nethermind.Core.Encoding
     {
         public Transaction Decode(Rlp.DecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            var transactionSequence = context.ReadSequenceSpan();
-            context.Position -= transactionSequence.Length;
+            var transactionSequence = context.PeekNextItem();
 
             int transactionLength = context.ReadSequenceLength();
             int lastCheck = context.Position + transactionLength;

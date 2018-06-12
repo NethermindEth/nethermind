@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Diagnostics;
 
 namespace Nethermind.Core.Extensions
@@ -28,12 +29,42 @@ namespace Nethermind.Core.Extensions
             Nibble[] nibbles = new Nibble[2 * bytes.Length];
             for (int i = 0; i < bytes.Length; i++)
             {
-                nibbles[i * 2] = new Nibble((byte) ((bytes[i] & 240) >> 4));
-                nibbles[i * 2 + 1] = new Nibble((byte) (bytes[i] & 15));
+                nibbles[i * 2] = new Nibble((byte)((bytes[i] & 240) >> 4));
+                nibbles[i * 2 + 1] = new Nibble((byte)(bytes[i] & 15));
             }
 
             return nibbles;
         }
+
+        public class NibbleBytes
+        {
+            private readonly byte[] _byteArray;
+
+            public NibbleBytes(byte[] byteArray)
+            {
+                _byteArray = byteArray;
+            }
+
+            public byte this[int i]
+            {
+                get
+                {
+                    if (i % 2 == 0)
+                    {
+                        return (byte)((_byteArray[i / 2] & 240) >> 4);
+                    }
+
+                    return (byte)(_byteArray[i / 2] & 15);
+                }
+
+                set => throw new NotSupportedException();
+            }
+        }
+
+        //public static NibbleBytes BytesToNibbleBytes(params byte[] bytes)
+        //{
+        //    return new NibbleBytes(bytes);
+        //}
 
         public static byte[] BytesToNibbleBytes(params byte[] bytes)
         {
@@ -49,7 +80,7 @@ namespace Nethermind.Core.Extensions
 
         public static Nibble[] FromBytes(byte @byte)
         {
-            return new[] {new Nibble((byte) (@byte & 240)), new Nibble((byte) (@byte & 15))};
+            return new[] { new Nibble((byte)(@byte & 240)), new Nibble((byte)(@byte & 15)) };
         }
 
         public static byte[] ToLooseByteArray(this Nibble[] nibbles)
@@ -57,7 +88,7 @@ namespace Nethermind.Core.Extensions
             byte[] bytes = new byte[nibbles.Length];
             for (int i = 0; i < nibbles.Length; i++)
             {
-                bytes[i] = (byte) nibbles[i];
+                bytes[i] = (byte)nibbles[i];
             }
 
             return bytes;
@@ -82,7 +113,7 @@ namespace Nethermind.Core.Extensions
 
         public static byte ToByte(Nibble highNibble, Nibble lowNibble)
         {
-            return (byte) (((byte)highNibble << 4) | (byte)lowNibble);
+            return (byte)(((byte)highNibble << 4) | (byte)lowNibble);
         }
     }
 }

@@ -315,16 +315,6 @@ namespace Ethereum.Trie.Test
         }
 
         [Test]
-        public void Assigning_null_value_in_branch_throws_an_exception()
-        {
-            // ReSharper disable once ObjectCreationAsStatement
-            Assert.Throws<ArgumentNullException>(() => TreeNodeFactory.CreateBranch(new Node[16], null));
-
-            Node branch = new Node(NodeType.Branch);
-            Assert.Throws<ArgumentNullException>(() => branch.Value = null);
-        }
-
-        [Test]
         public void Delete_missing_resolved_on_branch()
         {
             PatriciaTree patriciaTree = new PatriciaTree(_db, Keccak.EmptyTreeHash, false);

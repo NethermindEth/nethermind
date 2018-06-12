@@ -297,7 +297,7 @@ namespace Nethermind.Core.Encoding
             }
         }
 
-        public static int Encode(byte[] buffer, int position, byte[] input)
+        public static int Encode(Span<byte> buffer, int position, byte[] input)
         {
             if (input == null || input.Length == 0)
             {
@@ -324,7 +324,7 @@ namespace Nethermind.Core.Encoding
                 SerializeLength(buffer, position, input.Length);
             }
 
-            Array.Copy(input, 0, buffer, position, input.Length);
+            input.AsSpan().CopyTo(buffer.Slice(position, input.Length));
             position += input.Length;
 
             return position;
@@ -379,7 +379,7 @@ namespace Nethermind.Core.Encoding
             }
         }
 
-        public static int SerializeLength(byte[] buffer, int position, int value)
+        public static int SerializeLength(Span<byte> buffer, int position, int value)
         {
             if (value < 1 << 8)
             {
@@ -670,6 +670,19 @@ namespace Nethermind.Core.Encoding
             {
                 return Data[Position] >= 192;
             }
+            
+//            public int ReadNumberOfItemsRemaining(int? beforePosition = null)
+//            {
+//                int positionStored = Position;
+//                int numberOfItems = 0;
+//                while (Position < (beforePosition ?? Data.Length))
+//                {
+//                   SkipItem();
+//                }
+//
+//                Position = positionStored;
+//                return numberOfItems;
+//            }
 
             public int ReadNumberOfItemsRemaining(int? beforePosition = null)
             {
@@ -711,6 +724,68 @@ namespace Nethermind.Core.Encoding
                 return numberOfItems;
             }
 
+            public void SkipLength()
+            {
+                Position += PeekPrefixAndContentLength().PrefixLength;
+            }
+
+            public int PeekNextRlpLength()
+            {
+                (int a, int b) = PeekPrefixAndContentLength();
+                return a + b;
+            }
+
+            public (int PrefixLength, int ContentLength) PeekPrefixAndContentLength()
+            {
+                int memorizedPosition = Position;
+                (int prefixLength, int contentLengt) result;
+                int prefix = ReadByte();
+                if (prefix <= 128)
+                {
+                    result = (0, 1);
+                }
+                else if (prefix <= 183)
+                {
+                    result = (1, prefix - 128);
+                }
+                else if (prefix < 192)
+                {
+                    int lengthOfLength = prefix - 183;
+                    if (lengthOfLength > 4)
+                    {
+                        // strange but needed to pass tests - seems that spec gives int64 length and tests int32 length
+                        throw new RlpException("Expected length of lenth less or equal 4");
+                    }
+
+                    int length = DeserializeLength(lengthOfLength);
+                    if (length < 56)
+                    {
+                        throw new RlpException("Expected length greater or equal 56 and was {length}");
+                    }
+
+                    result = (lengthOfLength + 1, length);
+                }
+                else if (prefix <= 247)
+                {
+                    result = (1, prefix - 192);
+                }
+                else
+                {
+                    int lengthOfContentLength = prefix - 247;
+                    int contentLength = DeserializeLength(lengthOfContentLength);
+                    if (contentLength < 56)
+                    {
+                        throw new RlpException($"Expected length greater or equal 56 and got {contentLength}");
+                    }
+
+
+                    result = (lengthOfContentLength + 1, contentLength);
+                }
+
+                Position = memorizedPosition;
+                return result;
+            }
+
             public int ReadSequenceLength()
             {
                 int prefix = ReadByte();
@@ -724,14 +799,14 @@ namespace Nethermind.Core.Encoding
                     return prefix - 192;
                 }
 
-                int lengthOfConcatenationLength = prefix - 247;
-                int concatenationLength = DeserializeLength(lengthOfConcatenationLength);
-                if (concatenationLength < 56)
+                int lengthOfContentLength = prefix - 247;
+                int contentLength = DeserializeLength(lengthOfContentLength);
+                if (contentLength < 56)
                 {
-                    throw new RlpException($"Expected length greater or equal 56 and got {concatenationLength}");
+                    throw new RlpException($"Expected length greater or equal 56 and got {contentLength}");
                 }
 
-                return concatenationLength;
+                return contentLength;
             }
 
             private int DeserializeLength(int lengthOfLength)
@@ -768,12 +843,12 @@ namespace Nethermind.Core.Encoding
                 return result;
             }
 
-            private byte ReadByte()
+            public byte ReadByte()
             {
                 return Data[Position++];
             }
 
-            private Span<byte> Read(int length)
+            public Span<byte> Read(int length)
             {
                 Span<byte> data = Data.AsSpan(Position, length);
                 Position += length;
@@ -840,22 +915,12 @@ namespace Nethermind.Core.Encoding
                 return bloom;
             }
 
-            public byte[] ReadSequenceRlp()
+            public Span<byte> PeekNextItem()
             {
-                int positionBefore = Position;
-                int sequenceLength = ReadSequenceLength();
-                byte[] sequenceRlp = Data.Slice(positionBefore, Position - positionBefore + sequenceLength);
-                Position += sequenceLength;
-                return sequenceRlp;
-            }
-
-            public Span<byte> ReadSequenceSpan()
-            {
-                int positionBefore = Position;
-                int sequenceLength = ReadSequenceLength();
-                Span<byte> sequenceRlp = Data.AsSpan(positionBefore, Position - positionBefore + sequenceLength);
-                Position += sequenceLength;
-                return sequenceRlp;
+                int length = PeekNextRlpLength();
+                Span<byte> item = Read(length);
+                Position -= item.Length;
+                return item;
             }
 
             public bool DecodeBool()
@@ -993,6 +1058,17 @@ namespace Nethermind.Core.Encoding
                 }
 
                 throw new RlpException($"Unexpected prefix value of {prefix} when decoding a byte array.");
+            }
+
+            public void SkipItem()
+            {
+                (int prefix, int content) = PeekPrefixAndContentLength();
+                Position += prefix + content;
+            }
+
+            public void Reset()
+            {
+                Position = 0;
             }
         }
 

@@ -118,7 +118,10 @@ namespace Nethermind.Store.Test
             Assert.AreEqual(0, db.ReadsCount);
             Assert.AreEqual(_account1.Balance, account.Balance);
             tree.UpdateRootHash();
+            Keccak rootHash = tree.RootHash;
+            Assert.AreEqual("0xf99f1d3234bad8d63d818db36ff63eefc8916263e654db8b800d3bd03f6339a5", rootHash.ToString(true));
             tree.Commit();
+            Assert.AreEqual("0xf99f1d3234bad8d63d818db36ff63eefc8916263e654db8b800d3bd03f6339a5", rootHash.ToString(true));
         }
         
         [Test]
@@ -131,7 +134,10 @@ namespace Nethermind.Store.Test
             Account account = tree.Get(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddddddddddddddddddd"));
             Assert.Null(account);
             tree.UpdateRootHash();
+            Keccak rootHash = tree.RootHash;
+            Assert.AreEqual("0xf99f1d3234bad8d63d818db36ff63eefc8916263e654db8b800d3bd03f6339a5", rootHash.ToString(true));
             tree.Commit();
+            Assert.AreEqual("0xf99f1d3234bad8d63d818db36ff63eefc8916263e654db8b800d3bd03f6339a5", rootHash.ToString(true));
         }
         
         [Test]
@@ -143,7 +149,10 @@ namespace Nethermind.Store.Test
             tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111111"), _account1);
             tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeedddddddddddddddddddddddd"), _account2);
             tree.UpdateRootHash();
+            Keccak rootHash = tree.RootHash;
+            Assert.AreEqual("0x543c960143a2a06b685d6b92f0c37000273e616bc23888521e7edf15ad06da46", rootHash.ToString(true));
             tree.Commit();
+            Assert.AreEqual("0x543c960143a2a06b685d6b92f0c37000273e616bc23888521e7edf15ad06da46", rootHash.ToString(true));
         }
         
         [Test]
@@ -156,7 +165,10 @@ namespace Nethermind.Store.Test
             tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeddddddddddddddddddddddddd"), null);
             Assert.AreEqual(0, db.ReadsCount);
             tree.UpdateRootHash();
+            Keccak rootHash = tree.RootHash;
+            Assert.AreEqual("0xf99f1d3234bad8d63d818db36ff63eefc8916263e654db8b800d3bd03f6339a5", rootHash.ToString(true));
             tree.Commit();
+            Assert.AreEqual("0xf99f1d3234bad8d63d818db36ff63eefc8916263e654db8b800d3bd03f6339a5", rootHash.ToString(true));
         }
         
         [Test]
@@ -170,7 +182,10 @@ namespace Nethermind.Store.Test
             tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeaaaaaaaaaaaaaaaab11111111"), _account3);
             Assert.AreEqual(0, db.ReadsCount);
             tree.UpdateRootHash();
+            Keccak rootHash = tree.RootHash;
+            Assert.AreEqual("0x0918112fc898173562441709a2c1cbedb80d1aaecaeadf2f3e9492eeaa568c67", rootHash.ToString(true));
             tree.Commit();
+            Assert.AreEqual("0x0918112fc898173562441709a2c1cbedb80d1aaecaeadf2f3e9492eeaa568c67", rootHash.ToString(true));
         }
        
         [Test]
@@ -181,7 +196,10 @@ namespace Nethermind.Store.Test
             tree.Set(new Keccak("1111111111111111111111111111111111111111111111111111111111111111"), _account0);
             tree.Set(new Keccak("1111111111111111111111111111111111111111111111111111111111111111"), _account1);
             tree.UpdateRootHash();
+            Keccak rootHash = tree.RootHash;
+            Assert.AreEqual("0xaa5c248d4b4b8c27a654296a8e0cc51131eb9011d9166fa0fca56a966489e169", rootHash.ToString(true));
             tree.Commit();
+            Assert.AreEqual("0xaa5c248d4b4b8c27a654296a8e0cc51131eb9011d9166fa0fca56a966489e169", rootHash.ToString(true));
         }
         
         [Test]
@@ -192,7 +210,10 @@ namespace Nethermind.Store.Test
             tree.Set(new Keccak("1111111111111111111111111111111111111111111111111111111111111111"), _account0);
             tree.Set(new Keccak("1111111111111111111111111111111111111111111111111111111111111111"), _account0);
             tree.UpdateRootHash();
+            Keccak rootHash = tree.RootHash;
+            Assert.AreEqual("0x491fbb33aaff22c0a7ff68d5c81ec114dddf89d022ccdee838a0e9d6cd45cab4", rootHash.ToString(true));
             tree.Commit();
+            Assert.AreEqual("0x491fbb33aaff22c0a7ff68d5c81ec114dddf89d022ccdee838a0e9d6cd45cab4", rootHash.ToString(true));
         }
         
         [Test]
@@ -203,7 +224,10 @@ namespace Nethermind.Store.Test
             tree.Set(new Keccak("1111111111111111111111111111111111111111111111111111111111111111"), _account0);
             tree.Set(new Keccak("1111111111111111111111111111111111111111111111111111111111111111"), null);
             tree.UpdateRootHash();
+            Keccak rootHash = tree.RootHash;
+            Assert.AreEqual("0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421", rootHash.ToString(true));
             tree.Commit();
+            Assert.AreEqual("0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421", rootHash.ToString(true));
         }
         
         [Test]
@@ -214,7 +238,10 @@ namespace Nethermind.Store.Test
             tree.Set(new Keccak("1111111111111111111111111111111111111111111111111111111111111111"), _account0);
             tree.Set(new Keccak("1111111111111111111111111111111ddddddddddddddddddddddddddddddddd"), null);
             tree.UpdateRootHash();
+            Keccak rootHash = tree.RootHash;
+            Assert.AreEqual("0x491fbb33aaff22c0a7ff68d5c81ec114dddf89d022ccdee838a0e9d6cd45cab4", rootHash.ToString(true));
             tree.Commit();
+            Assert.AreEqual("0x491fbb33aaff22c0a7ff68d5c81ec114dddf89d022ccdee838a0e9d6cd45cab4", rootHash.ToString(true));
         }
         
         [Test]
@@ -225,7 +252,10 @@ namespace Nethermind.Store.Test
             tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111111111111111111111111111111"), _account0);
             tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000000000000000000000000000"), _account1);
             tree.UpdateRootHash();
+            Keccak rootHash = tree.RootHash;
+            Assert.AreEqual("0x215a4bab4cf2d5ebbaa59c82ae94c9707fcf4cc0ca1fe7e18f918e46db428ef9", rootHash.ToString(true));
             tree.Commit();
+            Assert.AreEqual("0x215a4bab4cf2d5ebbaa59c82ae94c9707fcf4cc0ca1fe7e18f918e46db428ef9", rootHash.ToString(true));
         }
 
         [Test]
@@ -237,7 +267,10 @@ namespace Nethermind.Store.Test
             Account account = tree.Get(new Keccak("1111111111111111111111111111111111111111111111111111111111111111"));
             Assert.NotNull(account);
             tree.UpdateRootHash();
+            Keccak rootHash = tree.RootHash;
+            Assert.AreEqual("0x491fbb33aaff22c0a7ff68d5c81ec114dddf89d022ccdee838a0e9d6cd45cab4", rootHash.ToString(true));
             tree.Commit();
+            Assert.AreEqual("0x491fbb33aaff22c0a7ff68d5c81ec114dddf89d022ccdee838a0e9d6cd45cab4", rootHash.ToString(true));
         }
         
         [Test]
@@ -249,7 +282,10 @@ namespace Nethermind.Store.Test
             Account account = tree.Get(new Keccak("111111111111111111111111111111111111111111111111111111111ddddddd"));
             Assert.Null(account);
             tree.UpdateRootHash();
+            Keccak rootHash = tree.RootHash;
+            Assert.AreEqual("0x491fbb33aaff22c0a7ff68d5c81ec114dddf89d022ccdee838a0e9d6cd45cab4", rootHash.ToString(true));
             tree.Commit();
+            Assert.AreEqual("0x491fbb33aaff22c0a7ff68d5c81ec114dddf89d022ccdee838a0e9d6cd45cab4", rootHash.ToString(true));
         }
         
         [Test]
@@ -261,7 +297,10 @@ namespace Nethermind.Store.Test
             tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111"), _account1);
             tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb22222"), _account2);
             tree.UpdateRootHash();
+            Keccak rootHash = tree.RootHash;
+            Assert.AreEqual("0xc063af0bd3dd88320bc852ff8452049c42fbc06d1a69661567bd427572824cbf", rootHash.ToString(true));
             tree.Commit();
+            Assert.AreEqual("0xc063af0bd3dd88320bc852ff8452049c42fbc06d1a69661567bd427572824cbf", rootHash.ToString(true));
         }
         
         [Test]
@@ -274,7 +313,10 @@ namespace Nethermind.Store.Test
             Account account = tree.Get(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb22222"));
             Assert.Null(account);
             tree.UpdateRootHash();
+            Keccak rootHash = tree.RootHash;
+            Assert.AreEqual("0x94a193704e99c219d9a21428eb37d6d2d71b3d2cea80c77ff0e201c0df70a283", rootHash.ToString(true));
             tree.Commit();
+            Assert.AreEqual("0x94a193704e99c219d9a21428eb37d6d2d71b3d2cea80c77ff0e201c0df70a283", rootHash.ToString(true));
         }
         
         [Test]
@@ -286,7 +328,10 @@ namespace Nethermind.Store.Test
             tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb11111"), _account1);
             tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb22222"), null);
             tree.UpdateRootHash();
+            Keccak rootHash = tree.RootHash;
+            Assert.AreEqual("0x94a193704e99c219d9a21428eb37d6d2d71b3d2cea80c77ff0e201c0df70a283", rootHash.ToString(true));
             tree.Commit();
+            Assert.AreEqual("0x94a193704e99c219d9a21428eb37d6d2d71b3d2cea80c77ff0e201c0df70a283", rootHash.ToString(true));
         }
         
         [Test]
@@ -394,6 +439,8 @@ namespace Nethermind.Store.Test
             Assert.AreNotEqual(PatriciaTree.EmptyTreeHash, tree.RootHash);
             tree.Set(new Keccak("eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeb00000000"), null);
             tree.UpdateRootHash();
+            Assert.AreEqual(PatriciaTree.EmptyTreeHash, tree.RootHash);
+            tree.Commit();
             Assert.AreEqual(PatriciaTree.EmptyTreeHash, tree.RootHash);
         }
         

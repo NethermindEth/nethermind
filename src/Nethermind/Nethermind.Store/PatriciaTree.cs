@@ -52,7 +52,7 @@ namespace Nethermind.Store
 
         private Keccak _rootHash;
 
-        internal Node RootRef;
+        internal TrieNode RootRef;
 
         public PatriciaTree()
             : this(NullDb.Instance, EmptyTreeHash, false)
@@ -66,7 +66,7 @@ namespace Nethermind.Store
             RootHash = rootHash;
         }
 
-        internal Node Root
+        internal TrieNode Root
         {
             get
             {
@@ -92,7 +92,7 @@ namespace Nethermind.Store
             {
                 CurrentCommit.Clear();
                 Commit(RootRef, true);
-                foreach (Node nodeRef in CurrentCommit)
+                foreach (TrieNode nodeRef in CurrentCommit)
                 {
                     _db.Set(nodeRef.Keccak, nodeRef.FullRlp.Bytes);
                 }
@@ -103,11 +103,11 @@ namespace Nethermind.Store
             }
         }
 
-        private static readonly ConcurrentBag<Node> CurrentCommit = new ConcurrentBag<Node>();
+        private static readonly ConcurrentBag<TrieNode> CurrentCommit = new ConcurrentBag<TrieNode>();
 
-        private void Commit(Node nodeRef, bool isRoot)
+        private void Commit(TrieNode nodeRef, bool isRoot)
         {
-            Node node = nodeRef;
+            TrieNode node = nodeRef;
             if (node.IsBranch)
             {
                 // idea from EthereumJ - testing parallel branches
@@ -115,22 +115,20 @@ namespace Nethermind.Store
                 {
                     for (int i = 0; i < 16; i++)
                     {
-                        Node subnode = node.Children[i];
-                        if (subnode?.IsDirty ?? false)
+                        if (node.IsChildDirty(i))
                         {
-                            Commit(node.Children[i], false);
+                            Commit(node.GetChild(i), false);
                         }
                     }
                 }
                 else
                 {
-                    List<Node> nodesToCommit = new List<Node>();
+                    List<TrieNode> nodesToCommit = new List<TrieNode>();
                     for (int i = 0; i < 16; i++)
                     {
-                        Node subnode = node.Children[i];
-                        if (subnode?.IsDirty ?? false)
+                        if (node.IsChildDirty(i))
                         {
-                            nodesToCommit.Add(node.Children[i]);
+                            nodesToCommit.Add(node.GetChild(i));
                         }
                     }
 
@@ -165,9 +163,9 @@ namespace Nethermind.Store
             }
             else if (node.NodeType == NodeType.Extension)
             {
-                if (node.Children[0].IsDirty)
+                if (node.GetChild(0).IsDirty)
                 {
-                    Commit(node.Children[0], false);
+                    Commit(node.GetChild(0), false);
                 }
             }
 
@@ -175,7 +173,6 @@ namespace Nethermind.Store
             nodeRef.ResolveKey(isRoot);
             if (nodeRef.FullRlp != null && nodeRef.FullRlp.Length >= 32)
             {
-                ;
                 NodeCache.Set(nodeRef.Keccak, nodeRef.FullRlp);
                 CurrentCommit.Add(nodeRef);
             }
@@ -203,114 +200,9 @@ namespace Nethermind.Store
             {
                 if (resetObjects)
                 {
-                    RootRef = new Node(NodeType.Unknown, _rootHash);
+                    RootRef = new TrieNode(NodeType.Unknown, _rootHash);
                 }
             }
-        }
-
-        private static Rlp RlpEncodeRef(Node nodeRef)
-        {
-            if (nodeRef == null)
-            {
-                return Rlp.OfEmptyByteArray;
-            }
-
-            nodeRef.ResolveKey(false);
-            return nodeRef.Keccak == null ? nodeRef.FullRlp : Rlp.Encode(nodeRef.Keccak);
-        }
-
-        private static Rlp RlpEncodeNoStreams(Node branch)
-        {
-            return Rlp.Encode(
-                RlpEncodeRef(branch.Children[0]),
-                RlpEncodeRef(branch.Children[1]),
-                RlpEncodeRef(branch.Children[2]),
-                RlpEncodeRef(branch.Children[3]),
-                RlpEncodeRef(branch.Children[4]),
-                RlpEncodeRef(branch.Children[5]),
-                RlpEncodeRef(branch.Children[6]),
-                RlpEncodeRef(branch.Children[7]),
-                RlpEncodeRef(branch.Children[8]),
-                RlpEncodeRef(branch.Children[9]),
-                RlpEncodeRef(branch.Children[10]),
-                RlpEncodeRef(branch.Children[11]),
-                RlpEncodeRef(branch.Children[12]),
-                RlpEncodeRef(branch.Children[13]),
-                RlpEncodeRef(branch.Children[14]),
-                RlpEncodeRef(branch.Children[15]),
-                Rlp.Encode(branch.Value)
-            );
-        }
-
-        private static Rlp RlpEncodeBranch(Node branch)
-        {
-            int contentLength = 0;
-            for (int i = 0; i < 16; i++)
-            {
-                Node nodeRef = branch.Children[i];
-                if (nodeRef == null)
-                {
-                    contentLength += Rlp.LengthOfEmptyArrayRlp;
-                }
-                else
-                {
-                    nodeRef.ResolveKey(false);
-                    contentLength += nodeRef.Keccak == null ? nodeRef.FullRlp.Length : Rlp.LengthOfKeccakRlp;
-                }
-            }
-
-            contentLength += Rlp.LengthOfByteArray(branch.Value);
-            int sequenceLength = Rlp.GetSequenceRlpLength(contentLength);
-            byte[] result = new byte[sequenceLength];
-            int position = Rlp.StartSequence(result, 0, contentLength);
-            for (int i = 0; i < 16; i++)
-            {
-                Node nodeRef = branch.Children[i];
-                if (nodeRef == null)
-                {
-                    result[position++] = Rlp.OfEmptyByteArray[0];
-                }
-                else if (nodeRef.Keccak != null)
-                {
-                    result[position] = 160;
-                    byte[] rlpBytes = nodeRef.Keccak.Bytes;
-                    Array.Copy(rlpBytes, 0, result, position + 1, rlpBytes.Length);
-                    position += rlpBytes.Length + 1;
-                }
-                else
-                {
-                    byte[] rlpBytes = nodeRef.FullRlp.Bytes;
-                    Array.Copy(rlpBytes, 0, result, position, rlpBytes.Length);
-                    position += rlpBytes.Length;
-                }
-            }
-
-            Rlp.Encode(result, position, branch.Value);
-            return new Rlp(result);
-        }
-
-        internal static Rlp RlpEncode(Node node)
-        {
-            Metrics.TreeNodeRlpEncodings++;
-            if (node.IsLeaf)
-            {
-                Rlp result = Rlp.Encode(Rlp.Encode(node.Key.ToBytes()), Rlp.Encode(node.Value));
-                return result;
-            }
-
-            if (node.IsBranch)
-            {
-                return RlpEncodeBranch(node);
-            }
-
-            if (node.IsExtension)
-            {
-                return Rlp.Encode(
-                    Rlp.Encode(node.Key.ToBytes()),
-                    RlpEncodeRef(node.Children[0]));
-            }
-
-            throw new InvalidOperationException($"Unknown node type {node.NodeType}");
         }
 
         [DebuggerStepThrough]
@@ -386,7 +278,7 @@ namespace Nethermind.Store
             return TraverseNode(RootRef, context);
         }
 
-        private byte[] TraverseNode(Node node, TraverseContext context)
+        private byte[] TraverseNode(TrieNode node, TraverseContext context)
         {
             if (node.IsLeaf)
             {
@@ -407,10 +299,10 @@ namespace Nethermind.Store
         }
 
         // TODO: this can be removed now but is lower priority temporarily while the patricia rewrite testing is in progress
-        private void ConnectNodes(Node node)
+        private void ConnectNodes(TrieNode node)
         {
             bool isRoot = NodeStack.Count == 0;
-            Node nextNode = node;
+            TrieNode nextNode = node;
 
             while (!isRoot)
             {
@@ -426,26 +318,17 @@ namespace Nethermind.Store
 
                 if (node.IsBranch)
                 {
-                    //                    _tree.DeleteNode(branch.Nodes[parentOnStack.PathIndex], true);
                     if (!(nextNode == null && !node.IsValidWithOneNodeLess))
                     {
-                        Node newBranch = TreeNodeFactory.CreateBranch();
-                        newBranch.IsDirty = true;
-                        for (int i = 0; i < 16; i++)
-                        {
-                            newBranch.Children[i] = node.Children[i];
-                        }
-
-                        newBranch.Value = node.Value;
-                        newBranch.Children[parentOnStack.PathIndex] = nextNode;
-
-                        nextNode = newBranch;
+                        node.SetChild(parentOnStack.PathIndex, nextNode);
+                        node.IsDirty = true;
+                        nextNode = node;
                     }
                     else
                     {
                         if (node.Value.Length != 0)
                         {
-                            Node leafFromBranch = TreeNodeFactory.CreateLeaf(new HexPrefix(true), node.Value);
+                            TrieNode leafFromBranch = TreeNodeFactory.CreateLeaf(new HexPrefix(true), node.Value);
                             leafFromBranch.IsDirty = true;
                             nextNode = leafFromBranch;
                         }
@@ -454,69 +337,62 @@ namespace Nethermind.Store
                             int childNodeIndex = 0;
                             for (int i = 0; i < 16; i++)
                             {
-                                if (i != parentOnStack.PathIndex && node.Children[i] != null)
+                                if (i != parentOnStack.PathIndex && !node.IsChildNull(i))
                                 {
                                     childNodeIndex = i;
                                     break;
                                 }
                             }
 
-                            Node childNodeRef = node.Children[childNodeIndex];
+                            TrieNode childNodeRef = node.GetChild(childNodeIndex);
                             if (childNodeRef == null)
                             {
                                 throw new InvalidOperationException("Before updating branch should have had at least two non-empty children");
                             }
 
                             childNodeRef.ResolveNode(this);
-                            Node childNode = childNodeRef;
+                            TrieNode childNode = childNodeRef;
                             if (childNode.IsBranch)
                             {
-                                Node extensionFromBranch = TreeNodeFactory.CreateExtension(new HexPrefix(false, (byte)childNodeIndex), childNodeRef);
+                                TrieNode extensionFromBranch = TreeNodeFactory.CreateExtension(new HexPrefix(false, (byte)childNodeIndex), childNodeRef);
                                 extensionFromBranch.IsDirty = true;
                                 nextNode = extensionFromBranch;
                             }
                             else if (childNode.IsExtension)
                             {
-                                //                                _tree.DeleteNode(childNodeHash, true);
-                                Node extensionFromBranch = TreeNodeFactory.CreateExtension(new HexPrefix(false, Bytes.Concat((byte)childNodeIndex, childNode.Path)), childNode.Children[0]);
-                                extensionFromBranch.IsDirty = true;
-                                nextNode = extensionFromBranch;
+                                childNode.Key = new HexPrefix(false, Bytes.Concat((byte)childNodeIndex, childNode.Path));
+                                childNode.IsDirty = true;
+                                nextNode = childNode;
                             }
                             else if (childNode.IsLeaf)
                             {
-                                //                                _tree.DeleteNode(childNodeHash, true);
-                                Node leafFromBranch = TreeNodeFactory.CreateLeaf(new HexPrefix(true, Bytes.Concat((byte)childNodeIndex, childNode.Path)), childNode.Value);
-                                leafFromBranch.IsDirty = true;
-                                nextNode = leafFromBranch;
+                                childNode.Key = new HexPrefix(true, Bytes.Concat((byte)childNodeIndex, childNode.Path));
+                                childNode.IsDirty = true;
+                                nextNode = childNode;
                             }
                             else
                             {
-                                throw new InvalidOperationException($"Unknown node type {nextNode.NodeType}");
+                                throw new InvalidOperationException($"Unknown node type {childNode?.NodeType}");
                             }
                         }
                     }
                 }
                 else if (node.IsExtension)
                 {
-                    //                    _tree.DeleteNode(extension.NextNodeRef, true);
                     if (nextNode.IsLeaf)
                     {
-                        Node leafFromExtension = TreeNodeFactory.CreateLeaf(new HexPrefix(true, Bytes.Concat(node.Path, nextNode.Path)), nextNode.Value);
-                        leafFromExtension.IsDirty = true;
-                        nextNode = leafFromExtension;
+                        nextNode.Key = new HexPrefix(true, Bytes.Concat(node.Path, nextNode.Path));
                     }
                     else if (nextNode.IsExtension)
                     {
-                        Node extensionFromExtension = TreeNodeFactory.CreateExtension(new HexPrefix(false, Bytes.Concat(node.Path, nextNode.Path)), nextNode.Children[0]);
-                        extensionFromExtension.IsDirty = true;
-                        nextNode = extensionFromExtension;
+                        nextNode.IsDirty = true;
+                        nextNode.Key = new HexPrefix(false, Bytes.Concat(node.Path, nextNode.Path));
                     }
                     else if (nextNode.IsBranch)
                     {
-                        Node newExtension = TreeNodeFactory.CreateExtension(node.Key);
-                        newExtension.IsDirty = true;
-                        newExtension.Children[0] = nextNode;
-                        nextNode = newExtension;
+                        node.IsDirty = true;
+                        node.SetChild(0, nextNode);
+                        nextNode = node;
                     }
                     else
                     {
@@ -530,11 +406,9 @@ namespace Nethermind.Store
             }
 
             RootRef = nextNode;
-
-            //            _tree.DeleteNode(new KeccakOrRlp(previousRootHash), true);
         }
 
-        private byte[] TraverseBranch(Node node, TraverseContext context)
+        private byte[] TraverseBranch(TrieNode node, TraverseContext context)
         {
             if (context.RemainingUpdatePathLength == 0)
             {
@@ -558,15 +432,14 @@ namespace Nethermind.Store
                 }
                 else
                 {
-                    Node newBranch = TreeNodeFactory.CreateBranch(node.Children, context.UpdateValue);
-                    newBranch.IsDirty = true;
-                    ConnectNodes(newBranch);
+                    node.Value = context.UpdateValue;
+                    node.IsDirty = true;
                 }
 
                 return context.UpdateValue;
             }
 
-            Node nextNodeRef = node.Children[context.UpdatePath[context.CurrentIndex]];
+            TrieNode nextNodeRef = node.GetChild(context.UpdatePath[context.CurrentIndex]);
             if (context.IsUpdate)
             {
                 NodeStack.Push(new StackedNode(node, context.UpdatePath[context.CurrentIndex]));
@@ -592,7 +465,7 @@ namespace Nethermind.Store
                 }
 
                 byte[] leafPath = context.UpdatePath.Slice(context.CurrentIndex, context.UpdatePath.Length - context.CurrentIndex);
-                Node leaf = TreeNodeFactory.CreateLeaf(new HexPrefix(true, leafPath), context.UpdateValue);
+                TrieNode leaf = TreeNodeFactory.CreateLeaf(new HexPrefix(true, leafPath), context.UpdateValue);
                 leaf.IsDirty = true;
                 ConnectNodes(leaf);
 
@@ -600,14 +473,14 @@ namespace Nethermind.Store
             }
 
             nextNodeRef.ResolveNode(this);
-            Node nextNode = nextNodeRef;
+            TrieNode nextNode = nextNodeRef;
             return TraverseNode(nextNode, context);
         }
 
-        private byte[] TraverseLeaf(Node node, TraverseContext context)
+        private byte[] TraverseLeaf(TrieNode node, TraverseContext context)
         {
             byte[] remaining = context.GetRemainingUpdatePath();
-            (byte[] shorterPath, byte[] longerPath) = remaining.Length - node.Path.Length < 0
+            (byte[] shorterPath, byte[] longerPath) = context.RemainingUpdatePathLength - node.Path.Length < 0
                 ? (remaining, node.Path)
                 : (node.Path, remaining);
 
@@ -645,9 +518,9 @@ namespace Nethermind.Store
 
                 if (!Bytes.UnsafeCompare(node.Value, context.UpdateValue))
                 {
-                    Node newLeaf = TreeNodeFactory.CreateLeaf(new HexPrefix(true, remaining), context.UpdateValue);
-                    newLeaf.IsDirty = true;
-                    ConnectNodes(newLeaf);
+                    node.Value = context.UpdateValue;
+                    node.IsDirty = true;
+                    ConnectNodes(node);
                     return context.UpdateValue;
                 }
 
@@ -672,12 +545,12 @@ namespace Nethermind.Store
             if (extensionLength != 0)
             {
                 byte[] extensionPath = longerPath.Slice(0, extensionLength);
-                Node extension = TreeNodeFactory.CreateExtension(new HexPrefix(false, extensionPath));
+                TrieNode extension = TreeNodeFactory.CreateExtension(new HexPrefix(false, extensionPath));
                 extension.IsDirty = true;
                 NodeStack.Push(new StackedNode(extension, 0));
             }
 
-            Node branch = TreeNodeFactory.CreateBranch();
+            TrieNode branch = TreeNodeFactory.CreateBranch();
             branch.IsDirty = true;
             if (extensionLength == shorterPath.Length)
             {
@@ -686,21 +559,25 @@ namespace Nethermind.Store
             else
             {
                 byte[] shortLeafPath = shorterPath.Slice(extensionLength + 1, shorterPath.Length - extensionLength - 1);
-                Node shortLeaf = TreeNodeFactory.CreateLeaf(new HexPrefix(true, shortLeafPath), shorterPathValue);
+                TrieNode shortLeaf = TreeNodeFactory.CreateLeaf(new HexPrefix(true, shortLeafPath), shorterPathValue);
                 shortLeaf.IsDirty = true;
-                branch.Children[shorterPath[extensionLength]] = shortLeaf;
+                branch.SetChild(shorterPath[extensionLength], shortLeaf);
             }
 
             byte[] leafPath = longerPath.Slice(extensionLength + 1, longerPath.Length - extensionLength - 1);
-            Node leaf = TreeNodeFactory.CreateLeaf(new HexPrefix(true, leafPath), longerPathValue);
-            leaf.IsDirty = true;
+
+
+            node.IsDirty = true;
+            node.Key = new HexPrefix(true, leafPath);
+            node.Value = longerPathValue;
+
             NodeStack.Push(new StackedNode(branch, longerPath[extensionLength]));
-            ConnectNodes(leaf);
+            ConnectNodes(node);
 
             return context.UpdateValue;
         }
 
-        private byte[] TraverseExtension(Node node, TraverseContext context)
+        private byte[] TraverseExtension(TrieNode node, TraverseContext context)
         {
             byte[] remaining = context.GetRemainingUpdatePath();
             int extensionLength = 0;
@@ -716,8 +593,9 @@ namespace Nethermind.Store
                     NodeStack.Push(new StackedNode(node, 0));
                 }
 
-                node.Children[0].ResolveNode(this);
-                return TraverseNode(node.Children[0], context);
+                TrieNode next = node.GetChild(0); 
+                next.ResolveNode(this);
+                return TraverseNode(next, context);
             }
 
             if (!context.IsUpdate)
@@ -735,15 +613,16 @@ namespace Nethermind.Store
                 throw new InvalidOperationException("Could find the leaf node to delete: {Hex.FromBytes(context.UpdatePath, false)}");
             }
 
+            byte[] pathBeforeUpdate = node.Path;
             if (extensionLength != 0)
             {
                 byte[] extensionPath = node.Path.Slice(0, extensionLength);
-                Node extension = TreeNodeFactory.CreateExtension(new HexPrefix(false, extensionPath));
-                extension.IsDirty = true;
-                NodeStack.Push(new StackedNode(extension, 0));
+                node.Key = new HexPrefix(false, extensionPath);
+                node.IsDirty = true;
+                NodeStack.Push(new StackedNode(node, 0));
             }
 
-            Node branch = TreeNodeFactory.CreateBranch();
+            TrieNode branch = TreeNodeFactory.CreateBranch();
             branch.IsDirty = true;
             if (extensionLength == remaining.Length)
             {
@@ -752,21 +631,21 @@ namespace Nethermind.Store
             else
             {
                 byte[] path = remaining.Slice(extensionLength + 1, remaining.Length - extensionLength - 1);
-                Node shortLeaf = TreeNodeFactory.CreateLeaf(new HexPrefix(true, path), context.UpdateValue);
+                TrieNode shortLeaf = TreeNodeFactory.CreateLeaf(new HexPrefix(true, path), context.UpdateValue);
                 shortLeaf.IsDirty = true;
-                branch.Children[remaining[extensionLength]] = shortLeaf;
+                branch.SetChild(remaining[extensionLength], shortLeaf);
             }
 
-            if (node.Path.Length - extensionLength > 1)
+            if (pathBeforeUpdate.Length - extensionLength > 1)
             {
-                byte[] extensionPath = node.Path.Slice(extensionLength + 1, node.Path.Length - extensionLength - 1);
-                Node secondExtension = TreeNodeFactory.CreateExtension(new HexPrefix(false, extensionPath), node.Children[0]);
+                byte[] extensionPath = pathBeforeUpdate.Slice(extensionLength + 1, pathBeforeUpdate.Length - extensionLength - 1);
+                TrieNode secondExtension = TreeNodeFactory.CreateExtension(new HexPrefix(false, extensionPath), node.GetChild(0));
                 secondExtension.IsDirty = true;
-                branch.Children[node.Path[extensionLength]] = secondExtension;
+                branch.SetChild(pathBeforeUpdate[extensionLength], secondExtension);
             }
             else
             {
-                branch.Children[node.Path[extensionLength]] = node.Children[0];
+                branch.SetChild(pathBeforeUpdate[extensionLength], node.GetChild(0));
             }
 
             ConnectNodes(branch);
@@ -799,13 +678,13 @@ namespace Nethermind.Store
 
         private struct StackedNode
         {
-            public StackedNode(Node node, int pathIndex)
+            public StackedNode(TrieNode node, int pathIndex)
             {
                 Node = node;
                 PathIndex = pathIndex;
             }
 
-            public Node Node { get; }
+            public TrieNode Node { get; }
             public int PathIndex { get; }
         }
     }
