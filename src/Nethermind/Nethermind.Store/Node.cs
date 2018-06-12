@@ -112,13 +112,13 @@ namespace Nethermind.Store
         {
             if (decoderContext.IsSequenceNext())
             {
-                byte[] sequenceBytes = decoderContext.ReadSequenceRlp();
+                Span<byte> sequenceBytes = decoderContext.PeekNextItem();
                 if (sequenceBytes.Length >= 32)
                 {
                     throw new InvalidOperationException();
                 }
 
-                return new Node(NodeType.Unknown, new Rlp(sequenceBytes));
+                return new Node(NodeType.Unknown, new Rlp(sequenceBytes.ToArray()));
             }
 
             Keccak keccak = decoderContext.DecodeKeccak();
@@ -181,7 +181,7 @@ namespace Nethermind.Store
 
             if (FullRlp == null || IsDirty) // TODO: review
             {
-                FullRlp = PatriciaTree.RlpEncode(this);
+                FullRlp = RlpEncode();
                 DecoderContext = FullRlp.Bytes.AsRlpContext();
             }
 
@@ -198,6 +198,59 @@ namespace Nethermind.Store
 
             Metrics.TreeNodeHashCalculations++;
             Keccak = Keccak.Compute(FullRlp);
+        }
+
+        private Rlp RlpEncodeBranch()
+        {
+            int valueRlpLength = Rlp.LengthOfByteArray(Value);
+            int contentLength = valueRlpLength + Children.GetChildrenRlpLength();
+            if (contentLength == 305)
+            {
+
+            }
+            int sequenceLength = Rlp.GetSequenceRlpLength(contentLength);
+            byte[] result = new byte[sequenceLength];
+            Span<byte> resultSpan = result.AsSpan();
+            int position = Rlp.StartSequence(result, 0, contentLength);
+            Children.WriteChildrenRlp(resultSpan.Slice(position, contentLength - valueRlpLength));
+            position = sequenceLength - valueRlpLength;
+            Rlp.Encode(result, position, Value);
+            return new Rlp(result);
+        }
+
+        internal Rlp RlpEncode()
+        {
+            Metrics.TreeNodeRlpEncodings++;
+            if (IsLeaf)
+            {
+                Rlp result = Rlp.Encode(Rlp.Encode(Key.ToBytes()), Rlp.Encode(Value));
+                return result;
+            }
+
+            if (IsBranch)
+            {
+                return RlpEncodeBranch();
+            }
+
+            if (IsExtension)
+            {
+                return Rlp.Encode(
+                    Rlp.Encode(Key.ToBytes()),
+                    RlpEncodeRef(Children[0]));
+            }
+
+            throw new InvalidOperationException($"Unknown node type {NodeType}");
+        }
+
+        private static Rlp RlpEncodeRef(Node nodeRef)
+        {
+            if (nodeRef == null)
+            {
+                return Rlp.OfEmptyByteArray;
+            }
+
+            nodeRef.ResolveKey(false);
+            return nodeRef.Keccak == null ? nodeRef.FullRlp : Rlp.Encode(nodeRef.Keccak);
         }
 
         public class NodeData
@@ -242,7 +295,7 @@ namespace Nethermind.Store
                         else
                         {
                             _parentNode.DecoderContext.Position = 0;
-                            _parentNode.DecoderContext.SkipSequenceLength();
+                            _parentNode.DecoderContext.SkipLength();
                             for (int i = 0; i < 16; i++)
                             {
                                 _parentNode.DecoderContext.SkipItem();
@@ -299,7 +352,7 @@ namespace Nethermind.Store
                 if (_data[index] == null)
                 {
                     context.Position = 0;
-                    context.SkipSequenceLength();
+                    context.SkipLength();
                     for (int _ = 0; _ < index; _++)
                     {
                         context.SkipItem();
@@ -320,9 +373,7 @@ namespace Nethermind.Store
                         context.Position--;
                         //if (context.IsSequenceNext())
                         //{
-                        int sequenceStartPosition = context.Position;
-                        Rlp fullRlp = new Rlp(context.ReadSequenceRlp());
-                        context.Position = sequenceStartPosition;
+                        Span<byte> fullRlp = context.PeekNextItem();
 
                         int sequenceLength = context.ReadSequenceLength();
                         int numberOfItems = context.ReadNumberOfItemsRemaining(context.Position + sequenceLength);
@@ -345,7 +396,7 @@ namespace Nethermind.Store
                             throw new InvalidOperationException($"Unexpected number of items = {numberOfItems} when decoding a node");
                         }
 
-                        child.FullRlp = fullRlp;
+                        child.FullRlp = new Rlp(fullRlp.ToArray());
                         _data[index] = child;
                         //}
                     }
@@ -362,7 +413,7 @@ namespace Nethermind.Store
                     if (_data[index] == null)
                     {
                         context.Position = 0;
-                        context.SkipSequenceLength();
+                        context.SkipLength();
                         for (int _ = 0; _ < index; _++)
                         {
                             context.SkipItem();
@@ -376,6 +427,85 @@ namespace Nethermind.Store
                 return ReferenceEquals(_data[index], _nullNode) || _data[index] == null;
             }
 
+            public int GetChildrenRlpLength()
+            {
+                int totalLength = 0;
+                Rlp.DecoderContext context = _parentNode.DecoderContext;
+                InitData();
+
+                context?.Reset();
+                context?.SkipLength();
+
+                for (int i = 0; i < 16; i++)
+                {
+                    if (context != null && _data[i] == null)
+                    {
+                        int length = context.PeekNextRlpLength();
+                        context.Position += length;
+                        totalLength += length;
+                    }
+                    else
+                    {
+                        context?.SkipItem();
+                        if (ReferenceEquals(_data[i], _nullNode) || _data[i] == null)
+                        {
+                            totalLength++;
+                        }
+                        else
+                        {
+                            Node childNode = (Node)_data[i];
+                            childNode.ResolveKey(false);
+                            totalLength += childNode.Keccak == null ? childNode.FullRlp.Length : Rlp.LengthOfKeccakRlp;    
+                        }
+                    }
+                }
+
+                return totalLength;
+            }
+
+            public void WriteChildrenRlp(Span<byte> destination)
+            {
+                int position = 0;
+                Rlp.DecoderContext context = _parentNode.DecoderContext;
+                InitData();
+
+                context?.Reset();
+                context?.SkipLength();
+
+                for (int i = 0; i < 16; i++)
+                {
+                    if (context != null && _data[i] == null)
+                    {
+                        Span<byte> nextItem = context.PeekNextItem();
+                        nextItem.CopyTo(destination.Slice(position, nextItem.Length));
+                        position += nextItem.Length;
+                    }
+                    else
+                    {
+                        context?.SkipItem();
+                        if (ReferenceEquals(_data[i], _nullNode) || _data[i] == null)
+                        {
+                            destination[position++] = 128;
+                        }
+                        else
+                        {
+                            Node childNode = (Node)_data[i];
+                            childNode.ResolveKey(false);
+                            if (childNode.Keccak == null)
+                            {
+                                Span<byte> fullRlp = childNode.FullRlp.Bytes.AsSpan();
+                                fullRlp.CopyTo(destination.Slice(position, fullRlp.Length));
+                                position += fullRlp.Length;
+                            }
+                            else
+                            {
+                                position = Rlp.Encode(destination, position, childNode.Keccak.Bytes);
+                            }
+                        }
+                    }
+                }
+            }
+
             private Node GetChild(int i)
             {
                 int index = _parentNode.IsExtension ? i + 1 : i;
@@ -387,7 +517,7 @@ namespace Nethermind.Store
             {
                 InitData();
                 int index = _parentNode.IsExtension ? i + 1 : i;
-                _data[index] = node == null ? _nullNode : node;
+                _data[index] = node ?? _nullNode;
             }
         }
     }

@@ -297,7 +297,7 @@ namespace Nethermind.Core.Encoding
             }
         }
 
-        public static int Encode(byte[] buffer, int position, byte[] input)
+        public static int Encode(Span<byte> buffer, int position, byte[] input)
         {
             if (input == null || input.Length == 0)
             {
@@ -324,7 +324,7 @@ namespace Nethermind.Core.Encoding
                 SerializeLength(buffer, position, input.Length);
             }
 
-            Array.Copy(input, 0, buffer, position, input.Length);
+            input.AsSpan().CopyTo(buffer.Slice(position, input.Length));
             position += input.Length;
 
             return position;
@@ -379,7 +379,7 @@ namespace Nethermind.Core.Encoding
             }
         }
 
-        public static int SerializeLength(byte[] buffer, int position, int value)
+        public static int SerializeLength(Span<byte> buffer, int position, int value)
         {
             if (value < 1 << 8)
             {
@@ -711,38 +711,31 @@ namespace Nethermind.Core.Encoding
                 return numberOfItems;
             }
 
-            public void SkipSequenceLength()
+            public void SkipLength()
             {
-                int prefix = ReadByte();
-                if (prefix < 192)
-                {
-                    throw new RlpException($"Expected a sequence prefix to be in the range of <192, 255> and got {prefix}");
-                }
-
-                if (prefix <= 247)
-                {
-                    return;
-                }
-
-                int lengthOfConcatenationLength = prefix - 247;
-                Position += lengthOfConcatenationLength;
+                Position += PeekPrefixAndContentLength().PrefixLength;
             }
 
-            public (int, int) PeekPrefixAndContentLength()
+            public int PeekNextRlpLength()
+            {
+                (int a, int b) = PeekPrefixAndContentLength();
+                return a + b;
+            }
+
+            public (int PrefixLength, int ContentLength) PeekPrefixAndContentLength()
             {
                 int memorizedPosition = Position;
+                (int prefixLength, int contentLengt) result;
                 int prefix = ReadByte();
                 if (prefix <= 128)
                 {
-                    return (0, 1);
+                    result = (0, 1);
                 }
-
-                if (prefix <= 183)
+                else if (prefix <= 183)
                 {
-                    return (1, prefix - 128);
+                    result = (1, prefix - 128);
                 }
-
-                if (prefix < 192)
+                else if (prefix < 192)
                 {
                     int lengthOfLength = prefix - 183;
                     if (lengthOfLength > 4)
@@ -757,23 +750,27 @@ namespace Nethermind.Core.Encoding
                         throw new RlpException("Expected length greater or equal 56 and was {length}");
                     }
 
-                    return (lengthOfLength + 1, length);
+                    result = (lengthOfLength + 1, length);
                 }
-
-                if (prefix <= 247)
+                else if (prefix <= 247)
                 {
-                    return (1, prefix - 192);
+                    result = (1, prefix - 192);
                 }
-
-                int lengthOfContentLength = prefix - 247;
-                int contentLength = DeserializeLength(lengthOfContentLength);
-                if (contentLength < 56)
+                else
                 {
-                    throw new RlpException($"Expected length greater or equal 56 and got {contentLength}");
+                    int lengthOfContentLength = prefix - 247;
+                    int contentLength = DeserializeLength(lengthOfContentLength);
+                    if (contentLength < 56)
+                    {
+                        throw new RlpException($"Expected length greater or equal 56 and got {contentLength}");
+                    }
+
+
+                    result = (lengthOfContentLength + 1, contentLength);
                 }
 
                 Position = memorizedPosition;
-                return (lengthOfContentLength + 1, contentLength);
+                return result;
             }
 
             public int ReadSequenceLength()
@@ -905,22 +902,12 @@ namespace Nethermind.Core.Encoding
                 return bloom;
             }
 
-            public byte[] ReadSequenceRlp()
+            public Span<byte> PeekNextItem()
             {
-                int positionBefore = Position;
-                int sequenceLength = ReadSequenceLength();
-                byte[] sequenceRlp = Data.Slice(positionBefore, Position - positionBefore + sequenceLength);
-                Position += sequenceLength;
-                return sequenceRlp;
-            }
-
-            public Span<byte> ReadSequenceSpan()
-            {
-                int positionBefore = Position;
-                int sequenceLength = ReadSequenceLength();
-                Span<byte> sequenceRlp = Data.AsSpan(positionBefore, Position - positionBefore + sequenceLength);
-                Position += sequenceLength;
-                return sequenceRlp;
+                int length = PeekNextRlpLength();
+                Span<byte> item = Read(length);
+                Position -= item.Length;
+                return item;
             }
 
             public bool DecodeBool()
@@ -1062,18 +1049,13 @@ namespace Nethermind.Core.Encoding
 
             public void SkipItem()
             {
-                if (IsSequenceNext())
-                {
-                    int length = ReadSequenceLength();
-                    Position += length;
-                }
-                else
-                {
-                    DecodeByteArraySpan(); // TODO: confirm this is zero allocation now
-                }
+                (int prefix, int content) = PeekPrefixAndContentLength();
+                Position += prefix + content;
+            }
 
-                //(int prefix, int content) = PeekPrefixAndContentLength();
-                //Position += prefix + content;
+            public void Reset()
+            {
+                Position = 0;
             }
         }
 

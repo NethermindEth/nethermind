@@ -62,7 +62,7 @@ namespace Nethermind.Store
         public PatriciaTree(IDb db, Keccak rootHash, bool parallelizeBranches)
         {
             _db = db;
-            _parallelizeBranches = parallelizeBranches;
+            _parallelizeBranches = false;
             RootHash = rootHash;
         }
 
@@ -206,88 +206,6 @@ namespace Nethermind.Store
                     RootRef = new Node(NodeType.Unknown, _rootHash);
                 }
             }
-        }
-
-        private static Rlp RlpEncodeRef(Node nodeRef)
-        {
-            if (nodeRef == null)
-            {
-                return Rlp.OfEmptyByteArray;
-            }
-
-            nodeRef.ResolveKey(false);
-            return nodeRef.Keccak == null ? nodeRef.FullRlp : Rlp.Encode(nodeRef.Keccak);
-        }
-
-        private static Rlp RlpEncodeBranch(Node branch)
-        {
-            int contentLength = 0;
-            for (int i = 0; i < 16; i++)
-            {
-                Node nodeRef = branch.Children[i];
-                if (nodeRef == null)
-                {
-                    contentLength += Rlp.LengthOfEmptyArrayRlp;
-                }
-                else
-                {
-                    nodeRef.ResolveKey(false);
-                    contentLength += nodeRef.Keccak == null ? nodeRef.FullRlp.Length : Rlp.LengthOfKeccakRlp;
-                }
-            }
-
-            contentLength += Rlp.LengthOfByteArray(branch.Value);
-            int sequenceLength = Rlp.GetSequenceRlpLength(contentLength);
-            byte[] result = new byte[sequenceLength];
-            int position = Rlp.StartSequence(result, 0, contentLength);
-            for (int i = 0; i < 16; i++)
-            {
-                Node nodeRef = branch.Children[i];
-                if (nodeRef == null)
-                {
-                    result[position++] = Rlp.OfEmptyByteArray[0];
-                }
-                else if (nodeRef.Keccak != null)
-                {
-                    result[position] = 160;
-                    byte[] rlpBytes = nodeRef.Keccak.Bytes;
-                    Array.Copy(rlpBytes, 0, result, position + 1, rlpBytes.Length);
-                    position += rlpBytes.Length + 1;
-                }
-                else
-                {
-                    byte[] rlpBytes = nodeRef.FullRlp.Bytes;
-                    Array.Copy(rlpBytes, 0, result, position, rlpBytes.Length);
-                    position += rlpBytes.Length;
-                }
-            }
-
-            Rlp.Encode(result, position, branch.Value);
-            return new Rlp(result);
-        }
-
-        internal static Rlp RlpEncode(Node node)
-        {
-            Metrics.TreeNodeRlpEncodings++;
-            if (node.IsLeaf)
-            {
-                Rlp result = Rlp.Encode(Rlp.Encode(node.Key.ToBytes()), Rlp.Encode(node.Value));
-                return result;
-            }
-
-            if (node.IsBranch)
-            {
-                return RlpEncodeBranch(node);
-            }
-
-            if (node.IsExtension)
-            {
-                return Rlp.Encode(
-                    Rlp.Encode(node.Key.ToBytes()),
-                    RlpEncodeRef(node.Children[0]));
-            }
-
-            throw new InvalidOperationException($"Unknown node type {node.NodeType}");
         }
 
         [DebuggerStepThrough]
