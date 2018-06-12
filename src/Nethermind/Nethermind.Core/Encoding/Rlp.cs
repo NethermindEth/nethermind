@@ -711,6 +711,23 @@ namespace Nethermind.Core.Encoding
                 return numberOfItems;
             }
 
+            public void SkipSequenceLength()
+            {
+                int prefix = ReadByte();
+                if (prefix < 192)
+                {
+                    throw new RlpException($"Expected a sequence prefix to be in the range of <192, 255> and got {prefix}");
+                }
+
+                if (prefix <= 247)
+                {
+                    return;
+                }
+
+                int lengthOfConcatenationLength = prefix - 247;
+                Position += lengthOfConcatenationLength;
+            }
+            
             public int ReadSequenceLength()
             {
                 int prefix = ReadByte();
@@ -768,7 +785,7 @@ namespace Nethermind.Core.Encoding
                 return result;
             }
 
-            private byte ReadByte()
+            public byte ReadByte()
             {
                 return Data[Position++];
             }
@@ -993,6 +1010,19 @@ namespace Nethermind.Core.Encoding
                 }
 
                 throw new RlpException($"Unexpected prefix value of {prefix} when decoding a byte array.");
+            }
+
+            public void SkipItem()
+            {
+                if (IsSequenceNext())
+                {
+                    int length = ReadSequenceLength();
+                    Position += length;
+                }
+                else
+                {
+                    DecodeByteArraySpan(); // TODO: confirm this is zero allocation now
+                }
             }
         }
 

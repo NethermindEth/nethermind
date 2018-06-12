@@ -558,9 +558,13 @@ namespace Nethermind.Store
                 }
                 else
                 {
-                    Node newBranch = TreeNodeFactory.CreateBranch(node.Children, context.UpdateValue);
-                    newBranch.IsDirty = true;
-                    ConnectNodes(newBranch);
+                    
+                    node.Value = context.UpdateValue;
+                    node.IsDirty = true;
+//                    
+//                    Node newBranch = TreeNodeFactory.CreateBranch(node.Children, context.UpdateValue);
+//                    newBranch.IsDirty = true;
+//                    ConnectNodes(newBranch);
                 }
 
                 return context.UpdateValue;

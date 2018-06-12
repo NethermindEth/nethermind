@@ -31,38 +31,33 @@ namespace Nethermind.Store
         public Node(NodeType nodeType)
         {
             NodeType = nodeType;
-            if (NodeType == NodeType.Extension)
-            {
-                Children = new Node[1];
-            }
-            else if (NodeType == NodeType.Branch)
-            {
-                Children = new Node[16];
-            }
+            Children = new NodeData(this);
         }
 
         public Node(NodeType nodeType, Keccak keccak)
         {
             NodeType = nodeType;
+            Children = new NodeData(this);
             Keccak = keccak;
         }
 
         public Node(NodeType nodeType, Rlp rlp)
         {
             NodeType = nodeType;
+            Children = new NodeData(this);
             FullRlp = rlp;
         }
 
-        public Node[] Children { get; set; }
+        public NodeData Children { get; }
 
         public bool IsValidWithOneNodeLess
         {
             get
             {
                 int nonEmptyNodes = 0;
-                for (int i = 0; i < Children.Length; i++)
+                for (int i = 0; i < 16; i++)
                 {
-                    if (Children[i] != null)
+                    if (Children[i] != null) // TODO: separate null check
                     {
                         nonEmptyNodes++;
                     }
@@ -74,15 +69,29 @@ namespace Nethermind.Store
             }
         }
 
-        //public bool IsDirty => Keccak == null && FullRlp.Length >= 32; // possibly?
         public bool IsDirty { get; set; }
         public Keccak Keccak { get; set; }
+        private Rlp.DecoderContext DecoderContext { get; set; }
         public Rlp FullRlp { get; private set; }
         public NodeType NodeType { get; set; }
 
         public bool IsLeaf => NodeType == NodeType.Leaf;
         public bool IsBranch => NodeType == NodeType.Branch;
         public bool IsExtension => NodeType == NodeType.Extension;
+
+        public HexPrefix Key
+        {
+            get => Children.Key;
+            set => Children.Key = value;
+        }
+
+        public byte[] Value
+        {
+            get => Children.Value;
+            set => Children.Value = value;
+        }
+
+        public byte[] Path => Key.Path;
 
         private static Node DecodeChildNode(Rlp.DecoderContext decoderContext)
         {
@@ -108,6 +117,7 @@ namespace Nethermind.Store
                 if (FullRlp == null)
                 {
                     FullRlp = tree.GetNode(Keccak);
+                    DecoderContext = FullRlp.Bytes.AsRlpContext();
                 }
             }
             else
@@ -116,38 +126,29 @@ namespace Nethermind.Store
             }
 
             Metrics.TreeNodeRlpDecodings++;
-            Rlp.DecoderContext context = FullRlp.Bytes.AsRlpContext();
-
+            Rlp.DecoderContext context = DecoderContext;
             context.ReadSequenceLength();
             int numberOfItems = context.ReadNumberOfItemsRemaining();
 
             if (numberOfItems == 17)
             {
-                Children = new Node[16];
-                for (int i = 0; i < 16; i++)
-                {
-                    Children[i] = DecodeChildNode(context);
-                }
-
-                Value = context.DecodeByteArray();
                 NodeType = NodeType.Branch;
             }
             else if (numberOfItems == 2)
             {
-                Children = new Node[1];
                 HexPrefix key = HexPrefix.FromBytes(context.DecodeByteArray());
                 bool isExtension = key.IsExtension;
                 if (isExtension)
                 {
+                    NodeType = NodeType.Extension;
                     Children[0] = DecodeChildNode(context);
                     Key = key;
-                    NodeType = NodeType.Extension;
                 }
                 else
                 {
+                    NodeType = NodeType.Leaf;
                     Key = key;
                     Value = context.DecodeByteArray();
-                    NodeType = NodeType.Leaf;
                 }
             }
             else
@@ -163,11 +164,12 @@ namespace Nethermind.Store
                 return;
             }
 
-            if (FullRlp == null)
+            if (FullRlp == null || IsDirty) // TODO: review
             {
                 FullRlp = PatriciaTree.RlpEncode(this);
+                DecoderContext = FullRlp.Bytes.AsRlpContext();
             }
-            
+
             if (FullRlp.Length < 32)
             {
                 if (isRoot)
@@ -183,8 +185,215 @@ namespace Nethermind.Store
             Keccak = Keccak.Compute(FullRlp);
         }
 
-        public HexPrefix Key { get; set; }
-        public byte[] Value { get; set; }
-        public byte[] Path => Key.Path;
+        public class NodeData
+        {
+            private static object _nullNode = new object();
+
+            private readonly Node _parentNode;
+
+            private object[] _data;
+
+            public NodeData(Node parentNode)
+            {
+                _parentNode = parentNode;
+            }
+
+            internal HexPrefix Key
+            {
+                get
+                {
+                    //InitData();
+                    //if (_data[0] == null)
+                    //{
+                    //    if (_parentNode.DecoderContext == null)
+                    //    {
+                    //        throw new InvalidOperationException("key unknown");
+                    //    }
+                    //    else
+                    //    {
+                    //        _parentNode.DecoderContext.Position = 0;
+                    //        _parentNode.DecoderContext.SkipSequenceLength();
+                    //        _data[0] = new HexPrefix(_parentNode.IsLeaf, _parentNode.DecoderContext.DecodeByteArray());
+                    //    }
+                    //}
+                    return _data[0] as HexPrefix;
+                }
+
+                set
+                {
+                    InitData();
+                    _data[0] = value;
+                }
+            }
+
+            internal byte[] Value
+            {
+                get
+                {
+                    InitData();
+                    if (_parentNode.IsLeaf)
+                    {
+                        return (byte[])_data[1];
+                    }
+
+                    if (_data[16] == null)
+                    {
+                        if (_parentNode.DecoderContext == null)
+                        {
+                            _data[16] = new byte[0];
+                        }
+                        else
+                        {
+                            _parentNode.DecoderContext.Position = 0;
+                            _parentNode.DecoderContext.SkipSequenceLength();
+                            for (int i = 0; i < 16; i++)
+                            {
+                                _parentNode.DecoderContext.SkipItem();
+                            }
+
+                            _data[16] = _parentNode.DecoderContext.DecodeByteArray();
+                        }
+                    }
+
+                    return (byte[])_data[16];
+                }
+
+                set
+                {
+                    InitData();
+                    _data[_parentNode.IsLeaf ? 1 : 16] = value;
+                }
+            }
+
+            public Node this[int i]
+            {
+                get => GetChild(i);
+                set => SetChild(i, value);
+            }
+
+            private void InitData()
+            {
+                if (_data == null)
+                {
+                    switch (_parentNode.NodeType)
+                    {
+                        case NodeType.Unknown:
+                        throw new InvalidOperationException($"Cannot resolve children of an {nameof(NodeType.Unknown)} node");
+                        case NodeType.Branch:
+                        _data = new object[17];
+                        break;
+                        default:
+                        _data = new object[2];
+                        break;
+                    }
+                }
+            }
+
+            private void ResolveChild(int i)
+            {
+                Rlp.DecoderContext context = _parentNode.DecoderContext;
+                InitData();
+                if (context == null)
+                {
+                    return;
+                }
+
+                int index = _parentNode.IsExtension ? i + 1 : i;
+                if (_data[index] == null)
+                {
+                    context.Position = 0;
+                    context.SkipSequenceLength();
+                    for (int _ = 0; _ < index; _++)
+                    {
+                        context.SkipItem();
+                    }
+
+                    int prefix = context.ReadByte();
+                    if (prefix == 128)
+                    {
+                        _data[index] = _nullNode;
+                    }
+                    else if (prefix == 160)
+                    {
+                        context.Position--;
+                        _data[index] = new Node(NodeType.Unknown, context.DecodeKeccak());
+                    }
+                    else
+                    {
+                        context.Position--;
+                        //if (context.IsSequenceNext())
+                        //{
+                        int sequenceStartPosition = context.Position;
+                        Rlp fullRlp = new Rlp(context.ReadSequenceRlp());
+                        context.Position = sequenceStartPosition;
+
+                        int sequenceLength = context.ReadSequenceLength();
+                        int numberOfItems = context.ReadNumberOfItemsRemaining(context.Position + sequenceLength);
+
+                        Node child;
+                        if (numberOfItems == 17)
+                        {
+                            child = TreeNodeFactory.CreateBranch();
+                        }
+                        else if (numberOfItems == 2)
+                        {
+                            HexPrefix key = HexPrefix.FromBytes(context.DecodeByteArray());
+                            bool isExtension = key.IsExtension;
+                            child = isExtension
+                                ? TreeNodeFactory.CreateExtension(key, DecodeChildNode(context))
+                                : TreeNodeFactory.CreateLeaf(key, context.DecodeByteArray());
+                        }
+                        else
+                        {
+                            throw new InvalidOperationException($"Unexpected number of items = {numberOfItems} when decoding a node");
+                        }
+
+                        child.FullRlp = fullRlp;
+                        _data[index] = child;
+                        //}
+                    }
+                }
+            }
+
+            private bool IsChildNull(int i)
+            {
+                Rlp.DecoderContext context = _parentNode.DecoderContext;
+                if (context == null)
+                {
+                    return true;
+                }
+
+                InitData();
+                int index = _parentNode.IsExtension ? i + 1 : i;
+                if (_data[index] == null)
+                {
+                    context.Position = 0;
+                    context.SkipSequenceLength();
+                    for (int _ = 0; _ < index; _++)
+                    {
+                        context.SkipItem();
+                    }
+
+                    int prefix = context.ReadByte();
+                    return prefix == 128;
+                }
+
+                return ReferenceEquals(_data[index], _nullNode);
+            }
+
+            private Node GetChild(int i)
+            {
+                int index = _parentNode.IsExtension ? i + 1 : i;
+                ResolveChild(i);
+                return ReferenceEquals(_data[index], _nullNode) ? null : (Node)_data[index];
+            }
+
+            private void SetChild(int i, Node node)
+            {
+                InitData();
+                int index = _parentNode.IsExtension ? i + 1 : i;
+                _data[index] = node;
+            }
+        }
     }
 }

@@ -16,32 +16,13 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
-
 namespace Nethermind.Store
 {
     internal static class TreeNodeFactory
     {
         public static Node CreateBranch()
         {
-            return CreateBranch(new Node[16], new byte[0]);
-        }
-
-        public static Node CreateBranch(Node[] nodes, byte[] value)
-        {
-            Node node = new Node(NodeType.Branch);
-            node.Children = nodes;
-            node.Value = value;
-
-            if(value == null) throw new ArgumentNullException(nameof(value));
-            if(nodes == null) throw new ArgumentNullException(nameof(nodes));
-
-            if (nodes.Length != 16)
-            {
-                throw new ArgumentException($"{nameof(NodeType.Branch)} should have 16 child nodes", nameof(nodes));
-            }
-
-            return node;
+            return new Node(NodeType.Branch);
         }
 
         public static Node CreateLeaf(HexPrefix key, byte[] value)
