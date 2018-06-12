@@ -35,6 +35,7 @@ namespace Nethermind.Network.Discovery
             IsDiscoveryNodesPersistenceOn = true;
             IsPeersPersistenceOn = true;
             DbBasePath = Path.GetTempPath();
+            ActivePeersMaxCount = 25;
         }
 
         public int BucketSize { get; set; }
@@ -87,7 +88,7 @@ namespace Nethermind.Network.Discovery
         public bool IsPeersPersistenceOn { get; set; }
         public int ActivePeerUpdateInterval => 10000;
         public bool IsActivePeerTimerEnabled => false;
-        public int ActivePeersMaxCount => 25;
+        public int ActivePeersMaxCount { get; set; }
         public int DisconnectDelay => 1000 * 5;
         public int PeersPersistanceInterval => 1000 * 60 * 5;
     }

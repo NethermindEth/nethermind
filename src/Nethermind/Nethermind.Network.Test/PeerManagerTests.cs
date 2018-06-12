@@ -57,7 +57,7 @@ namespace Nethermind.Network.Test
         }
 
         [Test]
-        public void PeerBecomesActiveAndDisconnectTest()
+        public void OutPeerBecomesActiveAndDisconnectTest()
         {
             var p2pSession = InitializeNode();
 
@@ -66,7 +66,7 @@ namespace Nethermind.Network.Test
             var p2pArgs = new P2PProtocolInitializedEventArgs(p2pProtocol)
             {
                 P2PVersion = 4,
-                Capabilities = new[] {new Capability(Protocol.Eth, 62)}.ToList()
+                Capabilities = new[] {new Capability(Protocol.Eth, 62)}.ToList(),
             };
             p2pSession.TriggerProtocolInitialized(p2pArgs);
             Assert.IsTrue(_peerManager.ActivePeers.First().NodeStats.DidEventHappen(NodeStatsEvent.P2PInitialized));
@@ -86,7 +86,55 @@ namespace Nethermind.Network.Test
 
             //trigger disconnect
             p2pSession.TriggerPeerDisconnected();
-            Assert.AreEqual(0, _peerManager.CandidatePeers.Count);
+            Assert.AreEqual(1, _peerManager.CandidatePeers.Count);
+            Assert.AreEqual(0, _peerManager.ActivePeers.Count);
+
+            //verify active peer was removed from synch manager
+            _synchronizationManager.Received(1).RemovePeer(Arg.Any<ISynchronizationPeer>());
+        }
+
+        [Test]
+        public void InPeerBecomesActiveAndDisconnectTest()
+        {
+            var node = _nodeFactory.CreateNode("192.1.1.1", 3333);
+
+            //trigger connection initialized
+            var p2pSession = new TestP2PSession();
+            p2pSession.RemoteNodeId = node.Id;
+            p2pSession.RemoteHost = node.Host;
+            p2pSession.RemotePort = node.Port;
+            p2pSession.ClientConnectionType = ClientConnectionType.In;
+            _localPeer.TriggerConnectionInitialized(p2pSession, ClientConnectionType.In);
+
+            //trigger p2p initialization
+            var p2pProtocol = new P2PProtocolHandler(p2pSession, new MessageSerializationService(), p2pSession.RemoteNodeId, p2pSession.RemotePort ?? 0, _logger);
+            var p2pArgs = new P2PProtocolInitializedEventArgs(p2pProtocol)
+            {
+                P2PVersion = 4,
+                Capabilities = new[] { new Capability(Protocol.Eth, 62) }.ToList()
+            };
+            p2pSession.TriggerProtocolInitialized(p2pArgs);
+            Assert.IsTrue(_peerManager.ActivePeers.First().NodeStats.DidEventHappen(NodeStatsEvent.P2PInitialized));
+
+            //trigger eth62 initialization
+            var eth62 = new Eth62ProtocolHandler(p2pSession, new MessageSerializationService(), _synchronizationManager, _logger);
+            var args = new Eth62ProtocolInitializedEventArgs(eth62)
+            {
+                ChainId = _synchronizationManager.ChainId
+            };
+            p2pSession.TriggerProtocolInitialized(args);
+
+            Assert.AreEqual(1, _peerManager.CandidatePeers.Count);
+            Assert.AreEqual(1, _peerManager.ActivePeers.Count);
+            Assert.IsTrue(_peerManager.ActivePeers.First().NodeStats.DidEventHappen(NodeStatsEvent.Eth62Initialized));
+            Assert.NotNull(_peerManager.ActivePeers.First().SynchronizationPeer);
+
+            //verify active peer was added to synch manager
+            _synchronizationManager.Received(1).AddPeer(Arg.Any<ISynchronizationPeer>());
+
+            //trigger disconnect
+            p2pSession.TriggerPeerDisconnected();
+            Assert.AreEqual(1, _peerManager.CandidatePeers.Count);
             Assert.AreEqual(0, _peerManager.ActivePeers.Count);
 
             //verify active peer was removed from synch manager
@@ -143,7 +191,48 @@ namespace Nethermind.Network.Test
             Assert.AreEqual(DisconnectReason.Other, p2pSession.DisconnectReason);
         }
 
-        private TestP2PSession InitializeNode()
+        [Test]
+        public void DisconnectOnAlreadyConnectedTest()
+        {
+            var p2pSession = InitializeNode(ClientConnectionType.In);
+
+            //trigger p2p initialization
+            var p2pProtocol = new P2PProtocolHandler(p2pSession, new MessageSerializationService(), p2pSession.RemoteNodeId, p2pSession.RemotePort ?? 0, _logger);
+            var p2pArgs = new P2PProtocolInitializedEventArgs(p2pProtocol)
+            {
+                P2PVersion = 1,
+                Capabilities = new[] { new Capability(Protocol.Eth, 62) }.ToList()
+            };
+            p2pSession.TriggerProtocolInitialized(p2pArgs);
+            Assert.IsTrue(p2pSession.Disconected);
+            Assert.AreEqual(DisconnectReason.AlreadyConnected, p2pSession.DisconnectReason);
+        }
+
+        [Test]
+        public void DisconnectOnTooManyPeersTest()
+        {
+            var node = _nodeFactory.CreateNode("192.1.1.1", 3333);
+            ((DiscoveryConfigurationProvider)_configurationProvider).ActivePeersMaxCount = 0;
+
+            //trigger connection initialized
+            var p2pSession = new TestP2PSession();
+            p2pSession.RemoteNodeId = node.Id;
+            p2pSession.ClientConnectionType = ClientConnectionType.In;
+            _localPeer.TriggerConnectionInitialized(p2pSession, ClientConnectionType.In);
+
+            //trigger p2p initialization
+            var p2pProtocol = new P2PProtocolHandler(p2pSession, new MessageSerializationService(), p2pSession.RemoteNodeId, p2pSession.RemotePort ?? 0, _logger);
+            var p2pArgs = new P2PProtocolInitializedEventArgs(p2pProtocol)
+            {
+                P2PVersion = 1,
+                Capabilities = new[] { new Capability(Protocol.Eth, 62) }.ToList()
+            };
+            p2pSession.TriggerProtocolInitialized(p2pArgs);
+            Assert.IsTrue(p2pSession.Disconected);
+            Assert.AreEqual(DisconnectReason.TooManyPeers, p2pSession.DisconnectReason);
+        }
+
+        private TestP2PSession InitializeNode(ClientConnectionType clientConnectionType = ClientConnectionType.Out)
         {
             var node = _nodeFactory.CreateNode("192.1.1.1", 3333);
             _discoveryManager.GetNodeLifecycleManager(node);
@@ -162,10 +251,14 @@ namespace Nethermind.Network.Test
             //trigger connection initialized
             var p2pSession = new TestP2PSession();
             p2pSession.RemoteNodeId = node.Id;
+            p2pSession.ClientConnectionType = clientConnectionType;
             _localPeer.TriggerConnectionInitialized(p2pSession);
 
             var peer = _peerManager.ActivePeers.First();
-            Assert.IsNotNull(peer.Session);
+            if (clientConnectionType == ClientConnectionType.Out)
+            {
+                Assert.IsNotNull(peer.Session);
+            }
 
             return p2pSession;
         }
@@ -236,9 +329,9 @@ namespace Nethermind.Network.Test
             return Task.CompletedTask;
         }
 
-        public void TriggerConnectionInitialized(IP2PSession session)
+        public void TriggerConnectionInitialized(IP2PSession session, ClientConnectionType clientConnectionType = ClientConnectionType.Out)
         {
-            ConnectionInitialized?.Invoke(this, new ConnectionInitializedEventArgs(session, ClientConnectionType.Out));
+            ConnectionInitialized?.Invoke(this, new ConnectionInitializedEventArgs(session, clientConnectionType));
         }
 
         public Task Init()
