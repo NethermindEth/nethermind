@@ -28,6 +28,8 @@ namespace Nethermind.Store
 {
     internal class Node
     {
+        private bool _isDirty;
+
         public Node(NodeType nodeType)
         {
             NodeType = nodeType;
@@ -57,7 +59,7 @@ namespace Nethermind.Store
                 int nonEmptyNodes = 0;
                 for (int i = 0; i < 16; i++)
                 {
-                    if (Children[i] != null) // TODO: separate null check
+                    if (!Children.IsChildNull(i)) // TODO: separate null check
                     {
                         nonEmptyNodes++;
                     }
@@ -69,7 +71,20 @@ namespace Nethermind.Store
             }
         }
 
-        public bool IsDirty { get; set; }
+        public bool IsDirty
+        {
+            get => _isDirty;
+            set
+            {
+                if (value)
+                {
+                    Keccak = null;
+                }
+
+                _isDirty = value;
+            }
+        }
+
         public Keccak Keccak { get; set; }
         private Rlp.DecoderContext DecoderContext { get; set; }
         public Rlp FullRlp { get; private set; }
@@ -200,25 +215,7 @@ namespace Nethermind.Store
 
             internal HexPrefix Key
             {
-                get
-                {
-                    //InitData();
-                    //if (_data[0] == null)
-                    //{
-                    //    if (_parentNode.DecoderContext == null)
-                    //    {
-                    //        throw new InvalidOperationException("key unknown");
-                    //    }
-                    //    else
-                    //    {
-                    //        _parentNode.DecoderContext.Position = 0;
-                    //        _parentNode.DecoderContext.SkipSequenceLength();
-                    //        _data[0] = new HexPrefix(_parentNode.IsLeaf, _parentNode.DecoderContext.DecodeByteArray());
-                    //    }
-                    //}
-                    return _data[0] as HexPrefix;
-                }
-
+                get => _data[0] as HexPrefix;
                 set
                 {
                     InitData();
@@ -355,30 +352,28 @@ namespace Nethermind.Store
                 }
             }
 
-            private bool IsChildNull(int i)
+            public bool IsChildNull(int i)
             {
                 Rlp.DecoderContext context = _parentNode.DecoderContext;
-                if (context == null)
-                {
-                    return true;
-                }
-
                 InitData();
                 int index = _parentNode.IsExtension ? i + 1 : i;
-                if (_data[index] == null)
+                if (context != null)
                 {
-                    context.Position = 0;
-                    context.SkipSequenceLength();
-                    for (int _ = 0; _ < index; _++)
+                    if (_data[index] == null)
                     {
-                        context.SkipItem();
-                    }
+                        context.Position = 0;
+                        context.SkipSequenceLength();
+                        for (int _ = 0; _ < index; _++)
+                        {
+                            context.SkipItem();
+                        }
 
-                    int prefix = context.ReadByte();
-                    return prefix == 128;
+                        int prefix = context.ReadByte();
+                        return prefix == 128;
+                    }
                 }
 
-                return ReferenceEquals(_data[index], _nullNode);
+                return ReferenceEquals(_data[index], _nullNode) || _data[index] == null;
             }
 
             private Node GetChild(int i)
@@ -392,7 +387,7 @@ namespace Nethermind.Store
             {
                 InitData();
                 int index = _parentNode.IsExtension ? i + 1 : i;
-                _data[index] = node;
+                _data[index] = node == null ? _nullNode : node;
             }
         }
     }
