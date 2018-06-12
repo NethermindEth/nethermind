@@ -43,7 +43,7 @@ namespace Nethermind.Store
         public static Node CreateExtension(HexPrefix key, Node child)
         {
             Node node = new Node(NodeType.Extension);
-            node.Children[0] = child;
+            node.SetChild(0, child);
             node.Key = key;
             return node;
         }

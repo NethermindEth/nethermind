@@ -62,7 +62,7 @@ namespace Nethermind.Store
         public PatriciaTree(IDb db, Keccak rootHash, bool parallelizeBranches)
         {
             _db = db;
-            _parallelizeBranches = false;
+            _parallelizeBranches = parallelizeBranches;
             RootHash = rootHash;
         }
 
@@ -115,10 +115,9 @@ namespace Nethermind.Store
                 {
                     for (int i = 0; i < 16; i++)
                     {
-                        Node subnode = node.Children[i];
-                        if (subnode?.IsDirty ?? false)
+                        if (node.IsChildDirty(i))
                         {
-                            Commit(node.Children[i], false);
+                            Commit(node.GetChild(i), false);
                         }
                     }
                 }
@@ -127,10 +126,9 @@ namespace Nethermind.Store
                     List<Node> nodesToCommit = new List<Node>();
                     for (int i = 0; i < 16; i++)
                     {
-                        Node subnode = node.Children[i];
-                        if (subnode?.IsDirty ?? false)
+                        if (node.IsChildDirty(i))
                         {
-                            nodesToCommit.Add(node.Children[i]);
+                            nodesToCommit.Add(node.GetChild(i));
                         }
                     }
 
@@ -165,9 +163,9 @@ namespace Nethermind.Store
             }
             else if (node.NodeType == NodeType.Extension)
             {
-                if (node.Children[0].IsDirty)
+                if (node.GetChild(0).IsDirty)
                 {
-                    Commit(node.Children[0], false);
+                    Commit(node.GetChild(0), false);
                 }
             }
 
@@ -322,7 +320,7 @@ namespace Nethermind.Store
                 {
                     if (!(nextNode == null && !node.IsValidWithOneNodeLess))
                     {
-                        node.Children[parentOnStack.PathIndex] = nextNode;
+                        node.SetChild(parentOnStack.PathIndex, nextNode);
                         node.IsDirty = true;
                         nextNode = node;
                     }
@@ -339,14 +337,14 @@ namespace Nethermind.Store
                             int childNodeIndex = 0;
                             for (int i = 0; i < 16; i++)
                             {
-                                if (i != parentOnStack.PathIndex && !node.Children.IsChildNull(i))
+                                if (i != parentOnStack.PathIndex && !node.IsChildNull(i))
                                 {
                                     childNodeIndex = i;
                                     break;
                                 }
                             }
 
-                            Node childNodeRef = node.Children[childNodeIndex];
+                            Node childNodeRef = node.GetChild(childNodeIndex);
                             if (childNodeRef == null)
                             {
                                 throw new InvalidOperationException("Before updating branch should have had at least two non-empty children");
@@ -393,7 +391,7 @@ namespace Nethermind.Store
                     else if (nextNode.IsBranch)
                     {
                         node.IsDirty = true;
-                        node.Children[0] = nextNode;
+                        node.SetChild(0, nextNode);
                         nextNode = node;
                     }
                     else
@@ -441,7 +439,7 @@ namespace Nethermind.Store
                 return context.UpdateValue;
             }
 
-            Node nextNodeRef = node.Children[context.UpdatePath[context.CurrentIndex]];
+            Node nextNodeRef = node.GetChild(context.UpdatePath[context.CurrentIndex]);
             if (context.IsUpdate)
             {
                 NodeStack.Push(new StackedNode(node, context.UpdatePath[context.CurrentIndex]));
@@ -482,7 +480,7 @@ namespace Nethermind.Store
         private byte[] TraverseLeaf(Node node, TraverseContext context)
         {
             byte[] remaining = context.GetRemainingUpdatePath();
-            (byte[] shorterPath, byte[] longerPath) = remaining.Length - node.Path.Length < 0
+            (byte[] shorterPath, byte[] longerPath) = context.RemainingUpdatePathLength - node.Path.Length < 0
                 ? (remaining, node.Path)
                 : (node.Path, remaining);
 
@@ -563,7 +561,7 @@ namespace Nethermind.Store
                 byte[] shortLeafPath = shorterPath.Slice(extensionLength + 1, shorterPath.Length - extensionLength - 1);
                 Node shortLeaf = TreeNodeFactory.CreateLeaf(new HexPrefix(true, shortLeafPath), shorterPathValue);
                 shortLeaf.IsDirty = true;
-                branch.Children[shorterPath[extensionLength]] = shortLeaf;
+                branch.SetChild(shorterPath[extensionLength], shortLeaf);
             }
 
             byte[] leafPath = longerPath.Slice(extensionLength + 1, longerPath.Length - extensionLength - 1);
@@ -595,8 +593,9 @@ namespace Nethermind.Store
                     NodeStack.Push(new StackedNode(node, 0));
                 }
 
-                node.Children[0].ResolveNode(this);
-                return TraverseNode(node.Children[0], context);
+                Node next = node.GetChild(0); 
+                next.ResolveNode(this);
+                return TraverseNode(next, context);
             }
 
             if (!context.IsUpdate)
@@ -634,19 +633,19 @@ namespace Nethermind.Store
                 byte[] path = remaining.Slice(extensionLength + 1, remaining.Length - extensionLength - 1);
                 Node shortLeaf = TreeNodeFactory.CreateLeaf(new HexPrefix(true, path), context.UpdateValue);
                 shortLeaf.IsDirty = true;
-                branch.Children[remaining[extensionLength]] = shortLeaf;
+                branch.SetChild(remaining[extensionLength], shortLeaf);
             }
 
             if (pathBeforeUpdate.Length - extensionLength > 1)
             {
                 byte[] extensionPath = pathBeforeUpdate.Slice(extensionLength + 1, pathBeforeUpdate.Length - extensionLength - 1);
-                Node secondExtension = TreeNodeFactory.CreateExtension(new HexPrefix(false, extensionPath), node.Children[0]);
+                Node secondExtension = TreeNodeFactory.CreateExtension(new HexPrefix(false, extensionPath), node.GetChild(0));
                 secondExtension.IsDirty = true;
-                branch.Children[pathBeforeUpdate[extensionLength]] = secondExtension;
+                branch.SetChild(pathBeforeUpdate[extensionLength], secondExtension);
             }
             else
             {
-                branch.Children[pathBeforeUpdate[extensionLength]] = node.Children[0];
+                branch.SetChild(pathBeforeUpdate[extensionLength], node.GetChild(0));
             }
 
             ConnectNodes(branch);

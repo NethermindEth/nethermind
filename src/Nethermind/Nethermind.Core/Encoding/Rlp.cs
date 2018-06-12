@@ -670,6 +670,19 @@ namespace Nethermind.Core.Encoding
             {
                 return Data[Position] >= 192;
             }
+            
+//            public int ReadNumberOfItemsRemaining(int? beforePosition = null)
+//            {
+//                int positionStored = Position;
+//                int numberOfItems = 0;
+//                while (Position < (beforePosition ?? Data.Length))
+//                {
+//                   SkipItem();
+//                }
+//
+//                Position = positionStored;
+//                return numberOfItems;
+//            }
 
             public int ReadNumberOfItemsRemaining(int? beforePosition = null)
             {
@@ -835,7 +848,7 @@ namespace Nethermind.Core.Encoding
                 return Data[Position++];
             }
 
-            private Span<byte> Read(int length)
+            public Span<byte> Read(int length)
             {
                 Span<byte> data = Data.AsSpan(Position, length);
                 Position += length;
