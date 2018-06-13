@@ -62,7 +62,7 @@ namespace Nethermind.Store
         public PatriciaTree(IDb db, Keccak rootHash, bool parallelizeBranches)
         {
             _db = db;
-            _parallelizeBranches = parallelizeBranches;
+            _parallelizeBranches = false;
             RootHash = rootHash;
         }
 
