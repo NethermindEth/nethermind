@@ -62,7 +62,7 @@ namespace Nethermind.Store
         public PatriciaTree(IDb db, Keccak rootHash, bool parallelizeBranches)
         {
             _db = db;
-            _parallelizeBranches = false;
+            _parallelizeBranches = parallelizeBranches;
             RootHash = rootHash;
         }
 
@@ -90,10 +90,10 @@ namespace Nethermind.Store
 
             if (RootRef.IsDirty)
             {
-                CurrentCommit.Clear();
                 Commit(RootRef, true);
-                foreach (TrieNode node in CurrentCommit)
+                while(!CurrentCommit.IsEmpty)
                 {
+                    CurrentCommit.TryDequeue(out TrieNode node);
                     _db.Set(node.Keccak, node.FullRlp.Bytes);
                 }
 
@@ -103,7 +103,7 @@ namespace Nethermind.Store
             }
         }
 
-        private static readonly ConcurrentBag<TrieNode> CurrentCommit = new ConcurrentBag<TrieNode>();
+        private static readonly ConcurrentQueue<TrieNode> CurrentCommit = new ConcurrentQueue<TrieNode>();
 
         private void Commit(TrieNode node, bool isRoot)
         {
@@ -173,7 +173,7 @@ namespace Nethermind.Store
             if (node.FullRlp != null && node.FullRlp.Length >= 32)
             {
                 NodeCache.Set(node.Keccak, node.FullRlp);
-                CurrentCommit.Add(node);
+                CurrentCommit.Enqueue(node);
             }
         }
 
@@ -185,11 +185,6 @@ namespace Nethermind.Store
 
         private void SetRootHash(Keccak value, bool resetObjects)
         {
-            if (_rootHash == value)
-            {
-                return;
-            }
-
             _rootHash = value;
             if (_rootHash == Keccak.EmptyTreeHash)
             {

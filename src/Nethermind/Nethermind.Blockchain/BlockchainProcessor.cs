@@ -374,6 +374,7 @@ namespace Nethermind.Blockchain
         private long _lastTreeNodeRlp;
         private long _lastEvmExceptions;
         private long _lastSelfDestructs;
+        private long _maxMemory = 0;
 
         public void Process(Block suggestedBlock)
         {
@@ -391,7 +392,7 @@ namespace Nethermind.Blockchain
                 long currentGen0 = GC.CollectionCount(0);
                 long currentGen1 = GC.CollectionCount(1);
                 long currentGen2 = GC.CollectionCount(2);
-                long currentMemory = GC.GetTotalMemory(false);
+                _maxMemory = Math.Max(_maxMemory, GC.GetTotalMemory(false));
                 long currentStateDbReads = Metrics.StateDbReads;
                 long currentStateDbWrites = Metrics.StateDbWrites;
                 long currentTreeNodeRlp = Metrics.TreeNodeRlpEncodings + Metrics.TreeNodeRlpDecodings;
@@ -408,7 +409,7 @@ namespace Nethermind.Blockchain
                 decimal txps = chunkTx / (decimal)chunkMs * 1000;
                 //                _logger.Info($"Processed block {suggestedBlock.ToString(Block.Format.Short)} in {microSeconds,12:N0}μs, guse={gasPercentage,7:P2}, mgas={mgas,6:F2}, mgasps={mgasPerSecond,9:F2}");
                 _logger.Info($"Processed blocks up to {suggestedBlock.Number,9} in {chunkMs,7:N0}ms, tx={chunkTx,5} mgas={chunkMGas,8:F2}, mgasps={mgasPerSecond,7:F2}, txps={txps,7:F2}, total mgasps={totalMgasPerSecond,7:F2}, queue={_blockQueue.Count}");
-                _logger.Info($"Gen0: {currentGen0 - _lastGen0,6}, Gen1: {currentGen1 - _lastGen1,6}, Gen2: {currentGen2 - _lastGen2,6}, mem: {currentMemory / 1000000,5}, reads: {currentStateDbReads - _lastStateDbReads,9}, writes: {currentStateDbWrites - _lastStateDbWrites,9}, rlp: {currentTreeNodeRlp - _lastTreeNodeRlp,9}, exceptions:{evmExceptions - _lastEvmExceptions}, selfdstrcs={currentSelfDestructs - _lastSelfDestructs}");
+                _logger.Info($"Gen0: {currentGen0 - _lastGen0,6}, Gen1: {currentGen1 - _lastGen1,6}, Gen2: {currentGen2 - _lastGen2,6}, maxmem: {_maxMemory / 1000000,5}, reads: {currentStateDbReads - _lastStateDbReads,9}, writes: {currentStateDbWrites - _lastStateDbWrites,9}, rlp: {currentTreeNodeRlp - _lastTreeNodeRlp,9}, exceptions:{evmExceptions - _lastEvmExceptions}, selfdstrcs={currentSelfDestructs - _lastSelfDestructs}");
                 _lastTotalMGas = _currentTotalMGas;
                 _lastElapsedMs = currentMs;
                 _lastTotalTx = _currentTotalTx;
