@@ -56,7 +56,7 @@ namespace Nethermind.Evm
             transactionReceipt.Logs = LogEntry.EmptyLogs;
             transactionReceipt.Bloom = Bloom.Empty;
             transactionReceipt.GasUsed = block.GasUsed;
-            transactionReceipt.PostTransactionState = _stateProvider.StateRoot;
+            transactionReceipt.PostTransactionState = _stateProvider.StateRoot; // TODO: do not call it in Byzantium - no longer needed to calculate root hash
             transactionReceipt.StatusCode = StatusCode.Failure;
             return transactionReceipt;
         }

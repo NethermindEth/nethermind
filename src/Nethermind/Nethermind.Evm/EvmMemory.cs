@@ -36,7 +36,7 @@ namespace Nethermind.Evm
 
         public void SaveWord(BigInteger location, Span<byte> word)
         {
-            throw new NotImplementedException();
+            SaveWord(location, word.ToArray());
         }
 
         public void SaveWord(BigInteger location, byte[] word)
@@ -55,7 +55,10 @@ namespace Nethermind.Evm
 
         public void SaveByte(BigInteger location, byte value)
         {
-            throw new NotImplementedException();
+            _memory.Position = (long)location;
+            _memory.WriteByte(value);
+
+            UpdateSize();
         }
 
         public void SaveByte(BigInteger location, byte[] value)
@@ -68,7 +71,7 @@ namespace Nethermind.Evm
 
         public void Save(BigInteger location, Span<byte> value)
         {
-            throw new NotImplementedException();
+            Save(location, value.ToArray());
         }
 
         public static long Div32Ceiling(BigInteger length)
@@ -98,12 +101,12 @@ namespace Nethermind.Evm
 
         public Span<byte> LoadSpan(BigInteger location)
         {
-            throw new NotImplementedException();
+            return Load(location).AsSpan();
         }
 
         public Span<byte> LoadSpan(BigInteger location, BigInteger length)
         {
-            throw new NotImplementedException();
+            return Load(location, length).AsSpan();
         }
 
         public byte[] Load(BigInteger location)

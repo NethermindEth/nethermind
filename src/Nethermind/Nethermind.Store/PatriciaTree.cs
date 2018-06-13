@@ -62,7 +62,7 @@ namespace Nethermind.Store
         public PatriciaTree(IDb db, Keccak rootHash, bool parallelizeBranches)
         {
             _db = db;
-            _parallelizeBranches = parallelizeBranches;
+            _parallelizeBranches = false;
             RootHash = rootHash;
         }
 
@@ -92,9 +92,9 @@ namespace Nethermind.Store
             {
                 CurrentCommit.Clear();
                 Commit(RootRef, true);
-                foreach (TrieNode nodeRef in CurrentCommit)
+                foreach (TrieNode node in CurrentCommit)
                 {
-                    _db.Set(nodeRef.Keccak, nodeRef.FullRlp.Bytes);
+                    _db.Set(node.Keccak, node.FullRlp.Bytes);
                 }
 
                 // reset objects
@@ -105,9 +105,8 @@ namespace Nethermind.Store
 
         private static readonly ConcurrentBag<TrieNode> CurrentCommit = new ConcurrentBag<TrieNode>();
 
-        private void Commit(TrieNode nodeRef, bool isRoot)
+        private void Commit(TrieNode node, bool isRoot)
         {
-            TrieNode node = nodeRef;
             if (node.IsBranch)
             {
                 // idea from EthereumJ - testing parallel branches
@@ -170,11 +169,11 @@ namespace Nethermind.Store
             }
 
             node.IsDirty = false;
-            nodeRef.ResolveKey(isRoot);
-            if (nodeRef.FullRlp != null && nodeRef.FullRlp.Length >= 32)
+            node.ResolveKey(isRoot);
+            if (node.FullRlp != null && node.FullRlp.Length >= 32)
             {
-                NodeCache.Set(nodeRef.Keccak, nodeRef.FullRlp);
-                CurrentCommit.Add(nodeRef);
+                NodeCache.Set(node.Keccak, node.FullRlp);
+                CurrentCommit.Add(node);
             }
         }
 
@@ -196,12 +195,9 @@ namespace Nethermind.Store
             {
                 RootRef = null;
             }
-            else
+            else if (resetObjects)
             {
-                if (resetObjects)
-                {
-                    RootRef = new TrieNode(NodeType.Unknown, _rootHash);
-                }
+                RootRef = new TrieNode(NodeType.Unknown, _rootHash);
             }
         }
 
@@ -344,17 +340,16 @@ namespace Nethermind.Store
                                 }
                             }
 
-                            TrieNode childNodeRef = node.GetChild(childNodeIndex);
-                            if (childNodeRef == null)
+                            TrieNode childNode = node.GetChild(childNodeIndex);
+                            if (childNode == null)
                             {
                                 throw new InvalidOperationException("Before updating branch should have had at least two non-empty children");
                             }
 
-                            childNodeRef.ResolveNode(this);
-                            TrieNode childNode = childNodeRef;
+                            childNode.ResolveNode(this);
                             if (childNode.IsBranch)
                             {
-                                TrieNode extensionFromBranch = TreeNodeFactory.CreateExtension(new HexPrefix(false, (byte)childNodeIndex), childNodeRef);
+                                TrieNode extensionFromBranch = TreeNodeFactory.CreateExtension(new HexPrefix(false, (byte)childNodeIndex), childNode);
                                 extensionFromBranch.IsDirty = true;
                                 nextNode = extensionFromBranch;
                             }
@@ -439,7 +434,7 @@ namespace Nethermind.Store
                 return context.UpdateValue;
             }
 
-            TrieNode nextNodeRef = node.GetChild(context.UpdatePath[context.CurrentIndex]);
+            TrieNode childNode = node.GetChild(context.UpdatePath[context.CurrentIndex]);
             if (context.IsUpdate)
             {
                 NodeStack.Push(new StackedNode(node, context.UpdatePath[context.CurrentIndex]));
@@ -447,7 +442,7 @@ namespace Nethermind.Store
 
             context.CurrentIndex++;
 
-            if (nextNodeRef == null)
+            if (childNode == null)
             {
                 if (!context.IsUpdate)
                 {
@@ -472,8 +467,8 @@ namespace Nethermind.Store
                 return context.UpdateValue;
             }
 
-            nextNodeRef.ResolveNode(this);
-            TrieNode nextNode = nextNodeRef;
+            childNode.ResolveNode(this);
+            TrieNode nextNode = childNode;
             return TraverseNode(nextNode, context);
         }
 
@@ -593,7 +588,7 @@ namespace Nethermind.Store
                     NodeStack.Push(new StackedNode(node, 0));
                 }
 
-                TrieNode next = node.GetChild(0); 
+                TrieNode next = node.GetChild(0);
                 next.ResolveNode(this);
                 return TraverseNode(next, context);
             }

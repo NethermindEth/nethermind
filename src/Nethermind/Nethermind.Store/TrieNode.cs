@@ -28,7 +28,12 @@ namespace Nethermind.Store
 {
     internal class TrieNode
     {
+        private static readonly object _nullNode = new object();
+
+        private object[] _data;
         private bool _isDirty;
+
+        private short[] _lookupTable;
 
         public TrieNode(NodeType nodeType)
         {
@@ -92,6 +97,57 @@ namespace Nethermind.Store
 
         public byte[] Path => Key.Path;
 
+        internal HexPrefix Key
+        {
+            get => _data[0] as HexPrefix;
+            set
+            {
+                InitData();
+                _data[0] = value;
+            }
+        }
+
+        internal byte[] Value
+        {
+            get
+            {
+                InitData();
+                if (IsLeaf)
+                {
+                    return (byte[])_data[1];
+                }
+
+                return new byte[0]; // branches that we use for state will never have value set as all the keys are equal length
+
+                //if (_data[16] == null)
+                //{
+                //    if (_parentNode.DecoderContext == null)
+                //    {
+                //        _data[16] = new byte[0];
+                //    }
+                //    else
+                //    {
+                //        _parentNode.DecoderContext.Position = _lookupTable[32];
+                //        _data[16] = _parentNode.DecoderContext.DecodeByteArray();
+                //    }
+                //}
+
+                //return (byte[])_data[16];
+            }
+
+            set
+            {
+                InitData();
+                _data[IsLeaf ? 1 : 16] = value;
+            }
+        }
+
+        public TrieNode this[int i]
+        {
+            get => GetChild(i);
+            set => SetChild(i, value);
+        }
+
         private static TrieNode DecodeChildNode(Rlp.DecoderContext decoderContext)
         {
             if (decoderContext.IsSequenceNext())
@@ -140,7 +196,7 @@ namespace Nethermind.Store
                 if (isExtension)
                 {
                     NodeType = NodeType.Extension;
-                    SetChild(0,DecodeChildNode(context));
+                    SetChild(0, DecodeChildNode(context));
                     Key = key;
                 }
                 else
@@ -230,259 +286,202 @@ namespace Nethermind.Store
             nodeRef.ResolveKey(false);
             return nodeRef.Keccak == null ? nodeRef.FullRlp : Rlp.Encode(nodeRef.Keccak);
         }
-        
-                    private static object _nullNode = new object();
 
-            private object[] _data;
-
-            internal HexPrefix Key
+        private void InitData()
+        {
+            if (_data == null)
             {
-                get => _data[0] as HexPrefix;
-                set
+                switch (NodeType)
                 {
-                    InitData();
-                    _data[0] = value;
-                }
-            }
-
-            internal byte[] Value
-            {
-                get
-                {
-                    InitData();
-                    if (IsLeaf)
-                    {
-                        return (byte[])_data[1];
-                    }
-
-                    return new byte[0]; // branches that we use for state will never have value set as all the keys are equal length
-
-                    //if (_data[16] == null)
-                    //{
-                    //    if (_parentNode.DecoderContext == null)
-                    //    {
-                    //        _data[16] = new byte[0];
-                    //    }
-                    //    else
-                    //    {
-                    //        _parentNode.DecoderContext.Position = _lookupTable[32];
-                    //        _data[16] = _parentNode.DecoderContext.DecodeByteArray();
-                    //    }
-                    //}
-
-                    //return (byte[])_data[16];
-                }
-
-                set
-                {
-                    InitData();
-                    _data[IsLeaf ? 1 : 16] = value;
-                }
-            }
-
-            public TrieNode this[int i]
-            {
-                get => GetChild(i);
-                set => SetChild(i, value);
-            }
-
-            private void InitData()
-            {
-                if (_data == null)
-                {
-                    switch (NodeType)
-                    {
-                        case NodeType.Unknown:
+                    case NodeType.Unknown:
                         throw new InvalidOperationException($"Cannot resolve children of an {nameof(NodeType.Unknown)} node");
-                        case NodeType.Branch:
+                    case NodeType.Branch:
                         _data = new object[17];
                         break;
-                        default:
+                    default:
                         _data = new object[2];
                         break;
-                    }
+                }
 
-                    if (_lookupTable == null)
-                    {
-                        BuildLookupTable();
-                    }
+                if (_lookupTable == null)
+                {
+                    BuildLookupTable();
                 }
             }
+        }
 
-            public void BuildLookupTable()
+        public void BuildLookupTable()
+        {
+            if (IsBranch && DecoderContext != null)
             {
-                if (IsBranch && DecoderContext != null)
+                if (_lookupTable == null)
                 {
-                    if (_lookupTable == null)
+                    _lookupTable = new short[34];
+                }
+                else
+                {
+                    Array.Clear(_lookupTable, 0, _lookupTable.Length);
+                }
+
+                DecoderContext.Reset();
+                DecoderContext.SkipLength();
+                short offset = (short)DecoderContext.Position;
+                for (int i = 0; i < 17; i++)
+                {
+                    short nextLength = (short)DecoderContext.PeekNextRlpLength();
+                    _lookupTable[i * 2] = offset;
+                    _lookupTable[i * 2 + 1] = nextLength;
+                    offset += nextLength;
+                    DecoderContext.Position += nextLength;
+                }
+            }
+        }
+
+        private void ResolveChild(int i)
+        {
+            Rlp.DecoderContext context = DecoderContext;
+            InitData();
+            if (context == null)
+            {
+                return;
+            }
+
+            if (_data[i] == null)
+            {
+                context.Position = _lookupTable[i * 2];
+                int prefix = context.ReadByte();
+                if (prefix == 128)
+                {
+                    _data[i] = _nullNode;
+                }
+                else if (prefix == 160)
+                {
+                    context.Position--;
+                    _data[i] = new TrieNode(NodeType.Unknown, context.DecodeKeccak());
+                }
+                else
+                {
+                    context.Position--;
+                    Span<byte> fullRlp = context.PeekNextItem();
+                    TrieNode child = new TrieNode(NodeType.Unknown, new Rlp(fullRlp.ToArray()));
+                    _data[i] = child;
+                }
+            }
+        }
+
+        public bool IsChildNull(int i)
+        {
+            Rlp.DecoderContext context = DecoderContext;
+            InitData();
+            if (!IsBranch)
+            {
+                throw new InvalidOperationException("only on branch");
+            }
+
+            if (context != null && _data[i] == null)
+            {
+                return _lookupTable[i * 2 + 1] == 1;
+            }
+
+            return ReferenceEquals(_data[i], _nullNode) || _data[i] == null;
+        }
+
+        public bool IsChildDirty(int i)
+        {
+            if (_data?[i] == null)
+            {
+                return false;
+            }
+
+            if (ReferenceEquals(_data[i], _nullNode))
+            {
+                return false;
+            }
+
+            return ((TrieNode)_data[i]).IsDirty;
+        }
+
+        public int GetChildrenRlpLength()
+        {
+            int totalLength = 0;
+            InitData();
+
+            for (int i = 0; i < 16; i++)
+            {
+                if (DecoderContext != null && _data[i] == null)
+                {
+                    totalLength += _lookupTable[i * 2 + 1];
+                }
+                else
+                {
+                    if (ReferenceEquals(_data[i], _nullNode) || _data[i] == null)
                     {
-                        _lookupTable = new short[34];
+                        totalLength++;
                     }
                     else
                     {
-                        Array.Clear(_lookupTable, 0, _lookupTable.Length);
-                    }
-
-                    DecoderContext.Reset();
-                    DecoderContext.SkipLength();
-                    short offset = (short)DecoderContext.Position;
-                    for (int i = 0; i < 17; i++)
-                    {
-                        short nextLength = (short)DecoderContext.PeekNextRlpLength();
-                        _lookupTable[i * 2] = offset;
-                        _lookupTable[i * 2 + 1] = nextLength;
-                        offset += nextLength;
-                        DecoderContext.Position += nextLength;
+                        TrieNode childNode = (TrieNode)_data[i];
+                        childNode.ResolveKey(false);
+                        totalLength += childNode.Keccak == null ? childNode.FullRlp.Length : Rlp.LengthOfKeccakRlp;
                     }
                 }
             }
 
-            private short[] _lookupTable;
+            return totalLength;
+        }
 
-            private void ResolveChild(int i)
+        public void WriteChildrenRlp(Span<byte> destination)
+        {
+            int position = 0;
+            Rlp.DecoderContext context = DecoderContext;
+            InitData();
+
+            for (int i = 0; i < 16; i++)
             {
-                Rlp.DecoderContext context = DecoderContext;
-                InitData();
-                if (context == null)
-                {
-                    return;
-                }
-
-                if (_data[i] == null)
-                {
-                    context.Position = _lookupTable[i * 2];
-                    int prefix = context.ReadByte();
-                    if (prefix == 128)
-                    {
-                        _data[i] = _nullNode;
-                    }
-                    else if (prefix == 160)
-                    {
-                        context.Position--;
-                        _data[i] = new TrieNode(NodeType.Unknown, context.DecodeKeccak());
-                    }
-                    else
-                    {
-                        context.Position--;
-                        Span<byte> fullRlp = context.PeekNextItem();
-                        TrieNode child = new TrieNode(NodeType.Unknown, new Rlp(fullRlp.ToArray()));
-                        _data[i] = child;
-                    }
-                }
-            }
-
-            public bool IsChildNull(int i)
-            {
-                Rlp.DecoderContext context = DecoderContext;
-                InitData();
-                if (!IsBranch)
-                {
-                    throw new InvalidOperationException("only on branch");
-                }
-
                 if (context != null && _data[i] == null)
                 {
-                    return _lookupTable[i * 2 + 1] == 1;
+                    context.Position = _lookupTable[i * 2];
+                    Span<byte> nextItem = context.Read(_lookupTable[i * 2 + 1]);
+                    nextItem.CopyTo(destination.Slice(position, nextItem.Length));
+                    position += nextItem.Length;
                 }
-
-                return ReferenceEquals(_data[i], _nullNode) || _data[i] == null;
-            }
-
-            public bool IsChildDirty(int i)
-            {
-                if (_data?[i] == null)
+                else
                 {
-                    return false;
-                }
-
-                if(ReferenceEquals(_data[i], _nullNode))
-                {
-                    return false;
-                }
-
-                return ((TrieNode)_data[i]).IsDirty;
-            }
-
-            public int GetChildrenRlpLength()
-            {
-                int totalLength = 0;
-                InitData();
-
-                for (int i = 0; i < 16; i++)
-                {
-                    if (DecoderContext != null && _data[i] == null)
+                    if (ReferenceEquals(_data[i], _nullNode) || _data[i] == null)
                     {
-                        totalLength += _lookupTable[i * 2 + 1];
+                        destination[position++] = 128;
                     }
                     else
                     {
-                        if (ReferenceEquals(_data[i], _nullNode) || _data[i] == null)
+                        TrieNode childNode = (TrieNode)_data[i];
+                        childNode.ResolveKey(false);
+                        if (childNode.Keccak == null)
                         {
-                            totalLength++;
+                            Span<byte> fullRlp = childNode.FullRlp.Bytes.AsSpan();
+                            fullRlp.CopyTo(destination.Slice(position, fullRlp.Length));
+                            position += fullRlp.Length;
                         }
                         else
                         {
-                            TrieNode childNode = (TrieNode)_data[i];
-                            childNode.ResolveKey(false);
-                            totalLength += childNode.Keccak == null ? childNode.FullRlp.Length : Rlp.LengthOfKeccakRlp;    
-                        }
-                    }
-                }
-
-                return totalLength;
-            }
-
-            public void WriteChildrenRlp(Span<byte> destination)
-            {
-                int position = 0;
-                Rlp.DecoderContext context = DecoderContext;
-                InitData();
-
-                for (int i = 0; i < 16; i++)
-                {
-                    if (context != null && _data[i] == null)
-                    {
-                        context.Position = _lookupTable[i * 2];
-                        Span<byte> nextItem = context.Read(_lookupTable[i * 2 + 1]);
-                        nextItem.CopyTo(destination.Slice(position, nextItem.Length));
-                        position += nextItem.Length;
-                    }
-                    else
-                    {
-                        if (ReferenceEquals(_data[i], _nullNode) || _data[i] == null)
-                        {
-                            destination[position++] = 128;
-                        }
-                        else
-                        {
-                            TrieNode childNode = (TrieNode)_data[i];
-                            childNode.ResolveKey(false);
-                            if (childNode.Keccak == null)
-                            {
-                                Span<byte> fullRlp = childNode.FullRlp.Bytes.AsSpan();
-                                fullRlp.CopyTo(destination.Slice(position, fullRlp.Length));
-                                position += fullRlp.Length;
-                            }
-                            else
-                            {
-                                position = Rlp.Encode(destination, position, childNode.Keccak.Bytes);
-                            }
+                            position = Rlp.Encode(destination, position, childNode.Keccak.Bytes);
                         }
                     }
                 }
             }
+        }
 
-            public TrieNode GetChild(int i)
-            {
-                int index = IsExtension ? i + 1 : i;
-                ResolveChild(i);
-                return ReferenceEquals(_data[index], _nullNode) ? null : (TrieNode)_data[index];
-            }
+        public TrieNode GetChild(int i)
+        {
+            int index = IsExtension ? i + 1 : i;
+            ResolveChild(i);
+            return ReferenceEquals(_data[index], _nullNode) ? null : (TrieNode)_data[index];
+        }
 
         public void SetChild(int i, TrieNode node)
-            {
-                InitData();
-                int index = IsExtension ? i + 1 : i;
-                _data[index] = node ?? _nullNode;
-            }
+        {
+            InitData();
+            int index = IsExtension ? i + 1 : i;
+            _data[index] = node ?? _nullNode;
+        }
     }
 }
