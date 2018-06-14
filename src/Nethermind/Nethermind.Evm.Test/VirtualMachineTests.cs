@@ -97,7 +97,7 @@ namespace Nethermind.Evm.Test
                 .WithGasLimit(100000)
                 .WithGasPrice(1)
                 .WithTo(TestObject.AddressB)
-                .Signed(_ethereumSigner, TestObject.PrivateKeyA, 100000)
+                .SignedAndResolved(_ethereumSigner, TestObject.PrivateKeyA, 100000)
                 .TestObject;
 
             Assert.AreEqual(A, _ethereumSigner.RecoverAddress(transaction, 100000));
@@ -410,7 +410,7 @@ namespace Nethermind.Evm.Test
                 (byte)Instruction.PUSH1,
                 0,
                 (byte)Instruction.SSTORE);
-            Assert.AreEqual(GasCostOf.Transaction + GasCostOf.VeryLow * 4 + GasCostOf.SReset, receipt.GasUsed, "gas");
+            Assert.AreEqual(GasCostOf.Transaction + GasCostOf.VeryLow * 2 + GasCostOf.SReset, receipt.GasUsed, "gas");
             Assert.AreEqual(BigInteger.Zero.ToBigEndianByteArray(), _storageProvider.Get(new StorageAddress(B, 0)), "storage");
         }
 

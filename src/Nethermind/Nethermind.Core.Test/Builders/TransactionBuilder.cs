@@ -70,6 +70,13 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
+        public TransactionBuilder SignedAndResolved(IEthereumSigner signer, PrivateKey privateKey, BigInteger blockNumber)
+        {
+            signer.Sign(privateKey, TestObjectInternal, blockNumber);
+            TestObjectInternal.SenderAddress = privateKey.Address;
+            return this;
+        }
+
         protected override void BeforeReturn()
         {
             base.BeforeReturn();
