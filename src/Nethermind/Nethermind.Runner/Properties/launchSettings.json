@@ -2,7 +2,7 @@
   "profiles": {
     "Nethermind.Runner": {
       "commandName": "Project",
-      "commandLineArgs": "--config configs\\mainnet_windows_through_vm5.config.json",
+      "commandLineArgs": "--config configs\\ropsten_through_vm5.config.json",
       "launchBrowser": true,
       "launchUrl": "api/values",
       "environmentVariables": {

@@ -2121,6 +2121,13 @@ namespace Nethermind.Evm
                             _logger.Debug($"  CALL_GAS {gasLimitUl}");
                         }
 
+                        if (outputLength == 0)
+                        {
+                            // TODO: when output length is 0 outputOffset can have any value really
+                            // and the value does not matter and it can cause trouble when beyond long range
+                            outputOffset = 0;
+                        }
+
                         EvmState callState = new EvmState(
                             gasLimitUl,
                             callEnv,

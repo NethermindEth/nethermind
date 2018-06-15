@@ -33,7 +33,6 @@ namespace Nethermind.Blockchain
 {
     public class BlockTree : IBlockTree
     {
-        // TODO: automatically wrap DBs with caches
         private readonly LruCache<Keccak, Block> _blockCache = new LruCache<Keccak, Block>(64);
         private readonly LruCache<BigInteger, ChainLevelInfo> _blockInfoCache = new LruCache<BigInteger, ChainLevelInfo>(64);
 
@@ -70,13 +69,18 @@ namespace Nethermind.Blockchain
             {
                 if (genesisLevel.BlockInfos.Length != 1)
                 {
-                    // TODO: corrupted state exception?
-                    throw new InvalidOperationException($"Genesis level in DB has {genesisLevel.BlockInfos.Length} blocks");
+                    // just for corrupted test bases
+                    genesisLevel.BlockInfos = new [] {genesisLevel.BlockInfos[0]};
+                    UpdateLevel(0, genesisLevel);
+                    //throw new InvalidOperationException($"Genesis level in DB has {genesisLevel.BlockInfos.Length} blocks");
                 }
 
-                Block genesisBlock = Load(genesisLevel.BlockInfos[0].BlockHash).Block;
-                Genesis = genesisBlock.Header;
-                LoadHeadBlock();
+                if (genesisLevel.BlockInfos[0].WasProcessed)
+                {
+                    Block genesisBlock = Load(genesisLevel.BlockInfos[0].BlockHash).Block;
+                    Genesis = genesisBlock.Header;
+                    LoadHeadBlock();
+                }
             }
         }
 
@@ -321,7 +325,7 @@ namespace Nethermind.Blockchain
                 _receiptsDb.Set(blockHash, Rlp.Encode(receipts.Select(r => Rlp.Encode(r, spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None)).ToArray()).Bytes);
             }
         }
-
+        
         public bool WasProcessed(Keccak blockHash)
         {
             BigInteger number = LoadNumberOnly(blockHash);
