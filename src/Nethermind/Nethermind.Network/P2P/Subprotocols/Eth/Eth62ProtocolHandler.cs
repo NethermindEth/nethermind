@@ -21,6 +21,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Core;
@@ -323,7 +324,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             public TaskCompletionSource<TResult> CompletionSource { get; }
         }
 
-        private async Task<BlockHeader[]> SendRequest(GetBlockHeadersMessage message)
+        private async Task<BlockHeader[]> SendRequest(GetBlockHeadersMessage message, CancellationToken token)
         {
             if (Logger.IsTraceEnabled)
             {
@@ -339,7 +340,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             _headersRequests.Add(request);
             Send(request.Message);
             Task<BlockHeader[]> task = request.CompletionSource.Task;
-            if (await Task.WhenAny(task, Task.Delay(Timeouts.Eth62)) == task)
+            var firstTask = await Task.WhenAny(task, Task.Delay(Timeouts.Eth62, token));
+            if (firstTask.IsCanceled)
+            {
+                token.ThrowIfCancellationRequested();
+            }
+            if (firstTask == task)
             {
                 return task.Result;
             }
@@ -348,7 +354,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             throw new TimeoutException($"{P2PSession.RemoteNodeId} Request timeout in {nameof(GetBlockHeadersMessage)}");
         }
 
-        private async Task<Block[]> SendRequest(GetBlockBodiesMessage message)
+        private async Task<Block[]> SendRequest(GetBlockBodiesMessage message, CancellationToken token)
         {
             if (Logger.IsTraceEnabled)
             {
@@ -361,7 +367,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             Send(request.Message);
 
             Task<Block[]> task = request.CompletionSource.Task;
-            if (await Task.WhenAny(task, Task.Delay(Timeouts.Eth62)) == task)
+            var firstTask = await Task.WhenAny(task, Task.Delay(Timeouts.Eth62, token));
+            if (firstTask.IsCanceled)
+            {
+                token.ThrowIfCancellationRequested();
+            }
+            if (firstTask == task)
             {
                 return task.Result;
             }
@@ -370,7 +381,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             throw new TimeoutException($"{P2PSession.RemoteNodeId} Request timeout in {nameof(GetBlockBodiesMessage)}");
         }
 
-        async Task<BlockHeader[]> ISynchronizationPeer.GetBlockHeaders(Keccak blockHash, int maxBlocks, int skip)
+        async Task<BlockHeader[]> ISynchronizationPeer.GetBlockHeaders(Keccak blockHash, int maxBlocks, int skip, CancellationToken token)
         {
             var msg = new GetBlockHeadersMessage();
             msg.MaxHeaders = maxBlocks;
@@ -378,11 +389,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             msg.Skip = skip;
             msg.StartingBlockHash = blockHash;
 
-            BlockHeader[] headers = await SendRequest(msg);
+            BlockHeader[] headers = await SendRequest(msg, token);
             return headers;
         }
 
-        async Task<BlockHeader[]> ISynchronizationPeer.GetBlockHeaders(BigInteger number, int maxBlocks, int skip)
+        async Task<BlockHeader[]> ISynchronizationPeer.GetBlockHeaders(BigInteger number, int maxBlocks, int skip, CancellationToken token)
         {
             var msg = new GetBlockHeadersMessage();
             msg.MaxHeaders = maxBlocks;
@@ -390,17 +401,17 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             msg.Skip = skip;
             msg.StartingBlockNumber = number;
 
-            BlockHeader[] headers = await SendRequest(msg);
+            BlockHeader[] headers = await SendRequest(msg, token);
             return headers;
         }
 
         public PublicKey NodeId => P2PSession.RemoteNodeId;
 
-        async Task<Block[]> ISynchronizationPeer.GetBlocks(Keccak[] blockHashes)
+        async Task<Block[]> ISynchronizationPeer.GetBlocks(Keccak[] blockHashes, CancellationToken token)
         {
             var bodiesMsg = new GetBlockBodiesMessage(blockHashes.ToArray());
 
-            Block[] blocks = await SendRequest(bodiesMsg);
+            Block[] blocks = await SendRequest(bodiesMsg, token);
             return blocks;
         }
 
@@ -409,7 +420,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             return Task.FromResult(_remoteHeadBlockHash);
         }
 
-        async Task<BigInteger> ISynchronizationPeer.GetHeadBlockNumber()
+        async Task<BigInteger> ISynchronizationPeer.GetHeadBlockNumber(CancellationToken token)
         {
             var msg = new GetBlockHeadersMessage();
             msg.StartingBlockHash = _remoteHeadBlockHash;
@@ -417,7 +428,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             msg.Reverse = 0;
             msg.Skip = 0;
 
-            BlockHeader[] headers = await SendRequest(msg);
+            BlockHeader[] headers = await SendRequest(msg, token);
             return headers[0]?.Number ?? 0;
         }
 

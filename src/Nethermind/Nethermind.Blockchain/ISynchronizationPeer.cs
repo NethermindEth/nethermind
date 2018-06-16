@@ -17,6 +17,7 @@
  */
 
 using System.Numerics;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -26,11 +27,11 @@ namespace Nethermind.Blockchain
     public interface ISynchronizationPeer
     {
         PublicKey NodeId { get; }
-        Task<Block[]> GetBlocks(Keccak[] blockHashes);
-        Task<BlockHeader[]> GetBlockHeaders(Keccak blockHash, int maxBlocks, int skip);
-        Task<BlockHeader[]> GetBlockHeaders(BigInteger number, int maxBlocks, int skip);
+        Task<Block[]> GetBlocks(Keccak[] blockHashes, CancellationToken token);
+        Task<BlockHeader[]> GetBlockHeaders(Keccak blockHash, int maxBlocks, int skip, CancellationToken token);
+        Task<BlockHeader[]> GetBlockHeaders(BigInteger number, int maxBlocks, int skip, CancellationToken token);
         Task<Keccak> GetHeadBlockHash();
-        Task<BigInteger> GetHeadBlockNumber();
+        Task<BigInteger> GetHeadBlockNumber(CancellationToken token);
         void SendNewBlock(Block block);
         void SendNewTransaction(Transaction transaction);
         Task Disconnect();

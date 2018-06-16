@@ -234,16 +234,16 @@ namespace Nethermind.Blockchain.Test
             minerTree.MoveToMain(newBlock.Hash);
             
             ISynchronizationPeer miner2 = Substitute.For<ISynchronizationPeer>();
-            miner2.GetHeadBlockNumber().Returns(miner1.GetHeadBlockNumber());
+            miner2.GetHeadBlockNumber(Arg.Any<CancellationToken>()).Returns(miner1.GetHeadBlockNumber(Arg.Any<CancellationToken>()));
             miner2.GetHeadBlockHash().Returns(miner1.GetHeadBlockHash());
             miner2.NodeId.Returns(TestObject.PublicKeyB);
             
-            Assert.AreEqual(newBlock.Number, await miner2.GetHeadBlockNumber(), "number as expected");
+            Assert.AreEqual(newBlock.Number, await miner2.GetHeadBlockNumber(Arg.Any<CancellationToken>()), "number as expected");
             Assert.AreEqual(newBlock.Hash, await miner2.GetHeadBlockHash(), "hash as expected");
             
             await _manager.AddPeer(miner2);
 
-            await miner2.Received().GetBlockHeaders(6, 1, 0);
+            await miner2.Received().GetBlockHeaders(6, 1, 0, default(CancellationToken));
         }
         
         [Test]
@@ -269,16 +269,16 @@ namespace Nethermind.Blockchain.Test
             minerTree.MoveToMain(newBlock.Hash);
             
             ISynchronizationPeer miner2 = Substitute.For<ISynchronizationPeer>();
-            miner2.GetHeadBlockNumber().Returns(miner1.GetHeadBlockNumber());
+            miner2.GetHeadBlockNumber(Arg.Any<CancellationToken>()).Returns(miner1.GetHeadBlockNumber(Arg.Any<CancellationToken>()));
             miner2.GetHeadBlockHash().Returns(miner1.GetHeadBlockHash());
             miner2.NodeId.Returns(TestObject.PublicKeyB);
             
-            Assert.AreEqual(newBlock.Number, await miner2.GetHeadBlockNumber(), "number as expected");
+            Assert.AreEqual(newBlock.Number, await miner2.GetHeadBlockNumber(Arg.Any<CancellationToken>()), "number as expected");
             Assert.AreEqual(newBlock.Hash, await miner2.GetHeadBlockHash(), "hash as expected");
             
             await _manager.AddPeer(miner2);
 
-            await miner2.Received().GetBlockHeaders(6, 1, 0);
+            await miner2.Received().GetBlockHeaders(6, 1, 0, default(CancellationToken));
         }
     }
 }

@@ -125,7 +125,7 @@ namespace Nethermind.Network.Rlpx
 
                 if (_bootstrapChannel == null)
                 {
-                    throw new NetworkingException($"Failed to initialize {nameof(_bootstrapChannel)}");
+                    throw new NetworkingException($"Failed to initialize {nameof(_bootstrapChannel)}", NetwokExceptionType.Other);
                 }
             }
             catch (Exception ex)
@@ -156,14 +156,14 @@ namespace Nethermind.Network.Rlpx
             var firstTask = await Task.WhenAny(connectTask, Task.Delay(5000));
             if (firstTask != connectTask)
             {
-                _logger.Error($"Connection timed out: {remoteId}@{host}:{port}");
-                throw new NetworkingException($"Failed to connect to {remoteId} (timeout)");
+                _logger.Debug($"Connection timed out: {remoteId}@{host}:{port}");
+                throw new NetworkingException($"Failed to connect to {remoteId} (timeout)", NetwokExceptionType.Timeout);
             }
 
             if (connectTask.IsFaulted)
             {
-                _logger.Error($"Error when connecting to {remoteId}@{host}:{port}.", connectTask.Exception);
-                throw new NetworkingException($"Failed to connect to {remoteId}", connectTask.Exception);
+                _logger.Debug($"Error when connecting to {remoteId}@{host}:{port}, error: {connectTask.Exception}");
+                throw new NetworkingException($"Failed to connect to {remoteId}", NetwokExceptionType.TargetUnreachable, connectTask.Exception);
             }
 
             _logger.Info($"Connected to {remoteId}@{host}:{port}");
@@ -217,7 +217,7 @@ namespace Nethermind.Network.Rlpx
             {
                 if (_logger.IsInfoEnabled)
                 {
-                    _logger.Info($"TESTEST Channel disconnection: {p2PSession.RemoteNodeId}");
+                    _logger.Info($"Channel disconnection: {p2PSession.RemoteNodeId}");
                 }
                 await p2PSession.DisconnectAsync(DisconnectReason.ClientQuitting, DisconnectType.Remote);
             });

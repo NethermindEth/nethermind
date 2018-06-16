@@ -214,11 +214,11 @@ namespace Nethermind.Network
                 await _localPeer.ConnectAsync(candidate.Node.Id, candidate.Node.Host, candidate.Node.Port);
                 return true;
             }
-            catch (NetworkingException)
+            catch (NetworkingException ex)
             {
                 if (_logger.IsInfoEnabled)
                 {
-                    _logger.Info($"Peer unreachable: {candidate.Node.Id}");
+                    _logger.Warn($"Cannot connect to Peer [{ex.NetwokExceptionType.ToString()}]: {candidate.Node.Id}");
                 }
                 return false;
             }
@@ -317,7 +317,7 @@ namespace Nethermind.Network
                 eventArgs.Session.PeerDisconnected += async (s, e) => await OnPeerDisconnected(s, e);
                 if (_logger.IsInfoEnabled)
                 {
-                    _logger.Info($"Initiated IN connection (handshake) for peer: {eventArgs.Session.RemoteNodeId}");
+                    _logger.Info($"Initiated IN connection (PeerManager)(handshake completed) for peer: {eventArgs.Session.RemoteNodeId}");
                 }
                 return;
             }
@@ -340,7 +340,7 @@ namespace Nethermind.Network
 
             if (_logger.IsInfoEnabled)
             {
-                _logger.Info($"Initiated OUT connection (hanshake) for peer: {eventArgs.Session.RemoteNodeId}");
+                _logger.Info($"Initializing OUT connection (PeerManager) for peer: {eventArgs.Session.RemoteNodeId}");
             }
 
             if (!_isDiscoveryEnabled || peer.NodeLifecycleManager != null)

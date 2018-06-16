@@ -58,7 +58,7 @@ namespace Nethermind.Network.Discovery.Serializers
         {
             if (msg.Length < 98)
             {
-                throw new NetworkingException("Incorrect message");
+                throw new NetworkingException("Incorrect message", NetwokExceptionType.Validation);
             }
 
             var mdc = msg.Slice(0, 32);
@@ -69,7 +69,7 @@ namespace Nethermind.Network.Discovery.Serializers
 
             if (!Bytes.UnsafeCompare(mdc, computedMdc))
             {
-                throw new NetworkingException("Invalid MDC");
+                throw new NetworkingException("Invalid MDC", NetwokExceptionType.Validation);
             }
 
             var nodeId = NodeIdResolver.GetNodeId(signature.Slice(0, 64), signature[64], type, data);

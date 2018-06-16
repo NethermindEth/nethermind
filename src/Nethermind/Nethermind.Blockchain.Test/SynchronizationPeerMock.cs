@@ -19,6 +19,7 @@
 
 using System;
 using System.Numerics;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -37,7 +38,7 @@ namespace Nethermind.Blockchain.Test
 
         public PublicKey NodeId { get; set; } = TestObject.PublicKeyA;
         
-        public Task<Block[]> GetBlocks(Keccak[] blockHashes)
+        public Task<Block[]> GetBlocks(Keccak[] blockHashes, CancellationToken token)
         {
             Block[] result = new Block[blockHashes.Length];
             for (int i = 0; i < blockHashes.Length; i++)
@@ -48,7 +49,7 @@ namespace Nethermind.Blockchain.Test
             return Task.FromResult(result);
         }
 
-        public Task<BlockHeader[]> GetBlockHeaders(Keccak blockHash, int maxBlocks, int skip)
+        public Task<BlockHeader[]> GetBlockHeaders(Keccak blockHash, int maxBlocks, int skip, CancellationToken token)
         {
             BigInteger firstNumber = _blockTree.FindBlock(blockHash, true).Number;
             
@@ -61,7 +62,7 @@ namespace Nethermind.Blockchain.Test
             return Task.FromResult(result);
         }
         
-        public Task<BlockHeader[]> GetBlockHeaders(BigInteger number, int maxBlocks, int skip)
+        public Task<BlockHeader[]> GetBlockHeaders(BigInteger number, int maxBlocks, int skip, CancellationToken token)
         {
             BigInteger firstNumber = _blockTree.FindBlock(number).Number;
             
@@ -79,7 +80,7 @@ namespace Nethermind.Blockchain.Test
             return Task.FromResult(_blockTree.Head.Hash);
         }
 
-        public Task<BigInteger> GetHeadBlockNumber()
+        public Task<BigInteger> GetHeadBlockNumber(CancellationToken token)
         {
             return Task.FromResult(_blockTree.Head.Number);
         }

@@ -45,7 +45,7 @@ namespace Nethermind.Network.Rlpx.Handshake
         {
             if (bytes.Length != TotalLength)
             {
-                throw new NetworkingException($"Incorrect incoming {nameof(AckMessage)} length. Expected {TotalLength} but was {bytes.Length}");
+                throw new NetworkingException($"Incorrect incoming {nameof(AckMessage)} length. Expected {TotalLength} but was {bytes.Length}", NetwokExceptionType.Validation);
             }
 
             AckMessage authMessage = new AckMessage();

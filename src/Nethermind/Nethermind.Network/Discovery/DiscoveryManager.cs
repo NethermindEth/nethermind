@@ -158,7 +158,7 @@ namespace Nethermind.Network.Discovery
         {
             if (message.DestinationAddress == null || message.SourceAddress == null || message.FarAddress == null)
             {
-                throw new NetworkingException($"Received ping message with empty address, message: {message}");
+                throw new NetworkingException($"Received ping message with empty address, message: {message}", NetwokExceptionType.Validation);
             }
 
             if (!Bytes.UnsafeCompare(_nodeTable.MasterNode.Address.Address.GetAddressBytes(), message.DestinationAddress.Address.GetAddressBytes()))
@@ -178,7 +178,7 @@ namespace Nethermind.Network.Discovery
 
             if (message.FarAddress.Port != message.SourceAddress.Port)
             {
-                throw new NetworkingException($"Received message with inccorect source port, message: {message}");
+                throw new NetworkingException($"Received message with inccorect source port, message: {message}", NetwokExceptionType.Validation);
             }
         }
 
