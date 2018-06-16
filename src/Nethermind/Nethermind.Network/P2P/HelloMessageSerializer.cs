@@ -35,7 +35,7 @@ namespace Nethermind.Network.P2P
                     Rlp.Encode(c.ProtocolCode.ToLowerInvariant()),
                     Rlp.Encode(c.Version))).ToArray()),
                 Rlp.Encode(message.ListenPort),
-                Rlp.Encode(message.NodeId.PrefixedBytes)
+                Rlp.Encode(message.NodeId.Bytes)
             ).Bytes;
         }
 
