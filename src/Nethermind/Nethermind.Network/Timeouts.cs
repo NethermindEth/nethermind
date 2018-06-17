@@ -23,5 +23,6 @@ namespace Nethermind.Network
     public class Timeouts
     {
         public static readonly TimeSpan Eth62 = TimeSpan.FromSeconds(10);
+        public static readonly TimeSpan P2PPing = TimeSpan.FromSeconds(5);
     }
 }

@@ -114,9 +114,9 @@ namespace Nethermind.Network.Rlpx
 
         public override void ExceptionCaught(IChannelHandlerContext context, Exception exception)
         {
-            if (_logger.IsErrorEnabled)
+            if (_logger.IsDebugEnabled)
             {
-                _logger.Error($"{GetType().Name} exception", exception);
+                _logger.Debug($"{GetType().Name} exception: {exception}");
             }
 
             base.ExceptionCaught(context, exception);

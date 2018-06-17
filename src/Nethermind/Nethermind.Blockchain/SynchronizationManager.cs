@@ -264,10 +264,6 @@ namespace Nethermind.Blockchain
                     }
                     _syncCancellationTokenSource?.Cancel();                    
                 }
-                else
-                {
-                    _logger.Info($"TESTTEST: NO");
-                }
             }
 
             if (_initCancellationTokenSources.TryGetValue(synchronizationPeer.NodeId, out var tokenSource))
