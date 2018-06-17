@@ -18,12 +18,13 @@
 
 using System.Net;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Model;
 
 namespace Nethermind.Network.Discovery.RoutingTable
 {
     public class NodeFactory : INodeFactory
     {
-        public Node CreateNode(PublicKey id, IPEndPoint address)
+        public Node CreateNode(NodeId id, IPEndPoint address)
         {
             var node = new Node(id)
             {
@@ -33,7 +34,7 @@ namespace Nethermind.Network.Discovery.RoutingTable
             return node;
         }
 
-        public Node CreateNode(PublicKey id, string host, int port, bool isDiscovery = false)
+        public Node CreateNode(NodeId id, string host, int port, bool isDiscovery = false)
         {
             var node = new Node(id)
             {
@@ -46,7 +47,7 @@ namespace Nethermind.Network.Discovery.RoutingTable
         public Node CreateNode(string host, int port)
         {
             Keccak512 socketHash = Keccak512.Compute($"{host}:{port}"); 
-            var node = new Node(new PublicKey(socketHash.Bytes))
+            var node = new Node(new NodeId(new PublicKey(socketHash.Bytes)))
             {
                 IsDicoveryNode = true
             };

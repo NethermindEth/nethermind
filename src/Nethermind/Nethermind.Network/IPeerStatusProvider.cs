@@ -17,11 +17,12 @@
  */
 
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Model;
 
 namespace Nethermind.Network
 {
     public interface IPeerStatusProvider
     {
-        bool IsPeerConnected(PublicKey peerId);
+        bool IsPeerConnected(NodeId peerId);
     }
 }

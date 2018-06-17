@@ -17,12 +17,13 @@
  */
 
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Model;
 
 namespace Nethermind.Network.Rlpx.Handshake
 {
     public interface IEncryptionHandshakeService
     {
-        Packet Auth(PublicKey remotePublicKey, EncryptionHandshake handshake);
+        Packet Auth(NodeId remoteNodeId, EncryptionHandshake handshake);
         Packet Ack(EncryptionHandshake handshake, Packet auth);
         void Agree(EncryptionHandshake handshake, Packet ack);
     }

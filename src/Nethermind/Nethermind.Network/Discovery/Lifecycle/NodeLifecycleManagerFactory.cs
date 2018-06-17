@@ -19,6 +19,7 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Model;
 using Nethermind.Network.Discovery.Messages;
 using Nethermind.Network.Discovery.RoutingTable;
 using Nethermind.Network.Stats;
@@ -58,7 +59,7 @@ namespace Nethermind.Network.Discovery.Lifecycle
             return new NodeLifecycleManager(node, DiscoveryManager, _nodeTable, _logger, _discoveryConfigurationProvider, _discoveryMessageFactory, _evictionManager, _nodeStatsProvider.GetNodeStats(node.Id));
         }
 
-        public INodeLifecycleManager CreateNodeLifecycleManager(PublicKey id, string host, int port)
+        public INodeLifecycleManager CreateNodeLifecycleManager(NodeId id, string host, int port)
         {
             if (DiscoveryManager == null)
             {

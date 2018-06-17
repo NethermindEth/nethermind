@@ -58,7 +58,7 @@ namespace Nethermind.Network
                 var peer = peers[i];
                 var node = peer.Node;
                 var networkNode = new NetworkNode(node.Id.Bytes, node.Host, node.Port, node.Description, peer.NodeStats?.NewPersistedNodeReputation ?? 0);
-                _db[networkNode.PublicKey.Bytes] = Rlp.Encode(networkNode).Bytes;
+                _db[networkNode.NodeId.Bytes] = Rlp.Encode(networkNode).Bytes;
                 _updateCounter++;
             }
         }
@@ -98,7 +98,7 @@ namespace Nethermind.Network
         private (Node, long) GetNode(byte[] networkNodeRaw)
         {
             var persistedNode = Rlp.Decode<NetworkNode>(networkNodeRaw);
-            var node = _nodeFactory.CreateNode(persistedNode.PublicKey, persistedNode.Host, persistedNode.Port);
+            var node = _nodeFactory.CreateNode(persistedNode.NodeId, persistedNode.Host, persistedNode.Port);
             node.Description = persistedNode.Description;
             return (node, persistedNode.Reputation);
         }

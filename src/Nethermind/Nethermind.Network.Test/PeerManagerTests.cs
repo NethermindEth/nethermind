@@ -6,6 +6,7 @@ using DotNetty.Transport.Channels;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Model;
 using Nethermind.KeyStore;
 using Nethermind.Network.Discovery;
 using Nethermind.Network.Discovery.Lifecycle;
@@ -48,7 +49,7 @@ namespace Nethermind.Network.Test
             _synchronizationManager = Substitute.For<ISynchronizationManager>();
 
             var nodeTable = new NodeTable(_configurationProvider, _nodeFactory, Substitute.For<IKeyStore>(), _logger, new NodeDistanceCalculator(_configurationProvider));
-            nodeTable.Initialize(key);
+            nodeTable.Initialize(new NodeId(key));
 
             _discoveryManager = new DiscoveryManager(_logger, _configurationProvider, new NodeLifecycleManagerFactory(_nodeFactory, nodeTable, _logger, _configurationProvider, new DiscoveryMessageFactory(_configurationProvider), Substitute.For<IEvictionManager>(), new NodeStatsProvider(_configurationProvider)), _nodeFactory, nodeTable, new DiscoveryStorage(_configurationProvider, _nodeFactory, _logger, new PerfService(_logger)));
             _discoveryManager.MessageSender = Substitute.For<IMessageSender>();
@@ -269,7 +270,7 @@ namespace Nethermind.Network.Test
         public bool Disconected { get; set; }
         public DisconnectReason DisconnectReason { get; set; }
 
-        public PublicKey RemoteNodeId { get; set; }
+        public NodeId RemoteNodeId { get; set; }
         public string RemoteHost { get; set; }
         public int? RemotePort { get; set; }
         public ClientConnectionType ClientConnectionType { get; set; }
@@ -339,7 +340,7 @@ namespace Nethermind.Network.Test
             return Task.CompletedTask;
         }
 
-        public Task ConnectAsync(PublicKey remoteNodeId, string remoteHost, int remotePort)
+        public Task ConnectAsync(NodeId remoteNodeId, string remoteHost, int remotePort)
         {
             ConnectionAsyncCallsCounter++;
             return Task.CompletedTask;

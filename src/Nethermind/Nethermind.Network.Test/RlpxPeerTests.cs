@@ -22,6 +22,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Model;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.Crypto;
@@ -72,8 +73,8 @@ namespace Nethermind.Network.Test
             syncManager.Head.Returns(genesisBlock.Header);
             syncManager.Genesis.Returns(genesisBlock.Header);
             
-            var peerServerA = new RlpxPeer(_keyA.PublicKey, PortA, encryptionHandshakeServiceA, serializationService, syncManager, logger);
-            var peerServerB = new RlpxPeer(_keyB.PublicKey, PortB, encryptionHandshakeServiceB, serializationService, syncManager, logger);
+            var peerServerA = new RlpxPeer(new NodeId(_keyA.PublicKey), PortA, encryptionHandshakeServiceA, serializationService, syncManager, logger);
+            var peerServerB = new RlpxPeer(new NodeId(_keyB.PublicKey), PortB, encryptionHandshakeServiceB, serializationService, syncManager, logger);
 //            var peerServerC = new RlpxPeer(_keyC.PublicKey, PortC, encryptionHandshakeServiceC, serializationService, Substitute.For<ISynchronizationManager>(), logger);
             
             await Task.WhenAll(peerServerA.Init(), peerServerB.Init());
@@ -81,7 +82,7 @@ namespace Nethermind.Network.Test
             
             Console.WriteLine("Servers running...");
             Console.WriteLine("Connecting A to B...");
-            await peerServerA.ConnectAsync(_keyB.PublicKey, "127.0.0.1", PortB);
+            await peerServerA.ConnectAsync(new NodeId(_keyB.PublicKey), "127.0.0.1", PortB);
             Console.WriteLine("A to B connected...");
             
 //            Console.WriteLine("Connecting A to C...");

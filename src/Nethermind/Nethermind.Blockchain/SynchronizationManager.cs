@@ -27,6 +27,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Model;
 
 namespace Nethermind.Blockchain
 {
@@ -39,7 +40,7 @@ namespace Nethermind.Blockchain
         private readonly IBlockValidator _blockValidator;
         private readonly IHeaderValidator _headerValidator;
         private readonly ILogger _logger;
-        private readonly ConcurrentDictionary<PublicKey, PeerInfo> _peers = new ConcurrentDictionary<PublicKey, PeerInfo>();
+        private readonly ConcurrentDictionary<NodeId, PeerInfo> _peers = new ConcurrentDictionary<NodeId, PeerInfo>();
         private readonly ITransactionStore _transactionStore;
         private readonly ITransactionValidator _transactionValidator;
         private Task _currentSyncTask;
@@ -47,7 +48,7 @@ namespace Nethermind.Blockchain
         private PeerInfo _currentSyncingPeer;
 
         private CancellationTokenSource _syncCancellationTokenSource;
-        private ConcurrentDictionary<PublicKey, CancellationTokenSource> _initCancellationTokenSources = new ConcurrentDictionary<PublicKey, CancellationTokenSource>();
+        private ConcurrentDictionary<NodeId, CancellationTokenSource> _initCancellationTokenSources = new ConcurrentDictionary<NodeId, CancellationTokenSource>();
 
         public SynchronizationManager(
             IBlockTree blockTree,
@@ -73,9 +74,9 @@ namespace Nethermind.Blockchain
         private void OnNewPendingTransaction(object sender, TransactionEventArgs transactionEventArgs)
         {
             Transaction transaction = transactionEventArgs.Transaction;
-            foreach ((PublicKey nodeId, PeerInfo peerInfo) in _peers)
+            foreach ((NodeId nodeId, PeerInfo peerInfo) in _peers)
             {
-                if (!(transaction.DeliveredBy?.Equals(nodeId) ?? false))
+                if (!(transaction.DeliveredBy?.Equals(nodeId.PublicKey) ?? false))
                 {
                     peerInfo.Peer.SendNewTransaction(transaction);
                 }
@@ -97,7 +98,7 @@ namespace Nethermind.Blockchain
             return BlockTree.FindBlock(number);
         }
 
-        public void AddNewBlock(Block block, PublicKey receivedFrom)
+        public void AddNewBlock(Block block, NodeId receivedFrom)
         {
             lock (_isSyncingLock)
             {
@@ -183,7 +184,7 @@ namespace Nethermind.Blockchain
             }
         }
 
-        public void HintBlock(Keccak hash, BigInteger number, PublicKey receivedFrom)
+        public void HintBlock(Keccak hash, BigInteger number, NodeId receivedFrom)
         {
             _peers.TryGetValue(receivedFrom, out PeerInfo peerInfo);
             string errorMessage = $"Received a block hint from an unknown peer {receivedFrom}";
@@ -197,7 +198,7 @@ namespace Nethermind.Blockchain
             // TODO: sync?
         }
 
-        public void AddNewTransaction(Transaction transaction, PublicKey receivedFrom)
+        public void AddNewTransaction(Transaction transaction, NodeId receivedFrom)
         {
             if (_logger.IsDebugEnabled)
             {
@@ -316,7 +317,7 @@ namespace Nethermind.Blockchain
         private void OnNewHeadBlock(object sender, BlockEventArgs blockEventArgs)
         {
             Block block = blockEventArgs.Block;
-            foreach ((PublicKey nodeId, PeerInfo peerInfo) in _peers)
+            foreach ((NodeId nodeId, PeerInfo peerInfo) in _peers)
             {
                 if (peerInfo.NumberAvailable < block.Number) // TODO: total difficulty instead
                 {
@@ -558,7 +559,7 @@ namespace Nethermind.Blockchain
             {
                 _logger.Error($"Try get value failed on {nameof(PeerInfo)} {peer.NodeId}");
                 int i = 0;
-                foreach (KeyValuePair<PublicKey, PeerInfo> keyValuePair in _peers)
+                foreach (KeyValuePair<NodeId, PeerInfo> keyValuePair in _peers)
                 {
                     _logger.Error($"{i++}: {keyValuePair.Key} {keyValuePair.Value}");
                 }

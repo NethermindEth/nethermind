@@ -21,6 +21,7 @@ using System.Linq;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Model;
 
 namespace Nethermind.Network.P2P
 {
@@ -56,7 +57,7 @@ namespace Nethermind.Network.P2P
             }).ToList();
             
             helloMessage.ListenPort = context.DecodeInt();
-            helloMessage.NodeId = new PublicKey(context.DecodeByteArray());
+            helloMessage.NodeId = new NodeId(new PublicKey(context.DecodeByteArray()));
             return helloMessage;
         }
     }

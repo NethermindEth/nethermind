@@ -1,9 +1,10 @@
 ﻿using Nethermind.Core.Crypto;
+using Nethermind.Core.Model;
 
 namespace Nethermind.Network.Stats
 {
     public interface INodeStatsProvider
     {
-        INodeStats GetNodeStats(PublicKey nodeId);
+        INodeStats GetNodeStats(NodeId nodeId);
     }
 }

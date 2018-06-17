@@ -21,6 +21,7 @@ using System.Linq;
 using System.Net;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Model;
 using Nethermind.KeyStore;
 using Nethermind.Network.Discovery;
 using Nethermind.Network.Discovery.Lifecycle;
@@ -38,7 +39,7 @@ namespace Nethermind.Network.Test.Discovery
         private const string TestPrivateKeyHex = "0x3a1076bf45ab87712ad64ccb3b10217737f7faacbf2872e88fdd9a537d8fe266";
 
         private Signature[] _signatureMocks;
-        private PublicKey[] _nodeIds;
+        private NodeId[] _nodeIds;
         private Dictionary<string, PublicKey> _signatureToNodeId;
 
         private IDiscoveryManager _discoveryManager;
@@ -85,7 +86,7 @@ namespace Nethermind.Network.Test.Discovery
             var manager = _discoveryManager.GetNodeLifecycleManager(node);
             Assert.AreEqual(NodeLifecycleState.New, manager.State);
 
-            manager.ProcessPongMessage(new PongMessage {FarAddress = new IPEndPoint(IPAddress.Parse(_host), _port), FarPublicKey = _nodeIds[0] });
+            manager.ProcessPongMessage(new PongMessage {FarAddress = new IPEndPoint(IPAddress.Parse(_host), _port), FarPublicKey = _nodeIds[0].PublicKey });
 
             Assert.AreEqual(NodeLifecycleState.Active, manager.State);
         }
@@ -116,7 +117,7 @@ namespace Nethermind.Network.Test.Discovery
                 managers.Add(manager);
                 Assert.AreEqual(NodeLifecycleState.New, manager.State);
 
-                _discoveryManager.OnIncomingMessage(new PongMessage { FarAddress = new IPEndPoint(IPAddress.Parse(_host), _port), FarPublicKey = _nodeIds[i] });
+                _discoveryManager.OnIncomingMessage(new PongMessage { FarAddress = new IPEndPoint(IPAddress.Parse(_host), _port), FarPublicKey = _nodeIds[i].PublicKey });
                 Assert.AreEqual(NodeLifecycleState.Active, manager.State);
             }
 
@@ -132,12 +133,12 @@ namespace Nethermind.Network.Test.Discovery
 
             Assert.AreEqual(NodeLifecycleState.New, candidateManager.State);
 
-            _discoveryManager.OnIncomingMessage(new PongMessage { FarAddress = new IPEndPoint(IPAddress.Parse(_host), _port), FarPublicKey = _nodeIds[3] });
+            _discoveryManager.OnIncomingMessage(new PongMessage { FarAddress = new IPEndPoint(IPAddress.Parse(_host), _port), FarPublicKey = _nodeIds[3].PublicKey });
             Assert.AreEqual(NodeLifecycleState.Active, candidateManager.State);
             var evictionCandidate = managers.First(x => x.State == NodeLifecycleState.EvictCandidate);
 
             //receiving pong for eviction candidate - should survive
-            _discoveryManager.OnIncomingMessage(new PongMessage { FarAddress = new IPEndPoint(IPAddress.Parse(evictionCandidate.ManagedNode.Host), _port), FarPublicKey = evictionCandidate.ManagedNode.Id });
+            _discoveryManager.OnIncomingMessage(new PongMessage { FarAddress = new IPEndPoint(IPAddress.Parse(evictionCandidate.ManagedNode.Host), _port), FarPublicKey = evictionCandidate.ManagedNode.Id.PublicKey });
 
             //Thread.Sleep(100);
 
@@ -172,7 +173,7 @@ namespace Nethermind.Network.Test.Discovery
                 managers.Add(manager);
                 Assert.AreEqual(NodeLifecycleState.New, manager.State);
 
-                _discoveryManager.OnIncomingMessage(new PongMessage { FarAddress = new IPEndPoint(IPAddress.Parse(_host), _port), FarPublicKey = _nodeIds[i] });
+                _discoveryManager.OnIncomingMessage(new PongMessage { FarAddress = new IPEndPoint(IPAddress.Parse(_host), _port), FarPublicKey = _nodeIds[i].PublicKey });
 
                 Assert.AreEqual(NodeLifecycleState.Active, manager.State);
             }
@@ -192,7 +193,7 @@ namespace Nethermind.Network.Test.Discovery
             _discoveryManager.OnIncomingMessage(new PongMessage
             {
                 FarAddress = new IPEndPoint(IPAddress.Parse(_host), _port),
-                FarPublicKey = _nodeIds[3]
+                FarPublicKey = _nodeIds[3].PublicKey
             });
 
             //Thread.Sleep(10);
@@ -222,7 +223,7 @@ namespace Nethermind.Network.Test.Discovery
         {
             _signatureToNodeId = new Dictionary<string, PublicKey>();
             _signatureMocks = new Signature[4];
-            _nodeIds = new PublicKey[4];
+            _nodeIds = new NodeId[4];
 
             for (int i = 0; i < 4; i++)
             {
@@ -232,9 +233,9 @@ namespace Nethermind.Network.Test.Discovery
 
                 byte[] nodeIdBytes = new byte[64];
                 nodeIdBytes[63] = (byte)i;
-                _nodeIds[i] = new PublicKey(nodeIdBytes);
+                _nodeIds[i] = new NodeId(new PublicKey(nodeIdBytes));
 
-                _signatureToNodeId.Add(_signatureMocks[i].ToString(), _nodeIds[i]);
+                _signatureToNodeId.Add(_signatureMocks[i].ToString(), _nodeIds[i].PublicKey);
             }
         }
     }

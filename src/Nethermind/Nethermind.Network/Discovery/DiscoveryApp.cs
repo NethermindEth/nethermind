@@ -26,6 +26,7 @@ using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Model;
 using Nethermind.Network.Discovery.Lifecycle;
 using Nethermind.Network.Discovery.RoutingTable;
 using Timer = System.Timers.Timer;
@@ -72,7 +73,7 @@ namespace Nethermind.Network.Discovery
             try
             {
                 // TODO: can we do it so we do not have to call initialize on these classes?
-                _nodeTable.Initialize(masterPublicKey);
+                _nodeTable.Initialize(new NodeId(masterPublicKey));
                 _nodesLocator.Initialize(_nodeTable.MasterNode);
                 _logger.Info("Initializing UDP channel.");
                 InitializeUdpChannel();

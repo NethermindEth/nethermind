@@ -97,5 +97,11 @@ namespace Nethermind.Core.Crypto
         {
             return Hex.FromBytes(Bytes, with0X);
         }
+
+        public string ToShortString()
+        {
+            var value = Hex.FromBytes(Bytes, false);
+            return value.Substring(value.Length - 12);
+        }
     }
 }

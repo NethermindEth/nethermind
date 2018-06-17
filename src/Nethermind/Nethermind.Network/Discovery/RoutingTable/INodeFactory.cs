@@ -18,13 +18,14 @@
 
 using System.Net;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Model;
 
 namespace Nethermind.Network.Discovery.RoutingTable
 {
     public interface INodeFactory
     {
-        Node CreateNode(PublicKey id, IPEndPoint address);
-        Node CreateNode(PublicKey id, string host, int port, bool isDiscovery = false);
+        Node CreateNode(NodeId id, IPEndPoint address);
+        Node CreateNode(NodeId id, string host, int port, bool isDiscovery = false);
         Node CreateNode(string host, int port);
     }
 }

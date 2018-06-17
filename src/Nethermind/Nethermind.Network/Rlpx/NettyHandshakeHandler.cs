@@ -24,6 +24,7 @@ using DotNetty.Codecs;
 using DotNetty.Transport.Channels;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Model;
 using Nethermind.Network.P2P;
 using Nethermind.Network.Rlpx.Handshake;
 
@@ -38,16 +39,16 @@ namespace Nethermind.Network.Rlpx
 
         private readonly IEncryptionHandshakeService _service;
         private readonly IP2PSession _ip2PSession;
-        private PublicKey _remoteId;
+        private NodeId _remoteId;
 
         public NettyHandshakeHandler(
             IEncryptionHandshakeService service,
             IP2PSession ip2PSession,
             EncryptionHandshakeRole role,
-            PublicKey remoteId,
+            NodeId remoteId,
             ILogger logger)
         {
-            _handshake.RemotePublicKey = remoteId;
+            _handshake.RemoteNodeId = remoteId;
             _role = role;
             _remoteId = remoteId;
             _logger = logger;
@@ -113,7 +114,7 @@ namespace Nethermind.Network.Rlpx
                     byte[] authData = new byte[byteBuffer.ReadableBytes];
                     byteBuffer.ReadBytes(authData);
                     Packet ack = _service.Ack(_handshake, new Packet(authData));
-                    _remoteId = _handshake.RemotePublicKey;
+                    _remoteId = _handshake.RemoteNodeId;
 
                     if (_logger.IsDebugEnabled) _logger.Debug($"Sending ACK to {_remoteId} @ {context.Channel.RemoteAddress}");
                     _buffer.WriteBytes(ack.Data);
@@ -127,7 +128,7 @@ namespace Nethermind.Network.Rlpx
                     _service.Agree(_handshake, new Packet(ackData));
                 }
 
-                _ip2PSession.RemoteNodeId = _handshake.RemotePublicKey;
+                _ip2PSession.RemoteNodeId = _handshake.RemoteNodeId;
                 HandshakeInitialized?.Invoke(this, new HandshakeInitializedEventArgs());
 
                 FrameCipher frameCipher = new FrameCipher(_handshake.Secrets.AesSecret);

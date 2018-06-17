@@ -120,14 +120,14 @@ namespace Nethermind.Network.Discovery.RoutingTable
             var idHash = Keccak.Compute(nodeId);
             var idHashText = idHash.ToString();
             var allNodes = Buckets.SelectMany(x => x.Items).Where(x => x.Node.IdHashText != idHashText)
-                .Select(x => new {x.Node, Distance = _nodeDistanceCalculator.CalculateDistance(x.Node.Id.Bytes, nodeId)})
+                .Select(x => new {x.Node, Distance = _nodeDistanceCalculator.CalculateDistance(x.Node.Id.PublicKey.Bytes, nodeId)})
                 .OrderBy(x => x.Distance)
                 .Take(_configurationProvider.BucketSize)
                 .Select(x => x.Node).ToArray();
             return allNodes;
         }
 
-        public void Initialize(PublicKey masterNodeKey = null)
+        public void Initialize(NodeId masterNodeKey = null)
         {
             Buckets = new NodeBucket[_configurationProvider.BucketsCount];
             var pass = new SecureString();
@@ -148,7 +148,7 @@ namespace Nethermind.Network.Discovery.RoutingTable
                     throw new Exception(msg);
                 }
 
-                masterNodeKey = key.PrivateKey.PublicKey;
+                masterNodeKey = new NodeId(key.PrivateKey.PublicKey);
             } 
 
             MasterNode = _nodeFactory.CreateNode(masterNodeKey, _configurationProvider.MasterHost, _configurationProvider.MasterPort);

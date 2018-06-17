@@ -31,6 +31,7 @@ using Microsoft.Extensions.Logging.Console;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Model;
 using Nethermind.Network.P2P;
 using Nethermind.Network.Rlpx.Handshake;
 
@@ -52,7 +53,7 @@ namespace Nethermind.Network.Rlpx
         private IEventLoopGroup _workerGroup;
 
         public RlpxPeer(
-            PublicKey localNodeId,
+            NodeId localNodeId,
             int localPort,
             IEncryptionHandshakeService encryptionHandshakeService,
             IMessageSerializationService serializationService,
@@ -67,7 +68,7 @@ namespace Nethermind.Network.Rlpx
             _localPort = localPort;            
         }
 
-        public PublicKey LocalNodeId { get; }
+        public NodeId LocalNodeId { get; }
 
         public async Task Shutdown()
         {
@@ -137,7 +138,7 @@ namespace Nethermind.Network.Rlpx
             }
         }
 
-        public async Task ConnectAsync(PublicKey remoteId, string host, int port)
+        public async Task ConnectAsync(NodeId remoteId, string host, int port)
         {
             _logger.Info($"Connecting to {remoteId}@{host}:{port}");
 
@@ -171,7 +172,7 @@ namespace Nethermind.Network.Rlpx
 
         public event EventHandler<ConnectionInitializedEventArgs> ConnectionInitialized;
 
-        private void InitializeChannel(IChannel channel, EncryptionHandshakeRole role, PublicKey remoteId = null, string remoteHost = null, int? remotePort = null)
+        private void InitializeChannel(IChannel channel, EncryptionHandshakeRole role, NodeId remoteId = null, string remoteHost = null, int? remotePort = null)
         {
             var connectionType = remoteId == null ? ClientConnectionType.In : ClientConnectionType.Out;
             if (_logger.IsInfoEnabled)

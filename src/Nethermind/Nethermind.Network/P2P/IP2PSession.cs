@@ -20,13 +20,14 @@ using System;
 using System.Threading.Tasks;
 using DotNetty.Transport.Channels;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Model;
 using Nethermind.Network.Rlpx;
 
 namespace Nethermind.Network.P2P
 {
     public interface IP2PSession
     {
-        PublicKey RemoteNodeId { get; set; }
+        NodeId RemoteNodeId { get; set; }
         string RemoteHost { get; set; }
         int? RemotePort { get; set; }
         ClientConnectionType ClientConnectionType { get; set; }

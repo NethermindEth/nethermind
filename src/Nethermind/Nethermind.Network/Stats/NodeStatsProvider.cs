@@ -1,5 +1,6 @@
 ﻿using System.Collections.Concurrent;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Model;
 using Nethermind.Network.Discovery;
 
 namespace Nethermind.Network.Stats
@@ -8,14 +9,14 @@ namespace Nethermind.Network.Stats
     {
         private readonly IDiscoveryConfigurationProvider _discoveryConfigurationProvider;
 
-        private readonly ConcurrentDictionary<PublicKey, INodeStats> _nodeStats = new ConcurrentDictionary<PublicKey, INodeStats>();
+        private readonly ConcurrentDictionary<NodeId, INodeStats> _nodeStats = new ConcurrentDictionary<NodeId, INodeStats>();
 
         public NodeStatsProvider(IDiscoveryConfigurationProvider discoveryConfigurationProvider)
         {
             _discoveryConfigurationProvider = discoveryConfigurationProvider;
         }
 
-        public INodeStats GetNodeStats(PublicKey nodeId)
+        public INodeStats GetNodeStats(NodeId nodeId)
         {
             return _nodeStats.GetOrAdd(nodeId, x => new NodeStats(_discoveryConfigurationProvider));
         }

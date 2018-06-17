@@ -21,6 +21,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Model;
 using Nethermind.Network.Discovery.Messages;
 using Nethermind.Network.Discovery.RoutingTable;
 using Node = Nethermind.Network.Discovery.RoutingTable.Node;
@@ -44,7 +45,7 @@ namespace Nethermind.Network.Discovery.Serializers
                 for (var i = 0; i < message.Nodes.Length; i++)
                 {
                     var node = message.Nodes[i];
-                    var serializedNode = SerializeNode(node.Address, node.Id.Bytes);
+                    var serializedNode = SerializeNode(node.Address, node.Id.PublicKey.Bytes);
                     nodes[i] = serializedNode;
                 }
             }
@@ -88,7 +89,7 @@ namespace Nethermind.Network.Discovery.Serializers
                 }
 
                 byte[] id = ctx.DecodeByteArray();
-                return NodeFactory.CreateNode(new PublicKey(id), address);
+                return NodeFactory.CreateNode(new NodeId(new PublicKey(id)), address);
             });
         }
     }

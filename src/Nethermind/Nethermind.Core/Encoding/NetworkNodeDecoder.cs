@@ -39,7 +39,7 @@ namespace Nethermind.Core.Encoding
         public Rlp Encode(NetworkNode item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             Rlp[] elements = new Rlp[5];
-            elements[0] = Rlp.Encode(item.PublicKey.Bytes);
+            elements[0] = Rlp.Encode(item.NodeId.Bytes);
             elements[1] = Rlp.Encode(item.Host);
             elements[2] = Rlp.Encode(item.Port);
             elements[3] = Rlp.Encode(item.Description);

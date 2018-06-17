@@ -19,6 +19,7 @@
 using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Model;
 using Nethermind.Core.Specs;
 using Nethermind.Network.Crypto;
 using Nethermind.Network.Rlpx;
@@ -85,7 +86,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
 
         private void Auth()
         {
-            _auth = _initiatorService.Auth(NetTestVectors.StaticKeyB.PublicKey, _initiatorHandshake);
+            _auth = _initiatorService.Auth(new NodeId(NetTestVectors.StaticKeyB.PublicKey), _initiatorHandshake);
         }
 
         private void Ack()
@@ -104,7 +105,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
         [Test]
         public void Aes_and_mac_secrets_as_in_test_vectors()
         {
-            Packet auth = _initiatorService.Auth(NetTestVectors.StaticKeyB.PublicKey, _initiatorHandshake);
+            Packet auth = _initiatorService.Auth(new NodeId(NetTestVectors.StaticKeyB.PublicKey), _initiatorHandshake);
             // TODO: cannot recover signature from this one...
             auth.Data = new Hex(
                 "01b304ab7578555167be8154d5cc456f567d5ba302662433674222360f08d5f1534499d3678b513b" +
@@ -277,14 +278,14 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
         {
             Auth();
             Ack();
-            Assert.AreEqual(NetTestVectors.StaticKeyA.PublicKey, _recipientHandshake.RemotePublicKey);
+            Assert.AreEqual(NetTestVectors.StaticKeyA.PublicKey, _recipientHandshake.RemoteNodeId);
         }
 
         [Test]
         public void Sets_remote_public_key_on_auth()
         {
             Auth();
-            Assert.AreEqual(NetTestVectors.StaticKeyB.PublicKey, _initiatorHandshake.RemotePublicKey);
+            Assert.AreEqual(NetTestVectors.StaticKeyB.PublicKey, _initiatorHandshake.RemoteNodeId);
         }
     }
 }

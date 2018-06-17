@@ -23,6 +23,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Model;
 using Nethermind.Core.Test.Builders;
 
 namespace Nethermind.Blockchain.Test
@@ -36,7 +37,7 @@ namespace Nethermind.Blockchain.Test
             _blockTree = blockTree;
         }
 
-        public PublicKey NodeId { get; set; } = TestObject.PublicKeyA;
+        public NodeId NodeId { get; set; } = new NodeId(TestObject.PublicKeyA);
         
         public Task<Block[]> GetBlocks(Keccak[] blockHashes, CancellationToken token)
         {

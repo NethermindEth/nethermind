@@ -17,6 +17,7 @@
  */
 
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Model;
 using Nethermind.Network.Discovery.RoutingTable;
 
 namespace Nethermind.Network.Discovery.Lifecycle
@@ -24,7 +25,7 @@ namespace Nethermind.Network.Discovery.Lifecycle
     public interface INodeLifecycleManagerFactory
     {
         INodeLifecycleManager CreateNodeLifecycleManager(Node node);
-        INodeLifecycleManager CreateNodeLifecycleManager(PublicKey publicKey, string host, int port);
+        INodeLifecycleManager CreateNodeLifecycleManager(NodeId id, string host, int port);
         IDiscoveryManager DiscoveryManager { set; }
     }
 }

@@ -73,7 +73,7 @@ namespace Nethermind.Network.Discovery.Serializers
             }
 
             var nodeId = NodeIdResolver.GetNodeId(signature.Slice(0, 64), signature[64], type, data);
-            var message = MessageFactory.CreateIncomingMessage<T>(nodeId);
+            var message = MessageFactory.CreateIncomingMessage<T>(nodeId.PublicKey);
             return (message, mdc, data);
         }
 

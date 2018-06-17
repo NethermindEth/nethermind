@@ -19,6 +19,7 @@
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Model;
 using Nethermind.Network.P2P;
 using NUnit.Framework;
 
@@ -36,7 +37,7 @@ namespace Nethermind.Network.Test.P2P
             helloMessage.Capabilities.Add(new Capability(Protocol.Eth, 1));
             helloMessage.ClientId = "Nethermind/alpha";
             helloMessage.ListenPort = 8002;
-            helloMessage.NodeId = NetTestVectors.StaticKeyA.PublicKey;
+            helloMessage.NodeId = new NodeId(NetTestVectors.StaticKeyA.PublicKey);
 
             HelloMessageSerializer serializer = new HelloMessageSerializer();
             byte[] serialized = serializer.Serialize(helloMessage);

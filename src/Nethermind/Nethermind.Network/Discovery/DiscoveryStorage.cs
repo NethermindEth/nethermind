@@ -20,6 +20,7 @@ using System.IO;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Encoding;
+using Nethermind.Core.Model;
 using Nethermind.Db;
 using Nethermind.Network.Discovery.Lifecycle;
 using Nethermind.Network.Discovery.RoutingTable;
@@ -59,7 +60,7 @@ namespace Nethermind.Network.Discovery
                 var manager = nodes[i];
                 var node = manager.ManagedNode;
                 var networkNode = new NetworkNode(node.Id.Bytes, node.Host, node.Port, node.Description, manager.NodeStats.NewPersistedNodeReputation);
-                _db[networkNode.PublicKey.Bytes] = Rlp.Encode(networkNode).Bytes;
+                _db[networkNode.NodeId.Bytes] = Rlp.Encode(networkNode).Bytes;
                 _updateCounter++;
             }
         }
@@ -137,7 +138,7 @@ namespace Nethermind.Network.Discovery
         private (Node, long) GetNode(byte[] networkNodeRaw)
         {
             var persistedNode = Rlp.Decode<NetworkNode>(networkNodeRaw);
-            var node = _nodeFactory.CreateNode(persistedNode.PublicKey, persistedNode.Host, persistedNode.Port);
+            var node = _nodeFactory.CreateNode(persistedNode.NodeId, persistedNode.Host, persistedNode.Port);
             node.Description = persistedNode.Description;
             return (node, persistedNode.Reputation);
         }

@@ -28,6 +28,7 @@ using Nethermind.Blockchain.Difficulty;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Model;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Specs.ChainSpec;
 using Nethermind.Db;
@@ -352,7 +353,7 @@ namespace Nethermind.Runner.Runners
             _messageSerializationService.Register(new NewBlockMessageSerializer());
 
             _networkLogger.Info("Initializing server...");
-            _localPeer = new RlpxPeer(_privateKey.PublicKey, listenPort, encryptionHandshakeServiceA, _messageSerializationService, _syncManager, _networkLogger);
+            _localPeer = new RlpxPeer(new NodeId(_privateKey.PublicKey), listenPort, encryptionHandshakeServiceA, _messageSerializationService, _syncManager, _networkLogger);
             await _localPeer.Init();
 
             IPAddress localIp = _networkHelper.GetLocalIp();

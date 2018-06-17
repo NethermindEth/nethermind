@@ -21,12 +21,13 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Model;
 
 namespace Nethermind.Blockchain
 {
     public interface ISynchronizationPeer
     {
-        PublicKey NodeId { get; }
+        NodeId NodeId { get; }
         Task<Block[]> GetBlocks(Keccak[] blockHashes, CancellationToken token);
         Task<BlockHeader[]> GetBlockHeaders(Keccak blockHash, int maxBlocks, int skip, CancellationToken token);
         Task<BlockHeader[]> GetBlockHeaders(BigInteger number, int maxBlocks, int skip, CancellationToken token);

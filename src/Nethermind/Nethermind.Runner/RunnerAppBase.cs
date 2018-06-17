@@ -171,7 +171,7 @@ namespace Nethermind.Runner
 
         private Node GetNode(NetworkNode networkNode)
         {
-            var node = new Node(networkNode.PublicKey)
+            var node = new Node(networkNode.NodeId)
             {
                 Description = networkNode.Description
             };

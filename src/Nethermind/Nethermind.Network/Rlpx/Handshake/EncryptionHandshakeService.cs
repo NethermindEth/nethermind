@@ -20,6 +20,7 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Model;
 using Nethermind.Network.Crypto;
 using Org.BouncyCastle.Crypto.Digests;
 
@@ -55,13 +56,13 @@ namespace Nethermind.Network.Rlpx.Handshake
             _signer = signer;
         }
 
-        public Packet Auth(PublicKey remoteNodePublicKey, EncryptionHandshake handshake)
+        public Packet Auth(NodeId remoteNodeId, EncryptionHandshake handshake)
         {
-            handshake.RemotePublicKey = remoteNodePublicKey;
+            handshake.RemoteNodeId = remoteNodeId;
             handshake.InitiatorNonce = _cryptoRandom.GenerateRandomBytes(32);
             handshake.EphemeralPrivateKey = new PrivateKey(_cryptoRandom.GenerateRandomBytes(32));
 
-            byte[] staticSharedSecret = BouncyCrypto.Agree(_privateKey, remoteNodePublicKey);
+            byte[] staticSharedSecret = BouncyCrypto.Agree(_privateKey, remoteNodeId.PublicKey);
             byte[] forSigning = staticSharedSecret.Xor(handshake.InitiatorNonce);
 
             AuthEip8Message authMessage = new AuthEip8Message();
@@ -73,7 +74,7 @@ namespace Nethermind.Network.Rlpx.Handshake
             int size = authData.Length + 32 + 16 + 65; // data + MAC + IV + pub
             byte[] sizeBytes = size.ToBigEndianByteArray().Slice(2, 2);
             byte[] packetData = _eciesCipher.Encrypt(
-                remoteNodePublicKey,
+                remoteNodeId.PublicKey,
                 authData,
                 sizeBytes);
 
@@ -102,14 +103,15 @@ namespace Nethermind.Network.Rlpx.Handshake
                 authMessage = _messageSerializationService.Deserialize<AuthEip8Message>(plaintext);
             }
 
-            _logger.Debug($"Received AUTH v{authMessage.Version} from {authMessage.PublicKey}");
+            var nodeId = new NodeId(authMessage.PublicKey);
+            _logger.Debug($"Received AUTH v{authMessage.Version} from {nodeId}");
 
-            handshake.RemotePublicKey = authMessage.PublicKey;
+            handshake.RemoteNodeId = nodeId;
             handshake.RecipientNonce = _cryptoRandom.GenerateRandomBytes(32);
             handshake.EphemeralPrivateKey = new PrivateKey(_cryptoRandom.GenerateRandomBytes(32));
 
             handshake.InitiatorNonce = authMessage.Nonce;
-            byte[] staticSharedSecret = BouncyCrypto.Agree(_privateKey, handshake.RemotePublicKey);
+            byte[] staticSharedSecret = BouncyCrypto.Agree(_privateKey, handshake.RemoteNodeId.PublicKey);
             byte[] forSigning = staticSharedSecret.Xor(handshake.InitiatorNonce);
 
             handshake.RemoteEphemeralPublicKey = _signer.RecoverPublicKey(authMessage.Signature, new Keccak(forSigning));
@@ -134,7 +136,7 @@ namespace Nethermind.Network.Rlpx.Handshake
             
             int size = ackData.Length + 32 + 16 + 65; // data + MAC + IV + pub
             byte[] sizeBytes = size.ToBigEndianByteArray().Slice(2, 2);
-            byte[] packetData = _eciesCipher.Encrypt(handshake.RemotePublicKey, ackData, sizeBytes);
+            byte[] packetData = _eciesCipher.Encrypt(handshake.RemoteNodeId.PublicKey, ackData, sizeBytes);
             handshake.AckPacket = new Packet(Bytes.Concat(sizeBytes, packetData));
             SetSecrets(handshake, EncryptionHandshakeRole.Recipient);
             return handshake.AckPacket;
@@ -201,17 +203,17 @@ namespace Nethermind.Network.Rlpx.Handshake
                 handshake.Secrets.IngressMac = mac1;
             }
 
-            _logger.Info($"Agreed secrets with {handshake.RemotePublicKey}");
+            _logger.Info($"Agreed secrets with {handshake.RemoteNodeId}");
             #if DEBUG
             if (_logger.IsDebugEnabled)
             {
-                _logger.Debug($"{handshake.RemotePublicKey} ephemeral private key {handshake.EphemeralPrivateKey}");
-                _logger.Debug($"{handshake.RemotePublicKey} initiator nonce {new Hex(handshake.InitiatorNonce)}");
-                _logger.Debug($"{handshake.RemotePublicKey} recipient nonce {new Hex(handshake.RecipientNonce)}");
-                _logger.Debug($"{handshake.RemotePublicKey} remote ephemeral public key {handshake.RemoteEphemeralPublicKey}");
-                _logger.Debug($"{handshake.RemotePublicKey} remote public key {handshake.RemotePublicKey}");
-                _logger.Debug($"{handshake.RemotePublicKey} auth packet {new Hex(handshake.AuthPacket.Data)}");
-                _logger.Debug($"{handshake.RemotePublicKey} ack packet {new Hex(handshake.AckPacket.Data)}");
+                _logger.Debug($"{handshake.RemoteNodeId} ephemeral private key {handshake.EphemeralPrivateKey}");
+                _logger.Debug($"{handshake.RemoteNodeId} initiator nonce {new Hex(handshake.InitiatorNonce)}");
+                _logger.Debug($"{handshake.RemoteNodeId} recipient nonce {new Hex(handshake.RecipientNonce)}");
+                _logger.Debug($"{handshake.RemoteNodeId} remote ephemeral public key {handshake.RemoteEphemeralPublicKey}");
+                _logger.Debug($"{handshake.RemoteNodeId} remote public key {handshake.RemoteNodeId}");
+                _logger.Debug($"{handshake.RemoteNodeId} auth packet {new Hex(handshake.AuthPacket.Data)}");
+                _logger.Debug($"{handshake.RemoteNodeId} ack packet {new Hex(handshake.AckPacket.Data)}");
             }
             #endif
         }

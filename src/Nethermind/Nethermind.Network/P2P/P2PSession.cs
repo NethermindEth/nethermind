@@ -24,6 +24,7 @@ using DotNetty.Transport.Channels;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Model;
 using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63;
 using Nethermind.Network.Rlpx;
@@ -44,7 +45,7 @@ namespace Nethermind.Network.P2P
         private Func<(string ProtocolCode, int PacketType), int> _adaptiveEncoder;
         
         public P2PSession(
-            PublicKey localNodeId,
+            NodeId localNodeId,
             int localPort,
             IMessageSerializationService serializer,
             ISynchronizationManager syncManager,
@@ -58,9 +59,9 @@ namespace Nethermind.Network.P2P
             SessionId = Guid.NewGuid().ToString();
         }
 
-        public PublicKey LocalNodeId { get; }
+        public NodeId LocalNodeId { get; }
         public int LocalPort { get; }
-        public PublicKey RemoteNodeId { get; set; }
+        public NodeId RemoteNodeId { get; set; }
         public int? RemotePort { get; set; }
         public string RemoteHost { get; set; }
         public ClientConnectionType ClientConnectionType { get; set; }

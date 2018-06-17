@@ -19,22 +19,23 @@
 using System;
 using System.Net;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Model;
 
 namespace Nethermind.Network.Discovery.RoutingTable
 {
     public class Node
     {
-        public Node(PublicKey id)
+        public Node(NodeId id)
         {
             Id = id;
             //Bytes or PrefixBytes?
 
-            IdHash = Keccak.Compute(id.PrefixedBytes);
+            IdHash = Keccak.Compute(id.PublicKey.PrefixedBytes);
             IdHashText = IdHash.ToString();
         }
 
         //id is bytes without prefix byte - 64 bytes
-        public PublicKey Id { get; }
+        public NodeId Id { get; }
         public Keccak IdHash { get; }
         public string IdHashText { get; }
         public string Host { get; private set; }

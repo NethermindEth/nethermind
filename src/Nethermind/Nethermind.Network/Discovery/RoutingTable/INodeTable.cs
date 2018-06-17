@@ -18,12 +18,13 @@
 
 
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Model;
 
 namespace Nethermind.Network.Discovery.RoutingTable
 {
     public interface INodeTable
     {
-        void Initialize(PublicKey masterNodeKey = null);
+        void Initialize(NodeId masterNodeKey = null);
         Node MasterNode { get; }
         NodeBucket[] Buckets { get; }
         NodeAddResult AddNode(Node node);

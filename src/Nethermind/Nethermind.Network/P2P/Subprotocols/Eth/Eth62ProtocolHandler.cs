@@ -26,6 +26,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Model;
 using Nethermind.Network.Rlpx;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth
@@ -405,7 +406,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             return headers;
         }
 
-        public PublicKey NodeId => P2PSession.RemoteNodeId;
+        public NodeId NodeId => P2PSession.RemoteNodeId;
 
         async Task<Block[]> ISynchronizationPeer.GetBlocks(Keccak[] blockHashes, CancellationToken token)
         {

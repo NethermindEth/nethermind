@@ -24,6 +24,7 @@ using DotNetty.Transport.Channels;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Model;
 using Nethermind.Network.P2P;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
@@ -51,12 +52,12 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             _channelHandlerContext.Channel.Returns(_channel);
 
             _service = Substitute.For<IEncryptionHandshakeService>();
-            _service.Auth(Arg.Any<PublicKey>(), Arg.Any<EncryptionHandshake>()).Returns(_authPacket);
+            _service.Auth(Arg.Any<NodeId>(), Arg.Any<EncryptionHandshake>()).Returns(_authPacket);
             _service.Ack(Arg.Any<EncryptionHandshake>(), Arg.Any<Packet>()).Returns(_ackPacket).AndDoes(ci => ci.Arg<EncryptionHandshake>().Secrets = NetTestVectors.BuildSecretsWithSameIngressAndEgress());
             _service.When(s => s.Agree(Arg.Any<EncryptionHandshake>(), Arg.Any<Packet>())).Do(ci => ci.Arg<EncryptionHandshake>().Secrets = NetTestVectors.BuildSecretsWithSameIngressAndEgress());
 
             _logger = Substitute.For<ILogger>();
-            _remotePublicKey = NetTestVectors.StaticKeyB.PublicKey;
+            _remotePublicKey = new NodeId(NetTestVectors.StaticKeyB.PublicKey);
         }
 
         private readonly Packet _ackPacket = new Packet(NetTestVectors.AckEip8);
@@ -68,7 +69,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
         private IP2PSession _ip2PSession;
         private IMessageSerializationService _serializationService;
         private ILogger _logger;
-        private PublicKey _remotePublicKey;
+        private NodeId _remotePublicKey;
 
         // TODO: need to define the desired behaviour here
         [Test]
@@ -175,7 +176,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             NettyHandshakeHandler handler = new NettyHandshakeHandler(_service, _ip2PSession, EncryptionHandshakeRole.Recipient, _remotePublicKey, _logger);
             handler.ChannelActive(_channelHandlerContext);
 
-            _service.Received(0).Auth(Arg.Any<PublicKey>(), Arg.Any<EncryptionHandshake>());
+            _service.Received(0).Auth(Arg.Any<NodeId>(), Arg.Any<EncryptionHandshake>());
             await _channelHandlerContext.Received(0).WriteAndFlushAsync(Arg.Any<object>());
         }
 

@@ -21,17 +21,18 @@ using System.Numerics;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Model;
 
 namespace Nethermind.Blockchain
 {
     public interface ISynchronizationManager
     {
-        void HintBlock(Keccak hash, BigInteger number, PublicKey receivedFrom);
+        void HintBlock(Keccak hash, BigInteger number, NodeId receivedFrom);
         Block Find(Keccak hash);
         Block Find(BigInteger number);
         Block[] Find(Keccak hash, int numberOfBlocks, int skip, bool reverse);
-        void AddNewBlock(Block block, PublicKey receivedFrom);
-        void AddNewTransaction(Transaction transaction, PublicKey receivedFrom);
+        void AddNewBlock(Block block, NodeId receivedFrom);
+        void AddNewTransaction(Transaction transaction, NodeId receivedFrom);
         Task AddPeer(ISynchronizationPeer synchronizationPeer);
         void RemovePeer(ISynchronizationPeer synchronizationPeer);
         void Start();

@@ -24,6 +24,7 @@ using System.Linq;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Model;
 using Nethermind.Network.Discovery.Lifecycle;
 using Nethermind.Network.Discovery.Messages;
 using Nethermind.Network.Discovery.RoutingTable;
@@ -71,7 +72,7 @@ namespace Nethermind.Network.Discovery
 
                 MessageType msgType = message.MessageType;
 
-                Node node = _nodeFactory.CreateNode(message.FarPublicKey, message.FarAddress);
+                Node node = _nodeFactory.CreateNode(new NodeId(message.FarPublicKey), message.FarAddress);
                 INodeLifecycleManager nodeManager = GetNodeLifecycleManager(node);
 
                 switch (msgType)

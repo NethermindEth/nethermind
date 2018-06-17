@@ -25,6 +25,7 @@ using System.Timers;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Model;
 using Nethermind.Network.Discovery;
 using Nethermind.Network.Discovery.RoutingTable;
 using Nethermind.Network.P2P;
@@ -56,8 +57,8 @@ namespace Nethermind.Network
         private readonly object _isPeerUpdateInProgressLock = new object();
         private readonly IPerfService _perfService;
 
-        private readonly ConcurrentDictionary<PublicKey, Peer> _activePeers = new ConcurrentDictionary<PublicKey, Peer>();
-        private readonly ConcurrentDictionary<PublicKey, Peer> _candidatePeers = new ConcurrentDictionary<PublicKey, Peer>();
+        private readonly ConcurrentDictionary<NodeId, Peer> _activePeers = new ConcurrentDictionary<NodeId, Peer>();
+        private readonly ConcurrentDictionary<NodeId, Peer> _candidatePeers = new ConcurrentDictionary<NodeId, Peer>();
 
         //TODO Timer to periodically check active peers and move new to active based on max size and compatibility - stats and capabilities + update peers in synchronization manager
         //TODO Remove active and synch on disconnect
@@ -240,7 +241,7 @@ namespace Nethermind.Network
         public IReadOnlyCollection<Peer> CandidatePeers => _candidatePeers.Values.ToArray();
         public IReadOnlyCollection<Peer> ActivePeers => _activePeers.Values.ToArray();
 
-        public bool IsPeerConnected(PublicKey peerId)
+        public bool IsPeerConnected(NodeId peerId)
         {
             return _activePeers.ContainsKey(peerId);
         }

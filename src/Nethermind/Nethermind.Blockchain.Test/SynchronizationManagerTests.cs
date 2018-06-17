@@ -26,6 +26,7 @@ using Nethermind.Blockchain.Difficulty;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Model;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using NSubstitute;
@@ -236,7 +237,7 @@ namespace Nethermind.Blockchain.Test
             ISynchronizationPeer miner2 = Substitute.For<ISynchronizationPeer>();
             miner2.GetHeadBlockNumber(Arg.Any<CancellationToken>()).Returns(miner1.GetHeadBlockNumber(Arg.Any<CancellationToken>()));
             miner2.GetHeadBlockHash().Returns(miner1.GetHeadBlockHash());
-            miner2.NodeId.Returns(TestObject.PublicKeyB);
+            miner2.NodeId.Returns(new NodeId(TestObject.PublicKeyB));
             
             Assert.AreEqual(newBlock.Number, await miner2.GetHeadBlockNumber(Arg.Any<CancellationToken>()), "number as expected");
             Assert.AreEqual(newBlock.Hash, await miner2.GetHeadBlockHash(), "hash as expected");
@@ -271,7 +272,7 @@ namespace Nethermind.Blockchain.Test
             ISynchronizationPeer miner2 = Substitute.For<ISynchronizationPeer>();
             miner2.GetHeadBlockNumber(Arg.Any<CancellationToken>()).Returns(miner1.GetHeadBlockNumber(Arg.Any<CancellationToken>()));
             miner2.GetHeadBlockHash().Returns(miner1.GetHeadBlockHash());
-            miner2.NodeId.Returns(TestObject.PublicKeyB);
+            miner2.NodeId.Returns(new NodeId(TestObject.PublicKeyB));
             
             Assert.AreEqual(newBlock.Number, await miner2.GetHeadBlockNumber(Arg.Any<CancellationToken>()), "number as expected");
             Assert.AreEqual(newBlock.Hash, await miner2.GetHeadBlockHash(), "hash as expected");

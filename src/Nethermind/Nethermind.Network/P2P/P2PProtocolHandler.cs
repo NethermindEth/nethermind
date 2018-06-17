@@ -24,6 +24,7 @@ using System.Threading.Tasks;
 using DotNetty.Common.Concurrency;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Model;
 using Nethermind.Network.Rlpx;
 
 namespace Nethermind.Network.P2P
@@ -37,7 +38,7 @@ namespace Nethermind.Network.P2P
         public P2PProtocolHandler(
             IP2PSession p2PSession,
             IMessageSerializationService serializer,
-            PublicKey localNodeId,
+            NodeId localNodeId,
             int listenPort,
             ILogger logger)
             : base(p2PSession, serializer, logger)
@@ -51,7 +52,7 @@ namespace Nethermind.Network.P2P
 
         public int ListenPort { get; }
 
-        public PublicKey LocalNodeId { get; }
+        public NodeId LocalNodeId { get; }
 
         public string RemoteClientId { get; private set; }
 

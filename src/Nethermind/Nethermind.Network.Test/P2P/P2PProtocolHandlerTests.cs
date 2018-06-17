@@ -17,6 +17,7 @@
  */
 
 using Nethermind.Core;
+using Nethermind.Core.Model;
 using Nethermind.Network.P2P;
 using Nethermind.Network.Rlpx;
 using NSubstitute;
@@ -49,7 +50,7 @@ namespace Nethermind.Network.Test.P2P
             return new P2PProtocolHandler(
                 _p2PSession,
                 _serializer,
-                NetTestVectors.StaticKeyA.PublicKey,
+                new NodeId(NetTestVectors.StaticKeyA.PublicKey), 
                 ListenPort,
                 NullLogger.Instance);
         }
