@@ -133,11 +133,6 @@ namespace Nethermind.Network.Rlpx
                 FrameCipher frameCipher = new FrameCipher(_handshake.Secrets.AesSecret);
                 FrameMacProcessor macProcessor = new FrameMacProcessor(_handshake.Secrets);
 
-                if (_logger.IsTraceEnabled) _logger.Trace($"Removing {nameof(NettyHandshakeHandler)}");
-                context.Channel.Pipeline.Remove(this);
-                if (_logger.IsTraceEnabled) _logger.Trace($"Removing {nameof(LengthFieldBasedFrameDecoder)}");
-                context.Channel.Pipeline.Remove<LengthFieldBasedFrameDecoder>();
-
                 if (_logger.IsTraceEnabled) _logger.Trace($"Registering {nameof(NettyFrameDecoder)} for {_remoteId} @ {context.Channel.RemoteAddress}");
                 context.Channel.Pipeline.AddLast(new NettyFrameDecoder(frameCipher, macProcessor, _logger));
                 if (_logger.IsTraceEnabled) _logger.Trace($"Registering {nameof(NettyFrameEncoder)} for {_remoteId} @ {context.Channel.RemoteAddress}");
@@ -156,6 +151,11 @@ namespace Nethermind.Network.Rlpx
                 context.Channel.Pipeline.AddLast(handler);
 
                 handler.Init(multiplexor, context);
+
+                if (_logger.IsTraceEnabled) _logger.Trace($"Removing {nameof(NettyHandshakeHandler)}");
+                context.Channel.Pipeline.Remove(this);
+                if (_logger.IsTraceEnabled) _logger.Trace($"Removing {nameof(LengthFieldBasedFrameDecoder)}");
+                context.Channel.Pipeline.Remove<LengthFieldBasedFrameDecoder>();
             }
             else
             {

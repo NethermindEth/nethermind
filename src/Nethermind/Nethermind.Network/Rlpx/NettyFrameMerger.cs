@@ -100,14 +100,15 @@ namespace Nethermind.Network.Rlpx
             }
             else
             {
-                if (_logger.IsTraceEnabled)
-                {
-                    _logger.Trace("Merging single frame packet");
-                }
-
                 int totalBodySize = input[0] & 0xFF;
                 totalBodySize = (totalBodySize << 8) + (input[1] & 0xFF);
                 totalBodySize = (totalBodySize << 8) + (input[2] & 0xFF);
+
+                if (_logger.IsTraceEnabled)
+                {
+                    _logger.Trace($"Merging single frame packet of length {totalBodySize - 1}");
+                }
+
                 output.Add(new Packet("???", GetPacketType(input), input.Slice(1 + 32, totalBodySize - 1))); // ??? protocol because of adaptive IDs
             }
         }

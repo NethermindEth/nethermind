@@ -98,7 +98,7 @@ namespace Nethermind.Network.P2P
 
             if (_logger.IsDebugEnabled)
             {
-                _logger.Debug($"{RemoteNodeId} {nameof(P2PSession)} received a message ({dynamicMessageCode} => {protocol}.{messageId})");
+                _logger.Debug($"{RemoteNodeId} {nameof(P2PSession)} received a message of length {packet.Data.Length} ({dynamicMessageCode} => {protocol}.{messageId})");
             }
 
             if (protocol == null)
