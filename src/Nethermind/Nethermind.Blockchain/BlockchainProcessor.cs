@@ -220,6 +220,11 @@ namespace Nethermind.Blockchain
                     _logger.Debug($"Processing block {block.ToString(Block.Format.Short)}).");
                 }
 
+                if (_blockQueue.Count == 0)
+                {
+                    _wasQueueEmptied = true;
+                }
+
                 Process(block);
 
                 if (_logger.IsDebugEnabled) // TODO: different levels depending on the queue size?
@@ -360,8 +365,9 @@ namespace Nethermind.Blockchain
             return txTree.RootHash;
         }
 
+        // TODO: move these stats into a separate class
         private readonly Stopwatch _processingWatch = new Stopwatch(); // TODO: TEMP?
-        private long _lastElapsedMs;
+        private long _lastElapsedTicks;
         private decimal _lastTotalMGas;
         private long _lastTotalTx;
         private decimal _currentTotalMGas;
@@ -374,20 +380,18 @@ namespace Nethermind.Blockchain
         private long _lastTreeNodeRlp;
         private long _lastEvmExceptions;
         private long _lastSelfDestructs;
-        private long _maxMemory = 0;
+        private long _maxMemory;
+        private bool _wasQueueEmptied;
 
         public void Process(Block suggestedBlock)
         {
-            //            Stopwatch stopwatch = new Stopwatch(); // TODO: instrumentation
-            //            stopwatch.Start();
             Process(suggestedBlock, false);
-            //            stopwatch.Stop();
-            //            
             _currentTotalMGas += (decimal)suggestedBlock.GasUsed / 1_000_000m;
             _currentTotalTx += suggestedBlock.Transactions.Length;
             //            
-            long currentMs = _processingWatch.ElapsedMilliseconds;
-            if (currentMs > _lastElapsedMs + 10000) // 10s
+            long currentTicks = _processingWatch.ElapsedTicks;
+            decimal chunkMicroseconds = (_processingWatch.ElapsedTicks - _lastElapsedTicks) * (1_000_000m / Stopwatch.Frequency);
+            if (chunkMicroseconds > 10* 1000 * 1000 || _wasQueueEmptied) // 10s
             {
                 long currentGen0 = GC.CollectionCount(0);
                 long currentGen1 = GC.CollectionCount(1);
@@ -401,18 +405,14 @@ namespace Nethermind.Blockchain
                 long currentSelfDestructs = Metrics.SelfDestructs;
 
                 long chunkTx = _currentTotalTx - _lastTotalTx;
-                long chunkMs = currentMs - _lastElapsedMs;
                 decimal chunkMGas = _currentTotalMGas - _lastTotalMGas;
-                //                decimal gasPercentage = (decimal)suggestedBlock.GasUsed / suggestedBlock.GasLimit;
-                //                decimal microSeconds = _processingWatch.ElapsedTicks * (1_000_000m / Stopwatch.Frequency);
-                decimal mgasPerSecond = chunkMGas / chunkMs * 1000;
-                decimal totalMgasPerSecond = _currentTotalMGas / currentMs * 1000;
-                decimal txps = chunkTx / (decimal)chunkMs * 1000;
-                //                _logger.Info($"Processed block {suggestedBlock.ToString(Block.Format.Short)} in {microSeconds,12:N0}μs, guse={gasPercentage,7:P2}, mgas={mgas,6:F2}, mgasps={mgasPerSecond,9:F2}");
-                _logger.Info($"Processed blocks up to {suggestedBlock.Number,9} in {chunkMs,7:N0}ms, tx={chunkTx,5} mgas={chunkMGas,8:F2}, mgasps={mgasPerSecond,7:F2}, txps={txps,7:F2}, total mgasps={totalMgasPerSecond,7:F2}, queue={_blockQueue.Count}");
+                decimal mgasPerSecond = chunkMGas / chunkMicroseconds * 1000 * 1000;
+                decimal totalMgasPerSecond = _currentTotalMGas / currentTicks * 1000;
+                decimal txps = chunkTx / chunkMicroseconds * 1000m * 1000m;
+                _logger.Info($"Processed blocks up to {suggestedBlock.Number,9} in {chunkMicroseconds / 1000,7:N0}ms, tx={chunkTx,5} mgas={chunkMGas,8:F2}, mgasps={mgasPerSecond,7:F2}, txps={txps,7:F2}, total mgasps={totalMgasPerSecond,7:F2}, queue={_blockQueue.Count}");
                 _logger.Info($"Gen0: {currentGen0 - _lastGen0,6}, Gen1: {currentGen1 - _lastGen1,6}, Gen2: {currentGen2 - _lastGen2,6}, maxmem: {_maxMemory / 1000000,5}, mem: {currentMemory / 1000000,5}, reads: {currentStateDbReads - _lastStateDbReads,9}, writes: {currentStateDbWrites - _lastStateDbWrites,9}, rlp: {currentTreeNodeRlp - _lastTreeNodeRlp,9}, exceptions:{evmExceptions - _lastEvmExceptions}, selfdstrcs={currentSelfDestructs - _lastSelfDestructs}");
                 _lastTotalMGas = _currentTotalMGas;
-                _lastElapsedMs = currentMs;
+                _lastElapsedTicks = currentTicks;
                 _lastTotalTx = _currentTotalTx;
                 _lastGen0 = currentGen0;
                 _lastGen1 = currentGen1;
@@ -526,6 +526,14 @@ namespace Nethermind.Blockchain
                     _logger.Debug($"Processing {blocks.Length} blocks from state root {stateRoot}");
                 }
 
+                //TODO: process blocks one by one here, refactor this, test
+                for (int i = 0; i < blocks.Length; i++)
+                {
+                    if (blocks[i].Transactions.Length > 0 && blocks[i].Transactions[0].SenderAddress == null)
+                    {
+                        _signer.RecoverAddresses(blocks[i]);
+                    }
+                }
                 Block[] processedBlocks = _blockProcessor.Process(stateRoot, blocks, forMining);
 
                 // TODO: lots of unnecessary loading and decoding here, review after adding support for loading headers only

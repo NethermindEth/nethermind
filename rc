@@ -1,0 +1,504 @@
+[33mcommit 6c6e2816edce3dd6d54889418ed80cfce0bdc78f[m[33m ([m[1;36mHEAD -> [m[1;32mmaster[m[33m, [m[1;31morigin/master[m[33m, [m[1;31morigin/HEAD[m[33m)[m
+Author: Grzegorz Lesniakiewicz <glesniakiewicz@gmail.com>
+Date:   Sat Jun 16 23:11:05 2018 -0400
+
+    Added NodeId to wrap PublicKey as id, added short id logging for NodeId
+
+[33mcommit e0840cabec7b3e7069f8b020fcdee83046a37e09[m
+Merge: 9875f08 27a3af8
+Author: Tomasz K. Stanczak <tkstanczak@demerzel.co>
+Date:   Sun Jun 17 01:22:32 2018 +0100
+
+    Merge branch 'master' of https://github.com/tkstanczak/nevermind
+
+[33mcommit 9875f087a667626fc48ee166b76f9cdcd05a44f7[m
+Author: Tomasz K. Stanczak <tkstanczak@demerzel.co>
+Date:   Sun Jun 17 01:21:13 2018 +0100
+
+    fixed handshake handler race
+
+[33mcommit 27a3af8bca9391f63d04f105bb82ce54564e7517[m
+Author: Grzegorz Lesniakiewicz <glesniakiewicz@gmail.com>
+Date:   Sat Jun 16 20:13:44 2018 -0400
+
+    Added ping timer and disconnect on missing too many pings, logging improvements
+
+[33mcommit 9b4a4ed5b07ebe7b77c25375a5885f2ae60bb66d[m
+Author: Tomasz K. Stanczak <tkstanczak@demerzel.co>
+Date:   Sat Jun 16 22:59:53 2018 +0100
+
+    geth sync
+
+[33mcommit 4d6051ee953c3cae07751f858d8f38d0980bc85b[m
+Author: Grzegorz Lesniakiewicz <glesniakiewicz@gmail.com>
+Date:   Sat Jun 16 17:08:21 2018 -0400
+
+    Support for sync, init cancellation due to disconnect, improved logging
+
+[33mcommit f8855a959b233a093746bab5f85f7ef0cf0743d0[m
+Author: Tomasz K. Stanczak <tkstanczak@demerzel.co>
+Date:   Fri Jun 15 14:37:13 2018 +0100
+
+    various fixes for ropsten sync with test db
+
+[33mcommit 39fa91b7e07b2d6fc97613f46b2b1d12fd8320c7[m
+Author: Tomasz K. Stanczak <tkstanczak@demerzel.co>
+Date:   Thu Jun 14 18:57:42 2018 +0100
+
+    fixed VM tests
+
+[33mcommit 77717a032bb6ae2b10449c915410df3ef7d58d04[m
+Author: Tomasz K. Stanczak <tkstanczak@demerzel.co>
+Date:   Wed Jun 13 13:39:14 2018 +0100
+
+    experimenting with GC on VMs
+
+[33mcommit 3f276b0d61ab42f44250360abccfdf79a5946507[m
+Author: Tomasz K. Stanczak <tkstanczak@demerzel.co>
+Date:   Wed Jun 13 03:53:27 2018 +0100
+
+    quick fix for a TrieNode retention isue
+
+[33mcommit 9bc59bb2e126139b42453e21d9e470bacf4ef0d7[m
+Merge: 13a7cef 91f676e
+Author: Tomasz Kajetan Stańczak <tkstanczak@users.noreply.github.com>
+Date:   Wed Jun 13 02:50:01 2018 +0100
+
+    Merge pull request #10 from tkstanczak/lazynodes
+    
+    committed on a wrong branch
+
+[33mcommit 91f676efd509485d0f0e248582b0b7fac27b3ae3[m[33m ([m[1;31morigin/lazynodes[m[33m, [m[1;32mlazynodes[m[33m)[m
+Author: Tomasz K. Stanczak <tkstanczak@demerzel.co>
+Date:   Wed Jun 13 02:48:52 2018 +0100
+
+    switching ofgs
+
+[33mcommit 13a7cefec43aca70b912afb9473193e1267dae5a[m
+Merge: 9ccdb55 e630be6
+Author: Tomasz Kajetan Stańczak <tkstanczak@users.noreply.github.com>
+Date:   Wed Jun 13 00:02:09 2018 +0100
+
+    Merge pull request #9 from tkstanczak/lazynodes
+    
+    Lazynodes
+
+[33mcommit 8f2f6d1f42c1c01615455d7642a62e8cc41c91ff[m
+Author: Tomasz K. Stanczak <tkstanczak@demerzel.co>
+Date:   Tue Jun 12 23:34:07 2018 +0100
+
+    minor things
+
+[33mcommit 2e24d97d82c0b1c00c0cd74be81aced62c53d945[m
+Author: Tomasz K. Stanczak <tkstanczak@demerzel.co>
+Date:   Tue Jun 12 23:10:35 2018 +0100
+
+    cleaning naming after NodeRef gone
+
+[33mcommit e630be62413569aef955e9414ddde8ef9d39af1d[m
+Author: Tomasz K. Stanczak <tkstanczak@demerzel.co>
+Date:   Tue Jun 12 22:58:06 2018 +0100
+
+    trie node
+
+[33mcommit a6eb7603ae7c18982ba10fab92fb8734c5521bc2[m
+Author: Tomasz K. Stanczak <tkstanczak@demerzel.co>
+Date:   Tue Jun 12 21:19:48 2018 +0100
+
+    removed node data
+
+[33mcommit bb43e0e99da3850f5d4753646eb48a93306315ce[m
+Author: Tomasz K. Stanczak <tkstanczak@demerzel.co>
+Date:   Tue Jun 12 18:13:06 2018 +0100
+
+    before lookup tables
+
+[33mcommit a6ce51e190f9d9da89b697144f0a28a39ce43021[m
+Author: Tomasz K. Stanczak <tkstanczak@demerzel.co>
+Date:   Tue Jun 12 17:10:14 2018 +0100
+
+    rlp encode inside node
+
+[33mcommit 9e7b2ce0518f746d32f4894253dbd07f5cada4b9[m
+Author: Tomasz K. Stanczak <tkstanczak@demerzel.co>
+Date:   Tue Jun 12 15:09:13 2018 +0100
+
+    peek length
+
+[33mcommit e1bdef04642cbe714eae8100931cb7d5f7726026[m
+Author: Tomasz K. Stanczak <tkstanczak@demerzel.co>
+Date:   Tue Jun 12 14:49:34 2018 +0100
+
+    cleaning some node allocations
+
+[33mcommit 9f8a2943a30d28f52c9c2a89f3cb612cb9525c2c[m
+Author: Tomasz K. Stanczak <tkstanczak@demerzel.co>
+Date:   Tue Jun 12 14:19:05 2018 +0100
+
+    removing allocations from connectnodes
+
+[33mcommit d1a1ce7bb19fcf170380bbbb5739ac0becce1dc0[m
+Author: Tomasz K. Stanczak <tkstanczak@demerzel.co>
+Date:   Tue Jun 12 05:24:01 2018 +0100
+
+    started - work in progress
+
+[33mcommit 9ccdb55e58a414f89349cd220475488a22b40543[m
+Author: Grzegorz Lesniakiewicz <glesniakiewicz@gmail.com>
+Date:   Mon Jun 11 22:35:48 2018 -0400
+
+    Fixed tests, added additional peer maneger tests to cover incoming connection cases
+
+[33mcommit ea003702038f2c7b8b336265527682a557c81605[m[33m ([m[1;32mperfnolazy[m[33m)[m
+Author: Grzegorz Lesniakiewicz <glesniakiewicz@gmail.com>
+Date:   Mon Jun 11 20:21:57 2018 -0400
+
+    Added session identification and proper disconnect management per session, not only per client. Added support for drop connection.
+
+[33mcommit 5a3ad846af198d3fb2e07a67378806487d013e7f[m
+Author: Tomasz K. Stanczak <tkstanczak@demerzel.co>
+Date:   Mon Jun 11 04:27:47 2018 +0100
+
+    signed int stack
+
+[33mcommit ef7084a8ad12574e5b092634113f56acefdd6099[m
+Merge: 8262e9c 06ab664
+Author: Tomasz Kajetan Stańczak <tkstanczak@users.noreply.github.com>
+Date:   Mon Jun 11 03:31:37 2018 +0100
+
+    Merge pull request #8 from tkstanczak/vmspans
+    
+    Vmspans
+
+[33mcommit 06ab66432576d15bfb9da85170265df9bd4c3c17[m[33m ([m[1;31morigin/vmspans[m[33m, [m[1;32mvmspans[m[33m)[m
+Author: Tomasz K. Stanczak <tkstanczak@demerzel.co>
+Date:   Mon Jun 11 03:09:19 2018 +0100
+
+    some minor changes on vm span
+
+[33mcommit c7424039477bc074117f116d2d9aded5c2222d45[m
+Author: Tomasz K. Stanczak <tkstanczak@demerzel.co>
+Date:   Mon Jun 11 02:55:39 2018 +0100
+
+    span stack work in progress
+
+[33mcommit 8262e9ca684abf1f0fe2034cd84c66e86e677c38[m
+Merge: 1d8eba8 14d53b9
+Author: Tomasz Kajetan Stańczak <tkstanczak@users.noreply.github.com>
+Date:   Sun Jun 10 23:36:00 2018 +0100
+
+    Merge pull request #7 from tkstanczak/rlpstreams
+    
+    Rlpstreams
+
+[33mcommit 14d53b9e5eb2d251da36e0fe9c5aed700e05a76d[m[33m ([m[1;31morigin/rlpstreams[m[33m, [m[1;32mrlpstreams[m[33m)[m
+Author: Tomasz K. Stanczak <tkstanczak@demerzel.co>
+Date:   Sun Jun 10 22:40:16 2018 +0100
+
+    some cleaning after Node rewrite
+
+[33mcommit 81d9b5adf567f69a44d6c94bc4317f305aa7a07b[m
+Author: Tomasz K. Stanczak <tkstanczak@demerzel.co>
+Date:   Sun Jun 10 21:59:11 2018 +0100
+
+    removing commented out code
+
+[33mcommit 644d105f8bc06466e0f671e7dbe80cbad8350fa6[m
+Author: Tomasz K. Stanczak <tkstanczak@demerzel.co>
+Date:   Sun Jun 10 21:58:45 2018 +0100
+
+    first remove for KeccakOrRlp
+
+[33mcommit f3745f597085c9b724156b07007afd898ceffedf[m
+Author: Tomasz K. Stanczak <tkstanczak@demerzel.co>
+Date:   Sun Jun 10 21:07:57 2018 +0100
+
+    fixed to removed NodeRef
+
+[33mcommit 54cce7474d55deaa6b78504b0289906b2fadc257[m
+Author: Tomasz K. Stanczak <tkstanczak@demerzel.co>
+Date:   Sun Jun 10 20:49:23 2018 +0100
+
+    remove noderef - work in progreess
+
+[33mcommit e387b847d3e0e0f3dcdf730bdb92cc15ada0d38e[m
+Author: Tomasz K. Stanczak <tkstanczak@demerzel.co>
+Date:   Sun Jun 10 19:20:18 2018 +0100
+
+    removed typehandles
+
+[33mcommit d1d91a8977378a559f808bc6900a5b49ba0e5ace[m
+Author: Tomasz K. Stanczak <tkstanczak@demerzel.co>
+Date:   Sun Jun 10 18:45:31 2018 +0100
+
+    more span usage in decodercontext
+
+[33mcommit 93c446e90f12f552d6e7c3696237d42742251c25[m
+Author: Tomasz K. Stanczak <tkstanczak@demerzel.co>
+Date:   Sun Jun 10 17:55:16 2018 +0100
+
+    branch buffers
+
+[33mcommit 0fc4d6345d06ffe9dced2c793046e7a17fdc2486[m
+Author: Tomasz K. Stanczak <tkstanczak@demerzel.co>
+Date:   Sun Jun 10 15:12:31 2018 +0100
+
+    streams introduced
+
+[33mcommit 1d8eba8469caf9de132838ca35b8eedb27b8e5eb[m
+Author: Grzegorz Lesniakiewicz <glesniakiewicz@gmail.com>
+Date:   Sun Jun 10 18:18:53 2018 -0400
+
+    Added missing subscription for disconnect event, for incoming connection
+
+[33mcommit 29c29e987b8de55835d88e5ecab5f3e721e243eb[m
+Author: Grzegorz Lesniakiewicz <glesniakiewicz@gmail.com>
+Date:   Sun Jun 10 15:17:48 2018 -0400
+
+    Added logic for reconnection delay after disconnect
+
+[33mcommit 7a320432d33530ac522699c8f49eba2bb25b911f[m
+Author: Grzegorz Lesniakiewicz <glesniakiewicz@gmail.com>
+Date:   Sun Jun 10 14:08:20 2018 -0400
+
+    Changes to manage incoming connections - disconnecting if already connected or too many peers
+
+[33mcommit 1df6c6972a6a4b1251b3177f212851ebca7fb418[m
+Author: Tomasz K. Stanczak <tkstanczak@demerzel.co>
+Date:   Sun Jun 10 16:43:40 2018 +0100
+
+    memory loadSpan
+
+[33mcommit f10ab44b60d08f11e429b89f2a10066352daa198[m
+Author: Tomasz K. Stanczak <tkstanczak@demerzel.co>
+Date:   Sun Jun 10 16:31:23 2018 +0100
+
+    using span when calculating hashes for transaction and headers
+
+[33mcommit 9f82582bedcf06e5189043a6925d118d2e7d575f[m
+Author: Tomasz K. Stanczak <tkstanczak@demerzel.co>
+Date:   Sun Jun 10 15:34:09 2018 +0100
+
+    span in Keccak
+
+[33mcommit 5aacc6d567683d16dd5b06df8fd7b135049158d6[m
+Author: Grzegorz Lesniakiewicz <glesniakiewicz@gmail.com>
+Date:   Sat Jun 9 16:27:58 2018 -0400
+
+    Moving Stats and PeerManager components outside of discovery
+
+[33mcommit 06cac818139191d350f4cf80b45c894d28f9efa0[m
+Author: Grzegorz Lesniakiewicz <glesniakiewicz@gmail.com>
+Date:   Sat Jun 9 16:16:48 2018 -0400
+
+    Combined discovery and network, fixed NLog.cofig for Runner
+
+[33mcommit f3978f8bdcc43fe3c936b98146042722535df705[m
+Author: Tomasz K. Stanczak <tkstanczak@demerzel.co>
+Date:   Fri Jun 8 18:59:13 2018 +0100
+
+    just use it since it is there
+
+[33mcommit 23e48e224b19f9657a54f10a67481e1101030231[m
+Author: Tomasz K. Stanczak <tkstanczak@demerzel.co>
+Date:   Fri Jun 8 18:57:57 2018 +0100
+
+    totally empty, iszero, isone
+
+[33mcommit 960a526f38e570a8134488344969d9cb2fb60c49[m
+Author: Tomasz K. Stanczak <tkstanczak@demerzel.co>
+Date:   Fri Jun 8 17:20:20 2018 +0100
+
+    JUMPI fix and fail fast gas cost on SSTORE
+
+[33mcommit 6dd861b3f2aa49fadb2af35be6b82093ad93d629[m
+Author: Tomasz K. Stanczak <tkstanczak@demerzel.co>
+Date:   Fri Jun 8 16:02:29 2018 +0100
+
+    dynamically adjusted ;)
+
+[33mcommit c536e8e092c9fb9d49a385f2b9653d5eed482d96[m
+Author: Tomasz K. Stanczak <tkstanczak@demerzel.co>
+Date:   Fri Jun 8 10:23:42 2018 +0100
+
+    make it faster for jumps temporarily
+
+[33mcommit f77565f56aa7ba9b92625fc9b89c1e0801500596[m
+Author: Tomasz K. Stanczak <tkstanczak@demerzel.co>
+Date:   Fri Jun 8 10:11:54 2018 +0100
+
+    cleaning and more exceptions removed - it made it much slower, so to be reviewed
+
+[33mcommit 08c2bc38e7e65b96f1dd4cea7972700b62a9c707[m
+Author: Tomasz K. Stanczak <tkstanczak@demerzel.co>
+Date:   Fri Jun 8 09:16:42 2018 +0100
+
+    preparing for EVM cleaning
+
+[33mcommit 5d14da4dac59a55fab3c8f0b847b8730624e646d[m
+Author: Tomasz K. Stanczak <tkstanczak@demerzel.co>
+Date:   Fri Jun 8 08:46:03 2018 +0100
+
+    minor fixes after exceptions and before some cleaning
+
+[33mcommit 806bba64bc6fa13b957c89c8b78ffc4624b6c235[m
+Author: Tomasz K. Stanczak <tkstanczak@demerzel.co>
+Date:   Fri Jun 8 07:30:03 2018 +0100
+
+    no evm exceptions
+
+[33mcommit 97e613206983e139e208b0c339fa4012165c78cf[m
+Author: Tomasz K. Stanczak <tkstanczak@demerzel.co>
+Date:   Fri Jun 8 06:20:26 2018 +0100
+
+    heavy diag
+
+[33mcommit 4f3ce9048e4a8f4ed68c8b61746ab9b03df4fc04[m
+Author: Tomasz K. Stanczak <tkstanczak@demerzel.co>
+Date:   Fri Jun 8 05:16:02 2018 +0100
+
+    cleaning some gas cost calculation issues
+
+[33mcommit d19be4cb2236aec842e851eb27f8be21624a68e7[m
+Author: Tomasz K. Stanczak <tkstanczak@demerzel.co>
+Date:   Fri Jun 8 00:52:13 2018 +0100
+
+    code cache used in EVM and parallel branches
+
+[33mcommit bf86000bc3579e269dcb08b3f6a8ff2968895ea8[m[33m ([m[1;32msnapshots[m[33m)[m
+Author: Tomasz K. Stanczak <tkstanczak@demerzel.co>
+Date:   Thu Jun 7 17:22:18 2018 +0100
+
+    queue size
+
+[33mcommit a316845ca32692aef1aa8b8d0a933c28ad1fc3c3[m
+Author: Tomasz K. Stanczak <tkstanczak@demerzel.co>
+Date:   Thu Jun 7 17:05:29 2018 +0100
+
+    removing temp log
+
+[33mcommit 5cea6213bcf37ff18ceace9419df1377f6acc30c[m
+Author: Tomasz K. Stanczak <tkstanczak@demerzel.co>
+Date:   Thu Jun 7 16:56:43 2018 +0100
+
+    enable GC server on linux
+
+[33mcommit c59e8808630c549ea38c5b517d5ac5603d43b2d6[m
+Author: Tomasz K. Stanczak <tkstanczak@demerzel.co>
+Date:   Thu Jun 7 16:51:11 2018 +0100
+
+    dir fix
+
+[33mcommit 269ef60b51c6018bfb326a894e706861ed2878e1[m
+Author: Tomasz K. Stanczak <tkstanczak@demerzel.co>
+Date:   Thu Jun 7 16:46:01 2018 +0100
+
+    server GC
+
+[33mcommit da536252394d186625a88f2fb2260f98849da785[m
+Author: Tomasz K. Stanczak <tkstanczak@demerzel.co>
+Date:   Thu Jun 7 15:59:03 2018 +0100
+
+    testing more greedy sync before dynamic sync size
+
+[33mcommit 6774975520f7e7fd84bcf066eaa2aafd81241f75[m
+Author: Tomasz K. Stanczak <tkstanczak@demerzel.co>
+Date:   Thu Jun 7 14:58:51 2018 +0100
+
+    move db to main folder on linux
+
+[33mcommit 0d1fea92e210d4ee16276ebce9711448f801e4e7[m
+Author: Tomasz K. Stanczak <tkstanczak@demerzel.co>
+Date:   Thu Jun 7 14:52:29 2018 +0100
+
+    removed test projects from release build and restored single ref dotnetty
+
+[33mcommit cf929042c1288596eade7c1895febb8451c91a3e[m
+Author: Tomasz K. Stanczak <tkstanczak@demerzel.co>
+Date:   Thu Jun 7 14:19:24 2018 +0100
+
+    dotnetty fix
+
+[33mcommit 15af405079514633fb5f9de58bf22828a277d277[m
+Author: Tomasz K. Stanczak <tkstanczak@demerzel.co>
+Date:   Thu Jun 7 14:09:18 2018 +0100
+
+    some improvements to exceptions handling in init
+
+[33mcommit 131e30da592f32b748daf34f0d0962e443b5d189[m
+Author: Tomasz K. Stanczak <tkstanczak@demerzel.co>
+Date:   Thu Jun 7 13:43:15 2018 +0100
+
+    log levels for check on Linux
+
+[33mcommit 2730dbae9e1d7670044662eb6e10cde0d3f6c108[m
+Author: Tomasz K. Stanczak <tkstanczak@demerzel.co>
+Date:   Thu Jun 7 13:32:17 2018 +0100
+
+    dao transition fix
+
+[33mcommit 9fbc442bb547b1f7e88c12bdba833ccefa2c5d2b[m
+Author: Tomasz K. Stanczak <tkstanczak@demerzel.co>
+Date:   Thu Jun 7 00:25:21 2018 +0100
+
+    .NET Core 2.1 GetBytes
+
+[33mcommit 8b32fc5a70ae446ca543249ece971fafdefcf985[m
+Author: Tomasz K. Stanczak <tkstanczak@demerzel.co>
+Date:   Wed Jun 6 23:42:15 2018 +0100
+
+    EVMPooledMemory
+
+[33mcommit 80f5c45e3c99d5b6f9229ac32b4d6bdff8b7ee00[m
+Author: Tomasz K. Stanczak <tkstanczak@demerzel.co>
+Date:   Wed Jun 6 18:32:40 2018 +0100
+
+    clean only
+
+[33mcommit b851c326bbc26a4a5d3ec091d72c8749bf28b6ed[m
+Author: Tomasz K. Stanczak <tkstanczak@demerzel.co>
+Date:   Wed Jun 6 18:31:47 2018 +0100
+
+    integrated patriciatree with treeoperation
+
+[33mcommit 54e592362fd94d39d2949fbd0d6bd65cc64c13a7[m
+Author: Tomasz K. Stanczak <tkstanczak@demerzel.co>
+Date:   Wed Jun 6 16:48:04 2018 +0100
+
+    test remove unnecessary update root hash
+
+[33mcommit a8e23580cc8ebde7c624405c1e3a5b01b31235bd[m
+Author: Tomasz K. Stanczak <tkstanczak@demerzel.co>
+Date:   Wed Jun 6 16:02:35 2018 +0100
+
+    removed unnecessary branch creation
+
+[33mcommit 4f9dbb3242ab371dfbe617ac22b5a5ce7bd59298[m
+Author: Tomasz K. Stanczak <tkstanczak@demerzel.co>
+Date:   Wed Jun 6 14:33:07 2018 +0100
+
+    nuget package upgrades, cache size experiments
+
+[33mcommit 08d92872e4790f5d27e688e0243cbfc718115acd[m
+Author: Tomasz K. Stanczak <tkstanczak@demerzel.co>
+Date:   Wed Jun 6 12:47:47 2018 +0100
+
+    separate recovery loop
+
+[33mcommit db8159b1ec272728ecd01fa643ada8d684131b69[m
+Author: Tomasz K. Stanczak <tkstanczak@demerzel.co>
+Date:   Tue Jun 5 23:47:53 2018 +0100
+
+    no Hashresult toarray and cleaned Bytes
+
+[33mcommit f78e122cf64e760bfb3a3d30d0c7e76a035f464b[m
+Author: Tomasz K. Stanczak <tkstanczak@demerzel.co>
+Date:   Tue Jun 5 22:10:49 2018 +0100
+
+    less allocations for Keccak
+
+[33mcommit 73e5c1f64fbcc4550f128f26f24a22c7755848b2[m
+Author: Tomasz K. Stanczak <tkstanczak@demerzel.co>
+Date:   Tue Jun 5 21:21:23 2018 +0100
+
+    value cache, LRUCache delete

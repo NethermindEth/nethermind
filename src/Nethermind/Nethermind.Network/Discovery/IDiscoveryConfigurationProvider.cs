@@ -146,7 +146,7 @@ namespace Nethermind.Network.Discovery
         /// <summary>
         /// Value of predefied reputation for trusted nodes
         /// </summary>
-        long PredefiedReputation { get; }
+        long PredefinedReputation { get; }
 
         /// <summary>
         /// Local disconnect reasons for penalizing node reputation

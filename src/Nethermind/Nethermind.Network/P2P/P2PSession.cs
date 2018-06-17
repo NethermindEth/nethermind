@@ -144,7 +144,7 @@ namespace Nethermind.Network.P2P
             if (!delay.HasValue)
             {
                 //TODO move default delay time to configuration
-                delay = new TimeSpan(0, 0, 0, 10);
+                delay = new TimeSpan(0, 0, 0, 1);
             }
 
             if (PeerDisconnected != null)

@@ -104,16 +104,16 @@ namespace Nethermind.Blockchain
             {
                 if (_isSyncing)
                 {
-                    _logger.Debug($"Ignoring new block {block.Hash} while syncing");
+                    _logger.Info($"Ignoring new block {block.Hash} while syncing");
                     return;
                 }
             }
 
             // TODO: validation
 
-            if (_logger.IsDebugEnabled)
+            if (_logger.IsInfoEnabled)
             {
-                _logger.Debug($"Adding new block {block.Hash} ({block.Number}) from {receivedFrom}");
+                _logger.Info($"Adding new block {block.Hash} ({block.Number}) from {receivedFrom}");
             }
 
             bool getValueResult = _peers.TryGetValue(receivedFrom, out PeerInfo peerInfo);
@@ -263,7 +263,7 @@ namespace Nethermind.Blockchain
                     {
                         _logger.Info($"Requesting peer cancel with: {synchronizationPeer.NodeId}");
                     }
-                    _syncCancellationTokenSource?.Cancel();                    
+                    _syncCancellationTokenSource?.Cancel();
                 }
             }
 
@@ -342,7 +342,7 @@ namespace Nethermind.Blockchain
 
             _syncCancellationTokenSource = new CancellationTokenSource();
 
-            var syncTask = Task.Run(() => SyncAsync(_syncCancellationTokenSource.Token), _syncCancellationTokenSource.Token);   
+            var syncTask = Task.Run(() => SyncAsync(_syncCancellationTokenSource.Token), _syncCancellationTokenSource.Token);
             syncTask.ContinueWith(t =>
             {
                 lock (_isSyncingLock)
@@ -395,10 +395,17 @@ namespace Nethermind.Blockchain
                 ISynchronizationPeer peer = peerInfo.Peer;
                 BigInteger bestNumber = BlockTree.BestSuggested.Number;
 
+                const int maxLookup = 64;
+                int ancestorLookupLevel = 0;
                 bool isCommonAncestorKnown = false;
 
                 while (peerInfo.NumberAvailable > bestNumber && peerInfo.NumberReceived <= peerInfo.NumberAvailable)
                 {
+                    if (ancestorLookupLevel > maxLookup)
+                    {
+                        throw new InvalidOperationException("Cannot find ancestor"); // TODO: remodel this after full sync test is added
+                    }
+
                     if (token.IsCancellationRequested)
                     {
                         token.ThrowIfCancellationRequested();
@@ -459,6 +466,8 @@ namespace Nethermind.Blockchain
                         throw _currentSyncTask.Exception;
                     }
 
+                    ancestorLookupLevel = 0;
+
                     for (int i = 0; i < blocks.Length; i++)
                     {
                         if (token.IsCancellationRequested)
@@ -473,7 +482,21 @@ namespace Nethermind.Blockchain
                             _logger.Trace("RECEIVED BLOCK:");
                             _logger.Trace($"{blocks[i]}");
                         }
+                    }
 
+                    if (blocks.Length > 0)
+                    {
+                        Block parent = BlockTree.FindParent(blocks[0]);
+                        if (parent == null)
+                        {
+                            ancestorLookupLevel += BatchSize;
+                            peerInfo.NumberReceived -= BatchSize;
+                            continue;
+                        }
+                    }
+
+                    for (int i = 0; i < blocks.Length; i++)
+                    {
                         if (_blockValidator.ValidateSuggestedBlock(blocks[i]))
                         {
                             AddBlockResult addResult = BlockTree.SuggestBlock(blocks[i]);
@@ -546,8 +569,8 @@ namespace Nethermind.Blockchain
                 _logger.Info($"Received head block info from {peer.NodeId} with head block numer {getNumberTask.Result}");
             }
 
-//            bool addResult = _peers.TryAdd(peer.NodeId, new PeerInfo(peer, getNumberTask.Result));
-            bool addResult = _peers.TryAdd(peer.NodeId, new PeerInfo(peer, getNumberTask.Result) {NumberReceived = BlockTree.BestSuggested.Number}); // TODO: cheating now with assumign the consistency of the chains
+            //            bool addResult = _peers.TryAdd(peer.NodeId, new PeerInfo(peer, getNumberTask.Result));
+            bool addResult = _peers.TryAdd(peer.NodeId, new PeerInfo(peer, getNumberTask.Result) { NumberReceived = BlockTree.BestSuggested.Number }); // TODO: cheating now with assumign the consistency of the chains
             if (!addResult)
             {
                 _logger.Error($"Adding {nameof(PeerInfo)} failed for {peer.NodeId}");

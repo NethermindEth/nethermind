@@ -67,7 +67,7 @@ namespace Nethermind.Network.Discovery
         public int DiscoveryMsgExpiryTime => 60 * 90;
         public int MaxNodeLifecycleManagersCount => 2000;
         public int NodeLifecycleManagersCleaupCount => 200;
-        public long PredefiedReputation => 1000500;
+        public long PredefinedReputation => 1000500;
 
         public DisconnectReason[] PenalizedReputationLocalDisconnectReasons => new[]
         {
@@ -87,7 +87,7 @@ namespace Nethermind.Network.Discovery
         public bool IsDiscoveryNodesPersistenceOn { get; set; }
         public bool IsPeersPersistenceOn { get; set; }
         public int ActivePeerUpdateInterval => 10000;
-        public bool IsActivePeerTimerEnabled => false;
+        public bool IsActivePeerTimerEnabled => true;
         public int ActivePeersMaxCount { get; set; }
         public int DisconnectDelay => 1000 * 5;
         public int PeersPersistanceInterval => 1000 * 60 * 5;

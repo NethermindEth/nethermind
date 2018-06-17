@@ -73,7 +73,7 @@ namespace Nethermind.Network.Stats
             return IsReputationPenalized()
                 ? 0
                 : CurrentPersistedNodeReputation / 2 + CalculateSessionReputation() +
-                  (IsTrustedPeer ? _configurationProvider.PredefiedReputation : 0);
+                  (IsTrustedPeer ? _configurationProvider.PredefinedReputation : 0);
         }
 
         private long CalculateSessionReputation()
