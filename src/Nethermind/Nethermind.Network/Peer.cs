@@ -45,6 +45,7 @@ namespace Nethermind.Network
         public INodeStats NodeStats { get; }
         public IP2PSession Session { get; set; }
         public ISynchronizationPeer SynchronizationPeer { get; set; }
+        public IP2PMessageSender P2PMessageSender { get; set; }
         public ClientConnectionType ClientConnectionType { get; set; }
     }
 }

@@ -21,15 +21,18 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
+using DotNetty.Common.Concurrency;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Network.Rlpx;
 
 namespace Nethermind.Network.P2P
 {
-    public class P2PProtocolHandler : ProtocolHandlerBase, IProtocolHandler
+    public class P2PProtocolHandler : ProtocolHandlerBase, IProtocolHandler, IP2PMessageSender
     {
         private bool _sentHello;
+        private bool _isInitialized;
+        private TaskCompletionSource<Packet> _pongCompletionSource;
 
         public P2PProtocolHandler(
             IP2PSession p2PSession,
@@ -93,7 +96,7 @@ namespace Nethermind.Network.P2P
             else if (msg.PacketType == P2PMessageCode.Pong)
             {
                 if(Logger.IsDebugEnabled) Logger.Debug($"{P2PSession.RemoteNodeId} Received PONG on {P2PSession.RemotePort}");
-                HandlePong();
+                HandlePong(msg);
             }
             else
             {
@@ -109,8 +112,8 @@ namespace Nethermind.Network.P2P
                 throw new NodeDetailsMismatchException();
             }
 
-            P2PSession.RemoteNodeId = hello.NodeId;
-            P2PSession.RemotePort = hello.ListenPort;
+            //P2PSession.RemoteNodeId = hello.NodeId;
+            //P2PSession.RemotePort = hello.ListenPort;
             RemoteClientId = hello.ClientId;
 
             Logger.Info(!_sentHello
@@ -160,7 +163,38 @@ namespace Nethermind.Network.P2P
                 ClientId = hello.ClientId,
                 Capabilities = hello.Capabilities
             };
+            _isInitialized = true;
             ProtocolInitialized?.Invoke(this, eventArgs);
+        }
+
+        public async Task<bool> SendPing()
+        {
+            if (!_isInitialized)
+            {
+                return true;
+            }
+            if (_pongCompletionSource != null)
+            {
+                if (Logger.IsWarnEnabled)
+                {
+                    Logger.Warn($"Another ping request in process: {P2PSession.RemoteNodeId}");
+                    return true;
+                }
+            }
+            
+            _pongCompletionSource = new TaskCompletionSource<Packet>();
+            var pongTask = _pongCompletionSource.Task;
+
+            if (Logger.IsTraceEnabled)
+            {
+                Logger.Trace($"{P2PSession.RemoteNodeId} P2P sending ping on {P2PSession.RemotePort} ({RemoteClientId})");
+            }
+            Send(PingMessage.Instance);
+            
+            var firstTask = await Task.WhenAny(pongTask, Task.Delay(Timeouts.P2PPing));
+            _pongCompletionSource = null;
+
+            return firstTask == pongTask;
         }
 
         private static readonly List<Capability> SupportedCapabilities = new List<Capability>
@@ -204,16 +238,10 @@ namespace Nethermind.Network.P2P
             P2PSession.DisconnectAsync((DisconnectReason) disconnectReason, DisconnectType.Remote);
         }
 
-        private void HandlePong()
+        private void HandlePong(Packet msg)
         {
             if(Logger.IsTraceEnabled) Logger.Trace($"{P2PSession.RemoteNodeId} P2P pong on {P2PSession.RemotePort} ({RemoteClientId})");
-        }
-
-        private void Ping()
-        {
-            if(Logger.IsTraceEnabled) Logger.Trace($"{P2PSession.RemoteNodeId} P2P sending ping on {P2PSession.RemotePort} ({RemoteClientId})");
-            // TODO: timers
-            Send(PingMessage.Instance);
+            _pongCompletionSource?.SetResult(msg);
         }
 
         public event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized;

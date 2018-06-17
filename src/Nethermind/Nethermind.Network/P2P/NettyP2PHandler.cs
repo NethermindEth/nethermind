@@ -61,9 +61,9 @@ namespace Nethermind.Network.P2P
 
         public override void ExceptionCaught(IChannelHandlerContext context, Exception exception)
         {
-            if (_logger.IsErrorEnabled)
+            if (_logger.IsDebugEnabled)
             {
-                _logger.Error($"{nameof(NettyP2PHandler)} exception", exception);
+                _logger.Debug($"{GetType().Name} exception: {exception}");
             }
 
             base.ExceptionCaught(context, exception);

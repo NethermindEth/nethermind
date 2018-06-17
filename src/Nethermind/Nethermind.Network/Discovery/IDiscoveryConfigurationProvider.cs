@@ -207,5 +207,15 @@ namespace Nethermind.Network.Discovery
         /// Time between persisting peers in miliseconds
         /// </summary>
         int PeersPersistanceInterval { get; }
+
+        /// <summary>
+        /// Time between sending p2p ping
+        /// </summary>
+        int P2PPingInterval { get; }
+
+        /// <summary>
+        /// Number of ping missed for disconnection
+        /// </summary>
+        int P2PPingRetryCount { get; }
     }
 }

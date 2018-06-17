@@ -91,5 +91,7 @@ namespace Nethermind.Network.Discovery
         public int ActivePeersMaxCount { get; set; }
         public int DisconnectDelay => 1000 * 5;
         public int PeersPersistanceInterval => 1000 * 60 * 5;
+        public int P2PPingInterval => 1000 * 10;
+        public int P2PPingRetryCount => 3;
     }
 }

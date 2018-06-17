@@ -48,6 +48,7 @@ namespace Nethermind.Network
         private readonly INodeFactory _nodeFactory;
         private Timer _activePeersTimer;
         private Timer _peerPersistanceTimer;
+        private Timer _pingTimer;
         private readonly bool _isDiscoveryEnabled;
         private int _logCounter = 1;
         private bool _isInitialized = false;
@@ -102,7 +103,10 @@ namespace Nethermind.Network
             //Step 4 - start peer persistance timer
             StartPeerPersistanceTimer();
 
-            //Step 5 - Running initial peer update
+            //Step 5 - start ping timer
+            StartPingTimer();
+
+            //Step 6 - Running initial peer update
             await RunPeerUpdate();
 
             _isInitialized = true;
@@ -116,6 +120,7 @@ namespace Nethermind.Network
             }
 
             StopPeerPersistanceTimer();
+            StopPingTimer();
 
             return Task.CompletedTask;
         }
@@ -358,7 +363,7 @@ namespace Nethermind.Network
             var session = (IP2PSession)sender;
             if (session.ClientConnectionType == ClientConnectionType.In && e.ProtocolHandler is P2PProtocolHandler)
             {
-                if (!await ProcessIncomingConnection(session))
+                if (!await ProcessIncomingConnection(session, (P2PProtocolHandler)e.ProtocolHandler))
                 {
                     return;
                 }
@@ -375,7 +380,7 @@ namespace Nethermind.Network
 
             switch (e.ProtocolHandler)
             {
-                case P2PProtocolHandler _:
+                case P2PProtocolHandler p2PProtocolHandler:
                     peer.NodeStats.NodeDetails.ClientId = ((P2PProtocolInitializedEventArgs)e).ClientId;
                     var result = await ValidateProtocol(Protocol.P2P, peer, e);
                     if (!result)
@@ -383,6 +388,7 @@ namespace Nethermind.Network
                         return;
                     }
                     peer.NodeStats.AddNodeStatsEvent(NodeStatsEvent.P2PInitialized);
+                    peer.P2PMessageSender = p2PProtocolHandler;
                     break;
                 case Eth62ProtocolHandler ethProtocolhandler:
                     result = await ValidateProtocol(Protocol.Eth, peer, e);
@@ -409,7 +415,7 @@ namespace Nethermind.Network
             }            
         }
 
-        private async Task<bool> ProcessIncomingConnection(IP2PSession session)
+        private async Task<bool> ProcessIncomingConnection(IP2PSession session, P2PProtocolHandler protocolHandler)
         {
             //if we have already initiated connection before
             if (_activePeers.ContainsKey(session.RemoteNodeId))
@@ -437,6 +443,7 @@ namespace Nethermind.Network
             if (_candidatePeers.TryGetValue(session.RemoteNodeId, out var peer))
             {
                 peer.Session = session;
+                peer.P2PMessageSender = protocolHandler;
                 peer.ClientConnectionType = session.ClientConnectionType;
             }
             else
@@ -444,8 +451,9 @@ namespace Nethermind.Network
                 peer = new Peer(_nodeFactory.CreateNode(session.RemoteNodeId, session.RemoteHost, session.RemotePort ?? 0), _nodeStatsProvider.GetNodeStats(session.RemoteNodeId))
                 {
                     ClientConnectionType = session.ClientConnectionType,
-                    Session = session
-                };
+                    Session = session,
+                    P2PMessageSender = protocolHandler
+            };
             }
 
             if (_activePeers.TryAdd(session.RemoteNodeId, peer))
@@ -662,6 +670,40 @@ namespace Nethermind.Network
             }
         }
 
+        private void StartPingTimer()
+        {
+            if (_logger.IsInfoEnabled)
+            {
+                _logger.Info("Starting ping timer");
+            }
+
+            _pingTimer = new Timer(_configurationProvider.P2PPingInterval) { AutoReset = false };
+            _pingTimer.Elapsed += async (sender, e) =>
+            {
+                _pingTimer.Enabled = false;
+                await SendPingMessages();
+                _pingTimer.Enabled = true;
+            };
+
+            _pingTimer.Start();
+        }
+
+        private void StopPingTimer()
+        {
+            try
+            {
+                if (_logger.IsInfoEnabled)
+                {
+                    _logger.Info("Stopping ping timer");
+                }
+                _pingTimer?.Stop();
+            }
+            catch (Exception e)
+            {
+                _logger.Error("Error during ping timer stop", e);
+            }
+        }
+
         private void RunPeerCommit()
         {
             if (!_peerStorage.AnyPendingChange())
@@ -671,6 +713,54 @@ namespace Nethermind.Network
 
             _peerStorage.Commit();
             _peerStorage.StartBatch();
+        }
+
+        private async Task SendPingMessages()
+        {
+            var pingTasks = new List<(Peer peer, Task<bool> pingTask)>();
+            foreach (var activePeer in ActivePeers)
+            {
+                if (activePeer.P2PMessageSender != null)
+                {
+                    var pingTask = SendPingMessage(activePeer);
+                    pingTasks.Add((activePeer, pingTask));
+                }
+            }
+
+            if (pingTasks.Any())
+            {
+                var tasks = await Task.WhenAll(pingTasks.Select(x => x.pingTask));
+
+                if (_logger.IsInfoEnabled)
+                {
+                    _logger.Info($"Sent ping messages to {tasks.Length} peers. Disconnected: {tasks.Count(x => x == false)}");
+                }
+                return;
+            }
+
+            if (_logger.IsDebugEnabled)
+            {
+                _logger.Debug("Sent no ping messages.");
+            }
+        }
+
+        private async Task<bool> SendPingMessage(Peer peer)
+        {
+            for (var i = 0; i < _configurationProvider.P2PPingRetryCount; i++)
+            {
+                var result = await peer.P2PMessageSender.SendPing();
+                if (result)
+                {
+                    return true;
+                }
+            }
+            if (_logger.IsInfoEnabled)
+            {
+                _logger.Info($"Disconnecting due to missed ping messages: {peer.Session.RemoteNodeId}");
+            }
+            await peer.Session.InitiateDisconnectAsync(DisconnectReason.ReceiveMessageTimeout);
+
+            return false;
         }
     }
 }
