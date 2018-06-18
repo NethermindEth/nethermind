@@ -390,8 +390,9 @@ namespace Nethermind.Blockchain
             _currentTotalTx += suggestedBlock.Transactions.Length;
             //            
             long currentTicks = _processingWatch.ElapsedTicks;
+            decimal totalMicroseconds = _processingWatch.ElapsedTicks * (1_000_000m / Stopwatch.Frequency);
             decimal chunkMicroseconds = (_processingWatch.ElapsedTicks - _lastElapsedTicks) * (1_000_000m / Stopwatch.Frequency);
-            if (chunkMicroseconds > 10* 1000 * 1000 || _wasQueueEmptied) // 10s
+            if (chunkMicroseconds > 10 * 1000 * 1000 || _wasQueueEmptied) // 10s
             {
                 _wasQueueEmptied = false;
                 long currentGen0 = GC.CollectionCount(0);
@@ -408,7 +409,7 @@ namespace Nethermind.Blockchain
                 long chunkTx = _currentTotalTx - _lastTotalTx;
                 decimal chunkMGas = _currentTotalMGas - _lastTotalMGas;
                 decimal mgasPerSecond = chunkMGas / chunkMicroseconds * 1000 * 1000;
-                decimal totalMgasPerSecond = _currentTotalMGas / currentTicks * 1000;
+                decimal totalMgasPerSecond = _currentTotalMGas / totalMicroseconds * 1000 * 1000;
                 decimal txps = chunkTx / chunkMicroseconds * 1000m * 1000m;
                 if(_logger.IsInfoEnabled) _logger.Info($"Processed blocks up to {suggestedBlock.Number,9} in {chunkMicroseconds / 1000,7:N0}ms, tx={chunkTx,5} mgas={chunkMGas,8:F2}, mgasps={mgasPerSecond,7:F2}, txps={txps,7:F2}, total mgasps={totalMgasPerSecond,7:F2}, queue={_blockQueue.Count}");
                 if(_logger.IsDebugEnabled) _logger.Debug($"Gen0: {currentGen0 - _lastGen0,6}, Gen1: {currentGen1 - _lastGen1,6}, Gen2: {currentGen2 - _lastGen2,6}, maxmem: {_maxMemory / 1000000,5}, mem: {currentMemory / 1000000,5}, reads: {currentStateDbReads - _lastStateDbReads,9}, writes: {currentStateDbWrites - _lastStateDbWrites,9}, rlp: {currentTreeNodeRlp - _lastTreeNodeRlp,9}, exceptions:{evmExceptions - _lastEvmExceptions}, selfdstrcs={currentSelfDestructs - _lastSelfDestructs}");
@@ -599,10 +600,10 @@ namespace Nethermind.Blockchain
 
                         _blockTree.MoveToMain(block);
                         // TODO: only for miners
-                        //foreach (Transaction transaction in block.Transactions)
-                        //{
-                        //    _transactionStore.RemovePending(transaction);
-                        //}
+                        foreach (Transaction transaction in block.Transactions)
+                        {
+                            _transactionStore.RemovePending(transaction);
+                        }
 
                         if (_logger.IsDebugEnabled)
                         {

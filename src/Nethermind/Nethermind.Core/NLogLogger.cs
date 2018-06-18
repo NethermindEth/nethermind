@@ -77,11 +77,11 @@ namespace Nethermind.Core
 
         public void LogLoggerInfo()
         {
-            Trace($"{_loggerName} TRACE enabled");
-            Debug($"{_loggerName} DEBUG enabled");
-            Info($"{_loggerName} INFO enabled");
-            Warn($"{_loggerName} WARN enabled");
-            Error($"{_loggerName} ERROR enabled");
+//            Trace($"{_loggerName} TRACE enabled");
+//            Debug($"{_loggerName} DEBUG enabled");
+//            Info($"{_loggerName} INFO enabled");
+//            Warn($"{_loggerName} WARN enabled");
+//            Error($"{_loggerName} ERROR enabled");
         }
 
         public void Log(string text)

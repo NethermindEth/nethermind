@@ -362,9 +362,9 @@ namespace Nethermind.Network
         private async Task OnProtocolInitialized(object sender, ProtocolInitializedEventArgs e)
         {
             var session = (IP2PSession)sender;
-            if (session.ClientConnectionType == ClientConnectionType.In && e.ProtocolHandler is P2PProtocolHandler)
+            if (session.ClientConnectionType == ClientConnectionType.In && e.ProtocolHandler is P2PProtocolHandler handler)
             {
-                if (!await ProcessIncomingConnection(session, (P2PProtocolHandler)e.ProtocolHandler))
+                if (!await ProcessIncomingConnection(session, handler))
                 {
                     return;
                 }

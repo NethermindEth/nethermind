@@ -38,12 +38,12 @@ namespace Nethermind.Network.Rlpx
         private readonly EncryptionHandshakeRole _role;
 
         private readonly IEncryptionHandshakeService _service;
-        private readonly IP2PSession _ip2PSession;
+        private readonly IP2PSession _p2PSession;
         private NodeId _remoteId;
 
         public NettyHandshakeHandler(
             IEncryptionHandshakeService service,
-            IP2PSession ip2PSession,
+            IP2PSession p2PSession,
             EncryptionHandshakeRole role,
             NodeId remoteId,
             ILogger logger)
@@ -53,7 +53,7 @@ namespace Nethermind.Network.Rlpx
             _remoteId = remoteId;
             _logger = logger;
             _service = service;
-            _ip2PSession = ip2PSession;
+            _p2PSession = p2PSession;
         }
 
         public override void ChannelActive(IChannelHandlerContext context)
@@ -128,7 +128,9 @@ namespace Nethermind.Network.Rlpx
                     _service.Agree(_handshake, new Packet(ackData));
                 }
 
-                _ip2PSession.RemoteNodeId = _handshake.RemoteNodeId;
+                _p2PSession.RemoteNodeId = _handshake.RemoteNodeId;
+                _p2PSession.RemoteHost = ((IPEndPoint)context.Channel.RemoteAddress).Address.ToString();
+                _p2PSession.RemotePort = ((IPEndPoint)context.Channel.RemoteAddress).Port;
                 HandshakeInitialized?.Invoke(this, new HandshakeInitializedEventArgs());
 
                 FrameCipher frameCipher = new FrameCipher(_handshake.Secrets.AesSecret);
@@ -144,11 +146,11 @@ namespace Nethermind.Network.Rlpx
                 context.Channel.Pipeline.AddLast(new NettyPacketSplitter());
 
                 Multiplexor multiplexor = new Multiplexor(_logger);
-                if (_logger.IsTraceEnabled) _logger.Trace($"Registering {nameof(Multiplexor)} for {_ip2PSession.RemoteNodeId} @ {context.Channel.RemoteAddress}");
+                if (_logger.IsTraceEnabled) _logger.Trace($"Registering {nameof(Multiplexor)} for {_p2PSession.RemoteNodeId} @ {context.Channel.RemoteAddress}");
                 context.Channel.Pipeline.AddLast(multiplexor);
 
                 if (_logger.IsTraceEnabled) _logger.Trace($"Registering {nameof(NettyP2PHandler)} for {_remoteId} @ {context.Channel.RemoteAddress}");
-                NettyP2PHandler handler = new NettyP2PHandler(_ip2PSession, _logger);
+                NettyP2PHandler handler = new NettyP2PHandler(_p2PSession, _logger);
                 context.Channel.Pipeline.AddLast(handler);
 
                 handler.Init(multiplexor, context);

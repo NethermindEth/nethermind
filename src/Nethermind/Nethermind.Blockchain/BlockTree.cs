@@ -289,6 +289,7 @@ namespace Nethermind.Blockchain
         public Block FindBlock(BigInteger blockNumber)
         {
             Keccak hash = GetBlockHashOnMain(blockNumber);
+//            _logger.Error($"Finding block {blockNumber} and found {hash}");
             return Load(hash).Block;
         }
 

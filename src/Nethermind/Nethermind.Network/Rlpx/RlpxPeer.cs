@@ -111,9 +111,9 @@ namespace Nethermind.Network.Rlpx
                     .Channel<TcpServerSocketChannel>()
                     .ChildOption(ChannelOption.SoBacklog, 100)
                     .Handler(new LoggingHandler("BOSS", DotNetty.Handlers.Logging.LogLevel.TRACE))
-                    .ChildHandler(new ActionChannelInitializer<ISocketChannel>(ch => InitializeChannel(ch, EncryptionHandshakeRole.Recipient, null)));
+                    .ChildHandler(new ActionChannelInitializer<ISocketChannel>(ch => InitializeChannel(ch, EncryptionHandshakeRole.Recipient, null, ((IPEndPoint)ch.RemoteAddress).Address.ToString(), ((IPEndPoint)ch.RemoteAddress).Port)));
 
-                _bootstrapChannel = await bootstrap.BindAsync(_localPort).ContinueWith<IChannel>(t =>
+                _bootstrapChannel = await bootstrap.BindAsync(_localPort).ContinueWith(t =>
                 {
                     if (t.IsFaulted)
                     {
@@ -151,7 +151,7 @@ namespace Nethermind.Network.Rlpx
             clientBootstrap.Option(ChannelOption.ConnectTimeout, TimeSpan.FromMilliseconds(PeerConnectionTimeout));
             clientBootstrap.RemoteAddress(host, port);
 
-            clientBootstrap.Handler(new ActionChannelInitializer<ISocketChannel>(ch => InitializeChannel(ch, EncryptionHandshakeRole.Initiator, remoteId)));
+            clientBootstrap.Handler(new ActionChannelInitializer<ISocketChannel>(ch => InitializeChannel(ch, EncryptionHandshakeRole.Initiator, remoteId, host, port)));
 
             var connectTask = clientBootstrap.ConnectAsync(new IPEndPoint(IPAddress.Parse(host), port));
             var firstTask = await Task.WhenAny(connectTask, Task.Delay(5000));
@@ -175,11 +175,6 @@ namespace Nethermind.Network.Rlpx
         private void InitializeChannel(IChannel channel, EncryptionHandshakeRole role, NodeId remoteId = null, string remoteHost = null, int? remotePort = null)
         {
             var connectionType = remoteId == null ? ClientConnectionType.In : ClientConnectionType.Out;
-            if (_logger.IsInfoEnabled)
-            {
-                _logger.Info($"Initializing {connectionType.ToString().ToUpper()} channel{(connectionType == ClientConnectionType.Out ? $": {remoteId}@{remoteHost}:{remoteId}" : string.Empty)}");
-            }
-
             P2PSession p2PSession = new P2PSession(
                 LocalNodeId,
                 _localPort,
@@ -193,6 +188,11 @@ namespace Nethermind.Network.Rlpx
             //This is the first moment we get confirmed publicKey of remote node in case of outgoing connections
             if (connectionType == ClientConnectionType.Out)
             {
+                if (_logger.IsInfoEnabled)
+                {
+                    _logger.Info($"Initializing {connectionType.ToString().ToUpper()} channel{(connectionType == ClientConnectionType.Out ? $": {remoteId}@{remoteHost}:{remoteId}" : string.Empty)}");
+                }
+                
                 p2PSession.RemoteNodeId = remoteId;
                 p2PSession.RemoteHost = remoteHost;
                 p2PSession.RemotePort = remotePort;               
@@ -201,10 +201,15 @@ namespace Nethermind.Network.Rlpx
 
             var handshakeHandler = new NettyHandshakeHandler(_encryptionHandshakeService, p2PSession, role, remoteId, _logger);
             handshakeHandler.HandshakeInitialized += (s, e) =>
-            {
+            {            
                 //This is the first moment we get confirmed publicKey of remote node in case of incoming connections
                 if (connectionType == ClientConnectionType.In)
                 {
+                    if (_logger.IsInfoEnabled)
+                    {
+                        _logger.Info($"Initializing {connectionType.ToString().ToUpper()} channel {p2PSession.RemoteNodeId}@{p2PSession.RemoteHost}:{p2PSession.RemotePort}");
+                    }
+                    
                     ConnectionInitialized?.Invoke(this, new ConnectionInitializedEventArgs(p2PSession, connectionType));
                 }
             };

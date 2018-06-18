@@ -10,6 +10,9 @@
     <LangVersion>7.2</LangVersion>
   </PropertyGroup>
   <ItemGroup>
+    <Content Include="spawner_2miners.json">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
     <Content Include="spawner_debug.json">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
