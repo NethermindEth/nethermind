@@ -10,6 +10,9 @@
     <LangVersion>7.2</LangVersion>
   </PropertyGroup>
   <ItemGroup>
+    <Content Include="spawner_debug.json">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
     <ProjectReference Include="..\Nethermind.Runner\Nethermind.Runner.csproj">
       <Project>{33E2CCD2-0D52-477C-8EAC-D429F66BEAC0}</Project>
       <Name>Nethermind.Runner</Name>

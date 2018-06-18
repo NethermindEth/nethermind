@@ -26,7 +26,7 @@ using NUnit.Framework;
 namespace Nethermind.Core.Test.Specs
 {
     [TestFixture]
-    public class EthereumChainSpecLoaderTests
+    public class ChainSpecLoaderTests
     {
         [Test]
         public void Can_load_ropsten()

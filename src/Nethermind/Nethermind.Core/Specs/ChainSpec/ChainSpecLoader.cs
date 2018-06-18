@@ -35,19 +35,28 @@ namespace Nethermind.Core.Specs.ChainSpec
         public ChainSpec Load(byte[] data)
         {
             string jsonData = System.Text.Encoding.UTF8.GetString(data);
-            ChainSpecJson chainSpecJson = _serializer.Deserialize<ChainSpecJson>(jsonData);
-            ChainSpec chainSpec = new ChainSpec();
+            var chainSpecJson = _serializer.Deserialize<ChainSpecJson>(jsonData);
+            var chainSpec = new ChainSpec();
+
             chainSpec.ChainId = ToInt(chainSpecJson.Params.NetworkId);
             chainSpec.Name = chainSpecJson.Name;
+            LoadGenesis(chainSpecJson, chainSpec);
+            LoadAllocations(chainSpec, chainSpecJson);
+            LoadBootnodes(chainSpecJson, chainSpec);
 
-            ulong nonce = ToULong(chainSpecJson.Genesis.Seal.Ethereum.Nonce);
-            Keccak mixHash = HexToKeccak(chainSpecJson.Genesis.Seal.Ethereum.MixHash);
-            Keccak parentHash = HexToKeccak(chainSpecJson.Genesis.ParentHash);
-            BigInteger timestamp = HexToBigInteger(chainSpecJson.Genesis.Timestamp);
-            BigInteger difficulty = HexToBigInteger(chainSpecJson.Genesis.Difficulty);
-            byte[] extraData = new Hex(chainSpecJson.Genesis.ExtraData);
-            long gasLimit = HexToLong(chainSpecJson.Genesis.GasLimit);
-            Address beneficiary = HexToAddress(chainSpecJson.Genesis.Author);
+            return chainSpec;
+        }
+
+        private static void LoadGenesis(ChainSpecJson chainSpecJson, ChainSpec chainSpec)
+        {
+            var nonce = ToULong(chainSpecJson.Genesis.Seal.Ethereum.Nonce);
+            var mixHash = HexToKeccak(chainSpecJson.Genesis.Seal.Ethereum.MixHash);
+            var parentHash = HexToKeccak(chainSpecJson.Genesis.ParentHash);
+            var timestamp = HexToBigInteger(chainSpecJson.Genesis.Timestamp);
+            var difficulty = HexToBigInteger(chainSpecJson.Genesis.Difficulty);
+            var extraData = new Hex(chainSpecJson.Genesis.ExtraData);
+            var gasLimit = HexToLong(chainSpecJson.Genesis.GasLimit);
+            var beneficiary = HexToAddress(chainSpecJson.Genesis.Author);
 
             BlockHeader genesisHeader = new BlockHeader(
                 parentHash,
@@ -58,9 +67,9 @@ namespace Nethermind.Core.Specs.ChainSpec
                 gasLimit,
                 timestamp,
                 extraData);
-            
+
             genesisHeader.Hash = Keccak.Zero; // need to run the block to know the actual hash
-            
+
             genesisHeader.Bloom = new Bloom();
             genesisHeader.GasUsed = 0;
             genesisHeader.MixHash = mixHash;
@@ -70,23 +79,37 @@ namespace Nethermind.Core.Specs.ChainSpec
             genesisHeader.TransactionsRoot = Keccak.EmptyTreeHash;
 
             chainSpec.Genesis = new Block(genesisHeader);
-            
+        }
+
+        private static void LoadAllocations(ChainSpec chainSpec, ChainSpecJson chainSpecJson)
+        {
+            if (chainSpecJson.Accounts == null)
+            {
+                return;
+            }
+
             chainSpec.Allocations = new Dictionary<Address, BigInteger>();
             foreach (KeyValuePair<string, ChainSpecAccountJson> account in chainSpecJson.Accounts)
             {
                 if (account.Value.Balance != null)
                 {
-                    chainSpec.Allocations[new Address(account.Key)] = BigInteger.Parse(account.Value.Balance);    
+                    chainSpec.Allocations[new Address(account.Key)] = BigInteger.Parse(account.Value.Balance);
                 }
             }
-            
+        }
+
+        private static void LoadBootnodes(ChainSpecJson chainSpecJson, ChainSpec chainSpec)
+        {
+            if (chainSpecJson.Nodes == null)
+            {
+                return;
+            }
+
             chainSpec.NetworkNodes = new NetworkNode[chainSpecJson.Nodes.Length];
             for (int i = 0; i < chainSpecJson.Nodes.Length; i++)
             {
                 chainSpec.NetworkNodes[i] = new NetworkNode(chainSpecJson.Nodes[i], $"bootnode{i}");
             }
-
-            return chainSpec;
         }
 
         private static Address HexToAddress(string hexNumber)

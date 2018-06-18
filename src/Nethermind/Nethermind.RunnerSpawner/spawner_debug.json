@@ -1,0 +1,24 @@
+{
+  "ReleasePath" : "D:\\nethermind_release",
+  "Runners": {
+    "Miner1": {
+      "TransactionTracingEnabled": false,
+      "BaseTracingPath": "D:\\tx_traces\\nethermind",
+      "JsonRpcEnabled": true,
+      "DiscoveryEnabled": false,
+      "SynchronizationEnabled": true,
+      "DiscoveryPort": 30310,
+      "P2PPort": 30310,
+      "HttpHost": "127.0.0.1",
+      "HttpPort": 8345,
+      "IsMining": true,
+      "FakeMiningDelay": 12000,
+      "ChainSpecPath": "chainspec\\some_node.json",
+      "ExpectedGenesisHash": "0x41941023680923e0fe4d74a34bdac8141f2540e3ae90623718e47d66d1ca4a2d",
+      "BaseDbPath": "D:\\chains\\Nethermind\\private_0\\full",
+      "TestNodeKey": "100102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f",
+      "LogFileName": "private_0.logs.txt",
+      "JsonRpcEnabledModules": [ "Eth", "Net", "Web3", "Db", "Shh" ]
+    }
+  }
+}
