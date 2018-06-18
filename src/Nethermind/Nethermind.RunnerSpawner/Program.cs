@@ -21,12 +21,19 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
-using Microsoft.AspNetCore.Builder;
 using Nethermind.Core;
 using Nethermind.Runner;
+using Newtonsoft.Json;
 
 namespace Nethermind.RunnerSpawner
 {
+    [JsonObject]
+    public class SpawnerConfig
+    {
+        public string ReleasePath { get; set; }
+        public Dictionary<string, InitParams> Runners { get; set; }
+    }
+    
     // TODO: because of the limitations of .NET Core we cannot have two dlls 'published' to a single folder
     // TODO: there was a fix in the .proj file but it was very hacky and high maintenance (to make it run both on Widnows or Linux)
     // TODO: need to redesign Spawner to just point at a folder with the runners
@@ -51,15 +58,15 @@ namespace Nethermind.RunnerSpawner
             string jsonText = File.ReadAllText(configFileName);
 
             IJsonSerializer serializer = new UnforgivingJsonSerializer();
-            Dictionary<string, InitParams> runnerParameters = serializer.Deserialize<Dictionary<string, InitParams>>(jsonText);
+            SpawnerConfig spawnerConfig = serializer.Deserialize<SpawnerConfig>(jsonText);
 
-            foreach ((string name, InitParams parameters) in runnerParameters)
+            foreach ((string name, InitParams parameters) in spawnerConfig.Runners)
             {
                 string serialized = serializer.Serialize(parameters, true);
                 string singleConfigPath = Path.Combine(Path.GetTempPath(), $"nethermind.runner.{name}.config.json");
                 File.WriteAllText(singleConfigPath, serialized);
 
-                CreateAppConsole(name, new[] {singleConfigPath});
+                CreateAppConsole(spawnerConfig.ReleasePath, name, new[] {singleConfigPath});
             }
 
             _logger.Info("Press ENTER to close all the spawned processes.");
@@ -94,7 +101,7 @@ namespace Nethermind.RunnerSpawner
             return 0;
         }
 
-        private static void CreateAppConsole(string name, string[] args)
+        private static void CreateAppConsole(string path, string name, string[] args)
         {
             try
             {
@@ -103,7 +110,7 @@ namespace Nethermind.RunnerSpawner
                 process.ErrorDataReceived += ProcessOnErrorDataReceived;
                 process.OutputDataReceived += ProcessOnOutputDataReceived;
                 process.Exited += ProcessOnExited;
-                process.StartInfo.WorkingDirectory = AppDomain.CurrentDomain.BaseDirectory;
+                process.StartInfo.WorkingDirectory = path;
                 process.StartInfo.FileName = "dotnet";
                 process.StartInfo.Arguments = $"Nethermind.Runner.dll --config {string.Join(' ', args)}";
                 process.StartInfo.UseShellExecute = true;
