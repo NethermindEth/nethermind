@@ -18,8 +18,6 @@
 
 using System;
 using System.Collections.Concurrent;
-using System.Diagnostics;
-using Nethermind.Network.Rlpx.Handshake;
 
 namespace Nethermind.Network
 {

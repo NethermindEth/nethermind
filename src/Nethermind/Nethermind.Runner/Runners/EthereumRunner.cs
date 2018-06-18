@@ -19,7 +19,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Net;
 using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
@@ -372,13 +371,13 @@ namespace Nethermind.Runner.Runners
 
         private async Task InitPeerManager()
         {
-            _networkLogger.Info("Initializing Peer Manager");
+            _networkLogger.Info("Initializing peer manager");
 
             var peerStorage = new PeerStorage(_discoveryConfigurationProvider, _nodeFactory, _networkLogger, _perfService);
             var peerManager = new PeerManager(_localPeer, _discoveryManager, _networkLogger, _discoveryConfigurationProvider, _syncManager, _nodeStatsProvider, peerStorage, _perfService, _nodeFactory);
             await peerManager.Start();
 
-            _networkLogger.Info("Peer Manager initialization completed");
+            _networkLogger.Info("Peer manager initialization completed");
         }
 
         private Task InitDiscovery(InitParams initParams)

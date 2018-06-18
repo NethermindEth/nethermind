@@ -17,7 +17,6 @@
  */
 
 using System.Collections.Generic;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Model;
 
 namespace Nethermind.Network.P2P

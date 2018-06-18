@@ -182,12 +182,12 @@ namespace Nethermind.Network
 
             if (_logger.IsInfoEnabled)
             {
-                _logger.Info($"RunPeerUpdate | Tried: {tryCount}, Added {newActiveNodes} active peers, current candidate peers: {_candidatePeers.Count}, current active peers: {_activePeers.Count}");
+                _logger.Info($"{nameof(RunPeerUpdate)} | Tried: {tryCount}, Added {newActiveNodes} active peers, current candidate peers: {_candidatePeers.Count}, current active peers: {_activePeers.Count}");
 
                 if (_logCounter % 5 == 0)
                 {
-                    //TODO Change to debug after testing
-                    _logger.Info($"\n\nAll active peers: \n{string.Join('\n', ActivePeers.Select(x => $"{x.Node.ToString()} | P2PInitialized: {x.NodeStats.DidEventHappen(NodeStatsEvent.P2PInitialized)} | Eth62Initialized: {x.NodeStats.DidEventHappen(NodeStatsEvent.Eth62Initialized)} | ClientId: {x.NodeStats.NodeDetails.ClientId}"))} \n\n");
+                    string nl = Environment.NewLine;
+                    _logger.Debug($"{nl}{nl}All active peers: {nl}{string.Join(nl, ActivePeers.Select(x => $"{x.Node.ToString()} | P2PInitialized: {x.NodeStats.DidEventHappen(NodeStatsEvent.P2PInitialized)} | Eth62Initialized: {x.NodeStats.DidEventHappen(NodeStatsEvent.Eth62Initialized)} | ClientId: {x.NodeStats.NodeDetails.ClientId}"))} {nl}{nl}");
                 }
 
                 _logCounter++;

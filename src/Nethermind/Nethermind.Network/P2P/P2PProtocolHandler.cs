@@ -18,12 +18,9 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
-using DotNetty.Common.Concurrency;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Model;
 using Nethermind.Network.Rlpx;
 

@@ -386,13 +386,14 @@ namespace Nethermind.Blockchain
         public void Process(Block suggestedBlock)
         {
             Process(suggestedBlock, false);
-            _currentTotalMGas += (decimal)suggestedBlock.GasUsed / 1_000_000m;
+            _currentTotalMGas += suggestedBlock.GasUsed / 1_000_000m;
             _currentTotalTx += suggestedBlock.Transactions.Length;
             //            
             long currentTicks = _processingWatch.ElapsedTicks;
             decimal chunkMicroseconds = (_processingWatch.ElapsedTicks - _lastElapsedTicks) * (1_000_000m / Stopwatch.Frequency);
             if (chunkMicroseconds > 10* 1000 * 1000 || _wasQueueEmptied) // 10s
             {
+                _wasQueueEmptied = false;
                 long currentGen0 = GC.CollectionCount(0);
                 long currentGen1 = GC.CollectionCount(1);
                 long currentGen2 = GC.CollectionCount(2);
@@ -409,8 +410,8 @@ namespace Nethermind.Blockchain
                 decimal mgasPerSecond = chunkMGas / chunkMicroseconds * 1000 * 1000;
                 decimal totalMgasPerSecond = _currentTotalMGas / currentTicks * 1000;
                 decimal txps = chunkTx / chunkMicroseconds * 1000m * 1000m;
-                _logger.Info($"Processed blocks up to {suggestedBlock.Number,9} in {chunkMicroseconds / 1000,7:N0}ms, tx={chunkTx,5} mgas={chunkMGas,8:F2}, mgasps={mgasPerSecond,7:F2}, txps={txps,7:F2}, total mgasps={totalMgasPerSecond,7:F2}, queue={_blockQueue.Count}");
-                _logger.Info($"Gen0: {currentGen0 - _lastGen0,6}, Gen1: {currentGen1 - _lastGen1,6}, Gen2: {currentGen2 - _lastGen2,6}, maxmem: {_maxMemory / 1000000,5}, mem: {currentMemory / 1000000,5}, reads: {currentStateDbReads - _lastStateDbReads,9}, writes: {currentStateDbWrites - _lastStateDbWrites,9}, rlp: {currentTreeNodeRlp - _lastTreeNodeRlp,9}, exceptions:{evmExceptions - _lastEvmExceptions}, selfdstrcs={currentSelfDestructs - _lastSelfDestructs}");
+                if(_logger.IsInfoEnabled) _logger.Info($"Processed blocks up to {suggestedBlock.Number,9} in {chunkMicroseconds / 1000,7:N0}ms, tx={chunkTx,5} mgas={chunkMGas,8:F2}, mgasps={mgasPerSecond,7:F2}, txps={txps,7:F2}, total mgasps={totalMgasPerSecond,7:F2}, queue={_blockQueue.Count}");
+                if(_logger.IsDebugEnabled) _logger.Debug($"Gen0: {currentGen0 - _lastGen0,6}, Gen1: {currentGen1 - _lastGen1,6}, Gen2: {currentGen2 - _lastGen2,6}, maxmem: {_maxMemory / 1000000,5}, mem: {currentMemory / 1000000,5}, reads: {currentStateDbReads - _lastStateDbReads,9}, writes: {currentStateDbWrites - _lastStateDbWrites,9}, rlp: {currentTreeNodeRlp - _lastTreeNodeRlp,9}, exceptions:{evmExceptions - _lastEvmExceptions}, selfdstrcs={currentSelfDestructs - _lastSelfDestructs}");
                 _lastTotalMGas = _currentTotalMGas;
                 _lastElapsedTicks = currentTicks;
                 _lastTotalTx = _currentTotalTx;
@@ -609,16 +610,8 @@ namespace Nethermind.Blockchain
                         }
                     }
 
-                    if (_logger.IsDebugEnabled)
-                    {
-                        _logger.Debug($"Updating total difficulty of the main chain to {totalDifficulty}");
-                    }
-
-
-                    if (_logger.IsDebugEnabled)
-                    {
-                        _logger.Debug($"Updating total transactions of the main chain to {totalTransactions}");
-                    }
+                    if (_logger.IsDebugEnabled) _logger.Debug($"Updating total difficulty of the main chain to {totalDifficulty}");
+                    if (_logger.IsDebugEnabled) _logger.Debug($"Updating total transactions of the main chain to {totalTransactions}");
                 }
                 else
                 {
@@ -630,10 +623,7 @@ namespace Nethermind.Blockchain
                     {
                         anyCancellation.Dispose();
 
-                        if (_logger.IsInfoEnabled)
-                        {
-                            _logger.Info($"Mined a block {t.Result.ToString(Block.Format.Short)} with parent {t.Result.Header.ParentHash}");
-                        }
+                        if (_logger.IsInfoEnabled) _logger.Info($"Mined a block {t.Result.ToString(Block.Format.Short)} with parent {t.Result.Header.ParentHash}");
 
                         Block minedBlock = t.Result;
 
