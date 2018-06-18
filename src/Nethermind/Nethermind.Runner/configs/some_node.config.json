@@ -11,7 +11,7 @@
   "IsMining": true,
   "FakeMiningDelay": 12000,
   "ChainSpecPath": "chainspec\\some_node.json",
-  "ExpectedGenesisHash": "0x41941023680923e0fe4d74a34bdac8141f2540e3ae90623718e47d66d1ca4a2d",
+  "GenesisHash": "",
   "BaseDbPath": "D:\\chains\\Nethermind\\private_0\\full",
   "TestNodeKey": "100102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f",
   "LogFileName": "private_0.logs.txt",

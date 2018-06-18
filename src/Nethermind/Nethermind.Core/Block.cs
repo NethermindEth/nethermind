@@ -28,6 +28,12 @@ namespace Nethermind.Core
     [DebuggerDisplay("{Hash} ({Number})")]
     public class Block
     {
+        public enum Format
+        {
+            Full,
+            Short
+        }
+
         public Block(BlockHeader blockHeader, IEnumerable<Transaction> transactions, IEnumerable<BlockHeader> ommers)
         {
             Header = blockHeader;
@@ -40,38 +46,103 @@ namespace Nethermind.Core
         {
         }
 
-        public bool IsGenesis => Header.Number == 0;
+        public bool IsGenesis => Number == 0;
+
         public BlockHeader Header { get; set; }
-        public BlockInfo BlockInfo { get; set; }
         public Transaction[] Transactions { get; set; }
         public BlockHeader[] Ommers { get; set; }
-        public Keccak Hash => Header.Hash;
-        public long GasLimit => Header.GasLimit;
-        public BigInteger GasUsed => Header.GasUsed;
-        public BigInteger Timestamp => Header.Timestamp;
-        public BigInteger Number => Header.Number;
-        public BigInteger Difficulty => Header.Difficulty;
-        public BigInteger? TotalDifficulty => Header?.TotalDifficulty;
-        public BigInteger? TotalTransactions => Header?.TotalTransactions;
+
+        public Keccak Hash
+        {
+            get => Header.Hash;
+            set => Header.Hash = value;
+        }
         
+        public Keccak ParentHash
+        {
+            get => Header.ParentHash;
+            set => Header.ParentHash = value;
+        }
+        
+        public Address Beneficiary
+        {
+            get => Header.Beneficiary;
+            set => Header.Beneficiary = value;
+        }
+        
+        public Keccak StateRoot
+        {
+            get => Header.StateRoot;
+            set => Header.StateRoot = value;
+        }
+        
+        public Keccak TransactionsRoot
+        {
+            get => Header.TransactionsRoot;
+            set => Header.TransactionsRoot = value;
+        }
+
+        public long GasLimit
+        {
+            get => Header.GasLimit;
+            set => Header.GasLimit = value;
+        }
+
+        public long GasUsed
+        {
+            get => Header.GasUsed;
+            set => Header.GasUsed = value;
+        }
+
+        public BigInteger Timestamp
+        {
+            get => Header.Timestamp;
+            set => Header.Timestamp = value;
+        }
+
+        public BigInteger Number
+        {
+            get => Header.Number;
+            set => Header.Number = value;
+        }
+
+        public BigInteger Difficulty
+        {
+            get => Header.Difficulty;
+            set => Header.Difficulty = value;
+        }
+
+        public BigInteger? TotalDifficulty
+        {
+            get => Header?.TotalDifficulty;
+            set => Header.TotalDifficulty = value;
+        }
+
+        public BigInteger? TotalTransactions
+        {
+            get => Header?.TotalTransactions;
+            set => Header.TotalTransactions = value;
+        }
+
         public string ToString(string indent)
         {
             StringBuilder builder = new StringBuilder();
-            builder.AppendLine($"BLOCK {Number}");
-            builder.AppendLine($"HEADER:");
-            builder.Append($"{Header.ToString("  ")}");
-            builder.AppendLine($"OMMERS:");
+            builder.AppendLine($"Block {Number}");
+            builder.AppendLine("  Header:");
+            builder.Append($"{Header.ToString("    ")}");
+            
+            builder.AppendLine("  Ommers:");
             foreach (BlockHeader ommer in Ommers)
             {
-                builder.Append($"{ommer.ToString("  ")}");    
+                builder.Append($"{ommer.ToString("    ")}");
             }
-            
-            builder.AppendLine($"TRANSACTIONS:");
+
+            builder.AppendLine("  Transactions:");
             foreach (Transaction tx in Transactions)
             {
-                builder.Append($"{tx.ToString("  ")}");    
+                builder.Append($"{tx.ToString("    ")}");
             }
-            
+
             return builder.ToString();
         }
 
@@ -79,7 +150,7 @@ namespace Nethermind.Core
         {
             return ToString(string.Empty);
         }
-        
+
         public string ToString(Format format)
         {
             switch (format)
@@ -93,15 +164,9 @@ namespace Nethermind.Core
                     }
                     else
                     {
-                        return $"{Number} ({((string)new Hex(Hash.Bytes)).Substring(58, 6)}), tx:{Transactions?.Length, 5}";    
+                        return $"{Number} ({((string)new Hex(Hash.Bytes)).Substring(58, 6)}), tx:{Transactions?.Length,5}";
                     }
             }
-        }
-        
-        public enum Format
-        {
-            Full,
-            Short
         }
     }
 }
