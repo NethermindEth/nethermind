@@ -42,6 +42,7 @@ namespace Nethermind.Network.P2P
         
         private Func<int, (string, int)> _adaptiveCodeResolver;
         private Func<(string ProtocolCode, int PacketType), int> _adaptiveEncoder;
+        private bool _wasDisconnected;
         
         public P2PSession(
             NodeId localNodeId,
@@ -138,28 +139,36 @@ namespace Nethermind.Network.P2P
             await DisconnectAsync(disconnectReason, DisconnectType.Local);
         }
 
-        public async Task DisconnectAsync(DisconnectReason disconnectReason, DisconnectType disconnectType, TimeSpan? delay = null)
+        public async Task DisconnectAsync(DisconnectReason disconnectReason, DisconnectType disconnectType)
         {
-            if (!delay.HasValue)
+            if (_wasDisconnected)
             {
-                //TODO move default delay time to configuration
-                delay = new TimeSpan(0, 0, 0, 1);
+                return;
             }
 
+            _wasDisconnected = true;
             if (PeerDisconnected != null)
             {
                 PeerDisconnected.Invoke(this, new DisconnectEventArgs(disconnectReason, disconnectType, SessionId));
             }
             else
             {
-                _logger.Info("No subscriptions for PeerDisconnected");
+                if (_logger.IsWarnEnabled)
+                {
+                    _logger.Warn("No subscriptions for PeerDisconnected");
+                }
             }
-            
 
-            await Task.Delay(delay.Value).ContinueWith(t =>
+            //Possible in case of disconnect before p2p initialization
+            if (_context == null)
+            {
+                return;
+            }
+
+            await Task.Delay(Timeouts.Disconnection).ContinueWith(t =>
             {
                 _context.DisconnectAsync();
-                _logger.Info($"{RemoteNodeId} Disconnecting now after {delay.Value.TotalMilliseconds} milliseconds");
+                _logger.Info($"{RemoteNodeId} Disconnecting now after {Timeouts.Disconnection.TotalMilliseconds} milliseconds");
             });
         }
 
@@ -273,10 +282,5 @@ namespace Nethermind.Network.P2P
 
             protocolHandler.Init();
         }
-
-        private void CloseSession(string protocolCode)
-        {
-            throw new NotImplementedException();
-        }      
     }
 }

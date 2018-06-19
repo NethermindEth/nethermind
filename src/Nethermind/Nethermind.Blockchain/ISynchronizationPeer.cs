@@ -35,6 +35,5 @@ namespace Nethermind.Blockchain
         Task<BigInteger> GetHeadBlockNumber(CancellationToken token);
         void SendNewBlock(Block block);
         void SendNewTransaction(Transaction transaction);
-        Task Disconnect();
     }
 }

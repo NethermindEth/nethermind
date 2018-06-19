@@ -43,8 +43,8 @@ namespace Nethermind.Network.P2P
 
         /// <summary>
         ///  Drop tcp connection after a delay
-        /// </summary>        
-        Task DisconnectAsync(DisconnectReason disconnectReason, DisconnectType disconnectType, TimeSpan? delay = null);
+        /// </summary>     
+        Task DisconnectAsync(DisconnectReason disconnectReason, DisconnectType disconnectType);
 
         event EventHandler<DisconnectEventArgs> PeerDisconnected;
         event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized;

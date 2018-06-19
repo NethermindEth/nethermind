@@ -16,6 +16,8 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Network.Rlpx;
 
@@ -25,16 +27,19 @@ namespace Nethermind.Network.P2P
     {
         private readonly IMessageSerializationService _serializer;
         protected IP2PSession P2PSession { get; }
+        protected readonly TaskCompletionSource<MessageBase> InitCompletionSource;
 
         protected ProtocolHandlerBase(IP2PSession p2PSession, IMessageSerializationService serializer, ILogger logger)
         {
             _serializer = serializer;
             P2PSession = p2PSession;
             Logger = logger;
+            InitCompletionSource = new TaskCompletionSource<MessageBase>();
         }
 
         protected ILogger Logger { get; }
-        
+        protected abstract TimeSpan InitTimeout { get; }
+
         protected T Deserialize<T>(byte[] data) where T : P2PMessage
         {
             return _serializer.Deserialize<T>(data);
@@ -49,6 +54,26 @@ namespace Nethermind.Network.P2P
 
             Packet packet = new Packet(message.Protocol, message.PacketType, _serializer.Serialize(message));
             P2PSession.DeliverMessage(packet);   
+        }
+
+        protected async Task CheckProtocolInitTimeout()
+        {
+            var receivedInitMsgTask = InitCompletionSource.Task;
+            var firstTask = await Task.WhenAny(receivedInitMsgTask, Task.Delay(InitTimeout));
+
+            if (firstTask != receivedInitMsgTask)
+            {
+                if (Logger.IsInfoEnabled)
+                {
+                    Logger.Info($"Disconnecting due to timeout for protocol init message ({GetType().Name}): {P2PSession.RemoteNodeId}");
+                }
+                await P2PSession.InitiateDisconnectAsync(DisconnectReason.ReceiveMessageTimeout);
+            }
+        }
+
+        protected void ReceivedProtocolInitMsg(MessageBase msg)
+        {
+            InitCompletionSource?.SetResult(msg);
         }
     }
 }

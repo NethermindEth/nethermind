@@ -312,7 +312,7 @@ namespace Nethermind.Network.Test
             return Task.CompletedTask;
         }
 
-        public Task DisconnectAsync(DisconnectReason disconnectReason, DisconnectType disconnectType, TimeSpan? delay = null)
+        public Task DisconnectAsync(DisconnectReason disconnectReason, DisconnectType disconnectType)
         {
             return Task.CompletedTask;
         }

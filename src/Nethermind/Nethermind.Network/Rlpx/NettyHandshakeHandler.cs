@@ -40,6 +40,8 @@ namespace Nethermind.Network.Rlpx
         private readonly IEncryptionHandshakeService _service;
         private readonly IP2PSession _p2PSession;
         private NodeId _remoteId;
+        private readonly TaskCompletionSource<object> _initCompletionSource;
+        private IChannel _channel;
 
         public NettyHandshakeHandler(
             IEncryptionHandshakeService service,
@@ -54,10 +56,13 @@ namespace Nethermind.Network.Rlpx
             _logger = logger;
             _service = service;
             _p2PSession = p2PSession;
+            _initCompletionSource = new TaskCompletionSource<object>();
         }
 
         public override void ChannelActive(IChannelHandlerContext context)
         {
+            _channel = context.Channel;
+
             if (_role == EncryptionHandshakeRole.Initiator)
             {
                 Packet auth = _service.Auth(_remoteId, _handshake);
@@ -66,6 +71,16 @@ namespace Nethermind.Network.Rlpx
                 _buffer.WriteBytes(auth.Data);
                 context.WriteAndFlushAsync(_buffer);
             }
+            _p2PSession.RemoteHost = ((IPEndPoint)context.Channel.RemoteAddress).Address.ToString();
+            _p2PSession.RemotePort = ((IPEndPoint)context.Channel.RemoteAddress).Port;
+
+            CheckHandshakeInitTimeout().ContinueWith(x =>
+            {
+                if (x.IsFaulted && _logger.IsErrorEnabled)
+                {
+                    _logger.Error("Error during handshake timeout logic", x.Exception);
+                }
+            });
         }
 
         public override void ChannelInactive(IChannelHandlerContext context)
@@ -129,8 +144,10 @@ namespace Nethermind.Network.Rlpx
                 }
 
                 _p2PSession.RemoteNodeId = _handshake.RemoteNodeId;
-                _p2PSession.RemoteHost = ((IPEndPoint)context.Channel.RemoteAddress).Address.ToString();
-                _p2PSession.RemotePort = ((IPEndPoint)context.Channel.RemoteAddress).Port;
+                //_p2PSession.RemoteHost = ((IPEndPoint)context.Channel.RemoteAddress).Address.ToString();
+                //_p2PSession.RemotePort = ((IPEndPoint)context.Channel.RemoteAddress).Port;
+
+                _initCompletionSource?.SetResult(message);
                 HandshakeInitialized?.Invoke(this, new HandshakeInitializedEventArgs());
 
                 FrameCipher frameCipher = new FrameCipher(_handshake.Secrets.AesSecret);
@@ -172,5 +189,21 @@ namespace Nethermind.Network.Rlpx
         }
 
         public event EventHandler<HandshakeInitializedEventArgs> HandshakeInitialized;
+
+        private async Task CheckHandshakeInitTimeout()
+        {
+            var receivedInitMsgTask = _initCompletionSource.Task;
+            var firstTask = await Task.WhenAny(receivedInitMsgTask, Task.Delay(Timeouts.Handshake));
+
+            if (firstTask != receivedInitMsgTask)
+            {
+                if (_logger.IsInfoEnabled)
+                {
+                    _logger.Info($"Disconnecting due to timeout for handshake: {_p2PSession.RemoteNodeId}@{_p2PSession.RemoteHost}:{_p2PSession.RemotePort}");
+                }
+                //It will trigger channel.CloseCompletion which will trigger DisconnectAsync on the session
+                await _channel.DisconnectAsync();
+            }
+        }
     }
 }

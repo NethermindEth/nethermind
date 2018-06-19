@@ -35,6 +35,29 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
     {
         private readonly ISynchronizationManager _sync;
 
+        private readonly BlockingCollection<Request<GetBlockHeadersMessage, BlockHeader[]>> _headersRequests
+            = new BlockingCollection<Request<GetBlockHeadersMessage, BlockHeader[]>>();
+
+        private readonly BlockingCollection<Request<GetBlockBodiesMessage, Block[]>> _bodiesRequests
+            = new BlockingCollection<Request<GetBlockBodiesMessage, Block[]>>();
+
+        private bool _statusSent;
+        private bool _statusReceived;
+        private Keccak _remoteHeadBlockHash;
+        private BigInteger _remoteHeadBlockDifficulty;
+
+        private static readonly Dictionary<int, Type> MessageTypes = new Dictionary<int, Type>
+        {
+            {Eth62MessageCode.Status, typeof(StatusMessage)},
+            {Eth62MessageCode.NewBlockHashes, typeof(NewBlockHashesMessage)},
+            {Eth62MessageCode.Transactions, typeof(TransactionsMessage)},
+            {Eth62MessageCode.GetBlockHeaders, typeof(GetBlockHeadersMessage)},
+            {Eth62MessageCode.BlockHeaders, typeof(BlockHeadersMessage)},
+            {Eth62MessageCode.GetBlockBodies, typeof(GetBlockBodiesMessage)},
+            {Eth62MessageCode.BlockBodies, typeof(BlockBodiesMessage)},
+            {Eth62MessageCode.NewBlock, typeof(NewBlockMessage)},
+        };
+
         public Eth62ProtocolHandler(
             IP2PSession p2PSession,
             IMessageSerializationService serializer,
@@ -45,15 +68,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             _sync = sync;
         }
 
-        private bool _statusSent;
-
-        private bool _statusReceived;
-
         public virtual byte ProtocolVersion => 62;
-
         public string ProtocolCode => "eth";
-
         public virtual int MessageIdSpaceSize => 8;
+        public NodeId NodeId => P2PSession.RemoteNodeId;
+        public event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized;
+        public event EventHandler<ProtocolEventArgs> SubprotocolRequested;
 
         public void Init()
         {
@@ -73,19 +93,16 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
             _statusSent = true;
             Send(statusMessage);
-        }
 
-        private static readonly Dictionary<int, Type> MessageTypes = new Dictionary<int, Type>
-        {
-            {Eth62MessageCode.Status, typeof(StatusMessage)},
-            {Eth62MessageCode.NewBlockHashes, typeof(NewBlockHashesMessage)},
-            {Eth62MessageCode.Transactions, typeof(TransactionsMessage)},
-            {Eth62MessageCode.GetBlockHeaders, typeof(GetBlockHeadersMessage)},
-            {Eth62MessageCode.BlockHeaders, typeof(BlockHeadersMessage)},
-            {Eth62MessageCode.GetBlockBodies, typeof(GetBlockBodiesMessage)},
-            {Eth62MessageCode.BlockBodies, typeof(BlockBodiesMessage)},
-            {Eth62MessageCode.NewBlock, typeof(NewBlockMessage)},
-        };
+            //We are expecting receiving Status message anytime from the p2p completion, irrespectful from sedning Status from our side
+            CheckProtocolInitTimeout().ContinueWith(x =>
+            {
+                if (x.IsFaulted && Logger.IsErrorEnabled)
+                {
+                    Logger.Error("Error during eth62Protocol handler timeout logic", x.Exception);
+                }
+            });
+        }
 
         public virtual Type ResolveMessageType(int messageCode)
         {
@@ -142,6 +159,43 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             }
         }
 
+        public void Close()
+        {
+            _headersRequests.CompleteAdding();
+            _bodiesRequests.CompleteAdding();
+        }
+
+        public void Disconnect(DisconnectReason disconnectReason)
+        {
+        }
+
+        public void SendNewBlock(Block block)
+        {
+            if (block.TotalDifficulty == null)
+            {
+                throw new InvalidOperationException($"Trying to send a block {block.Hash} with null total difficulty");
+            }
+
+            NewBlockMessage msg = new NewBlockMessage();
+            msg.Block = block;
+            msg.TotalDifficulty = block.TotalDifficulty ?? 0;
+
+            Send(msg);
+        }
+
+        public void SendNewTransaction(Transaction transaction)
+        {
+            if (transaction.Hash == null)
+            {
+                throw new InvalidOperationException($"Trying to send a transaction with null hash");
+            }
+
+            TransactionsMessage msg = new TransactionsMessage(transaction);
+            Send(msg);
+        }
+
+        protected override TimeSpan InitTimeout => Timeouts.Eth62Status;
+
         private void Handle(StatusMessage status)
         {
             if (_statusReceived)
@@ -166,10 +220,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 throw new InvalidOperationException("genesis hash mismatch");
             }
 
-            if (!_statusSent)
-            {
-                throw new InvalidOperationException($"Received status from {P2PSession.RemoteNodeId} before calling Init");
-            }
+            //if (!_statusSent)
+            //{
+            //    throw new InvalidOperationException($"Received status from {P2PSession.RemoteNodeId} before calling Init");
+            //}
+
+            ReceivedProtocolInitMsg(status);
 
             var eventArgs = new Eth62ProtocolInitializedEventArgs(this)
             {
@@ -294,25 +350,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             _sync.AddNewBlock(newBlock.Block, P2PSession.RemoteNodeId);
         }
 
-        public void Close()
-        {
-            _headersRequests.CompleteAdding();
-            _bodiesRequests.CompleteAdding();
-        }
-
-        public void Disconnect(DisconnectReason disconnectReason)
-        {
-        }
-
-        public event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized;
-        public event EventHandler<ProtocolEventArgs> SubprotocolRequested;
-
-        private readonly BlockingCollection<Request<GetBlockHeadersMessage, BlockHeader[]>> _headersRequests
-            = new BlockingCollection<Request<GetBlockHeadersMessage, BlockHeader[]>>();
-
-        private readonly BlockingCollection<Request<GetBlockBodiesMessage, Block[]>> _bodiesRequests
-            = new BlockingCollection<Request<GetBlockBodiesMessage, Block[]>>();
-
         private class Request<TMsg, TResult>
         {
             public Request(TMsg message)
@@ -404,9 +441,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
             BlockHeader[] headers = await SendRequest(msg, token);
             return headers;
-        }
-
-        public NodeId NodeId => P2PSession.RemoteNodeId;
+        }      
 
         async Task<Block[]> ISynchronizationPeer.GetBlocks(Keccak[] blockHashes, CancellationToken token)
         {
@@ -432,38 +467,5 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             BlockHeader[] headers = await SendRequest(msg, token);
             return headers[0]?.Number ?? 0;
         }
-
-        public void SendNewBlock(Block block)
-        {
-            if (block.TotalDifficulty == null)
-            {
-                throw new InvalidOperationException($"Trying to send a block {block.Hash} with null total difficulty");
-            }
-
-            NewBlockMessage msg = new NewBlockMessage();
-            msg.Block = block;
-            msg.TotalDifficulty = block.TotalDifficulty ?? 0;
-
-            Send(msg);
-        }
-
-        public void SendNewTransaction(Transaction transaction)
-        {
-            if (transaction.Hash == null)
-            {
-                throw new InvalidOperationException($"Trying to send a transaction with null hash");
-            }
-
-            TransactionsMessage msg = new TransactionsMessage(transaction);
-            Send(msg);
-        }
-
-        public Task Disconnect()
-        {
-            throw new NotImplementedException();
-        }
-
-        private Keccak _remoteHeadBlockHash;
-        private BigInteger _remoteHeadBlockDifficulty;
     }
 }
