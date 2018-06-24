@@ -1,0 +1,36 @@
+[
+  {
+    "ConfigModule": "Keystore",
+    "ConfigItems": {
+      "KdfparamsDklen": "100",
+      "Cipher": "test"
+    }
+  },
+  {
+    "ConfigModule": "JsonRpc",
+    "ConfigItems": {
+      "JsonRpcVersion": "test",
+      "EnabledModules": "Eth,Shh",
+      "MessageEncoding": "UTF7"
+    }    
+  },
+  {
+    "ConfigModule": "Network",
+    "ConfigItems": {
+      "Concurrency": "4",
+      "PenalizedReputationLocalDisconnectReasons": "UnexpectedIdentity,IncompatibleP2PVersion,BreachOfProtocol",     
+      "BootNodes": [
+        {
+          "NodeId": "testNodeId",
+          "Host": "testHist",
+          "Port": "43"
+        },
+        {
+          "NodeId": "testNodeId2",
+          "Host": "testHist2",
+          "Port": "44"
+        }
+      ]
+    }
+  }
+]

@@ -61,7 +61,7 @@ namespace Nethermind.Runner.Runners
         private static NLogLogger _discoveryLogger = new NLogLogger("discovery");
 
         private static string _dbBasePath;
-        private readonly IDiscoveryConfigurationProvider _discoveryConfigurationProvider;
+        private readonly INetworkConfigurationProvider _networkConfigurationProvider;
         private readonly INetworkHelper _networkHelper;
         private IBlockchainProcessor _blockchainProcessor;
         private ICryptoRandom _cryptoRandom;
@@ -78,9 +78,9 @@ namespace Nethermind.Runner.Runners
         private ISynchronizationManager _syncManager;
         private ITransactionTracer _tracer;
 
-        public EthereumRunner(IDiscoveryConfigurationProvider configurationProvider, INetworkHelper networkHelper)
+        public EthereumRunner(INetworkConfigurationProvider configurationProvider, INetworkHelper networkHelper)
         {
-            _discoveryConfigurationProvider = configurationProvider;
+            _networkConfigurationProvider = configurationProvider;
             _networkHelper = networkHelper;
         }
 
@@ -248,7 +248,7 @@ namespace Nethermind.Runner.Runners
 
                         // create shared objects between discovery and peer manager
                         _nodeFactory = new NodeFactory();
-                        _nodeStatsProvider = new NodeStatsProvider(_discoveryConfigurationProvider);
+                        _nodeStatsProvider = new NodeStatsProvider(_networkConfigurationProvider);
 
                         if (initParams.DiscoveryEnabled)
                         {
@@ -373,8 +373,8 @@ namespace Nethermind.Runner.Runners
         {
             _networkLogger.Info("Initializing peer manager");
 
-            var peerStorage = new PeerStorage(_discoveryConfigurationProvider, _nodeFactory, _networkLogger, _perfService);
-            var peerManager = new PeerManager(_localPeer, _discoveryManager, _networkLogger, _discoveryConfigurationProvider, _syncManager, _nodeStatsProvider, peerStorage, _perfService, _nodeFactory);
+            var peerStorage = new PeerStorage(_networkConfigurationProvider, _nodeFactory, _networkLogger, _perfService);
+            var peerManager = new PeerManager(_localPeer, _discoveryManager, _networkLogger, _networkConfigurationProvider, _syncManager, _nodeStatsProvider, peerStorage, _perfService, _nodeFactory);
             await peerManager.Start();
 
             _networkLogger.Info("Peer manager initialization completed");
@@ -386,11 +386,11 @@ namespace Nethermind.Runner.Runners
 
             if (initParams.DiscoveryPort.HasValue)
             {
-                _discoveryConfigurationProvider.MasterPort = initParams.DiscoveryPort.Value;
+                _networkConfigurationProvider.MasterPort = initParams.DiscoveryPort.Value;
             }
 
             var privateKeyProvider = new PrivateKeyProvider(_privateKey);
-            var discoveryMessageFactory = new DiscoveryMessageFactory(_discoveryConfigurationProvider);
+            var discoveryMessageFactory = new DiscoveryMessageFactory(_networkConfigurationProvider);
             var nodeIdResolver = new NodeIdResolver(_signer);
 
             var msgSerializersProvider = new DiscoveryMsgSerializersProvider(_messageSerializationService, _signer, privateKeyProvider, discoveryMessageFactory, nodeIdResolver, _nodeFactory);
@@ -400,17 +400,17 @@ namespace Nethermind.Runner.Runners
             var jsonSerializer = new JsonSerializer(_discoveryLogger);
             var encrypter = new AesEncrypter(configProvider, _discoveryLogger);
             var keyStore = new FileKeyStore(configProvider, jsonSerializer, encrypter, _cryptoRandom, _discoveryLogger);
-            var nodeDistanceCalculator = new NodeDistanceCalculator(_discoveryConfigurationProvider);
-            var nodeTable = new NodeTable(_discoveryConfigurationProvider, _nodeFactory, keyStore, _discoveryLogger, nodeDistanceCalculator);
+            var nodeDistanceCalculator = new NodeDistanceCalculator(_networkConfigurationProvider);
+            var nodeTable = new NodeTable(_networkConfigurationProvider, _nodeFactory, keyStore, _discoveryLogger, nodeDistanceCalculator);
 
             var evictionManager = new EvictionManager(nodeTable, _discoveryLogger);
-            var nodeLifeCycleFactory = new NodeLifecycleManagerFactory(_nodeFactory, nodeTable, _discoveryLogger, _discoveryConfigurationProvider, discoveryMessageFactory, evictionManager, _nodeStatsProvider);
+            var nodeLifeCycleFactory = new NodeLifecycleManagerFactory(_nodeFactory, nodeTable, _discoveryLogger, _networkConfigurationProvider, discoveryMessageFactory, evictionManager, _nodeStatsProvider);
 
-            var discoveryStorage = new DiscoveryStorage(_discoveryConfigurationProvider, _nodeFactory, _discoveryLogger, _perfService);
-            _discoveryManager = new DiscoveryManager(_discoveryLogger, _discoveryConfigurationProvider, nodeLifeCycleFactory, _nodeFactory, nodeTable, discoveryStorage);
+            var discoveryStorage = new DiscoveryStorage(_networkConfigurationProvider, _nodeFactory, _discoveryLogger, _perfService);
+            _discoveryManager = new DiscoveryManager(_discoveryLogger, _networkConfigurationProvider, nodeLifeCycleFactory, _nodeFactory, nodeTable, discoveryStorage);
 
-            var nodesLocator = new NodesLocator(nodeTable, _discoveryManager, _discoveryConfigurationProvider, _discoveryLogger);
-            _discoveryApp = new DiscoveryApp(_discoveryConfigurationProvider, nodesLocator, _discoveryLogger, _discoveryManager, _nodeFactory, nodeTable, _messageSerializationService, _cryptoRandom, discoveryStorage);
+            var nodesLocator = new NodesLocator(nodeTable, _discoveryManager, _networkConfigurationProvider, _discoveryLogger);
+            _discoveryApp = new DiscoveryApp(_networkConfigurationProvider, nodesLocator, _discoveryLogger, _discoveryManager, _nodeFactory, nodeTable, _messageSerializationService, _cryptoRandom, discoveryStorage);
             _discoveryApp.Start(_privateKey.PublicKey);
 
             _discoveryLogger.Info("Discovery initialization completed");

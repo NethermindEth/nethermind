@@ -16,12 +16,9 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Network.Discovery.RoutingTable;
-using Nethermind.Network.P2P;
-
-namespace Nethermind.Network.Discovery
+namespace Nethermind.Config
 {
-    public interface IDiscoveryConfigurationProvider
+    public interface INetworkConfig
     {
         /// <summary>
         /// Kademlia - k
@@ -92,7 +89,7 @@ namespace Nethermind.Network.Discovery
         /// Time between running dicovery processes in miliseconds
         /// </summary>
         int DiscoveryInterval { get; }
-        
+
         /// <summary>
         /// Time between persisting discovered nodes in miliseconds
         /// </summary>
@@ -111,7 +108,7 @@ namespace Nethermind.Network.Discovery
         /// <summary>
         /// Boot nodes connection details
         /// </summary>
-        Node[] BootNodes { get; }
+        ConfigNode[] BootNodes { get; }
 
         /// <summary>
         /// Key Pass
@@ -151,12 +148,12 @@ namespace Nethermind.Network.Discovery
         /// <summary>
         /// Local disconnect reasons for penalizing node reputation
         /// </summary>
-        DisconnectReason[] PenalizedReputationLocalDisconnectReasons { get; }
+        ConfigDisconnectReason[] PenalizedReputationLocalDisconnectReasons { get; }
 
         /// <summary>
         /// Remote disconnect reasons for penalizing node reputation
         /// </summary>
-        DisconnectReason[] PenalizedReputationRemoteDisconnectReasons { get; }
+        ConfigDisconnectReason[] PenalizedReputationRemoteDisconnectReasons { get; }
 
         /// <summary>
         /// Time within which we penalized peer if disconnection happends due to too many peers
@@ -166,7 +163,7 @@ namespace Nethermind.Network.Discovery
         /// <summary>
         /// List of trusted nodes - we connect to them and set predefined high reputation
         /// </summary>
-        Node[] TrustedPeers { get; set; }
+        ConfigNode[] TrustedPeers { get; set; }
 
         /// <summary>
         /// Base path for discovery db

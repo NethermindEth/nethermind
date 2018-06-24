@@ -46,7 +46,7 @@ namespace Nethermind.Network.Test.Discovery
         private IMessageSender _udpClient;
         private INodeTable _nodeTable;
         private INodeFactory _nodeFactory;
-        private DiscoveryConfigurationProvider _configurationProvider;
+        private NetworkConfigurationProvider _configurationProvider;
         private int _port = 1;
         private string _host = "192.168.1.27";
 
@@ -57,7 +57,7 @@ namespace Nethermind.Network.Test.Discovery
 
             var logger = NullLogger.Instance;
             //setting config to store 3 nodes in a bucket and for table to have one bucket//setting config to store 3 nodes in a bucket and for table to have one bucket
-            _configurationProvider = new DiscoveryConfigurationProvider(new NetworkHelper(logger))
+            _configurationProvider = new NetworkConfigurationProvider(new NetworkHelper(logger))
             {
                 PongTimeout = 50,
                 BucketSize = 3,

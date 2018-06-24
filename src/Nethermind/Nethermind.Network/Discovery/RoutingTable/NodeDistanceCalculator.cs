@@ -23,9 +23,9 @@ namespace Nethermind.Network.Discovery.RoutingTable
         private readonly int _maxDistance;
         private readonly int _bitsPerHoop;
 
-        public NodeDistanceCalculator(IDiscoveryConfigurationProvider configurationProvider)
+        public NodeDistanceCalculator(INetworkConfigurationProvider configurationProvider)
         {
-            IDiscoveryConfigurationProvider configurationProvider1 = configurationProvider;
+            INetworkConfigurationProvider configurationProvider1 = configurationProvider;
             _maxDistance = configurationProvider1.BucketsCount;
             _bitsPerHoop = configurationProvider1.BitsPerHop;
         }

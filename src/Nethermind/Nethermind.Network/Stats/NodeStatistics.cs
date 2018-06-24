@@ -30,11 +30,11 @@ namespace Nethermind.Network.Stats
     /// </summary>
     public class NodeStats : INodeStats
     {
-        private readonly IDiscoveryConfigurationProvider _configurationProvider;
+        private readonly INetworkConfigurationProvider _configurationProvider;
         private Dictionary<NodeStatsEvent, AtomicLong> _stats;
         private Dictionary<DisconnectType, (DisconnectReason DisconnectReason, DateTime DisconnectTime)> _lastDisconnects;
 
-        public NodeStats(IDiscoveryConfigurationProvider configurationProvider)
+        public NodeStats(INetworkConfigurationProvider configurationProvider)
         {
             _configurationProvider = configurationProvider;
             Initialize();

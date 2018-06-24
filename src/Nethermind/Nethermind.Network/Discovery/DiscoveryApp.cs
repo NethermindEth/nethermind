@@ -35,7 +35,7 @@ namespace Nethermind.Network.Discovery
 {
     public class DiscoveryApp : IDiscoveryApp
     {
-        private readonly IDiscoveryConfigurationProvider _configurationProvider;
+        private readonly INetworkConfigurationProvider _configurationProvider;
         private readonly INodesLocator _nodesLocator;
         private readonly IDiscoveryManager _discoveryManager;
         private readonly INodeFactory _nodeFactory;
@@ -54,7 +54,7 @@ namespace Nethermind.Network.Discovery
         private MultithreadEventLoopGroup _group;
         private NettyDiscoveryHandler _discoveryHandler;
 
-        public DiscoveryApp(IDiscoveryConfigurationProvider configurationProvider, INodesLocator nodesLocator, ILogger logger, IDiscoveryManager discoveryManager, INodeFactory nodeFactory, INodeTable nodeTable, IMessageSerializationService messageSerializationService, ICryptoRandom cryptoRandom, IDiscoveryStorage discoveryStorage)
+        public DiscoveryApp(INetworkConfigurationProvider configurationProvider, INodesLocator nodesLocator, ILogger logger, IDiscoveryManager discoveryManager, INodeFactory nodeFactory, INodeTable nodeTable, IMessageSerializationService messageSerializationService, ICryptoRandom cryptoRandom, IDiscoveryStorage discoveryStorage)
         {
             _configurationProvider = configurationProvider;
             _nodesLocator = nodesLocator;

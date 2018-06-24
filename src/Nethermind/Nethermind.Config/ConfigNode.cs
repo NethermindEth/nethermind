@@ -16,27 +16,12 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-
-using System.Collections.Concurrent;
-using Nethermind.Core.Model;
-using Nethermind.Network.Discovery;
-
-namespace Nethermind.Network.Stats
+namespace Nethermind.Config
 {
-    public class NodeStatsProvider : INodeStatsProvider
+    public class ConfigNode : IConfigModel
     {
-        private readonly INetworkConfigurationProvider _networkConfigurationProvider;
-
-        private readonly ConcurrentDictionary<NodeId, INodeStats> _nodeStats = new ConcurrentDictionary<NodeId, INodeStats>();
-
-        public NodeStatsProvider(INetworkConfigurationProvider networkConfigurationProvider)
-        {
-            _networkConfigurationProvider = networkConfigurationProvider;
-        }
-
-        public INodeStats GetNodeStats(NodeId nodeId)
-        {
-            return _nodeStats.GetOrAdd(nodeId, x => new NodeStats(_networkConfigurationProvider));
-        }
+        public string NodeId { get; set; }
+        public string Host { get; set; }
+        public int Port { get; set; }
     }
 }

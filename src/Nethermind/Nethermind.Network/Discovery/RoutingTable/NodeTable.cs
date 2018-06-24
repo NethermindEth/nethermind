@@ -30,7 +30,7 @@ namespace Nethermind.Network.Discovery.RoutingTable
 {
     public class NodeTable : INodeTable
     {
-        private readonly IDiscoveryConfigurationProvider _configurationProvider;
+        private readonly INetworkConfigurationProvider _configurationProvider;
         private readonly INodeFactory _nodeFactory;
         private readonly IKeyStore _keyStore;
         private readonly ILogger _logger;
@@ -38,7 +38,7 @@ namespace Nethermind.Network.Discovery.RoutingTable
 
         private readonly ConcurrentDictionary<string, Node> _nodes = new ConcurrentDictionary<string, Node>(); 
 
-        public NodeTable(IDiscoveryConfigurationProvider configurationProvider, INodeFactory nodeFactory, IKeyStore keyStore, ILogger logger, INodeDistanceCalculator nodeDistanceCalculator)
+        public NodeTable(INetworkConfigurationProvider configurationProvider, INodeFactory nodeFactory, IKeyStore keyStore, ILogger logger, INodeDistanceCalculator nodeDistanceCalculator)
         {
             _configurationProvider = configurationProvider;
             _nodeFactory = nodeFactory;

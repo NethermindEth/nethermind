@@ -52,7 +52,7 @@ namespace Nethermind.Network.Test.Discovery
             var privateKey = new PrivateKey(new Hex(TestPrivateKeyHex));
             _publicKey = privateKey.PublicKey;
             var logger = NullLogger.Instance;
-            var config = new DiscoveryConfigurationProvider(new NetworkHelper(logger)) { PongTimeout = 100 };
+            var config = new NetworkConfigurationProvider(new NetworkHelper(logger)) { PongTimeout = 100 };
             var configProvider = new ConfigurationProvider();
             
             _messageSender = Substitute.For<IMessageSender>();

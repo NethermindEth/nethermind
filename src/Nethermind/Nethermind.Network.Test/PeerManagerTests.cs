@@ -26,7 +26,7 @@ namespace Nethermind.Network.Test
     {
         private IPeerManager _peerManager;
         private INodeFactory _nodeFactory;
-        private IDiscoveryConfigurationProvider _configurationProvider;
+        private INetworkConfigurationProvider _configurationProvider;
         private IDiscoveryManager _discoveryManager;
         private TestRlpxPeer _localPeer;
         private ISynchronizationManager _synchronizationManager;
@@ -36,7 +36,7 @@ namespace Nethermind.Network.Test
         public void Initialize()
         {
             _logger = new SimpleConsoleLogger();
-            _configurationProvider = new DiscoveryConfigurationProvider(new NetworkHelper(_logger));
+            _configurationProvider = new NetworkConfigurationProvider(new NetworkHelper(_logger));
             _configurationProvider.DbBasePath = Path.Combine(Path.GetTempPath(), "PeerManagerTests");
             if (!Directory.Exists(_configurationProvider.DbBasePath))
             {
@@ -213,7 +213,7 @@ namespace Nethermind.Network.Test
         public void DisconnectOnTooManyPeersTest()
         {
             var node = _nodeFactory.CreateNode("192.1.1.1", 3333);
-            ((DiscoveryConfigurationProvider)_configurationProvider).ActivePeersMaxCount = 0;
+            ((NetworkConfigurationProvider)_configurationProvider).ActivePeersMaxCount = 0;
 
             //trigger connection initialized
             var p2pSession = new TestP2PSession();

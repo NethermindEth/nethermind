@@ -48,7 +48,7 @@ namespace Nethermind.Runner
         public static IServiceCollection ServiceCollection { get; private set; }
         public static IServiceProvider ServiceProvider { get; set; }
 
-        public static void ConfigureContainer(JsonRpc.IConfigurationProvider configurationProvider, IDiscoveryConfigurationProvider discoveryConfigurationProvider, IPrivateKeyProvider privateKeyProvider, ILogger logger, InitParams initParams)
+        public static void ConfigureContainer(JsonRpc.IConfigurationProvider configurationProvider, INetworkConfigurationProvider networkConfigurationProvider, IPrivateKeyProvider privateKeyProvider, ILogger logger, InitParams initParams)
         {
             var services = new ServiceCollection();
 
@@ -119,7 +119,7 @@ namespace Nethermind.Runner
 
             //Discovery
             services.AddSingleton<INetworkHelper, NetworkHelper>();
-            services.AddSingleton<IDiscoveryConfigurationProvider>(discoveryConfigurationProvider);
+            services.AddSingleton<INetworkConfigurationProvider>(networkConfigurationProvider);
             services.AddTransient<INodeFactory, NodeFactory>();
             services.AddSingleton<INodeDistanceCalculator, NodeDistanceCalculator>();
             services.AddSingleton<INodeTable, NodeTable>();

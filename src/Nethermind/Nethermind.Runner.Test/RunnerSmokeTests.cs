@@ -37,7 +37,7 @@ namespace Nethermind.Runner.Test
         {
             var host = "http://localhost:100012";
 
-            Bootstrap.ConfigureContainer(new ConfigurationProvider(), new DiscoveryConfigurationProvider(new NetworkHelper(NullLogger.Instance)), new PrivateKeyProvider(new CryptoRandom()), new SimpleConsoleLogger(), new InitParams() );
+            Bootstrap.ConfigureContainer(new ConfigurationProvider(), new NetworkConfigurationProvider(new NetworkHelper(NullLogger.Instance)), new PrivateKeyProvider(new CryptoRandom()), new SimpleConsoleLogger(), new InitParams() );
 
             var webHost = WebHost.CreateDefaultBuilder()
                 .UseStartup<Startup>()

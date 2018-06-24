@@ -29,7 +29,7 @@ namespace Nethermind.Network
 {
     public class PeerStorage : IPeerStorage
     {
-        private readonly IDiscoveryConfigurationProvider _configurationProvider;
+        private readonly INetworkConfigurationProvider _configurationProvider;
         private readonly INodeFactory _nodeFactory;
         private readonly IPerfService _perfService;
         private readonly IFullDb _db;
@@ -37,7 +37,7 @@ namespace Nethermind.Network
         private long _updateCounter = 0;
         private long _removeCounter = 0;
 
-        public PeerStorage(IDiscoveryConfigurationProvider configurationProvider, INodeFactory nodeFactory, ILogger logger, IPerfService perfService)
+        public PeerStorage(INetworkConfigurationProvider configurationProvider, INodeFactory nodeFactory, ILogger logger, IPerfService perfService)
         {
             _configurationProvider = configurationProvider;
             _nodeFactory = nodeFactory;

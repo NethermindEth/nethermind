@@ -16,27 +16,25 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Text;
 
-using System.Collections.Concurrent;
-using Nethermind.Core.Model;
-using Nethermind.Network.Discovery;
-
-namespace Nethermind.Network.Stats
+namespace Nethermind.Config
 {
-    public class NodeStatsProvider : INodeStatsProvider
+    public interface IKeystoreConfig
     {
-        private readonly INetworkConfigurationProvider _networkConfigurationProvider;
+        string KeyStoreDirectory { get; }
+        string KeyStoreEncoding { get; }
 
-        private readonly ConcurrentDictionary<NodeId, INodeStats> _nodeStats = new ConcurrentDictionary<NodeId, INodeStats>();
+        string Kdf { get; }
+        string Cipher { get; }
+        int KdfparamsDklen { get; }
+        int KdfparamsN { get; }
+        int KdfparamsP { get; }
+        int KdfparamsR { get; }
+        int KdfparamsSaltLen { get; }
 
-        public NodeStatsProvider(INetworkConfigurationProvider networkConfigurationProvider)
-        {
-            _networkConfigurationProvider = networkConfigurationProvider;
-        }
-
-        public INodeStats GetNodeStats(NodeId nodeId)
-        {
-            return _nodeStats.GetOrAdd(nodeId, x => new NodeStats(_networkConfigurationProvider));
-        }
+        int SymmetricEncrypterBlockSize { get; }
+        int SymmetricEncrypterKeySize { get; }
+        int IVSize { get; }
     }
 }

@@ -96,7 +96,7 @@ namespace Nethermind.Runner
                 //Configuring app DI
                 var configProvider = new ConfigurationProvider();
                 var networkHelper = new NetworkHelper(Logger);
-                var discoveryConfigProvider = new DiscoveryConfigurationProvider(networkHelper);
+                var networkConfigurationProvider = new NetworkConfigurationProvider(networkHelper);
                 ChainSpecLoader chainSpecLoader = new ChainSpecLoader(new UnforgivingJsonSerializer());
 
                 string path = initParams.ChainSpecPath;
@@ -109,13 +109,13 @@ namespace Nethermind.Runner
                 ChainSpec chainSpec = chainSpecLoader.Load(chainSpecData);
                 var nodes = chainSpec.NetworkNodes.Select(GetNode).ToArray();
 
-                discoveryConfigProvider.TrustedPeers = nodes;
-                discoveryConfigProvider.BootNodes = nodes;
-                discoveryConfigProvider.DbBasePath = initParams.BaseDbPath;
+                networkConfigurationProvider.TrustedPeers = nodes;
+                networkConfigurationProvider.BootNodes = nodes;
+                networkConfigurationProvider.DbBasePath = initParams.BaseDbPath;
                 
                 //Bootstrap.ConfigureContainer(configProvider, discoveryConfigProvider, PrivateKeyProvider, Logger, initParams);
 
-                _ethereumRunner = new EthereumRunner(discoveryConfigProvider, networkHelper);
+                _ethereumRunner = new EthereumRunner(networkConfigurationProvider, networkHelper);
                 //_ethereumRunner = Bootstrap.ServiceProvider.GetService<IEthereumRunner>();
                 await _ethereumRunner.Start(initParams);
 

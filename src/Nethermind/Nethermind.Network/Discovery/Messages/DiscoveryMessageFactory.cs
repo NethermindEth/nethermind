@@ -25,18 +25,18 @@ namespace Nethermind.Network.Discovery.Messages
 {
     public class DiscoveryMessageFactory : IDiscoveryMessageFactory
     {
-        private readonly IDiscoveryConfigurationProvider _discoveryConfigurationProvider;
+        private readonly INetworkConfigurationProvider _networkConfigurationProvider;
 
-        public DiscoveryMessageFactory(IDiscoveryConfigurationProvider discoveryConfigurationProvider)
+        public DiscoveryMessageFactory(INetworkConfigurationProvider networkConfigurationProvider)
         {
-            _discoveryConfigurationProvider = discoveryConfigurationProvider;
+            _networkConfigurationProvider = networkConfigurationProvider;
         }
 
         public T CreateOutgoingMessage<T>(Node destination) where T : DiscoveryMessage
         {
             T message = Activator.CreateInstance<T>();
             message.FarAddress = destination.Address;
-            message.ExpirationTime = _discoveryConfigurationProvider.DiscoveryMsgExpiryTime + Timestamp.UnixUtcUntilNowMilisecs;
+            message.ExpirationTime = _networkConfigurationProvider.DiscoveryMsgExpiryTime + Timestamp.UnixUtcUntilNowMilisecs;
             return message;
         }
 

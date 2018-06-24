@@ -33,7 +33,7 @@ namespace Nethermind.Network.Discovery
 {
     public class DiscoveryManager : IDiscoveryManager
     {
-        private readonly IDiscoveryConfigurationProvider _configurationProvider;
+        private readonly INetworkConfigurationProvider _configurationProvider;
         private readonly ILogger _logger;
         private readonly INodeFactory _nodeFactory;
         private readonly INodeLifecycleManagerFactory _nodeLifecycleManagerFactory;
@@ -46,7 +46,7 @@ namespace Nethermind.Network.Discovery
 
         public DiscoveryManager(
             ILogger logger,
-            IDiscoveryConfigurationProvider configurationProvider,
+            INetworkConfigurationProvider configurationProvider,
             INodeLifecycleManagerFactory nodeLifecycleManagerFactory,
             INodeFactory nodeFactory, INodeTable nodeTable, IDiscoveryStorage discoveryStorage)
         {

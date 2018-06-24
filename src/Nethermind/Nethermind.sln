@@ -86,17 +86,17 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Chains", "Chains", "{D75E83
 		Chains\nethermind_alpha.json = Chains\nethermind_alpha.json
 		Chains\nethermind_alpha_client.json = Chains\nethermind_alpha_client.json
 		Chains\olympic.json = Chains\olympic.json
+		Chains\private_client.json = Chains\private_client.json
+		Chains\private_miner1.json = Chains\private_miner1.json
+		Chains\private_miner2.json = Chains\private_miner2.json
 		Chains\ropsten.json = Chains\ropsten.json
+		Chains\ropsten_linux_vm.json = Chains\ropsten_linux_vm.json
 		Chains\ropsten_local.json = Chains\ropsten_local.json
 		Chains\ropsten_through_ethj.json = Chains\ropsten_through_ethj.json
 		Chains\ropsten_through_vm2.json = Chains\ropsten_through_vm2.json
 		Chains\ropsten_through_vm3.json = Chains\ropsten_through_vm3.json
 		Chains\ropsten_through_vm4.json = Chains\ropsten_through_vm4.json
 		Chains\ropsten_through_vm5.json = Chains\ropsten_through_vm5.json
-		Chains\ropsten_linux_vm.json = Chains\ropsten_linux_vm.json
-		Chains\private_client.json = Chains\private_client.json
-		Chains\private_miner1.json = Chains\private_miner1.json
-		Chains\private_miner2.json = Chains\private_miner2.json
 	EndProjectSection
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.RunnerSpawner", "Nethermind.RunnerSpawner\Nethermind.RunnerSpawner.csproj", "{7285ABAE-A946-437E-A6DD-F1DECFE7F8D5}"
@@ -105,10 +105,11 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.DiagTools", "Net
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Store.Test", "Nethermind.Store.Test\Nethermind.Store.Test.csproj", "{0A927E80-884F-4F41-BC5E-1825D32726DB}"
 EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Config", "Nethermind.Config\Nethermind.Config.csproj", "{56791AE4-2679-47A5-9918-6D0199FD2EE9}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Config.Test", "Nethermind.Config.Test\Nethermind.Config.Test.csproj", "{318B0825-0389-4A00-9448-551CA3AF7E45}"
+EndProject
 Global
-	GlobalSection(Performance) = preSolution
-		HasPerformanceSessions = true
-	EndGlobalSection
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
 		Release|Any CPU = Release|Any CPU
@@ -249,12 +250,23 @@ Global
 		{0A927E80-884F-4F41-BC5E-1825D32726DB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{0A927E80-884F-4F41-BC5E-1825D32726DB}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{0A927E80-884F-4F41-BC5E-1825D32726DB}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{56791AE4-2679-47A5-9918-6D0199FD2EE9}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{56791AE4-2679-47A5-9918-6D0199FD2EE9}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{56791AE4-2679-47A5-9918-6D0199FD2EE9}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{56791AE4-2679-47A5-9918-6D0199FD2EE9}.Release|Any CPU.Build.0 = Release|Any CPU
+		{318B0825-0389-4A00-9448-551CA3AF7E45}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{318B0825-0389-4A00-9448-551CA3AF7E45}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{318B0825-0389-4A00-9448-551CA3AF7E45}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{318B0825-0389-4A00-9448-551CA3AF7E45}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {092CA5E3-6180-4ED7-A3CB-9B57FAC2AA85}
+	EndGlobalSection
+	GlobalSection(Performance) = preSolution
+		HasPerformanceSessions = true
 	EndGlobalSection
 	GlobalSection(Performance) = preSolution
 		HasPerformanceSessions = true

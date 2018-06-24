@@ -42,7 +42,7 @@ namespace Nethermind.Network
         private readonly IRlpxPeer _localPeer;
         private readonly ILogger _logger;
         private readonly IDiscoveryManager _discoveryManager;
-        private readonly IDiscoveryConfigurationProvider _configurationProvider;
+        private readonly INetworkConfigurationProvider _configurationProvider;
         private readonly ISynchronizationManager _synchronizationManager;
         private readonly INodeStatsProvider _nodeStatsProvider;
         private readonly IPeerStorage _peerStorage;
@@ -66,7 +66,7 @@ namespace Nethermind.Network
         //TODO Move Discover to Network
         //TODO update runner to run discovery
 
-        public PeerManager(IRlpxPeer localPeer, IDiscoveryManager discoveryManager, ILogger logger, IDiscoveryConfigurationProvider configurationProvider, ISynchronizationManager synchronizationManager, INodeStatsProvider nodeStatsProvider, IPeerStorage peerStorage, IPerfService perfService, INodeFactory nodeFactory)
+        public PeerManager(IRlpxPeer localPeer, IDiscoveryManager discoveryManager, ILogger logger, INetworkConfigurationProvider configurationProvider, ISynchronizationManager synchronizationManager, INodeStatsProvider nodeStatsProvider, IPeerStorage peerStorage, IPerfService perfService, INodeFactory nodeFactory)
         {
             _localPeer = localPeer;
             _logger = logger;

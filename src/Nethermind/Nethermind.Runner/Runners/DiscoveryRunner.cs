@@ -28,12 +28,12 @@
 //    public class DiscoveryRunner : IDiscoveryRunner
 //    {
 //        private ILogger _logger;
-//        private readonly IDiscoveryConfigurationProvider _configurationProvider;
+//        private readonly INetworkConfigurationProvider _configurationProvider;
 //        private readonly IDiscoveryMsgSerializersProvider _discoveryMsgSerializersProvider;
 //        private readonly IDiscoveryApp _discoveryApp;
 //        private readonly IPrivateKeyProvider _privateKeyProvider;
 
-//        public DiscoveryRunner(IDiscoveryMsgSerializersProvider discoveryMsgSerializersProvider, IDiscoveryApp discoveryApp, IDiscoveryConfigurationProvider configurationProvider, IPrivateKeyProvider privateKeyProvider)
+//        public DiscoveryRunner(IDiscoveryMsgSerializersProvider discoveryMsgSerializersProvider, IDiscoveryApp discoveryApp, INetworkConfigurationProvider configurationProvider, IPrivateKeyProvider privateKeyProvider)
 //        {
 //            _discoveryMsgSerializersProvider = discoveryMsgSerializersProvider;
 //            _discoveryApp = discoveryApp;

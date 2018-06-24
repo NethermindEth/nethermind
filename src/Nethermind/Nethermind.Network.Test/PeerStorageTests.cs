@@ -14,13 +14,13 @@ namespace Nethermind.Network.Test
     {
         private IPeerStorage _peerStorage;
         private INodeFactory _nodeFactory;
-        private IDiscoveryConfigurationProvider _configurationProvider;
+        private INetworkConfigurationProvider _configurationProvider;
 
         [SetUp]
         public void Initialize()
         {
             var logger = new SimpleConsoleLogger();
-            _configurationProvider = new DiscoveryConfigurationProvider(new NetworkHelper(logger));
+            _configurationProvider = new NetworkConfigurationProvider(new NetworkHelper(logger));
             _configurationProvider.DbBasePath = Path.Combine(Path.GetTempPath(), "PeerStorageTests");
 
             var dbPath = Path.Combine(_configurationProvider.DbBasePath, FullDbOnTheRocks.PeersDbPath);

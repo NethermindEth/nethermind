@@ -32,10 +32,10 @@ namespace Nethermind.Network.Discovery
         private readonly ILogger _logger;
         private readonly INodeTable _nodeTable;
         private readonly IDiscoveryManager _discoveryManager;
-        private readonly IDiscoveryConfigurationProvider _configurationProvider;
+        private readonly INetworkConfigurationProvider _configurationProvider;
         private Node _masterNode;
 
-        public NodesLocator(INodeTable nodeTable, IDiscoveryManager discoveryManager, IDiscoveryConfigurationProvider configurationProvider, ILogger logger)
+        public NodesLocator(INodeTable nodeTable, IDiscoveryManager discoveryManager, INetworkConfigurationProvider configurationProvider, ILogger logger)
         {
             _nodeTable = nodeTable;
             _discoveryManager = discoveryManager;

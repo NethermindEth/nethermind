@@ -30,7 +30,7 @@ namespace Nethermind.Network.Discovery
 {
     public class DiscoveryStorage : IDiscoveryStorage
     {
-        private readonly IDiscoveryConfigurationProvider _configurationProvider;
+        private readonly INetworkConfigurationProvider _configurationProvider;
         private readonly INodeFactory _nodeFactory;
         private readonly IPerfService _perfService;
         private readonly IFullDb _db;
@@ -38,7 +38,7 @@ namespace Nethermind.Network.Discovery
         private long _updateCounter = 0;
         private long _removeCounter = 0;
 
-        public DiscoveryStorage(IDiscoveryConfigurationProvider configurationProvider, INodeFactory nodeFactory, ILogger logger, IPerfService perfService)
+        public DiscoveryStorage(INetworkConfigurationProvider configurationProvider, INodeFactory nodeFactory, ILogger logger, IPerfService perfService)
         {
             _configurationProvider = configurationProvider;
             _nodeFactory = nodeFactory;

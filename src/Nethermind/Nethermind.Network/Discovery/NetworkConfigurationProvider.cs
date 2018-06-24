@@ -22,9 +22,9 @@ using Nethermind.Network.P2P;
 
 namespace Nethermind.Network.Discovery
 {
-    public class DiscoveryConfigurationProvider : IDiscoveryConfigurationProvider
+    public class NetworkConfigurationProvider : INetworkConfigurationProvider
     {
-        public DiscoveryConfigurationProvider(INetworkHelper networkHelper)
+        public NetworkConfigurationProvider(INetworkHelper networkHelper)
         {
             PongTimeout = 15000;
             BucketSize = 16;
@@ -87,7 +87,7 @@ namespace Nethermind.Network.Discovery
         public bool IsDiscoveryNodesPersistenceOn { get; set; }
         public bool IsPeersPersistenceOn { get; set; }
         public int ActivePeerUpdateInterval => 10000;
-        public bool IsActivePeerTimerEnabled => true;
+        public bool IsActivePeerTimerEnabled => false;
         public int ActivePeersMaxCount { get; set; }
         public int DisconnectDelay => 1000 * 5;
         public int PeersPersistanceInterval => 1000 * 60 * 5;
