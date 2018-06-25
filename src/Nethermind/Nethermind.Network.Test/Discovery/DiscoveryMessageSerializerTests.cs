@@ -17,6 +17,7 @@
  */
 
 using System.Net;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -35,13 +36,13 @@ namespace Nethermind.Network.Test.Discovery
         //private readonly PrivateKey _farPrivateKey = new PrivateKey("3a1076bf45ab87712ad64ccb3b10217737f7faacbf2872e88fdd9a537d8fe266");
         private IPEndPoint _farAddress;
         private IPEndPoint _nearAddress;
-        private INetworkConfigurationProvider _config;
+        private INetworkConfig _config;
         private IMessageSerializationService _messageSerializationService;
 
         [SetUp]
         public void Initialize()
         {
-            _config = new NetworkConfigurationProvider(new NetworkHelper(NullLogger.Instance));
+            _config = new JsonConfigProvider().NetworkConfig;
             _farAddress = new IPEndPoint(IPAddress.Parse("192.168.1.2"), 1);
             _nearAddress = new IPEndPoint(IPAddress.Parse(_config.MasterExternalIp), _config.MasterPort);            
             _messageSerializationService = Build.A.SerializationService().WithDiscovery(_privateKey).TestObject;

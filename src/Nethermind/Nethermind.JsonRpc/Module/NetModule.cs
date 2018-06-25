@@ -17,6 +17,7 @@
  */
 
 using System;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.JsonRpc.DataModel;
 
@@ -24,7 +25,7 @@ namespace Nethermind.JsonRpc.Module
 {
     public class NetModule : ModuleBase, INetModule
     {
-        public NetModule(ILogger logger, IConfigurationProvider configurationProvider) : base(logger, configurationProvider)
+        public NetModule(ILogger logger, IConfigProvider configurationProvider) : base(logger, configurationProvider)
         {
         }
 

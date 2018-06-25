@@ -23,5 +23,6 @@ namespace Nethermind.Config
         public string NodeId { get; set; }
         public string Host { get; set; }
         public int Port { get; set; }
+        public string Description { get; set; }
     }
 }

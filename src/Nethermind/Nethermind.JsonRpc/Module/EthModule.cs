@@ -20,8 +20,10 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Security;
+using System.Text;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Validators;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
@@ -48,7 +50,7 @@ namespace Nethermind.JsonRpc.Module
         private readonly IJsonRpcModelMapper _modelMapper;
         private readonly IReleaseSpec _releaseSpec;
 
-        public EthModule(ILogger logger, IJsonSerializer jsonSerializer, IStateProvider stateProvider, IKeyStore keyStore, IConfigurationProvider configurationProvider, IBlockTree blockTree, IDb db, IJsonRpcModelMapper modelMapper, IReleaseSpec releaseSpec, ITransactionStore transactionStore) : base(logger, configurationProvider)
+        public EthModule(ILogger logger, IJsonSerializer jsonSerializer, IStateProvider stateProvider, IKeyStore keyStore, IConfigProvider configurationProvider, IBlockTree blockTree, IDb db, IJsonRpcModelMapper modelMapper, IReleaseSpec releaseSpec, ITransactionStore transactionStore) : base(logger, configurationProvider)
         {
             _jsonSerializer = jsonSerializer;
             _stateProvider = stateProvider;
@@ -247,8 +249,8 @@ namespace Nethermind.JsonRpc.Module
                 return ResultWrapper<Data>.Fail("Incorrect address");
             }
 
-            var messageText = ConfigurationProvider.MessageEncoding.GetString(message.Value);
-            var signatureText = string.Format(ConfigurationProvider.SignatureTemplate, messageText.Length, messageText);
+            var messageText = Encoding.GetEncoding(ConfigurationProvider.JsonRpcConfig.MessageEncoding).GetString(message.Value);
+            var signatureText = string.Format(ConfigurationProvider.JsonRpcConfig.SignatureTemplate, messageText.Length, messageText);
             //TODO how to select proper chainId
             var signer = new EthereumSigner(new SingleReleaseSpecProvider(_releaseSpec, (int)ChainId.DefaultGethPrivateChain), Logger);
             var signature = signer.Sign(privateKey.Item1, Keccak.Compute(signatureText));

@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using DotNetty.Transport.Channels;
 using Nethermind.Blockchain;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Model;
@@ -26,7 +27,7 @@ namespace Nethermind.Network.Test
     {
         private IPeerManager _peerManager;
         private INodeFactory _nodeFactory;
-        private INetworkConfigurationProvider _configurationProvider;
+        private IConfigProvider _configurationProvider;
         private IDiscoveryManager _discoveryManager;
         private TestRlpxPeer _localPeer;
         private ISynchronizationManager _synchronizationManager;
@@ -36,11 +37,11 @@ namespace Nethermind.Network.Test
         public void Initialize()
         {
             _logger = new SimpleConsoleLogger();
-            _configurationProvider = new NetworkConfigurationProvider(new NetworkHelper(_logger));
-            _configurationProvider.DbBasePath = Path.Combine(Path.GetTempPath(), "PeerManagerTests");
-            if (!Directory.Exists(_configurationProvider.DbBasePath))
+            _configurationProvider = new JsonConfigProvider();
+            ((NetworkConfig)_configurationProvider.NetworkConfig).DbBasePath = Path.Combine(Path.GetTempPath(), "PeerManagerTests");
+            if (!Directory.Exists(_configurationProvider.NetworkConfig.DbBasePath))
             {
-                Directory.CreateDirectory(_configurationProvider.DbBasePath);
+                Directory.CreateDirectory(_configurationProvider.NetworkConfig.DbBasePath);
             }
             _nodeFactory = new NodeFactory();
             _localPeer = new TestRlpxPeer();
@@ -213,7 +214,7 @@ namespace Nethermind.Network.Test
         public void DisconnectOnTooManyPeersTest()
         {
             var node = _nodeFactory.CreateNode("192.1.1.1", 3333);
-            ((NetworkConfigurationProvider)_configurationProvider).ActivePeersMaxCount = 0;
+            ((NetworkConfig)_configurationProvider.NetworkConfig).ActivePeersMaxCount = 0;
 
             //trigger connection initialized
             var p2pSession = new TestP2PSession();

@@ -24,6 +24,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.CommandLineUtils;
 using Microsoft.Extensions.DependencyInjection;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Specs.ChainSpec;
 using Nethermind.JsonRpc;
@@ -94,9 +95,15 @@ namespace Nethermind.Runner
             try
             {
                 //Configuring app DI
-                var configProvider = new ConfigurationProvider();
+                var configProvider = new JsonConfigProvider();
+                //configProvider.LoadJsonConfig("");
+
                 var networkHelper = new NetworkHelper(Logger);
-                var networkConfigurationProvider = new NetworkConfigurationProvider(networkHelper);
+                var localHost = networkHelper.GetLocalIp()?.ToString() ?? "127.0.0.1";
+                ((NetworkConfig)configProvider.NetworkConfig).MasterExternalIp = localHost;
+                ((NetworkConfig)configProvider.NetworkConfig).MasterHost = localHost;
+
+                //var networkConfigurationProvider = new NetworkConfigurationProvider(networkHelper);
                 ChainSpecLoader chainSpecLoader = new ChainSpecLoader(new UnforgivingJsonSerializer());
 
                 string path = initParams.ChainSpecPath;
@@ -109,13 +116,13 @@ namespace Nethermind.Runner
                 ChainSpec chainSpec = chainSpecLoader.Load(chainSpecData);
                 var nodes = chainSpec.NetworkNodes.Select(GetNode).ToArray();
 
-                networkConfigurationProvider.TrustedPeers = nodes;
-                networkConfigurationProvider.BootNodes = nodes;
-                networkConfigurationProvider.DbBasePath = initParams.BaseDbPath;
+                ((NetworkConfig)configProvider.NetworkConfig).TrustedPeers = nodes;
+                ((NetworkConfig)configProvider.NetworkConfig).BootNodes = nodes;
+                ((NetworkConfig)configProvider.NetworkConfig).DbBasePath = initParams.BaseDbPath;
                 
                 //Bootstrap.ConfigureContainer(configProvider, discoveryConfigProvider, PrivateKeyProvider, Logger, initParams);
 
-                _ethereumRunner = new EthereumRunner(networkConfigurationProvider, networkHelper);
+                _ethereumRunner = new EthereumRunner(configProvider, networkHelper);
                 //_ethereumRunner = Bootstrap.ServiceProvider.GetService<IEthereumRunner>();
                 await _ethereumRunner.Start(initParams);
 
@@ -169,13 +176,15 @@ namespace Nethermind.Runner
             throw new Exception($"Incorrect argument value, arg: {argName}, value: {rawValue}");
         }
 
-        private Node GetNode(NetworkNode networkNode)
+        private ConfigNode GetNode(NetworkNode networkNode)
         {
-            var node = new Node(networkNode.NodeId)
+            var node = new ConfigNode
             {
+                NodeId = networkNode.NodeId.PublicKey.ToString(false),
+                Host = networkNode.Host,
+                Port = networkNode.Port,
                 Description = networkNode.Description
             };
-            node.InitializeAddress(networkNode.Host, networkNode.Port);
             return node;
         }
     }

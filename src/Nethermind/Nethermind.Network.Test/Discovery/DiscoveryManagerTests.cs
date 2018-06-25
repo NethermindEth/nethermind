@@ -19,6 +19,7 @@
 using System.Linq;
 using System.Net;
 using System.Threading;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.KeyStore;
@@ -52,14 +53,15 @@ namespace Nethermind.Network.Test.Discovery
             var privateKey = new PrivateKey(new Hex(TestPrivateKeyHex));
             _publicKey = privateKey.PublicKey;
             var logger = NullLogger.Instance;
-            var config = new NetworkConfigurationProvider(new NetworkHelper(logger)) { PongTimeout = 100 };
-            var configProvider = new ConfigurationProvider();
-            
+            //var config = new NetworkConfigurationProvider(new NetworkHelper(logger)) { PongTimeout = 100 };
+            var config = new JsonConfigProvider();
+            ((NetworkConfig)config.NetworkConfig).PongTimeout = 100;
+
             _messageSender = Substitute.For<IMessageSender>();
             _nodeFactory = new NodeFactory();
             var calculator = new NodeDistanceCalculator(config);
 
-            _nodeTable = new NodeTable(config, _nodeFactory, new FileKeyStore(configProvider, new JsonSerializer(logger), new AesEncrypter(configProvider, logger), new CryptoRandom(), logger), logger, calculator);
+            _nodeTable = new NodeTable(config, _nodeFactory, new FileKeyStore(config, new JsonSerializer(logger), new AesEncrypter(config, logger), new CryptoRandom(), logger), logger, calculator);
             _nodeTable.Initialize();
 
             var evictionManager = new EvictionManager(_nodeTable, logger);

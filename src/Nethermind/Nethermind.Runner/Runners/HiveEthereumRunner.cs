@@ -20,8 +20,11 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Numerics;
+using System.Text;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Configuration;
 using Nethermind.Blockchain;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
@@ -42,9 +45,9 @@ namespace Nethermind.Runner.Runners
         private readonly ISpecProvider _specProvider;
         private readonly IDbProvider _dbProvider;
         private readonly ILogger _logger;
-        private readonly IConfigurationProvider _configurationProvider;
+        private readonly IConfigProvider _configurationProvider;
 
-        public HiveEthereumRunner(IJsonSerializer jsonSerializer, IBlockchainProcessor blockchainProcessor, IBlockTree blockTree, IStateProvider stateProvider, IDbProvider dbProvider, ILogger logger, IConfigurationProvider configurationProvider, ISpecProvider specProvider)
+        public HiveEthereumRunner(IJsonSerializer jsonSerializer, IBlockchainProcessor blockchainProcessor, IBlockTree blockTree, IStateProvider stateProvider, IDbProvider dbProvider, ILogger logger, IConfigProvider configurationProvider, ISpecProvider specProvider)
         {
             _jsonSerializer = jsonSerializer;
             _blockchainProcessor = blockchainProcessor;
@@ -144,7 +147,7 @@ namespace Nethermind.Runner.Runners
                 var fileContent = File.ReadAllText(file);
                 var keyStoreItem = _jsonSerializer.Deserialize<KeyStoreItem>(fileContent);
                 var filePath = Path.Combine(keyStoreDir, keyStoreItem.Address);
-                File.WriteAllText(filePath, fileContent, _configurationProvider.KeyStoreEncoding);
+                File.WriteAllText(filePath, fileContent, Encoding.GetEncoding(_configurationProvider.KeystoreConfig.KeyStoreEncoding));
             }
         }
 
@@ -205,7 +208,7 @@ namespace Nethermind.Runner.Runners
 
         private string GetStoreDirectory()
         {
-            var directory = _configurationProvider.KeyStoreDirectory;
+            var directory = _configurationProvider.KeystoreConfig.KeyStoreDirectory;
             if (!Directory.Exists(directory))
             {
                 Directory.CreateDirectory(directory);

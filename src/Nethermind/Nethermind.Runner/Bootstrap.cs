@@ -21,6 +21,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Difficulty;
 using Nethermind.Blockchain.Validators;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -48,7 +49,7 @@ namespace Nethermind.Runner
         public static IServiceCollection ServiceCollection { get; private set; }
         public static IServiceProvider ServiceProvider { get; set; }
 
-        public static void ConfigureContainer(JsonRpc.IConfigurationProvider configurationProvider, INetworkConfigurationProvider networkConfigurationProvider, IPrivateKeyProvider privateKeyProvider, ILogger logger, InitParams initParams)
+        public static void ConfigureContainer(IConfigProvider configurationProvider, IConfigProvider networkConfigurationProvider, IPrivateKeyProvider privateKeyProvider, ILogger logger, InitParams initParams)
         {
             var services = new ServiceCollection();
 
@@ -102,7 +103,7 @@ namespace Nethermind.Runner
 //            services.AddSingleton<IBlockProcessor, BlockProcessor>();
 //            services.AddSingleton<IBlockchainProcessor, BlockchainProcessor>();
 
-            services.AddSingleton<KeyStore.IConfigurationProvider, KeyStore.ConfigurationProvider>();
+            //services.AddSingleton<KeyStore.IConfigurationProvider, KeyStore.ConfigurationProvider>();
             services.AddSingleton<IJsonSerializer, JsonSerializer>();
             services.AddSingleton<ISymmetricEncrypter, AesEncrypter>();
             services.AddSingleton<ICryptoRandom, CryptoRandom>();
@@ -119,7 +120,7 @@ namespace Nethermind.Runner
 
             //Discovery
             services.AddSingleton<INetworkHelper, NetworkHelper>();
-            services.AddSingleton<INetworkConfigurationProvider>(networkConfigurationProvider);
+            services.AddSingleton<IConfigProvider>(networkConfigurationProvider);
             services.AddTransient<INodeFactory, NodeFactory>();
             services.AddSingleton<INodeDistanceCalculator, NodeDistanceCalculator>();
             services.AddSingleton<INodeTable, NodeTable>();

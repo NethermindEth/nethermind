@@ -18,6 +18,7 @@
 
 using System.Reflection;
 using Nethermind.Blockchain;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc.DataModel;
@@ -26,7 +27,7 @@ namespace Nethermind.JsonRpc.Module
 {
     public class Web3Module : ModuleBase, IWeb3Module
     {
-        public Web3Module(ILogger logger, IConfigurationProvider configurationProvider) : base(logger, configurationProvider)
+        public Web3Module(ILogger logger, IConfigProvider configurationProvider) : base(logger, configurationProvider)
         {
         }
 

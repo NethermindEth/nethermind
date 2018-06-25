@@ -18,19 +18,21 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Config;
 using Nethermind.JsonRpc.DataModel;
+using Nethermind.KeyStore;
 
 namespace Nethermind.JsonRpc.Module
 {
     public class ModuleProvider : IModuleProvider
     {
-        private readonly IConfigurationProvider _configurationProvider;
+        private readonly IJsonRpcConfig _configurationProvider;
         private ModuleInfo[] _modules;
         private ModuleInfo[] _enabledModules;
 
-        public ModuleProvider(IConfigurationProvider configurationProvider, INetModule netModule, IEthModule ethModule, IWeb3Module web3Module, IShhModule shhModule)
+        public ModuleProvider(IConfigProvider configurationProvider, INetModule netModule, IEthModule ethModule, IWeb3Module web3Module, IShhModule shhModule)
         {
-            _configurationProvider = configurationProvider;
+            _configurationProvider = configurationProvider.JsonRpcConfig;
             Initialize(netModule, ethModule, web3Module, shhModule);
         }
 
@@ -54,7 +56,7 @@ namespace Nethermind.JsonRpc.Module
                 new ModuleInfo(ModuleType.Shh, typeof(IShhModule), shhModule)
             };
 
-            _enabledModules = _modules.Where(x => _configurationProvider.EnabledModules.Contains(x.ModuleType)).ToArray();
+            _enabledModules = _modules.Where(x => _configurationProvider.EnabledModules.Contains((ConfigJsonRpcModuleType)x.ModuleType)).ToArray();
         }
     }
 }

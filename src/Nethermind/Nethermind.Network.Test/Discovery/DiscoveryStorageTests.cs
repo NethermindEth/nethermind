@@ -1,5 +1,6 @@
 ﻿using System.IO;
 using System.Linq;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Network.Discovery;
@@ -16,16 +17,16 @@ namespace Nethermind.Network.Test.Discovery
     {
         private IDiscoveryStorage _discoveryStorage;
         private INodeFactory _nodeFactory;
-        private INetworkConfigurationProvider _configurationProvider;
+        private IConfigProvider _configurationProvider;
 
         [SetUp]
         public void Initialize()
         {
             var logger = new SimpleConsoleLogger();
-            _configurationProvider = new NetworkConfigurationProvider(new NetworkHelper(logger));
-            _configurationProvider.DbBasePath = Path.Combine(Path.GetTempPath(), "DiscoveryStorageTests");
+            _configurationProvider = new JsonConfigProvider();
+            ((NetworkConfig)_configurationProvider.NetworkConfig).DbBasePath = Path.Combine(Path.GetTempPath(), "DiscoveryStorageTests");
 
-            var dbPath = Path.Combine(_configurationProvider.DbBasePath, FullDbOnTheRocks.DiscoveryNodesDbPath);
+            var dbPath = Path.Combine(_configurationProvider.NetworkConfig.DbBasePath, FullDbOnTheRocks.DiscoveryNodesDbPath);
             if (Directory.Exists(dbPath))
             {
                 Directory.GetFiles(dbPath).ToList().ForEach(File.Delete);

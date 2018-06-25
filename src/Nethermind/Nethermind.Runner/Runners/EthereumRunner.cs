@@ -25,6 +25,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Difficulty;
 using Nethermind.Blockchain.Validators;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Model;
@@ -61,7 +62,7 @@ namespace Nethermind.Runner.Runners
         private static NLogLogger _discoveryLogger = new NLogLogger("discovery");
 
         private static string _dbBasePath;
-        private readonly INetworkConfigurationProvider _networkConfigurationProvider;
+        private readonly IConfigProvider _configProvider;
         private readonly INetworkHelper _networkHelper;
         private IBlockchainProcessor _blockchainProcessor;
         private ICryptoRandom _cryptoRandom;
@@ -78,9 +79,9 @@ namespace Nethermind.Runner.Runners
         private ISynchronizationManager _syncManager;
         private ITransactionTracer _tracer;
 
-        public EthereumRunner(INetworkConfigurationProvider configurationProvider, INetworkHelper networkHelper)
+        public EthereumRunner(IConfigProvider configurationProvider, INetworkHelper networkHelper)
         {
-            _networkConfigurationProvider = configurationProvider;
+            _configProvider = configurationProvider;
             _networkHelper = networkHelper;
         }
 
@@ -248,7 +249,7 @@ namespace Nethermind.Runner.Runners
 
                         // create shared objects between discovery and peer manager
                         _nodeFactory = new NodeFactory();
-                        _nodeStatsProvider = new NodeStatsProvider(_networkConfigurationProvider);
+                        _nodeStatsProvider = new NodeStatsProvider(_configProvider);
 
                         if (initParams.DiscoveryEnabled)
                         {
@@ -373,8 +374,8 @@ namespace Nethermind.Runner.Runners
         {
             _networkLogger.Info("Initializing peer manager");
 
-            var peerStorage = new PeerStorage(_networkConfigurationProvider, _nodeFactory, _networkLogger, _perfService);
-            var peerManager = new PeerManager(_localPeer, _discoveryManager, _networkLogger, _networkConfigurationProvider, _syncManager, _nodeStatsProvider, peerStorage, _perfService, _nodeFactory);
+            var peerStorage = new PeerStorage(_configProvider, _nodeFactory, _networkLogger, _perfService);
+            var peerManager = new PeerManager(_localPeer, _discoveryManager, _networkLogger, _configProvider, _syncManager, _nodeStatsProvider, peerStorage, _perfService, _nodeFactory);
             await peerManager.Start();
 
             _networkLogger.Info("Peer manager initialization completed");
@@ -386,31 +387,31 @@ namespace Nethermind.Runner.Runners
 
             if (initParams.DiscoveryPort.HasValue)
             {
-                _networkConfigurationProvider.MasterPort = initParams.DiscoveryPort.Value;
+                ((NetworkConfig)_configProvider.NetworkConfig).MasterPort = initParams.DiscoveryPort.Value;
             }
 
             var privateKeyProvider = new PrivateKeyProvider(_privateKey);
-            var discoveryMessageFactory = new DiscoveryMessageFactory(_networkConfigurationProvider);
+            var discoveryMessageFactory = new DiscoveryMessageFactory(_configProvider);
             var nodeIdResolver = new NodeIdResolver(_signer);
 
             var msgSerializersProvider = new DiscoveryMsgSerializersProvider(_messageSerializationService, _signer, privateKeyProvider, discoveryMessageFactory, nodeIdResolver, _nodeFactory);
             msgSerializersProvider.RegisterDiscoverySerializers();
 
-            var configProvider = new ConfigurationProvider();
+            var configProvider = new JsonConfigProvider();
             var jsonSerializer = new JsonSerializer(_discoveryLogger);
             var encrypter = new AesEncrypter(configProvider, _discoveryLogger);
             var keyStore = new FileKeyStore(configProvider, jsonSerializer, encrypter, _cryptoRandom, _discoveryLogger);
-            var nodeDistanceCalculator = new NodeDistanceCalculator(_networkConfigurationProvider);
-            var nodeTable = new NodeTable(_networkConfigurationProvider, _nodeFactory, keyStore, _discoveryLogger, nodeDistanceCalculator);
+            var nodeDistanceCalculator = new NodeDistanceCalculator(_configProvider);
+            var nodeTable = new NodeTable(_configProvider, _nodeFactory, keyStore, _discoveryLogger, nodeDistanceCalculator);
 
             var evictionManager = new EvictionManager(nodeTable, _discoveryLogger);
-            var nodeLifeCycleFactory = new NodeLifecycleManagerFactory(_nodeFactory, nodeTable, _discoveryLogger, _networkConfigurationProvider, discoveryMessageFactory, evictionManager, _nodeStatsProvider);
+            var nodeLifeCycleFactory = new NodeLifecycleManagerFactory(_nodeFactory, nodeTable, _discoveryLogger, _configProvider, discoveryMessageFactory, evictionManager, _nodeStatsProvider);
 
-            var discoveryStorage = new DiscoveryStorage(_networkConfigurationProvider, _nodeFactory, _discoveryLogger, _perfService);
-            _discoveryManager = new DiscoveryManager(_discoveryLogger, _networkConfigurationProvider, nodeLifeCycleFactory, _nodeFactory, nodeTable, discoveryStorage);
+            var discoveryStorage = new DiscoveryStorage(_configProvider, _nodeFactory, _discoveryLogger, _perfService);
+            _discoveryManager = new DiscoveryManager(_discoveryLogger, _configProvider, nodeLifeCycleFactory, _nodeFactory, nodeTable, discoveryStorage);
 
-            var nodesLocator = new NodesLocator(nodeTable, _discoveryManager, _networkConfigurationProvider, _discoveryLogger);
-            _discoveryApp = new DiscoveryApp(_networkConfigurationProvider, nodesLocator, _discoveryLogger, _discoveryManager, _nodeFactory, nodeTable, _messageSerializationService, _cryptoRandom, discoveryStorage);
+            var nodesLocator = new NodesLocator(nodeTable, _discoveryManager, _configProvider, _discoveryLogger);
+            _discoveryApp = new DiscoveryApp(_configProvider, nodesLocator, _discoveryLogger, _discoveryManager, _nodeFactory, nodeTable, _messageSerializationService, _cryptoRandom, discoveryStorage);
             _discoveryApp.Start(_privateKey.PublicKey);
 
             _discoveryLogger.Info("Discovery initialization completed");

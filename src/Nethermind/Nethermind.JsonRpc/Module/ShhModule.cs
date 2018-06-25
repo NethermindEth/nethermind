@@ -17,6 +17,7 @@
  */
 
 using System.Collections.Generic;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.JsonRpc.DataModel;
 
@@ -24,7 +25,7 @@ namespace Nethermind.JsonRpc.Module
 {
     public class ShhModule : ModuleBase, IShhModule
     {
-        public ShhModule(ILogger logger, IConfigurationProvider configurationProvider) : base(logger, configurationProvider)
+        public ShhModule(ILogger logger, IConfigProvider configurationProvider) : base(logger, configurationProvider)
         {
         }
 

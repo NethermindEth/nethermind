@@ -19,18 +19,19 @@
 using System;
 using System.IO;
 using System.Security.Cryptography;
+using Nethermind.Config;
 using Nethermind.Core;
 
 namespace Nethermind.KeyStore
 {
     public class AesEncrypter : ISymmetricEncrypter
     {
-        private readonly IConfigurationProvider _configurationProvider;
+        private readonly IKeystoreConfig _configurationProvider;
         private readonly ILogger _logger;
 
-        public AesEncrypter(IConfigurationProvider configurationProvider, ILogger logger)
+        public AesEncrypter(IConfigProvider configurationProvider, ILogger logger)
         {
-            _configurationProvider = configurationProvider;
+            _configurationProvider = configurationProvider.KeystoreConfig;
             _logger = logger;
         }
 

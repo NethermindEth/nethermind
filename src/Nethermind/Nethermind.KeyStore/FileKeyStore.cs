@@ -22,7 +22,9 @@ using System.IO;
 using System.Linq;
 using System.Security;
 using System.Security.Cryptography;
+using System.Text;
 using CryptSharp.Utility;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -56,19 +58,21 @@ namespace Nethermind.KeyStore
     /// </summary>
     public class FileKeyStore : IKeyStore
     {
-        private readonly IConfigurationProvider _configurationProvider;
+        private readonly IKeystoreConfig _configurationProvider;
         private readonly IJsonSerializer _jsonSerializer;
         private readonly ISymmetricEncrypter _symmetricEncrypter;
         private readonly ICryptoRandom _cryptoRandom;
         private readonly ILogger _logger;
+        private readonly Encoding _keyStoreEncoding;
 
-        public FileKeyStore(IConfigurationProvider configurationProvider, IJsonSerializer jsonSerializer, ISymmetricEncrypter symmetricEncrypter, ICryptoRandom cryptoRandom, ILogger logger)
+        public FileKeyStore(IConfigProvider configurationProvider, IJsonSerializer jsonSerializer, ISymmetricEncrypter symmetricEncrypter, ICryptoRandom cryptoRandom, ILogger logger)
         {
-            _configurationProvider = configurationProvider;
+            _configurationProvider = configurationProvider.KeystoreConfig;
             _jsonSerializer = jsonSerializer;
             _symmetricEncrypter = symmetricEncrypter;
             _cryptoRandom = cryptoRandom;
             _logger = logger;
+            _keyStoreEncoding = Encoding.GetEncoding(_configurationProvider.KeyStoreEncoding);
         }
 
         public int Version => 3;
@@ -99,7 +103,7 @@ namespace Nethermind.KeyStore
             Hex salt = keyStoreItem.Crypto.KDFParams.Salt;
 
             var kdfParams = keyStoreItem.Crypto.KDFParams;
-            var passBytes = password.ToByteArray(_configurationProvider.KeyStoreEncoding);
+            var passBytes = password.ToByteArray(_keyStoreEncoding);
 
             byte[] derivedKey;
             var kdf = keyStoreItem.Crypto.KDF.Trim();
@@ -153,7 +157,7 @@ namespace Nethermind.KeyStore
         public Result StoreKey(PrivateKey key, SecureString password)
         {
             var salt = _cryptoRandom.GenerateRandomBytes(32);
-            var passBytes = password.ToByteArray(_configurationProvider.KeyStoreEncoding);
+            var passBytes = password.ToByteArray(_keyStoreEncoding);
 
             var derivedKey = SCrypt.ComputeDerivedKey(passBytes, salt, _configurationProvider.KdfparamsN, _configurationProvider.KdfparamsR, _configurationProvider.KdfparamsP, null, _configurationProvider.KdfparamsDklen);
 
@@ -265,7 +269,7 @@ namespace Nethermind.KeyStore
             try
             {
                 var path = Path.Combine(GetStoreDirectory(), address);
-                File.WriteAllText(path, serializedKey, _configurationProvider.KeyStoreEncoding);
+                File.WriteAllText(path, serializedKey, _keyStoreEncoding);
                 return new Result {ResultType = ResultType.Success};
             }
             catch (Exception e)

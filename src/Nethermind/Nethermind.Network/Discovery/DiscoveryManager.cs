@@ -22,6 +22,7 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Threading;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Model;
@@ -33,7 +34,7 @@ namespace Nethermind.Network.Discovery
 {
     public class DiscoveryManager : IDiscoveryManager
     {
-        private readonly INetworkConfigurationProvider _configurationProvider;
+        private readonly INetworkConfig _configurationProvider;
         private readonly ILogger _logger;
         private readonly INodeFactory _nodeFactory;
         private readonly INodeLifecycleManagerFactory _nodeLifecycleManagerFactory;
@@ -46,12 +47,12 @@ namespace Nethermind.Network.Discovery
 
         public DiscoveryManager(
             ILogger logger,
-            INetworkConfigurationProvider configurationProvider,
+            IConfigProvider configurationProvider,
             INodeLifecycleManagerFactory nodeLifecycleManagerFactory,
             INodeFactory nodeFactory, INodeTable nodeTable, IDiscoveryStorage discoveryStorage)
         {
             _logger = logger;
-            _configurationProvider = configurationProvider;
+            _configurationProvider = configurationProvider.NetworkConfig;
             _nodeLifecycleManagerFactory = nodeLifecycleManagerFactory;
             _nodeFactory = nodeFactory;
             _nodeTable = nodeTable;

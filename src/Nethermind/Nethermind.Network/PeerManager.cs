@@ -23,6 +23,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using System.Timers;
 using Nethermind.Blockchain;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Model;
@@ -42,7 +43,7 @@ namespace Nethermind.Network
         private readonly IRlpxPeer _localPeer;
         private readonly ILogger _logger;
         private readonly IDiscoveryManager _discoveryManager;
-        private readonly INetworkConfigurationProvider _configurationProvider;
+        private readonly INetworkConfig _configurationProvider;
         private readonly ISynchronizationManager _synchronizationManager;
         private readonly INodeStatsProvider _nodeStatsProvider;
         private readonly IPeerStorage _peerStorage;
@@ -66,11 +67,11 @@ namespace Nethermind.Network
         //TODO Move Discover to Network
         //TODO update runner to run discovery
 
-        public PeerManager(IRlpxPeer localPeer, IDiscoveryManager discoveryManager, ILogger logger, INetworkConfigurationProvider configurationProvider, ISynchronizationManager synchronizationManager, INodeStatsProvider nodeStatsProvider, IPeerStorage peerStorage, IPerfService perfService, INodeFactory nodeFactory)
+        public PeerManager(IRlpxPeer localPeer, IDiscoveryManager discoveryManager, ILogger logger, IConfigProvider configurationProvider, ISynchronizationManager synchronizationManager, INodeStatsProvider nodeStatsProvider, IPeerStorage peerStorage, IPerfService perfService, INodeFactory nodeFactory)
         {
             _localPeer = localPeer;
             _logger = logger;
-            _configurationProvider = configurationProvider;
+            _configurationProvider = configurationProvider.NetworkConfig;
             _synchronizationManager = synchronizationManager;
             _nodeStatsProvider = nodeStatsProvider;
             _discoveryManager = discoveryManager;
@@ -298,18 +299,21 @@ namespace Nethermind.Network
 
             foreach (var trustedPeer in trustedPeers)
             {
-                var nodeStats = _nodeStatsProvider.GetNodeStats(trustedPeer.Id);
+                var node = _nodeFactory.CreateNode(new NodeId(new PublicKey(new Hex(trustedPeer.NodeId))), trustedPeer.Host, trustedPeer.Port);
+                node.Description = trustedPeer.Description;
+
+                var nodeStats = _nodeStatsProvider.GetNodeStats(node.Id);
                 nodeStats.IsTrustedPeer = true;
 
-                var peer = new Peer(trustedPeer, nodeStats);
-                if (!_candidatePeers.TryAdd(trustedPeer.Id, peer))
+                var peer = new Peer(node, nodeStats);
+                if (!_candidatePeers.TryAdd(node.Id, peer))
                 {
                     continue;
                 }
 
                 if (_logger.IsInfoEnabled)
                 {
-                    _logger.Info($"Adding trusted peer to New collection {trustedPeer.Id}@{trustedPeer.Host}:{trustedPeer.Port}");
+                    _logger.Info($"Adding trusted peer to New collection {node.Id}@{node.Host}:{node.Port}");
                 }
             }
         }

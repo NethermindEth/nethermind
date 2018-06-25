@@ -19,6 +19,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Network.Discovery;
 using Nethermind.Network.P2P;
@@ -30,13 +31,13 @@ namespace Nethermind.Network.Stats
     /// </summary>
     public class NodeStats : INodeStats
     {
-        private readonly INetworkConfigurationProvider _configurationProvider;
+        private readonly INetworkConfig _configurationProvider;
         private Dictionary<NodeStatsEvent, AtomicLong> _stats;
         private Dictionary<DisconnectType, (DisconnectReason DisconnectReason, DateTime DisconnectTime)> _lastDisconnects;
 
-        public NodeStats(INetworkConfigurationProvider configurationProvider)
+        public NodeStats(IConfigProvider configurationProvider)
         {
-            _configurationProvider = configurationProvider;
+            _configurationProvider = configurationProvider.NetworkConfig;
             Initialize();
         }
 
@@ -122,7 +123,7 @@ namespace Nethermind.Network.Stats
             if (_lastDisconnects.ContainsKey(DisconnectType.Local))
             {
                 var localDisconnect = _lastDisconnects[DisconnectType.Local];               
-                if (_configurationProvider.PenalizedReputationLocalDisconnectReasons.Contains(localDisconnect.DisconnectReason))
+                if (_configurationProvider.PenalizedReputationLocalDisconnectReasons.Contains((ConfigDisconnectReason)localDisconnect.DisconnectReason))
                 {
                     return true;
                 }
@@ -139,7 +140,7 @@ namespace Nethermind.Network.Stats
             {
                 lastOverallDisconnectTime = remoteDisconnect.DisconnectTime;
             }
-            if (_configurationProvider.PenalizedReputationRemoteDisconnectReasons.Contains(remoteDisconnect.DisconnectReason))
+            if (_configurationProvider.PenalizedReputationRemoteDisconnectReasons.Contains((ConfigDisconnectReason)remoteDisconnect.DisconnectReason))
             {
                 if (new[] {DisconnectReason.AlreadyConnected, DisconnectReason.TooManyPeers}.Contains(remoteDisconnect.DisconnectReason))
                 {

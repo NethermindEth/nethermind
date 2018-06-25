@@ -18,6 +18,7 @@
 
 using System.IO;
 using System.Linq;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Encoding;
 using Nethermind.Db;
@@ -29,7 +30,7 @@ namespace Nethermind.Network
 {
     public class PeerStorage : IPeerStorage
     {
-        private readonly INetworkConfigurationProvider _configurationProvider;
+        private readonly INetworkConfig _configurationProvider;
         private readonly INodeFactory _nodeFactory;
         private readonly IPerfService _perfService;
         private readonly IFullDb _db;
@@ -37,9 +38,9 @@ namespace Nethermind.Network
         private long _updateCounter = 0;
         private long _removeCounter = 0;
 
-        public PeerStorage(INetworkConfigurationProvider configurationProvider, INodeFactory nodeFactory, ILogger logger, IPerfService perfService)
+        public PeerStorage(IConfigProvider configurationProvider, INodeFactory nodeFactory, ILogger logger, IPerfService perfService)
         {
-            _configurationProvider = configurationProvider;
+            _configurationProvider = configurationProvider.NetworkConfig;
             _nodeFactory = nodeFactory;
             _logger = logger;
             _perfService = perfService;

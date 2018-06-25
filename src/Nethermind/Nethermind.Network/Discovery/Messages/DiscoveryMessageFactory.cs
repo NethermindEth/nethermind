@@ -17,6 +17,7 @@
  */
 
 using System;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Network.Discovery.RoutingTable;
@@ -25,18 +26,18 @@ namespace Nethermind.Network.Discovery.Messages
 {
     public class DiscoveryMessageFactory : IDiscoveryMessageFactory
     {
-        private readonly INetworkConfigurationProvider _networkConfigurationProvider;
+        private readonly INetworkConfig _configurationProvider;
 
-        public DiscoveryMessageFactory(INetworkConfigurationProvider networkConfigurationProvider)
+        public DiscoveryMessageFactory(IConfigProvider configurationProvider)
         {
-            _networkConfigurationProvider = networkConfigurationProvider;
+            _configurationProvider = configurationProvider.NetworkConfig;
         }
 
         public T CreateOutgoingMessage<T>(Node destination) where T : DiscoveryMessage
         {
             T message = Activator.CreateInstance<T>();
             message.FarAddress = destination.Address;
-            message.ExpirationTime = _networkConfigurationProvider.DiscoveryMsgExpiryTime + Timestamp.UnixUtcUntilNowMilisecs;
+            message.ExpirationTime = _configurationProvider.DiscoveryMsgExpiryTime + Timestamp.UnixUtcUntilNowMilisecs;
             return message;
         }
 

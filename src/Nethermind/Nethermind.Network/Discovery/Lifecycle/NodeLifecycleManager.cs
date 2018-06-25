@@ -18,6 +18,7 @@
 
 using System;
 using System.Threading.Tasks;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Network.Discovery.Messages;
 using Nethermind.Network.Discovery.RoutingTable;
@@ -30,19 +31,19 @@ namespace Nethermind.Network.Discovery.Lifecycle
         private readonly IDiscoveryManager _discoveryManager;
         private readonly INodeTable _nodeTable;
         private readonly ILogger _logger;
-        private readonly INetworkConfigurationProvider _networkConfigurationProvider;
+        private readonly INetworkConfig _configurationProvider;
         private readonly IDiscoveryMessageFactory _discoveryMessageFactory;
         private readonly IEvictionManager _evictionManager;
 
         private bool _isPongExpected;
         private bool _isNeighborsExpected;
 
-        public NodeLifecycleManager(Node node, IDiscoveryManager discoveryManager, INodeTable nodeTable, ILogger logger, INetworkConfigurationProvider networkConfigurationProvider, IDiscoveryMessageFactory discoveryMessageFactory, IEvictionManager evictionManager, INodeStats nodeStats)
+        public NodeLifecycleManager(Node node, IDiscoveryManager discoveryManager, INodeTable nodeTable, ILogger logger, IConfigProvider configurationProvider, IDiscoveryMessageFactory discoveryMessageFactory, IEvictionManager evictionManager, INodeStats nodeStats)
         {
             _discoveryManager = discoveryManager;
             _nodeTable = nodeTable;
             _logger = logger;
-            _networkConfigurationProvider = networkConfigurationProvider;
+            _configurationProvider = configurationProvider.NetworkConfig;
             _discoveryMessageFactory = discoveryMessageFactory;
             _evictionManager = evictionManager;
             NodeStats = nodeStats;
@@ -116,7 +117,7 @@ namespace Nethermind.Network.Discovery.Lifecycle
         public void SendPing()
         {
             _isPongExpected = true;
-            Task.Run(() => SendPingSync(_networkConfigurationProvider.PingRetryCount));
+            Task.Run(() => SendPingSync(_configurationProvider.PingRetryCount));
         }
 
         public void SendPong(PingMessage discoveryMessage)
@@ -192,13 +193,13 @@ namespace Nethermind.Network.Discovery.Lifecycle
             try
             {
                 var msg = _discoveryMessageFactory.CreateOutgoingMessage<PingMessage>(ManagedNode);         
-                msg.Version = _networkConfigurationProvider.PingMessageVersion;
+                msg.Version = _configurationProvider.PingMessageVersion;
                 msg.SourceAddress = _nodeTable.MasterNode.Address;
                 msg.DestinationAddress = msg.FarAddress;
                 _discoveryManager.SendMessage(msg);
                 NodeStats.AddNodeStatsEvent(NodeStatsEvent.DiscoveryPingOut);
 
-                if (!_discoveryManager.WasMessageReceived(ManagedNode.IdHashText, MessageType.Pong, _networkConfigurationProvider.PongTimeout))
+                if (!_discoveryManager.WasMessageReceived(ManagedNode.IdHashText, MessageType.Pong, _configurationProvider.PongTimeout))
                 {
                     if (counter > 1)
                     {

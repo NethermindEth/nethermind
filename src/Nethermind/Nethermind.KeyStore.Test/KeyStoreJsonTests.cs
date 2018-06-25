@@ -1,6 +1,7 @@
 ﻿using System.IO;
 using System.Linq;
 using System.Security;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Model;
@@ -13,7 +14,7 @@ namespace Nethermind.KeyStore.Test
     {
         private IKeyStore _store;
         private IJsonSerializer _serializer;
-        private IConfigurationProvider _configurationProvider;
+        private IConfigProvider _configurationProvider;
         private ICryptoRandom _cryptoRandom;
         private string _keyStoreDir;
         private KeyStoreTestsModel _testsModel;
@@ -22,14 +23,12 @@ namespace Nethermind.KeyStore.Test
         [SetUp]
         public void Initialize()
         {
-            _configurationProvider = new ConfigurationProvider();
-            _keyStoreDir = _configurationProvider.KeyStoreDirectory;
+            _configurationProvider = new JsonConfigProvider();
+            _keyStoreDir = _configurationProvider.KeystoreConfig.KeyStoreDirectory;
             if (!Directory.Exists(_keyStoreDir))
             {
                 Directory.CreateDirectory(_keyStoreDir);
             }
-
-            _configurationProvider = new ConfigurationProvider();
 
             ILogger logger = NullLogger.Instance;
             _serializer = new JsonSerializer(logger);

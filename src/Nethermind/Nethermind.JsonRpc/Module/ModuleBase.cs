@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc.DataModel;
@@ -25,9 +26,9 @@ namespace Nethermind.JsonRpc.Module
     public abstract class ModuleBase
     {
         protected readonly ILogger Logger;
-        protected readonly IConfigurationProvider ConfigurationProvider;
+        protected readonly IConfigProvider ConfigurationProvider;
 
-        protected ModuleBase(ILogger logger, IConfigurationProvider configurationProvider)
+        protected ModuleBase(ILogger logger, IConfigProvider configurationProvider)
         {
             Logger = logger;
             ConfigurationProvider = configurationProvider;

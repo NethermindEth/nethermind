@@ -23,12 +23,6 @@ namespace Nethermind.Config
 {
     public class NetworkConfig : INetworkConfig
     {
-        public NetworkConfig()
-        {
-            //MasterExternalIp = // networkHelper.GetExternalIp()?.ToString();
-            //MasterHost = networkHelper.GetLocalIp()?.ToString() ?? "127.0.0.1";
-        }
-
         public int BucketSize { get; set; } = 16;
         public int BucketsCount { get; set; } = 256;
         public int Concurrency { get; set; } = 3;
@@ -36,8 +30,8 @@ namespace Nethermind.Config
         public int BitsPerHop { get; set; } = 8;
 
         //public string MasterHost => "127.0.0.1";
-        public string MasterHost { get; set; } //=> "192.168.1.154";
-        public string MasterExternalIp { get; set; }
+        public string MasterHost { get; set; } = "127.0.0.1"; //=> "192.168.1.154";
+        public string MasterExternalIp { get; set; } = "127.0.0.1";
         public int MasterPort { get; set; } = 30304;
         public int MaxDiscoveryRounds { get; set; } = 8;
         public int EvictionCheckInterval { get; set; } = 75;

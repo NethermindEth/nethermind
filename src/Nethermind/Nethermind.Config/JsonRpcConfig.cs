@@ -36,7 +36,7 @@ namespace Nethermind.Config
 
         public string JsonRpcVersion { get; set; } = "2.0";
         public IEnumerable<ConfigJsonRpcModuleType> EnabledModules { get; set; } = Enum.GetValues(typeof(ConfigJsonRpcModuleType)).OfType<ConfigJsonRpcModuleType>();
-        public string MessageEncoding { get; set; } = Encoding.UTF8.EncodingName;
+        public string MessageEncoding { get; set; } = "UTF-8";
         public string SignatureTemplate { get; set; } = "\x19Ethereum Signed Message:\n{0}{1}";
     }
 }

@@ -19,6 +19,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Model;
@@ -46,7 +47,7 @@ namespace Nethermind.Network.Test.Discovery
         private IMessageSender _udpClient;
         private INodeTable _nodeTable;
         private INodeFactory _nodeFactory;
-        private NetworkConfigurationProvider _configurationProvider;
+        private IConfigProvider _configurationProvider;
         private int _port = 1;
         private string _host = "192.168.1.27";
 
@@ -57,17 +58,16 @@ namespace Nethermind.Network.Test.Discovery
 
             var logger = NullLogger.Instance;
             //setting config to store 3 nodes in a bucket and for table to have one bucket//setting config to store 3 nodes in a bucket and for table to have one bucket
-            _configurationProvider = new NetworkConfigurationProvider(new NetworkHelper(logger))
-            {
-                PongTimeout = 50,
-                BucketSize = 3,
-                BucketsCount = 1
-            };
-            var configProvider = new ConfigurationProvider();
+
+            _configurationProvider = new JsonConfigProvider();
+            ((NetworkConfig)_configurationProvider.NetworkConfig).PongTimeout = 50;
+            ((NetworkConfig)_configurationProvider.NetworkConfig).BucketSize = 3;
+            ((NetworkConfig)_configurationProvider.NetworkConfig).BucketsCount = 1;
+
             _nodeFactory = new NodeFactory();
             var calculator = new NodeDistanceCalculator(_configurationProvider);
 
-            _nodeTable = new NodeTable(_configurationProvider, _nodeFactory, new FileKeyStore(configProvider, new JsonSerializer(logger), new AesEncrypter(configProvider, logger), new CryptoRandom(), logger), logger, calculator);
+            _nodeTable = new NodeTable(_configurationProvider, _nodeFactory, new FileKeyStore(_configurationProvider, new JsonSerializer(logger), new AesEncrypter(_configurationProvider, logger), new CryptoRandom(), logger), logger, calculator);
             _nodeTable.Initialize();
 
             var evictionManager = new EvictionManager(_nodeTable, logger);

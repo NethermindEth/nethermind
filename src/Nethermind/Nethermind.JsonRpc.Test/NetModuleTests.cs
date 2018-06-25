@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.JsonRpc.Module;
 using NUnit.Framework;
@@ -30,7 +31,7 @@ namespace Nethermind.JsonRpc.Test
         [SetUp]
         public void Initialize()
         {
-            _netModule = new NetModule(NullLogger.Instance, new ConfigurationProvider());
+            _netModule = new NetModule(NullLogger.Instance, new JsonConfigProvider());
         }
 
         [Test]

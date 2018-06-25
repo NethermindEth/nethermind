@@ -24,7 +24,7 @@ namespace Nethermind.Config
     public class KeystoreConfig : IKeystoreConfig
     {
         public string KeyStoreDirectory { get; set; } = Path.GetDirectoryName(Path.Combine(Path.GetTempPath(), "KeyStore"));
-        public string KeyStoreEncoding { get; set; } = Encoding.UTF8.EncodingName;
+        public string KeyStoreEncoding { get; set; } = "UTF-8";
         public string Kdf { get; set; } = "scrypt";
         public string Cipher { get; set; } = "aes-128-cbc";
         public int KdfparamsDklen { get; set; } = 32;

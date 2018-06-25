@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -71,7 +72,7 @@ namespace Nethermind.Network.Test.Builders
 
         public SerializationBuilder WithDiscovery(PrivateKey privateKey)
         {
-            NetworkConfigurationProvider config = new NetworkConfigurationProvider(new NetworkHelper(new SimpleConsoleLogger()));
+            var config = new JsonConfigProvider();
             Signer signer = new Signer();
             var privateKeyProvider = new PrivateKeyProvider(privateKey);
 

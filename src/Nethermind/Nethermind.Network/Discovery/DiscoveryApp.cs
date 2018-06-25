@@ -24,6 +24,7 @@ using DotNetty.Handlers.Logging;
 using DotNetty.Transport.Bootstrapping;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Model;
@@ -35,7 +36,7 @@ namespace Nethermind.Network.Discovery
 {
     public class DiscoveryApp : IDiscoveryApp
     {
-        private readonly INetworkConfigurationProvider _configurationProvider;
+        private readonly INetworkConfig _configurationProvider;
         private readonly INodesLocator _nodesLocator;
         private readonly IDiscoveryManager _discoveryManager;
         private readonly INodeFactory _nodeFactory;
@@ -54,9 +55,9 @@ namespace Nethermind.Network.Discovery
         private MultithreadEventLoopGroup _group;
         private NettyDiscoveryHandler _discoveryHandler;
 
-        public DiscoveryApp(INetworkConfigurationProvider configurationProvider, INodesLocator nodesLocator, ILogger logger, IDiscoveryManager discoveryManager, INodeFactory nodeFactory, INodeTable nodeTable, IMessageSerializationService messageSerializationService, ICryptoRandom cryptoRandom, IDiscoveryStorage discoveryStorage)
+        public DiscoveryApp(IConfigProvider configurationProvider, INodesLocator nodesLocator, ILogger logger, IDiscoveryManager discoveryManager, INodeFactory nodeFactory, INodeTable nodeTable, IMessageSerializationService messageSerializationService, ICryptoRandom cryptoRandom, IDiscoveryStorage discoveryStorage)
         {
-            _configurationProvider = configurationProvider;
+            _configurationProvider = configurationProvider.NetworkConfig;
             _nodesLocator = nodesLocator;
             _logger = logger;
             _discoveryManager = discoveryManager;
@@ -340,9 +341,9 @@ namespace Nethermind.Network.Discovery
             for (var i = 0; i < bootNodes.Length; i++)
             {
                 var bootnode = bootNodes[i];
-                var node = bootnode.Id == null
+                var node = bootnode.NodeId == null
                     ? _nodeFactory.CreateNode(bootnode.Host, bootnode.Port)
-                    : _nodeFactory.CreateNode(bootnode.Id, bootnode.Host, bootnode.Port, true);
+                    : _nodeFactory.CreateNode(new NodeId(new PublicKey(new Hex(bootnode.NodeId))), bootnode.Host, bootnode.Port, true);
                 var manager = _discoveryManager.GetNodeLifecycleManager(node);
                 managers[i] = manager;
             }

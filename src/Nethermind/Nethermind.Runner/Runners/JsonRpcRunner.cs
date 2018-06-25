@@ -22,6 +22,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore;
 using Microsoft.AspNetCore.Hosting;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.DataModel;
@@ -31,12 +32,12 @@ namespace Nethermind.Runner.Runners
     public class JsonRpcRunner : IJsonRpcRunner
     {
         private readonly ILogger _logger;
-        private readonly IConfigurationProvider _configurationProvider;
+        private readonly IJsonRpcConfig _configurationProvider;
         private IWebHost _webHost;
 
-        public JsonRpcRunner(IConfigurationProvider configurationProvider, ILogger logger)
+        public JsonRpcRunner(IConfigProvider configurationProvider, ILogger logger)
         {
-            _configurationProvider = configurationProvider;
+            _configurationProvider = configurationProvider.JsonRpcConfig;
             _logger = logger;
         }
 
@@ -54,7 +55,7 @@ namespace Nethermind.Runner.Runners
             var modules = GetModules(initParams.JsonRpcEnabledModules);
             if (modules != null && modules.Any())
             {
-                _configurationProvider.EnabledModules = modules;
+                //_configurationProvider.EnabledModules = modules;
             }
 
             _logger.Info($"Starting http service, modules: {string.Join(", ", _configurationProvider.EnabledModules.Select(x => x))}");

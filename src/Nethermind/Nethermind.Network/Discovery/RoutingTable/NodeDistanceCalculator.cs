@@ -16,6 +16,8 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.Config;
+
 namespace Nethermind.Network.Discovery.RoutingTable
 {
     public class NodeDistanceCalculator : INodeDistanceCalculator
@@ -23,11 +25,10 @@ namespace Nethermind.Network.Discovery.RoutingTable
         private readonly int _maxDistance;
         private readonly int _bitsPerHoop;
 
-        public NodeDistanceCalculator(INetworkConfigurationProvider configurationProvider)
+        public NodeDistanceCalculator(IConfigProvider configurationProvider)
         {
-            INetworkConfigurationProvider configurationProvider1 = configurationProvider;
-            _maxDistance = configurationProvider1.BucketsCount;
-            _bitsPerHoop = configurationProvider1.BitsPerHop;
+            _maxDistance = configurationProvider.NetworkConfig.BucketsCount;
+            _bitsPerHoop = configurationProvider.NetworkConfig.BitsPerHop;
         }
 
         public int CalculateDistance(byte[] sourceId, byte[] destinationId)

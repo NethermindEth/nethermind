@@ -48,12 +48,12 @@ namespace Nethermind.Config
         /// <summary>
         /// Current Node external ip
         /// </summary>
-        string MasterExternalIp { get; set; }
+        string MasterExternalIp { get; }
 
         /// <summary>
         /// Current Node port
         /// </summary>
-        int MasterPort { get; set; }
+        int MasterPort { get; }
 
         /// <summary>
         /// Max Discovery Rounds
@@ -163,22 +163,22 @@ namespace Nethermind.Config
         /// <summary>
         /// List of trusted nodes - we connect to them and set predefined high reputation
         /// </summary>
-        ConfigNode[] TrustedPeers { get; set; }
+        ConfigNode[] TrustedPeers { get; }
 
         /// <summary>
         /// Base path for discovery db
         /// </summary>
-        string DbBasePath { get; set; }
+        string DbBasePath { get; }
 
         /// <summary>
         /// On/Off for discovery persistance
         /// </summary>
-        bool IsDiscoveryNodesPersistenceOn { get; set; }
+        bool IsDiscoveryNodesPersistenceOn { get; }
 
         /// <summary>
         /// On/Off for peers
         /// </summary>
-        bool IsPeersPersistenceOn { get; set; }
+        bool IsPeersPersistenceOn { get; }
 
         /// <summary>
         /// Time between running peer update in miliseconds

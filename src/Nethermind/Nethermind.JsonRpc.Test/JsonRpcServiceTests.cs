@@ -19,10 +19,12 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Model;
 using Nethermind.JsonRpc.DataModel;
 using Nethermind.JsonRpc.Module;
+using Nethermind.KeyStore;
 using NSubstitute;
 using NUnit.Framework;
 using Block = Nethermind.JsonRpc.DataModel.Block;
@@ -33,14 +35,14 @@ namespace Nethermind.JsonRpc.Test
     public class JsonRpcServiceTests
     {
         private IJsonRpcService _jsonRpcService;
-        private IConfigurationProvider _configurationProvider;
+        private IConfigProvider _configurationProvider;
         private IJsonSerializer _jsonSerializer;
         private ILogger _logger;
 
         [SetUp]
         public void Initialize()
         {
-            _configurationProvider = new ConfigurationProvider();            
+            _configurationProvider = new JsonConfigProvider();         
             _logger = NullLogger.Instance;
             _jsonSerializer = new JsonSerializer(_logger);
         }
@@ -154,7 +156,7 @@ namespace Nethermind.JsonRpc.Test
             Assert.AreEqual(response.Id, request.Id);
             Assert.AreEqual(response.Result, "1");
             Assert.IsNull(response.Error);
-            Assert.AreEqual(response.Jsonrpc, _configurationProvider.JsonRpcVersion);
+            Assert.AreEqual(response.Jsonrpc, _configurationProvider.JsonRpcConfig.JsonRpcVersion);
         }
 
         [Test]
@@ -177,9 +179,9 @@ namespace Nethermind.JsonRpc.Test
             var response = _jsonSerializer.Deserialize<JsonRpcResponse>(rawResponse);
 
             Assert.AreEqual(response.Id, request.Id);
-            Assert.AreEqual(response.Error.Code, _configurationProvider.ErrorCodes[ErrorType.MethodNotFound]);
+            Assert.AreEqual(response.Error.Code, _configurationProvider.JsonRpcConfig.ErrorCodes[(ConfigErrorType)ErrorType.MethodNotFound]);
             Assert.IsNull(response.Result);
-            Assert.AreEqual(response.Jsonrpc, _configurationProvider.JsonRpcVersion);
+            Assert.AreEqual(response.Jsonrpc, _configurationProvider.JsonRpcConfig.JsonRpcVersion);
         }
 
         [Test]

@@ -21,6 +21,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Model;
 using Nethermind.JsonRpc.DataModel;
@@ -31,11 +32,11 @@ namespace Nethermind.JsonRpc
     public class JsonRpcService : IJsonRpcService
     {
         private readonly ILogger _logger; 
-        private readonly IConfigurationProvider _configurationProvider;
+        private readonly IConfigProvider _configurationProvider;
         private readonly IJsonSerializer _jsonSerializer;
         private readonly IModuleProvider _moduleProvider;
 
-        public JsonRpcService(IConfigurationProvider configurationProvider, ILogger logger, IJsonSerializer jsonSerializer, IModuleProvider moduleProvider)
+        public JsonRpcService(IConfigProvider configurationProvider, ILogger logger, IJsonSerializer jsonSerializer, IModuleProvider moduleProvider)
         {
             _configurationProvider = configurationProvider;
             _logger = logger;
@@ -203,7 +204,7 @@ namespace Nethermind.JsonRpc
         {
             var response = new JsonRpcResponse
             {
-                Jsonrpc = _configurationProvider.JsonRpcVersion,
+                Jsonrpc = _configurationProvider.JsonRpcConfig.JsonRpcVersion,
                 Id = id,
                 Result = result
             };
@@ -217,11 +218,11 @@ namespace Nethermind.JsonRpc
 
             var response = new JsonRpcResponse
             {
-                Jsonrpc = _configurationProvider.JsonRpcVersion,
+                Jsonrpc = _configurationProvider.JsonRpcConfig.JsonRpcVersion,
                 Id = id,
                 Error = new Error
                 {
-                    Code = _configurationProvider.ErrorCodes[errorType],
+                    Code = _configurationProvider.JsonRpcConfig.ErrorCodes[(ConfigErrorType)errorType],
                     Message = message
                 }
             };

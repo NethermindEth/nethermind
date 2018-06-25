@@ -18,6 +18,7 @@
 
 
 using System.Collections.Concurrent;
+using Nethermind.Config;
 using Nethermind.Core.Model;
 using Nethermind.Network.Discovery;
 
@@ -25,11 +26,11 @@ namespace Nethermind.Network.Stats
 {
     public class NodeStatsProvider : INodeStatsProvider
     {
-        private readonly INetworkConfigurationProvider _networkConfigurationProvider;
+        private readonly IConfigProvider _networkConfigurationProvider;
 
         private readonly ConcurrentDictionary<NodeId, INodeStats> _nodeStats = new ConcurrentDictionary<NodeId, INodeStats>();
 
-        public NodeStatsProvider(INetworkConfigurationProvider networkConfigurationProvider)
+        public NodeStatsProvider(IConfigProvider networkConfigurationProvider)
         {
             _networkConfigurationProvider = networkConfigurationProvider;
         }

@@ -20,6 +20,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Model;
 using Nethermind.Network.Discovery.Messages;
@@ -32,14 +33,14 @@ namespace Nethermind.Network.Discovery
         private readonly ILogger _logger;
         private readonly INodeTable _nodeTable;
         private readonly IDiscoveryManager _discoveryManager;
-        private readonly INetworkConfigurationProvider _configurationProvider;
+        private readonly INetworkConfig _configurationProvider;
         private Node _masterNode;
 
-        public NodesLocator(INodeTable nodeTable, IDiscoveryManager discoveryManager, INetworkConfigurationProvider configurationProvider, ILogger logger)
+        public NodesLocator(INodeTable nodeTable, IDiscoveryManager discoveryManager, IConfigProvider configurationProvider, ILogger logger)
         {
             _nodeTable = nodeTable;
             _discoveryManager = discoveryManager;
-            _configurationProvider = configurationProvider;
+            _configurationProvider = configurationProvider.NetworkConfig;
             _logger = logger;
         }
 
