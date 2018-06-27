@@ -214,6 +214,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             _remoteHeadBlockHash = status.BestHash;
             _remoteHeadBlockDifficulty = status.TotalDifficulty;
 
+            if (status.ChainId != _sync.BlockTree.ChainId)
+            {
+                throw new InvalidOperationException("network ID mismatch");
+                // TODO: disconnect here
+            }
+            
             if (status.GenesisHash != _sync.Genesis.Hash)
             {
                 Logger.Warn($"{P2PSession.RemoteNodeId} Connected peer's genesis hash {status.GenesisHash} differes from {_sync.Genesis.Hash}");
@@ -236,6 +242,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 ProtocolVersion = status.ProtocolVersion,
                 TotalDifficulty = status.TotalDifficulty
             };
+            
             ProtocolInitialized?.Invoke(this, eventArgs);
         }
 
@@ -274,24 +281,18 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             Keccak startingHash = getBlockHeadersMessage.StartingBlockHash;
             if (startingHash == null)
             {
-                startingHash = _sync.Find(getBlockHeadersMessage.StartingBlockNumber).Hash;
+                startingHash = _sync.Find(getBlockHeadersMessage.StartingBlockNumber)?.Hash;
             }
 
-            Block[] blocks = _sync.Find(startingHash, (int)getBlockHeadersMessage.MaxHeaders, (int)getBlockHeadersMessage.Skip, getBlockHeadersMessage.Reverse == 1);
-//            HeaderValidator validator = new HeaderValidator(new DifficultyCalculator(RopstenSpecProvider.Instance), _sync.BlockTree, new EthashSealEngine(new Ethash(), NullLogger.Instance), RopstenSpecProvider.Instance, NullLogger.Instance);
-//            foreach (Block block in blocks)
-//            {
-//                bool validated = validator.Validate(block.Header);
-//                if (!validated)
-//                {
-//                    throw new Exception("Sending invalid");
-//                }
-//            }
+            Block[] blocks =
+                startingHash == null
+                    ? new Block[0]
+                    : _sync.Find(startingHash, (int)getBlockHeadersMessage.MaxHeaders, (int)getBlockHeadersMessage.Skip, getBlockHeadersMessage.Reverse == 1);
             
             BlockHeader[] headers = new BlockHeader[blocks.Length];
             for (int i = 0; i < blocks.Length; i++)
             {
-                headers[i] = blocks[i].Header;
+                headers[i] = blocks[i]?.Header;
             }
 
             Send(new BlockHeadersMessage(headers));

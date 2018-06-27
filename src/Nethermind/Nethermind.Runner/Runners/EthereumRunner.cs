@@ -227,7 +227,7 @@ namespace Nethermind.Runner.Runners
                     }
                     else
                     {
-                        if (_chainLogger.IsInfoEnabled) _chainLogger.Info("Starting synchronization.");
+                        if (_chainLogger.IsInfoEnabled) _chainLogger.Info($"Starting synchronization from block {blockTree.Head.ToString(BlockHeader.Format.Short)}.");
                         // TODO: only start sync manager after queued blocks are processed
                         _syncManager = new SynchronizationManager(
                             blockTree,

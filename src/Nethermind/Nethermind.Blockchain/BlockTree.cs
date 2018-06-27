@@ -27,6 +27,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.HashLib;
 using Nethermind.Store;
 
 namespace Nethermind.Blockchain
@@ -241,6 +242,8 @@ namespace Nethermind.Blockchain
         // TODO: since finding by hash will be faster it will be worth to refactor this part
         public Block[] FindBlocks(Keccak blockHash, int numberOfBlocks, int skip, bool reverse)
         {
+            if(blockHash == null) throw new ArgumentNullException(nameof(blockHash));
+            
             Block[] result = new Block[numberOfBlocks];
             Block startBlock = FindBlock(blockHash, true);
             if (startBlock == null)
@@ -289,7 +292,6 @@ namespace Nethermind.Blockchain
         public Block FindBlock(BigInteger blockNumber)
         {
             Keccak hash = GetBlockHashOnMain(blockNumber);
-//            _logger.Error($"Finding block {blockNumber} and found {hash}");
             return Load(hash).Block;
         }
 
@@ -585,7 +587,7 @@ namespace Nethermind.Blockchain
 
         private (Block Block, BlockInfo Info, ChainLevelInfo Level) Load(Keccak blockHash)
         {
-            if (blockHash == Keccak.Zero)
+            if (blockHash == null || blockHash == Keccak.Zero)
             {
                 return (null, null, null);
             }

@@ -476,12 +476,6 @@ namespace Nethermind.Blockchain
                         }
 
                         blocks[i].Header = headersByHash[hashes[i]];
-
-                        if (_logger.IsTraceEnabled)
-                        {
-                            _logger.Trace("RECEIVED BLOCK:");
-                            _logger.Trace($"{blocks[i]}");
-                        }
                     }
 
                     if (blocks.Length > 0)
@@ -495,17 +489,28 @@ namespace Nethermind.Blockchain
                         }
                     }
 
+                    // Parity 1.11 non canonical blocks when testing on 27/06
                     for (int i = 0; i < blocks.Length; i++)
                     {
+                        if (i != 0 && blocks[i].ParentHash != blocks[i - 1].Hash)
+                        {
+                            throw new EthSynchronizationException("Peer send an inconsistent block list");
+                        }
+                    }
+
+                    for (int i = 0; i < blocks.Length; i++)
+                    {
+                        if(_logger.IsInfoEnabled) _logger.Info($"Received {blocks[i]} from {peer.NodeId}");
+                        
                         if (_blockValidator.ValidateSuggestedBlock(blocks[i]))
                         {
                             AddBlockResult addResult = BlockTree.SuggestBlock(blocks[i]);
                             if (addResult == AddBlockResult.UnknownParent)
                             {
-                                _logger.Info($"Block {blocks[i].Number} ignored (unknown parent)");
+                                if(_logger.IsInfoEnabled) _logger.Info($"Block {blocks[i].Number} ignored (unknown parent)");
                                 if (i == 0)
                                 {
-                                    _logger.Warn("Resyncing split");
+                                    if(_logger.IsWarnEnabled) _logger.Warn("Resyncing split");
                                     peerInfo.NumberReceived -= 1;
                                     var syncTask = Task.Run(() => SyncAsync(_syncCancellationTokenSource.Token), _syncCancellationTokenSource.Token);
                                     await syncTask;

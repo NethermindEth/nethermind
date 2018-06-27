@@ -188,6 +188,21 @@ namespace Nethermind.Core.Test
             Block found = blockTree.FindBlock(2);
             Assert.AreEqual(block2.Hash, BlockHeader.CalculateHash(found.Header));
         }
+        
+        [Test]
+        public void Find_by_number_beyond_what_is_known_returns_null()
+        {
+            BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), new MemDb(), OlympicSpecProvider.Instance, NullLogger.Instance);
+            Block block0 = Build.A.Block.WithNumber(0).TestObject;
+            Block block1 = Build.A.Block.WithNumber(1).WithParent(block0).TestObject;
+            Block block2 = Build.A.Block.WithNumber(2).WithParent(block1).TestObject;
+            AddToMain(blockTree, block0);
+            AddToMain(blockTree, block1);
+            AddToMain(blockTree, block2);
+
+            Block found = blockTree.FindBlock(1920000);
+            Assert.Null(found);
+        }
 
         [Test]
         public void Find_by_number_missing()

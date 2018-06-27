@@ -77,4 +77,7 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
   </ItemGroup>
+  <ItemGroup>
+    <Content Update="configs\mainnet_windows_discovery.json" Link="configs\mainnet_windows_discovery.json" />
+  </ItemGroup>
 </Project>
