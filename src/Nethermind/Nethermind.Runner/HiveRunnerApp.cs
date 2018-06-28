@@ -22,6 +22,7 @@ using System.Numerics;
 using Microsoft.Extensions.CommandLineUtils;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Logging;
 using Nethermind.Runner.Runners;
 
 namespace Nethermind.Runner

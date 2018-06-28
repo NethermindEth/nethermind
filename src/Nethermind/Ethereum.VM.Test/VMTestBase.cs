@@ -26,6 +26,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Store;
@@ -40,17 +41,16 @@ namespace Ethereum.VM.Test
         private IStorageProvider _storageProvider;
         private IBlockhashProvider _blockhashProvider;
         private IStateProvider _stateProvider;
-        private ILogger _vmLogger = NullLogger.Instance;
+        private ILogManager _logManager = NullLogManager.Instance;
         private readonly IReleaseSpec _releaseSpec = Olympic.Instance;
 
         [SetUp]
         public void Setup()
         {
-            ILogger stateLogger = NullLogger.Instance;
-            _dbProvider = new MemDbProvider(stateLogger);
+            _dbProvider = new MemDbProvider(_logManager);
             _blockhashProvider = new TestBlockhashProvider();
-            _stateProvider = new StateProvider(new StateTree(_dbProvider.GetOrCreateStateDb()), stateLogger, _dbProvider.GetOrCreateCodeDb());
-            _storageProvider = new StorageProvider(new MemDbProvider(stateLogger), _stateProvider, stateLogger);
+            _stateProvider = new StateProvider(new StateTree(_dbProvider.GetOrCreateStateDb()), _dbProvider.GetOrCreateCodeDb(), _logManager);
+            _storageProvider = new StorageProvider(new MemDbProvider(_logManager), _stateProvider, _logManager);
         }
 
         public static IEnumerable<VirtualMachineTest> LoadTests(string testSet)
@@ -136,7 +136,7 @@ namespace Ethereum.VM.Test
 
         protected void RunTest(VirtualMachineTest test)
         {
-            VirtualMachine machine = new VirtualMachine(_stateProvider, _storageProvider, _blockhashProvider, _vmLogger);
+            VirtualMachine machine = new VirtualMachine(_stateProvider, _storageProvider, _blockhashProvider, _logManager);
             ExecutionEnvironment environment = new ExecutionEnvironment();
             environment.Value = test.Execution.Value;
             environment.CallDepth = 0;

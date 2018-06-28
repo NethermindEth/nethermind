@@ -1,12 +1,27 @@
-﻿using System.Runtime.InteropServices;
+﻿/*
+ * Copyright (c) 2018 Demerzel Solutions Limited
+ * This file is part of the Nethermind library.
+ *
+ * The Nethermind library is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * The Nethermind library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+using System.Runtime.InteropServices;
 
 namespace Nethermind.Core
 {
     public static class ClientVersion
     {
         public static readonly string Description = $"Nethermind/v0.0.1-alpha/{RuntimeInformation.OSArchitecture}-{RuntimeInformation.OSDescription.Trim().Replace(" ", "_")}/{RuntimeInformation.FrameworkDescription.Trim().Replace(".NET ", "").Replace(" ", "")}";
-        // public static readonly string Description = $"Nethermind/v0.0.1-alpha/x86_64-Win10/netcore2.0.0";
-        //public static readonly string Description = $"Parity/v1.9.2-beta-0feb0bb-20180201/x86_64-linux-gnu/rustc1.23.0"; // TODO: since it seems that some clients depend on specific format of this we would pretend to be parity while testing
-        //        public static readonly string Description = $"Nethermind/alpha";
     }
 }

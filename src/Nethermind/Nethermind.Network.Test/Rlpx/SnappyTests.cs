@@ -19,6 +19,7 @@
 using System.Collections.Generic;
 using System.IO;
 using Nethermind.Core;
+using Nethermind.Core.Logging;
 using Nethermind.Network.Rlpx;
 using NUnit.Framework;
 

@@ -31,6 +31,7 @@ using Microsoft.Extensions.Logging.Console;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
 using Nethermind.Network.P2P;
 using Nethermind.Network.Rlpx.Handshake;
@@ -45,6 +46,7 @@ namespace Nethermind.Network.Rlpx
         private readonly IEncryptionHandshakeService _encryptionHandshakeService;
         private readonly IMessageSerializationService _serializationService;
         private readonly ISynchronizationManager _synchronizationManager;
+        private readonly ILogManager _logManager;
         private readonly ILogger _logger;
         private IChannel _bootstrapChannel;
         private IEventLoopGroup _bossGroup;
@@ -58,12 +60,15 @@ namespace Nethermind.Network.Rlpx
             IEncryptionHandshakeService encryptionHandshakeService,
             IMessageSerializationService serializationService,
             ISynchronizationManager synchronizationManager,
-            ILogger logger)
+            ILogManager logManager)
         {
-            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _logManager =logManager ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager.GetClassLogger();
+            
             _synchronizationManager = synchronizationManager ?? throw new ArgumentNullException(nameof(synchronizationManager));
             _encryptionHandshakeService = encryptionHandshakeService ?? throw new ArgumentNullException(nameof(encryptionHandshakeService));
             _serializationService = serializationService ?? throw new ArgumentNullException(nameof(serializationService));
+            
             LocalNodeId = localNodeId ?? throw new ArgumentNullException(nameof(localNodeId));
             _localPort = localPort;            
         }
@@ -180,7 +185,7 @@ namespace Nethermind.Network.Rlpx
                 _localPort,
                 _serializationService,
                 _synchronizationManager,
-                _logger)
+                _logManager)
             {
                 ClientConnectionType = connectionType
             };

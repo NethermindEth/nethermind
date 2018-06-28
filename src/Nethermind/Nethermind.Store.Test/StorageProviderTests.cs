@@ -19,6 +19,7 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
 using NSubstitute;
 using NUnit.Framework;
@@ -28,7 +29,7 @@ namespace Nethermind.Store.Test
     [TestFixture]
     public class StorageProviderTests
     {
-        private static readonly ILogger Logger = NullLogger.Instance;
+        private static readonly ILogManager LogManager = NullLogManager.Instance;
         private readonly Address _address1 = new Address(Keccak.Compute("1"));
         private readonly Address _address2 = new Address(Keccak.Compute("2"));
         private IStateProvider _stateProvider;
@@ -36,7 +37,7 @@ namespace Nethermind.Store.Test
         [SetUp]
         public void Setup()
         {
-            _stateProvider = new StateProvider(new StateTree(new MemDb()), Logger, Substitute.For<IDb>());
+            _stateProvider = new StateProvider(new StateTree(new MemDb()), Substitute.For<IDb>(), LogManager);
             _stateProvider.CreateAccount(_address1, 0);
             _stateProvider.CreateAccount(_address2, 0);
             _stateProvider.Commit(Frontier.Instance);
@@ -69,7 +70,7 @@ namespace Nethermind.Store.Test
 
         private StorageProvider BuildStorageProvider()
         {
-            StorageProvider provider = new StorageProvider(new MemDbProvider(Logger), _stateProvider, Logger);
+            StorageProvider provider = new StorageProvider(new MemDbProvider(LogManager), _stateProvider, LogManager);
             return provider;
         }
 

@@ -24,6 +24,7 @@ using Microsoft.AspNetCore;
 using Microsoft.AspNetCore.Hosting;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Logging;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.DataModel;
 

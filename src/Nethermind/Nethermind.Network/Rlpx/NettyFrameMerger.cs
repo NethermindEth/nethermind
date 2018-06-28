@@ -23,6 +23,7 @@ using DotNetty.Transport.Channels;
 using Nethermind.Core;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Logging;
 
 namespace Nethermind.Network.Rlpx
 {

@@ -18,6 +18,7 @@
 
 using System;
 using System.Collections.Generic;
+using Nethermind.Core.Logging;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
@@ -27,9 +28,9 @@ namespace Nethermind.Core
     {
         private readonly ILogger _logger;
 
-        public JsonSerializer(ILogger logger)
+        public JsonSerializer(ILogManager logManager)
         {
-            _logger = logger;
+            _logger = logManager.GetClassLogger();
         }
 
         public T DeserializeAnonymousType<T>(string json, T definition)

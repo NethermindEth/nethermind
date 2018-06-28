@@ -16,31 +16,20 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
-using Nethermind.Blockchain;
-using Nethermind.Core;
 using Nethermind.Core.Logging;
+using NUnit.Framework;
 
-namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
+namespace Nethermind.Core.Test.Logging
 {
-    public class Eth63ProtocolHandler : Eth62ProtocolHandler
+    [TestFixture]
+    public class NLogManagerTests
     {
-        public Eth63ProtocolHandler(
-            IP2PSession p2PSession,
-            IMessageSerializationService serializer,
-            ISynchronizationManager sync,
-            ILogManager logManager) : base(p2PSession, serializer, sync, logManager)
+        [Test]
+        public void Logger_name_is_set_to_full_class_name()
         {
-        }
-        
-        public override byte ProtocolVersion => 63;
-
-        public override int MessageIdSpaceSize => 17; // magic number here following Go
-        
-        public override Type ResolveMessageType(int messageCode)
-        {
-            // TODO:
-            return base.ResolveMessageType(messageCode);
+            NLogManager manager = new NLogManager("test");
+            NLogLogger logger = (NLogLogger)manager.GetClassLogger();
+            Assert.AreEqual(GetType().FullName, logger._logger.Name);
         }
     }
 }

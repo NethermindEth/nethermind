@@ -28,6 +28,7 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
 
 namespace Nethermind.KeyStore
@@ -65,13 +66,13 @@ namespace Nethermind.KeyStore
         private readonly ILogger _logger;
         private readonly Encoding _keyStoreEncoding;
 
-        public FileKeyStore(IConfigProvider configurationProvider, IJsonSerializer jsonSerializer, ISymmetricEncrypter symmetricEncrypter, ICryptoRandom cryptoRandom, ILogger logger)
+        public FileKeyStore(IConfigProvider configurationProvider, IJsonSerializer jsonSerializer, ISymmetricEncrypter symmetricEncrypter, ICryptoRandom cryptoRandom, ILogManager logManager)
         {
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _configurationProvider = configurationProvider.KeystoreConfig;
             _jsonSerializer = jsonSerializer;
             _symmetricEncrypter = symmetricEncrypter;
             _cryptoRandom = cryptoRandom;
-            _logger = logger;
             _keyStoreEncoding = Encoding.GetEncoding(_configurationProvider.KeyStoreEncoding);
         }
 

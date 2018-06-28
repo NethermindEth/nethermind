@@ -21,6 +21,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using Nethermind.Core.Logging;
 
 namespace Nethermind.Core
 {
@@ -30,9 +31,9 @@ namespace Nethermind.Core
 
         private readonly ConcurrentDictionary<Guid, Stopwatch> _stopwatches = new ConcurrentDictionary<Guid, Stopwatch>();
 
-        public PerfService(ILogger logger)
+        public PerfService(ILogManager logManager)
         {
-            _logger = logger;
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
         public Guid StartPerfCalc()

@@ -2,6 +2,7 @@
 using System.Linq;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Logging;
 using Nethermind.Db;
 using Nethermind.Network.Discovery;
 using Nethermind.Network.Discovery.RoutingTable;
@@ -20,7 +21,7 @@ namespace Nethermind.Network.Test
         [SetUp]
         public void Initialize()
         {
-            var logger = new SimpleConsoleLogger();
+            var logManager = NullLogManager.Instance;
             _configurationProvider = new JsonConfigProvider();
             ((NetworkConfig)_configurationProvider.NetworkConfig).DbBasePath = Path.Combine(Path.GetTempPath(), "PeerStorageTests");
 
@@ -31,7 +32,7 @@ namespace Nethermind.Network.Test
             }
 
             _nodeFactory = new NodeFactory();
-            _peerStorage = new PeerStorage(_configurationProvider, _nodeFactory, logger, new PerfService(logger));
+            _peerStorage = new PeerStorage(_configurationProvider, _nodeFactory, logManager, new PerfService(logManager));
         }
 
         [Test]

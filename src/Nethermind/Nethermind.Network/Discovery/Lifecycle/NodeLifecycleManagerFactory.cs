@@ -20,6 +20,7 @@ using System;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
 using Nethermind.Network.Discovery.Messages;
 using Nethermind.Network.Discovery.RoutingTable;
@@ -37,15 +38,15 @@ namespace Nethermind.Network.Discovery.Lifecycle
         private readonly IEvictionManager _evictionManager;
         private readonly INodeStatsProvider _nodeStatsProvider;
 
-        public NodeLifecycleManagerFactory(INodeFactory nodeFactory, INodeTable nodeTable, ILogger logger, IConfigProvider configurationProvider, IDiscoveryMessageFactory discoveryMessageFactory, IEvictionManager evictionManager, INodeStatsProvider nodeStatsProvider)
+        public NodeLifecycleManagerFactory(INodeFactory nodeFactory, INodeTable nodeTable, IDiscoveryMessageFactory discoveryMessageFactory, IEvictionManager evictionManager, INodeStatsProvider nodeStatsProvider, IConfigProvider configurationProvider, ILogManager logManager)
         {
-            _nodeFactory = nodeFactory;
-            _nodeTable = nodeTable;
-            _logger = logger;
-            _configurationProvider = configurationProvider;
-            _discoveryMessageFactory = discoveryMessageFactory;
-            _evictionManager = evictionManager;
-            _nodeStatsProvider = nodeStatsProvider;
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _nodeFactory = nodeFactory ?? throw new ArgumentNullException(nameof(nodeFactory));
+            _nodeTable = nodeTable ?? throw new ArgumentNullException(nameof(nodeTable));
+            _configurationProvider = configurationProvider ?? throw new ArgumentNullException(nameof(configurationProvider));
+            _discoveryMessageFactory = discoveryMessageFactory ?? throw new ArgumentNullException(nameof(discoveryMessageFactory));
+            _evictionManager = evictionManager ?? throw new ArgumentNullException(nameof(evictionManager));
+            _nodeStatsProvider = nodeStatsProvider ?? throw new ArgumentNullException(nameof(nodeStatsProvider));
         }
 
         public IDiscoveryManager DiscoveryManager { private get; set; }

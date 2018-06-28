@@ -16,8 +16,10 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Collections.Concurrent;
 using Nethermind.Core;
+using Nethermind.Core.Logging;
 using Nethermind.Network.Discovery.RoutingTable;
 
 namespace Nethermind.Network.Discovery.Lifecycle
@@ -28,10 +30,10 @@ namespace Nethermind.Network.Discovery.Lifecycle
         private readonly INodeTable _nodeTable;
         private readonly ILogger _logger;
 
-        public EvictionManager(INodeTable nodeTable, ILogger logger)
+        public EvictionManager(INodeTable nodeTable, ILogManager logManager)
         {
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _nodeTable = nodeTable;
-            _logger = logger;
         }
 
         public void StartEvictionProcess(INodeLifecycleManager evictionCandidate, INodeLifecycleManager replacementCandidate)

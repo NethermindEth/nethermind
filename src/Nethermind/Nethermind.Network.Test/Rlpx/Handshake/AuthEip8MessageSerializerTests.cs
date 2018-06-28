@@ -20,6 +20,7 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
 using Nethermind.Network.Rlpx.Handshake;
 using NUnit.Framework;
@@ -61,7 +62,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
         [TestCase(ChainId.EthereumClassicTestnet)]
         public void Encode_decode_before_eip155(int chainId)
         {
-            EthereumSigner signer = new EthereumSigner(OlympicSpecProvider.Instance, NullLogger.Instance);
+            EthereumSigner signer = new EthereumSigner(OlympicSpecProvider.Instance, NullLogManager.Instance);
             TestEncodeDecode(signer);
         }
 
@@ -70,7 +71,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
         [TestCase(ChainId.Kovan)]
         public void Encode_decode_with_eip155(int chainId)
         {
-            EthereumSigner signer = new EthereumSigner(RopstenSpecProvider.Instance, NullLogger.Instance);
+            EthereumSigner signer = new EthereumSigner(RopstenSpecProvider.Instance, NullLogManager.Instance);
             TestEncodeDecode(signer);
         }
     }

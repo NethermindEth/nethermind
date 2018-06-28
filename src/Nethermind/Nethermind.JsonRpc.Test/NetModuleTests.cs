@@ -18,6 +18,7 @@
 
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Logging;
 using Nethermind.JsonRpc.Module;
 using NUnit.Framework;
 
@@ -31,7 +32,7 @@ namespace Nethermind.JsonRpc.Test
         [SetUp]
         public void Initialize()
         {
-            _netModule = new NetModule(NullLogger.Instance, new JsonConfigProvider());
+            _netModule = new NetModule(new JsonConfigProvider(), NullLogManager.Instance);
         }
 
         [Test]

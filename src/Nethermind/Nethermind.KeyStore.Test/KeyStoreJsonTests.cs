@@ -4,6 +4,7 @@ using System.Security;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
 using NUnit.Framework;
 
@@ -30,10 +31,10 @@ namespace Nethermind.KeyStore.Test
                 Directory.CreateDirectory(_keyStoreDir);
             }
 
-            ILogger logger = NullLogger.Instance;
-            _serializer = new JsonSerializer(logger);
+            ILogManager logManager = NullLogManager.Instance;
+            _serializer = new JsonSerializer(logManager);
             _cryptoRandom = new CryptoRandom();
-            _store = new FileKeyStore(_configurationProvider, _serializer, new AesEncrypter(_configurationProvider, logger), _cryptoRandom, logger);
+            _store = new FileKeyStore(_configurationProvider, _serializer, new AesEncrypter(_configurationProvider, logManager), _cryptoRandom, logManager);
 
             var testsContent = File.ReadAllText("basic_tests.json");
             _testsModel = _serializer.Deserialize<KeyStoreTestsModel>(testsContent);

@@ -16,12 +16,14 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
 using Nethermind.Network.Discovery.Messages;
 using Nethermind.Network.Discovery.RoutingTable;
@@ -36,12 +38,12 @@ namespace Nethermind.Network.Discovery
         private readonly INetworkConfig _configurationProvider;
         private Node _masterNode;
 
-        public NodesLocator(INodeTable nodeTable, IDiscoveryManager discoveryManager, IConfigProvider configurationProvider, ILogger logger)
+        public NodesLocator(INodeTable nodeTable, IDiscoveryManager discoveryManager, IConfigProvider configurationProvider, ILogManager logManager)
         {
-            _nodeTable = nodeTable;
-            _discoveryManager = discoveryManager;
-            _configurationProvider = configurationProvider.NetworkConfig;
-            _logger = logger;
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _configurationProvider = configurationProvider?.NetworkConfig ?? throw new ArgumentNullException(nameof(configurationProvider.NetworkConfig));
+            _nodeTable = nodeTable ?? throw new ArgumentNullException(nameof(nodeTable));
+            _discoveryManager = discoveryManager ?? throw new ArgumentNullException(nameof(discoveryManager));
         }
 
         public void Initialize(Node masterNode)

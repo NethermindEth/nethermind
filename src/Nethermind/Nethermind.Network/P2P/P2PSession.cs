@@ -23,6 +23,7 @@ using System.Threading.Tasks;
 using DotNetty.Transport.Channels;
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
 using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63;
@@ -32,6 +33,7 @@ namespace Nethermind.Network.P2P
 {
     public class P2PSession : IP2PSession
     {
+        private readonly ILogManager _logManager;
         private readonly ILogger _logger;
         private readonly IMessageSerializationService _serializer;
         private readonly ISynchronizationManager _syncManager;
@@ -49,11 +51,13 @@ namespace Nethermind.Network.P2P
             int localPort,
             IMessageSerializationService serializer,
             ISynchronizationManager syncManager,
-            ILogger logger)
+            ILogManager logManager)
         {
-            _serializer = serializer;
-            _syncManager = syncManager;
-            _logger = logger;
+            _serializer = serializer ?? throw new ArgumentNullException(nameof(serializer));
+            _syncManager = syncManager ?? throw new ArgumentNullException(nameof(syncManager));
+            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager.GetClassLogger();
+            
             LocalNodeId = localNodeId;
             LocalPort = localPort;
             SessionId = Guid.NewGuid().ToString();
@@ -197,7 +201,7 @@ namespace Nethermind.Network.P2P
             switch (protocolCode)
             {
                 case Protocol.P2P:
-                    protocolHandler = new P2PProtocolHandler(this, _serializer, LocalNodeId, LocalPort, _logger);
+                    protocolHandler = new P2PProtocolHandler(this, _serializer, LocalNodeId, LocalPort, _logManager);
                     protocolHandler.ProtocolInitialized += (sender, args) =>
                     {
                         if (protocolHandler.ProtocolVersion >= 5)
@@ -219,8 +223,8 @@ namespace Nethermind.Network.P2P
                     }
 
                     protocolHandler = version == 62
-                        ? new Eth62ProtocolHandler(this, _serializer, _syncManager, _logger)
-                        : new Eth63ProtocolHandler(this, _serializer, _syncManager, _logger);
+                        ? new Eth62ProtocolHandler(this, _serializer, _syncManager, _logManager)
+                        : new Eth63ProtocolHandler(this, _serializer, _syncManager, _logManager);
                     protocolHandler.ProtocolInitialized += (sender, args) =>
                     {
                         //await _syncManager.AddPeer((Eth62ProtocolHandler)protocolHandler);

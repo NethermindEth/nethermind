@@ -23,6 +23,7 @@ using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
+using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Store;
@@ -47,16 +48,16 @@ namespace Nethermind.Blockchain
             ITransactionProcessor transactionProcessor,
             IDbProvider dbProvider,
             IStateProvider stateProvider,
-            IStorageProvider storageProvider, ITransactionStore transactionStore, ILogger logger = null)
+            IStorageProvider storageProvider, ITransactionStore transactionStore, ILogManager logManager)
         {
-            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-            _specProvider = specProvider;
-            _blockValidator = blockValidator;
-            _stateProvider = stateProvider;
-            _storageProvider = storageProvider;
-            _transactionStore = transactionStore;
-            _rewardCalculator = rewardCalculator;
-            _transactionProcessor = transactionProcessor;
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+            _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));;
+            _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));;
+            _storageProvider = storageProvider ?? throw new ArgumentNullException(nameof(storageProvider));;
+            _transactionStore = transactionStore ?? throw new ArgumentNullException(nameof(transactionStore));;
+            _rewardCalculator = rewardCalculator ?? throw new ArgumentNullException(nameof(rewardCalculator));;
+            _transactionProcessor = transactionProcessor ?? throw new ArgumentNullException(nameof(transactionProcessor));;
             _dbProvider = dbProvider;
         }
 

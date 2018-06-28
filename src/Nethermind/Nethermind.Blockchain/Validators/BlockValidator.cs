@@ -16,9 +16,11 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
+using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
 
 namespace Nethermind.Blockchain.Validators
@@ -31,13 +33,13 @@ namespace Nethermind.Blockchain.Validators
         private readonly ISpecProvider _specProvider;
         private readonly ILogger _logger;
 
-        public BlockValidator(ITransactionValidator transactionValidator, IHeaderValidator headerValidator, IOmmersValidator ommersValidator, ISpecProvider specProvider, ILogger logger)
+        public BlockValidator(ITransactionValidator transactionValidator, IHeaderValidator headerValidator, IOmmersValidator ommersValidator, ISpecProvider specProvider, ILogManager logManager)
         {
-            _transactionValidator = transactionValidator;
-            _ommersValidator = ommersValidator;
-            _specProvider = specProvider;
-            _logger = logger;
-            _headerValidator = headerValidator;
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _transactionValidator = transactionValidator ?? throw new ArgumentNullException(nameof(headerValidator));
+            _ommersValidator = ommersValidator ?? throw new ArgumentNullException(nameof(ommersValidator));
+            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+            _headerValidator = headerValidator ?? throw new ArgumentNullException(nameof(headerValidator));
         }
 
         public bool ValidateSuggestedBlock(Block suggestedBlock)

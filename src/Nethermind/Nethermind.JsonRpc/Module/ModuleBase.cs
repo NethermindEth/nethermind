@@ -19,6 +19,7 @@
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Logging;
 using Nethermind.JsonRpc.DataModel;
 
 namespace Nethermind.JsonRpc.Module
@@ -28,9 +29,9 @@ namespace Nethermind.JsonRpc.Module
         protected readonly ILogger Logger;
         protected readonly IConfigProvider ConfigurationProvider;
 
-        protected ModuleBase(ILogger logger, IConfigProvider configurationProvider)
+        protected ModuleBase(IConfigProvider configurationProvider, ILogManager logManager)
         {
-            Logger = logger;
+            Logger = logManager.GetClassLogger();
             ConfigurationProvider = configurationProvider;
         }
 

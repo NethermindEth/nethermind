@@ -21,6 +21,7 @@ using System;
 using System.Net;
 using System.Net.Sockets;
 using Nethermind.Core;
+using Nethermind.Core.Logging;
 
 namespace Nethermind.Network
 {

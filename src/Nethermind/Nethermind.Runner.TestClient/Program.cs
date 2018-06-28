@@ -18,6 +18,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Logging;
 
 namespace Nethermind.Runner.TestClient
 {
@@ -26,8 +27,7 @@ namespace Nethermind.Runner.TestClient
         static void Main(string[] args)
         {
             Console.WriteLine("Welcome in Runner Test Client");
-            var logger = NullLogger.Instance;
-            var client = new RunnerTestCientApp(new RunnerTestCient(logger, new JsonSerializer(logger)));
+            var client = new RunnerTestCientApp(new RunnerTestCient(NullLogger.Instance, new JsonSerializer(NullLogManager.Instance)));
             client.Start();
             Console.WriteLine("Exiting Runner Test Client");
         }

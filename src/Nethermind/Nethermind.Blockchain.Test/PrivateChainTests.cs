@@ -26,6 +26,7 @@ using Nethermind.Blockchain.Difficulty;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Specs.ChainSpec;
 using Nethermind.Evm;
@@ -41,7 +42,7 @@ namespace Nethermind.Blockchain.Test
         public async Task Build_some_chain()
         {
             /* logging & instrumentation */
-            var logger = new SimpleConsoleLogger();
+            var logger = new OneLoggerLogManager(new SimpleConsoleLogger());
 
             /* spec */
             var blockMiningTime = TimeSpan.FromMilliseconds(500);
@@ -59,7 +60,7 @@ namespace Nethermind.Blockchain.Test
             /* state & storage */
             var dbProvider = new MemDbProvider(logger);
             var stateTree = new StateTree(dbProvider.GetOrCreateStateDb());
-            var stateProvider = new StateProvider(stateTree, logger, dbProvider.GetOrCreateCodeDb());
+            var stateProvider = new StateProvider(stateTree, dbProvider.GetOrCreateCodeDb(), logger);
             var storageProvider = new StorageProvider(dbProvider, stateProvider, logger);
 
             /* blockchain processing */
@@ -75,7 +76,7 @@ namespace Nethermind.Blockchain.Test
             /* load ChainSpec and init */
             ChainSpecLoader loader = new ChainSpecLoader(new UnforgivingJsonSerializer());
             string path = Path.Combine(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, @"..\..\..\..\Chains", "ropsten.json"));
-            logger.Info($"Loading ChainSpec from {path}");
+            logger.GetClassLogger().Info($"Loading ChainSpec from {path}");
             ChainSpec chainSpec = loader.Load(File.ReadAllBytes(path));
             foreach (KeyValuePair<Address, BigInteger> allocation in chainSpec.Allocations)
             {

@@ -22,6 +22,7 @@ using DotNetty.Buffers;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
 using Nethermind.Core;
+using Nethermind.Core.Logging;
 using Nethermind.Network.Discovery.Messages;
 
 namespace Nethermind.Network.Discovery
@@ -33,12 +34,12 @@ namespace Nethermind.Network.Discovery
         private readonly IDatagramChannel _channel;
         private readonly IMessageSerializationService _messageSerializationService;
 
-        public NettyDiscoveryHandler(ILogger logger, IDiscoveryManager discoveryManager, IDatagramChannel channel, IMessageSerializationService messageSerializationService)
+        public NettyDiscoveryHandler(IDiscoveryManager discoveryManager, IDatagramChannel channel, IMessageSerializationService messageSerializationService, ILogManager logManager)
         {
-            _logger = logger;
-            _discoveryManager = discoveryManager;
-            _channel = channel;
-            _messageSerializationService = messageSerializationService;
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _discoveryManager = discoveryManager ?? throw new ArgumentNullException(nameof(discoveryManager));
+            _channel = channel ?? throw new ArgumentNullException(nameof(channel));
+            _messageSerializationService = messageSerializationService ?? throw new ArgumentNullException(nameof(messageSerializationService));
         }
 
         public override void ChannelActive(IChannelHandlerContext context)

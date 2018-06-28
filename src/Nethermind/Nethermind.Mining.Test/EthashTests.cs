@@ -19,6 +19,7 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Encoding;
+using Nethermind.Core.Logging;
 using NUnit.Framework;
 
 namespace Nethermind.Mining.Test
@@ -801,7 +802,7 @@ namespace Nethermind.Mining.Test
         public void Test_real_block_from_ethereumj(string blockRlp)
         {
             Block b = Rlp.Decode<Block>(new Rlp(new Hex(blockRlp)));
-            bool valid = new Ethash(NullLogger.Instance).Validate(b.Header);
+            bool valid = new Ethash(NullLogManager.Instance).Validate(b.Header);
             Assert.True(valid);
         }
 

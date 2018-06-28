@@ -20,6 +20,7 @@ using System;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Logging;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth;
@@ -44,7 +45,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
             Block genesisBlock = Build.A.Block.Genesis.TestObject;
             syncManager.Head.Returns(genesisBlock.Header);
             syncManager.Genesis.Returns(genesisBlock.Header);
-            var handler = new Eth62ProtocolHandler(session, svc, syncManager, NullLogger.Instance);
+            var handler = new Eth62ProtocolHandler(session, svc, syncManager, NullLogManager.Instance);
             handler.Init();
             
             var msg = new GetBlockHeadersMessage();
@@ -72,7 +73,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
             Block genesisBlock = Build.A.Block.Genesis.TestObject;
             syncManager.Head.Returns(genesisBlock.Header);
             syncManager.Genesis.Returns(genesisBlock.Header);
-            var handler = new Eth62ProtocolHandler(session, svc, syncManager, NullLogger.Instance);
+            var handler = new Eth62ProtocolHandler(session, svc, syncManager, NullLogManager.Instance);
             handler.Init();
             
             var msg = new GetBlockHeadersMessage();

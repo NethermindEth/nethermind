@@ -30,6 +30,7 @@ using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
+using Nethermind.Core.Logging;
 using Nethermind.Store;
 
 namespace Nethermind.Blockchain
@@ -55,17 +56,17 @@ namespace Nethermind.Blockchain
             IDifficultyCalculator difficultyCalculator,
             IBlockProcessor blockProcessor,
             IEthereumSigner signer,
-            ILogger logger)
+            ILogManager logManager)
         {
-            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-            _blockTree = blockTree;
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _blockTree.NewBestSuggestedBlock += OnNewBestBlock;
 
-            _transactionStore = transactionStore;
-            _difficultyCalculator = difficultyCalculator;
-            _sealEngine = sealEngine;
-            _blockProcessor = blockProcessor;
-            _signer = signer;
+            _transactionStore = transactionStore ?? throw new ArgumentNullException(nameof(transactionStore));
+            _difficultyCalculator = difficultyCalculator ?? throw new ArgumentNullException(nameof(difficultyCalculator));
+            _sealEngine = sealEngine ?? throw new ArgumentNullException(nameof(sealEngine));
+            _blockProcessor = blockProcessor ?? throw new ArgumentNullException(nameof(blockProcessor));
+            _signer = signer ?? throw new ArgumentNullException(nameof(signer));
         }
 
         private void OnNewBestBlock(object sender, BlockEventArgs blockEventArgs)

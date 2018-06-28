@@ -19,6 +19,7 @@
 using DotNetty.Buffers;
 using DotNetty.Transport.Channels;
 using Nethermind.Core;
+using Nethermind.Core.Logging;
 using Nethermind.Network.Rlpx;
 using NSubstitute;
 using NUnit.Framework;

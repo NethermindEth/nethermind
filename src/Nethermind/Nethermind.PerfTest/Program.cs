@@ -29,6 +29,7 @@ using Nethermind.Blockchain.Difficulty;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Specs.ChainSpec;
 using Nethermind.Db;
@@ -143,12 +144,12 @@ namespace Nethermind.PerfTest
 
         private static void RunVmPerfTests()
         {
-            ILogger logger = NullLogger.Instance;
-            MemDbProvider memDbProvider = new MemDbProvider(logger);
+            ILogManager logManager = NullLogManager.Instance;
+            MemDbProvider memDbProvider = new MemDbProvider(logManager);
             StateTree stateTree = new StateTree(memDbProvider.GetOrCreateStateDb());
-            IStateProvider stateProvider = new StateProvider(stateTree, logger, memDbProvider.GetOrCreateCodeDb());
-            IBlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), new MemDb(), FrontierSpecProvider.Instance, logger);
-            _machine = new VirtualMachine(stateProvider, new StorageProvider(memDbProvider, stateProvider, logger), new BlockhashProvider(blockTree), NullLogger.Instance);
+            IStateProvider stateProvider = new StateProvider(stateTree, memDbProvider.GetOrCreateCodeDb(), logManager);
+            IBlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), new MemDb(), FrontierSpecProvider.Instance, logManager);
+            _machine = new VirtualMachine(stateProvider, new StorageProvider(memDbProvider, stateProvider, logManager), new BlockhashProvider(blockTree), logManager);
 
             Stopwatch stopwatch = new Stopwatch();
             stopwatch.Start();
@@ -171,7 +172,8 @@ namespace Nethermind.PerfTest
             Console.ReadLine();
         }
 
-        private static NLogLogger _logger;
+        private static ILogger _logger;
+        private static ILogManager _logManager;
 
         private class UnprocessedBlockTreeWrapper : IBlockTree
         {
@@ -288,22 +290,19 @@ namespace Nethermind.PerfTest
         private static async Task RunRopstenBlocks()
         {
             /* logging & instrumentation */
-            _logger = new NLogLogger("perTest.logs.txt", "perfTest");
-            //var logger = new ConsoleAsyncLogger(LogLevel.Info);
+            _logManager = new NLogManager("perTest.logs.txt");
+            _logger = _logManager.GetClassLogger();
 
-            if (_logger.IsInfoEnabled)
-            {
-                _logger.Info("Deleting state DBs");
-            }
+            if (_logger.IsInfoEnabled) _logger.Info("Deleting state DBs");
 
             DeleteDb(FullStateDbPath);
             DeleteDb(FullStorageDbPath);
             DeleteDb(FullCodeDbPath);
             DeleteDb(FullReceiptsDbPath);
-            _logger.Info("State DBs deleted");
+            if (_logger.IsInfoEnabled) _logger.Info("State DBs deleted");
 
             /* spec */
-            var sealEngine = new EthashSealEngine(new Ethash(_logger), _logger);
+            var sealEngine = new EthashSealEngine(new Ethash(_logManager), _logManager);
             var specProvider = RopstenSpecProvider.Instance;
 
             var blocksDb = new DbOnTheRocks(FullBlocksDbPath);
@@ -311,30 +310,30 @@ namespace Nethermind.PerfTest
             var receiptsDb = new DbOnTheRocks(FullReceiptsDbPath);
 
             /* store & validation */
-            var blockTree = new UnprocessedBlockTreeWrapper(new BlockTree(blocksDb, blockInfosDb, receiptsDb, specProvider, _logger));
+            var blockTree = new UnprocessedBlockTreeWrapper(new BlockTree(blocksDb, blockInfosDb, receiptsDb, specProvider, _logManager));
             var difficultyCalculator = new DifficultyCalculator(specProvider);
-            var headerValidator = new HeaderValidator(difficultyCalculator, blockTree, sealEngine, specProvider, _logger);
-            var ommersValidator = new OmmersValidator(blockTree, headerValidator, _logger);
+            var headerValidator = new HeaderValidator(difficultyCalculator, blockTree, sealEngine, specProvider, _logManager);
+            var ommersValidator = new OmmersValidator(blockTree, headerValidator, _logManager);
             var transactionValidator = new TransactionValidator(new SignatureValidator(ChainId.Ropsten));
-            var blockValidator = new BlockValidator(transactionValidator, headerValidator, ommersValidator, specProvider, _logger);
+            var blockValidator = new BlockValidator(transactionValidator, headerValidator, ommersValidator, specProvider, _logManager);
 
             /* state & storage */
 
-            var dbProvider = new RocksDbProvider(DbBasePath, _logger);
+            var dbProvider = new RocksDbProvider(DbBasePath, _logManager);
             var stateTree = new StateTree(dbProvider.GetOrCreateStateDb());
-            var stateProvider = new StateProvider(stateTree, _logger, dbProvider.GetOrCreateCodeDb());
-            var storageProvider = new StorageProvider(dbProvider, stateProvider, _logger);
+            var stateProvider = new StateProvider(stateTree, dbProvider.GetOrCreateCodeDb(), _logManager);
+            var storageProvider = new StorageProvider(dbProvider, stateProvider, _logManager);
 
             /* blockchain processing */
-            var ethereumSigner = new EthereumSigner(specProvider, _logger);
+            var ethereumSigner = new EthereumSigner(specProvider, _logManager);
             var transactionStore = new TransactionStore();
             var blockhashProvider = new BlockhashProvider(blockTree);
-            var virtualMachine = new VirtualMachine(stateProvider, storageProvider, blockhashProvider, _logger);
-            //var processor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, new TransactionTracer("D:\\tx_traces\\perf_test", new UnforgivingJsonSerializer()), _logger);
-            var processor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, NullTracer.Instance, _logger);
+            var virtualMachine = new VirtualMachine(stateProvider, storageProvider, blockhashProvider, _logManager);
+            //var processor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, new TransactionTracer("D:\\tx_traces\\perf_test", new UnforgivingJsonSerializer()), _logManager);
+            var processor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, NullTracer.Instance, _logManager);
             var rewardCalculator = new RewardCalculator(specProvider);
-            var blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, processor, dbProvider, stateProvider, storageProvider, transactionStore, _logger);
-            var blockchainProcessor = new BlockchainProcessor(blockTree, sealEngine, transactionStore, difficultyCalculator, blockProcessor, ethereumSigner, _logger);
+            var blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, processor, dbProvider, stateProvider, storageProvider, transactionStore, _logManager);
+            var blockchainProcessor = new BlockchainProcessor(blockTree, sealEngine, transactionStore, difficultyCalculator, blockProcessor, ethereumSigner, _logManager);
 
             /* load ChainSpec and init */
             ChainSpecLoader loader = new ChainSpecLoader(new UnforgivingJsonSerializer());

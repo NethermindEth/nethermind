@@ -31,6 +31,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Mining;
@@ -42,17 +43,14 @@ namespace Ethereum.Test.Base
 {
     public class BlockchainTestBase
     {
-        private static readonly ILogger DefaultLogger = NullLogger.Instance;
-        private static ILogger _stateLogger = DefaultLogger;
-        private static ILogger _evmLogger = DefaultLogger;
-        private static ILogger _chainLogger = DefaultLogger;
+        private static ILogManager _logManager = NullLogManager.Instance;
+        private static ILogger _logger = NullLogger.Instance;
         
-        private static readonly ISealEngine SealEngine = new EthashSealEngine(new Ethash(NullLogger.Instance), NullLogger.Instance); // temporarily keep reusing the same one as otherwise it would recreate cache for each test
+        private static readonly ISealEngine SealEngine = new EthashSealEngine(new Ethash(_logManager), _logManager); // temporarily keep reusing the same one as otherwise it would recreate cache for each test
 
         [SetUp]
         public void Setup()
         {
-            Setup(DefaultLogger);
         }
 
         public static IEnumerable<BlockchainTest> LoadTests(string testSet)
@@ -148,13 +146,6 @@ namespace Ethereum.Test.Base
 
         private class LoggingTraceListener : TraceListener
         {
-            private readonly ILogger _logger;
-
-            public LoggingTraceListener(ILogger logger)
-            {
-                _logger = logger;
-            }
-
             private readonly StringBuilder _line = new StringBuilder();
 
             public override void Write(string message)
@@ -165,24 +156,25 @@ namespace Ethereum.Test.Base
             public override void WriteLine(string message)
             {
                 Write(message);
-                _logger?.Info(_line.ToString());
+                _logger.Info(_line.ToString());
                 _line.Clear();
             }
         }
 
-        protected void Setup(ILogger logger)
+        protected void Setup(ILogManager logManager)
         {
-            _evmLogger = _chainLogger = _stateLogger = logger ?? NullLogger.Instance;
+            _logManager = logManager ?? NullLogManager.Instance;
+            _logger = _logManager.GetClassLogger();
         }
 
         protected async Task RunTest(BlockchainTest test, Stopwatch stopwatch = null)
         {
-            LoggingTraceListener traceListener = new LoggingTraceListener(_chainLogger);
+            LoggingTraceListener traceListener = new LoggingTraceListener();
             // TODO: not supported in .NET Core, need to replace?
 //            Debug.Listeners.Clear();
 //            Debug.Listeners.Add(traceListener);
             
-            IDbProvider dbProvider = new MemDbProvider(_stateLogger);
+            IDbProvider dbProvider = new MemDbProvider(_logManager);
             StateTree stateTree = new StateTree(dbProvider.GetOrCreateStateDb());
             
 
@@ -209,24 +201,24 @@ namespace Ethereum.Test.Base
             IDifficultyCalculator difficultyCalculator = new DifficultyCalculator(specProvider);
             IRewardCalculator rewardCalculator = new RewardCalculator(specProvider);
             
-            IBlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), new MemDb(), specProvider, _chainLogger);
+            IBlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), new MemDb(), specProvider, _logManager);
             IBlockhashProvider blockhashProvider = new BlockhashProvider(blockTree);
             ISignatureValidator signatureValidator = new SignatureValidator(ChainId.MainNet);
             ITransactionValidator transactionValidator = new TransactionValidator(signatureValidator);
-            IHeaderValidator headerValidator = new HeaderValidator(difficultyCalculator, blockTree, SealEngine, specProvider, _chainLogger);
-            IOmmersValidator ommersValidator = new OmmersValidator(blockTree, headerValidator, _chainLogger);
-            IBlockValidator blockValidator = new BlockValidator(transactionValidator, headerValidator, ommersValidator, specProvider, _chainLogger);
-            IStateProvider stateProvider = new StateProvider(stateTree, _stateLogger, dbProvider.GetOrCreateCodeDb());
-            IStorageProvider storageProvider = new StorageProvider(dbProvider, stateProvider, _stateLogger);
+            IHeaderValidator headerValidator = new HeaderValidator(difficultyCalculator, blockTree, SealEngine, specProvider, _logManager);
+            IOmmersValidator ommersValidator = new OmmersValidator(blockTree, headerValidator, _logManager);
+            IBlockValidator blockValidator = new BlockValidator(transactionValidator, headerValidator, ommersValidator, specProvider, _logManager);
+            IStateProvider stateProvider = new StateProvider(stateTree, dbProvider.GetOrCreateCodeDb(), _logManager);
+            IStorageProvider storageProvider = new StorageProvider(dbProvider, stateProvider, _logManager);
             IVirtualMachine virtualMachine = new VirtualMachine(
                 stateProvider,
                 storageProvider,
                 blockhashProvider,
-                _evmLogger);
+                _logManager);
 
-            ISealEngine sealEngine = new EthashSealEngine(new Ethash(NullLogger.Instance), NullLogger.Instance);
+            ISealEngine sealEngine = new EthashSealEngine(new Ethash(_logManager), _logManager);
             ITransactionStore transactionStore = new TransactionStore();
-            IEthereumSigner signer = new EthereumSigner(specProvider, _chainLogger);
+            IEthereumSigner signer = new EthereumSigner(specProvider, _logManager);
             IBlockProcessor blockProcessor = new BlockProcessor(
                 specProvider,
                 blockValidator,
@@ -237,16 +229,16 @@ namespace Ethereum.Test.Base
                     storageProvider,
                     virtualMachine,
                     NullTracer.Instance,
-                    _chainLogger),
+                    _logManager),
                 dbProvider,
                 stateProvider,
                 storageProvider,
                 transactionStore,
-                _chainLogger);
+                _logManager);
 
             IBlockchainProcessor blockchainProcessor = new BlockchainProcessor(blockTree,
                 sealEngine, 
-                transactionStore, difficultyCalculator, blockProcessor, signer, _chainLogger);
+                transactionStore, difficultyCalculator, blockProcessor, signer, _logManager);
 
             InitializeTestState(test, stateProvider, storageProvider, specProvider);
 
@@ -268,7 +260,7 @@ namespace Ethereum.Test.Base
                 }
                 catch (Exception e)
                 {
-                    _chainLogger?.Info($"Invalid RLP ({i})");
+                    _logger?.Info($"Invalid RLP ({i})");
                 }
             }
 
@@ -304,7 +296,7 @@ namespace Ethereum.Test.Base
                 {
                     if (correctRlpsBlocks[i].ExpectedException != null)
                     {
-                        _chainLogger.Info($"Expecting block exception: {correctRlpsBlocks[i].ExpectedException}");    
+                        _logger.Info($"Expecting block exception: {correctRlpsBlocks[i].ExpectedException}");    
                     }
 
                     if (correctRlpsBlocks[i].Block.Hash == null)
@@ -327,7 +319,7 @@ namespace Ethereum.Test.Base
                 }
                 catch (Exception ex)
                 {
-                    _chainLogger?.Info(ex.ToString());
+                    _logger?.Info(ex.ToString());
                 }
             }
 
@@ -398,7 +390,7 @@ namespace Ethereum.Test.Base
 
                 if (differences.Count != differencesBefore)
                 {
-                    _chainLogger?.Info($"ACCOUNT STATE ({accountState.Key}) HAS DIFFERENCES");    
+                    _logger.Info($"ACCOUNT STATE ({accountState.Key}) HAS DIFFERENCES");    
                 }
 
                 differencesBefore = differences.Count;
@@ -414,7 +406,7 @@ namespace Ethereum.Test.Base
 
                 if (differences.Count != differencesBefore)
                 {
-                    _chainLogger?.Info($"ACCOUNT STORAGE ({accountState.Key}) HAS DIFFERENCES");    
+                    _logger.Info($"ACCOUNT STORAGE ({accountState.Key}) HAS DIFFERENCES");    
                 }
             }
 
@@ -452,7 +444,7 @@ namespace Ethereum.Test.Base
 
             foreach (string difference in differences)
             {
-                _chainLogger?.Info(difference);
+                _logger.Info(difference);
             }
 
             Assert.Zero(differences.Count, "differences");

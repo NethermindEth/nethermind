@@ -21,6 +21,7 @@ using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using NSubstitute;
@@ -34,16 +35,16 @@ namespace Nethermind.Store.Test
         private static readonly Keccak Hash1 = Keccak.Compute("1");
         private static readonly Keccak Hash2 = Keccak.Compute("2");
         private readonly Address _address1 = new Address(Hash1);
-        private static readonly ILogger Logger = NullLogger.Instance;
+        private static readonly ILogManager Logger = NullLogManager.Instance;
 
         [Test]
         public void Eip_158_zero_value_transfer_deletes()
         {
             StateTree tree = new StateTree(new MemDb());
-            StateProvider frontierProvider = new StateProvider(tree, Logger, Substitute.For<IDb>());
+            StateProvider frontierProvider = new StateProvider(tree, Substitute.For<IDb>(), Logger);
             frontierProvider.CreateAccount(_address1, 0);
             frontierProvider.Commit(Frontier.Instance);
-            StateProvider provider = new StateProvider(tree, Logger, Substitute.For<IDb>());
+            StateProvider provider = new StateProvider(tree, Substitute.For<IDb>(), Logger);
             provider.UpdateBalance(_address1, 0, SpuriousDragon.Instance);
             provider.Commit(SpuriousDragon.Instance);
             Assert.False(provider.AccountExists(_address1));
@@ -52,7 +53,7 @@ namespace Nethermind.Store.Test
         [Test]
         public void Empty_commit_restore()
         {
-            StateProvider provider = new StateProvider(new StateTree(new MemDb()), Logger, Substitute.For<IDb>());
+            StateProvider provider = new StateProvider(new StateTree(new MemDb()), Substitute.For<IDb>(), Logger);
             provider.Commit(Frontier.Instance);
             provider.Restore(-1);
         }
@@ -60,7 +61,7 @@ namespace Nethermind.Store.Test
         [Test]
         public void Update_balance_on_non_existing_acccount_throws()
         {
-            StateProvider provider = new StateProvider(new StateTree(new MemDb()), Logger, Substitute.For<IDb>());
+            StateProvider provider = new StateProvider(new StateTree(new MemDb()), Substitute.For<IDb>(), Logger);
             Assert.Throws<InvalidOperationException>(() => provider.UpdateBalance(TestObject.AddressA, 1.Ether(), Olympic.Instance));
         }
 
@@ -68,7 +69,7 @@ namespace Nethermind.Store.Test
         [Test]
         public void Is_empty_account()
         {
-            StateProvider provider = new StateProvider(new StateTree(new MemDb()), Logger, Substitute.For<IDb>());
+            StateProvider provider = new StateProvider(new StateTree(new MemDb()), Substitute.For<IDb>(), Logger);
             provider.CreateAccount(_address1, 0);
             provider.Commit(Frontier.Instance);
             Assert.True(provider.IsEmptyAccount(_address1));
@@ -77,7 +78,7 @@ namespace Nethermind.Store.Test
         [Test]
         public void Restore_update_restore()
         {
-            StateProvider provider = new StateProvider(new StateTree(new MemDb()), Logger, Substitute.For<IDb>());
+            StateProvider provider = new StateProvider(new StateTree(new MemDb()), Substitute.For<IDb>(), Logger);
             provider.CreateAccount(_address1, 0);
             provider.UpdateBalance(_address1, 1, Frontier.Instance);
             provider.UpdateBalance(_address1, 1, Frontier.Instance);
@@ -103,7 +104,7 @@ namespace Nethermind.Store.Test
         [Test]
         public void Keep_in_cache()
         {
-            StateProvider provider = new StateProvider(new StateTree(new MemDb()), Logger, Substitute.For<IDb>());
+            StateProvider provider = new StateProvider(new StateTree(new MemDb()), Substitute.For<IDb>(), Logger);
             provider.CreateAccount(_address1, 0);
             provider.Commit(Frontier.Instance);
             provider.GetBalance(_address1);
@@ -121,7 +122,7 @@ namespace Nethermind.Store.Test
         {
             byte[] code = new byte[] {1};
 
-            StateProvider provider = new StateProvider(new StateTree(new MemDb()), Logger, Substitute.For<IDb>());
+            StateProvider provider = new StateProvider(new StateTree(new MemDb()), Substitute.For<IDb>(), Logger);
             provider.CreateAccount(_address1, 1);
             provider.UpdateBalance(_address1, 1, Frontier.Instance);
             provider.IncrementNonce(_address1);

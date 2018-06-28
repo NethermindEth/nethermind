@@ -26,6 +26,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Logging;
 using Nethermind.Mining;
 using Newtonsoft.Json;
 using NUnit.Framework;
@@ -76,7 +77,7 @@ namespace Ethereum.PoW.Test
             Assert.AreEqual(test.HeaderHash, headerHash, "header hash");
 
             // seed is correct
-            Ethash ethash = new Ethash(NullLogger.Instance);
+            Ethash ethash = new Ethash(NullLogManager.Instance);
             uint epoch = Ethash.GetEpoch(blockHeader.Number);
             Assert.AreEqual(test.Seed, Ethash.GetSeedHash(epoch), "seed");
 

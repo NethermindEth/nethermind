@@ -26,6 +26,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
 using Nethermind.HashLib;
 using Nethermind.Store;
@@ -57,9 +58,9 @@ namespace Nethermind.Blockchain
             IDb blockInfoDb,
             IDb receiptsDb,
             ISpecProvider specProvider,
-            ILogger logger)
+            ILogManager logManager)
         {
-            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _blockDb = blockDb;
             _blockInfoDb = blockInfoDb;
             _receiptsDb = receiptsDb;

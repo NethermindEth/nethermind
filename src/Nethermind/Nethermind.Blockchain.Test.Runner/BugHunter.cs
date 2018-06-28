@@ -21,6 +21,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Threading.Tasks;
 using Ethereum.Test.Base;
+using Nethermind.Core.Logging;
 
 namespace Nethermind.Blockchain.Test.Runner
 {
@@ -64,7 +65,7 @@ namespace Nethermind.Blockchain.Test.Runner
                             Directory.CreateDirectory(directoryName);
                         }
 
-                        Setup(logger);
+                        Setup(new OneLoggerLogManager(logger));
                         await RunTest(test);
                     }
                     catch (Exception againEx)

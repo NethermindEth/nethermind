@@ -24,6 +24,7 @@ using System.Security;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
 using Nethermind.KeyStore;
 
@@ -39,12 +40,12 @@ namespace Nethermind.Network.Discovery.RoutingTable
 
         private readonly ConcurrentDictionary<string, Node> _nodes = new ConcurrentDictionary<string, Node>(); 
 
-        public NodeTable(IConfigProvider configurationProvider, INodeFactory nodeFactory, IKeyStore keyStore, ILogger logger, INodeDistanceCalculator nodeDistanceCalculator)
+        public NodeTable(INodeFactory nodeFactory, IKeyStore keyStore, INodeDistanceCalculator nodeDistanceCalculator, IConfigProvider configurationProvider, ILogManager logManager)
         {
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _configurationProvider = configurationProvider.NetworkConfig;
             _nodeFactory = nodeFactory;
             _keyStore = keyStore;
-            _logger = logger;
             _nodeDistanceCalculator = nodeDistanceCalculator; 
         }
 

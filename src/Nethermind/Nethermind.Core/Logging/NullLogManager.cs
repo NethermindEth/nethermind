@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,22 +16,23 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
+using System.Threading;
 
-namespace Nethermind.Core
+namespace Nethermind.Core.Logging
 {
-    public interface ILogger
-    {    
-        void Info(string text);
-        void Warn(string text);
-        void Debug(string text);
-        void Trace(string text);
-        void Error(string text, Exception ex = null);
+    public class NullLogManager : ILogManager
+    {
+        private NullLogManager()
+        {
+        }
 
-        bool IsInfoEnabled { get; }
-        bool IsWarnEnabled { get; }
-        bool IsDebugEnabled { get; }
-        bool IsTraceEnabled { get; }
-        bool IsErrorEnabled { get; }
+        private static NullLogManager _instance;
+        
+        public static NullLogManager Instance => _instance ?? LazyInitializer.EnsureInitialized(ref _instance, () => new NullLogManager());
+
+        public ILogger GetClassLogger()
+        {
+            return NullLogger.Instance;
+        }
     }
 }

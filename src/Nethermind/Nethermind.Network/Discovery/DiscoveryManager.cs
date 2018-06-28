@@ -25,6 +25,7 @@ using System.Threading;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
 using Nethermind.Network.Discovery.Lifecycle;
 using Nethermind.Network.Discovery.Messages;
@@ -45,18 +46,19 @@ namespace Nethermind.Network.Discovery
         private readonly ConcurrentDictionary<MessageTypeKey, ManualResetEvent> _waitingEvents = new ConcurrentDictionary<MessageTypeKey, ManualResetEvent>();
         private IMessageSender _messageSender;
 
-        public DiscoveryManager(
-            ILogger logger,
+        public DiscoveryManager(INodeLifecycleManagerFactory nodeLifecycleManagerFactory,
+            INodeFactory nodeFactory,
+            INodeTable nodeTable,
+            IDiscoveryStorage discoveryStorage,
             IConfigProvider configurationProvider,
-            INodeLifecycleManagerFactory nodeLifecycleManagerFactory,
-            INodeFactory nodeFactory, INodeTable nodeTable, IDiscoveryStorage discoveryStorage)
+            ILogManager logManager)
         {
-            _logger = logger;
-            _configurationProvider = configurationProvider.NetworkConfig;
-            _nodeLifecycleManagerFactory = nodeLifecycleManagerFactory;
-            _nodeFactory = nodeFactory;
-            _nodeTable = nodeTable;
-            _discoveryStorage = discoveryStorage;
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _configurationProvider = configurationProvider?.NetworkConfig ?? throw new ArgumentNullException(nameof(configurationProvider));
+            _nodeLifecycleManagerFactory = nodeLifecycleManagerFactory ?? throw new ArgumentNullException(nameof(nodeLifecycleManagerFactory));
+            _nodeFactory = nodeFactory ?? throw new ArgumentNullException(nameof(nodeFactory));
+            _nodeTable = nodeTable ?? throw new ArgumentNullException(nameof(nodeTable));
+            _discoveryStorage = discoveryStorage ?? throw new ArgumentNullException(nameof(discoveryStorage));
             _nodeLifecycleManagerFactory.DiscoveryManager = this;
         }
 

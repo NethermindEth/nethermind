@@ -24,6 +24,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Store;
@@ -70,13 +71,13 @@ namespace Nethermind.Evm
         private TransactionTrace _trace;
         private TransactionTraceEntry _traceEntry;
 
-        public VirtualMachine(IStateProvider stateProvider, IStorageProvider storageProvider, IBlockhashProvider blockhashProvider, ILogger logger)
+        public VirtualMachine(IStateProvider stateProvider, IStorageProvider storageProvider, IBlockhashProvider blockhashProvider, ILogManager logManager)
         {
-            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-            _state = stateProvider;
-            _storage = storageProvider;
-            _blockhashProvider = blockhashProvider;
-
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _state = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
+            _storage = storageProvider ?? throw new ArgumentNullException(nameof(storageProvider));
+            _blockhashProvider = blockhashProvider ?? throw new ArgumentNullException(nameof(blockhashProvider));
+            
             InitializePrecompiledContracts();
         }
 

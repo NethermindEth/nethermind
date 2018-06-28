@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -29,7 +30,7 @@ namespace Nethermind.Blockchain
 
         public RewardCalculator(ISpecProvider specProvider)
         {
-            _specProvider = specProvider;
+            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         }
 
         public BlockReward[] CalculateRewards(Block block)

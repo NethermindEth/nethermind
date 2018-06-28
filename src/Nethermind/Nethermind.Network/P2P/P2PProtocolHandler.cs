@@ -21,6 +21,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
 using Nethermind.Network.Rlpx;
 
@@ -37,8 +38,8 @@ namespace Nethermind.Network.P2P
             IMessageSerializationService serializer,
             NodeId localNodeId,
             int listenPort,
-            ILogger logger)
-            : base(p2PSession, serializer, logger)
+            ILogManager logManager)
+            : base(p2PSession, serializer, logManager)
         {
             LocalNodeId = localNodeId;
             ListenPort = listenPort;

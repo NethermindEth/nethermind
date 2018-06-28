@@ -26,6 +26,7 @@ using Microsoft.Extensions.CommandLineUtils;
 using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Logging;
 using Nethermind.Core.Specs.ChainSpec;
 using Nethermind.JsonRpc;
 using Nethermind.Network;
@@ -56,7 +57,7 @@ namespace Nethermind.Runner
             app.OnExecute(async () =>
             {
                 var initParams = buildInitParams();
-                Logger = new NLogLogger(initParams.LogFileName, "default");
+                Logger = new NLogLogger(initParams.LogFileName);
 
                 Console.Title = initParams.LogFileName;
 
@@ -120,7 +121,7 @@ namespace Nethermind.Runner
                 ((NetworkConfig)configProvider.NetworkConfig).BootNodes = nodes;
                 ((NetworkConfig)configProvider.NetworkConfig).DbBasePath = initParams.BaseDbPath;
                 
-                //Bootstrap.ConfigureContainer(configProvider, discoveryConfigProvider, PrivateKeyProvider, Logger, initParams);
+                //Bootstrap.ConfigureContainer(configProvider, discoveryConfigProvider, PrivateKeyProvider, LogManager, initParams);
 
                 _ethereumRunner = new EthereumRunner(configProvider, networkHelper);
                 //_ethereumRunner = Bootstrap.ServiceProvider.GetService<IEthereumRunner>();

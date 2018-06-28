@@ -16,8 +16,9 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Collections.Generic;
-using Nethermind.Core;
+using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
 
 namespace Nethermind.Store
@@ -41,9 +42,9 @@ namespace Nethermind.Store
 
         internal Stack<Dictionary<ISnapshotableDb, int>> Snapshots { get; } = new Stack<Dictionary<ISnapshotableDb, int>>();
 
-        public MemDbProvider(ILogger logger)
+        public MemDbProvider(ILogManager logManager)
         {
-            _logger = logger;
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
         public void Restore(int snapshot)

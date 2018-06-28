@@ -27,12 +27,14 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
+using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.JsonRpc.DataModel;
 using Nethermind.KeyStore;
 using Nethermind.Store;
+using NLog;
 using Block = Nethermind.JsonRpc.DataModel.Block;
 using Transaction = Nethermind.JsonRpc.DataModel.Transaction;
 using TransactionReceipt = Nethermind.JsonRpc.DataModel.TransactionReceipt;
@@ -41,25 +43,42 @@ namespace Nethermind.JsonRpc.Module
 {
     public class EthModule : ModuleBase, IEthModule
     {
+        private readonly IEthereumSigner _signer;
         private readonly IJsonSerializer _jsonSerializer;
         private readonly IBlockTree _blockTree;
         private readonly ITransactionStore _transactionStore;
+        private readonly ILogManager _logManager;
         private readonly IDb _db;
         private readonly IStateProvider _stateProvider;
         private readonly IKeyStore _keyStore;
+        private readonly IConfigProvider _configurationProvider;
         private readonly IJsonRpcModelMapper _modelMapper;
         private readonly IReleaseSpec _releaseSpec;
 
-        public EthModule(ILogger logger, IJsonSerializer jsonSerializer, IStateProvider stateProvider, IKeyStore keyStore, IConfigProvider configurationProvider, IBlockTree blockTree, IDb db, IJsonRpcModelMapper modelMapper, IReleaseSpec releaseSpec, ITransactionStore transactionStore) : base(logger, configurationProvider)
+        public EthModule(
+            IEthereumSigner signer,
+            IJsonSerializer jsonSerializer,
+            IStateProvider stateProvider,
+            IKeyStore keyStore,
+            IConfigProvider configurationProvider,
+            IBlockTree blockTree,
+            IDb db,
+            IJsonRpcModelMapper modelMapper,
+            IReleaseSpec releaseSpec,
+            ITransactionStore transactionStore,
+            ILogManager logManager) : base(configurationProvider, logManager)
         {
+            _signer = signer;
             _jsonSerializer = jsonSerializer;
             _stateProvider = stateProvider;
             _keyStore = keyStore;
+            _configurationProvider = configurationProvider;
             _blockTree = blockTree;
             _db = db;
             _modelMapper = modelMapper;
             _releaseSpec = releaseSpec;
             _transactionStore = transactionStore;
+            _logManager = logManager;
         }
 
         public ResultWrapper<string> eth_protocolVersion()
@@ -69,7 +88,7 @@ namespace Nethermind.JsonRpc.Module
             // TODO: this was inccorrect anyway
 //           throw new NotImplementedException();
 //            var version = EthereumNetwork.Main.GetNetworkId().ToString();
-//            Logger.Debug($"eth_protocolVersion request, result: {version}");
+//            LogManager.Debug($"eth_protocolVersion request, result: {version}");
 //            return ResultWrapper<string>.Success(version);
         }
 
@@ -252,7 +271,7 @@ namespace Nethermind.JsonRpc.Module
             var messageText = Encoding.GetEncoding(ConfigurationProvider.JsonRpcConfig.MessageEncoding).GetString(message.Value);
             var signatureText = string.Format(ConfigurationProvider.JsonRpcConfig.SignatureTemplate, messageText.Length, messageText);
             //TODO how to select proper chainId
-            var signer = new EthereumSigner(new SingleReleaseSpecProvider(_releaseSpec, (int)ChainId.DefaultGethPrivateChain), Logger);
+            var signer = _signer;
             var signature = signer.Sign(privateKey.Item1, Keccak.Compute(signatureText));
             Logger.Debug($"eth_sign request {address.ToJson()}, {message.ToJson()}, result: {signature}");
             return ResultWrapper<Data>.Success(new Data(signature.Bytes));

@@ -16,14 +16,14 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.IO;
-using Nethermind.Core;
+using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
 using Nethermind.Store;
 
 namespace Nethermind.Db
 {
-    // TODO: this is a copy paste from MemDbProvider (mainly commit / restore / snapshots), like most snapshotable classes, awaiting some refactoring
     public class RocksDbProvider : IDbProvider
     {
         private readonly ISnapshotableDb _stateDb;
@@ -41,9 +41,9 @@ namespace Nethermind.Db
 
         private readonly ILogger _logger;
 
-        public RocksDbProvider(string dbBasePath, ILogger logger)
+        public RocksDbProvider(string dbBasePath, ILogManager logManager)
         {
-            _logger = logger;
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _stateDb = new SnapshotableDb(new DbOnTheRocks(Path.Combine(dbBasePath, DbOnTheRocks.StateDbPath)));
             _codeDb = new SnapshotableDb(new DbOnTheRocks(Path.Combine(dbBasePath, DbOnTheRocks.CodeDbPath)));
         }
