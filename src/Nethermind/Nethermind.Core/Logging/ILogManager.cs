@@ -16,31 +16,10 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
-using Nethermind.Blockchain;
-using Nethermind.Core;
-using Nethermind.Core.Logging;
-
-namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
+namespace Nethermind.Core.Logging
 {
-    public class Eth63ProtocolHandler : Eth62ProtocolHandler
+    public interface ILogManager
     {
-        public Eth63ProtocolHandler(
-            IP2PSession p2PSession,
-            IMessageSerializationService serializer,
-            ISynchronizationManager sync,
-            ILogManager logManager) : base(p2PSession, serializer, sync, logManager)
-        {
-        }
-        
-        public override byte ProtocolVersion => 63;
-
-        public override int MessageIdSpaceSize => 17; // magic number here following Go
-        
-        public override Type ResolveMessageType(int messageCode)
-        {
-            // TODO:
-            return base.ResolveMessageType(messageCode);
-        }
+        ILogger GetClassLogger();
     }
 }

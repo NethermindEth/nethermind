@@ -26,6 +26,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
 using Nethermind.Network.Rlpx;
 
@@ -62,8 +63,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             IP2PSession p2PSession,
             IMessageSerializationService serializer,
             ISynchronizationManager sync,
-            ILogger logger)
-            : base(p2PSession, serializer, logger)
+            ILogManager logManager)
+            : base(p2PSession, serializer, logManager)
         {
             _sync = sync;
         }

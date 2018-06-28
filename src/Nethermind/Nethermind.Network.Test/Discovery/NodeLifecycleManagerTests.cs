@@ -22,6 +22,7 @@ using System.Net;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
 using Nethermind.KeyStore;
 using Nethermind.Network.Discovery;
@@ -56,7 +57,7 @@ namespace Nethermind.Network.Test.Discovery
         {
             SetupNodeIds();
 
-            var logger = NullLogger.Instance;
+            var logManager = NullLogManager.Instance;
             //setting config to store 3 nodes in a bucket and for table to have one bucket//setting config to store 3 nodes in a bucket and for table to have one bucket
 
             _configurationProvider = new JsonConfigProvider();
@@ -67,15 +68,15 @@ namespace Nethermind.Network.Test.Discovery
             _nodeFactory = new NodeFactory();
             var calculator = new NodeDistanceCalculator(_configurationProvider);
 
-            _nodeTable = new NodeTable(_configurationProvider, _nodeFactory, new FileKeyStore(_configurationProvider, new JsonSerializer(logger), new AesEncrypter(_configurationProvider, logger), new CryptoRandom(), logger), logger, calculator);
+            _nodeTable = new NodeTable(_nodeFactory, new FileKeyStore(_configurationProvider, new JsonSerializer(logManager), new AesEncrypter(_configurationProvider, logManager), new CryptoRandom(), logManager), calculator, _configurationProvider, logManager);
             _nodeTable.Initialize();
 
-            var evictionManager = new EvictionManager(_nodeTable, logger);
-            var lifecycleFactory = new NodeLifecycleManagerFactory(_nodeFactory, _nodeTable, logger, _configurationProvider, new DiscoveryMessageFactory(_configurationProvider), evictionManager, new NodeStatsProvider(_configurationProvider));
+            var evictionManager = new EvictionManager(_nodeTable, logManager);
+            var lifecycleFactory = new NodeLifecycleManagerFactory(_nodeFactory, _nodeTable, new DiscoveryMessageFactory(_configurationProvider), evictionManager, new NodeStatsProvider(_configurationProvider), _configurationProvider, logManager);
 
             _udpClient = Substitute.For<IMessageSender>();
 
-            _discoveryManager = new DiscoveryManager(logger, _configurationProvider, lifecycleFactory, _nodeFactory, _nodeTable, new DiscoveryStorage(_configurationProvider, _nodeFactory, logger, new PerfService(logger)));
+            _discoveryManager = new DiscoveryManager(lifecycleFactory, _nodeFactory, _nodeTable, new DiscoveryStorage(_configurationProvider, _nodeFactory, logManager, new PerfService(logManager)), _configurationProvider, logManager);
             _discoveryManager.MessageSender = _udpClient;
         }
 

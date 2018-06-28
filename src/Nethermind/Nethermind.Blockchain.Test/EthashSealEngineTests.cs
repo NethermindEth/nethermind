@@ -22,6 +22,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Logging;
 using Nethermind.Mining;
 using NUnit.Framework;
 
@@ -43,7 +44,7 @@ namespace Nethermind.Blockchain.Test
             header.Bloom = Bloom.Empty;
 
             Block block = new Block(header);
-            EthashSealEngine ethashSealEngine = new EthashSealEngine(new Ethash(NullLogger.Instance), NullLogger.Instance);
+            EthashSealEngine ethashSealEngine = new EthashSealEngine(new Ethash(NullLogManager.Instance), NullLogManager.Instance);
             await ethashSealEngine.MineAsync(new CancellationTokenSource(TimeSpan.FromSeconds(5)).Token, block, validNonce - 10);
 
             Assert.AreEqual(validNonce, block.Header.Nonce);
@@ -65,7 +66,7 @@ namespace Nethermind.Blockchain.Test
             header.Bloom = Bloom.Empty;
 
             Block block = new Block(header);
-            EthashSealEngine ethashSealEngine = new EthashSealEngine(new Ethash(NullLogger.Instance), NullLogger.Instance);
+            EthashSealEngine ethashSealEngine = new EthashSealEngine(new Ethash(NullLogManager.Instance), NullLogManager.Instance);
             await ethashSealEngine.MineAsync(new CancellationTokenSource(TimeSpan.FromMilliseconds(2000)).Token, block, badNonce).ContinueWith(t =>
             {
                 Assert.True(t.IsCanceled);
@@ -85,8 +86,8 @@ namespace Nethermind.Blockchain.Test
             blockHeader.Hash = BlockHeader.CalculateHash(blockHeader);
             Block block = new Block(blockHeader);
 
-            IEthash ethash = new Ethash(NullLogger.Instance);
-            EthashSealEngine ethashSealEngine = new EthashSealEngine(ethash, NullLogger.Instance);
+            IEthash ethash = new Ethash(NullLogManager.Instance);
+            EthashSealEngine ethashSealEngine = new EthashSealEngine(ethash, NullLogManager.Instance);
             await ethashSealEngine.MineAsync(CancellationToken.None, block, 7217048144105167954);
 
             Assert.True(ethash.Validate(block.Header));

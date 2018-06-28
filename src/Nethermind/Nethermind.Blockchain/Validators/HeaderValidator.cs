@@ -20,6 +20,7 @@ using System;
 using System.Numerics;
 using Nethermind.Blockchain.Difficulty;
 using Nethermind.Core;
+using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
 
 namespace Nethermind.Blockchain.Validators
@@ -34,12 +35,12 @@ namespace Nethermind.Blockchain.Validators
         private readonly IDifficultyCalculator _difficultyCalculator;
         private readonly IBlockTree _blockTree;
 
-        public HeaderValidator(IDifficultyCalculator difficultyCalculator, IBlockTree blockTree, ISealEngine sealEngine, ISpecProvider specProvider, ILogger logger)
+        public HeaderValidator(IDifficultyCalculator difficultyCalculator, IBlockTree blockTree, ISealEngine sealEngine, ISpecProvider specProvider, ILogManager logManager)
         {
-            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-            _difficultyCalculator = difficultyCalculator;
-            _blockTree = blockTree;
-            _sealEngine = sealEngine;
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _difficultyCalculator = difficultyCalculator ?? throw new ArgumentNullException(nameof(difficultyCalculator));
+            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+            _sealEngine = sealEngine ?? throw new ArgumentNullException(nameof(sealEngine));
             _daoBlockNumber = specProvider?.DaoBlockNumber;
         }
         
@@ -58,6 +59,7 @@ namespace Nethermind.Blockchain.Validators
                     
                     return isGenesisValid;
                 }
+                
                 _logger.Warn($"Orphan block, could not find parent ({header.Hash})");
                 return false;
             }

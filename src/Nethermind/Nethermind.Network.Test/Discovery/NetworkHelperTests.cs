@@ -1,4 +1,5 @@
 ﻿using Nethermind.Core;
+using Nethermind.Core.Logging;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.Discovery

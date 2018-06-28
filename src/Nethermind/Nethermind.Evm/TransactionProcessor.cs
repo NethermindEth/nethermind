@@ -24,6 +24,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
 using Nethermind.Store;
 
@@ -39,9 +40,9 @@ namespace Nethermind.Evm
         private readonly IVirtualMachine _virtualMachine;
         private readonly ITransactionTracer _tracer;
 
-        public TransactionProcessor(ISpecProvider specProvider, IStateProvider stateProvider, IStorageProvider storageProvider, IVirtualMachine virtualMachine, ITransactionTracer tracer, ILogger logger)
+        public TransactionProcessor(ISpecProvider specProvider, IStateProvider stateProvider, IStorageProvider storageProvider, IVirtualMachine virtualMachine, ITransactionTracer tracer, ILogManager logManager)
         {
-            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _tracer = tracer ?? throw new ArgumentNullException(nameof(tracer));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _virtualMachine = virtualMachine ?? throw new ArgumentNullException(nameof(virtualMachine));

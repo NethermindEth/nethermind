@@ -23,6 +23,7 @@ using System.Linq;
 using System.Reflection;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
 using Nethermind.JsonRpc.DataModel;
 using Nethermind.JsonRpc.Module;
@@ -36,12 +37,12 @@ namespace Nethermind.JsonRpc
         private readonly IJsonSerializer _jsonSerializer;
         private readonly IModuleProvider _moduleProvider;
 
-        public JsonRpcService(IConfigProvider configurationProvider, ILogger logger, IJsonSerializer jsonSerializer, IModuleProvider moduleProvider)
+        public JsonRpcService(IJsonSerializer jsonSerializer, IModuleProvider moduleProvider, IConfigProvider configurationProvider, ILogManager logManager)
         {
-            _configurationProvider = configurationProvider;
-            _logger = logger;
-            _jsonSerializer = jsonSerializer;
-            _moduleProvider = moduleProvider;
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _configurationProvider = configurationProvider ?? throw new ArgumentNullException(nameof(configurationProvider));
+            _jsonSerializer = jsonSerializer ?? throw new ArgumentNullException(nameof(jsonSerializer));
+            _moduleProvider = moduleProvider ?? throw new ArgumentNullException(nameof(moduleProvider));
         }
 
         public string SendRequest(string request)

@@ -22,6 +22,7 @@ using System.Threading;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Logging;
 using Nethermind.KeyStore;
 using Nethermind.Network.Discovery;
 using Nethermind.Network.Discovery.Lifecycle;
@@ -52,7 +53,7 @@ namespace Nethermind.Network.Test.Discovery
         {
             var privateKey = new PrivateKey(new Hex(TestPrivateKeyHex));
             _publicKey = privateKey.PublicKey;
-            var logger = NullLogger.Instance;
+            var logManager = NullLogManager.Instance;
             //var config = new NetworkConfigurationProvider(new NetworkHelper(logger)) { PongTimeout = 100 };
             var config = new JsonConfigProvider();
             ((NetworkConfig)config.NetworkConfig).PongTimeout = 100;
@@ -61,15 +62,15 @@ namespace Nethermind.Network.Test.Discovery
             _nodeFactory = new NodeFactory();
             var calculator = new NodeDistanceCalculator(config);
 
-            _nodeTable = new NodeTable(config, _nodeFactory, new FileKeyStore(config, new JsonSerializer(logger), new AesEncrypter(config, logger), new CryptoRandom(), logger), logger, calculator);
+            _nodeTable = new NodeTable(_nodeFactory, new FileKeyStore(config, new JsonSerializer(logManager), new AesEncrypter(config, logManager), new CryptoRandom(), logManager), calculator, config, logManager);
             _nodeTable.Initialize();
 
-            var evictionManager = new EvictionManager(_nodeTable, logger);
-            var lifecycleFactory = new NodeLifecycleManagerFactory(_nodeFactory, _nodeTable, logger, config, new DiscoveryMessageFactory(config), evictionManager, new NodeStatsProvider(config));
+            var evictionManager = new EvictionManager(_nodeTable, logManager);
+            var lifecycleFactory = new NodeLifecycleManagerFactory(_nodeFactory, _nodeTable, new DiscoveryMessageFactory(config), evictionManager, new NodeStatsProvider(config), config, logManager);
 
             _nodes = new[] { _nodeFactory.CreateNode("192.168.1.18", 1), _nodeFactory.CreateNode("192.168.1.19", 2) };
 
-            _discoveryManager = new DiscoveryManager(logger, config, lifecycleFactory, _nodeFactory, _nodeTable, new DiscoveryStorage(config, _nodeFactory, logger, new PerfService(logger)));
+            _discoveryManager = new DiscoveryManager(lifecycleFactory, _nodeFactory, _nodeTable, new DiscoveryStorage(config, _nodeFactory, logManager, new PerfService(logManager)), config, logManager);
             _discoveryManager.MessageSender = _messageSender;
         }
 

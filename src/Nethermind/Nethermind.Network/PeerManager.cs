@@ -26,6 +26,7 @@ using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
 using Nethermind.Network.Discovery;
 using Nethermind.Network.Discovery.RoutingTable;
@@ -53,8 +54,8 @@ namespace Nethermind.Network
         private Timer _pingTimer;
         private readonly bool _isDiscoveryEnabled;
         private int _logCounter = 1;
-        private bool _isInitialized = false;
-        private bool _isPeerUpdateInProgress = false;
+        private bool _isInitialized;
+        private bool _isPeerUpdateInProgress;
         private readonly object _isPeerUpdateInProgressLock = new object();
         private readonly IPerfService _perfService;
 
@@ -64,13 +65,20 @@ namespace Nethermind.Network
         //TODO Timer to periodically check active peers and move new to active based on max size and compatibility - stats and capabilities + update peers in synchronization manager
         //TODO Remove active and synch on disconnect
         //TODO Update Stats on disconnect, other events
-        //TODO Move Discover to Network
         //TODO update runner to run discovery
 
-        public PeerManager(IRlpxPeer localPeer, IDiscoveryManager discoveryManager, ILogger logger, IConfigProvider configurationProvider, ISynchronizationManager synchronizationManager, INodeStatsProvider nodeStatsProvider, IPeerStorage peerStorage, IPerfService perfService, INodeFactory nodeFactory)
+        public PeerManager(IRlpxPeer localPeer,
+            IDiscoveryManager discoveryManager,
+            ISynchronizationManager synchronizationManager,
+            INodeStatsProvider nodeStatsProvider,
+            IPeerStorage peerStorage,
+            INodeFactory nodeFactory,
+            IConfigProvider configurationProvider,
+            IPerfService perfService,
+            ILogManager logManager)
         {
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _localPeer = localPeer;
-            _logger = logger;
             _configurationProvider = configurationProvider.NetworkConfig;
             _synchronizationManager = synchronizationManager;
             _nodeStatsProvider = nodeStatsProvider;

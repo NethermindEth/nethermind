@@ -24,6 +24,7 @@ using System.Numerics;
 using Ethereum.Test.Base;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
 using Newtonsoft.Json;
 using NUnit.Framework;
@@ -38,7 +39,7 @@ namespace Ethereum.KeyAddress.Test
         public void SetUp()
         {
             Directory.SetCurrentDirectory(AppDomain.CurrentDomain.BaseDirectory);
-            _signer = new EthereumSigner(OlympicSpecProvider.Instance, NullLogger.Instance);
+            _signer = new EthereumSigner(OlympicSpecProvider.Instance, NullLogManager.Instance);
         }
 
         private static IEnumerable<KeyAddressTest> LoadTests()

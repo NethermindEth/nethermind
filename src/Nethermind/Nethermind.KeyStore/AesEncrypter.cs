@@ -20,7 +20,7 @@ using System;
 using System.IO;
 using System.Security.Cryptography;
 using Nethermind.Config;
-using Nethermind.Core;
+using Nethermind.Core.Logging;
 
 namespace Nethermind.KeyStore
 {
@@ -29,10 +29,10 @@ namespace Nethermind.KeyStore
         private readonly IKeystoreConfig _configurationProvider;
         private readonly ILogger _logger;
 
-        public AesEncrypter(IConfigProvider configurationProvider, ILogger logger)
+        public AesEncrypter(IConfigProvider configurationProvider, ILogManager logManager)
         {
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _configurationProvider = configurationProvider.KeystoreConfig;
-            _logger = logger;
         }
 
         public byte[] Encrypt(byte[] content, byte[] key, byte[] iv, string cipherType)

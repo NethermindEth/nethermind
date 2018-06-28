@@ -27,6 +27,7 @@ using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Logging;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.Discovery;
 using Nethermind.Network.Discovery.Messages;
@@ -203,7 +204,7 @@ namespace Nethermind.Network.Test.Discovery
 
         private void InitializeChannel(IDatagramChannel channel, IDiscoveryManager discoveryManager, IMessageSerializationService service)
         {
-            var handler = new NettyDiscoveryHandler(new SimpleConsoleLogger(), discoveryManager, channel, service);
+            var handler = new NettyDiscoveryHandler(discoveryManager, channel, service, new SimpleConsoleLogger());
             handler.OnChannelActivated += (x, y) =>
             {
                 _channelActivatedCounter++;

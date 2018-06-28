@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,29 +16,14 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Collections.Generic;
-using DotNetty.Codecs;
-using DotNetty.Transport.Channels;
-using Nethermind.Core;
-using Nethermind.Core.Logging;
-using Snappy;
-
-namespace Nethermind.Network.Rlpx
+namespace Nethermind.Core.Logging
 {
-    public class SnappyEncoder : MessageToMessageEncoder<Packet>
+    public enum LogLevel
     {
-        private readonly ILogger _logger;
-
-        public SnappyEncoder(ILogger logger)
-        {
-            _logger = logger;
-        }
-        
-        protected override void Encode(IChannelHandlerContext context, Packet message, List<object> output)
-        {
-            _logger.Debug($"Compressing with Snappy a message of length {message.Data.Length}");
-            message.Data = SnappyCodec.Compress(message.Data); 
-            output.Add(message);
-        }
+        Error = 0,
+        Warn = 1,
+        Info = 2,
+        Debug = 3,
+        Trace = 4
     }
 }

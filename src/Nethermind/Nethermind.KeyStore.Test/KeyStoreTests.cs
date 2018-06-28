@@ -23,6 +23,7 @@ using System.Security;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
 using NUnit.Framework;
 
@@ -56,7 +57,7 @@ namespace Nethermind.KeyStore.Test
 
             _configurationProvider = new JsonConfigProvider();
 
-            ILogger logger = NullLogger.Instance;
+            ILogManager logger = NullLogManager.Instance;
             _serializer = new JsonSerializer(logger);
             _cryptoRandom = new CryptoRandom();
             _store = new FileKeyStore(_configurationProvider, _serializer, new AesEncrypter(_configurationProvider, logger), _cryptoRandom, logger);

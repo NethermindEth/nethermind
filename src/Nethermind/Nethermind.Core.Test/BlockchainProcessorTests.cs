@@ -28,6 +28,7 @@ using Nethermind.Blockchain.Difficulty;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
+using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Specs.ChainSpec;
 using Nethermind.Evm;
@@ -46,7 +47,7 @@ namespace Nethermind.Core.Test
             TimeSpan miningDelay = TimeSpan.FromMilliseconds(50);
             
             /* logging & instrumentation */
-            var logger = new SimpleConsoleLogger();
+            var logger = new OneLoggerLogManager(new SimpleConsoleLogger());
 
             /* spec */
             var sealEngine = new FakeSealEngine(miningDelay);
@@ -66,7 +67,7 @@ namespace Nethermind.Core.Test
             var codeDb = new MemDb();
             var stateDb = new MemDb();
             var stateTree = new StateTree(stateDb);
-            var stateProvider = new StateProvider(stateTree, logger, codeDb);
+            var stateProvider = new StateProvider(stateTree, codeDb, logger);
             var storageDbProvider = new MemDbProvider(logger);
             var storageProvider = new StorageProvider(storageDbProvider, stateProvider, logger);
 
@@ -83,7 +84,7 @@ namespace Nethermind.Core.Test
             /* load ChainSpec and init */
             ChainSpecLoader loader = new ChainSpecLoader(new UnforgivingJsonSerializer());
             string path = Path.Combine(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, @"..\..\..\..\Chains", "ropsten.json"));
-            logger.Info($"Loading ChainSpec from {path}");
+            logger.GetClassLogger().Info($"Loading ChainSpec from {path}");
             ChainSpec chainSpec = loader.Load(File.ReadAllBytes(path));
             foreach (KeyValuePair<Address, BigInteger> allocation in chainSpec.Allocations)
             {

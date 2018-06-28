@@ -19,6 +19,7 @@
 using System;
 using System.IO;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
 using NUnit.Framework;
 
@@ -47,7 +48,7 @@ namespace Nethermind.Core.Test
         [Test]
         public void Sign_and_recover()
         {
-            EthereumSigner ethereumSigner = new EthereumSigner(OlympicSpecProvider.Instance, NullLogger.Instance);
+            EthereumSigner ethereumSigner = new EthereumSigner(OlympicSpecProvider.Instance, NullLogManager.Instance);
 
             Keccak message = Keccak.Compute("Test message");
             PrivateKey privateKey = new PrivateKey(_cryptoRandom.GenerateRandomBytes(32));

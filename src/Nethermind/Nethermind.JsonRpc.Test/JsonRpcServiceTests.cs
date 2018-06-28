@@ -21,6 +21,7 @@ using System.Linq;
 using System.Numerics;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
 using Nethermind.JsonRpc.DataModel;
 using Nethermind.JsonRpc.Module;
@@ -37,14 +38,14 @@ namespace Nethermind.JsonRpc.Test
         private IJsonRpcService _jsonRpcService;
         private IConfigProvider _configurationProvider;
         private IJsonSerializer _jsonSerializer;
-        private ILogger _logger;
+        private ILogManager _logManager;
 
         [SetUp]
         public void Initialize()
         {
             _configurationProvider = new JsonConfigProvider();         
-            _logger = NullLogger.Instance;
-            _jsonSerializer = new JsonSerializer(_logger);
+            _logManager = NullLogManager.Instance;
+            _jsonSerializer = new JsonSerializer(_logManager);
         }
 
         [Test]
@@ -59,8 +60,8 @@ namespace Nethermind.JsonRpc.Test
 
             var moduleProvider = new ModuleProvider(_configurationProvider, netModule, ethModule, web3Module, shhModule);
 
-            _jsonSerializer = new JsonSerializer(_logger);
-            _jsonRpcService = new JsonRpcService(_configurationProvider, _logger, _jsonSerializer, moduleProvider);
+            _jsonSerializer = new JsonSerializer(_logManager);
+            _jsonRpcService = new JsonRpcService(_jsonSerializer, moduleProvider, _configurationProvider, _logManager);
 
             var requestJson = GetJsonRequest("net_peerCount", null); 
             var rawResponse = _jsonRpcService.SendRequest(requestJson);
@@ -81,8 +82,8 @@ namespace Nethermind.JsonRpc.Test
 
             var moduleProvider = new ModuleProvider(_configurationProvider, netModule, ethModule, web3Module, shhModule);
 
-            _jsonSerializer = new JsonSerializer(_logger);
-            _jsonRpcService = new JsonRpcService(_configurationProvider, _logger, _jsonSerializer, moduleProvider);
+            _jsonSerializer = new JsonSerializer(_logManager);
+            _jsonRpcService = new JsonRpcService(_jsonSerializer, moduleProvider, _configurationProvider, _logManager);
 
             var requestJson = GetJsonRequest("web3_sha3", new[] { "0x68656c6c6f20776f726c64" });
             var rawResponse = _jsonRpcService.SendRequest(requestJson);
@@ -101,8 +102,8 @@ namespace Nethermind.JsonRpc.Test
 
             var moduleProvider = new ModuleProvider(_configurationProvider, netModule, ethModule, web3Module, shhModule);
 
-            _jsonSerializer = new JsonSerializer(_logger);
-            _jsonRpcService = new JsonRpcService(_configurationProvider, _logger, _jsonSerializer, moduleProvider);
+            _jsonSerializer = new JsonSerializer(_logManager);
+            _jsonRpcService = new JsonRpcService(_jsonSerializer, moduleProvider, _configurationProvider, _logManager);
 
             var requestJson = GetJsonRequest("eth_getBlockByNumber", new[] {"0x1b4", "true"});
             var rawResponse = _jsonRpcService.SendRequest(requestJson);
@@ -122,8 +123,8 @@ namespace Nethermind.JsonRpc.Test
 
             var moduleProvider = new ModuleProvider(_configurationProvider, netModule, ethModule, web3Module, shhModule);
 
-            _jsonSerializer = new JsonSerializer(_logger);
-            _jsonRpcService = new JsonRpcService(_configurationProvider, _logger, _jsonSerializer, moduleProvider);
+            _jsonSerializer = new JsonSerializer(_logManager);
+            _jsonRpcService = new JsonRpcService(_jsonSerializer, moduleProvider, _configurationProvider, _logManager);
 
             var requestJson = GetJsonRequest("eth_getWork", null);
             var rawResponse = _jsonRpcService.SendRequest(requestJson);
@@ -144,8 +145,8 @@ namespace Nethermind.JsonRpc.Test
 
             var moduleProvider = new ModuleProvider(_configurationProvider, netModule, ethModule, web3Module, shhModule);
 
-            _jsonSerializer = new JsonSerializer(_logger);
-            _jsonRpcService = new JsonRpcService(_configurationProvider, _logger, _jsonSerializer, moduleProvider);
+            _jsonSerializer = new JsonSerializer(_logManager);
+            _jsonRpcService = new JsonRpcService(_jsonSerializer, moduleProvider, _configurationProvider, _logManager);
 
             var requestJson = GetJsonRequest("net_version", null);
             var rawResponse = _jsonRpcService.SendRequest(requestJson);
@@ -169,8 +170,8 @@ namespace Nethermind.JsonRpc.Test
 
             var moduleProvider = new ModuleProvider(_configurationProvider, netModule, ethModule, web3Module, shhModule);
 
-            _jsonSerializer = new JsonSerializer(_logger);
-            _jsonRpcService = new JsonRpcService(_configurationProvider, _logger, _jsonSerializer, moduleProvider);
+            _jsonSerializer = new JsonSerializer(_logManager);
+            _jsonRpcService = new JsonRpcService(_jsonSerializer, moduleProvider, _configurationProvider, _logManager);
 
             var requestJson = GetJsonRequest("incorrect_method", null);
             var rawResponse = _jsonRpcService.SendRequest(requestJson);
@@ -196,8 +197,8 @@ namespace Nethermind.JsonRpc.Test
 
             var moduleProvider = new ModuleProvider(_configurationProvider, netModule, ethModule, web3Module, shhModule);
 
-            _jsonSerializer = new JsonSerializer(_logger);
-            _jsonRpcService = new JsonRpcService(_configurationProvider, _logger, _jsonSerializer, moduleProvider);
+            _jsonSerializer = new JsonSerializer(_logManager);
+            _jsonRpcService = new JsonRpcService(_jsonSerializer, moduleProvider, _configurationProvider, _logManager);
 
             var netRequestJson = GetJsonRequest("net_version", null);
             var ethRequestJson = GetJsonRequest("eth_protocolVersion", null);

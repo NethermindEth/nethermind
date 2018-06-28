@@ -22,6 +22,7 @@ using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Store;
@@ -35,11 +36,11 @@ namespace Nethermind.Evm.Test
         public VirtualMachineTests()
         {
             _spec = RopstenSpecProvider.Instance;
-            ILogger logger = NullLogger.Instance;
+            ILogManager logger = NullLogManager.Instance;
             IDb codeDb = new MemDb();
             _stateDb = new SnapshotableDb(new MemDb());
             StateTree stateTree = new StateTree(_stateDb);
-            _stateProvider = new StateProvider(stateTree, logger, codeDb);
+            _stateProvider = new StateProvider(stateTree, codeDb, logger);
             _storageDbProvider = new MemDbProvider(logger);
             _storageProvider = new StorageProvider(_storageDbProvider, _stateProvider, logger);
             _ethereumSigner = new EthereumSigner(_spec, logger);

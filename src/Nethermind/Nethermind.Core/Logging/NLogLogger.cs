@@ -21,27 +21,22 @@ using System.IO;
 using System.Linq;
 using NLog.Targets;
 
-namespace Nethermind.Core
+namespace Nethermind.Core.Logging
 {
     public class NLogLogger : ILogger
     {
-        private readonly string _loggerName;
         public bool IsErrorEnabled { get; }
         public bool IsWarnEnabled { get; }
         public bool IsInfoEnabled { get; }
         public bool IsDebugEnabled { get; }
         public bool IsTraceEnabled { get; }
 
-        private NLog.Logger _logger;
+        // ReSharper disable once InconsistentNaming
+        internal NLog.Logger _logger;
 
-        public void ChangeLogger(string newLoggerName)
+        public NLogLogger(string fileName)
         {
-            _logger = newLoggerName == null ? NLog.LogManager.GetLogger("default") : NLog.LogManager.GetLogger(newLoggerName);
-        }
-
-        public NLogLogger(string fileName, string loggerName = null)
-        {
-            _loggerName = loggerName;
+            _logger = NLog.LogManager.GetLogger(StackTraceUsageUtils.GetClassFullName());
             if (!Directory.Exists("logs"))
             {
                 Directory.CreateDirectory("logs");
@@ -61,7 +56,6 @@ namespace Nethermind.Core
                 }
             }
 
-            ChangeLogger(loggerName);
             if (NLog.LogManager.Configuration.AllTargets.SingleOrDefault(t => t.Name == "file") is FileTarget target)
             {
                 target.FileName = Path.Combine("logs", fileName);
@@ -73,15 +67,6 @@ namespace Nethermind.Core
             IsDebugEnabled = _logger.IsDebugEnabled;
             IsTraceEnabled = _logger.IsTraceEnabled;
             IsErrorEnabled = _logger.IsErrorEnabled || _logger.IsFatalEnabled;
-        }
-
-        public void LogLoggerInfo()
-        {
-//            Trace($"{_loggerName} TRACE enabled");
-//            Debug($"{_loggerName} DEBUG enabled");
-//            Info($"{_loggerName} INFO enabled");
-//            Warn($"{_loggerName} WARN enabled");
-//            Error($"{_loggerName} ERROR enabled");
         }
 
         public void Log(string text)

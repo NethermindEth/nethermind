@@ -17,6 +17,7 @@
  */
 
 using Nethermind.Core;
+using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
 using Nethermind.Network.P2P;
 using Nethermind.Network.Rlpx;
@@ -52,7 +53,7 @@ namespace Nethermind.Network.Test.P2P
                 _serializer,
                 new NodeId(NetTestVectors.StaticKeyA.PublicKey), 
                 ListenPort,
-                NullLogger.Instance);
+                NullLogManager.Instance);
         }
 
         [Test]

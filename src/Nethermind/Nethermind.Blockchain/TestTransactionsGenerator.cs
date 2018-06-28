@@ -21,6 +21,7 @@ using System.Timers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Logging;
 
 namespace Nethermind.Blockchain
 {
@@ -42,12 +43,12 @@ namespace Nethermind.Blockchain
             return _txDelay + TimeSpan.FromMilliseconds((_random.Next((int)_txDelay.TotalMilliseconds) - (int)_txDelay.TotalMilliseconds / 2));
         }
         
-        public TestTransactionsGenerator(ITransactionStore store, IEthereumSigner signer, TimeSpan txDelay, ILogger logger)
+        public TestTransactionsGenerator(ITransactionStore store, IEthereumSigner signer, TimeSpan txDelay, ILogManager logManager)
         {
-            _store = store;
-            _signer = signer;
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _store = store ?? throw new ArgumentNullException(nameof(store));
+            _signer = signer ?? throw new ArgumentNullException(nameof(signer));
             _txDelay = txDelay;
-            _logger = logger;
 
             if (txDelay > TimeSpan.FromMilliseconds(0))
             {

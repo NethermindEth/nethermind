@@ -16,8 +16,10 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Linq;
 using Nethermind.Core;
+using Nethermind.Core.Logging;
 
 namespace Nethermind.Blockchain.Validators
 {
@@ -27,11 +29,11 @@ namespace Nethermind.Blockchain.Validators
         private readonly IHeaderValidator _headerValidator;
         private readonly ILogger _logger;
 
-        public OmmersValidator(IBlockTree blockTree, IHeaderValidator headerValidator, ILogger logger)
+        public OmmersValidator(IBlockTree blockTree, IHeaderValidator headerValidator, ILogManager logManager)
         {
-            _blockTree = blockTree;
-            _headerValidator = headerValidator;
-            _logger = logger;
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+            _headerValidator = headerValidator ?? throw new ArgumentNullException(nameof(headerValidator));
         }
         
         public bool Validate(BlockHeader header, BlockHeader[] ommers)

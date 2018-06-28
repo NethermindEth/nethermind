@@ -19,7 +19,7 @@
 using System;
 using System.IO;
 using System.Text;
-using Nethermind.Core;
+using Nethermind.Core.Logging;
 
 namespace Nethermind.Blockchain.Test.Runner
 {

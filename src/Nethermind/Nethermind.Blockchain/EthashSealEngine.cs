@@ -23,6 +23,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Logging;
 using Nethermind.Mining;
 
 [assembly: InternalsVisibleTo("Nethermind.Blockchain.Test")]
@@ -34,10 +35,10 @@ namespace Nethermind.Blockchain
         private readonly IEthash _ethash;
         private readonly ILogger _logger;
 
-        public EthashSealEngine(IEthash ethash, ILogger logger)
+        public EthashSealEngine(IEthash ethash, ILogManager logManager)
         {
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager)); 
             _ethash = ethash;
-            _logger = logger;
         }
 
         public BigInteger MinGasPrice { get; set; } = 0;

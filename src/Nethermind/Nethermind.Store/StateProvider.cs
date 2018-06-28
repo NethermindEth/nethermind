@@ -22,13 +22,13 @@ using System.Numerics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
 
 [assembly: InternalsVisibleTo("Nethermind.Store.Test")]
 
 namespace Nethermind.Store
 {
-    // TODO: separate CodeProvider out?
     public class StateProvider : IStateProvider
     {
         private const int StartCapacity = 8;
@@ -47,11 +47,11 @@ namespace Nethermind.Store
         private Change[] _changes = new Change[StartCapacity];
         private int _currentPosition = -1;
 
-        public StateProvider(StateTree stateTree, ILogger logger, IDb codeDb)
+        public StateProvider(StateTree stateTree, IDb codeDb, ILogManager logManager)
         {
-            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-            _codeDb = codeDb;
-            _state = stateTree;
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
+            _state = stateTree ?? throw new ArgumentNullException(nameof(stateTree));
         }
 
         public Keccak StateRoot

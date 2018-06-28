@@ -24,6 +24,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Logging;
 
 [assembly: InternalsVisibleTo("Nethermind.Mining.Test")]
 
@@ -33,9 +34,9 @@ namespace Nethermind.Mining
     {
         private readonly ILogger _logger;
 
-        public Ethash(ILogger logger)
+        public Ethash(ILogManager logManager)
         {
-            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
         private readonly LruCache<uint, IEthashDataSet> _cacheCache = new LruCache<uint, IEthashDataSet>(2);

@@ -22,6 +22,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -52,7 +53,8 @@ namespace Nethermind.Network.Test
         {
             /* tools */
             var cryptoRandom = new CryptoRandom();
-            var logger = new TestLogger();
+            var testLogger = new TestLogger();
+            var logManager = new OneLoggerLogManager(testLogger);
             
             /* rlpx + p2p + eth */
             _keyA = TestObject.PrivateKeyA;
@@ -64,8 +66,8 @@ namespace Nethermind.Network.Test
             
             var serializationService = Build.A.SerializationService().WithEncryptionHandshake().WithP2P().WithEth().TestObject;
 
-            var encryptionHandshakeServiceA = new EncryptionHandshakeService(serializationService, eciesCipher, cryptoRandom, signer, _keyA, logger);
-            var encryptionHandshakeServiceB = new EncryptionHandshakeService(serializationService, eciesCipher, cryptoRandom, signer, _keyB, logger);
+            var encryptionHandshakeServiceA = new EncryptionHandshakeService(serializationService, eciesCipher, cryptoRandom, signer, _keyA, logManager);
+            var encryptionHandshakeServiceB = new EncryptionHandshakeService(serializationService, eciesCipher, cryptoRandom, signer, _keyB, logManager);
 //            var encryptionHandshakeServiceC = new EncryptionHandshakeService(serializationService, eciesCipher, cryptoRandom, signer, _keyC, logger);
 
             var syncManager = Substitute.For<ISynchronizationManager>();
@@ -73,8 +75,8 @@ namespace Nethermind.Network.Test
             syncManager.Head.Returns(genesisBlock.Header);
             syncManager.Genesis.Returns(genesisBlock.Header);
             
-            var peerServerA = new RlpxPeer(new NodeId(_keyA.PublicKey), PortA, encryptionHandshakeServiceA, serializationService, syncManager, logger);
-            var peerServerB = new RlpxPeer(new NodeId(_keyB.PublicKey), PortB, encryptionHandshakeServiceB, serializationService, syncManager, logger);
+            var peerServerA = new RlpxPeer(new NodeId(_keyA.PublicKey), PortA, encryptionHandshakeServiceA, serializationService, syncManager, logManager);
+            var peerServerB = new RlpxPeer(new NodeId(_keyB.PublicKey), PortB, encryptionHandshakeServiceB, serializationService, syncManager, logManager);
 //            var peerServerC = new RlpxPeer(_keyC.PublicKey, PortC, encryptionHandshakeServiceC, serializationService, Substitute.For<ISynchronizationManager>(), logger);
             
             await Task.WhenAll(peerServerA.Init(), peerServerB.Init());
@@ -97,7 +99,7 @@ namespace Nethermind.Network.Test
             await Task.WhenAll(peerServerA.Shutdown(), peerServerB.Shutdown());
             Console.WriteLine("Goodbye...");
             
-            Assert.True(logger.LogList.Count(l => l.Contains("ETH received status with")) == 2, "ETH status exchange");
+            Assert.True(testLogger.LogList.Count(l => l.Contains("ETH received status with")) == 2, "ETH status exchange");
         }
     }
 }

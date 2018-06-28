@@ -22,6 +22,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using Nethermind.Core;
+using Nethermind.Core.Logging;
 using Nethermind.Runner;
 using Newtonsoft.Json;
 

@@ -17,6 +17,7 @@
  */
 
 using Nethermind.Core;
+using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
 using NUnit.Framework;
 
@@ -28,7 +29,7 @@ namespace Nethermind.Store.Test
         [Test]
         public void Does_not_keep_unnecessary_snapshots()
         {
-            MemDbProvider provider = new MemDbProvider(NullLogger.Instance);
+            MemDbProvider provider = new MemDbProvider(NullLogManager.Instance);
             provider.GetOrCreateCodeDb();
             provider.GetOrCreateStateDb();
             for (int i = 0; i < 1000; i++)
@@ -43,7 +44,7 @@ namespace Nethermind.Store.Test
         [Test]
         public void Can_restore()
         {
-            MemDbProvider provider = new MemDbProvider(NullLogger.Instance);
+            MemDbProvider provider = new MemDbProvider(NullLogManager.Instance);
             provider.GetOrCreateCodeDb();
             provider.GetOrCreateStateDb();
             for (int i = 0; i < 1000; i++)

@@ -27,6 +27,7 @@ using DotNetty.Transport.Channels.Sockets;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
 using Nethermind.Network.Discovery.Lifecycle;
 using Nethermind.Network.Discovery.RoutingTable;
@@ -41,6 +42,7 @@ namespace Nethermind.Network.Discovery
         private readonly IDiscoveryManager _discoveryManager;
         private readonly INodeFactory _nodeFactory;
         private readonly INodeTable _nodeTable;
+        private readonly ILogManager _logManager;
         private readonly ILogger _logger;
         private readonly IMessageSerializationService _messageSerializationService;
         private readonly ICryptoRandom _cryptoRandom;
@@ -55,17 +57,18 @@ namespace Nethermind.Network.Discovery
         private MultithreadEventLoopGroup _group;
         private NettyDiscoveryHandler _discoveryHandler;
 
-        public DiscoveryApp(IConfigProvider configurationProvider, INodesLocator nodesLocator, ILogger logger, IDiscoveryManager discoveryManager, INodeFactory nodeFactory, INodeTable nodeTable, IMessageSerializationService messageSerializationService, ICryptoRandom cryptoRandom, IDiscoveryStorage discoveryStorage)
+        public DiscoveryApp(INodesLocator nodesLocator, IDiscoveryManager discoveryManager, INodeFactory nodeFactory, INodeTable nodeTable, IMessageSerializationService messageSerializationService, ICryptoRandom cryptoRandom, IDiscoveryStorage discoveryStorage, IConfigProvider configurationProvider, ILogManager logManager)
         {
-            _configurationProvider = configurationProvider.NetworkConfig;
-            _nodesLocator = nodesLocator;
-            _logger = logger;
-            _discoveryManager = discoveryManager;
-            _nodeFactory = nodeFactory;
-            _nodeTable = nodeTable;
-            _messageSerializationService = messageSerializationService;
-            _cryptoRandom = cryptoRandom;
-            _discoveryStorage = discoveryStorage;
+            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = _logManager.GetClassLogger();
+            _configurationProvider = configurationProvider?.NetworkConfig ?? throw new ArgumentNullException(nameof(configurationProvider.NetworkConfig));
+            _nodesLocator = nodesLocator ?? throw new ArgumentNullException(nameof(nodesLocator));
+            _discoveryManager = discoveryManager ?? throw new ArgumentNullException(nameof(discoveryManager));
+            _nodeFactory = nodeFactory ?? throw new ArgumentNullException(nameof(nodeFactory));
+            _nodeTable = nodeTable ?? throw new ArgumentNullException(nameof(nodeTable));
+            _messageSerializationService = messageSerializationService ?? throw new ArgumentNullException(nameof(messageSerializationService));
+            _cryptoRandom = cryptoRandom ?? throw new ArgumentNullException(nameof(cryptoRandom));
+            _discoveryStorage = discoveryStorage ?? throw new ArgumentNullException(nameof(discoveryStorage));
             _discoveryStorage.StartBatch();
         }
 
@@ -133,7 +136,7 @@ namespace Nethermind.Network.Discovery
 
         private void InitializeChannel(IDatagramChannel channel)
         {
-            _discoveryHandler = new NettyDiscoveryHandler(_logger, _discoveryManager, channel, _messageSerializationService);
+            _discoveryHandler = new NettyDiscoveryHandler(_discoveryManager, channel, _messageSerializationService, _logManager);
             _discoveryManager.MessageSender = _discoveryHandler;
             _discoveryHandler.OnChannelActivated += OnChannelActivated;
             channel.Pipeline

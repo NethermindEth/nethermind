@@ -2,6 +2,7 @@
 using System.Linq;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Logging;
 using Nethermind.Db;
 using Nethermind.Network.Discovery;
 using Nethermind.Network.Discovery.Lifecycle;
@@ -22,7 +23,7 @@ namespace Nethermind.Network.Test.Discovery
         [SetUp]
         public void Initialize()
         {
-            var logger = new SimpleConsoleLogger();
+            var logManager = NullLogManager.Instance;
             _configurationProvider = new JsonConfigProvider();
             ((NetworkConfig)_configurationProvider.NetworkConfig).DbBasePath = Path.Combine(Path.GetTempPath(), "DiscoveryStorageTests");
 
@@ -33,7 +34,7 @@ namespace Nethermind.Network.Test.Discovery
             }
 
             _nodeFactory = new NodeFactory();
-            _discoveryStorage = new DiscoveryStorage(_configurationProvider, _nodeFactory, logger, new PerfService(logger));
+            _discoveryStorage = new DiscoveryStorage(_configurationProvider, _nodeFactory, logManager, new PerfService(logManager));
         }
 
         [Test]

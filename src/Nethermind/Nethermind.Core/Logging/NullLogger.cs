@@ -19,7 +19,7 @@
 using System;
 using System.Threading;
 
-namespace Nethermind.Core
+namespace Nethermind.Core.Logging
 {
     public class NullLogger : ILogger
     {

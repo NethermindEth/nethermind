@@ -24,6 +24,7 @@ using Nethermind.Blockchain.Validators;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.JsonRpc;
@@ -38,7 +39,7 @@ using Nethermind.Network.Discovery.RoutingTable;
 using Nethermind.Network.Discovery.Serializers;
 using Nethermind.Runner.Runners;
 using Nethermind.Store;
-using ILogger = Nethermind.Core.ILogger;
+using ILogger = Nethermind.Core.Logging.ILogger;
 
 namespace Nethermind.Runner
 {
@@ -49,12 +50,12 @@ namespace Nethermind.Runner
         public static IServiceCollection ServiceCollection { get; private set; }
         public static IServiceProvider ServiceProvider { get; set; }
 
-        public static void ConfigureContainer(IConfigProvider configurationProvider, IConfigProvider networkConfigurationProvider, IPrivateKeyProvider privateKeyProvider, ILogger logger, InitParams initParams)
+        public static void ConfigureContainer(IConfigProvider configurationProvider, IConfigProvider networkConfigurationProvider, IPrivateKeyProvider privateKeyProvider, ILogManager logManager, InitParams initParams)
         {
             var services = new ServiceCollection();
 
             services.AddSingleton(configurationProvider);
-            services.AddSingleton(logger);
+            services.AddSingleton(logManager);
             services.AddSingleton(privateKeyProvider);
 
             //based on configuration we will set it
@@ -68,7 +69,7 @@ namespace Nethermind.Runner
             var ethereumRelease = specProvider.GetSpec(1);
             var chainId = ChainId.MainNet;
 
-            var signer = new EthereumSigner(specProvider, logger);
+            var signer = new EthereumSigner(specProvider, logManager);
             var signatureValidator = new SignatureValidator(chainId); // TODO: review, check with spec provider
 
             services.AddSingleton(specProvider);

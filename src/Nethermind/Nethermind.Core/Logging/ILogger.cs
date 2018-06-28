@@ -16,14 +16,22 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.Core
+using System;
+
+namespace Nethermind.Core.Logging
 {
-    public enum LogLevel
-    {
-        Error = 0,
-        Warn = 1,
-        Info = 2,
-        Debug = 3,
-        Trace = 4
+    public interface ILogger
+    {    
+        void Info(string text);
+        void Warn(string text);
+        void Debug(string text);
+        void Trace(string text);
+        void Error(string text, Exception ex = null);
+
+        bool IsInfoEnabled { get; }
+        bool IsWarnEnabled { get; }
+        bool IsDebugEnabled { get; }
+        bool IsTraceEnabled { get; }
+        bool IsErrorEnabled { get; }
     }
 }

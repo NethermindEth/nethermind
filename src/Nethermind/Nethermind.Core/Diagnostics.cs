@@ -17,6 +17,7 @@
  */
 
 using System;
+using Nethermind.Core.Logging;
 
 namespace Nethermind.Core
 {

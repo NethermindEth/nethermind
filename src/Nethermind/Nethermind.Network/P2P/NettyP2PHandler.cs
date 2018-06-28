@@ -19,6 +19,7 @@
 using System;
 using DotNetty.Transport.Channels;
 using Nethermind.Core;
+using Nethermind.Core.Logging;
 using Nethermind.Network.Rlpx;
 
 namespace Nethermind.Network.P2P

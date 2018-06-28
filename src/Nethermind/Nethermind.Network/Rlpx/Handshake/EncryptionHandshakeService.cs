@@ -20,6 +20,7 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
 using Nethermind.Network.Crypto;
 using Org.BouncyCastle.Crypto.Digests;
@@ -46,12 +47,12 @@ namespace Nethermind.Network.Rlpx.Handshake
             ICryptoRandom cryptoRandom,
             ISigner signer,
             PrivateKey privateKey,
-            ILogger logger)
+            ILogManager logManager)
         {
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _messageSerializationService = messageSerializationService;
             _eciesCipher = eciesCipher;
             _privateKey = privateKey;
-            _logger = logger;
             _cryptoRandom = cryptoRandom;
             _signer = signer;
         }

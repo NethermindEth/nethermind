@@ -4,6 +4,7 @@ using System.Text;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using Nethermind.Core;
+using Nethermind.Core.Logging;
 using Nethermind.JsonRpc;
 
 namespace Nethermind.Runner.Controllers

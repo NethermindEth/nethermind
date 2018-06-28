@@ -24,6 +24,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Difficulty;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Mining;
@@ -43,14 +44,14 @@ namespace Nethermind.Core.Test
         private Block _block;
 
         [SetUp]
-        public async Task Setup()
+        public void Setup()
         {
-            _ethash = new EthashSealEngine(new Ethash(NullLogger.Instance), NullLogger.Instance);
+            _ethash = new EthashSealEngine(new Ethash(NullLogManager.Instance), NullLogManager.Instance);
             _testLogger = new TestLogger();
-            BlockTree blockStore = new BlockTree(new MemDb(), new MemDb(), new MemDb(), FrontierSpecProvider.Instance, NullLogger.Instance);
+            BlockTree blockStore = new BlockTree(new MemDb(), new MemDb(), new MemDb(), FrontierSpecProvider.Instance, NullLogManager.Instance);
             DifficultyCalculator calculator = new DifficultyCalculator(new SingleReleaseSpecProvider(Frontier.Instance, ChainId.MainNet));   
             
-            _validator = new HeaderValidator(calculator, blockStore, _ethash, new SingleReleaseSpecProvider(Byzantium.Instance, 3), _testLogger);
+            _validator = new HeaderValidator(calculator, blockStore, _ethash, new SingleReleaseSpecProvider(Byzantium.Instance, 3), new OneLoggerLogManager(_testLogger));
             _parentBlock = Build.A.Block.WithDifficulty(1).TestObject;
             _block = Build.A.Block.WithParent(_parentBlock)
                 .WithDifficulty(1)

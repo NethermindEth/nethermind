@@ -19,6 +19,7 @@
 using System.Globalization;
 using System.Numerics;
 using Nethermind.Core.Encoding;
+using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
 
 namespace Nethermind.Core.Crypto
@@ -36,10 +37,10 @@ namespace Nethermind.Core.Crypto
         private readonly ISpecProvider _specProvider;
         private readonly ILogger _logger;
 
-        public EthereumSigner(ISpecProvider specProviderProvider, ILogger logger)
+        public EthereumSigner(ISpecProvider specProviderProvider, ILogManager logManager)
         {
             _specProvider = specProviderProvider;
-            _logger = logger;
+            _logger = logManager.GetClassLogger();
             _chainIdValue = specProviderProvider.ChainId;
         }
         

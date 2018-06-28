@@ -16,12 +16,13 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.IO;
 using System.Linq;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Encoding;
-using Nethermind.Core.Model;
+using Nethermind.Core.Logging;
 using Nethermind.Db;
 using Nethermind.Network.Discovery.Lifecycle;
 using Nethermind.Network.Discovery.RoutingTable;
@@ -39,12 +40,12 @@ namespace Nethermind.Network.Discovery
         private long _updateCounter = 0;
         private long _removeCounter = 0;
 
-        public DiscoveryStorage(IConfigProvider configurationProvider, INodeFactory nodeFactory, ILogger logger, IPerfService perfService)
+        public DiscoveryStorage(IConfigProvider configurationProvider, INodeFactory nodeFactory, ILogManager logManager, IPerfService perfService)
         {
-            _configurationProvider = configurationProvider.NetworkConfig;
-            _nodeFactory = nodeFactory;
-            _logger = logger;
-            _perfService = perfService;
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _configurationProvider = configurationProvider?.NetworkConfig ?? throw new ArgumentNullException(nameof(IConfigProvider.NetworkConfig));
+            _nodeFactory = nodeFactory ?? throw new ArgumentNullException(nameof(nodeFactory));
+            _perfService = perfService ?? throw new ArgumentNullException(nameof(perfService));
             _db = new FullDbOnTheRocks(Path.Combine(_configurationProvider.DbBasePath, FullDbOnTheRocks.DiscoveryNodesDbPath));
         }
 

@@ -20,6 +20,7 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
 
 namespace Nethermind.Store
@@ -46,11 +47,11 @@ namespace Nethermind.Store
         private Change[] _changes = new Change[StartCapacity];
         private int _currentPosition = -1;
 
-        public StorageProvider(IDbProvider dbProvider, IStateProvider stateProvider, ILogger logger)
+        public StorageProvider(IDbProvider dbProvider, IStateProvider stateProvider, ILogManager logManager)
         {
-            _dbProvider = dbProvider;
-            _stateProvider = stateProvider;
-            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
+            _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
         }
 
         public byte[] Get(StorageAddress storageAddress)
@@ -147,18 +148,11 @@ namespace Nethermind.Store
         {
             if (_currentPosition == -1)
             {
-                if (_logger.IsDebugEnabled)
-                {
-                    _logger.Debug("  NO STORAGE CHANGES TO COMMIT");
-                }
-
+                if (_logger.IsTraceEnabled) _logger.Trace("No storage changes to commit");
                 return;
             }
 
-            if (_logger.IsDebugEnabled)
-            {
-                _logger.Debug("  COMMITTING STORAGE CHANGES");
-            }
+            if (_logger.IsTraceEnabled) _logger.Trace("  Committing storage changes");
 
             if (_changes[_currentPosition] == null)
             {

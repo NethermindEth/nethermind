@@ -19,6 +19,7 @@
 using System;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Logging;
 using Nethermind.Network.Rlpx;
 
 namespace Nethermind.Network.P2P
@@ -29,11 +30,11 @@ namespace Nethermind.Network.P2P
         protected IP2PSession P2PSession { get; }
         protected readonly TaskCompletionSource<MessageBase> InitCompletionSource;
 
-        protected ProtocolHandlerBase(IP2PSession p2PSession, IMessageSerializationService serializer, ILogger logger)
+        protected ProtocolHandlerBase(IP2PSession p2PSession, IMessageSerializationService serializer, ILogManager logManager)
         {
-            _serializer = serializer;
-            P2PSession = p2PSession;
-            Logger = logger;
+            Logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _serializer = serializer ?? throw new ArgumentNullException(nameof(serializer));
+            P2PSession = p2PSession ?? throw new ArgumentNullException(nameof(p2PSession));
             InitCompletionSource = new TaskCompletionSource<MessageBase>();
         }
 
@@ -67,6 +68,7 @@ namespace Nethermind.Network.P2P
                 {
                     Logger.Info($"Disconnecting due to timeout for protocol init message ({GetType().Name}): {P2PSession.RemoteNodeId}");
                 }
+                
                 await P2PSession.InitiateDisconnectAsync(DisconnectReason.ReceiveMessageTimeout);
             }
         }

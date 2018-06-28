@@ -20,6 +20,7 @@ using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
 
 namespace Nethermind.Evm.Precompiles
@@ -44,7 +45,7 @@ namespace Nethermind.Evm.Precompiles
             return 3000L;
         }
 
-        private readonly EthereumSigner _signer = new EthereumSigner(OlympicSpecProvider.Instance, NullLogger.Instance);
+        private readonly EthereumSigner _signer = new EthereumSigner(OlympicSpecProvider.Instance, NullLogManager.Instance);
         
         public (byte[], bool) Run(byte[] inputData)
         {

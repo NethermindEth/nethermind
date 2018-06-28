@@ -21,6 +21,7 @@ using System.Collections.Generic;
 using DotNetty.Codecs;
 using DotNetty.Transport.Channels;
 using Nethermind.Core;
+using Nethermind.Core.Logging;
 using Snappy;
 
 namespace Nethermind.Network.Rlpx
