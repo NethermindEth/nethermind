@@ -387,7 +387,7 @@ namespace Nethermind.Blockchain
         public void Process(Block suggestedBlock)
         {
             Process(suggestedBlock, false);
-            if(_logger.IsInfoEnabled) _logger.Info($"Processed block {suggestedBlock.ToString(Block.Format.Full)}");
+            if(_logger.IsTraceEnabled) _logger.Trace($"Processed block {suggestedBlock.ToString(Block.Format.Full)}");
             
             _currentTotalMGas += suggestedBlock.GasUsed / 1_000_000m;
             _currentTotalTx += suggestedBlock.Transactions.Length;

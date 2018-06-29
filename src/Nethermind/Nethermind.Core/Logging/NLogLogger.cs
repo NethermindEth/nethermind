@@ -36,7 +36,7 @@ namespace Nethermind.Core.Logging
 
         public NLogLogger(string fileName)
         {
-            _logger = NLog.LogManager.GetLogger(StackTraceUsageUtils.GetClassFullName());
+            _logger = NLog.LogManager.GetLogger(StackTraceUsageUtils.GetClassFullName().Replace("Nethermind.", string.Empty));
             if (!Directory.Exists("logs"))
             {
                 Directory.CreateDirectory("logs");
