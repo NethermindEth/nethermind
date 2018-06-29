@@ -629,7 +629,7 @@ namespace Nethermind.Blockchain
         {
             if (_logger.IsDebugEnabled)
             {
-                _logger.Debug($"CALCULATING TOTAL DIFFICULTY FOR {block.Hash}");
+                _logger.Debug($"Calculating total difficulty for {block}");
             }
 
             if (block.Number == 0)
@@ -641,12 +641,12 @@ namespace Nethermind.Blockchain
                 Block parent = this.FindParent(block.Header);
                 if (parent == null)
                 {
-                    throw new InvalidOperationException($"An orphaned block on the chain {block.Hash} ({block.Number})");
+                    throw new InvalidOperationException($"An orphaned block on the chain {block}");
                 }
 
                 if (parent.TotalDifficulty == null)
                 {
-                    throw new InvalidOperationException($"Parent's {nameof(parent.TotalDifficulty)} unknown when calculating for {block.Hash} ({block.Number})");
+                    throw new InvalidOperationException($"Parent's {nameof(parent.TotalDifficulty)} unknown when calculating for {block}");
                 }
 
                 block.Header.TotalDifficulty = parent.TotalDifficulty + block.Difficulty;
@@ -654,7 +654,7 @@ namespace Nethermind.Blockchain
 
             if (_logger.IsDebugEnabled)
             {
-                _logger.Debug($"CALCULATED TOTAL DIFFICULTY FOR {block.Hash} IS {block.TotalDifficulty}");
+                _logger.Debug($"Calculated total difficulty for {block} is {block.TotalDifficulty}");
             }
         }
 
@@ -669,12 +669,12 @@ namespace Nethermind.Blockchain
                 Block parent = this.FindParent(block.Header);
                 if (parent == null)
                 {
-                    throw new InvalidOperationException($"An orphaned block on the chain {block.Hash} ({block.Number})");
+                    throw new InvalidOperationException($"An orphaned block on the chain {block}");
                 }
 
                 if (parent.TotalTransactions == null)
                 {
-                    throw new InvalidOperationException($"Parent's {nameof(parent.TotalTransactions)} unknown when calculating for {block.Hash} ({block.Number})");
+                    throw new InvalidOperationException($"Parent's {nameof(parent.TotalTransactions)} unknown when calculating for {block}");
                 }
 
                 block.Header.TotalTransactions = parent.TotalTransactions + block.Transactions.Length;

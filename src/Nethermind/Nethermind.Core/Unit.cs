@@ -26,5 +26,6 @@ namespace Nethermind.Core
         public static BigInteger Szabo = 1000000000000;
         public static BigInteger Finney = 1000000000000000;
         public static BigInteger Ether = 1000000000000000000;
+        public const string EthSymbol = "Ξ";
     }
 }

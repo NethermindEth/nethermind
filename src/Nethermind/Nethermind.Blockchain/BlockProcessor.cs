@@ -146,7 +146,6 @@ namespace Nethermind.Blockchain
 
                 if (tryOnly)
                 {
-                    // TODO: this is some rapid and bad implementation, need to rmeove the clear caches approach
                     if (_logger.IsDebugEnabled)
                     {
                         _logger.Debug($"REVERTING BLOCKS - STATE ROOT {_stateProvider.StateRoot}");
@@ -202,9 +201,9 @@ namespace Nethermind.Blockchain
             }
         }
 
-        private Block ProcessOne(Block suggestedBlock, bool tryOnly) // TODO: refactor
+        private Block ProcessOne(Block suggestedBlock, bool tryOnly)
         {
-            IDb db = _dbProvider.GetOrCreateStateDb(); // TODO: now totally synchronous but would need to pass the batch object / some sync item
+            IDb db = _dbProvider.GetOrCreateStateDb();
             Block processedBlock = suggestedBlock;
             if (!suggestedBlock.IsGenesis)
             {
@@ -222,7 +221,6 @@ namespace Nethermind.Blockchain
 
         private Block ProcessNonGenesis(Block suggestedBlock, bool tryOnly)
         {
-// TODO: unimportant but out of curiosity, is the check faster than cast to nullable?
             if (_specProvider.DaoBlockNumber.HasValue && _specProvider.DaoBlockNumber.Value == suggestedBlock.Header.Number)
             {
                 if (_logger.IsInfoEnabled)
@@ -296,7 +294,8 @@ namespace Nethermind.Blockchain
             long gasLimit,
             byte[] extraData,
             Transaction[] transactions,
-            Keccak mixHash, ulong nonce,
+            Keccak mixHash,
+            ulong nonce,
             Keccak ommersHash,
             BlockHeader[] ommers)
         {
@@ -312,30 +311,22 @@ namespace Nethermind.Blockchain
 
         private void ApplyMinerRewards(Block block)
         {
-            if (_logger.IsDebugEnabled)
-            {
-                _logger.Debug("Applying miner rewards");
-            }
-
+            if (_logger.IsDebugEnabled) _logger.Debug("Applying miner rewards:");
             BlockReward[] rewards = _rewardCalculator.CalculateRewards(block);
             for (int i = 0; i < rewards.Length; i++)
             {
+                if(_logger.IsDebugEnabled) _logger.Debug($"    {((decimal)rewards[i].Value / (decimal)Unit.Ether):N3}{Unit.EthSymbol} for account at {rewards[i].Address}");
                 if (!_stateProvider.AccountExists(rewards[i].Address))
                 {
                     _stateProvider.CreateAccount(rewards[i].Address, rewards[i].Value);
                 }
                 else
-                {
+                {   
                     _stateProvider.UpdateBalance(rewards[i].Address, rewards[i].Value, _specProvider.GetSpec(block.Number));
                 }
             }
 
             _stateProvider.Commit(_specProvider.GetSpec(block.Number));
-
-            if (_logger.IsDebugEnabled)
-            {
-                _logger.Debug("Done applying miner rewards");
-            }
         }
     }
 }

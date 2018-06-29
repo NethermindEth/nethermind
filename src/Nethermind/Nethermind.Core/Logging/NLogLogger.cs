@@ -58,7 +58,7 @@ namespace Nethermind.Core.Logging
 
             if (NLog.LogManager.Configuration.AllTargets.SingleOrDefault(t => t.Name == "file") is FileTarget target)
             {
-                target.FileName = Path.Combine("logs", fileName);
+                target.FileName = !Path.IsPathFullyQualified(fileName) ? Path.Combine("logs", fileName) : fileName;
             }
 
             /* NOTE: minor perf gain - not planning to switch logging levels while app is running */

@@ -91,14 +91,7 @@ namespace Nethermind.Blockchain
             if (processRamainingBlocks)
             {
                 _recoveryQueue.CompleteAdding();
-                await _recoveryTask.ContinueWith(t =>
-                {
-                    if (t.IsFaulted)
-                    {
-                        _logger.Error("Transaction sender recovery task failure.", t.Exception);
-                    }
-                });
-
+                await _recoveryTask;
                 _blockQueue.CompleteAdding();
             }
             else
@@ -411,10 +404,10 @@ namespace Nethermind.Blockchain
 
                 long chunkTx = _currentTotalTx - _lastTotalTx;
                 decimal chunkMGas = _currentTotalMGas - _lastTotalMGas;
-                decimal mgasPerSecond = chunkMGas / chunkMicroseconds * 1000 * 1000;
-                decimal totalMgasPerSecond = _currentTotalMGas / totalMicroseconds * 1000 * 1000;
-                decimal txps = chunkTx / chunkMicroseconds * 1000m * 1000m;
-                if(_logger.IsInfoEnabled) _logger.Info($"Processed blocks up to {suggestedBlock.Number,9} in {chunkMicroseconds / 1000,7:N0}ms, tx={chunkTx,5} mgas={chunkMGas,8:F2}, mgasps={mgasPerSecond,7:F2}, txps={txps,7:F2}, total mgasps={totalMgasPerSecond,7:F2}, queue={_blockQueue.Count}");
+                decimal mgasPerSecond = chunkMicroseconds == 0 ? -1 : chunkMGas / chunkMicroseconds * 1000 * 1000;
+                decimal totalMgasPerSecond = totalMicroseconds == 0 ? -1 : _currentTotalMGas / totalMicroseconds * 1000 * 1000;
+                decimal txps = chunkMicroseconds == 0 ? -1 : chunkTx / chunkMicroseconds * 1000m * 1000m;
+                if(_logger.IsInfoEnabled) _logger.Info($"Processed blocks up to {suggestedBlock.Number,9} in {(chunkMicroseconds == 0 ? -1 : chunkMicroseconds / 1000),7:N0}ms, tx={chunkTx,5} mgas={chunkMGas,8:F2}, mgasps={mgasPerSecond,7:F2}, txps={txps,7:F2}, total mgasps={totalMgasPerSecond,7:F2}, queue={_blockQueue.Count}");
                 if(_logger.IsInfoEnabled) _logger.Info($"Gen0: {currentGen0 - _lastGen0,6}, Gen1: {currentGen1 - _lastGen1,6}, Gen2: {currentGen2 - _lastGen2,6}, maxmem: {_maxMemory / 1000000,5}, mem: {currentMemory / 1000000,5}, reads: {currentStateDbReads - _lastStateDbReads,9}, writes: {currentStateDbWrites - _lastStateDbWrites,9}, rlp: {currentTreeNodeRlp - _lastTreeNodeRlp,9}, exceptions:{evmExceptions - _lastEvmExceptions}, selfdstrcs={currentSelfDestructs - _lastSelfDestructs}");
                 _lastTotalMGas = _currentTotalMGas;
                 _lastElapsedTicks = currentTicks;

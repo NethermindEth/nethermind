@@ -148,7 +148,7 @@ namespace Nethermind.Core
 
         public override string ToString()
         {
-            return ToString(string.Empty);
+            return ToString(Format.Short);
         }
 
         public string ToString(Format format)

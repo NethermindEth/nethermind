@@ -57,7 +57,7 @@ namespace Nethermind.Blockchain.Test.Runner
                     Console.ForegroundColor = ConsoleColor.Red;
                     Console.WriteLine("FAIL");
                     Console.ForegroundColor = defaultColor;
-                    FileLogger logger = new FileLogger(Path.Combine(directoryName, string.Concat(subset, "_", test.Name, ".txt")));
+                    NLogManager manager = new NLogManager(Path.Combine(directoryName, string.Concat(subset, "_", test.Name, ".txt")));
                     try
                     {
                         if (!Directory.Exists(directoryName))
@@ -65,17 +65,13 @@ namespace Nethermind.Blockchain.Test.Runner
                             Directory.CreateDirectory(directoryName);
                         }
 
-                        Setup(new OneLoggerLogManager(logger));
+                        Setup(manager);
                         await RunTest(test);
                     }
                     catch (Exception againEx)
                     {
-                        logger.Info(againEx.ToString());
-                        logger.Flush();
+                        manager.GetClassLogger().Error(againEx.ToString());
                     }
-
-                    // should not happend
-                    logger.Flush();
                 }
             }
 
