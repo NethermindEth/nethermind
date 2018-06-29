@@ -199,14 +199,12 @@ namespace Nethermind.Store
         [DebuggerStepThrough]
         public void Set(Nibble[] nibbles, Rlp rlp)
         {
-            throw new NotSupportedException();
             Set(nibbles, rlp.Bytes);
         }
 
         [DebuggerStepThrough]
         public virtual void Set(Nibble[] nibbles, byte[] value)
         {
-            throw new NotSupportedException();
             Run(nibbles.ToLooseByteArray(), value, true);
         }
 
