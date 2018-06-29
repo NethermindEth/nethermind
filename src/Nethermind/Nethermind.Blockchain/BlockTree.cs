@@ -448,6 +448,11 @@ namespace Nethermind.Blockchain
 
         private void UpdateHeadBlock(Block block)
         {
+            if (block.IsGenesis)
+            {
+                Genesis = block.Header;
+            }
+            
             Head = block.Header;
             _blockDb.Set(Keccak.Zero, Rlp.Encode(Head).Bytes);
             NewHeadBlock?.Invoke(this, new BlockEventArgs(block));
