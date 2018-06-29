@@ -23,7 +23,6 @@ using System.Text;
 using Ethereum.Test.Base;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
 using Nethermind.Store;
 using NUnit.Framework;
@@ -37,6 +36,7 @@ namespace Ethereum.Trie.Test
         [SetUp]
         public void Setup()
         {
+            TrieNode.AllowBranchValues = true;
             _db = new MemDb();
         }
 
@@ -117,7 +117,7 @@ namespace Ethereum.Trie.Test
         [TestCaseSource(nameof(LoadAnyOrderTests))]
         public void Test_any_order(TrieTest test)
         {
-            RunTest(test, false);
+            RunTest(test, false);    
         }
 
         [TestCaseSource(nameof(LoadAnyOrderSecureTests))]

@@ -28,7 +28,7 @@ namespace Nethermind.Store
 {
     internal class TrieNode
     {
-        private static readonly object _nullNode = new object();
+        private static readonly object NullNode = new object();
 
         private object[] _data;
         private bool _isDirty;
@@ -67,7 +67,11 @@ namespace Nethermind.Store
                     }
                 }
 
-                nonEmptyNodes += (Value?.Length ?? 0) > 0 ? 1 : 0;
+                if (AllowBranchValues)
+                {
+                    nonEmptyNodes += (Value?.Length ?? 0) > 0 ? 1 : 0;
+                }
+
                 return nonEmptyNodes > 2;
             }
         }
@@ -107,6 +111,8 @@ namespace Nethermind.Store
             }
         }
 
+        public static bool AllowBranchValues { get; set; } = false;
+
         internal byte[] Value
         {
             get
@@ -117,22 +123,26 @@ namespace Nethermind.Store
                     return (byte[])_data[1];
                 }
 
-                return new byte[0]; // branches that we use for state will never have value set as all the keys are equal length
+                if (!AllowBranchValues)
+                {
+                    // branches that we use for state will never have value set as all the keys are equal length
+                    return new byte[0];
+                }
 
-                //if (_data[16] == null)
-                //{
-                //    if (_parentNode.DecoderContext == null)
-                //    {
-                //        _data[16] = new byte[0];
-                //    }
-                //    else
-                //    {
-                //        _parentNode.DecoderContext.Position = _lookupTable[32];
-                //        _data[16] = _parentNode.DecoderContext.DecodeByteArray();
-                //    }
-                //}
+                if (_data[16] == null)
+                {
+                    if (DecoderContext == null)
+                    {
+                        _data[16] = new byte[0];
+                    }
+                    else
+                    {
+                        DecoderContext.Position = _lookupTable[32];
+                        _data[16] = DecoderContext.DecodeByteArray();
+                    }
+                }
 
-                //return (byte[])_data[16];
+                return (byte[])_data[16];
             }
 
             set
@@ -296,7 +306,7 @@ namespace Nethermind.Store
                     case NodeType.Unknown:
                         throw new InvalidOperationException($"Cannot resolve children of an {nameof(NodeType.Unknown)} node");
                     case NodeType.Branch:
-                        _data = new object[17];
+                        _data = new object[AllowBranchValues ? 17 : 16];
                         break;
                     default:
                         _data = new object[2];
@@ -352,7 +362,7 @@ namespace Nethermind.Store
                 int prefix = context.ReadByte();
                 if (prefix == 128)
                 {
-                    _data[i] = _nullNode;
+                    _data[i] = NullNode;
                 }
                 else if (prefix == 160)
                 {
@@ -383,7 +393,7 @@ namespace Nethermind.Store
                 return _lookupTable[i * 2 + 1] == 1;
             }
 
-            return ReferenceEquals(_data[i], _nullNode) || _data[i] == null;
+            return ReferenceEquals(_data[i], NullNode) || _data[i] == null;
         }
 
         public bool IsChildDirty(int i)
@@ -393,7 +403,7 @@ namespace Nethermind.Store
                 return false;
             }
 
-            if (ReferenceEquals(_data[i], _nullNode))
+            if (ReferenceEquals(_data[i], NullNode))
             {
                 return false;
             }
@@ -414,7 +424,7 @@ namespace Nethermind.Store
                 }
                 else
                 {
-                    if (ReferenceEquals(_data[i], _nullNode) || _data[i] == null)
+                    if (ReferenceEquals(_data[i], NullNode) || _data[i] == null)
                     {
                         totalLength++;
                     }
@@ -447,7 +457,7 @@ namespace Nethermind.Store
                 }
                 else
                 {
-                    if (ReferenceEquals(_data[i], _nullNode) || _data[i] == null)
+                    if (ReferenceEquals(_data[i], NullNode) || _data[i] == null)
                     {
                         destination[position++] = 128;
                     }
@@ -474,14 +484,14 @@ namespace Nethermind.Store
         {
             int index = IsExtension ? i + 1 : i;
             ResolveChild(i);
-            return ReferenceEquals(_data[index], _nullNode) ? null : (TrieNode)_data[index];
+            return ReferenceEquals(_data[index], NullNode) ? null : (TrieNode)_data[index];
         }
 
         public void SetChild(int i, TrieNode node)
         {
             InitData();
             int index = IsExtension ? i + 1 : i;
-            _data[index] = node ?? _nullNode;
+            _data[index] = node ?? NullNode;
         }
     }
 }

@@ -25,7 +25,7 @@ using Nethermind.Core.Extensions;
 namespace Nethermind.Store
 {
     public class StateTree : PatriciaTree
-    {   
+    {
         private readonly AccountDecoder _decoder = new AccountDecoder();
         
         [DebuggerStepThrough]
