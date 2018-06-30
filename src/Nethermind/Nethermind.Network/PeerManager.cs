@@ -384,10 +384,25 @@ namespace Nethermind.Network
 
             if (!_activePeers.TryGetValue(session.RemoteNodeId, out var peer))
             {
-                if (_logger.IsErrorEnabled)
+                if (_candidatePeers.TryGetValue(session.RemoteNodeId, out var candidateNode))
                 {
-                    _logger.Error($"Protocol initialized for peer not present in active collection, id: {session.RemoteNodeId}.");
+                    if (_logger.IsWarnEnabled)
+                    {
+                        var timeFromLastDisconnect = candidateNode.NodeStats.LastDisconnectTime.HasValue
+                            ? DateTime.Now.Subtract(candidateNode.NodeStats.LastDisconnectTime.Value).TotalMilliseconds.ToString()
+                            : "no disconnect";
+
+                        _logger.Warn($"Protocol initialized for peer not present in active collection, id: {session.RemoteNodeId}, time from last disconnect: {timeFromLastDisconnect}");
+                    }
                 }
+                else
+                {
+                    if (_logger.IsErrorEnabled)
+                    {
+                        _logger.Error($"Protocol initialized for peer not present in active collection, id: {session.RemoteNodeId}, peer not in candidate collection.");
+                    }
+                }
+
                 return;
             }
 
