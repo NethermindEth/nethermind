@@ -45,6 +45,6 @@ namespace Nethermind.Blockchain
         BigInteger HeadNumber { get; }
         BigInteger TotalDifficulty { get; }
 
-        event EventHandler Synced;
+        event EventHandler<SyncedEventArgs> Synced;
     }
 }

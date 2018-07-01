@@ -48,7 +48,7 @@ namespace Nethermind.Blockchain.Test
             IBlockValidator blockValidator = Build.A.BlockValidator.ThatAlwaysReturnsTrue.TestObject;
             ITransactionValidator transactionValidator = Build.A.TransactionValidator.ThatAlwaysReturnsTrue.TestObject;
             
-            _manager = new SynchronizationManager(_blockTree, blockValidator, headerValidator, new TransactionStore(), transactionValidator, NullLogger.Instance);
+            _manager = new SynchronizationManager(_blockTree, blockValidator, headerValidator, new TransactionStore(), transactionValidator, NullLogger.Instance, new BlockchainConfig());
         }
 
         private IBlockTree _blockTree;

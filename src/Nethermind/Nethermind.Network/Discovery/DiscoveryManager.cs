@@ -110,6 +110,10 @@ namespace Nethermind.Network.Discovery
 
         public INodeLifecycleManager GetNodeLifecycleManager(Node node, bool isPersisted = false)
         {
+            if (_nodeTable.MasterNode.Equals(node))
+            {
+                return null;
+            }
             return _nodeLifecycleManagers.GetOrAdd(node.IdHashText, x =>
             {
                 var manager = _nodeLifecycleManagerFactory.CreateNodeLifecycleManager(node);

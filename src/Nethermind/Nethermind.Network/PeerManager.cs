@@ -571,7 +571,7 @@ namespace Nethermind.Network
             var peer = (IP2PSession) sender;
             if (_logger.IsInfoEnabled)
             {
-                _logger.Info($"Peer disconnected event in PeerManager: {peer.RemoteNodeId}");
+                _logger.Info($"Peer disconnected event in PeerManager: {peer.RemoteNodeId}, disconnectReason: {e.DisconnectReason}, disconnectType: {e.DisconnectType}");
             }
 
             if (_activePeers.TryGetValue(peer.RemoteNodeId, out var activePeer))

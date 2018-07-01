@@ -221,7 +221,7 @@ namespace Nethermind.Runner.Runners
                             headerValidator,
                             transactionStore,
                             txValidator,
-                            _logger);
+                            _logger, new BlockchainConfig());
 
                         _syncManager.Start();
 

@@ -44,9 +44,11 @@ namespace Nethermind.Blockchain
         private readonly ConcurrentDictionary<NodeId, PeerInfo> _peers = new ConcurrentDictionary<NodeId, PeerInfo>();
         private readonly ITransactionStore _transactionStore;
         private readonly ITransactionValidator _transactionValidator;
+        private readonly IBlockchainConfig _blockchainConfig;
         private Task _currentSyncTask;
         private bool _isSyncing;
         private PeerInfo _currentSyncingPeer;
+        private System.Timers.Timer _syncTimer;
 
         private CancellationTokenSource _syncCancellationTokenSource;
         private ConcurrentDictionary<NodeId, CancellationTokenSource> _initCancellationTokenSources = new ConcurrentDictionary<NodeId, CancellationTokenSource>();
@@ -57,9 +59,10 @@ namespace Nethermind.Blockchain
             IHeaderValidator headerValidator,
             ITransactionStore transactionStore,
             ITransactionValidator transactionValidator,
-            ILogger logger)
+            ILogger logger, IBlockchainConfig blockchainConfig)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _blockchainConfig = blockchainConfig;
             _transactionStore = transactionStore ?? throw new ArgumentNullException(nameof(transactionStore));
             _transactionValidator = transactionValidator ?? throw new ArgumentNullException(nameof(transactionValidator));
 
@@ -72,17 +75,12 @@ namespace Nethermind.Blockchain
             _logger.Info($"Initialized {nameof(SynchronizationManager)} with head block {Head.ToString(BlockHeader.Format.Short)}");
         }
 
-        private void OnNewPendingTransaction(object sender, TransactionEventArgs transactionEventArgs)
-        {
-            Transaction transaction = transactionEventArgs.Transaction;
-            foreach ((NodeId nodeId, PeerInfo peerInfo) in _peers)
-            {
-                if (!(transaction.DeliveredBy?.Equals(nodeId.PublicKey) ?? false))
-                {
-                    peerInfo.Peer.SendNewTransaction(transaction);
-                }
-            }
-        }
+        public int ChainId => BlockTree.ChainId;
+        public BlockHeader Genesis => BlockTree.Genesis;
+        public BlockHeader Head => BlockTree.Head;
+        public BigInteger HeadNumber => BlockTree.Head.Number;
+        public BigInteger TotalDifficulty => BlockTree.Head?.TotalDifficulty ?? 0;
+        public IBlockTree BlockTree { get; set; }
 
         public Block Find(Keccak hash)
         {
@@ -256,6 +254,15 @@ namespace Nethermind.Blockchain
 
         public void RemovePeer(ISynchronizationPeer synchronizationPeer)
         {
+            if (!_peers.TryRemove(synchronizationPeer.NodeId, out var _))
+            {
+                return;
+            }
+            if (_logger.IsInfoEnabled)
+            {
+                _logger.Info($"Removing synchronization peer {synchronizationPeer.NodeId}");
+            }
+
             lock (_isSyncingLock)
             {
                 if (_isSyncing && (_currentSyncingPeer?.Peer.NodeId.Equals(synchronizationPeer.NodeId) ?? false))
@@ -272,24 +279,18 @@ namespace Nethermind.Blockchain
             {
                 tokenSource.Cancel();
             }
-
-            if (!_peers.TryRemove(synchronizationPeer.NodeId, out var _))
-            {
-                return;
-            }
-            if (_logger.IsInfoEnabled)
-            {
-                _logger.Info($"Removing synchronization peer {synchronizationPeer.NodeId}");
-            }
         }
 
         public void Start()
         {
+            StartActivePeersTimer();
             //_syncCancellationTokenSource = new CancellationTokenSource();
         }
 
         public async Task StopAsync()
         {
+            StopActivePeersTimer();
+
             if (_syncCancellationTokenSource == null || _syncCancellationTokenSource.IsCancellationRequested)
             {
                 return;
@@ -308,12 +309,55 @@ namespace Nethermind.Blockchain
             });
         }
 
-        public int ChainId => BlockTree.ChainId;
-        public BlockHeader Genesis => BlockTree.Genesis;
-        public BlockHeader Head => BlockTree.Head;
-        public BigInteger HeadNumber => BlockTree.Head.Number;
-        public BigInteger TotalDifficulty => BlockTree.Head?.TotalDifficulty ?? 0;
-        public IBlockTree BlockTree { get; set; }
+        private void OnNewPendingTransaction(object sender, TransactionEventArgs transactionEventArgs)
+        {
+            Transaction transaction = transactionEventArgs.Transaction;
+            foreach ((NodeId nodeId, PeerInfo peerInfo) in _peers)
+            {
+                if (!(transaction.DeliveredBy?.Equals(nodeId.PublicKey) ?? false))
+                {
+                    peerInfo.Peer.SendNewTransaction(transaction);
+                }
+            }
+        }
+
+        private void StartActivePeersTimer()
+        {
+            if (_logger.IsInfoEnabled)
+            {
+                _logger.Info("Starting sync timer");
+            }
+
+            _syncTimer = new System.Timers.Timer(_blockchainConfig.SyncTimerInterval) { AutoReset = false };
+            _syncTimer.Elapsed += (sender, e) =>
+            {
+                _syncTimer.Enabled = false;
+                if (_logger.IsInfoEnabled)
+                {
+                    _logger.Info($"Running sync timer: current sync peers: {_peers.Count}, unsynced: {_peers.Count(x => !x.Value.IsSynced)}, synced: {_peers.Count(x => x.Value.IsSynced)}");
+                }
+                RunSync();
+                _syncTimer.Enabled = true;
+            };
+
+            _syncTimer.Start();
+        }
+
+        private void StopActivePeersTimer()
+        {
+            try
+            {
+                if (_logger.IsInfoEnabled)
+                {
+                    _logger.Info("Stopping sync timer");
+                }
+                _syncTimer?.Stop();
+            }
+            catch (Exception e)
+            {
+                _logger.Error("Error during sync timer stop", e);
+            }
+        }
 
         private void OnNewHeadBlock(object sender, BlockEventArgs blockEventArgs)
         {
@@ -335,15 +379,22 @@ namespace Nethermind.Blockchain
             {
                 if (_isSyncing)
                 {
+                    if (_logger.IsInfoEnabled)
+                    {
+                        _logger.Info("Sync in process");
+                    }
                     return;
                 }
 
                 _isSyncing = true;
+
+                if (_logger.IsInfoEnabled)
+                {
+                    _logger.Info("Starting aggregate sync");
+                }
             }
 
-            _syncCancellationTokenSource = new CancellationTokenSource();
-
-            var syncTask = Task.Run(() => SyncAsync(_syncCancellationTokenSource.Token), _syncCancellationTokenSource.Token);
+            var syncTask = Task.Run(SyncAsync);
             syncTask.ContinueWith(t =>
             {
                 lock (_isSyncingLock)
@@ -355,197 +406,271 @@ namespace Nethermind.Blockchain
                 {
                     if (_logger.IsErrorEnabled)
                     {
-                        if (t.Exception != null && t.Exception.InnerExceptions.Any(x => x is TimeoutException))
-                        {
-                            _logger.Warn($"Stopping Sync. {t.Exception.Message}");
-                        }
-                        else
-                        {
-                            _logger.Error($"Stopping Sync. Error in the sync process: {t.Exception?.Message}");
-                        }
-                    }
-                    else if (_logger.IsDebugEnabled)
-                    {
-                        _logger.Error("Stopping Sync. Error in the sync process", t.Exception);
+                        _logger.Error($"Error during aggregate sync process: {t.Exception}");
                     }
                 }
                 else if (t.IsCanceled)
                 {
-                    if (_logger.IsInfoEnabled)
+                    if (_logger.IsErrorEnabled)
                     {
-                        _logger.Info("Sync cancelled");
+                        _logger.Error("Aggregate sync process finished");
                     }
                 }
                 else if (t.IsCompleted)
                 {
                     if (_logger.IsInfoEnabled)
                     {
-                        _logger.Info($"Sync process finished. Best block now is {BlockTree.BestSuggested.Hash} ({BlockTree.BestSuggested.Number})");
+                        _logger.Info("Aggregate sync process finished");
                     }
                 }
             });
         }
 
-        private async Task SyncAsync(CancellationToken token)
+        private async Task SyncAsync()
         {
-            bool wasCancelled = false;
-            if (_peers.Any())
+            while (true)
             {
-                PeerInfo peerInfo = _peers.OrderBy(p => p.Value.NumberAvailable).Last().Value; // TODO: order by total difficulty
+                // TODO: order by total difficulty
+                var peers = _peers.Where(x => !x.Value.IsSynced).OrderBy(p => p.Value.NumberAvailable).ToArray();
+
+                if (!peers.Any())
+                {
+                    if (_logger.IsInfoEnabled)
+                    {
+                        _logger.Info($"No sync peers availible, finishing sync process, our block #: {BlockTree.BestSuggested.Number}");
+                    }
+                    return;
+                }
+
+                var peerInfo = peers.Last().Value;
+
+                if (BlockTree.BestSuggested.Number >= peerInfo.NumberAvailable)
+                {
+                    if (_logger.IsInfoEnabled)
+                    {
+                        _logger.Info($"No more peers with higher block number availible, finishing sync process, our highest block #: {BlockTree.BestSuggested.Number}, highest peer block #: {peerInfo.NumberAvailable}");
+                    }
+                    return;
+                }
+
                 _currentSyncingPeer = peerInfo;
-                ISynchronizationPeer peer = peerInfo.Peer;
-                BigInteger bestNumber = BlockTree.BestSuggested.Number;
-
-                const int maxLookup = 64;
-                int ancestorLookupLevel = 0;
-                bool isCommonAncestorKnown = false;
-
-                while (peerInfo.NumberAvailable > bestNumber && peerInfo.NumberReceived <= peerInfo.NumberAvailable)
+                if (_logger.IsInfoEnabled)
                 {
-                    if (ancestorLookupLevel > maxLookup)
-                    {
-                        throw new InvalidOperationException("Cannot find ancestor"); // TODO: remodel this after full sync test is added
-                    }
+                    _logger.Info($"Starting sync processes with Node: {peerInfo.Peer.NodeId}, peer highest block #: {peerInfo.NumberAvailable}, our highest block #: {BlockTree.BestSuggested.Number}");
+                }
 
-                    if (token.IsCancellationRequested)
-                    {
-                        token.ThrowIfCancellationRequested();
-                    }
+                _syncCancellationTokenSource = new CancellationTokenSource();
 
-                    if (!isCommonAncestorKnown)
-                    {
-                        // TODO: cases when many peers used for sync and one peer finished sync and then we need resync - we should start from common point and not NumberReceived that may be far in the past
-                        _logger.Info($"Finding common ancestor for {peerInfo.Peer.NodeId}");
-                        isCommonAncestorKnown = true;
-                    }
+                var currentPeerNodeId = peerInfo?.Peer?.NodeId;
 
-                    BigInteger blocksLeft = peerInfo.NumberAvailable - peerInfo.NumberReceived;
-                    // TODO: fault handling on tasks
-
-                    int blocksToRequest = (int)BigInteger.Min(blocksLeft + 1, BatchSize);
-                    if (_logger.IsDebugEnabled) _logger.Debug($"Sync request to peer with {peerInfo.NumberAvailable} blocks. Got {peerInfo.NumberReceived} and asking for {blocksToRequest} more.");
-                    Task<BlockHeader[]> headersTask = peer.GetBlockHeaders(peerInfo.NumberReceived, blocksToRequest, 0, token);
-                    _currentSyncTask = headersTask;
-                    BlockHeader[] headers = await headersTask;
-                    if (_currentSyncTask.IsCanceled)
-                    {
-                        wasCancelled = true;
-                        break;
-                    }
-
-                    if (_currentSyncTask.IsFaulted)
-                    {
-                        _logger.Error("Failed to retrieve headers when synchronizing", _currentSyncTask.Exception);
-                        throw _currentSyncTask.Exception;
-                    }
-
-                    if (token.IsCancellationRequested)
-                    {
-                        token.ThrowIfCancellationRequested();
-                    }
-
-                    List<Keccak> hashes = new List<Keccak>();
-                    Dictionary<Keccak, BlockHeader> headersByHash = new Dictionary<Keccak, BlockHeader>();
-                    for (int i = 1; i < headers.Length; i++)
-                    {
-                        hashes.Add(headers[i].Hash);
-                        headersByHash[headers[i].Hash] = headers[i];
-                    }
-
-                    Task<Block[]> bodiesTask = peer.GetBlocks(hashes.ToArray(), token);
-                    _currentSyncTask = bodiesTask;
-                    Block[] blocks = await bodiesTask;
-                    if (_currentSyncTask.IsCanceled)
-                    {
-                        wasCancelled = true;
-                        break;
-                    }
-
-                    if (_currentSyncTask.IsFaulted)
-                    {
-                        _logger.Error("Failed to retrieve bodies when synchronizing", _currentSyncTask.Exception);
-                        throw _currentSyncTask.Exception;
-                    }
-
-                    ancestorLookupLevel = 0;
-
-                    for (int i = 0; i < blocks.Length; i++)
-                    {
-                        if (token.IsCancellationRequested)
+                var syncTask = PeerSyncAsync(_syncCancellationTokenSource.Token, peerInfo);
+                await syncTask.ContinueWith(t =>
+                {
+                    if (t.IsFaulted)
+                    {     
+                        if (_logger.IsErrorEnabled)
                         {
-                            token.ThrowIfCancellationRequested();
-                        }
-
-                        blocks[i].Header = headersByHash[hashes[i]];
-                    }
-
-                    if (blocks.Length > 0)
-                    {
-                        Block parent = BlockTree.FindParent(blocks[0]);
-                        if (parent == null)
-                        {
-                            ancestorLookupLevel += BatchSize;
-                            peerInfo.NumberReceived -= BatchSize;
-                            continue;
-                        }
-                    }
-
-                    // Parity 1.11 non canonical blocks when testing on 27/06
-                    for (int i = 0; i < blocks.Length; i++)
-                    {
-                        if (i != 0 && blocks[i].ParentHash != blocks[i - 1].Hash)
-                        {
-                            throw new EthSynchronizationException("Peer send an inconsistent block list");
-                        }
-                    }
-
-                    for (int i = 0; i < blocks.Length; i++)
-                    {
-                        if(_logger.IsInfoEnabled) _logger.Info($"Received {blocks[i]} from {peer.NodeId}");
-                        
-                        if (_blockValidator.ValidateSuggestedBlock(blocks[i]))
-                        {
-                            AddBlockResult addResult = BlockTree.SuggestBlock(blocks[i]);
-                            if (addResult == AddBlockResult.UnknownParent)
+                            if (t.Exception != null && t.Exception.InnerExceptions.Any(x => x is TimeoutException))
                             {
-                                if(_logger.IsInfoEnabled) _logger.Info($"Block {blocks[i].Number} ignored (unknown parent)");
-                                if (i == 0)
-                                {
-                                    if(_logger.IsWarnEnabled) _logger.Warn("Resyncing split");
-                                    peerInfo.NumberReceived -= 1;
-                                    var syncTask = Task.Run(() => SyncAsync(_syncCancellationTokenSource.Token), _syncCancellationTokenSource.Token);
-                                    await syncTask;
-                                }
-                                else
-                                {
-                                    const string message = "Peer sent an inconsistent batch of block headers";
-                                    _logger.Error(message);
-                                    throw new EthSynchronizationException(message);
-                                }
+                                _logger.Warn($"Stopping Sync with node: {currentPeerNodeId}. {t.Exception.Message}");
                             }
-
-                            if (_logger.IsDebugEnabled) _logger.Debug($"Block {blocks[i].Number} suggested for processing");
+                            else
+                            {
+                                _logger.Error($"Stopping Sync with node: {currentPeerNodeId}. Error in the sync process: {t.Exception?.Message}");
+                            }
                         }
-                        else
+                        else if (_logger.IsDebugEnabled)
                         {
-                            if (_logger.IsWarnEnabled) _logger.Warn($"Block {blocks[i].Number} skipped (validation failed)");
+                            _logger.Error($"Stopping Sync with node: {currentPeerNodeId}. Error in the sync process", t.Exception);
+                        }
+
+                        //TODO check if we should disconnect this node
+                        RemovePeer(peerInfo?.Peer);
+                        if (_logger.IsInfoEnabled)
+                        {
+                            _logger.Info($"Sync with Node: {currentPeerNodeId} failed. Removed node from sync peers.");
                         }
                     }
-
-                    peerInfo.NumberReceived = blocks[blocks.Length - 1].Number;
-
-                    bestNumber = BlockTree.BestSuggested.Number;
-                }
-
-                if (!wasCancelled)
-                {
-                    peerInfo.IsSynced = true;
-                    Synced?.Invoke(this, EventArgs.Empty);
-                }
+                    else if (t.IsCanceled)
+                    {
+                        RemovePeer(peerInfo?.Peer);
+                        if (_logger.IsInfoEnabled)
+                        {
+                            _logger.Info($"Sync with Node: {currentPeerNodeId} canceled. Removed node from sync peers.");
+                        }
+                    }
+                    else if (t.IsCompleted)
+                    {
+                        if (_logger.IsInfoEnabled)
+                        {
+                            _logger.Info($"Sync process finished with nodeId: {currentPeerNodeId}. Best block now is {BlockTree.BestSuggested.Hash} ({BlockTree.BestSuggested.Number})");
+                        }
+                    }
+                });
             }
         }
 
-        public event EventHandler Synced;
+        private async Task PeerSyncAsync(CancellationToken token, PeerInfo peerInfo)
+        {
+            bool wasCancelled = false;
+            
+            ISynchronizationPeer peer = peerInfo.Peer;
+            BigInteger bestNumber = BlockTree.BestSuggested.Number;
+
+            const int maxLookup = 64;
+            int ancestorLookupLevel = 0;
+            bool isCommonAncestorKnown = false;
+
+            while (peerInfo.NumberAvailable > bestNumber && peerInfo.NumberReceived <= peerInfo.NumberAvailable)
+            {
+                if (ancestorLookupLevel > maxLookup)
+                {
+                    throw new InvalidOperationException("Cannot find ancestor"); // TODO: remodel this after full sync test is added
+                }
+
+                if (token.IsCancellationRequested)
+                {
+                    token.ThrowIfCancellationRequested();
+                }
+
+                if (!isCommonAncestorKnown)
+                {
+                    // TODO: cases when many peers used for sync and one peer finished sync and then we need resync - we should start from common point and not NumberReceived that may be far in the past
+                    _logger.Info($"Finding common ancestor for {peerInfo.Peer.NodeId}");
+                    isCommonAncestorKnown = true;
+                }
+
+                BigInteger blocksLeft = peerInfo.NumberAvailable - peerInfo.NumberReceived;
+                // TODO: fault handling on tasks
+
+                int blocksToRequest = (int)BigInteger.Min(blocksLeft + 1, BatchSize);
+                if (_logger.IsDebugEnabled) _logger.Debug($"Sync request to peer with {peerInfo.NumberAvailable} blocks. Got {peerInfo.NumberReceived} and asking for {blocksToRequest} more.");
+                Task<BlockHeader[]> headersTask = peer.GetBlockHeaders(peerInfo.NumberReceived, blocksToRequest, 0, token);
+                _currentSyncTask = headersTask;
+                BlockHeader[] headers = await headersTask;
+                if (_currentSyncTask.IsCanceled)
+                {
+                    wasCancelled = true;
+                    break;
+                }
+
+                if (_currentSyncTask.IsFaulted)
+                {
+                    _logger.Error("Failed to retrieve headers when synchronizing", _currentSyncTask.Exception);
+                    throw _currentSyncTask.Exception;
+                }
+
+                if (token.IsCancellationRequested)
+                {
+                    token.ThrowIfCancellationRequested();
+                }
+
+                List<Keccak> hashes = new List<Keccak>();
+                Dictionary<Keccak, BlockHeader> headersByHash = new Dictionary<Keccak, BlockHeader>();
+                for (int i = 1; i < headers.Length; i++)
+                {
+                    hashes.Add(headers[i].Hash);
+                    headersByHash[headers[i].Hash] = headers[i];
+                }
+
+                Task<Block[]> bodiesTask = peer.GetBlocks(hashes.ToArray(), token);
+                _currentSyncTask = bodiesTask;
+                Block[] blocks = await bodiesTask;
+                if (_currentSyncTask.IsCanceled)
+                {
+                    wasCancelled = true;
+                    break;
+                }
+
+                if (_currentSyncTask.IsFaulted)
+                {
+                    _logger.Error("Failed to retrieve bodies when synchronizing", _currentSyncTask.Exception);
+                    throw _currentSyncTask.Exception;
+                }
+
+                ancestorLookupLevel = 0;
+
+                for (int i = 0; i < blocks.Length; i++)
+                {
+                    if (token.IsCancellationRequested)
+                    {
+                        token.ThrowIfCancellationRequested();
+                    }
+
+                    blocks[i].Header = headersByHash[hashes[i]];
+                }
+
+                if (blocks.Length > 0)
+                {
+                    Block parent = BlockTree.FindParent(blocks[0]);
+                    if (parent == null)
+                    {
+                        ancestorLookupLevel += BatchSize;
+                        peerInfo.NumberReceived -= BatchSize;
+                        continue;
+                    }
+                }
+
+                // Parity 1.11 non canonical blocks when testing on 27/06
+                for (int i = 0; i < blocks.Length; i++)
+                {
+                    if (i != 0 && blocks[i].ParentHash != blocks[i - 1].Hash)
+                    {
+                        throw new EthSynchronizationException("Peer send an inconsistent block list");
+                    }
+                }
+
+                for (int i = 0; i < blocks.Length; i++)
+                {
+                    if(_logger.IsInfoEnabled) _logger.Info($"Received {blocks[i]} from {peer.NodeId}");
+                    
+                    if (_blockValidator.ValidateSuggestedBlock(blocks[i]))
+                    {
+                        AddBlockResult addResult = BlockTree.SuggestBlock(blocks[i]);
+                        if (addResult == AddBlockResult.UnknownParent)
+                        {
+                            if(_logger.IsInfoEnabled) _logger.Info($"Block {blocks[i].Number} ignored (unknown parent)");
+                            if (i == 0)
+                            {
+                                if(_logger.IsWarnEnabled) _logger.Warn("Resyncing split");
+                                peerInfo.NumberReceived -= 1;
+                                var syncTask = Task.Run(() => PeerSyncAsync(_syncCancellationTokenSource.Token, peerInfo), _syncCancellationTokenSource.Token);
+                                await syncTask;
+                            }
+                            else
+                            {
+                                const string message = "Peer sent an inconsistent batch of block headers";
+                                _logger.Error(message);
+                                throw new EthSynchronizationException(message);
+                            }
+                        }
+
+                        if (_logger.IsDebugEnabled) _logger.Debug($"Block {blocks[i].Number} suggested for processing");
+                    }
+                    else
+                    {
+                        if (_logger.IsWarnEnabled) _logger.Warn($"Block {blocks[i].Number} skipped (validation failed)");
+                    }
+                }
+
+                peerInfo.NumberReceived = blocks[blocks.Length - 1].Number;
+
+                bestNumber = BlockTree.BestSuggested.Number;
+            }
+
+            if (_logger.IsInfoEnabled)
+            {
+                _logger.Info($"Stopping sync processes with Node: {peerInfo.Peer.NodeId}, wasCancelled: {wasCancelled}");
+            }
+
+            if (!wasCancelled)
+            {
+                peerInfo.IsSynced = true;
+                Synced?.Invoke(this, new SyncedEventArgs(peerInfo.Peer));
+            }
+        }
+
+        public event EventHandler<SyncedEventArgs> Synced;
 
         private async Task InitPeerInfo(ISynchronizationPeer peer, CancellationToken token)
         {
