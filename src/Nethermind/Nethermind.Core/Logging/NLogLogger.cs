@@ -42,20 +42,6 @@ namespace Nethermind.Core.Logging
                 Directory.CreateDirectory("logs");
             }
 
-            string[] files = Directory.GetFiles("logs");
-            foreach (string file in files)
-            {
-                // TODO: temp for testing
-                try
-                {
-                    File.Delete(file);
-                }
-                catch (Exception e)
-                {
-                    // ignore
-                }
-            }
-
             if (NLog.LogManager.Configuration.AllTargets.SingleOrDefault(t => t.Name == "file") is FileTarget target)
             {
                 target.FileName = !Path.IsPathFullyQualified(fileName) ? Path.Combine("logs", fileName) : fileName;

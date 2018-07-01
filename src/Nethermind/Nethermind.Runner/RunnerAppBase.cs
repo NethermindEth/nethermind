@@ -57,6 +57,12 @@ namespace Nethermind.Runner
             app.OnExecute(async () =>
             {
                 var initParams = buildInitParams();
+
+                if (initParams.RemovingLogFilesEnabled)
+                {
+                    RemoveLogFiles();
+                }
+
                 Logger = new NLogLogger(initParams.LogFileName);
 
                 Console.Title = initParams.LogFileName;
@@ -187,6 +193,22 @@ namespace Nethermind.Runner
                 Description = networkNode.Description
             };
             return node;
+        }
+
+        private void RemoveLogFiles()
+        {
+            Console.WriteLine("Removing log files.");
+            var files = Directory.GetFiles("logs");
+            foreach (string file in files)
+            {
+                try
+                {
+                    File.Delete(file);
+                }
+                catch (Exception e)
+                {
+                }
+            }
         }
     }
 }
