@@ -38,7 +38,8 @@ namespace Nethermind.Blockchain.Test
         }
 
         public NodeId NodeId { get; set; } = new NodeId(TestObject.PublicKeyA);
-        
+        public string ClientId { get; set; }
+
         public Task<Block[]> GetBlocks(Keccak[] blockHashes, CancellationToken token)
         {
             Block[] result = new Block[blockHashes.Length];

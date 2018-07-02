@@ -425,6 +425,8 @@ namespace Nethermind.Network
                         return;
                     }
                     peer.NodeStats.AddNodeStatsEvent(NodeStatsEvent.Eth62Initialized);
+                    //TODO move this outside, so syncManager have access to NodeStats and NodeDetails
+                    ethProtocolhandler.ClientId = peer.NodeStats.NodeDetails.ClientId;
                     peer.SynchronizationPeer = ethProtocolhandler;
 
                     if (_logger.IsInfoEnabled)

@@ -48,7 +48,7 @@ namespace Nethermind.Blockchain
         private Task _currentSyncTask;
         private bool _isSyncing;
         private PeerInfo _currentSyncingPeer;
-        private System.Timers.Timer _syncTimer;
+        //private System.Timers.Timer _syncTimer;
 
         private CancellationTokenSource _syncCancellationTokenSource;
         private ConcurrentDictionary<NodeId, CancellationTokenSource> _initCancellationTokenSources = new ConcurrentDictionary<NodeId, CancellationTokenSource>();
@@ -283,13 +283,13 @@ namespace Nethermind.Blockchain
 
         public void Start()
         {
-            StartActivePeersTimer();
+            //StartActivePeersTimer();
             //_syncCancellationTokenSource = new CancellationTokenSource();
         }
 
         public async Task StopAsync()
         {
-            StopActivePeersTimer();
+            //StopActivePeersTimer();
 
             if (_syncCancellationTokenSource == null || _syncCancellationTokenSource.IsCancellationRequested)
             {
@@ -321,43 +321,43 @@ namespace Nethermind.Blockchain
             }
         }
 
-        private void StartActivePeersTimer()
-        {
-            if (_logger.IsInfoEnabled)
-            {
-                _logger.Info("Starting sync timer");
-            }
+        //private void StartActivePeersTimer()
+        //{
+        //    if (_logger.IsInfoEnabled)
+        //    {
+        //        _logger.Info("Starting sync timer");
+        //    }
 
-            _syncTimer = new System.Timers.Timer(_blockchainConfig.SyncTimerInterval) { AutoReset = false };
-            _syncTimer.Elapsed += (sender, e) =>
-            {
-                _syncTimer.Enabled = false;
-                if (_logger.IsInfoEnabled)
-                {
-                    _logger.Info($"Running sync timer: current sync peers: {_peers.Count}, unsynced: {_peers.Count(x => !x.Value.IsSynced)}, synced: {_peers.Count(x => x.Value.IsSynced)}");
-                }
-                RunSync();
-                _syncTimer.Enabled = true;
-            };
+        //    _syncTimer = new System.Timers.Timer(_blockchainConfig.SyncTimerInterval) { AutoReset = false };
+        //    _syncTimer.Elapsed += (sender, e) =>
+        //    {
+        //        _syncTimer.Enabled = false;
+        //        if (_logger.IsInfoEnabled)
+        //        {
+        //            _logger.Info($"Running sync timer: current sync peers: {_peers.Count}, unsynced: {_peers.Count(x => !x.Value.IsSynced)}, synced: {_peers.Count(x => x.Value.IsSynced)}");
+        //        }
+        //        RunSync();
+        //        _syncTimer.Enabled = true;
+        //    };
 
-            _syncTimer.Start();
-        }
+        //    _syncTimer.Start();
+        //}
 
-        private void StopActivePeersTimer()
-        {
-            try
-            {
-                if (_logger.IsInfoEnabled)
-                {
-                    _logger.Info("Stopping sync timer");
-                }
-                _syncTimer?.Stop();
-            }
-            catch (Exception e)
-            {
-                _logger.Error("Error during sync timer stop", e);
-            }
-        }
+        //private void StopActivePeersTimer()
+        //{
+        //    try
+        //    {
+        //        if (_logger.IsInfoEnabled)
+        //        {
+        //            _logger.Info("Stopping sync timer");
+        //        }
+        //        _syncTimer?.Stop();
+        //    }
+        //    catch (Exception e)
+        //    {
+        //        _logger.Error("Error during sync timer stop", e);
+        //    }
+        //}
 
         private void OnNewHeadBlock(object sender, BlockEventArgs blockEventArgs)
         {
@@ -456,7 +456,7 @@ namespace Nethermind.Blockchain
                 _currentSyncingPeer = peerInfo;
                 if (_logger.IsInfoEnabled)
                 {
-                    _logger.Info($"Starting sync processes with Node: {peerInfo.Peer.NodeId}, peer highest block #: {peerInfo.NumberAvailable}, our highest block #: {BlockTree.BestSuggested.Number}");
+                    _logger.Info($"Starting sync processes with Node: {peerInfo.Peer.NodeId} [{peerInfo.Peer.ClientId}], peer highest block #: {peerInfo.NumberAvailable}, our highest block #: {BlockTree.BestSuggested.Number}");
                 }
 
                 _syncCancellationTokenSource = new CancellationTokenSource();
@@ -505,6 +505,11 @@ namespace Nethermind.Blockchain
                         {
                             _logger.Info($"Sync process finished with nodeId: {currentPeerNodeId}. Best block now is {BlockTree.BestSuggested.Hash} ({BlockTree.BestSuggested.Number})");
                         }
+                    }
+
+                    if (_logger.IsInfoEnabled)
+                    {
+                        _logger.Info($"Finished sync process [{(t.IsFaulted ? "FAULTED" : t.IsCanceled ? "CANCELLED" : t.IsCompleted ? "COMPLETED" : "OTHER" )}] with Node: {peerInfo.Peer.NodeId} [{peerInfo.Peer.ClientId}], peer highest block #: {peerInfo.NumberAvailable}, our highest block #: {BlockTree.BestSuggested.Number}");
                     }
                 });
             }

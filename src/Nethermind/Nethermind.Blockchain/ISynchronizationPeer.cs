@@ -28,6 +28,7 @@ namespace Nethermind.Blockchain
     public interface ISynchronizationPeer
     {
         NodeId NodeId { get; }
+        string ClientId { get; }
         Task<Block[]> GetBlocks(Keccak[] blockHashes, CancellationToken token);
         Task<BlockHeader[]> GetBlockHeaders(Keccak blockHash, int maxBlocks, int skip, CancellationToken token);
         Task<BlockHeader[]> GetBlockHeaders(BigInteger number, int maxBlocks, int skip, CancellationToken token);

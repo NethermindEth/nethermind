@@ -73,6 +73,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         public string ProtocolCode => "eth";
         public virtual int MessageIdSpaceSize => 8;
         public NodeId NodeId => P2PSession.RemoteNodeId;
+        public string ClientId { get; set; }
         public event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized;
         public event EventHandler<ProtocolEventArgs> SubprotocolRequested;
 
