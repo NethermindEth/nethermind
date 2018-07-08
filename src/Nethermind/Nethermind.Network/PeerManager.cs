@@ -392,7 +392,7 @@ namespace Nethermind.Network
                             ? DateTime.Now.Subtract(candidateNode.NodeStats.LastDisconnectTime.Value).TotalMilliseconds.ToString()
                             : "no disconnect";
 
-                        _logger.Warn($"Protocol initialized for peer not present in active collection, id: {session.RemoteNodeId}, time from last disconnect: {timeFromLastDisconnect}");
+                        _logger.Warn($"Protocol initialized for peer not present in active collection, id: {session.RemoteNodeId}, time from last disconnect: {timeFromLastDisconnect}.");
                     }
                 }
                 else
@@ -402,6 +402,9 @@ namespace Nethermind.Network
                         _logger.Error($"Protocol initialized for peer not present in active collection, id: {session.RemoteNodeId}, peer not in candidate collection.");
                     }
                 }
+
+                //Initializing disconnect if it hasnt been done already - in case of e.g. timeout earier and unexcepted further connection
+                await session.InitiateDisconnectAsync(DisconnectReason.Other);
 
                 return;
             }

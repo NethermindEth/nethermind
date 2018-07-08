@@ -17,6 +17,7 @@
  */
 
 using System;
+using System.Net.Sockets;
 using DotNetty.Transport.Channels;
 using Nethermind.Core;
 using Nethermind.Core.Logging;
@@ -62,10 +63,21 @@ namespace Nethermind.Network.P2P
 
         public override void ExceptionCaught(IChannelHandlerContext context, Exception exception)
         {
-            if (_logger.IsDebugEnabled)
+            //In case of SocketException we log it as debug to avoid noise
+            if (exception is SocketException)
             {
-                _logger.Debug($"{GetType().Name} exception: {exception}");
+                if (_logger.IsDebugEnabled)
+                {
+                    _logger.Error($"{GetType().Name} error in p2p netty handler (SocketException): {exception}");
+                }
             }
+            else
+            {
+                if (_logger.IsErrorEnabled)
+                {
+                    _logger.Error($"{GetType().Name} error in p2p netty handler: {exception}");
+                }
+            } 
 
             base.ExceptionCaught(context, exception);
         }

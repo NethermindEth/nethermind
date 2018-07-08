@@ -31,5 +31,36 @@ namespace Nethermind.Core
         public const int EthereumClassicMainnet = 61;
         public const int EthereumClassicTestnet = 62;
         public const int DefaultGethPrivateChain = 1337;
+
+        public static string GetChainName(int chaninId)
+        {
+            switch (chaninId)
+            {
+                case Olympic:
+                    return "Olympic";
+                case MainNet:
+                    return "MainNet";
+                case Morden:
+                    return "Morden";
+                case Ropsten:
+                    return "Ropsten";
+                case Rinkeby:
+                    return "Rinkeby";
+                case RootstockMainnet:
+                    return "RootstockMainnet";
+                case RootstockTestnet:
+                    return "RootstockTestnet";
+                case Kovan:
+                    return "Kovan";
+                case EthereumClassicMainnet:
+                    return "EthereumClassicMainnet";
+                case EthereumClassicTestnet:
+                    return "EthereumClassicTestnet";
+                case DefaultGethPrivateChain:
+                    return "DefaultGethPrivateChain";
+            }
+
+            return chaninId.ToString();
+        }
     }
 }

@@ -311,6 +311,11 @@ namespace Nethermind.Blockchain
 
         private void OnNewPendingTransaction(object sender, TransactionEventArgs transactionEventArgs)
         {
+            if (_isSyncing)
+            {
+                return;
+            }
+
             Transaction transaction = transactionEventArgs.Transaction;
             foreach ((NodeId nodeId, PeerInfo peerInfo) in _peers)
             {
@@ -361,6 +366,11 @@ namespace Nethermind.Blockchain
 
         private void OnNewHeadBlock(object sender, BlockEventArgs blockEventArgs)
         {
+            if (_isSyncing)
+            {
+                return;
+            }
+
             Block block = blockEventArgs.Block;
             foreach ((NodeId nodeId, PeerInfo peerInfo) in _peers)
             {

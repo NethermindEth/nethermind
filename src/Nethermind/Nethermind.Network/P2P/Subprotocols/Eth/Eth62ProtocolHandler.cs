@@ -218,14 +218,42 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
             if (status.ChainId != _sync.BlockTree.ChainId)
             {
-                throw new InvalidOperationException("network ID mismatch");
-                // TODO: disconnect here
+                if (Logger.IsInfoEnabled)
+                {
+                    Logger.Info($"Network id mismatch, initiating disconnect, Node: {P2PSession.RemoteNodeId}, our network: {ChainId.GetChainName(_sync.BlockTree.ChainId)}, theirs: {ChainId.GetChainName((int)status.ChainId)}");
+                }
+
+                P2PSession.InitiateDisconnectAsync(DisconnectReason.Other).ContinueWith(x =>
+                {
+                    if (x.IsFaulted)
+                    {
+                        if (Logger.IsErrorEnabled)
+                        {
+                            Logger.Error($"Error while disconnecting: {P2PSession.RemoteNodeId}", x.Exception);
+                        }
+                    }
+                });
+                return;
             }
             
             if (status.GenesisHash != _sync.Genesis.Hash)
             {
-                Logger.Warn($"{P2PSession.RemoteNodeId} Connected peer's genesis hash {status.GenesisHash} differes from {_sync.Genesis.Hash}");
-                throw new InvalidOperationException("genesis hash mismatch");
+                if (Logger.IsWarnEnabled)
+                {
+                    Logger.Warn($"Connected peer's genesis hash {status.GenesisHash} differes from {_sync.Genesis.Hash} initiating disconnect, Node: {P2PSession.RemoteNodeId}");
+                }
+
+                P2PSession.InitiateDisconnectAsync(DisconnectReason.BreachOfProtocol).ContinueWith(x =>
+                {
+                    if (x.IsFaulted)
+                    {
+                        if (Logger.IsErrorEnabled)
+                        {
+                            Logger.Error($"Error while disconnecting: {P2PSession.RemoteNodeId}", x.Exception);
+                        }
+                    }
+                });
+                return;
             }
 
             //if (!_statusSent)

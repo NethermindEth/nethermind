@@ -41,7 +41,6 @@ namespace Nethermind.Network.Rlpx
     // TODO: integration tests for this one
     public class RlpxPeer : IRlpxPeer
     {
-        private const int PeerConnectionTimeout = 10000;
         private readonly int _localPort;
         private readonly IEncryptionHandshakeService _encryptionHandshakeService;
         private readonly IMessageSerializationService _serializationService;
@@ -153,13 +152,13 @@ namespace Nethermind.Network.Rlpx
 
             clientBootstrap.Option(ChannelOption.TcpNodelay, true);
             clientBootstrap.Option(ChannelOption.MessageSizeEstimator, DefaultMessageSizeEstimator.Default);
-            clientBootstrap.Option(ChannelOption.ConnectTimeout, TimeSpan.FromMilliseconds(PeerConnectionTimeout));
+            clientBootstrap.Option(ChannelOption.ConnectTimeout, Timeouts.InitialConnection);
             clientBootstrap.RemoteAddress(host, port);
 
             clientBootstrap.Handler(new ActionChannelInitializer<ISocketChannel>(ch => InitializeChannel(ch, EncryptionHandshakeRole.Initiator, remoteId, host, port)));
 
             var connectTask = clientBootstrap.ConnectAsync(new IPEndPoint(IPAddress.Parse(host), port));
-            var firstTask = await Task.WhenAny(connectTask, Task.Delay(5000));
+            var firstTask = await Task.WhenAny(connectTask, Task.Delay(Timeouts.InitialConnection));
             if (firstTask != connectTask)
             {
                 _logger.Debug($"Connection timed out: {remoteId}@{host}:{port}");
