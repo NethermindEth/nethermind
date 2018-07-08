@@ -81,6 +81,8 @@ namespace Nethermind.Blockchain
         public BigInteger HeadNumber => BlockTree.Head.Number;
         public BigInteger TotalDifficulty => BlockTree.Head?.TotalDifficulty ?? 0;
         public IBlockTree BlockTree { get; set; }
+        public event EventHandler<SyncEventArgs> Synced;
+        public event EventHandler<SyncEventArgs> SyncFailed;
 
         public Block Find(Keccak hash)
         {
@@ -235,7 +237,7 @@ namespace Nethermind.Blockchain
                 {
                     if (_logger.IsErrorEnabled)
                     {
-                        _logger.Error($"{nameof(AddPeer)} failed.", t.Exception);
+                        _logger.Error("AddPeer failed.", t.Exception);
                     }
                 }
                 else if (t.IsCanceled)
@@ -482,7 +484,7 @@ namespace Nethermind.Blockchain
                         {
                             if (t.Exception != null && t.Exception.InnerExceptions.Any(x => x is TimeoutException))
                             {
-                                _logger.Warn($"Stopping Sync with node: {currentPeerNodeId}. {t.Exception.Message}");
+                                _logger.Warn($"Stopping Sync with node: {currentPeerNodeId}. {t.Exception?.Message}");
                             }
                             else
                             {
@@ -500,6 +502,8 @@ namespace Nethermind.Blockchain
                         {
                             _logger.Info($"Sync with Node: {currentPeerNodeId} failed. Removed node from sync peers.");
                         }
+
+                        SyncFailed?.Invoke(this, new SyncEventArgs(peerInfo.Peer));
                     }
                     else if (t.IsCanceled)
                     {
@@ -681,11 +685,9 @@ namespace Nethermind.Blockchain
             if (!wasCancelled)
             {
                 peerInfo.IsSynced = true;
-                Synced?.Invoke(this, new SyncedEventArgs(peerInfo.Peer));
+                Synced?.Invoke(this, new SyncEventArgs(peerInfo.Peer));
             }
         }
-
-        public event EventHandler<SyncedEventArgs> Synced;
 
         private async Task InitPeerInfo(ISynchronizationPeer peer, CancellationToken token)
         {
@@ -702,7 +704,19 @@ namespace Nethermind.Blockchain
                 {
                     if (t.IsFaulted)
                     {
-                        _logger.Error($"{nameof(InitPeerInfo)} failed.", t.Exception);
+                        if (_logger.IsErrorEnabled)
+                        {
+                            if (t.Exception != null && t.Exception.InnerExceptions.Any(x => x is TimeoutException))
+                            {
+                                _logger.Warn($"InitPeerInfo failed for node: {peer.NodeId}. {t.Exception?.Message}");
+                            }
+                            else
+                            {
+                                _logger.Error($"InitPeerInfo failedf or node: {peer.NodeId}.", t.Exception);
+                            }
+                        }   
+
+                        SyncFailed?.Invoke(this, new SyncEventArgs(peer));
                     }
                     else if (t.IsCanceled)
                     {
@@ -715,30 +729,11 @@ namespace Nethermind.Blockchain
                 _logger.Info($"Received head block info from {peer.NodeId} with head block numer {getNumberTask.Result}");
             }
 
-            //            bool addResult = _peers.TryAdd(peer.NodeId, new PeerInfo(peer, getNumberTask.Result));
             bool addResult = _peers.TryAdd(peer.NodeId, new PeerInfo(peer, getNumberTask.Result) { NumberReceived = BlockTree.BestSuggested.Number }); // TODO: cheating now with assumign the consistency of the chains
             if (!addResult)
             {
                 _logger.Error($"Adding {nameof(PeerInfo)} failed for {peer.NodeId}");
             }
-
-#if DEBUG
-            bool getValueResult = _peers.TryGetValue(peer.NodeId, out PeerInfo peerInfo);
-            if (!getValueResult)
-            {
-                _logger.Error($"Try get value failed on {nameof(PeerInfo)} {peer.NodeId}");
-                int i = 0;
-                foreach (KeyValuePair<NodeId, PeerInfo> keyValuePair in _peers)
-                {
-                    _logger.Error($"{i++}: {keyValuePair.Key} {keyValuePair.Value}");
-                }
-            }
-
-            if (peerInfo == null)
-            {
-                _logger.Error($"Newly added {nameof(PeerInfo)} for {peer.NodeId} is null");
-            }
-#endif
         }
 
         private class PeerInfo

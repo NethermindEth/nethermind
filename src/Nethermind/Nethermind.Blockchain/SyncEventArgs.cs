@@ -20,11 +20,11 @@ using System;
 
 namespace Nethermind.Blockchain
 {
-    public class SyncedEventArgs : EventArgs
+    public class SyncEventArgs : EventArgs
     {
         public ISynchronizationPeer Peer { get; }
 
-        public SyncedEventArgs(ISynchronizationPeer peer)
+        public SyncEventArgs(ISynchronizationPeer peer)
         {
             Peer = peer;
         }
