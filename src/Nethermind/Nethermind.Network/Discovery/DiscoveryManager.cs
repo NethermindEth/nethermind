@@ -53,12 +53,12 @@ namespace Nethermind.Network.Discovery
             IConfigProvider configurationProvider,
             ILogManager logManager)
         {
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _configurationProvider = configurationProvider?.NetworkConfig ?? throw new ArgumentNullException(nameof(configurationProvider));
-            _nodeLifecycleManagerFactory = nodeLifecycleManagerFactory ?? throw new ArgumentNullException(nameof(nodeLifecycleManagerFactory));
-            _nodeFactory = nodeFactory ?? throw new ArgumentNullException(nameof(nodeFactory));
-            _nodeTable = nodeTable ?? throw new ArgumentNullException(nameof(nodeTable));
-            _discoveryStorage = discoveryStorage ?? throw new ArgumentNullException(nameof(discoveryStorage));
+            _logger = logManager.GetClassLogger();
+            _configurationProvider = configurationProvider.GetConfig<NetworkConfig>();
+            _nodeLifecycleManagerFactory = nodeLifecycleManagerFactory;
+            _nodeFactory = nodeFactory;
+            _nodeTable = nodeTable;
+            _discoveryStorage = discoveryStorage;
             _nodeLifecycleManagerFactory.DiscoveryManager = this;
         }
 

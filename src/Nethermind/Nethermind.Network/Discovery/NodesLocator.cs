@@ -40,10 +40,10 @@ namespace Nethermind.Network.Discovery
 
         public NodesLocator(INodeTable nodeTable, IDiscoveryManager discoveryManager, IConfigProvider configurationProvider, ILogManager logManager)
         {
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _configurationProvider = configurationProvider?.NetworkConfig ?? throw new ArgumentNullException(nameof(configurationProvider.NetworkConfig));
-            _nodeTable = nodeTable ?? throw new ArgumentNullException(nameof(nodeTable));
-            _discoveryManager = discoveryManager ?? throw new ArgumentNullException(nameof(discoveryManager));
+            _logger = logManager?.GetClassLogger();
+            _configurationProvider = configurationProvider.GetConfig<NetworkConfig>();
+            _nodeTable = nodeTable;
+            _discoveryManager = discoveryManager;
         }
 
         public void Initialize(Node masterNode)

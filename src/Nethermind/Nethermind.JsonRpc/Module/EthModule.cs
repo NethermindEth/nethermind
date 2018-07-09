@@ -51,7 +51,7 @@ namespace Nethermind.JsonRpc.Module
         private readonly IDb _db;
         private readonly IStateProvider _stateProvider;
         private readonly IKeyStore _keyStore;
-        private readonly IConfigProvider _configurationProvider;
+        private readonly IJsonRpcConfig _jsonRpcConfig;
         private readonly IJsonRpcModelMapper _modelMapper;
         private readonly IReleaseSpec _releaseSpec;
 
@@ -72,7 +72,7 @@ namespace Nethermind.JsonRpc.Module
             _jsonSerializer = jsonSerializer;
             _stateProvider = stateProvider;
             _keyStore = keyStore;
-            _configurationProvider = configurationProvider;
+            _jsonRpcConfig = configurationProvider.GetConfig<JsonRpcConfig>();
             _blockTree = blockTree;
             _db = db;
             _modelMapper = modelMapper;
@@ -268,8 +268,8 @@ namespace Nethermind.JsonRpc.Module
                 return ResultWrapper<Data>.Fail("Incorrect address");
             }
 
-            var messageText = Encoding.GetEncoding(ConfigurationProvider.JsonRpcConfig.MessageEncoding).GetString(message.Value);
-            var signatureText = string.Format(ConfigurationProvider.JsonRpcConfig.SignatureTemplate, messageText.Length, messageText);
+            var messageText = Encoding.GetEncoding(_jsonRpcConfig.MessageEncoding).GetString(message.Value);
+            var signatureText = string.Format(_jsonRpcConfig.SignatureTemplate, messageText.Length, messageText);
             //TODO how to select proper chainId
             var signer = _signer;
             var signature = signer.Sign(privateKey.Item1, Keccak.Compute(signatureText));

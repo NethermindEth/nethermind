@@ -32,7 +32,7 @@ namespace Nethermind.KeyStore
         public AesEncrypter(IConfigProvider configurationProvider, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _configurationProvider = configurationProvider.KeystoreConfig;
+            _configurationProvider = configurationProvider.GetConfig<KeystoreConfig>();
         }
 
         public byte[] Encrypt(byte[] content, byte[] key, byte[] iv, string cipherType)

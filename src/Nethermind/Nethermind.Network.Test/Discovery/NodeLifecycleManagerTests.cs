@@ -61,9 +61,9 @@ namespace Nethermind.Network.Test.Discovery
             //setting config to store 3 nodes in a bucket and for table to have one bucket//setting config to store 3 nodes in a bucket and for table to have one bucket
 
             _configurationProvider = new JsonConfigProvider();
-            ((NetworkConfig)_configurationProvider.NetworkConfig).PongTimeout = 50;
-            ((NetworkConfig)_configurationProvider.NetworkConfig).BucketSize = 3;
-            ((NetworkConfig)_configurationProvider.NetworkConfig).BucketsCount = 1;
+            ((NetworkConfig)_configurationProvider.GetConfig<NetworkConfig>()).PongTimeout = 50;
+            ((NetworkConfig)_configurationProvider.GetConfig<NetworkConfig>()).BucketSize = 3;
+            ((NetworkConfig)_configurationProvider.GetConfig<NetworkConfig>()).BucketsCount = 1;
 
             _nodeFactory = new NodeFactory();
             var calculator = new NodeDistanceCalculator(_configurationProvider);

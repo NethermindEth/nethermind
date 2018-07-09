@@ -373,7 +373,7 @@ namespace Nethermind.Runner.Runners
 
             if (initParams.DiscoveryPort.HasValue)
             {
-                ((NetworkConfig)_configProvider.NetworkConfig).MasterPort = initParams.DiscoveryPort.Value;
+                _configProvider.GetConfig<NetworkConfig>().MasterPort = initParams.DiscoveryPort.Value;
             }
 
             var privateKeyProvider = new PrivateKeyProvider(_privateKey);

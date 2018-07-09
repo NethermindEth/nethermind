@@ -71,7 +71,7 @@ namespace Nethermind.KeyStore.Test
             Assert.AreEqual(ResultType.Success, key.Item2.ResultType);
 
             //replace version
-            string filePath = Path.Combine(_configurationProvider.KeystoreConfig.KeyStoreDirectory, key.Item1.Address.ToString());
+            string filePath = Path.Combine(_configurationProvider.GetConfig<KeystoreConfig>().KeyStoreDirectory, key.Item1.Address.ToString());
             KeyStoreItem item = _serializer.Deserialize<KeyStoreItem>(File.ReadAllText(filePath));
             item.Crypto.Version = 0;
             string json = _serializer.Serialize(item);
@@ -93,7 +93,7 @@ namespace Nethermind.KeyStore.Test
             PrivateKey key1;
             PrivateKey key2;
 
-            File.Create(Path.Combine(_configurationProvider.KeystoreConfig.KeyStoreDirectory, "not_a_key"));
+            File.Create(Path.Combine(_configurationProvider.GetConfig<KeystoreConfig>().KeyStoreDirectory, "not_a_key"));
             
             (key1, result) = _store.GenerateKey(_testPasswordSecured);
             Assert.AreEqual(ResultType.Success, result.ResultType, "generate key 1");
@@ -145,7 +145,7 @@ namespace Nethermind.KeyStore.Test
             Assert.AreEqual(ResultType.Success, key.Item2.ResultType);
 
             //replace version
-            string filePath = Path.Combine(_configurationProvider.KeystoreConfig.KeyStoreDirectory, key.Item1.Address.ToString());
+            string filePath = Path.Combine(_configurationProvider.GetConfig<KeystoreConfig>().KeyStoreDirectory, key.Item1.Address.ToString());
             KeyStoreItem item = _serializer.Deserialize<KeyStoreItem>(File.ReadAllText(filePath));
             item.Version = 1;
             string json = _serializer.Serialize(item);

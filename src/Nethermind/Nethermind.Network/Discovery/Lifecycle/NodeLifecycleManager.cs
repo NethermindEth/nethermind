@@ -44,7 +44,7 @@ namespace Nethermind.Network.Discovery.Lifecycle
             _discoveryManager = discoveryManager;
             _nodeTable = nodeTable;
             _logger = logger;
-            _configurationProvider = configurationProvider.NetworkConfig;
+            _configurationProvider = configurationProvider.GetConfig<NetworkConfig>();
             _discoveryMessageFactory = discoveryMessageFactory;
             _evictionManager = evictionManager;
             NodeStats = nodeStats;

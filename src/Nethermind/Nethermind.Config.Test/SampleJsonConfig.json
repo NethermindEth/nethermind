@@ -1,13 +1,13 @@
 [
   {
-    "ConfigModule": "Keystore",
+    "ConfigModule": "KeystoreConfig",
     "ConfigItems": {
       "KdfparamsDklen": "100",
       "Cipher": "test"
     }
   },
   {
-    "ConfigModule": "JsonRpc",
+    "ConfigModule": "JsonRpcConfig",
     "ConfigItems": {
       "JsonRpcVersion": "test",
       "EnabledModules": "Eth,Shh",
@@ -15,7 +15,7 @@
     }    
   },
   {
-    "ConfigModule": "Network",
+    "ConfigModule": "NetworkConfig",
     "ConfigItems": {
       "Concurrency": "4",
       "PenalizedReputationLocalDisconnectReasons": "UnexpectedIdentity,IncompatibleP2PVersion,BreachOfProtocol",     

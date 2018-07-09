@@ -79,7 +79,7 @@ namespace Nethermind.Network
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _localPeer = localPeer;
-            _configurationProvider = configurationProvider.NetworkConfig;
+            _configurationProvider = configurationProvider.GetConfig<NetworkConfig>();
             _synchronizationManager = synchronizationManager;
             _nodeStatsProvider = nodeStatsProvider;
             _discoveryManager = discoveryManager;

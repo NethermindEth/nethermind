@@ -42,10 +42,10 @@ namespace Nethermind.Network.Discovery
 
         public DiscoveryStorage(IConfigProvider configurationProvider, INodeFactory nodeFactory, ILogManager logManager, IPerfService perfService)
         {
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _configurationProvider = configurationProvider?.NetworkConfig ?? throw new ArgumentNullException(nameof(IConfigProvider.NetworkConfig));
-            _nodeFactory = nodeFactory ?? throw new ArgumentNullException(nameof(nodeFactory));
-            _perfService = perfService ?? throw new ArgumentNullException(nameof(perfService));
+            _logger = logManager.GetClassLogger();
+            _configurationProvider = configurationProvider.GetConfig<NetworkConfig>();
+            _nodeFactory = nodeFactory;
+            _perfService = perfService;
             _db = new FullDbOnTheRocks(Path.Combine(_configurationProvider.DbBasePath, FullDbOnTheRocks.DiscoveryNodesDbPath));
         }
 

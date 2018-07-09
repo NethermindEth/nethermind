@@ -25,7 +25,7 @@ namespace Nethermind.KeyStore.Test
         public void Initialize()
         {
             _configurationProvider = new JsonConfigProvider();
-            _keyStoreDir = _configurationProvider.KeystoreConfig.KeyStoreDirectory;
+            _keyStoreDir = _configurationProvider.GetConfig<KeystoreConfig>().KeyStoreDirectory;
             if (!Directory.Exists(_keyStoreDir))
             {
                 Directory.CreateDirectory(_keyStoreDir);

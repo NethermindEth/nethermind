@@ -69,7 +69,7 @@ namespace Nethermind.KeyStore
         public FileKeyStore(IConfigProvider configurationProvider, IJsonSerializer jsonSerializer, ISymmetricEncrypter symmetricEncrypter, ICryptoRandom cryptoRandom, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _configurationProvider = configurationProvider.KeystoreConfig;
+            _configurationProvider = configurationProvider.GetConfig<KeystoreConfig>();
             _jsonSerializer = jsonSerializer;
             _symmetricEncrypter = symmetricEncrypter;
             _cryptoRandom = cryptoRandom;

@@ -16,12 +16,18 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Collections.Generic;
+using System.Text;
+using Nethermind.JsonRpc.DataModel;
+
 namespace Nethermind.Config
 {
-    public enum ConfigModule
+    public interface IJsonRpcConfig : IConfig
     {
-        Network,
-        JsonRpc,
-        Keystore
+        IDictionary<ErrorType, int> ErrorCodes { get; }
+        string JsonRpcVersion { get; }
+        IEnumerable<ModuleType> EnabledModules { get; set; }
+        string MessageEncoding { get; }
+        string SignatureTemplate { get; }
     }
 }

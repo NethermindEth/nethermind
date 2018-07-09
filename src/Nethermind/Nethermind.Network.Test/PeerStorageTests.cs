@@ -23,9 +23,9 @@ namespace Nethermind.Network.Test
         {
             var logManager = NullLogManager.Instance;
             _configurationProvider = new JsonConfigProvider();
-            ((NetworkConfig)_configurationProvider.NetworkConfig).DbBasePath = Path.Combine(Path.GetTempPath(), "PeerStorageTests");
+            ((NetworkConfig)_configurationProvider.GetConfig<NetworkConfig>()).DbBasePath = Path.Combine(Path.GetTempPath(), "PeerStorageTests");
 
-            var dbPath = Path.Combine(_configurationProvider.NetworkConfig.DbBasePath, FullDbOnTheRocks.PeersDbPath);
+            var dbPath = Path.Combine(_configurationProvider.GetConfig<NetworkConfig>().DbBasePath, FullDbOnTheRocks.PeersDbPath);
             if (Directory.Exists(dbPath))
             {
                 Directory.GetFiles(dbPath).ToList().ForEach(File.Delete);

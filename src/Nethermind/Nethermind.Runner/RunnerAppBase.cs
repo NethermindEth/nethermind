@@ -101,14 +101,16 @@ namespace Nethermind.Runner
         {
             try
             {
-                //Configuring app DI
+                //TODO find better way to enforce assemblies with config impl are loaded
+                IKeystoreConfig kConfig;INetworkConfig nConfig;IJsonRpcConfig jConfig;
                 var configProvider = new JsonConfigProvider();
                 //configProvider.LoadJsonConfig("");
 
                 var networkHelper = new NetworkHelper(Logger);
                 var localHost = networkHelper.GetLocalIp()?.ToString() ?? "127.0.0.1";
-                ((NetworkConfig)configProvider.NetworkConfig).MasterExternalIp = localHost;
-                ((NetworkConfig)configProvider.NetworkConfig).MasterHost = localHost;
+                var networkConfig = configProvider.GetConfig<NetworkConfig>();
+                networkConfig.MasterExternalIp = localHost;
+                networkConfig.MasterHost = localHost;
 
                 //var networkConfigurationProvider = new NetworkConfigurationProvider(networkHelper);
                 ChainSpecLoader chainSpecLoader = new ChainSpecLoader(new UnforgivingJsonSerializer());
@@ -123,9 +125,9 @@ namespace Nethermind.Runner
                 ChainSpec chainSpec = chainSpecLoader.Load(chainSpecData);
                 var nodes = chainSpec.NetworkNodes.Select(GetNode).ToArray();
 
-                ((NetworkConfig)configProvider.NetworkConfig).TrustedPeers = nodes;
-                ((NetworkConfig)configProvider.NetworkConfig).BootNodes = nodes;
-                ((NetworkConfig)configProvider.NetworkConfig).DbBasePath = initParams.BaseDbPath;
+                networkConfig.TrustedPeers = nodes;
+                networkConfig.BootNodes = nodes;
+                networkConfig.DbBasePath = initParams.BaseDbPath;
                 
                 //Bootstrap.ConfigureContainer(configProvider, discoveryConfigProvider, PrivateKeyProvider, LogManager, initParams);
 

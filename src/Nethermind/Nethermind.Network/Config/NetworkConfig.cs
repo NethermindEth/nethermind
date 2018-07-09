@@ -18,6 +18,7 @@
 
 using System.IO;
 using System.Linq;
+using Nethermind.Network.P2P;
 
 namespace Nethermind.Config
 {
@@ -54,14 +55,14 @@ namespace Nethermind.Config
         public int NodeLifecycleManagersCleaupCount { get; set; } = 200;
         public long PredefinedReputation { get; set; } = 1000500;
 
-        public ConfigDisconnectReason[] PenalizedReputationLocalDisconnectReasons { get; set; } = {
-            ConfigDisconnectReason.UnexpectedIdentity, ConfigDisconnectReason.IncompatibleP2PVersion, ConfigDisconnectReason.UselessPeer,
-            ConfigDisconnectReason.BreachOfProtocol
+        public DisconnectReason[] PenalizedReputationLocalDisconnectReasons { get; set; } = {
+            DisconnectReason.UnexpectedIdentity, DisconnectReason.IncompatibleP2PVersion, DisconnectReason.UselessPeer,
+            DisconnectReason.BreachOfProtocol
         };
 
-        public ConfigDisconnectReason[] PenalizedReputationRemoteDisconnectReasons { get; set; } = {
-            ConfigDisconnectReason.UnexpectedIdentity, ConfigDisconnectReason.IncompatibleP2PVersion, ConfigDisconnectReason.UselessPeer,
-            ConfigDisconnectReason.BreachOfProtocol, ConfigDisconnectReason.TooManyPeers, ConfigDisconnectReason.AlreadyConnected
+        public DisconnectReason[] PenalizedReputationRemoteDisconnectReasons { get; set; } = {
+            DisconnectReason.UnexpectedIdentity, DisconnectReason.IncompatibleP2PVersion, DisconnectReason.UselessPeer,
+            DisconnectReason.BreachOfProtocol, DisconnectReason.TooManyPeers, DisconnectReason.AlreadyConnected
         };
 
         public long PenalizedReputationTooManyPeersTimeout { get; set; } = 10 * 1000;

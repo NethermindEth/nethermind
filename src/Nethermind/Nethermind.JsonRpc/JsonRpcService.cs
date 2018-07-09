@@ -32,17 +32,17 @@ namespace Nethermind.JsonRpc
 {
     public class JsonRpcService : IJsonRpcService
     {
-        private readonly ILogger _logger; 
-        private readonly IConfigProvider _configurationProvider;
+        private readonly ILogger _logger;
+        private readonly IJsonRpcConfig _jsonRpcConfig;
         private readonly IJsonSerializer _jsonSerializer;
         private readonly IModuleProvider _moduleProvider;
 
         public JsonRpcService(IJsonSerializer jsonSerializer, IModuleProvider moduleProvider, IConfigProvider configurationProvider, ILogManager logManager)
         {
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _configurationProvider = configurationProvider ?? throw new ArgumentNullException(nameof(configurationProvider));
-            _jsonSerializer = jsonSerializer ?? throw new ArgumentNullException(nameof(jsonSerializer));
-            _moduleProvider = moduleProvider ?? throw new ArgumentNullException(nameof(moduleProvider));
+            _logger = logManager?.GetClassLogger();
+            _jsonRpcConfig = configurationProvider.GetConfig<JsonRpcConfig>();
+            _jsonSerializer = jsonSerializer;
+            _moduleProvider = moduleProvider;
         }
 
         public string SendRequest(string request)
@@ -205,7 +205,7 @@ namespace Nethermind.JsonRpc
         {
             var response = new JsonRpcResponse
             {
-                Jsonrpc = _configurationProvider.JsonRpcConfig.JsonRpcVersion,
+                Jsonrpc = _jsonRpcConfig.JsonRpcVersion,
                 Id = id,
                 Result = result
             };
@@ -219,11 +219,11 @@ namespace Nethermind.JsonRpc
 
             var response = new JsonRpcResponse
             {
-                Jsonrpc = _configurationProvider.JsonRpcConfig.JsonRpcVersion,
+                Jsonrpc = _jsonRpcConfig.JsonRpcVersion,
                 Id = id,
                 Error = new Error
                 {
-                    Code = _configurationProvider.JsonRpcConfig.ErrorCodes[(ConfigErrorType)errorType],
+                    Code = _jsonRpcConfig.ErrorCodes[errorType],
                     Message = message
                 }
             };

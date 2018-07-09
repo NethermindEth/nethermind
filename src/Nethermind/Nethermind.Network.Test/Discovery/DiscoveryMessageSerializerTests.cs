@@ -42,7 +42,7 @@ namespace Nethermind.Network.Test.Discovery
         [SetUp]
         public void Initialize()
         {
-            _config = new JsonConfigProvider().NetworkConfig;
+            _config = new NetworkConfig();
             _farAddress = new IPEndPoint(IPAddress.Parse("192.168.1.2"), 1);
             _nearAddress = new IPEndPoint(IPAddress.Parse(_config.MasterExternalIp), _config.MasterPort);            
             _messageSerializationService = Build.A.SerializationService().WithDiscovery(_privateKey).TestObject;

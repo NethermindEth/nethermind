@@ -18,14 +18,8 @@
 
 namespace Nethermind.Config
 {
-    public enum ConfigErrorType
+    //Marker interface for ConfigModule supported config instances
+    public interface IConfig
     {
-        ParseError,
-        InvalidRequest,
-        MethodNotFound,
-        InvalidParams,
-        InternalError,
-        ServerError,
-        NotFound
     }
 }

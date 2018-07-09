@@ -38,7 +38,7 @@ namespace Nethermind.Runner.Runners
 
         public JsonRpcRunner(IConfigProvider configurationProvider, ILogger logger)
         {
-            _configurationProvider = configurationProvider.JsonRpcConfig;
+            _configurationProvider = configurationProvider.GetConfig<JsonRpcConfig>();
             _logger = logger;
         }
 

@@ -30,7 +30,7 @@ namespace Nethermind.Network.Discovery.Messages
 
         public DiscoveryMessageFactory(IConfigProvider configurationProvider)
         {
-            _configurationProvider = configurationProvider.NetworkConfig;
+            _configurationProvider = configurationProvider.GetConfig<NetworkConfig>();
         }
 
         public T CreateOutgoingMessage<T>(Node destination) where T : DiscoveryMessage

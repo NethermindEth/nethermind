@@ -16,25 +16,28 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Text;
+using Nethermind.JsonRpc.DataModel;
 
 namespace Nethermind.Config
 {
-    public interface IKeystoreConfig
+    public class JsonRpcConfig : IJsonRpcConfig
     {
-        string KeyStoreDirectory { get; }
-        string KeyStoreEncoding { get; }
+        public IDictionary<ErrorType, int> ErrorCodes => new Dictionary<ErrorType, int>
+        {
+            { ErrorType.ParseError, -32700 },
+            { ErrorType.InvalidRequest, -32600 },
+            { ErrorType.MethodNotFound, -32601 },
+            { ErrorType.InvalidParams, -32602 },
+            { ErrorType.InternalError, -32603 }
+        };
 
-        string Kdf { get; }
-        string Cipher { get; }
-        int KdfparamsDklen { get; }
-        int KdfparamsN { get; }
-        int KdfparamsP { get; }
-        int KdfparamsR { get; }
-        int KdfparamsSaltLen { get; }
-
-        int SymmetricEncrypterBlockSize { get; }
-        int SymmetricEncrypterKeySize { get; }
-        int IVSize { get; }
+        public string JsonRpcVersion { get; set; } = "2.0";
+        public IEnumerable<ModuleType> EnabledModules { get; set; } = Enum.GetValues(typeof(ModuleType)).OfType<ModuleType>();
+        public string MessageEncoding { get; set; } = "UTF-8";
+        public string SignatureTemplate { get; set; } = "\x19Ethereum Signed Message:\n{0}{1}";
     }
 }

@@ -16,19 +16,25 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Text;
+
 namespace Nethermind.Config
 {
-    public class ConfigProvider : IConfigProvider
+    public interface IKeystoreConfig : IConfig
     {
-        public ConfigProvider()
-        {
-            NetworkConfig = new NetworkConfig();
-            KeystoreConfig = new KeystoreConfig();
-            JsonRpcConfig = new JsonRpcConfig();
-        }
-        
-        public INetworkConfig NetworkConfig { get; }
-        public IKeystoreConfig KeystoreConfig { get; }
-        public IJsonRpcConfig JsonRpcConfig { get; }
+        string KeyStoreDirectory { get; }
+        string KeyStoreEncoding { get; }
+
+        string Kdf { get; }
+        string Cipher { get; }
+        int KdfparamsDklen { get; }
+        int KdfparamsN { get; }
+        int KdfparamsP { get; }
+        int KdfparamsR { get; }
+        int KdfparamsSaltLen { get; }
+
+        int SymmetricEncrypterBlockSize { get; }
+        int SymmetricEncrypterKeySize { get; }
+        int IVSize { get; }
     }
 }

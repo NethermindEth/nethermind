@@ -9,9 +9,10 @@ using Newtonsoft.Json.Linq;
 
 namespace Nethermind.Config
 {
-    public class JsonConfigProvider : ConfigProvider
+    public class JsonConfigProvider : IConfigProvider
     {
         private IDictionary<Type, IEnumerable<PropertyInfo>> _properties;
+        private IDictionary<Type, object> _instances;
 
         public JsonConfigProvider()
         {
@@ -35,23 +36,33 @@ namespace Nethermind.Config
             }
         }
 
+        public T GetConfig<T>() where T : IConfig
+        {
+            var moduleType = typeof(T);
+            if (_instances.ContainsKey(moduleType))
+            {
+                return (T)_instances[moduleType];
+            }
+            throw new Exception($"Config type: {moduleType.Name} is not availible in ConfigModule.");
+        }
+
         private void Initialize()
         {
-            _properties = new Dictionary<Type, IEnumerable<PropertyInfo>>
+            var type = typeof(IConfig);
+            var modules = AppDomain.CurrentDomain.GetAssemblies().SelectMany(x => x.GetTypes()).Where(x => type.IsAssignableFrom(x) && x.IsClass).ToArray();
+
+            _properties = new Dictionary<Type, IEnumerable<PropertyInfo>>();
+            _instances = new Dictionary<Type, object>();
+            foreach (var module in modules)
             {
-                [NetworkConfig.GetType()] = NetworkConfig.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance).ToArray(),
-                [JsonRpcConfig.GetType()] = JsonRpcConfig.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance).ToArray(),
-                [KeystoreConfig.GetType()] = KeystoreConfig.GetType().GetProperties(BindingFlags.Public | BindingFlags.Instance).ToArray()
-            };
+                _instances[module] = Activator.CreateInstance(module);
+                _properties[module] = module.GetProperties(BindingFlags.Public | BindingFlags.Instance).ToArray();
+            }
         }
 
         private void LoadModule(JToken moduleEntry)
         {
-            var configModuleRaw = (string) moduleEntry["ConfigModule"];
-            if (!Enum.TryParse(typeof(ConfigModule), configModuleRaw, out var configModule))
-            {
-                throw new Exception($"Incorrect value for configModuel: {configModuleRaw}");
-            }
+            var configModule = (string) moduleEntry["ConfigModule"];
 
             var configItems = (JObject) moduleEntry["ConfigItems"];
             var itemsDict = new Dictionary<string, string>();
@@ -64,46 +75,41 @@ namespace Nethermind.Config
                 }
                 else
                 {
-                    throw new Exception($"Duplicated config value: {configItem.Key}, module: {((ConfigModule)configModule).ToString()}");
+                    throw new Exception($"Duplicated config value: {configItem.Key}, module: {configModule}");
                 }
             }
 
-            ApplyConfigValues((ConfigModule)configModule, itemsDict);
+            ApplyConfigValues(configModule, itemsDict);
         }
 
-        private void ApplyConfigValues(ConfigModule configModule, IDictionary<string, string> items)
+        private void ApplyConfigValues(string configModule, IDictionary<string, string> items)
         {
             if (!items.Any())
             {
                 return;
             }
 
+            var moduleType = _instances.Keys.FirstOrDefault(x => CompareIgnoreCaseTrim(x.Name, $"{configModule}"));
+            if (moduleType == null)
+            {
+                throw new Exception($"Cannot find type with Name: {configModule}");
+            }
+
+            var instance = _instances[moduleType];
+
             foreach (var item in items)
             {
-                switch (configModule)
-                {
-                    case ConfigModule.Network:
-                        SetConfigValue(NetworkConfig, item);
-                        break;
-                    case ConfigModule.JsonRpc:
-                        SetConfigValue(JsonRpcConfig, item);
-                        break;
-                    case ConfigModule.Keystore:
-                        SetConfigValue(KeystoreConfig, item);
-                        break;
-                    default:
-                        throw new Exception($"Unsupported ConfigModule: {configModule}");
-                }
+                SetConfigValue(instance, moduleType, item);
             }
         }
 
-        private void SetConfigValue(object configObject, KeyValuePair<string, string> item)
+        private void SetConfigValue(object configInstance, Type moduleType, KeyValuePair<string, string> item)
         {
-            var configProperties = _properties[configObject.GetType()];
+            var configProperties = _properties[moduleType];
             var property = configProperties.FirstOrDefault(x => CompareIgnoreCaseTrim(x.Name, item.Key));
             if (property == null)
             {
-                throw new Exception($"Incorrent config key, no property on {configObject.GetType().Name} config: {item.Key}");
+                throw new Exception($"Incorrent config key, no property on {configInstance.GetType().Name} config: {item.Key}");
             }
 
             var valueType = property.PropertyType;
@@ -116,7 +122,7 @@ namespace Nethermind.Config
                 if (itemType.IsClass && typeof(IConfigModel).IsAssignableFrom(itemType))
                 {
                     var objCollection = JsonConvert.DeserializeObject(item.Value, valueType);
-                    property.SetValue(configObject, objCollection);
+                    property.SetValue(configInstance, objCollection);
                     return;
                 }
 
@@ -140,11 +146,11 @@ namespace Nethermind.Config
                     }
                 }
 
-                property.SetValue(configObject, collection);
+                property.SetValue(configInstance, collection);
                 return;
             }
             var value = GetValue(valueType, item.Value, item.Key);
-            property.SetValue(configObject, value);
+            property.SetValue(configInstance, value);
         }
 
         private object GetValue(Type valueType, string itemValue, string key)
