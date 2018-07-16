@@ -17,9 +17,8 @@
  */
 
 using System.IO;
-using System.Text;
 
-namespace Nethermind.Config
+namespace Nethermind.KeyStore.Config
 {
     public class KeystoreConfig : IKeystoreConfig
     {

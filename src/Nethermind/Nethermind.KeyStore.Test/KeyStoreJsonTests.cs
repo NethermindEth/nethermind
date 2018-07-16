@@ -6,6 +6,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
+using Nethermind.KeyStore.Config;
 using NUnit.Framework;
 
 namespace Nethermind.KeyStore.Test

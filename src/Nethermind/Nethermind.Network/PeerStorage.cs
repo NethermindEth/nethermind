@@ -24,6 +24,7 @@ using Nethermind.Core;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Logging;
 using Nethermind.Db;
+using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.RoutingTable;
 using Nethermind.Store;
 

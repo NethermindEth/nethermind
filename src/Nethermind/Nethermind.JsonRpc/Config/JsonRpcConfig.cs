@@ -19,10 +19,9 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 using Nethermind.JsonRpc.DataModel;
 
-namespace Nethermind.Config
+namespace Nethermind.JsonRpc.Config
 {
     public class JsonRpcConfig : IJsonRpcConfig
     {

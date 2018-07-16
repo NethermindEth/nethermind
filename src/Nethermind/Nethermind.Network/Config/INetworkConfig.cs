@@ -16,9 +16,10 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.Config;
 using Nethermind.Network.P2P;
 
-namespace Nethermind.Config
+namespace Nethermind.Network.Config
 {
     public interface INetworkConfig : IConfig
     {

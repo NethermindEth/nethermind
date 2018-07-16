@@ -31,7 +31,9 @@ using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
+using Nethermind.JsonRpc.Module;
 using Nethermind.KeyStore;
+using Nethermind.KeyStore.Config;
 using Nethermind.Runner.Data;
 using Nethermind.Store;
 
@@ -217,5 +219,8 @@ namespace Nethermind.Runner.Runners
 
             return directory;
         }
+
+        public IBlockchainBridge BlockchainBridge { get; }
+        public IEthereumSigner EthereumSigner { get; }
     }
 }

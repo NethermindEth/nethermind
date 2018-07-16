@@ -19,6 +19,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Config;
+using Nethermind.JsonRpc.Config;
 using Nethermind.JsonRpc.DataModel;
 using Nethermind.KeyStore;
 

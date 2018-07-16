@@ -27,6 +27,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
 using Nethermind.KeyStore;
+using Nethermind.Network.Config;
 
 namespace Nethermind.Network.Discovery.RoutingTable
 {

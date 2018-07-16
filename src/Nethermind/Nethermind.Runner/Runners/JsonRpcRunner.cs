@@ -26,6 +26,7 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Logging;
 using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Config;
 using Nethermind.JsonRpc.DataModel;
 
 namespace Nethermind.Runner.Runners
@@ -56,7 +57,7 @@ namespace Nethermind.Runner.Runners
             var modules = GetModules(initParams.JsonRpcEnabledModules);
             if (modules != null && modules.Any())
             {
-                //_configurationProvider.EnabledModules = modules;
+                _configurationProvider.EnabledModules = modules;
             }
 
             _logger.Info($"Starting http service, modules: {string.Join(", ", _configurationProvider.EnabledModules.Select(x => x))}");

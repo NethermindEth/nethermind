@@ -15,16 +15,16 @@ namespace Nethermind.Runner.Controllers
         private readonly ILogger _logger;
         private readonly IJsonRpcService _jsonRpcService;
 
-        public MainController(ILogger logger, IJsonRpcService jsonRpcService)
+        public MainController(ILogManager logManager, IJsonRpcService jsonRpcService)
         {
-            _logger = logger;
+            _logger = logManager.GetClassLogger();
             _jsonRpcService = jsonRpcService;
         }
 
         [HttpPost]
         public async Task<string> Post()
         {
-            using (StreamReader reader = new StreamReader(Request.Body, Encoding.UTF8))
+            using (var reader = new StreamReader(Request.Body, Encoding.UTF8))
             {
                 var value = await reader.ReadToEndAsync();
                 _logger.Info($"Received request: {value}");

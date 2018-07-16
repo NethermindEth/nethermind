@@ -21,6 +21,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Network.Config;
 using Nethermind.Network.Discovery;
 using Nethermind.Network.P2P;
 

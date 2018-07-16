@@ -20,6 +20,7 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
+using Nethermind.JsonRpc.Config;
 using Nethermind.JsonRpc.DataModel;
 
 namespace Nethermind.JsonRpc.Module
@@ -27,12 +28,12 @@ namespace Nethermind.JsonRpc.Module
     public abstract class ModuleBase
     {
         protected readonly ILogger Logger;
-        protected readonly IConfigProvider ConfigurationProvider;
+        protected readonly IJsonRpcConfig ConfigurationProvider;
 
         protected ModuleBase(IConfigProvider configurationProvider, ILogManager logManager)
         {
             Logger = logManager.GetClassLogger();
-            ConfigurationProvider = configurationProvider;
+            ConfigurationProvider = configurationProvider.GetConfig<JsonRpcConfig>();
         }
 
         protected Data Sha3(Data data)

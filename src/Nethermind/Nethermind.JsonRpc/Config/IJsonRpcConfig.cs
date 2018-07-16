@@ -17,10 +17,10 @@
  */
 
 using System.Collections.Generic;
-using System.Text;
+using Nethermind.Config;
 using Nethermind.JsonRpc.DataModel;
 
-namespace Nethermind.Config
+namespace Nethermind.JsonRpc.Config
 {
     public interface IJsonRpcConfig : IConfig
     {

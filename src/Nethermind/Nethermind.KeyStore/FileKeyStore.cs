@@ -30,6 +30,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
+using Nethermind.KeyStore.Config;
 
 namespace Nethermind.KeyStore
 {

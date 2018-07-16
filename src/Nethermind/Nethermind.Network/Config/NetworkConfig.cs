@@ -17,10 +17,10 @@
  */
 
 using System.IO;
-using System.Linq;
+using Nethermind.Config;
 using Nethermind.Network.P2P;
 
-namespace Nethermind.Config
+namespace Nethermind.Network.Config
 {
     public class NetworkConfig : INetworkConfig
     {

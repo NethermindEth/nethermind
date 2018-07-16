@@ -29,7 +29,10 @@ using Nethermind.Core;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Specs.ChainSpec;
 using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Config;
+using Nethermind.KeyStore.Config;
 using Nethermind.Network;
+using Nethermind.Network.Config;
 using Nethermind.Network.Discovery;
 using Nethermind.Network.Discovery.RoutingTable;
 using Nethermind.Runner.Runners;
@@ -42,7 +45,6 @@ namespace Nethermind.Runner
         protected readonly IPrivateKeyProvider PrivateKeyProvider;
         private IJsonRpcRunner _jsonRpcRunner = NullRunner.Instance;
         private IEthereumRunner _ethereumRunner = NullRunner.Instance;
-        private IDiscoveryRunner _discoveryRunner = NullRunner.Instance;
 
         protected RunnerAppBase(ILogger logger, IPrivateKeyProvider privateKeyProvider)
         {
@@ -103,16 +105,18 @@ namespace Nethermind.Runner
             {
                 //TODO find better way to enforce assemblies with config impl are loaded
                 IKeystoreConfig kConfig;INetworkConfig nConfig;IJsonRpcConfig jConfig;
+
                 var configProvider = new JsonConfigProvider();
+                var logManager = new NLogManager(initParams.LogFileName);
                 //configProvider.LoadJsonConfig("");
 
+                //discovering and setting local, remote ips for client machine
                 var networkHelper = new NetworkHelper(Logger);
                 var localHost = networkHelper.GetLocalIp()?.ToString() ?? "127.0.0.1";
                 var networkConfig = configProvider.GetConfig<NetworkConfig>();
                 networkConfig.MasterExternalIp = localHost;
                 networkConfig.MasterHost = localHost;
-
-                //var networkConfigurationProvider = new NetworkConfigurationProvider(networkHelper);
+                
                 ChainSpecLoader chainSpecLoader = new ChainSpecLoader(new UnforgivingJsonSerializer());
 
                 string path = initParams.ChainSpecPath;
@@ -123,23 +127,25 @@ namespace Nethermind.Runner
 
                 byte[] chainSpecData = File.ReadAllBytes(path);
                 ChainSpec chainSpec = chainSpecLoader.Load(chainSpecData);
-                var nodes = chainSpec.NetworkNodes.Select(GetNode).ToArray();
 
+                //Setting trusted nodes
+                var nodes = chainSpec.NetworkNodes.Select(GetNode).ToArray();
                 networkConfig.TrustedPeers = nodes;
                 networkConfig.BootNodes = nodes;
                 networkConfig.DbBasePath = initParams.BaseDbPath;
-                
-                //Bootstrap.ConfigureContainer(configProvider, discoveryConfigProvider, PrivateKeyProvider, LogManager, initParams);
 
-                _ethereumRunner = new EthereumRunner(configProvider, networkHelper);
-                //_ethereumRunner = Bootstrap.ServiceProvider.GetService<IEthereumRunner>();
+                _ethereumRunner = new EthereumRunner(configProvider, networkHelper, logManager);
                 await _ethereumRunner.Start(initParams);
 
-                //TODO integrate jsonRpc - get all needed interfaces from ehtereum Runner
                 if (initParams.JsonRpcEnabled)
                 {
+                    Bootstrap.Instance.ConfigProvider = configProvider;
+                    Bootstrap.Instance.LogManager = logManager;
+                    Bootstrap.Instance.BlockchainBridge = _ethereumRunner.BlockchainBridge;
+                    Bootstrap.Instance.EthereumSigner = _ethereumRunner.EthereumSigner;
+
                     _jsonRpcRunner = new JsonRpcRunner(configProvider, Logger);
-                    //await _jsonRpcRunner.Start(initParams);
+                    await _jsonRpcRunner.Start(initParams);
                 }
                 else
                 {
@@ -160,9 +166,15 @@ namespace Nethermind.Runner
 
         protected async Task StopAsync()
         {
-            await _jsonRpcRunner.StopAsync();
-            await _discoveryRunner.StopAsync();
-            await _ethereumRunner.StopAsync();
+            if (_jsonRpcRunner != null)
+            {
+                await _jsonRpcRunner.StopAsync();
+            }
+
+            if (_ethereumRunner != null)
+            {
+                await _ethereumRunner.StopAsync();
+            }
         }
 
         protected int GetIntValue(string rawValue, string argName)

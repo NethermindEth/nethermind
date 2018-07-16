@@ -2,7 +2,10 @@
 using System.IO;
 using System.Linq;
 using Castle.Core.Logging;
+using Nethermind.JsonRpc.Config;
 using Nethermind.JsonRpc.DataModel;
+using Nethermind.KeyStore.Config;
+using Nethermind.Network.Config;
 using Nethermind.Network.P2P;
 using NUnit.Framework;
 

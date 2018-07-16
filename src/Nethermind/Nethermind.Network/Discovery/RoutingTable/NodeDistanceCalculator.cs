@@ -17,6 +17,7 @@
  */
 
 using Nethermind.Config;
+using Nethermind.Network.Config;
 
 namespace Nethermind.Network.Discovery.RoutingTable
 {

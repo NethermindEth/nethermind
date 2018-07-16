@@ -19,6 +19,7 @@
 using System;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -34,18 +35,31 @@ namespace Nethermind.Runner
 
         public IConfiguration Configuration { get; }
 
-        public IServiceProvider ConfigureServices(IServiceCollection services)
+        public void ConfigureServices(IServiceCollection services)
         {
-            if (Bootstrap.ServiceCollection == null)
-            {
-                throw new Exception("Bootstrap.ServiceCollection was not properly initialized");
-            }
+            services.AddMvc().SetCompatibilityVersion(CompatibilityVersion.Version_2_1);
 
-            Bootstrap.ServiceCollection.Add(services);
-            Bootstrap.ServiceCollection.AddMvc();
+            //services.Configure<ApiBehaviorOptions>(options =>
+            //{
+            //    options.SuppressConsumesConstraintForFormFileParameters = true;
+            //    options.SuppressInferBindingSourcesForParameters = true;
+            //    options.SuppressModelStateInvalidFilter = true;
+            //});
 
-            Bootstrap.ServiceProvider = Bootstrap.ServiceCollection.BuildServiceProvider();
-            return Bootstrap.ServiceProvider;
+            Bootstrap.Instance.RegisterJsonRpcServices(services);
+
+            //register our clases
+
+            //if (Bootstrap.ServiceCollection == null)
+            //{
+            //    throw new Exception("Bootstrap.ServiceCollection was not properly initialized");
+            //}
+
+            //Bootstrap.ServiceCollection.Add(services);
+            //Bootstrap.ServiceCollection.AddMvc();
+
+            //Bootstrap.ServiceProvider = Bootstrap.ServiceCollection.BuildServiceProvider();
+            //return Bootstrap.ServiceProvider;
         }       
 
         public void Configure(IApplicationBuilder app, IHostingEnvironment env)
@@ -55,6 +69,8 @@ namespace Nethermind.Runner
                 app.UseDeveloperExceptionPage();
             }
 
+            //app.UseHsts();
+            //app.UseHttpsRedirection();
             app.UseMvc();
         }
     }

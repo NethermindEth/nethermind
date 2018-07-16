@@ -21,6 +21,7 @@ using System.IO;
 using System.Security.Cryptography;
 using Nethermind.Config;
 using Nethermind.Core.Logging;
+using Nethermind.KeyStore.Config;
 
 namespace Nethermind.KeyStore
 {
