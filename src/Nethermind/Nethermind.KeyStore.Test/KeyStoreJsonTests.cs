@@ -6,6 +6,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
+using Nethermind.KeyStore.Config;
 using NUnit.Framework;
 
 namespace Nethermind.KeyStore.Test
@@ -25,7 +26,7 @@ namespace Nethermind.KeyStore.Test
         public void Initialize()
         {
             _configurationProvider = new JsonConfigProvider();
-            _keyStoreDir = _configurationProvider.KeystoreConfig.KeyStoreDirectory;
+            _keyStoreDir = _configurationProvider.GetConfig<KeystoreConfig>().KeyStoreDirectory;
             if (!Directory.Exists(_keyStoreDir))
             {
                 Directory.CreateDirectory(_keyStoreDir);

@@ -45,72 +45,42 @@ namespace Nethermind.Runner
 {
     // TODO use here only what is needed in JSON RPC, pass implementations, do not use Bootstrap class outside of JSON RPC
     // I guess we will only need BlockTree, signer, and some of the state / stores classes
-    public static class Bootstrap
+    public class Bootstrap
     {
-        public static IServiceCollection ServiceCollection { get; private set; }
-        public static IServiceProvider ServiceProvider { get; set; }
+        private static Bootstrap _instance;
 
-        public static void ConfigureContainer(IConfigProvider configurationProvider, IConfigProvider networkConfigurationProvider, IPrivateKeyProvider privateKeyProvider, ILogManager logManager, InitParams initParams)
+        private Bootstrap()
         {
-            var services = new ServiceCollection();
+        }
 
-            services.AddSingleton(configurationProvider);
-            services.AddSingleton(logManager);
-            services.AddSingleton(privateKeyProvider);
+        public static Bootstrap Instance => _instance ?? (_instance = new Bootstrap());
 
-            //based on configuration we will set it
-            //var specProvider = new MainNetSpecProvider();
-            var homesteadBlockNr = initParams.HomesteadBlockNr;
+        public IConfigProvider ConfigProvider { private get; set; }
+        public ILogManager LogManager { private get; set; }
+        public IBlockchainBridge BlockchainBridge { private get; set; }
+        public IEthereumSigner EthereumSigner { private get; set; }
 
-            var specProvider = homesteadBlockNr.HasValue
-                ? (ISpecProvider)new CustomSpecProvider((0, Frontier.Instance), (homesteadBlockNr.Value, Homestead.Instance))
-                : MainNetSpecProvider.Instance;
+        public void RegisterJsonRpcServices(IServiceCollection services)
+        {
+            if (ConfigProvider == null)
+            {
+                throw new Exception("ConfigProvider is required");
+            }
+            if (LogManager == null)
+            {
+                throw new Exception("LogManager is required");
+            }
+            if (BlockchainBridge == null)
+            {
+                throw new Exception("BlockchainBridge is required");
+            }
 
-            var ethereumRelease = specProvider.GetSpec(1);
-            var chainId = ChainId.MainNet;
-
-            var signer = new EthereumSigner(specProvider, logManager);
-            var signatureValidator = new SignatureValidator(chainId); // TODO: review, check with spec provider
-
-            services.AddSingleton(specProvider);
-//            var blockTree = new BlockTree(new MemDb(), new MemDb(), new MemDb(), specProvider, logger); // TODO: temp, change
-
-//            services.AddSingleton<IBlockTree>(blockTree);
-            services.AddSingleton(ethereumRelease);
-            services.AddSingleton<IEthereumSigner>(signer);
-            services.AddSingleton<ISigner>(signer);
-            services.AddSingleton<ISignatureValidator>(signatureValidator);
-
-//            services.AddSingleton<IEthash, Ethash>();
-//            services.AddSingleton<ISealEngine, EthashSealEngine>();
-//            services.AddSingleton<IHeaderValidator, HeaderValidator>();
-//            services.AddSingleton<IOmmersValidator, OmmersValidator>();
-//            services.AddSingleton<ITransactionValidator, TransactionValidator>();
-//            services.AddSingleton<IBlockValidator, BlockValidator>();
-
-//            services.AddSingleton<IDb, MemDb>(); // TODO: temp change
-//            services.AddSingleton<StateTree>();
-//            services.AddSingleton<IStateProvider, StateProvider>();
-//            services.AddSingleton<IDbProvider, MemDbProvider>();
-//            services.AddSingleton<IStorageProvider, StorageProvider>();
-
-//            services.AddSingleton<IBlockhashProvider, BlockhashProvider>();
-//            services.AddSingleton<IVirtualMachine, VirtualMachine>();
-//            services.AddSingleton<ITransactionProcessor, TransactionProcessor>();
-//            services.AddSingleton<ITransactionStore, TransactionStore>();
-//
-//            services.AddSingleton<IDifficultyCalculator, DifficultyCalculator>();
-//            services.AddSingleton<IRewardCalculator, RewardCalculator>();
-//            services.AddSingleton<IBlockProcessor, BlockProcessor>();
-//            services.AddSingleton<IBlockchainProcessor, BlockchainProcessor>();
-
-            //services.AddSingleton<KeyStore.IConfigurationProvider, KeyStore.ConfigurationProvider>();
-            services.AddSingleton<IJsonSerializer, JsonSerializer>();
-            services.AddSingleton<ISymmetricEncrypter, AesEncrypter>();
-            services.AddSingleton<ICryptoRandom, CryptoRandom>();
-            services.AddSingleton<IKeyStore, FileKeyStore>();
-            
             //JsonRPC
+            services.AddSingleton<IEthereumSigner>(EthereumSigner);
+            services.AddSingleton<IConfigProvider>(ConfigProvider);
+            services.AddSingleton<ILogManager>(LogManager);
+            services.AddSingleton<IBlockchainBridge>(BlockchainBridge);
+            services.AddSingleton<IJsonSerializer, JsonSerializer>();
             services.AddSingleton<IJsonRpcModelMapper, JsonRpcModelMapper>();
             services.AddSingleton<IModuleProvider, ModuleProvider>();
             services.AddSingleton<INetModule, NetModule>();
@@ -119,34 +89,101 @@ namespace Nethermind.Runner
             services.AddSingleton<IShhModule, ShhModule>();
             services.AddSingleton<IJsonRpcService, JsonRpcService>();
 
-            //Discovery
-            services.AddSingleton<INetworkHelper, NetworkHelper>();
-            services.AddSingleton<IConfigProvider>(networkConfigurationProvider);
-            services.AddTransient<INodeFactory, NodeFactory>();
-            services.AddSingleton<INodeDistanceCalculator, NodeDistanceCalculator>();
-            services.AddSingleton<INodeTable, NodeTable>();
-            services.AddSingleton<IEvictionManager, EvictionManager>();
-            services.AddTransient<IDiscoveryMessageFactory, DiscoveryMessageFactory>();
-            services.AddSingleton<INodeLifecycleManagerFactory, NodeLifecycleManagerFactory>();
-            services.AddSingleton<IDiscoveryManager, DiscoveryManager>();
-            services.AddSingleton<INodesLocator, NodesLocator>();
-            services.AddTransient<IDiscoveryMessageFactory, DiscoveryMessageFactory>();
-            services.AddSingleton<INodeIdResolver, NodeIdResolver>();
-            services.AddSingleton<IMessageSerializationService, MessageSerializationService>();
-            services.AddSingleton<IDiscoveryMsgSerializersProvider, DiscoveryMsgSerializersProvider>();
-            services.AddSingleton<IDiscoveryApp, DiscoveryApp>();
+            //            var services = new ServiceCollection();
 
-            //services.AddSingleton<IDiscoveryRunner, DiscoveryRunner>();
-            if (initParams.EthereumRunnerType == EthereumRunnerType.Hive)
-            {
-                services.AddSingleton<IEthereumRunner, HiveEthereumRunner>();
-            }
-            else
-            {
-                services.AddSingleton<IEthereumRunner, EthereumRunner>();
-            }
+            //            services.AddSingleton(configurationProvider);
+            //            services.AddSingleton(logManager);
+            //            services.AddSingleton(privateKeyProvider);
 
-            ServiceCollection = services;
+            //            //based on configuration we will set it
+            //            //var specProvider = new MainNetSpecProvider();
+            //            var homesteadBlockNr = initParams.HomesteadBlockNr;
+
+            //            var specProvider = homesteadBlockNr.HasValue
+            //                ? (ISpecProvider)new CustomSpecProvider((0, Frontier.Instance), (homesteadBlockNr.Value, Homestead.Instance))
+            //                : MainNetSpecProvider.Instance;
+
+            //            var ethereumRelease = specProvider.GetSpec(1);
+            //            var chainId = ChainId.MainNet;
+
+            //            var signer = new EthereumSigner(specProvider, logManager);
+            //            var signatureValidator = new SignatureValidator(chainId); // TODO: review, check with spec provider
+
+            //            services.AddSingleton(specProvider);
+            ////            var blockTree = new BlockTree(new MemDb(), new MemDb(), new MemDb(), specProvider, logger); // TODO: temp, change
+
+            ////            services.AddSingleton<IBlockTree>(blockTree);
+            //            services.AddSingleton(ethereumRelease);
+            //            services.AddSingleton<IEthereumSigner>(signer);
+            //            services.AddSingleton<ISigner>(signer);
+            //            services.AddSingleton<ISignatureValidator>(signatureValidator);
+
+            ////            services.AddSingleton<IEthash, Ethash>();
+            ////            services.AddSingleton<ISealEngine, EthashSealEngine>();
+            ////            services.AddSingleton<IHeaderValidator, HeaderValidator>();
+            ////            services.AddSingleton<IOmmersValidator, OmmersValidator>();
+            ////            services.AddSingleton<ITransactionValidator, TransactionValidator>();
+            ////            services.AddSingleton<IBlockValidator, BlockValidator>();
+
+            ////            services.AddSingleton<IDb, MemDb>(); // TODO: temp change
+            ////            services.AddSingleton<StateTree>();
+            ////            services.AddSingleton<IStateProvider, StateProvider>();
+            ////            services.AddSingleton<IDbProvider, MemDbProvider>();
+            ////            services.AddSingleton<IStorageProvider, StorageProvider>();
+
+            ////            services.AddSingleton<IBlockhashProvider, BlockhashProvider>();
+            ////            services.AddSingleton<IVirtualMachine, VirtualMachine>();
+            ////            services.AddSingleton<ITransactionProcessor, TransactionProcessor>();
+            ////            services.AddSingleton<ITransactionStore, TransactionStore>();
+            ////
+            ////            services.AddSingleton<IDifficultyCalculator, DifficultyCalculator>();
+            ////            services.AddSingleton<IRewardCalculator, RewardCalculator>();
+            ////            services.AddSingleton<IBlockProcessor, BlockProcessor>();
+            ////            services.AddSingleton<IBlockchainProcessor, BlockchainProcessor>();
+
+            //            //services.AddSingleton<KeyStore.IConfigurationProvider, KeyStore.ConfigurationProvider>();
+            //            services.AddSingleton<IJsonSerializer, JsonSerializer>();
+            //            services.AddSingleton<ISymmetricEncrypter, AesEncrypter>();
+            //            services.AddSingleton<ICryptoRandom, CryptoRandom>();
+            //            services.AddSingleton<IKeyStore, FileKeyStore>();
+
+            //            //JsonRPC
+            //            services.AddSingleton<IJsonRpcModelMapper, JsonRpcModelMapper>();
+            //            services.AddSingleton<IModuleProvider, ModuleProvider>();
+            //            services.AddSingleton<INetModule, NetModule>();
+            //            services.AddSingleton<IWeb3Module, Web3Module>();
+            //            services.AddSingleton<IEthModule, EthModule>();
+            //            services.AddSingleton<IShhModule, ShhModule>();
+            //            services.AddSingleton<IJsonRpcService, JsonRpcService>();
+
+            //            //Discovery
+            //            services.AddSingleton<INetworkHelper, NetworkHelper>();
+            //            services.AddSingleton<IConfigProvider>(networkConfigurationProvider);
+            //            services.AddTransient<INodeFactory, NodeFactory>();
+            //            services.AddSingleton<INodeDistanceCalculator, NodeDistanceCalculator>();
+            //            services.AddSingleton<INodeTable, NodeTable>();
+            //            services.AddSingleton<IEvictionManager, EvictionManager>();
+            //            services.AddTransient<IDiscoveryMessageFactory, DiscoveryMessageFactory>();
+            //            services.AddSingleton<INodeLifecycleManagerFactory, NodeLifecycleManagerFactory>();
+            //            services.AddSingleton<IDiscoveryManager, DiscoveryManager>();
+            //            services.AddSingleton<INodesLocator, NodesLocator>();
+            //            services.AddTransient<IDiscoveryMessageFactory, DiscoveryMessageFactory>();
+            //            services.AddSingleton<INodeIdResolver, NodeIdResolver>();
+            //            services.AddSingleton<IMessageSerializationService, MessageSerializationService>();
+            //            services.AddSingleton<IDiscoveryMsgSerializersProvider, DiscoveryMsgSerializersProvider>();
+            //            services.AddSingleton<IDiscoveryApp, DiscoveryApp>();
+
+            //            //services.AddSingleton<IDiscoveryRunner, DiscoveryRunner>();
+            //            if (initParams.EthereumRunnerType == EthereumRunnerType.Hive)
+            //            {
+            //                services.AddSingleton<IEthereumRunner, HiveEthereumRunner>();
+            //            }
+            //            else
+            //            {
+            //                services.AddSingleton<IEthereumRunner, EthereumRunner>();
+            //            }
+
+            //            ServiceCollection = services;
         }
     }
 }

@@ -21,6 +21,7 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Network.Config;
 using Nethermind.Network.Discovery;
 using Nethermind.Network.Discovery.Messages;
 using Nethermind.Network.Discovery.RoutingTable;
@@ -42,7 +43,7 @@ namespace Nethermind.Network.Test.Discovery
         [SetUp]
         public void Initialize()
         {
-            _config = new JsonConfigProvider().NetworkConfig;
+            _config = new NetworkConfig();
             _farAddress = new IPEndPoint(IPAddress.Parse("192.168.1.2"), 1);
             _nearAddress = new IPEndPoint(IPAddress.Parse(_config.MasterExternalIp), _config.MasterPort);            
             _messageSerializationService = Build.A.SerializationService().WithDiscovery(_privateKey).TestObject;

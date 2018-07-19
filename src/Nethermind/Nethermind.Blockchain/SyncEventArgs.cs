@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,17 +16,17 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Collections.Generic;
-using System.Text;
+using System;
 
-namespace Nethermind.Config
+namespace Nethermind.Blockchain
 {
-    public interface IJsonRpcConfig
+    public class SyncEventArgs : EventArgs
     {
-        IDictionary<ConfigErrorType, int> ErrorCodes { get; }
-        string JsonRpcVersion { get; }
-        IEnumerable<ConfigJsonRpcModuleType> EnabledModules { get; set; }
-        string MessageEncoding { get; }
-        string SignatureTemplate { get; }
+        public ISynchronizationPeer Peer { get; }
+
+        public SyncEventArgs(ISynchronizationPeer peer)
+        {
+            Peer = peer;
+        }
     }
 }

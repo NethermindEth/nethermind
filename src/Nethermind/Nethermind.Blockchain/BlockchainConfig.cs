@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,25 +16,10 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Text;
-
-namespace Nethermind.Config
+namespace Nethermind.Blockchain
 {
-    public interface IKeystoreConfig
+    public class BlockchainConfig : IBlockchainConfig
     {
-        string KeyStoreDirectory { get; }
-        string KeyStoreEncoding { get; }
-
-        string Kdf { get; }
-        string Cipher { get; }
-        int KdfparamsDklen { get; }
-        int KdfparamsN { get; }
-        int KdfparamsP { get; }
-        int KdfparamsR { get; }
-        int KdfparamsSaltLen { get; }
-
-        int SymmetricEncrypterBlockSize { get; }
-        int SymmetricEncrypterKeySize { get; }
-        int IVSize { get; }
+        public int SyncTimerInterval { get; set; } = 10000;
     }
 }

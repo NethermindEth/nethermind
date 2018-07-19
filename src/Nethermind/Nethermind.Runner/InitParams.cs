@@ -24,6 +24,11 @@ namespace Nethermind.Runner
     // TODO: remove this, use separate config files for hive and for runner - at the moment we just throw everything at this file
     public class InitParams
     {
+        public InitParams()
+        {
+            RemovingLogFilesEnabled = true;
+        }
+
         public bool TransactionTracingEnabled { get; set; }
         public string BaseTracingPath { get; set; }
         public bool JsonRpcEnabled { get; set; } = true;
@@ -48,6 +53,7 @@ namespace Nethermind.Runner
         public BigInteger? HomesteadBlockNr { get; set; }
         public EthereumRunnerType EthereumRunnerType { get; set; }
         public string[] JsonRpcEnabledModules { get; set; }
+        public bool RemovingLogFilesEnabled { get; set; }
 
         public override string ToString()
         {

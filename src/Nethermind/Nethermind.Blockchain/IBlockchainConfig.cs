@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,12 +16,10 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.Config
+namespace Nethermind.Blockchain
 {
-    public enum ConfigModule
+    public interface IBlockchainConfig
     {
-        Network,
-        JsonRpc,
-        Keystore
+        int SyncTimerInterval { get; }
     }
 }

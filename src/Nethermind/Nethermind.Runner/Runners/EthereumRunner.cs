@@ -34,8 +34,10 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Specs.ChainSpec;
 using Nethermind.Db;
 using Nethermind.Evm;
+using Nethermind.JsonRpc.Module;
 using Nethermind.KeyStore;
 using Nethermind.Network;
+using Nethermind.Network.Config;
 using Nethermind.Network.Crypto;
 using Nethermind.Network.Discovery;
 using Nethermind.Network.Discovery.Lifecycle;
@@ -75,12 +77,17 @@ namespace Nethermind.Runner.Runners
         private ISigner _signer;
         private ISynchronizationManager _syncManager;
         private ITransactionTracer _tracer;
+        private IKeyStore _keyStore;
 
-        public EthereumRunner(IConfigProvider configurationProvider, INetworkHelper networkHelper)
+        public EthereumRunner(IConfigProvider configurationProvider, INetworkHelper networkHelper, ILogManager logManager)
         {
             _configProvider = configurationProvider;
             _networkHelper = networkHelper;
+            _logManager = logManager;
         }
+
+        public IBlockchainBridge BlockchainBridge { get; private set; }
+        public IEthereumSigner EthereumSigner { get; private set; }
 
         public async Task Start(InitParams initParams)
         {
@@ -92,7 +99,6 @@ namespace Nethermind.Runner.Runners
         private void ConfigureTools(InitParams initParams)
         {
             _runnerCancellation = new CancellationTokenSource();
-            _logManager = new NLogManager(initParams.LogFileName);
             _logger = _logManager.GetClassLogger();
 
             _logger.Info("Initializing Ethereum");
@@ -186,8 +192,19 @@ namespace Nethermind.Runner.Runners
             var rewardCalculator = new RewardCalculator(specProvider);
             var blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, transactionProcessor, dbProvider, stateProvider, storageProvider, transactionStore, _logManager);
             _blockchainProcessor = new BlockchainProcessor(blockTree, sealEngine, transactionStore, difficultyCalculator, blockProcessor, ethereumSigner, _logManager);
-            _blockchainProcessor.Start();
 
+            // create shared objects between discovery and peer manager
+            _nodeFactory = new NodeFactory();
+            _nodeStatsProvider = new NodeStatsProvider(_configProvider);
+            var jsonSerializer = new JsonSerializer(_logManager);
+            var encrypter = new AesEncrypter(_configProvider, _logManager);
+            _keyStore = new FileKeyStore(_configProvider, jsonSerializer, encrypter, _cryptoRandom, _logManager);
+
+            //creating blockchain bridge
+            BlockchainBridge = new BlockchainBridge(ethereumSigner, stateProvider, _keyStore, blockTree, stateDb, transactionStore);
+            EthereumSigner = ethereumSigner;
+
+            _blockchainProcessor.Start();
             LoadGenesisBlock(chainSpec, string.IsNullOrWhiteSpace(initParams.GenesisHash) ? null : new Keccak(initParams.GenesisHash), blockTree, stateProvider, specProvider);
             await StartProcessing(blockTree, transactionStore, blockValidator, headerValidator, txValidator, initParams);
         }
@@ -221,7 +238,7 @@ namespace Nethermind.Runner.Runners
                             headerValidator,
                             transactionStore,
                             txValidator,
-                            _logger);
+                            _logger, new BlockchainConfig());
 
                         _syncManager.Start();
 
@@ -232,10 +249,6 @@ namespace Nethermind.Runner.Runners
                                 _logger.Error("Unable to initialize network layer.", initNetTask.Exception);
                             }
                         });
-
-                        // create shared objects between discovery and peer manager
-                        _nodeFactory = new NodeFactory();
-                        _nodeStatsProvider = new NodeStatsProvider(_configProvider);
 
                         if (initParams.DiscoveryEnabled)
                         {
@@ -373,7 +386,7 @@ namespace Nethermind.Runner.Runners
 
             if (initParams.DiscoveryPort.HasValue)
             {
-                ((NetworkConfig)_configProvider.NetworkConfig).MasterPort = initParams.DiscoveryPort.Value;
+                _configProvider.GetConfig<NetworkConfig>().MasterPort = initParams.DiscoveryPort.Value;
             }
 
             var privateKeyProvider = new PrivateKeyProvider(_privateKey);
@@ -383,12 +396,8 @@ namespace Nethermind.Runner.Runners
             var msgSerializersProvider = new DiscoveryMsgSerializersProvider(_messageSerializationService, _signer, privateKeyProvider, discoveryMessageFactory, nodeIdResolver, _nodeFactory);
             msgSerializersProvider.RegisterDiscoverySerializers();
 
-            var configProvider = new JsonConfigProvider();
-            var jsonSerializer = new JsonSerializer(_logManager);
-            var encrypter = new AesEncrypter(configProvider, _logManager);
-            var keyStore = new FileKeyStore(configProvider, jsonSerializer, encrypter, _cryptoRandom, _logManager);
             var nodeDistanceCalculator = new NodeDistanceCalculator(_configProvider);
-            var nodeTable = new NodeTable(_nodeFactory, keyStore, nodeDistanceCalculator, _configProvider, _logManager);
+            var nodeTable = new NodeTable(_nodeFactory, _keyStore, nodeDistanceCalculator, _configProvider, _logManager);
 
             var evictionManager = new EvictionManager(nodeTable, _logManager);
             var nodeLifeCycleFactory = new NodeLifecycleManagerFactory(_nodeFactory, nodeTable, discoveryMessageFactory, evictionManager, _nodeStatsProvider, _configProvider, _logManager);

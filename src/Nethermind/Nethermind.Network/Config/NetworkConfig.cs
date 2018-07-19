@@ -17,9 +17,10 @@
  */
 
 using System.IO;
-using System.Linq;
+using Nethermind.Config;
+using Nethermind.Network.P2P;
 
-namespace Nethermind.Config
+namespace Nethermind.Network.Config
 {
     public class NetworkConfig : INetworkConfig
     {
@@ -54,14 +55,14 @@ namespace Nethermind.Config
         public int NodeLifecycleManagersCleaupCount { get; set; } = 200;
         public long PredefinedReputation { get; set; } = 1000500;
 
-        public ConfigDisconnectReason[] PenalizedReputationLocalDisconnectReasons { get; set; } = {
-            ConfigDisconnectReason.UnexpectedIdentity, ConfigDisconnectReason.IncompatibleP2PVersion, ConfigDisconnectReason.UselessPeer,
-            ConfigDisconnectReason.BreachOfProtocol
+        public DisconnectReason[] PenalizedReputationLocalDisconnectReasons { get; set; } = {
+            DisconnectReason.UnexpectedIdentity, DisconnectReason.IncompatibleP2PVersion, DisconnectReason.UselessPeer,
+            DisconnectReason.BreachOfProtocol
         };
 
-        public ConfigDisconnectReason[] PenalizedReputationRemoteDisconnectReasons { get; set; } = {
-            ConfigDisconnectReason.UnexpectedIdentity, ConfigDisconnectReason.IncompatibleP2PVersion, ConfigDisconnectReason.UselessPeer,
-            ConfigDisconnectReason.BreachOfProtocol, ConfigDisconnectReason.TooManyPeers, ConfigDisconnectReason.AlreadyConnected
+        public DisconnectReason[] PenalizedReputationRemoteDisconnectReasons { get; set; } = {
+            DisconnectReason.UnexpectedIdentity, DisconnectReason.IncompatibleP2PVersion, DisconnectReason.UselessPeer,
+            DisconnectReason.BreachOfProtocol, DisconnectReason.TooManyPeers, DisconnectReason.AlreadyConnected
         };
 
         public long PenalizedReputationTooManyPeersTimeout { get; set; } = 10 * 1000;
@@ -69,10 +70,10 @@ namespace Nethermind.Config
         public string DbBasePath { get; set; } = Path.GetTempPath();
         public bool IsDiscoveryNodesPersistenceOn { get; set; } = true;
         public bool IsPeersPersistenceOn { get; set; } = true;
-        public int ActivePeerUpdateInterval { get; set; } = 10000;
-        public bool IsActivePeerTimerEnabled { get; set; } = false;
+        public int ActivePeerUpdateInterval { get; set; } = 2000;
+        public bool IsActivePeerTimerEnabled { get; set; } = true;
         public int ActivePeersMaxCount { get; set; } = 25;
-        public int DisconnectDelay { get; set; } = 1000 * 5;
+        public int DisconnectDelay { get; set; } = 1000 * 20;
         public int PeersPersistanceInterval { get; set; } = 1000 * 60 * 5;
         public int P2PPingInterval { get; set; } = 1000 * 10;
         public int P2PPingRetryCount { get; set; } = 3;

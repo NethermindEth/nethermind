@@ -132,6 +132,15 @@ namespace Nethermind.Network.P2P
 
         public async Task InitiateDisconnectAsync(DisconnectReason disconnectReason)
         {
+            if (_wasDisconnected)
+            {
+                if (_logger.IsInfoEnabled)
+                {
+                    _logger.Info($"Session was already disconnected: {RemoteNodeId}, sessioId: {SessionId}");
+                }
+                return;
+            }
+
             //Trigger disconnect on each protocol handler (if p2p is initialized it will send disconnect message to the peer)
             if (_protocols.Any())
             {

@@ -24,6 +24,7 @@ using Nethermind.Core;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Logging;
 using Nethermind.Db;
+using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.RoutingTable;
 using Nethermind.Store;
 
@@ -41,10 +42,10 @@ namespace Nethermind.Network
 
         public PeerStorage(IConfigProvider configurationProvider, INodeFactory nodeFactory, ILogManager logManager, IPerfService perfService)
         {
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _configurationProvider = configurationProvider?.NetworkConfig ?? throw new ArgumentNullException(nameof(configurationProvider.NetworkConfig));;
-            _nodeFactory = nodeFactory ?? throw new ArgumentNullException(nameof(nodeFactory));
-            _perfService = perfService ?? throw new ArgumentNullException(nameof(perfService));
+            _logger = logManager?.GetClassLogger();
+            _configurationProvider = configurationProvider.GetConfig<NetworkConfig>();
+            _nodeFactory = nodeFactory;
+            _perfService = perfService;
             _db = new FullDbOnTheRocks(Path.Combine(_configurationProvider.DbBasePath, FullDbOnTheRocks.PeersDbPath));
         }
 

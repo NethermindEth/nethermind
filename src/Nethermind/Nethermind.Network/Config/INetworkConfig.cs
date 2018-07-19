@@ -16,9 +16,12 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.Config
+using Nethermind.Config;
+using Nethermind.Network.P2P;
+
+namespace Nethermind.Network.Config
 {
-    public interface INetworkConfig
+    public interface INetworkConfig : IConfig
     {
         /// <summary>
         /// Kademlia - k
@@ -148,12 +151,12 @@ namespace Nethermind.Config
         /// <summary>
         /// Local disconnect reasons for penalizing node reputation
         /// </summary>
-        ConfigDisconnectReason[] PenalizedReputationLocalDisconnectReasons { get; }
+        DisconnectReason[] PenalizedReputationLocalDisconnectReasons { get; }
 
         /// <summary>
         /// Remote disconnect reasons for penalizing node reputation
         /// </summary>
-        ConfigDisconnectReason[] PenalizedReputationRemoteDisconnectReasons { get; }
+        DisconnectReason[] PenalizedReputationRemoteDisconnectReasons { get; }
 
         /// <summary>
         /// Time within which we penalized peer if disconnection happends due to too many peers

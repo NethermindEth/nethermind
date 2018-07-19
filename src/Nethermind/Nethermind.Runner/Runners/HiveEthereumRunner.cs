@@ -31,7 +31,9 @@ using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
+using Nethermind.JsonRpc.Module;
 using Nethermind.KeyStore;
+using Nethermind.KeyStore.Config;
 using Nethermind.Runner.Data;
 using Nethermind.Store;
 
@@ -148,7 +150,7 @@ namespace Nethermind.Runner.Runners
                 var fileContent = File.ReadAllText(file);
                 var keyStoreItem = _jsonSerializer.Deserialize<KeyStoreItem>(fileContent);
                 var filePath = Path.Combine(keyStoreDir, keyStoreItem.Address);
-                File.WriteAllText(filePath, fileContent, Encoding.GetEncoding(_configurationProvider.KeystoreConfig.KeyStoreEncoding));
+                File.WriteAllText(filePath, fileContent, Encoding.GetEncoding(_configurationProvider.GetConfig<KeystoreConfig>().KeyStoreEncoding));
             }
         }
 
@@ -209,7 +211,7 @@ namespace Nethermind.Runner.Runners
 
         private string GetStoreDirectory()
         {
-            var directory = _configurationProvider.KeystoreConfig.KeyStoreDirectory;
+            var directory = _configurationProvider.GetConfig<KeystoreConfig>().KeyStoreDirectory;
             if (!Directory.Exists(directory))
             {
                 Directory.CreateDirectory(directory);
@@ -217,5 +219,8 @@ namespace Nethermind.Runner.Runners
 
             return directory;
         }
+
+        public IBlockchainBridge BlockchainBridge { get; }
+        public IEthereumSigner EthereumSigner { get; }
     }
 }

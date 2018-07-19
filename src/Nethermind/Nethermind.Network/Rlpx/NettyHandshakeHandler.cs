@@ -18,6 +18,7 @@
 
 using System;
 using System.Net;
+using System.Net.Sockets;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
 using DotNetty.Codecs;
@@ -110,7 +111,21 @@ namespace Nethermind.Network.Rlpx
 
         public override void ExceptionCaught(IChannelHandlerContext context, Exception exception)
         {
-            if (_logger.IsErrorEnabled) _logger.Error("Exception when processing encryption handshake", exception);
+            //In case of SocketException we log it as debug to avoid noise
+            if (exception is SocketException)
+            {
+                if (_logger.IsDebugEnabled)
+                {
+                    _logger.Error("Exception when processing encryption handshake (SocketException):", exception);
+                }
+            }
+            else
+            {
+                if (_logger.IsErrorEnabled)
+                {
+                    _logger.Error("Exception when processing encryption handshake", exception);
+                }
+            }
             base.ExceptionCaught(context, exception);
         }
 

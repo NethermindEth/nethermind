@@ -73,6 +73,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         public string ProtocolCode => "eth";
         public virtual int MessageIdSpaceSize => 8;
         public NodeId NodeId => P2PSession.RemoteNodeId;
+        public string ClientId { get; set; }
         public event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized;
         public event EventHandler<ProtocolEventArgs> SubprotocolRequested;
 
@@ -214,18 +215,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
             _remoteHeadBlockHash = status.BestHash;
             _remoteHeadBlockDifficulty = status.TotalDifficulty;
-
-            if (status.ChainId != _sync.BlockTree.ChainId)
-            {
-                throw new InvalidOperationException("network ID mismatch");
-                // TODO: disconnect here
-            }
-            
-            if (status.GenesisHash != _sync.Genesis.Hash)
-            {
-                Logger.Warn($"{P2PSession.RemoteNodeId} Connected peer's genesis hash {status.GenesisHash} differes from {_sync.Genesis.Hash}");
-                throw new InvalidOperationException("genesis hash mismatch");
-            }
 
             //if (!_statusSent)
             //{

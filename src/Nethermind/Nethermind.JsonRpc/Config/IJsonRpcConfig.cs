@@ -16,16 +16,18 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.Config
+using System.Collections.Generic;
+using Nethermind.Config;
+using Nethermind.JsonRpc.DataModel;
+
+namespace Nethermind.JsonRpc.Config
 {
-    public enum ConfigErrorType
+    public interface IJsonRpcConfig : IConfig
     {
-        ParseError,
-        InvalidRequest,
-        MethodNotFound,
-        InvalidParams,
-        InternalError,
-        ServerError,
-        NotFound
+        IDictionary<ErrorType, int> ErrorCodes { get; }
+        string JsonRpcVersion { get; }
+        IEnumerable<ModuleType> EnabledModules { get; set; }
+        string MessageEncoding { get; }
+        string SignatureTemplate { get; }
     }
 }

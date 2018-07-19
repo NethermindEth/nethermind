@@ -27,6 +27,7 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
+using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Lifecycle;
 using Nethermind.Network.Discovery.Messages;
 using Nethermind.Network.Discovery.RoutingTable;
@@ -53,12 +54,12 @@ namespace Nethermind.Network.Discovery
             IConfigProvider configurationProvider,
             ILogManager logManager)
         {
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _configurationProvider = configurationProvider?.NetworkConfig ?? throw new ArgumentNullException(nameof(configurationProvider));
-            _nodeLifecycleManagerFactory = nodeLifecycleManagerFactory ?? throw new ArgumentNullException(nameof(nodeLifecycleManagerFactory));
-            _nodeFactory = nodeFactory ?? throw new ArgumentNullException(nameof(nodeFactory));
-            _nodeTable = nodeTable ?? throw new ArgumentNullException(nameof(nodeTable));
-            _discoveryStorage = discoveryStorage ?? throw new ArgumentNullException(nameof(discoveryStorage));
+            _logger = logManager.GetClassLogger();
+            _configurationProvider = configurationProvider.GetConfig<NetworkConfig>();
+            _nodeLifecycleManagerFactory = nodeLifecycleManagerFactory;
+            _nodeFactory = nodeFactory;
+            _nodeTable = nodeTable;
+            _discoveryStorage = discoveryStorage;
             _nodeLifecycleManagerFactory.DiscoveryManager = this;
         }
 
@@ -110,6 +111,10 @@ namespace Nethermind.Network.Discovery
 
         public INodeLifecycleManager GetNodeLifecycleManager(Node node, bool isPersisted = false)
         {
+            if (_nodeTable.MasterNode.Equals(node))
+            {
+                return null;
+            }
             return _nodeLifecycleManagers.GetOrAdd(node.IdHashText, x =>
             {
                 var manager = _nodeLifecycleManagerFactory.CreateNodeLifecycleManager(node);
@@ -162,7 +167,10 @@ namespace Nethermind.Network.Discovery
         {
             if (message.DestinationAddress == null || message.SourceAddress == null || message.FarAddress == null)
             {
-                throw new NetworkingException($"Received ping message with empty address, message: {message}", NetwokExceptionType.Validation);
+                if (_logger.IsWarnEnabled)
+                {
+                    _logger.Warn($"Received ping message with empty address, message: {message}");
+                }
             }
 
             if (!Bytes.UnsafeCompare(_nodeTable.MasterNode.Address.Address.GetAddressBytes(), message.DestinationAddress.Address.GetAddressBytes()))
@@ -182,7 +190,10 @@ namespace Nethermind.Network.Discovery
 
             if (message.FarAddress.Port != message.SourceAddress.Port)
             {
-                throw new NetworkingException($"Received message with inccorect source port, message: {message}", NetwokExceptionType.Validation);
+                if (_logger.IsWarnEnabled)
+                {
+                    _logger.Warn($"Received message with incorect source port, message: {message}");
+                }
             }
         }
 

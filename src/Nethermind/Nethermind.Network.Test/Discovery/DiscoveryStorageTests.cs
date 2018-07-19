@@ -4,6 +4,7 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Logging;
 using Nethermind.Db;
+using Nethermind.Network.Config;
 using Nethermind.Network.Discovery;
 using Nethermind.Network.Discovery.Lifecycle;
 using Nethermind.Network.Discovery.RoutingTable;
@@ -25,9 +26,9 @@ namespace Nethermind.Network.Test.Discovery
         {
             var logManager = NullLogManager.Instance;
             _configurationProvider = new JsonConfigProvider();
-            ((NetworkConfig)_configurationProvider.NetworkConfig).DbBasePath = Path.Combine(Path.GetTempPath(), "DiscoveryStorageTests");
+            ((NetworkConfig)_configurationProvider.GetConfig<NetworkConfig>()).DbBasePath = Path.Combine(Path.GetTempPath(), "DiscoveryStorageTests");
 
-            var dbPath = Path.Combine(_configurationProvider.NetworkConfig.DbBasePath, FullDbOnTheRocks.DiscoveryNodesDbPath);
+            var dbPath = Path.Combine(_configurationProvider.GetConfig<NetworkConfig>().DbBasePath, FullDbOnTheRocks.DiscoveryNodesDbPath);
             if (Directory.Exists(dbPath))
             {
                 Directory.GetFiles(dbPath).ToList().ForEach(File.Delete);

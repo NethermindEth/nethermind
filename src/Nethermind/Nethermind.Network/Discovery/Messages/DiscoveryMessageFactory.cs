@@ -20,6 +20,7 @@ using System;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.RoutingTable;
 
 namespace Nethermind.Network.Discovery.Messages
@@ -30,7 +31,7 @@ namespace Nethermind.Network.Discovery.Messages
 
         public DiscoveryMessageFactory(IConfigProvider configurationProvider)
         {
-            _configurationProvider = configurationProvider.NetworkConfig;
+            _configurationProvider = configurationProvider.GetConfig<NetworkConfig>();
         }
 
         public T CreateOutgoingMessage<T>(Node destination) where T : DiscoveryMessage

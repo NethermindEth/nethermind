@@ -18,6 +18,7 @@
 
 using System;
 using System.Net;
+using System.Net.Sockets;
 using DotNetty.Buffers;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
@@ -49,7 +50,22 @@ namespace Nethermind.Network.Discovery
 
         public override void ExceptionCaught(IChannelHandlerContext context, Exception exception)
         {
-            _logger.Error("Exception when processing discovery messages", exception);
+            //In case of SocketException we log it as debug to avoid noise
+            if (exception is SocketException)
+            {
+                if (_logger.IsDebugEnabled)
+                {
+                    _logger.Error($"Exception when processing discovery messages (SocketException): {exception}");
+                }
+            }
+            else
+            {
+                if (_logger.IsErrorEnabled)
+                {
+                    _logger.Error("Exception when processing discovery messages", exception);
+                }
+            }
+
             base.ExceptionCaught(context, exception);
         }
 

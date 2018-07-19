@@ -19,6 +19,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net.Sockets;
 using DotNetty.Buffers;
 using DotNetty.Codecs;
 using DotNetty.Transport.Channels;
@@ -150,10 +151,22 @@ namespace Nethermind.Network.Rlpx
 
         public override void ExceptionCaught(IChannelHandlerContext context, Exception exception)
         {
-            if (_logger.IsDebugEnabled)
+            //In case of SocketException we log it as debug to avoid noise
+            if (exception is SocketException)
             {
-                _logger.Debug($"{GetType().Name} exception: {exception}");
+                if (_logger.IsDebugEnabled)
+                {
+                    _logger.Error($"{GetType().Name} error in netty frame decder (SocketException): {exception}");
+                }
             }
+            else
+            {
+                if (_logger.IsErrorEnabled)
+                {
+                    _logger.Error($"{GetType().Name} error in netty frame decoder: {exception}");
+                }
+            }
+
             base.ExceptionCaught(context, exception);
         }
         

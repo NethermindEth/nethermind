@@ -24,6 +24,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
 using Nethermind.KeyStore;
+using Nethermind.Network.Config;
 using Nethermind.Network.Discovery;
 using Nethermind.Network.Discovery.Lifecycle;
 using Nethermind.Network.Discovery.Messages;
@@ -56,7 +57,7 @@ namespace Nethermind.Network.Test.Discovery
             var logManager = NullLogManager.Instance;
             //var config = new NetworkConfigurationProvider(new NetworkHelper(logger)) { PongTimeout = 100 };
             var config = new JsonConfigProvider();
-            ((NetworkConfig)config.NetworkConfig).PongTimeout = 100;
+            config.GetConfig<NetworkConfig>().PongTimeout = 100;
 
             _messageSender = Substitute.For<IMessageSender>();
             _nodeFactory = new NodeFactory();

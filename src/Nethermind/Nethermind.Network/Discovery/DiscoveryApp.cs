@@ -29,6 +29,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
+using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Lifecycle;
 using Nethermind.Network.Discovery.RoutingTable;
 using Timer = System.Timers.Timer;
@@ -59,16 +60,16 @@ namespace Nethermind.Network.Discovery
 
         public DiscoveryApp(INodesLocator nodesLocator, IDiscoveryManager discoveryManager, INodeFactory nodeFactory, INodeTable nodeTable, IMessageSerializationService messageSerializationService, ICryptoRandom cryptoRandom, IDiscoveryStorage discoveryStorage, IConfigProvider configurationProvider, ILogManager logManager)
         {
-            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+            _logManager = logManager;
             _logger = _logManager.GetClassLogger();
-            _configurationProvider = configurationProvider?.NetworkConfig ?? throw new ArgumentNullException(nameof(configurationProvider.NetworkConfig));
-            _nodesLocator = nodesLocator ?? throw new ArgumentNullException(nameof(nodesLocator));
-            _discoveryManager = discoveryManager ?? throw new ArgumentNullException(nameof(discoveryManager));
-            _nodeFactory = nodeFactory ?? throw new ArgumentNullException(nameof(nodeFactory));
-            _nodeTable = nodeTable ?? throw new ArgumentNullException(nameof(nodeTable));
-            _messageSerializationService = messageSerializationService ?? throw new ArgumentNullException(nameof(messageSerializationService));
-            _cryptoRandom = cryptoRandom ?? throw new ArgumentNullException(nameof(cryptoRandom));
-            _discoveryStorage = discoveryStorage ?? throw new ArgumentNullException(nameof(discoveryStorage));
+            _configurationProvider = configurationProvider.GetConfig<NetworkConfig>();
+            _nodesLocator = nodesLocator;
+            _discoveryManager = discoveryManager;
+            _nodeFactory = nodeFactory;
+            _nodeTable = nodeTable;
+            _messageSerializationService = messageSerializationService;
+            _cryptoRandom = cryptoRandom;
+            _discoveryStorage = discoveryStorage;
             _discoveryStorage.StartBatch();
         }
 

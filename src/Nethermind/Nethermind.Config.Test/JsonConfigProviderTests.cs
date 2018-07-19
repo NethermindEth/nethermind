@@ -2,6 +2,11 @@
 using System.IO;
 using System.Linq;
 using Castle.Core.Logging;
+using Nethermind.JsonRpc.Config;
+using Nethermind.JsonRpc.DataModel;
+using Nethermind.KeyStore.Config;
+using Nethermind.Network.Config;
+using Nethermind.Network.P2P;
 using NUnit.Framework;
 
 namespace Nethermind.Config.Test
@@ -14,6 +19,10 @@ namespace Nethermind.Config.Test
         [SetUp]
         public void Initialize()
         {
+            var keystoreConfig = new KeystoreConfig();
+            var networkConfig = new NetworkConfig();
+            var jsonRpcConfig = new JsonRpcConfig();
+
             _configProvider = new JsonConfigProvider();
         }
 
@@ -22,32 +31,36 @@ namespace Nethermind.Config.Test
         {
             _configProvider.LoadJsonConfig("SampleJsonConfig.json");
 
-            Assert.AreEqual(100, _configProvider.KeystoreConfig.KdfparamsDklen);
-            Assert.AreEqual("test", _configProvider.KeystoreConfig.Cipher);
+            var keystoreConfig = _configProvider.GetConfig<KeystoreConfig>();
+            var networkConfig = _configProvider.GetConfig<NetworkConfig>();
+            var jsonRpcConfig = _configProvider.GetConfig<JsonRpcConfig>();
 
-            Assert.AreEqual("test", _configProvider.JsonRpcConfig.JsonRpcVersion);           
-            Assert.AreEqual("UTF7", _configProvider.JsonRpcConfig.MessageEncoding);
-            Assert.AreEqual(2, _configProvider.JsonRpcConfig.EnabledModules.Count());
-            new[] { ConfigJsonRpcModuleType.Eth, ConfigJsonRpcModuleType.Shh }.ToList().ForEach(x =>
+            Assert.AreEqual(100, keystoreConfig.KdfparamsDklen);
+            Assert.AreEqual("test", keystoreConfig.Cipher);
+
+            Assert.AreEqual("test", jsonRpcConfig.JsonRpcVersion);           
+            Assert.AreEqual("UTF7", jsonRpcConfig.MessageEncoding);
+            Assert.AreEqual(2, jsonRpcConfig.EnabledModules.Count());
+            new[] { ModuleType.Eth, ModuleType.Shh }.ToList().ForEach(x =>
             {
-                Assert.IsTrue(_configProvider.JsonRpcConfig.EnabledModules.Contains(x));
+                Assert.IsTrue(jsonRpcConfig.EnabledModules.Contains(x));
             });
 
-            Assert.AreEqual(4, _configProvider.NetworkConfig.Concurrency);
-            Assert.AreEqual(3, _configProvider.NetworkConfig.PenalizedReputationLocalDisconnectReasons.Length);
-            new[] { ConfigDisconnectReason.UnexpectedIdentity, ConfigDisconnectReason.IncompatibleP2PVersion, ConfigDisconnectReason.BreachOfProtocol }
+            Assert.AreEqual(4, networkConfig.Concurrency);
+            Assert.AreEqual(3, networkConfig.PenalizedReputationLocalDisconnectReasons.Length);
+            new[] { DisconnectReason.UnexpectedIdentity, DisconnectReason.IncompatibleP2PVersion, DisconnectReason.BreachOfProtocol }
                 .ToList().ForEach(x =>
             {
-                Assert.IsTrue(_configProvider.NetworkConfig.PenalizedReputationLocalDisconnectReasons.Contains(x));
+                Assert.IsTrue(networkConfig.PenalizedReputationLocalDisconnectReasons.Contains(x));
             });
-            Assert.AreEqual(2, _configProvider.NetworkConfig.BootNodes.Length);
+            Assert.AreEqual(2, networkConfig.BootNodes.Length);
 
-            var node1 = _configProvider.NetworkConfig.BootNodes.FirstOrDefault(x => x.NodeId == "testNodeId");
+            var node1 = networkConfig.BootNodes.FirstOrDefault(x => x.NodeId == "testNodeId");
             Assert.IsNotNull(node1);
             Assert.AreEqual("testHist", node1.Host);
             Assert.AreEqual(43, node1.Port);
 
-            var node2 = _configProvider.NetworkConfig.BootNodes.FirstOrDefault(x => x.NodeId == "testNodeId2");
+            var node2 = networkConfig.BootNodes.FirstOrDefault(x => x.NodeId == "testNodeId2");
             Assert.IsNotNull(node2);
             Assert.AreEqual("testHist2", node2.Host);
             Assert.AreEqual(44, node2.Port);

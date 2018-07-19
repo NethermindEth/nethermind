@@ -27,6 +27,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
 using Nethermind.KeyStore;
+using Nethermind.Network.Config;
 
 namespace Nethermind.Network.Discovery.RoutingTable
 {
@@ -43,7 +44,7 @@ namespace Nethermind.Network.Discovery.RoutingTable
         public NodeTable(INodeFactory nodeFactory, IKeyStore keyStore, INodeDistanceCalculator nodeDistanceCalculator, IConfigProvider configurationProvider, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _configurationProvider = configurationProvider.NetworkConfig;
+            _configurationProvider = configurationProvider.GetConfig<NetworkConfig>();
             _nodeFactory = nodeFactory;
             _keyStore = keyStore;
             _nodeDistanceCalculator = nodeDistanceCalculator; 

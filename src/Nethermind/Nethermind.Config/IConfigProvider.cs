@@ -20,8 +20,6 @@ namespace Nethermind.Config
 {
     public interface IConfigProvider
     {
-        INetworkConfig NetworkConfig { get; }
-        IKeystoreConfig KeystoreConfig { get; }
-        IJsonRpcConfig JsonRpcConfig { get; }
+        T GetConfig<T>() where T : IConfig;
     }
 }
