@@ -27,7 +27,7 @@ https://github.com/ricksladkey/dirichlet-numerics
 1) Test sync processes with Hive tests
 
 ### store / DB
-1) Tune RocksDB to limit memory usage (ideally remove dependency on RocksDB sharp and add our own wrapper around C++ library with PInVokes just for the functions we use)
+1) Tune RocksDB to limit memory usage (possibly remove dependency on RocksDB sharp and add our own wrapper around C++ library with PInvoke just for the functions we use)
 2) Further improve performance of RLP decoding / encoding by using Recyclable Memory Streams everywhere
 3) Implement pruning
 
