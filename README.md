@@ -1,6 +1,4 @@
-![Nethermind logo](Nethermind.png)
-
-# nethermind
+<img src="Nethermind.png" width="600">
 Full Ethereum client written in.NET including devp2p, EVM, full archive node synchronization (ETH62).
 
 ## Contributors welcome
