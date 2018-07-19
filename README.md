@@ -1,5 +1,5 @@
 <img src="Nethermind.png" width="600">
-Full Ethereum client written in.NET including devp2p, EVM, full archive node synchronization (ETH62).
+Full .NET Core Ethereum client.
 
 ## Contributors welcome
 At Nethermind we are building an Open Source multiplatform Ethereum client implementation in .NET Core (running seamlessly both on Linux and Windows). Simultaneously our team works on Nethermind trading tools, analytics and decentralized exchange (0x relay).
