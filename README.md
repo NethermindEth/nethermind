@@ -1,7 +1,5 @@
-![Nethermind logo](Nethermind.png)
-
-# nethermind
-Full Ethereum client written in.NET including devp2p, EVM, full archive node synchronization (ETH62).
+<img src="Nethermind.png" width="600">
+Full .NET Core Ethereum client.
 
 ## Contributors welcome
 At Nethermind we are building an Open Source multiplatform Ethereum client implementation in .NET Core (running seamlessly both on Linux and Windows). Simultaneously our team works on Nethermind trading tools, analytics and decentralized exchange (0x relay).
@@ -29,7 +27,7 @@ https://github.com/ricksladkey/dirichlet-numerics
 1) Test sync processes with Hive tests
 
 ### store / DB
-1) Tune RocksDB to limit memory usage (ideally remove dependency on RocksDB sharp and add our own wrapper around C++ library with PInVokes just for the functions we use)
+1) Tune RocksDB to limit memory usage (possibly remove dependency on RocksDB sharp and add our own wrapper around C++ library with PInvoke just for the functions we use)
 2) Further improve performance of RLP decoding / encoding by using Recyclable Memory Streams everywhere
 3) Implement pruning
 
