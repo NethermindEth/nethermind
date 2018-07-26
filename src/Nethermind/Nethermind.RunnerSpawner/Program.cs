@@ -35,9 +35,6 @@ namespace Nethermind.RunnerSpawner
         public Dictionary<string, InitParams> Runners { get; set; }
     }
     
-    // TODO: because of the limitations of .NET Core we cannot have two dlls 'published' to a single folder
-    // TODO: there was a fix in the .proj file but it was very hacky and high maintenance (to make it run both on Widnows or Linux)
-    // TODO: need to redesign Spawner to just point at a folder with the runners
     internal class Program
     {
         private static readonly Dictionary<string, Process> Processes = new Dictionary<string, Process>();
