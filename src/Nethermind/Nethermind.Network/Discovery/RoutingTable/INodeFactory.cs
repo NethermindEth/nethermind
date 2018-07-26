@@ -17,7 +17,6 @@
  */
 
 using System.Net;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Model;
 
 namespace Nethermind.Network.Discovery.RoutingTable

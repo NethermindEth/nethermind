@@ -18,7 +18,6 @@
 
 using System;
 using System.Threading.Tasks;
-using Nethermind.Core;
 using Nethermind.Core.Logging;
 using Nethermind.Network.Rlpx;
 
