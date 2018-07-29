@@ -102,26 +102,6 @@ namespace Nethermind.Network.Discovery
         private void InitializeUdpChannel()
         {
             _group = new MultithreadEventLoopGroup(1);
-            //try
-            //{
-            //while (!_appShutdown)
-            //{
-            StartUdpChannel();
-            //wait for closing event
-            //await _channel.CloseCompletion;
-            //StopUdpChannelAsync();
-            //}
-            //}
-            //finally 
-            //{
-            //    await _group.ShutdownGracefullyAsync();
-            //}
-        }
-
-        private void StartUdpChannel()
-        {
-            //var address = new IPEndPoint(IPAddress.Parse(_configurationProvider.MasterHost), _configurationProvider.MasterPort);
-            //var address = _nodeTable.MasterNode.Address;
             _logger.Info($"Starting UDP Channel: {_configurationProvider.MasterHost}:{_configurationProvider.MasterPort}");
 
             var bootstrap = new Bootstrap();
@@ -193,7 +173,7 @@ namespace Nethermind.Network.Discovery
                     await Task.Delay(1000);
                 }
                 InitializeDiscoveryPersistanceTimer();
-                //InitializeDiscoveryTimer();
+                InitializeDiscoveryTimer();
                 //InitializeRefreshTimer(); 
 
                 await RunDiscoveryAsync();

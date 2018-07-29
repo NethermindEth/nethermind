@@ -251,7 +251,7 @@ namespace Nethermind.Blockchain
                 {
                     RunSync();
                 }
-            });
+            }, tokenSource.Token);
         }
 
         public void RemovePeer(ISynchronizationPeer synchronizationPeer)

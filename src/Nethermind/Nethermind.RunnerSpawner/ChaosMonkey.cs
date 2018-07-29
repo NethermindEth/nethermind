@@ -83,10 +83,13 @@ namespace Nethermind.RunnerSpawner
                 _processes[i].Start();
             }
 
-            _timer = new System.Timers.Timer(_options.IntervalSeconds * 1000);
-            _timer.Elapsed += TimerOnElapsed;
-            _timer.AutoReset = false;
-            _timer.Enabled = true;
+            if (_options.IntervalSeconds != 0)
+            {
+                _timer = new System.Timers.Timer(_options.IntervalSeconds * 1000);
+                _timer.Elapsed += TimerOnElapsed;
+                _timer.AutoReset = false;
+                _timer.Enabled = true;
+            }
 
             if (_options.AllDownIntervalSeconds != 0)
             {

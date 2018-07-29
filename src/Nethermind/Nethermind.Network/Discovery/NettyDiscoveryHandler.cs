@@ -90,7 +90,13 @@ namespace Nethermind.Network.Discovery
             }
             
             IAddressedEnvelope<IByteBuffer> packet = new DatagramPacket(Unpooled.CopiedBuffer(message), discoveryMessage.FarAddress);
-            await _channel.WriteAndFlushAsync(packet);
+            await _channel.WriteAndFlushAsync(packet).ContinueWith(t =>
+            {
+                if (t.IsFaulted)
+                {
+                    if(_logger.IsErrorEnabled) _logger.Error($"error when sending a discovery message to {discoveryMessage.FarAddress}", t.Exception);
+                }
+            });
         }
 
         public event EventHandler OnChannelActivated;

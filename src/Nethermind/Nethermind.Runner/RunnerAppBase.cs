@@ -111,10 +111,7 @@ namespace Nethermind.Runner
             try
             {
                 var initParams = configProvider.GetConfig<InitConfig>();
-
-                //var configProvider = new JsonConfigProvider();
                 var logManager = new NLogManager(initParams.LogFileName);
-                //configProvider.LoadJsonConfig("");
 
                 //discovering and setting local, remote ips for client machine
                 var networkHelper = new NetworkHelper(Logger);
@@ -134,9 +131,7 @@ namespace Nethermind.Runner
                 byte[] chainSpecData = File.ReadAllBytes(path);
                 ChainSpec chainSpec = chainSpecLoader.Load(chainSpecData);
 
-                //Setting trusted nodes
-                var nodes = chainSpec.NetworkNodes.Select(GetNode).ToArray();
-                networkConfig.TrustedPeers = nodes;
+                var nodes = chainSpec.NetworkNodes.Select(nn => GetNode(nn, localHost)).ToArray();
                 networkConfig.BootNodes = nodes;
                 networkConfig.DbBasePath = initParams.BaseDbPath;
 
@@ -183,32 +178,12 @@ namespace Nethermind.Runner
             }
         }
 
-        protected int GetIntValue(string rawValue, string argName)
-        {
-            if (int.TryParse(rawValue, out var value))
-            {
-                return value;
-            }
-
-            throw new Exception($"Incorrect argument value, arg: {argName}, value: {rawValue}");
-        }
-
-        protected BigInteger GetBigIntValue(string rawValue, string argName)
-        {
-            if (BigInteger.TryParse(rawValue, out var value))
-            {
-                return value;
-            }
-
-            throw new Exception($"Incorrect argument value, arg: {argName}, value: {rawValue}");
-        }
-
-        private ConfigNode GetNode(NetworkNode networkNode)
+        private ConfigNode GetNode(NetworkNode networkNode, string localHost)
         {
             var node = new ConfigNode
             {
                 NodeId = networkNode.NodeId.PublicKey.ToString(false),
-                Host = networkNode.Host,
+                Host = networkNode.Host == "127.0.0.1" ? localHost : networkNode.Host,
                 Port = networkNode.Port,
                 Description = networkNode.Description
             };
