@@ -18,6 +18,7 @@
 
 using System;
 using System.Diagnostics;
+using System.Linq;
 using System.Threading;
 using System.Timers;
 using Nethermind.Core.Logging;
@@ -33,7 +34,7 @@ namespace Nethermind.RunnerSpawner
         {
             public int IntervalSeconds { get; set; }
             public int AllDownIntervalSeconds { get; set; }
-            public int RatioOffOn { get; set; } = 1;
+            public int RatioOffOn { get; set; } = 3;
         }
 
         private ProcessWrapper[] _processes;
@@ -85,13 +86,15 @@ namespace Nethermind.RunnerSpawner
             _timer = new System.Timers.Timer(_options.IntervalSeconds * 1000);
             _timer.Elapsed += TimerOnElapsed;
             _timer.AutoReset = false;
-
-            _allDownTimer = new System.Timers.Timer(_options.AllDownIntervalSeconds * 1000);
-            _allDownTimer.Elapsed += AllDownTimerOnElapsed;
-            _allDownTimer.AutoReset = false;
-
             _timer.Enabled = true;
-            _allDownTimer.Enabled = true;
+
+            if (_options.AllDownIntervalSeconds != 0)
+            {
+                _allDownTimer = new System.Timers.Timer(_options.AllDownIntervalSeconds * 1000);
+                _allDownTimer.Elapsed += AllDownTimerOnElapsed;
+                _allDownTimer.AutoReset = false;
+                _allDownTimer.Enabled = true;
+            }
         }
 
         private void AllDownTimerOnElapsed(object sender, ElapsedEventArgs e)
@@ -127,13 +130,24 @@ namespace Nethermind.RunnerSpawner
         {
             lock (_sync)
             {
+                int i = _random.Next(_processes.Length);
+                if (_processes.All(p => p.IsRunning))
+                {
+                    _logger.Info($"Chaos Monkey KILL {_processes[i].Name}");
+                    _processes[i].Kill();
+                }
+                else if(_processes.All(p => !p.IsRunning))
+                {
+                    _logger.Info($"Chaos Monkey START {_processes[i].Name}");
+                    _processes[i].Start();
+                }
+                
+                int offOnRange = _options.RatioOffOn + 1;
+                bool isStart = offOnRange != 0;
+                
                 while (true)
                 {
-                    int i = _random.Next(_processes.Length);
-
-                    int offOnRange = _options.RatioOffOn + 1;
-                    bool isStart = _random.Next(offOnRange) == 0;
-
+                    i = _random.Next(_processes.Length);
                     if (isStart && !_processes[i].IsRunning)
                     {
                         _logger.Info($"Chaos Monkey START {_processes[i].Name}");
@@ -152,10 +166,10 @@ namespace Nethermind.RunnerSpawner
 
             _timer.Enabled = true;
         }
-        
+
         private static object _sync = new Object();
     }
-    
+
     public class ProcessWrapper
     {
         public string Name { get; set; }
