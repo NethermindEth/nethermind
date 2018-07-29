@@ -19,21 +19,22 @@ namespace Nethermind.Config
             Initialize();
         }
 
+        public void ApplyJsonConfig(string jsonContent)
+        {
+            var json = (JArray)JToken.Parse(jsonContent);
+            foreach (var moduleEntry in json)
+            {
+                LoadModule(moduleEntry);
+            }
+        }
+
         public void LoadJsonConfig(string configFilePath)
         {
             if (!File.Exists(configFilePath))
             {
                 throw new Exception($"Config file does not exist: {configFilePath}");
             }
-
-            using (var reader = File.OpenText(configFilePath))
-            {
-                var json = (JArray)JToken.ReadFrom(new JsonTextReader(reader));
-                foreach (var moduleEntry in json)
-                {
-                    LoadModule(moduleEntry);
-                }
-            }
+            ApplyJsonConfig(File.ReadAllText(configFilePath));
         }
 
         public T GetConfig<T>() where T : IConfig

@@ -28,6 +28,7 @@ using Nethermind.Core.Logging;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Config;
 using Nethermind.JsonRpc.DataModel;
+using Nethermind.Runner.Config;
 
 namespace Nethermind.Runner.Runners
 {
@@ -35,18 +36,20 @@ namespace Nethermind.Runner.Runners
     {
         private readonly ILogger _logger;
         private readonly IJsonRpcConfig _configurationProvider;
+        private readonly IInitConfig _initConfig;
         private IWebHost _webHost;
 
         public JsonRpcRunner(IConfigProvider configurationProvider, ILogger logger)
         {
             _configurationProvider = configurationProvider.GetConfig<JsonRpcConfig>();
+            _initConfig = configurationProvider.GetConfig<InitConfig>();
             _logger = logger;
         }
 
-        public Task Start(InitParams initParams)
+        public Task Start()
         {
             _logger.Info("Initializing JsonRPC");
-            var host = $"http://{initParams.HttpHost}:{initParams.HttpPort}";
+            var host = $"http://{_initConfig.HttpHost}:{_initConfig.HttpPort}";
             _logger.Info($"Running server, url: {host}");
 
             var webHost = WebHost.CreateDefaultBuilder()
@@ -54,7 +57,7 @@ namespace Nethermind.Runner.Runners
                 .UseUrls(host)
                 .Build();
 
-            var modules = GetModules(initParams.JsonRpcEnabledModules);
+            var modules = GetModules(_initConfig.JsonRpcEnabledModules);
             if (modules != null && modules.Any())
             {
                 _configurationProvider.EnabledModules = modules;

@@ -38,28 +38,7 @@ namespace Nethermind.Runner
         public void ConfigureServices(IServiceCollection services)
         {
             services.AddMvc().SetCompatibilityVersion(CompatibilityVersion.Version_2_1);
-
-            //services.Configure<ApiBehaviorOptions>(options =>
-            //{
-            //    options.SuppressConsumesConstraintForFormFileParameters = true;
-            //    options.SuppressInferBindingSourcesForParameters = true;
-            //    options.SuppressModelStateInvalidFilter = true;
-            //});
-
             Bootstrap.Instance.RegisterJsonRpcServices(services);
-
-            //register our clases
-
-            //if (Bootstrap.ServiceCollection == null)
-            //{
-            //    throw new Exception("Bootstrap.ServiceCollection was not properly initialized");
-            //}
-
-            //Bootstrap.ServiceCollection.Add(services);
-            //Bootstrap.ServiceCollection.AddMvc();
-
-            //Bootstrap.ServiceProvider = Bootstrap.ServiceCollection.BuildServiceProvider();
-            //return Bootstrap.ServiceProvider;
         }       
 
         public void Configure(IApplicationBuilder app, IHostingEnvironment env)
@@ -68,9 +47,6 @@ namespace Nethermind.Runner
             {
                 app.UseDeveloperExceptionPage();
             }
-
-            //app.UseHsts();
-            //app.UseHttpsRedirection();
             app.UseMvc();
         }
     }

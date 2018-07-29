@@ -16,13 +16,18 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Threading.Tasks;
+using System.Numerics;
+using Nethermind.Config;
 
-namespace Nethermind.Runner.Runners
+namespace Nethermind.Runner.Config
 {
-    public interface IRunner
+    public interface IHiveInitConfig : IConfig
     {
-        Task Start();
-        Task StopAsync();
+        string ChainFile { get; set; }
+        string BlocksDir { get; set; }
+        string KeysDir { get; set; }
+        BigInteger? HomesteadBlockNr { get; set; }
+        string Bootnode { get; set; }
+        string GenesisFilePath { get; set; }
     }
 }

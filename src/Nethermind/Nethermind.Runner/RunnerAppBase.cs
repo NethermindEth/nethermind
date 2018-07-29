@@ -23,18 +23,15 @@ using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.CommandLineUtils;
-using Microsoft.Extensions.DependencyInjection;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Specs.ChainSpec;
-using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Config;
 using Nethermind.KeyStore.Config;
 using Nethermind.Network;
 using Nethermind.Network.Config;
-using Nethermind.Network.Discovery;
-using Nethermind.Network.Discovery.RoutingTable;
+using Nethermind.Runner.Config;
 using Nethermind.Runner.Runners;
 
 namespace Nethermind.Runner
@@ -54,12 +51,13 @@ namespace Nethermind.Runner
 
         public void Run(string[] args)
         {
-            (var app, var buildInitParams) = BuildCommandLineApp();
+            (var app, var buildConfigProvider, var getDbBasePath) = BuildCommandLineApp();
             ManualResetEvent appClosed = new ManualResetEvent(false);
             app.OnExecute(async () =>
             {
-                var initParams = buildInitParams();
-
+                var configProvider = buildConfigProvider();
+                var initParams = configProvider.GetConfig<InitConfig>();
+                
                 if (initParams.RemovingLogFilesEnabled)
                 {
                     RemoveLogFiles();
@@ -67,9 +65,18 @@ namespace Nethermind.Runner
 
                 Logger = new NLogLogger(initParams.LogFileName);
 
+                var pathDbPath = getDbBasePath();
+                if (!string.IsNullOrWhiteSpace(pathDbPath))
+                {
+                    var newDbPath = Path.Combine(pathDbPath, initParams.BaseDbPath);
+                    Logger.Info($"Adding prefix to baseDbPath, new value: {newDbPath}, old value: {initParams.BaseDbPath}");
+                    initParams.BaseDbPath = newDbPath;
+                }
+
                 Console.Title = initParams.LogFileName;
 
-                Logger.Info($"Running Nethermind Runner, parameters: {initParams}");
+                var serializer = new UnforgivingJsonSerializer();
+                Logger.Info($"Running Nethermind Runner, parameters:\n{serializer.Serialize(initParams, true)}\n");
 
                 Task userCancelTask = Task.Factory.StartNew(() =>
                 {
@@ -84,7 +91,7 @@ namespace Nethermind.Runner
                     }
                 });
 
-                await StartRunners(initParams);
+                await StartRunners(configProvider);
                 await userCancelTask;
 
                 Console.WriteLine("Closing, please wait until all functions are stopped properly...");
@@ -99,14 +106,13 @@ namespace Nethermind.Runner
             appClosed.WaitOne();
         }
 
-        protected async Task StartRunners(InitParams initParams)
+        protected async Task StartRunners(IConfigProvider configProvider)
         {
             try
             {
-                //TODO find better way to enforce assemblies with config impl are loaded
-                IKeystoreConfig kConfig;INetworkConfig nConfig;IJsonRpcConfig jConfig;
+                var initParams = configProvider.GetConfig<InitConfig>();
 
-                var configProvider = new JsonConfigProvider();
+                //var configProvider = new JsonConfigProvider();
                 var logManager = new NLogManager(initParams.LogFileName);
                 //configProvider.LoadJsonConfig("");
 
@@ -135,7 +141,7 @@ namespace Nethermind.Runner
                 networkConfig.DbBasePath = initParams.BaseDbPath;
 
                 _ethereumRunner = new EthereumRunner(configProvider, networkHelper, logManager);
-                await _ethereumRunner.Start(initParams);
+                await _ethereumRunner.Start();
 
                 if (initParams.JsonRpcEnabled)
                 {
@@ -145,7 +151,7 @@ namespace Nethermind.Runner
                     Bootstrap.Instance.EthereumSigner = _ethereumRunner.EthereumSigner;
 
                     _jsonRpcRunner = new JsonRpcRunner(configProvider, Logger);
-                    await _jsonRpcRunner.Start(initParams);
+                    await _jsonRpcRunner.Start();
                 }
                 else
                 {
@@ -162,7 +168,7 @@ namespace Nethermind.Runner
             }
         }
 
-        protected abstract (CommandLineApplication, Func<InitParams>) BuildCommandLineApp();
+        protected abstract (CommandLineApplication, Func<IConfigProvider>, Func<string>) BuildCommandLineApp();
 
         protected async Task StopAsync()
         {

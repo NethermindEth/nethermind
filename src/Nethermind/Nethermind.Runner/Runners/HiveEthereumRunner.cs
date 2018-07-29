@@ -34,6 +34,7 @@ using Nethermind.Core.Specs;
 using Nethermind.JsonRpc.Module;
 using Nethermind.KeyStore;
 using Nethermind.KeyStore.Config;
+using Nethermind.Runner.Config;
 using Nethermind.Runner.Data;
 using Nethermind.Store;
 
@@ -62,14 +63,16 @@ namespace Nethermind.Runner.Runners
             _specProvider = specProvider;
         }
 
-        public Task Start(InitParams initParams)
+        public Task Start()
         {
             _logger.Info("Initializing Ethereum");
+
+            var initConfig = _configurationProvider.GetConfig<HiveInitConfig>();
             _blockchainProcessor.Start();
-            InitializeKeys(initParams.KeysDir);
-            InitializeGenesis(initParams.GenesisFilePath);
-            InitializeChain(initParams.ChainFile);
-            InitializeBlocks(initParams.BlocksDir);
+            InitializeKeys(initConfig.KeysDir);
+            InitializeGenesis(initConfig.GenesisFilePath);
+            InitializeChain(initConfig.ChainFile);
+            InitializeBlocks(initConfig.BlocksDir);
             _logger.Info("Ethereum initialization completed");
             return Task.CompletedTask;
         }
