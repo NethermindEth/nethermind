@@ -17,6 +17,7 @@
  */
 
 using System.Threading.Tasks;
+using Nethermind.Config;
 using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc.Module;
 using Nethermind.Runner.Runners;
@@ -31,7 +32,7 @@ namespace Nethermind.Runner
         
         public static NullRunner Instance = new NullRunner();
         
-        public Task Start(InitParams initParams)
+        public Task Start()
         {
             return Task.CompletedTask;
         }

@@ -20,6 +20,7 @@ using System;
 using System.IO;
 using System.Numerics;
 using Microsoft.Extensions.CommandLineUtils;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
@@ -44,7 +45,7 @@ namespace Nethermind.Runner
         {
         }
 
-        protected override (CommandLineApplication, Func<InitParams>) BuildCommandLineApp()
+        protected override (CommandLineApplication, Func<IConfigProvider>, Func<string>) BuildCommandLineApp()
         {
             var app = new CommandLineApplication { Name = "Hive Nethermind.Runner" };
             app.HelpOption("-?|-h|--help");
@@ -59,21 +60,21 @@ namespace Nethermind.Runner
             var keysDir = app.Option("-kd|--keysDir <keysDir>", "keys directory path", CommandOptionType.SingleValue);
             var homesteadBlockNr = app.Option("-fh|--homesteadBlockNr <homesteadBlockNr>", "the block number of the Ethereum Homestead transition", CommandOptionType.SingleValue);
 
-            InitParams InitParams() => new InitParams
-            {
-                HttpHost = host.HasValue() ? host.Value() : DefaultHost,
-                Bootnode = bootNode.HasValue() ? bootNode.Value() : DefaultBootNode,
-                HttpPort = httpPort.HasValue() ? GetIntValue(httpPort.Value(), "httpPort") : DefaultHttpPort,
-                DiscoveryPort = discoveryPort.HasValue() ? GetIntValue(discoveryPort.Value(), "discoveryPort") : DefaultDiscoveryPort,
-                GenesisFilePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, genesisFile.HasValue() ? genesisFile.Value() : _defaultGenesisFile),
-                ChainFile = chainFile.HasValue() ? chainFile.Value() : DefaultChainFile,
-                BlocksDir = blocksDir.HasValue() ? blocksDir.Value() : DefaultBlocksDir,
-                KeysDir = keysDir.HasValue() ? keysDir.Value() : DefaultKeysDir,
-                HomesteadBlockNr = homesteadBlockNr.HasValue() ? GetBigIntValue(homesteadBlockNr.Value(), "homesteadBlockNr") : (BigInteger?)null,
-                EthereumRunnerType = EthereumRunnerType.Hive
-            };
+            //InitParams InitParams() => new InitParams
+            //{
+            //    HttpHost = host.HasValue() ? host.Value() : DefaultHost,
+            //    Bootnode = bootNode.HasValue() ? bootNode.Value() : DefaultBootNode,
+            //    HttpPort = httpPort.HasValue() ? GetIntValue(httpPort.Value(), "httpPort") : DefaultHttpPort,
+            //    DiscoveryPort = discoveryPort.HasValue() ? GetIntValue(discoveryPort.Value(), "discoveryPort") : DefaultDiscoveryPort,
+            //    GenesisFilePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, genesisFile.HasValue() ? genesisFile.Value() : _defaultGenesisFile),
+            //    ChainFile = chainFile.HasValue() ? chainFile.Value() : DefaultChainFile,
+            //    BlocksDir = blocksDir.HasValue() ? blocksDir.Value() : DefaultBlocksDir,
+            //    KeysDir = keysDir.HasValue() ? keysDir.Value() : DefaultKeysDir,
+            //    HomesteadBlockNr = homesteadBlockNr.HasValue() ? GetBigIntValue(homesteadBlockNr.Value(), "homesteadBlockNr") : (BigInteger?)null,
+            //    EthereumRunnerType = EthereumRunnerType.Hive
+            //};
 
-            return (app, InitParams);
+            return (app, null, null);
         }
     }
 }

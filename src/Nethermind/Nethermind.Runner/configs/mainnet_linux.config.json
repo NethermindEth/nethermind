@@ -1,18 +1,20 @@
-{
-  "TransactionTracingEnabled": false,
-  "BaseTracingPath": "traces",
-  "JsonRpcEnabled": false,
-  "DiscoveryEnabled": true,
-  "SynchronizationEnabled": true,
-  "DiscoveryPort": 30312,
-  "P2PPort": 30312,
-  "HttpHost": "127.0.0.1",
-  "HttpPort": 8002,
-  "IsMining": false,
-  "ChainSpecPath": "chainspec/foundation.json",
-  "GenesisHash": "0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3", 
-  "BaseDbPath": "../db/mainnet/full",
-  "TestNodeKey": "020102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f",
-  "LogFileName": "mainnet_linux.logs.txt",
-  "JsonRpcEnabledModules": [ "Eth", "Net", "Web3", "Db", "Shh" ]
-}
+[
+  {
+    "ConfigModule": "InitConfig",
+    "ConfigItems": {
+      "JsonRpcEnabled": false,
+      "DiscoveryEnabled": true,
+      "SynchronizationEnabled": true,
+      "IsMining": false,
+      "DiscoveryPort": 30312,
+      "P2PPort": 30312,
+      "HttpHost": "127.0.0.1",
+      "HttpPort": 8002,
+      "ChainSpecPath": "chainspec/foundation.json",
+      "GenesisHash": "0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3",
+      "BaseDbPath": "../db/mainnet/full",
+      "TestNodeKey": "020102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f",
+      "LogFileName": "mainnet_linux.logs.txt"
+    }
+  }
+]

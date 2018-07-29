@@ -24,7 +24,9 @@ using System.IO;
 using Nethermind.Core;
 using Nethermind.Core.Logging;
 using Nethermind.Runner;
+using Nethermind.Runner.Config;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 namespace Nethermind.RunnerSpawner
 {
@@ -32,7 +34,8 @@ namespace Nethermind.RunnerSpawner
     public class SpawnerConfig
     {
         public string ReleasePath { get; set; }
-        public Dictionary<string, InitParams> Runners { get; set; }
+        public string DbBasePath { get; set; }
+        public Dictionary<string, JToken> Runners { get; set; }
     }
 
     internal class Program
@@ -57,7 +60,7 @@ namespace Nethermind.RunnerSpawner
             SpawnerConfig spawnerConfig = serializer.Deserialize<SpawnerConfig>(jsonText);
 
             List<ProcessWrapper> wrappers = new List<ProcessWrapper>();
-            foreach ((string name, InitParams parameters) in spawnerConfig.Runners)
+            foreach ((string name, JToken parameters) in spawnerConfig.Runners)
             {
                 string serialized = serializer.Serialize(parameters, true);
                 string singleConfigPath = Path.Combine(Path.GetTempPath(), $"nethermind.runner.{name}.config.json");
@@ -65,7 +68,7 @@ namespace Nethermind.RunnerSpawner
 
                 try
                 {
-                    wrappers.Add(CreateAppConsole(spawnerConfig.ReleasePath, name, new[] {singleConfigPath}));
+                    wrappers.Add(CreateAppConsole(spawnerConfig.ReleasePath, spawnerConfig.DbBasePath, name, new[] {singleConfigPath}));
                 }
                 catch (Exception e)
                 {
@@ -87,7 +90,7 @@ namespace Nethermind.RunnerSpawner
             return 0;
         }
 
-        private static ProcessWrapper CreateAppConsole(string path, string name, string[] args)
+        private static ProcessWrapper CreateAppConsole(string path, string baseDbPath, string name, string[] args)
         {
             Process process = new Process();
             process.EnableRaisingEvents = false; // change to true if needed
@@ -96,7 +99,12 @@ namespace Nethermind.RunnerSpawner
             process.Exited += ProcessOnExited;
             process.StartInfo.WorkingDirectory = path;
             process.StartInfo.FileName = "dotnet";
-            process.StartInfo.Arguments = $"Nethermind.Runner.dll --config {string.Join(' ', args)}";
+            var arguments = $"Nethermind.Runner.dll --config {string.Join(' ', args)}";
+            if (!string.IsNullOrEmpty(baseDbPath))
+            {
+                arguments = $"{arguments} --baseDbPath {baseDbPath}";
+            }
+            process.StartInfo.Arguments = arguments;
             process.StartInfo.UseShellExecute = true;
             process.StartInfo.CreateNoWindow = true;
             process.StartInfo.WindowStyle = ProcessWindowStyle.Normal;
