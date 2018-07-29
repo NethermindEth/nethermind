@@ -73,7 +73,7 @@ namespace Nethermind.RunnerSpawner
                 }
             }
 
-            ChaosMonkey chaosMonkey = new ChaosMonkey(_logger, new ChaosMonkey.ChaosMonkeyOptions {IntervalSeconds = 10, AllDownIntervalSeconds = 0}, wrappers.ToArray());
+            ChaosMonkey chaosMonkey = new ChaosMonkey(_logger, new ChaosMonkey.ChaosMonkeyOptions {IntervalSeconds = 120, AllDownIntervalSeconds = 0}, wrappers.ToArray());
             chaosMonkey.Start();
 
             _logger.Info("Press ENTER to close all the spawned processes.");
