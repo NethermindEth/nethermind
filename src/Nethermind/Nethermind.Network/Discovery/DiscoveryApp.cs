@@ -17,6 +17,7 @@
  */
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Threading.Tasks;
@@ -321,7 +322,7 @@ namespace Nethermind.Network.Discovery
                 }
                 return false;
             }
-            var managers = new INodeLifecycleManager[bootNodes.Length];
+            var managers = new List<INodeLifecycleManager>();
             for (var i = 0; i < bootNodes.Length; i++)
             {
                 var bootnode = bootNodes[i];
@@ -329,7 +330,14 @@ namespace Nethermind.Network.Discovery
                     ? _nodeFactory.CreateNode(bootnode.Host, bootnode.Port)
                     : _nodeFactory.CreateNode(new NodeId(new PublicKey(new Hex(bootnode.NodeId))), bootnode.Host, bootnode.Port, true);
                 var manager = _discoveryManager.GetNodeLifecycleManager(node);
-                managers[i] = manager;
+                if (manager != null)
+                {
+                    managers.Add(manager);
+                }
+                else
+                {
+                    _logger.Warn($"Bootnode config contains itself: {bootnode.NodeId}");
+                }
             }
 
             //Wait for pong message to come back from Boot nodes
@@ -351,7 +359,7 @@ namespace Nethermind.Network.Discovery
             }
 
             var reachedNodeCounter = 0;
-            for (var i = 0; i < managers.Length; i++)
+            for (var i = 0; i < managers.Count; i++)
             {
                 var manager = managers[i];
                 if (manager.State != NodeLifecycleState.Active)
