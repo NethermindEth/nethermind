@@ -4,7 +4,7 @@ Full .NET Core Ethereum client.
 ## Contributors welcome
 At Nethermind we are building an Open Source multiplatform Ethereum client implementation in .NET Core (running seamlessly both on Linux and Windows). Simultaneously our team works on Nethermind trading tools, analytics and decentralized exchange (0x relay).
 
-Nethermind client can be used in your projects, when setting up private Ethereum networks or dApps. Nethermind is under development and below is the long list of items that are still to be implemented (and we would love to see open source contributions here):
+Nethermind client can be used in your projects, when setting up private Ethereum networks or dApps. Nethermind is under development and below is the long list of items that are still to be implemented (and we would love to see open source contributions here). A full and up to date list will be maintained via [issues](https://github.com/tkstanczak/nethermind/issues)
 
 ### core EVM related:
 Improve performance (heap allocations) of EVM by replacing BigInteger with Int256 implementation: one can use int128 implementation as a basis for this work
