@@ -1,6 +1,8 @@
 <img src="Nethermind.png" width="600">
 Full .NET Core Ethereum client.
 
+[gitter](https://gitter.im/nethermindeth/nethermind?utm_source=share-link&utm_medium=link&utm_campaign=share-link)
+
 ## Contributors welcome
 At Nethermind we are building an Open Source multiplatform Ethereum client implementation in .NET Core (running seamlessly both on Linux and Windows). Simultaneously our team works on Nethermind trading tools, analytics and decentralized exchange (0x relay).
 
