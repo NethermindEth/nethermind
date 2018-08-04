@@ -168,5 +168,10 @@ namespace Nethermind.Evm
         REVERT = 0xfd,
         INVALID = 0xfe,
         SELFDESTRUCT = 0xff,
+        
+        /* EIP145 */
+        SHL = 0x1b,
+        SHR = 0x1c,
+        SAR = 0x1d,
     }
 }

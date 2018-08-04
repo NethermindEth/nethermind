@@ -108,5 +108,10 @@ namespace Nethermind.Core.Specs
         /// Embedding transaction return data in receipts
         /// </summary>
         bool IsEip658Enabled { get; }
+        
+        /// <summary>
+        /// SHL, SHR instructions
+        /// </summary>
+        bool IsEip145Enabled { get; }
     }
 }
