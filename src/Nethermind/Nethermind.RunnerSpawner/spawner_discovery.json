@@ -1,12 +1,13 @@
 {
-  "ReleasePath": "C:\\src\\nevermind\\src\\Nethermind\\Nethermind.Runner\\bin\\Debug\\netcoreapp2.1",
-  "DbBasePath": "D:\\chains\\Nethermind",
+  "ReleasePath": "F:\\IT\\projects\\Crypto\\nevermind\\src\\Nethermind\\Nethermind.Runner\\bin\\Debug\\netcoreapp2.1",
+  "DbBasePath": "F:\\IT\\projects\\Crypto\\db",
   "Runners": {
     "Bootnode": [
       {
         "ConfigModule": "InitConfig",
         "ConfigItems": {
-          "JsonRpcEnabled": false,
+          "JsonRpcEnabled": true,
+          "NetworkEnabled": true,
           "DiscoveryEnabled": true,
           "SynchronizationEnabled": true,
           "DiscoveryPort": 30310,
@@ -26,13 +27,14 @@
       {
         "ConfigModule": "InitConfig",
         "ConfigItems": {
-          "JsonRpcEnabled": false,
+          "JsonRpcEnabled": true,
+          "NetworkEnabled": true,
           "DiscoveryEnabled": true,
           "SynchronizationEnabled": true,
           "DiscoveryPort": 30311,
           "P2PPort": 30311,
           "HttpHost": "127.0.0.1",
-          "HttpPort": 8345,
+          "HttpPort": 8346,
           "IsMining": true,
           "ChainSpecPath": "chainspec\\private_miner1.json",
           "GenesisHash": "",
@@ -46,13 +48,14 @@
       {
         "ConfigModule": "InitConfig",
         "ConfigItems": {
-          "JsonRpcEnabled": false,
+          "JsonRpcEnabled": true,
+          "NetworkEnabled": true,
           "DiscoveryEnabled": true,
           "SynchronizationEnabled": true,
           "DiscoveryPort": 30312,
           "P2PPort": 30312,
           "HttpHost": "127.0.0.1",
-          "HttpPort": 8345,
+          "HttpPort": 8347,
           "IsMining": false,
           "ChainSpecPath": "chainspec\\private_client.json",
           "GenesisHash": "",
@@ -66,13 +69,14 @@
       {
         "ConfigModule": "InitConfig",
         "ConfigItems": {
-          "JsonRpcEnabled": false,
+          "JsonRpcEnabled": true,
+          "NetworkEnabled": true,
           "DiscoveryEnabled": true,
           "SynchronizationEnabled": true,
           "DiscoveryPort": 30313,
           "P2PPort": 30313,
           "HttpHost": "127.0.0.1",
-          "HttpPort": 8345,
+          "HttpPort": 8348,
           "IsMining": false,
           "ChainSpecPath": "chainspec\\private_client.json",
           "GenesisHash": "",
@@ -86,13 +90,14 @@
       {
         "ConfigModule": "InitConfig",
         "ConfigItems": {
-          "JsonRpcEnabled": false,
+          "JsonRpcEnabled": true,
+          "NetworkEnabled": true,
           "DiscoveryEnabled": true,
           "SynchronizationEnabled": true,
           "DiscoveryPort": 30314,
           "P2PPort": 30314,
           "HttpHost": "127.0.0.1",
-          "HttpPort": 8345,
+          "HttpPort": 8349,
           "IsMining": false,
           "FakeMiningDelay": 12000,
           "ChainSpecPath": "chainspec\\private_client.json",
@@ -107,13 +112,14 @@
       {
         "ConfigModule": "InitConfig",
         "ConfigItems": {
-          "JsonRpcEnabled": false,
+          "JsonRpcEnabled": true,
+          "NetworkEnabled": true,
           "DiscoveryEnabled": true,
           "SynchronizationEnabled": true,
           "DiscoveryPort": 30315,
           "P2PPort": 30315,
           "HttpHost": "127.0.0.1",
-          "HttpPort": 8345,
+          "HttpPort": 8350,
           "IsMining": false,
           "ChainSpecPath": "chainspec\\private_client.json",
           "GenesisHash": "",

@@ -7,6 +7,7 @@
         "ConfigModule": "InitConfig",
         "ConfigItems": {
           "JsonRpcEnabled": true,
+          "NetworkEnabled": true,
           "DiscoveryEnabled": false,
           "SynchronizationEnabled": true,
           "DiscoveryPort": 30310,
@@ -27,6 +28,7 @@
         "ConfigModule": "InitConfig",
         "ConfigItems": {
           "JsonRpcEnabled": true,
+          "NetworkEnabled": true,
           "DiscoveryEnabled": false,
           "SynchronizationEnabled": true,
           "DiscoveryPort": 30311,
@@ -47,6 +49,7 @@
         "ConfigModule": "InitConfig",
         "ConfigItems": {
           "JsonRpcEnabled": true,
+          "NetworkEnabled": true,
           "DiscoveryEnabled": false,
           "SynchronizationEnabled": true,
           "DiscoveryPort": 30312,
@@ -67,6 +70,7 @@
         "ConfigModule": "InitConfig",
         "ConfigItems": {
           "JsonRpcEnabled": true,
+          "NetworkEnabled": true,
           "DiscoveryEnabled": false,
           "SynchronizationEnabled": true,
           "DiscoveryPort": 30313,
@@ -87,6 +91,7 @@
         "ConfigModule": "InitConfig",
         "ConfigItems": {
           "JsonRpcEnabled": true,
+          "NetworkEnabled": true,
           "DiscoveryEnabled": false,
           "SynchronizationEnabled": true,
           "DiscoveryPort": 30314,
@@ -107,6 +112,7 @@
         "ConfigModule": "InitConfig",
         "ConfigItems": {
           "JsonRpcEnabled": true,
+          "NetworkEnabled": true,
           "DiscoveryEnabled": false,
           "SynchronizationEnabled": true,
           "DiscoveryPort": 30315,
@@ -127,6 +133,7 @@
         "ConfigModule": "InitConfig",
         "ConfigItems": {
           "JsonRpcEnabled": true,
+          "NetworkEnabled": true,
           "DiscoveryEnabled": false,
           "SynchronizationEnabled": true,
           "DiscoveryPort": 30316,
@@ -147,6 +154,7 @@
         "ConfigModule": "InitConfig",
         "ConfigItems": {
           "JsonRpcEnabled": true,
+          "NetworkEnabled": true,
           "DiscoveryEnabled": false,
           "SynchronizationEnabled": true,
           "DiscoveryPort": 30317,

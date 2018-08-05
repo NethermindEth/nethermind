@@ -63,7 +63,7 @@ namespace Nethermind.Blockchain.Test
             ISynchronizationPeer peer = new SynchronizationPeerMock(_remoteBlockTree);
             
             ManualResetEvent resetEvent = new ManualResetEvent(false);
-            _manager.Synced += (sender, args) => { resetEvent.Set(); };
+            _manager.SyncEvent += (sender, args) => { resetEvent.Set(); };
             Task addPeerTask = _manager.AddPeer(peer);
             Task firstToComplete = await Task.WhenAny(addPeerTask, Task.Delay(2000));
             Assert.AreSame(addPeerTask, firstToComplete);
@@ -79,7 +79,7 @@ namespace Nethermind.Blockchain.Test
             ISynchronizationPeer peer = new SynchronizationPeerMock(_remoteBlockTree);
             
             ManualResetEvent resetEvent = new ManualResetEvent(false);
-            _manager.Synced += (sender, args) => { resetEvent.Set(); };
+            _manager.SyncEvent += (sender, args) => { resetEvent.Set(); };
             Task addPeerTask = _manager.AddPeer(peer);
             Task firstToComplete = await Task.WhenAny(addPeerTask, Task.Delay(2000));
             Assert.AreSame(addPeerTask, firstToComplete);
@@ -96,7 +96,7 @@ namespace Nethermind.Blockchain.Test
             ISynchronizationPeer peer = new SynchronizationPeerMock(_remoteBlockTree);
             
             ManualResetEvent resetEvent = new ManualResetEvent(false);
-            _manager.Synced += (sender, args) => { resetEvent.Set(); };
+            _manager.SyncEvent += (sender, args) => { resetEvent.Set(); };
             Task addPeerTask = _manager.AddPeer(peer);
             Task firstToComplete = await Task.WhenAny(addPeerTask, Task.Delay(2000));
             Assert.AreSame(addPeerTask, firstToComplete);
@@ -112,7 +112,7 @@ namespace Nethermind.Blockchain.Test
             ISynchronizationPeer peer = new SynchronizationPeerMock(_remoteBlockTree);
             
             ManualResetEvent resetEvent = new ManualResetEvent(false);
-            _manager.Synced += (sender, args) => { resetEvent.Set(); };
+            _manager.SyncEvent += (sender, args) => { resetEvent.Set(); };
             Task addPeerTask = _manager.AddPeer(peer);
             Task firstToComplete = await Task.WhenAny(addPeerTask, Task.Delay(2000));
             Assert.AreSame(addPeerTask, firstToComplete);
@@ -132,7 +132,7 @@ namespace Nethermind.Blockchain.Test
             ISynchronizationPeer peer = new SynchronizationPeerMock(_remoteBlockTree);
             
             ManualResetEvent resetEvent = new ManualResetEvent(false);
-            _manager.Synced += (sender, args) => { resetEvent.Set(); };
+            _manager.SyncEvent += (sender, args) => { resetEvent.Set(); };
             Task addPeerTask = _manager.AddPeer(peer);
             Task firstToComplete = await Task.WhenAny(addPeerTask, Task.Delay(2000));
             Assert.AreSame(addPeerTask, firstToComplete);
@@ -152,7 +152,7 @@ namespace Nethermind.Blockchain.Test
             ISynchronizationPeer miner1 = new SynchronizationPeerMock(miner1Tree);
             
             ManualResetEvent resetEvent = new ManualResetEvent(false);
-            _manager.Synced += (sender, args) => { resetEvent.Set(); };
+            _manager.SyncEvent += (sender, args) => { resetEvent.Set(); };
             
             Task addMiner1Task = _manager.AddPeer(miner1);
             
@@ -190,7 +190,7 @@ namespace Nethermind.Blockchain.Test
             ISynchronizationPeer miner1 = new SynchronizationPeerMock(miner1Tree);
             
             ManualResetEvent resetEvent = new ManualResetEvent(false);
-            _manager.Synced += (sender, args) => { resetEvent.Set(); };
+            _manager.SyncEvent += (sender, args) => { resetEvent.Set(); };
             
             Task addMiner1Task = _manager.AddPeer(miner1);
             
@@ -220,7 +220,7 @@ namespace Nethermind.Blockchain.Test
             ISynchronizationPeer miner1 = new SynchronizationPeerMock(minerTree);
             
             ManualResetEvent resetEvent = new ManualResetEvent(false);
-            _manager.Synced += (sender, args) => { resetEvent.Set(); };
+            _manager.SyncEvent += (sender, args) => { resetEvent.Set(); };
             
             Task addMiner1Task = _manager.AddPeer(miner1);
             
@@ -255,7 +255,7 @@ namespace Nethermind.Blockchain.Test
             ISynchronizationPeer miner1 = new SynchronizationPeerMock(minerTree);
             
             ManualResetEvent resetEvent = new ManualResetEvent(false);
-            _manager.Synced += (sender, args) => { resetEvent.Set(); };
+            _manager.SyncEvent += (sender, args) => { resetEvent.Set(); };
             
             Task addMiner1Task = _manager.AddPeer(miner1);
             

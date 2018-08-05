@@ -53,7 +53,7 @@ namespace Nethermind.RunnerSpawner
                 return 1;
             }
 
-            string configFileName = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, args.Length == 1 ? args[0] : "spawner.json");
+            string configFileName = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, args.Length == 1 ? args[0] : "spawner_discovery.json");
             string jsonText = File.ReadAllText(configFileName);
 
             IJsonSerializer serializer = new UnforgivingJsonSerializer();
