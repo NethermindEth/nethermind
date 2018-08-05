@@ -24,8 +24,9 @@ namespace Nethermind.Network
 {
     public interface IPeerManager : IPeerStatusProvider
     {
+        void Initialize(bool isDiscoveryEnabled);
         Task Start();
-        Task Stop();
+        Task StopAsync();
         Task RunPeerUpdate();
         IReadOnlyCollection<Peer> CandidatePeers { get; }
         IReadOnlyCollection<Peer> ActivePeers { get; }

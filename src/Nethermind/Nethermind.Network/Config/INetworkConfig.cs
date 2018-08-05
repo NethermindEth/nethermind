@@ -217,5 +217,16 @@ namespace Nethermind.Network.Config
         /// Number of ping missed for disconnection
         /// </summary>
         int P2PPingRetryCount { get; }
+
+        /// <summary>
+        /// Whether we should capture Node Stats events history
+        /// </summary>
+        bool CaptureNodeStatsEventHistory { get; }
+
+        /// <summary>
+        /// Date format history
+        /// </summary>
+        string DetailedTimeDateFormat { get; }
+
     }
 }

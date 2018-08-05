@@ -18,12 +18,16 @@
 
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Linq;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery;
+using Nethermind.Network.Discovery.RoutingTable;
 using Nethermind.Network.P2P;
+using Nethermind.Network.Rlpx;
 
 namespace Nethermind.Network.Stats
 {
@@ -33,29 +37,78 @@ namespace Nethermind.Network.Stats
     public class NodeStats : INodeStats
     {
         private readonly INetworkConfig _configurationProvider;
-        private Dictionary<NodeStatsEvent, AtomicLong> _stats;
+        private Dictionary<NodeStatsEventType, AtomicLong> _statCounters;
         private Dictionary<DisconnectType, (DisconnectReason DisconnectReason, DateTime DisconnectTime)> _lastDisconnects;
+        private readonly IList<NodeStatsEvent> _eventHistory;
+        private readonly ILogger _logger;
 
-        public NodeStats(IConfigProvider configurationProvider)
+        public NodeStats(Node node, IConfigProvider configurationProvider, ILogManager logManager)
         {
+            Node = node;
             _configurationProvider = configurationProvider.GetConfig<NetworkConfig>();
+            _eventHistory = new List<NodeStatsEvent>();
+            _logger = logManager?.GetClassLogger();
             Initialize();
         }
 
-        public void AddNodeStatsEvent(NodeStatsEvent nodeStatsEvent)
+        public IEnumerable<NodeStatsEvent> EventHistory => new ReadOnlyCollection<NodeStatsEvent>(_eventHistory);
+
+        public void AddNodeStatsEvent(NodeStatsEventType nodeStatsEventType)
         {
-            _stats[nodeStatsEvent].Increment();
+            _statCounters[nodeStatsEventType].Increment();
+            CaptureEvent(nodeStatsEventType);
+        }
+
+        public void AddNodeStatsHandshakeEvent(ClientConnectionType clientConnectionType)
+        {
+            _statCounters[NodeStatsEventType.HandshakeCompleted].Increment();
+            CaptureEvent(NodeStatsEventType.HandshakeCompleted, null, null, null, clientConnectionType);
         }
 
         public void AddNodeStatsDisconnectEvent(DisconnectType disconnectType, DisconnectReason disconnectReason)
         {
             _lastDisconnects[disconnectType] = (disconnectReason, DateTime.Now);
             LastDisconnectTime = DateTime.Now;
+            _statCounters[NodeStatsEventType.Disconnect].Increment();
+            CaptureEvent(NodeStatsEventType.Disconnect, null, null, new DisconnectDetails
+            {
+                DisconnectReason = disconnectReason,
+                DisconnectType = disconnectType
+            });
         }
 
-        public bool DidEventHappen(NodeStatsEvent nodeStatsEvent)
+        public void AddNodeStatsP2PInitializedEvent(P2PNodeDetails nodeDetails)
         {
-            return _stats[nodeStatsEvent].Value > 0;
+            P2PNodeDetails = nodeDetails;
+            _statCounters[NodeStatsEventType.P2PInitialized].Increment();
+            CaptureEvent(NodeStatsEventType.P2PInitialized, nodeDetails);
+        }
+
+        public void AddNodeStatsEth62InitializedEvent(Eth62NodeDetails nodeDetails)
+        {
+            Eth62NodeDetails = nodeDetails;
+            _statCounters[NodeStatsEventType.Eth62Initialized].Increment();
+            CaptureEvent(NodeStatsEventType.Eth62Initialized, null, nodeDetails);
+        }
+
+        public void AddNodeStatsSyncEvent(NodeStatsEventType nodeStatsEventType, SyncNodeDetails syncDetails)
+        {
+            if (SyncNodeDetails == null)
+            {
+                SyncNodeDetails = syncDetails;
+            }
+            else
+            {
+                if (syncDetails.NodeBestBlockNumber.HasValue) SyncNodeDetails.NodeBestBlockNumber = syncDetails.NodeBestBlockNumber;
+                if (syncDetails.OurBestBlockNumber.HasValue) SyncNodeDetails.OurBestBlockNumber = syncDetails.OurBestBlockNumber;
+            }
+            _statCounters[nodeStatsEventType].Increment();
+            CaptureEvent(nodeStatsEventType, null, null, null, null, syncDetails);
+        }
+
+        public bool DidEventHappen(NodeStatsEventType nodeStatsEventType)
+        {
+            return _statCounters[nodeStatsEventType].Value > 0;
         }
 
         public long CurrentNodeReputation => CalculateCurrentReputation();
@@ -68,7 +121,37 @@ namespace Nethermind.Network.Stats
 
         public DateTime? LastDisconnectTime { get; set; }
 
-        public NodeDetails NodeDetails { get; private set; }
+        public P2PNodeDetails P2PNodeDetails { get; private set; }
+
+        public Eth62NodeDetails Eth62NodeDetails { get; private set; }
+
+        public SyncNodeDetails SyncNodeDetails { get; private set; }
+
+        public Node Node { get; }
+
+        private void CaptureEvent(NodeStatsEventType eventType, P2PNodeDetails p2PNodeDetails = null, Eth62NodeDetails eth62NodeDetails = null, DisconnectDetails disconnectDetails = null, ClientConnectionType? clientConnectionType = null, SyncNodeDetails syncNodeDetails = null)
+        {
+            if (!_configurationProvider.CaptureNodeStatsEventHistory)
+            {
+                return;
+            }
+
+            if (eventType.ToString().Contains("Discovery"))
+            {
+                return;
+            }
+
+            _eventHistory.Add(new NodeStatsEvent
+            {
+                EventType = eventType,
+                EventDate = DateTime.Now,
+                P2PNodeDetails = p2PNodeDetails,
+                Eth62NodeDetails = eth62NodeDetails,
+                DisconnectDetails = disconnectDetails,
+                ClientConnectionType = clientConnectionType,
+                SyncNodeDetails = syncNodeDetails
+            });
+        }
 
         private long CalculateCurrentReputation()
         {
@@ -81,12 +164,12 @@ namespace Nethermind.Network.Stats
         private long CalculateSessionReputation()
         {
             long discoveryReputation = 0;
-            discoveryReputation += Math.Min(_stats[NodeStatsEvent.DiscoveryPingIn].Value, 10) * (_stats[NodeStatsEvent.DiscoveryPingIn].Value == _stats[NodeStatsEvent.DiscoveryPingOut].Value ? 2 : 1);
-            discoveryReputation += Math.Min(_stats[NodeStatsEvent.DiscoveryNeighboursIn].Value, 10) * 2;
+            discoveryReputation += Math.Min(_statCounters[NodeStatsEventType.DiscoveryPingIn].Value, 10) * (_statCounters[NodeStatsEventType.DiscoveryPingIn].Value == _statCounters[NodeStatsEventType.DiscoveryPingOut].Value ? 2 : 1);
+            discoveryReputation += Math.Min(_statCounters[NodeStatsEventType.DiscoveryNeighboursIn].Value, 10) * 2;
 
             long rlpxReputation = 0;
-            rlpxReputation += _stats[NodeStatsEvent.P2PInitialized].Value > 0 ? 10 : 0;
-            rlpxReputation += _stats[NodeStatsEvent.Eth62Initialized].Value > 0 ? 20 : 0;
+            rlpxReputation += _statCounters[NodeStatsEventType.P2PInitialized].Value > 0 ? 10 : 0;
+            rlpxReputation += _statCounters[NodeStatsEventType.Eth62Initialized].Value > 0 ? 20 : 0;
 
             if (_lastDisconnects.Any())
             {
@@ -157,12 +240,11 @@ namespace Nethermind.Network.Stats
 
         private void Initialize()
         {
-            NodeDetails = new NodeDetails();
             IsTrustedPeer = false;
-            _stats = new Dictionary<NodeStatsEvent, AtomicLong>();
-            foreach (NodeStatsEvent statType in Enum.GetValues(typeof(NodeStatsEvent)))
+            _statCounters = new Dictionary<NodeStatsEventType, AtomicLong>();
+            foreach (NodeStatsEventType statType in Enum.GetValues(typeof(NodeStatsEventType)))
             {
-                _stats[statType] = new AtomicLong();
+                _statCounters[statType] = new AtomicLong();
             }
             _lastDisconnects = new Dictionary<DisconnectType, (DisconnectReason DisconnectReason, DateTime DisconnectTime)>();
         }

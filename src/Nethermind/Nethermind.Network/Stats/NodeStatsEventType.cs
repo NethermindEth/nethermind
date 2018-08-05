@@ -16,13 +16,33 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Network.P2P;
-
 namespace Nethermind.Network.Stats
 {
-    public class NodeDetails
+    public enum NodeStatsEventType
     {
-        public string ClientId { get; set; }
-        public Capability[] Capabilities { get; set; }
+        DiscoveryPingOut,
+        DiscoveryPingIn,
+        DiscoveryPongOut,
+        DiscoveryPongIn,
+        DiscoveryNeighboursOut,
+        DiscoveryNeighboursIn,
+        DiscoveryFindNodeOut,
+        DiscoveryFindNodeIn,
+
+        NodeDiscovered,
+        ConnectionEstablished,
+        ConnectionFailed,
+        HandshakeCompleted,
+        P2PInitialized,
+        Eth62Initialized,
+        SyncInitFailed,
+        SyncInitCancelled,
+        SyncInitCompleted,
+        SyncStarted,
+        SyncCancelled,
+        SyncFailed,
+        SyncCompleted,
+
+        Disconnect
     }
 }

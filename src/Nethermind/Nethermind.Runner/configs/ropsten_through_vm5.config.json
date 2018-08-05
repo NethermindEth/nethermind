@@ -3,6 +3,7 @@
     "ConfigModule": "InitConfig",
     "ConfigItems": {
       "JsonRpcEnabled": false,
+      "NetworkEnabled": true,
       "DiscoveryEnabled": false,
       "SynchronizationEnabled": true,
       "IsMining": false,

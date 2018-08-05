@@ -29,7 +29,7 @@ namespace Nethermind.Core.Test.Logging
         {
             NLogManager manager = new NLogManager("test");
             NLogLogger logger = (NLogLogger)manager.GetClassLogger();
-            Assert.AreEqual(GetType().FullName, logger._logger.Name);
+            Assert.AreEqual(GetType().FullName, logger.Logger.Name);
         }
     }
 }

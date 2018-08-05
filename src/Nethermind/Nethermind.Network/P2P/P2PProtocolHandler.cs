@@ -124,8 +124,6 @@ namespace Nethermind.Network.P2P
                 throw new NodeDetailsMismatchException();
             }
 
-            //P2PSession.RemoteNodeId = hello.NodeId;
-            //P2PSession.RemotePort = hello.ListenPort;
             RemoteClientId = hello.ClientId;
 
             Logger.Info(!_sentHello
@@ -137,21 +135,13 @@ namespace Nethermind.Network.P2P
             // * If such a packet is received by a node with lower version, it will blindly assume that the remote end is backwards-compatible and respond with the old handshake.
             // * If the packet is received by a node with equal version, new features of the protocol can be used.
             // * If the packet is received by a node with higher version, it can enable backwards-compatibility logic or drop the connection.
-            
-            //Moved that validation to PeerManager
-            //if (hello.P2PVersion < 4 || hello.P2PVersion > 5)
-            //{
-            //    //triggers disconnect on the session, which will trigger it on all protocol handlers
-            //    P2PSession.InitiateDisconnectAsync(DisconnectReason.IncompatibleP2PVersion);
-            //    //Disconnect(DisconnectReason.IncompatibleP2PVersion);
-            //    return;
-            //}
 
             ProtocolVersion = hello.P2PVersion;
 
             //TODO Check required capabilities and disconnect if not supported
 
-            foreach (Capability remotePeerCapability in hello.Capabilities)
+            var capabilities = hello.Capabilities;
+            foreach (Capability remotePeerCapability in capabilities)
             {
                 if (SupportedCapabilities.Contains(remotePeerCapability))
                 {
@@ -164,18 +154,14 @@ namespace Nethermind.Network.P2P
                 }
             }
 
-            //if (!_sentHello)
-            //{
-            //    throw new InvalidOperationException($"Handling {nameof(HelloMessage)} from peer before sending our own");
-            //}
             _isInitialized = true;
             ReceivedProtocolInitMsg(hello);
 
             var eventArgs = new P2PProtocolInitializedEventArgs(this)
             {
-                P2PVersion = hello.P2PVersion,
-                ClientId = hello.ClientId,
-                Capabilities = hello.Capabilities
+                P2PVersion = ProtocolVersion,
+                ClientId = RemoteClientId,
+                Capabilities = capabilities
             };
             ProtocolInitialized?.Invoke(this, eventArgs);
         }

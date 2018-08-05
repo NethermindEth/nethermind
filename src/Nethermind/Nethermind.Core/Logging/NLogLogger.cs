@@ -30,13 +30,15 @@ namespace Nethermind.Core.Logging
         public bool IsInfoEnabled { get; }
         public bool IsDebugEnabled { get; }
         public bool IsTraceEnabled { get; }
+        public bool IsNoteEnabled { get; }
 
-        // ReSharper disable once InconsistentNaming
-        internal NLog.Logger _logger;
+        internal NLog.Logger Logger;
+        internal NLog.Logger NoteLogger;
+
 
         public NLogLogger(string fileName)
         {
-            _logger = NLog.LogManager.GetLogger(StackTraceUsageUtils.GetClassFullName().Replace("Nethermind.", string.Empty));
+            Logger = NLog.LogManager.GetLogger(StackTraceUsageUtils.GetClassFullName().Replace("Nethermind.", string.Empty));
             if (!Directory.Exists("logs"))
             {
                 Directory.CreateDirectory("logs");
@@ -48,41 +50,49 @@ namespace Nethermind.Core.Logging
             }
 
             /* NOTE: minor perf gain - not planning to switch logging levels while app is running */
-            IsInfoEnabled = _logger.IsInfoEnabled;
-            IsWarnEnabled = _logger.IsWarnEnabled;
-            IsDebugEnabled = _logger.IsDebugEnabled;
-            IsTraceEnabled = _logger.IsTraceEnabled;
-            IsErrorEnabled = _logger.IsErrorEnabled || _logger.IsFatalEnabled;
+            IsInfoEnabled = Logger.IsInfoEnabled;
+            IsWarnEnabled = Logger.IsWarnEnabled;
+            IsDebugEnabled = Logger.IsDebugEnabled;
+            IsTraceEnabled = Logger.IsTraceEnabled;
+            IsErrorEnabled = Logger.IsErrorEnabled || Logger.IsFatalEnabled;
+
+            NoteLogger = NLog.LogManager.GetLogger("NoteLogger");
+            IsNoteEnabled = NoteLogger.IsInfoEnabled;
         }
 
         public void Log(string text)
         {
-            _logger.Info(text);
+            Logger.Info(text);
         }
 
         public void Info(string text)
         {
-            _logger.Info(text);
+            Logger.Info(text);
         }
 
         public void Warn(string text)
         {
-            _logger.Warn(text);
+            Logger.Warn(text);
         }
 
         public void Debug(string text)
         {
-            _logger.Debug(text);
+            Logger.Debug(text);
         }
 
         public void Trace(string text)
         {
-            _logger.Trace(text);
+            Logger.Trace(text);
         }
 
         public void Error(string text, Exception ex = null)
         {
-            _logger.Error(ex, text);
+            Logger.Error(ex, text);
+        }
+
+        public void Note(string text)
+        {
+            NoteLogger.Info(text);
         }
     }
 }

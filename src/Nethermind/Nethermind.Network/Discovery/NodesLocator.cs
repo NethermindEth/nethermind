@@ -61,7 +61,8 @@ namespace Nethermind.Network.Discovery
         {
             var alreadyTriedNodes = new List<string>();
             
-            _logger.Info($"Starting location process for node: {(searchedNodeId != null ? new Hex(searchedNodeId).ToString() : "masterNode: " + _masterNode.Id)}");
+            _logger.Note($"Starting discovery process for node: {(searchedNodeId != null ? new Hex(searchedNodeId).ToString() : "masterNode: " + _masterNode.Id)}");
+            var nodesCountBeforeDiscovery = _nodeTable.Buckets.Sum(x => x.Items.Count);
 
             for (var i = 0; i < _configurationProvider.MaxDiscoveryRounds; i++)
             {
@@ -131,17 +132,20 @@ namespace Nethermind.Network.Discovery
                     }
                 }
             }
-            _logger.Info($"Finished locating nodes, triedNodesCount: {alreadyTriedNodes.Count}");
+            var nodesCountAfterDiscovery = _nodeTable.Buckets.Sum(x => x.Items.Count);
+            _logger.Note($"Finished discovery cycle, tried contacting {alreadyTriedNodes.Count} nodes. All nodes count before the process: {nodesCountBeforeDiscovery}, after the process: {nodesCountAfterDiscovery}");
 
-            LogNodeTable();
+            if (_logger.IsDebugEnabled)
+            {
+                LogNodeTable();
+            }
         }
 
         private void LogNodeTable()
         {
             var nonEmptyBuckets = _nodeTable.Buckets.Where(x => x.Items.Any()).ToArray();
             var sb = new StringBuilder();
-            sb.AppendLine();
-            sb.AppendLine();
+            sb.AppendLine("------------------------------------------------------");
             sb.AppendLine($"NodeTable, non-empty bucket count: {nonEmptyBuckets.Length}, total items count: {nonEmptyBuckets.Sum(x => x.Items.Count)}");
 
             foreach (var nodeBucket in nonEmptyBuckets)
@@ -153,9 +157,8 @@ namespace Nethermind.Network.Discovery
                 }
             }
 
-            sb.AppendLine();
-            sb.AppendLine();
-            _logger.Info(sb.ToString());
+            sb.AppendLine("------------------------------------------------------");
+            _logger.Debug(sb.ToString());
         }
 
         private async Task<Result[]> SendFindNode(Node[] nodesToSend, byte[] searchedNodeId)

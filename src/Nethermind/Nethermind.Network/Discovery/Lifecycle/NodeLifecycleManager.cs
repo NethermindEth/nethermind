@@ -63,7 +63,7 @@ namespace Nethermind.Network.Discovery.Lifecycle
         {
             SendPong(discoveryMessage);
 
-            NodeStats.AddNodeStatsEvent(NodeStatsEvent.DiscoveryPingIn);
+            NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryPingIn);
             RefreshNodeContactTime();
             
         }
@@ -72,7 +72,7 @@ namespace Nethermind.Network.Discovery.Lifecycle
         {
             if (_isPongExpected)
             {
-                NodeStats.AddNodeStatsEvent(NodeStatsEvent.DiscoveryPongIn);
+                NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryPongIn);
                 RefreshNodeContactTime();
 
                 UpdateState(NodeLifecycleState.Active);
@@ -85,11 +85,16 @@ namespace Nethermind.Network.Discovery.Lifecycle
         {
             if (_isNeighborsExpected)
             {
-                NodeStats.AddNodeStatsEvent(NodeStatsEvent.DiscoveryNeighboursIn);
+                NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryNeighboursIn);
                 RefreshNodeContactTime();
 
                 foreach (var node in discoveryMessage.Nodes)
                 {
+                    if (node.Address.Address.ToString().Contains("127.0.0.1"))
+                    {
+                        if (_logger.IsWarnEnabled) _logger.Warn($"Received localhost as node address from: {discoveryMessage.FarPublicKey}"); 
+                        continue;
+                    }
                     //If node is new it will create a new nodeLifecycleManager and will update state to New, which will trigger Ping
                     _discoveryManager.GetNodeLifecycleManager(node);
                 }
@@ -100,7 +105,7 @@ namespace Nethermind.Network.Discovery.Lifecycle
 
         public void ProcessFindNodeMessage(FindNodeMessage discoveryMessage)
         {
-            NodeStats.AddNodeStatsEvent(NodeStatsEvent.DiscoveryFindNodeIn);
+            NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryFindNodeIn);
             RefreshNodeContactTime();
 
             var nodes = _nodeTable.GetClosestNodes(discoveryMessage.SearchedNodeId);
@@ -113,7 +118,7 @@ namespace Nethermind.Network.Discovery.Lifecycle
             msg.SearchedNodeId = searchedNodeId;
             _isNeighborsExpected = true;
             _discoveryManager.SendMessage(msg);
-            NodeStats.AddNodeStatsEvent(NodeStatsEvent.DiscoveryFindNodeOut);
+            NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryFindNodeOut);
         }
 
         public void SendPing()
@@ -127,7 +132,7 @@ namespace Nethermind.Network.Discovery.Lifecycle
             var msg = _discoveryMessageFactory.CreateOutgoingMessage<PongMessage>(ManagedNode);
             msg.PingMdc = discoveryMessage.Mdc;
             _discoveryManager.SendMessage(msg);
-            NodeStats.AddNodeStatsEvent(NodeStatsEvent.DiscoveryPongOut);
+            NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryPongOut);
         }
 
         public void SendNeighbors(Node[] nodes)
@@ -135,7 +140,7 @@ namespace Nethermind.Network.Discovery.Lifecycle
             var msg = _discoveryMessageFactory.CreateOutgoingMessage<NeighborsMessage>(ManagedNode);
             msg.Nodes = nodes;
             _discoveryManager.SendMessage(msg);
-            NodeStats.AddNodeStatsEvent(NodeStatsEvent.DiscoveryNeighboursOut);
+            NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryNeighboursOut);
         }
 
         public void StartEvictionProcess()
@@ -199,7 +204,7 @@ namespace Nethermind.Network.Discovery.Lifecycle
                 msg.SourceAddress = _nodeTable.MasterNode.Address;
                 msg.DestinationAddress = msg.FarAddress;
                 _discoveryManager.SendMessage(msg);
-                NodeStats.AddNodeStatsEvent(NodeStatsEvent.DiscoveryPingOut);
+                NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryPingOut);
 
                 if (!_discoveryManager.WasMessageReceived(ManagedNode.IdHashText, MessageType.Pong, _configurationProvider.PongTimeout))
                 {

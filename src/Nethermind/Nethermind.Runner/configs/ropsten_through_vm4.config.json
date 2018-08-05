@@ -3,6 +3,7 @@
     "ConfigModule": "InitConfig",
     "ConfigItems": {
       "JsonRpcEnabled": true,
+      "NetworkEnabled": true,
       "DiscoveryEnabled": false,
       "IsMining": false,
       "DiscoveryPort": 30312,

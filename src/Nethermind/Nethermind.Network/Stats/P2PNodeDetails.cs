@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,24 +16,14 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
+using Nethermind.Network.P2P;
 
-namespace Nethermind.Core.Logging
+namespace Nethermind.Network.Stats
 {
-    public interface ILogger
-    {    
-        void Info(string text);
-        void Warn(string text);
-        void Debug(string text);
-        void Trace(string text);
-        void Error(string text, Exception ex = null);
-        void Note(string text);
-
-        bool IsInfoEnabled { get; }
-        bool IsWarnEnabled { get; }
-        bool IsDebugEnabled { get; }
-        bool IsTraceEnabled { get; }
-        bool IsErrorEnabled { get; }
-        bool IsNoteEnabled { get; }
+    public class P2PNodeDetails
+    {
+        public byte P2PVersion { get; set; }
+        public string ClientId { get; set; }
+        public Capability[] Capabilities { get; set; }
     }
 }

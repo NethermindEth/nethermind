@@ -50,12 +50,12 @@ namespace Nethermind.Network.Discovery.RoutingTable
             _nodeDistanceCalculator = nodeDistanceCalculator; 
         }
 
-        public Node MasterNode { get; private set; }
+        public Node MasterNode { get; private set; }    
         public NodeBucket[] Buckets { get; private set; }
 
         public NodeAddResult AddNode(Node node)
         {
-            _logger.Info($"Adding node to NodeTable: {node}");
+            _logger.Debug($"Adding node to NodeTable: {node}");
             var distanceFromMaster = _nodeDistanceCalculator.CalculateDistance(MasterNode.IdHash.Bytes, node.IdHash.Bytes);
             var bucket = Buckets[distanceFromMaster > 0 ? distanceFromMaster - 1 : 0];
             _nodes.AddOrUpdate(node.IdHashText, node, (x, y) => y);

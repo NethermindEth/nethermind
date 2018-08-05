@@ -17,16 +17,21 @@
  */
 
 using System;
+using System.Numerics;
 
 namespace Nethermind.Blockchain
 {
     public class SyncEventArgs : EventArgs
     {
         public ISynchronizationPeer Peer { get; }
+        public SyncStatus SyncStatus { get; }
+        public BigInteger? NodeBestBlockNumber { get; set; }
+        public BigInteger? OurBestBlockNumber { get; set; }
 
-        public SyncEventArgs(ISynchronizationPeer peer)
+        public SyncEventArgs(ISynchronizationPeer peer, SyncStatus status)
         {
             Peer = peer;
+            SyncStatus = status;
         }
     }
 }

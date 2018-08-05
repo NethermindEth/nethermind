@@ -71,10 +71,16 @@ namespace Nethermind.Core.Logging
             Log(ex != null ? $"{text}, Exception: {ex}" : text);
         }
 
+        public void Note(string text)
+        {
+            Log(text);
+        }
+
         public bool IsInfoEnabled => (int)_loglevel >= 2;
         public bool IsWarnEnabled => (int)_loglevel >= 1;
         public bool IsDebugEnabled => (int)_loglevel >= 3;
         public bool IsTraceEnabled => (int)_loglevel >= 4;
         public bool IsErrorEnabled => true;
+        public bool IsNoteEnabled => IsInfoEnabled;
     }
 }

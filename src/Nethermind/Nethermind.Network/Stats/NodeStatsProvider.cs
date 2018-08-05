@@ -19,25 +19,28 @@
 
 using System.Collections.Concurrent;
 using Nethermind.Config;
+using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
 using Nethermind.Network.Discovery;
+using Nethermind.Network.Discovery.RoutingTable;
 
 namespace Nethermind.Network.Stats
 {
     public class NodeStatsProvider : INodeStatsProvider
     {
         private readonly IConfigProvider _networkConfigurationProvider;
-
+        private readonly ILogManager _logManager;
         private readonly ConcurrentDictionary<NodeId, INodeStats> _nodeStats = new ConcurrentDictionary<NodeId, INodeStats>();
 
-        public NodeStatsProvider(IConfigProvider networkConfigurationProvider)
+        public NodeStatsProvider(IConfigProvider networkConfigurationProvider, ILogManager logManager)
         {
             _networkConfigurationProvider = networkConfigurationProvider;
+            _logManager = logManager;
         }
 
-        public INodeStats GetNodeStats(NodeId nodeId)
+        public INodeStats GetNodeStats(Node node)
         {
-            return _nodeStats.GetOrAdd(nodeId, x => new NodeStats(_networkConfigurationProvider));
+            return _nodeStats.GetOrAdd(node.Id, x => new NodeStats(node, _networkConfigurationProvider, _logManager));
         }
     }
 }

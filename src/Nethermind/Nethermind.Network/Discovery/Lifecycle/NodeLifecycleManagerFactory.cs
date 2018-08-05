@@ -56,7 +56,7 @@ namespace Nethermind.Network.Discovery.Lifecycle
                 throw new Exception($"{nameof(DiscoveryManager)} has to be set");
             }
             
-            return new NodeLifecycleManager(node, DiscoveryManager, _nodeTable, _logger, _configurationProvider, _discoveryMessageFactory, _evictionManager, _nodeStatsProvider.GetNodeStats(node.Id));
+            return new NodeLifecycleManager(node, DiscoveryManager, _nodeTable, _logger, _configurationProvider, _discoveryMessageFactory, _evictionManager, _nodeStatsProvider.GetNodeStats(node));
         }
 
         public INodeLifecycleManager CreateNodeLifecycleManager(NodeId id, string host, int port)
@@ -67,7 +67,7 @@ namespace Nethermind.Network.Discovery.Lifecycle
             }
             
             var node = _nodeFactory.CreateNode(id, host, port);
-            return new NodeLifecycleManager(node, DiscoveryManager, _nodeTable, _logger, _configurationProvider, _discoveryMessageFactory, _evictionManager, _nodeStatsProvider.GetNodeStats(id));
+            return new NodeLifecycleManager(node, DiscoveryManager, _nodeTable, _logger, _configurationProvider, _discoveryMessageFactory, _evictionManager, _nodeStatsProvider.GetNodeStats(node));
         }
     }
 }

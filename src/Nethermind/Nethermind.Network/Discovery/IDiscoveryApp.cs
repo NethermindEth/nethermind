@@ -23,7 +23,8 @@ namespace Nethermind.Network.Discovery
 {
     public interface IDiscoveryApp
     {
-        void Start(PublicKey masterPublicKey);
+        void Initialize(PublicKey masterPublicKey);
+        void Start();
         Task StopAsync();
     }
 }

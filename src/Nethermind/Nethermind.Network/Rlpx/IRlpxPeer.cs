@@ -30,5 +30,6 @@ namespace Nethermind.Network.Rlpx
         Task ConnectAsync(NodeId remoteNodeId, string remoteHost, int remotePort);
 
         event EventHandler<ConnectionInitializedEventArgs> ConnectionInitialized;
+        event EventHandler<ConnectionInitializedEventArgs> HandshakeInitialized;
     }
 }

@@ -17,23 +17,33 @@
  */
 
 using System;
+using System.Collections.Generic;
+using Nethermind.Network.Discovery.RoutingTable;
 using Nethermind.Network.P2P;
+using Nethermind.Network.Rlpx;
 
 namespace Nethermind.Network.Stats
 {
     public interface INodeStats
     {
-        void AddNodeStatsEvent(NodeStatsEvent nodeStatsEvent);
+        void AddNodeStatsEvent(NodeStatsEventType nodeStatsEventType);
+        void AddNodeStatsHandshakeEvent(ClientConnectionType clientConnectionType);
         void AddNodeStatsDisconnectEvent(DisconnectType disconnectType, DisconnectReason disconnectReason);
+        void AddNodeStatsP2PInitializedEvent(P2PNodeDetails nodeDetails);
+        void AddNodeStatsEth62InitializedEvent(Eth62NodeDetails nodeDetails);
+        void AddNodeStatsSyncEvent(NodeStatsEventType nodeStatsEventType, SyncNodeDetails syncDetails);
 
-        bool DidEventHappen(NodeStatsEvent nodeStatsEvent);
+        bool DidEventHappen(NodeStatsEventType nodeStatsEventType);
 
         long CurrentNodeReputation { get; }
         long CurrentPersistedNodeReputation { get; set; }
         long NewPersistedNodeReputation { get; }
         bool IsTrustedPeer { get; set; }
         DateTime? LastDisconnectTime { get; set; }
+        P2PNodeDetails P2PNodeDetails { get; }
+        Eth62NodeDetails Eth62NodeDetails { get; }
+        Node Node { get; }
 
-        NodeDetails NodeDetails { get; }
+        IEnumerable<NodeStatsEvent> EventHistory { get; }
     }
 }

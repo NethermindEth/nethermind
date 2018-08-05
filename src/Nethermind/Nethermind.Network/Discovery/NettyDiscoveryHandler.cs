@@ -80,7 +80,7 @@ namespace Nethermind.Network.Discovery
 
             try
             {
-                _logger.Info($"Sending message: {discoveryMessage}");
+                _logger.Debug($"Sending message: {discoveryMessage}");
                 message = Seserialize(discoveryMessage);
             }
             catch (Exception e)
@@ -94,7 +94,7 @@ namespace Nethermind.Network.Discovery
             {
                 if (t.IsFaulted)
                 {
-                    if(_logger.IsErrorEnabled) _logger.Error($"error when sending a discovery message to {discoveryMessage.FarAddress}", t.Exception);
+                    if(_logger.IsErrorEnabled) _logger.Error($"Error when sending a discovery message to {discoveryMessage.FarAddress}", t.Exception);
                 }
             });
         }
@@ -122,7 +122,7 @@ namespace Nethermind.Network.Discovery
             }
             
             var type = (MessageType)typeRaw;
-            _logger.Info($"Received message: {type}");
+            _logger.Debug($"Received message: {type}");
 
             DiscoveryMessage message;
 
@@ -133,7 +133,7 @@ namespace Nethermind.Network.Discovery
             }
             catch (Exception e)
             {
-                _logger.Error($"Error during deserialization of the message, type: {type}, sender: {address}", e);
+                _logger.Error($"Error during deserialization of the message, type: {type}, sender: {address}, msg: {new Hex(msg)}", e);
                 return;
             }
 

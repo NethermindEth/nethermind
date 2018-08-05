@@ -27,6 +27,7 @@ namespace Nethermind.Runner.Config
         bool JsonRpcEnabled { get; set; }
         bool DiscoveryEnabled { get; set; }
         bool SynchronizationEnabled { get; set; }
+        bool NetworkEnabled { get; set; }
         bool IsMining { get; set; }
         int FakeMiningDelay { get; set; }
         string HttpHost { get; set; }

@@ -50,7 +50,7 @@ namespace Nethermind.Core
             if (_stopwatches.TryRemove(id, out var watch))
             {
                 watch.Stop();
-                if (_logger.IsDebugEnabled) _logger.Debug($"PerfCalc: {logMsg}, time: {watch.ElapsedMilliseconds} milis");
+                if (_logger.IsInfoEnabled) _logger.Info($"PerfCalc: {logMsg}, time: {watch.ElapsedMilliseconds} milis");
             }
             else
             {

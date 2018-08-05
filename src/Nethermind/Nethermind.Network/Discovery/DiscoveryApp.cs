@@ -74,13 +74,17 @@ namespace Nethermind.Network.Discovery
             _discoveryStorage.StartBatch();
         }
 
-        public void Start(PublicKey masterPublicKey)
+        public void Initialize(PublicKey masterPublicKey)
+        {
+            // TODO: can we do it so we do not have to call initialize on these classes?
+            _nodeTable.Initialize(new NodeId(masterPublicKey));
+            _nodesLocator.Initialize(_nodeTable.MasterNode);
+        }
+
+        public void Start()
         {
             try
             {
-                // TODO: can we do it so we do not have to call initialize on these classes?
-                _nodeTable.Initialize(new NodeId(masterPublicKey));
-                _nodesLocator.Initialize(_nodeTable.MasterNode);
                 _logger.Info("Initializing UDP channel.");
                 InitializeUdpChannel();
             }
@@ -103,7 +107,7 @@ namespace Nethermind.Network.Discovery
         private void InitializeUdpChannel()
         {
             _group = new MultithreadEventLoopGroup(1);
-            _logger.Info($"Starting UDP Channel: {_configurationProvider.MasterHost}:{_configurationProvider.MasterPort}");
+            _logger.Note($"Starting Discovery UDP Channel: {_configurationProvider.MasterHost}:{_configurationProvider.MasterPort}");
 
             var bootstrap = new Bootstrap();
             bootstrap
@@ -111,7 +115,8 @@ namespace Nethermind.Network.Discovery
                 .Channel<SocketDatagramChannel>()
                 .Handler(new ActionChannelInitializer<IDatagramChannel>(InitializeChannel));
 
-            _bindingTask = bootstrap.BindAsync(IPAddress.Parse(_configurationProvider.MasterHost), _configurationProvider.MasterPort).ContinueWith(t => _channel = t.Result);
+            _bindingTask = bootstrap.BindAsync(IPAddress.Parse(_configurationProvider.MasterHost), _configurationProvider.MasterPort)
+                .ContinueWith(t => _channel = t.Result);
         }
 
         private Task _bindingTask;
@@ -135,13 +140,13 @@ namespace Nethermind.Network.Discovery
                 {
                     if (t.IsFaulted)
                     {
-                        _logger.Info($"Cannot activate channel.");
+                        _logger.Info("Cannot activate channel.");
                         throw t.Exception;
                     }
                     
                     if (t.IsCompleted)
                     {
-                        _logger.Info("Bootnodes initialized.");
+                        _logger.Info("Discovery App initialized.");
                     }
                 }
             );
@@ -203,9 +208,9 @@ namespace Nethermind.Network.Discovery
                 }
             }
 
-            if (_logger.IsInfoEnabled)
+            if (_logger.IsNoteEnabled)
             {
-                _logger.Info($"Added persisted discovery nodes: {nodes.Length}");
+                _logger.Note($"Added persisted discovery nodes: {nodes.Length}");
             }
         }
 
@@ -371,6 +376,10 @@ namespace Nethermind.Network.Discovery
                 }
                 else
                 {
+                    if (_logger.IsInfoEnabled)
+                    {
+                        _logger.Info($"Reached bootnode: {manager.ManagedNode.Host}:{manager.ManagedNode.Port}");
+                    }
                     reachedNodeCounter++;
                 }
             }

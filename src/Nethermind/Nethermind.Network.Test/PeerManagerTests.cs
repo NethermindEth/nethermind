@@ -54,10 +54,10 @@ namespace Nethermind.Network.Test
             var nodeTable = new NodeTable(_nodeFactory, Substitute.For<IKeyStore>(), new NodeDistanceCalculator(_configurationProvider), _configurationProvider, _logManager);
             nodeTable.Initialize(new NodeId(key));
 
-            _discoveryManager = new DiscoveryManager(new NodeLifecycleManagerFactory(_nodeFactory, nodeTable, new DiscoveryMessageFactory(_configurationProvider), Substitute.For<IEvictionManager>(), new NodeStatsProvider(_configurationProvider), _configurationProvider, _logManager), _nodeFactory, nodeTable, new DiscoveryStorage(_configurationProvider, _nodeFactory, _logManager, new PerfService(_logManager)), _configurationProvider, _logManager);
+            _discoveryManager = new DiscoveryManager(new NodeLifecycleManagerFactory(_nodeFactory, nodeTable, new DiscoveryMessageFactory(_configurationProvider), Substitute.For<IEvictionManager>(), new NodeStatsProvider(_configurationProvider, _logManager), _configurationProvider, _logManager), _nodeFactory, nodeTable, new DiscoveryStorage(_configurationProvider, _nodeFactory, _logManager, new PerfService(_logManager)), _configurationProvider, _logManager);
             _discoveryManager.MessageSender = Substitute.For<IMessageSender>();
 
-            _peerManager = new PeerManager(_localPeer, _discoveryManager, _synchronizationManager, new NodeStatsProvider(_configurationProvider), new PeerStorage(_configurationProvider, _nodeFactory, _logManager, new PerfService(_logManager)), _nodeFactory, _configurationProvider, new PerfService(_logManager), _logManager);
+            _peerManager = new PeerManager(_localPeer, _discoveryManager, _synchronizationManager, new NodeStatsProvider(_configurationProvider, _logManager ), new PeerStorage(_configurationProvider, _nodeFactory, _logManager, new PerfService(_logManager)), _nodeFactory, _configurationProvider, new PerfService(_logManager), _logManager);
         }
 
         [Test]
@@ -73,7 +73,7 @@ namespace Nethermind.Network.Test
                 Capabilities = new[] {new Capability(Protocol.Eth, 62)}.ToList(),
             };
             p2pSession.TriggerProtocolInitialized(p2pArgs);
-            Assert.IsTrue(_peerManager.ActivePeers.First().NodeStats.DidEventHappen(NodeStatsEvent.P2PInitialized));
+            Assert.IsTrue(_peerManager.ActivePeers.First().NodeStats.DidEventHappen(NodeStatsEventType.P2PInitialized));
 
             //trigger eth62 initialization
             var eth62 = new Eth62ProtocolHandler(p2pSession, new MessageSerializationService(), _synchronizationManager, _logManager);
@@ -82,7 +82,7 @@ namespace Nethermind.Network.Test
                 ChainId = _synchronizationManager.ChainId
             };
             p2pSession.TriggerProtocolInitialized(args);
-            Assert.IsTrue(_peerManager.ActivePeers.First().NodeStats.DidEventHappen(NodeStatsEvent.Eth62Initialized));
+            Assert.IsTrue(_peerManager.ActivePeers.First().NodeStats.DidEventHappen(NodeStatsEventType.Eth62Initialized));
             Assert.NotNull(_peerManager.ActivePeers.First().SynchronizationPeer);
 
             //verify active peer was added to synch manager
@@ -118,7 +118,7 @@ namespace Nethermind.Network.Test
                 Capabilities = new[] { new Capability(Protocol.Eth, 62) }.ToList()
             };
             p2pSession.TriggerProtocolInitialized(p2pArgs);
-            Assert.IsTrue(_peerManager.ActivePeers.First().NodeStats.DidEventHappen(NodeStatsEvent.P2PInitialized));
+            Assert.IsTrue(_peerManager.ActivePeers.First().NodeStats.DidEventHappen(NodeStatsEventType.P2PInitialized));
 
             //trigger eth62 initialization
             var eth62 = new Eth62ProtocolHandler(p2pSession, new MessageSerializationService(), _synchronizationManager, _logManager);
@@ -130,7 +130,7 @@ namespace Nethermind.Network.Test
 
             Assert.AreEqual(1, _peerManager.CandidatePeers.Count);
             Assert.AreEqual(1, _peerManager.ActivePeers.Count);
-            Assert.IsTrue(_peerManager.ActivePeers.First().NodeStats.DidEventHappen(NodeStatsEvent.Eth62Initialized));
+            Assert.IsTrue(_peerManager.ActivePeers.First().NodeStats.DidEventHappen(NodeStatsEventType.Eth62Initialized));
             Assert.NotNull(_peerManager.ActivePeers.First().SynchronizationPeer);
 
             //verify active peer was added to synch manager
@@ -350,5 +350,6 @@ namespace Nethermind.Network.Test
         }
 
         public event EventHandler<ConnectionInitializedEventArgs> ConnectionInitialized;
+        public event EventHandler<ConnectionInitializedEventArgs> HandshakeInitialized;
     }
 }

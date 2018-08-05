@@ -181,6 +181,7 @@ namespace Nethermind.Network.Rlpx
         }
 
         public event EventHandler<ConnectionInitializedEventArgs> ConnectionInitialized;
+        public event EventHandler<ConnectionInitializedEventArgs> HandshakeInitialized;
 
         private void InitializeChannel(IChannel channel, EncryptionHandshakeRole role, NodeId remoteId = null, string remoteHost = null, int? remotePort = null)
         {
@@ -219,9 +220,9 @@ namespace Nethermind.Network.Rlpx
                     {
                         _logger.Info($"Initializing {connectionType.ToString().ToUpper()} channel {p2PSession.RemoteNodeId}@{p2PSession.RemoteHost}:{p2PSession.RemotePort}");
                     }
-                    
-                    ConnectionInitialized?.Invoke(this, new ConnectionInitializedEventArgs(p2PSession, connectionType));
+                    //ConnectionInitialized?.Invoke(this, new ConnectionInitializedEventArgs(p2PSession, connectionType));
                 }
+                HandshakeInitialized?.Invoke(this, new ConnectionInitializedEventArgs(p2PSession, connectionType));
             };
 
             IChannelPipeline pipeline = channel.Pipeline;

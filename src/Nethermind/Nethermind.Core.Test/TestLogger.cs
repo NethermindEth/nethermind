@@ -56,10 +56,16 @@ namespace Nethermind.Core.Test
             LogList.Add(text);
         }
 
+        public void Note(string text)
+        {
+            LogList.Add(text);
+        }
+
         public bool IsInfoEnabled => true;
         public bool IsWarnEnabled => true;
         public bool IsDebugEnabled => true;
         public bool IsTraceEnabled => true;
         public bool IsErrorEnabled => true;
+        public bool IsNoteEnabled => true;
     }
 }

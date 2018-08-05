@@ -27,6 +27,7 @@ namespace Nethermind.Runner.Config
         public bool JsonRpcEnabled { get; set; } = true;
         public bool DiscoveryEnabled { get; set; } = true;
         public bool SynchronizationEnabled { get; set; } = true;
+        public bool NetworkEnabled { get; set; } = true;
         public bool IsMining { get; set; } = false;
         public int FakeMiningDelay { get; set; } = 12000;
         public string HttpHost { get; set; } = "127.0.0.1";

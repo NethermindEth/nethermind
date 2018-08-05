@@ -41,7 +41,7 @@ namespace Nethermind.Network.Config
         public int BootNodePongTimeout { get; set; } = 100000;
         public int PingRetryCount { get; set; } = 3;
         public int DiscoveryInterval { get; set; } = 30000;
-        public int DiscoveryPersistanceInterval { get; set; } = 1000 * 60 * 5;
+        public int DiscoveryPersistanceInterval { get; set; } = 1000 * 5;
         public int DiscoveryNewCycleWaitTime { get; set; } = 50;
         public int RefreshInterval { get; set; } = 7200;
 
@@ -70,12 +70,14 @@ namespace Nethermind.Network.Config
         public string DbBasePath { get; set; } = Path.GetTempPath();
         public bool IsDiscoveryNodesPersistenceOn { get; set; } = true;
         public bool IsPeersPersistenceOn { get; set; } = true;
-        public int ActivePeerUpdateInterval { get; set; } = 2000;
+        public int ActivePeerUpdateInterval { get; set; } = 1000 * 2;
         public bool IsActivePeerTimerEnabled { get; set; } = true;
         public int ActivePeersMaxCount { get; set; } = 25;
         public int DisconnectDelay { get; set; } = 1000 * 20;
-        public int PeersPersistanceInterval { get; set; } = 1000 * 60 * 5;
+        public int PeersPersistanceInterval { get; set; } = 1000 * 5;
         public int P2PPingInterval { get; set; } = 1000 * 10;
         public int P2PPingRetryCount { get; set; } = 3;
+        public bool CaptureNodeStatsEventHistory { get; } = true;
+        public string DetailedTimeDateFormat { get; } = "yyyy-MM-dd HH:mm:ss.fff";
     }
 }

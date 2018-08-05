@@ -17,11 +17,12 @@
  */
 
 using Nethermind.Core.Model;
+using Nethermind.Network.Discovery.RoutingTable;
 
 namespace Nethermind.Network.Stats
 {
     public interface INodeStatsProvider
     {
-        INodeStats GetNodeStats(NodeId nodeId);
+        INodeStats GetNodeStats(Node node);
     }
 }
