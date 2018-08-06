@@ -42,6 +42,7 @@ namespace Nethermind.Blockchain
         private readonly IHeaderValidator _headerValidator;
         private readonly ILogger _logger;
         private readonly ConcurrentDictionary<NodeId, PeerInfo> _peers = new ConcurrentDictionary<NodeId, PeerInfo>();
+        private readonly ConcurrentDictionary<NodeId, NodeId> _initPeersInProgress = new ConcurrentDictionary<NodeId, NodeId>();
         private readonly ITransactionStore _transactionStore;
         private readonly ITransactionValidator _transactionValidator;
         private readonly IBlockchainConfig _blockchainConfig;
@@ -216,6 +217,16 @@ namespace Nethermind.Blockchain
                 if (_logger.IsInfoEnabled) _logger.Info($"Synchronization is disabled, adding peer is blocked: {synchronizationPeer.NodeId}");
                 return;
             }
+
+            if (!_initPeersInProgress.TryAdd(synchronizationPeer.NodeId, synchronizationPeer.NodeId))
+            {
+                if (_logger.IsInfoEnabled)
+                {
+                    _logger.Info($"Another sync init in progress: {synchronizationPeer.NodeId}");
+                }
+                return;
+            }
+
             if (_peers.ContainsKey(synchronizationPeer.NodeId))
             {
                 if (_logger.IsDebugEnabled)
@@ -234,7 +245,8 @@ namespace Nethermind.Blockchain
 
             await InitPeerInfo(synchronizationPeer, tokenSource.Token).ContinueWith(t =>
             {
-                _initCancellationTokenSources.TryRemove(synchronizationPeer.NodeId, out var _);
+                _initCancellationTokenSources.TryRemove(synchronizationPeer.NodeId, out _);
+                _initPeersInProgress.TryRemove(synchronizationPeer.NodeId, out _);
 
                 if (t.IsFaulted)
                 {
@@ -779,7 +791,7 @@ namespace Nethermind.Blockchain
             bool addResult = _peers.TryAdd(peer.NodeId, new PeerInfo(peer, getNumberTask.Result) { NumberReceived = BlockTree.BestSuggested.Number }); // TODO: cheating now with assumign the consistency of the chains
             if (!addResult)
             {
-                _logger.Error($"Adding {nameof(PeerInfo)} failed for {peer.NodeId}");
+                _logger.Error($"Adding PeerInfo failed for {peer.NodeId}");
             }
         }
 

@@ -325,7 +325,7 @@ namespace Nethermind.Network.Discovery
                 {
                     _logger.Warn("No bootnodes specified in configuration");
                 }
-                return false;
+                return true;
             }
             var managers = new List<INodeLifecycleManager>();
             for (var i = 0; i < bootNodes.Length; i++)

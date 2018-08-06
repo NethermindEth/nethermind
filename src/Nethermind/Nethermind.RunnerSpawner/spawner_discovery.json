@@ -15,7 +15,7 @@
           "HttpHost": "127.0.0.1",
           "HttpPort": 8345,
           "IsMining": false,
-          "ChainSpecPath": "chainspec\\private_miner1.json",
+          "ChainSpecPath": "chainspec\\private_bootnode.json",
           "GenesisHash": "",
           "BaseDbPath": "private_bootnode\\full",
           "TestNodeKey": "100102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f",
@@ -40,7 +40,7 @@
           "GenesisHash": "",
           "BaseDbPath": "private_miner1\\full",
           "TestNodeKey": "110102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f",
-          "LogFileName": "private_0.logs.txt"
+          "LogFileName": "private_miner_1.logs.txt"
         }
       }
     ],
@@ -61,7 +61,7 @@
           "GenesisHash": "",
           "BaseDbPath": "private_client1\\full",
           "TestNodeKey": "120102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f",
-          "LogFileName": "private_2.logs.txt"
+          "LogFileName": "private_1.logs.txt"
         }
       }
     ],
@@ -82,7 +82,7 @@
           "GenesisHash": "",
           "BaseDbPath": "private_client2\\full",
           "TestNodeKey": "130102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f",
-          "LogFileName": "private_3.logs.txt"
+          "LogFileName": "private_2.logs.txt"
         }
       }
     ],
@@ -104,7 +104,7 @@
           "GenesisHash": "",
           "BaseDbPath": "private_client3\\full",
           "TestNodeKey": "140102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f",
-          "LogFileName": "private_4.logs.txt"
+          "LogFileName": "private_3.logs.txt"
         }
       }
     ],
@@ -125,7 +125,7 @@
           "GenesisHash": "",
           "BaseDbPath": "private_client4\\full",
           "TestNodeKey": "150102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f",
-          "LogFileName": "private_5.logs.txt"
+          "LogFileName": "private_4.logs.txt"
         }
       }
     ]
