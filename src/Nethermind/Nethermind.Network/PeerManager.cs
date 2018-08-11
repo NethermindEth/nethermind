@@ -151,6 +151,97 @@ namespace Nethermind.Network
             StopPingTimer();
         }
 
+        public async Task RunPeerUpdate()
+        {
+            lock (_isPeerUpdateInProgressLock)
+            {
+                if (_isPeerUpdateInProgress)
+                {
+                    return;
+                }
+
+                _isPeerUpdateInProgress = true;
+            }
+
+            var key = _perfService.StartPerfCalc();
+
+            var availibleActiveCount = _configurationProvider.ActivePeersMaxCount - _activePeers.Count;
+            if (availibleActiveCount <= 0)
+            {
+                return;
+            }
+
+            var candidates = _candidatePeers.Where(x => !_activePeers.ContainsKey(x.Key)).ToArray();
+            var allNonActiveCandidates = candidates.Length;
+            candidates = candidates.Where(x => CheckLastDisconnectTime(x.Value)).ToArray();
+            var filteredByDisconnect = allNonActiveCandidates - candidates.Length;
+            candidates = candidates.Where(x => CheckLastFailedConnectionTime(x.Value)).ToArray();
+            var filteredByFailedConnection = allNonActiveCandidates - filteredByDisconnect - candidates.Length;
+
+            var incompatibleNodes = candidates.Where(x => x.Value.NodeStats.FailedCompatibilityValidation.HasValue).ToArray();
+            candidates = candidates.Where(x => !x.Value.NodeStats.FailedCompatibilityValidation.HasValue)
+                .OrderBy(x => x.Value.NodeStats.IsTrustedPeer)
+                .ThenByDescending(x => x.Value.NodeStats.CurrentNodeReputation).ToArray();
+
+            var newActiveNodes = 0;
+            var tryCount = 0;
+            var failedInitialConnect = 0;
+            for (var i = 0; i < candidates.Length; i++)
+            {
+                if (newActiveNodes >= availibleActiveCount)
+                {
+                    break;
+                }
+
+                var candidate = candidates[i];
+                tryCount++;
+
+                if (!_activePeers.TryAdd(candidate.Key, candidate.Value))
+                {
+                    if (_logger.IsErrorEnabled)
+                    {
+                        _logger.Error($"Active peer was already added to collection: {candidate.Key}");
+                    }
+                }
+
+                var result = await InitializePeerConnection(candidate.Value);
+                if (!result)
+                {
+                    candidate.Value.NodeStats.AddNodeStatsEvent(NodeStatsEventType.ConnectionFailed);
+                    failedInitialConnect++;
+                    _activePeers.TryRemove(candidate.Key, out _);
+                    continue;
+                }
+
+                newActiveNodes++;                
+            }
+
+            if (_logger.IsNoteEnabled)
+            {
+                _logger.Note($"RunPeerUpdate | AllNonActive: {allNonActiveCandidates}, FilteredByDisconnectDelay: {filteredByDisconnect}, FileteredByFailedConnDelay: {filteredByFailedConnection}, Incompatible: {GetIncompatibleDesc(incompatibleNodes)}, EligibleCandidates: {candidates.Length}, " +
+                             $"Tried: {tryCount}, Failed initial connect: {failedInitialConnect}, Established initial connect: {newActiveNodes}, Current candidate peers: {_candidatePeers.Count}, Current active peers: {_activePeers.Count}");
+            }
+
+            if (_logger.IsDebugEnabled)
+            {
+                if (_logCounter % 5 == 0)
+                {
+                    string nl = Environment.NewLine;
+                    _logger.Debug($"{nl}{nl}All active peers: {nl}{string.Join(nl, ActivePeers.Select(x => $"{x.Node.ToString()} | P2PInitialized: {x.NodeStats.DidEventHappen(NodeStatsEventType.P2PInitialized)} | Eth62Initialized: {x.NodeStats.DidEventHappen(NodeStatsEventType.Eth62Initialized)} | ClientId: {x.NodeStats.P2PNodeDetails?.ClientId}"))} {nl}{nl}");
+                }
+
+                _logCounter++;
+            }
+
+            _perfService.EndPerfCalc(key, "RunPeerUpdate");
+            _isPeerUpdateInProgress = false;
+        }
+
+        public bool IsPeerConnected(NodeId peerId)
+        {
+            return _activePeers.ContainsKey(peerId);
+        }
+
         private void LogSessionStats()
         {
             if (_logger.IsInfoEnabled)
@@ -193,99 +284,47 @@ namespace Nethermind.Network
             }
         }
 
-        public async Task RunPeerUpdate()
+        private string GetIncompatibleDesc(KeyValuePair<NodeId, Peer>[] incompatibleNodes)
         {
-            lock (_isPeerUpdateInProgressLock)
+            if (!incompatibleNodes.Any())
             {
-                if (_isPeerUpdateInProgress)
-                {
-                    return;
-                }
-
-                _isPeerUpdateInProgress = true;
+                return "0";
             }
-
-            var key = _perfService.StartPerfCalc();
-
-            var availibleActiveCount = _configurationProvider.ActivePeersMaxCount - _activePeers.Count;
-            if (availibleActiveCount <= 0)
-            {
-                return;
-            }
-
-            var candidates = _candidatePeers.Where(x => !_activePeers.ContainsKey(x.Key) && CheckLastDisconnect(x.Value))
-                .OrderBy(x => x.Value.NodeStats.IsTrustedPeer)
-                .ThenByDescending(x => x.Value.NodeStats.CurrentNodeReputation).ToArray();
-
-            var newActiveNodes = 0;
-            var tryCount = 0;
-            var failedInitialConnect = 0;
-            for (var i = 0; i < candidates.Length; i++)
-            {
-                if (newActiveNodes >= availibleActiveCount)
-                {
-                    break;
-                }
-
-                var candidate = candidates[i];
-                tryCount++;
-
-                if (!_activePeers.TryAdd(candidate.Key, candidate.Value))
-                {
-                    if (_logger.IsErrorEnabled)
-                    {
-                        _logger.Error($"Active peer was already added to collection: {candidate.Key}");
-                    }
-                }
-
-                var result = await InitializePeerConnection(candidate.Value);
-                if (!result)
-                {
-                    candidate.Value.NodeStats.AddNodeStatsEvent(NodeStatsEventType.ConnectionFailed);
-                    failedInitialConnect++;
-                    _activePeers.TryRemove(candidate.Key, out _);
-                    continue;
-                }
-
-                newActiveNodes++;                
-            }
-
-            if (_logger.IsNoteEnabled)
-            {
-                _logger.Note($"RunPeerUpdate | Tried: {tryCount}, Failed initial connect: {failedInitialConnect}, Established initial connect: {newActiveNodes}, current candidate peers: {_candidatePeers.Count}, current active peers: {_activePeers.Count}");
-            }
-
-            if (_logger.IsDebugEnabled)
-            {
-                if (_logCounter % 5 == 0)
-                {
-                    string nl = Environment.NewLine;
-                    _logger.Debug($"{nl}{nl}All active peers: {nl}{string.Join(nl, ActivePeers.Select(x => $"{x.Node.ToString()} | P2PInitialized: {x.NodeStats.DidEventHappen(NodeStatsEventType.P2PInitialized)} | Eth62Initialized: {x.NodeStats.DidEventHappen(NodeStatsEventType.Eth62Initialized)} | ClientId: {x.NodeStats.P2PNodeDetails?.ClientId}"))} {nl}{nl}");
-                }
-
-                _logCounter++;
-            }
-
-            _perfService.EndPerfCalc(key, "RunPeerUpdate");
-            _isPeerUpdateInProgress = false;
+            var validationGroups = incompatibleNodes.GroupBy(x => x.Value.NodeStats.FailedCompatibilityValidation).ToArray();
+            return $"[{string.Join(", ", validationGroups.Select(x => $"{x.Key.ToString()}:{x.Count()}"))}]";
         }
 
-        public bool IsPeerConnected(NodeId peerId)
+        private bool CheckLastDisconnectTime(Peer peer)
         {
-            return _activePeers.ContainsKey(peerId);
-        }
-
-        private bool CheckLastDisconnect(Peer peer)
-        {
-            if (!peer.NodeStats.LastDisconnectTime.HasValue)
+            var time = peer.NodeStats.LastDisconnectTime;
+            if (!time.HasValue)
             {
                 return true;
             }
-            var lastDisconnectTimePassed = DateTime.Now.Subtract(peer.NodeStats.LastDisconnectTime.Value).TotalMilliseconds;
-            var result = lastDisconnectTimePassed > _configurationProvider.DisconnectDelay;
+
+            var timePassed = DateTime.Now.Subtract(time.Value).TotalMilliseconds;
+            var result = timePassed > _configurationProvider.DisconnectDelay;
             if (!result && _logger.IsDebugEnabled)
             {
-                _logger.Debug($"Skipping connection to peer, due to disconnect delay, time from last disconnect: {lastDisconnectTimePassed}, delay: {_configurationProvider.DisconnectDelay}, peer: {peer.Node.Id}");
+                _logger.Debug($"Skipping connection to peer, due to disconnect delay, time from last disconnect: {timePassed}, delay: {_configurationProvider.DisconnectDelay}, peer: {peer.Node.Id}");
+            }
+
+            return result;
+        }
+
+        private bool CheckLastFailedConnectionTime(Peer peer)
+        {
+            var time = peer.NodeStats.LastFailedConnectionTime;
+            if (!time.HasValue)
+            {
+                return true;
+            }
+
+            var timePassed = DateTime.Now.Subtract(time.Value).TotalMilliseconds;
+            var result = timePassed > _configurationProvider.FailedConnectionDelay;
+            if (!result && _logger.IsDebugEnabled)
+            {
+                _logger.Debug($"Skipping connection to peer, due to failed connection delay, time from last failed connection: {timePassed}, delay: {_configurationProvider.FailedConnectionDelay}, peer: {peer.Node.Id}");
             }
 
             return result;
@@ -495,12 +534,12 @@ namespace Nethermind.Network
             switch (e.ProtocolHandler)
             {
                 case P2PProtocolHandler p2PProtocolHandler:
-                    var p2pEventArgs = (P2PProtocolInitializedEventArgs) e;
+                    var p2PEventArgs = (P2PProtocolInitializedEventArgs) e;
                     peer.NodeStats.AddNodeStatsP2PInitializedEvent(new P2PNodeDetails
                     {
-                        ClientId = p2pEventArgs.ClientId,
-                        Capabilities = p2pEventArgs.Capabilities.ToArray(),
-                        P2PVersion = p2pEventArgs.P2PVersion                    
+                        ClientId = p2PEventArgs.ClientId,
+                        Capabilities = p2PEventArgs.Capabilities.ToArray(),
+                        P2PVersion = p2PEventArgs.P2PVersion                    
                     });
                     var result = await ValidateProtocol(Protocol.P2P, peer, e);
                     if (!result)
@@ -617,22 +656,25 @@ namespace Nethermind.Network
             {
                 case Protocol.P2P:
                     var args = (P2PProtocolInitializedEventArgs)eventArgs;
-                    if (args.P2PVersion < 4 || args.P2PVersion > 5)
+                    if (!ValidateP2PVersion(args.P2PVersion))
                     {
                         if (_logger.IsInfoEnabled)
                         {
                             _logger.Info($"Initiating disconnect with peer: {peer.Node.Id}, incorrect P2PVersion: {args.P2PVersion}");
                         }
+
+                        peer.NodeStats.FailedCompatibilityValidation = CompatibilityValidationType.P2PVersion;
                         await peer.Session.InitiateDisconnectAsync(DisconnectReason.IncompatibleP2PVersion);
                         return false;
                     }
 
-                    if (!args.Capabilities.Any(x => x.ProtocolCode == Protocol.Eth && x.Version == 62))
+                    if (!ValidateCapabilities(args.Capabilities))
                     {
                         if (_logger.IsInfoEnabled)
                         {
                             _logger.Info($"Initiating disconnect with peer: {peer.Node.Id}, no Eth62 capability, supported capabilities: [{string.Join(",", args.Capabilities.Select(x => $"{x.ProtocolCode}v{x.Version}"))}]");
                         }
+                        peer.NodeStats.FailedCompatibilityValidation = CompatibilityValidationType.Capabilities;
                         //TODO confirm disconnect reason
                         await peer.Session.InitiateDisconnectAsync(DisconnectReason.Other);
                         return false;
@@ -640,12 +682,13 @@ namespace Nethermind.Network
                     break;
                 case Protocol.Eth:
                     var ethArgs = (Eth62ProtocolInitializedEventArgs)eventArgs;
-                    if (ethArgs.ChainId != _synchronizationManager.ChainId)
+                    if (!ValidateChainId(ethArgs.ChainId))
                     {
                         if (_logger.IsInfoEnabled)
                         {
                             _logger.Info($"Initiating disconnect with peer: {peer.Node.Id}, different chainId: {ChainId.GetChainName((int)ethArgs.ChainId)}, our chainId: {ChainId.GetChainName(_synchronizationManager.ChainId)}");
                         }
+                        peer.NodeStats.FailedCompatibilityValidation = CompatibilityValidationType.ChainId;
                         //TODO confirm disconnect reason
                         await peer.Session.InitiateDisconnectAsync(DisconnectReason.Other);
                         return false;
@@ -656,6 +699,7 @@ namespace Nethermind.Network
                         {
                             _logger.Info($"Initiating disconnect with peer: {peer.Node.Id}, different genesis hash: {ethArgs.GenesisHash}, our: {_synchronizationManager.Genesis.Hash}");
                         }
+                        peer.NodeStats.FailedCompatibilityValidation = CompatibilityValidationType.DifferentGenesis;
                         //TODO confirm disconnect reason
                         await peer.Session.InitiateDisconnectAsync(DisconnectReason.Other);
                         return false;
@@ -663,6 +707,21 @@ namespace Nethermind.Network
                     break;
             }
             return true;
+        }
+
+        private bool ValidateP2PVersion(byte p2PVersion)
+        {
+            return p2PVersion == 4 || p2PVersion == 5;
+        }
+
+        private bool ValidateCapabilities(IEnumerable<Capability> capabilities)
+        {
+            return capabilities.Any(x => x.ProtocolCode == Protocol.Eth && x.Version == 62);
+        }
+
+        private bool ValidateChainId(long chainId)
+        {
+            return chainId == _synchronizationManager.ChainId;
         }
 
         private async Task OnPeerDisconnected(object sender, DisconnectEventArgs e)

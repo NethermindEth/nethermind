@@ -51,7 +51,7 @@ namespace Nethermind.Network.Discovery
         private readonly IDiscoveryStorage _discoveryStorage;
 
         private Timer _discoveryTimer;
-        private Timer _refreshTimer;
+        //private Timer _refreshTimer;
         private Timer _discoveryPersistanceTimer;
 
         private bool _appShutdown;
@@ -99,7 +99,7 @@ namespace Nethermind.Network.Discovery
         {
             _appShutdown = true;
             StopDiscoveryTimer();
-            StopRefreshTimer();
+            //StopRefreshTimer();
             StopDiscoveryPersistanceTimer();
             await StopUdpChannelAsync();
         }
@@ -222,6 +222,7 @@ namespace Nethermind.Network.Discovery
             {
                 _discoveryTimer.Enabled = false;
                 await RunDiscoveryAsync();
+                await RunRefreshAsync();
                 _discoveryTimer.Enabled = true;
             };
             _discoveryTimer.Start();
@@ -240,31 +241,31 @@ namespace Nethermind.Network.Discovery
             }
         }
 
-        private void InitializeRefreshTimer()
-        {
-            _logger.Info("Starting refresh timer");
-            _refreshTimer = new Timer(_configurationProvider.RefreshInterval) {AutoReset = false};
-            _refreshTimer.Elapsed += async (sender, e) =>
-            {
-                _refreshTimer.Enabled = false;
-                await RunRefreshAsync();
-                _refreshTimer.Enabled = true;
-            };
-            _refreshTimer.Start();
-        }
+        //private void InitializeRefreshTimer()
+        //{
+        //    _logger.Info("Starting refresh timer");
+        //    _refreshTimer = new Timer(_configurationProvider.RefreshInterval) {AutoReset = false};
+        //    _refreshTimer.Elapsed += async (sender, e) =>
+        //    {
+        //        _refreshTimer.Enabled = false;
+        //        await RunRefreshAsync();
+        //        _refreshTimer.Enabled = true;
+        //    };
+        //    _refreshTimer.Start();
+        //}
 
-        private void StopRefreshTimer()
-        {
-            try
-            {
-                _logger.Info("Stopping refresh timer");
-                _refreshTimer?.Stop();
-            }
-            catch (Exception e)
-            {
-                _logger.Error("Error during refresh timer stop", e);
-            }
-        }
+        //private void StopRefreshTimer()
+        //{
+        //    try
+        //    {
+        //        _logger.Info("Stopping refresh timer");
+        //        _refreshTimer?.Stop();
+        //    }
+        //    catch (Exception e)
+        //    {
+        //        _logger.Error("Error during refresh timer stop", e);
+        //    }
+        //}
 
         private void InitializeDiscoveryPersistanceTimer()
         {

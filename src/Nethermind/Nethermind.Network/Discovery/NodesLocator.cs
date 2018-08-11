@@ -23,6 +23,7 @@ using System.Text;
 using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
 using Nethermind.Network.Config;
@@ -61,7 +62,7 @@ namespace Nethermind.Network.Discovery
         {
             var alreadyTriedNodes = new List<string>();
             
-            _logger.Note($"Starting discovery process for node: {(searchedNodeId != null ? new Hex(searchedNodeId).ToString() : "masterNode: " + _masterNode.Id)}");
+            _logger.Note($"Starting discovery process for node: {(searchedNodeId != null ? $"randomNode: {new PublicKey(searchedNodeId).ToShortString()}" : $"masterNode: {_masterNode.Id}")}");
             var nodesCountBeforeDiscovery = _nodeTable.Buckets.Sum(x => x.Items.Count);
 
             for (var i = 0; i < _configurationProvider.MaxDiscoveryRounds; i++)
@@ -86,7 +87,6 @@ namespace Nethermind.Network.Discovery
                     _logger.Debug($"Waiting {_configurationProvider.DiscoveryNewCycleWaitTime} for new nodes");
                     //we need to wait some time for pong messages received from new nodes we reached out to    
                     await Task.Delay(_configurationProvider.DiscoveryNewCycleWaitTime);
-                    //Thread.Sleep(_configurationProvider.DiscoveryNewCycleWaitTime);
                 }
 
                 if (!tryCandidates.Any())

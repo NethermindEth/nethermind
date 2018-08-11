@@ -40,8 +40,10 @@ namespace Nethermind.Network.Stats
         long NewPersistedNodeReputation { get; }
         bool IsTrustedPeer { get; set; }
         DateTime? LastDisconnectTime { get; set; }
+        DateTime? LastFailedConnectionTime { get; set; }
         P2PNodeDetails P2PNodeDetails { get; }
         Eth62NodeDetails Eth62NodeDetails { get; }
+        CompatibilityValidationType? FailedCompatibilityValidation { get; set; }
         Node Node { get; }
 
         IEnumerable<NodeStatsEvent> EventHistory { get; }

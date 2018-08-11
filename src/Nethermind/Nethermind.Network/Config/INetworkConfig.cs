@@ -103,10 +103,10 @@ namespace Nethermind.Network.Config
         /// </summary>
         int DiscoveryNewCycleWaitTime { get; }
 
-        /// <summary>
-        /// Time between running refresh processes in miliseconds
-        /// </summary>
-        int RefreshInterval { get; }
+        ///// <summary>
+        ///// Time between running refresh processes in miliseconds
+        ///// </summary>
+        //int RefreshInterval { get; }
 
         /// <summary>
         /// Boot nodes connection details
@@ -202,6 +202,11 @@ namespace Nethermind.Network.Config
         /// Delay of connection retrying after disconnect
         /// </summary>
         int DisconnectDelay { get; }
+
+        /// <summary>
+        /// Delay of connection retrying after failed connection attempt
+        /// </summary>
+        int FailedConnectionDelay { get; }
 
         /// <summary>
         /// Time between persisting peers in miliseconds

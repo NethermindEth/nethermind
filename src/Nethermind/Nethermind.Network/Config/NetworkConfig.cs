@@ -37,18 +37,18 @@ namespace Nethermind.Network.Config
         public int MaxDiscoveryRounds { get; set; } = 8;
         public int EvictionCheckInterval { get; set; } = 75;
         public int SendNodeTimeout { get; set; } = 500;
-        public int PongTimeout { get; set; } = 15000;
-        public int BootNodePongTimeout { get; set; } = 100000;
+        public int PongTimeout { get; set; } = 1000 * 15;
+        public int BootNodePongTimeout { get; set; } = 1000 * 100;
         public int PingRetryCount { get; set; } = 3;
-        public int DiscoveryInterval { get; set; } = 30000;
+        public int DiscoveryInterval { get; set; } = 1000 * 30;
         public int DiscoveryPersistanceInterval { get; set; } = 1000 * 5;
         public int DiscoveryNewCycleWaitTime { get; set; } = 50;
-        public int RefreshInterval { get; set; } = 7200;
+        //public int RefreshInterval { get; set; } = 33000;
 
         public ConfigNode[] BootNodes { get; set; } = new ConfigNode[0];
 
         public string KeyPass { get; set; } = "TestPass";
-        public int UdpChannelCloseTimeout { get; set; } = 10000;
+        public int UdpChannelCloseTimeout { get; set; } = 1000* 10;
         public int PingMessageVersion { get; set; } = 4;
         public int DiscoveryMsgExpiryTime { get; set; } = 60 * 90;
         public int MaxNodeLifecycleManagersCount { get; set; } = 2000;
@@ -73,7 +73,8 @@ namespace Nethermind.Network.Config
         public int ActivePeerUpdateInterval { get; set; } = 1000 * 2;
         public bool IsActivePeerTimerEnabled { get; set; } = true;
         public int ActivePeersMaxCount { get; set; } = 25;
-        public int DisconnectDelay { get; set; } = 1000 * 20;
+        public int DisconnectDelay { get; set; } = 1000 * 60 * 2;
+        public int FailedConnectionDelay { get; set; } = 1000 * 60 * 2;
         public int PeersPersistanceInterval { get; set; } = 1000 * 5;
         public int P2PPingInterval { get; set; } = 1000 * 10;
         public int P2PPingRetryCount { get; set; } = 3;

@@ -38,7 +38,7 @@ namespace Nethermind.Network.Stats
     {
         private readonly INetworkConfig _configurationProvider;
         private Dictionary<NodeStatsEventType, AtomicLong> _statCounters;
-        private Dictionary<DisconnectType, (DisconnectReason DisconnectReason, DateTime DisconnectTime)> _lastDisconnects;
+        private Dictionary<DisconnectType, (DisconnectReason DisconnectReason, DateTime DisconnectTime)> _lastDisconnects;        
         private readonly IList<NodeStatsEvent> _eventHistory;
         private readonly ILogger _logger;
 
@@ -55,6 +55,10 @@ namespace Nethermind.Network.Stats
 
         public void AddNodeStatsEvent(NodeStatsEventType nodeStatsEventType)
         {
+            if (nodeStatsEventType == NodeStatsEventType.ConnectionFailed)
+            {
+                LastFailedConnectionTime = DateTime.Now;
+            }
             _statCounters[nodeStatsEventType].Increment();
             CaptureEvent(nodeStatsEventType);
         }
@@ -121,9 +125,13 @@ namespace Nethermind.Network.Stats
 
         public DateTime? LastDisconnectTime { get; set; }
 
+        public DateTime? LastFailedConnectionTime { get; set; }
+
         public P2PNodeDetails P2PNodeDetails { get; private set; }
 
         public Eth62NodeDetails Eth62NodeDetails { get; private set; }
+
+        public CompatibilityValidationType? FailedCompatibilityValidation { get; set; }
 
         public SyncNodeDetails SyncNodeDetails { get; private set; }
 
