@@ -58,10 +58,11 @@ namespace Nethermind.Network.Test
             _discoveryManager.MessageSender = Substitute.For<IMessageSender>();
 
             _peerManager = new PeerManager(_localPeer, _discoveryManager, _synchronizationManager, new NodeStatsProvider(_configurationProvider, _logManager ), new PeerStorage(_configurationProvider, _nodeFactory, _logManager, new PerfService(_logManager)), _nodeFactory, _configurationProvider, new PerfService(_logManager), _logManager);
+            _peerManager.Initialize(true);
         }
 
         [Test]
-        public void OutPeerBecomesActiveAndDisconnectTest()
+        public void OurPeerBecomesActiveAndDisconnectTest()
         {
             var p2pSession = InitializeNode();
 
@@ -109,6 +110,7 @@ namespace Nethermind.Network.Test
             p2pSession.RemotePort = node.Port;
             p2pSession.ClientConnectionType = ClientConnectionType.In;
             _localPeer.TriggerConnectionInitialized(p2pSession, ClientConnectionType.In);
+            _localPeer.TriggerHandshakeInitialized(p2pSession, ClientConnectionType.In);
 
             //trigger p2p initialization
             var p2pProtocol = new P2PProtocolHandler(p2pSession, new MessageSerializationService(), p2pSession.RemoteNodeId, p2pSession.RemotePort ?? 0, _logManager);
@@ -201,13 +203,13 @@ namespace Nethermind.Network.Test
             var p2pSession = InitializeNode(ClientConnectionType.In);
 
             //trigger p2p initialization
-            var p2pProtocol = new P2PProtocolHandler(p2pSession, new MessageSerializationService(), p2pSession.RemoteNodeId, p2pSession.RemotePort ?? 0, _logManager);
-            var p2pArgs = new P2PProtocolInitializedEventArgs(p2pProtocol)
-            {
-                P2PVersion = 1,
-                Capabilities = new[] { new Capability(Protocol.Eth, 62) }.ToList()
-            };
-            p2pSession.TriggerProtocolInitialized(p2pArgs);
+            //var p2pProtocol = new P2PProtocolHandler(p2pSession, new MessageSerializationService(), p2pSession.RemoteNodeId, p2pSession.RemotePort ?? 0, _logManager);
+            //var p2pArgs = new P2PProtocolInitializedEventArgs(p2pProtocol)
+            //{
+            //    P2PVersion = 1,
+            //    Capabilities = new[] { new Capability(Protocol.Eth, 62) }.ToList()
+            //};
+            //p2pSession.TriggerProtocolInitialized(p2pArgs);
             Assert.IsTrue(p2pSession.Disconected);
             Assert.AreEqual(DisconnectReason.AlreadyConnected, p2pSession.DisconnectReason);
         }
@@ -223,15 +225,16 @@ namespace Nethermind.Network.Test
             p2pSession.RemoteNodeId = node.Id;
             p2pSession.ClientConnectionType = ClientConnectionType.In;
             _localPeer.TriggerConnectionInitialized(p2pSession, ClientConnectionType.In);
+            _localPeer.TriggerHandshakeInitialized(p2pSession, ClientConnectionType.In);
 
             //trigger p2p initialization
-            var p2pProtocol = new P2PProtocolHandler(p2pSession, new MessageSerializationService(), p2pSession.RemoteNodeId, p2pSession.RemotePort ?? 0, _logManager);
-            var p2pArgs = new P2PProtocolInitializedEventArgs(p2pProtocol)
-            {
-                P2PVersion = 1,
-                Capabilities = new[] { new Capability(Protocol.Eth, 62) }.ToList()
-            };
-            p2pSession.TriggerProtocolInitialized(p2pArgs);
+            //var p2pProtocol = new P2PProtocolHandler(p2pSession, new MessageSerializationService(), p2pSession.RemoteNodeId, p2pSession.RemotePort ?? 0, _logManager);
+            //var p2pArgs = new P2PProtocolInitializedEventArgs(p2pProtocol)
+            //{
+            //    P2PVersion = 1,
+            //    Capabilities = new[] { new Capability(Protocol.Eth, 62) }.ToList()
+            //};
+            //p2pSession.TriggerProtocolInitialized(p2pArgs);
             Assert.IsTrue(p2pSession.Disconected);
             Assert.AreEqual(DisconnectReason.TooManyPeers, p2pSession.DisconnectReason);
         }
@@ -257,6 +260,8 @@ namespace Nethermind.Network.Test
             p2pSession.RemoteNodeId = node.Id;
             p2pSession.ClientConnectionType = clientConnectionType;
             _localPeer.TriggerConnectionInitialized(p2pSession);
+
+            _localPeer.TriggerHandshakeInitialized(p2pSession, clientConnectionType);
 
             var peer = _peerManager.ActivePeers.First();
             if (clientConnectionType == ClientConnectionType.Out)
@@ -337,6 +342,11 @@ namespace Nethermind.Network.Test
         public void TriggerConnectionInitialized(IP2PSession session, ClientConnectionType clientConnectionType = ClientConnectionType.Out)
         {
             ConnectionInitialized?.Invoke(this, new ConnectionInitializedEventArgs(session, clientConnectionType));
+        }
+
+        public void TriggerHandshakeInitialized(IP2PSession session, ClientConnectionType clientConnectionType = ClientConnectionType.Out)
+        {
+            HandshakeInitialized?.Invoke(this, new ConnectionInitializedEventArgs(session, clientConnectionType));
         }
 
         public Task Init()

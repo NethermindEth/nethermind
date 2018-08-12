@@ -97,7 +97,7 @@ namespace Nethermind.Network.Test.Discovery
         private INodeLifecycleManager CreateLifecycleManager(Node node)
         {
             var manager = Substitute.For<INodeLifecycleManager>();
-            var logManager = Substitute.For<ILogManager>();
+            var logManager = NullLogManager.Instance;
             manager.ManagedNode.Returns(node);
             manager.NodeStats.Returns(new NodeStats(node, _configurationProvider, logManager)
             {

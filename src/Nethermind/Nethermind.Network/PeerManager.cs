@@ -693,11 +693,11 @@ namespace Nethermind.Network
                         await peer.Session.InitiateDisconnectAsync(DisconnectReason.Other);
                         return false;
                     }
-                    if (ethArgs.GenesisHash != _synchronizationManager.Genesis.Hash)
+                    if (ethArgs.GenesisHash != _synchronizationManager.Genesis?.Hash)
                     {
                         if (_logger.IsInfoEnabled)
                         {
-                            _logger.Info($"Initiating disconnect with peer: {peer.Node.Id}, different genesis hash: {ethArgs.GenesisHash}, our: {_synchronizationManager.Genesis.Hash}");
+                            _logger.Info($"Initiating disconnect with peer: {peer.Node.Id}, different genesis hash: {ethArgs.GenesisHash}, our: {_synchronizationManager.Genesis?.Hash}");
                         }
                         peer.NodeStats.FailedCompatibilityValidation = CompatibilityValidationType.DifferentGenesis;
                         //TODO confirm disconnect reason
