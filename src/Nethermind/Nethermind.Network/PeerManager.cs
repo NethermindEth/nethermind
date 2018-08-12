@@ -334,7 +334,7 @@ namespace Nethermind.Network
         {
             try
             {
-                await _localPeer.ConnectAsync(candidate.Node.Id, candidate.Node.Host, candidate.Node.Port);
+                await _localPeer.ConnectAsync(candidate.Node.Id, candidate.Node.Host, candidate.Node.Port, candidate.NodeStats);
                 return true;
             }
             catch (NetworkingException ex)
@@ -376,7 +376,7 @@ namespace Nethermind.Network
                     continue;
                 }
 
-                var nodeStats = _nodeStatsProvider.GetNodeStats(persistedPeer.Node);
+                var nodeStats = _nodeStatsProvider.GetOrAddNodeStats(persistedPeer.Node);
                 nodeStats.CurrentPersistedNodeReputation = persistedPeer.PersistedReputation;
 
                 var peer = new Peer(persistedPeer.Node, nodeStats);
@@ -410,7 +410,7 @@ namespace Nethermind.Network
                 var node = _nodeFactory.CreateNode(new NodeId(new PublicKey(new Hex(trustedPeer.NodeId))), trustedPeer.Host, trustedPeer.Port);
                 node.Description = trustedPeer.Description;
 
-                var nodeStats = _nodeStatsProvider.GetNodeStats(node);
+                var nodeStats = _nodeStatsProvider.GetOrAddNodeStats(node);
                 nodeStats.IsTrustedPeer = true;
 
                 var peer = new Peer(node, nodeStats);
@@ -617,7 +617,7 @@ namespace Nethermind.Network
             else
             {
                 var node = _nodeFactory.CreateNode(session.RemoteNodeId, session.RemoteHost, session.RemotePort ?? 0);
-                peer = new Peer(node, _nodeStatsProvider.GetNodeStats(node))
+                peer = new Peer(node, _nodeStatsProvider.GetOrAddNodeStats(node))
                 {
                     ClientConnectionType = session.ClientConnectionType,
                     Session = session

@@ -21,6 +21,7 @@ using System.Threading.Tasks;
 using DotNetty.Transport.Channels;
 using Nethermind.Core.Model;
 using Nethermind.Network.Rlpx;
+using Nethermind.Network.Stats;
 
 namespace Nethermind.Network.P2P
 {
@@ -31,6 +32,7 @@ namespace Nethermind.Network.P2P
         int? RemotePort { get; set; }
         ClientConnectionType ClientConnectionType { get; set; }
         string SessionId { get; }
+        INodeStats NodeStats { get; }
 
         void ReceiveMessage(Packet packet);
         void DeliverMessage(Packet packet, bool priority = false);

@@ -29,6 +29,9 @@ namespace Nethermind.Network.Stats
         DiscoveryFindNodeOut,
         DiscoveryFindNodeIn,
 
+        P2PPingIn,
+        P2PPingOut,
+
         NodeDiscovered,
         ConnectionEstablished,
         ConnectionFailed,

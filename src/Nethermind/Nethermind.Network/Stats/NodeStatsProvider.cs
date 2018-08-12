@@ -17,6 +17,7 @@
  */
 
 
+using System;
 using System.Collections.Concurrent;
 using Nethermind.Config;
 using Nethermind.Core.Logging;
@@ -38,7 +39,7 @@ namespace Nethermind.Network.Stats
             _logManager = logManager;
         }
 
-        public INodeStats GetNodeStats(Node node)
+        public INodeStats GetOrAddNodeStats(Node node)
         {
             return _nodeStats.GetOrAdd(node.Id, x => new NodeStats(node, _networkConfigurationProvider, _logManager));
         }

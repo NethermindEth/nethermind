@@ -20,6 +20,7 @@ using System;
 using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Model;
+using Nethermind.Network.Stats;
 
 namespace Nethermind.Network.Rlpx
 {
@@ -27,7 +28,7 @@ namespace Nethermind.Network.Rlpx
     {
         Task Shutdown();
         Task Init();
-        Task ConnectAsync(NodeId remoteNodeId, string remoteHost, int remotePort);
+        Task ConnectAsync(NodeId remoteNodeId, string remoteHost, int remotePort, INodeStats nodeStats);
 
         event EventHandler<ConnectionInitializedEventArgs> ConnectionInitialized;
         event EventHandler<ConnectionInitializedEventArgs> HandshakeInitialized;

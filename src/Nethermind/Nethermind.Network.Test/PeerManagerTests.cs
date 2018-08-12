@@ -279,6 +279,7 @@ namespace Nethermind.Network.Test
         public ClientConnectionType ClientConnectionType { get; set; }
 
         public string SessionId { get; }
+        public INodeStats NodeStats { get; }
 
         public TestP2PSession()
         {
@@ -343,7 +344,7 @@ namespace Nethermind.Network.Test
             return Task.CompletedTask;
         }
 
-        public Task ConnectAsync(NodeId remoteNodeId, string remoteHost, int remotePort)
+        public Task ConnectAsync(NodeId remoteNodeId, string remoteHost, int remotePort, INodeStats nodeStats)
         {
             ConnectionAsyncCallsCounter++;
             return Task.CompletedTask;

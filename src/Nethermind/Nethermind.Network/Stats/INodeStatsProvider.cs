@@ -23,6 +23,6 @@ namespace Nethermind.Network.Stats
 {
     public interface INodeStatsProvider
     {
-        INodeStats GetNodeStats(Node node);
+        INodeStats GetOrAddNodeStats(Node node);
     }
 }

@@ -24,6 +24,7 @@ using Nethermind.Core.Model;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P;
 using Nethermind.Network.Rlpx;
+using Nethermind.Network.Stats;
 using Nethermind.Network.Test.Builders;
 using NSubstitute;
 using NUnit.Framework;
@@ -42,7 +43,7 @@ namespace Nethermind.Network.Test.P2P
 
             IMessageSerializationService service = Build.A.SerializationService().WithP2P().TestObject;
             
-            P2PSession factory = new P2PSession(new NodeId(NetTestVectors.StaticKeyA.PublicKey), ListenPort, service, Substitute.For<ISynchronizationManager>(), NullLogManager.Instance);
+            P2PSession factory = new P2PSession(new NodeId(NetTestVectors.StaticKeyA.PublicKey), ListenPort, service, Substitute.For<ISynchronizationManager>(), NullLogManager.Instance, Substitute.For<INodeStats>());
             factory.Init(4, Substitute.For<IChannelHandlerContext>(), sender);
             
             sender.Received().Enqueue(Arg.Is<Packet>(p => p.PacketType == 0 && p.Protocol == "p2p"));

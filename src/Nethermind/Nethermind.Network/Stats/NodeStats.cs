@@ -119,7 +119,7 @@ namespace Nethermind.Network.Stats
 
         public long CurrentPersistedNodeReputation { get; set; }
 
-        public long NewPersistedNodeReputation => IsReputationPenalized() ? 0 : (CurrentPersistedNodeReputation + CalculateSessionReputation()) / 2;
+        public long NewPersistedNodeReputation => IsReputationPenalized() ? -100 : (CurrentPersistedNodeReputation + CalculateSessionReputation()) / 2;
 
         public bool IsTrustedPeer { get; set; }
 
@@ -164,7 +164,7 @@ namespace Nethermind.Network.Stats
         private long CalculateCurrentReputation()
         {
             return IsReputationPenalized()
-                ? 0
+                ? -100
                 : CurrentPersistedNodeReputation / 2 + CalculateSessionReputation() +
                   (IsTrustedPeer ? _configurationProvider.PredefinedReputation : 0);
         }
@@ -176,8 +176,11 @@ namespace Nethermind.Network.Stats
             discoveryReputation += Math.Min(_statCounters[NodeStatsEventType.DiscoveryNeighboursIn].Value, 10) * 2;
 
             long rlpxReputation = 0;
+            rlpxReputation += Math.Min(_statCounters[NodeStatsEventType.P2PPingIn].Value, 10) * (_statCounters[NodeStatsEventType.P2PPingIn].Value == _statCounters[NodeStatsEventType.P2PPingOut].Value ? 2 : 1);
+            rlpxReputation += _statCounters[NodeStatsEventType.HandshakeCompleted].Value > 0 ? 10 : 0;
             rlpxReputation += _statCounters[NodeStatsEventType.P2PInitialized].Value > 0 ? 10 : 0;
             rlpxReputation += _statCounters[NodeStatsEventType.Eth62Initialized].Value > 0 ? 20 : 0;
+            rlpxReputation += _statCounters[NodeStatsEventType.SyncStarted].Value > 0 ? 1000 : 0;
 
             if (_lastDisconnects.Any())
             {
@@ -198,6 +201,21 @@ namespace Nethermind.Network.Stats
                         rlpxReputation = (long) (rlpxReputation * 0.2);
                     }
                 }
+            }
+
+            if (DidEventHappen(NodeStatsEventType.ConnectionFailed))
+            {
+                rlpxReputation = (long) (rlpxReputation * 0.2);
+            }
+
+            if (DidEventHappen(NodeStatsEventType.SyncInitFailed))
+            {
+                rlpxReputation = (long)(rlpxReputation * 0.3);
+            }
+
+            if (DidEventHappen(NodeStatsEventType.SyncFailed))
+            {
+                rlpxReputation = (long)(rlpxReputation * 0.4);
             }
 
             return discoveryReputation + 100 * rlpxReputation;

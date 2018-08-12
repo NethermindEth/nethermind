@@ -31,6 +31,7 @@ using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
+using Nethermind.Network.Stats;
 using Nethermind.Network.Test.Builders;
 using NSubstitute;
 using NUnit.Framework;
@@ -84,7 +85,7 @@ namespace Nethermind.Network.Test
             
             Console.WriteLine("Servers running...");
             Console.WriteLine("Connecting A to B...");
-            await peerServerA.ConnectAsync(new NodeId(_keyB.PublicKey), "127.0.0.1", PortB);
+            await peerServerA.ConnectAsync(new NodeId(_keyB.PublicKey), "127.0.0.1", PortB, null);
             Console.WriteLine("A to B connected...");
             
 //            Console.WriteLine("Connecting A to C...");

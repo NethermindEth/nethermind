@@ -35,6 +35,7 @@ using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
 using Nethermind.Network.P2P;
 using Nethermind.Network.Rlpx.Handshake;
+using Nethermind.Network.Stats;
 
 namespace Nethermind.Network.Rlpx
 {
@@ -142,7 +143,7 @@ namespace Nethermind.Network.Rlpx
             }
         }
 
-        public async Task ConnectAsync(NodeId remoteId, string host, int port)
+        public async Task ConnectAsync(NodeId remoteId, string host, int port, INodeStats nodeStats)
         {
             _logger.Info($"Connecting to {remoteId}@{host}:{port}");
 
@@ -155,7 +156,7 @@ namespace Nethermind.Network.Rlpx
             clientBootstrap.Option(ChannelOption.ConnectTimeout, Timeouts.InitialConnection);
             clientBootstrap.RemoteAddress(host, port);
 
-            clientBootstrap.Handler(new ActionChannelInitializer<ISocketChannel>(ch => InitializeChannel(ch, EncryptionHandshakeRole.Initiator, remoteId, host, port)));
+            clientBootstrap.Handler(new ActionChannelInitializer<ISocketChannel>(ch => InitializeChannel(ch, EncryptionHandshakeRole.Initiator, remoteId, host, port, nodeStats)));
 
             var connectTask = clientBootstrap.ConnectAsync(new IPEndPoint(IPAddress.Parse(host), port));
             var firstTask = await Task.WhenAny(connectTask, Task.Delay(Timeouts.InitialConnection.Add(TimeSpan.FromSeconds(5))));
@@ -183,7 +184,7 @@ namespace Nethermind.Network.Rlpx
         public event EventHandler<ConnectionInitializedEventArgs> ConnectionInitialized;
         public event EventHandler<ConnectionInitializedEventArgs> HandshakeInitialized;
 
-        private void InitializeChannel(IChannel channel, EncryptionHandshakeRole role, NodeId remoteId = null, string remoteHost = null, int? remotePort = null)
+        private void InitializeChannel(IChannel channel, EncryptionHandshakeRole role, NodeId remoteId = null, string remoteHost = null, int? remotePort = null, INodeStats nodeStats = null)
         {
             var connectionType = remoteId == null ? ClientConnectionType.In : ClientConnectionType.Out;
             P2PSession p2PSession = new P2PSession(
@@ -191,7 +192,7 @@ namespace Nethermind.Network.Rlpx
                 _localPort,
                 _serializationService,
                 _synchronizationManager,
-                _logManager)
+                _logManager, nodeStats)
             {
                 ClientConnectionType = connectionType
             };

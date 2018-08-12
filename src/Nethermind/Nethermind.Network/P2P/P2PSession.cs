@@ -28,6 +28,7 @@ using Nethermind.Core.Model;
 using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63;
 using Nethermind.Network.Rlpx;
+using Nethermind.Network.Stats;
 
 namespace Nethermind.Network.P2P
 {
@@ -51,13 +52,15 @@ namespace Nethermind.Network.P2P
             int localPort,
             IMessageSerializationService serializer,
             ISynchronizationManager syncManager,
-            ILogManager logManager)
+            ILogManager logManager,
+            INodeStats nodeStats)
         {
             _serializer = serializer ?? throw new ArgumentNullException(nameof(serializer));
             _syncManager = syncManager ?? throw new ArgumentNullException(nameof(syncManager));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _logger = logManager.GetClassLogger();
-            
+
+            NodeStats = nodeStats;           
             LocalNodeId = localNodeId;
             LocalPort = localPort;
             SessionId = Guid.NewGuid().ToString();
@@ -70,6 +73,7 @@ namespace Nethermind.Network.P2P
         public string RemoteHost { get; set; }
         public ClientConnectionType ClientConnectionType { get; set; }
         public string SessionId { get; }
+        public INodeStats NodeStats { get; }
 
         // TODO: this should be one level up
         public void EnableSnappy()
