@@ -190,7 +190,7 @@ namespace Nethermind.Network.P2P
                 Logger.Trace($"{P2PSession.RemoteNodeId} P2P sending ping on {P2PSession.RemotePort} ({RemoteClientId})");
             }
             Send(PingMessage.Instance);
-            P2PSession.NodeStats.AddNodeStatsEvent(NodeStatsEventType.P2PPingOut);
+            P2PSession?.NodeStats.AddNodeStatsEvent(NodeStatsEventType.P2PPingOut);
 
             var firstTask = await Task.WhenAny(pongTask, Task.Delay(Timeouts.P2PPing));
             _pongCompletionSource = null;
@@ -248,7 +248,7 @@ namespace Nethermind.Network.P2P
         private void HandlePong(Packet msg)
         {
             if(Logger.IsTraceEnabled) Logger.Trace($"{P2PSession.RemoteNodeId} P2P pong on {P2PSession.RemotePort} ({RemoteClientId})");
-            P2PSession.NodeStats.AddNodeStatsEvent(NodeStatsEventType.P2PPingIn);
+            P2PSession?.NodeStats.AddNodeStatsEvent(NodeStatsEventType.P2PPingIn);
             _pongCompletionSource?.SetResult(msg);
         }
     }

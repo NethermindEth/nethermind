@@ -24,5 +24,6 @@ namespace Nethermind.Network.Stats
     public interface INodeStatsProvider
     {
         INodeStats GetOrAddNodeStats(Node node);
+        INodeStats GetOrAddNodeStats(NodeId nodeId, string host, int port);
     }
 }

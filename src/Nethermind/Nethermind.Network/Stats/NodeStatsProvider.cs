@@ -31,17 +31,25 @@ namespace Nethermind.Network.Stats
     {
         private readonly IConfigProvider _networkConfigurationProvider;
         private readonly ILogManager _logManager;
+        private readonly INodeFactory _nodeFactory;
         private readonly ConcurrentDictionary<NodeId, INodeStats> _nodeStats = new ConcurrentDictionary<NodeId, INodeStats>();
 
-        public NodeStatsProvider(IConfigProvider networkConfigurationProvider, ILogManager logManager)
+        public NodeStatsProvider(IConfigProvider networkConfigurationProvider, ILogManager logManager, INodeFactory nodeFactory)
         {
             _networkConfigurationProvider = networkConfigurationProvider;
             _logManager = logManager;
+            _nodeFactory = nodeFactory;
         }
 
         public INodeStats GetOrAddNodeStats(Node node)
         {
             return _nodeStats.GetOrAdd(node.Id, x => new NodeStats(node, _networkConfigurationProvider, _logManager));
+        }
+
+        public INodeStats GetOrAddNodeStats(NodeId nodeId, string host, int port)
+        {
+            var node = _nodeFactory.CreateNode(nodeId, host, port);
+            return GetOrAddNodeStats(node);
         }
     }
 }

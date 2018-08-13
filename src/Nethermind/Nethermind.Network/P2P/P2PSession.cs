@@ -38,6 +38,7 @@ namespace Nethermind.Network.P2P
         private readonly ILogger _logger;
         private readonly IMessageSerializationService _serializer;
         private readonly ISynchronizationManager _syncManager;
+        private readonly INodeStatsProvider _nodeStatsProvider;
         private readonly Dictionary<string, IProtocolHandler> _protocols = new Dictionary<string, IProtocolHandler>();
 
         private IChannelHandlerContext _context;
@@ -46,13 +47,15 @@ namespace Nethermind.Network.P2P
         private Func<int, (string, int)> _adaptiveCodeResolver;
         private Func<(string ProtocolCode, int PacketType), int> _adaptiveEncoder;
         private bool _wasDisconnected;
-        
+        private INodeStats _nodeStats;
+
         public P2PSession(
             NodeId localNodeId,
             int localPort,
             IMessageSerializationService serializer,
             ISynchronizationManager syncManager,
             ILogManager logManager,
+            INodeStatsProvider nodeStatsProvider,
             INodeStats nodeStats)
         {
             _serializer = serializer ?? throw new ArgumentNullException(nameof(serializer));
@@ -60,7 +63,8 @@ namespace Nethermind.Network.P2P
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _logger = logManager.GetClassLogger();
 
-            NodeStats = nodeStats;           
+            NodeStats = nodeStats;
+            _nodeStatsProvider = nodeStatsProvider;
             LocalNodeId = localNodeId;
             LocalPort = localPort;
             SessionId = Guid.NewGuid().ToString();
@@ -73,7 +77,24 @@ namespace Nethermind.Network.P2P
         public string RemoteHost { get; set; }
         public ClientConnectionType ClientConnectionType { get; set; }
         public string SessionId { get; }
-        public INodeStats NodeStats { get; }
+
+        public INodeStats NodeStats
+        {
+            get
+            {
+                //It is needed for lazy creation of NodeStats, in case  IN connections, publicKey is availible only after handshake
+                if (_nodeStats == null)
+                {
+                    if (RemoteNodeId == null)
+                    {
+                        throw new Exception("Cannot get NodeStats without NodeId");
+                    }
+                    _nodeStats = _nodeStatsProvider.GetOrAddNodeStats(RemoteNodeId, RemoteHost, RemotePort ?? 0);
+                }
+                return _nodeStats;
+            }
+            set => _nodeStats = value;
+        }
 
         // TODO: this should be one level up
         public void EnableSnappy()

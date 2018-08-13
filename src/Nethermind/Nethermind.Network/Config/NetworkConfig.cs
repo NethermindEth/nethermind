@@ -70,7 +70,7 @@ namespace Nethermind.Network.Config
         public string DbBasePath { get; set; } = Path.GetTempPath();
         public bool IsDiscoveryNodesPersistenceOn { get; set; } = true;
         public bool IsPeersPersistenceOn { get; set; } = true;
-        public int ActivePeerUpdateInterval { get; set; } = 1000 * 2;
+        public int ActivePeerUpdateInterval { get; set; } = 1000 * 20;
         public bool IsActivePeerTimerEnabled { get; set; } = true;
         public int ActivePeersMaxCount { get; set; } = 25;
         public int DisconnectDelay { get; set; } = 1000 * 60 * 2;

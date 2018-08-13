@@ -29,6 +29,7 @@ using Nethermind.Core.Model;
 using Nethermind.Network.P2P;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
+using Nethermind.Network.Stats;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -42,6 +43,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
         {
             _ip2PSession = Substitute.For<IP2PSession>();
             _serializationService = Substitute.For<IMessageSerializationService>();
+            _nodeStatsProvider = Substitute.For<INodeStatsProvider>();
 
             _pipeline = Substitute.For<IChannelPipeline>();
 
@@ -68,6 +70,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
         private IChannelHandlerContext _channelHandlerContext;
         private IEncryptionHandshakeService _service;
         private IP2PSession _ip2PSession;
+        private INodeStatsProvider _nodeStatsProvider;
         private IMessageSerializationService _serializationService;
         private ILogger _logger;
         private NodeId _remotePublicKey;

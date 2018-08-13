@@ -202,7 +202,7 @@ namespace Nethermind.Runner.Runners
 
             // create shared objects between discovery and peer manager
             _nodeFactory = new NodeFactory();
-            _nodeStatsProvider = new NodeStatsProvider(_configProvider, _logManager);
+            _nodeStatsProvider = new NodeStatsProvider(_configProvider, _logManager, _nodeFactory);
             var jsonSerializer = new JsonSerializer(_logManager);
             var encrypter = new AesEncrypter(_configProvider, _logManager);
             _keyStore = new FileKeyStore(_configProvider, jsonSerializer, encrypter, _cryptoRandom, _logManager);
@@ -398,7 +398,7 @@ namespace Nethermind.Runner.Runners
             _messageSerializationService.Register(new BlockBodiesMessageSerializer());
             _messageSerializationService.Register(new NewBlockMessageSerializer());
 
-            _localPeer = new RlpxPeer(new NodeId(_privateKey.PublicKey), _initConfig.P2PPort, encryptionHandshakeServiceA, _messageSerializationService, _syncManager, _logManager);          
+            _localPeer = new RlpxPeer(new NodeId(_privateKey.PublicKey), _initConfig.P2PPort, encryptionHandshakeServiceA, _messageSerializationService, _syncManager, _logManager, _nodeStatsProvider);          
         }
 
         private async Task StartNet()

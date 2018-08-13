@@ -72,12 +72,13 @@ namespace Nethermind.Network.Test
 //            var encryptionHandshakeServiceC = new EncryptionHandshakeService(serializationService, eciesCipher, cryptoRandom, signer, _keyC, logger);
 
             var syncManager = Substitute.For<ISynchronizationManager>();
+            var nodeStatsProvider = Substitute.For<INodeStatsProvider>();
             Block genesisBlock = Build.A.Block.Genesis.TestObject;
             syncManager.Head.Returns(genesisBlock.Header);
             syncManager.Genesis.Returns(genesisBlock.Header);
             
-            var peerServerA = new RlpxPeer(new NodeId(_keyA.PublicKey), PortA, encryptionHandshakeServiceA, serializationService, syncManager, logManager);
-            var peerServerB = new RlpxPeer(new NodeId(_keyB.PublicKey), PortB, encryptionHandshakeServiceB, serializationService, syncManager, logManager);
+            var peerServerA = new RlpxPeer(new NodeId(_keyA.PublicKey), PortA, encryptionHandshakeServiceA, serializationService, syncManager, logManager, nodeStatsProvider);
+            var peerServerB = new RlpxPeer(new NodeId(_keyB.PublicKey), PortB, encryptionHandshakeServiceB, serializationService, syncManager, logManager, nodeStatsProvider);
 //            var peerServerC = new RlpxPeer(_keyC.PublicKey, PortC, encryptionHandshakeServiceC, serializationService, Substitute.For<ISynchronizationManager>(), logger);
             
             await Task.WhenAll(peerServerA.Init(), peerServerB.Init());

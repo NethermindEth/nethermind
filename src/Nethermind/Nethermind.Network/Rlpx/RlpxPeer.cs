@@ -48,6 +48,7 @@ namespace Nethermind.Network.Rlpx
         private readonly ISynchronizationManager _synchronizationManager;
         private readonly ILogManager _logManager;
         private readonly ILogger _logger;
+        private readonly INodeStatsProvider _nodeStatsProvider;
         private IChannel _bootstrapChannel;
         private IEventLoopGroup _bossGroup;
 
@@ -60,9 +61,10 @@ namespace Nethermind.Network.Rlpx
             IEncryptionHandshakeService encryptionHandshakeService,
             IMessageSerializationService serializationService,
             ISynchronizationManager synchronizationManager,
-            ILogManager logManager)
+            ILogManager logManager, INodeStatsProvider nodeStatsProvider)
         {
             _logManager =logManager ?? throw new ArgumentNullException(nameof(logManager));
+            _nodeStatsProvider = nodeStatsProvider;
             _logger = logManager.GetClassLogger();
             
             _synchronizationManager = synchronizationManager ?? throw new ArgumentNullException(nameof(synchronizationManager));
@@ -192,7 +194,7 @@ namespace Nethermind.Network.Rlpx
                 _localPort,
                 _serializationService,
                 _synchronizationManager,
-                _logManager, nodeStats)
+                _logManager, _nodeStatsProvider, nodeStats)
             {
                 ClientConnectionType = connectionType
             };
@@ -207,7 +209,8 @@ namespace Nethermind.Network.Rlpx
                 
                 p2PSession.RemoteNodeId = remoteId;
                 p2PSession.RemoteHost = remoteHost;
-                p2PSession.RemotePort = remotePort;               
+                p2PSession.RemotePort = remotePort;
+
                 ConnectionInitialized?.Invoke(this, new ConnectionInitializedEventArgs(p2PSession, connectionType));
             }
 
@@ -219,9 +222,8 @@ namespace Nethermind.Network.Rlpx
                 {
                     if (_logger.IsInfoEnabled)
                     {
-                        _logger.Info($"Initializing {connectionType.ToString().ToUpper()} channel {p2PSession.RemoteNodeId}@{p2PSession.RemoteHost}:{p2PSession.RemotePort}");
+                        _logger.Info($"Handshake initialized {connectionType.ToString().ToUpper()} channel {p2PSession.RemoteNodeId}@{p2PSession.RemoteHost}:{p2PSession.RemotePort}");
                     }
-                    //ConnectionInitialized?.Invoke(this, new ConnectionInitializedEventArgs(p2PSession, connectionType));
                 }
                 HandshakeInitialized?.Invoke(this, new ConnectionInitializedEventArgs(p2PSession, connectionType));
             };

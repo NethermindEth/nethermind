@@ -64,11 +64,6 @@ namespace Nethermind.Network
         private readonly ConcurrentDictionary<NodeId, Peer> _activePeers = new ConcurrentDictionary<NodeId, Peer>();
         private readonly ConcurrentDictionary<NodeId, Peer> _candidatePeers = new ConcurrentDictionary<NodeId, Peer>();
 
-        //TODO Timer to periodically check active peers and move new to active based on max size and compatibility - stats and capabilities + update peers in synchronization manager
-        //TODO Remove active and synch on disconnect
-        //TODO Update Stats on disconnect, other events
-        //TODO update runner to run discovery
-
         public PeerManager(IRlpxPeer localPeer,
             IDiscoveryManager discoveryManager,
             ISynchronizationManager synchronizationManager,
@@ -496,13 +491,6 @@ namespace Nethermind.Network
         private async Task OnProtocolInitialized(object sender, ProtocolInitializedEventArgs e)
         {
             var session = (IP2PSession)sender;
-            //if (session.ClientConnectionType == ClientConnectionType.In && e.ProtocolHandler is P2PProtocolHandler handler)
-            //{
-            //    if (!await ProcessIncomingConnection(session, handler))
-            //    {
-            //        return;
-            //    }
-            //}
 
             if (!_activePeers.TryGetValue(session.RemoteNodeId, out var peer))
             {
@@ -730,6 +718,12 @@ namespace Nethermind.Network
             if (_logger.IsInfoEnabled)
             {
                 _logger.Info($"Peer disconnected event in PeerManager: {peer.RemoteNodeId}, disconnectReason: {e.DisconnectReason}, disconnectType: {e.DisconnectType}");
+            }
+
+            if (peer.RemoteNodeId == null)
+            {
+                if (_logger.IsWarnEnabled) _logger.Warn($"Disconnect on session with no RemoteNodeId, sessionId: {peer.SessionId}");
+                return;
             }
 
             if (_activePeers.TryGetValue(peer.RemoteNodeId, out var activePeer))

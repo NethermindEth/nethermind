@@ -67,7 +67,7 @@ namespace Nethermind.Network.Test.Discovery
             _nodeTable.Initialize();
 
             var evictionManager = new EvictionManager(_nodeTable, logManager);
-            var lifecycleFactory = new NodeLifecycleManagerFactory(_nodeFactory, _nodeTable, new DiscoveryMessageFactory(config), evictionManager, new NodeStatsProvider(config, logManager), config, logManager);
+            var lifecycleFactory = new NodeLifecycleManagerFactory(_nodeFactory, _nodeTable, new DiscoveryMessageFactory(config), evictionManager, new NodeStatsProvider(config, logManager, _nodeFactory), config, logManager);
 
             _nodes = new[] { _nodeFactory.CreateNode("192.168.1.18", 1), _nodeFactory.CreateNode("192.168.1.19", 2) };
 

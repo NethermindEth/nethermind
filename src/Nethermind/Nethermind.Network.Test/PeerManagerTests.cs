@@ -54,10 +54,10 @@ namespace Nethermind.Network.Test
             var nodeTable = new NodeTable(_nodeFactory, Substitute.For<IKeyStore>(), new NodeDistanceCalculator(_configurationProvider), _configurationProvider, _logManager);
             nodeTable.Initialize(new NodeId(key));
 
-            _discoveryManager = new DiscoveryManager(new NodeLifecycleManagerFactory(_nodeFactory, nodeTable, new DiscoveryMessageFactory(_configurationProvider), Substitute.For<IEvictionManager>(), new NodeStatsProvider(_configurationProvider, _logManager), _configurationProvider, _logManager), _nodeFactory, nodeTable, new DiscoveryStorage(_configurationProvider, _nodeFactory, _logManager, new PerfService(_logManager)), _configurationProvider, _logManager);
+            _discoveryManager = new DiscoveryManager(new NodeLifecycleManagerFactory(_nodeFactory, nodeTable, new DiscoveryMessageFactory(_configurationProvider), Substitute.For<IEvictionManager>(), new NodeStatsProvider(_configurationProvider, _logManager, _nodeFactory), _configurationProvider, _logManager), _nodeFactory, nodeTable, new DiscoveryStorage(_configurationProvider, _nodeFactory, _logManager, new PerfService(_logManager)), _configurationProvider, _logManager);
             _discoveryManager.MessageSender = Substitute.For<IMessageSender>();
 
-            _peerManager = new PeerManager(_localPeer, _discoveryManager, _synchronizationManager, new NodeStatsProvider(_configurationProvider, _logManager ), new PeerStorage(_configurationProvider, _nodeFactory, _logManager, new PerfService(_logManager)), _nodeFactory, _configurationProvider, new PerfService(_logManager), _logManager);
+            _peerManager = new PeerManager(_localPeer, _discoveryManager, _synchronizationManager, new NodeStatsProvider(_configurationProvider, _logManager, _nodeFactory), new PeerStorage(_configurationProvider, _nodeFactory, _logManager, new PerfService(_logManager)), _nodeFactory, _configurationProvider, new PerfService(_logManager), _logManager);
             _peerManager.Initialize(true);
         }
 
@@ -284,7 +284,7 @@ namespace Nethermind.Network.Test
         public ClientConnectionType ClientConnectionType { get; set; }
 
         public string SessionId { get; }
-        public INodeStats NodeStats { get; }
+        public INodeStats NodeStats { get; set; }
 
         public TestP2PSession()
         {
