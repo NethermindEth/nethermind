@@ -29,7 +29,7 @@ dotnet build
 //change test node key to something random in config.json<br/>
 ```
 cd src/Nethermind/Nethermind.Runner
-dotnet Nethermind.Runner --config configs/mainnet_windows_discovery.config.json
+dotnet run --config configs//ropsten_windows_discovery.config.json
 ```
 
 ## Contributors welcome
