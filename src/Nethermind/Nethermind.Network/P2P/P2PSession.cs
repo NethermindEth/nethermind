@@ -247,6 +247,7 @@ namespace Nethermind.Network.P2P
                         {
                             _logger.Info($"{RemoteNodeId} {protocolHandler.ProtocolCode} v{protocolHandler.ProtocolVersion} established - Disabling Snappy");
                         }
+                        
                         ProtocolInitialized?.Invoke(this, args);
                     };
                     break;

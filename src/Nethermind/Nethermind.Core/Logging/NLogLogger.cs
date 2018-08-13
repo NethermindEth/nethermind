@@ -32,13 +32,13 @@ namespace Nethermind.Core.Logging
         public bool IsTraceEnabled { get; }
         public bool IsNoteEnabled { get; }
 
-        internal NLog.Logger Logger;
-        internal NLog.Logger NoteLogger;
-
+        internal readonly NLog.Logger Logger;
+        private readonly NLog.Logger _noteLogger;
 
         public NLogLogger(string fileName)
         {
-            Logger = NLog.LogManager.GetLogger(StackTraceUsageUtils.GetClassFullName().Replace("Nethermind.", string.Empty));
+            Logger = NLog.LogManager.GetLogger(StackTraceUsageUtils.GetClassFullName()
+                .Replace("Nethermind.", string.Empty));
             if (!Directory.Exists("logs"))
             {
                 Directory.CreateDirectory("logs");
@@ -56,11 +56,46 @@ namespace Nethermind.Core.Logging
             IsTraceEnabled = Logger.IsTraceEnabled;
             IsErrorEnabled = Logger.IsErrorEnabled || Logger.IsFatalEnabled;
 
-            NoteLogger = NLog.LogManager.GetLogger("NoteLogger");
-            IsNoteEnabled = NoteLogger.IsInfoEnabled;
+            Log($"Configured {Logger.Name} logger at level {Level}");
+
+            _noteLogger = NLog.LogManager.GetLogger("NoteLogger");
+            IsNoteEnabled = _noteLogger.IsInfoEnabled;
         }
 
-        public void Log(string text)
+        private string Level
+        {
+            get
+            {
+                if (IsTraceEnabled)
+                {
+                    return "Trace";
+                }
+
+                if (IsDebugEnabled)
+                {
+                    return "Debug";
+                }
+
+                if (IsInfoEnabled)
+                {
+                    return "Info";
+                }
+
+                if (IsWarnEnabled)
+                {
+                    return "Warn";
+                }
+
+                if (IsErrorEnabled)
+                {
+                    return "Error";
+                }
+
+                return "None";
+            }
+        }
+
+        private void Log(string text)
         {
             Logger.Info(text);
         }
@@ -92,7 +127,7 @@ namespace Nethermind.Core.Logging
 
         public void Note(string text)
         {
-            NoteLogger.Info(text);
+            _noteLogger.Info(text);
         }
     }
 }

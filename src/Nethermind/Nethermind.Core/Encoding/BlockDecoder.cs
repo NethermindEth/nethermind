@@ -25,6 +25,11 @@ namespace Nethermind.Core.Encoding
         public Block Decode(Rlp.DecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             int sequenceLength = context.ReadSequenceLength();
+            if (sequenceLength == 0)
+            {
+                return null;
+            }
+            
             int blockCheck = context.Position + sequenceLength;
 
             BlockHeader header = Rlp.Decode<BlockHeader>(context);
@@ -59,6 +64,11 @@ namespace Nethermind.Core.Encoding
 
         public Rlp Encode(Block item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
+            if (item == null)
+            {
+                return Rlp.OfEmptySequence;
+            }
+            
             return Rlp.Encode(
                 Rlp.Encode(item.Header),
                 Rlp.Encode(item.Transactions),

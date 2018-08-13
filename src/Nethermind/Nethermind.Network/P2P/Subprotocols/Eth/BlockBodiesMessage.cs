@@ -21,6 +21,18 @@ using Nethermind.Core;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth
 {
+    public class BlockBody
+    {
+        public BlockBody(Transaction[] transactions, BlockHeader[] ommers)
+        {
+            Transactions = transactions;
+            Ommers = ommers;
+        }
+        
+        public Transaction[] Transactions { get; }
+        public BlockHeader[] Ommers { get; }
+    }
+    
     public class BlockBodiesMessage : P2PMessage
     {
         public override int PacketType { get; } = Eth62MessageCode.BlockBodies;
@@ -32,9 +44,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         public BlockBodiesMessage(Block[] blocks)
         {
-            Bodies = blocks.Select(b => (b.Transactions.ToArray(), b.Ommers)).ToArray();
+            Bodies = blocks.Select(b => b == null ? null : new BlockBody(b.Transactions.ToArray(), b.Ommers)).ToArray();
         }
         
-        public (Transaction[] Transactions, BlockHeader[] Ommers)[] Bodies { get; set; }
+        public BlockBody[] Bodies { get; set; }
     }
 }

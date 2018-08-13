@@ -27,7 +27,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
     {
         public byte[] Serialize(BlockBodiesMessage message)
         {
-            return Rlp.Encode(message.Bodies.Select(b => Rlp.Encode(
+            return Rlp.Encode(message.Bodies.Select(b => b == null ? Rlp.OfEmptySequence : Rlp.Encode(
                 Rlp.Encode(b.Transactions),
                 Rlp.Encode(b.Ommers))).ToArray()).Bytes;
         }
@@ -38,10 +38,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             BlockBodiesMessage message = new BlockBodiesMessage();
             message.Bodies = decoderContext.DecodeArray(ctx =>
             {
-                decoderContext.ReadSequenceLength();
+                int sequenceLength = decoderContext.ReadSequenceLength();
+                if (sequenceLength == 0)
+                {
+                    return null;
+                }
+                
                 Transaction[] transactions = decoderContext.DecodeArray(txCtx => Rlp.Decode<Transaction>(ctx));
                 BlockHeader[] ommers = decoderContext.DecodeArray(txCtx => Rlp.Decode<BlockHeader>(ctx));
-                return (transactions, ommers);
+                return new BlockBody(transactions, ommers);
             });
 
             return message;

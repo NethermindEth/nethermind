@@ -29,8 +29,19 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
         public void Roundtrip()
         {
             BlockBodiesMessage message = new BlockBodiesMessage();
-            message.Bodies = new (Transaction[], BlockHeader[])[0];
-            
+            message.Bodies = new BlockBody[0];
+
+            BlockBodiesMessageSerializer serializer = new BlockBodiesMessageSerializer();
+            byte[] bytes = serializer.Serialize(message);
+            BlockBodiesMessage deserialized = serializer.Deserialize(bytes);
+            Assert.AreEqual(message.Bodies.Length, deserialized.Bodies.Length, "length");
+        }
+
+        [Test]
+        public void Roundtrip_with_nulls()
+        {
+            BlockBodiesMessage message = new BlockBodiesMessage {Bodies = new BlockBody[1] {null}};
+
             BlockBodiesMessageSerializer serializer = new BlockBodiesMessageSerializer();
             byte[] bytes = serializer.Serialize(message);
             BlockBodiesMessage deserialized = serializer.Deserialize(bytes);

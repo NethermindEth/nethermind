@@ -490,6 +490,8 @@ namespace Nethermind.Network
 
         private async Task OnProtocolInitialized(object sender, ProtocolInitializedEventArgs e)
         {
+            if(_logger.IsInfoEnabled) _logger.Info($"Protocol initialized {e.ProtocolHandler.ProtocolCode} {e.ProtocolHandler.ProtocolVersion}.");
+            
             var session = (IP2PSession)sender;
 
             if (!_activePeers.TryGetValue(session.RemoteNodeId, out var peer))

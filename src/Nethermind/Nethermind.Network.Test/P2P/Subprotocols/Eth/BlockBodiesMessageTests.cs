@@ -16,17 +16,20 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Network.P2P.Subprotocols.Eth;
+using NUnit.Framework;
 
-namespace Nethermind.Network.P2P
+namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
 {
-    public class ProtocolInitializedEventArgs : EventArgs
+    [TestFixture]
+    public class BlockBodiesMessageTests
     {
-        public IProtocolHandler ProtocolHandler { get; }
-
-        protected ProtocolInitializedEventArgs(IProtocolHandler protocolHandler)
+        [Test]
+        public void Ctor_with_nulls()
         {
-            ProtocolHandler = protocolHandler;
+            var message = new BlockBodiesMessage(new[] {Build.A.Block.TestObject, null, Build.A.Block.TestObject});
+            Assert.AreEqual(3, message.Bodies.Length);
         }
     }
 }

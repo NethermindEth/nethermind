@@ -16,17 +16,20 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
+using Nethermind.Core.Encoding;
+using NUnit.Framework;
 
-namespace Nethermind.Network.P2P
+namespace Nethermind.Core.Test.Encoding
 {
-    public class ProtocolInitializedEventArgs : EventArgs
+    [TestFixture]
+    public class BlockDecoderTests
     {
-        public IProtocolHandler ProtocolHandler { get; }
-
-        protected ProtocolInitializedEventArgs(IProtocolHandler protocolHandler)
+        [Test]
+        public void Can_do_roundtrip_null()
         {
-            ProtocolHandler = protocolHandler;
+            Rlp rlp = Rlp.Encode((Block) null);
+            Block decoded = Rlp.Decode<Block>(rlp);
+            Assert.IsNull(decoded);
         }
     }
 }

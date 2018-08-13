@@ -305,7 +305,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         private void Handle(BlockBodiesMessage message)
         {
             List<Block> blocks = new List<Block>();
-            foreach ((Transaction[] Transactions, BlockHeader[] Ommers) body in message.Bodies)
+            foreach (BlockBody body in message.Bodies)
             {
                 // TODO: match with headers
                 Block block = new Block(null, body.Transactions, body.Ommers);
