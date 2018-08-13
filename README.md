@@ -3,6 +3,24 @@ Full .NET Core Ethereum client.
 
 [gitter](https://gitter.im/nethermindeth/nethermind?utm_source=share-link&utm_medium=link&utm_campaign=share-link)
 
+## Build (Windows / Linux / MacOS)
+
+### IDE
+•	JetBrains Rider https://www.jetbrains.com/rider/
+•	VS Code https://code.visualstudio.com/docs/other/dotnet
+
+### SDKs
+•	Windows https://www.microsoft.com/net/download?initial-os=windows
+•	Linux https://www.microsoft.com/net/download?initial-os=linux (make sure to select the right distribution)
+•	Mac https://www.microsoft.com/net/download?initial-os=macos
+
+### source and build
+
+git clone https://github.com/tkstanczak/nethermind.git
+cd nethermind/src/Nethermind
+git submodule update --init
+dotnet build
+
 ## Contributors welcome
 At Nethermind we are building an Open Source multiplatform Ethereum client implementation in .NET Core (running seamlessly both on Linux and Windows). Simultaneously our team works on Nethermind trading tools, analytics and decentralized exchange (0x relay).
 
