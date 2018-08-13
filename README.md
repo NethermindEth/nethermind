@@ -26,6 +26,13 @@ At Nethermind we are building an Open Source multiplatform Ethereum client imple
 
 Nethermind client can be used in your projects, when setting up private Ethereum networks or dApps. Nethermind is under development and below is the long list of items that are still to be implemented (and we would love to see open source contributions here). A full and up to date list will be maintained via [issues](https://github.com/tkstanczak/nethermind/issues)
 
+## mainnet sync (networking is very unstable, current version should not be considered secure or correct, do not use for anything but experimenting with the source code)
+
+//change paths in config.json to run on Linux / MacOS<br/>
+//change test node key to something random in config.json<br/>
+cd src/Nethermind/Nethermind.Runner<br/>
+dotnet Nethermind.Runner --config configs/mainnet_windows_discovery.config.json<br/>
+
 ### core EVM related:
 Improve performance (heap allocations) of EVM by replacing BigInteger with Int256 implementation: one can use int128 implementation as a basis for this work
 https://github.com/ricksladkey/dirichlet-numerics
