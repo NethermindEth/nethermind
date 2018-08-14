@@ -122,14 +122,14 @@ namespace Nethermind.Network.Rlpx
             {
                 if (_logger.IsDebugEnabled)
                 {
-                    _logger.Error($"{GetType().Name} error in netty frame merger (SocketException): {exception}");
+                    _logger.Error($"Error when merging frames (SocketException): {exception}");
                 }
             }
             else
             {
                 if (_logger.IsErrorEnabled)
                 {
-                    _logger.Error($"{GetType().Name} error in netty frame merger: {exception}");
+                    _logger.Error($"Error when merging frames: {exception}");
                 }
             }
 

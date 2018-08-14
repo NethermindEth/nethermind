@@ -40,14 +40,12 @@ namespace Nethermind.Network.Stats
         private Dictionary<NodeStatsEventType, AtomicLong> _statCounters;
         private Dictionary<DisconnectType, (DisconnectReason DisconnectReason, DateTime DisconnectTime)> _lastDisconnects;        
         private readonly IList<NodeStatsEvent> _eventHistory;
-        private readonly ILogger _logger;
 
-        public NodeStats(Node node, IConfigProvider configurationProvider, ILogManager logManager)
+        public NodeStats(Node node, IConfigProvider configurationProvider)
         {
             Node = node;
             _configurationProvider = configurationProvider.GetConfig<NetworkConfig>();
             _eventHistory = new List<NodeStatsEvent>();
-            _logger = logManager?.GetClassLogger();
             Initialize();
         }
 

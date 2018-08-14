@@ -61,9 +61,10 @@ namespace Nethermind.Blockchain
             IHeaderValidator headerValidator,
             ITransactionStore transactionStore,
             ITransactionValidator transactionValidator,
-            ILogger logger, IBlockchainConfig blockchainConfig)
+            ILogManager logManager,
+            IBlockchainConfig blockchainConfig)
         {
-            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _blockchainConfig = blockchainConfig;
             _transactionStore = transactionStore ?? throw new ArgumentNullException(nameof(transactionStore));
             _transactionValidator = transactionValidator ?? throw new ArgumentNullException(nameof(transactionValidator));
@@ -541,6 +542,8 @@ namespace Nethermind.Blockchain
 
             while (peerInfo.NumberAvailable > bestNumber && peerInfo.NumberReceived <= peerInfo.NumberAvailable)
             {
+                if(_logger.IsInfoEnabled) _logger.Info($"Continue syncing with {peerInfo} (our best {bestNumber})");
+                
                 if (ancestorLookupLevel > maxLookup)
                 {
                     throw new InvalidOperationException("Cannot find ancestor"); // TODO: remodel this after full sync test is added
@@ -640,7 +643,7 @@ namespace Nethermind.Blockchain
 
                 for (int i = 0; i < blocks.Length; i++)
                 {
-                    if(_logger.IsInfoEnabled) _logger.Info($"Received {blocks[i]} from {peer.NodeId}");
+                    if(_logger.IsDebugEnabled) _logger.Debug($"Received {blocks[i]} from {peer.NodeId}");
                     
                     if (_blockValidator.ValidateSuggestedBlock(blocks[i]))
                     {

@@ -43,7 +43,7 @@ namespace Nethermind.Network.Stats
 
         public INodeStats GetOrAddNodeStats(Node node)
         {
-            return _nodeStats.GetOrAdd(node.Id, x => new NodeStats(node, _networkConfigurationProvider, _logManager));
+            return _nodeStats.GetOrAdd(node.Id, x => new NodeStats(node, _networkConfigurationProvider));
         }
 
         public INodeStats GetOrAddNodeStats(NodeId nodeId, string host, int port)

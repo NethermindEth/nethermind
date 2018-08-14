@@ -97,12 +97,12 @@ namespace Nethermind.Network.Test.Discovery
         private INodeLifecycleManager CreateLifecycleManager(Node node)
         {
             var manager = Substitute.For<INodeLifecycleManager>();
-            var logManager = NullLogManager.Instance;
             manager.ManagedNode.Returns(node);
-            manager.NodeStats.Returns(new NodeStats(node, _configurationProvider, logManager)
+            manager.NodeStats.Returns(new NodeStats(node, _configurationProvider)
             {
                 CurrentPersistedNodeReputation = node.Port
             });
+            
             return manager;
         }
     }

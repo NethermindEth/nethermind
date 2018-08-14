@@ -179,29 +179,34 @@ namespace Nethermind.Core.Encoding
         {
             long value = item;
 
-            // check test bytestring00 and zero - here is some inconsistency in tests
-            if (value == 0L)
+            if (value >= 0)
             {
-                return OfEmptyByteArray;
+                // check test bytestring00 and zero - here is some inconsistency in tests
+                if (value == 0L)
+                {
+                    return OfEmptyByteArray;
+                }
+
+                if (value < 128L)
+                {
+                    // ReSharper disable once PossibleInvalidCastException
+                    return new Rlp(Convert.ToByte(value));
+                }
+
+                if (value <= byte.MaxValue)
+                {
+                    return Encode(new[] {Convert.ToByte(value)});
+                }
+
+                if (value <= short.MaxValue)
+                {
+                    return Encode(((short) value).ToBigEndianByteArray());
+                }
+                
+                return Encode(new BigInteger(value));
             }
 
-            if (value < 128L)
-            {
-                // ReSharper disable once PossibleInvalidCastException
-                return new Rlp(Convert.ToByte(value));
-            }
-
-            if (value <= byte.MaxValue)
-            {
-                return Encode(new[] { Convert.ToByte(value) });
-            }
-
-            if (value <= short.MaxValue)
-            {
-                return Encode(((short)value).ToBigEndianByteArray());
-            }
-
-            return Encode(new BigInteger(value));
+            return Encode(new BigInteger(value), 8);
         }
 
         public static Rlp Encode(bool value)
@@ -255,10 +260,10 @@ namespace Nethermind.Core.Encoding
             return EncodeNumber(value);
         }
 
-        public static Rlp Encode(BigInteger bigInteger)
+        public static Rlp Encode(BigInteger bigInteger, int outputLength = -1)
         {
             // TODO: use span here
-            return bigInteger == 0 ? OfEmptyByteArray : Encode(bigInteger.ToBigEndianByteArray());
+            return bigInteger == 0 ? OfEmptyByteArray : Encode(bigInteger.ToBigEndianByteArray(outputLength));
         }
 
         public static Rlp Encode(string s)

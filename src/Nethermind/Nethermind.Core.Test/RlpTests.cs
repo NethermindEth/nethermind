@@ -111,5 +111,15 @@ namespace Nethermind.Core.Test
             Rlp output = Rlp.Encode(new Rlp[] { Rlp.Encode(1) });
             Assert.AreEqual(new byte[] { 1 }, output.Bytes);
         }
+        
+        [Test]
+        public void Long_negative()
+        {
+            Rlp output = Rlp.Encode(-1L);
+            var context = new Rlp.DecoderContext(output.Bytes);
+            long value = context.DecodeLong();
+            
+            Assert.AreEqual(-1L, value);
+        }
     }
 }
