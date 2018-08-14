@@ -16,8 +16,8 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
 using System.Numerics;
+using Nethermind.Core;
 using Nethermind.Core.Crypto.ZkSnarks;
 using Nethermind.Core.Extensions;
 
@@ -36,7 +36,7 @@ namespace Nethermind.Evm.Precompiles
         {
         }
 
-        public BigInteger Address => 8;
+        public Address Address { get; } = Address.FromNumber(8);
 
         public long BaseGasCost()
         {

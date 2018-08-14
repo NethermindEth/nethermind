@@ -16,8 +16,8 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Numerics;
 using System.Security.Cryptography;
+using Nethermind.Core;
 
 namespace Nethermind.Evm.Precompiles
 {
@@ -33,7 +33,7 @@ namespace Nethermind.Evm.Precompiles
             _sha256.Initialize();
         }
 
-        public BigInteger Address => 2;
+        public Address Address { get; } = Address.FromNumber(2);
 
         public long BaseGasCost()
         {

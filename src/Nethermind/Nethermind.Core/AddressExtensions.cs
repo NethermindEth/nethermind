@@ -26,6 +26,11 @@ namespace Nethermind.Core
     {
         public static bool IsPrecompiled(this Address address, IReleaseSpec releaseSpec)
         {
+            if(((byte[])address.Hex)[0] != 0)
+            {
+                return false;
+            }
+            
             BigInteger asInt = address.Hex.ToUnsignedBigInteger();
             if (asInt == 0 || asInt > 8)
             {

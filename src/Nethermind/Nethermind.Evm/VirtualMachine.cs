@@ -71,7 +71,7 @@ namespace Nethermind.Evm
         private readonly Stack<EvmState> _stateStack = new Stack<EvmState>();
         private readonly IStorageProvider _storage;
         private Address _parityTouchBugAccount;
-        private Dictionary<BigInteger, IPrecompiledContract> _precompiles;
+        private Dictionary<Address, IPrecompiledContract> _precompiles;
         private byte[] _returnDataBuffer = EmptyBytes;
         private TransactionTrace _trace;
         private TransactionTraceEntry _traceEntry;
@@ -324,7 +324,7 @@ namespace Nethermind.Evm
 
         private void InitializePrecompiledContracts()
         {
-            _precompiles = new Dictionary<BigInteger, IPrecompiledContract>
+            _precompiles = new Dictionary<Address, IPrecompiledContract>
             {
                 [EcRecoverPrecompiledContract.Instance.Address] = EcRecoverPrecompiledContract.Instance,
                 [Sha256PrecompiledContract.Instance.Address] = Sha256PrecompiledContract.Instance,
@@ -370,9 +370,9 @@ namespace Nethermind.Evm
             BigInteger transferValue = state.Env.TransferValue;
             long gasAvailable = state.GasAvailable;
 
-            BigInteger precompileId = state.Env.CodeInfo.PrecompileId;
-            long baseGasCost = _precompiles[precompileId].BaseGasCost();
-            long dataGasCost = _precompiles[precompileId].DataGasCost(callData);
+            IPrecompiledContract precompile = _precompiles[state.Env.CodeInfo.PrecompileAddress];
+            long baseGasCost = precompile.BaseGasCost();
+            long dataGasCost = precompile.DataGasCost(callData);
 
             bool wasCreated = false;
             if (!_state.AccountExists(state.Env.ExecutingAccount))
@@ -405,7 +405,6 @@ namespace Nethermind.Evm
                 throw new OutOfGasException();
             }
 
-            //if(!UpdateGas(baseGasCost, ref gasAvailable)) return CallResult.Exception;
             //if(!UpdateGas(dataGasCost, ref gasAvailable)) return CallResult.Exception;
             if (!UpdateGas(baseGasCost, ref gasAvailable))
             {
@@ -421,7 +420,7 @@ namespace Nethermind.Evm
 
             try
             {
-                (byte[] output, bool success) = _precompiles[precompileId].Run(callData);
+                (byte[] output, bool success) = precompile.Run(callData);
                 CallResult callResult = new CallResult(output);
                 callResult.PrecompileSuccess = success;
                 return callResult;

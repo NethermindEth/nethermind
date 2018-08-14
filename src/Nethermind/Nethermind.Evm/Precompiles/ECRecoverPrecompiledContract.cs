@@ -16,7 +16,6 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -33,7 +32,7 @@ namespace Nethermind.Evm.Precompiles
         {
         }
 
-        public BigInteger Address => 1;
+        public Address Address { get; } = Address.FromNumber(1);
 
         public long DataGasCost(byte[] inputData)
         {

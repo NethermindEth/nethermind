@@ -67,8 +67,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Non_existing_precompile_returns_0()
         {
-            Address precompileAddress =
-                new Address(Sha256PrecompiledContract.Instance.Address.ToBigEndianByteArray(20));
+            Address precompileAddress = Sha256PrecompiledContract.Instance.Address;
             Assert.True(precompileAddress.IsPrecompiled(Spec));
 
             byte[] code = Prepare.EvmCode
@@ -85,8 +84,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Existing_precompile_returns_empty_data_hash()
         {
-            Address precompileAddress =
-                new Address(Sha256PrecompiledContract.Instance.Address.ToBigEndianByteArray(20));
+            Address precompileAddress = Sha256PrecompiledContract.Instance.Address;
             Assert.True(precompileAddress.IsPrecompiled(Spec));
 
             TestState.CreateAccount(precompileAddress, 1.Wei());

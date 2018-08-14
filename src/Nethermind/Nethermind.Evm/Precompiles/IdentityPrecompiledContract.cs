@@ -16,7 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Numerics;
+using Nethermind.Core;
 
 namespace Nethermind.Evm.Precompiles
 {
@@ -28,7 +28,7 @@ namespace Nethermind.Evm.Precompiles
         {
         }
 
-        public BigInteger Address => 4;
+        public Address Address { get; } = Address.FromNumber(4);
 
         public long BaseGasCost()
         {

@@ -18,6 +18,7 @@
 
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test
@@ -157,6 +158,23 @@ namespace Nethermind.Core.Test
             addressBytes[19] = 9;
             Address address = new Address(addressBytes);
             Assert.False(address.IsPrecompiled(Byzantium.Instance));
+        }
+        
+        [TestCase(0, false)]
+        [TestCase(1, true)]
+        [TestCase(1000, false)]
+        public void From_number_for_precompile(int number, bool isPrecompile)
+        {
+            Address address = Address.FromNumber(number);
+            Assert.AreEqual(isPrecompile, address.IsPrecompiled(Byzantium.Instance));
+        }
+        
+        [TestCase(0, "0x24cd2edba056b7c654a50e8201b619d4f624fdda")]
+        [TestCase(1, "0xdc98b4d0af603b4fb5ccdd840406a0210e5deff8")]
+        public void Of_contract(long nonce, string expectedAddress)
+        {
+            Address address = Address.OfContract(TestObject.AddressA, nonce);
+            Assert.AreEqual(address, new Address(expectedAddress));
         }
     }
 }

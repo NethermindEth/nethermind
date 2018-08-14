@@ -55,6 +55,6 @@ namespace Nethermind.Core.Specs
         {
         }
         
-        public static RopstenSpecProvider Instance = new RopstenSpecProvider();
+        public static readonly RopstenSpecProvider Instance = new RopstenSpecProvider();
     }
 }

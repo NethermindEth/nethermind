@@ -35,13 +35,11 @@ namespace Nethermind.Evm
         public CodeInfo(Address precompileAddress)
         {
             PrecompileAddress = precompileAddress;
-            PrecompileId = PrecompileAddress.Hex.ToUnsignedBigInteger();
         }
 
         public bool IsPrecompile => PrecompileAddress != null;
         public byte[] MachineCode { get; set; }
         public Address PrecompileAddress { get; set; }
-        public BigInteger PrecompileId { get; set; }
 
         public bool ValidateJump(int destination)
         {

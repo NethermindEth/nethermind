@@ -104,6 +104,11 @@ namespace Nethermind.Core
             return string.Concat("0x", Hex.FromBytes(Hex, false, false, withEip55Checksum));
         }
 
+        public static Address FromNumber(BigInteger number)
+        {
+            return new Address(number.ToBigEndianByteArray(20));
+        }
+        
         public static Address OfContract(Address deployingAddress, BigInteger nonce)
         {
             Keccak contractAddressKeccak =

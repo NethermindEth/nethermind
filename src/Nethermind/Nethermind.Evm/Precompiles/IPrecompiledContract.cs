@@ -16,13 +16,13 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Numerics;
+using Nethermind.Core;
 
 namespace Nethermind.Evm.Precompiles
 {
     public interface IPrecompiledContract
     {
-        BigInteger Address { get; }
+        Address Address { get; }
 
         long BaseGasCost();
 

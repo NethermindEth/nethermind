@@ -17,7 +17,7 @@
  */
 
 using System;
-using System.Numerics;
+using Nethermind.Core;
 using Nethermind.Core.Crypto.ZkSnarks;
 using Nethermind.Core.Extensions;
 
@@ -34,7 +34,7 @@ namespace Nethermind.Evm.Precompiles
         {
         }
 
-        public BigInteger Address => 7;
+        public Address Address { get; } = Address.FromNumber(7);
 
         public long BaseGasCost()
         {

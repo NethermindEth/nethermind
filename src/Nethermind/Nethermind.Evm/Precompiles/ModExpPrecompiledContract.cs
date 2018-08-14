@@ -18,6 +18,7 @@
 
 using System;
 using System.Numerics;
+using Nethermind.Core;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Evm.Precompiles
@@ -33,7 +34,7 @@ namespace Nethermind.Evm.Precompiles
         {
         }
 
-        public BigInteger Address => 5;
+        public Address Address { get; } = Address.FromNumber(5);
 
         public long BaseGasCost()
         {
