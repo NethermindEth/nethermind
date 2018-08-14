@@ -43,8 +43,8 @@ namespace Nethermind.Core.Extensions
                 return obj.GetXxHashCode();
             }
         }
-
-        public static readonly byte[] Empty = new byte[0]; // consider immutable 
+        
+        public static readonly byte[] Empty = new byte[0]; 
 
         public enum Endianness
         {

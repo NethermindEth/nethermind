@@ -53,7 +53,7 @@ namespace Nethermind.Network.Test
             nodes[0].Description = "Test desc";
             nodes[4].Description = "Test desc 2";
 
-            var peers = nodes.Select(x => new Peer(x, new NodeStats(x, _configurationProvider, new NLogManager(Path.GetTempPath())))).ToArray();
+            var peers = nodes.Select(x => new Peer(x, new NodeStats(x, _configurationProvider))).ToArray();
 
             _peerStorage.StartBatch();
             _peerStorage.UpdatePeers(peers);

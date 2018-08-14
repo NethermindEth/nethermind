@@ -38,8 +38,13 @@ namespace Nethermind.Core.Specs
             {
                 return SpuriousDragon.Instance;
             }
+            
+            if (blockNumber < 5000000)
+            {
+                return Byzantium.Instance;
+            }
 
-            return Byzantium.Instance;
+            return Constantinople.Instance;
         }
         
         public BigInteger? DaoBlockNumber { get; } = null;
