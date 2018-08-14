@@ -21,6 +21,7 @@ using System.Numerics;
 using System.Text;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Core
 {
@@ -91,7 +92,7 @@ namespace Nethermind.Core
             builder.AppendLine($"{indent}Gas Limit: {GasLimit}");
             builder.AppendLine($"{indent}Gas Used: {GasUsed}");
             builder.AppendLine($"{indent}Timestamp: {Timestamp}");
-            builder.AppendLine($"{indent}Extra Data: {new Hex(ExtraData ?? new byte[0])}");
+            builder.AppendLine($"{indent}Extra Data: {(ExtraData ?? new byte[0]).ToHexString()}");
             builder.AppendLine($"{indent}Mix Hash: {MixHash}");
             builder.AppendLine($"{indent}Nonce: {Nonce}");
             builder.AppendLine($"{indent}Hash: {Hash}");
@@ -116,7 +117,7 @@ namespace Nethermind.Core
                     }
                     else
                     {
-                        return $"{Number} ({((string)new Hex(Hash.Bytes)).Substring(58, 6)})";
+                        return $"{Number} ({Hash.Bytes.ToHexString().Substring(58, 6)})";
                     }
             }
         }

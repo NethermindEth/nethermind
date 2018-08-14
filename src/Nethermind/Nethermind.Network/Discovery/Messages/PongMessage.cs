@@ -16,7 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Core;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Network.Discovery.Messages
 {
@@ -26,7 +26,7 @@ namespace Nethermind.Network.Discovery.Messages
 
         public override string ToString()
         {
-            return base.ToString() + $", PingMdc: {(PingMdc != null ? new Hex(PingMdc).ToString() : "empty")}";
+            return base.ToString() + $", PingMdc: {PingMdc?.ToHexString() ?? "empty"}";
         }
 
         public override MessageType MessageType => MessageType.Pong;

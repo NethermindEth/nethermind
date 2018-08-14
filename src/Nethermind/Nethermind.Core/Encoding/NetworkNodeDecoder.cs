@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Core.Encoding
@@ -26,7 +27,7 @@ namespace Nethermind.Core.Encoding
         {
             context.ReadSequenceLength();
 
-            var publicKey = new Hex(context.DecodeByteArray());
+            var publicKey = new PublicKey(context.DecodeByteArray());
             var ip = System.Text.Encoding.UTF8.GetString(context.DecodeByteArray());
             var port = context.DecodeByteArray().ToInt32();
             var description = System.Text.Encoding.UTF8.GetString(context.DecodeByteArray());

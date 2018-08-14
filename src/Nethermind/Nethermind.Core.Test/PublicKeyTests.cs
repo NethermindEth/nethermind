@@ -85,7 +85,8 @@ namespace Nethermind.Core.Test
         public void Cannot_be_initialized_with_null()
         {
             // ReSharper disable once ObjectCreationAsStatement
-            Assert.Throws<ArgumentNullException>(() => new PublicKey(null));
+            Assert.Throws<ArgumentNullException>(() => new PublicKey((string)null));
+            Assert.Throws<ArgumentNullException>(() => new PublicKey((byte[])null));
         }
 
         [Test]

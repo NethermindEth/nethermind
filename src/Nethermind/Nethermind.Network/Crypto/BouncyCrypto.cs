@@ -46,7 +46,7 @@ namespace Nethermind.Network.Crypto
 
         internal static ECPrivateKeyParameters WrapPrivateKey(PrivateKey privateKey)
         {
-            BigInteger d = new BigInteger(1, privateKey.Hex);
+            BigInteger d = new BigInteger(1, privateKey.KeyBytes);
             return new ECPrivateKeyParameters(d, DomainParameters);
         }
 

@@ -18,6 +18,7 @@
 
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
@@ -46,7 +47,7 @@ namespace Nethermind.Core.Test.Crypto
         [Test]
         public void Test_eip155_for_the_first_ropsten_transaction()
         {
-            Transaction tx = Rlp.Decode<Transaction>(new Rlp(new Hex("0xf85f808082520894353535353535353535353535353535353535353580801ca08d24b906be2d91a0bf2168862726991cc408cddf94cb087b392ce992573be891a077964b4e55a5c8ec7b85087d619c641c06def33ab052331337ca9efcd6b82aef")));
+            Transaction tx = Rlp.Decode<Transaction>(new Rlp(Bytes.FromHexString("0xf85f808082520894353535353535353535353535353535353535353580801ca08d24b906be2d91a0bf2168862726991cc408cddf94cb087b392ce992573be891a077964b4e55a5c8ec7b85087d619c641c06def33ab052331337ca9efcd6b82aef")));
             
             Assert.AreEqual(new Keccak("0x5fd225549ed5c587c843e04578bdd4240fc0d7ab61f8e9faa37e84ec8dc8766d"), tx.Hash, "hash");
             EthereumSigner signer = new EthereumSigner(RopstenSpecProvider.Instance, NullLogManager.Instance);

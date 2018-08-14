@@ -519,7 +519,7 @@ namespace Nethermind.Core.Encoding
 
             byte[] result = new byte[21];
             result[0] = 148;
-            Buffer.BlockCopy(address.Hex, 0, result, 1, 20);
+            Buffer.BlockCopy(address.Bytes, 0, result, 1, 20);
             return new Rlp(result);
         }
 
@@ -1094,7 +1094,7 @@ namespace Nethermind.Core.Encoding
 
         public string ToString(bool withZeroX)
         {
-            return Hex.FromBytes(Bytes, withZeroX);
+            return Bytes.ToHexString(withZeroX);
         }
 
         public int GetHashCode(Rlp obj)

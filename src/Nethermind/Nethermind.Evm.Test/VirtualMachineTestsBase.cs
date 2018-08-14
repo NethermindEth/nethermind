@@ -9,6 +9,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Store;
 using NUnit.Framework;
+using Org.BouncyCastle.Utilities.Encoders;
 
 namespace Nethermind.Evm.Test
 {
@@ -122,9 +123,9 @@ namespace Nethermind.Evm.Test
             Assert.AreEqual(value.Bytes, Storage.Get(new StorageAddress(B, address)).PadLeft(32), "storage");
         }
         
-        protected void AssertStorage(BigInteger address, Hex value)
+        protected void AssertStorage(BigInteger address, byte[] value)
         {
-            Assert.AreEqual(((byte[])value).PadLeft(32), Storage.Get(new StorageAddress(B, address)).PadLeft(32), "storage");
+            Assert.AreEqual(value.PadLeft(32), Storage.Get(new StorageAddress(B, address)).PadLeft(32), "storage");
         }
         
         protected void AssertStorage(BigInteger address, BigInteger value)
@@ -134,19 +135,13 @@ namespace Nethermind.Evm.Test
         
         protected class Prepare
         {
-            private List<byte> _byteCode = new List<byte>();
+            private readonly List<byte> _byteCode = new List<byte>();
             public static Prepare EvmCode => new Prepare();
             public byte[] Done => _byteCode.ToArray();
 
             public Prepare Op(Instruction instruction)
             {
                 _byteCode.Add((byte)instruction);
-                return this;
-            }
-
-            public Prepare Data(Hex data)
-            {
-                _byteCode.AddRange((byte[])data);
                 return this;
             }
 
@@ -182,7 +177,7 @@ namespace Nethermind.Evm.Test
             
             public Prepare PushData(Address address)
             {
-                PushData((byte[])address.Hex);
+                PushData(address.Bytes);
                 return this;
             }
 
@@ -194,7 +189,7 @@ namespace Nethermind.Evm.Test
             
             public Prepare PushData(string data)
             {
-                PushData((byte[])new Hex(data));
+                PushData(Bytes.FromHexString(data));
                 return this;
             }
 
@@ -213,7 +208,7 @@ namespace Nethermind.Evm.Test
 
             public Prepare Data(string data)
             {
-                _byteCode.AddRange((byte[])new Hex(data));
+                _byteCode.AddRange(Bytes.FromHexString(data));
                 return this;
             }
 

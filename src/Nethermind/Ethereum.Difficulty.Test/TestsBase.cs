@@ -71,7 +71,7 @@ namespace Ethereum.Difficulty.Test
 
         private static ulong ToUlong(string hex)
         {
-            byte[] bytes = Hex.ToBytes(hex);
+            byte[] bytes = Bytes.FromHexString(hex);
             return bytes.ToUInt64();
         }
 

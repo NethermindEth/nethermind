@@ -29,6 +29,7 @@ using Nethermind.Blockchain.Difficulty;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Specs.ChainSpec;
@@ -157,8 +158,8 @@ namespace Nethermind.PerfTest
             foreach (KeyValuePair<string, (string Code, string Input, int Iterations)> testCase in TestCases)
             {
                 ExecutionEnvironment env = new ExecutionEnvironment();
-                env.CodeInfo = new CodeInfo(Hex.ToBytes(testCase.Value.Code));
-                env.InputData = Hex.ToBytes(testCase.Value.Input);
+                env.CodeInfo = new CodeInfo(Bytes.FromHexString(testCase.Value.Code));
+                env.InputData = Bytes.FromHexString(testCase.Value.Input);
                 env.ExecutingAccount = new Address(Keccak.Zero);
 
                 RunTestCase(testCase.Key, env, testCase.Value.Iterations);

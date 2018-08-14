@@ -71,7 +71,7 @@ namespace Nethermind.Network.Rlpx
                     input.ReadBytes(_headerBuffer);
                     if (_logger.IsTraceEnabled)
                     {
-                        _logger.Trace($"Decoding encrypted frame header {new Hex(_headerBuffer)}");
+                        _logger.Trace($"Decoding encrypted frame header {_headerBuffer.ToHexString()}");
                     }
 
                     _frameMacProcessor.CheckMac(_headerBuffer, 0, 16, true);
@@ -131,7 +131,7 @@ namespace Nethermind.Network.Rlpx
 
                 if (_logger.IsTraceEnabled)
                 {
-                    _logger.Trace($"Decoding encrypted payload {new Hex(buffer)}");
+                    _logger.Trace($"Decoding encrypted payload {buffer.ToHexString()}");
                 }
 
                 int frameSize = buffer.Length - MacSize;
@@ -142,7 +142,7 @@ namespace Nethermind.Network.Rlpx
                 
                 if (_logger.IsTraceEnabled)
                 {
-                    _logger.Trace($"Decrypted message {new Hex((byte[])output.Last())}");
+                    _logger.Trace($"Decrypted message {((byte[])output.Last()).ToHexString()}");
                 }
                 
                 _state = FrameDecoderState.WaitingForHeader;

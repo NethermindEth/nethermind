@@ -99,10 +99,10 @@ namespace Nethermind.KeyStore
                 return (null, validationResult);
             }
 
-            Hex mac = keyStoreItem.Crypto.MAC;
-            Hex iv = keyStoreItem.Crypto.CipherParams.IV;
-            Hex cipher = keyStoreItem.Crypto.CipherText;
-            Hex salt = keyStoreItem.Crypto.KDFParams.Salt;
+            byte[] mac = Bytes.FromHexString(keyStoreItem.Crypto.MAC);
+            byte[] iv = Bytes.FromHexString(keyStoreItem.Crypto.CipherParams.IV);
+            byte[] cipher = Bytes.FromHexString(keyStoreItem.Crypto.CipherText);
+            byte[] salt = Bytes.FromHexString(keyStoreItem.Crypto.KDFParams.Salt);
 
             var kdfParams = keyStoreItem.Crypto.KDFParams;
             var passBytes = password.ToByteArray(_keyStoreEncoding);
@@ -122,8 +122,8 @@ namespace Nethermind.KeyStore
                     return (null, Result.Fail($"Unsupported algoritm: {kdf}"));
             }         
 
-            var restoredMac = Keccak.Compute(derivedKey.Slice(kdfParams.DkLen - 16, 16).Concat((byte[])cipher).ToArray()).Bytes;
-            if (!mac.Equals(new Hex(restoredMac)))
+            var restoredMac = Keccak.Compute(derivedKey.Slice(kdfParams.DkLen - 16, 16).Concat(cipher).ToArray()).Bytes;
+            if (!Bytes.UnsafeCompare(mac, restoredMac))
             {
                 return (null, Result.Fail("Incorrect MAC"));
             }
@@ -146,7 +146,7 @@ namespace Nethermind.KeyStore
             }
             
             // TODO: maybe only allow to sign here so the key never leaves the area?
-            return (new PrivateKey(new Hex(key)), Result.Success());
+            return (new PrivateKey(key), Result.Success());
         }
 
         public (PrivateKey PrivateKey, Result Result) GenerateKey(SecureString password)
@@ -164,7 +164,7 @@ namespace Nethermind.KeyStore
             var derivedKey = SCrypt.ComputeDerivedKey(passBytes, salt, _configurationProvider.KdfparamsN, _configurationProvider.KdfparamsR, _configurationProvider.KdfparamsP, null, _configurationProvider.KdfparamsDklen);
 
             var encryptKey = Keccak.Compute(derivedKey.Take(16).ToArray()).Bytes.Take(16).ToArray();
-            var encryptContent = key.Hex;
+            var encryptContent = key.KeyBytes;
             var iv = _cryptoRandom.GenerateRandomBytes(_configurationProvider.IVSize);
 
             var cipher = _symmetricEncrypter.Encrypt(encryptContent, encryptKey, iv, _configurationProvider.Cipher);
@@ -182,10 +182,10 @@ namespace Nethermind.KeyStore
                 Crypto = new Crypto
                 {
                     Cipher = _configurationProvider.Cipher,
-                    CipherText = Hex.FromBytes(cipher, true),
+                    CipherText = cipher.ToHexString(true),
                     CipherParams = new CipherParams
                     {
-                        IV = Hex.FromBytes(iv, true)
+                        IV = iv.ToHexString(true)
                     },
                     KDF = _configurationProvider.Kdf,
                     KDFParams = new KDFParams
@@ -194,9 +194,9 @@ namespace Nethermind.KeyStore
                        N = _configurationProvider.KdfparamsN,
                        P = _configurationProvider.KdfparamsP,
                        R = _configurationProvider.KdfparamsR,
-                       Salt = Hex.FromBytes(salt, true)
+                       Salt = salt.ToHexString(true)
                     },
-                    MAC = Hex.FromBytes(mac, true),
+                    MAC = mac.ToHexString(true),
                     Version = CryptoVersion
                 },
                 Id = address,

@@ -18,6 +18,7 @@
 
 using System.Diagnostics;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Model;
 
 namespace Nethermind.Core
@@ -28,17 +29,22 @@ namespace Nethermind.Core
         public NetworkNode(string enode, string description)
         {
             //enode://0d837e193233c08d6950913bf69105096457fbe204679d6c6c021c36bb5ad83d167350440670e7fec189d80abc18076f45f44bfe480c85b6c632735463d34e4b@89.197.135.74:30303
-            Hex publicKeyString = new Hex(enode.Substring(8, 128));
-            NodeId = new NodeId(new PublicKey(publicKeyString));
+            string publicKeyString = enode.Substring(8, 128);
+            NodeId = new NodeId(new PublicKey(Bytes.FromHexString(publicKeyString)));
             string[] address = enode.Substring(8 /* prefix */ + 128 /* public key */ + 1 /* @ */).Split(':');
             Host = address[0];
             Port = int.Parse(address[1]);
             Description = description;
         }
 
-        public NetworkNode(Hex publicKey, string ip, int port, string description, long reputation = 0)
+        public NetworkNode(string publicKey, string ip, int port, string description, long reputation = 0)
+        :this(new PublicKey(publicKey), ip, port, description, reputation)
         {
-            NodeId = new NodeId(new PublicKey(publicKey));
+        }
+        
+        public NetworkNode(PublicKey publicKey, string ip, int port, string description, long reputation = 0)
+        {
+            NodeId = new NodeId(publicKey);
             Host = ip;
             Port = port;
             Description = description;

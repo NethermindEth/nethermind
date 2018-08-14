@@ -60,7 +60,7 @@ namespace Nethermind.JsonRpc
             blockModel.TransactionsRoot = new Data(block.Header.TransactionsRoot.Bytes);
             blockModel.StateRoot = new Data(block.Header.StateRoot.Bytes);
             blockModel.ReceiptsRoot = new Data(block.Header.ReceiptsRoot.Bytes);
-            blockModel.Miner = block.Header.Beneficiary != null ? new Data(block.Header.Beneficiary.Hex) : null;
+            blockModel.Miner = block.Header.Beneficiary != null ? new Data(block.Header.Beneficiary.Bytes) : null;
             blockModel.Difficulty = new Quantity(block.Header.Difficulty);
             //TotalDifficulty = new Quantity(block.Header.Difficulty),
             blockModel.ExtraData = new Data(block.Header.ExtraData);
@@ -76,20 +76,20 @@ namespace Nethermind.JsonRpc
         {
             throw new NotImplementedException(); // TODO: look at new transaction recover (that takes block number)
             
-            return new Transaction
-            {
-                Hash = new Data(transaction.Hash.Bytes),
-                Nonce = new Quantity(transaction.Nonce),
-                BlockHash = block != null ? new Data(block.Hash.Bytes) : null,
-                BlockNumber = block?.Header != null ? new Quantity(block.Header.Number) : null,
-                TransactionIndex = block?.Transactions != null ? new Quantity(GetTransactionIndex(transaction, block)) : null,
-                From = new Data(_signer.RecoverAddress(transaction, block.Number).Hex),
-                To = new Data(transaction.To.Hex),
-                Value = new Quantity(transaction.Value),
-                GasPrice = new Quantity(transaction.GasPrice),
-                Gas = new Quantity(transaction.GasLimit),
-                Data = new Data(transaction.Data)
-            };
+//            return new Transaction
+//            {
+//                Hash = new Data(transaction.Hash.Bytes),
+//                Nonce = new Quantity(transaction.Nonce),
+//                BlockHash = block != null ? new Data(block.Hash.Bytes) : null,
+//                BlockNumber = block?.Header != null ? new Quantity(block.Header.Number) : null,
+//                TransactionIndex = block?.Transactions != null ? new Quantity(GetTransactionIndex(transaction, block)) : null,
+//                From = new Data(_signer.RecoverAddress(transaction, block.Number).Hex),
+//                To = new Data(transaction.To.Hex),
+//                Value = new Quantity(transaction.Value),
+//                GasPrice = new Quantity(transaction.GasPrice),
+//                Gas = new Quantity(transaction.GasLimit),
+//                Data = new Data(transaction.Data)
+//            };
         }
 
         public TransactionReceipt MapTransactionReceipt(Core.TransactionReceipt receipt, Core.Transaction transaction, Core.Block block)
@@ -102,7 +102,7 @@ namespace Nethermind.JsonRpc
                 BlockNumber = block?.Header != null ? new Quantity(block.Header.Number) : null,
                 //CumulativeGasUsed = new Quantity(receipt.GasUsed),
                 GasUsed = new Quantity(receipt.GasUsed),
-                ContractAddress = transaction.IsContractCreation && receipt.Recipient != null ? new Data(receipt.Recipient.Hex) : null,
+                ContractAddress = transaction.IsContractCreation && receipt.Recipient != null ? new Data(receipt.Recipient.Bytes) : null,
                 Logs = receipt.Logs?.Select(MapLog).ToArray(),
                 LogsBloom = new Data(receipt.Bloom?.Bytes),
                 Status = new Quantity(receipt.StatusCode)

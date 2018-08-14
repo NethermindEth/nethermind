@@ -21,6 +21,7 @@ using System.Numerics;
 using System.Text;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Core
 {
@@ -57,8 +58,8 @@ namespace Nethermind.Core
             builder.AppendLine($"{indent}To: {To}");
             builder.AppendLine($"{indent}Nonce: {Nonce}");
             builder.AppendLine($"{indent}Value: {Value}");
-            builder.AppendLine($"{indent}Data: {new Hex(Data ?? new byte[0])}");
-            builder.AppendLine($"{indent}Init: {new Hex(Init ?? new byte[0])}");
+            builder.AppendLine($"{indent}Data: {(Data ?? new byte[0]).ToHexString()}");
+            builder.AppendLine($"{indent}Init: {(Init ?? new byte[0]).ToHexString()}");
             builder.AppendLine($"{indent}Hash: {Hash}");
             return builder.ToString();
         }

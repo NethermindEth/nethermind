@@ -449,7 +449,7 @@ namespace Nethermind.Store
                         return null;
                     }
 
-                    throw new InvalidOperationException($"Could not find the leaf node to delete: {Hex.FromBytes(context.UpdatePath, false)}");
+                    throw new InvalidOperationException($"Could not find the leaf node to delete: {context.UpdatePath.ToHexString(false)}");
                 }
 
                 byte[] leafPath = context.UpdatePath.Slice(context.CurrentIndex, context.UpdatePath.Length - context.CurrentIndex);
@@ -527,7 +527,7 @@ namespace Nethermind.Store
                     return null;
                 }
 
-                throw new InvalidOperationException($"Could not find the leaf node to delete: {Hex.FromBytes(context.UpdatePath, false)}");
+                throw new InvalidOperationException($"Could not find the leaf node to delete: {context.UpdatePath.ToHexString(false)}");
             }
 
             if (extensionLength != 0)

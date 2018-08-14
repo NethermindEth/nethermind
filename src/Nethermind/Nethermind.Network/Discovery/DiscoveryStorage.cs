@@ -61,7 +61,7 @@ namespace Nethermind.Network.Discovery
             {
                 var manager = nodes[i];
                 var node = manager.ManagedNode;
-                var networkNode = new NetworkNode(node.Id.Bytes, node.Host, node.Port, node.Description, manager.NodeStats.NewPersistedNodeReputation);
+                var networkNode = new NetworkNode(node.Id.PublicKey, node.Host, node.Port, node.Description, manager.NodeStats.NewPersistedNodeReputation);
                 _db[networkNode.NodeId.Bytes] = Rlp.Encode(networkNode).Bytes;
                 _updateCounter++;
             }

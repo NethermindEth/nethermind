@@ -20,6 +20,7 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
 
@@ -191,7 +192,7 @@ namespace Nethermind.Store
 
                         if (_logger.IsDebugEnabled)
                         {
-                            _logger.Debug($"  UPDATE {change.StorageAddress.Address}_{change.StorageAddress.Index} V = {Hex.FromBytes(change.Value, true)}");
+                            _logger.Debug($"  UPDATE {change.StorageAddress.Address}_{change.StorageAddress.Index} V = {change.Value.ToHexString(true)}");
                         }
 
                         StorageTree tree = GetOrCreateStorage(change.StorageAddress.Address);

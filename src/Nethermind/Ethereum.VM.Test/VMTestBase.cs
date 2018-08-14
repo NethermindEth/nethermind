@@ -86,12 +86,12 @@ namespace Ethereum.VM.Test
         private static AccountState Convert(AccountStateJson accountStateJson)
         {
             AccountState state = new AccountState();
-            state.Balance = Hex.ToBytes(accountStateJson.Balance).ToUnsignedBigInteger();
-            state.Code = Hex.ToBytes(accountStateJson.Code);
-            state.Nonce = Hex.ToBytes(accountStateJson.Nonce).ToUnsignedBigInteger();
+            state.Balance = Bytes.FromHexString(accountStateJson.Balance).ToUnsignedBigInteger();
+            state.Code = Bytes.FromHexString(accountStateJson.Code);
+            state.Nonce = Bytes.FromHexString(accountStateJson.Nonce).ToUnsignedBigInteger();
             state.Storage = accountStateJson.Storage.ToDictionary(
-                p => Hex.ToBytes(p.Key).ToUnsignedBigInteger(),
-                p => Hex.ToBytes(p.Value));
+                p => Bytes.FromHexString(p.Key).ToUnsignedBigInteger(),
+                p => Bytes.FromHexString(p.Value));
             return state;
         }
 
@@ -101,11 +101,11 @@ namespace Ethereum.VM.Test
             environment.Address = execJson.Address == null ? null : new Address(execJson.Address);
             environment.Caller = execJson.Caller == null ? null : new Address(execJson.Caller);
             environment.Origin = execJson.Origin == null ? null : new Address(execJson.Origin);
-            environment.Code = Hex.ToBytes(execJson.Code);
-            environment.Data = Hex.ToBytes(execJson.Data);
-            environment.Gas = Hex.ToBytes(execJson.Gas).ToUnsignedBigInteger();
-            environment.GasPrice = Hex.ToBytes(execJson.GasPrice).ToUnsignedBigInteger();
-            environment.Value = Hex.ToBytes(execJson.Value).ToUnsignedBigInteger();
+            environment.Code = Bytes.FromHexString(execJson.Code);
+            environment.Data = Bytes.FromHexString(execJson.Data);
+            environment.Gas = Bytes.FromHexString(execJson.Gas).ToUnsignedBigInteger();
+            environment.GasPrice = Bytes.FromHexString(execJson.GasPrice).ToUnsignedBigInteger();
+            environment.Value = Bytes.FromHexString(execJson.Value).ToUnsignedBigInteger();
             return environment;
         }
 
@@ -113,10 +113,10 @@ namespace Ethereum.VM.Test
         {
             Environment environment = new Environment();
             environment.CurrentCoinbase = envJson.CurrentCoinbase == null ? null : new Address(envJson.CurrentCoinbase);
-            environment.CurrentDifficulty = Hex.ToBytes(envJson.CurrentDifficulty).ToUnsignedBigInteger();
-            environment.CurrentGasLimit = Hex.ToBytes(envJson.CurrentGasLimit).ToUnsignedBigInteger();
-            environment.CurrentNumber = Hex.ToBytes(envJson.CurrentNumber).ToUnsignedBigInteger();
-            environment.CurrentTimestamp = Hex.ToBytes(envJson.CurrentTimestamp).ToUnsignedBigInteger();
+            environment.CurrentDifficulty = Bytes.FromHexString(envJson.CurrentDifficulty).ToUnsignedBigInteger();
+            environment.CurrentGasLimit = Bytes.FromHexString(envJson.CurrentGasLimit).ToUnsignedBigInteger();
+            environment.CurrentNumber = Bytes.FromHexString(envJson.CurrentNumber).ToUnsignedBigInteger();
+            environment.CurrentTimestamp = Bytes.FromHexString(envJson.CurrentTimestamp).ToUnsignedBigInteger();
             return environment;
         }
 
@@ -126,9 +126,9 @@ namespace Ethereum.VM.Test
             test.Name = name;
             test.Environment = Convert(testJson.Env);
             test.Execution = Convert(testJson.Exec);
-            test.Gas = testJson.Gas == null ? (BigInteger?)null : Hex.ToBytes(testJson.Gas).ToUnsignedBigInteger();
-            test.Logs = testJson.Logs == null ? null : Hex.ToBytes(testJson.Gas);
-            test.Out = testJson.Out == null ? null : Hex.ToBytes(testJson.Out);
+            test.Gas = testJson.Gas == null ? (BigInteger?)null : Bytes.FromHexString(testJson.Gas).ToUnsignedBigInteger();
+            test.Logs = testJson.Logs == null ? null : Bytes.FromHexString(testJson.Gas);
+            test.Out = testJson.Out == null ? null : Bytes.FromHexString(testJson.Out);
             test.Post = testJson.Post?.ToDictionary(p => new Address(p.Key), p => Convert(p.Value));
             test.Pre = testJson.Pre.ToDictionary(p => new Address(p.Key), p => Convert(p.Value));
             return test;
@@ -197,7 +197,7 @@ namespace Ethereum.VM.Test
             (byte[] output, TransactionSubstate substate) = machine.Run(state, Olympic.Instance, null);
 
             Assert.True(Bytes.UnsafeCompare(test.Out, output),
-                $"Exp: {Hex.FromBytes(test.Out, true)} != Actual: {Hex.FromBytes(output, true)}");
+                $"Exp: {test.Out.ToHexString(true)} != Actual: {output.ToHexString(true)}");
             Assert.AreEqual((long)test.Gas, state.GasAvailable);
             foreach (KeyValuePair<Address, AccountState> accountState in test.Post)
             {
@@ -218,7 +218,7 @@ namespace Ethereum.VM.Test
                 {
                     byte[] value = _storageProvider.Get(new StorageAddress(accountState.Key, storageItem.Key));
                     Assert.True(Bytes.UnsafeCompare(storageItem.Value, value),
-                        $"Storage[{accountState.Key}_{storageItem.Key}] Exp: {Hex.FromBytes(storageItem.Value, true)} != Actual: {Hex.FromBytes(value, true)}");
+                        $"Storage[{accountState.Key}_{storageItem.Key}] Exp: {storageItem.Value.ToHexString(true)} != Actual: {value.ToHexString(true)}");
                 }
             }
         }

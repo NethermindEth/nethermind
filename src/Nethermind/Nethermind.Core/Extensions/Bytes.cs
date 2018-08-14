@@ -22,6 +22,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Core.Extensions
 {
@@ -295,11 +296,6 @@ namespace Nethermind.Core.Extensions
             return result;
         }
 
-        public static BigInteger ToUnsignedBigInteger(this Hex hex, Endianness endianness = Endianness.Big)
-        {
-            return ((byte[])hex).ToUnsignedBigInteger();
-        }
-
         public static BigInteger ToUnsignedBigInteger(this byte[] bytes, Endianness endianness = Endianness.Big)
         {
             return ToUnsignedBigInteger(bytes.AsSpan(), endianness);
@@ -504,6 +500,138 @@ namespace Nethermind.Core.Extensions
             }
 
             return new BitArray(inverted);
+        }
+
+        public static string ToHexString(this byte[] bytes)
+        {
+            return ToHexString(bytes, false, false, false);
+        }
+        
+        public static string ToHexString(this byte[] bytes, bool withZeroX)
+        {
+            return ToHexString(bytes, withZeroX, false, false);
+        }
+
+        public static string ToHexString(this byte[] bytes, bool withZeroX, bool noLeadingZeros)
+        {
+            return ToHexString(bytes, withZeroX, noLeadingZeros, false);
+        }
+
+        public static string ToHexString(this byte[] bytes, bool withZeroX, bool noLeadingZeros, bool withEip55Checksum)
+        {
+            return ByteArrayToHexViaLookup32(bytes, withZeroX, noLeadingZeros, withEip55Checksum);
+        }
+        
+        [DebuggerStepThrough]
+        private static string ByteArrayToHexViaLookup32(byte[] bytes, bool withZeroX, bool skipLeadingZeros, bool withEip55Checksum)
+        {
+            int leadingZeros = skipLeadingZeros ? CountLeadingZeros(bytes) : 0;
+            char[] result = new char[bytes.Length * 2 + (withZeroX ? 2 : 0) - leadingZeros];
+            string hashHex = null;
+            if (withEip55Checksum)
+            {
+                hashHex = Keccak.Compute(bytes.ToHexString(false)).ToString(false);
+            }
+
+            if (withZeroX)
+            {
+                result[0] = '0';
+                result[1] = 'x';
+            }
+
+            for (int i = 0; i < bytes.Length; i++)
+            {
+                uint val = Lookup32[bytes[i]];
+                char char1 = (char)val;
+                char char2 = (char)(val >> 16);
+
+                if (leadingZeros <= i * 2)
+                {
+                    result[2 * i + (withZeroX ? 2 : 0) - leadingZeros] =
+                        withEip55Checksum && char.IsLetter(char1) && hashHex[2 * i] > '7'
+                            ? char.ToUpper(char1)
+                            : char1;
+                }
+
+                if (leadingZeros <= i * 2 + 1)
+                {
+                    result[2 * i + 1 + (withZeroX ? 2 : 0) - leadingZeros] =
+                        withEip55Checksum && char.IsLetter(char2) && hashHex[2 * i + 1] > '7'
+                            ? char.ToUpper(char2)
+                            : char2;
+                }
+            }
+
+            if (skipLeadingZeros && result.Length == (withZeroX ? 2 : 0))
+            {
+                return withZeroX ? "0x0" : "0";
+            }
+
+            return new string(result);
+        }
+        
+        private static readonly uint[] Lookup32 = CreateLookup32("x2");
+        
+        private static uint[] CreateLookup32(string format)
+        {
+            uint[] result = new uint[256];
+            for (int i = 0; i < 256; i++)
+            {
+                string s = i.ToString(format);
+                result[i] = s[0] + ((uint)s[1] << 16);
+            }
+
+            return result;
+        }
+        
+        private static int CountLeadingZeros(byte[] bytes)
+        {
+            int leadingZeros = 0;
+            for (int i = 0; i < bytes.Length; i++)
+            {
+                if ((bytes[i] & 240) == 0)
+                {
+                    leadingZeros++;
+                    if ((bytes[i] & 15) == 0)
+                    {
+                        leadingZeros++;
+                    }
+                    else
+                    {
+                        break;
+                    }
+                }
+                else
+                {
+                    break;
+                }
+            }
+
+            return leadingZeros;
+        }
+        
+        public static byte[] FromHexString(string hexString)
+        {
+            if (hexString == null)
+            {
+                throw new ArgumentNullException($"{nameof(hexString)}");
+            }
+
+            int startIndex = hexString.StartsWith("0x") ? 2 : 0;
+            if (hexString.Length % 2 == 1)
+            {
+                hexString = hexString.Insert(startIndex, "0");
+            }
+
+            int numberChars = hexString.Length - startIndex;
+
+            byte[] bytes = new byte[numberChars / 2];
+            for (int i = 0; i < numberChars; i += 2)
+            {
+                bytes[i / 2] = Convert.ToByte(hexString.Substring(i + startIndex, 2), 16);
+            }
+
+            return bytes;
         }
     }
 }

@@ -18,6 +18,7 @@
 
 using System.Diagnostics;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Store
 {
@@ -78,7 +79,7 @@ namespace Nethermind.Store
 
         public override string ToString()
         {
-            return Hex.FromBytes(ToBytes(), false);
+            return ToBytes().ToHexString(false);
         }
     }
 }

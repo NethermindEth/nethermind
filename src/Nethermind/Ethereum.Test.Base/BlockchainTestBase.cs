@@ -135,12 +135,12 @@ namespace Ethereum.Test.Base
         private static AccountState Convert(AccountStateJson accountStateJson)
         {
             AccountState state = new AccountState();
-            state.Balance = Hex.ToBytes(accountStateJson.Balance).ToUnsignedBigInteger();
-            state.Code = Hex.ToBytes(accountStateJson.Code);
-            state.Nonce = Hex.ToBytes(accountStateJson.Nonce).ToUnsignedBigInteger();
+            state.Balance = Bytes.FromHexString(accountStateJson.Balance).ToUnsignedBigInteger();
+            state.Code = Bytes.FromHexString(accountStateJson.Code);
+            state.Nonce = Bytes.FromHexString(accountStateJson.Nonce).ToUnsignedBigInteger();
             state.Storage = accountStateJson.Storage.ToDictionary(
-                p => Hex.ToBytes(p.Key).ToUnsignedBigInteger(),
-                p => Hex.ToBytes(p.Value));
+                p => Bytes.FromHexString(p.Key).ToUnsignedBigInteger(),
+                p => Bytes.FromHexString(p.Value));
             return state;
         }
 
@@ -248,7 +248,7 @@ namespace Ethereum.Test.Base
                 try
                 {
                     TestBlockJson testBlockJson = test.Blocks[i];
-                    var rlpContext = Hex.ToBytes(testBlockJson.Rlp).AsRlpContext();
+                    var rlpContext = Bytes.FromHexString(testBlockJson.Rlp).AsRlpContext();
                     Block suggestedBlock = Rlp.Decode<Block>(rlpContext);
                     Assert.AreEqual(new Keccak(testBlockJson.BlockHeader.Hash), suggestedBlock.Header.Hash, "hash of the block");
                     for (int ommerIndex = 0; ommerIndex < suggestedBlock.Ommers.Length; ommerIndex++)
@@ -400,7 +400,7 @@ namespace Ethereum.Test.Base
                     byte[] value = storageProvider.Get(new StorageAddress(accountState.Key, storageItem.Key)) ?? new byte[0];
                     if (!Bytes.UnsafeCompare(storageItem.Value, value))
                     {
-                        differences.Add($"{accountState.Key} storage[{storageItem.Key}] exp: {Hex.FromBytes(storageItem.Value, true)}, actual: {Hex.FromBytes(value, true)}");
+                        differences.Add($"{accountState.Key} storage[{storageItem.Key}] exp: {storageItem.Value.ToHexString(true)}, actual: {value.ToHexString(true)}");
                     }
                 }
 
@@ -461,18 +461,18 @@ namespace Ethereum.Test.Base
                 new Keccak(headerJson.ParentHash),
                 new Keccak(headerJson.UncleHash),
                 new Address(headerJson.Coinbase),
-                Hex.ToBytes(headerJson.Difficulty).ToUnsignedBigInteger(),
-                Hex.ToBytes(headerJson.Number).ToUnsignedBigInteger(),
-                (long)Hex.ToBytes(headerJson.GasLimit).ToUnsignedBigInteger(),
-                Hex.ToBytes(headerJson.Timestamp).ToUnsignedBigInteger(),
-                Hex.ToBytes(headerJson.ExtraData)
+                Bytes.FromHexString(headerJson.Difficulty).ToUnsignedBigInteger(),
+                Bytes.FromHexString(headerJson.Number).ToUnsignedBigInteger(),
+                (long)Bytes.FromHexString(headerJson.GasLimit).ToUnsignedBigInteger(),
+                Bytes.FromHexString(headerJson.Timestamp).ToUnsignedBigInteger(),
+                Bytes.FromHexString(headerJson.ExtraData)
             );
             
-            header.Bloom = new Bloom(Hex.ToBytes(headerJson.Bloom).ToBigEndianBitArray2048());
-            header.GasUsed = (long)Hex.ToBytes(headerJson.GasUsed).ToUnsignedBigInteger();
+            header.Bloom = new Bloom(Bytes.FromHexString(headerJson.Bloom).ToBigEndianBitArray2048());
+            header.GasUsed = (long)Bytes.FromHexString(headerJson.GasUsed).ToUnsignedBigInteger();
             header.Hash = new Keccak(headerJson.Hash);
             header.MixHash = new Keccak(headerJson.MixHash);
-            header.Nonce = (ulong)Hex.ToBytes(headerJson.Nonce).ToUnsignedBigInteger();
+            header.Nonce = (ulong)Bytes.FromHexString(headerJson.Nonce).ToUnsignedBigInteger();
             header.ReceiptsRoot = new Keccak(headerJson.ReceiptTrie);
             header.StateRoot = new Keccak(headerJson.StateRoot);
             header.TransactionsRoot = new Keccak(headerJson.TransactionsTrie);
@@ -491,17 +491,17 @@ namespace Ethereum.Test.Base
         private static Transaction Convert(TransactionJson transactionJson)
         {
             Transaction transaction = new Transaction();
-            transaction.Value = Hex.ToBytes(transactionJson.Value).ToUnsignedBigInteger();
-            transaction.GasLimit = Hex.ToBytes(transactionJson.GasLimit).ToUnsignedBigInteger();
-            transaction.GasPrice = Hex.ToBytes(transactionJson.GasPrice).ToUnsignedBigInteger();
-            transaction.Nonce = Hex.ToBytes(transactionJson.Nonce).ToUnsignedBigInteger();
-            transaction.To = string.IsNullOrWhiteSpace(transactionJson.To) ? null : new Address(new Hex(transactionJson.To));
-            transaction.Data = transaction.To == null ? null : Hex.ToBytes(transactionJson.Data);
-            transaction.Init = transaction.To == null ? Hex.ToBytes(transactionJson.Data) : null;
+            transaction.Value = Bytes.FromHexString(transactionJson.Value).ToUnsignedBigInteger();
+            transaction.GasLimit = Bytes.FromHexString(transactionJson.GasLimit).ToUnsignedBigInteger();
+            transaction.GasPrice = Bytes.FromHexString(transactionJson.GasPrice).ToUnsignedBigInteger();
+            transaction.Nonce = Bytes.FromHexString(transactionJson.Nonce).ToUnsignedBigInteger();
+            transaction.To = string.IsNullOrWhiteSpace(transactionJson.To) ? null : new Address(transactionJson.To);
+            transaction.Data = transaction.To == null ? null : Bytes.FromHexString(transactionJson.Data);
+            transaction.Init = transaction.To == null ? Bytes.FromHexString(transactionJson.Data) : null;
             Signature signature = new Signature(
-                Hex.ToBytes(transactionJson.R).PadLeft(32),
-                Hex.ToBytes(transactionJson.S).PadLeft(32),
-                Hex.ToBytes(transactionJson.V)[0]);
+                Bytes.FromHexString(transactionJson.R).PadLeft(32),
+                Bytes.FromHexString(transactionJson.S).PadLeft(32),
+                Bytes.FromHexString(transactionJson.V)[0]);
             transaction.Signature = signature;
 
             return transaction;
@@ -514,8 +514,8 @@ namespace Ethereum.Test.Base
             test.Network = testJson.EthereumNetwork;
             test.NetworkAfterTransition = testJson.EthereumNetworkAfterTransition;
             test.TransitionBlockNumber = testJson.TransitionBlockNumber;
-            test.LastBlockHash = new Keccak(new Hex(testJson.LastBlockHash));
-            test.GenesisRlp = testJson.GenesisRlp == null ? null : new Rlp(Hex.ToBytes(testJson.GenesisRlp));
+            test.LastBlockHash = new Keccak(testJson.LastBlockHash);
+            test.GenesisRlp = testJson.GenesisRlp == null ? null : new Rlp(Bytes.FromHexString(testJson.GenesisRlp));
             test.GenesisBlockHeader = testJson.GenesisBlockHeader;
             test.Blocks = testJson.Blocks;
             test.PostState = testJson.PostState.ToDictionary(p => new Address(p.Key), p => Convert(p.Value));

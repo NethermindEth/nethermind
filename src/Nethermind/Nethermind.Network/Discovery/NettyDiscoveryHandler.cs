@@ -23,6 +23,7 @@ using DotNetty.Buffers;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
 using Nethermind.Network.Discovery.Messages;
 
@@ -133,7 +134,7 @@ namespace Nethermind.Network.Discovery
             }
             catch (Exception e)
             {
-                _logger.Error($"Error during deserialization of the message, type: {type}, sender: {address}, msg: {new Hex(msg)}", e);
+                _logger.Error($"Error during deserialization of the message, type: {type}, sender: {address}, msg: {msg.ToHexString()}", e);
                 return;
             }
 

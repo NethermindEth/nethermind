@@ -106,7 +106,7 @@ namespace Nethermind.JsonRpc.Module
             {
                 return  ResultWrapper<IEnumerable<Data>>.Fail($"Error while getting key addresses from keystore: {result.Item2.Error}");
             }
-            var data = result.Item1.Select(x => new Data(x.Hex)).ToArray();
+            var data = result.Item1.Select(x => new Data(x.Bytes)).ToArray();
             Logger.Debug($"eth_accounts request, result: {string.Join(", ", data.Select(x => x.Value.ToString()))}");
             return ResultWrapper<IEnumerable<Data>>.Success(data);
         }

@@ -39,7 +39,7 @@ namespace Nethermind.JsonRpc.Test
         [Test]
         public void GetBalanceSuccessTest()
         {
-            var hex = new Hex(1024.ToBigEndianByteArray()).ToString(true, true);
+            var hex = 1024.ToBigEndianByteArray().ToHexString(true, true);
         }
     }
 }

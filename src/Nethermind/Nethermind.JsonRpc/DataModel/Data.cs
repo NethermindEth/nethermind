@@ -18,12 +18,13 @@
 
 using System.Text;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.JsonRpc.DataModel
 {
     public class Data : IJsonRpcResult, IJsonRpcRequest
     {
-        public Hex Value { get; private set; }
+        public byte[] Value { get; private set; }
 
         public Data()
         {
@@ -31,7 +32,7 @@ namespace Nethermind.JsonRpc.DataModel
 
         public Data(string value)
         {
-            Value = value;
+            Value = Bytes.FromHexString(value);
         }
 
         public Data(byte[] value)
@@ -39,19 +40,15 @@ namespace Nethermind.JsonRpc.DataModel
             Value = value;
         }
 
-        public Data(Hex value)
-        {
-            Value = value;
-        }
-
         public object ToJson()
         {
-            return Value?.ToString(true);
+            return Value?.ToHexString(true);
         }
 
+        // TODO: do we need it? 14/08/2018
         public void FromJson(string jsonValue)
         {
-            Value = jsonValue;
+            Value = Bytes.FromHexString(jsonValue);
         }
     }
 }

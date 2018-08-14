@@ -209,12 +209,12 @@ namespace Nethermind.Network.Rlpx.Handshake
             if (_logger.IsDebugEnabled)
             {
                 _logger.Debug($"{handshake.RemoteNodeId} ephemeral private key {handshake.EphemeralPrivateKey}");
-                _logger.Debug($"{handshake.RemoteNodeId} initiator nonce {new Hex(handshake.InitiatorNonce)}");
-                _logger.Debug($"{handshake.RemoteNodeId} recipient nonce {new Hex(handshake.RecipientNonce)}");
+                _logger.Debug($"{handshake.RemoteNodeId} initiator nonce {handshake.InitiatorNonce.ToHexString()}");
+                _logger.Debug($"{handshake.RemoteNodeId} recipient nonce {handshake.RecipientNonce.ToHexString()}");
                 _logger.Debug($"{handshake.RemoteNodeId} remote ephemeral public key {handshake.RemoteEphemeralPublicKey}");
                 _logger.Debug($"{handshake.RemoteNodeId} remote public key {handshake.RemoteNodeId}");
-                _logger.Debug($"{handshake.RemoteNodeId} auth packet {new Hex(handshake.AuthPacket.Data)}");
-                _logger.Debug($"{handshake.RemoteNodeId} ack packet {new Hex(handshake.AckPacket.Data)}");
+                _logger.Debug($"{handshake.RemoteNodeId} auth packet {handshake.AuthPacket.Data.ToHexString()}");
+                _logger.Debug($"{handshake.RemoteNodeId} ack packet {handshake.AckPacket.Data.ToHexString()}");
             }
             #endif
         }

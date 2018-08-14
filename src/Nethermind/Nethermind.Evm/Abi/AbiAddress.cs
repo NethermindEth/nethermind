@@ -35,7 +35,7 @@ namespace Nethermind.Evm.Abi
         {
             if (arg is Address input)
             {
-                byte[] bytes = input.Hex;
+                byte[] bytes = input.Bytes;
                 return UInt.Encode(bytes.ToUnsignedBigInteger());
             }
 

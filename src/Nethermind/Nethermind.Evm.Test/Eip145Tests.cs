@@ -32,9 +32,14 @@ namespace Nethermind.Evm.Test
             AssertEip145(receipt, new[] {result});
         }
 
-        private void AssertEip145(TransactionReceipt receipt, Hex result)
+        private void AssertEip145(TransactionReceipt receipt, string result)
         {
-            AssertGas(receipt, ((byte[])result).IsZero() ? ZeroResultGas : NonZeroResultGas);
+            AssertEip145(receipt, Bytes.FromHexString(result));
+        }
+        
+        private void AssertEip145(TransactionReceipt receipt, byte[] result)
+        {
+            AssertGas(receipt, result.IsZero() ? ZeroResultGas : NonZeroResultGas);
             AssertStorage(0, result);
         }
 

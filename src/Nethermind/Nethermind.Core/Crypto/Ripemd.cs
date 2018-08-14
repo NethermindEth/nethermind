@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.Core.Extensions;
 using Nethermind.HashLib;
 
 namespace Nethermind.Core.Crypto
@@ -31,7 +32,7 @@ namespace Nethermind.Core.Crypto
 
         public static string ComputeString(byte[] input)
         {
-            return Hex.FromBytes(Compute(input), false);
+            return Compute(input).ToHexString(false);
         }
 
         public static byte[] Compute(string input)

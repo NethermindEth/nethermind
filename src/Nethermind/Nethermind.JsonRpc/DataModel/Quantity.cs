@@ -25,7 +25,7 @@ namespace Nethermind.JsonRpc.DataModel
 {
     public class Quantity : IJsonRpcResult, IJsonRpcRequest
     {
-        public Hex Value { get; private set; }
+        public byte[] Value { get; private set; }
 
         public Quantity()
         {
@@ -39,7 +39,7 @@ namespace Nethermind.JsonRpc.DataModel
 
         public Quantity(string value)
         {
-            Value = value;
+            Value = Bytes.FromHexString(value);
         }
 
         public BigInteger? GetValue()
@@ -49,12 +49,13 @@ namespace Nethermind.JsonRpc.DataModel
 
         public object ToJson()
         {
-            return Value?.ToString(true);
+            return Value?.ToHexString(true);
         }
 
+        // TODO: do we need it? 14/08/2018
         public void FromJson(string jsonValue)
         {
-            Value = jsonValue;
+            Value = Bytes.FromHexString(jsonValue);
         }
     }
 }

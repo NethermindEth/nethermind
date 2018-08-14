@@ -54,9 +54,9 @@ namespace Nethermind.Core.Specs.ChainSpec
             var parentHash = HexToKeccak(chainSpecJson.Genesis.ParentHash);
             var timestamp = HexToBigInteger(chainSpecJson.Genesis.Timestamp);
             var difficulty = HexToBigInteger(chainSpecJson.Genesis.Difficulty);
-            var extraData = new Hex(chainSpecJson.Genesis.ExtraData);
+            var extraData = Bytes.FromHexString(chainSpecJson.Genesis.ExtraData);
             var gasLimit = HexToLong(chainSpecJson.Genesis.GasLimit);
-            var beneficiary = HexToAddress(chainSpecJson.Genesis.Author);
+            var beneficiary = new Address(chainSpecJson.Genesis.Author);
 
             BlockHeader genesisHeader = new BlockHeader(
                 parentHash,
@@ -111,15 +111,10 @@ namespace Nethermind.Core.Specs.ChainSpec
                 chainSpec.NetworkNodes[i] = new NetworkNode(chainSpecJson.Nodes[i], $"bootnode{i}");
             }
         }
-
-        private static Address HexToAddress(string hexNumber)
-        {
-            return new Address(new Hex(hexNumber));
-        }
-
+        
         private static Keccak HexToKeccak(string hexNumber)
         {
-            return new Keccak(new Hex(hexNumber));
+            return new Keccak(Bytes.FromHexString(hexNumber));
         }
 
         private static long HexToLong(string hexNumber)
@@ -139,7 +134,7 @@ namespace Nethermind.Core.Specs.ChainSpec
 
         private static BigInteger HexToBigInteger(string hexNumber)
         {
-            return new Hex(hexNumber).ToUnsignedBigInteger();
+            return Bytes.FromHexString(hexNumber).ToUnsignedBigInteger();
         }
     }
 }

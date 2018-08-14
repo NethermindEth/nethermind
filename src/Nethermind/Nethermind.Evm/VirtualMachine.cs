@@ -215,7 +215,7 @@ namespace Nethermind.Evm
                                 Keccak codeHash = _state.UpdateCode(callResult.Output);
 
                                 _state.UpdateCodeHash(callCodeOwner, codeHash, spec);
-                                previousCallResult = callCodeOwner.Hex;
+                                previousCallResult = callCodeOwner.Bytes;
 
                                 currentState.GasAvailable -= codeDepositGasCost;
                             }
@@ -232,7 +232,7 @@ namespace Nethermind.Evm
                                 }
                                 else
                                 {
-                                    previousCallResult = callCodeOwner.Hex;
+                                    previousCallResult = callCodeOwner.Bytes;
                                 }
                             }
 
@@ -250,14 +250,14 @@ namespace Nethermind.Evm
 
                         if (_logger.IsDebugEnabled)
                         {
-                            _logger.Debug($"END {previousState.ExecutionType} AT DEPTH {previousState.Env.CallDepth} (RESULT {Hex.FromBytes(previousCallResult ?? Bytes.Empty, true)}) RETURNS ({previousCallOutputDestination} : {Hex.FromBytes(previousCallOutput, true)})");
+                            _logger.Debug($"END {previousState.ExecutionType} AT DEPTH {previousState.Env.CallDepth} (RESULT {(previousCallResult ?? Bytes.Empty).ToHexString(true)}) RETURNS ({previousCallOutputDestination} : {previousCallOutput.ToHexString(true)})");
                         }
                     }
                     else
                     {
                         if (_logger.IsDebugEnabled)
                         {
-                            _logger.Debug($"REVERT {previousState.ExecutionType} AT DEPTH {previousState.Env.CallDepth} (RESULT {Hex.FromBytes(previousCallResult ?? Bytes.Empty, true)}) RETURNS ({previousCallOutputDestination} : {Hex.FromBytes(previousCallOutput, true)})");
+                            _logger.Debug($"REVERT {previousState.ExecutionType} AT DEPTH {previousState.Env.CallDepth} (RESULT {(previousCallResult ?? Bytes.Empty).ToHexString(true)}) RETURNS ({previousCallOutputDestination} : {previousCallOutput.ToHexString(true)})");
                         }
 
                         _state.Restore(previousState.StateSnapshot);
@@ -704,7 +704,7 @@ namespace Nethermind.Evm
                 for (int i = 0; i < stackHead; i++)
                 {
                     Span<byte> stackItem = stack.Slice(i * 32, 32);
-                    stackTrace.Add(new Hex(stackItem.ToArray()));
+                    stackTrace.Add(stackItem.ToArray().ToHexString());
                 }
 
                 return stackTrace;
@@ -1261,7 +1261,7 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        PushBytes((byte[])env.ExecutingAccount.Hex, bytesOnStack);
+                        PushBytes(env.ExecutingAccount.Bytes, bytesOnStack);
                         break;
                     }
                     case Instruction.BALANCE:
@@ -1283,7 +1283,7 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        PushBytes((byte[])env.Sender.Hex, bytesOnStack);
+                        PushBytes(env.Sender.Bytes, bytesOnStack);
                         break;
                     }
                     case Instruction.CALLVALUE:
@@ -1303,7 +1303,7 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        PushBytes((byte[])env.Originator.Hex, bytesOnStack);
+                        PushBytes(env.Originator.Bytes, bytesOnStack);
                         break;
                     }
                     case Instruction.CALLDATALOAD:
@@ -1472,7 +1472,7 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        PushBytes((byte[])env.CurrentBlock.Beneficiary.Hex, bytesOnStack);
+                        PushBytes(env.CurrentBlock.Beneficiary.Bytes, bytesOnStack);
                         break;
                     }
                     case Instruction.DIFFICULTY:
@@ -1625,13 +1625,13 @@ namespace Nethermind.Evm
                             _storage.Set(storageAddress, newValue);
                             if (_logger.IsDebugEnabled)
                             {
-                                _logger.Debug($"  UPDATING STORAGE: {env.ExecutingAccount} {storageIndex} {Hex.FromBytes(newValue, true)}");
+                                _logger.Debug($"  UPDATING STORAGE: {env.ExecutingAccount} {storageIndex} {newValue.ToHexString(true)}");
                             }
                         }
 
                         if (_trace != null)
                         {
-                            _traceEntry.Storage[new Hex(storageIndex.ToBigEndianByteArray().PadLeft(32))] = new Hex(data.PadLeft(32));
+                            _traceEntry.Storage[storageIndex.ToBigEndianByteArray().PadLeft(32).ToHexString(false)] = data.PadLeft(32).ToHexString(false);
                         }
 
                         break;

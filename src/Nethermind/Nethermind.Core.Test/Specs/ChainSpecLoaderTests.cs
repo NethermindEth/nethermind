@@ -20,6 +20,7 @@ using System.Globalization;
 using System.IO;
 using System.Numerics;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs.ChainSpec;
 using NUnit.Framework;
 
@@ -46,7 +47,7 @@ namespace Nethermind.Core.Test.Specs
             Assert.AreEqual(0x00L, (long)chainSpec.Genesis.Header.Timestamp, $"genesis {nameof(BlockHeader.Timestamp)}");
             Assert.AreEqual(Keccak.Zero, chainSpec.Genesis.Header.ParentHash, $"genesis {nameof(BlockHeader.ParentHash)}");
             Assert.AreEqual(
-                (byte[])new Hex("0x3535353535353535353535353535353535353535353535353535353535353535"),
+                Bytes.FromHexString("0x3535353535353535353535353535353535353535353535353535353535353535"),
                 chainSpec.Genesis.Header.ExtraData,
                 $"genesis {nameof(BlockHeader.ExtraData)}");
             Assert.AreEqual(0x1000000L, chainSpec.Genesis.Header.GasLimit, $"genesis {nameof(BlockHeader.GasLimit)}");

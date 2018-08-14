@@ -23,6 +23,7 @@ using System.Threading.Tasks;
 using DotNetty.Transport.Channels;
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
 using Nethermind.Network.P2P.Subprotocols.Eth;
@@ -113,7 +114,7 @@ namespace Nethermind.Network.P2P
         {
             if (_logger.IsTraceEnabled)
             {
-                _logger.Trace($"P2P to deliver {packet.Protocol}.{packet.PacketType} with payload {new Hex(packet.Data)}");
+                _logger.Trace($"P2P to deliver {packet.Protocol}.{packet.PacketType} with payload {packet.Data.ToHexString()}");
             }
 
             packet.PacketType = _adaptiveEncoder((packet.Protocol, packet.PacketType));

@@ -20,6 +20,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Ethereum.Test.Base;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using NUnit.Framework;
 
 namespace Ethereum.HexPrefix.Test
@@ -41,12 +42,12 @@ namespace Ethereum.HexPrefix.Test
             Nethermind.Store.HexPrefix result =
                 new Nethermind.Store.HexPrefix(test.IsTerm, test.Sequence);
             byte[] bytes = result.ToBytes();
-            string resultHex = Hex.FromBytes(bytes, false);
+            string resultHex = bytes.ToHexString(false);
             Assert.AreEqual(test.Output, resultHex);
 
             Nethermind.Store.HexPrefix check = Nethermind.Store.HexPrefix.FromBytes(bytes);
             byte[] checkBytes = check.ToBytes();
-            string checkHex = Hex.FromBytes(checkBytes, false);
+            string checkHex = checkBytes.ToHexString(false);
             Assert.AreEqual(test.Output, checkHex);
         }
 

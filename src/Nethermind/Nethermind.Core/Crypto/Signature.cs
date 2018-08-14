@@ -88,7 +88,7 @@ namespace Nethermind.Core.Crypto
         }
 
         public Signature(string hexString)
-            : this(Hex.ToBytes(hexString))
+            : this(Extensions.Bytes.FromHexString(hexString))
         {
         }
 
@@ -112,7 +112,7 @@ namespace Nethermind.Core.Crypto
 
         public override string ToString()
         {
-            return string.Concat(Hex.FromBytes(Bytes, true), Hex.FromBytes(new[] { V }, false));
+            return string.Concat(Bytes.ToHexString(true), new[] { V }.ToHexString(false));
         }
 
         public bool Equals(Signature other)

@@ -27,6 +27,7 @@ using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
 using Nethermind.Network.Config;
@@ -402,7 +403,7 @@ namespace Nethermind.Network
 
             foreach (var trustedPeer in trustedPeers)
             {
-                var node = _nodeFactory.CreateNode(new NodeId(new PublicKey(new Hex(trustedPeer.NodeId))), trustedPeer.Host, trustedPeer.Port);
+                var node = _nodeFactory.CreateNode(new NodeId(new PublicKey(Bytes.FromHexString(trustedPeer.NodeId))), trustedPeer.Host, trustedPeer.Port);
                 node.Description = trustedPeer.Description;
 
                 var nodeStats = _nodeStatsProvider.GetOrAddNodeStats(node);

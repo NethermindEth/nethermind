@@ -30,7 +30,11 @@ namespace Nethermind.Core.Crypto
 
         private byte[] _prefixedBytes;
 
-        // TODO: consider Hex here
+        public PublicKey(string hexString)
+            : this(Extensions.Bytes.FromHexString(hexString))
+        {
+        }
+
         public PublicKey(byte[] bytes)
         {
             if (bytes == null)
@@ -40,12 +44,14 @@ namespace Nethermind.Core.Crypto
 
             if (bytes.Length != PublicKeyLengthInBytes && bytes.Length != PublicKeyWithPrefixLengthInBytes)
             {
-                throw new ArgumentException($"{nameof(PublicKey)} should be {PublicKeyLengthInBytes} bytes long", nameof(bytes));
+                throw new ArgumentException($"{nameof(PublicKey)} should be {PublicKeyLengthInBytes} bytes long",
+                    nameof(bytes));
             }
 
             if (bytes.Length == PublicKeyWithPrefixLengthInBytes && bytes[0] != 0x04)
             {
-                throw new ArgumentException($"Expected prefix of 0x04 for {PublicKeyWithPrefixLengthInBytes} bytes long {nameof(PublicKey)}");
+                throw new ArgumentException(
+                    $"Expected prefix of 0x04 for {PublicKeyWithPrefixLengthInBytes} bytes long {nameof(PublicKey)}");
             }
 
             Bytes = bytes.Slice(bytes.Length - 64, 64);
@@ -57,7 +63,11 @@ namespace Nethermind.Core.Crypto
 
         public byte[] PrefixedBytes
         {
-            get { return LazyInitializer.EnsureInitialized(ref _prefixedBytes, () => Extensions.Bytes.Concat(0x04, Bytes)); }
+            get
+            {
+                return LazyInitializer.EnsureInitialized(ref _prefixedBytes,
+                    () => Extensions.Bytes.Concat(0x04, Bytes));
+            }
         }
 
         public bool Equals(PublicKey other)
@@ -90,17 +100,17 @@ namespace Nethermind.Core.Crypto
 
         public override string ToString()
         {
-            return Hex.FromBytes(Bytes, true);
+            return Bytes.ToHexString(true);
         }
-        
+
         public string ToString(bool with0X)
         {
-            return Hex.FromBytes(Bytes, with0X);
+            return Bytes.ToHexString(with0X);
         }
 
         public string ToShortString()
         {
-            var value = Hex.FromBytes(Bytes, false);
+            var value = Bytes.ToHexString(false);
             return value.Substring(value.Length - 12);
         }
     }

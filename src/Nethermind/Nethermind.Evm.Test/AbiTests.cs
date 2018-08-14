@@ -234,7 +234,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Tutorial_test()
         {
-            Hex expectedValue = new Hex(
+            byte[] expectedValue = Bytes.FromHexString(
                 "0x8be65246" +
                 "0000000000000000000000000000000000000000000000000000000000000123" +
                 "0000000000000000000000000000000000000000000000000000000000000080" +

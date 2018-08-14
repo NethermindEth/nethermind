@@ -18,6 +18,7 @@
 
 using System;
 using System.Threading;
+using Nethermind.Core.Extensions;
 using Nethermind.Secp256k1;
 
 namespace Nethermind.Core.Crypto
@@ -25,33 +26,39 @@ namespace Nethermind.Core.Crypto
     // TODO: remove entirely and handle private key more securely
     public class PrivateKey
     {
+        public byte[] KeyBytes { get; }
+
         private const int PrivateKeyLengthInBytes = 32;
         private PublicKey _publicKey;
 
-        public PrivateKey(Hex key)
+        public PrivateKey(string hexString)
+            : this(Bytes.FromHexString(hexString))
         {
-            if (key == null)
-            {
-                throw new ArgumentNullException(nameof(key));
-            }
-
-            if (key.ByteLength != PrivateKeyLengthInBytes)
-            {
-                throw new ArgumentException($"{nameof(PrivateKey)} should be {PrivateKeyLengthInBytes} bytes long", nameof(key));
-            }
-
-            Hex = key;
         }
 
-        public Hex Hex { get; }
+        public PrivateKey(byte[] keyBytes)
+        {
+            if (keyBytes == null)
+            {
+                throw new ArgumentNullException(nameof(keyBytes));
+            }
+
+            if (keyBytes.Length != PrivateKeyLengthInBytes)
+            {
+                throw new ArgumentException($"{nameof(PrivateKey)} should be {PrivateKeyLengthInBytes} bytes long",
+                    nameof(keyBytes));
+            }
+
+            KeyBytes = keyBytes;
+        }
 
         public PublicKey PublicKey => LazyInitializer.EnsureInitialized(ref _publicKey, ComputePublicKey);
 
         public Address Address => PublicKey.Address;
 
-        protected bool Equals(PrivateKey other)
+        private bool Equals(PrivateKey other)
         {
-            return Hex.Equals(other.Hex);
+            return Bytes.UnsafeCompare(KeyBytes, other.KeyBytes);
         }
 
         public override bool Equals(object obj)
@@ -60,30 +67,33 @@ namespace Nethermind.Core.Crypto
             {
                 return false;
             }
+
             if (ReferenceEquals(this, obj))
             {
                 return true;
             }
+
             if (obj.GetType() != GetType())
             {
                 return false;
             }
-            return Equals((PrivateKey)obj);
+
+            return Equals((PrivateKey) obj);
         }
 
         public override int GetHashCode()
         {
-            return Hex.GetHashCode();
+            return KeyBytes.GetSimplifiedHashCode();
         }
 
         private PublicKey ComputePublicKey()
         {
-            return new PublicKey(Proxy.GetPublicKey(Hex, false));
+            return new PublicKey(Proxy.GetPublicKey(KeyBytes, false));
         }
 
         public override string ToString()
         {
-            return Hex.ToString(true);
+            return KeyBytes.ToHexString(true);
         }
     }
 }

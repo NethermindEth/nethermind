@@ -17,6 +17,7 @@
  */
 
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
@@ -64,12 +65,12 @@ namespace Nethermind.Core.Test
         }
 
         [Test]
-        public void Hex_is_correctly_assigned()
+        public void Bytes_are_correctly_assigned()
         {
             byte[] bytes = new byte[20];
             new System.Random(1).NextBytes(bytes);
             Address address = new Address(bytes);
-            Assert.AreEqual(address.Hex, new Hex(bytes));
+            Assert.True(Bytes.UnsafeCompare(address.Bytes, bytes));
         }
 
         [Test]

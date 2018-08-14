@@ -17,24 +17,27 @@
  */
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Core
 {
-    // can change it to behave as an array wrapper
     public class Address : IEquatable<Address>
     {
         private const int AddressLengthInBytes = 20;
 
-        public readonly Hex Hex;
+        public byte[] Bytes { get; }
 
         public Address(Keccak keccak)
             : this(keccak.Bytes.Slice(12, 20))
         {
         }
+
+        public byte this[int index] => Bytes[index];
 
         public static bool IsValidAddress(string hexString, bool allowPrefix)
         {
@@ -66,19 +69,26 @@ namespace Nethermind.Core
             return true;
         }
 
-        public Address(Hex hex)
+        public Address(string hexString)
+            : this(Extensions.Bytes.FromHexString(hexString))
         {
-            if (hex == null)
+        }
+
+        public Address(byte[] bytes)
+        {
+            if (bytes == null)
             {
-                throw new ArgumentNullException(nameof(hex));
+                throw new ArgumentNullException(nameof(bytes));
             }
 
-            if (hex.ByteLength != AddressLengthInBytes)
+            if (bytes.Length != AddressLengthInBytes)
             {
-                throw new ArgumentException($"{nameof(Address)} should be {AddressLengthInBytes} bytes long and is {hex.ByteLength} bytes long", nameof(hex));
+                throw new ArgumentException(
+                    $"{nameof(Address)} should be {AddressLengthInBytes} bytes long and is {bytes.Length} bytes long",
+                    nameof(bytes));
             }
 
-            Hex = hex;
+            Bytes = bytes;
         }
 
         public static Address Zero { get; } = new Address(new byte[20]);
@@ -89,26 +99,25 @@ namespace Nethermind.Core
             {
                 return false;
             }
-            
+
             if (ReferenceEquals(this, other))
             {
                 return true;
             }
-            
-            return Hex.Equals(other.Hex);
+
+            return Nethermind.Core.Extensions.Bytes.UnsafeCompare(Bytes, other.Bytes);
         }
 
         public string ToString(bool withEip55Checksum)
         {
-            // use inside hex?
-            return string.Concat("0x", Hex.FromBytes(Hex, false, false, withEip55Checksum));
+            return Bytes.ToHexString(true, false, withEip55Checksum);
         }
 
         public static Address FromNumber(BigInteger number)
         {
             return new Address(number.ToBigEndianByteArray(20));
         }
-        
+
         public static Address OfContract(Address deployingAddress, BigInteger nonce)
         {
             Keccak contractAddressKeccak =
@@ -116,7 +125,7 @@ namespace Nethermind.Core
                     Rlp.Encode(
                         Rlp.Encode(deployingAddress),
                         Rlp.Encode(nonce)));
-            
+
             return new Address(contractAddressKeccak);
         }
 
@@ -135,17 +144,19 @@ namespace Nethermind.Core
             {
                 return false;
             }
+
             if (ReferenceEquals(this, obj))
             {
                 return true;
             }
 
-            return obj.GetType() == GetType() && Equals((Address)obj);
+            return obj.GetType() == GetType() && Equals((Address) obj);
         }
 
+        [SuppressMessage("ReSharper", "NonReadonlyMemberInGetHashCode")]
         public override int GetHashCode()
         {
-            return Hex.GetHashCode();
+            return Bytes.GetSimplifiedHashCode();
         }
 
         public static bool operator ==(Address a, Address b)

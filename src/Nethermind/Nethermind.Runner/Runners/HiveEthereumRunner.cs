@@ -22,7 +22,6 @@ using System.Linq;
 using System.Numerics;
 using System.Text;
 using System.Threading.Tasks;
-using Microsoft.Extensions.Configuration;
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -177,16 +176,16 @@ namespace Nethermind.Runner.Runners
                 new Keccak(headerJson.ParentHash),
                 Keccak.OfAnEmptySequenceRlp,
                 new Address(headerJson.Coinbase),
-                Hex.ToBytes(headerJson.Difficulty).ToUnsignedBigInteger(),
+                Bytes.FromHexString(headerJson.Difficulty).ToUnsignedBigInteger(),
                 0,
-                (long) Hex.ToBytes(headerJson.GasLimit).ToUnsignedBigInteger(),
-                Hex.ToBytes(headerJson.Timestamp).ToUnsignedBigInteger(),
-                Hex.ToBytes(headerJson.ExtraData)
+                (long) Bytes.FromHexString(headerJson.GasLimit).ToUnsignedBigInteger(),
+                Bytes.FromHexString(headerJson.Timestamp).ToUnsignedBigInteger(),
+                Bytes.FromHexString(headerJson.ExtraData)
             )
             {
                 Bloom = Bloom.Empty,
                 MixHash = new Keccak(headerJson.MixHash),
-                Nonce = (ulong) Hex.ToBytes(headerJson.Nonce).ToUnsignedBigInteger(),               
+                Nonce = (ulong) Bytes.FromHexString(headerJson.Nonce).ToUnsignedBigInteger(),               
                 ReceiptsRoot = Keccak.EmptyTreeHash,
                 StateRoot = Keccak.EmptyTreeHash,
                 TransactionsRoot = Keccak.EmptyTreeHash
@@ -204,8 +203,8 @@ namespace Nethermind.Runner.Runners
         {
             foreach (var account in alloc)
             {
-                _stateProvider.CreateAccount(new Address(new Hex(account.Key)), account.Value.Balance.StartsWith("0x") 
-                    ? new BigInteger(new Hex(account.Value.Balance)) : BigInteger.Parse(account.Value.Balance));
+                _stateProvider.CreateAccount(new Address(account.Key), account.Value.Balance.StartsWith("0x") 
+                    ? new BigInteger(Bytes.FromHexString(account.Value.Balance)) : BigInteger.Parse(account.Value.Balance));
             }
             _stateProvider.Commit(_specProvider.GenesisSpec);
             _dbProvider.Commit(_specProvider.GenesisSpec);

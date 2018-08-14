@@ -22,6 +22,7 @@ using System.Linq;
 using System.Numerics;
 using System.Text;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Core
 {
@@ -164,7 +165,7 @@ namespace Nethermind.Core
                     }
                     else
                     {
-                        return $"{Number} ({((string)new Hex(Hash.Bytes)).Substring(58, 6)}), tx:{Transactions?.Length,5}";
+                        return $"{Number} ({Hash.Bytes.ToHexString().Substring(58, 6)}), tx:{Transactions?.Length,5}";
                     }
             }
         }

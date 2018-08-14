@@ -50,20 +50,20 @@ namespace Ethereum.PoW.Test
 
         private static EthashTest Convert(string name, EthashTestJson testJson)
         {
-            byte[] nonceBytes = new Hex(testJson.Nonce);
+            byte[] nonceBytes = Bytes.FromHexString(testJson.Nonce);
             ulong nonceValue = nonceBytes.ToUInt64();
 
             return new EthashTest(
                 name,
                 nonceValue,
-                new Keccak(new Hex(testJson.MixHash)),
-                new Hex(testJson.Header),
-                new Keccak(new Hex(testJson.Seed)),
+                new Keccak(testJson.MixHash),
+                Bytes.FromHexString(testJson.Header),
+                new Keccak(testJson.Seed),
                 testJson.CacheSize,
                 testJson.FullSize,
-                new Keccak(new Hex(testJson.HeaderHash)),
-                new Keccak(new Hex(testJson.CacheHash)),
-                new Keccak(new Hex(testJson.Result)));
+                new Keccak(testJson.HeaderHash),
+                new Keccak(testJson.CacheHash),
+                new Keccak(testJson.Result));
         }
 
         [TestCaseSource(nameof(LoadTests))]

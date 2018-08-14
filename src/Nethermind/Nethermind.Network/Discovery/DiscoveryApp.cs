@@ -28,6 +28,7 @@ using DotNetty.Transport.Channels.Sockets;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
 using Nethermind.Network.Config;
@@ -334,7 +335,7 @@ namespace Nethermind.Network.Discovery
                 var bootnode = bootNodes[i];
                 var node = bootnode.NodeId == null
                     ? _nodeFactory.CreateNode(bootnode.Host, bootnode.Port)
-                    : _nodeFactory.CreateNode(new NodeId(new PublicKey(new Hex(bootnode.NodeId))), bootnode.Host, bootnode.Port, true);
+                    : _nodeFactory.CreateNode(new NodeId(new PublicKey(Bytes.FromHexString(bootnode.NodeId))), bootnode.Host, bootnode.Port, true);
                 var manager = _discoveryManager.GetNodeLifecycleManager(node);
                 if (manager != null)
                 {

@@ -28,16 +28,6 @@ namespace Nethermind.Core.Crypto
     {
         private const int Size = 64;
 
-        public Keccak512(Hex hex)
-        {
-            if (hex.ByteLength != Size)
-            {
-                throw new ArgumentException($"{nameof(Keccak512)} must be {Size} bytes", nameof(hex));
-            }
-
-            Bytes = hex;
-        }
-
         public Keccak512(byte[] bytes)
         {
             if (bytes.Length != Size)
@@ -69,7 +59,7 @@ namespace Nethermind.Core.Crypto
                 return "Keccak<uninitialized>";
             }
 
-            return Hex.FromBytes(Bytes, withZeroX);
+            return Extensions.Bytes.ToHexString(Bytes, withZeroX);
         }
 
         public static Keccak512 Compute(Rlp rlp)

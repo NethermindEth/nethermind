@@ -4,6 +4,7 @@ using System.Security;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
 using Nethermind.KeyStore.Config;
@@ -88,7 +89,7 @@ namespace Nethermind.KeyStore.Test
 
             //verify private key
             Assert.AreEqual(ResultType.Success, key.Result.ResultType);
-            Assert.AreEqual(new PrivateKey(new Hex(testModel.Priv)), key.PrivateKey);
+            Assert.AreEqual(new PrivateKey(Bytes.FromHexString(testModel.Priv)), key.PrivateKey);
 
             //clean up
             File.Delete(filePath);

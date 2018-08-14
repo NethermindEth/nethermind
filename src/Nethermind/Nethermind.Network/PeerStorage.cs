@@ -21,6 +21,7 @@ using System.IO;
 using System.Linq;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Logging;
 using Nethermind.Db;
@@ -60,7 +61,7 @@ namespace Nethermind.Network
             {
                 var peer = peers[i];
                 var node = peer.Node;
-                var networkNode = new NetworkNode(node.Id.Bytes, node.Host, node.Port, node.Description, peer.NodeStats?.NewPersistedNodeReputation ?? 0);
+                var networkNode = new NetworkNode(new PublicKey(node.Id.Bytes), node.Host, node.Port, node.Description, peer.NodeStats?.NewPersistedNodeReputation ?? 0);
                 _db[networkNode.NodeId.Bytes] = Rlp.Encode(networkNode).Bytes;
                 _updateCounter++;
             }

@@ -18,6 +18,7 @@
 
 using System.Net;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Network.Discovery.Messages
 {
@@ -31,7 +32,7 @@ namespace Nethermind.Network.Discovery.Messages
 
         public override string ToString()
         {
-            return base.ToString() + $", SourceAddress: {SourceAddress?.ToString() ?? "empty"}, DestinationAddress: {DestinationAddress?.ToString() ?? "empty"}, Version: {Version}, Mdc: {(Mdc != null ? new Hex(Mdc).ToString() : "empty")}";
+            return base.ToString() + $", SourceAddress: {SourceAddress?.ToString() ?? "empty"}, DestinationAddress: {DestinationAddress?.ToString() ?? "empty"}, Version: {Version}, Mdc: {Mdc?.ToHexString() ?? "empty"}";
         }
 
         public override MessageType MessageType => MessageType.Ping;

@@ -20,6 +20,7 @@ using System;
 using System.Numerics;
 using Nethermind.Blockchain.Difficulty;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
 
@@ -27,7 +28,7 @@ namespace Nethermind.Blockchain.Validators
 {
     public class HeaderValidator : IHeaderValidator
     {
-        private static readonly Hex DaoExtraData = new Hex("0x64616f2d686172642d666f726b");
+        private static readonly byte[] DaoExtraData = Bytes.FromHexString("0x64616f2d686172642d666f726b");
 
         private readonly ISealEngine _sealEngine;
         private readonly BigInteger? _daoBlockNumber;
@@ -123,14 +124,14 @@ namespace Nethermind.Blockchain.Validators
 
             if (_logger.IsDebugEnabled)
             {
-                _logger.Debug($"Validating block {header.Hash} ({header.Number}) - DAO block {_daoBlockNumber}, extraData {new Hex(header.ExtraData)}");
+                _logger.Debug($"Validating block {header.Hash} ({header.Number}) - DAO block {_daoBlockNumber}, extraData {header.ExtraData.ToHexString(true)}");
             }
 
             bool extraDataValid = isOmmer
                                   || _daoBlockNumber == null
                                   || header.Number < _daoBlockNumber
                                   || header.Number >= _daoBlockNumber + 10
-                                  || new Hex(header.ExtraData).Equals(DaoExtraData);
+                                  || Bytes.UnsafeCompare(header.ExtraData, DaoExtraData);
             if (!extraDataValid)
             {
                 _logger.Warn($"Invalid block header ({header.Hash}) - DAO extra data not valid");

@@ -215,7 +215,7 @@ namespace Nethermind.Evm
             while (tracePosition < Size)
             {
                 int sizeAvailable = Math.Min(WordSize, buffer.Length - tracePosition);
-                memoryTrace.Add(new Hex(buffer.Slice(tracePosition, sizeAvailable)));
+                memoryTrace.Add(buffer.Slice(tracePosition, sizeAvailable).ToHexString());
                 tracePosition = tracePosition + WordSize;
             }
 

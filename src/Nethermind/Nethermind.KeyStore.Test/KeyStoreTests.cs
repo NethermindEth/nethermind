@@ -23,6 +23,7 @@ using System.Security;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
 using Nethermind.KeyStore.Config;
@@ -127,7 +128,7 @@ namespace Nethermind.KeyStore.Test
             //get persisted key, verify it matches generated key
             (PrivateKey, Result) persistedKey = _store.GetKey(key.Item1.Address, _testPasswordSecured);
             Assert.AreEqual(ResultType.Success, persistedKey.Item2.ResultType);
-            Assert.IsTrue(key.Item1.Hex.Equals(persistedKey.Item1.Hex));
+            Assert.IsTrue(Bytes.UnsafeCompare(key.Item1.KeyBytes, persistedKey.Item1.KeyBytes));
 
             //delete generated key
             Result result = _store.DeleteKey(key.Item1.Address, _testPasswordSecured);
@@ -171,7 +172,7 @@ namespace Nethermind.KeyStore.Test
             //Get with right pass
             (PrivateKey, Result) key2 = _store.GetKey(key.Item1.Address, _testPasswordSecured);
             Assert.AreEqual(ResultType.Success, key2.Item2.ResultType);
-            Assert.AreEqual(key.Item1.Hex, key2.Item1.Hex);
+            Assert.IsTrue(Bytes.UnsafeCompare(key.Item1.KeyBytes, key2.Item1.KeyBytes));
 
             //Try to Get with wrong pass
             (PrivateKey, Result) key3 = _store.GetKey(key.Item1.Address, _wrongPasswordSecured);

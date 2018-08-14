@@ -19,6 +19,7 @@
 using System;
 using System.IO;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test
@@ -61,12 +62,12 @@ namespace Nethermind.Core.Test
         }
 
         [Test]
-        public void Hex_is_stored_correctly()
+        public void Bytes_are_stored_correctly()
         {
             byte[] bytes = new byte[32];
             new Random(12).NextBytes(bytes);
             PrivateKey privateKey = new PrivateKey(bytes);
-            Assert.AreEqual(new Hex(bytes), privateKey.Hex);
+            Assert.True(Bytes.UnsafeCompare(bytes, privateKey.KeyBytes));
         }
 
         [TestCase(TestPrivateKeyHex)]

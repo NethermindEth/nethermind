@@ -86,12 +86,12 @@ namespace Ethereum.Basic.Test
         {
             TransactionTest test = new TransactionTest();
             test.Value = testJson.Value;
-            test.Data = Hex.ToBytes(testJson.Data);
+            test.Data = Bytes.FromHexString(testJson.Data);
             test.GasPrice = testJson.GasPrice;
             test.PrivateKey = new PrivateKey(testJson.Key);
             test.Nonce = testJson.Nonce;
-            test.Signed = new Rlp(Hex.ToBytes(testJson.Signed));
-            byte[] unsigned = Hex.ToBytes(testJson.Unsigned);
+            test.Signed = new Rlp(Bytes.FromHexString(testJson.Signed));
+            byte[] unsigned = Bytes.FromHexString(testJson.Unsigned);
             if (unsigned[0] == 0xf8)
             {
                 unsigned[1] -= 3;

@@ -365,7 +365,7 @@ namespace Nethermind.Evm
             for (int entryIndex = 0; entryIndex < logEntries.Length; entryIndex++)
             {
                 LogEntry logEntry = logEntries[entryIndex];
-                byte[] addressBytes = logEntry.LoggersAddress.Hex;
+                byte[] addressBytes = logEntry.LoggersAddress.Bytes;
                 bloom.Set(addressBytes);
                 for (int topicIndex = 0; topicIndex < logEntry.Topics.Length; topicIndex++)
                 {

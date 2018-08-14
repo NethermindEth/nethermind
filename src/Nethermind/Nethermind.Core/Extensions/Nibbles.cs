@@ -82,6 +82,25 @@ namespace Nethermind.Core.Extensions
         {
             return new[] { new Nibble((byte)(@byte & 240)), new Nibble((byte)(@byte & 15)) };
         }
+        
+        public static Nibble[] FromHexString(string hexString)
+        {
+            if (hexString == null)
+            {
+                throw new ArgumentNullException($"{nameof(hexString)}");
+            }
+
+            int startIndex = hexString.StartsWith("0x") ? 2 : 0;
+            int numberChars = hexString.Length - startIndex;
+
+            Nibble[] nibbles = new Nibble[numberChars];
+            for (int i = 0; i < numberChars; i++)
+            {
+                nibbles[i] = new Nibble(hexString[i + startIndex]);
+            }
+
+            return nibbles;
+        }
 
         public static byte[] ToLooseByteArray(this Nibble[] nibbles)
         {

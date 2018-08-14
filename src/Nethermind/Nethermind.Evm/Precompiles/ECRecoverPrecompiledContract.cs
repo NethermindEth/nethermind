@@ -78,7 +78,7 @@ namespace Nethermind.Evm.Precompiles
                 return (Bytes.Empty, true);
             }
             
-            return (((byte[])recovered.Hex).PadLeft(32), true); // TODO: change recovery code to return bytes?
+            return (recovered.Bytes.PadLeft(32), true); // TODO: change recovery code to return bytes?
         }
     }
 }

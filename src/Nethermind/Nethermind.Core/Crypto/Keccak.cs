@@ -20,6 +20,7 @@ using System;
 using System.Diagnostics;
 using System.Threading;
 using Nethermind.Core.Encoding;
+using Nethermind.Core.Extensions;
 using Nethermind.HashLib;
 
 namespace Nethermind.Core.Crypto
@@ -31,21 +32,17 @@ namespace Nethermind.Core.Crypto
 
         [ThreadStatic] private static HashLib.Crypto.SHA3.Keccak256 _hash;
 
-        public Keccak(Hex hex)
+        public Keccak(string hexString)
+            : this(Extensions.Bytes.FromHexString(hexString))
         {
-            if (hex.ByteLength != Size)
-            {
-                throw new ArgumentException($"{nameof(Keccak)} must be {Size} bytes and was {hex.ByteLength} bytes", nameof(hex));
-            }
-
-            Bytes = hex;
         }
 
         public Keccak(byte[] bytes)
         {
             if (bytes.Length != Size)
             {
-                throw new ArgumentException($"{nameof(Keccak)} must be {Size} bytes and was {bytes.Length} bytes", nameof(bytes));
+                throw new ArgumentException($"{nameof(Keccak)} must be {Size} bytes and was {bytes.Length} bytes",
+                    nameof(bytes));
             }
 
             Bytes = bytes;
@@ -85,7 +82,7 @@ namespace Nethermind.Core.Crypto
                 return "Keccak<uninitialized>";
             }
 
-            return Hex.FromBytes(Bytes, withZeroX);
+            return Bytes.ToHexString(withZeroX);
         }
 
         [DebuggerStepThrough]
@@ -120,7 +117,7 @@ namespace Nethermind.Core.Crypto
         {
             return HashFactory.Crypto.SHA3.CreateKeccak256();
         }
-        
+
         private static Keccak InternalCompute(Span<byte> input)
         {
             if (_hash == null) // avoid allocating Init func
@@ -158,13 +155,13 @@ namespace Nethermind.Core.Crypto
             {
                 return false;
             }
-            
+
             return Extensions.Bytes.UnsafeCompare(other.Bytes, Bytes);
         }
 
         public override bool Equals(object obj)
         {
-            return obj?.GetType() == typeof(Keccak) && Equals((Keccak)obj);
+            return obj?.GetType() == typeof(Keccak) && Equals((Keccak) obj);
         }
 
         public override int GetHashCode()
@@ -172,7 +169,7 @@ namespace Nethermind.Core.Crypto
             unchecked
             {
                 const int p = 16777619;
-                int hash = (int)2166136261;
+                int hash = (int) 2166136261;
 
                 hash = hash ^ Bytes[0] * p;
                 hash = hash ^ Bytes[Size / 2] * p;
@@ -192,7 +189,7 @@ namespace Nethermind.Core.Crypto
             {
                 return false;
             }
-            
+
             return Extensions.Bytes.UnsafeCompare(a.Bytes, b.Bytes);
         }
 

@@ -17,6 +17,7 @@
  */
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Security.Cryptography;
 using System.Threading;
@@ -28,11 +29,6 @@ namespace Nethermind.Core.Extensions
     public static class ByteArrayExtensions
     {
         [ThreadStatic] private static HashAlgorithm _xxHash;
-
-        public static string ToHex(this byte[] bytes, bool withZeroX = true)
-        {
-            return Hex.FromBytes(bytes, withZeroX);
-        }
 
         public static byte[] Xor(this byte[] bytes, byte[] otherBytes)
         {
@@ -147,6 +143,19 @@ namespace Nethermind.Core.Extensions
             LazyInitializer.EnsureInitialized(ref _xxHash, XXHash32.Create);
             byte[] hash = _xxHash.ComputeHash(bytes);
             return (hash[0] >> 24) | (hash[1] >> 16) | (hash[2] >> 8) | hash[3];
+        }
+        
+        [SuppressMessage("ReSharper", "NonReadonlyMemberInGetHashCode")]
+        public static int GetSimplifiedHashCode(this byte[] bytes)
+        {
+            const int fnvPrime = 0x01000193;
+
+            if (bytes.Length == 0)
+            {
+                return 0;
+            }
+
+            return (fnvPrime * (((fnvPrime * (bytes[0] + 7)) ^ (bytes[bytes.Length - 1] + 23)) + 11)) ^ (bytes[(bytes.Length - 1) / 2] + 53);
         }
     }
 }

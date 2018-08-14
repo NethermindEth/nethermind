@@ -146,11 +146,11 @@ namespace Ethereum.Trie.Test
                 string valueString = keyValuePair.Value;
 
                 Nibble[] key = keyString.StartsWith("0x")
-                    ? Hex.ToNibbles(keyString)
+                    ? Nibbles.FromHexString(keyString)
                     : Nibbles.FromBytes(Encoding.ASCII.GetBytes(keyString));
 
                 byte[] value = valueString.StartsWith("0x")
-                    ? Hex.ToBytes(valueString)
+                    ? Bytes.FromHexString(valueString)
                     : Encoding.ASCII.GetBytes(valueString);
 
                 TestContext.WriteLine();

@@ -30,12 +30,12 @@ namespace Nethermind.Core.Crypto
     {
         public Signature Sign(PrivateKey privateKey, Keccak message)
         {
-            if (!Proxy.VerifyPrivateKey(privateKey.Hex))
+            if (!Proxy.VerifyPrivateKey(privateKey.KeyBytes))
             {
                 throw new ArgumentException("Invalid private key", nameof(privateKey));
             }
 
-            byte[] signatureBytes = Proxy.SignCompact(message.Bytes, privateKey.Hex, out int recoveryId);
+            byte[] signatureBytes = Proxy.SignCompact(message.Bytes, privateKey.KeyBytes, out int recoveryId);
 
             //// https://bitcoin.stackexchange.com/questions/59820/sign-a-tx-with-low-s-value-using-openssl
 

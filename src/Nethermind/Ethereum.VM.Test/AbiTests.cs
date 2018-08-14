@@ -47,7 +47,7 @@ namespace Ethereum.VM.Test
         {
             AbiTest test = new AbiTest();
             test.Name = name;
-            test.Result = testJson.Result;
+            test.Result = Bytes.FromHexString(testJson.Result);
             test.Types = testJson.Types.Select(ToAbiType).ToArray();
             test.Args = testJson.Args.Select(TestLoader.PrepareInput).ToArray();
             return test;
@@ -81,7 +81,7 @@ namespace Ethereum.VM.Test
         {
             public string Name { get; set; }
             public object[] Args { get; set; }
-            public Hex Result { get; set; }
+            public byte[] Result { get; set; }
             public AbiType[] Types { get; set; }
 
             public override string ToString()
