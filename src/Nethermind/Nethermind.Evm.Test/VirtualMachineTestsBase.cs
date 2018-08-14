@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -13,12 +14,13 @@ namespace Nethermind.Evm.Test
 {
     public class VirtualMachineTestsBase : ITransactionTracer
     {
+        private readonly ConsoleTransactionTracer _tracer = new ConsoleTransactionTracer(new UnforgivingJsonSerializer());
         private readonly IEthereumSigner _ethereumSigner;
         private readonly ITransactionProcessor _processor;
-        private readonly ISpecProvider _specProvider;
         private readonly ISnapshotableDb _stateDb;
         private readonly IDbProvider _storageDbProvider;
-        private readonly IStateProvider _stateProvider;
+        protected internal readonly ISpecProvider SpecProvider;
+        protected internal IStateProvider TestState { get; }
         protected internal IStorageProvider Storage { get; }
 
         protected internal static Address A { get; } = TestObject.AddressA;
@@ -26,47 +28,47 @@ namespace Nethermind.Evm.Test
 
         protected virtual int BlockNumber => 10000;
 
+        protected IReleaseSpec Spec => SpecProvider.GetSpec(BlockNumber);
+
         public VirtualMachineTestsBase()
         {
-            _specProvider = RopstenSpecProvider.Instance;
+            SpecProvider = RopstenSpecProvider.Instance;
             ILogManager logger = NullLogManager.Instance;
             IDb codeDb = new MemDb();
             _stateDb = new SnapshotableDb(new MemDb());
             StateTree stateTree = new StateTree(_stateDb);
-            _stateProvider = new StateProvider(stateTree, codeDb, logger);
+            TestState = new StateProvider(stateTree, codeDb, logger);
             _storageDbProvider = new MemDbProvider(logger);
-            Storage = new StorageProvider(_storageDbProvider, _stateProvider, logger);
-            _ethereumSigner = new EthereumSigner(_specProvider, logger);
+            Storage = new StorageProvider(_storageDbProvider, TestState, logger);
+            _ethereumSigner = new EthereumSigner(SpecProvider, logger);
             IBlockhashProvider blockhashProvider = new TestBlockhashProvider();
-            IVirtualMachine virtualMachine = new VirtualMachine(_stateProvider, Storage, blockhashProvider, logger);
+            IVirtualMachine virtualMachine = new VirtualMachine(TestState, Storage, blockhashProvider, logger);
             
-            _processor = new TransactionProcessor(_specProvider, _stateProvider, Storage, virtualMachine, this, logger);
+            _processor = new TransactionProcessor(SpecProvider, TestState, Storage, virtualMachine, this, logger);
         }
 
         protected TransactionTrace TransactionTrace { get; private set; }
 
-        public bool IsTracingEnabled { get; protected set; }
+        public bool IsTracingEnabled
+        {
+            get => _tracer.IsTracingEnabled;
+            protected set => _tracer.IsTracingEnabled = value;
+        }
         public void SaveTrace(Keccak hash, TransactionTrace trace)
         {
             TransactionTrace = trace;
-        }
-        
-        [Test]
-        public void Stop()
-        {
-            TransactionReceipt receipt = Execute((byte)Instruction.STOP);
-            Assert.AreEqual(GasCostOf.Transaction, receipt.GasUsed);
+            _tracer.SaveTrace(hash, trace);
         }
         
         [SetUp]
         public void Setup()
         {
-            IsTracingEnabled = false;
+            _tracer.IsTracingEnabled = false;
             TransactionTrace = null;
 
             _stateDbSnapshot = _stateDb.TakeSnapshot();
             _storageDbSnapshot = _storageDbProvider.TakeSnapshot();
-            _stateRoot = _stateProvider.StateRoot;
+            _stateRoot = TestState.StateRoot;
         }
 
         private int _stateDbSnapshot;
@@ -77,8 +79,8 @@ namespace Nethermind.Evm.Test
         public void TearDown()
         {
             Storage.ClearCaches();
-            _stateProvider.Reset();
-            _stateProvider.StateRoot = _stateRoot;
+            TestState.Reset();
+            TestState.StateRoot = _stateRoot;
 
             _storageDbProvider.Restore(_storageDbSnapshot);
             _stateDb.Restore(_stateDbSnapshot);
@@ -86,24 +88,26 @@ namespace Nethermind.Evm.Test
         
         protected TransactionReceipt Execute(params byte[] code)
         {
-            _stateProvider.CreateAccount(A, 100.Ether());
+            return Execute(BlockNumber, 100000, code);
+        }
+        
+        protected TransactionReceipt Execute(BigInteger blockNumber, long gasLimit, byte[] code)
+        {
+            TestState.CreateAccount(A, 100.Ether());
+            TestState.CreateAccount(B, 100.Ether());
+            Keccak codeHash = TestState.UpdateCode(code);
+            TestState.UpdateCodeHash(TestObject.AddressB, codeHash, SpecProvider.GenesisSpec);
 
-            _stateProvider.CreateAccount(B, 100.Ether());
-            Keccak codeHash = _stateProvider.UpdateCode(code);
-            _stateProvider.UpdateCodeHash(TestObject.AddressB, codeHash, _specProvider.GenesisSpec);
-
-            _stateProvider.Commit(_specProvider.GenesisSpec);
+            TestState.Commit(SpecProvider.GenesisSpec);
 
             Transaction transaction = Build.A.Transaction
-                .WithGasLimit(100000)
+                .WithGasLimit(gasLimit)
                 .WithGasPrice(1)
                 .WithTo(TestObject.AddressB)
-                .SignedAndResolved(_ethereumSigner, TestObject.PrivateKeyA, BlockNumber)
+                .SignedAndResolved(_ethereumSigner, TestObject.PrivateKeyA, blockNumber)
                 .TestObject;
 
-            Assert.AreEqual(A, _ethereumSigner.RecoverAddress(transaction, BlockNumber));
-
-            Block block = Build.A.Block.WithNumber(BlockNumber).TestObject;
+            Block block = Build.A.Block.WithNumber(blockNumber).TestObject;
             TransactionReceipt receipt = _processor.Execute(transaction, block.Header);
             return receipt;
         }
@@ -111,6 +115,11 @@ namespace Nethermind.Evm.Test
         protected void AssertGas(TransactionReceipt receipt, long gas)
         {
             Assert.AreEqual(gas, receipt.GasUsed, "gas");
+        }
+
+        protected void AssertStorage(BigInteger address, Keccak value)
+        {
+            Assert.AreEqual(value.Bytes, Storage.Get(new StorageAddress(B, address)).PadLeft(32), "storage");
         }
         
         protected void AssertStorage(BigInteger address, Hex value)
@@ -141,6 +150,48 @@ namespace Nethermind.Evm.Test
                 return this;
             }
 
+            public Prepare Create(byte[] code, BigInteger value)
+            {
+                // push code and store in memory
+                for (int i = 0; i < code.Length; i+= 32)
+                {
+                    PushData(code.Slice(i, Math.Min(32, code.Length - i)).PadRight(32));
+                    PushData(i);
+                    Op(Instruction.MSTORE);   
+                }
+                
+                PushData(code.Length);
+                PushData(0);
+                PushData(value);
+                Op(Instruction.CREATE);
+                return this;
+            }
+            
+            public Prepare Call(Address address, long gasLimit)
+            {
+                PushData(0);
+                PushData(0);
+                PushData(0);
+                PushData(0);
+                PushData(0);
+                PushData(address);
+                PushData(gasLimit);
+                Op(Instruction.CALL);
+                return this;
+            }
+            
+            public Prepare PushData(Address address)
+            {
+                PushData((byte[])address.Hex);
+                return this;
+            }
+
+            public Prepare PushData(BigInteger data)
+            {
+                PushData(data.ToBigEndianByteArray());
+                return this;
+            }
+            
             public Prepare PushData(string data)
             {
                 PushData((byte[])new Hex(data));

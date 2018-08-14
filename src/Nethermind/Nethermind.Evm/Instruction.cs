@@ -173,5 +173,6 @@ namespace Nethermind.Evm
         SHL = 0x1b,
         SHR = 0x1c,
         SAR = 0x1d,
+        EXTCODEHASH = 0x3f,
     }
 }

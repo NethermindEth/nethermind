@@ -57,5 +57,10 @@ namespace Nethermind.Evm
 
         [JsonProperty("storage", Order = 7)]
         public Dictionary<string, string> SortedStorage => Storage.OrderBy(p => p.Key).ToDictionary(p => p.Key, p => p.Value);
+
+        public override string ToString()
+        {
+            return base.ToString();
+        }
     }
 }

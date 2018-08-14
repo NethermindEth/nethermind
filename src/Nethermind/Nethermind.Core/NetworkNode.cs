@@ -45,10 +45,10 @@ namespace Nethermind.Core
             Reputation = reputation;
         }
 
-        public NodeId NodeId { get; set; }
-        public string Host { get; set; }
-        public int Port { get; set; }
-        public string Description { get; set; }
-        public long Reputation { get; set; }
+        public NodeId NodeId { get; }
+        public string Host { get; }
+        public int Port { get; }
+        public string Description { get; }
+        public long Reputation { get; }
     }
 }

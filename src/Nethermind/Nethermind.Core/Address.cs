@@ -17,7 +17,9 @@
  */
 
 using System;
+using System.Numerics;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Core
@@ -100,6 +102,17 @@ namespace Nethermind.Core
         {
             // use inside hex?
             return string.Concat("0x", Hex.FromBytes(Hex, false, false, withEip55Checksum));
+        }
+
+        public static Address OfContract(Address deployingAddress, BigInteger nonce)
+        {
+            Keccak contractAddressKeccak =
+                Keccak.Compute(
+                    Rlp.Encode(
+                        Rlp.Encode(deployingAddress),
+                        Rlp.Encode(nonce)));
+            
+            return new Address(contractAddressKeccak);
         }
 
         /// <summary>

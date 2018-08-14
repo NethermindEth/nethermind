@@ -34,6 +34,13 @@ namespace Nethermind.Evm.Test
     public class VirtualMachineTests : VirtualMachineTestsBase
     {
         [Test]
+        public void Stop()
+        {
+            TransactionReceipt receipt = Execute((byte)Instruction.STOP);
+            Assert.AreEqual(GasCostOf.Transaction, receipt.GasUsed);
+        }
+        
+        [Test]
         public void Trace()
         {
             IsTracingEnabled = true;

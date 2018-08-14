@@ -20,6 +20,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Numerics;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
@@ -29,6 +30,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Store;
 
+[assembly:InternalsVisibleTo("Nethermind.Evm.Test")]
 namespace Nethermind.Evm
 {
     public class VirtualMachine : IVirtualMachine
@@ -44,7 +46,7 @@ namespace Nethermind.Evm
         public static readonly BigInteger BigIntMaxInt = int.MaxValue;
         private static readonly byte[] EmptyBytes = new byte[0];
 
-        private static readonly byte[] BytesOne32 =
+        internal static readonly byte[] BytesOne32 =
         {
             0, 0, 0, 0, 0, 0, 0, 0,
             0, 0, 0, 0, 0, 0, 0, 0,
@@ -52,9 +54,9 @@ namespace Nethermind.Evm
             0, 0, 0, 0, 0, 0, 0, 1
         };
 
-        private static readonly byte[] BytesZero = {0};
+        internal static readonly byte[] BytesZero = {0};
 
-        private static readonly byte[] BytesZero32 =
+        internal static readonly byte[] BytesZero32 =
         {
             0, 0, 0, 0, 0, 0, 0, 0,
             0, 0, 0, 0, 0, 0, 0, 0,
@@ -1933,13 +1935,7 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        Keccak contractAddressKeccak =
-                            Keccak.Compute(
-                                Rlp.Encode(
-                                    Rlp.Encode(env.ExecutingAccount),
-                                    Rlp.Encode(_state.GetNonce(env.ExecutingAccount))));
-                        Address contractAddress = new Address(contractAddressKeccak);
-
+                        Address contractAddress = Address.OfContract(env.ExecutingAccount, _state.GetNonce(env.ExecutingAccount));
                         _state.IncrementNonce(env.ExecutingAccount);
 
                         bool accountExists = _state.AccountExists(contractAddress);
@@ -2071,7 +2067,7 @@ namespace Nethermind.Evm
                             gasExtra += GasCostOf.NewAccount;
                         }
 
-                        if (!UpdateGas(spec.IsEip150Enabled ? GasCostOf.CallOrCallCodeEip150 : GasCostOf.CallOrCallCode, ref gasAvailable))
+                        if (!UpdateGas(spec.IsEip150Enabled ? GasCostOf.CallEip150 : GasCostOf.Call, ref gasAvailable))
                         {
                             return CallResult.OutOfGasException;
                         }
@@ -2239,6 +2235,12 @@ namespace Nethermind.Evm
                     }
                     case Instruction.SHL:
                     {
+                        if (!spec.IsEip145Enabled)
+                        {
+                            Metrics.EvmExceptions++;
+                            return CallResult.InvalidInstructionException;
+                        }
+                        
                         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable))
                         {
                             return CallResult.OutOfGasException;
@@ -2260,6 +2262,12 @@ namespace Nethermind.Evm
                     }
                     case Instruction.SHR:
                     {
+                        if (!spec.IsEip145Enabled)
+                        {
+                            Metrics.EvmExceptions++;
+                            return CallResult.InvalidInstructionException;
+                        }
+                        
                         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable))
                         {
                             return CallResult.OutOfGasException;
@@ -2281,6 +2289,12 @@ namespace Nethermind.Evm
                     }
                     case Instruction.SAR:
                     {
+                        if (!spec.IsEip145Enabled)
+                        {
+                            Metrics.EvmExceptions++;
+                            return CallResult.InvalidInstructionException;
+                        }
+                        
                         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable))
                         {
                             return CallResult.OutOfGasException;
@@ -2308,6 +2322,31 @@ namespace Nethermind.Evm
                             }
                             
                             PushSignedInt(res, bytesOnStack);
+                        }
+
+                        break;
+                    }
+                    case Instruction.EXTCODEHASH:
+                    {
+                        if (!spec.IsEip1052Enabled)
+                        {
+                            Metrics.EvmExceptions++;
+                            return CallResult.InvalidInstructionException;
+                        }
+                        
+                        if (!UpdateGas(GasCostOf.ExtCodeHash, ref gasAvailable))
+                        {
+                            return CallResult.OutOfGasException;
+                        }
+
+                        Address address = PopAddress(bytesOnStack);
+                        if (!_state.AccountExists(address) || evmState.DestroyList.Contains(address))
+                        {
+                            PushZero(bytesOnStack);
+                        }
+                        else
+                        {
+                            PushBytes(_state.GetCodeHash(address).Bytes, bytesOnStack);
                         }
 
                         break;

@@ -110,8 +110,28 @@ namespace Nethermind.Core.Specs
         bool IsEip658Enabled { get; }
         
         /// <summary>
-        /// SHL, SHR instructions
+        /// SHL, SHR, SAR instructions
         /// </summary>
         bool IsEip145Enabled { get; }
+        
+        /// <summary>
+        /// Blockhash refactoring
+        /// </summary>
+        bool IsEip210Enabled { get; }
+        
+        /// <summary>
+        /// Skinny CREATE2
+        /// </summary>
+        bool IsEip1014Enabled { get; }
+        
+        /// <summary>
+        /// EXTCODEHASH instructions
+        /// </summary>
+        bool IsEip1052Enabled { get; }
+        
+        /// <summary>
+        /// Net gas metering for SSTORE operations
+        /// </summary>
+        bool IsEip1087Enabled { get; }
     }
 }
