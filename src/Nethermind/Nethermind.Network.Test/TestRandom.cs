@@ -58,7 +58,7 @@ namespace Nethermind.Network.Test
 
         public byte[] GenerateRandomBytes(int length)
         {
-            return new Hex(_nextRandomBytesFunc(length));
+            return _nextRandomBytesFunc(length);
         }
 
         public int NextInt(int max)
@@ -66,7 +66,7 @@ namespace Nethermind.Network.Test
             return _nextIntFunc(max);
         }
 
-        public void EnqueueRandomBytes(Hex randomBytes)
+        public void EnqueueRandomBytes(byte[] randomBytes)
         {
             _nextRandomBytesQueue.Enqueue(randomBytes);
         }

@@ -77,7 +77,7 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.SSTORE)
                 .Done;
 
-            TransactionReceipt receipt = Execute(code);
+            Execute(code);
             AssertStorage(BigInteger.Zero, Keccak.Zero);
         }
 
@@ -96,7 +96,7 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.SSTORE)
                 .Done;
 
-            TransactionReceipt receipt = Execute(code);
+            Execute(code);
             AssertStorage(BigInteger.Zero, Keccak.OfAnEmptyString.Bytes);
         }
 
@@ -117,7 +117,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Addresses_are_trimmed_properly()
         {
-            byte[] addressWithGarbage = ((byte[]) TestObject.AddressC.Hex).PadLeft(32);
+            byte[] addressWithGarbage = TestObject.AddressC.Bytes.PadLeft(32);
             addressWithGarbage[11] = 88;
 
             TestState.CreateAccount(TestObject.AddressC, 1.Ether());

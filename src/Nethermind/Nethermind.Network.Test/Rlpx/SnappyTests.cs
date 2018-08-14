@@ -18,7 +18,7 @@
 
 using System.Collections.Generic;
 using System.IO;
-using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
 using Nethermind.Network.Rlpx;
 using NUnit.Framework;
@@ -67,8 +67,8 @@ namespace Nethermind.Network.Test.Rlpx
         public void Can_decompress_go_compressed_file()
         {
             SnappyDecoderForTest decoder = new SnappyDecoderForTest();
-            byte[] expectedUncompressed = new Hex(File.ReadAllText(Path.Combine(TestContext.CurrentContext.WorkDirectory, "Rlpx", _uncompressedTestFileName)));
-            byte[] compressed = new Hex(File.ReadAllText(Path.Combine(TestContext.CurrentContext.WorkDirectory, "Rlpx", _goCompressedTestFileName)));
+            byte[] expectedUncompressed = Bytes.FromHexString(File.ReadAllText(Path.Combine(TestContext.CurrentContext.WorkDirectory, "Rlpx", _uncompressedTestFileName)));
+            byte[] compressed = Bytes.FromHexString(File.ReadAllText(Path.Combine(TestContext.CurrentContext.WorkDirectory, "Rlpx", _goCompressedTestFileName)));
             byte[] uncompressedResult = decoder.TestDecode(compressed);
             Assert.AreEqual(expectedUncompressed, uncompressedResult);
         }
@@ -77,8 +77,8 @@ namespace Nethermind.Network.Test.Rlpx
         public void Can_decompress_python_compressed_file()
         {
             SnappyDecoderForTest decoder = new SnappyDecoderForTest();
-            byte[] expectedUncompressed = new Hex(File.ReadAllText(Path.Combine(TestContext.CurrentContext.WorkDirectory, "Rlpx", _uncompressedTestFileName)));
-            byte[] compressed = new Hex(File.ReadAllText(Path.Combine(TestContext.CurrentContext.WorkDirectory, "Rlpx", _pythonCompressedTestFileName)));
+            byte[] expectedUncompressed = Bytes.FromHexString(File.ReadAllText(Path.Combine(TestContext.CurrentContext.WorkDirectory, "Rlpx", _uncompressedTestFileName)));
+            byte[] compressed = Bytes.FromHexString(File.ReadAllText(Path.Combine(TestContext.CurrentContext.WorkDirectory, "Rlpx", _pythonCompressedTestFileName)));
             byte[] uncompressedResult = decoder.TestDecode(compressed);
             Assert.AreEqual(expectedUncompressed, uncompressedResult);
         }
@@ -86,29 +86,29 @@ namespace Nethermind.Network.Test.Rlpx
         [Test]
         public void Can_load_block_rlp_test_file()
         {
-            byte[] bytes = new Hex(File.ReadAllBytes(_uncompressedTestFileName));
+            byte[] bytes = File.ReadAllBytes(_uncompressedTestFileName);
             Assert.Greater(bytes.Length, 2.9 * 1024 * 1024);
         }
 
         [Test]
         public void Can_load_go_compressed_test_file()
         {
-            byte[] bytes = new Hex(File.ReadAllText(Path.Combine(TestContext.CurrentContext.WorkDirectory, "Rlpx", _goCompressedTestFileName)));
+            byte[] bytes = Bytes.FromHexString(File.ReadAllText(Path.Combine(TestContext.CurrentContext.WorkDirectory, "Rlpx", _goCompressedTestFileName)));
             Assert.Greater(bytes.Length, 70 * 1024);
         }
 
         [Test]
         public void Can_load_python_compressed_test_file()
         {
-            byte[] bytes = new Hex(File.ReadAllText(Path.Combine(TestContext.CurrentContext.WorkDirectory, "Rlpx", _pythonCompressedTestFileName)));
+            byte[] bytes = Bytes.FromHexString(File.ReadAllText(Path.Combine(TestContext.CurrentContext.WorkDirectory, "Rlpx", _pythonCompressedTestFileName)));
             Assert.Greater(bytes.Length, 70 * 1024);
         }
         
         [Test]
         public void Uses_same_compression_as_py()
         {
-            byte[] bytesPy = new Hex(File.ReadAllText(Path.Combine(TestContext.CurrentContext.WorkDirectory, "Rlpx", _pythonCompressedTestFileName)));
-            byte[] bytesUncompressed = new Hex(File.ReadAllText(Path.Combine(TestContext.CurrentContext.WorkDirectory, "Rlpx", _uncompressedTestFileName)));
+            byte[] bytesPy = Bytes.FromHexString(File.ReadAllText(Path.Combine(TestContext.CurrentContext.WorkDirectory, "Rlpx", _pythonCompressedTestFileName)));
+            byte[] bytesUncompressed = Bytes.FromHexString(File.ReadAllText(Path.Combine(TestContext.CurrentContext.WorkDirectory, "Rlpx", _uncompressedTestFileName)));
             
             SnappyEncoderForTest encoder = new SnappyEncoderForTest();
             byte[] compressed = encoder.TestEncode(bytesUncompressed);
@@ -120,7 +120,7 @@ namespace Nethermind.Network.Test.Rlpx
         {
             SnappyDecoderForTest decoder = new SnappyDecoderForTest();
             SnappyEncoderForTest encoder = new SnappyEncoderForTest();
-            byte[] expectedUncompressed = new Hex(File.ReadAllText(Path.Combine(TestContext.CurrentContext.WorkDirectory, "Rlpx", _uncompressedTestFileName)));
+            byte[] expectedUncompressed = Bytes.FromHexString(File.ReadAllText(Path.Combine(TestContext.CurrentContext.WorkDirectory, "Rlpx", _uncompressedTestFileName)));
             byte[] compressed = encoder.TestEncode(expectedUncompressed);
             byte[] uncompressedResult = decoder.TestDecode(compressed);
             Assert.AreEqual(expectedUncompressed, uncompressedResult);

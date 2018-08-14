@@ -19,6 +19,7 @@
 using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
 using Nethermind.Core.Specs;
@@ -41,10 +42,10 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             // WARN: order reflects the internal implementation of the service (tests may fail after any refactoring)
             _testRandom = new TestRandom(
                 NetTestVectors.NonceA,
-                NetTestVectors.EphemeralKeyA.Hex,
+                NetTestVectors.EphemeralKeyA.KeyBytes,
                 _trueCryptoRandom.GenerateRandomBytes(100),
                 NetTestVectors.NonceB,
-                NetTestVectors.EphemeralKeyB.Hex,
+                NetTestVectors.EphemeralKeyB.KeyBytes,
                 _trueCryptoRandom.GenerateRandomBytes(100));
 
             _messageSerializationService = new MessageSerializationService();
@@ -108,7 +109,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
         {
             Packet auth = _initiatorService.Auth(new NodeId(NetTestVectors.StaticKeyB.PublicKey), _initiatorHandshake);
             // TODO: cannot recover signature from this one...
-            auth.Data = new Hex(
+            auth.Data = Bytes.FromHexString(
                 "01b304ab7578555167be8154d5cc456f567d5ba302662433674222360f08d5f1534499d3678b513b" +
                 "0fca474f3a514b18e75683032eb63fccb16c156dc6eb2c0b1593f0d84ac74f6e475f1b8d56116b84" +
                 "9634a8c458705bf83a626ea0384d4d7341aae591fae42ce6bd5c850bfe0b999a694a49bbbaf3ef6c" +
@@ -122,7 +123,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
                 "3bf7678318e2d5b5340c9e488eefea198576344afbdf66db5f51204a6961a63ce072c8926c");
 
             Packet ack = _recipientService.Ack(_recipientHandshake, auth);
-            ack.Data = new Hex(
+            ack.Data = Bytes.FromHexString(
                 "01ea0451958701280a56482929d3b0757da8f7fbe5286784beead59d95089c217c9b917788989470" +
                 "b0e330cc6e4fb383c0340ed85fab836ec9fb8a49672712aeabbdfd1e837c1ff4cace34311cd7f4de" +
                 "05d59279e3524ab26ef753a0095637ac88f2b499b9914b5f64e143eae548a1066e14cd2f4bd7f814" +

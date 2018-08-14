@@ -18,6 +18,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.Discovery.Messages;
 using Nethermind.Network.Test.Builders;
@@ -44,7 +45,7 @@ namespace Nethermind.Network.Test.Discovery
                               "aa3d67d641936511c8f8d6ad8698b820a7cf9e1be7155e9a241f556658c55428ec0563514365799a" +
                               "4be2be5a685a80971ddcfa80cb422cdd0101ec04cb847f000001820cfa8215a8d790000000000000" +
                               "000000000000000000018208ae820d058443b9a3550102";
-            var ping = _messageSerializationService.Deserialize<PingMessage>(new Hex(encodedPing));
+            var ping = _messageSerializationService.Deserialize<PingMessage>(Bytes.FromHexString(encodedPing));
             Assert.AreEqual(4, ping.Version);
 
             encodedPing = "577be4349c4dd26768081f58de4c6f375a7a22f3f7adda654d1428637412c3d7fe917cadc56d4e5e" +
@@ -55,7 +56,7 @@ namespace Nethermind.Network.Test.Discovery
                           "3fa4090c408f6b4bc3701562c031041d4702971d102c9ab7fa5eed4cd6bab8f7af956f7d565ee191" +
                           "7084a95398b6a21eac920fe3dd1345ec0a7ef39367ee69ddf092cbfe5b93e5e568ebc491983c09c7" +
                           "6d922dc3";
-            ping = _messageSerializationService.Deserialize<PingMessage>(new Hex(encodedPing));
+            ping = _messageSerializationService.Deserialize<PingMessage>(Bytes.FromHexString(encodedPing));
             Assert.AreEqual(555, ping.Version);
         }
 
@@ -68,7 +69,7 @@ namespace Nethermind.Network.Test.Discovery
                               "ae82823aa0fbc914b16819237dcd8801d7e53f69e9719adecb3cc0e790c57e91ca4461c9548443b9" +
                               "a355c6010203c2040506a0c969a58f6f9095004c0177a6b47f451530cab38966a25cca5cb58f0555" +
                               "42124e";
-            var pong = _messageSerializationService.Deserialize<PongMessage>(new Hex(encodedPong));
+            var pong = _messageSerializationService.Deserialize<PongMessage>(Bytes.FromHexString(encodedPong));
             Assert.AreEqual(1136239445, pong.ExpirationTime);
         }
 
@@ -81,7 +82,7 @@ namespace Nethermind.Network.Test.Discovery
                               "115bf400769cc1400f3258cd31387574077f301b421bc84df7266c44e9e6d569fc56be0081290476" +
                               "7bf5ccd1fc7f8443b9a35582999983999999280dc62cc8255c73471e0a61da0c89acdc0e035e260a" +
                               "dd7fc0c04ad9ebf3919644c91cb247affc82b69bd2ca235c71eab8e49737c937a2c396";
-            var msg = _messageSerializationService.Deserialize<FindNodeMessage>(new Hex(encodedFindNode));
+            var msg = _messageSerializationService.Deserialize<FindNodeMessage>(Bytes.FromHexString(encodedFindNode));
             Assert.AreEqual(1136239445, msg.ExpirationTime);
         }
 
@@ -100,7 +101,7 @@ namespace Nethermind.Network.Test.Discovery
                                   "13198a2e037073488203e78203e8b8408dcab8618c3253b558d459da53bd8fa68935a719aff8b811" +
                                   "197101a4b2b47dd2d47295286fc00cc081bb542d760717d1bdd6bec2c37cd72eca367d6dd3b9df73" +
                                   "8443b9a355010203b525a138aa34383fec3d2719a0";
-            var msg = _messageSerializationService.Deserialize<NeighborsMessage>(new Hex(encodedNeighbors));
+            var msg = _messageSerializationService.Deserialize<NeighborsMessage>(Bytes.FromHexString(encodedNeighbors));
             Assert.AreEqual(1136239445, msg.ExpirationTime);
             Assert.AreEqual(msg.Nodes[0].IdHashText, "0xca25217b2fbd0ae6d435be1f0f99282a930dac3ca4c3358900da74e7caa7eee4");
             Assert.AreEqual(msg.Nodes[1].IdHashText, "0x6b1e430439aaf971bf408b99c0097bc560238d10d5642e44cdd89d8192bb0554");
