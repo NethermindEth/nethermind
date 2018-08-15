@@ -21,12 +21,14 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Store;
 
@@ -572,6 +574,24 @@ namespace Nethermind.Evm
                 }
             }
 
+            void PushUInt256(UInt256 value, Span<byte> stack)
+            {
+                Span<byte> target = stack.Slice(stackHead * 32, 32);
+                Span<ulong> targetUlongs = MemoryMarshal.Cast<byte, ulong>(target);
+
+                targetUlongs[0] = value.S0;
+                targetUlongs[1] = value.S1;
+                targetUlongs[2] = value.S2;
+                targetUlongs[3] = value.S3;
+                
+                stackHead++;
+                if (stackHead >= MaxStackSize)
+                {
+                    Metrics.EvmExceptions++;
+                    throw new EvmStackOverflowException();
+                }
+            }
+            
             void PushUInt(BigInteger value, Span<byte> stack)
             {
                 Span<byte> target = stack.Slice(stackHead * 32, 32);
@@ -710,6 +730,12 @@ namespace Nethermind.Evm
                 return stackTrace;
             }
 
+            UInt256 PopUInt256(Span<byte> stack)
+            {
+                UInt256.Create(out UInt256 result, PopBytes(stack));
+                return result;
+            }
+            
             BigInteger PopUInt(Span<byte> stack)
             {
                 return PopBytes(stack).ToUnsignedBigInteger();
@@ -790,10 +816,9 @@ namespace Nethermind.Evm
                         }
 
                         // TODO: can calculate in place...
-                        BigInteger a = PopUInt(bytesOnStack);
-                        BigInteger b = PopUInt(bytesOnStack);
-                        BigInteger res = a + b;
-                        PushUInt(res >= P256Int ? res - P256Int : res, bytesOnStack);
+                        UInt256 a = PopUInt256(bytesOnStack);
+                        UInt256 b = PopUInt256(bytesOnStack);
+                        PushUInt256(a + b, bytesOnStack);
                         break;
                     }
                     case Instruction.MUL:

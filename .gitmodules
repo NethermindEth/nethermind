@@ -1,3 +1,9 @@
 [submodule "src/tests"]
 	path = src/tests
 	url = https://github.com/ethereum/tests.git
+[submodule "src/dirichlet-numerics"]
+	path = src/dirichlet-numerics
+	url = https://github.com/tkstanczak/dirichlet-numerics.git
+[submodule "src/Dirichlet"]
+	path = src/Dirichlet
+	url = https://github.com/tkstanczak/Dirichlet.git
