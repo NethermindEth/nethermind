@@ -813,7 +813,9 @@ namespace Nethermind.Evm
                         // TODO: can calculate in place...
                         UInt256 a = PopUInt256(bytesOnStack);
                         UInt256 b = PopUInt256(bytesOnStack);
-                        PushUInt256(a + b, bytesOnStack);
+                        UInt256 result = a + b;
+                        
+                        PushUInt256(result, bytesOnStack);
                         break;
                     }
                     case Instruction.MUL:
@@ -837,15 +839,11 @@ namespace Nethermind.Evm
                         }
 
                         // TODO: can calculate in place...
-                        BigInteger a = PopUInt(bytesOnStack);
-                        BigInteger b = PopUInt(bytesOnStack);
-                        BigInteger res = a - b;
-                        if (res.Sign < 0)
-                        {
-                            res += P256Int;
-                        }
+                        UInt256 a = PopUInt256(bytesOnStack);
+                        UInt256 b = PopUInt256(bytesOnStack);
+                        UInt256 result = a - b;
 
-                        PushUInt(res, bytesOnStack);
+                        PushUInt256(result, bytesOnStack);
                         break;
                     }
                     case Instruction.DIV:
