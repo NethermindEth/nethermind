@@ -22,6 +22,7 @@ using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Model;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Blockchain
 {
@@ -31,9 +32,9 @@ namespace Nethermind.Blockchain
         string ClientId { get; }
         Task<Block[]> GetBlocks(Keccak[] blockHashes, CancellationToken token);
         Task<BlockHeader[]> GetBlockHeaders(Keccak blockHash, int maxBlocks, int skip, CancellationToken token);
-        Task<BlockHeader[]> GetBlockHeaders(BigInteger number, int maxBlocks, int skip, CancellationToken token);
+        Task<BlockHeader[]> GetBlockHeaders(UInt256 number, int maxBlocks, int skip, CancellationToken token);
         Task<Keccak> GetHeadBlockHash();
-        Task<BigInteger> GetHeadBlockNumber(CancellationToken token);
+        Task<UInt256> GetHeadBlockNumber(CancellationToken token);
         void SendNewBlock(Block block);
         void SendNewTransaction(Transaction transaction);
     }

@@ -22,6 +22,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Blockchain
 {
@@ -32,13 +33,13 @@ namespace Nethermind.Blockchain
         BlockHeader BestSuggested { get; }
         BlockHeader Head { get; }
 
-        Task LoadBlocksFromDb(CancellationToken cancellationToken, BigInteger? startBlockNumber, int batchSize = BlockTree.DbLoadBatchSize, int maxBlocksToLoad = int.MaxValue); // TODO: start block number for testing, consider making it internal and keep the public without arguments
+        Task LoadBlocksFromDb(CancellationToken cancellationToken, UInt256? startBlockNumber, int batchSize = BlockTree.DbLoadBatchSize, int maxBlocksToLoad = int.MaxValue); // TODO: start block number for testing, consider making it internal and keep the public without arguments
         AddBlockResult SuggestBlock(Block block);
         Block FindBlock(Keccak blockHash, bool mainChainOnly);
         BlockHeader FindHeader(Keccak blockHash);
-        BlockHeader FindHeader(BigInteger blockNumber);
+        BlockHeader FindHeader(UInt256 blockNumber);
         Block[] FindBlocks(Keccak blockHash, int numberOfBlocks, int skip, bool reverse);
-        Block FindBlock(BigInteger blockNumber);
+        Block FindBlock(UInt256 blockNumber);
         bool IsMainChain(Keccak blockHash);
         bool IsKnownBlock(Keccak blockHash);
         void MoveToMain(Block block);

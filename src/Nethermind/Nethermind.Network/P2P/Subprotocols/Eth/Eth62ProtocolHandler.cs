@@ -28,6 +28,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.Network.Rlpx;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth
@@ -330,7 +331,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         private void Handle(NewBlockHashesMessage newBlockHashes)
         {
-            foreach ((Keccak Hash, BigInteger Number) hint in newBlockHashes.BlockHashes)
+            foreach ((Keccak Hash, UInt256 Number) hint in newBlockHashes.BlockHashes)
             {
                 _sync.HintBlock(hint.Hash, hint.Number, NodeId);
             }
@@ -422,7 +423,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             return headers;
         }
 
-        async Task<BlockHeader[]> ISynchronizationPeer.GetBlockHeaders(BigInteger number, int maxBlocks, int skip, CancellationToken token)
+        async Task<BlockHeader[]> ISynchronizationPeer.GetBlockHeaders(UInt256 number, int maxBlocks, int skip, CancellationToken token)
         {
             var msg = new GetBlockHeadersMessage();
             msg.MaxHeaders = maxBlocks;
@@ -447,7 +448,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             return Task.FromResult(_remoteHeadBlockHash);
         }
 
-        async Task<BigInteger> ISynchronizationPeer.GetHeadBlockNumber(CancellationToken token)
+        async Task<UInt256> ISynchronizationPeer.GetHeadBlockNumber(CancellationToken token)
         {
             var msg = new GetBlockHeadersMessage();
             msg.StartingBlockHash = _remoteHeadBlockHash;

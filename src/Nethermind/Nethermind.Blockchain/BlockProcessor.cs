@@ -25,6 +25,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.Store;
 
@@ -288,7 +289,7 @@ namespace Nethermind.Blockchain
         private Block ProcessBlock(
             Keccak parentHash,
             BigInteger difficulty,
-            BigInteger number,
+            UInt256 number,
             BigInteger timestamp,
             Address beneficiary,
             long gasLimit,

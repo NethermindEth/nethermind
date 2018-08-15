@@ -22,14 +22,15 @@ using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Model;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Blockchain
 {
     public interface ISynchronizationManager
     {
-        void HintBlock(Keccak hash, BigInteger number, NodeId receivedFrom);
+        void HintBlock(Keccak hash, UInt256 number, NodeId receivedFrom);
         Block Find(Keccak hash);
-        Block Find(BigInteger number);
+        Block Find(UInt256 number);
         Block[] Find(Keccak hash, int numberOfBlocks, int skip, bool reverse);
         void AddNewBlock(Block block, NodeId receivedFrom);
         void AddNewTransaction(Transaction transaction, NodeId receivedFrom);

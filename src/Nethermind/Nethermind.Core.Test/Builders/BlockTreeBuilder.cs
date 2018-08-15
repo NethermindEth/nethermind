@@ -52,7 +52,7 @@ namespace Nethermind.Core.Test.Builders
                 TestObjectInternal.SuggestBlock(previous);
                 TestObjectInternal.MarkAsProcessed(previous.Hash);
                 TestObjectInternal.MoveToMain(previous.Hash);
-                previous = Build.A.Block.WithNumber(i + 1).WithParent(previous).WithDifficulty(BlockHeaderBuilder.DefaultDifficulty - splitVariant).TestObject;
+                previous = Build.A.Block.WithNumber((ulong)i + 1).WithParent(previous).WithDifficulty(BlockHeaderBuilder.DefaultDifficulty - splitVariant).TestObject;
             }
 
             return this;
@@ -64,7 +64,7 @@ namespace Nethermind.Core.Test.Builders
             int initialLength = (int)previous.Number + 1;
             for (int i = initialLength; i < newChainLength; i++)
             {
-                previous = Build.A.Block.WithNumber(i).WithParent(previous).TestObject;
+                previous = Build.A.Block.WithNumber((ulong)i).WithParent(previous).TestObject;
                 blockTree.SuggestBlock(previous);
                 blockTree.MarkAsProcessed(previous.Hash);
                 blockTree.MoveToMain(previous.Hash);

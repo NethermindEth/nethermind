@@ -19,6 +19,7 @@
 using System.Linq;
 using System.Numerics;
 using Nethermind.Core.Crypto;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Core.Test.Builders
 {
@@ -30,7 +31,7 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal = new Block(header);
         }
 
-        public BlockBuilder WithNumber(BigInteger number)
+        public BlockBuilder WithNumber(UInt256 number)
         {
             TestObjectInternal.Header.Number = number;
             return this;
@@ -62,7 +63,7 @@ namespace Nethermind.Core.Test.Builders
 
         public BlockBuilder WithParent(BlockHeader blockHeader)
         {
-            TestObjectInternal.Header.Number = (blockHeader?.Number ?? -1) + 1;
+            TestObjectInternal.Header.Number = (blockHeader?.Number + 1) ?? 0;
             TestObjectInternal.Header.Timestamp = (blockHeader?.Timestamp ?? -1) + 1;
             TestObjectInternal.Header.ParentHash = blockHeader == null ? Keccak.Zero : blockHeader.Hash;
             return this;

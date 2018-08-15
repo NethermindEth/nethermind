@@ -28,6 +28,7 @@ using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.Store;
 using Newtonsoft.Json;
@@ -115,7 +116,7 @@ namespace Ethereum.VM.Test
             environment.CurrentCoinbase = envJson.CurrentCoinbase == null ? null : new Address(envJson.CurrentCoinbase);
             environment.CurrentDifficulty = Bytes.FromHexString(envJson.CurrentDifficulty).ToUnsignedBigInteger();
             environment.CurrentGasLimit = Bytes.FromHexString(envJson.CurrentGasLimit).ToUnsignedBigInteger();
-            environment.CurrentNumber = Bytes.FromHexString(envJson.CurrentNumber).ToUnsignedBigInteger();
+            environment.CurrentNumber = Bytes.FromHexString(envJson.CurrentNumber).ToUInt256();
             environment.CurrentTimestamp = Bytes.FromHexString(envJson.CurrentTimestamp).ToUnsignedBigInteger();
             return environment;
         }
@@ -255,7 +256,7 @@ namespace Ethereum.VM.Test
             public Address CurrentCoinbase { get; set; }
             public BigInteger CurrentDifficulty { get; set; }
             public BigInteger CurrentGasLimit { get; set; }
-            public BigInteger CurrentNumber { get; set; }
+            public UInt256 CurrentNumber { get; set; }
             public BigInteger CurrentTimestamp { get; set; }
         }
 

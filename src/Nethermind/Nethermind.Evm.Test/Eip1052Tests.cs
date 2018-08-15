@@ -21,6 +21,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm.Precompiles;
 using NUnit.Framework;
 
@@ -29,7 +30,7 @@ namespace Nethermind.Evm.Test
     [TestFixture]
     public class Eip1052Tests : VirtualMachineTestsBase
     {
-        protected override int BlockNumber => 6000000;
+        protected override UInt256 BlockNumber => 6000000;
 
         [Test]
         public void Account_without_code_returns_empty_data_hash()

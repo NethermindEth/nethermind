@@ -34,6 +34,7 @@ using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Specs.ChainSpec;
 using Nethermind.Db;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.Mining;
 using Nethermind.Store;
@@ -194,7 +195,7 @@ namespace Nethermind.PerfTest
             public BlockHeader BestSuggested => _blockTree.BestSuggested;
             public BlockHeader Head => _blockTree.Head;
 
-            public async Task LoadBlocksFromDb(CancellationToken cancellationToken, BigInteger? startBlockNumber, int batchSize = BlockTree.DbLoadBatchSize, int maxBlocksToLoad = int.MaxValue)
+            public async Task LoadBlocksFromDb(CancellationToken cancellationToken, UInt256? startBlockNumber, int batchSize = BlockTree.DbLoadBatchSize, int maxBlocksToLoad = int.MaxValue)
             {
                 await _blockTree.LoadBlocksFromDb(cancellationToken, startBlockNumber, batchSize, maxBlocksToLoad);
             }
@@ -214,7 +215,7 @@ namespace Nethermind.PerfTest
                 return _blockTree.FindHeader(blockHash);
             }
 
-            public BlockHeader FindHeader(BigInteger number)
+            public BlockHeader FindHeader(UInt256 number)
             {
                 return _blockTree.FindHeader(number);
             }
@@ -224,7 +225,7 @@ namespace Nethermind.PerfTest
                 return _blockTree.FindBlocks(blockHash, numberOfBlocks, skip, reverse);
             }
 
-            public Block FindBlock(BigInteger blockNumber)
+            public Block FindBlock(UInt256 blockNumber)
             {
                 return _blockTree.FindBlock(blockNumber);
             }

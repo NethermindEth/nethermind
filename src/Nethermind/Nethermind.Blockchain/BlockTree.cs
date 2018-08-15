@@ -28,6 +28,7 @@ using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.HashLib;
 using Nethermind.Store;
 
@@ -86,11 +87,11 @@ namespace Nethermind.Blockchain
             }
         }
 
-        public async Task LoadBlocksFromDb(CancellationToken cancellationToken, BigInteger? startBlockNumber = null, int batchSize = DbLoadBatchSize, int maxBlocksToLoad = int.MaxValue)
+        public async Task LoadBlocksFromDb(CancellationToken cancellationToken, UInt256? startBlockNumber = null, int batchSize = DbLoadBatchSize, int maxBlocksToLoad = int.MaxValue)
         {
             if (startBlockNumber == null)
             {
-                startBlockNumber = Head?.Number ?? -1;
+                startBlockNumber = Head?.Number ?? 0;
             }
             else
             {
@@ -107,7 +108,7 @@ namespace Nethermind.Blockchain
                 if (_logger.IsInfoEnabled) _logger.Info($"Found {blocksToLoad} blocks to load starting from current head block {Head?.ToString(BlockHeader.Format.Short)}.");
             }
 
-            BigInteger blockNumber = startBlockNumber.Value;
+            UInt256 blockNumber = startBlockNumber.Value;
             for (int i = 0; i < blocksToLoad; i++)
             {
                 if (cancellationToken.IsCancellationRequested)
@@ -115,7 +116,11 @@ namespace Nethermind.Blockchain
                     break;
                 }
 
-                blockNumber++;
+                if (blockNumber != 0)
+                {
+                    blockNumber++;
+                }
+
                 ChainLevelInfo level = LoadLevel(blockNumber);
                 BigInteger maxDifficultySoFar = 0;
                 BlockInfo maxDifficultyBlock = null;
@@ -255,14 +260,14 @@ namespace Nethermind.Blockchain
             for (int i = 0; i < numberOfBlocks; i++)
             {
                 int blockNumber = (int)startBlock.Number + (reverse ? -1 : 1) * (i + i * skip);
-                Block ithBlock = FindBlock(blockNumber);
+                Block ithBlock = FindBlock((UInt256)blockNumber);
                 result[i] = ithBlock;
             }
 
             return result;
         }
 
-        private Keccak GetBlockHashOnMain(BigInteger blockNumber)
+        private Keccak GetBlockHashOnMain(UInt256 blockNumber)
         {
             if (blockNumber.Sign < 0)
             {
@@ -290,7 +295,7 @@ namespace Nethermind.Blockchain
             return null;
         }
 
-        public Block FindBlock(BigInteger blockNumber)
+        public Block FindBlock(UInt256 blockNumber)
         {
             Keccak hash = GetBlockHashOnMain(blockNumber);
             return Load(hash).Block;
@@ -313,7 +318,7 @@ namespace Nethermind.Blockchain
 
         public void MarkAsProcessed(Keccak blockHash, TransactionReceipt[] receipts = null)
         {
-            BigInteger number = LoadNumberOnly(blockHash);
+            UInt256 number = LoadNumberOnly(blockHash);
             (BlockInfo info, ChainLevelInfo level) = LoadInfo(number, blockHash);
 
             if (info.WasProcessed)
@@ -395,7 +400,7 @@ namespace Nethermind.Blockchain
 
         private BigInteger FindNumberOfBlocksToLoadFromDb()
         {
-            BigInteger headNumber = Head?.Number ?? -1;
+            BigInteger headNumber = Head == null ? -1 : (BigInteger)Head.Number;
             BigInteger left = headNumber;
             BigInteger right = headNumber + MaxQueueSize;
 
@@ -538,7 +543,7 @@ namespace Nethermind.Blockchain
         }
 
         // TODO: use headers store or some simplified RLP decoder for number only or hash to number store
-        private BigInteger LoadNumberOnly(Keccak blockHash)
+        private UInt256 LoadNumberOnly(Keccak blockHash)
         {
             Block block = _blockCache.Get(blockHash);
             if (block != null)
@@ -580,7 +585,7 @@ namespace Nethermind.Blockchain
             return header;
         }
 
-        public BlockHeader FindHeader(BigInteger number)
+        public BlockHeader FindHeader(UInt256 number)
         {
             Keccak hash = GetBlockHashOnMain(number);
             if (hash == null)

@@ -462,7 +462,7 @@ namespace Ethereum.Test.Base
                 new Keccak(headerJson.UncleHash),
                 new Address(headerJson.Coinbase),
                 Bytes.FromHexString(headerJson.Difficulty).ToUnsignedBigInteger(),
-                Bytes.FromHexString(headerJson.Number).ToUnsignedBigInteger(),
+                Bytes.FromHexString(headerJson.Number).ToUInt256(),
                 (long)Bytes.FromHexString(headerJson.GasLimit).ToUnsignedBigInteger(),
                 Bytes.FromHexString(headerJson.Timestamp).ToUnsignedBigInteger(),
                 Bytes.FromHexString(headerJson.ExtraData)

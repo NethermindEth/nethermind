@@ -23,6 +23,7 @@ using System.Numerics;
 using System.Text;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Core
 {
@@ -101,7 +102,7 @@ namespace Nethermind.Core
             set => Header.Timestamp = value;
         }
 
-        public BigInteger Number
+        public UInt256 Number
         {
             get => Header.Number;
             set => Header.Number = value;
