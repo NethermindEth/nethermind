@@ -28,12 +28,16 @@ namespace Nethermind.Core
 {
     public class Address : IEquatable<Address>
     {
-        private const int AddressLengthInBytes = 20;
-
+        private const int ByteLength = 20;
+        private const int HexCharsCount = 2 * ByteLength; // 5a4eab120fb44eb6684e5e32785702ff45ea344d
+        private const int PrefixedHexCharsCount = 2 + HexCharsCount; // 0x5a4eab120fb44eb6684e5e32785702ff45ea344d
+        
+        public static Address Zero { get; } = new Address(new byte[ByteLength]);
+        
         public byte[] Bytes { get; }
 
         public Address(Keccak keccak)
-            : this(keccak.Bytes.Slice(12, 20))
+            : this(keccak.Bytes.Slice(12, ByteLength))
         {
         }
 
@@ -41,12 +45,12 @@ namespace Nethermind.Core
 
         public static bool IsValidAddress(string hexString, bool allowPrefix)
         {
-            if (!(hexString.Length == 40 || allowPrefix && hexString.Length == 42))
+            if (!(hexString.Length == HexCharsCount || allowPrefix && hexString.Length == PrefixedHexCharsCount))
             {
                 return false;
             }
 
-            bool hasPrefix = hexString.Length == 42;
+            bool hasPrefix = hexString.Length == PrefixedHexCharsCount;
             if (hasPrefix)
             {
                 if (hexString[0] != '0' || hexString[1] != 'x')
@@ -62,8 +66,7 @@ namespace Nethermind.Core
                              (c >= 'a' && c <= 'f') ||
                              (c >= 'A' && c <= 'F');
 
-                if (!isHex)
-                    return false;
+                if (!isHex) return false;
             }
 
             return true;
@@ -81,17 +84,15 @@ namespace Nethermind.Core
                 throw new ArgumentNullException(nameof(bytes));
             }
 
-            if (bytes.Length != AddressLengthInBytes)
+            if (bytes.Length != ByteLength)
             {
                 throw new ArgumentException(
-                    $"{nameof(Address)} should be {AddressLengthInBytes} bytes long and is {bytes.Length} bytes long",
+                    $"{nameof(Address)} should be {ByteLength} bytes long and is {bytes.Length} bytes long",
                     nameof(bytes));
             }
 
             Bytes = bytes;
         }
-
-        public static Address Zero { get; } = new Address(new byte[20]);
 
         public bool Equals(Address other)
         {
@@ -106,11 +107,6 @@ namespace Nethermind.Core
             }
 
             return Nethermind.Core.Extensions.Bytes.UnsafeCompare(Bytes, other.Bytes);
-        }
-
-        public string ToString(bool withEip55Checksum)
-        {
-            return Bytes.ToHexString(true, false, withEip55Checksum);
         }
 
         public static Address FromNumber(BigInteger number)
@@ -129,13 +125,18 @@ namespace Nethermind.Core
             return new Address(contractAddressKeccak);
         }
 
+        public override string ToString()
+        {
+            return ToString(false);
+        }
+
         /// <summary>
         ///     https://github.com/ethereum/EIPs/issues/55
         /// </summary>
         /// <returns></returns>
-        public override string ToString()
+        public string ToString(bool withEip55Checksum)
         {
-            return ToString(false);
+            return Bytes.ToHexString(true, false, withEip55Checksum);
         }
 
         public override bool Equals(object obj)

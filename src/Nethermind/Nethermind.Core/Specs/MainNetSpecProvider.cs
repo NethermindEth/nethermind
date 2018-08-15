@@ -21,7 +21,7 @@ using System.Numerics;
 namespace Nethermind.Core.Specs
 {
     public class MainNetSpecProvider : ISpecProvider
-    {
+    {   
         public IReleaseSpec CurrentSpec => Byzantium.Instance;
 
         public IReleaseSpec GenesisSpec => Frontier.Instance;

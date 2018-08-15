@@ -28,8 +28,6 @@ namespace Nethermind.Core
     [DebuggerDisplay("{Hash} ({Number})")]
     public class BlockHeader
     {
-        public const ulong GenesisBlockNumber = 0;
-
         internal BlockHeader()
         {
         }

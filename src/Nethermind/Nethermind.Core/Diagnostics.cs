@@ -21,7 +21,7 @@ using Nethermind.Core.Logging;
 
 namespace Nethermind.Core
 {
-    public class Diagnostics
+    public static class Diagnostics
     {
         public static void TestExceptionHere(string label, ILogger logger)
         {

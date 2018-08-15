@@ -116,7 +116,7 @@ namespace Nethermind.Core
 
         public override int GetHashCode()
         {
-            return (_bits != null ? _bits.GetHashCode() : 0);
+            return _bits != null ? _bits.GetHashCode() : 0;
         }
     }
 }
