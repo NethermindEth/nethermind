@@ -23,6 +23,7 @@ using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Crypto;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Core.Extensions
 {
@@ -405,6 +406,21 @@ namespace Nethermind.Core.Extensions
             return new BigInteger(bytesToUse);
         }
 
+        public static UInt256 ToUInt256(this byte[] bytes, Endianness endianness = Endianness.Big)
+        {
+            UInt256 result;
+            if (endianness == Endianness.Little)
+            {
+                UInt256.Create(out result, bytes.PadRight(32));
+            }
+            else
+            {
+                UInt256.CreateFromBigEndian(out result, bytes.PadLeft(32));
+            }
+
+            return result;
+        }
+        
         public static ulong ToUInt64(this byte[] bytes, Endianness endianness = Endianness.Big)
         {
             if (BitConverter.IsLittleEndian && endianness == Endianness.Big || !BitConverter.IsLittleEndian && endianness == Endianness.Little)

@@ -5,6 +5,7 @@
     <LangVersion>7.2</LangVersion>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="..\..\Dirichlet\Nethermind.Dirichlet.Numerics\Nethermind.Dirichlet.Numerics.csproj" />
     <ProjectReference Include="..\Nethermind.HashLib\Nethermind.HashLib.csproj">
       <Project>{75B8BE8D-18B0-493C-8BA5-083D4B952BF9}</Project>
       <Name>Nethermind.HashLib</Name>

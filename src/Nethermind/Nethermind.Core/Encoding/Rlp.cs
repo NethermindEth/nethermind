@@ -23,6 +23,7 @@ using System.Numerics;
 using Microsoft.IO;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Core.Encoding
 {
@@ -902,6 +903,13 @@ namespace Nethermind.Core.Encoding
                 return new Address(buffer);
             }
 
+            public UInt256 DecodeUInt256()
+            {
+                Span<byte> bytes = DecodeByteArraySpan();
+                UInt256.Create(out UInt256 result, bytes);
+                return result;
+            }
+            
             public BigInteger DecodeUBigInt()
             {
                 Span<byte> bytes = DecodeByteArraySpan();

@@ -577,12 +577,7 @@ namespace Nethermind.Evm
             void PushUInt256(UInt256 value, Span<byte> stack)
             {
                 Span<byte> target = stack.Slice(stackHead * 32, 32);
-                Span<ulong> targetUlongs = MemoryMarshal.Cast<byte, ulong>(target);
-
-                targetUlongs[0] = value.S0;
-                targetUlongs[1] = value.S1;
-                targetUlongs[2] = value.S2;
-                targetUlongs[3] = value.S3;
+                value.ToBigEndian(target);
                 
                 stackHead++;
                 if (stackHead >= MaxStackSize)
@@ -732,7 +727,7 @@ namespace Nethermind.Evm
 
             UInt256 PopUInt256(Span<byte> stack)
             {
-                UInt256.Create(out UInt256 result, PopBytes(stack));
+                UInt256.CreateFromBigEndian(out UInt256 result, PopBytes(stack));
                 return result;
             }
             
