@@ -48,7 +48,7 @@ namespace Nethermind.Blockchain
             {
                 rewards[i + 1] = new BlockReward();
                 rewards[i + 1].Address = block.Ommers[i].Beneficiary;
-                rewards[i + 1].Value = blockReward + (block.Ommers[i].Number - blockHeader.Number) * blockReward / 8;
+                rewards[i + 1].Value = blockReward - (blockHeader.Number - block.Ommers[i].Number) * blockReward / 8;
             }
 
             return rewards;

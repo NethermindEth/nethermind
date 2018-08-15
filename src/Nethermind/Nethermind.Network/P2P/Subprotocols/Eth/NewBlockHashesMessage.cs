@@ -16,8 +16,8 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Numerics;
 using Nethermind.Core.Crypto;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth
 {
@@ -26,13 +26,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         public override int PacketType { get; } = Eth62MessageCode.NewBlockHashes;
         public override string Protocol { get; } = "eth";
 
-        public (Keccak, BigInteger)[] BlockHashes { get; set; }
+        public (Keccak, UInt256)[] BlockHashes { get; set; }
 
         public NewBlockHashesMessage()
         {
         }
 
-        public NewBlockHashesMessage(params (Keccak, BigInteger)[] blockHashes)
+        public NewBlockHashesMessage(params (Keccak, UInt256)[] blockHashes)
         {
             BlockHashes = blockHashes;
         }
