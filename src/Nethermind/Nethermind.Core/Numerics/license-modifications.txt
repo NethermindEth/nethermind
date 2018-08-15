@@ -1,0 +1,3 @@
+We have incorporated Int128 and UInt128 classes from Dirichlet.Numerics by Rick Sladkey to build Int256.
+One can expect significant changes to the original source code and go to Rick Sladkey's project github
+at https://github.com/ricksladkey/dirichlet-numerics/blob/master/license.txt for original code reference. 

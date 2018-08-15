@@ -2,7 +2,6 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.Numerics;
-using Dirichlet.Numerics;
 
 namespace Nethermind.Core.Numerics
 {
@@ -31,6 +30,7 @@ namespace Nethermind.Core.Numerics
 
         public static bool TryParse(string value, NumberStyles style, IFormatProvider format, out Int128 result)
         {
+            result = default;
             BigInteger a;
             if (!BigInteger.TryParse(value, style, format, out a))
             {
@@ -99,77 +99,77 @@ namespace Nethermind.Core.Numerics
 
         public static explicit operator Int128(double a)
         {
-            Int128 c;
+            Int128 c = default;
             UInt128.Create(out c._v, a);
             return c;
         }
 
         public static implicit operator Int128(sbyte a)
         {
-            Int128 c;
+            Int128 c = default;
             UInt128.Create(out c._v, a);
             return c;
         }
 
         public static implicit operator Int128(byte a)
         {
-            Int128 c;
+            Int128 c = default;
             UInt128.Create(out c._v, a);
             return c;
         }
 
         public static implicit operator Int128(short a)
         {
-            Int128 c;
+            Int128 c = default;
             UInt128.Create(out c._v, a);
             return c;
         }
 
         public static implicit operator Int128(ushort a)
         {
-            Int128 c;
+            Int128 c = default;
             UInt128.Create(out c._v, a);
             return c;
         }
 
         public static implicit operator Int128(int a)
         {
-            Int128 c;
+            Int128 c = default;
             UInt128.Create(out c._v, a);
             return c;
         }
 
         public static implicit operator Int128(uint a)
         {
-            Int128 c;
+            Int128 c = default;
             UInt128.Create(out c._v, (ulong)a);
             return c;
         }
 
         public static implicit operator Int128(long a)
         {
-            Int128 c;
+            Int128 c = default;
             UInt128.Create(out c._v, a);
             return c;
         }
 
         public static implicit operator Int128(ulong a)
         {
-            Int128 c;
+            Int128 c = default;
             UInt128.Create(out c._v, a);
             return c;
         }
 
         public static explicit operator Int128(decimal a)
         {
-            Int128 c;
+            Int128 c = default;
             UInt128.Create(out c._v, a);
             return c;
         }
 
         public static explicit operator Int128(UInt128 a)
         {
-            Int128 c;
+            Int128 c = default;
             c._v = a;
             return c;
         }
@@ -181,7 +181,7 @@ namespace Nethermind.Core.Numerics
 
         public static explicit operator Int128(BigInteger a)
         {
-            Int128 c;
+            Int128 c = default;
             UInt128.Create(out c._v, a);
             return c;
         }
@@ -252,8 +252,7 @@ namespace Nethermind.Core.Numerics
         {
             if (a.IsNegative)
             {
-                UInt128 c;
-                UInt128.Negate(out c, ref a._v);
+                UInt128.Negate(out UInt128 c, ref a._v);
                 return -UInt128.ConvertToFloat(ref c);
             }
             return UInt128.ConvertToFloat(ref a._v);
@@ -263,8 +262,7 @@ namespace Nethermind.Core.Numerics
         {
             if (a.IsNegative)
             {
-                UInt128 c;
-                UInt128.Negate(out c, ref a._v);
+                UInt128.Negate(out UInt128 c, ref a._v);
                 return -UInt128.ConvertToDouble(ref c);
             }
             return UInt128.ConvertToDouble(ref a._v);
@@ -272,21 +270,21 @@ namespace Nethermind.Core.Numerics
 
         public static Int128 operator <<(Int128 a, int b)
         {
-            Int128 c;
+            Int128 c = default;
             UInt128.LeftShift(out c._v, ref a._v, b);
             return c;
         }
 
         public static Int128 operator >>(Int128 a, int b)
         {
-            Int128 c;
+            Int128 c = default;
             UInt128.ArithmeticRightShift(out c._v, ref a._v, b);
             return c;
         }
 
         public static Int128 operator &(Int128 a, Int128 b)
         {
-            Int128 c;
+            Int128 c = default;
             UInt128.And(out c._v, ref a._v, ref b._v);
             return c;
         }
@@ -313,28 +311,28 @@ namespace Nethermind.Core.Numerics
 
         public static Int128 operator |(Int128 a, Int128 b)
         {
-            Int128 c;
+            Int128 c = default;
             UInt128.Or(out c._v, ref a._v, ref b._v);
             return c;
         }
 
         public static Int128 operator ^(Int128 a, Int128 b)
         {
-            Int128 c;
+            Int128 c = default;
             UInt128.ExclusiveOr(out c._v, ref a._v, ref b._v);
             return c;
         }
 
         public static Int128 operator ~(Int128 a)
         {
-            Int128 c;
+            Int128 c = default;
             UInt128.Not(out c._v, ref a._v);
             return c;
         }
 
         public static Int128 operator +(Int128 a, long b)
         {
-            Int128 c;
+            Int128 c = default;
             if (b < 0)
                 UInt128.Subtract(out c._v, ref a._v, (ulong)(-b));
             else
@@ -344,7 +342,7 @@ namespace Nethermind.Core.Numerics
 
         public static Int128 operator +(long a, Int128 b)
         {
-            Int128 c;
+            Int128 c = default;
             if (a < 0)
                 UInt128.Subtract(out c._v, ref b._v, (ulong)(-a));
             else
@@ -354,21 +352,21 @@ namespace Nethermind.Core.Numerics
 
         public static Int128 operator +(Int128 a, Int128 b)
         {
-            Int128 c;
+            Int128 c = default;
             UInt128.Add(out c._v, ref a._v, ref b._v);
             return c;
         }
 
         public static Int128 operator ++(Int128 a)
         {
-            Int128 c;
+            Int128 c = default;
             UInt128.Add(out c._v, ref a._v, 1);
             return c;
         }
 
         public static Int128 operator -(Int128 a, long b)
         {
-            Int128 c;
+            Int128 c = default;
             if (b < 0)
                 UInt128.Add(out c._v, ref a._v, (ulong)(-b));
             else
@@ -378,7 +376,7 @@ namespace Nethermind.Core.Numerics
 
         public static Int128 operator -(Int128 a, Int128 b)
         {
-            Int128 c;
+            Int128 c = default;
             UInt128.Subtract(out c._v, ref a._v, ref b._v);
             return c;
         }
@@ -390,29 +388,27 @@ namespace Nethermind.Core.Numerics
 
         public static Int128 operator -(Int128 a)
         {
-            Int128 c;
+            Int128 c = default;
             UInt128.Negate(out c._v, ref a._v);
             return c;
         }
 
         public static Int128 operator --(Int128 a)
         {
-            Int128 c;
+            Int128 c = default;
             UInt128.Subtract(out c._v, ref a._v, 1);
             return c;
         }
 
         public static Int128 operator *(Int128 a, int b)
         {
-            Int128 c;
-            Multiply(out c, ref a, b);
+            Multiply(out Int128 c, ref a, b);
             return c;
         }
 
         public static Int128 operator *(int a, Int128 b)
         {
-            Int128 c;
-            Multiply(out c, ref b, a);
+            Multiply(out Int128 c, ref b, a);
             return c;
         }
 
@@ -425,29 +421,25 @@ namespace Nethermind.Core.Numerics
 
         public static Int128 operator *(uint a, Int128 b)
         {
-            Int128 c;
-            Multiply(out c, ref b, a);
+            Multiply(out Int128 c, ref b, a);
             return c;
         }
 
         public static Int128 operator *(Int128 a, long b)
         {
-            Int128 c;
-            Multiply(out c, ref a, b);
+            Multiply(out Int128 c, ref a, b);
             return c;
         }
 
         public static Int128 operator *(long a, Int128 b)
         {
-            Int128 c;
-            Multiply(out c, ref b, a);
+            Multiply(out Int128 c, ref b, a);
             return c;
         }
 
         public static Int128 operator *(Int128 a, ulong b)
         {
-            Int128 c;
-            Multiply(out c, ref a, b);
+            Multiply(out Int128 c, ref a, b);
             return c;
         }
 
@@ -997,10 +989,10 @@ namespace Nethermind.Core.Numerics
 
         public static void Multiply(out Int128 c, ref Int128 a, int b)
         {
+            c = default;
             if (a.IsNegative)
             {
-                UInt128 aneg;
-                UInt128.Negate(out aneg, ref a._v);
+                UInt128.Negate(out UInt128 aneg, ref a._v);
                 if (b < 0)
                     UInt128.Multiply(out c._v, ref aneg, (uint)(-b));
                 else
@@ -1024,10 +1016,10 @@ namespace Nethermind.Core.Numerics
 
         public static void Multiply(out Int128 c, ref Int128 a, uint b)
         {
+            c = default;
             if (a.IsNegative)
             {
-                UInt128 aneg;
-                UInt128.Negate(out aneg, ref a._v);
+                UInt128.Negate(out UInt128 aneg, ref a._v);
                 UInt128.Multiply(out c._v, ref aneg, b);
                 UInt128.Negate(ref c._v);
             }
@@ -1038,10 +1030,10 @@ namespace Nethermind.Core.Numerics
 
         public static void Multiply(out Int128 c, ref Int128 a, long b)
         {
+            c = default;
             if (a.IsNegative)
             {
-                UInt128 aneg;
-                UInt128.Negate(out aneg, ref a._v);
+                UInt128.Negate(out UInt128 aneg, ref a._v);
                 if (b < 0)
                     UInt128.Multiply(out c._v, ref aneg, (ulong)(-b));
                 else
@@ -1065,10 +1057,10 @@ namespace Nethermind.Core.Numerics
 
         public static void Multiply(out Int128 c, ref Int128 a, ulong b)
         {
+            c = default;
             if (a.IsNegative)
             {
-                UInt128 aneg;
-                UInt128.Negate(out aneg, ref a._v);
+                UInt128.Negate(out UInt128 aneg, ref a._v);
                 UInt128.Multiply(out c._v, ref aneg, b);
                 UInt128.Negate(ref c._v);
             }
@@ -1079,14 +1071,13 @@ namespace Nethermind.Core.Numerics
 
         public static void Multiply(out Int128 c, ref Int128 a, ref Int128 b)
         {
+            c = default;
             if (a.IsNegative)
             {
-                UInt128 aneg;
-                UInt128.Negate(out aneg, ref a._v);
+                UInt128.Negate(out UInt128 aneg, ref a._v);
                 if (b.IsNegative)
                 {
-                    UInt128 bneg;
-                    UInt128.Negate(out bneg, ref b._v);
+                    UInt128.Negate(out UInt128 bneg, ref b._v);
                     UInt128.Multiply(out c._v, ref aneg, ref bneg);
                 }
                 else
@@ -1099,8 +1090,7 @@ namespace Nethermind.Core.Numerics
             {
                 if (b.IsNegative)
                 {
-                    UInt128 bneg;
-                    UInt128.Negate(out bneg, ref b._v);
+                    UInt128.Negate(out UInt128 bneg, ref b._v);
                     UInt128.Multiply(out c._v, ref a._v, ref bneg);
                     UInt128.Negate(ref c._v);
                 }
@@ -1112,10 +1102,10 @@ namespace Nethermind.Core.Numerics
 
         public static void Divide(out Int128 c, ref Int128 a, int b)
         {
+            c = default;
             if (a.IsNegative)
             {
-                UInt128 aneg;
-                UInt128.Negate(out aneg, ref a._v);
+                UInt128.Negate(out UInt128 aneg, ref a._v);
                 if (b < 0)
                     UInt128.Multiply(out c._v, ref aneg, (uint)(-b));
                 else
@@ -1139,10 +1129,10 @@ namespace Nethermind.Core.Numerics
 
         public static void Divide(out Int128 c, ref Int128 a, uint b)
         {
+            c = default;
             if (a.IsNegative)
             {
-                UInt128 aneg;
-                UInt128.Negate(out aneg, ref a._v);
+                UInt128.Negate(out UInt128 aneg, ref a._v);
                 UInt128.Divide(out c._v, ref aneg, b);
                 UInt128.Negate(ref c._v);
             }
@@ -1153,6 +1143,7 @@ namespace Nethermind.Core.Numerics
 
         public static void Divide(out Int128 c, ref Int128 a, long b)
         {
+            c = default;
             if (a.IsNegative)
             {
                 UInt128 aneg;
@@ -1180,6 +1171,7 @@ namespace Nethermind.Core.Numerics
 
         public static void Divide(out Int128 c, ref Int128 a, ulong b)
         {
+            c = default;
             if (a.IsNegative)
             {
                 UInt128 aneg;
@@ -1194,6 +1186,7 @@ namespace Nethermind.Core.Numerics
 
         public static void Divide(out Int128 c, ref Int128 a, ref Int128 b)
         {
+            c = default;
             if (a.IsNegative)
             {
                 UInt128 aneg;
@@ -1291,6 +1284,7 @@ namespace Nethermind.Core.Numerics
 
         public static void Remainder(out Int128 c, ref Int128 a, ref Int128 b)
         {
+            c = default;
             if (a.IsNegative)
             {
                 UInt128 aneg;
@@ -1326,7 +1320,7 @@ namespace Nethermind.Core.Numerics
         {
             if (!a.IsNegative)
                 return a;
-            Int128 c;
+            Int128 c = default;
             UInt128.Negate(out c._v, ref a._v);
             return c;
         }
@@ -1335,14 +1329,14 @@ namespace Nethermind.Core.Numerics
         {
             if (a < 0)
                 a = -a;
-            Int128 c;
+            Int128 c = default;
             UInt128.Square(out c._v, (ulong)a);
             return c;
         }
 
         public static Int128 Square(Int128 a)
         {
-            Int128 c;
+            Int128 c = default;
             if (a.IsNegative)
             {
                 UInt128 aneg;
@@ -1356,7 +1350,7 @@ namespace Nethermind.Core.Numerics
 
         public static Int128 Cube(long a)
         {
-            Int128 c;
+            Int128 c = default;
             if (a < 0)
             {
                 UInt128.Cube(out c._v, (ulong)(-a));
@@ -1369,11 +1363,10 @@ namespace Nethermind.Core.Numerics
 
         public static Int128 Cube(Int128 a)
         {
-            Int128 c;
+            Int128 c = default;
             if (a < 0)
             {
-                UInt128 aneg;
-                UInt128.Negate(out aneg, ref a._v);
+                UInt128.Negate(out UInt128 aneg, ref a._v);
                 UInt128.Cube(out c._v, ref aneg);
                 UInt128.Negate(ref c._v);
             }
@@ -1500,12 +1493,12 @@ namespace Nethermind.Core.Numerics
 
         public static void Pow(out Int128 result, ref Int128 value, int exponent)
         {
+            result = default;
             if (exponent < 0)
                 throw new ArgumentException("exponent must not be negative");
             if (value.IsNegative)
             {
-                UInt128 valueneg;
-                UInt128.Negate(out valueneg, ref value._v);
+                UInt128.Negate(out UInt128 valueneg, ref value._v);
                 if ((exponent & 1) == 0)
                     UInt128.Pow(out result._v, ref valueneg, (uint)exponent);
                 else
@@ -1520,8 +1513,7 @@ namespace Nethermind.Core.Numerics
 
         public static Int128 Pow(Int128 value, int exponent)
         {
-            Int128 result;
-            Pow(out result, ref value, exponent);
+            Pow(out Int128 result, ref value, exponent);
             return result;
         }
 
@@ -1543,8 +1535,7 @@ namespace Nethermind.Core.Numerics
         {
             if (a.IsNegative)
             {
-                UInt128 aneg;
-                UInt128.Negate(out aneg, ref a._v);
+                UInt128.Negate(out UInt128 aneg, ref a._v);
                 return -(long)UInt128.FloorCbrt(aneg);
             }
             return (long)UInt128.FloorCbrt(a._v);
@@ -1554,8 +1545,7 @@ namespace Nethermind.Core.Numerics
         {
             if (a.IsNegative)
             {
-                UInt128 aneg;
-                UInt128.Negate(out aneg, ref a._v);
+                UInt128.Negate(out UInt128 aneg, ref a._v);
                 return -(long)UInt128.CeilingCbrt(aneg);
             }
             return (long)UInt128.CeilingCbrt(a._v);
@@ -1594,14 +1584,14 @@ namespace Nethermind.Core.Numerics
 
         public static Int128 Add(Int128 a, Int128 b)
         {
-            Int128 c;
+            Int128 c = default;
             UInt128.Add(out c._v, ref a._v, ref b._v);
             return c;
         }
 
         public static Int128 Subtract(Int128 a, Int128 b)
         {
-            Int128 c;
+            Int128 c = default;
             UInt128.Subtract(out c._v, ref a._v, ref b._v);
             return c;
         }
@@ -1615,29 +1605,26 @@ namespace Nethermind.Core.Numerics
 
         public static Int128 Divide(Int128 a, Int128 b)
         {
-            Int128 c;
-            Divide(out c, ref a, ref b);
+            Divide(out Int128 c, ref a, ref b);
             return c;
         }
 
         public static Int128 Remainder(Int128 a, Int128 b)
         {
-            Int128 c;
-            Remainder(out c, ref a, ref b);
+            Remainder(out Int128 c, ref a, ref b);
             return c;
         }
 
         public static Int128 DivRem(Int128 a, Int128 b, out Int128 remainder)
         {
-            Int128 c;
-            Divide(out c, ref a, ref b);
+            Divide(out Int128 c, ref a, ref b);
             Remainder(out remainder, ref a, ref b);
             return c;
         }
 
         public static Int128 Negate(Int128 a)
         {
-            Int128 c;
+            Int128 c = default;;
             UInt128.Negate(out c._v, ref a._v);
             return c;
         }
@@ -1651,14 +1638,13 @@ namespace Nethermind.Core.Numerics
 
         public static void GreatestCommonDivisor(out Int128 c, ref Int128 a, ref Int128 b)
         {
+            c = default;
             if (a.IsNegative)
             {
-                UInt128 aneg;
-                UInt128.Negate(out aneg, ref a._v);
+                UInt128.Negate(out UInt128 aneg, ref a._v);
                 if (b.IsNegative)
                 {
-                    UInt128 bneg;
-                    UInt128.Negate(out bneg, ref b._v);
+                    UInt128.Negate(out UInt128 bneg, ref b._v);
                     UInt128.GreatestCommonDivisor(out c._v, ref aneg, ref bneg);
                 }
                 else
@@ -1668,8 +1654,7 @@ namespace Nethermind.Core.Numerics
             {
                 if (b.IsNegative)
                 {
-                    UInt128 bneg;
-                    UInt128.Negate(out bneg, ref b._v);
+                    UInt128.Negate(out UInt128 bneg, ref b._v);
                     UInt128.GreatestCommonDivisor(out c._v, ref a._v, ref bneg);
                 }
                 else
@@ -1709,6 +1694,7 @@ namespace Nethermind.Core.Numerics
 
         public static void Shift(out Int128 c, ref Int128 a, int d)
         {
+            c = default;
             UInt128.ArithmeticShift(out c._v, ref a._v, d);
         }
 
@@ -1719,28 +1705,28 @@ namespace Nethermind.Core.Numerics
 
         public static Int128 ModAdd(Int128 a, Int128 b, Int128 modulus)
         {
-            Int128 c;
+            Int128 c = default;
             UInt128.ModAdd(out c._v, ref a._v, ref b._v, ref modulus._v);
             return c;
         }
 
         public static Int128 ModSub(Int128 a, Int128 b, Int128 modulus)
         {
-            Int128 c;
+            Int128 c = default;
             UInt128.ModSub(out c._v, ref a._v, ref b._v, ref modulus._v);
             return c;
         }
 
         public static Int128 ModMul(Int128 a, Int128 b, Int128 modulus)
         {
-            Int128 c;
+            Int128 c = default;
             UInt128.ModMul(out c._v, ref a._v, ref b._v, ref modulus._v);
             return c;
         }
 
         public static Int128 ModPow(Int128 value, Int128 exponent, Int128 modulus)
         {
-            Int128 result;
+            Int128 result = default;
             UInt128.ModPow(out result._v, ref value._v, ref exponent._v, ref modulus._v);
             return result;
         }

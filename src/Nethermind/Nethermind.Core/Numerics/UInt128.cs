@@ -4,7 +4,7 @@ using System.Globalization;
 using System.Linq;
 using System.Numerics;
 
-namespace Dirichlet.Numerics
+namespace Nethermind.Core.Numerics
 {
     public struct UInt128 : IFormattable, IComparable, IComparable<UInt128>, IEquatable<UInt128>
     {
@@ -24,8 +24,8 @@ namespace Dirichlet.Numerics
             public uint r6 => (uint)s3;
             public uint r7 => (uint)(s3 >> 32);
 
-            public UInt128 t0 { get { UInt128 result; UInt128.Create(out result, s0, s1); return result; } }
-            public UInt128 t1 { get { UInt128 result; UInt128.Create(out result, s2, s3); return result; } }
+            public UInt128 t0 { get { Create(out UInt128 result, s0, s1); return result; } }
+            public UInt128 t1 { get { Create(out UInt128 result, s2, s3); return result; } }
 
             public static implicit operator BigInteger(UInt256 a)
             {
@@ -98,24 +98,28 @@ namespace Dirichlet.Numerics
 
         public static void Create(out UInt128 c, uint r0, uint r1, uint r2, uint r3)
         {
+            c = default;
             c.s0 = (ulong)r1 << 32 | r0;
             c.s1 = (ulong)r3 << 32 | r2;
         }
 
         public static void Create(out UInt128 c, ulong s0, ulong s1)
         {
+            c = default;
             c.s0 = s0;
             c.s1 = s1;
         }
 
         public static void Create(out UInt128 c, long a)
         {
+            c = default;
             c.s0 = (ulong)a;
             c.s1 = a < 0 ? ulong.MaxValue : 0;
         }
 
         public static void Create(out UInt128 c, ulong a)
         {
+            c = default;
             c.s0 = a;
             c.s1 = 0;
         }
@@ -130,6 +134,7 @@ namespace Dirichlet.Numerics
 
         public static void Create(out UInt128 c, BigInteger a)
         {
+            c = default;
             var sign = a.Sign;
             if (sign == -1)
                 a = -a;
@@ -141,6 +146,7 @@ namespace Dirichlet.Numerics
 
         public static void Create(out UInt128 c, double a)
         {
+            c = default;
             var negate = false;
             if (a < 0)
             {
@@ -206,71 +212,61 @@ namespace Dirichlet.Numerics
 
         public static explicit operator UInt128(sbyte a)
         {
-            UInt128 c;
-            Create(out c, a);
+            Create(out UInt128 c, a);
             return c;
         }
 
         public static implicit operator UInt128(byte a)
         {
-            UInt128 c;
-            Create(out c, a);
+            Create(out UInt128 c, a);
             return c;
         }
 
         public static explicit operator UInt128(short a)
         {
-            UInt128 c;
-            Create(out c, a);
+            Create(out UInt128 c, a);
             return c;
         }
 
         public static implicit operator UInt128(ushort a)
         {
-            UInt128 c;
-            Create(out c, a);
+            Create(out UInt128 c, a);
             return c;
         }
 
         public static explicit operator UInt128(int a)
         {
-            UInt128 c;
-            Create(out c, a);
+            Create(out UInt128 c, a);
             return c;
         }
 
         public static implicit operator UInt128(uint a)
         {
-            UInt128 c;
-            Create(out c, a);
+            Create(out UInt128 c, a);
             return c;
         }
 
         public static explicit operator UInt128(long a)
         {
-            UInt128 c;
-            Create(out c, a);
+            Create(out UInt128 c, a);
             return c;
         }
 
         public static implicit operator UInt128(ulong a)
         {
-            UInt128 c;
-            Create(out c, a);
+            Create(out UInt128 c, a);
             return c;
         }
 
         public static explicit operator UInt128(decimal a)
         {
-            UInt128 c;
-            Create(out c, a);
+            Create(out UInt128 c, a);
             return c;
         }
 
         public static explicit operator UInt128(BigInteger a)
         {
-            UInt128 c;
-            Create(out c, a);
+            Create(out UInt128 c, a);
             return c;
         }
 
@@ -1067,6 +1063,7 @@ namespace Dirichlet.Numerics
 
         public static void Add(out UInt128 c, ulong a, ulong b)
         {
+            c = default;
             c.s0 = a + b;
             c.s1 = 0;
             if (c.s0 < a && c.s0 < b)
@@ -1076,6 +1073,7 @@ namespace Dirichlet.Numerics
 
         public static void Add(out UInt128 c, ref UInt128 a, ulong b)
         {
+            c = default;
             c.s0 = a.s0 + b;
             c.s1 = a.s1;
             if (c.s0 < a.s0 && c.s0 < b)
@@ -1085,6 +1083,7 @@ namespace Dirichlet.Numerics
 
         public static void Add(out UInt128 c, ref UInt128 a, ref UInt128 b)
         {
+            c = default;
             c.s0 = a.s0 + b.s0;
             c.s1 = a.s1 + b.s1;
             if (c.s0 < a.s0 && c.s0 < b.s0)
@@ -1124,6 +1123,7 @@ namespace Dirichlet.Numerics
 
         public static void Subtract(out UInt128 c, ref UInt128 a, ulong b)
         {
+            c = default;
             c.s0 = a.s0 - b;
             c.s1 = a.s1;
             if (a.s0 < b)
@@ -1133,6 +1133,7 @@ namespace Dirichlet.Numerics
 
         public static void Subtract(out UInt128 c, ulong a, ref UInt128 b)
         {
+            c = default;
             c.s0 = a - b.s0;
             c.s1 = 0 - b.s1;
             if (a < b.s0)
@@ -1142,6 +1143,7 @@ namespace Dirichlet.Numerics
 
         public static void Subtract(out UInt128 c, ref UInt128 a, ref UInt128 b)
         {
+            c = default;
             c.s0 = a.s0 - b.s0;
             c.s1 = a.s1 - b.s1;
             if (a.s0 < b.s0)
@@ -1171,6 +1173,7 @@ namespace Dirichlet.Numerics
 
         private static void Square64(out UInt128 w, ulong u)
         {
+            w = default;
             var u0 = (ulong)(uint)u;
             var u1 = u >> 32;
             var carry = u0 * u0;
@@ -1186,6 +1189,7 @@ namespace Dirichlet.Numerics
 
         private static void Multiply64(out UInt128 w, uint u, uint v)
         {
+            w = default;
             w.s0 = (ulong)u * v;
             w.s1 = 0;
             Debug.Assert((BigInteger)w == (BigInteger)u * v);
@@ -1193,6 +1197,7 @@ namespace Dirichlet.Numerics
 
         private static void Multiply64(out UInt128 w, ulong u, uint v)
         {
+            w = default;
             var u0 = (ulong)(uint)u;
             var u1 = u >> 32;
             var carry = u0 * v;
@@ -1205,6 +1210,7 @@ namespace Dirichlet.Numerics
 
         private static void Multiply64(out UInt128 w, ulong u, ulong v)
         {
+            w = default;
             var u0 = (ulong)(uint)u;
             var u1 = u >> 32;
             var v0 = (ulong)(uint)v;
@@ -1221,6 +1227,7 @@ namespace Dirichlet.Numerics
 
         private static void Multiply64(out UInt128 w, ulong u, ulong v, ulong c)
         {
+            w = default;
             var u0 = (ulong)(uint)u;
             var u1 = u >> 32;
             var v0 = (ulong)(uint)v;
@@ -1373,6 +1380,7 @@ namespace Dirichlet.Numerics
 
         private static void Divide64(out UInt128 w, ulong u, ulong v)
         {
+            w = default;
             w.s1 = 0;
             w.s0 = u / v;
             Debug.Assert((BigInteger)w == (BigInteger)u / v);
@@ -1380,6 +1388,7 @@ namespace Dirichlet.Numerics
 
         private static void Divide96(out UInt128 w, ref UInt128 u, uint v)
         {
+            w = default;
             var r2 = u.r2;
             var w2 = r2 / v;
             var u0 = (ulong)(r2 - w2 * v);
@@ -1395,6 +1404,7 @@ namespace Dirichlet.Numerics
 
         private static void Divide128(out UInt128 w, ref UInt128 u, uint v)
         {
+            w = default;
             var r3 = u.r3;
             var w3 = r3 / v;
             var u0 = (ulong)(r3 - w3 * v);
@@ -1413,6 +1423,7 @@ namespace Dirichlet.Numerics
 
         private static void Divide96(out UInt128 w, ref UInt128 u, ulong v)
         {
+            w = default;
             w.s0 = w.s1 = 0;
             var dneg = GetBitLength((uint)(v >> 32));
             var d = 32 - dneg;
@@ -1439,6 +1450,7 @@ namespace Dirichlet.Numerics
 
         private static void Divide128(out UInt128 w, ref UInt128 u, ulong v)
         {
+            w = default;
             w.s0 = w.s1 = 0;
             var dneg = GetBitLength((uint)(v >> 32));
             var d = 32 - dneg;
@@ -1578,13 +1590,11 @@ namespace Dirichlet.Numerics
         private static void Remainder192(out UInt128 c, ref UInt256 a, ref UInt128 b)
         {
             var d = 32 - GetBitLength(b.r2);
-            UInt128 v;
-            LeftShift64(out v, ref b, d);
+            LeftShift64(out UInt128 v, ref b, d);
             var v1 = v.r2;
             var v2 = v.r1;
             var v3 = v.r0;
-            UInt256 rem;
-            LeftShift64(out rem, ref a, d);
+            LeftShift64(out UInt256 rem, ref a, d);
             var r6 = rem.r6;
             var r5 = rem.r5;
             var r4 = rem.r4;
@@ -1610,8 +1620,7 @@ namespace Dirichlet.Numerics
             var v2 = v.r2;
             var v3 = v.r1;
             var v4 = v.r0;
-            UInt256 rem;
-            var r8 = (uint)LeftShift64(out rem, ref a, d);
+            var r8 = (uint)LeftShift64(out UInt256 rem, ref a, d);
             var r7 = rem.r7;
             var r6 = rem.r6;
             var r5 = rem.r5;
@@ -1768,14 +1777,12 @@ namespace Dirichlet.Numerics
         {
             if (modulus.s1 == 0)
             {
-                UInt128 product;
-                Multiply64(out product, a.s0, b.s0);
-                Create(out c, UInt128.Remainder(ref product, modulus.s0));
+                Multiply64(out UInt128 product, a.s0, b.s0);
+                Create(out c, Remainder(ref product, modulus.s0));
             }
             else
             {
-                UInt256 product;
-                Multiply(out product, ref a, ref b);
+                Multiply(out UInt256 product, ref a, ref b);
                 Remainder(out c, ref product, ref modulus);
             }
         }
@@ -1784,14 +1791,12 @@ namespace Dirichlet.Numerics
         {
             if (modulus.s1 == 0)
             {
-                UInt128 product;
-                Multiply64(out product, a.s0, b.s0);
-                Create(out a, UInt128.Remainder(ref product, modulus.s0));
+                Multiply64(out UInt128 product, a.s0, b.s0);
+                Create(out a, Remainder(ref product, modulus.s0));
             }
             else
             {
-                UInt256 product;
-                Multiply(out product, ref a, ref b);
+                Multiply(out UInt256 product, ref a, ref b);
                 Remainder(out a, ref product, ref modulus);
             }
         }
@@ -1846,7 +1851,10 @@ namespace Dirichlet.Numerics
                 c = a;
                 return 0;
             }
+            
             var dneg = 64 - d;
+            
+            c = new UInt128();
             c.s1 = a.s1 << d | a.s0 >> dneg;
             c.s0 = a.s0 << d;
             return a.s1 >> dneg;
@@ -1854,6 +1862,7 @@ namespace Dirichlet.Numerics
 
         private static ulong LeftShift64(out UInt256 c, ref UInt256 a, int d)
         {
+            c = default;
             if (d == 0)
             {
                 c = a;
@@ -1869,6 +1878,7 @@ namespace Dirichlet.Numerics
 
         public static void LeftShift(out UInt128 c, ref UInt128 a, int b)
         {
+            c = default;
             if (b < 64)
                 LeftShift64(out c, ref a, b);
             else if (b == 64)
@@ -1886,6 +1896,7 @@ namespace Dirichlet.Numerics
 
         public static void RightShift64(out UInt128 c, ref UInt128 a, int b)
         {
+            c = default;
             if (b == 0)
                 c = a;
             else
@@ -1897,6 +1908,7 @@ namespace Dirichlet.Numerics
 
         public static void RightShift(out UInt128 c, ref UInt128 a, int b)
         {
+            c = default;
             if (b < 64)
                 RightShift64(out c, ref a, b);
             else if (b == 64)
@@ -1913,6 +1925,7 @@ namespace Dirichlet.Numerics
 
         public static void ArithmeticRightShift64(out UInt128 c, ref UInt128 a, int b)
         {
+            c = default;
             if (b == 0)
                 c = a;
             else
@@ -1924,6 +1937,7 @@ namespace Dirichlet.Numerics
 
         public static void ArithmeticRightShift(out UInt128 c, ref UInt128 a, int b)
         {
+            c = default;
             if (b < 64)
                 ArithmeticRightShift64(out c, ref a, b);
             else if (b == 64)
@@ -1940,24 +1954,28 @@ namespace Dirichlet.Numerics
 
         public static void And(out UInt128 c, ref UInt128 a, ref UInt128 b)
         {
+            c = default;
             c.s0 = a.s0 & b.s0;
             c.s1 = a.s1 & b.s1;
         }
 
         public static void Or(out UInt128 c, ref UInt128 a, ref UInt128 b)
         {
+            c = default;
             c.s0 = a.s0 | b.s0;
             c.s1 = a.s1 | b.s1;
         }
 
         public static void ExclusiveOr(out UInt128 c, ref UInt128 a, ref UInt128 b)
         {
+            c = default;
             c.s0 = a.s0 ^ b.s0;
             c.s1 = a.s1 ^ b.s1;
         }
 
         public static void Not(out UInt128 c, ref UInt128 a)
         {
+            c = default;
             c.s0 = ~a.s0;
             c.s1 = ~a.s1;
         }
@@ -1974,6 +1992,7 @@ namespace Dirichlet.Numerics
 
         public static void Negate(out UInt128 c, ref UInt128 a)
         {
+            c = default;
             c.s0 = 0 - a.s0;
             c.s1 = 0 - a.s1;
             if (a.s0 > 0)
@@ -2003,8 +2022,7 @@ namespace Dirichlet.Numerics
 
         public static UInt128 Pow(UInt128 value, uint exponent)
         {
-            UInt128 result;
-            Pow(out result, ref value, exponent);
+            Pow(out UInt128 result, ref value, exponent);
             return result;
         }
 
@@ -2019,8 +2037,7 @@ namespace Dirichlet.Numerics
             var s = (ulong)Math.Sqrt(ConvertToDouble(ref a));
             if (a.s1 < maxRepSquaredHigh)
             {
-                UInt128 s2;
-                Square(out s2, s);
+                Square(out UInt128 s2, s);
                 var r = a.s0 - s2.s0;
                 if (r > long.MaxValue)
                     --s;
@@ -2052,8 +2069,7 @@ namespace Dirichlet.Numerics
                 return s;
             }
             s = FloorSqrt(ref a, s);
-            UInt128 square;
-            Square(out square, s);
+            Square(out UInt128 square, s);
             if (square.S0 != a.S0 || square.S1 != a.S1)
                 ++s;
             Debug.Assert((BigInteger)(s - 1) * (s - 1) < a && (BigInteger)s * s >= a);
@@ -2063,14 +2079,12 @@ namespace Dirichlet.Numerics
         private static ulong FloorSqrt(ref UInt128 a, ulong s)
         {
             var sprev = (ulong)0;
-            UInt128 div;
-            UInt128 sum;
             while (true)
             {
                 // Equivalent to:
                 // snext = (a / s + s) / 2;
-                Divide(out div, ref a, s);
-                Add(out sum, ref div, s);
+                Divide(out UInt128 div, ref a, s);
+                Add(out UInt128 sum, ref div, s);
                 var snext = sum.S0 >> 1;
                 if (sum.S1 != 0)
                     snext |= (ulong)1 << 63;
@@ -2089,16 +2103,13 @@ namespace Dirichlet.Numerics
         public static ulong FloorCbrt(UInt128 a)
         {
             var s = (ulong)Math.Pow(ConvertToDouble(ref a), (double)1 / 3);
-            UInt128 s3;
-            Cube(out s3, s);
+            Cube(out UInt128 s3, s);
             if (a < s3)
                 --s;
             else
             {
-                UInt128 sum;
-                Multiply(out sum, 3 * s, s + 1);
-                UInt128 diff;
-                Subtract(out diff, ref a, ref s3);
+                Multiply(out UInt128 sum, 3 * s, s + 1);
+                Subtract(out UInt128 diff, ref a, ref s3);
                 if (LessThan(ref sum, ref diff))
                     ++s;
             }
@@ -2109,16 +2120,13 @@ namespace Dirichlet.Numerics
         public static ulong CeilingCbrt(UInt128 a)
         {
             var s = (ulong)Math.Ceiling(Math.Pow(ConvertToDouble(ref a), (double)1 / 3));
-            UInt128 s3;
-            Cube(out s3, s);
+            Cube(out UInt128 s3, s);
             if (s3 < a)
                 ++s;
             else
             {
-                UInt128 sum;
-                Multiply(out sum, 3 * s, s + 1);
-                UInt128 diff;
-                Subtract(out diff, ref s3, ref a);
+                Multiply(out UInt128 sum, 3 * s, s + 1);
+                Subtract(out UInt128 diff, ref s3, ref a);
                 if (LessThan(ref sum, ref diff))
                     --s;
             }
