@@ -16,7 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Numerics;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Core.Test.Builders
 {
@@ -27,7 +27,7 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal = Account.TotallyEmpty;
         }
 
-        public AccountBuilder WithBalance(BigInteger balance)
+        public AccountBuilder WithBalance(UInt256 balance)
         {
             TestObjectInternal = TestObjectInternal.WithChangedBalance(balance);
             return this;

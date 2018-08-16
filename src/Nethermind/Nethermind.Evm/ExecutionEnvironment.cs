@@ -18,6 +18,7 @@
 
 using System.Numerics;
 using Nethermind.Core;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Evm
 {
@@ -29,13 +30,13 @@ namespace Nethermind.Evm
 
         public Address Sender { get; set; }
 
-        public BigInteger GasPrice { get; set; }
+        public UInt256 GasPrice { get; set; }
 
         public byte[] InputData { get; set; }
 
-        public BigInteger TransferValue { get; set; }
+        public UInt256 TransferValue { get; set; }
 
-        public BigInteger Value { get; set; }
+        public UInt256 Value { get; set; }
 
         public CodeInfo CodeInfo { get; set; }
 

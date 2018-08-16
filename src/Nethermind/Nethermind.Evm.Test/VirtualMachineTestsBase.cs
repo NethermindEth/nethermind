@@ -103,7 +103,7 @@ namespace Nethermind.Evm.Test
             TestState.Commit(SpecProvider.GenesisSpec);
 
             Transaction transaction = Build.A.Transaction
-                .WithGasLimit(gasLimit)
+                .WithGasLimit((ulong)gasLimit)
                 .WithGasPrice(1)
                 .WithTo(TestObject.AddressB)
                 .SignedAndResolved(_ethereumSigner, TestObject.PrivateKeyA, blockNumber)

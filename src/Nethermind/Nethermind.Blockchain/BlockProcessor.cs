@@ -196,9 +196,9 @@ namespace Nethermind.Blockchain
             Address withdrawAccount = DaoData.DaoWithdrawalAccount;
             foreach (Address daoAccount in DaoData.DaoAccounts)
             {
-                BigInteger balance = _stateProvider.GetBalance(daoAccount);
-                _stateProvider.UpdateBalance(withdrawAccount, balance, Dao.Instance);
-                _stateProvider.UpdateBalance(daoAccount, -balance, Dao.Instance);
+                UInt256 balance = _stateProvider.GetBalance(daoAccount);
+                _stateProvider.AddToBalance(withdrawAccount, balance, Dao.Instance);
+                _stateProvider.SubtractFromBalance(daoAccount, balance, Dao.Instance);
             }
         }
 
@@ -319,11 +319,11 @@ namespace Nethermind.Blockchain
                 if(_logger.IsDebugEnabled) _logger.Debug($"    {((decimal)rewards[i].Value / (decimal)Unit.Ether):N3}{Unit.EthSymbol} for account at {rewards[i].Address}");
                 if (!_stateProvider.AccountExists(rewards[i].Address))
                 {
-                    _stateProvider.CreateAccount(rewards[i].Address, rewards[i].Value);
+                    _stateProvider.CreateAccount(rewards[i].Address, (UInt256)rewards[i].Value);
                 }
                 else
                 {   
-                    _stateProvider.UpdateBalance(rewards[i].Address, rewards[i].Value, _specProvider.GetSpec(block.Number));
+                    _stateProvider.AddToBalance(rewards[i].Address, (UInt256)rewards[i].Value, _specProvider.GetSpec(block.Number));
                 }
             }
 

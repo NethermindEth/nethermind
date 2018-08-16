@@ -18,6 +18,7 @@
 
 using System.Numerics;
 using Nethermind.Core.Crypto;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Core.Test.Builders
 {
@@ -34,7 +35,7 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal.Data = new byte[0];
         }
 
-        public TransactionBuilder WithNonce(BigInteger nonce)
+        public TransactionBuilder WithNonce(UInt256 nonce)
         {
             TestObjectInternal.Nonce = nonce;
             return this;
@@ -52,13 +53,13 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
         
-        public TransactionBuilder WithGasPrice(BigInteger gasPrice)
+        public TransactionBuilder WithGasPrice(UInt256 gasPrice)
         {
             TestObjectInternal.GasPrice = gasPrice;
             return this;
         }
         
-        public TransactionBuilder WithGasLimit(BigInteger gasLimit)
+        public TransactionBuilder WithGasLimit(UInt256 gasLimit)
         {
             TestObjectInternal.GasLimit = gasLimit;
             return this;

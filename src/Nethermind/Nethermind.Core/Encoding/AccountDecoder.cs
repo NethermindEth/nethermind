@@ -16,8 +16,11 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Numerics;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Core.Encoding
 {
@@ -28,8 +31,8 @@ namespace Nethermind.Core.Encoding
             context.ReadSequenceLength();
             //long checkValue = context.ReadSequenceLength() + context.Position;
 
-            BigInteger nonce = context.DecodeUBigInt();
-            BigInteger balance = context.DecodeUBigInt();
+            UInt256 nonce = context.DecodeUInt256();
+            UInt256 balance = context.DecodeUInt256();
             Keccak storageRoot = context.DecodeKeccak();
             Keccak codeHash = context.DecodeKeccak();
             Account account = new Account(nonce, balance, storageRoot, codeHash);
@@ -44,6 +47,23 @@ namespace Nethermind.Core.Encoding
 
         public Rlp Encode(Account item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
+            Rlp rlp = Rlp.Encode(
+                Rlp.Encode(item.Nonce),
+                Rlp.Encode((BigInteger)item.Balance),
+                Rlp.Encode(item.StorageRoot),
+                Rlp.Encode(item.CodeHash));
+            
+            Rlp rlp2 = Rlp.Encode(
+                Rlp.Encode(item.Nonce),
+                Rlp.Encode(item.Balance),
+                Rlp.Encode(item.StorageRoot),
+                Rlp.Encode(item.CodeHash));
+
+            if (!Bytes.UnsafeCompare(rlp.Bytes, rlp2.Bytes))
+            {
+                throw new Exception();
+            }
+            
                 return Rlp.Encode(
                     Rlp.Encode(item.Nonce),
                     Rlp.Encode(item.Balance),

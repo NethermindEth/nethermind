@@ -24,6 +24,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
+using Nethermind.Dirichlet.Numerics;
 
 [assembly: InternalsVisibleTo("Nethermind.Store.Test")]
 
@@ -87,10 +88,10 @@ namespace Nethermind.Store
             return account?.IsEmpty ?? true;
         }
 
-        public BigInteger GetNonce(Address address)
+        public UInt256 GetNonce(Address address)
         {
             Account account = GetThroughCache(address);
-            return account?.Nonce ?? BigInteger.Zero;
+            return account?.Nonce ?? UInt256.Zero;
         }
 
         public Keccak GetStorageRoot(Address address)
@@ -99,10 +100,10 @@ namespace Nethermind.Store
             return account.StorageRoot;
         }
 
-        public BigInteger GetBalance(Address address)
+        public UInt256 GetBalance(Address address)
         {
             Account account = GetThroughCache(address);
-            return account?.Balance ?? BigInteger.Zero;
+            return account?.Balance ?? UInt256.Zero;
         }
 
         public void UpdateCodeHash(Address address, Keccak codeHash, IReleaseSpec releaseSpec)
@@ -130,7 +131,7 @@ namespace Nethermind.Store
             }
         }
 
-        public void UpdateBalance(Address address, BigInteger balanceChange, IReleaseSpec releaseSpec)
+        private void SetNewBalance(Address address, UInt256 balanceChange, IReleaseSpec releaseSpec, bool isSubtracting)
         {
             if (balanceChange.IsZero)
             {
@@ -155,19 +156,29 @@ namespace Nethermind.Store
                 throw new InvalidOperationException("Updating balance of a non-existing account");
             }
 
-            BigInteger newBalance = account.Balance + balanceChange;
+            UInt256 newBalance = isSubtracting ? account.Balance - balanceChange : account.Balance + balanceChange;
             if (newBalance < 0)
             {
                 throw new InsufficientBalanceException();
             }
 
-            Account changedAccount = account.WithChangedBalance(account.Balance + balanceChange);
+            Account changedAccount = account.WithChangedBalance(newBalance);
             if (_logger.IsDebugEnabled)
             {
-                _logger.Debug($"  Update {address} B = {account.Balance + balanceChange} B_CHANGE = {balanceChange}");
+                _logger.Debug($"  Update {address} B = {newBalance} B_CHANGE = {(isSubtracting ? "-" : "+")}{balanceChange}");
             }
 
             PushUpdate(address, changedAccount);
+        }
+        
+        public void SubtractFromBalance(Address address, UInt256 balanceChange, IReleaseSpec releaseSpec)
+        {
+            SetNewBalance(address, balanceChange, releaseSpec, true);
+        }
+        
+        public void AddToBalance(Address address, UInt256 balanceChange, IReleaseSpec releaseSpec)
+        {
+            SetNewBalance(address, balanceChange, releaseSpec, false);
         }
 
         public void UpdateStorageRoot(Address address, Keccak storageRoot)
@@ -307,7 +318,7 @@ namespace Nethermind.Store
             _keptInCache.Clear();
         }
 
-        public void CreateAccount(Address address, BigInteger balance)
+        public void CreateAccount(Address address, UInt256 balance)
         {
             if (_logger.IsDebugEnabled)
             {

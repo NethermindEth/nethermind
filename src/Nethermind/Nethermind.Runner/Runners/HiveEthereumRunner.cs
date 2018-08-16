@@ -30,6 +30,7 @@ using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.JsonRpc.Module;
 using Nethermind.KeyStore;
 using Nethermind.KeyStore.Config;
@@ -201,10 +202,12 @@ namespace Nethermind.Runner.Runners
 
         private Keccak InitializeAccounts(IDictionary<string, TestAccount> alloc)
         {
+            
             foreach (var account in alloc)
             {
+                UInt256.CreateFromBigEndian(out UInt256 allocation, Bytes.FromHexString(account.Value.Balance));
                 _stateProvider.CreateAccount(new Address(account.Key), account.Value.Balance.StartsWith("0x") 
-                    ? new BigInteger(Bytes.FromHexString(account.Value.Balance)) : BigInteger.Parse(account.Value.Balance));
+                    ? allocation : UInt256.Parse(account.Value.Balance));
             }
             _stateProvider.Commit(_specProvider.GenesisSpec);
             _dbProvider.Commit(_specProvider.GenesisSpec);

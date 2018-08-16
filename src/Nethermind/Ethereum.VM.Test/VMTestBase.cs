@@ -87,9 +87,9 @@ namespace Ethereum.VM.Test
         private static AccountState Convert(AccountStateJson accountStateJson)
         {
             AccountState state = new AccountState();
-            state.Balance = Bytes.FromHexString(accountStateJson.Balance).ToUnsignedBigInteger();
+            state.Balance = Bytes.FromHexString(accountStateJson.Balance).ToUInt256();
             state.Code = Bytes.FromHexString(accountStateJson.Code);
-            state.Nonce = Bytes.FromHexString(accountStateJson.Nonce).ToUnsignedBigInteger();
+            state.Nonce = Bytes.FromHexString(accountStateJson.Nonce).ToUInt256();
             state.Storage = accountStateJson.Storage.ToDictionary(
                 p => Bytes.FromHexString(p.Key).ToUnsignedBigInteger(),
                 p => Bytes.FromHexString(p.Value));
@@ -104,9 +104,9 @@ namespace Ethereum.VM.Test
             environment.Origin = execJson.Origin == null ? null : new Address(execJson.Origin);
             environment.Code = Bytes.FromHexString(execJson.Code);
             environment.Data = Bytes.FromHexString(execJson.Data);
-            environment.Gas = Bytes.FromHexString(execJson.Gas).ToUnsignedBigInteger();
-            environment.GasPrice = Bytes.FromHexString(execJson.GasPrice).ToUnsignedBigInteger();
-            environment.Value = Bytes.FromHexString(execJson.Value).ToUnsignedBigInteger();
+            environment.Gas = Bytes.FromHexString(execJson.Gas).ToUInt256();
+            environment.GasPrice = Bytes.FromHexString(execJson.GasPrice).ToUInt256();
+            environment.Value = Bytes.FromHexString(execJson.Value).ToUInt256();
             return environment;
         }
 
@@ -237,9 +237,9 @@ namespace Ethereum.VM.Test
 
         public class AccountState
         {
-            public BigInteger Balance { get; set; }
+            public UInt256 Balance { get; set; }
             public byte[] Code { get; set; }
-            public BigInteger Nonce { get; set; }
+            public UInt256 Nonce { get; set; }
             public Dictionary<BigInteger, byte[]> Storage { get; set; }
         }
 
@@ -275,10 +275,10 @@ namespace Ethereum.VM.Test
             public Address Caller { get; set; }
             public byte[] Code { get; set; }
             public byte[] Data { get; set; }
-            public BigInteger Gas { get; set; }
-            public BigInteger GasPrice { get; set; }
+            public UInt256 Gas { get; set; }
+            public UInt256 GasPrice { get; set; }
             public Address Origin { get; set; }
-            public BigInteger Value { get; set; }
+            public UInt256 Value { get; set; }
         }
 
         public class ExecJson

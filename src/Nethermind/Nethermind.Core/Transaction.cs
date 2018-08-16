@@ -17,22 +17,22 @@
  */
 
 using System.Diagnostics;
-using System.Numerics;
 using System.Text;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Core
 {
     [DebuggerDisplay("{Hash}, Value: {Value}, To: {To}, Gas: {GasLimit}")]
     public class Transaction
     {
-        public BigInteger Nonce { get; set; }
-        public BigInteger GasPrice { get; set; }
-        public BigInteger GasLimit { get; set; }
+        public UInt256 Nonce { get; set; }
+        public UInt256 GasPrice { get; set; }
+        public UInt256 GasLimit { get; set; }
         public Address To { get; set; }
-        public BigInteger Value { get; set; }
+        public UInt256 Value { get; set; }
         public byte[] Data { get; set; }
         public byte[] Init { get; set; }
         public Address SenderAddress { get; set; }

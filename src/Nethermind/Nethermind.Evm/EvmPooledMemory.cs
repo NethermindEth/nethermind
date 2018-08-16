@@ -176,9 +176,10 @@ namespace Nethermind.Evm
                 long activeWords = Div32Ceiling(Size);
 
                 // TODO: guess it would be well within ranges but this needs to be checked and comment need to be added with calculations
-                BigInteger cost = (newActiveWords - activeWords) * GasCostOf.Memory +
-                                  newActiveWords * newActiveWords / 512 -
-                                  activeWords * activeWords / 512;
+                UInt256 cost = (ulong)
+                    ((newActiveWords - activeWords) * GasCostOf.Memory +
+                     ((newActiveWords * newActiveWords) >> 9) -
+                     ((activeWords * activeWords) >> 9));
 
                 if (cost > long.MaxValue)
                 {

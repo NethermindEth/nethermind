@@ -89,12 +89,12 @@ namespace Nethermind.Core.Specs.ChainSpec
                 return;
             }
 
-            chainSpec.Allocations = new Dictionary<Address, BigInteger>();
+            chainSpec.Allocations = new Dictionary<Address, UInt256>();
             foreach (KeyValuePair<string, ChainSpecAccountJson> account in chainSpecJson.Accounts)
             {
                 if (account.Value.Balance != null)
                 {
-                    chainSpec.Allocations[new Address(account.Key)] = BigInteger.Parse(account.Value.Balance);
+                    chainSpec.Allocations[new Address(account.Key)] = UInt256.Parse(account.Value.Balance);
                 }
             }
         }

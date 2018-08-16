@@ -135,9 +135,9 @@ namespace Ethereum.Test.Base
         private static AccountState Convert(AccountStateJson accountStateJson)
         {
             AccountState state = new AccountState();
-            state.Balance = Bytes.FromHexString(accountStateJson.Balance).ToUnsignedBigInteger();
+            state.Balance = Bytes.FromHexString(accountStateJson.Balance).ToUInt256();
             state.Code = Bytes.FromHexString(accountStateJson.Code);
-            state.Nonce = Bytes.FromHexString(accountStateJson.Nonce).ToUnsignedBigInteger();
+            state.Nonce = Bytes.FromHexString(accountStateJson.Nonce).ToUInt256();
             state.Storage = accountStateJson.Storage.ToDictionary(
                 p => Bytes.FromHexString(p.Key).ToUnsignedBigInteger(),
                 p => Bytes.FromHexString(p.Value));
@@ -491,10 +491,10 @@ namespace Ethereum.Test.Base
         private static Transaction Convert(TransactionJson transactionJson)
         {
             Transaction transaction = new Transaction();
-            transaction.Value = Bytes.FromHexString(transactionJson.Value).ToUnsignedBigInteger();
-            transaction.GasLimit = Bytes.FromHexString(transactionJson.GasLimit).ToUnsignedBigInteger();
-            transaction.GasPrice = Bytes.FromHexString(transactionJson.GasPrice).ToUnsignedBigInteger();
-            transaction.Nonce = Bytes.FromHexString(transactionJson.Nonce).ToUnsignedBigInteger();
+            transaction.Value = Bytes.FromHexString(transactionJson.Value).ToUInt256();
+            transaction.GasLimit = Bytes.FromHexString(transactionJson.GasLimit).ToUInt256();
+            transaction.GasPrice = Bytes.FromHexString(transactionJson.GasPrice).ToUInt256();
+            transaction.Nonce = Bytes.FromHexString(transactionJson.Nonce).ToUInt256();
             transaction.To = string.IsNullOrWhiteSpace(transactionJson.To) ? null : new Address(transactionJson.To);
             transaction.Data = transaction.To == null ? null : Bytes.FromHexString(transactionJson.Data);
             transaction.Init = transaction.To == null ? Bytes.FromHexString(transactionJson.Data) : null;

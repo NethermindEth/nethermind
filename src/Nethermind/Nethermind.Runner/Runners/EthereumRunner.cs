@@ -33,6 +33,7 @@ using Nethermind.Core.Model;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Specs.ChainSpec;
 using Nethermind.Db;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.JsonRpc.Module;
 using Nethermind.KeyStore;
@@ -310,7 +311,7 @@ namespace Nethermind.Runner.Runners
                 return;
             }
 
-            foreach (KeyValuePair<Address, BigInteger> allocation in chainSpec.Allocations)
+            foreach (KeyValuePair<Address, UInt256> allocation in chainSpec.Allocations)
             {
                 stateProvider.CreateAccount(allocation.Key, allocation.Value);
             }
