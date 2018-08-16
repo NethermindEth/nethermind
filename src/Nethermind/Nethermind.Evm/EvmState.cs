@@ -22,6 +22,7 @@ using System.Diagnostics;
 using System.Numerics;
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Evm
 {
@@ -102,7 +103,7 @@ namespace Nethermind.Evm
 
         public ExecutionEnvironment Env { get; }
         public long GasAvailable { get; set; }
-        public BigInteger ProgramCounter { get; set; }
+        public UInt256 ProgramCounter { get; set; }
 
         internal ExecutionType ExecutionType { get; }
         internal long OutputDestination { get; }

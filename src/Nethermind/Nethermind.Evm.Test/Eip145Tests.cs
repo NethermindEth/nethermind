@@ -40,8 +40,8 @@ namespace Nethermind.Evm.Test
         
         private void AssertEip145(TransactionReceipt receipt, byte[] result)
         {
-            AssertGas(receipt, result.IsZero() ? ZeroResultGas : NonZeroResultGas);
             AssertStorage(0, result);
+            AssertGas(receipt, result.IsZero() ? ZeroResultGas : NonZeroResultGas);
         }
 
         private const long ZeroResultGas = GasCostOf.Transaction + 4 * GasCostOf.VeryLow + GasCostOf.SReset;

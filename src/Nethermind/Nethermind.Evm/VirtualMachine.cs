@@ -464,7 +464,7 @@ namespace Nethermind.Evm
             Span<byte> bytesOnStack = evmState.BytesOnStack.AsSpan();
             int stackHead = evmState.StackHead;
             long gasAvailable = evmState.GasAvailable;
-            long programCounter = (long)evmState.ProgramCounter;
+            UInt256 programCounter = evmState.ProgramCounter;
             Span<byte> code = env.CodeInfo.MachineCode.AsSpan();
 
             void UpdateCurrentState()
@@ -487,7 +487,7 @@ namespace Nethermind.Evm
                 _traceEntry.Gas = gasAvailable;
                 _traceEntry.Operation = Enum.GetName(typeof(Instruction), instruction);
                 _traceEntry.Memory = evmState.Memory.GetTrace();
-                _traceEntry.Pc = programCounter;
+                _traceEntry.Pc = (long)programCounter;
                 _traceEntry.Stack = GetStackTrace(stack);
                 if (previousStorage != null)
                 {
@@ -1661,18 +1661,18 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        bigReg = PopUInt(bytesOnStack);
-                        if (bigReg > BigIntMaxInt)
+                        UInt256 jumpDest = PopUInt256(bytesOnStack);
+                        if (jumpDest > int.MaxValue)
                         {
                             Metrics.EvmExceptions++;
                             throw new InvalidJumpDestinationException();
                             return CallResult.InvalidJumpDestination;
                         }
 
-                        int dest = (int)bigReg;
+                        int dest = (int)jumpDest;
                         if (!env.CodeInfo.ValidateJump(dest)) return CallResult.InvalidJumpDestination;
 
-                        programCounter = dest;
+                        programCounter = jumpDest;
                         break;
                     }
                     case Instruction.JUMPI:
@@ -1682,18 +1682,18 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        bigReg = PopUInt(bytesOnStack);
+                        UInt256 jumpDest = PopUInt256(bytesOnStack);
                         Span<byte> condition = PopBytes(bytesOnStack);
                         if (!condition.SequenceEqual(BytesZero32))
                         {
-                            if (bigReg > BigIntMaxInt)
+                            if (jumpDest > int.MaxValue)
                             {
                                 Metrics.EvmExceptions++;
                                 throw new InvalidJumpDestinationException();
                                 return CallResult.InvalidJumpDestination; // TODO: add a test, validating inside the condition was not covered by existing tests and fails on 0xf435a354924097686ea88dab3aac1dd464e6a3b387c77aeee94145b0fa5a63d2 mainnet
                             }
 
-                            int dest = (int)bigReg;
+                            int dest = (int)jumpDest;
 
                             if (!env.CodeInfo.ValidateJump(dest))
                             {
@@ -1701,7 +1701,7 @@ namespace Nethermind.Evm
                                 return CallResult.InvalidJumpDestination; // TODO: add a test, validating inside the condition was not covered by existing tests and fails on 61363 Ropsten
                             }
 
-                            programCounter = dest;
+                            programCounter = jumpDest;
                         }
 
                         break;
@@ -1806,10 +1806,9 @@ namespace Nethermind.Evm
                         int programCounterInt = (int)programCounter;
                         int usedFromCode = Math.Min(code.Length - programCounterInt, length);
 
-                        //PushBytes(code.ToArray().Slice(programCounterInt, usedFromCode).PadRight(length), bytesOnStack);
                         PushBytesRightPadded(code.Slice(programCounterInt, usedFromCode), length, bytesOnStack);
 
-                        programCounter += length;
+                        programCounter += (ulong)length;
                         break;
                     }
                     case Instruction.DUP1:
@@ -2263,16 +2262,16 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        BigInteger a = PopUInt(bytesOnStack);
-                        if (a >= BigInt256)
+                        UInt256 a = PopUInt256(bytesOnStack);
+                        if (a >= 256UL)
                         {
                             PopLimbo();
                             PushZero(bytesOnStack);
                         }
                         else
                         {
-                            BigInteger b = PopInt(bytesOnStack);
-                            PushSignedInt(BigInteger.Multiply(b, BigInteger.Pow(2, (int)a)), bytesOnStack);
+                            UInt256 b = PopUInt256(bytesOnStack);
+                            PushSignedInt(b << (int)a.S0, bytesOnStack);
                         }
 
                         break;
@@ -2290,16 +2289,16 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        BigInteger a = PopUInt(bytesOnStack);
-                        if (a >= BigInt256)
+                        UInt256 a = PopUInt256(bytesOnStack);
+                        if (a >= 256)
                         {
                             PopLimbo();
                             PushZero(bytesOnStack);
                         }
                         else
                         {
-                            BigInteger b = PopUInt(bytesOnStack);
-                            PushUInt(BigInteger.Divide(b, BigInteger.Pow(2, (int)a)), bytesOnStack);
+                            UInt256 b = PopUInt256(bytesOnStack);
+                            PushUInt(b >> (int)a.S0, bytesOnStack);
                         }
 
                         break;
