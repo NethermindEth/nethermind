@@ -18,6 +18,7 @@
 
 using System.Numerics;
 using Nethermind.Core.Crypto;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Core.Encoding
 {
@@ -37,11 +38,11 @@ namespace Nethermind.Core.Encoding
             Keccak transactionsRoot = context.DecodeKeccak();
             Keccak receiptsRoot = context.DecodeKeccak();
             Bloom bloom = context.DecodeBloom();
-            BigInteger difficulty = context.DecodeUBigInt();
-            BigInteger number = context.DecodeUBigInt();
-            BigInteger gasLimit = context.DecodeUBigInt();
-            BigInteger gasUsed = context.DecodeUBigInt();
-            BigInteger timestamp = context.DecodeUBigInt();
+            UInt256 difficulty = context.DecodeUInt256();
+            UInt256 number = context.DecodeUInt256();
+            UInt256 gasLimit = context.DecodeUInt256();
+            UInt256 gasUsed = context.DecodeUInt256();
+            UInt256 timestamp = context.DecodeUInt256();
             byte[] extraData = context.DecodeByteArray();
             Keccak mixHash = context.DecodeKeccak();
             BigInteger nonce = context.DecodeUBigInt();

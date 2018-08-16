@@ -19,6 +19,7 @@
 using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 
 namespace Nethermind.Blockchain
@@ -32,7 +33,7 @@ namespace Nethermind.Blockchain
             _chain = chain;
         }
 
-        public Keccak GetBlockhash(BlockHeader currentBlock, BigInteger number)
+        public Keccak GetBlockhash(BlockHeader currentBlock, UInt256 number)
         {
             //Block block = _chain.FindHeader(blockHash, false);
             

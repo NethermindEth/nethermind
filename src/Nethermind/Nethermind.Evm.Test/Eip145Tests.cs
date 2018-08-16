@@ -18,6 +18,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Dirichlet.Numerics;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
@@ -25,7 +26,7 @@ namespace Nethermind.Evm.Test
     [TestFixture]
     public class Eip145Tests : VirtualMachineTestsBase
     {
-        protected override int BlockNumber => 6000000;
+        protected override UInt256 BlockNumber => 6000000;
 
         private void AssertEip145(TransactionReceipt receipt, byte result)
         {

@@ -19,6 +19,7 @@
 using System.Numerics;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Dirichlet.Numerics;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Encoding
@@ -50,8 +51,8 @@ namespace Nethermind.Core.Test.Encoding
             Assert.True(decoded.BlockInfos[0].WasProcessed, "0 processed");
             Assert.False(decoded.BlockInfos[1].WasProcessed, "1 not processed");
             Assert.AreEqual(TestObject.KeccakA, decoded.BlockInfos[0].BlockHash, "block hash");
-            Assert.AreEqual(BigInteger.One, decoded.BlockInfos[0].TotalDifficulty, "difficulty");
-            Assert.AreEqual(BigInteger.One, decoded.BlockInfos[0].TotalTransactions, "txs");
+            Assert.AreEqual(UInt256.One, decoded.BlockInfos[0].TotalDifficulty, "difficulty");
+            Assert.AreEqual(UInt256.One, decoded.BlockInfos[0].TotalTransactions, "txs");
         }
     }
 }

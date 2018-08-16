@@ -25,6 +25,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Model;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Blockchain.Test
 {
@@ -53,25 +54,25 @@ namespace Nethermind.Blockchain.Test
 
         public Task<BlockHeader[]> GetBlockHeaders(Keccak blockHash, int maxBlocks, int skip, CancellationToken token)
         {
-            BigInteger firstNumber = _blockTree.FindBlock(blockHash, true).Number;
+            UInt256 firstNumber = _blockTree.FindBlock(blockHash, true).Number;
             
             BlockHeader[] result = new BlockHeader[maxBlocks];
             for (int i = 0; i < maxBlocks; i++)
             {
-                result[i] = _blockTree.FindBlock((int)firstNumber + i + skip).Header;
+                result[i] = _blockTree.FindBlock((ulong)firstNumber + (ulong)i + (ulong)skip).Header;
             }
             
             return Task.FromResult(result);
         }
         
-        public Task<BlockHeader[]> GetBlockHeaders(BigInteger number, int maxBlocks, int skip, CancellationToken token)
+        public Task<BlockHeader[]> GetBlockHeaders(UInt256 number, int maxBlocks, int skip, CancellationToken token)
         {
-            BigInteger firstNumber = _blockTree.FindBlock(number).Number;
+            UInt256 firstNumber = _blockTree.FindBlock(number).Number;
             
             BlockHeader[] result = new BlockHeader[maxBlocks];
             for (int i = 0; i < maxBlocks; i++)
             {
-                result[i] = _blockTree.FindBlock((int)firstNumber + i + skip).Header;
+                result[i] = _blockTree.FindBlock((ulong)firstNumber + (ulong)i + (ulong)skip).Header;
             }
             
             return Task.FromResult(result);
@@ -82,7 +83,7 @@ namespace Nethermind.Blockchain.Test
             return Task.FromResult(_blockTree.Head.Hash);
         }
 
-        public Task<BigInteger> GetHeadBlockNumber(CancellationToken token)
+        public Task<UInt256> GetHeadBlockNumber(CancellationToken token)
         {
             return Task.FromResult(_blockTree.Head.Number);
         }

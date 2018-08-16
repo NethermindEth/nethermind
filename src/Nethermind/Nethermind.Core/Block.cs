@@ -23,6 +23,7 @@ using System.Numerics;
 using System.Text;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Core
 {
@@ -95,31 +96,31 @@ namespace Nethermind.Core
             set => Header.GasUsed = value;
         }
 
-        public BigInteger Timestamp
+        public UInt256 Timestamp
         {
             get => Header.Timestamp;
             set => Header.Timestamp = value;
         }
 
-        public BigInteger Number
+        public UInt256 Number
         {
             get => Header.Number;
             set => Header.Number = value;
         }
 
-        public BigInteger Difficulty
+        public UInt256 Difficulty
         {
             get => Header.Difficulty;
             set => Header.Difficulty = value;
         }
 
-        public BigInteger? TotalDifficulty
+        public UInt256? TotalDifficulty
         {
             get => Header?.TotalDifficulty;
             set => Header.TotalDifficulty = value;
         }
 
-        public BigInteger? TotalTransactions
+        public UInt256? TotalTransactions
         {
             get => Header?.TotalTransactions;
             set => Header.TotalTransactions = value;

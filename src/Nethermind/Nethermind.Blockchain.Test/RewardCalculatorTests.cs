@@ -16,7 +16,9 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test
@@ -24,11 +26,16 @@ namespace Nethermind.Blockchain.Test
     public class ReardCalculatorTests
     {
         [Test]
-        [Ignore("To be implemented when the test framework is expanded")]
         public void Two_uncles_from_the_same_coinbase()
         {
+            Block ommer = Build.A.Block.WithNumber(1).TestObject;
+            Block ommer2 = Build.A.Block.WithNumber(1).TestObject;
+            Block block = Build.A.Block.WithNumber(3).WithOmmers(ommer, ommer2).TestObject;
+            
             RewardCalculator calculator = new RewardCalculator(RopstenSpecProvider.Instance);
-//            calculator.CalculateRewards()
+            BlockReward[] rewards = calculator.CalculateRewards(block);
+            
+            Assert.AreEqual(3, rewards.Length);
         }
     }
 }

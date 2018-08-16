@@ -18,6 +18,7 @@
 
 using System.Diagnostics;
 using System.Numerics;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Ethereum.Difficulty.Test
 {
@@ -27,11 +28,11 @@ namespace Ethereum.Difficulty.Test
         public DifficultyTests(
             string fileName,
             string name,
-            BigInteger parentTimestamp,
-            BigInteger parentDifficulty,
-            BigInteger currentTimestamp,
-            ulong currentBlockNumber,
-            BigInteger currentDifficulty,
+            UInt256 parentTimestamp,
+            UInt256 parentDifficulty,
+            UInt256 currentTimestamp,
+            UInt256 currentBlockNumber,
+            UInt256 currentDifficulty,
             bool parentHasUncles)
         {
             Name = name;
@@ -44,12 +45,12 @@ namespace Ethereum.Difficulty.Test
             ParentHasUncles = parentHasUncles;
         }
 
-        public BigInteger ParentTimestamp { get; set; }
-        public BigInteger ParentDifficulty { get; set; }
-        public BigInteger CurrentTimestamp { get; set; }
-        public ulong CurrentBlockNumber { get; set; }
+        public UInt256 ParentTimestamp { get; set; }
+        public UInt256 ParentDifficulty { get; set; }
+        public UInt256 CurrentTimestamp { get; set; }
+        public UInt256 CurrentBlockNumber { get; set; }
         public bool ParentHasUncles { get; set; }
-        public BigInteger CurrentDifficulty { get; set; }
+        public UInt256 CurrentDifficulty { get; set; }
         public string Name { get; set; }
         public string FileName { get; set; }
 

@@ -461,10 +461,10 @@ namespace Ethereum.Test.Base
                 new Keccak(headerJson.ParentHash),
                 new Keccak(headerJson.UncleHash),
                 new Address(headerJson.Coinbase),
-                Bytes.FromHexString(headerJson.Difficulty).ToUnsignedBigInteger(),
-                Bytes.FromHexString(headerJson.Number).ToUnsignedBigInteger(),
+                Bytes.FromHexString(headerJson.Difficulty).ToUInt256(),
+                Bytes.FromHexString(headerJson.Number).ToUInt256(),
                 (long)Bytes.FromHexString(headerJson.GasLimit).ToUnsignedBigInteger(),
-                Bytes.FromHexString(headerJson.Timestamp).ToUnsignedBigInteger(),
+                Bytes.FromHexString(headerJson.Timestamp).ToUInt256(),
                 Bytes.FromHexString(headerJson.ExtraData)
             );
             

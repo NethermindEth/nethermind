@@ -19,12 +19,13 @@
 using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Evm.Test
 {
     public class TestBlockhashProvider : IBlockhashProvider
     {
-        public Keccak GetBlockhash(BlockHeader currentBlock, BigInteger number)
+        public Keccak GetBlockhash(BlockHeader currentBlock, UInt256 number)
         {
             return Keccak.Compute(number.ToString());
         }

@@ -42,7 +42,7 @@ namespace Nethermind.Core.Encoding
         /// </summary>
         internal Rlp(byte singleByte)
         {
-            Bytes = new[] { singleByte };
+            Bytes = new[] {singleByte};
         }
 
         public Rlp(byte[] bytes)
@@ -81,11 +81,13 @@ namespace Nethermind.Core.Encoding
             return Decode<T>(bytes.AsRlpContext(), rlpBehaviors);
         }
 
-        public static T[] DecodeArray<T>(DecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None) // TODO: move inside the context
+        public static T[]
+            DecodeArray<T>(DecoderContext context,
+                RlpBehaviors rlpBehaviors = RlpBehaviors.None) // TODO: move inside the context
         {
             if (Decoders.ContainsKey(typeof(T)))
             {
-                IRlpDecoder<T> decoder = (IRlpDecoder<T>)Decoders[typeof(T)];
+                IRlpDecoder<T> decoder = (IRlpDecoder<T>) Decoders[typeof(T)];
                 int checkPosition = context.ReadSequenceLength() + context.Position;
                 T[] result = new T[context.ReadNumberOfItemsRemaining(checkPosition)];
                 for (int i = 0; i < result.Length; i++)
@@ -103,7 +105,7 @@ namespace Nethermind.Core.Encoding
         {
             if (Decoders.ContainsKey(typeof(T)))
             {
-                return ((IRlpDecoder<T>)Decoders[typeof(T)]).Decode(context, rlpBehaviors);
+                return ((IRlpDecoder<T>) Decoders[typeof(T)]).Decode(context, rlpBehaviors);
             }
 
             throw new RlpException($"{nameof(Rlp)} does not support decoding {typeof(T).Name}");
@@ -113,12 +115,12 @@ namespace Nethermind.Core.Encoding
         {
             if (item is Rlp rlp)
             {
-                return Encode(new[] { rlp });
+                return Encode(new[] {rlp});
             }
 
             if (Decoders.ContainsKey(typeof(T)))
             {
-                return ((IRlpDecoder<T>)Decoders[typeof(T)]).Encode(item, behaviors);
+                return ((IRlpDecoder<T>) Decoders[typeof(T)]).Encode(item, behaviors);
             }
 
             throw new RlpException($"{nameof(Rlp)} does not support encoding {typeof(T).Name}");
@@ -128,7 +130,7 @@ namespace Nethermind.Core.Encoding
         {
             if (Decoders.ContainsKey(typeof(T)))
             {
-                IRlpDecoder<T> decoder = (IRlpDecoder<T>)Decoders[typeof(T)];
+                IRlpDecoder<T> decoder = (IRlpDecoder<T>) Decoders[typeof(T)];
                 Rlp[] rlpSequence = new Rlp[items.Length];
                 for (int i = 0; i < items.Length; i++)
                 {
@@ -146,7 +148,8 @@ namespace Nethermind.Core.Encoding
             return Encode(transaction, false);
         }
 
-        public static Rlp Encode(Transaction transaction, bool forSigning, bool isEip155Enabled = false, int chainId = 0)
+        public static Rlp Encode(Transaction transaction, bool forSigning, bool isEip155Enabled = false,
+            int chainId = 0)
         {
             Rlp[] sequence = new Rlp[forSigning && !(isEip155Enabled && chainId != 0) ? 6 : 9];
             sequence[0] = Encode(transaction.Nonce);
@@ -169,11 +172,22 @@ namespace Nethermind.Core.Encoding
             {
                 // TODO: below obviously fails when Signature is null
                 sequence[6] = transaction.Signature == null ? OfEmptyByteArray : Encode(transaction.Signature.V);
-                sequence[7] = Encode(transaction.Signature?.R.WithoutLeadingZeros()); // TODO: consider storing R and S differently
-                sequence[8] = Encode(transaction.Signature?.S.WithoutLeadingZeros()); // TODO: consider storing R and S differently
+                sequence[7] =
+                    Encode(transaction.Signature?.R
+                        .WithoutLeadingZeros()); // TODO: consider storing R and S differently
+                sequence[8] =
+                    Encode(transaction.Signature?.S
+                        .WithoutLeadingZeros()); // TODO: consider storing R and S differently
             }
 
             return Encode(sequence);
+        }
+
+        public static Rlp Encode(UInt256 value)
+        {
+            byte[] bytes = new byte[32];
+            value.ToBigEndian(bytes);
+            return value == 0 ? OfEmptyByteArray : Encode(bytes.WithoutLeadingZeros());
         }
 
         private static Rlp EncodeNumber(long item)
@@ -203,7 +217,7 @@ namespace Nethermind.Core.Encoding
                 {
                     return Encode(((short) value).ToBigEndianByteArray());
                 }
-                
+
                 return Encode(new BigInteger(value));
             }
 
@@ -227,7 +241,7 @@ namespace Nethermind.Core.Encoding
                 return new Rlp(value);
             }
 
-            return Encode(new[] { value });
+            return Encode(new[] {value});
         }
 
         public static Rlp Encode(long value)
@@ -248,7 +262,7 @@ namespace Nethermind.Core.Encoding
 
         public static Rlp Encode(ushort value)
         {
-            return EncodeNumber(value);
+            return EncodeNumber((long)value);
         }
 
         public static Rlp Encode(int value)
@@ -258,7 +272,7 @@ namespace Nethermind.Core.Encoding
 
         public static Rlp Encode(uint value)
         {
-            return EncodeNumber(value);
+            return EncodeNumber((long)value);
         }
 
         public static Rlp Encode(BigInteger bigInteger, int outputLength = -1)
@@ -289,14 +303,14 @@ namespace Nethermind.Core.Encoding
             }
             else if (input.Length < 56)
             {
-                byte smallPrefix = (byte)(input.Length + 128);
+                byte smallPrefix = (byte) (input.Length + 128);
                 stream.WriteByte(smallPrefix);
                 stream.Write(input);
             }
             else
             {
                 int lengthOfLength = LengthOfLength(input.Length);
-                byte prefix = (byte)(183 + lengthOfLength);
+                byte prefix = (byte) (183 + lengthOfLength);
                 stream.WriteByte(prefix);
                 SerializeLength(stream, input.Length);
                 stream.Write(input);
@@ -319,13 +333,13 @@ namespace Nethermind.Core.Encoding
 
             if (input.Length < 56)
             {
-                byte smallPrefix = (byte)(input.Length + 128);
+                byte smallPrefix = (byte) (input.Length + 128);
                 buffer[position++] = smallPrefix;
             }
             else
             {
                 int lengthOfLength = LengthOfLength(input.Length);
-                byte prefix = (byte)(183 + lengthOfLength);
+                byte prefix = (byte) (183 + lengthOfLength);
                 buffer[position++] = prefix;
                 SerializeLength(buffer, position, input.Length);
             }
@@ -350,12 +364,12 @@ namespace Nethermind.Core.Encoding
 
             if (input.Length < 56)
             {
-                byte smallPrefix = (byte)(input.Length + 128);
+                byte smallPrefix = (byte) (input.Length + 128);
                 return new Rlp(Extensions.Bytes.Concat(smallPrefix, input));
             }
 
             byte[] serializedLength = SerializeLength(input.Length);
-            byte prefix = (byte)(183 + serializedLength.Length);
+            byte prefix = (byte) (183 + serializedLength.Length);
             return new Rlp(Extensions.Bytes.Concat(prefix, serializedLength, input));
         }
 
@@ -363,25 +377,25 @@ namespace Nethermind.Core.Encoding
         {
             if (value < 1 << 8)
             {
-                stream.WriteByte((byte)value);
+                stream.WriteByte((byte) value);
             }
             else if (value < 1 << 16)
             {
-                stream.WriteByte((byte)(value >> 8));
-                stream.WriteByte((byte)value);
+                stream.WriteByte((byte) (value >> 8));
+                stream.WriteByte((byte) value);
             }
             else if (value < 1 << 24)
             {
-                stream.WriteByte((byte)(value >> 16));
-                stream.WriteByte((byte)(value >> 8));
-                stream.WriteByte((byte)value);
+                stream.WriteByte((byte) (value >> 16));
+                stream.WriteByte((byte) (value >> 8));
+                stream.WriteByte((byte) value);
             }
             else
             {
-                stream.WriteByte((byte)(value >> 24));
-                stream.WriteByte((byte)(value >> 16));
-                stream.WriteByte((byte)(value >> 8));
-                stream.WriteByte((byte)value);
+                stream.WriteByte((byte) (value >> 24));
+                stream.WriteByte((byte) (value >> 16));
+                stream.WriteByte((byte) (value >> 8));
+                stream.WriteByte((byte) value);
             }
         }
 
@@ -389,29 +403,29 @@ namespace Nethermind.Core.Encoding
         {
             if (value < 1 << 8)
             {
-                buffer[position] = (byte)value;
+                buffer[position] = (byte) value;
                 return position + 1;
             }
 
             if (value < 1 << 16)
             {
-                buffer[position] = (byte)(value >> 8);
-                buffer[position + 1] = ((byte)value);
+                buffer[position] = (byte) (value >> 8);
+                buffer[position + 1] = ((byte) value);
                 return position + 2;
             }
 
             if (value < 1 << 24)
             {
-                buffer[position] = (byte)(value >> 16);
-                buffer[position + 1] = ((byte)(value >> 8));
-                buffer[position + 2] = ((byte)value);
+                buffer[position] = (byte) (value >> 16);
+                buffer[position + 1] = ((byte) (value >> 8));
+                buffer[position + 2] = ((byte) value);
                 return position + 3;
             }
 
-            buffer[position] = (byte)(value >> 24);
-            buffer[position + 1] = (byte)(value >> 16);
-            buffer[position + 2] = (byte)(value >> 8);
-            buffer[position + 3] = (byte)value;
+            buffer[position] = (byte) (value >> 24);
+            buffer[position + 1] = (byte) (value >> 16);
+            buffer[position + 2] = (byte) (value >> 8);
+            buffer[position + 3] = (byte) value;
             return position + 4;
         }
 
@@ -439,15 +453,15 @@ namespace Nethermind.Core.Encoding
         {
             if (value < 1 << 8)
             {
-                return new[] { (byte)value };
+                return new[] {(byte) value};
             }
 
             if (value < 1 << 16)
             {
                 return new[]
                 {
-                    (byte)(value >> 8),
-                    (byte)value,
+                    (byte) (value >> 8),
+                    (byte) value,
                 };
             }
 
@@ -455,18 +469,18 @@ namespace Nethermind.Core.Encoding
             {
                 return new[]
                 {
-                    (byte)(value >> 16),
-                    (byte)(value >> 8),
-                    (byte)value,
+                    (byte) (value >> 16),
+                    (byte) (value >> 8),
+                    (byte) value,
                 };
             }
 
             return new[]
             {
-                (byte)(value >> 24),
-                (byte)(value >> 16),
-                (byte)(value >> 8),
-                (byte)value
+                (byte) (value >> 24),
+                (byte) (value >> 16),
+                (byte) (value >> 8),
+                (byte) value
             };
         }
 
@@ -559,12 +573,12 @@ namespace Nethermind.Core.Encoding
             stream.Seek(memorizedPosition2, SeekOrigin.Begin);
             if (sequenceLength < 56)
             {
-                prefix = (byte)(192 + sequenceLength);
+                prefix = (byte) (192 + sequenceLength);
             }
             else
             {
                 SerializeLength(stream, sequenceLength);
-                prefix = (byte)(247 + stream.Position - memorizedPosition2);
+                prefix = (byte) (247 + stream.Position - memorizedPosition2);
             }
 
             long memorizedPosition3 = stream.Position;
@@ -580,12 +594,12 @@ namespace Nethermind.Core.Encoding
             int afterLength = position + 1;
             if (sequenceLength < 56)
             {
-                prefix = (byte)(192 + sequenceLength);
+                prefix = (byte) (192 + sequenceLength);
             }
             else
             {
                 afterLength = SerializeLength(buffer, beforeLength, sequenceLength);
-                prefix = (byte)(247 + afterLength - beforeLength);
+                prefix = (byte) (247 + afterLength - beforeLength);
             }
 
             buffer[position] = prefix;
@@ -604,12 +618,12 @@ namespace Nethermind.Core.Encoding
             byte prefix;
             if (contentLength < 56)
             {
-                prefix = (byte)(192 + contentLength);
+                prefix = (byte) (192 + contentLength);
             }
             else
             {
                 serializedLength = SerializeLength(contentLength);
-                prefix = (byte)(247 + serializedLength.Length);
+                prefix = (byte) (247 + serializedLength.Length);
             }
 
             int lengthOfPrefixAndSerializedLength = 1 + (serializedLength?.Length ?? 0);
@@ -676,7 +690,7 @@ namespace Nethermind.Core.Encoding
             {
                 return Data[Position] >= 192;
             }
-            
+
 //            public int ReadNumberOfItemsRemaining(int? beforePosition = null)
 //            {
 //                int positionStored = Position;
@@ -797,7 +811,8 @@ namespace Nethermind.Core.Encoding
                 int prefix = ReadByte();
                 if (prefix < 192)
                 {
-                    throw new RlpException($"Expected a sequence prefix to be in the range of <192, 255> and got {prefix}");
+                    throw new RlpException(
+                        $"Expected a sequence prefix to be in the range of <192, 255> and got {prefix}");
                 }
 
                 if (prefix <= 247)
@@ -837,7 +852,8 @@ namespace Nethermind.Core.Encoding
                 }
                 else if (lengthOfLength == 4)
                 {
-                    result = Data[Position + 3] | (Data[Position + 2] << 8) | (Data[Position + 1] << 16) | (Data[Position] << 24);
+                    result = Data[Position + 3] | (Data[Position + 2] << 8) | (Data[Position + 1] << 16) |
+                             (Data[Position] << 24);
                 }
                 else
                 {
@@ -906,10 +922,10 @@ namespace Nethermind.Core.Encoding
             public UInt256 DecodeUInt256()
             {
                 Span<byte> bytes = DecodeByteArraySpan();
-                UInt256.Create(out UInt256 result, bytes);
+                UInt256.CreateFromBigEndian(out UInt256 result, bytes);
                 return result;
             }
-            
+
             public BigInteger DecodeUBigInt()
             {
                 Span<byte> bytes = DecodeByteArraySpan();
@@ -924,7 +940,9 @@ namespace Nethermind.Core.Encoding
                     return null;
                 }
 
-                Bloom bloom = bloomBytes.Length == 256 ? new Bloom(bloomBytes.ToBigEndianBitArray2048()) : throw new InvalidOperationException("Incorrect bloom RLP");
+                Bloom bloom = bloomBytes.Length == 256
+                    ? new Bloom(bloomBytes.ToBigEndianBitArray2048())
+                    : throw new InvalidOperationException("Incorrect bloom RLP");
                 return bloom;
             }
 
@@ -1002,7 +1020,7 @@ namespace Nethermind.Core.Encoding
             public byte DecodeByte()
             {
                 Span<byte> bytes = DecodeByteArraySpan();
-                return bytes.Length == 0 ? (byte)0 : bytes[0];
+                return bytes.Length == 0 ? (byte) 0 : bytes[0];
             }
 
             public int DecodeInt()
@@ -1027,12 +1045,12 @@ namespace Nethermind.Core.Encoding
                 int prefix = ReadByte();
                 if (prefix == 0)
                 {
-                    return new byte[] { 0 };
+                    return new byte[] {0};
                 }
 
                 if (prefix < 128)
                 {
-                    return new[] { (byte)prefix };
+                    return new[] {(byte) prefix};
                 }
 
                 if (prefix == 128)

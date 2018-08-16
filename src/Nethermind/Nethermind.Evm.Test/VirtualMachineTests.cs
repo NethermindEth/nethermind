@@ -338,9 +338,9 @@ namespace Nethermind.Evm.Test
         }
 
         [Test]
+        [Ignore("Not yet implemented")]
         public void Ropsten_attack_contract_test()
         {
-            throw new NotImplementedException();
 //PUSH1 0x60
 //PUSH1 0x40
 //MSTORE

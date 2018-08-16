@@ -42,7 +42,7 @@ namespace Nethermind.Evm.Precompiles
 
         public long DataGasCost(byte[] inputData)
         {
-            return 12L * EvmMemory.Div32Ceiling(inputData.Length);
+            return 12L * EvmMemory.Div32Ceiling((ulong)inputData.Length);
         }
 
         public (byte[],bool) Run(byte[] inputData)

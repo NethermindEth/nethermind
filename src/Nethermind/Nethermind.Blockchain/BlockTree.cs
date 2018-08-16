@@ -28,6 +28,7 @@ using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.HashLib;
 using Nethermind.Store;
 
@@ -36,7 +37,9 @@ namespace Nethermind.Blockchain
     public class BlockTree : IBlockTree
     {
         private readonly LruCache<Keccak, Block> _blockCache = new LruCache<Keccak, Block>(64);
-        private readonly LruCache<BigInteger, ChainLevelInfo> _blockInfoCache = new LruCache<BigInteger, ChainLevelInfo>(64);
+
+        private readonly LruCache<BigInteger, ChainLevelInfo> _blockInfoCache =
+            new LruCache<BigInteger, ChainLevelInfo>(64);
 
         private const int MaxQueueSize = 3_000_000;
 
@@ -72,7 +75,7 @@ namespace Nethermind.Blockchain
                 if (genesisLevel.BlockInfos.Length != 1)
                 {
                     // just for corrupted test bases
-                    genesisLevel.BlockInfos = new [] {genesisLevel.BlockInfos[0]};
+                    genesisLevel.BlockInfos = new[] {genesisLevel.BlockInfos[0]};
                     UpdateLevel(0, genesisLevel);
                     //throw new InvalidOperationException($"Genesis level in DB has {genesisLevel.BlockInfos.Length} blocks");
                 }
@@ -86,11 +89,12 @@ namespace Nethermind.Blockchain
             }
         }
 
-        public async Task LoadBlocksFromDb(CancellationToken cancellationToken, BigInteger? startBlockNumber = null, int batchSize = DbLoadBatchSize, int maxBlocksToLoad = int.MaxValue)
+        public async Task LoadBlocksFromDb(CancellationToken cancellationToken, UInt256? startBlockNumber = null,
+            int batchSize = DbLoadBatchSize, int maxBlocksToLoad = int.MaxValue)
         {
             if (startBlockNumber == null)
             {
-                startBlockNumber = Head?.Number ?? -1;
+                startBlockNumber = Head?.Number ?? 0;
             }
             else
             {
@@ -104,10 +108,12 @@ namespace Nethermind.Blockchain
             }
             else
             {
-                if (_logger.IsInfoEnabled) _logger.Info($"Found {blocksToLoad} blocks to load starting from current head block {Head?.ToString(BlockHeader.Format.Short)}.");
+                if (_logger.IsInfoEnabled)
+                    _logger.Info(
+                        $"Found {blocksToLoad} blocks to load starting from current head block {Head?.ToString(BlockHeader.Format.Short)}.");
             }
 
-            BigInteger blockNumber = startBlockNumber.Value;
+            UInt256 blockNumber = startBlockNumber.Value;
             for (int i = 0; i < blocksToLoad; i++)
             {
                 if (cancellationToken.IsCancellationRequested)
@@ -115,7 +121,6 @@ namespace Nethermind.Blockchain
                     break;
                 }
 
-                blockNumber++;
                 ChainLevelInfo level = LoadLevel(blockNumber);
                 BigInteger maxDifficultySoFar = 0;
                 BlockInfo maxDifficultyBlock = null;
@@ -152,6 +157,8 @@ namespace Nethermind.Blockchain
                         await _dbBatchProcessed.Task;
                     }
                 }
+
+                blockNumber++;
             }
 
             if (cancellationToken.IsCancellationRequested)
@@ -182,7 +189,8 @@ namespace Nethermind.Blockchain
             {
                 if (BestSuggested != null)
                 {
-                    throw new InvalidOperationException("Genesis block should be added only once"); // TODO: make sure it cannot happen
+                    throw new InvalidOperationException(
+                        "Genesis block should be added only once"); // TODO: make sure it cannot happen
                 }
             }
             else if (IsKnownBlock(block.Hash))
@@ -243,8 +251,8 @@ namespace Nethermind.Blockchain
         // TODO: since finding by hash will be faster it will be worth to refactor this part
         public Block[] FindBlocks(Keccak blockHash, int numberOfBlocks, int skip, bool reverse)
         {
-            if(blockHash == null) throw new ArgumentNullException(nameof(blockHash));
-            
+            if (blockHash == null) throw new ArgumentNullException(nameof(blockHash));
+
             Block[] result = new Block[numberOfBlocks];
             Block startBlock = FindBlock(blockHash, true);
             if (startBlock == null)
@@ -254,19 +262,20 @@ namespace Nethermind.Blockchain
 
             for (int i = 0; i < numberOfBlocks; i++)
             {
-                int blockNumber = (int)startBlock.Number + (reverse ? -1 : 1) * (i + i * skip);
-                Block ithBlock = FindBlock(blockNumber);
+                int blockNumber = (int) startBlock.Number + (reverse ? -1 : 1) * (i + i * skip);
+                Block ithBlock = FindBlock((UInt256) blockNumber);
                 result[i] = ithBlock;
             }
 
             return result;
         }
 
-        private Keccak GetBlockHashOnMain(BigInteger blockNumber)
+        private Keccak GetBlockHashOnMain(UInt256 blockNumber)
         {
             if (blockNumber.Sign < 0)
             {
-                throw new ArgumentException($"{nameof(blockNumber)} must be greater or equal zero and is {blockNumber}", nameof(blockNumber));
+                throw new ArgumentException($"{nameof(blockNumber)} must be greater or equal zero and is {blockNumber}",
+                    nameof(blockNumber));
             }
 
             ChainLevelInfo level = LoadLevel(blockNumber);
@@ -283,14 +292,15 @@ namespace Nethermind.Blockchain
             {
                 if (level.BlockInfos.Length > 0)
                 {
-                    throw new InvalidOperationException("Unexpected request by number for a block that is not on the main chain");
+                    throw new InvalidOperationException(
+                        "Unexpected request by number for a block that is not on the main chain");
                 }
             }
 
             return null;
         }
 
-        public Block FindBlock(BigInteger blockNumber)
+        public Block FindBlock(UInt256 blockNumber)
         {
             Keccak hash = GetBlockHashOnMain(blockNumber);
             return Load(hash).Block;
@@ -313,7 +323,7 @@ namespace Nethermind.Blockchain
 
         public void MarkAsProcessed(Keccak blockHash, TransactionReceipt[] receipts = null)
         {
-            BigInteger number = LoadNumberOnly(blockHash);
+            UInt256 number = LoadNumberOnly(blockHash);
             (BlockInfo info, ChainLevelInfo level) = LoadInfo(number, blockHash);
 
             if (info.WasProcessed)
@@ -326,10 +336,13 @@ namespace Nethermind.Blockchain
             if (receipts != null)
             {
                 IReleaseSpec spec = _specProvider.GetSpec(number);
-                _receiptsDb.Set(blockHash, Rlp.Encode(receipts.Select(r => Rlp.Encode(r, spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None)).ToArray()).Bytes);
+                _receiptsDb.Set(blockHash,
+                    Rlp.Encode(receipts.Select(r =>
+                            Rlp.Encode(r, spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None))
+                        .ToArray()).Bytes);
             }
         }
-        
+
         public bool WasProcessed(Keccak blockHash)
         {
             BigInteger number = LoadNumberOnly(blockHash);
@@ -362,7 +375,8 @@ namespace Nethermind.Blockchain
             int? index = FindIndex(block.Hash, level);
             if (index.Value != 0)
             {
-                (level.BlockInfos[index.Value], level.BlockInfos[0]) = (level.BlockInfos[0], level.BlockInfos[index.Value]);
+                (level.BlockInfos[index.Value], level.BlockInfos[0]) =
+                    (level.BlockInfos[0], level.BlockInfos[index.Value]);
             }
 
             BlockInfo info = level.BlockInfos[index.Value];
@@ -395,7 +409,7 @@ namespace Nethermind.Blockchain
 
         private BigInteger FindNumberOfBlocksToLoadFromDb()
         {
-            BigInteger headNumber = Head?.Number ?? -1;
+            BigInteger headNumber = Head == null ? -1 : (BigInteger) Head.Number;
             BigInteger left = headNumber;
             BigInteger right = headNumber + MaxQueueSize;
 
@@ -430,7 +444,7 @@ namespace Nethermind.Blockchain
                 {
                     headBlockHeader = Rlp.Decode<Block>(data.AsRlpContext(), RlpBehaviors.AllowExtraData).Header;
                 }
-                
+
                 Head = BestSuggested = headBlockHeader;
             }
         }
@@ -452,7 +466,7 @@ namespace Nethermind.Blockchain
             {
                 Genesis = block.Header;
             }
-            
+
             Head = block.Header;
             _blockDb.Set(Keccak.Zero, Rlp.Encode(Head).Bytes);
             NewHeadBlock?.Invoke(this, new BlockEventArgs(block));
@@ -538,7 +552,7 @@ namespace Nethermind.Blockchain
         }
 
         // TODO: use headers store or some simplified RLP decoder for number only or hash to number store
-        private BigInteger LoadNumberOnly(Keccak blockHash)
+        private UInt256 LoadNumberOnly(Keccak blockHash)
         {
             Block block = _blockCache.Get(blockHash);
             if (block != null)
@@ -549,7 +563,8 @@ namespace Nethermind.Blockchain
             byte[] blockData = _blockDb.Get(blockHash);
             if (blockData == null)
             {
-                throw new InvalidOperationException($"Not able to retrieve block number for an unknown block {blockHash}");
+                throw new InvalidOperationException(
+                    $"Not able to retrieve block number for an unknown block {blockHash}");
             }
 
             block = _blockDecoder.Decode(blockData.AsRlpContext(), RlpBehaviors.AllowExtraData);
@@ -580,7 +595,7 @@ namespace Nethermind.Blockchain
             return header;
         }
 
-        public BlockHeader FindHeader(BigInteger number)
+        public BlockHeader FindHeader(UInt256 number)
         {
             Keccak hash = GetBlockHashOnMain(number);
             if (hash == null)
@@ -597,7 +612,7 @@ namespace Nethermind.Blockchain
             {
                 return (null, null, null);
             }
-            
+
             Block block = _blockCache.Get(blockHash);
             if (block == null)
             {
@@ -651,7 +666,8 @@ namespace Nethermind.Blockchain
 
                 if (parent.TotalDifficulty == null)
                 {
-                    throw new InvalidOperationException($"Parent's {nameof(parent.TotalDifficulty)} unknown when calculating for {block}");
+                    throw new InvalidOperationException(
+                        $"Parent's {nameof(parent.TotalDifficulty)} unknown when calculating for {block}");
                 }
 
                 block.Header.TotalDifficulty = parent.TotalDifficulty + block.Difficulty;
@@ -667,7 +683,7 @@ namespace Nethermind.Blockchain
         {
             if (block.Number == 0)
             {
-                block.Header.TotalTransactions = block.Transactions.Length;
+                block.Header.TotalTransactions = (ulong)block.Transactions.Length;
             }
             else
             {
@@ -679,10 +695,11 @@ namespace Nethermind.Blockchain
 
                 if (parent.TotalTransactions == null)
                 {
-                    throw new InvalidOperationException($"Parent's {nameof(parent.TotalTransactions)} unknown when calculating for {block}");
+                    throw new InvalidOperationException(
+                        $"Parent's {nameof(parent.TotalTransactions)} unknown when calculating for {block}");
                 }
 
-                block.Header.TotalTransactions = parent.TotalTransactions + block.Transactions.Length;
+                block.Header.TotalTransactions = parent.TotalTransactions + (ulong)block.Transactions.Length;
             }
         }
     }

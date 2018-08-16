@@ -219,18 +219,6 @@ namespace Nethermind.Core.Test
         }
 
         [Test]
-        public void Find_by_number_negative()
-        {
-            BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), new MemDb(), OlympicSpecProvider.Instance, NullLogManager.Instance);
-            Block block0 = Build.A.Block.WithNumber(0).TestObject;
-            Block block1 = Build.A.Block.WithNumber(1).WithParent(block0).TestObject;
-            AddToMain(blockTree, block0);
-            AddToMain(blockTree, block1);
-
-            Assert.Throws<ArgumentException>(() => blockTree.FindBlock(-1));
-        }
-
-        [Test]
         public void Find_sequence_basic()
         {
             BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), new MemDb(), OlympicSpecProvider.Instance, NullLogManager.Instance);
@@ -407,7 +395,7 @@ namespace Nethermind.Core.Test
             blocksDb.Set(genesisBlock.Hash, Rlp.Encode(genesisBlock).Bytes);
 
             MemDb blockInfosDb = new MemDb();
-            ChainLevelInfo level = new ChainLevelInfo(true, new BlockInfo[1] {new BlockInfo(headBlock.Hash, headBlock.Difficulty, headBlock.Transactions.Length)});
+            ChainLevelInfo level = new ChainLevelInfo(true, new BlockInfo[1] {new BlockInfo(headBlock.Hash, headBlock.Difficulty, (ulong)headBlock.Transactions.Length)});
             level.BlockInfos[0].WasProcessed = true;
             
             blockInfosDb.Set(0, Rlp.Encode(level).Bytes);
@@ -430,10 +418,10 @@ namespace Nethermind.Core.Test
                 BlockTree testTree = Build.A.BlockTree(genesisBlock).OfChainLength(chainLength).TestObject;
                 for (int i = 0; i < testTree.Head.Number + 1; i++)
                 {
-                    Block ithBlock = testTree.FindBlock(i);
+                    Block ithBlock = testTree.FindBlock((ulong)i);
                     blocksDb.Set(ithBlock.Hash, Rlp.Encode(ithBlock).Bytes);
 
-                    ChainLevelInfo ithLevel = new ChainLevelInfo(true, new BlockInfo[1] {new BlockInfo(ithBlock.Hash, ithBlock.TotalDifficulty.Value, ithBlock.Transactions.Length)});
+                    ChainLevelInfo ithLevel = new ChainLevelInfo(true, new BlockInfo[1] {new BlockInfo(ithBlock.Hash, ithBlock.TotalDifficulty.Value, (ulong)ithBlock.Transactions.Length)});
                     blockInfosDb.Set(i, Rlp.Encode(ithLevel).Bytes);
                 }
 
@@ -460,10 +448,10 @@ namespace Nethermind.Core.Test
                 BlockTree testTree = Build.A.BlockTree(genesisBlock).OfChainLength(chainLength).TestObject;
                 for (int i = 0; i < testTree.Head.Number + 1; i++)
                 {
-                    Block ithBlock = testTree.FindBlock(i);
+                    Block ithBlock = testTree.FindBlock((ulong)i);
                     blocksDb.Set(ithBlock.Hash, Rlp.Encode(ithBlock).Bytes);
 
-                    ChainLevelInfo ithLevel = new ChainLevelInfo(true, new BlockInfo[1] {new BlockInfo(ithBlock.Hash, ithBlock.TotalDifficulty.Value, ithBlock.Transactions.Length)});
+                    ChainLevelInfo ithLevel = new ChainLevelInfo(true, new BlockInfo[1] {new BlockInfo(ithBlock.Hash, ithBlock.TotalDifficulty.Value, (ulong)ithBlock.Transactions.Length)});
                     blockInfosDb.Set(i, Rlp.Encode(ithLevel).Bytes);
                 }
 

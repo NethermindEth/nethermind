@@ -29,6 +29,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Blockchain
 {
@@ -94,7 +95,7 @@ namespace Nethermind.Blockchain
             return BlockTree.FindBlocks(hash, numberOfBlocks, skip, reverse);
         }
 
-        public Block Find(BigInteger number)
+        public Block Find(UInt256 number)
         {
             return BlockTree.FindBlock(number);
         }
@@ -140,7 +141,7 @@ namespace Nethermind.Blockchain
                 throw new InvalidOperationException(errorMessage);
             }
 
-            peerInfo.NumberAvailable = BigInteger.Max(block.Number, peerInfo.NumberAvailable);
+            peerInfo.NumberAvailable = UInt256.Max(block.Number, peerInfo.NumberAvailable);
 
             if (block.Number <= BlockTree.BestSuggested.Number + 1)
             {
@@ -178,7 +179,7 @@ namespace Nethermind.Blockchain
             }
         }
 
-        public void HintBlock(Keccak hash, BigInteger number, NodeId receivedFrom)
+        public void HintBlock(Keccak hash, UInt256 number, NodeId receivedFrom)
         {
             _peers.TryGetValue(receivedFrom, out PeerInfo peerInfo);
             string errorMessage = $"Received a block hint from an unknown peer {receivedFrom}";
@@ -188,7 +189,7 @@ namespace Nethermind.Blockchain
                 throw new InvalidOperationException(errorMessage);
             }
 
-            peerInfo.NumberAvailable = BigInteger.Max(number, peerInfo.NumberAvailable);
+            peerInfo.NumberAvailable = UInt256.Max(number, peerInfo.NumberAvailable);
             // TODO: sync?
         }
 
@@ -700,7 +701,7 @@ namespace Nethermind.Blockchain
                 _logger.Debug($"Requesting head block info from {peer.NodeId}");
             }
 
-            Task<BigInteger> getNumberTask = peer.GetHeadBlockNumber(token);
+            Task<UInt256> getNumberTask = peer.GetHeadBlockNumber(token);
             await Task.WhenAll(getHashTask, getNumberTask).ContinueWith(
                 t =>
                 {
@@ -749,15 +750,15 @@ namespace Nethermind.Blockchain
 
         private class PeerInfo
         {
-            public PeerInfo(ISynchronizationPeer peer, BigInteger bestRemoteBlockNumber)
+            public PeerInfo(ISynchronizationPeer peer, UInt256 bestRemoteBlockNumber)
             {
                 Peer = peer;
                 NumberAvailable = bestRemoteBlockNumber;
             }
 
             public ISynchronizationPeer Peer { get; }
-            public BigInteger NumberAvailable { get; set; }
-            public BigInteger NumberReceived { get; set; }
+            public UInt256 NumberAvailable { get; set; }
+            public UInt256 NumberReceived { get; set; }
             public bool IsSynced { get; set; }
 
             public override string ToString()

@@ -25,20 +25,20 @@ namespace Nethermind.Core
         private static readonly DateTime Jan1St1970 = new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc);
 
         // TODO: make it testable
-        public static long UnixUtcUntilNowSecs
+        public static ulong UnixUtcUntilNowSecs
         {
             get
             {
-                var timestamp = (long)DateTime.UtcNow.Subtract(Jan1St1970).TotalSeconds;
+                var timestamp = (ulong)DateTime.UtcNow.Subtract(Jan1St1970).TotalSeconds;
                 return timestamp;
             }
         }
 
-        public static long UnixUtcUntilNowMilisecs
+        public static ulong UnixUtcUntilNowMilisecs
         {
             get
             {
-                var timestamp = (long)DateTime.UtcNow.Subtract(Jan1St1970).TotalMilliseconds;
+                var timestamp = (ulong)DateTime.UtcNow.Subtract(Jan1St1970).TotalMilliseconds;
                 return timestamp;
             }
         }

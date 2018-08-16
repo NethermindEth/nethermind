@@ -18,6 +18,7 @@
 
 using System.Numerics;
 using Nethermind.Core.Crypto;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Core
 {
@@ -27,15 +28,15 @@ namespace Nethermind.Core
         {   
         }
         
-        public BlockInfo(Keccak blockHash, BigInteger totalDifficulty, BigInteger totalTransactions)
+        public BlockInfo(Keccak blockHash, UInt256 totalDifficulty, UInt256 totalTransactions)
         {
             BlockHash = blockHash;
             TotalDifficulty = totalDifficulty;
             TotalTransactions = totalTransactions;
         }
         
-        public BigInteger TotalDifficulty { get; set; }
-        public BigInteger TotalTransactions { get; set; }
+        public UInt256 TotalDifficulty { get; set; }
+        public UInt256 TotalTransactions { get; set; }
         public bool WasProcessed { get; set; }
         public Keccak BlockHash { get; set; }
     }

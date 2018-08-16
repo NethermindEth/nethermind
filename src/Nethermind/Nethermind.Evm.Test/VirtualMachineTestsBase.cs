@@ -7,6 +7,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.Store;
 using NUnit.Framework;
 using Org.BouncyCastle.Utilities.Encoders;
@@ -27,7 +28,7 @@ namespace Nethermind.Evm.Test
         protected internal static Address A { get; } = TestObject.AddressA;
         protected internal static Address B { get; } = TestObject.AddressB;
 
-        protected virtual int BlockNumber => 10000;
+        protected virtual UInt256 BlockNumber => 10000;
 
         protected IReleaseSpec Spec => SpecProvider.GetSpec(BlockNumber);
 
@@ -92,7 +93,7 @@ namespace Nethermind.Evm.Test
             return Execute(BlockNumber, 100000, code);
         }
         
-        protected TransactionReceipt Execute(BigInteger blockNumber, long gasLimit, byte[] code)
+        protected TransactionReceipt Execute(UInt256 blockNumber, long gasLimit, byte[] code)
         {
             TestState.CreateAccount(A, 100.Ether());
             TestState.CreateAccount(B, 100.Ether());

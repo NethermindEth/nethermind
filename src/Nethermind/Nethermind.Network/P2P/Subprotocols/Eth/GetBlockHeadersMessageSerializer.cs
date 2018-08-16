@@ -49,7 +49,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             }
             else
             {
-                message.StartingBlockNumber = context.DecodeUBigInt();
+                message.StartingBlockNumber = context.DecodeUInt256();
             }
 
             message.MaxHeaders = context.DecodeInt();

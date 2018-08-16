@@ -22,6 +22,7 @@ using System.Numerics;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth
 {
@@ -40,10 +41,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         public NewBlockHashesMessage Deserialize(byte[] bytes)
         {
             Rlp.DecoderContext context = bytes.AsRlpContext();
-            (Keccak, BigInteger)[] blockHashes = context.DecodeArray(ctx =>
+            (Keccak, UInt256)[] blockHashes = context.DecodeArray(ctx =>
             {
                 ctx.ReadSequenceLength();
-                return (ctx.DecodeKeccak(), ctx.DecodeUBigInt());
+                return (ctx.DecodeKeccak(), ctx.DecodeUInt256());
             });
             return new NewBlockHashesMessage(blockHashes);
         }

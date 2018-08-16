@@ -18,12 +18,13 @@
 
 using System.Numerics;
 using Nethermind.Core.Crypto;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Core.Test.Builders
 {
     public class BlockHeaderBuilder : BuilderBase<BlockHeader>
     {
-        public static BigInteger DefaultDifficulty = 1_000_000;
+        public static UInt256 DefaultDifficulty = 1_000_000;
         
         public BlockHeaderBuilder()
         {

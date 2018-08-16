@@ -31,6 +31,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Logging;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.Store;
 
 namespace Nethermind.Blockchain
@@ -268,9 +269,9 @@ namespace Nethermind.Blockchain
             }
 
             Block parent = _blockTree.FindBlock(parentHeader.Hash, false);
-            BigInteger timestamp = Timestamp.UnixUtcUntilNowSecs;
+            UInt256 timestamp = Timestamp.UnixUtcUntilNowSecs;
 
-            BigInteger difficulty = _difficultyCalculator.Calculate(parent.Difficulty, parent.Timestamp, Timestamp.UnixUtcUntilNowSecs, parent.Number + 1, parent.Ommers.Length > 0);
+            UInt256 difficulty = _difficultyCalculator.Calculate(parent.Difficulty, parent.Timestamp, Timestamp.UnixUtcUntilNowSecs, parent.Number + 1, parent.Ommers.Length > 0);
             BlockHeader header = new BlockHeader(
                 parent.Hash,
                 Keccak.OfAnEmptySequenceRlp,
@@ -560,11 +561,15 @@ namespace Nethermind.Blockchain
                         _blockTree.MarkAsProcessed(processedBlock.Hash);
                     }
 
-                    Block newHeadBlock = processedBlocks[processedBlocks.Length - 1];
-                    newHeadBlock.Header.TotalDifficulty = suggestedBlock.TotalDifficulty; // TODO: cleanup total difficulty
-                    if (_logger.IsDebugEnabled)
+                    if (processedBlocks.Length > 0)
                     {
-                        _logger.Debug($"Setting head block to {newHeadBlock.ToString(Block.Format.Short)}");
+                        Block newHeadBlock = processedBlocks[processedBlocks.Length - 1];
+                        newHeadBlock.Header.TotalDifficulty =
+                            suggestedBlock.TotalDifficulty; // TODO: cleanup total difficulty
+                        if (_logger.IsDebugEnabled)
+                        {
+                            _logger.Debug($"Setting head block to {newHeadBlock.ToString(Block.Format.Short)}");
+                        }
                     }
 
                     foreach (BlockHeader blockHeader in blocksToBeRemovedFromMain)

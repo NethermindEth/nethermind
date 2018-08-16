@@ -28,7 +28,7 @@ namespace Nethermind.Core.Test.Builders
             BlockTree alternative = Build.A.BlockTree(blockTree.RetrieveGenesisBlock()).OfChainLength(branchLength, splitBlockNumber, splitVariant).TestObject;
             for (int i = splitBlockNumber + 1; i < branchLength; i++)
             {
-                Block block = alternative.FindBlock(i);
+                Block block = alternative.FindBlock((ulong)i);
                 blockTree.SuggestBlock(block);
                 blockTree.MarkAsProcessed(block.Hash);
                 if (branchLength > blockTree.Head.Number)

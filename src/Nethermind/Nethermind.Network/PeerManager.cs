@@ -103,7 +103,7 @@ namespace Nethermind.Network
             AddTrustedPeers();
 
             //Step 2 - read peers from db
-            AddPersistedPeers();
+            //AddPersistedPeers();
         }
 
         public async Task Start()

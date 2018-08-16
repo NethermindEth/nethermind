@@ -15,13 +15,13 @@
  * You should have received a copy of the GNU Lesser General Public License
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
-using System.Numerics;
-using Nethermind.Core.Specs;
+
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Blockchain.Difficulty
 {
     public interface IDifficultyCalculator
     {
-        BigInteger Calculate(BigInteger parentDifficulty, BigInteger parentTimestamp, BigInteger currentTimestamp, BigInteger blockNumber, bool parentHasUncles);
+        UInt256 Calculate(UInt256 parentDifficulty, UInt256 parentTimestamp, UInt256 currentTimestamp, UInt256 blockNumber, bool parentHasUncles);
     }
 }

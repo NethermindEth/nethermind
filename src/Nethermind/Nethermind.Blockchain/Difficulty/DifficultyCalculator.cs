@@ -18,6 +18,7 @@
 using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Blockchain.Difficulty
 {
@@ -32,18 +33,18 @@ namespace Nethermind.Blockchain.Difficulty
 
         private const long OfGenesisBlock = 131_072;
 
-        public BigInteger Calculate(
-            BigInteger parentDifficulty,
-            BigInteger parentTimestamp,
-            BigInteger currentTimestamp,
-            BigInteger blockNumber,
+        public UInt256 Calculate(
+            UInt256 parentDifficulty,
+            UInt256 parentTimestamp,
+            UInt256 currentTimestamp,
+            UInt256 blockNumber,
             bool parentHasUncles)
         {
             IReleaseSpec spec = _specProvider.GetSpec(blockNumber);
             BigInteger baseIncrease = BigInteger.Divide(parentDifficulty, 2048);
             BigInteger timeAdjustment = TimeAdjustment(spec, parentTimestamp, currentTimestamp, parentHasUncles);
             BigInteger timeBomb = TimeBomb(spec, blockNumber);
-            return BigInteger.Max(
+            return (UInt256)BigInteger.Max(
                 OfGenesisBlock,
                 parentDifficulty +
                 timeAdjustment * baseIncrease +
@@ -89,14 +90,14 @@ namespace Nethermind.Blockchain.Difficulty
             return currentTimestamp < parentTimestamp + 7 ? BigInteger.One : BigInteger.MinusOne;
         }
 
-        private BigInteger TimeBomb(IReleaseSpec spec, BigInteger blockNumber)
+        private BigInteger TimeBomb(IReleaseSpec spec, UInt256 blockNumber)
         {   
             if (spec.IsEip649Enabled)
             {
-                blockNumber = blockNumber - 3000000;
+                blockNumber = blockNumber - UInt256.Min(blockNumber, 3000000);
             }
 
-            return blockNumber < 200000 ? BigInteger.Zero : BigInteger.Pow(2, (int)(BigInteger.Divide(blockNumber, 100000) - 2));
+            return blockNumber < 200000 ? UInt256.Zero : BigInteger.Pow(2, (int)(BigInteger.Divide(blockNumber, 100000) - 2));
         }
     }
 }

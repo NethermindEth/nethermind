@@ -27,6 +27,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Dirichlet.Numerics;
 using NUnit.Framework;
 
 namespace Ethereum.Difficulty.Test
@@ -55,11 +56,11 @@ namespace Ethereum.Difficulty.Test
             return new DifficultyTests(
                 fileName,
                 name,
-                json.ParentTimestamp,
-                json.ParentDifficulty,
-                json.CurrentTimestamp,
+                (ulong)json.ParentTimestamp,
+                (ulong)json.ParentDifficulty,
+                (ulong)json.CurrentTimestamp,
                 (ulong)json.CurrentBlockNumber,
-                json.CurrentDifficulty,
+                (ulong)json.CurrentDifficulty,
                 false);
         }
 
@@ -68,11 +69,11 @@ namespace Ethereum.Difficulty.Test
             hex = hex.Replace("0x", "0");
             return BigInteger.Parse(hex, NumberStyles.HexNumber);
         }
-
-        private static ulong ToUlong(string hex)
+        
+        private static UInt256 ToUInt256(string hex)
         {
-            byte[] bytes = Bytes.FromHexString(hex);
-            return bytes.ToUInt64();
+            hex = hex.Replace("0x", "0");
+            return Bytes.FromHexString(hex).ToUInt256();
         }
 
         protected static DifficultyTests ToTest(string fileName, string name, DifficultyTestHexJson json)
@@ -82,11 +83,11 @@ namespace Ethereum.Difficulty.Test
             return new DifficultyTests(
                 fileName,
                 name,
-                ToBigInteger(json.ParentTimestamp),
-                ToBigInteger(json.ParentDifficulty),
-                ToBigInteger(json.CurrentTimestamp),
-                ToUlong(json.CurrentBlockNumber),
-                ToBigInteger(json.CurrentDifficulty),
+                ToUInt256(json.ParentTimestamp),
+                ToUInt256(json.ParentDifficulty),
+                ToUInt256(json.CurrentTimestamp),
+                ToUInt256(json.CurrentBlockNumber),
+                ToUInt256(json.CurrentDifficulty),
                 !string.IsNullOrWhiteSpace(json.ParentUncles) && new Keccak(json.ParentUncles) != noUnclesHash);
         }
 
@@ -94,7 +95,7 @@ namespace Ethereum.Difficulty.Test
         {
             IDifficultyCalculator calculator = new DifficultyCalculator(specProvider);
 
-            BigInteger difficulty = calculator.Calculate(
+            UInt256 difficulty = calculator.Calculate(
                 test.ParentDifficulty,
                 test.ParentTimestamp,
                 test.CurrentTimestamp,

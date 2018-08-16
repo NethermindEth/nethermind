@@ -90,6 +90,7 @@ namespace Nethermind.Network
             {
                 _logger.Info($"Commiting peers, updates: {_updateCounter}, removes: {_removeCounter}");
             }
+            
             _db.CommitBatch();
             _perfService.EndPerfCalc(key, "PeerStorage commit");
         }
