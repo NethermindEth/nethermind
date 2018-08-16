@@ -28,6 +28,7 @@ using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
+using Nethermind.Dirichlet.Numerics;
 using Newtonsoft.Json;
 using NUnit.Framework;
 
@@ -79,16 +80,16 @@ namespace Ethereum.Transaction.Test
                     {
                         test = new ValidTransactionTest(byDir.Key, byName.Key, byName.Value.Rlp);
                         ValidTransactionTest validTest = (ValidTransactionTest)test;
-                        validTest.BlockNumber = Bytes.FromHexString(byName.Value.BlockNumber).ToUnsignedBigInteger();
+                        validTest.BlockNumber = Bytes.FromHexString(byName.Value.BlockNumber).ToUInt256();
                         validTest.Data = Bytes.FromHexString(transactionJson.Data);
-                        validTest.GasLimit = Bytes.FromHexString(transactionJson.GasLimit).ToUnsignedBigInteger();
-                        validTest.GasPrice = Bytes.FromHexString(transactionJson.GasPrice).ToUnsignedBigInteger();
-                        validTest.Nonce = Bytes.FromHexString(transactionJson.Nonce).ToUnsignedBigInteger();
-                        validTest.R = Bytes.FromHexString(transactionJson.R).ToUnsignedBigInteger();
-                        validTest.S = Bytes.FromHexString(transactionJson.S).ToUnsignedBigInteger();
+                        validTest.GasLimit = Bytes.FromHexString(transactionJson.GasLimit).ToUInt256();
+                        validTest.GasPrice = Bytes.FromHexString(transactionJson.GasPrice).ToUInt256();
+                        validTest.Nonce = (ulong)Bytes.FromHexString(transactionJson.Nonce).ToUInt256();
+                        validTest.R = Bytes.FromHexString(transactionJson.R).ToUInt256();
+                        validTest.S = Bytes.FromHexString(transactionJson.S).ToUInt256();
                         validTest.V = Bytes.FromHexString(transactionJson.V)[0];
                         validTest.Sender = new Address(byName.Value.Sender);
-                        validTest.Value = Bytes.FromHexString(transactionJson.Value).ToUnsignedBigInteger();
+                        validTest.Value = Bytes.FromHexString(transactionJson.Value).ToUInt256();
                         validTest.To = string.IsNullOrEmpty(transactionJson.To) ? null : new Address(transactionJson.To);
                     }
                     else
@@ -270,15 +271,15 @@ namespace Ethereum.Transaction.Test
             }
 
             public Address Sender { get; set; }
-            public BigInteger BlockNumber { get; set; }
-            public BigInteger Nonce { get; set; }
-            public BigInteger GasPrice { get; set; }
-            public BigInteger GasLimit { get; set; }
+            public UInt256 BlockNumber { get; set; }
+            public UInt256 Nonce { get; set; }
+            public UInt256 GasPrice { get; set; }
+            public UInt256 GasLimit { get; set; }
             public Address To { get; set; }
-            public BigInteger Value { get; set; }
+            public UInt256 Value { get; set; }
             public byte V { get; set; }
-            public BigInteger R { get; set; }
-            public BigInteger S { get; set; }
+            public UInt256 R { get; set; }
+            public UInt256 S { get; set; }
             public byte[] Data { get; set; }
         }
     }

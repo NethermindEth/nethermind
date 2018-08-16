@@ -37,7 +37,7 @@ namespace Nethermind.Blockchain
         private readonly ITransactionStore _store;
         private readonly Timer _timer = new Timer();
 
-        private UInt256 _count;
+        private ulong _count;
         
         private TimeSpan RandomizeDelay()
         {

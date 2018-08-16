@@ -262,7 +262,7 @@ namespace Nethermind.Core.Encoding
 
         public static Rlp Encode(ushort value)
         {
-            return EncodeNumber((long)value);
+            return EncodeNumber((long) value);
         }
 
         public static Rlp Encode(int value)
@@ -272,7 +272,7 @@ namespace Nethermind.Core.Encoding
 
         public static Rlp Encode(uint value)
         {
-            return EncodeNumber((long)value);
+            return EncodeNumber((long) value);
         }
 
         public static Rlp Encode(BigInteger bigInteger, int outputLength = -1)
@@ -922,6 +922,11 @@ namespace Nethermind.Core.Encoding
             public UInt256 DecodeUInt256()
             {
                 Span<byte> bytes = DecodeByteArraySpan();
+                if (bytes.Length > 32)
+                {
+                    throw new ArgumentException();
+                }
+
                 UInt256.CreateFromBigEndian(out UInt256 result, bytes);
                 return result;
             }
