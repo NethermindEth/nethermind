@@ -36,7 +36,7 @@ namespace Nethermind.Evm
         private int _lastZeroedSize;
 
         private byte[] _memory;
-        public long Length { get; private set; }
+        public ulong Length { get; private set; }
         public ulong Size { get; private set; }
 
         public void SaveWord(UInt256 location, byte[] word)
@@ -46,31 +46,31 @@ namespace Nethermind.Evm
 
         public void SaveWord(UInt256 location, Span<byte> word)
         {
-            long longLocation = (long)location;
-            UpdateSize(longLocation, 1);
+            CheckMemoryAccessViolation(location, WordSize);
+            UpdateSize(location, WordSize);
 
             if (word.Length < WordSize)
             {
-                Array.Clear(_memory, (int)longLocation, WordSize - word.Length);
+                Array.Clear(_memory, (int)location, WordSize - word.Length);
             }
 
-            word.CopyTo(_memory.AsSpan().Slice((int)(longLocation + WordSize - word.Length), word.Length));
+            word.CopyTo(_memory.AsSpan().Slice((int)location + WordSize - word.Length, word.Length));
         }
 
         public void SaveByte(UInt256 location, byte value)
         {
-            long longLocation = (long)location;
-            UpdateSize(longLocation, 1);
+            CheckMemoryAccessViolation(location, WordSize);
+            UpdateSize(location, 1);
 
-            _memory[longLocation] = value;
+            _memory[(long)location] = value;
         }
 
         public void SaveByte(UInt256 location, byte[] value)
         {
-            long longLocation = (long)location;
-            UpdateSize(longLocation, 1);
+            CheckMemoryAccessViolation(location, WordSize);
+            UpdateSize(location, 1);
 
-            _memory[longLocation] = value[value.Length - 1];
+            _memory[(long)location] = value[value.Length - 1];
         }
 
         public void Save(UInt256 location, Span<byte> value)
@@ -79,42 +79,52 @@ namespace Nethermind.Evm
             {
                 return;
             }
+            
+            CheckMemoryAccessViolation(location, (UInt256)value.Length);
+            UpdateSize(location, (UInt256)value.Length);
 
-            long longLocation = (long)location;
-            UpdateSize(longLocation, value.Length);
-
-            value.CopyTo(_memory.AsSpan().Slice((int)(longLocation), value.Length));
+            value.CopyTo(_memory.AsSpan().Slice((int)location, value.Length));
         }
-        
+
+        private static void CheckMemoryAccessViolation(UInt256 location, UInt256 length)
+        {
+            UInt256 totalSize = location + length; // TODO: add with overflow check
+            if (totalSize < location || totalSize > long.MaxValue)
+            {
+                Metrics.EvmExceptions++;
+                throw new EvmAccessViolationException(); // TODO: memory range error code
+            }
+        }
+
         public void Save(UInt256 location, byte[] value)
         {
             if (value.Length == 0)
             {
                 return;
             }
+            
+            CheckMemoryAccessViolation(location, (UInt256)value.Length);
+            UpdateSize(location, (UInt256)value.Length);
 
-            long longLocation = (long)location;
-            UpdateSize(longLocation, value.Length);
-
-            Array.Copy(value, 0, _memory, longLocation, value.Length);
+            Array.Copy(value, 0, _memory, (long)location, value.Length);
         }
 
         public byte[] Load(UInt256 location)
         {
-            long longLocation = (long)location;
-            UpdateSize(longLocation, WordSize);
+            CheckMemoryAccessViolation(location, (UInt256)WordSize);
+            UpdateSize(location, WordSize);
 
             byte[] buffer = new byte[WordSize];
-            Array.Copy(_memory, longLocation, buffer, 0, buffer.Length);
+            Array.Copy(_memory, (long)location, buffer, 0, buffer.Length);
             return buffer;
         }
         
         public Span<byte> LoadSpan(UInt256 location)
         {
-            long longLocation = (long)location;
-            UpdateSize(longLocation, WordSize);
-
-            return _memory.AsSpan().Slice((int)longLocation, WordSize);
+            CheckMemoryAccessViolation(location, WordSize);
+            UpdateSize(location, WordSize);
+            
+            return _memory.AsSpan().Slice((int)location, WordSize);
         }
 
         public Span<byte> LoadSpan(UInt256 location, UInt256 length)
@@ -124,10 +134,10 @@ namespace Nethermind.Evm
                 return EmptyBytes;
             }
 
-            long longLocation = (long)location;
-            UpdateSize(longLocation, (long)length);
+            CheckMemoryAccessViolation(location, length);
+            UpdateSize(location, length);
 
-            return _memory.AsSpan().Slice((int)longLocation, (int)length);
+            return _memory.AsSpan().Slice((int)location, (int)length);
         }
 
         public byte[] Load(UInt256 location, UInt256 length)
@@ -137,31 +147,31 @@ namespace Nethermind.Evm
                 return EmptyBytes;
             }
 
-            long longLocation = (long)location;
-            UpdateSize(longLocation, (long)length);
+            if (location > long.MaxValue)
+            {
+                return new byte[(long)length];
+            }
+            
+            UpdateSize(location, length);
 
             byte[] buffer = new byte[(int)length];
-            Array.Copy(_memory, longLocation, buffer, 0, buffer.Length);
+            Array.Copy(_memory, (long)location, buffer, 0, buffer.Length);
             return buffer;
         }
 
-        public long CalculateMemoryCost(UInt256 position, UInt256 length)
+        public long CalculateMemoryCost(UInt256 location, UInt256 length)
         {
             if (length.IsZero)
             {
                 return 0L;
             }
 
-            UInt256 roughPosition = position + length;
-            if (roughPosition > int.MaxValue)
-            {
-                Metrics.EvmExceptions++;
-                throw new OutOfGasException();
-            }
+            CheckMemoryAccessViolation(location, length);
+            UInt256 newSize = location + length;
 
-            if (roughPosition > Size)
+            if (newSize > Size)
             {
-                long newActiveWords = Div32Ceiling(roughPosition);
+                long newActiveWords = Div32Ceiling(newSize);
                 long activeWords = Div32Ceiling(Size);
 
                 // TODO: guess it would be well within ranges but this needs to be checked and comment need to be added with calculations
@@ -174,8 +184,8 @@ namespace Nethermind.Evm
                     Metrics.EvmExceptions++;
                     throw new OutOfGasException();
                 }
-
-                UpdateSize((long)roughPosition, 0, false);
+                
+                UpdateSize((ulong)newSize, 0, false);
 
                 return (long)cost;
             }
@@ -185,15 +195,15 @@ namespace Nethermind.Evm
 
         public List<string> GetTrace()
         {
-            int tracePosition = 0;
+            int traceLocation = 0;
             List<string> memoryTrace = new List<string>();
             if (_memory != null)
             {
-                while ((ulong)tracePosition < Size)
+                while ((ulong)traceLocation < Size)
                 {
-                    int sizeAvailable = Math.Min(WordSize, (int)Size - tracePosition);
-                    memoryTrace.Add(_memory.Slice(tracePosition, sizeAvailable).ToHexString());
-                    tracePosition = tracePosition + WordSize;
+                    int sizeAvailable = Math.Min(WordSize, (int)Size - traceLocation);
+                    memoryTrace.Add(_memory.Slice(traceLocation, sizeAvailable).ToHexString());
+                    traceLocation = traceLocation + WordSize;
                 }
             }
 
@@ -221,19 +231,19 @@ namespace Nethermind.Evm
             return (long)withCeiling;
         }
 
-        private void UpdateSize(long position, long length, bool rentIfNeeded = true)
+        private void UpdateSize(UInt256 position, UInt256 length, bool rentIfNeeded = true)
         {
-            Length = position + length;
-            if ((ulong)Length > Size)
+            Length = (ulong)(position + length);
+            if (Length > Size)
             {
-                long remainder = Length % 32;
+                ulong remainder = Length % WordSize;
                 if (remainder != 0)
                 {
-                    Size = (ulong)(Length + 32L - remainder);
+                    Size = Length + WordSize - remainder;
                 }
                 else
                 {
-                    Size = (ulong)Length;
+                    Size = Length;
                 }
             }
 

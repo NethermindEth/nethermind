@@ -35,7 +35,7 @@ namespace Nethermind.Evm
         Span<byte> LoadSpan(UInt256 location, UInt256 length);
         byte[] Load(UInt256 location);
         byte[] Load(UInt256 location, UInt256 length);
-        long CalculateMemoryCost(UInt256 position, UInt256 length);
+        long CalculateMemoryCost(UInt256 location, UInt256 length);
         List<string> GetTrace();
     }
 }

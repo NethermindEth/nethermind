@@ -39,7 +39,7 @@ namespace Nethermind.Evm.Test
         public void Trace_one_word()
         {
             IEvmMemory memory = CreateEvmMemory();
-            memory.SaveWord(0, new byte[EvmMemory.WordSize]);
+            memory.SaveWord(0, new byte[EvmPooledMemory.WordSize]);
             List<string> trace = memory.GetTrace();
             Assert.AreEqual(1, trace.Count);
         }
@@ -48,7 +48,7 @@ namespace Nethermind.Evm.Test
         public void Trace_two_words()
         {
             IEvmMemory memory = CreateEvmMemory();
-            memory.SaveWord(EvmMemory.WordSize, new byte[EvmMemory.WordSize]);
+            memory.SaveWord(EvmPooledMemory.WordSize, new byte[EvmPooledMemory.WordSize]);
             List<string> trace = memory.GetTrace();
             Assert.AreEqual(2, trace.Count);
         }
@@ -57,8 +57,8 @@ namespace Nethermind.Evm.Test
         public void Trace_overwrite()
         {
             IEvmMemory memory = CreateEvmMemory();
-            memory.SaveWord(EvmMemory.WordSize, new byte[EvmMemory.WordSize]);
-            memory.SaveWord(EvmMemory.WordSize, new byte[EvmMemory.WordSize]);
+            memory.SaveWord(EvmPooledMemory.WordSize, new byte[EvmPooledMemory.WordSize]);
+            memory.SaveWord(EvmPooledMemory.WordSize, new byte[EvmPooledMemory.WordSize]);
             List<string> trace = memory.GetTrace();
             Assert.AreEqual(2, trace.Count);
         }
@@ -67,7 +67,7 @@ namespace Nethermind.Evm.Test
         public void Trace_when_position_not_on_word_border()
         {
             IEvmMemory memory = CreateEvmMemory();
-            memory.SaveByte(EvmMemory.WordSize / 2, new byte[] {1});
+            memory.SaveByte(EvmPooledMemory.WordSize / 2, new byte[] {1});
             List<string> trace = memory.GetTrace();
             Assert.AreEqual(1, trace.Count);
         }
