@@ -16,7 +16,6 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
@@ -26,6 +25,7 @@ namespace Nethermind.Blockchain
 {
     public class BlockhashProvider : IBlockhashProvider
     {
+        private static int _maxDepth = 256;
         private readonly IBlockTree _chain;
 
         public BlockhashProvider(IBlockTree chain)
@@ -35,26 +35,19 @@ namespace Nethermind.Blockchain
 
         public Keccak GetBlockhash(BlockHeader currentBlock, UInt256 number)
         {
-            //Block block = _chain.FindHeader(blockHash, false);
-            
-            if (number >= currentBlock.Number || number < currentBlock.Number - 256)
+            UInt256 current = currentBlock.Number;
+            if (number >= current || number < current - UInt256.Min(current, (UInt256)_maxDepth))
             {
                 return null;
             }
 
             BlockHeader header = _chain.FindHeader(currentBlock.ParentHash);
-            for (int i = 0; i < 256; i++)
+            for (var i = 0; i < _maxDepth; i++)
             {
-                if (number == header.Number)
-                {
-                    return header.Hash;
-                }
+                if (number == header.Number) return header.Hash;
 
                 header = _chain.FindHeader(header.ParentHash);
-                if (_chain.IsMainChain(header.Hash))
-                {
-                    header = _chain.FindHeader(number);
-                }
+                if (_chain.IsMainChain(header.Hash)) header = _chain.FindHeader(number);
             }
 
             return null;
