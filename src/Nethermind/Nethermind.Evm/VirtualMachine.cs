@@ -1260,7 +1260,7 @@ namespace Nethermind.Evm
                     {
                         UInt256 memSrc = PopUInt256(bytesOnStack);
                         UInt256 memLength = PopUInt256(bytesOnStack);
-                        if (!UpdateGas(GasCostOf.Sha3 + GasCostOf.Sha3Word * EvmMemory.Div32Ceiling(memLength),
+                        if (!UpdateGas(GasCostOf.Sha3 + GasCostOf.Sha3Word * EvmPooledMemory.Div32Ceiling(memLength),
                             ref gasAvailable))
                         {
                             return CallResult.OutOfGasException;
@@ -1350,7 +1350,7 @@ namespace Nethermind.Evm
                         UInt256 dest = PopUInt256(bytesOnStack);
                         UInt256 src = PopUInt256(bytesOnStack);
                         UInt256 length = PopUInt256(bytesOnStack);
-                        if (!UpdateGas(GasCostOf.VeryLow + GasCostOf.Memory * EvmMemory.Div32Ceiling(length),
+                        if (!UpdateGas(GasCostOf.VeryLow + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(length),
                             ref gasAvailable))
                         {
                             return CallResult.OutOfGasException;
@@ -1377,7 +1377,7 @@ namespace Nethermind.Evm
                         UInt256 dest = PopUInt256(bytesOnStack);
                         UInt256 src = PopUInt256(bytesOnStack);
                         UInt256 length = PopUInt256(bytesOnStack);
-                        if (!UpdateGas(GasCostOf.VeryLow + GasCostOf.Memory * EvmMemory.Div32Ceiling(length), ref gasAvailable))
+                        if (!UpdateGas(GasCostOf.VeryLow + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(length), ref gasAvailable))
                         {
                             return CallResult.OutOfGasException;
                         }
@@ -1415,7 +1415,7 @@ namespace Nethermind.Evm
                         UInt256 dest = PopUInt256(bytesOnStack);
                         UInt256 src = PopUInt256(bytesOnStack);
                         UInt256 length = PopUInt256(bytesOnStack);
-                        if (!UpdateGas((spec.IsEip150Enabled ? GasCostOf.ExtCodeEip150 : GasCostOf.ExtCode) + GasCostOf.Memory * EvmMemory.Div32Ceiling(length),
+                        if (!UpdateGas((spec.IsEip150Enabled ? GasCostOf.ExtCodeEip150 : GasCostOf.ExtCode) + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(length),
                             ref gasAvailable))
                         {
                             return CallResult.OutOfGasException;
@@ -1454,7 +1454,7 @@ namespace Nethermind.Evm
                         UInt256 dest = PopUInt256(bytesOnStack);
                         UInt256 src = PopUInt256(bytesOnStack);
                         UInt256 length = PopUInt256(bytesOnStack);
-                        if (!UpdateGas(GasCostOf.VeryLow + GasCostOf.Memory * EvmMemory.Div32Ceiling(length), ref gasAvailable))
+                        if (!UpdateGas(GasCostOf.VeryLow + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(length), ref gasAvailable))
                         {
                             return CallResult.OutOfGasException;
                         }
