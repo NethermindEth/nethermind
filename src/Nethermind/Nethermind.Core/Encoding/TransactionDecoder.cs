@@ -16,7 +16,6 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
 using System.Numerics;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -32,11 +31,11 @@ namespace Nethermind.Core.Encoding
             int transactionLength = context.ReadSequenceLength();
             int lastCheck = context.Position + transactionLength;
             Transaction transaction = new Transaction();
-            transaction.Nonce = context.DecodeUBigInt();
-            transaction.GasPrice = context.DecodeUBigInt();
-            transaction.GasLimit = context.DecodeUBigInt();
+            transaction.Nonce = context.DecodeUInt256();
+            transaction.GasPrice = context.DecodeUInt256();
+            transaction.GasLimit = context.DecodeUInt256();
             transaction.To = context.DecodeAddress();
-            transaction.Value = context.DecodeUBigInt();
+            transaction.Value = context.DecodeUInt256();
             if (transaction.To == null)
             {
                 transaction.Init = context.DecodeByteArray();

@@ -22,6 +22,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Blockchain
 {
@@ -36,7 +37,7 @@ namespace Nethermind.Blockchain
         private readonly ITransactionStore _store;
         private readonly Timer _timer = new Timer();
 
-        private int _count;
+        private UInt256 _count;
         
         private TimeSpan RandomizeDelay()
         {

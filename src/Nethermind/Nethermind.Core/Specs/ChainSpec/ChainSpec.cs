@@ -19,6 +19,7 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Numerics;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Core.Specs.ChainSpec
 {
@@ -28,7 +29,7 @@ namespace Nethermind.Core.Specs.ChainSpec
     [DebuggerDisplay("{Name}, ChainId = {ChainId}")]
     public class ChainSpec
     {
-        public Dictionary<Address, BigInteger> Allocations { get; set; }
+        public Dictionary<Address, UInt256> Allocations { get; set; }
         public NetworkNode[] NetworkNodes { get; set; }
         public Block Genesis { get; set; }
 

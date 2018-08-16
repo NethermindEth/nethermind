@@ -16,8 +16,8 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Numerics;
 using Nethermind.Core.Crypto;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Core
 {
@@ -25,10 +25,10 @@ namespace Nethermind.Core
     {
         public static Account TotallyEmpty = new Account();
 
-        public Account(BigInteger balance)
+        public Account(UInt256 balance)
         {
             Balance = balance;
-            Nonce = BigInteger.Zero;
+            Nonce = UInt256.Zero;
             CodeHash = Keccak.OfAnEmptyString;
             StorageRoot = Keccak.EmptyTreeHash;
             IsTotallyEmpty = Balance.IsZero;
@@ -36,14 +36,14 @@ namespace Nethermind.Core
 
         private Account()
         {
-            Balance = BigInteger.Zero;
-            Nonce = BigInteger.Zero;
+            Balance = UInt256.Zero;
+            Nonce = UInt256.Zero;
             CodeHash = Keccak.OfAnEmptyString;
             StorageRoot = Keccak.EmptyTreeHash;
             IsTotallyEmpty = true;
         }
 
-        public Account(BigInteger nonce, BigInteger balance, Keccak storageRoot, Keccak codeHash)
+        public Account(UInt256 nonce, UInt256 balance, Keccak storageRoot, Keccak codeHash)
         {
             Nonce = nonce;
             Balance = balance;
@@ -52,7 +52,7 @@ namespace Nethermind.Core
             IsTotallyEmpty = Balance.IsZero && Nonce.IsZero && CodeHash == Keccak.OfAnEmptyString && StorageRoot == Keccak.EmptyTreeHash;
         }
 
-        private Account(BigInteger nonce, BigInteger balance, Keccak storageRoot, Keccak codeHash, bool isTotallyEmpty)
+        private Account(UInt256 nonce, UInt256 balance, Keccak storageRoot, Keccak codeHash, bool isTotallyEmpty)
         {
             Nonce = nonce;
             Balance = balance;
@@ -61,19 +61,19 @@ namespace Nethermind.Core
             IsTotallyEmpty = isTotallyEmpty;
         }
 
-        public BigInteger Nonce { get; }
-        public BigInteger Balance { get; }
+        public UInt256 Nonce { get; }
+        public UInt256 Balance { get; }
         public Keccak StorageRoot { get; }
         public Keccak CodeHash { get; }
         public bool IsTotallyEmpty { get; }
         public bool IsEmpty => IsTotallyEmpty || (Balance.IsZero && Nonce.IsZero && CodeHash == Keccak.OfAnEmptyString);
 
-        public Account WithChangedBalance(BigInteger newBalance)
+        public Account WithChangedBalance(UInt256 newBalance)
         {
             return new Account(Nonce, newBalance, StorageRoot, CodeHash, IsTotallyEmpty && newBalance.IsZero);
         }
 
-        public Account WithChangedNonce(BigInteger newNonce)
+        public Account WithChangedNonce(UInt256 newNonce)
         {
             return new Account(newNonce, Balance, StorageRoot, CodeHash, IsTotallyEmpty && newNonce.IsZero);
         }

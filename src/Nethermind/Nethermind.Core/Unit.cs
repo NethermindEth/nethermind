@@ -16,16 +16,16 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Numerics;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Core
 {
     public static class Unit
     {
-        public static BigInteger Wei = 1;
-        public static BigInteger Szabo = 1000000000000;
-        public static BigInteger Finney = 1000000000000000;
-        public static BigInteger Ether = 1000000000000000000;
+        public static UInt256 Wei = 1;
+        public static UInt256 Szabo = 1000000000000;
+        public static UInt256 Finney = 1000000000000000;
+        public static UInt256 Ether = 1000000000000000000;
         public const string EthSymbol = "Ξ";
     }
 }

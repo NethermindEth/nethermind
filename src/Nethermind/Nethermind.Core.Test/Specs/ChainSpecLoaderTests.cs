@@ -22,6 +22,7 @@ using System.Numerics;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs.ChainSpec;
+using Nethermind.Dirichlet.Numerics;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Specs
@@ -55,16 +56,16 @@ namespace Nethermind.Core.Test.Specs
             Assert.NotNull(chainSpec.Allocations, $"{nameof(ChainSpec.Allocations)}");
             Assert.AreEqual(257, chainSpec.Allocations.Count, $"allocations count");
             Assert.AreEqual(
-                BigInteger.Zero,
+                UInt256.Zero,
                 chainSpec.Allocations[new Address("0000000000000000000000000000000000000018")],
                 "account 0000000000000000000000000000000000000018");
             Assert.AreEqual(
-                BigInteger.One,
+                UInt256.One,
                 chainSpec.Allocations[new Address("0000000000000000000000000000000000000001")],
                 "account 0000000000000000000000000000000000000001");
             
             Assert.AreEqual(
-                BigInteger.Parse("1000000000000000000000000000000"),
+                UInt256.Parse("1000000000000000000000000000000"),
                 chainSpec.Allocations[new Address("874b54a8bd152966d63f706bae1ffeb0411921e5")],
                 "account 874b54a8bd152966d63f706bae1ffeb0411921e5");
         }

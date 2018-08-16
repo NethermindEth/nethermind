@@ -24,6 +24,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Dirichlet.Numerics;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -45,7 +46,7 @@ namespace Nethermind.Store.Test
             frontierProvider.CreateAccount(_address1, 0);
             frontierProvider.Commit(Frontier.Instance);
             StateProvider provider = new StateProvider(tree, Substitute.For<IDb>(), Logger);
-            provider.UpdateBalance(_address1, 0, SpuriousDragon.Instance);
+            provider.AddToBalance(_address1, 0, SpuriousDragon.Instance);
             provider.Commit(SpuriousDragon.Instance);
             Assert.False(provider.AccountExists(_address1));
         }
@@ -62,7 +63,7 @@ namespace Nethermind.Store.Test
         public void Update_balance_on_non_existing_acccount_throws()
         {
             StateProvider provider = new StateProvider(new StateTree(new MemDb()), Substitute.For<IDb>(), Logger);
-            Assert.Throws<InvalidOperationException>(() => provider.UpdateBalance(TestObject.AddressA, 1.Ether(), Olympic.Instance));
+            Assert.Throws<InvalidOperationException>(() => provider.AddToBalance(TestObject.AddressA, 1.Ether(), Olympic.Instance));
         }
 
 
@@ -80,25 +81,25 @@ namespace Nethermind.Store.Test
         {
             StateProvider provider = new StateProvider(new StateTree(new MemDb()), Substitute.For<IDb>(), Logger);
             provider.CreateAccount(_address1, 0);
-            provider.UpdateBalance(_address1, 1, Frontier.Instance);
-            provider.UpdateBalance(_address1, 1, Frontier.Instance);
-            provider.UpdateBalance(_address1, 1, Frontier.Instance);
-            provider.UpdateBalance(_address1, 1, Frontier.Instance);
-            provider.UpdateBalance(_address1, 1, Frontier.Instance);
-            provider.UpdateBalance(_address1, 1, Frontier.Instance);
-            provider.UpdateBalance(_address1, 1, Frontier.Instance);
-            provider.UpdateBalance(_address1, 1, Frontier.Instance);
+            provider.AddToBalance(_address1, 1, Frontier.Instance);
+            provider.AddToBalance(_address1, 1, Frontier.Instance);
+            provider.AddToBalance(_address1, 1, Frontier.Instance);
+            provider.AddToBalance(_address1, 1, Frontier.Instance);
+            provider.AddToBalance(_address1, 1, Frontier.Instance);
+            provider.AddToBalance(_address1, 1, Frontier.Instance);
+            provider.AddToBalance(_address1, 1, Frontier.Instance);
+            provider.AddToBalance(_address1, 1, Frontier.Instance);
             provider.Restore(4);
-            provider.UpdateBalance(_address1, 1, Frontier.Instance);
-            provider.UpdateBalance(_address1, 1, Frontier.Instance);
-            provider.UpdateBalance(_address1, 1, Frontier.Instance);
-            provider.UpdateBalance(_address1, 1, Frontier.Instance);
-            provider.UpdateBalance(_address1, 1, Frontier.Instance);
-            provider.UpdateBalance(_address1, 1, Frontier.Instance);
-            provider.UpdateBalance(_address1, 1, Frontier.Instance);
-            provider.UpdateBalance(_address1, 1, Frontier.Instance);
+            provider.AddToBalance(_address1, 1, Frontier.Instance);
+            provider.AddToBalance(_address1, 1, Frontier.Instance);
+            provider.AddToBalance(_address1, 1, Frontier.Instance);
+            provider.AddToBalance(_address1, 1, Frontier.Instance);
+            provider.AddToBalance(_address1, 1, Frontier.Instance);
+            provider.AddToBalance(_address1, 1, Frontier.Instance);
+            provider.AddToBalance(_address1, 1, Frontier.Instance);
+            provider.AddToBalance(_address1, 1, Frontier.Instance);
             provider.Restore(4);
-            Assert.AreEqual(new BigInteger(4), provider.GetBalance(_address1));
+            Assert.AreEqual((UInt256)4, provider.GetBalance(_address1));
         }
 
         [Test]
@@ -108,13 +109,13 @@ namespace Nethermind.Store.Test
             provider.CreateAccount(_address1, 0);
             provider.Commit(Frontier.Instance);
             provider.GetBalance(_address1);
-            provider.UpdateBalance(_address1, 1, Frontier.Instance);
+            provider.AddToBalance(_address1, 1, Frontier.Instance);
             provider.Restore(-1);
-            provider.UpdateBalance(_address1, 1, Frontier.Instance);
+            provider.AddToBalance(_address1, 1, Frontier.Instance);
             provider.Restore(-1);
-            provider.UpdateBalance(_address1, 1, Frontier.Instance);
+            provider.AddToBalance(_address1, 1, Frontier.Instance);
             provider.Restore(-1);
-            Assert.AreEqual(new BigInteger(0), provider.GetBalance(_address1));
+            Assert.AreEqual(UInt256.Zero, provider.GetBalance(_address1));
         }
 
         [Test]
@@ -124,34 +125,34 @@ namespace Nethermind.Store.Test
 
             StateProvider provider = new StateProvider(new StateTree(new MemDb()), Substitute.For<IDb>(), Logger);
             provider.CreateAccount(_address1, 1);
-            provider.UpdateBalance(_address1, 1, Frontier.Instance);
+            provider.AddToBalance(_address1, 1, Frontier.Instance);
             provider.IncrementNonce(_address1);
             Keccak codeHash = provider.UpdateCode(new byte[] { 1 });
             provider.UpdateCodeHash(_address1, codeHash, Frontier.Instance);
             provider.UpdateStorageRoot(_address1, Hash2);
 
-            Assert.AreEqual(BigInteger.One, provider.GetNonce(_address1));
-            Assert.AreEqual(BigInteger.One + 1, provider.GetBalance(_address1));
+            Assert.AreEqual(UInt256.One, provider.GetNonce(_address1));
+            Assert.AreEqual(UInt256.One + 1, provider.GetBalance(_address1));
             Assert.AreEqual(code, provider.GetCode(_address1));
             provider.Restore(4);
-            Assert.AreEqual(BigInteger.One, provider.GetNonce(_address1));
-            Assert.AreEqual(BigInteger.One + 1, provider.GetBalance(_address1));
+            Assert.AreEqual(UInt256.One, provider.GetNonce(_address1));
+            Assert.AreEqual(UInt256.One + 1, provider.GetBalance(_address1));
             Assert.AreEqual(code, provider.GetCode(_address1));
             provider.Restore(3);
-            Assert.AreEqual(BigInteger.One, provider.GetNonce(_address1));
-            Assert.AreEqual(BigInteger.One + 1, provider.GetBalance(_address1));
+            Assert.AreEqual(UInt256.One, provider.GetNonce(_address1));
+            Assert.AreEqual(UInt256.One + 1, provider.GetBalance(_address1));
             Assert.AreEqual(code, provider.GetCode(_address1));
             provider.Restore(2);
-            Assert.AreEqual(BigInteger.One, provider.GetNonce(_address1));
-            Assert.AreEqual(BigInteger.One + 1, provider.GetBalance(_address1));
+            Assert.AreEqual(UInt256.One, provider.GetNonce(_address1));
+            Assert.AreEqual(UInt256.One + 1, provider.GetBalance(_address1));
             Assert.AreEqual(new byte[0], provider.GetCode(_address1));
             provider.Restore(1);
-            Assert.AreEqual(BigInteger.Zero, provider.GetNonce(_address1));
-            Assert.AreEqual(BigInteger.One + 1, provider.GetBalance(_address1));
+            Assert.AreEqual(UInt256.Zero, provider.GetNonce(_address1));
+            Assert.AreEqual(UInt256.One + 1, provider.GetBalance(_address1));
             Assert.AreEqual(new byte[0], provider.GetCode(_address1));
             provider.Restore(0);
-            Assert.AreEqual(BigInteger.Zero, provider.GetNonce(_address1));
-            Assert.AreEqual(BigInteger.One, provider.GetBalance(_address1));
+            Assert.AreEqual(UInt256.Zero, provider.GetNonce(_address1));
+            Assert.AreEqual(UInt256.One, provider.GetBalance(_address1));
             Assert.AreEqual(new byte[0], provider.GetCode(_address1));
             provider.Restore(-1);
             Assert.AreEqual(false, provider.AccountExists(_address1));

@@ -26,6 +26,7 @@ using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.Store;
 
 namespace Nethermind.Evm
@@ -74,8 +75,8 @@ namespace Nethermind.Evm
 
             IReleaseSpec spec = _specProvider.GetSpec(block.Number);
             Address recipient = transaction.To;
-            BigInteger value = transaction.Value;
-            BigInteger gasPrice = transaction.GasPrice;
+            UInt256 value = transaction.Value;
+            UInt256 gasPrice = transaction.GasPrice;
             long gasLimit = (long)transaction.GasLimit;
             byte[] machineCode = transaction.Init;
             byte[] data = transaction.Data ?? Bytes.Empty;
@@ -143,8 +144,8 @@ namespace Nethermind.Evm
                 _stateProvider.CreateAccount(sender, 0);
             }
 
-            BigInteger senderBalance = _stateProvider.GetBalance(sender);
-            if (intrinsicGas * gasPrice + value > senderBalance)
+            UInt256 senderBalance = _stateProvider.GetBalance(sender);
+            if ((ulong)intrinsicGas * gasPrice + value > senderBalance)
             {
                 if (_logger.IsDebugEnabled)
                 {
@@ -165,7 +166,7 @@ namespace Nethermind.Evm
             }
 
             _stateProvider.IncrementNonce(sender);
-            _stateProvider.UpdateBalance(sender, -new BigInteger(gasLimit) * gasPrice, spec);
+            _stateProvider.SubtractFromBalance(sender, (ulong)gasLimit * gasPrice, spec);
             _stateProvider.Commit(spec);
 
             long unspentGas = gasLimit - intrinsicGas;
@@ -183,7 +184,7 @@ namespace Nethermind.Evm
 
             int snapshot = _stateProvider.TakeSnapshot();
             int storageSnapshot = _storageProvider.TakeSnapshot();
-            _stateProvider.UpdateBalance(sender, -value, spec);
+            _stateProvider.SubtractFromBalance(sender, value, spec);
             byte statusCode = StatusCode.Failure;
 
             HashSet<Address> destroyedAccounts = new HashSet<Address>();
@@ -201,8 +202,8 @@ namespace Nethermind.Evm
 
                 if (transaction.IsTransfer) // TODO: this is never called and wrong, to be removed
                 {
-                    _stateProvider.UpdateBalance(sender, -value, spec);
-                    _stateProvider.UpdateBalance(recipient, value, spec);
+                    _stateProvider.SubtractFromBalance(sender, value, spec);
+                    _stateProvider.AddToBalance(recipient, value, spec);
                     statusCode = StatusCode.Success;
                 }
                 else
@@ -306,11 +307,11 @@ namespace Nethermind.Evm
             {
                 if (!_stateProvider.AccountExists(block.Beneficiary))
                 {
-                    _stateProvider.CreateAccount(block.Beneficiary, spentGas * gasPrice);
+                    _stateProvider.CreateAccount(block.Beneficiary, (ulong)spentGas * gasPrice);
                 }
                 else
                 {
-                    _stateProvider.UpdateBalance(block.Beneficiary, spentGas * gasPrice, spec);
+                    _stateProvider.AddToBalance(block.Beneficiary, (ulong)spentGas * gasPrice, spec);
                 }
             }
 
@@ -328,7 +329,7 @@ namespace Nethermind.Evm
             return BuildTransactionReceipt(statusCode, logEntries.Any() ? logEntries.ToArray() : LogEntry.EmptyLogs, block.GasUsed, recipient);
         }
 
-        private long Refund(long gasLimit, long unspentGas, TransactionSubstate substate, Address sender, BigInteger gasPrice, IReleaseSpec spec)
+        private long Refund(long gasLimit, long unspentGas, TransactionSubstate substate, Address sender, UInt256 gasPrice, IReleaseSpec spec)
         {
             long spentGas = gasLimit - unspentGas;
             long refund = Math.Min(spentGas / 2L, substate.Refund + substate.DestroyList.Count * RefundOf.Destroy);
@@ -342,7 +343,7 @@ namespace Nethermind.Evm
                 _logger.Debug("REFUNDING UNUSED GAS OF " + unspentGas + " AND REFUND OF " + refund);
             }
 
-            _stateProvider.UpdateBalance(sender, (unspentGas + refund) * gasPrice, spec);
+            _stateProvider.AddToBalance(sender, (ulong)(unspentGas + refund) * gasPrice, spec);
             spentGas -= refund;
             return spentGas;
         }

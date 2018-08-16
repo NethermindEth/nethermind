@@ -18,19 +18,20 @@
 
 using System;
 using System.Numerics;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Core.Extensions
 {
     public static class IntExtensions
     {
-        public static BigInteger Ether(this int @this)
+        public static UInt256 Ether(this int @this)
         {
-            return @this * Unit.Ether;
+            return (uint)@this * Unit.Ether;
         }
 
-        public static BigInteger Wei(this int @this)
+        public static UInt256 Wei(this int @this)
         {
-            return @this * Unit.Wei;
+            return (uint)@this * Unit.Wei;
         }
 
         public static byte[] ToByteArray(this int value, Bytes.Endianness endianness)

@@ -16,10 +16,10 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Store
 {
@@ -29,7 +29,7 @@ namespace Nethermind.Store
 
         void DeleteAccount(Address address);
 
-        void CreateAccount(Address address, BigInteger balance);
+        void CreateAccount(Address address, UInt256 balance);
 
         bool AccountExists(Address address);
 
@@ -37,9 +37,9 @@ namespace Nethermind.Store
 
         bool IsEmptyAccount(Address address);
 
-        BigInteger GetNonce(Address address);
+        UInt256 GetNonce(Address address);
 
-        BigInteger GetBalance(Address address);
+        UInt256 GetBalance(Address address);
         
         Keccak GetStorageRoot(Address address);
 
@@ -51,7 +51,9 @@ namespace Nethermind.Store
 
         void UpdateCodeHash(Address address, Keccak codeHash, IReleaseSpec spec);
 
-        void UpdateBalance(Address address, BigInteger balanceChange, IReleaseSpec spec);
+        void AddToBalance(Address address, UInt256 balanceChange, IReleaseSpec spec);
+        
+        void SubtractFromBalance(Address address, UInt256 balanceChange, IReleaseSpec spec);
 
         void UpdateStorageRoot(Address address, Keccak storageRoot);
 
