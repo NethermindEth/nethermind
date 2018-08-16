@@ -59,7 +59,7 @@ namespace Nethermind.Network.Test.Discovery
                 SourceAddress = _farAddress,
                 Version = _config.PingMessageVersion,
                 FarPublicKey = _privateKey.PublicKey,
-                ExpirationTime = _config.DiscoveryMsgExpiryTime + Timestamp.UnixUtcUntilNowMilisecs
+                ExpirationTime = _config.DiscoveryMsgExpiryTime + (long)Timestamp.UnixUtcUntilNowMilisecs
             };
 
             var data = _messageSerializationService.Serialize(message);
@@ -84,7 +84,7 @@ namespace Nethermind.Network.Test.Discovery
                 FarAddress = _farAddress,
                 PingMdc = new byte[] {1, 2, 3},
                 FarPublicKey = _privateKey.PublicKey,
-                ExpirationTime = _config.DiscoveryMsgExpiryTime + Timestamp.UnixUtcUntilNowMilisecs
+                ExpirationTime = _config.DiscoveryMsgExpiryTime + (long)Timestamp.UnixUtcUntilNowMilisecs
             };
 
             var data = _messageSerializationService.Serialize(message);
@@ -105,7 +105,7 @@ namespace Nethermind.Network.Test.Discovery
                 FarAddress = _farAddress,
                 SearchedNodeId = new byte[] { 1, 2, 3 },
                 FarPublicKey = _privateKey.PublicKey,
-                ExpirationTime = _config.DiscoveryMsgExpiryTime + Timestamp.UnixUtcUntilNowMilisecs
+                ExpirationTime = _config.DiscoveryMsgExpiryTime + (long)Timestamp.UnixUtcUntilNowMilisecs
             };
 
             var data = _messageSerializationService.Serialize(message);
@@ -128,7 +128,7 @@ namespace Nethermind.Network.Test.Discovery
                 FarAddress = _farAddress,
                 Nodes = new[] { nodeFactory.CreateNode("192.168.1.2", 1), nodeFactory.CreateNode("192.168.1.3", 2), nodeFactory.CreateNode("192.168.1.4", 3) },
                 FarPublicKey = _privateKey.PublicKey,
-                ExpirationTime = _config.DiscoveryMsgExpiryTime + Timestamp.UnixUtcUntilNowMilisecs
+                ExpirationTime = _config.DiscoveryMsgExpiryTime + (long)Timestamp.UnixUtcUntilNowMilisecs
             };
 
             var data = _messageSerializationService.Serialize(message);

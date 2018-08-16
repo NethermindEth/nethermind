@@ -20,6 +20,7 @@ using System.Collections.Generic;
 using System.Numerics;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Core.Specs.ChainSpec
 {
@@ -52,8 +53,8 @@ namespace Nethermind.Core.Specs.ChainSpec
             var nonce = ToULong(chainSpecJson.Genesis.Seal.Ethereum.Nonce);
             var mixHash = HexToKeccak(chainSpecJson.Genesis.Seal.Ethereum.MixHash);
             var parentHash = HexToKeccak(chainSpecJson.Genesis.ParentHash);
-            var timestamp = HexToBigInteger(chainSpecJson.Genesis.Timestamp);
-            var difficulty = HexToBigInteger(chainSpecJson.Genesis.Difficulty);
+            var timestamp = HexToUInt256(chainSpecJson.Genesis.Timestamp);
+            var difficulty = HexToUInt256(chainSpecJson.Genesis.Difficulty);
             var extraData = Bytes.FromHexString(chainSpecJson.Genesis.ExtraData);
             var gasLimit = HexToLong(chainSpecJson.Genesis.GasLimit);
             var beneficiary = new Address(chainSpecJson.Genesis.Author);
@@ -135,6 +136,12 @@ namespace Nethermind.Core.Specs.ChainSpec
         private static BigInteger HexToBigInteger(string hexNumber)
         {
             return Bytes.FromHexString(hexNumber).ToUnsignedBigInteger();
+        }
+        
+        private static UInt256 HexToUInt256(string hexNumber)
+        {
+            UInt256.CreateFromBigEndian(out UInt256 result, Bytes.FromHexString(hexNumber));
+            return result;
         }
     }
 }

@@ -176,10 +176,10 @@ namespace Nethermind.Runner.Runners
                 new Keccak(headerJson.ParentHash),
                 Keccak.OfAnEmptySequenceRlp,
                 new Address(headerJson.Coinbase),
-                Bytes.FromHexString(headerJson.Difficulty).ToUnsignedBigInteger(),
+                Bytes.FromHexString(headerJson.Difficulty).ToUInt256(),
                 0,
                 (long) Bytes.FromHexString(headerJson.GasLimit).ToUnsignedBigInteger(),
-                Bytes.FromHexString(headerJson.Timestamp).ToUnsignedBigInteger(),
+                Bytes.FromHexString(headerJson.Timestamp).ToUInt256(),
                 Bytes.FromHexString(headerJson.ExtraData)
             )
             {

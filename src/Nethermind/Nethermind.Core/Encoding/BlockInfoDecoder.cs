@@ -27,8 +27,8 @@ namespace Nethermind.Core.Encoding
             BlockInfo blockInfo = new BlockInfo();
             blockInfo.BlockHash = context.DecodeKeccak();
             blockInfo.WasProcessed = context.DecodeBool();
-            blockInfo.TotalDifficulty = context.DecodeUBigInt();
-            blockInfo.TotalTransactions = context.DecodeUBigInt();
+            blockInfo.TotalDifficulty = context.DecodeUInt256();
+            blockInfo.TotalTransactions = context.DecodeUInt256();
 
             if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraData))
             {

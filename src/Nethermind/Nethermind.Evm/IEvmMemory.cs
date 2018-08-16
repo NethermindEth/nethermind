@@ -18,24 +18,24 @@
 
 using System;
 using System.Collections.Generic;
-using System.Numerics;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Evm
 {
     public interface IEvmMemory : IDisposable
     {
-        long Size { get; }
-        void SaveWord(BigInteger location, Span<byte> word);
-        void SaveWord(BigInteger location, byte[] word);
-        void SaveByte(BigInteger location, byte value);
-        void SaveByte(BigInteger location, byte[] value);
-        void Save(BigInteger location, Span<byte> value);
-        void Save(BigInteger location, byte[] value);
-        Span<byte> LoadSpan(BigInteger location);
-        Span<byte> LoadSpan(BigInteger location, BigInteger length);
-        byte[] Load(BigInteger location);
-        byte[] Load(BigInteger location, BigInteger length);
-        long CalculateMemoryCost(BigInteger position, BigInteger length);
+        ulong Size { get; }
+        void SaveWord(UInt256 location, Span<byte> word);
+        void SaveWord(UInt256 location, byte[] word);
+        void SaveByte(UInt256 location, byte value);
+        void SaveByte(UInt256 location, byte[] value);
+        void Save(UInt256 location, Span<byte> value);
+        void Save(UInt256 location, byte[] value);
+        Span<byte> LoadSpan(UInt256 location);
+        Span<byte> LoadSpan(UInt256 location, UInt256 length);
+        byte[] Load(UInt256 location);
+        byte[] Load(UInt256 location, UInt256 length);
+        long CalculateMemoryCost(UInt256 position, UInt256 length);
         List<string> GetTrace();
     }
 }

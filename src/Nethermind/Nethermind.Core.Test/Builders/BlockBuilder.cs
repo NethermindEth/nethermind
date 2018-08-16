@@ -37,7 +37,7 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public BlockBuilder WithTotalDifficulty(BigInteger difficulty)
+        public BlockBuilder WithTotalDifficulty(UInt256 difficulty)
         {
             TestObjectInternal.Header.TotalDifficulty = difficulty;
             return this;
@@ -55,7 +55,7 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
         
-        public BlockBuilder WithDifficulty(BigInteger difficulty)
+        public BlockBuilder WithDifficulty(UInt256 difficulty)
         {
             TestObjectInternal.Header.Difficulty = difficulty;
             return this;
@@ -63,8 +63,8 @@ namespace Nethermind.Core.Test.Builders
 
         public BlockBuilder WithParent(BlockHeader blockHeader)
         {
-            TestObjectInternal.Header.Number = (blockHeader?.Number + 1) ?? 0;
-            TestObjectInternal.Header.Timestamp = (blockHeader?.Timestamp ?? -1) + 1;
+            TestObjectInternal.Header.Number = blockHeader?.Number + 1 ?? 0;
+            TestObjectInternal.Header.Timestamp = blockHeader?.Timestamp + 1 ?? 0;
             TestObjectInternal.Header.ParentHash = blockHeader == null ? Keccak.Zero : blockHeader.Hash;
             return this;
         }

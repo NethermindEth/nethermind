@@ -288,9 +288,9 @@ namespace Nethermind.Blockchain
 
         private Block ProcessBlock(
             Keccak parentHash,
-            BigInteger difficulty,
+            UInt256 difficulty,
             UInt256 number,
-            BigInteger timestamp,
+            UInt256 timestamp,
             Address beneficiary,
             long gasLimit,
             byte[] extraData,

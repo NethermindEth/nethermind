@@ -395,7 +395,7 @@ namespace Nethermind.Core.Test
             blocksDb.Set(genesisBlock.Hash, Rlp.Encode(genesisBlock).Bytes);
 
             MemDb blockInfosDb = new MemDb();
-            ChainLevelInfo level = new ChainLevelInfo(true, new BlockInfo[1] {new BlockInfo(headBlock.Hash, headBlock.Difficulty, headBlock.Transactions.Length)});
+            ChainLevelInfo level = new ChainLevelInfo(true, new BlockInfo[1] {new BlockInfo(headBlock.Hash, headBlock.Difficulty, (ulong)headBlock.Transactions.Length)});
             level.BlockInfos[0].WasProcessed = true;
             
             blockInfosDb.Set(0, Rlp.Encode(level).Bytes);
@@ -421,7 +421,7 @@ namespace Nethermind.Core.Test
                     Block ithBlock = testTree.FindBlock((ulong)i);
                     blocksDb.Set(ithBlock.Hash, Rlp.Encode(ithBlock).Bytes);
 
-                    ChainLevelInfo ithLevel = new ChainLevelInfo(true, new BlockInfo[1] {new BlockInfo(ithBlock.Hash, ithBlock.TotalDifficulty.Value, ithBlock.Transactions.Length)});
+                    ChainLevelInfo ithLevel = new ChainLevelInfo(true, new BlockInfo[1] {new BlockInfo(ithBlock.Hash, ithBlock.TotalDifficulty.Value, (ulong)ithBlock.Transactions.Length)});
                     blockInfosDb.Set(i, Rlp.Encode(ithLevel).Bytes);
                 }
 
@@ -451,7 +451,7 @@ namespace Nethermind.Core.Test
                     Block ithBlock = testTree.FindBlock((ulong)i);
                     blocksDb.Set(ithBlock.Hash, Rlp.Encode(ithBlock).Bytes);
 
-                    ChainLevelInfo ithLevel = new ChainLevelInfo(true, new BlockInfo[1] {new BlockInfo(ithBlock.Hash, ithBlock.TotalDifficulty.Value, ithBlock.Transactions.Length)});
+                    ChainLevelInfo ithLevel = new ChainLevelInfo(true, new BlockInfo[1] {new BlockInfo(ithBlock.Hash, ithBlock.TotalDifficulty.Value, (ulong)ithBlock.Transactions.Length)});
                     blockInfosDb.Set(i, Rlp.Encode(ithLevel).Bytes);
                 }
 

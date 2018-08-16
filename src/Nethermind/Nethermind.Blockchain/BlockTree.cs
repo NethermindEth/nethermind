@@ -683,7 +683,7 @@ namespace Nethermind.Blockchain
         {
             if (block.Number == 0)
             {
-                block.Header.TotalTransactions = block.Transactions.Length;
+                block.Header.TotalTransactions = (ulong)block.Transactions.Length;
             }
             else
             {
@@ -699,7 +699,7 @@ namespace Nethermind.Blockchain
                         $"Parent's {nameof(parent.TotalTransactions)} unknown when calculating for {block}");
                 }
 
-                block.Header.TotalTransactions = parent.TotalTransactions + block.Transactions.Length;
+                block.Header.TotalTransactions = parent.TotalTransactions + (ulong)block.Transactions.Length;
             }
         }
     }

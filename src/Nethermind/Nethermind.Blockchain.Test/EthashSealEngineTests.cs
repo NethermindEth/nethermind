@@ -23,6 +23,7 @@ using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.Mining;
 using NUnit.Framework;
 
@@ -58,7 +59,7 @@ namespace Nethermind.Blockchain.Test
         {
             ulong badNonce = 971086423715459953; // change if valid
 
-            BlockHeader header = new BlockHeader(Keccak.Zero, Keccak.OfAnEmptySequenceRlp, Address.Zero, BigInteger.Pow(2, 32), 1, 21000, 1, new byte[] {1, 2, 3});
+            BlockHeader header = new BlockHeader(Keccak.Zero, Keccak.OfAnEmptySequenceRlp, Address.Zero, (UInt256)BigInteger.Pow(2, 32), 1, 21000, 1, new byte[] {1, 2, 3});
             header.TransactionsRoot = Keccak.Zero;
             header.ReceiptsRoot = Keccak.Zero;
             header.OmmersHash = Keccak.Zero;

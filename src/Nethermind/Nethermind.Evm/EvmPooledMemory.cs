@@ -20,8 +20,8 @@ using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.Numerics;
-using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.Store;
 
 namespace Nethermind.Evm
@@ -33,18 +33,18 @@ namespace Nethermind.Evm
 
         private static readonly byte[] EmptyBytes = new byte[0];
 
-        private long _lastZeroedSize;
+        private int _lastZeroedSize;
 
         private byte[] _memory;
         public long Length { get; private set; }
-        public long Size { get; private set; }
+        public ulong Size { get; private set; }
 
-        public void SaveWord(BigInteger location, byte[] word)
+        public void SaveWord(UInt256 location, byte[] word)
         {
             SaveWord(location, word.AsSpan());
         }
 
-        public void SaveWord(BigInteger location, Span<byte> word)
+        public void SaveWord(UInt256 location, Span<byte> word)
         {
             long longLocation = (long)location;
             UpdateSize(longLocation, 1);
@@ -57,7 +57,7 @@ namespace Nethermind.Evm
             word.CopyTo(_memory.AsSpan().Slice((int)(longLocation + WordSize - word.Length), word.Length));
         }
 
-        public void SaveByte(BigInteger location, byte value)
+        public void SaveByte(UInt256 location, byte value)
         {
             long longLocation = (long)location;
             UpdateSize(longLocation, 1);
@@ -65,7 +65,7 @@ namespace Nethermind.Evm
             _memory[longLocation] = value;
         }
 
-        public void SaveByte(BigInteger location, byte[] value)
+        public void SaveByte(UInt256 location, byte[] value)
         {
             long longLocation = (long)location;
             UpdateSize(longLocation, 1);
@@ -73,7 +73,7 @@ namespace Nethermind.Evm
             _memory[longLocation] = value[value.Length - 1];
         }
 
-        public void Save(BigInteger location, Span<byte> value)
+        public void Save(UInt256 location, Span<byte> value)
         {
             if (value.Length == 0)
             {
@@ -86,7 +86,7 @@ namespace Nethermind.Evm
             value.CopyTo(_memory.AsSpan().Slice((int)(longLocation), value.Length));
         }
         
-        public void Save(BigInteger location, byte[] value)
+        public void Save(UInt256 location, byte[] value)
         {
             if (value.Length == 0)
             {
@@ -99,7 +99,7 @@ namespace Nethermind.Evm
             Array.Copy(value, 0, _memory, longLocation, value.Length);
         }
 
-        public byte[] Load(BigInteger location)
+        public byte[] Load(UInt256 location)
         {
             long longLocation = (long)location;
             UpdateSize(longLocation, WordSize);
@@ -109,7 +109,7 @@ namespace Nethermind.Evm
             return buffer;
         }
         
-        public Span<byte> LoadSpan(BigInteger location)
+        public Span<byte> LoadSpan(UInt256 location)
         {
             long longLocation = (long)location;
             UpdateSize(longLocation, WordSize);
@@ -117,7 +117,7 @@ namespace Nethermind.Evm
             return _memory.AsSpan().Slice((int)longLocation, WordSize);
         }
 
-        public Span<byte> LoadSpan(BigInteger location, BigInteger length)
+        public Span<byte> LoadSpan(UInt256 location, UInt256 length)
         {
             if (length.IsZero)
             {
@@ -130,7 +130,7 @@ namespace Nethermind.Evm
             return _memory.AsSpan().Slice((int)longLocation, (int)length);
         }
 
-        public byte[] Load(BigInteger location, BigInteger length)
+        public byte[] Load(UInt256 location, UInt256 length)
         {
             if (length.IsZero)
             {
@@ -145,14 +145,14 @@ namespace Nethermind.Evm
             return buffer;
         }
 
-        public long CalculateMemoryCost(BigInteger position, BigInteger length)
+        public long CalculateMemoryCost(UInt256 position, UInt256 length)
         {
             if (length.IsZero)
             {
                 return 0L;
             }
 
-            BigInteger roughPosition = position + length;
+            UInt256 roughPosition = position + length;
             if (roughPosition > int.MaxValue)
             {
                 Metrics.EvmExceptions++;
@@ -163,9 +163,6 @@ namespace Nethermind.Evm
             {
                 long newActiveWords = Div32Ceiling(roughPosition);
                 long activeWords = Div32Ceiling(Size);
-                //BigInteger cost = (newActiveWords - activeWords) * GasCostOf.Memory +
-                //                  BigInteger.Divide(BigInteger.Pow(newActiveWords, 2), 512) -
-                //                  BigInteger.Divide(BigInteger.Pow(activeWords, 2), 512);
 
                 // TODO: guess it would be well within ranges but this needs to be checked and comment need to be added with calculations
                 BigInteger cost = (newActiveWords - activeWords) * GasCostOf.Memory +
@@ -192,7 +189,7 @@ namespace Nethermind.Evm
             List<string> memoryTrace = new List<string>();
             if (_memory != null)
             {
-                while (tracePosition < Size)
+                while ((ulong)tracePosition < Size)
                 {
                     int sizeAvailable = Math.Min(WordSize, (int)Size - tracePosition);
                     memoryTrace.Add(_memory.Slice(tracePosition, sizeAvailable).ToHexString());
@@ -227,16 +224,16 @@ namespace Nethermind.Evm
         private void UpdateSize(long position, long length, bool rentIfNeeded = true)
         {
             Length = position + length;
-            if (Length > Size)
+            if ((ulong)Length > Size)
             {
                 long remainder = Length % 32;
                 if (remainder != 0)
                 {
-                    Size = Length + 32L - remainder;
+                    Size = (ulong)(Length + 32L - remainder);
                 }
                 else
                 {
-                    Size = Length;
+                    Size = (ulong)Length;
                 }
             }
 
@@ -247,20 +244,20 @@ namespace Nethermind.Evm
                     _memory = Pool.Rent((int)Size);
                     Array.Clear(_memory, 0, (int)Size);
                 }
-                else if (Size > _memory.LongLength)
+                else if (Size > (ulong)_memory.LongLength)
                 {
                     byte[] beforeResize = _memory;
                     _memory = Pool.Rent((int)Size);
                     Array.Copy(beforeResize, 0, _memory, 0, _lastZeroedSize);
-                    Array.Clear(_memory, (int)_lastZeroedSize, (int)Size - (int)_lastZeroedSize);
+                    Array.Clear(_memory, _lastZeroedSize, (int)Size - _lastZeroedSize);
                     Pool.Return(beforeResize);
                 }
-                else if (Size > _lastZeroedSize)
+                else if (Size > (ulong)_lastZeroedSize)
                 {
-                    Array.Clear(_memory, (int)_lastZeroedSize, (int)Size - (int)_lastZeroedSize);
+                    Array.Clear(_memory, _lastZeroedSize, (int)Size - _lastZeroedSize);
                 }
 
-                _lastZeroedSize = Size;
+                _lastZeroedSize = (int)Size;
             }
         }
     }

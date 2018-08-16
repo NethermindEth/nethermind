@@ -114,10 +114,10 @@ namespace Ethereum.VM.Test
         {
             Environment environment = new Environment();
             environment.CurrentCoinbase = envJson.CurrentCoinbase == null ? null : new Address(envJson.CurrentCoinbase);
-            environment.CurrentDifficulty = Bytes.FromHexString(envJson.CurrentDifficulty).ToUnsignedBigInteger();
+            environment.CurrentDifficulty = Bytes.FromHexString(envJson.CurrentDifficulty).ToUInt256();
             environment.CurrentGasLimit = Bytes.FromHexString(envJson.CurrentGasLimit).ToUnsignedBigInteger();
             environment.CurrentNumber = Bytes.FromHexString(envJson.CurrentNumber).ToUInt256();
-            environment.CurrentTimestamp = Bytes.FromHexString(envJson.CurrentTimestamp).ToUnsignedBigInteger();
+            environment.CurrentTimestamp = Bytes.FromHexString(envJson.CurrentTimestamp).ToUInt256();
             return environment;
         }
 
@@ -254,10 +254,10 @@ namespace Ethereum.VM.Test
         public class Environment
         {
             public Address CurrentCoinbase { get; set; }
-            public BigInteger CurrentDifficulty { get; set; }
+            public UInt256 CurrentDifficulty { get; set; }
             public BigInteger CurrentGasLimit { get; set; }
             public UInt256 CurrentNumber { get; set; }
-            public BigInteger CurrentTimestamp { get; set; }
+            public UInt256 CurrentTimestamp { get; set; }
         }
 
         public class EnvironmentJson

@@ -52,7 +52,7 @@ namespace Nethermind.Core.Test.Builders
                 TestObjectInternal.SuggestBlock(previous);
                 TestObjectInternal.MarkAsProcessed(previous.Hash);
                 TestObjectInternal.MoveToMain(previous.Hash);
-                previous = Build.A.Block.WithNumber((ulong)i + 1).WithParent(previous).WithDifficulty(BlockHeaderBuilder.DefaultDifficulty - splitVariant).TestObject;
+                previous = Build.A.Block.WithNumber((ulong)i + 1).WithParent(previous).WithDifficulty(BlockHeaderBuilder.DefaultDifficulty - (ulong)splitVariant).TestObject;
             }
 
             return this;

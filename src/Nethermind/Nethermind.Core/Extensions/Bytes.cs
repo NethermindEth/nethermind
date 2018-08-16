@@ -420,7 +420,7 @@ namespace Nethermind.Core.Extensions
                 throw new NotImplementedException();
             }
 
-            UInt256.CreateFromBigEndian(out UInt256 result, bytes.PadLeft(32));
+            UInt256.CreateFromBigEndian(out UInt256 result, bytes);
 
             return result;
         }

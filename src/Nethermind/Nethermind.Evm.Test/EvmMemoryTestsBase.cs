@@ -18,10 +18,12 @@
 
 using System.Collections.Generic;
 using System.Numerics;
+using Nethermind.Dirichlet.Numerics;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
 {
+    [TestFixture]
     public abstract class EvmMemoryTestsBase
     {
         protected abstract IEvmMemory CreateEvmMemory();
@@ -30,7 +32,7 @@ namespace Nethermind.Evm.Test
         public void Save_empty_beyond_reasonable_size_does_not_throw()
         {
             IEvmMemory memory = CreateEvmMemory();
-            memory.Save((BigInteger)int.MaxValue + 1, new byte[0]);
+            memory.Save((UInt256)int.MaxValue + 1, new byte[0]);
         }
 
         [Test]
@@ -74,8 +76,8 @@ namespace Nethermind.Evm.Test
         public void Calculate_memory_cost_returns_0_for_subsequent_calls()
         {
             IEvmMemory memory = CreateEvmMemory();
-            long cost1 = memory.CalculateMemoryCost(BigInteger.One, BigInteger.One);
-            long cost2 = memory.CalculateMemoryCost(BigInteger.One, BigInteger.One);
+            long cost1 = memory.CalculateMemoryCost(UInt256.One, UInt256.One);
+            long cost2 = memory.CalculateMemoryCost(UInt256.One, UInt256.One);
             Assert.AreEqual(0L, cost2);
         }
         
@@ -83,7 +85,7 @@ namespace Nethermind.Evm.Test
         public void Calculate_memory_cost_returns_0_for_0_length()
         {
             IEvmMemory memory = CreateEvmMemory();
-            long cost = memory.CalculateMemoryCost(long.MaxValue, BigInteger.Zero);
+            long cost = memory.CalculateMemoryCost(long.MaxValue, UInt256.Zero);
             Assert.AreEqual(0L, cost);
         }
     }
