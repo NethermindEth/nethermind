@@ -31,7 +31,7 @@ namespace Nethermind.Core.Encoding
             int transactionLength = context.ReadSequenceLength();
             int lastCheck = context.Position + transactionLength;
             Transaction transaction = new Transaction();
-            transaction.Nonce = (ulong)context.DecodeUInt256();
+            transaction.Nonce = context.DecodeUInt256();
             transaction.GasPrice = context.DecodeUInt256();
             transaction.GasLimit = context.DecodeUInt256();
             transaction.To = context.DecodeAddress();

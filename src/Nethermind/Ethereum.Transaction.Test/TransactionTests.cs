@@ -84,7 +84,7 @@ namespace Ethereum.Transaction.Test
                         validTest.Data = Bytes.FromHexString(transactionJson.Data);
                         validTest.GasLimit = Bytes.FromHexString(transactionJson.GasLimit).ToUInt256();
                         validTest.GasPrice = Bytes.FromHexString(transactionJson.GasPrice).ToUInt256();
-                        validTest.Nonce = (ulong)Bytes.FromHexString(transactionJson.Nonce).ToUInt256();
+                        validTest.Nonce = Bytes.FromHexString(transactionJson.Nonce).ToUInt256();
                         validTest.R = Bytes.FromHexString(transactionJson.R).ToUInt256();
                         validTest.S = Bytes.FromHexString(transactionJson.S).ToUInt256();
                         validTest.V = Bytes.FromHexString(transactionJson.V)[0];
