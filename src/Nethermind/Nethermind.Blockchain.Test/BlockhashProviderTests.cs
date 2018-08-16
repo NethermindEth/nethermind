@@ -83,5 +83,20 @@ namespace Nethermind.Blockchain.Test
             Keccak result = provider.GetBlockhash(current.Header, chainLength - 257);
             Assert.Null(result);
         }
+        
+        [Test]
+        public void UInt_256_overflow()
+        {
+            const int chainLength = 128;
+
+            Block genesis = Build.A.Block.Genesis.TestObject;
+            BlockTree tree = Build.A.BlockTree(genesis).OfChainLength(chainLength).TestObject;
+
+            BlockhashProvider provider = new BlockhashProvider(tree);
+            BlockHeader head = tree.FindHeader(chainLength - 1);
+            Block current = Build.A.Block.WithParent(head).TestObject;
+            Keccak result = provider.GetBlockhash(current.Header, 127);
+            Assert.AreEqual(head.Hash, result);
+        }
     }
 }
