@@ -220,16 +220,17 @@ namespace Nethermind.Evm
             }
         }
 
-        public static long Div32Ceiling(BigInteger length)
-        {   
-            BigInteger result = BigInteger.DivRem(length, VirtualMachine.BigInt32, out BigInteger rem);
-            BigInteger withCeiling = result + (rem > BigInteger.Zero ? BigInteger.One : BigInteger.Zero);
+        public static long Div32Ceiling(UInt256 length)
+        {
+            UInt256 rem = length & 31;
+            UInt256 result = length >> 5;
+            UInt256 withCeiling = result + (rem.IsZero ? 0UL : 1UL);
             if (withCeiling > VirtualMachine.BigIntMaxInt)
             {
                 Metrics.EvmExceptions++;
                 throw new OutOfGasException();
             }
-
+            
             return (long)withCeiling;
         }
 
