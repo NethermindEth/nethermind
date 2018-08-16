@@ -21,6 +21,7 @@ using System.Buffers;
 using System.Collections.Generic;
 using System.Numerics;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Model;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Store;
 
@@ -219,7 +220,7 @@ namespace Nethermind.Evm
         }
 
         public static long Div32Ceiling(BigInteger length)
-        {
+        {   
             BigInteger result = BigInteger.DivRem(length, VirtualMachine.BigInt32, out BigInteger rem);
             BigInteger withCeiling = result + (rem > BigInteger.Zero ? BigInteger.One : BigInteger.Zero);
             if (withCeiling > VirtualMachine.BigIntMaxInt)
