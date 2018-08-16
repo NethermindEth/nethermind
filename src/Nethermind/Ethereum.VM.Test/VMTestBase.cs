@@ -127,7 +127,7 @@ namespace Ethereum.VM.Test
             test.Name = name;
             test.Environment = Convert(testJson.Env);
             test.Execution = Convert(testJson.Exec);
-            test.Gas = testJson.Gas == null ? (BigInteger?)null : Bytes.FromHexString(testJson.Gas).ToUnsignedBigInteger();
+            test.Gas = testJson.Gas == null ? (UInt256?)null : Bytes.FromHexString(testJson.Gas).ToUInt256();
             test.Logs = testJson.Logs == null ? null : Bytes.FromHexString(testJson.Gas);
             test.Out = testJson.Out == null ? null : Bytes.FromHexString(testJson.Out);
             test.Post = testJson.Post?.ToDictionary(p => new Address(p.Key), p => Convert(p.Value));
@@ -203,8 +203,8 @@ namespace Ethereum.VM.Test
             foreach (KeyValuePair<Address, AccountState> accountState in test.Post)
             {
                 bool accountExists = _stateProvider.AccountExists(accountState.Key);
-                BigInteger balance = accountExists ? _stateProvider.GetBalance(accountState.Key) : 0;
-                BigInteger nonce = accountExists ? _stateProvider.GetNonce(accountState.Key) : 0;
+                UInt256 balance = accountExists ? _stateProvider.GetBalance(accountState.Key) : 0;
+                UInt256 nonce = accountExists ? _stateProvider.GetNonce(accountState.Key) : 0;
                 Assert.AreEqual(accountState.Value.Balance, balance, $"{accountState.Key} Balance");
                 Assert.AreEqual(accountState.Value.Nonce, nonce, $"{accountState.Key} Nonce");
 
