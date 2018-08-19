@@ -811,11 +811,10 @@ namespace Nethermind.Evm
                         }
 
                         // TODO: can calculate in place...
-                        UInt256 a = PopUInt256(bytesOnStack);
                         UInt256 b = PopUInt256(bytesOnStack);
-                        UInt256 result = a + b;
+                        UInt256 a = PopUInt256(bytesOnStack);
+                        PushUInt256(a + b, bytesOnStack);
                         
-                        PushUInt256(result, bytesOnStack);
                         break;
                     }
                     case Instruction.MUL:
