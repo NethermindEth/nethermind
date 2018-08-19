@@ -19,6 +19,7 @@
 using System.Collections.Generic;
 using System.Numerics;
 using Nethermind.Core.Extensions;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Core.Crypto.ZkSnarks
 {
@@ -62,9 +63,9 @@ namespace Nethermind.Core.Crypto.ZkSnarks
             _product = FinalExponentiation(_product);
         }
 
-        public BigInteger Result()
+        public UInt256 Result()
         {
-            return _product.Equals(Fp12.One) ? BigInteger.One : BigInteger.Zero;
+            return _product.Equals(Fp12.One) ? UInt256.One : UInt256.Zero;
         }
 
         private static Fp12 MillerLoop(Bn128Fp g1, Bn128Fp2 g2)

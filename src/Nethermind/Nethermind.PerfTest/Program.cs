@@ -272,7 +272,8 @@ namespace Nethermind.PerfTest
             public event EventHandler<BlockEventArgs> NewHeadBlock;
         }
 
-        private const string DbBasePath = @"D:\chains\Nethermind\Ropsten\perf100k";
+//        private const string DbBasePath = @"D:\chains\Nethermind\Ropsten\perf100k";
+        private const string DbBasePath = @"C:\chains\blocks_1M";
 
         private static void DeleteDb(string dbPath)
         {
@@ -373,7 +374,7 @@ namespace Nethermind.PerfTest
                 }
 
                 totalGas += currentHead.GasUsed;
-                if (args.Block.Number % 10000 == 9999)
+                if ((BigInteger)args.Block.Number % 10000 == 9999)
                 {
                     stopwatch.Stop();
                     long ms = 1_000L * stopwatch.ElapsedTicks / Stopwatch.Frequency;

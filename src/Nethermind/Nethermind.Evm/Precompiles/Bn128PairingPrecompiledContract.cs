@@ -20,6 +20,7 @@ using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto.ZkSnarks;
 using Nethermind.Core.Extensions;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Evm.Precompiles
 {
@@ -83,9 +84,10 @@ namespace Nethermind.Evm.Precompiles
             }
 
             check.Run();
-            BigInteger result = check.Result();
-
-            return (result.ToBigEndianByteArray(32), true);
+            UInt256 result = check.Result();
+            byte[] resultBytes = new byte[32];
+            result.ToBigEndian(resultBytes);
+            return (resultBytes, true);
         }
 
         private (Bn128Fp, Bn128Fp2) DecodePair(byte[] input, int offset)
