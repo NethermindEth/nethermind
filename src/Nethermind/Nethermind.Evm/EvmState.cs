@@ -19,7 +19,6 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Numerics;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Dirichlet.Numerics;

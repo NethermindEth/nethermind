@@ -20,6 +20,7 @@ using System;
 using System.Diagnostics;
 using System.Numerics;
 using Nethermind.Core;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Store
 {
@@ -27,9 +28,9 @@ namespace Nethermind.Store
     public struct StorageAddress : IEquatable<StorageAddress>
     {
         public Address Address { get; }
-        public BigInteger Index { get; }
+        public UInt256 Index { get; }
 
-        public StorageAddress(Address address, BigInteger index)
+        public StorageAddress(Address address, UInt256 index)
         {
             Address = address;
             Index = index;

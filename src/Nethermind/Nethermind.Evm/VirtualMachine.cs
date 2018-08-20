@@ -1588,7 +1588,7 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        BigInteger storageIndex = PopUInt(bytesOnStack);
+                        UInt256 storageIndex = PopUInt256(bytesOnStack);
                         byte[] value = _storage.Get(new StorageAddress(env.ExecutingAccount, storageIndex));
                         PushBytes(value, bytesOnStack);
                         break;
@@ -1607,7 +1607,7 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        BigInteger storageIndex = PopUInt(bytesOnStack);
+                        UInt256 storageIndex = PopUInt256(bytesOnStack);
                         byte[] data = PopBytes(bytesOnStack).WithoutLeadingZeros().ToArray();
 
                         bool isNewValueZero = data.IsZero();
@@ -1648,7 +1648,9 @@ namespace Nethermind.Evm
 
                         if (_trace != null)
                         {
-                            _traceEntry.Storage[storageIndex.ToBigEndianByteArray().PadLeft(32).ToHexString(false)] = data.PadLeft(32).ToHexString(false);
+                            byte[] bigEndian = new byte[32];
+                            storageIndex.ToBigEndian(bigEndian);
+                            _traceEntry.Storage[bigEndian.ToHexString(false)] = data.PadLeft(32).ToHexString(false);
                         }
 
                         break;
