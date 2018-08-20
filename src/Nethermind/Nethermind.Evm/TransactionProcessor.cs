@@ -58,7 +58,11 @@ namespace Nethermind.Evm
             transactionReceipt.Logs = LogEntry.EmptyLogs;
             transactionReceipt.Bloom = Bloom.Empty;
             transactionReceipt.GasUsed = block.GasUsed;
-            transactionReceipt.PostTransactionState = _stateProvider.StateRoot; // TODO: do not call it in Byzantium - no longer needed to calculate root hash
+            if (!_specProvider.GetSpec(block.Number).IsEip658Enabled)
+            {
+                transactionReceipt.PostTransactionState = _stateProvider.StateRoot; // TODO: do not call it in Byzantium - no longer needed to calculate root hash
+            }
+
             transactionReceipt.StatusCode = StatusCode.Failure;
             return transactionReceipt;
         }
@@ -326,7 +330,7 @@ namespace Nethermind.Evm
                 _tracer.SaveTrace(Transaction.CalculateHash(transaction), trace);
             }
 
-            return BuildTransactionReceipt(statusCode, logEntries.Any() ? logEntries.ToArray() : LogEntry.EmptyLogs, block.GasUsed, recipient);
+            return BuildTransactionReceipt(block, statusCode, logEntries.Any() ? logEntries.ToArray() : LogEntry.EmptyLogs, recipient);
         }
 
         private long Refund(long gasLimit, long unspentGas, TransactionSubstate substate, Address sender, UInt256 gasPrice, IReleaseSpec spec)
@@ -348,13 +352,17 @@ namespace Nethermind.Evm
             return spentGas;
         }
 
-        private TransactionReceipt BuildTransactionReceipt(byte statusCode, LogEntry[] logEntries, long gasUsedSoFar, Address recipient)
+        private TransactionReceipt BuildTransactionReceipt(BlockHeader block, byte statusCode, LogEntry[] logEntries, Address recipient)
         {
             TransactionReceipt transactionReceipt = new TransactionReceipt();
             transactionReceipt.Logs = logEntries;
             transactionReceipt.Bloom = logEntries.Length == 0 ? Bloom.Empty : BuildBloom(logEntries);
-            transactionReceipt.GasUsed = gasUsedSoFar;
-            transactionReceipt.PostTransactionState = _stateProvider.StateRoot;
+            transactionReceipt.GasUsed = block.GasUsed;
+            if(!_specProvider.GetSpec(block.Number).IsEip658Enabled)
+            {
+                transactionReceipt.PostTransactionState = _stateProvider.StateRoot;
+            }
+
             transactionReceipt.StatusCode = statusCode;
             transactionReceipt.Recipient = recipient;
             return transactionReceipt;
