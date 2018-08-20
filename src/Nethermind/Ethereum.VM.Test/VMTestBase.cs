@@ -91,7 +91,7 @@ namespace Ethereum.VM.Test
             state.Code = Bytes.FromHexString(accountStateJson.Code);
             state.Nonce = Bytes.FromHexString(accountStateJson.Nonce).ToUInt256();
             state.Storage = accountStateJson.Storage.ToDictionary(
-                p => Bytes.FromHexString(p.Key).ToUnsignedBigInteger(),
+                p => Bytes.FromHexString(p.Key).ToUInt256(),
                 p => Bytes.FromHexString(p.Value));
             return state;
         }
@@ -163,7 +163,7 @@ namespace Ethereum.VM.Test
 
             foreach (KeyValuePair<Address, AccountState> accountState in test.Pre)
             {
-                foreach (KeyValuePair<BigInteger, byte[]> storageItem in accountState.Value.Storage)
+                foreach (KeyValuePair<UInt256, byte[]> storageItem in accountState.Value.Storage)
                 {
                     _storageProvider.Set(new StorageAddress(accountState.Key, storageItem.Key), storageItem.Value);
                     if (accountState.Key.Equals(test.Execution.Address))
@@ -215,7 +215,7 @@ namespace Ethereum.VM.Test
                     Assert.AreEqual(accountState.Value.Code, code, $"{accountState.Key} Code");
                 }
 
-                foreach (KeyValuePair<BigInteger, byte[]> storageItem in accountState.Value.Storage)
+                foreach (KeyValuePair<UInt256, byte[]> storageItem in accountState.Value.Storage)
                 {
                     byte[] value = _storageProvider.Get(new StorageAddress(accountState.Key, storageItem.Key));
                     Assert.True(Bytes.AreEqual(storageItem.Value, value),
@@ -240,7 +240,7 @@ namespace Ethereum.VM.Test
             public UInt256 Balance { get; set; }
             public byte[] Code { get; set; }
             public UInt256 Nonce { get; set; }
-            public Dictionary<BigInteger, byte[]> Storage { get; set; }
+            public Dictionary<UInt256, byte[]> Storage { get; set; }
         }
 
         public class AccountStateJson

@@ -119,17 +119,17 @@ namespace Nethermind.Evm.Test
             Assert.AreEqual(gas, receipt.GasUsed, "gas");
         }
 
-        protected void AssertStorage(BigInteger address, Keccak value)
+        protected void AssertStorage(UInt256 address, Keccak value)
         {
             Assert.AreEqual(value.Bytes, Storage.Get(new StorageAddress(B, address)).PadLeft(32), "storage");
         }
         
-        protected void AssertStorage(BigInteger address, byte[] value)
+        protected void AssertStorage(UInt256 address, byte[] value)
         {
             Assert.AreEqual(value.PadLeft(32), Storage.Get(new StorageAddress(B, address)).PadLeft(32), "storage");
         }
         
-        protected void AssertStorage(BigInteger address, BigInteger value)
+        protected void AssertStorage(UInt256 address, BigInteger value)
         {
             Assert.AreEqual(value.ToBigEndianByteArray(), Storage.Get(new StorageAddress(B, address)), "storage");
         }
