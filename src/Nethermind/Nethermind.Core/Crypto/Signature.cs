@@ -119,7 +119,7 @@ namespace Nethermind.Core.Crypto
         {
             if (ReferenceEquals(null, other)) return false;
             if (ReferenceEquals(this, other)) return true;
-            return Extensions.Bytes.UnsafeCompare(Bytes, other.Bytes) && V == other.V;
+            return Extensions.Bytes.AreEqual(Bytes, other.Bytes) && V == other.V;
         }
 
         public override bool Equals(object obj)

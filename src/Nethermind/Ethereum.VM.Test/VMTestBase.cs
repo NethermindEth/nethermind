@@ -197,7 +197,7 @@ namespace Ethereum.VM.Test
 
             (byte[] output, TransactionSubstate substate) = machine.Run(state, Olympic.Instance, null);
 
-            Assert.True(Bytes.UnsafeCompare(test.Out, output),
+            Assert.True(Bytes.AreEqual(test.Out, output),
                 $"Exp: {test.Out.ToHexString(true)} != Actual: {output.ToHexString(true)}");
             Assert.AreEqual((long)test.Gas, state.GasAvailable);
             foreach (KeyValuePair<Address, AccountState> accountState in test.Post)
@@ -218,7 +218,7 @@ namespace Ethereum.VM.Test
                 foreach (KeyValuePair<BigInteger, byte[]> storageItem in accountState.Value.Storage)
                 {
                     byte[] value = _storageProvider.Get(new StorageAddress(accountState.Key, storageItem.Key));
-                    Assert.True(Bytes.UnsafeCompare(storageItem.Value, value),
+                    Assert.True(Bytes.AreEqual(storageItem.Value, value),
                         $"Storage[{accountState.Key}_{storageItem.Key}] Exp: {storageItem.Value.ToHexString(true)} != Actual: {value.ToHexString(true)}");
                 }
             }

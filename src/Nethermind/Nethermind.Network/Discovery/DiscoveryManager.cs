@@ -184,7 +184,7 @@ namespace Nethermind.Network.Discovery
                 }
             }
 
-            if (!Bytes.UnsafeCompare(_nodeTable.MasterNode.Address.Address.GetAddressBytes(), message.DestinationAddress.Address.GetAddressBytes()))
+            if (!Bytes.AreEqual(_nodeTable.MasterNode.Address.Address.GetAddressBytes(), message.DestinationAddress.Address.GetAddressBytes()))
             {
                 //throw new NetworkingException($"Received message with inccorect destination adress, message: {message}");
             }
@@ -194,7 +194,7 @@ namespace Nethermind.Network.Discovery
 //                throw new NetworkingException($"Received message with inccorect destination port, message: {message}");
             }
 
-            if (!Bytes.UnsafeCompare(message.FarAddress.Address.GetAddressBytes(), message.SourceAddress.Address.GetAddressBytes()))
+            if (!Bytes.AreEqual(message.FarAddress.Address.GetAddressBytes(), message.SourceAddress.Address.GetAddressBytes()))
             {
                 //throw new NetworkingException($"Received message with inccorect source adress, message: {message}");
             }

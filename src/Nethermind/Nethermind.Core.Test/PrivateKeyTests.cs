@@ -67,7 +67,7 @@ namespace Nethermind.Core.Test
             byte[] bytes = new byte[32];
             new Random(12).NextBytes(bytes);
             PrivateKey privateKey = new PrivateKey(bytes);
-            Assert.True(Bytes.UnsafeCompare(bytes, privateKey.KeyBytes));
+            Assert.True(Bytes.AreEqual(bytes, privateKey.KeyBytes));
         }
 
         [TestCase(TestPrivateKeyHex)]

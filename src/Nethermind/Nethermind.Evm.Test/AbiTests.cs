@@ -119,7 +119,7 @@ namespace Nethermind.Evm.Test
             AbiSignature signature = new AbiSignature("abc", type);
             byte[] encoded = _abiEncoder.Encode(signature, data);
             object[] arguments = _abiEncoder.Decode(signature, encoded);
-            Assert.True(Bytes.UnsafeCompare((byte[]) arguments[0], data));
+            Assert.True(Bytes.AreEqual((byte[]) arguments[0], data));
         }
 
         [Test]
@@ -139,7 +139,7 @@ namespace Nethermind.Evm.Test
             AbiSignature signature = new AbiSignature("abc", type);
             byte[] encoded = _abiEncoder.Encode(signature, data);
             object[] arguments = _abiEncoder.Decode(signature, encoded);
-            Assert.True(Bytes.UnsafeCompare((byte[]) arguments[0], data));
+            Assert.True(Bytes.AreEqual((byte[]) arguments[0], data));
         }
 
         [Test]
@@ -182,7 +182,7 @@ namespace Nethermind.Evm.Test
             AbiSignature signature = new AbiSignature("abc", type);
             byte[] encoded = _abiEncoder.Encode(signature, data);
             object[] arguments = _abiEncoder.Decode(signature, encoded);
-            Assert.True(Bytes.UnsafeCompare((byte[]) arguments[0], data));
+            Assert.True(Bytes.AreEqual((byte[]) arguments[0], data));
         }
 
         [Test]
@@ -258,7 +258,7 @@ namespace Nethermind.Evm.Test
                 new BigInteger[] {0x456, 0x789},
                 Encoding.ASCII.GetBytes("1234567890"),
                 Encoding.ASCII.GetBytes("Hello, world!"));
-            Assert.True(Bytes.UnsafeCompare(expectedValue, encoded));
+            Assert.True(Bytes.AreEqual(expectedValue, encoded));
         }
     }
 }

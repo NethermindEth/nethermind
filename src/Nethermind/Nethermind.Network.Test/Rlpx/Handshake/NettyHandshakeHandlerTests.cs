@@ -59,7 +59,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             _service.Ack(Arg.Any<EncryptionHandshake>(), Arg.Any<Packet>()).Returns(_ackPacket).AndDoes(ci => ci.Arg<EncryptionHandshake>().Secrets = NetTestVectors.BuildSecretsWithSameIngressAndEgress());
             _service.When(s => s.Agree(Arg.Any<EncryptionHandshake>(), Arg.Any<Packet>())).Do(ci => ci.Arg<EncryptionHandshake>().Secrets = NetTestVectors.BuildSecretsWithSameIngressAndEgress());
 
-            _logger = Substitute.For<ILogger>();
+            _logger = NullLogManager.Instance;
             _remotePublicKey = new NodeId(NetTestVectors.StaticKeyB.PublicKey);
         }
 
@@ -72,7 +72,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
         private IP2PSession _ip2PSession;
         private INodeStatsProvider _nodeStatsProvider;
         private IMessageSerializationService _serializationService;
-        private ILogger _logger;
+        private ILogManager _logger;
         private NodeId _remotePublicKey;
 
         // TODO: need to define the desired behaviour here
@@ -141,7 +141,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             handler.ChannelActive(_channelHandlerContext);
 
             _service.Received(1).Auth(_remotePublicKey, Arg.Any<EncryptionHandshake>());
-            await _channelHandlerContext.Received(1).WriteAndFlushAsync(Arg.Is<IByteBuffer>(b => Bytes.UnsafeCompare(b.Array.Slice(0, NetTestVectors.AuthEip8.Length), NetTestVectors.AuthEip8)));
+            await _channelHandlerContext.Received(1).WriteAndFlushAsync(Arg.Is<IByteBuffer>(b => Bytes.AreEqual(b.Array.Slice(0, NetTestVectors.AuthEip8.Length), NetTestVectors.AuthEip8)));
         }
 
         [Test]
@@ -209,7 +209,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             handler.ChannelRead(_channelHandlerContext, Unpooled.Buffer(0, 0));
 
             _service.Received(1).Ack(Arg.Any<EncryptionHandshake>(), Arg.Any<Packet>());
-            await _channelHandlerContext.Received(1).WriteAndFlushAsync(Arg.Is<IByteBuffer>(b => Bytes.UnsafeCompare(b.Array.Slice(0, NetTestVectors.AckEip8.Length), NetTestVectors.AckEip8)));
+            await _channelHandlerContext.Received(1).WriteAndFlushAsync(Arg.Is<IByteBuffer>(b => Bytes.AreEqual(b.Array.Slice(0, NetTestVectors.AckEip8.Length), NetTestVectors.AckEip8)));
         }
     }
 }

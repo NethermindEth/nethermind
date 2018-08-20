@@ -156,7 +156,7 @@ namespace Nethermind.Core.Crypto
                 return false;
             }
 
-            return Extensions.Bytes.UnsafeCompare(other.Bytes, Bytes);
+            return Extensions.Bytes.AreEqual(other.Bytes, Bytes);
         }
 
         public override bool Equals(object obj)
@@ -190,7 +190,7 @@ namespace Nethermind.Core.Crypto
                 return false;
             }
 
-            return Extensions.Bytes.UnsafeCompare(a.Bytes, b.Bytes);
+            return Extensions.Bytes.AreEqual(a.Bytes, b.Bytes);
         }
 
         public static bool operator !=(Keccak a, Keccak b)

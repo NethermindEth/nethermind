@@ -50,7 +50,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
 
             Assert.AreEqual(authMessage.Signature, after.Signature);
             Assert.AreEqual(authMessage.PublicKey, after.PublicKey);
-            Assert.True(Bytes.UnsafeCompare(authMessage.Nonce, after.Nonce));
+            Assert.True(Bytes.AreEqual(authMessage.Nonce, after.Nonce));
             Assert.AreEqual(authMessage.Version, after.Version);
         }
 

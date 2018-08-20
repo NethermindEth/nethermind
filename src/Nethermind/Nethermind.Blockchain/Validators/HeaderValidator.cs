@@ -131,7 +131,7 @@ namespace Nethermind.Blockchain.Validators
                                   || _daoBlockNumber == null
                                   || header.Number < _daoBlockNumber
                                   || header.Number >= _daoBlockNumber + 10
-                                  || Bytes.UnsafeCompare(header.ExtraData, DaoExtraData);
+                                  || Bytes.AreEqual(header.ExtraData, DaoExtraData);
             if (!extraDataValid)
             {
                 _logger.Warn($"Invalid block header ({header.Hash}) - DAO extra data not valid");

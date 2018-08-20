@@ -383,7 +383,7 @@ namespace Ethereum.Test.Base
                 }
 
                 byte[] code = accountExists ? stateProvider.GetCode(accountState.Key) : new byte[0];
-                if (!Bytes.UnsafeCompare(accountState.Value.Code, code))
+                if (!Bytes.AreEqual(accountState.Value.Code, code))
                 {
                     differences.Add($"{accountState.Key} code exp: {accountState.Value.Code?.Length}, actual: {code?.Length}");
                 }
@@ -398,7 +398,7 @@ namespace Ethereum.Test.Base
                 foreach (KeyValuePair<BigInteger, byte[]> storageItem in accountState.Value.Storage)
                 {
                     byte[] value = storageProvider.Get(new StorageAddress(accountState.Key, storageItem.Key)) ?? new byte[0];
-                    if (!Bytes.UnsafeCompare(storageItem.Value, value))
+                    if (!Bytes.AreEqual(storageItem.Value, value))
                     {
                         differences.Add($"{accountState.Key} storage[{storageItem.Key}] exp: {storageItem.Value.ToHexString(true)}, actual: {value.ToHexString(true)}");
                     }

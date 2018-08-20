@@ -77,7 +77,7 @@ namespace Nethermind.Core.Crypto
                 return false;
             }
 
-            return Extensions.Bytes.UnsafeCompare(Bytes, other.Bytes);
+            return Extensions.Bytes.AreEqual(Bytes, other.Bytes);
         }
 
         private Address ComputeAddress()
@@ -95,7 +95,7 @@ namespace Nethermind.Core.Crypto
 
         public override int GetHashCode()
         {
-            return Bytes.GetXxHashCode();
+            return Bytes.GetSimplifiedHashCode();
         }
 
         public override string ToString()

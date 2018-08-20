@@ -272,7 +272,7 @@ namespace Nethermind.Mining
             byte[] cmix = new byte[MixBytes / WordBytes];
             Buffer.BlockCopy(cmixInts, 0, cmix, 0, cmix.Length);
 
-            if (expectedMixHash != null && !Bytes.UnsafeCompare(cmix, expectedMixHash.Bytes))
+            if (expectedMixHash != null && !Bytes.AreEqual(cmix, expectedMixHash.Bytes))
             {
                 // TODO: handle properly
                 throw new InvalidOperationException(); // TODO: need to change this

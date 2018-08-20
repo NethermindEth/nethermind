@@ -67,7 +67,7 @@ namespace Nethermind.Network.Discovery.Serializers
             var data = msg.Slice(98, msg.Length - 98);
             var computedMdc = Keccak.Compute(msg.Slice(32)).Bytes;
 
-            if (!Bytes.UnsafeCompare(mdc, computedMdc))
+            if (!Bytes.AreEqual(mdc, computedMdc))
             {
                 throw new NetworkingException("Invalid MDC", NetwokExceptionType.Validation);
             }

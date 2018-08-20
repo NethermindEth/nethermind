@@ -105,7 +105,7 @@ namespace Nethermind.Core
                 return true;
             }
 
-            return Nethermind.Core.Extensions.Bytes.UnsafeCompare(Bytes, other.Bytes);
+            return Nethermind.Core.Extensions.Bytes.AreEqual(Bytes, other.Bytes);
         }
 
         public static Address FromNumber(BigInteger number)

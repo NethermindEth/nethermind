@@ -1616,7 +1616,7 @@ namespace Nethermind.Evm
                         byte[] previousValue = _storage.Get(storageAddress);
 
                         bool isValueChanged = !(isNewValueZero && previousValue.IsZero()) ||
-                                              !Bytes.UnsafeCompare(previousValue, data);
+                                              !Bytes.AreEqual(previousValue, data);
 
 
                         if (isNewValueZero)

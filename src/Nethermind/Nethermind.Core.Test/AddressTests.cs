@@ -70,7 +70,7 @@ namespace Nethermind.Core.Test
             byte[] bytes = new byte[20];
             new System.Random(1).NextBytes(bytes);
             Address address = new Address(bytes);
-            Assert.True(Bytes.UnsafeCompare(address.Bytes, bytes));
+            Assert.True(Bytes.AreEqual(address.Bytes, bytes));
         }
 
         [Test]

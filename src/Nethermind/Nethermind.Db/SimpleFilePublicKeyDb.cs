@@ -117,7 +117,7 @@ namespace Nethermind.Db
 
         private byte[] Update(byte[] oldValue, byte[] newValue)
         {
-            if (!Bytes.UnsafeCompare(oldValue, newValue))
+            if (!Bytes.AreEqual(oldValue, newValue))
             {
                 _anyPendingChanges = true;
             }

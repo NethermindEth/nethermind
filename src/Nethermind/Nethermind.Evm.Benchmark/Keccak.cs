@@ -16,18 +16,44 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using BenchmarkDotNet.Running;
+using System;
+using BenchmarkDotNet.Attributes;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Evm.Benchmark
 {
-    public class Program
+    [CoreJob(baseline: true)]
+    public class KeccakQuest
     {
-        public static void Main(string[] args)
+        private static Random _random = new Random(0);
+
+        private byte[] _a;
+        private byte[] _b;
+
+        [Params(true, false)] public bool AllZeros { get; set; }
+
+        [GlobalSetup]
+        public void Setup()
         {
-            BenchmarkRunner.Run<KeccakQuest>();
-//            BenchmarkRunner.Run<BytesCompare>();
-//            BenchmarkRunner.Run<BigIntegerVsUInt256Add>();
-//            BenchmarkRunner.Run<BigIntegerVsUInt256FromBytes>();
+            _a = new byte[64];
+            _b = new byte[64];
+            if (!AllZeros)
+            {
+                _random.NextBytes(_a);
+                _a.CopyTo(_b.AsSpan());
+            }
+        }
+        
+        [Benchmark]
+        public byte[] Proposed()
+        {
+            throw new NotImplementedException();
+        }
+        
+        [Benchmark]
+        public byte[] Current()
+        {
+            return Keccak.Compute(_a).Bytes;
         }
     }
 }

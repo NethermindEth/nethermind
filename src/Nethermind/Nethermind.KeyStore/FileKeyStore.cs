@@ -123,7 +123,7 @@ namespace Nethermind.KeyStore
             }         
 
             var restoredMac = Keccak.Compute(derivedKey.Slice(kdfParams.DkLen - 16, 16).Concat(cipher).ToArray()).Bytes;
-            if (!Bytes.UnsafeCompare(mac, restoredMac))
+            if (!Bytes.AreEqual(mac, restoredMac))
             {
                 return (null, Result.Fail("Incorrect MAC"));
             }

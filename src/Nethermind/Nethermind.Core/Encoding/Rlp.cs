@@ -1115,7 +1115,7 @@ namespace Nethermind.Core.Encoding
                 return false;
             }
 
-            return Extensions.Bytes.UnsafeCompare(Bytes, other.Bytes);
+            return Extensions.Bytes.AreEqual(Bytes, other.Bytes);
         }
 
         public override string ToString()

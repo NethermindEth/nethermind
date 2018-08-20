@@ -58,7 +58,7 @@ namespace Nethermind.Core.Crypto
 
         private bool Equals(PrivateKey other)
         {
-            return Bytes.UnsafeCompare(KeyBytes, other.KeyBytes);
+            return Bytes.AreEqual(KeyBytes, other.KeyBytes);
         }
 
         public override bool Equals(object obj)

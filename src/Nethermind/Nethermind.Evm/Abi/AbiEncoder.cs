@@ -96,7 +96,7 @@ namespace Nethermind.Evm.Abi
                 argTypeNames[i] = signature.Types[i].ToString();
             }
 
-            if (!Bytes.UnsafeCompare(data.Slice(0, 4), ComputeAddress(signature)))
+            if (!Bytes.AreEqual(data.Slice(0, 4), ComputeAddress(signature)))
             {
                 throw new AbiException(
                     $"Signature in encoded ABI data is not consistent with {ComputeSignature(signature.Name, signature.Types)}");

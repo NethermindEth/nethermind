@@ -414,7 +414,7 @@ namespace Nethermind.Store
 
                     ConnectNodes(null);
                 }
-                else if (Bytes.UnsafeCompare(context.UpdateValue, node.Value))
+                else if (Bytes.AreEqual(context.UpdateValue, node.Value))
                 {
                     return context.UpdateValue;
                 }
@@ -475,7 +475,7 @@ namespace Nethermind.Store
             byte[] shorterPathValue;
             byte[] longerPathValue;
 
-            if (Bytes.UnsafeCompare(shorterPath, node.Path))
+            if (Bytes.AreEqual(shorterPath, node.Path))
             {
                 shorterPathValue = node.Value;
                 longerPathValue = context.UpdateValue;
@@ -504,7 +504,7 @@ namespace Nethermind.Store
                     return context.UpdateValue;
                 }
 
-                if (!Bytes.UnsafeCompare(node.Value, context.UpdateValue))
+                if (!Bytes.AreEqual(node.Value, context.UpdateValue))
                 {
                     node.Value = context.UpdateValue;
                     node.IsDirty = true;
