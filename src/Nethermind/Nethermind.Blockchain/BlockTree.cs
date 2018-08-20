@@ -89,9 +89,13 @@ namespace Nethermind.Blockchain
             }
         }
 
+        public bool CanAcceptNewBlocks { get; private set; } // no need to sync it at the moment
+
         public async Task LoadBlocksFromDb(CancellationToken cancellationToken, UInt256? startBlockNumber = null,
             int batchSize = DbLoadBatchSize, int maxBlocksToLoad = int.MaxValue)
         {
+            CanAcceptNewBlocks = false;
+
             if (startBlockNumber == null)
             {
                 startBlockNumber = Head?.Number ?? 0;
@@ -108,9 +112,7 @@ namespace Nethermind.Blockchain
             }
             else
             {
-                if (_logger.IsInfoEnabled)
-                    _logger.Info(
-                        $"Found {blocksToLoad} blocks to load starting from current head block {Head?.ToString(BlockHeader.Format.Short)}.");
+                if (_logger.IsInfoEnabled) _logger.Info($"Found {blocksToLoad} blocks to load from DB starting from current head block {Head?.ToString(BlockHeader.Format.Short)}.");
             }
 
             UInt256 blockNumber = startBlockNumber.Value;
@@ -147,7 +149,7 @@ namespace Nethermind.Blockchain
                 {
                     if (_logger.IsInfoEnabled)
                     {
-                        _logger.Info($"Loaded {i + 1} blocks, waiting for processor.");
+                        _logger.Info($"Loaded {i + 1} out of {blocksToLoad} blocks from DB into processing queue, waiting for processor before loading more.");
                     }
 
                     _dbBatchProcessed = new TaskCompletionSource<object>();
@@ -170,6 +172,8 @@ namespace Nethermind.Blockchain
             {
                 _logger.Info($"Completed loading blocks from DB at block {blockNumber}");
             }
+
+            CanAcceptNewBlocks = true;
         }
 
         public event EventHandler<BlockEventArgs> BlockAddedToMain;
@@ -185,6 +189,11 @@ namespace Nethermind.Blockchain
 
         public AddBlockResult SuggestBlock(Block block)
         {
+            if (!CanAcceptNewBlocks)
+            {
+                throw new InvalidOperationException($"{nameof(BlockTree)} not ready to accept new blocks.");
+            }
+
             if (block.Number == 0)
             {
                 if (BestSuggested != null)
@@ -683,7 +692,7 @@ namespace Nethermind.Blockchain
         {
             if (block.Number == 0)
             {
-                block.Header.TotalTransactions = (ulong)block.Transactions.Length;
+                block.Header.TotalTransactions = (ulong) block.Transactions.Length;
             }
             else
             {
@@ -699,7 +708,7 @@ namespace Nethermind.Blockchain
                         $"Parent's {nameof(parent.TotalTransactions)} unknown when calculating for {block}");
                 }
 
-                block.Header.TotalTransactions = parent.TotalTransactions + (ulong)block.Transactions.Length;
+                block.Header.TotalTransactions = parent.TotalTransactions + (ulong) block.Transactions.Length;
             }
         }
     }

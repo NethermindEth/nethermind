@@ -72,7 +72,7 @@ namespace Nethermind.Network.Discovery
         {
             try
             {
-                _logger.Debug($"Received msg: {message}");
+                if(_logger.IsTraceEnabled) _logger.Trace($"Received msg: {message}");
 
                 MessageType msgType = message.MessageType;
 
@@ -244,14 +244,14 @@ namespace Nethermind.Network.Discovery
             if (activeExcluded.Length == cleanupCount)
             {
                 int removeCounter = RemoveManagers(activeExcluded, activeExcluded.Length);
-                _logger.Info($"Removed: {removeCounter} activeExcluded node lifecycle managers");
+                if(_logger.IsInfoEnabled) _logger.Info($"Removed: {removeCounter} activeExcluded node lifecycle managers");
                 return;
             }
 
             KeyValuePair<string, INodeLifecycleManager>[] unreachable = _nodeLifecycleManagers.Where(x => x.Value.State == NodeLifecycleState.Unreachable).Take(cleanupCount - activeExcluded.Length).ToArray();
             int removeCount = RemoveManagers(activeExcluded, activeExcluded.Length);
             removeCount = removeCount + RemoveManagers(unreachable, unreachable.Length);
-            _logger.Info($"Removed: {removeCount} unreachable node lifecycle managers");
+            if(_logger.IsInfoEnabled) _logger.Info($"Removed: {removeCount} unreachable node lifecycle managers");
         }
 
         private int RemoveManagers(KeyValuePair<string, INodeLifecycleManager>[] items, int count)

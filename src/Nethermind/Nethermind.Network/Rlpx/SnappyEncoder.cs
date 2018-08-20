@@ -36,7 +36,7 @@ namespace Nethermind.Network.Rlpx
         
         protected override void Encode(IChannelHandlerContext context, Packet message, List<object> output)
         {
-            _logger.Debug($"Compressing with Snappy a message of length {message.Data.Length}");
+            if(_logger.IsTraceEnabled) _logger.Trace($"Compressing with Snappy a message of length {message.Data.Length}");
             message.Data = SnappyCodec.Compress(message.Data); 
             output.Add(message);
         }

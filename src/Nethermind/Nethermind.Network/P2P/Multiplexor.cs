@@ -37,9 +37,9 @@ namespace Nethermind.Network.P2P
         private readonly ConcurrentDictionary<int, int> _windowSizes = new ConcurrentDictionary<int, int>();
         private IChannelHandlerContext _context;
 
-        public Multiplexor(ILogger logger, int dataTransferWindow = 1024 * 8)
+        public Multiplexor(ILogManager logManager, int dataTransferWindow = 1024 * 8)
         {
-            _logger = logger;
+            _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _dataTransferWindow = dataTransferWindow;
             WindowSizes = new ReadOnlyDictionary<int, int>(_windowSizes);
         }
@@ -60,6 +60,11 @@ namespace Nethermind.Network.P2P
 
         private void Send(Packet packet)
         {
+            if (_context.Channel.Active)
+            {
+                return;
+            }
+         
             // TODO: split packet, encode frames, assign to buffers for appripriate protocols
             // TODO: release in cycle from queues
             _context.WriteAndFlushAsync(packet).ContinueWith(t =>
@@ -68,25 +73,13 @@ namespace Nethermind.Network.P2P
                 {
                     if (_context.Channel != null && !_context.Channel.Active)
                     {
-                        if (_logger.IsDebugEnabled)
-                        {
-                            _logger.Error($"{nameof(NettyP2PHandler)} error in multiplexor, channel is not active", t.Exception);
-                        }
+                        if (_logger.IsDebugEnabled) _logger.Error($"{nameof(NettyP2PHandler)} error in multiplexor, channel is not active", t.Exception);
                     }
-                    else
-                    {
-                        if (_logger.IsErrorEnabled)
-                        {
-                            _logger.Error($"{nameof(NettyP2PHandler)} error in multiplexor, channel is active", t.Exception);
-                        }
-                    }
+                    else if (_logger.IsErrorEnabled) _logger.Error($"{nameof(NettyP2PHandler)} error in multiplexor, channel is active", t.Exception);
                 }
                 else if (t.IsCompleted)
                 {
-                    if (_logger.IsDebugEnabled)
-                    {
-                        _logger.Debug($"Packet ({packet.Protocol}.{packet.PacketType}) pushed");
-                    }
+                    if (_logger.IsTraceEnabled) _logger.Trace($"Packet ({packet.Protocol}.{packet.PacketType}) pushed");
                 }
             });
         }

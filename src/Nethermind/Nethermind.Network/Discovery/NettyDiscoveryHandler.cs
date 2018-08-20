@@ -81,7 +81,7 @@ namespace Nethermind.Network.Discovery
 
             try
             {
-                _logger.Debug($"Sending message: {discoveryMessage}");
+                if(_logger.IsTraceEnabled) _logger.Trace($"Sending message: {discoveryMessage}");
                 message = Seserialize(discoveryMessage);
             }
             catch (Exception e)
@@ -123,7 +123,7 @@ namespace Nethermind.Network.Discovery
             }
             
             var type = (MessageType)typeRaw;
-            _logger.Debug($"Received message: {type}");
+            if(_logger.IsTraceEnabled) _logger.Trace($"Received message: {type}");
 
             DiscoveryMessage message;
 

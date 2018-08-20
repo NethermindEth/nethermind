@@ -60,7 +60,16 @@ namespace Nethermind.Network.Discovery
         private MultithreadEventLoopGroup _group;
         private NettyDiscoveryHandler _discoveryHandler;
 
-        public DiscoveryApp(INodesLocator nodesLocator, IDiscoveryManager discoveryManager, INodeFactory nodeFactory, INodeTable nodeTable, IMessageSerializationService messageSerializationService, ICryptoRandom cryptoRandom, IDiscoveryStorage discoveryStorage, IConfigProvider configurationProvider, ILogManager logManager)
+        public DiscoveryApp(
+            INodesLocator nodesLocator,
+            IDiscoveryManager discoveryManager,
+            INodeFactory nodeFactory,
+            INodeTable nodeTable,
+            IMessageSerializationService messageSerializationService,
+            ICryptoRandom cryptoRandom,
+            IDiscoveryStorage discoveryStorage,
+            IConfigProvider configurationProvider,
+            ILogManager logManager)
         {
             _logManager = logManager;
             _logger = _logManager.GetClassLogger();
@@ -86,7 +95,6 @@ namespace Nethermind.Network.Discovery
         {
             try
             {
-                _logger.Info("Initializing UDP channel.");
                 InitializeUdpChannel();
             }
             catch (Exception e)
@@ -107,9 +115,8 @@ namespace Nethermind.Network.Discovery
 
         private void InitializeUdpChannel()
         {
+            _logger.Info($"Starting Discovery UDP Channel: {_configurationProvider.MasterHost}:{_configurationProvider.MasterPort}");
             _group = new MultithreadEventLoopGroup(1);
-            _logger.Note($"Starting Discovery UDP Channel: {_configurationProvider.MasterHost}:{_configurationProvider.MasterPort}");
-
             var bootstrap = new Bootstrap();
             bootstrap
                 .Group(_group)
@@ -161,13 +168,14 @@ namespace Nethermind.Network.Discovery
                 AddPersistedNodes();
 
                 //Step 2 - initialize bootNodes
-                _logger.Info("Initializing bootnodes.");
+                if(_logger.IsDebugEnabled) _logger.Debug("Initializing bootnodes.");
                 while (true)
                 {
                     if (await InitializeBootnodes())
                     {
                         break;
                     }
+                    
                     _logger.Warn("Could not communicate with any bootnodes.");
                     
                     //Check if we were able to communicate with any trusted nodes or persisted nodes
@@ -176,6 +184,7 @@ namespace Nethermind.Network.Discovery
                     {
                         break;
                     }
+                    
                     _logger.Warn("Could not communicate with any nodes.");
                     await Task.Delay(1000);
                 }
@@ -211,21 +220,15 @@ namespace Nethermind.Network.Discovery
                     continue;;
                 }
                 manager.NodeStats.CurrentPersistedNodeReputation = networkNode.Reputation;
-                if (_logger.IsDebugEnabled)
-                {
-                    _logger.Debug($"Adding persisted node {networkNode.NodeId}@{networkNode.Host}:{networkNode.Port}");
-                }
+                if (_logger.IsTraceEnabled) _logger.Trace($"Adding persisted node {networkNode.NodeId}@{networkNode.Host}:{networkNode.Port}");
             }
 
-            if (_logger.IsNoteEnabled)
-            {
-                _logger.Note($"Added persisted discovery nodes: {nodes.Length}");
-            }
+            if (_logger.IsInfoEnabled) _logger.Info($"Added persisted discovery nodes: {nodes.Length}");
         }
 
         private void InitializeDiscoveryTimer()
         {
-            _logger.Info("Starting discovery timer");
+            if(_logger.IsDebugEnabled) _logger.Debug("Starting discovery timer");
             _discoveryTimer = new Timer(_configurationProvider.DiscoveryInterval) {AutoReset = false};
             _discoveryTimer.Elapsed += async (sender, e) =>
             {
@@ -305,12 +308,10 @@ namespace Nethermind.Network.Discovery
             var bootNodes = _configurationProvider.BootNodes;
             if (bootNodes == null || !bootNodes.Any())
             {
-                if (_logger.IsWarnEnabled)
-                {
-                    _logger.Warn("No bootnodes specified in configuration");
-                }
+                if (_logger.IsWarnEnabled) _logger.Warn("No bootnodes specified in configuration");
                 return true;
             }
+            
             var managers = new List<INodeLifecycleManager>();
             for (var i = 0; i < bootNodes.Length; i++)
             {
@@ -325,10 +326,12 @@ namespace Nethermind.Network.Discovery
                 }
                 else
                 {
-                    _logger.Warn($"Bootnode config contains itself: {bootnode.NodeId}");
+                    _logger.Warn($"Bootnode config contains self: {bootnode.NodeId}");
                 }
             }
 
+            // TODO: strange sync - can we just have a timeout within which we expect to be notified about an added active manager?
+            // TODO: Task.WhenAny with delay should do
             //Wait for pong message to come back from Boot nodes
             var maxWaitTime = _configurationProvider.BootNodePongTimeout;
             var itemTime = maxWaitTime / 100;
@@ -339,12 +342,8 @@ namespace Nethermind.Network.Discovery
                     break;
                 }
 
-                if (_logger.IsDebugEnabled)
-                {
-                    _logger.Debug($"Waiting {itemTime} ms for bootnodes to respond");
-                }
-
-                await Task.Delay(1000);
+                if (_logger.IsTraceEnabled) _logger.Trace($"Waiting {itemTime} ms for bootnodes to respond");
+                await Task.Delay(1000); // TODO: do we need this?
             }
 
             var reachedNodeCounter = 0;
@@ -353,41 +352,28 @@ namespace Nethermind.Network.Discovery
                 var manager = managers[i];
                 if (manager.State != NodeLifecycleState.Active)
                 {
-                    if (_logger.IsWarnEnabled)
-                    {
-                        _logger.Warn($"Cannot reach bootnode: {manager.ManagedNode.Host}:{manager.ManagedNode.Port}");
-                    }
+                    if (_logger.IsDebugEnabled) _logger.Debug($"Could not reach bootnode: {manager.ManagedNode.Host}:{manager.ManagedNode.Port}");
                 }
                 else
                 {
-                    if (_logger.IsInfoEnabled)
-                    {
-                        _logger.Info($"Reached bootnode: {manager.ManagedNode.Host}:{manager.ManagedNode.Port}");
-                    }
+                    if (_logger.IsDebugEnabled) _logger.Debug($"Reached bootnode: {manager.ManagedNode.Host}:{manager.ManagedNode.Port}");
                     reachedNodeCounter++;
                 }
             }
 
+            if (_logger.IsInfoEnabled) _logger.Info($"Connected to {reachedNodeCounter} bootnodes");
             return reachedNodeCounter > 0;
         }
 
         private async Task RunDiscoveryAsync()
         {
-            if (_logger.IsInfoEnabled)
-            {
-                _logger.Info("Running discovery process.");
-            }
-            
+            if (_logger.IsDebugEnabled) _logger.Debug("Running discovery process.");
             await _nodesLocator.LocateNodesAsync();
         }
 
         private async Task RunRefreshAsync()
         {
-            if (_logger.IsInfoEnabled)
-            {
-                _logger.Info("Running refresh process.");
-            }
-            
+            if (_logger.IsDebugEnabled) _logger.Debug("Running refresh process.");            
             var randomId = _cryptoRandom.GenerateRandomBytes(64);
             await _nodesLocator.LocateNodesAsync(randomId);
         }

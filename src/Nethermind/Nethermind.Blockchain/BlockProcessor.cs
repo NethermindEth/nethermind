@@ -70,10 +70,7 @@ namespace Nethermind.Blockchain
             for (int i = 0; i < transactions.Length; i++)
             {
                 var transaction = transactions[i];
-                if (_logger.IsDebugEnabled)
-                {
-                    _logger.Debug($"Processing transaction {i}");
-                }
+                if (_logger.IsTraceEnabled) _logger.Trace($"Processing transaction {i}");
 
                 // TODO: setup a DB for this
 //                _transactionStore.AddTransaction(transaction);
@@ -147,9 +144,9 @@ namespace Nethermind.Blockchain
 
                 if (tryOnly)
                 {
-                    if (_logger.IsDebugEnabled)
+                    if (_logger.IsTraceEnabled)
                     {
-                        _logger.Debug($"REVERTING BLOCKS - STATE ROOT {_stateProvider.StateRoot}");
+                        _logger.Trace($"REVERTING BLOCKS - STATE ROOT {_stateProvider.StateRoot}");
                     }
 
                     _dbProvider.Restore(dbSnapshot);
@@ -157,9 +154,9 @@ namespace Nethermind.Blockchain
                     _stateProvider.Reset();
                     _stateProvider.StateRoot = snapshotStateRoot;
 
-                    if (_logger.IsDebugEnabled)
+                    if (_logger.IsTraceEnabled)
                     {
-                        _logger.Debug($"REVERTED BLOCKS (JUST VALIDATED FOR MINING) - STATE ROOT {_stateProvider.StateRoot}");
+                        _logger.Trace($"REVERTED BLOCKS (JUST VALIDATED FOR MINING) - STATE ROOT {_stateProvider.StateRoot}");
                     }
                 }
 
@@ -167,9 +164,9 @@ namespace Nethermind.Blockchain
             }
             catch (InvalidBlockException) // TODO: which exception to catch here?
             {
-                if (_logger.IsDebugEnabled)
+                if (_logger.IsTraceEnabled)
                 {
-                    _logger.Debug($"REVERTING BLOCKS - STATE ROOT {_stateProvider.StateRoot}");
+                    _logger.Trace($"REVERTING BLOCKS - STATE ROOT {_stateProvider.StateRoot}");
                 }
 
                 _dbProvider.Restore(dbSnapshot);
@@ -177,14 +174,14 @@ namespace Nethermind.Blockchain
                 _stateProvider.Reset();
                 _stateProvider.StateRoot = snapshotStateRoot;
 
-                if (_logger.IsDebugEnabled)
+                if (_logger.IsTraceEnabled)
                 {
-                    _logger.Debug($"REVERTED BLOCKS - STATE ROOT {_stateProvider.StateRoot}");
+                    _logger.Trace($"REVERTED BLOCKS - STATE ROOT {_stateProvider.StateRoot}");
                 }
 
-                if (_logger.IsErrorEnabled)
+                if (_logger.IsWarnEnabled)
                 {
-                    _logger.Error($"THROWING INVALID BLOCK");
+                    _logger.Warn($"Invalid block");
                 }
 
                 throw;
@@ -236,18 +233,18 @@ namespace Nethermind.Blockchain
             Keccak transactionsRoot = GetTransactionsRoot(suggestedBlock.Transactions);
             if (transactionsRoot != suggestedBlock.Header.TransactionsRoot)
             {
-                if (_logger.IsDebugEnabled)
+                if (_logger.IsTraceEnabled)
                 {
-                    _logger.Debug($"TRANSACTIONS_ROOT {transactionsRoot} != TRANSACTIONS_ROOT {transactionsRoot}");
+                    _logger.Trace($"TRANSACTIONS_ROOT {transactionsRoot} != TRANSACTIONS_ROOT {transactionsRoot}");
                 }
             }
 
-            if (_logger.IsDebugEnabled)
+            if (_logger.IsTraceEnabled)
             {
-                _logger.Debug($"Block beneficiary {suggestedBlock.Header.Beneficiary}");
-                _logger.Debug($"Block gas limit {suggestedBlock.Header.GasLimit}");
-                _logger.Debug($"Block gas used {suggestedBlock.Header.GasUsed}");
-                _logger.Debug($"Block difficulty {suggestedBlock.Header.Difficulty}");
+                _logger.Trace($"Block beneficiary {suggestedBlock.Header.Beneficiary}");
+                _logger.Trace($"Block gas limit {suggestedBlock.Header.GasLimit}");
+                _logger.Trace($"Block gas used {suggestedBlock.Header.GasUsed}");
+                _logger.Trace($"Block difficulty {suggestedBlock.Header.Difficulty}");
             }
 
             Block processedBlock = ProcessBlock(
@@ -278,9 +275,9 @@ namespace Nethermind.Blockchain
                 throw new InvalidBlockException($"{processedBlock}");
             }
 
-            if (_logger.IsDebugEnabled)
+            if (_logger.IsTraceEnabled)
             {
-                _logger.Debug($"Committing block - state root {_stateProvider.StateRoot}");
+                _logger.Trace($"Committing block - state root {_stateProvider.StateRoot}");
             }
 
             return processedBlock;
@@ -312,11 +309,11 @@ namespace Nethermind.Blockchain
 
         private void ApplyMinerRewards(Block block)
         {
-            if (_logger.IsDebugEnabled) _logger.Debug("Applying miner rewards:");
+            if (_logger.IsTraceEnabled) _logger.Trace("Applying miner rewards:");
             BlockReward[] rewards = _rewardCalculator.CalculateRewards(block);
             for (int i = 0; i < rewards.Length; i++)
             {
-                if(_logger.IsDebugEnabled) _logger.Debug($"    {((decimal)rewards[i].Value / (decimal)Unit.Ether):N3}{Unit.EthSymbol} for account at {rewards[i].Address}");
+                if(_logger.IsTraceEnabled) _logger.Trace($"    {((decimal)rewards[i].Value / (decimal)Unit.Ether):N3}{Unit.EthSymbol} for account at {rewards[i].Address}");
                 if (!_stateProvider.AccountExists(rewards[i].Address))
                 {
                     _stateProvider.CreateAccount(rewards[i].Address, (UInt256)rewards[i].Value);

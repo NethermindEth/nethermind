@@ -57,16 +57,11 @@ namespace Nethermind.Core.Logging
         public void Error(string text, Exception ex = null)
         {
         }
-
-        public void Note(string text)
-        {
-        }
-
+        
         public bool IsInfoEnabled { get; } = false;
         public bool IsWarnEnabled { get; } = false;
         public bool IsDebugEnabled { get; } = false;
         public bool IsTraceEnabled { get; } = false;
         public bool IsErrorEnabled { get; } = false;
-        public bool IsNoteEnabled { get; } = false;
     }
 }

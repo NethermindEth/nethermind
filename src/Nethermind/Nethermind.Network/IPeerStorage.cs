@@ -16,8 +16,6 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Network.Discovery.RoutingTable;
-
 namespace Nethermind.Network
 {
     public interface IPeerStorage : INetworkStorage

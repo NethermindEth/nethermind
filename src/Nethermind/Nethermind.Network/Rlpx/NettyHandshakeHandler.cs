@@ -36,6 +36,7 @@ namespace Nethermind.Network.Rlpx
     {
         private readonly IByteBuffer _buffer = Unpooled.Buffer(256); // TODO: analyze buffer size effect
         private readonly EncryptionHandshake _handshake = new EncryptionHandshake();
+        private readonly ILogManager _logManager;
         private readonly ILogger _logger;
         private readonly EncryptionHandshakeRole _role;
 
@@ -50,12 +51,13 @@ namespace Nethermind.Network.Rlpx
             IP2PSession p2PSession,
             EncryptionHandshakeRole role,
             NodeId remoteId,
-            ILogger logger)
+            ILogManager logManager)
         {
             _handshake.RemoteNodeId = remoteId;
             _role = role;
             _remoteId = remoteId;
-            _logger = logger;
+            _logManager = logManager?? throw new ArgumentNullException(nameof(NettyHandshakeHandler));
+            _logger = logManager.GetClassLogger(); 
             _service = service;
             _p2PSession = p2PSession;
             _initCompletionSource = new TaskCompletionSource<object>();
@@ -178,7 +180,7 @@ namespace Nethermind.Network.Rlpx
                 if (_logger.IsTraceEnabled) _logger.Trace($"Registering {nameof(NettyPacketSplitter)} for {_remoteId} @ {context.Channel.RemoteAddress}");
                 context.Channel.Pipeline.AddLast(new NettyPacketSplitter());
 
-                Multiplexor multiplexor = new Multiplexor(_logger);
+                Multiplexor multiplexor = new Multiplexor(_logManager);
                 if (_logger.IsTraceEnabled) _logger.Trace($"Registering {nameof(Multiplexor)} for {_p2PSession.RemoteNodeId} @ {context.Channel.RemoteAddress}");
                 context.Channel.Pipeline.AddLast(multiplexor);
 
@@ -213,10 +215,7 @@ namespace Nethermind.Network.Rlpx
 
             if (firstTask != receivedInitMsgTask)
             {
-                if (_logger.IsInfoEnabled)
-                {
-                    _logger.Info($"Disconnecting due to timeout for handshake: {_p2PSession.RemoteNodeId}@{_p2PSession.RemoteHost}:{_p2PSession.RemotePort}");
-                }
+                if (_logger.IsDebugEnabled) _logger.Debug($"Disconnecting due to timeout for handshake: {_p2PSession.RemoteNodeId}@{_p2PSession.RemoteHost}:{_p2PSession.RemotePort}");
                 //It will trigger channel.CloseCompletion which will trigger DisconnectAsync on the session
                 await _channel.DisconnectAsync();
             }

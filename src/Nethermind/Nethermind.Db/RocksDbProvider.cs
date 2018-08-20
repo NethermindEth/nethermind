@@ -50,14 +50,14 @@ namespace Nethermind.Db
 
         public void Restore(int snapshot)
         {
-            if (_logger.IsDebugEnabled) _logger.Debug($"Restoring all DBs to {snapshot}");
+            if (_logger.IsTraceEnabled) _logger.Trace($"Restoring all DBs to {snapshot}");
             _stateDb.Restore(-1);
             _codeDb.Restore(-1);
         }
 
         public void Commit(IReleaseSpec spec)
         {
-            if (_logger.IsDebugEnabled) _logger.Debug("Committing all DBs");
+            if (_logger.IsTraceEnabled) _logger.Trace("Committing all DBs");
             _stateDb.Commit(spec);
             _codeDb.Commit(spec);
         }

@@ -38,7 +38,7 @@ namespace Nethermind.Network.Discovery.Lifecycle
 
         public void StartEvictionProcess(INodeLifecycleManager evictionCandidate, INodeLifecycleManager replacementCandidate)
         {
-            _logger.Debug($"Starting eviction process, evictionCandidate: {evictionCandidate.ManagedNode}, replacementCandidate: {replacementCandidate.ManagedNode}");
+            if(_logger.IsTraceEnabled) _logger.Trace($"Starting eviction process, evictionCandidate: {evictionCandidate.ManagedNode}, replacementCandidate: {replacementCandidate.ManagedNode}");
 
             var newPair = new EvictionPair
             {
@@ -51,7 +51,7 @@ namespace Nethermind.Network.Discovery.Lifecycle
             {
                 //existing eviction in process
                 //TODO add queue for further evictions
-                _logger.Debug($"Existing eviction in process, evictionCandidate: {evictionCandidate.ManagedNode}, replacementCandidate: {replacementCandidate.ManagedNode}");
+                if(_logger.IsTraceEnabled) _logger.Trace($"Existing eviction in process, evictionCandidate: {evictionCandidate.ManagedNode}, replacementCandidate: {replacementCandidate.ManagedNode}");
                 return;
             }
            
@@ -74,7 +74,7 @@ namespace Nethermind.Network.Discovery.Lifecycle
             if (state == NodeLifecycleState.Active)
             {
                 //survived eviction
-                _logger.Debug($"Survived eviction process, evictionCandidate: {evictionCandidate.ManagedNode}, replacementCandidate: {evictionPair.ReplacementCandidate.ManagedNode}");
+                if(_logger.IsTraceEnabled) _logger.Trace($"Survived eviction process, evictionCandidate: {evictionCandidate.ManagedNode}, replacementCandidate: {evictionPair.ReplacementCandidate.ManagedNode}");
                 evictionPair.ReplacementCandidate.LostEvictionProcess();
                 CloseEvictionProcess(evictionCandidate);
             }
@@ -82,7 +82,7 @@ namespace Nethermind.Network.Discovery.Lifecycle
             {
                 //lost eviction, being replaced in nodeTable
                 _nodeTable.ReplaceNode(evictionCandidate.ManagedNode, evictionPair.ReplacementCandidate.ManagedNode);
-                _logger.Debug($"Lost eviction process, evictionCandidate: {evictionCandidate.ManagedNode}, replacementCandidate: {evictionPair.ReplacementCandidate.ManagedNode}");
+                if(_logger.IsTraceEnabled) _logger.Trace($"Lost eviction process, evictionCandidate: {evictionCandidate.ManagedNode}, replacementCandidate: {evictionPair.ReplacementCandidate.ManagedNode}");
                 CloseEvictionProcess(evictionCandidate);
             }
         }

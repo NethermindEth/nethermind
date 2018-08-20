@@ -16,13 +16,11 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using Nethermind.Config;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
@@ -62,7 +60,7 @@ namespace Nethermind.Network.Discovery
         {
             var alreadyTriedNodes = new List<string>();
             
-            _logger.Note($"Starting discovery process for node: {(searchedNodeId != null ? $"randomNode: {new PublicKey(searchedNodeId).ToShortString()}" : $"masterNode: {_masterNode.Id}")}");
+            if(_logger.IsDebugEnabled) _logger.Debug($"Starting discovery process for node: {(searchedNodeId != null ? $"randomNode: {new PublicKey(searchedNodeId).ToShortString()}" : $"masterNode: {_masterNode.Id}")}");
             var nodesCountBeforeDiscovery = _nodeTable.Buckets.Sum(x => x.Items.Count);
 
             for (var i = 0; i < _configurationProvider.MaxDiscoveryRounds; i++)
@@ -84,14 +82,14 @@ namespace Nethermind.Network.Discovery
                     }
                     candTryIndex = candTryIndex + 1;
 
-                    _logger.Debug($"Waiting {_configurationProvider.DiscoveryNewCycleWaitTime} for new nodes");
+                    _logger.Trace($"Waiting {_configurationProvider.DiscoveryNewCycleWaitTime} for new nodes");
                     //we need to wait some time for pong messages received from new nodes we reached out to    
                     await Task.Delay(_configurationProvider.DiscoveryNewCycleWaitTime);
                 }
 
                 if (!tryCandidates.Any())
                 {
-                    _logger.Debug("No more closer candidates");
+                    _logger.Trace("No more closer candidates");
                     break;
                 }
 
@@ -104,7 +102,7 @@ namespace Nethermind.Network.Discovery
                     var nodesToSend = tryCandidates.Skip(nodesTriedCount).Take(count).ToArray();
                     if (!nodesToSend.Any())
                     {
-                        _logger.Info($"No more nodes to send, sent {successRequestsCount} successfull requests, failedRequestCounter: {failRequestCount}, nodesTriedCounter: {nodesTriedCount}");
+                        _logger.Debug($"No more nodes to send, sent {successRequestsCount} successfull requests, failedRequestCounter: {failRequestCount}, nodesTriedCounter: {nodesTriedCount}");
                         break;
                     }
 
@@ -127,13 +125,13 @@ namespace Nethermind.Network.Discovery
 
                     if (successRequestsCount >= _configurationProvider.Concurrency)
                     {
-                        _logger.Info($"Sent {successRequestsCount} successfull requests, failedRequestCounter: {failRequestCount}, nodesTriedCounter: {nodesTriedCount}");
+                        if(_logger.IsDebugEnabled) _logger.Debug($"Sent {successRequestsCount} successfull requests, failedRequestCounter: {failRequestCount}, nodesTriedCounter: {nodesTriedCount}");
                         break;
                     }
                 }
             }
             var nodesCountAfterDiscovery = _nodeTable.Buckets.Sum(x => x.Items.Count);
-            _logger.Note($"Finished discovery cycle, tried contacting {alreadyTriedNodes.Count} nodes. All nodes count before the process: {nodesCountBeforeDiscovery}, after the process: {nodesCountAfterDiscovery}");
+            if(_logger.IsDebugEnabled) _logger.Debug($"Finished discovery cycle, tried contacting {alreadyTriedNodes.Count} nodes. All nodes count before the process: {nodesCountBeforeDiscovery}, after the process: {nodesCountAfterDiscovery}");
 
             if (_logger.IsDebugEnabled)
             {
@@ -158,7 +156,7 @@ namespace Nethermind.Network.Discovery
             }
 
             sb.AppendLine("------------------------------------------------------");
-            _logger.Debug(sb.ToString());
+            if(_logger.IsTraceEnabled) _logger.Trace(sb.ToString());
         }
 
         private async Task<Result[]> SendFindNode(Node[] nodesToSend, byte[] searchedNodeId)

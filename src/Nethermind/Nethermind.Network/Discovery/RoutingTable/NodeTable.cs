@@ -155,7 +155,7 @@ namespace Nethermind.Network.Discovery.RoutingTable
             } 
 
             MasterNode = _nodeFactory.CreateNode(masterNodeKey, _configurationProvider.MasterHost, _configurationProvider.MasterPort);
-            _logger.Info($"Created MasterNode: {MasterNode}");
+            _logger.Debug($"Created MasterNode: {MasterNode}");
 
             for (var i = 0; i < Buckets.Length; i++)
             {

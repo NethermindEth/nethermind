@@ -61,7 +61,7 @@ namespace Nethermind.Network.Rlpx
 
                 if (input.ReadableBytes == 0)
                 {
-                    _logger.Warn($"{context.Channel.RemoteAddress} sent an empty frame, disconnecting");
+                    if(_logger.IsDebugEnabled) _logger.Debug($"{context.Channel.RemoteAddress} sent an empty frame, disconnecting");
                     context.CloseAsync();
                     return;
                 }

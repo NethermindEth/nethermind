@@ -18,7 +18,6 @@
 
 using System;
 using System.Threading.Tasks;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Model;
 using Nethermind.Network.Stats;
 

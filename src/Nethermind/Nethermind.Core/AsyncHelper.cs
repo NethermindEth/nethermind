@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -17,21 +17,31 @@
  */
 
 using System;
+using System.Threading;
+using System.Threading.Tasks;
 
-namespace Nethermind.Core.Logging
+namespace Nethermind.Core
 {
-    public interface ILogger
-    {    
-        void Info(string text);
-        void Warn(string text);
-        void Debug(string text);
-        void Trace(string text);
-        void Error(string text, Exception ex = null);
+    public static class AsyncHelper
+    {
+        private static readonly TaskFactory TaskFactory = new
+            TaskFactory(CancellationToken.None,
+                TaskCreationOptions.None,
+                TaskContinuationOptions.None,
+                TaskScheduler.Default);
 
-        bool IsInfoEnabled { get; }
-        bool IsWarnEnabled { get; }
-        bool IsDebugEnabled { get; }
-        bool IsTraceEnabled { get; }
-        bool IsErrorEnabled { get; }
+        public static TResult RunSync<TResult>(Func<Task<TResult>> func)
+            => TaskFactory
+                .StartNew(func)
+                .Unwrap()
+                .GetAwaiter()
+                .GetResult();
+
+        public static void RunSync(Func<Task> func)
+            => TaskFactory
+                .StartNew(func)
+                .Unwrap()
+                .GetAwaiter()
+                .GetResult();
     }
 }

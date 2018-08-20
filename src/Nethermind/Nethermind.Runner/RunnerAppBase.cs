@@ -51,7 +51,7 @@ namespace Nethermind.Runner
 
         public void Run(string[] args)
         {
-            (var app, var buildConfigProvider, var getDbBasePath) = BuildCommandLineApp();
+            var (app, buildConfigProvider, getDbBasePath) = BuildCommandLineApp();
             ManualResetEvent appClosed = new ManualResetEvent(false);
             app.OnExecute(async () =>
             {
@@ -136,7 +136,13 @@ namespace Nethermind.Runner
                 networkConfig.DbBasePath = initParams.BaseDbPath;
 
                 _ethereumRunner = new EthereumRunner(configProvider, networkHelper, logManager);
-                await _ethereumRunner.Start();
+                
+                Task ethRunnerTask = _ethereumRunner.Start();
+                await ethRunnerTask;
+                if (ethRunnerTask.IsFaulted)
+                {
+                    
+                }
 
                 if (initParams.JsonRpcEnabled)
                 {

@@ -47,11 +47,7 @@ namespace Nethermind.Network.P2P
 
         protected void Send<T>(T message) where T : P2PMessage
         {
-            if (Logger.IsDebugEnabled)
-            {
-                Logger.Debug($"Sending {typeof(T).Name}");
-            }
-
+            if (Logger.IsTraceEnabled) Logger.Trace($"Sending {typeof(T).Name}");
             Packet packet = new Packet(message.Protocol, message.PacketType, _serializer.Serialize(message));
             P2PSession.DeliverMessage(packet);   
         }
@@ -63,9 +59,9 @@ namespace Nethermind.Network.P2P
 
             if (firstTask != receivedInitMsgTask)
             {
-                if (Logger.IsInfoEnabled)
+                if (Logger.IsDebugEnabled)
                 {
-                    Logger.Info($"Disconnecting due to timeout for protocol init message ({GetType().Name}): {P2PSession.RemoteNodeId}");
+                    Logger.Debug($"Disconnecting due to timeout for protocol init message ({GetType().Name}): {P2PSession.RemoteNodeId}");
                 }
                 
                 await P2PSession.InitiateDisconnectAsync(DisconnectReason.ReceiveMessageTimeout);

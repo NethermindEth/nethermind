@@ -30,10 +30,8 @@ namespace Nethermind.Core.Logging
         public bool IsInfoEnabled { get; }
         public bool IsDebugEnabled { get; }
         public bool IsTraceEnabled { get; }
-        public bool IsNoteEnabled { get; }
 
         internal readonly NLog.Logger Logger;
-        private readonly NLog.Logger _noteLogger;
 
         public NLogLogger(string fileName)
         {
@@ -55,11 +53,6 @@ namespace Nethermind.Core.Logging
             IsDebugEnabled = Logger.IsDebugEnabled;
             IsTraceEnabled = Logger.IsTraceEnabled;
             IsErrorEnabled = Logger.IsErrorEnabled || Logger.IsFatalEnabled;
-
-            Log($"Configured {Logger.Name} logger at level {Level}");
-
-            _noteLogger = NLog.LogManager.GetLogger("NoteLogger");
-            IsNoteEnabled = _noteLogger.IsInfoEnabled;
         }
 
         private string Level
@@ -123,11 +116,6 @@ namespace Nethermind.Core.Logging
         public void Error(string text, Exception ex = null)
         {
             Logger.Error(ex, text);
-        }
-
-        public void Note(string text)
-        {
-            _noteLogger.Info(text);
         }
     }
 }

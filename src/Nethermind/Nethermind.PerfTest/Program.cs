@@ -194,6 +194,7 @@ namespace Nethermind.PerfTest
             public BlockHeader Genesis => _blockTree.Genesis;
             public BlockHeader BestSuggested => _blockTree.BestSuggested;
             public BlockHeader Head => _blockTree.Head;
+            public bool CanAcceptNewBlocks { get; } = true;
 
             public async Task LoadBlocksFromDb(CancellationToken cancellationToken, UInt256? startBlockNumber, int batchSize = BlockTree.DbLoadBatchSize, int maxBlocksToLoad = int.MaxValue)
             {

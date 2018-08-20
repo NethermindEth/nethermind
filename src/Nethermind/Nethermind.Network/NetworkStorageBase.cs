@@ -32,8 +32,6 @@ namespace Nethermind.Network
 {
     public abstract class NetworkStorageBase : INetworkStorage
     {
-        private readonly INetworkConfig _configurationProvider;
-        private readonly IPerfService _perfService;
         private readonly IFullDb _db;
         private readonly ILogger _logger;
         private long _updateCounter;
@@ -43,11 +41,10 @@ namespace Nethermind.Network
         protected NetworkStorageBase(string dbDirectory, IConfigProvider configurationProvider, ILogManager logManager, IPerfService perfService)
         {
             _logger = logManager?.GetClassLogger();
-            _configurationProvider = configurationProvider.GetConfig<NetworkConfig>();
-            _perfService = perfService;
+            INetworkConfig configurationProvider1 = configurationProvider.GetConfig<NetworkConfig>();
             _dbDirectory = dbDirectory;
             //_db = new FullDbOnTheRocks(Path.Combine(_configurationProvider.DbBasePath, FullDbOnTheRocks.PeersDbPath));
-            _db = new SimpleFilePublicKeyDb(Path.Combine(_configurationProvider.DbBasePath, _dbDirectory), logManager, perfService);
+            _db = new SimpleFilePublicKeyDb(Path.Combine(configurationProvider1.DbBasePath, _dbDirectory), logManager, perfService);
         }
 
         public NetworkNode[] GetPersistedNodes()
@@ -62,7 +59,7 @@ namespace Nethermind.Network
                 var node = nodes[i];
                 _db[node.NodeId.Bytes] = Rlp.Encode(node).Bytes;
                 _updateCounter++;
-                if (_logger.IsDebugEnabled) _logger.Debug($"[{_dbDirectory}] Node update: {node.NodeId}, data: {node.Host}:{node.Port}, {node.Description}, {node.Reputation}");
+                if (_logger.IsTraceEnabled) _logger.Trace($"[{_dbDirectory}] Node update: {node.NodeId}, data: {node.Host}:{node.Port}, {node.Description}, {node.Reputation}");
             }
         }
 
@@ -84,13 +81,9 @@ namespace Nethermind.Network
 
         public void Commit()
         {
-            if (_logger.IsInfoEnabled)
-            {
-                _logger.Info($"[{_dbDirectory}] Commiting nodes, updates: {_updateCounter}, removes: {_removeCounter}");
-            }
-
+            if (_logger.IsDebugEnabled) _logger.Debug($"[{_dbDirectory}] Committing nodes, updates: {_updateCounter}, removes: {_removeCounter}");
             _db.CommitBatch();
-            if (_logger.IsDebugEnabled)
+            if (_logger.IsTraceEnabled)
             {
                 LogDbContent(_db.Values);
             }
@@ -116,7 +109,8 @@ namespace Nethermind.Network
                 var node = GetNode(value);
                 sb.AppendLine($"{node.NodeId}@{node.Host}:{node.Port}, Desc: {node.Description}, Rep: {node.Reputation}");
             }
-            _logger.Debug(sb.ToString());
+            
+            _logger.Trace(sb.ToString());
         }
     }
 }
