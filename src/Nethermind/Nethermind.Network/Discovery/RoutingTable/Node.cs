@@ -39,7 +39,7 @@ namespace Nethermind.Network.Discovery.RoutingTable
         public Keccak IdHash { get; }
         public string IdHashText { get; }
         public string Host { get; private set; }
-        public int Port { get; private set; }
+        public int Port { get; set; }
         public IPEndPoint Address { get; private set; }
         public bool IsDicoveryNode { get; set; }
         public string Description { get; set; }

@@ -20,13 +20,7 @@ using Nethermind.Network.Discovery.RoutingTable;
 
 namespace Nethermind.Network
 {
-    public interface IPeerStorage
+    public interface IPeerStorage : INetworkStorage
     {
-        (Node Node, long PersistedReputation)[] GetPersistedPeers();
-        void UpdatePeers(Peer[] peers);
-        void RemovePeers(Peer[] nodes);
-        void StartBatch();
-        void Commit();
-        bool AnyPendingChange();
     }
 }

@@ -78,6 +78,10 @@ namespace Nethermind.Network.Discovery
 
                 Node node = _nodeFactory.CreateNode(new NodeId(message.FarPublicKey), message.FarAddress);
                 INodeLifecycleManager nodeManager = GetNodeLifecycleManager(node);
+                if (nodeManager == null)
+                {
+                    return;
+                }
 
                 switch (msgType)
                 {
@@ -115,12 +119,19 @@ namespace Nethermind.Network.Discovery
             {
                 return null;
             }
+
+            if (node.Port == 0)
+            {
+                if (_logger.IsDebugEnabled) _logger.Debug($"Node is not listening - Port 0, blocking add to discovery, id: {node.Id}");
+                return null;
+            }
+
             return _nodeLifecycleManagers.GetOrAdd(node.IdHashText, x =>
             {
                 var manager = _nodeLifecycleManagerFactory.CreateNodeLifecycleManager(node);
                 if (!isPersisted)
                 {
-                    _discoveryStorage.UpdateNodes(new[] { manager });
+                    _discoveryStorage.UpdateNodes(new[] { new NetworkNode(manager.ManagedNode.Id.PublicKey, manager.ManagedNode.Host, manager.ManagedNode.Port, manager.ManagedNode.Description, manager.NodeStats.NewPersistedNodeReputation)});
                 }
                 OnNewNode(manager);
                 return manager;
@@ -251,7 +262,7 @@ namespace Nethermind.Network.Discovery
                 var item = items[i];
                 if (_nodeLifecycleManagers.TryRemove(item.Key, out var _))
                 {
-                    _discoveryStorage.RemoveNodes(new[] { item.Value });
+                    _discoveryStorage.RemoveNodes(new[] { new NetworkNode(item.Value.ManagedNode.Id.PublicKey, item.Value.ManagedNode.Host, item.Value.ManagedNode.Port, item.Value.ManagedNode.Description, item.Value.NodeStats.NewPersistedNodeReputation),  });
                     removeCount++;
                 }
             }

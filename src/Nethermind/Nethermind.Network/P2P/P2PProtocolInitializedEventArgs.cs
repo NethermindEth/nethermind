@@ -25,6 +25,7 @@ namespace Nethermind.Network.P2P
         public byte P2PVersion { get; set; }
         public string ClientId { get; set; }
         public List<Capability> Capabilities { get; set; }
+        public int ListenPort { get; set; }
 
         public P2PProtocolInitializedEventArgs(P2PProtocolHandler protocolHandler) : base(protocolHandler)
         {

@@ -239,7 +239,15 @@ namespace Nethermind.Blockchain
 
                 if (t.IsFaulted)
                 {
-                    if (_logger.IsErrorEnabled) _logger.Error("AddPeer failed.", t.Exception);
+                    if (t.Exception != null && t.Exception.InnerExceptions.Any(x => x is TimeoutException))
+                    {
+                        var exp = t.Exception.InnerExceptions.FirstOrDefault(x => x is TimeoutException);
+                        if (_logger.IsWarnEnabled) _logger.Warn($"AddPeer failed: {exp?.Message}");
+                    }
+                    else
+                    {
+                        if (_logger.IsErrorEnabled) _logger.Error("AddPeer failed.", t.Exception);
+                    }                  
                 }
                 else if (t.IsCanceled)
                 {
@@ -707,16 +715,9 @@ namespace Nethermind.Blockchain
                 {
                     if (t.IsFaulted)
                     {
-                        if (_logger.IsErrorEnabled)
+                        if (_logger.IsWarnEnabled)
                         {
-                            if (t.Exception != null && t.Exception.InnerExceptions.Any(x => x is TimeoutException))
-                            {
-                                _logger.Warn($"InitPeerInfo failed for node: {peer.NodeId}. {t.Exception?.Message}");
-                            }
-                            else
-                            {
-                                _logger.Error($"InitPeerInfo failedf or node: {peer.NodeId}.", t.Exception);
-                            }
+                            _logger.Warn($"InitPeerInfo failed for node: {peer.NodeId}, Exp: {t?.Exception.Message}");
                         }   
 
                         SyncEvent?.Invoke(this, new SyncEventArgs(peer, SyncStatus.InitFailed));

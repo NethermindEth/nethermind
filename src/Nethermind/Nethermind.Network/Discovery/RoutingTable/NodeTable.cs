@@ -58,7 +58,7 @@ namespace Nethermind.Network.Discovery.RoutingTable
             _logger.Debug($"Adding node to NodeTable: {node}");
             var distanceFromMaster = _nodeDistanceCalculator.CalculateDistance(MasterNode.IdHash.Bytes, node.IdHash.Bytes);
             var bucket = Buckets[distanceFromMaster > 0 ? distanceFromMaster - 1 : 0];
-            _nodes.AddOrUpdate(node.IdHashText, node, (x, y) => y);
+            _nodes.AddOrUpdate(node.IdHashText, node, (x, y) => node);
             return bucket.AddNode(node);
         }
 
@@ -74,7 +74,7 @@ namespace Nethermind.Network.Discovery.RoutingTable
         {
             var distanceFromMaster = _nodeDistanceCalculator.CalculateDistance(MasterNode.IdHash.Bytes, nodeToAdd.IdHash.Bytes);
             var bucket = Buckets[distanceFromMaster > 0 ? distanceFromMaster - 1 : 0];
-            _nodes.AddOrUpdate(nodeToAdd.IdHashText, nodeToAdd, (x, y) => y);
+            _nodes.AddOrUpdate(nodeToAdd.IdHashText, nodeToAdd, (x, y) => nodeToAdd);
             _nodes.TryRemove(nodeToRemove.IdHashText, out _);
             bucket.ReplaceNode(nodeToRemove, nodeToAdd);
         }

@@ -10,6 +10,9 @@
     <LangVersion>7.2</LangVersion>
   </PropertyGroup>
   <ItemGroup>
+    <None Remove="spawner_discovery_large.json" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\Nethermind.Runner\Nethermind.Runner.csproj">
       <Project>{33E2CCD2-0D52-477C-8EAC-D429F66BEAC0}</Project>
       <Name>Nethermind.Runner</Name>
@@ -23,6 +26,9 @@
     <!--<CopyToOutputDirectory>Always</CopyToOutputDirectory>-->
     <!--</Content>-->
     <Content Include="spawner.json">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="spawner_discovery_large.json">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
     <Content Include="spawner_discovery.json">

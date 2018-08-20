@@ -35,7 +35,7 @@ namespace Nethermind.Network.Test.Discovery
             }
 
             _nodeFactory = new NodeFactory();
-            _discoveryStorage = new DiscoveryStorage(_configurationProvider, _nodeFactory, logManager, new PerfService(logManager));
+            _discoveryStorage = new DiscoveryStorage("test", _configurationProvider, logManager, new PerfService(logManager));
         }
 
         [Test]
@@ -56,41 +56,43 @@ namespace Nethermind.Network.Test.Discovery
             nodes[4].Description = "Test desc 2";
 
             var managers = nodes.Select(CreateLifecycleManager).ToArray();
-            
+            var networkNodes = managers.Select(x => new NetworkNode(x.ManagedNode.Id.PublicKey, x.ManagedNode.Host, x.ManagedNode.Port, x.ManagedNode.Description, x.NodeStats.NewPersistedNodeReputation)).ToArray();
+
+
             _discoveryStorage.StartBatch();
-            _discoveryStorage.UpdateNodes(managers);     
+            _discoveryStorage.UpdateNodes(networkNodes);     
             _discoveryStorage.Commit();
 
             persistedNodes = _discoveryStorage.GetPersistedNodes();
             foreach (var manager in managers)
             {
-                var persistedNode = persistedNodes.FirstOrDefault(x => x.Node.Id.Equals(manager.ManagedNode.Id));
+                var persistedNode = persistedNodes.FirstOrDefault(x => x.NodeId.Equals(manager.ManagedNode.Id));
                 Assert.IsNotNull(persistedNode);
-                Assert.AreEqual(manager.ManagedNode.Port, persistedNode.Node.Port);
-                Assert.AreEqual(manager.ManagedNode.Host, persistedNode.Node.Host);
-                Assert.AreEqual(manager.ManagedNode.Description, persistedNode.Node.Description);
-                Assert.AreEqual(manager.NodeStats.CurrentNodeReputation, persistedNode.PersistedReputation);
+                Assert.AreEqual(manager.ManagedNode.Port, persistedNode.Port);
+                Assert.AreEqual(manager.ManagedNode.Host, persistedNode.Host);
+                Assert.AreEqual(manager.ManagedNode.Description, persistedNode.Description);
+                Assert.AreEqual(manager.NodeStats.CurrentNodeReputation, persistedNode.Reputation);
             }
 
             _discoveryStorage.StartBatch();
-            _discoveryStorage.RemoveNodes(new[] { managers.First() });
+            _discoveryStorage.RemoveNodes(new[] { networkNodes.First() });
             _discoveryStorage.Commit();
 
             persistedNodes = _discoveryStorage.GetPersistedNodes();
             foreach (var manager in managers.Take(1))
             {
-                var persistedNode = persistedNodes.FirstOrDefault(x => x.Node.Id.Equals(manager.ManagedNode.Id));
-                Assert.IsNull(persistedNode.Node);
+                var persistedNode = persistedNodes.FirstOrDefault(x => x.NodeId.Equals(manager.ManagedNode.Id));
+                Assert.IsNull(persistedNode);
             }
 
             foreach (var manager in managers.Skip(1))
             {
-                var persistedNode = persistedNodes.FirstOrDefault(x => x.Node.Id.Equals(manager.ManagedNode.Id));
+                var persistedNode = persistedNodes.FirstOrDefault(x => x.NodeId.Equals(manager.ManagedNode.Id));
                 Assert.IsNotNull(persistedNode);
-                Assert.AreEqual(manager.ManagedNode.Port, persistedNode.Node.Port);
-                Assert.AreEqual(manager.ManagedNode.Host, persistedNode.Node.Host);
-                Assert.AreEqual(manager.ManagedNode.Description, persistedNode.Node.Description);
-                Assert.AreEqual(manager.NodeStats.CurrentNodeReputation, persistedNode.PersistedReputation);
+                Assert.AreEqual(manager.ManagedNode.Port, persistedNode.Port);
+                Assert.AreEqual(manager.ManagedNode.Host, persistedNode.Host);
+                Assert.AreEqual(manager.ManagedNode.Description, persistedNode.Description);
+                Assert.AreEqual(manager.NodeStats.CurrentNodeReputation, persistedNode.Reputation);
             }
         }
 

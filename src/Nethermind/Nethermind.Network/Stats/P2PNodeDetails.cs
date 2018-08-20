@@ -25,5 +25,6 @@ namespace Nethermind.Network.Stats
         public byte P2PVersion { get; set; }
         public string ClientId { get; set; }
         public Capability[] Capabilities { get; set; }
+        public int ListenPort { get; set; }
     }
 }

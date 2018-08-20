@@ -183,7 +183,7 @@ namespace Nethermind.Network.Rlpx
             _logger.Info($"Connected to {remoteId}@{host}:{port}");
         }
 
-        public event EventHandler<ConnectionInitializedEventArgs> ConnectionInitialized;
+        public event EventHandler<ConnectionInitializedEventArgs> OutConnectionInitialized;
         public event EventHandler<ConnectionInitializedEventArgs> HandshakeInitialized;
 
         private void InitializeChannel(IChannel channel, EncryptionHandshakeRole role, NodeId remoteId = null, string remoteHost = null, int? remotePort = null, INodeStats nodeStats = null)
@@ -211,7 +211,7 @@ namespace Nethermind.Network.Rlpx
                 p2PSession.RemoteHost = remoteHost;
                 p2PSession.RemotePort = remotePort;
 
-                ConnectionInitialized?.Invoke(this, new ConnectionInitializedEventArgs(p2PSession, connectionType));
+                OutConnectionInitialized?.Invoke(this, new ConnectionInitializedEventArgs(p2PSession, connectionType));
             }
 
             var handshakeHandler = new NettyHandshakeHandler(_encryptionHandshakeService, p2PSession, role, remoteId, _logger);

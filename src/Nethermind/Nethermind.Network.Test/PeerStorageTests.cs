@@ -33,13 +33,13 @@ namespace Nethermind.Network.Test
             }
 
             _nodeFactory = new NodeFactory();
-            _peerStorage = new PeerStorage(_configurationProvider, _nodeFactory, logManager, new PerfService(logManager));
+            _peerStorage = new PeerStorage("test", _configurationProvider, logManager, new PerfService(logManager));
         }
 
         [Test]
         public void PeersReadWriteTest()
         {
-            var persistedPeers = _peerStorage.GetPersistedPeers();
+            var persistedPeers = _peerStorage.GetPersistedNodes();
             Assert.AreEqual(0, persistedPeers.Length);
 
             var nodes = new[]
@@ -53,42 +53,42 @@ namespace Nethermind.Network.Test
             nodes[0].Description = "Test desc";
             nodes[4].Description = "Test desc 2";
 
-            var peers = nodes.Select(x => new Peer(x, new NodeStats(x, _configurationProvider))).ToArray();
+            var peers = nodes.Select(x => new NetworkNode(x.Id.PublicKey, x.Host, x.Port, x.Description, 0L)).ToArray();
 
             _peerStorage.StartBatch();
-            _peerStorage.UpdatePeers(peers);
+            _peerStorage.UpdateNodes(peers);
             _peerStorage.Commit();
 
-            persistedPeers = _peerStorage.GetPersistedPeers();
+            persistedPeers = _peerStorage.GetPersistedNodes();
             foreach (var peer in peers)
             {
-                var persistedNode = persistedPeers.FirstOrDefault(x => x.Node.Id.Equals(peer.Node.Id));
+                var persistedNode = persistedPeers.FirstOrDefault(x => x.NodeId.Equals(peer.NodeId));
                 Assert.IsNotNull(persistedNode);
-                Assert.AreEqual(peer.Node.Port, persistedNode.Node.Port);
-                Assert.AreEqual(peer.Node.Host, persistedNode.Node.Host);
-                Assert.AreEqual(peer.Node.Description, persistedNode.Node.Description);
-                Assert.AreEqual(peer.NodeStats.CurrentNodeReputation, persistedNode.PersistedReputation);
+                Assert.AreEqual(peer.Port, persistedNode.Port);
+                Assert.AreEqual(peer.Host, persistedNode.Host);
+                Assert.AreEqual(peer.Description, persistedNode.Description);
+                Assert.AreEqual(peer.Reputation, persistedNode.Reputation);
             }
 
             _peerStorage.StartBatch();
-            _peerStorage.RemovePeers(peers.Take(1).ToArray());
+            _peerStorage.RemoveNodes(peers.Take(1).ToArray());
             _peerStorage.Commit();
 
-            persistedPeers = _peerStorage.GetPersistedPeers();
+            persistedPeers = _peerStorage.GetPersistedNodes();
             foreach (var peer in peers.Take(1))
             {
-                var persistedNode = persistedPeers.FirstOrDefault(x => x.Node.Id.Equals(peer.Node.Id));
-                Assert.IsNull(persistedNode.Node);
+                var persistedNode = persistedPeers.FirstOrDefault(x => x.NodeId.Equals(peer.NodeId));
+                Assert.IsNull(persistedNode);
             }
 
             foreach (var peer in peers.Skip(1))
             {
-                var persistedNode = persistedPeers.FirstOrDefault(x => x.Node.Id.Equals(peer.Node.Id));
+                var persistedNode = persistedPeers.FirstOrDefault(x => x.NodeId.Equals(peer.NodeId));
                 Assert.IsNotNull(persistedNode);
-                Assert.AreEqual(peer.Node.Port, persistedNode.Node.Port);
-                Assert.AreEqual(peer.Node.Host, persistedNode.Node.Host);
-                Assert.AreEqual(peer.Node.Description, persistedNode.Node.Description);
-                Assert.AreEqual(peer.NodeStats.CurrentNodeReputation, persistedNode.PersistedReputation);
+                Assert.AreEqual(peer.Port, persistedNode.Port);
+                Assert.AreEqual(peer.Host, persistedNode.Host);
+                Assert.AreEqual(peer.Description, persistedNode.Description);
+                Assert.AreEqual(peer.Reputation, persistedNode.Reputation);
             }
         }
     }

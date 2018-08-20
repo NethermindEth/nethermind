@@ -84,6 +84,9 @@ namespace Nethermind.Runner.Runners
         private IPeerManager _peerManager;
         private BlockTree _blockTree;
 
+        public const string DiscoveryNodesDbPath = "discoveryNodes";
+        public const string PeersDbPath = "peers";
+
         public EthereumRunner(IConfigProvider configurationProvider, INetworkHelper networkHelper, ILogManager logManager)
         {
             _configProvider = configurationProvider;
@@ -415,7 +418,7 @@ namespace Nethermind.Runner.Runners
 
         private void InitPeerManager()
         {
-            var peerStorage = new PeerStorage(_configProvider, _nodeFactory, _logManager, _perfService);
+            var peerStorage = new PeerStorage(PeersDbPath, _configProvider, _logManager, _perfService);
             _peerManager = new PeerManager(_localPeer, _discoveryManager, _syncManager, _nodeStatsProvider, peerStorage, _nodeFactory, _configProvider, _perfService, _logManager);
             _peerManager.Initialize(_initConfig.DiscoveryEnabled);
         }
@@ -444,7 +447,7 @@ namespace Nethermind.Runner.Runners
             var evictionManager = new EvictionManager(nodeTable, _logManager);
             var nodeLifeCycleFactory = new NodeLifecycleManagerFactory(_nodeFactory, nodeTable, discoveryMessageFactory, evictionManager, _nodeStatsProvider, _configProvider, _logManager);
 
-            var discoveryStorage = new DiscoveryStorage(_configProvider, _nodeFactory, _logManager, _perfService);
+            var discoveryStorage = new DiscoveryStorage(DiscoveryNodesDbPath, _configProvider, _logManager, _perfService);
             _discoveryManager = new DiscoveryManager(nodeLifeCycleFactory, _nodeFactory, nodeTable, discoveryStorage, _configProvider, _logManager);
 
             var nodesLocator = new NodesLocator(nodeTable, _discoveryManager, _configProvider, _logManager);

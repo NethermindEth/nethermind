@@ -55,6 +55,6 @@ namespace Nethermind.Core
         public string Host { get; }
         public int Port { get; }
         public string Description { get; }
-        public long Reputation { get; }
+        public long Reputation { get; set; }
     }
 }

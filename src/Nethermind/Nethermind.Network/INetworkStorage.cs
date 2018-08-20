@@ -16,16 +16,17 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Config;
 using Nethermind.Core;
-using Nethermind.Core.Logging;
 
-namespace Nethermind.Network.Discovery
+namespace Nethermind.Network
 {
-    public class DiscoveryStorage : NetworkStorageBase, IDiscoveryStorage
+    public interface INetworkStorage
     {
-        public DiscoveryStorage(string dbDirectory, IConfigProvider configurationProvider, ILogManager logManager, IPerfService perfService) : base(dbDirectory, configurationProvider, logManager, perfService)
-        {
-        }
+        NetworkNode[] GetPersistedNodes();
+        void UpdateNodes(NetworkNode[] nodes);
+        void RemoveNodes(NetworkNode[] nodes);
+        void StartBatch();
+        void Commit();
+        bool AnyPendingChange();
     }
 }

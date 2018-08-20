@@ -181,7 +181,6 @@ namespace Nethermind.Network.Discovery
                 }
                 InitializeDiscoveryPersistanceTimer();
                 InitializeDiscoveryTimer();
-                //InitializeRefreshTimer(); 
 
                 await RunDiscoveryAsync();
             }
@@ -199,13 +198,22 @@ namespace Nethermind.Network.Discovery
             }
 
             var nodes = _discoveryStorage.GetPersistedNodes();
-            foreach (var node in nodes)
+            foreach (var networkNode in nodes)
             {
-                var manager = _discoveryManager.GetNodeLifecycleManager(node.Node, true);
-                manager.NodeStats.CurrentPersistedNodeReputation = node.PersistedReputation;
+                var node = _nodeFactory.CreateNode(networkNode.NodeId, networkNode.Host, networkNode.Port);
+                var manager = _discoveryManager.GetNodeLifecycleManager(node, true);
+                if (manager == null)
+                {
+                    if (_logger.IsDebugEnabled)
+                    {
+                        _logger.Debug($"Skiping persisted node {networkNode.NodeId}@{networkNode.Host}:{networkNode.Port}, manager couldnt be created");
+                    }
+                    continue;;
+                }
+                manager.NodeStats.CurrentPersistedNodeReputation = networkNode.Reputation;
                 if (_logger.IsDebugEnabled)
                 {
-                    _logger.Debug($"Adding persisted node {node.Node.Id}@{node.Node.Host}:{node.Node.Port}");
+                    _logger.Debug($"Adding persisted node {networkNode.NodeId}@{networkNode.Host}:{networkNode.Port}");
                 }
             }
 
@@ -241,32 +249,6 @@ namespace Nethermind.Network.Discovery
                 _logger.Error("Error during discovery timer stop", e);
             }
         }
-
-        //private void InitializeRefreshTimer()
-        //{
-        //    _logger.Info("Starting refresh timer");
-        //    _refreshTimer = new Timer(_configurationProvider.RefreshInterval) {AutoReset = false};
-        //    _refreshTimer.Elapsed += async (sender, e) =>
-        //    {
-        //        _refreshTimer.Enabled = false;
-        //        await RunRefreshAsync();
-        //        _refreshTimer.Enabled = true;
-        //    };
-        //    _refreshTimer.Start();
-        //}
-
-        //private void StopRefreshTimer()
-        //{
-        //    try
-        //    {
-        //        _logger.Info("Stopping refresh timer");
-        //        _refreshTimer?.Stop();
-        //    }
-        //    catch (Exception e)
-        //    {
-        //        _logger.Error("Error during refresh timer stop", e);
-        //    }
-        //}
 
         private void InitializeDiscoveryPersistanceTimer()
         {
@@ -412,6 +394,10 @@ namespace Nethermind.Network.Discovery
 
         private void RunDiscoveryCommit()
         {
+            var managers = _discoveryManager.GetNodeLifecycleManagers();
+            //we need to update all notes to update reputation
+            _discoveryStorage.UpdateNodes(managers.Select(x => new NetworkNode(x.ManagedNode.Id.PublicKey, x.ManagedNode.Host, x.ManagedNode.Port, x.ManagedNode.Description, x.NodeStats.NewPersistedNodeReputation)).ToArray());
+
             if (!_discoveryStorage.AnyPendingChange())
             {
                 return;

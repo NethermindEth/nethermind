@@ -53,17 +53,30 @@ namespace Nethermind.RunnerSpawner
                 return 1;
             }
 
-            string configFileName = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, args.Length == 1 ? args[0] : "spawner_discovery.json");
+            string configFileName = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, args.Length == 1 ? args[0] : "spawner_discovery_large.json");
             string jsonText = File.ReadAllText(configFileName);
 
             IJsonSerializer serializer = new UnforgivingJsonSerializer();
             SpawnerConfig spawnerConfig = serializer.Deserialize<SpawnerConfig>(jsonText);
 
+            var configTempDir = Path.Combine(Path.GetTempPath(), "SpawnerConfigs");
+            if (!Directory.Exists(configTempDir))
+            {
+                Directory.CreateDirectory(configTempDir);
+            }
+
+            var files = Directory.GetFiles(configTempDir);
+            foreach (var file in files)
+            {
+                File.Delete(file);
+            }
+            _logger.Info($"Configs dir: {configTempDir}");
+
             List<ProcessWrapper> wrappers = new List<ProcessWrapper>();
             foreach ((string name, JToken parameters) in spawnerConfig.Runners)
             {
                 string serialized = serializer.Serialize(parameters, true);
-                string singleConfigPath = Path.Combine(Path.GetTempPath(), $"nethermind.runner.{name}.config.json");
+                string singleConfigPath = Path.Combine(configTempDir, $"nethermind.runner.{name}.config.json");
                 File.WriteAllText(singleConfigPath, serialized);
 
                 try

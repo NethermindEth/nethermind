@@ -174,7 +174,10 @@ namespace Nethermind.Network.Discovery.Lifecycle
                     if (result.ResultType == NodeAddResultType.Full)
                     {
                         var evictionCandidate = _discoveryManager.GetNodeLifecycleManager(result.EvictionCandidate.Node);
-                        _evictionManager.StartEvictionProcess(evictionCandidate, this);
+                        if (evictionCandidate != null)
+                        {
+                            _evictionManager.StartEvictionProcess(evictionCandidate, this);
+                        }
                     }
                 }
             }

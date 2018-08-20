@@ -162,7 +162,8 @@ namespace Nethermind.Network.P2P
             {
                 P2PVersion = ProtocolVersion,
                 ClientId = RemoteClientId,
-                Capabilities = capabilities
+                Capabilities = capabilities,
+                ListenPort = hello.ListenPort
             };
             ProtocolInitialized?.Invoke(this, eventArgs);
         }
@@ -249,7 +250,7 @@ namespace Nethermind.Network.P2P
         {
             if(Logger.IsTraceEnabled) Logger.Trace($"{P2PSession.RemoteNodeId} P2P pong on {P2PSession.RemotePort} ({RemoteClientId})");
             P2PSession?.NodeStats.AddNodeStatsEvent(NodeStatsEventType.P2PPingIn);
-            _pongCompletionSource?.SetResult(msg);
+            _pongCompletionSource?.TrySetResult(msg);
         }
     }
 }
