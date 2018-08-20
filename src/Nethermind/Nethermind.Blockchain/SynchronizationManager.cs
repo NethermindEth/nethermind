@@ -181,14 +181,13 @@ namespace Nethermind.Blockchain
 
         public void HintBlock(Keccak hash, UInt256 number, NodeId receivedFrom)
         {
-            _peers.TryGetValue(receivedFrom, out PeerInfo peerInfo);
-            string errorMessage = $"Received a block hint from an unknown peer {receivedFrom}";
-            if (peerInfo == null)
+            if (!_peers.TryGetValue(receivedFrom, out PeerInfo peerInfo))
             {
+                string errorMessage = $"Received a block hint from an unknown peer {receivedFrom}";
                 _logger.Error(errorMessage);
                 throw new InvalidOperationException(errorMessage);
             }
-
+            
             peerInfo.NumberAvailable = UInt256.Max(number, peerInfo.NumberAvailable);
             // TODO: sync?
         }
@@ -239,10 +238,9 @@ namespace Nethermind.Blockchain
 
                 if (t.IsFaulted)
                 {
-                    if (t.Exception != null && t.Exception.InnerExceptions.Any(x => x is TimeoutException))
+                    if (t.Exception != null && t.Exception.InnerExceptions.Any(x => x.InnerException is TimeoutException))
                     {
-                        var exp = t.Exception.InnerExceptions.FirstOrDefault(x => x is TimeoutException);
-                        if (_logger.IsWarnEnabled) _logger.Warn($"AddPeer failed: {exp?.Message}");
+                        if (_logger.IsWarnEnabled) _logger.Warn($"AddPeer failed due to timeout: {t.Exception.Message}");
                     }
                     else
                     {
