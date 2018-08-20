@@ -18,7 +18,6 @@
 
 using System;
 using System.Diagnostics;
-using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Dirichlet.Numerics;
 

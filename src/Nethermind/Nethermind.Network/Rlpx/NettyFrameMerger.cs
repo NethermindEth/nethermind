@@ -54,7 +54,7 @@ namespace Nethermind.Network.Rlpx
             Rlp.DecoderContext headerBodyItems = input.Slice(3, 13).AsRlpContext();
             int headerDataEnd = headerBodyItems.ReadSequenceLength() + headerBodyItems.Position;
             int numberOfItems = headerBodyItems.ReadNumberOfItemsRemaining(headerDataEnd);
-            int protocolType = headerBodyItems.DecodeInt(); // not needed - adaptive IDs
+            // int protocolType = headerBodyItems.DecodeInt(); // not needed - adaptive IDs
             int? contextId = numberOfItems > 1 ? headerBodyItems.DecodeInt() : (int?)null;
             int? totalPacketSize = numberOfItems > 2 ? headerBodyItems.DecodeInt() : (int?)null;
 

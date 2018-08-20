@@ -9,6 +9,6 @@ namespace Ethereum.Test.Base
         public UInt256 Balance { get; set; }
         public byte[] Code { get; set; }
         public UInt256 Nonce { get; set; }
-        public Dictionary<BigInteger, byte[]> Storage { get; set; }
+        public Dictionary<UInt256, byte[]> Storage { get; set; }
     }
 }

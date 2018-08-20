@@ -33,6 +33,7 @@ using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.Mining;
 using Nethermind.Store;
@@ -139,7 +140,7 @@ namespace Ethereum.Test.Base
             state.Code = Bytes.FromHexString(accountStateJson.Code);
             state.Nonce = Bytes.FromHexString(accountStateJson.Nonce).ToUInt256();
             state.Storage = accountStateJson.Storage.ToDictionary(
-                p => Bytes.FromHexString(p.Key).ToUnsignedBigInteger(),
+                p => Bytes.FromHexString(p.Key).ToUInt256(),
                 p => Bytes.FromHexString(p.Value));
             return state;
         }
@@ -333,7 +334,7 @@ namespace Ethereum.Test.Base
         {
             foreach (KeyValuePair<Address, AccountState> accountState in test.Pre)
             {
-                foreach (KeyValuePair<BigInteger, byte[]> storageItem in accountState.Value.Storage)
+                foreach (KeyValuePair<UInt256, byte[]> storageItem in accountState.Value.Storage)
                 {
                     storageProvider.Set(new StorageAddress(accountState.Key, storageItem.Key), storageItem.Value);
                 }
@@ -395,7 +396,7 @@ namespace Ethereum.Test.Base
 
                 differencesBefore = differences.Count;
 
-                foreach (KeyValuePair<BigInteger, byte[]> storageItem in accountState.Value.Storage)
+                foreach (KeyValuePair<UInt256, byte[]> storageItem in accountState.Value.Storage)
                 {
                     byte[] value = storageProvider.Get(new StorageAddress(accountState.Key, storageItem.Key)) ?? new byte[0];
                     if (!Bytes.AreEqual(storageItem.Value, value))

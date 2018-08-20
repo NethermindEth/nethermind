@@ -18,7 +18,6 @@
 
 using System;
 using System.IO;
-using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Org.BouncyCastle.Crypto.Digests;
 using Org.BouncyCastle.Crypto.Engines;
