@@ -17,6 +17,7 @@
  */
 
 using System;
+using System.Data.SqlTypes;
 using System.Linq;
 using System.Numerics;
 using System.Threading;
@@ -89,7 +90,7 @@ namespace Nethermind.Blockchain
             }
         }
 
-        public bool CanAcceptNewBlocks { get; private set; } // no need to sync it at the moment
+        public bool CanAcceptNewBlocks { get; private set; } = true;// no need to sync it at the moment
 
         public async Task LoadBlocksFromDb(CancellationToken cancellationToken, UInt256? startBlockNumber = null,
             int batchSize = DbLoadBatchSize, int maxBlocksToLoad = int.MaxValue)
