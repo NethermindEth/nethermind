@@ -16,7 +16,6 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Network.P2P.Subprotocols.Eth;
@@ -39,13 +38,17 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
             
             StatusMessageSerializer serializer = new StatusMessageSerializer();
             byte[] bytes = serializer.Serialize(statusMessage);
+            byte[] expectedBytes = Bytes.FromHexString("f8483f0183020080a0c89efdaa54c0f20c7adf612882df0950f5a951637e0307cdcb4c672f298b8bc6a0044852b2a670ade5407e78fb2863c51de9fcb96542a07186fe3aeda6bb8a116d");
+
+            Assert.True(Bytes.AreEqual(bytes, expectedBytes), "bytes");
+            
             StatusMessage deserialized = serializer.Deserialize(bytes);
             
             Assert.AreEqual(statusMessage.BestHash, deserialized.BestHash, $"{nameof(deserialized.BestHash)}");
             Assert.AreEqual(statusMessage.GenesisHash, deserialized.GenesisHash, $"{nameof(deserialized.GenesisHash)}");
             Assert.AreEqual(statusMessage.TotalDifficulty, deserialized.TotalDifficulty, $"{nameof(deserialized.TotalDifficulty)}");
             Assert.AreEqual(statusMessage.ChainId, deserialized.ChainId, $"{nameof(deserialized.ChainId)}");
-            Assert.AreEqual(statusMessage.ProtocolVersion, deserialized.ProtocolVersion, $"{nameof(deserialized.ProtocolVersion)}");   
+            Assert.AreEqual(statusMessage.ProtocolVersion, deserialized.ProtocolVersion, $"{nameof(deserialized.ProtocolVersion)}");
         }
 
         [Test]

@@ -18,6 +18,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Network.P2P.Subprotocols.Eth;
 using NUnit.Framework;
 
@@ -43,6 +44,10 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
 
             TransactionsMessage message = new TransactionsMessage(transaction, transaction);
             byte[] bytes = serializer.Serialize(message);
+            byte[] expectedBytes = Bytes.FromHexString("f84ae48203e8640a940000000000000000000000000000000000000000822710830102031b0102e48203e8640a940000000000000000000000000000000000000000822710830102031b0102");
+
+            Assert.True(Bytes.AreEqual(bytes, expectedBytes), "bytes");
+            
             TransactionsMessage deserialized = serializer.Deserialize(bytes);
             Assert.AreEqual(message.Transactions.Length, deserialized.Transactions.Length, "length");
             // TODO: Chain IDs need to be handled properly

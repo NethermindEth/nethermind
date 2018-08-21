@@ -71,6 +71,7 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
+        // TODO: auto create signer here
         public TransactionBuilder SignedAndResolved(IEthereumSigner signer, PrivateKey privateKey, BigInteger blockNumber)
         {
             signer.Sign(privateKey, TestObjectInternal, blockNumber);

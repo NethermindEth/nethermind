@@ -17,6 +17,7 @@
  */
 
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Network.P2P.Subprotocols.Eth;
 using NUnit.Framework;
 
@@ -26,7 +27,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
     public class GetBlockHeadersMessageSerializerTests
     {
         [Test]
-        public void Roundtrip_number()
+        public void Roundtrip_hash()
         {
             GetBlockHeadersMessage message = new GetBlockHeadersMessage();
             message.MaxHeaders = 1;
@@ -35,6 +36,10 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
             message.StartingBlockHash = Keccak.OfAnEmptyString;
             GetBlockHeadersMessageSerializer serializer = new GetBlockHeadersMessageSerializer();
             byte[] bytes = serializer.Serialize(message);
+            byte[] expectedBytes = Bytes.FromHexString("e4a0c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470010201");
+
+            Assert.True(Bytes.AreEqual(bytes, expectedBytes), "bytes");
+
             GetBlockHeadersMessage deserialized = serializer.Deserialize(bytes);
             Assert.AreEqual(message.StartingBlockHash, deserialized.StartingBlockHash, $"{nameof(message.StartingBlockHash)}");
             Assert.AreEqual(message.MaxHeaders, deserialized.MaxHeaders, $"{nameof(message.MaxHeaders)}");
@@ -43,7 +48,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
         }
 
         [Test]
-        public void Roundtrip_hash()
+        public void Roundtrip_number()
         {
             GetBlockHeadersMessage message = new GetBlockHeadersMessage();
             message.MaxHeaders = 1;
@@ -52,6 +57,10 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
             message.StartingBlockNumber = 100;
             GetBlockHeadersMessageSerializer serializer = new GetBlockHeadersMessageSerializer();
             byte[] bytes = serializer.Serialize(message);
+            byte[] expectedBytes = Bytes.FromHexString("c464010201");
+
+            Assert.True(Bytes.AreEqual(bytes, expectedBytes), "bytes");
+
             GetBlockHeadersMessage deserialized = serializer.Deserialize(bytes);
             Assert.AreEqual(message.StartingBlockNumber, deserialized.StartingBlockNumber, $"{nameof(message.StartingBlockNumber)}");
             Assert.AreEqual(message.MaxHeaders, deserialized.MaxHeaders, $"{nameof(message.MaxHeaders)}");

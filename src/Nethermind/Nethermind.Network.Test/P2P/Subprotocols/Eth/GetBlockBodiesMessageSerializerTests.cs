@@ -17,6 +17,7 @@
  */
 
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Network.P2P.Subprotocols.Eth;
 using NUnit.Framework;
 
@@ -31,6 +32,10 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
             GetBlockBodiesMessageSerializer serializer = new GetBlockBodiesMessageSerializer();
             GetBlockBodiesMessage message = new GetBlockBodiesMessage(Keccak.OfAnEmptySequenceRlp, Keccak.Zero, Keccak.EmptyTreeHash);
             byte[] bytes = serializer.Serialize(message);
+            byte[] expectedBytes = Bytes.FromHexString("f863a01dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347a00000000000000000000000000000000000000000000000000000000000000000a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421");
+            
+            Assert.True(Bytes.AreEqual(bytes, expectedBytes), "bytes");
+            
             GetBlockBodiesMessage deserialized = serializer.Deserialize(bytes);
             Assert.AreEqual(message.BlockHashes.Length, deserialized.BlockHashes.Length, $"length");
             for (int i = 0; i < message.BlockHashes.Length; i++)
