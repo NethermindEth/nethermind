@@ -251,7 +251,7 @@ namespace Nethermind.Network.Discovery
             KeyValuePair<string, INodeLifecycleManager>[] unreachable = _nodeLifecycleManagers.Where(x => x.Value.State == NodeLifecycleState.Unreachable).Take(cleanupCount - activeExcluded.Length).ToArray();
             int removeCount = RemoveManagers(activeExcluded, activeExcluded.Length);
             removeCount = removeCount + RemoveManagers(unreachable, unreachable.Length);
-            if(_logger.IsDebugEnabled) _logger.Debug($"Removed: {removeCount} unreachable node lifecycle managers");
+            if(_logger.IsTraceEnabled) _logger.Trace($"Removed: {removeCount} unreachable node lifecycle managers");
         }
 
         private int RemoveManagers(KeyValuePair<string, INodeLifecycleManager>[] items, int count)
