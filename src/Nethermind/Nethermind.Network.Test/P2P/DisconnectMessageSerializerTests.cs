@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.Core.Extensions;
 using Nethermind.Network.P2P;
 using NUnit.Framework;
 
@@ -30,8 +31,9 @@ namespace Nethermind.Network.Test.P2P
             DisconnectMessage msg = new DisconnectMessage(DisconnectReason.AlreadyConnected);
             DisconnectMessageSerializer serializer = new DisconnectMessageSerializer();
             byte[] serialized = serializer.Serialize(msg);
+            Assert.AreEqual("0xc105", serialized.ToHexString(true), "bytes");
             DisconnectMessage deserialized = serializer.Deserialize(serialized);
-            Assert.AreEqual( msg.Reason, deserialized.Reason);
+            Assert.AreEqual( msg.Reason, deserialized.Reason, "reason");
         }
     }
 }

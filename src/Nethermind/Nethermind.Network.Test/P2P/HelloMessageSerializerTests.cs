@@ -17,13 +17,11 @@
  */
 
 using System.Collections.Generic;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Model;
 using Nethermind.Network.P2P;
 using NUnit.Framework;
-using Org.BouncyCastle.Utilities.Encoders;
 
 namespace Nethermind.Network.Test.P2P
 {
@@ -43,6 +41,10 @@ namespace Nethermind.Network.Test.P2P
 
             HelloMessageSerializer serializer = new HelloMessageSerializer();
             byte[] serialized = serializer.Serialize(helloMessage);
+            byte[] expectedBytes = Bytes.FromHexString("f85e01904e65746865726d696e642f616c706861c6c58365746801821f42b840fda1cff674c90c9a197539fe3dfb53086ace64f83ed7c6eabec741f7f381cc803e52ab2cd55d5569bce4347107a310dfd5f88a010cd2ffd1005ca406f1842877");
+            
+            Assert.True(Bytes.AreEqual(serialized, expectedBytes), "bytes");
+            
             HelloMessage deserialized = serializer.Deserialize(serialized);
 
             Assert.AreEqual(helloMessage.P2PVersion, deserialized.P2PVersion);
