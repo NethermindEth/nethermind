@@ -60,7 +60,7 @@ namespace Nethermind.Network.P2P
 
         private void Send(Packet packet)
         {
-            if (_context.Channel.Active)
+            if (!_context.Channel.Active)
             {
                 return;
             }
