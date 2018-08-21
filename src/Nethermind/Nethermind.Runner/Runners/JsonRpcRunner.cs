@@ -57,7 +57,7 @@ namespace Nethermind.Runner.Runners
                 .UseUrls(host)
                 .Build();
 
-            var modules = GetModules(_initConfig.JsonRpcEnabledModules);
+            var modules = GetModules(_initConfig.JsonRpcEnabledModules)?.ToList();
             if (modules != null && modules.Any())
             {
                 _configurationProvider.EnabledModules = modules;

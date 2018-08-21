@@ -67,8 +67,9 @@ namespace Nethermind.Config
 
         private void Initialize()
         {
+            var assemblies = AppDomain.CurrentDomain.GetAssemblies().Where(a => a.FullName.StartsWith("Nethermind")).ToArray(); 
             var type = typeof(IConfig);
-            var modules = AppDomain.CurrentDomain.GetAssemblies().SelectMany(x => x.GetTypes()).Where(x => type.IsAssignableFrom(x) && x.IsClass).ToArray();
+            var modules = assemblies.SelectMany(x => x.GetTypes()).Where(x => type.IsAssignableFrom(x) && x.IsClass).ToArray();
 
             _properties = new Dictionary<Type, IEnumerable<PropertyInfo>>();
             _instances = new Dictionary<Type, object>();

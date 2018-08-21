@@ -44,6 +44,8 @@ namespace Nethermind.JsonRpc.Test
         [SetUp]
         public void Initialize()
         {
+            var jConfig = typeof(JsonRpcConfig).Assembly;
+            
             _configurationProvider = new JsonConfigProvider();         
             _logManager = NullLogManager.Instance;
             _jsonSerializer = new JsonSerializer(_logManager);
@@ -89,7 +91,7 @@ namespace Nethermind.JsonRpc.Test
             var requestJson = GetJsonRequest("web3_sha3", new[] { "0x68656c6c6f20776f726c64" });
             var rawResponse = _jsonRpcService.SendRequest(requestJson);
             var response = _jsonSerializer.Deserialize<JsonRpcResponse>(rawResponse);
-            Assert.AreEqual(response.Result, "0xtest data");
+            Assert.AreEqual("0xtest data", response.Result);
         }
 
         [Test]
@@ -158,7 +160,7 @@ namespace Nethermind.JsonRpc.Test
             Assert.AreEqual(response.Id, request.Id);
             Assert.AreEqual(response.Result, "1");
             Assert.IsNull(response.Error);
-            Assert.AreEqual(response.Jsonrpc, _configurationProvider.GetConfig<JsonRpcConfig>().JsonRpcVersion);
+            Assert.AreEqual(_configurationProvider.GetConfig<JsonRpcConfig>().JsonRpcVersion, response.Jsonrpc);
         }
 
         [Test]
