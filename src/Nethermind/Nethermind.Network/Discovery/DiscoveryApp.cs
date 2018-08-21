@@ -115,7 +115,7 @@ namespace Nethermind.Network.Discovery
 
         private void InitializeUdpChannel()
         {
-            _logger.Info($"Starting Discovery UDP Channel: {_configurationProvider.MasterHost}:{_configurationProvider.MasterPort}");
+            if(_logger.IsInfoEnabled) _logger.Info($"Starting Discovery UDP Channel: {_configurationProvider.MasterHost}:{_configurationProvider.MasterPort}");
             _group = new MultithreadEventLoopGroup(1);
             var bootstrap = new Bootstrap();
             bootstrap
@@ -244,7 +244,7 @@ namespace Nethermind.Network.Discovery
         {
             try
             {
-                _logger.Info("Stopping discovery timer");
+                if(_logger.IsDebugEnabled) _logger.Debug("Stopping discovery timer");
                 _discoveryTimer?.Stop();
             }
             catch (Exception e)
@@ -255,7 +255,7 @@ namespace Nethermind.Network.Discovery
 
         private void InitializeDiscoveryPersistanceTimer()
         {
-            _logger.Info("Starting discovery persistance timer");
+            if(_logger.IsDebugEnabled) _logger.Debug("Starting discovery persistance timer");
             _discoveryPersistanceTimer = new Timer(_configurationProvider.DiscoveryPersistanceInterval) {AutoReset = false};
             _discoveryPersistanceTimer.Elapsed += async (sender, e) =>
             {
@@ -270,7 +270,7 @@ namespace Nethermind.Network.Discovery
         {
             try
             {
-                _logger.Info("Stopping discovery persistance timer");
+                if(_logger.IsDebugEnabled) _logger.Debug("Stopping discovery persistance timer");
                 _discoveryPersistanceTimer?.Stop();
             }
             catch (Exception e)

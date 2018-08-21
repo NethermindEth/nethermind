@@ -123,6 +123,7 @@ namespace Nethermind.Blockchain
             if (!BlockTree.CanAcceptNewBlocks)
             {
                 if (_logger.IsDebugEnabled) _logger.Debug($"Ignoring new block {block.Hash} while block tree not ready.");
+                return;
             }
 
             // TODO: validation
@@ -233,6 +234,12 @@ namespace Nethermind.Blockchain
             if (_peers.ContainsKey(synchronizationPeer.NodeId))
             {
                 if (_logger.IsDebugEnabled) _logger.Debug($"Sync peer already in peers collection: {synchronizationPeer.NodeId}");
+                return;
+            }
+            
+            if (!BlockTree.CanAcceptNewBlocks)
+            {
+                if (_logger.IsDebugEnabled) _logger.Debug("Ignoring new block peer while block tree not ready.");
                 return;
             }
 
