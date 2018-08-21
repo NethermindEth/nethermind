@@ -236,12 +236,6 @@ namespace Nethermind.Blockchain
                 if (_logger.IsDebugEnabled) _logger.Debug($"Sync peer already in peers collection: {synchronizationPeer.NodeId}");
                 return;
             }
-            
-            if (!BlockTree.CanAcceptNewBlocks)
-            {
-                if (_logger.IsDebugEnabled) _logger.Debug("Ignoring new block peer while block tree not ready.");
-                return;
-            }
 
             if (_logger.IsDebugEnabled) _logger.Debug($"Adding synchronization peer {synchronizationPeer.NodeId}");
 
@@ -271,6 +265,12 @@ namespace Nethermind.Blockchain
                 }
                 else if (BlockTree.CanAcceptNewBlocks)
                 {
+                    if (!BlockTree.CanAcceptNewBlocks)
+                    {
+                        if (_logger.IsDebugEnabled) _logger.Debug("Ignoring new block peer while block tree not ready.");
+                        return;
+                    }
+                    
                     RunSync();
                 }
             }, tokenSource.Token);
