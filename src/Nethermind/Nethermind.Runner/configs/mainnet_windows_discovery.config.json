@@ -4,7 +4,7 @@
     "ConfigItems": {
       "JsonRpcEnabled": true,
       "NetworkEnabled": true,
-      "DiscoveryEnabled": true,
+      "DiscoveryEnabled": false,
       "SynchronizationEnabled": true,
       "IsMining": false,
       "DiscoveryPort": 30312,
