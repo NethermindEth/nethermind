@@ -130,6 +130,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.DataStreams", "N
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.DataStreams.Test", "Nethermind.DataStreams.Test\Nethermind.DataStreams.Test.csproj", "{95DCBAA9-7C9A-4280-92C9-B34F087E5938}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.DbDiagnostics", "Nethermind.DbDiagnostics\Nethermind.DbDiagnostics.csproj", "{75EB98BF-A07E-4D6B-BAAB-F37EC0459792}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -320,6 +322,10 @@ Global
 		{95DCBAA9-7C9A-4280-92C9-B34F087E5938}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{95DCBAA9-7C9A-4280-92C9-B34F087E5938}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{95DCBAA9-7C9A-4280-92C9-B34F087E5938}.Release|Any CPU.Build.0 = Release|Any CPU
+		{75EB98BF-A07E-4D6B-BAAB-F37EC0459792}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{75EB98BF-A07E-4D6B-BAAB-F37EC0459792}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{75EB98BF-A07E-4D6B-BAAB-F37EC0459792}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{75EB98BF-A07E-4D6B-BAAB-F37EC0459792}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -358,6 +364,7 @@ Global
 		{F582324E-2820-4284-B991-CADFCD835632} = {4FD45249-02DC-483E-B76E-100704B3B337}
 		{E74D4CB5-1F66-4224-A775-494F05C35816} = {AE494DDC-4577-46C6-8AC1-4F6254FDA31D}
 		{95DCBAA9-7C9A-4280-92C9-B34F087E5938} = {1564814A-27F8-40A3-943E-8E950D5EE17D}
+		{75EB98BF-A07E-4D6B-BAAB-F37EC0459792} = {E627BFEF-ABD3-4B8F-A9AC-204251AE440C}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {092CA5E3-6180-4ED7-A3CB-9B57FAC2AA85}
