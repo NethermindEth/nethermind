@@ -17,13 +17,12 @@
  */
 
 using System;
-using System.IO;
-using System.Reflection;
 using Microsoft.Extensions.CommandLineUtils;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
+using Nethermind.Db.Config;
 using Nethermind.JsonRpc.Config;
 using Nethermind.KeyStore.Config;
 using Nethermind.Network.Config;
@@ -35,7 +34,7 @@ namespace Nethermind.Runner
     {
         private static readonly PrivateKey PrivateKey = new PrivateKey("49a7b37aa6f6645917e7b807e9d1c00d4fa71f18343b0d4122a4d2df64dd6fee");
 
-        private const string DefaultConfigFile = "configs\\ropsten_local.config.json";
+        private const string DefaultConfigFile = "configs\\default.config.json";
 
         public RunnerApp(ILogger logger) : base(logger, new PrivateKeyProvider(PrivateKey))
         {
@@ -51,10 +50,12 @@ namespace Nethermind.Runner
             IConfigProvider BuildConfigProvider()
             {
                 //TODO find better way to enforce assemblies with config impl are loaded
-                var kConfig = typeof(KeystoreConfig).Assembly;
-                var nConfig = typeof(NetworkConfig).Assembly;
-                var jConfig = typeof(JsonRpcConfig).Assembly;
-                var iConfig = typeof(InitConfig).Assembly;
+                // ReSharper disable once NotAccessedVariable
+                var config = typeof(KeystoreConfig).Assembly;
+                config = typeof(NetworkConfig).Assembly;
+                config = typeof(JsonRpcConfig).Assembly;
+                config = typeof(InitConfig).Assembly;
+                config = typeof(DbConfig).Assembly;
 
                 var configProvider = new JsonConfigProvider();
                 configProvider.LoadJsonConfig(configFile.HasValue() ? configFile.Value() : DefaultConfigFile);
@@ -65,11 +66,6 @@ namespace Nethermind.Runner
             {
                 return dbBasePath.HasValue() ? dbBasePath.Value() : null;
             }
-            //InitParams InitParams()
-            //{
-            //    IJsonSerializer serializer = new UnforgivingJsonSerializer();
-            //    return serializer.Deserialize<InitParams>(File.ReadAllText(configFile.HasValue() ? configFile.Value() : DefaultConfigFile));
-            //};
 
             return (app, BuildConfigProvider, GetBaseDbPath);
         }

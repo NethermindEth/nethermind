@@ -20,6 +20,7 @@ using System;
 using System.IO;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
+using Nethermind.Db.Config;
 using Nethermind.Store;
 
 namespace Nethermind.Db
@@ -41,11 +42,12 @@ namespace Nethermind.Db
 
         private readonly ILogger _logger;
 
-        public RocksDbProvider(string dbBasePath, ILogManager logManager)
+        public RocksDbProvider(string dbBasePath, ILogManager logManager, IDbConfig dbConfig)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _stateDb = new SnapshotableDb(new DbOnTheRocks(Path.Combine(dbBasePath, DbOnTheRocks.StateDbPath)));
-            _codeDb = new SnapshotableDb(new DbOnTheRocks(Path.Combine(dbBasePath, DbOnTheRocks.CodeDbPath)));
+            
+            _stateDb = new SnapshotableDb(new DbOnTheRocks(Path.Combine(dbBasePath, DbOnTheRocks.StateDbPath), dbConfig));
+            _codeDb = new SnapshotableDb(new DbOnTheRocks(Path.Combine(dbBasePath, DbOnTheRocks.CodeDbPath), dbConfig));
         }
 
         public void Restore(int snapshot)

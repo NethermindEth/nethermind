@@ -31,9 +31,9 @@ namespace Nethermind.Config.Test
         {
             _configProvider.LoadJsonConfig("SampleJsonConfig.json");
 
-            var keystoreConfig = _configProvider.GetConfig<KeystoreConfig>();
-            var networkConfig = _configProvider.GetConfig<NetworkConfig>();
-            var jsonRpcConfig = _configProvider.GetConfig<JsonRpcConfig>();
+            var keystoreConfig = _configProvider.GetConfig<IKeystoreConfig>();
+            var networkConfig = _configProvider.GetConfig<INetworkConfig>();
+            var jsonRpcConfig = _configProvider.GetConfig<IJsonRpcConfig>();
 
             Assert.AreEqual(100, keystoreConfig.KdfparamsDklen);
             Assert.AreEqual("test", keystoreConfig.Cipher);

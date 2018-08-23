@@ -18,13 +18,12 @@
 
 using Nethermind.Config;
 
-namespace Nethermind.Network.Config
+namespace Nethermind.Db.Config
 {
-    public class ConfigNode : IConfigModel
+    public interface IDbConfig : IConfig
     {
-        public string NodeId { get; set; }
-        public string Host { get; set; }
-        public int Port { get; set; }
-        public string Description { get; set; }
+        ulong WriteBufferSize { get; }
+        ulong WriteBufferNumber { get; }
+        ulong BlockCacheSize { get; }
     }
 }

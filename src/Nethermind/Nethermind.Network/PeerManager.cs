@@ -47,7 +47,7 @@ namespace Nethermind.Network
         private readonly IRlpxPeer _localPeer;
         private readonly ILogger _logger;
         private readonly IDiscoveryManager _discoveryManager;
-        private readonly INetworkConfig _configurationProvider;
+        private readonly INetworkConfig _networkConfig;
         private readonly ISynchronizationManager _synchronizationManager;
         private readonly INodeStatsProvider _nodeStatsProvider;
         private readonly IPeerStorage _peerStorage;
@@ -77,7 +77,7 @@ namespace Nethermind.Network
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _localPeer = localPeer;
-            _configurationProvider = configurationProvider.GetConfig<NetworkConfig>();
+            _networkConfig = configurationProvider.GetConfig<INetworkConfig>();
             _synchronizationManager = synchronizationManager;
             _nodeStatsProvider = nodeStatsProvider;
             _discoveryManager = discoveryManager;
@@ -109,7 +109,7 @@ namespace Nethermind.Network
         public async Task Start()
         {
             //Step 3 - start active peers timer - timer is needed to support reconnecting, event based connection is also supported
-            if (_configurationProvider.IsActivePeerTimerEnabled)
+            if (_networkConfig.IsActivePeerTimerEnabled)
             {
                 StartActivePeersTimer();
             }
@@ -138,7 +138,7 @@ namespace Nethermind.Network
 
             LogSessionStats();
 
-            if (_configurationProvider.IsActivePeerTimerEnabled)
+            if (_networkConfig.IsActivePeerTimerEnabled)
             {
                 StopActivePeersTimer();
             }
@@ -161,7 +161,7 @@ namespace Nethermind.Network
 
             var key = _perfService.StartPerfCalc();
 
-            var availibleActiveCount = _configurationProvider.ActivePeersMaxCount - _activePeers.Count;
+            var availibleActiveCount = _networkConfig.ActivePeersMaxCount - _activePeers.Count;
             if (availibleActiveCount <= 0)
             {
                 return;
@@ -274,7 +274,7 @@ namespace Nethermind.Network
                              $"CLIENTS:{Environment.NewLine}" +
                              $"{string.Join(Environment.NewLine, clients.Select(x => $"{x.ClientId}:{x.Count}"))}{Environment.NewLine}");
 
-                if (_configurationProvider.CaptureNodeStatsEventHistory)
+                if (_networkConfig.CaptureNodeStatsEventHistory)
                 {
                     _logger.Info($"Logging {peers.Length} peers log event histories");
 
@@ -307,10 +307,10 @@ namespace Nethermind.Network
             }
 
             var timePassed = DateTime.Now.Subtract(time.Value).TotalMilliseconds;
-            var result = timePassed > _configurationProvider.DisconnectDelay;
+            var result = timePassed > _networkConfig.DisconnectDelay;
             if (!result && _logger.IsTraceEnabled)
             {
-                _logger.Trace($"Skipping connection to peer, due to disconnect delay, time from last disconnect: {timePassed}, delay: {_configurationProvider.DisconnectDelay}, peer: {peer.Node.Id}");
+                _logger.Trace($"Skipping connection to peer, due to disconnect delay, time from last disconnect: {timePassed}, delay: {_networkConfig.DisconnectDelay}, peer: {peer.Node.Id}");
             }
 
             return result;
@@ -325,10 +325,10 @@ namespace Nethermind.Network
             }
 
             var timePassed = DateTime.Now.Subtract(time.Value).TotalMilliseconds;
-            var result = timePassed > _configurationProvider.FailedConnectionDelay;
+            var result = timePassed > _networkConfig.FailedConnectionDelay;
             if (!result && _logger.IsDebugEnabled)
             {
-                _logger.Debug($"Skipping connection to peer, due to failed connection delay, time from last failed connection: {timePassed}, delay: {_configurationProvider.FailedConnectionDelay}, peer: {peer.Node.Id}");
+                _logger.Debug($"Skipping connection to peer, due to failed connection delay, time from last failed connection: {timePassed}, delay: {_networkConfig.FailedConnectionDelay}, peer: {peer.Node.Id}");
             }
 
             return result;
@@ -355,7 +355,7 @@ namespace Nethermind.Network
 
         private void AddPersistedPeers()
         {
-            if (!_configurationProvider.IsPeersPersistenceOn)
+            if (!_networkConfig.IsPeersPersistenceOn)
             {
                 return;
             }
@@ -393,7 +393,7 @@ namespace Nethermind.Network
 
         private void AddTrustedPeers()
         {
-            var trustedPeers = _configurationProvider.TrustedPeers;
+            var trustedPeers = _networkConfig.TrustedPeers;
             if (trustedPeers == null || !trustedPeers.Any())
             {
                 return;
@@ -634,7 +634,7 @@ namespace Nethermind.Network
             }
 
             //if we have too many acive peers
-            if (_activePeers.Count >= _configurationProvider.ActivePeersMaxCount)
+            if (_activePeers.Count >= _networkConfig.ActivePeersMaxCount)
             {
                 if (_logger.IsDebugEnabled)
                 {
@@ -793,7 +793,7 @@ namespace Nethermind.Network
                     _logger.Debug($"Removing Active Peer on disconnect {peer.RemoteNodeId}");
                 }
 
-                if (_logger.IsDebugEnabled && _configurationProvider.CaptureNodeStatsEventHistory)
+                if (_logger.IsDebugEnabled && _networkConfig.CaptureNodeStatsEventHistory)
                 {
                     LogEventHistory(activePeer.NodeStats);
                 }
@@ -835,7 +835,7 @@ namespace Nethermind.Network
         private void StartActivePeersTimer()
         {
             if (_logger.IsDebugEnabled) _logger.Debug("Starting active peers timer");
-            _activePeersTimer = new Timer(_configurationProvider.ActivePeerUpdateInterval) {AutoReset = false};
+            _activePeersTimer = new Timer(_networkConfig.ActivePeerUpdateInterval) {AutoReset = false};
             _activePeersTimer.Elapsed += async (sender, e) =>
             {
                 _activePeersTimer.Enabled = false;
@@ -863,7 +863,7 @@ namespace Nethermind.Network
         {
             if (_logger.IsDebugEnabled) _logger.Debug("Starting peer persistance timer");
 
-            _peerPersistanceTimer = new Timer(_configurationProvider.PeersPersistanceInterval) {AutoReset = false};
+            _peerPersistanceTimer = new Timer(_networkConfig.PeersPersistanceInterval) {AutoReset = false};
             _peerPersistanceTimer.Elapsed += async (sender, e) =>
             {
                 _peerPersistanceTimer.Enabled = false;
@@ -891,7 +891,7 @@ namespace Nethermind.Network
         {
             if (_logger.IsDebugEnabled) _logger.Debug("Starting ping timer");
 
-            _pingTimer = new Timer(_configurationProvider.P2PPingInterval) { AutoReset = false };
+            _pingTimer = new Timer(_networkConfig.P2PPingInterval) { AutoReset = false };
             _pingTimer.Elapsed += async (sender, e) =>
             {
                 _pingTimer.Enabled = false;
@@ -979,7 +979,7 @@ namespace Nethermind.Network
 
         private async Task<bool> SendPingMessage(Peer peer)
         {
-            for (var i = 0; i < _configurationProvider.P2PPingRetryCount; i++)
+            for (var i = 0; i < _networkConfig.P2PPingRetryCount; i++)
             {
                 var result = await peer.P2PMessageSender.SendPing();
                 if (result)
@@ -1054,7 +1054,7 @@ namespace Nethermind.Network
 
             foreach (var statsEvent in nodeStats.EventHistory.OrderBy(x => x.EventDate).ToArray())
             {
-                sb.Append($"{statsEvent.EventDate.ToString(_configurationProvider.DetailedTimeDateFormat)} | {statsEvent.EventType}");
+                sb.Append($"{statsEvent.EventDate.ToString(_networkConfig.DetailedTimeDateFormat)} | {statsEvent.EventType}");
                 if (statsEvent.ClientConnectionType.HasValue)
                 {
                     sb.Append($" | {statsEvent.ClientConnectionType.Value.ToString()}");

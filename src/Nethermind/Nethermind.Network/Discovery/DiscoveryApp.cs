@@ -73,7 +73,7 @@ namespace Nethermind.Network.Discovery
         {
             _logManager = logManager;
             _logger = _logManager.GetClassLogger();
-            _configurationProvider = configurationProvider.GetConfig<NetworkConfig>();
+            _configurationProvider = configurationProvider.GetConfig<INetworkConfig>();
             _nodesLocator = nodesLocator;
             _discoveryManager = discoveryManager;
             _nodeFactory = nodeFactory;

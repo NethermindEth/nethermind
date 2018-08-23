@@ -33,7 +33,7 @@ namespace Nethermind.JsonRpc.Module
 
         public ModuleProvider(IConfigProvider configurationProvider, INetModule netModule, IEthModule ethModule, IWeb3Module web3Module, IShhModule shhModule)
         {
-            _configurationProvider = configurationProvider.GetConfig<JsonRpcConfig>();
+            _configurationProvider = configurationProvider.GetConfig<IJsonRpcConfig>();
             Initialize(netModule, ethModule, web3Module, shhModule);
         }
 

@@ -46,17 +46,17 @@ namespace Nethermind.Network.Config
         /// <summary>
         /// Current Node host
         /// </summary>
-        string MasterHost { get; }
+        string MasterHost { get; set; }
 
         /// <summary>
         /// Current Node external ip
         /// </summary>
-        string MasterExternalIp { get; }
+        string MasterExternalIp { get; set; }
 
         /// <summary>
         /// Current Node port
         /// </summary>
-        int MasterPort { get; }
+        int MasterPort { get; set; }
 
         /// <summary>
         /// Max Discovery Rounds
@@ -111,7 +111,7 @@ namespace Nethermind.Network.Config
         /// <summary>
         /// Boot nodes connection details
         /// </summary>
-        ConfigNode[] BootNodes { get; }
+        ConfigNode[] BootNodes { get; set; }
 
         /// <summary>
         /// Key Pass
@@ -171,7 +171,7 @@ namespace Nethermind.Network.Config
         /// <summary>
         /// Base path for discovery db
         /// </summary>
-        string DbBasePath { get; }
+        string DbBasePath { get; set; } // TODO: move from Network config
 
         /// <summary>
         /// On/Off for discovery persistance

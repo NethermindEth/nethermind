@@ -7,6 +7,7 @@
     <PackageReference Include="RocksDbNative" Version="5.4.6.10" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\Nethermind.Config\Nethermind.Config.csproj" />
     <ProjectReference Include="..\Nethermind.Store\Nethermind.Store.csproj">
       <Project>{8311E4F7-DB36-40F5-A496-7CE4FD486FEE}</Project>
       <Name>Nethermind.Store</Name>

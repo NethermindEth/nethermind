@@ -55,27 +55,27 @@ namespace Nethermind.Runner
             app.OnExecute(async () =>
             {
                 var configProvider = buildConfigProvider();
-                var initParams = configProvider.GetConfig<InitConfig>();
+                var initConfig = configProvider.GetConfig<IInitConfig>();
                 
-                if (initParams.RemovingLogFilesEnabled)
+                if (initConfig.RemovingLogFilesEnabled)
                 {
                     RemoveLogFiles();
                 }
 
-                Logger = new NLogLogger(initParams.LogFileName);
+                Logger = new NLogLogger(initConfig.LogFileName);
 
                 var pathDbPath = getDbBasePath();
                 if (!string.IsNullOrWhiteSpace(pathDbPath))
                 {
-                    var newDbPath = Path.Combine(pathDbPath, initParams.BaseDbPath);
-                    Logger.Info($"Adding prefix to baseDbPath, new value: {newDbPath}, old value: {initParams.BaseDbPath}");
-                    initParams.BaseDbPath = newDbPath;
+                    var newDbPath = Path.Combine(pathDbPath, initConfig.BaseDbPath);
+                    Logger.Info($"Adding prefix to baseDbPath, new value: {newDbPath}, old value: {initConfig.BaseDbPath}");
+                    initConfig.BaseDbPath = newDbPath;
                 }
 
-                Console.Title = initParams.LogFileName;
+                Console.Title = initConfig.LogFileName;
 
                 var serializer = new UnforgivingJsonSerializer();
-                Logger.Info($"Running Nethermind Runner, parameters:\n{serializer.Serialize(initParams, true)}\n");
+                Logger.Info($"Running Nethermind Runner, parameters:\n{serializer.Serialize(initConfig, true)}\n");
 
                 Task userCancelTask = Task.Factory.StartNew(() =>
                 {
@@ -109,13 +109,13 @@ namespace Nethermind.Runner
         {
             try
             {
-                var initParams = configProvider.GetConfig<InitConfig>();
+                var initParams = configProvider.GetConfig<IInitConfig>();
                 var logManager = new NLogManager(initParams.LogFileName);
 
                 //discovering and setting local, remote ips for client machine
                 var networkHelper = new NetworkHelper(Logger);
                 var localHost = networkHelper.GetLocalIp()?.ToString() ?? "127.0.0.1";
-                var networkConfig = configProvider.GetConfig<NetworkConfig>();
+                var networkConfig = configProvider.GetConfig<INetworkConfig>();
                 networkConfig.MasterExternalIp = localHost;
                 networkConfig.MasterHost = localHost;
                 

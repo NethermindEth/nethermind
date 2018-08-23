@@ -44,7 +44,7 @@ namespace Nethermind.Network.Stats
         public NodeStats(Node node, IConfigProvider configurationProvider)
         {
             Node = node;
-            _configurationProvider = configurationProvider.GetConfig<NetworkConfig>();
+            _configurationProvider = configurationProvider.GetConfig<INetworkConfig>();
             _eventHistory = new List<NodeStatsEvent>();
             Initialize();
         }

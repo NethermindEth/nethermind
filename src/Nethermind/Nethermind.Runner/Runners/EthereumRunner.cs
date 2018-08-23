@@ -34,6 +34,7 @@ using Nethermind.Core.Model;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Specs.ChainSpec;
 using Nethermind.Db;
+using Nethermind.Db.Config;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.JsonRpc.Module;
@@ -92,7 +93,7 @@ namespace Nethermind.Runner.Runners
             ILogManager logManager)
         {
             _configProvider = configurationProvider;
-            _initConfig = configurationProvider.GetConfig<InitConfig>();
+            _initConfig = configurationProvider.GetConfig<IInitConfig>();
             _networkHelper = networkHelper;
             _logManager = logManager;
         }
@@ -173,56 +174,159 @@ namespace Nethermind.Runner.Runners
                 throw new NotSupportedException($"Not yet tested, not yet supported ChainId {chainSpec.ChainId}");
             }
 
-            var ethereumSigner = new EthereumSigner(specProvider, _logManager);
+            var ethereumSigner = new EthereumSigner(
+                specProvider,
+                _logManager);
+            
             var transactionStore = new TransactionStore();
-            var sealEngine = ConfigureSealEngine(transactionStore, ethereumSigner);
+            
+            var sealEngine = ConfigureSealEngine(
+                transactionStore,
+                ethereumSigner);
 
             /* sync */
-            var blocksDb = new DbOnTheRocks(Path.Combine(_dbBasePath, DbOnTheRocks.BlocksDbPath));
-            var blockInfosDb = new DbOnTheRocks(Path.Combine(_dbBasePath, DbOnTheRocks.BlockInfosDbPath));
-            var receiptsDb = new DbOnTheRocks(Path.Combine(_dbBasePath, DbOnTheRocks.ReceiptsDbPath));
+            IDbConfig dbConfig = _configProvider.GetConfig<IDbConfig>();
+            _logger.Info($"DB {nameof(dbConfig.BlockCacheSize)}: {dbConfig.BlockCacheSize}");
+            _logger.Info($"DB {nameof(dbConfig.WriteBufferSize)}: {dbConfig.WriteBufferSize}");
+            _logger.Info($"DB {nameof(dbConfig.WriteBufferNumber)}: {dbConfig.WriteBufferNumber}");
+            
+            var blocksDb = new DbOnTheRocks(
+                Path.Combine(_dbBasePath, DbOnTheRocks.BlocksDbPath),
+                dbConfig);
+            
+            var blockInfosDb = new DbOnTheRocks(
+                Path.Combine(_dbBasePath, DbOnTheRocks.BlockInfosDbPath),
+                dbConfig);
+            
+            var receiptsDb = new DbOnTheRocks(
+                Path.Combine(_dbBasePath, DbOnTheRocks.ReceiptsDbPath),
+                dbConfig);
 
             /* blockchain */
-            _blockTree = new BlockTree(blocksDb, blockInfosDb, receiptsDb, specProvider, _logManager);
-            var difficultyCalculator = new DifficultyCalculator(specProvider);
+            _blockTree = new BlockTree(
+                blocksDb,
+                blockInfosDb,
+                receiptsDb,
+                specProvider,
+                _logManager);
+            
+            var difficultyCalculator = new DifficultyCalculator(
+                specProvider);
 
             /* validation */
-            var headerValidator =
-                new HeaderValidator(difficultyCalculator, _blockTree, sealEngine, specProvider, _logManager);
-            var ommersValidator = new OmmersValidator(_blockTree, headerValidator, _logManager);
-            var txValidator = new TransactionValidator(new SignatureValidator(specProvider.ChainId));
-            var blockValidator =
-                new BlockValidator(txValidator, headerValidator, ommersValidator, specProvider, _logManager);
+            var headerValidator = new HeaderValidator(
+                difficultyCalculator,
+                _blockTree,
+                sealEngine,
+                specProvider,
+                _logManager);
+            
+            var ommersValidator = new OmmersValidator(
+                _blockTree,
+                headerValidator,
+                _logManager);
+            
+            var txValidator = new TransactionValidator(
+                new SignatureValidator(specProvider.ChainId));
+            
+            var blockValidator = new BlockValidator(
+                txValidator, 
+                headerValidator,
+                ommersValidator,
+                specProvider,
+                _logManager);
 
             /* state */
-            var dbProvider = new RocksDbProvider(_dbBasePath, _logManager);
-            var codeDb = new DbOnTheRocks(Path.Combine(_dbBasePath, DbOnTheRocks.CodeDbPath));
-            var stateDb = new DbOnTheRocks(Path.Combine(_dbBasePath, DbOnTheRocks.StateDbPath));
+            var dbProvider = new RocksDbProvider(
+                _dbBasePath,
+                _logManager,
+                dbConfig);
+
+            var stateDb = dbProvider.GetOrCreateStateDb();
+
             var stateTree = new StateTree(stateDb);
-            var stateProvider = new StateProvider(stateTree, codeDb, _logManager);
-            var storageProvider = new StorageProvider(dbProvider, stateProvider, _logManager);
+
+            var stateProvider = new StateProvider(
+                stateTree,
+                dbProvider.GetOrCreateCodeDb(),
+                _logManager);
+
+            var storageProvider = new StorageProvider(
+                dbProvider,
+                stateProvider,
+                _logManager);
 
             /* blockchain processing */
-            var blockhashProvider = new BlockhashProvider(_blockTree);
-            var virtualMachine = new VirtualMachine(stateProvider, storageProvider, blockhashProvider, _logManager);
-            var transactionProcessor = new TransactionProcessor(specProvider, stateProvider, storageProvider,
-                virtualMachine, _tracer, _logManager);
-            var rewardCalculator = new RewardCalculator(specProvider);
-            var blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator,
-                transactionProcessor, dbProvider, stateProvider, storageProvider, transactionStore, _logManager);
-            _blockchainProcessor = new BlockchainProcessor(_blockTree, sealEngine, transactionStore,
-                difficultyCalculator, blockProcessor, ethereumSigner, _logManager);
+            var blockhashProvider = new BlockhashProvider(
+                _blockTree);
+
+            var virtualMachine = new VirtualMachine(
+                stateProvider,
+                storageProvider,
+                blockhashProvider,
+                _logManager);
+
+            var transactionProcessor = new TransactionProcessor(
+                specProvider,
+                stateProvider,
+                storageProvider,
+                virtualMachine,
+                _tracer,
+                _logManager);
+
+            var rewardCalculator = new RewardCalculator(
+                specProvider);
+
+            var blockProcessor = new BlockProcessor(
+                specProvider,
+                blockValidator,
+                rewardCalculator,
+                transactionProcessor,
+                dbProvider,
+                stateProvider,
+                storageProvider,
+                transactionStore,
+                _logManager);
+
+            _blockchainProcessor = new BlockchainProcessor(
+                _blockTree,
+                sealEngine,
+                transactionStore,
+                difficultyCalculator,
+                blockProcessor,
+                ethereumSigner,
+                _logManager);
 
             // create shared objects between discovery and peer manager
             _nodeFactory = new NodeFactory();
-            _nodeStatsProvider = new NodeStatsProvider(_configProvider, _logManager, _nodeFactory);
-            var jsonSerializer = new JsonSerializer(_logManager);
-            var encrypter = new AesEncrypter(_configProvider, _logManager);
-            _keyStore = new FileKeyStore(_configProvider, jsonSerializer, encrypter, _cryptoRandom, _logManager);
+            _nodeStatsProvider = new NodeStatsProvider(
+                _configProvider,
+                _logManager,
+                _nodeFactory);
+            
+            var jsonSerializer = new JsonSerializer(
+                _logManager);
+            
+            var encrypter = new AesEncrypter(
+                _configProvider,
+                _logManager);
+            
+            _keyStore = new FileKeyStore(
+                _configProvider,
+                jsonSerializer,
+                encrypter,
+                _cryptoRandom,
+                _logManager);
 
             //creating blockchain bridge
-            BlockchainBridge = new BlockchainBridge(ethereumSigner, stateProvider, _keyStore, _blockTree, stateDb,
+            BlockchainBridge = new BlockchainBridge(
+                ethereumSigner,
+                stateProvider,
+                _keyStore,
+                _blockTree,
+                stateDb,
                 transactionStore);
+            
             EthereumSigner = ethereumSigner;
 
             _blockchainProcessor.Start();
@@ -233,7 +337,7 @@ namespace Nethermind.Runner.Runners
 #pragma warning disable 4014
             LoadBlocksFromDb();
 #pragma warning restore 4014
-            
+
             await InitializeNetwork(transactionStore, blockValidator, headerValidator, txValidator);
         }
 
@@ -460,7 +564,7 @@ namespace Nethermind.Runner.Runners
 
         private void InitDiscovery()
         {
-            _configProvider.GetConfig<NetworkConfig>().MasterPort = _initConfig.DiscoveryPort;
+            _configProvider.GetConfig<INetworkConfig>().MasterPort = _initConfig.DiscoveryPort;
 
             var privateKeyProvider = new PrivateKeyProvider(_privateKey);
             var discoveryMessageFactory = new DiscoveryMessageFactory(_configProvider);

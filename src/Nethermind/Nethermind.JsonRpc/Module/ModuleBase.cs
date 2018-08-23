@@ -33,7 +33,7 @@ namespace Nethermind.JsonRpc.Module
         protected ModuleBase(IConfigProvider configurationProvider, ILogManager logManager)
         {
             Logger = logManager.GetClassLogger();
-            ConfigurationProvider = configurationProvider.GetConfig<JsonRpcConfig>();
+            ConfigurationProvider = configurationProvider.GetConfig<IJsonRpcConfig>();
         }
 
         protected Data Sha3(Data data)

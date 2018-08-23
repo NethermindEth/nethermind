@@ -41,7 +41,7 @@ namespace Nethermind.Network.Discovery
         public NodesLocator(INodeTable nodeTable, IDiscoveryManager discoveryManager, IConfigProvider configurationProvider, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger();
-            _configurationProvider = configurationProvider.GetConfig<NetworkConfig>();
+            _configurationProvider = configurationProvider.GetConfig<INetworkConfig>();
             _nodeTable = nodeTable;
             _discoveryManager = discoveryManager;
         }

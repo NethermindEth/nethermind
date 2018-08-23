@@ -29,8 +29,8 @@ namespace Nethermind.Config
 {
     public class JsonConfigProvider : IConfigProvider
     {
-        private IDictionary<Type, IEnumerable<PropertyInfo>> _properties;
-        private IDictionary<Type, object> _instances;
+        private IDictionary<Type, IEnumerable<PropertyInfo>> _properties = new Dictionary<Type, IEnumerable<PropertyInfo>>();
+        private IDictionary<Type, object> _instances = new Dictionary<Type, object>();
 
         public JsonConfigProvider()
         {
@@ -52,6 +52,7 @@ namespace Nethermind.Config
             {
                 throw new Exception($"Config file does not exist: {configFilePath}");
             }
+            
             ApplyJsonConfig(File.ReadAllText(configFilePath));
         }
 
@@ -62,27 +63,29 @@ namespace Nethermind.Config
             {
                 return (T)_instances[moduleType];
             }
-            throw new Exception($"Config type: {moduleType.Name} is not availible in ConfigModule.");
+            
+            throw new Exception($"Config type: {moduleType.Name} is not available in ConfigModule.");
         }
 
         private void Initialize()
         {
             var assemblies = AppDomain.CurrentDomain.GetAssemblies().Where(a => a.FullName.StartsWith("Nethermind")).ToArray(); 
             var type = typeof(IConfig);
-            var modules = assemblies.SelectMany(x => x.GetTypes()).Where(x => type.IsAssignableFrom(x) && x.IsClass).ToArray();
-
-            _properties = new Dictionary<Type, IEnumerable<PropertyInfo>>();
-            _instances = new Dictionary<Type, object>();
-            foreach (var module in modules)
+            var interfaces = assemblies.SelectMany(x => x.GetTypes()).Where(x => type.IsAssignableFrom(x) && x.IsInterface).ToArray();
+            for (int i = 0; i < interfaces.Length; i++)
             {
-                _instances[module] = Activator.CreateInstance(module);
-                _properties[module] = module.GetProperties(BindingFlags.Public | BindingFlags.Instance).ToArray();
+                var module = interfaces[i].Assembly.GetTypes().SingleOrDefault(x => interfaces[i].IsAssignableFrom(x) && x.IsClass);
+                if (module != null)
+                {
+                    _instances[interfaces[i]] = Activator.CreateInstance(module);
+                    _properties[interfaces[i]] = module.GetProperties(BindingFlags.Public | BindingFlags.Instance).ToArray();    
+                }
             }
         }
 
         private void LoadModule(JToken moduleEntry)
         {
-            var configModule = (string) moduleEntry["ConfigModule"];
+            var configModule = string.Concat("I", (string) moduleEntry["ConfigModule"]);
 
             var configItems = (JObject) moduleEntry["ConfigItems"];
             var itemsDict = new Dictionary<string, string>();
@@ -193,10 +196,12 @@ namespace Nethermind.Config
             {
                 return true;
             }
+            
             if (string.IsNullOrEmpty(value1) || string.IsNullOrEmpty(value2))
             {
                 return false;
             }
+            
             return string.Compare(value1.Trim(), value2.Trim(), StringComparison.CurrentCultureIgnoreCase) == 0;
         }
     }

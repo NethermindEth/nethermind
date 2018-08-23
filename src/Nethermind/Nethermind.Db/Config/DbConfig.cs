@@ -16,15 +16,14 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Config;
-
-namespace Nethermind.Network.Config
+namespace Nethermind.Db.Config
 {
-    public class ConfigNode : IConfigModel
+    public class DbConfig : IDbConfig
     {
-        public string NodeId { get; set; }
-        public string Host { get; set; }
-        public int Port { get; set; }
-        public string Description { get; set; }
+        public static DbConfig Default = new DbConfig();
+        
+        public ulong WriteBufferSize { get; set; } = 1024UL * 1024UL * 64UL;
+        public ulong WriteBufferNumber { get; set; } = 6UL;
+        public ulong BlockCacheSize { get; set; } = 1024UL * 1024UL * 1024UL * 3UL;
     }
 }

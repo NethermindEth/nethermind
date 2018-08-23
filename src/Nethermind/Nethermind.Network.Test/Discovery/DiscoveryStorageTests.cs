@@ -44,13 +44,7 @@ namespace Nethermind.Network.Test.Discovery
         {
             var logManager = NullLogManager.Instance;
             _configurationProvider = new JsonConfigProvider();
-            ((NetworkConfig)_configurationProvider.GetConfig<NetworkConfig>()).DbBasePath = Path.Combine(Path.GetTempPath(), "DiscoveryStorageTests");
-
-            var dbPath = Path.Combine(_configurationProvider.GetConfig<NetworkConfig>().DbBasePath, FullDbOnTheRocks.DiscoveryNodesDbPath);
-            if (Directory.Exists(dbPath))
-            {
-                Directory.GetFiles(dbPath).ToList().ForEach(File.Delete);
-            }
+            ((NetworkConfig)_configurationProvider.GetConfig<INetworkConfig>()).DbBasePath = Path.Combine(Path.GetTempPath(), "DiscoveryStorageTests");
 
             _nodeFactory = new NodeFactory();
             _discoveryStorage = new DiscoveryStorage("test", _configurationProvider, logManager, new PerfService(logManager));

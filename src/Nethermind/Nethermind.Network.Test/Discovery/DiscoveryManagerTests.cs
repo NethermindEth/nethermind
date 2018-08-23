@@ -57,7 +57,7 @@ namespace Nethermind.Network.Test.Discovery
             var logManager = NullLogManager.Instance;
             //var config = new NetworkConfigurationProvider(new NetworkHelper(logger)) { PongTimeout = 100 };
             var config = new JsonConfigProvider();
-            config.GetConfig<NetworkConfig>().PongTimeout = 100;
+            config.GetConfig<INetworkConfig>().PongTimeout = 100;
 
             _messageSender = Substitute.For<IMessageSender>();
             _nodeFactory = new NodeFactory();

@@ -40,11 +40,12 @@ namespace Nethermind.Network.Test
         {
             _logManager = new OneLoggerLogManager(new SimpleConsoleLogger());
             _configurationProvider = new JsonConfigProvider();
-            ((NetworkConfig)_configurationProvider.GetConfig<NetworkConfig>()).DbBasePath = Path.Combine(Path.GetTempPath(), "PeerManagerTests");
-            if (!Directory.Exists(_configurationProvider.GetConfig<NetworkConfig>().DbBasePath))
+            ((NetworkConfig)_configurationProvider.GetConfig<INetworkConfig>()).DbBasePath = Path.Combine(Path.GetTempPath(), "PeerManagerTests");
+            if (!Directory.Exists(_configurationProvider.GetConfig<INetworkConfig>().DbBasePath))
             {
-                Directory.CreateDirectory(_configurationProvider.GetConfig<NetworkConfig>().DbBasePath);
+                Directory.CreateDirectory(_configurationProvider.GetConfig<INetworkConfig>().DbBasePath);
             }
+            
             _nodeFactory = new NodeFactory();
             _localPeer = new TestRlpxPeer();
             var keyProvider = new PrivateKeyProvider(new CryptoRandom());
@@ -218,7 +219,7 @@ namespace Nethermind.Network.Test
         public void DisconnectOnTooManyPeersTest()
         {
             var node = _nodeFactory.CreateNode("192.1.1.1", 3333);
-            ((NetworkConfig)_configurationProvider.GetConfig<NetworkConfig>()).ActivePeersMaxCount = 0;
+            ((NetworkConfig)_configurationProvider.GetConfig<INetworkConfig>()).ActivePeersMaxCount = 0;
 
             //trigger connection initialized
             var p2pSession = new TestP2PSession();

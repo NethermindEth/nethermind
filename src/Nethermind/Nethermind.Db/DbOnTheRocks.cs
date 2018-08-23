@@ -19,6 +19,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.IO;
+using Nethermind.Db.Config;
 using Nethermind.Store;
 using RocksDbSharp;
 
@@ -41,7 +42,7 @@ namespace Nethermind.Db
 
         private WriteBatch _currentBatch;
 
-        public DbOnTheRocks(string dbPath) // TODO: check column families
+        public DbOnTheRocks(string dbPath, IDbConfig dbConfig) // TODO: check column families
         {
             if (!Directory.Exists(dbPath))
             {
@@ -88,7 +89,7 @@ namespace Nethermind.Db
             tableOptions.SetFilterPolicy(BloomFilterPolicy.Create(10, true));
             tableOptions.SetFormatVersion(2);
 
-            const ulong blockCacheSize = 1 * 1024UL * 1024UL * 1024UL;
+            const ulong blockCacheSize = 2 * 1024UL * 1024UL * 1024UL;
 //            const ulong blockCacheSize = 256UL * 1024UL * 1024UL;
             IntPtr cache = Native.Instance.rocksdb_cache_create_lru(new UIntPtr(blockCacheSize));
             tableOptions.SetBlockCache(cache);
@@ -115,7 +116,6 @@ namespace Nethermind.Db
             options.SetMaxWriteBufferNumber(6);
             options.SetMinWriteBufferNumberToMerge(2);
             options.SetBlockBasedTableFactory(tableOptions);
-            options.SetLevel0FileNumCompactionTrigger(6);
             return options;
         }
 

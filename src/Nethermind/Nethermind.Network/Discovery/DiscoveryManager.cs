@@ -55,7 +55,7 @@ namespace Nethermind.Network.Discovery
             ILogManager logManager)
         {
             _logger = logManager.GetClassLogger();
-            _configurationProvider = configurationProvider.GetConfig<NetworkConfig>();
+            _configurationProvider = configurationProvider.GetConfig<INetworkConfig>();
             _nodeLifecycleManagerFactory = nodeLifecycleManagerFactory;
             _nodeFactory = nodeFactory;
             _nodeTable = nodeTable;

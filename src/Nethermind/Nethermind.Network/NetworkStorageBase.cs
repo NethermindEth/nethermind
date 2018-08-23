@@ -41,10 +41,9 @@ namespace Nethermind.Network
         protected NetworkStorageBase(string dbDirectory, IConfigProvider configurationProvider, ILogManager logManager, IPerfService perfService)
         {
             _logger = logManager?.GetClassLogger();
-            INetworkConfig configurationProvider1 = configurationProvider.GetConfig<NetworkConfig>();
+            INetworkConfig networkConfig = configurationProvider.GetConfig<INetworkConfig>();
             _dbDirectory = dbDirectory;
-            //_db = new FullDbOnTheRocks(Path.Combine(_configurationProvider.DbBasePath, FullDbOnTheRocks.PeersDbPath));
-            _db = new SimpleFilePublicKeyDb(Path.Combine(configurationProvider1.DbBasePath, _dbDirectory), logManager, perfService);
+            _db = new SimpleFilePublicKeyDb(Path.Combine(networkConfig.DbBasePath, _dbDirectory), logManager, perfService);
         }
 
         public NetworkNode[] GetPersistedNodes()

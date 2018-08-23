@@ -28,7 +28,7 @@ namespace Nethermind.Network.Discovery.RoutingTable
 
         public NodeDistanceCalculator(IConfigProvider configurationProvider)
         {
-            var networkConfig = configurationProvider.GetConfig<NetworkConfig>();
+            var networkConfig = configurationProvider.GetConfig<INetworkConfig>();
             _maxDistance = networkConfig.BucketsCount;
             _bitsPerHoop = networkConfig.BitsPerHop;
         }

@@ -34,6 +34,7 @@ using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Specs.ChainSpec;
 using Nethermind.Db;
+using Nethermind.Db.Config;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.Mining;
@@ -309,9 +310,9 @@ namespace Nethermind.PerfTest
             var sealEngine = new EthashSealEngine(new Ethash(_logManager), _logManager);
             var specProvider = RopstenSpecProvider.Instance;
 
-            var blocksDb = new DbOnTheRocks(FullBlocksDbPath);
-            var blockInfosDb = new DbOnTheRocks(FullBlockInfosDbPath);
-            var receiptsDb = new DbOnTheRocks(FullReceiptsDbPath);
+            var blocksDb = new DbOnTheRocks(FullBlocksDbPath, DbConfig.Default);
+            var blockInfosDb = new DbOnTheRocks(FullBlockInfosDbPath, DbConfig.Default);
+            var receiptsDb = new DbOnTheRocks(FullReceiptsDbPath, DbConfig.Default);
 
             /* store & validation */
             var blockTree = new UnprocessedBlockTreeWrapper(new BlockTree(blocksDb, blockInfosDb, receiptsDb, specProvider, _logManager));
@@ -323,7 +324,7 @@ namespace Nethermind.PerfTest
 
             /* state & storage */
 
-            var dbProvider = new RocksDbProvider(DbBasePath, _logManager);
+            var dbProvider = new RocksDbProvider(DbBasePath, _logManager, DbConfig.Default);
             var stateTree = new StateTree(dbProvider.GetOrCreateStateDb());
             var stateProvider = new StateProvider(stateTree, dbProvider.GetOrCreateCodeDb(), _logManager);
             var storageProvider = new StorageProvider(dbProvider, stateProvider, _logManager);

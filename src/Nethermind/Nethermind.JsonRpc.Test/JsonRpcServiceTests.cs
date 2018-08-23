@@ -160,7 +160,7 @@ namespace Nethermind.JsonRpc.Test
             Assert.AreEqual(response.Id, request.Id);
             Assert.AreEqual(response.Result, "1");
             Assert.IsNull(response.Error);
-            Assert.AreEqual(_configurationProvider.GetConfig<JsonRpcConfig>().JsonRpcVersion, response.Jsonrpc);
+            Assert.AreEqual(_configurationProvider.GetConfig<IJsonRpcConfig>().JsonRpcVersion, response.Jsonrpc);
         }
 
         [Test]
@@ -183,9 +183,9 @@ namespace Nethermind.JsonRpc.Test
             var response = _jsonSerializer.Deserialize<JsonRpcResponse>(rawResponse);
 
             Assert.AreEqual(response.Id, request.Id);
-            Assert.AreEqual(response.Error.Code, _configurationProvider.GetConfig<JsonRpcConfig>().ErrorCodes[ErrorType.MethodNotFound]);
+            Assert.AreEqual(response.Error.Code, _configurationProvider.GetConfig<IJsonRpcConfig>().ErrorCodes[ErrorType.MethodNotFound]);
             Assert.IsNull(response.Result);
-            Assert.AreEqual(response.Jsonrpc, _configurationProvider.GetConfig<JsonRpcConfig>().JsonRpcVersion);
+            Assert.AreEqual(response.Jsonrpc, _configurationProvider.GetConfig<IJsonRpcConfig>().JsonRpcVersion);
         }
 
         [Test]

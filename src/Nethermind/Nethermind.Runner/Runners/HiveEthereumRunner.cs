@@ -67,7 +67,7 @@ namespace Nethermind.Runner.Runners
         {
             _logger.Info("Initializing Ethereum");
 
-            var initConfig = _configurationProvider.GetConfig<HiveInitConfig>();
+            var initConfig = _configurationProvider.GetConfig<IHiveInitConfig>();
             _blockchainProcessor.Start();
             InitializeKeys(initConfig.KeysDir);
             InitializeGenesis(initConfig.GenesisFilePath);
@@ -153,7 +153,7 @@ namespace Nethermind.Runner.Runners
                 var fileContent = File.ReadAllText(file);
                 var keyStoreItem = _jsonSerializer.Deserialize<KeyStoreItem>(fileContent);
                 var filePath = Path.Combine(keyStoreDir, keyStoreItem.Address);
-                File.WriteAllText(filePath, fileContent, Encoding.GetEncoding(_configurationProvider.GetConfig<KeystoreConfig>().KeyStoreEncoding));
+                File.WriteAllText(filePath, fileContent, Encoding.GetEncoding(_configurationProvider.GetConfig<IKeystoreConfig>().KeyStoreEncoding));
             }
         }
 
@@ -216,7 +216,7 @@ namespace Nethermind.Runner.Runners
 
         private string GetStoreDirectory()
         {
-            var directory = _configurationProvider.GetConfig<KeystoreConfig>().KeyStoreDirectory;
+            var directory = _configurationProvider.GetConfig<IKeystoreConfig>().KeyStoreDirectory;
             if (!Directory.Exists(directory))
             {
                 Directory.CreateDirectory(directory);

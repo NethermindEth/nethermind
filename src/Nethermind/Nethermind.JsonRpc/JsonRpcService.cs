@@ -41,7 +41,7 @@ namespace Nethermind.JsonRpc
         public JsonRpcService(IJsonSerializer jsonSerializer, IModuleProvider moduleProvider, IConfigProvider configurationProvider, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger();
-            _jsonRpcConfig = configurationProvider.GetConfig<JsonRpcConfig>();
+            _jsonRpcConfig = configurationProvider.GetConfig<IJsonRpcConfig>();
             _jsonSerializer = jsonSerializer;
             _moduleProvider = moduleProvider;
         }

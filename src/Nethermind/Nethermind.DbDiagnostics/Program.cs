@@ -1,6 +1,7 @@
 ﻿using System;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
+using Nethermind.Db.Config;
 using Nethermind.Store;
 
 namespace Nethermind.DbDiagnostics
@@ -10,7 +11,7 @@ namespace Nethermind.DbDiagnostics
         static void Main(string[] args)
         {
             Console.WriteLine("Hello World!");
-            DbOnTheRocks db1 = new DbOnTheRocks("C:\\chains\\mainnet\\discovery\\state");
+            DbOnTheRocks db1 = new DbOnTheRocks("C:\\chains\\mainnet\\discovery\\state", DbConfig.Default);
 //            DbOnTheRocks db2 = new DbOnTheRocks("C:\\chains\\mainnet\\discovery\\code");
 //            DbOnTheRocks db3 = new DbOnTheRocks("C:\\chains\\mainnet\\discovery\\blocks");
 //            DbOnTheRocks db4 = new DbOnTheRocks("C:\\chains\\mainnet\\discovery\\discoveryNodes");
