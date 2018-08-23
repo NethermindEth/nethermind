@@ -23,7 +23,7 @@ namespace Nethermind.Db.Config
         public static DbConfig Default = new DbConfig();
         
         public ulong WriteBufferSize { get; set; } = 1024UL * 1024UL * 64UL;
-        public ulong WriteBufferNumber { get; set; } = 6UL;
+        public uint WriteBufferNumber { get; set; } = 6;
         public ulong BlockCacheSize { get; set; } = 1024UL * 1024UL * 1024UL * 3UL;
     }
 }

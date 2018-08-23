@@ -49,7 +49,8 @@ namespace Nethermind.Db
                 Directory.CreateDirectory(dbPath);
             }
 
-            _db = DbsByPath.GetOrAdd(dbPath, path => RocksDb.Open(_options, path));
+            DbOptions options = BuildOptions(dbConfig);
+            _db = DbsByPath.GetOrAdd(dbPath, path => RocksDb.Open(options, path));
 
             if (dbPath.EndsWith(StateDbPath))
             {
@@ -77,9 +78,7 @@ namespace Nethermind.Db
             }
         }
 
-        private static DbOptions _options = BuildOptions();
-
-        private static DbOptions BuildOptions()
+        private DbOptions BuildOptions(IDbConfig dbConfig)
         {
             BlockBasedTableOptions tableOptions = new BlockBasedTableOptions();
             tableOptions.SetBlockSize(16 * 1024);
@@ -89,8 +88,7 @@ namespace Nethermind.Db
             tableOptions.SetFilterPolicy(BloomFilterPolicy.Create(10, true));
             tableOptions.SetFormatVersion(2);
 
-            const ulong blockCacheSize = 2 * 1024UL * 1024UL * 1024UL;
-//            const ulong blockCacheSize = 256UL * 1024UL * 1024UL;
+            ulong blockCacheSize = dbConfig.BlockCacheSize;
             IntPtr cache = Native.Instance.rocksdb_cache_create_lru(new UIntPtr(blockCacheSize));
             tableOptions.SetBlockCache(cache);
 
@@ -112,10 +110,12 @@ namespace Nethermind.Db
             options.SetMaxBackgroundCompactions(Environment.ProcessorCount);
 
             //options.SetMaxOpenFiles(32);
-            options.SetWriteBufferSize(1024 * 1024 * 64);
-            options.SetMaxWriteBufferNumber(6);
+            options.SetWriteBufferSize(dbConfig.WriteBufferSize);
+            options.SetMaxWriteBufferNumber((int)dbConfig.WriteBufferNumber);
             options.SetMinWriteBufferNumberToMerge(2);
             options.SetBlockBasedTableFactory(tableOptions);
+            options.IncreaseParallelism(Environment.ProcessorCount);
+//            options.SetLevelCompactionDynamicLevelBytes(true); // only switch on on empty DBs
             return options;
         }
 

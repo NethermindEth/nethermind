@@ -23,7 +23,7 @@
     "ConfigItems": {
       "WriteBufferSize": 67108864,
       "WriteBufferNumber": 6,
-      "BlockCacheSize": 3221225472
+      "BlockCacheSize": 67108864
     }
   }
 ]

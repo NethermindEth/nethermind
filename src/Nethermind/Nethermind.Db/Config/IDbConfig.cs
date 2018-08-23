@@ -23,7 +23,7 @@ namespace Nethermind.Db.Config
     public interface IDbConfig : IConfig
     {
         ulong WriteBufferSize { get; }
-        ulong WriteBufferNumber { get; }
+        uint WriteBufferNumber { get; }
         ulong BlockCacheSize { get; }
     }
 }
