@@ -38,6 +38,7 @@ namespace Nethermind.Blockchain
 {
     public class BlockchainProcessor : IBlockchainProcessor
     {
+       
         private static readonly BigInteger MinGasPriceForMining = 1;
         private readonly IBlockProcessor _blockProcessor;
         private readonly IEthereumSigner _signer;
@@ -46,8 +47,8 @@ namespace Nethermind.Blockchain
         private readonly ILogger _logger;
         private readonly ISealEngine _sealEngine;
 
-        private readonly BlockingCollection<Block> _recoveryQueue = new BlockingCollection<Block>(new ConcurrentQueue<Block>());
-        private readonly BlockingCollection<Block> _blockQueue = new BlockingCollection<Block>(new ConcurrentQueue<Block>());
+        private readonly BlockingCollection<BlockRef> _recoveryQueue = new BlockingCollection<BlockRef>(new ConcurrentQueue<BlockRef>());
+        private readonly BlockingCollection<BlockRef> _blockQueue = new BlockingCollection<BlockRef>(new ConcurrentQueue<BlockRef>());
         private readonly ITransactionStore _transactionStore;
 
         public BlockchainProcessor(
@@ -72,13 +73,16 @@ namespace Nethermind.Blockchain
 
         private void OnNewBestBlock(object sender, BlockEventArgs blockEventArgs)
         {
-            if (blockEventArgs.Block == null)
-            {
-                throw new InvalidOperationException("New best block is null");
-            }
-
             _miningCancellation?.Cancel();
-            EnqueueForProcessing(blockEventArgs.Block);
+            
+            Block block = blockEventArgs.Block;
+            
+            if (_logger.IsTraceEnabled) _logger.Trace($"Enqueuing a new block {block.ToString(Block.Format.Short)} for processing.");
+            
+            BlockRef blockRef = _recoveryQueue.Count > MaxRecoveryQueueSize ? new BlockRef(block.Hash) : new BlockRef(block);
+            _recoveryQueue.Add(blockRef);
+            
+            if (_logger.IsTraceEnabled) _logger.Trace($"A new block {block.ToString(Block.Format.Short)} enqueued for processing.");
         }
 
         private CancellationTokenSource _loopCancellationSource;
@@ -150,13 +154,49 @@ namespace Nethermind.Blockchain
         private void RunRecoveryLoop()
         {
             if (_logger.IsDebugEnabled) _logger.Debug($"Starting recovery loop - {_blockQueue.Count} blocks waiting in the queue.");
-            foreach (Block block in _recoveryQueue.GetConsumingEnumerable(_loopCancellationSource.Token))
+            foreach (BlockRef blockRef in _recoveryQueue.GetConsumingEnumerable(_loopCancellationSource.Token))
             {
-                if (_logger.IsTraceEnabled) _logger.Trace($"Recovering addresses for block {block.ToString(Block.Format.Short)}).");
-                _signer.RecoverAddresses(block);
-                _blockQueue.Add(block);
+                if (_logger.IsTraceEnabled) _logger.Trace($"Recovering addresses for block {blockRef.BlockHash ?? blockRef.Block.Hash}.");
+                ResolveBlockRef(blockRef);
+                _signer.RecoverAddresses(blockRef.Block);
+
+                if (_blockQueue.Count > MaxProcessingQueueSize)
+                {
+                    DetachBlockRef(blockRef);
+                }
+
+                _blockQueue.Add(blockRef);
             }
         }
+
+        private void DetachBlockRef(BlockRef blockRef)
+        {
+            if (!blockRef.IsInDb)
+            {
+                blockRef.BlockHash = blockRef.Block.Hash;
+                blockRef.Block = null;
+                blockRef.IsInDb = true;
+            }
+        }
+        
+        private void ResolveBlockRef(BlockRef blockRef)
+        {
+            if (blockRef.IsInDb)
+            {
+                Block block = _blockTree.FindBlock(blockRef.BlockHash, false);
+                if (block == null)
+                {
+                    throw new InvalidOperationException($"Cannot resolve block reference for {blockRef.BlockHash}");
+                }
+
+                blockRef.Block = block;
+                blockRef.BlockHash = null;
+                blockRef.IsInDb = false;
+            }
+        }
+
+        private const int MaxRecoveryQueueSize = 10000;
+        private const int MaxProcessingQueueSize = 10000;
 
         private void RunProcessingLoop()
         {
@@ -170,8 +210,11 @@ namespace Nethermind.Blockchain
                 if (_logger.IsTraceEnabled) _logger.Trace("Will go and wait for another block now...");
             }
 
-            foreach (Block block in _blockQueue.GetConsumingEnumerable(_loopCancellationSource.Token))
+            foreach (BlockRef blockRef in _blockQueue.GetConsumingEnumerable(_loopCancellationSource.Token))
             {
+                ResolveBlockRef(blockRef);
+                Block block = blockRef.Block;
+                
                 if (_logger.IsTraceEnabled) _logger.Trace($"Processing block {block.ToString(Block.Format.Short)}).");
                 if (_blockQueue.Count == 0)
                 {
@@ -188,13 +231,6 @@ namespace Nethermind.Blockchain
                     if (_logger.IsTraceEnabled) _logger.Trace("Will go and wait for another block now...");
                 }
             }
-        }
-
-        private void EnqueueForProcessing(Block block)
-        {
-            if (_logger.IsTraceEnabled) _logger.Trace($"Enqueuing a new block {block.ToString(Block.Format.Short)} for processing.");
-            _recoveryQueue.Add(block);
-            if (_logger.IsTraceEnabled) _logger.Trace($"A new block {block.ToString(Block.Format.Short)} enqueued for processing.");
         }
 
         // TODO: there will be a need for cancellation of current mining whenever a new block arrives
@@ -301,8 +337,8 @@ namespace Nethermind.Blockchain
         public void Process(Block suggestedBlock)
         {
             Process(suggestedBlock, false);
-            if(_logger.IsTraceEnabled) _logger.Trace($"Processed block {suggestedBlock.ToString(Block.Format.Full)}");
-            
+            if (_logger.IsTraceEnabled) _logger.Trace($"Processed block {suggestedBlock.ToString(Block.Format.Full)}");
+
             _currentTotalMGas += suggestedBlock.GasUsed / 1_000_000m;
             _currentTotalTx += suggestedBlock.Transactions.Length;
             //            
@@ -328,8 +364,8 @@ namespace Nethermind.Blockchain
                 decimal mgasPerSecond = chunkMicroseconds == 0 ? -1 : chunkMGas / chunkMicroseconds * 1000 * 1000;
                 decimal totalMgasPerSecond = totalMicroseconds == 0 ? -1 : _currentTotalMGas / totalMicroseconds * 1000 * 1000;
                 decimal txps = chunkMicroseconds == 0 ? -1 : chunkTx / chunkMicroseconds * 1000m * 1000m;
-                if(_logger.IsInfoEnabled) _logger.Info($"Processed blocks up to {suggestedBlock.Number,9} in {(chunkMicroseconds == 0 ? -1 : chunkMicroseconds / 1000),7:N0}ms, tx={chunkTx,5} mgas={chunkMGas,8:F2}, mgasps={mgasPerSecond,7:F2}, txps={txps,7:F2}, total mgasps={totalMgasPerSecond,7:F2}, queue={_blockQueue.Count}");
-                if(_logger.IsDebugEnabled) _logger.Debug($"Gen0: {currentGen0 - _lastGen0,6}, Gen1: {currentGen1 - _lastGen1,6}, Gen2: {currentGen2 - _lastGen2,6}, maxmem: {_maxMemory / 1000000,5}, mem: {currentMemory / 1000000,5}, reads: {currentStateDbReads - _lastStateDbReads,9}, writes: {currentStateDbWrites - _lastStateDbWrites,9}, rlp: {currentTreeNodeRlp - _lastTreeNodeRlp,9}, exceptions:{evmExceptions - _lastEvmExceptions}, selfdstrcs={currentSelfDestructs - _lastSelfDestructs}");
+                if (_logger.IsInfoEnabled) _logger.Info($"Processed blocks up to {suggestedBlock.Number,9} in {(chunkMicroseconds == 0 ? -1 : chunkMicroseconds / 1000),7:N0}ms, tx={chunkTx,5} mgas={chunkMGas,8:F2}, mgasps={mgasPerSecond,7:F2}, txps={txps,7:F2}, total mgasps={totalMgasPerSecond,7:F2}, queue={_blockQueue.Count}");
+                if (_logger.IsDebugEnabled) _logger.Debug($"Gen0: {currentGen0 - _lastGen0,6}, Gen1: {currentGen1 - _lastGen1,6}, Gen2: {currentGen2 - _lastGen2,6}, maxmem: {_maxMemory / 1000000,5}, mem: {currentMemory / 1000000,5}, reads: {currentStateDbReads - _lastStateDbReads,9}, writes: {currentStateDbWrites - _lastStateDbWrites,9}, rlp: {currentTreeNodeRlp - _lastTreeNodeRlp,9}, exceptions:{evmExceptions - _lastEvmExceptions}, selfdstrcs={currentSelfDestructs - _lastSelfDestructs}");
                 _lastTotalMGas = _currentTotalMGas;
                 _lastElapsedTicks = currentTicks;
                 _lastTotalTx = _currentTotalTx;
@@ -440,6 +476,7 @@ namespace Nethermind.Blockchain
                         _signer.RecoverAddresses(blocks[i]);
                     }
                 }
+
                 Block[] processedBlocks = _blockProcessor.Process(stateRoot, blocks, forMining);
 
                 // TODO: lots of unnecessary loading and decoding here, review after adding support for loading headers only
@@ -503,7 +540,7 @@ namespace Nethermind.Blockchain
                     if (_logger.IsTraceEnabled) _logger.Trace($"Updating total difficulty of the main chain to {totalDifficulty}");
                     if (_logger.IsTraceEnabled) _logger.Trace($"Updating total transactions of the main chain to {totalTransactions}");
                 }
-                else if(_blockTree.CanAcceptNewBlocks)
+                else if (_blockTree.CanAcceptNewBlocks)
                 {
                     Block blockToBeMined = processedBlocks[processedBlocks.Length - 1];
                     _miningCancellation = new CancellationTokenSource();
@@ -526,6 +563,27 @@ namespace Nethermind.Blockchain
                     }, _miningCancellation.Token);
                 }
             }
+        }
+
+        private class BlockRef
+        {
+            public BlockRef(Block block)
+            {
+                Block = block;
+                IsInDb = false;
+                BlockHash = null;
+            }
+
+            public BlockRef(Keccak blockHash)
+            {
+                Block = null;
+                IsInDb = true;
+                BlockHash = blockHash;
+            }
+
+            public bool IsInDb { get; set; }
+            public Keccak BlockHash { get; set; }
+            public Block Block { get; set; }
         }
     }
 }
