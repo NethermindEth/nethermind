@@ -5,7 +5,7 @@ using Nethermind.HashLib.Extensions;
 
 namespace Nethermind.HashLib.Crypto.SHA3
 {
-    internal class Keccak224 : Keccak
+    internal class Keccak224 : KeccakBase
     {
         public Keccak224()
             : base(HashLib.HashSize.HashSize224)
@@ -13,7 +13,7 @@ namespace Nethermind.HashLib.Crypto.SHA3
         }
     }
 
-    public class Keccak256 : Keccak
+    public class Keccak256 : KeccakBase
     {
         public Keccak256()
             : base(HashLib.HashSize.HashSize256)
@@ -21,7 +21,7 @@ namespace Nethermind.HashLib.Crypto.SHA3
         }
     }
 
-    internal class Keccak384 : Keccak
+    internal class Keccak384 : KeccakBase
     {
         public Keccak384()
             : base(HashLib.HashSize.HashSize384)
@@ -29,7 +29,7 @@ namespace Nethermind.HashLib.Crypto.SHA3
         }
     }
 
-    public class Keccak512 : Keccak
+    public class Keccak512 : KeccakBase
     {
         public Keccak512()
             : base(HashLib.HashSize.HashSize512)
@@ -38,11 +38,11 @@ namespace Nethermind.HashLib.Crypto.SHA3
     }
 
     [DebuggerNonUserCode]
-    public abstract class Keccak : BlockHash, ICryptoNotBuildIn
+    public abstract class KeccakBase : BlockHash, ICryptoNotBuildIn
     {
         private readonly ulong[] m_state = new ulong[25];
 
-        public Keccak(HashLib.HashSize a_hash_size)
+        public KeccakBase(HashLib.HashSize a_hash_size)
             : base((int)a_hash_size, 200 - ((int)a_hash_size * 2))
         {
             _blockSize = BlockSize;
