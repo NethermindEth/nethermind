@@ -211,9 +211,9 @@ namespace Nethermind.Blockchain
             db.StartBatch();
             _stateProvider.CommitTree();
             _storageProvider.CommitTrees();
+            _dbProvider.Commit(_specProvider.GetSpec(suggestedBlock.Number));
             db.CommitBatch();
             
-            _dbProvider.Commit(_specProvider.GetSpec(suggestedBlock.Number));
             return processedBlock;
         }
 

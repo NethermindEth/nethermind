@@ -37,8 +37,7 @@ using Nethermind.Store;
 namespace Nethermind.Blockchain
 {
     public class BlockchainProcessor : IBlockchainProcessor
-    {
-       
+    {  
         private static readonly BigInteger MinGasPriceForMining = 1;
         private readonly IBlockProcessor _blockProcessor;
         private readonly IEthereumSigner _signer;
@@ -113,7 +112,7 @@ namespace Nethermind.Blockchain
             _recoveryTask = Task.Factory.StartNew(
                 RunRecoveryLoop,
                 _loopCancellationSource.Token,
-                TaskCreationOptions.None,
+                TaskCreationOptions.LongRunning,
                 TaskScheduler.Default).ContinueWith(t =>
             {
                 if (t.IsFaulted)
@@ -133,7 +132,7 @@ namespace Nethermind.Blockchain
             _processorTask = Task.Factory.StartNew(
                 RunProcessingLoop,
                 _loopCancellationSource.Token,
-                TaskCreationOptions.None,
+                TaskCreationOptions.LongRunning,
                 TaskScheduler.Default).ContinueWith(t =>
             {
                 if (t.IsFaulted)

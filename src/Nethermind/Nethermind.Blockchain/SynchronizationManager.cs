@@ -223,7 +223,7 @@ namespace Nethermind.Blockchain
                 return;
             }
 
-            if (!_peers.TryRemove(synchronizationPeer.NodeId, out var _))
+            if (!_peers.TryRemove(synchronizationPeer.NodeId, out _))
             {
                 if (_logger.IsError) _logger.Error($"Synchronization peer was not on the list {synchronizationPeer.NodeId}");
                 return;
