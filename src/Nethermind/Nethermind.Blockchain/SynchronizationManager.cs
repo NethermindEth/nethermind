@@ -326,11 +326,6 @@ namespace Nethermind.Blockchain
                 {
                     if (_logger.IsError) _logger.Error($"Error during sync process: {t.Exception}");
                 }
-
-                if (_logger.IsInfo)
-                {
-                    _logger.Info($"Sync process finished, [{(t.IsFaulted ? "FAULTED" : t.IsCanceled ? "CANCELLED" : t.IsCompleted ? "COMPLETED" : "OTHER")}]");
-                }
                 
                 lock (_isSyncingLock)
                 {
