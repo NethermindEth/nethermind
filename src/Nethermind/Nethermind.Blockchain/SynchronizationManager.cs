@@ -180,6 +180,7 @@ namespace Nethermind.Blockchain
             }
 
             var tokenSource = _initCancelTokens[synchronizationPeer.NodeId] = new CancellationTokenSource();
+            // ReSharper disable once MethodSupportsCancellation
             await InitPeerInfo(synchronizationPeer, tokenSource.Token).ContinueWith(t =>
             {
                 _initCancelTokens.TryRemove(synchronizationPeer.NodeId, out _);
@@ -199,7 +200,7 @@ namespace Nethermind.Blockchain
                 {
                     RequestSync();
                 }
-            }, tokenSource.Token);
+            });
         }
 
         public void RemovePeer(ISynchronizationPeer synchronizationPeer)
@@ -345,7 +346,7 @@ namespace Nethermind.Blockchain
                 PeerInfo peerInfo = _currentSyncingPeerInfo = _peers.Values.OrderBy(p => p.NumberAvailable).LastOrDefault();
                 if (peerInfo == null)
                 {
-                    if (_logger.IsInfo) _logger.Info($"No sync peers availible, finishing sync process, best known block #: {_blockTree.BestSuggested.Number}");
+                    if (_logger.IsInfo) _logger.Info($"No sync peers available, finishing sync process, best known block #: {_blockTree.BestSuggested.Number}");
                     return;
                 }
 

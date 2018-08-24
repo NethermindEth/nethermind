@@ -161,8 +161,8 @@ namespace Nethermind.Network
 
             var key = _perfService.StartPerfCalc();
 
-            var availibleActiveCount = _networkConfig.ActivePeersMaxCount - _activePeers.Count;
-            if (availibleActiveCount <= 0)
+            var availableActiveCount = _networkConfig.ActivePeersMaxCount - _activePeers.Count;
+            if (availableActiveCount <= 0)
             {
                 return;
             }
@@ -189,7 +189,7 @@ namespace Nethermind.Network
             var failedInitialConnect = 0;
             for (var i = 0; i < candidates.Length; i++)
             {
-                if (newActiveNodes >= availibleActiveCount)
+                if (newActiveNodes >= availableActiveCount)
                 {
                     break;
                 }

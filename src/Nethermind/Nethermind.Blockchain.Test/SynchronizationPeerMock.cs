@@ -16,9 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-
 using System;
-using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
