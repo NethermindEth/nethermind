@@ -298,13 +298,13 @@ namespace Nethermind.PerfTest
             _logManager = new NLogManager("perTest.logs.txt");
             _logger = _logManager.GetClassLogger();
 
-            if (_logger.IsInfoEnabled) _logger.Info("Deleting state DBs");
+            if (_logger.IsInfo) _logger.Info("Deleting state DBs");
 
             DeleteDb(FullStateDbPath);
             DeleteDb(FullStorageDbPath);
             DeleteDb(FullCodeDbPath);
             DeleteDb(FullReceiptsDbPath);
-            if (_logger.IsInfoEnabled) _logger.Info("State DBs deleted");
+            if (_logger.IsInfo) _logger.Info("State DBs deleted");
 
             /* spec */
             var sealEngine = new EthashSealEngine(new Ethash(_logManager), _logManager);

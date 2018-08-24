@@ -91,21 +91,21 @@ namespace Nethermind.Network.Rlpx.Handshake
             bool isOld = false;
             try
             {
-                if(_logger.IsDebugEnabled) _logger.Debug($"Trying to decrypt an old version of {nameof(AuthMessage)}");
+                if(_logger.IsDebug) _logger.Debug($"Trying to decrypt an old version of {nameof(AuthMessage)}");
                 byte[] plaintextOld = _eciesCipher.Decrypt(_privateKey, auth.Data);
                 authMessage = _messageSerializationService.Deserialize<AuthMessage>(plaintextOld);
                 isOld = true;
             }
             catch (Exception)
             {
-                if(_logger.IsDebugEnabled) _logger.Debug($"Trying to decrypt version 4 of {nameof(AuthEip8Message)}");
+                if(_logger.IsDebug) _logger.Debug($"Trying to decrypt version 4 of {nameof(AuthEip8Message)}");
                 byte[] sizeData = auth.Data.Slice(0, 2);
                 byte[] plaintext = _eciesCipher.Decrypt(_privateKey, auth.Data.Slice(2), sizeData);
                 authMessage = _messageSerializationService.Deserialize<AuthEip8Message>(plaintext);
             }
 
             var nodeId = new NodeId(authMessage.PublicKey);
-            if(_logger.IsDebugEnabled) _logger.Debug($"Received AUTH v{authMessage.Version} from {nodeId}");
+            if(_logger.IsDebug) _logger.Debug($"Received AUTH v{authMessage.Version} from {nodeId}");
 
             handshake.RemoteNodeId = nodeId;
             handshake.RecipientNonce = _cryptoRandom.GenerateRandomBytes(32);
@@ -120,7 +120,7 @@ namespace Nethermind.Network.Rlpx.Handshake
             byte[] ackData;
             if (isOld) // what was the difference? shall I really include ephemeral public key in v4?
             {
-                if(_logger.IsDebugEnabled) _logger.Debug($"Building an {nameof(AckMessage)}");
+                if(_logger.IsDebug) _logger.Debug($"Building an {nameof(AckMessage)}");
                 AckMessage ackMessage = new AckMessage();
                 ackMessage.EphemeralPublicKey = handshake.EphemeralPrivateKey.PublicKey;
                 ackMessage.Nonce = handshake.RecipientNonce;
@@ -128,7 +128,7 @@ namespace Nethermind.Network.Rlpx.Handshake
             }
             else
             {
-                if(_logger.IsDebugEnabled) _logger.Debug($"Building an {nameof(AckEip8Message)}");
+                if(_logger.IsDebug) _logger.Debug($"Building an {nameof(AckEip8Message)}");
                 AckEip8Message ackMessage = new AckEip8Message();
                 ackMessage.EphemeralPublicKey = handshake.EphemeralPrivateKey.PublicKey;
                 ackMessage.Nonce = handshake.RecipientNonce;
@@ -151,7 +151,7 @@ namespace Nethermind.Network.Rlpx.Handshake
             {
                 byte[] plaintextOld = _eciesCipher.Decrypt(_privateKey, ack.Data);
                 AckMessage ackMessage = _messageSerializationService.Deserialize<AckMessage>(plaintextOld);
-                if(_logger.IsDebugEnabled) _logger.Debug($"Received ACK old");
+                if(_logger.IsDebug) _logger.Debug($"Received ACK old");
                 
                 handshake.RemoteEphemeralPublicKey = ackMessage.EphemeralPublicKey;
                 handshake.RecipientNonce = ackMessage.Nonce;
@@ -161,7 +161,7 @@ namespace Nethermind.Network.Rlpx.Handshake
                 byte[] sizeData = ack.Data.Slice(0, 2);
                 byte[] plaintext = _eciesCipher.Decrypt(_privateKey, ack.Data.Slice(2), sizeData);
                 AckEip8Message ackMessage = _messageSerializationService.Deserialize<AckEip8Message>(plaintext);
-                if(_logger.IsDebugEnabled) _logger.Debug($"Received ACK v{ackMessage.Version}");
+                if(_logger.IsDebug) _logger.Debug($"Received ACK v{ackMessage.Version}");
                 
                 handshake.RemoteEphemeralPublicKey = ackMessage.EphemeralPublicKey;
                 handshake.RecipientNonce = ackMessage.Nonce;
@@ -204,7 +204,7 @@ namespace Nethermind.Network.Rlpx.Handshake
                 handshake.Secrets.IngressMac = mac1;
             }
 
-            if(_logger.IsTraceEnabled) _logger.Trace($"Agreed secrets with {handshake.RemoteNodeId}");
+            if(_logger.IsTrace) _logger.Trace($"Agreed secrets with {handshake.RemoteNodeId}");
             #if DEBUG
             if (_logger.IsTraceEnabled)
             {

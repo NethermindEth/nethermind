@@ -19,10 +19,9 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Numerics;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.CodeAnalysis.Operations;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Difficulty;
 using Nethermind.Blockchain.Validators;
@@ -186,10 +185,10 @@ namespace Nethermind.Runner.Runners
 
             /* sync */
             IDbConfig dbConfig = _configProvider.GetConfig<IDbConfig>();
-            _logger.Info($"DB {nameof(dbConfig.BlockCacheSize)}: {dbConfig.BlockCacheSize}");
-            _logger.Info($"DB {nameof(dbConfig.WriteBufferSize)}: {dbConfig.WriteBufferSize}");
-            _logger.Info($"DB {nameof(dbConfig.WriteBufferNumber)}: {dbConfig.WriteBufferNumber}");
-            _logger.Info($"DB {nameof(dbConfig.CacheIndexAndFilterBlocks)}: {dbConfig.CacheIndexAndFilterBlocks}");
+            foreach (PropertyInfo propertyInfo in typeof(IDbConfig).GetProperties())
+            {
+                _logger.Info($"DB {propertyInfo.Name}: {propertyInfo.GetValue(dbConfig)}");    
+            }
             
             var blocksDb = new DbOnTheRocks(
                 Path.Combine(_dbBasePath, DbOnTheRocks.BlocksDbPath),
@@ -366,7 +365,7 @@ namespace Nethermind.Runner.Runners
         {
             if (!_initConfig.NetworkEnabled)
             {
-                if (_logger.IsInfoEnabled) _logger.Info($"Skipping blockchain synchronization init ({nameof(IInitConfig.NetworkEnabled)} = false)");
+                if (_logger.IsInfo) _logger.Info($"Skipping blockchain synchronization init ({nameof(IInitConfig.NetworkEnabled)} = false)");
                 return;
             }
 
@@ -489,11 +488,11 @@ namespace Nethermind.Runner.Runners
         {
             if (!_initConfig.SynchronizationEnabled)
             {
-                if (_logger.IsInfoEnabled) _logger.Info($"Skipping blockchain synchronization init ({nameof(IInitConfig.SynchronizationEnabled)} = false)");
+                if (_logger.IsInfo) _logger.Info($"Skipping blockchain synchronization init ({nameof(IInitConfig.SynchronizationEnabled)} = false)");
                 return Task.CompletedTask;
             }
 
-            if (_logger.IsDebugEnabled)
+            if (_logger.IsDebug)
             {
                 _logger.Debug($"Starting synchronization from block {_blockTree.Head.ToString(BlockHeader.Format.Short)}.");
             }
@@ -540,12 +539,12 @@ namespace Nethermind.Runner.Runners
 
         private async Task StartNet()
         {
-            if (_logger.IsDebugEnabled) _logger.Debug("Initializing Net");
+            if (_logger.IsDebug) _logger.Debug("Initializing Net");
             await _localPeer.Init();
 
             var localIp = _networkHelper.GetLocalIp();
-            if (_logger.IsInfoEnabled) _logger.Info($"Node is up and listening on {localIp}:{_initConfig.P2PPort}");
-            if (_logger.IsInfoEnabled) _logger.Info($"enode://{_privateKey.PublicKey}@{localIp}:{_initConfig.P2PPort}");
+            if (_logger.IsInfo) _logger.Info($"Node is up and listening on {localIp}:{_initConfig.P2PPort}");
+            if (_logger.IsInfo) _logger.Info($"enode://{_privateKey.PublicKey}@{localIp}:{_initConfig.P2PPort}");
         }
 
         private void InitPeerManager()
@@ -558,9 +557,9 @@ namespace Nethermind.Runner.Runners
 
         private async Task StartPeerManager()
         {
-            if (_logger.IsDebugEnabled) _logger.Debug("Initializing peer manager");
+            if (_logger.IsDebug) _logger.Debug("Initializing peer manager");
             await _peerManager.Start();
-            if (_logger.IsDebugEnabled) _logger.Debug("Peer manager initialization completed");
+            if (_logger.IsDebug) _logger.Debug("Peer manager initialization completed");
         }
 
         private void InitDiscovery()
@@ -598,13 +597,13 @@ namespace Nethermind.Runner.Runners
         {
             if (!_initConfig.DiscoveryEnabled)
             {
-                if (_logger.IsInfoEnabled) _logger.Info($"Skipping discovery init ({nameof(IInitConfig.DiscoveryEnabled)} = false)");
+                if (_logger.IsInfo) _logger.Info($"Skipping discovery init ({nameof(IInitConfig.DiscoveryEnabled)} = false)");
                 return Task.CompletedTask;
             }
 
-            if (_logger.IsDebugEnabled) _logger.Debug("Starting discovery process.");
+            if (_logger.IsDebug) _logger.Debug("Starting discovery process.");
             _discoveryApp.Start();
-            if (_logger.IsDebugEnabled) _logger.Debug("Discovery process started.");
+            if (_logger.IsDebug) _logger.Debug("Discovery process started.");
             return Task.CompletedTask;
         }
     }

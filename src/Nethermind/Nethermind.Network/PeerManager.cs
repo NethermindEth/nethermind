@@ -132,7 +132,7 @@ namespace Nethermind.Network
             {
                 if (x.IsFaulted)
                 {
-                    if (_logger.IsErrorEnabled) _logger.Error("Error during _synchronizationManager stop.", x.Exception);
+                    if (_logger.IsError) _logger.Error("Error during _synchronizationManager stop.", x.Exception);
                 }
             });
 
@@ -161,8 +161,8 @@ namespace Nethermind.Network
 
             var key = _perfService.StartPerfCalc();
 
-            var availibleActiveCount = _networkConfig.ActivePeersMaxCount - _activePeers.Count;
-            if (availibleActiveCount <= 0)
+            var availableActiveCount = _networkConfig.ActivePeersMaxCount - _activePeers.Count;
+            if (availableActiveCount <= 0)
             {
                 return;
             }
@@ -189,7 +189,7 @@ namespace Nethermind.Network
             var failedInitialConnect = 0;
             for (var i = 0; i < candidates.Length; i++)
             {
-                if (newActiveNodes >= availibleActiveCount)
+                if (newActiveNodes >= availableActiveCount)
                 {
                     break;
                 }
@@ -201,7 +201,7 @@ namespace Nethermind.Network
                 //In this case we do not initialze OUT connection
                 if (!_activePeers.TryAdd(candidate.Key, candidate.Value))
                 {
-                    if (_logger.IsDebugEnabled)
+                    if (_logger.IsDebug)
                     {
                         _logger.Debug($"Active peer was already added to collection: {candidate.Key}");
                     }
@@ -220,13 +220,13 @@ namespace Nethermind.Network
                 newActiveNodes++;                
             }
 
-            if (_logger.IsInfoEnabled)
+            if (_logger.IsInfo)
             {
                 _logger.Info($"RunPeerUpdate | AllNonActive: {allNonActiveCandidates}, FilteredByZeroPort: {filteredByZeroPort}, FilteredByDisconnectDelay: {filteredByDisconnect}, FileteredByFailedConnDelay: {filteredByFailedConnection}, Incompatible: {GetIncompatibleDesc(incompatibleNodes)}, EligibleCandidates: {candidates.Length}, " +
                              $"Tried: {tryCount}, Failed initial connect: {failedInitialConnect}, Established initial connect: {newActiveNodes}, Current candidate peers: {_candidatePeers.Count}, Current active peers: {_activePeers.Count}");
             }
 
-            if (_logger.IsTraceEnabled)
+            if (_logger.IsTrace)
             {
                 if (_logCounter % 5 == 0)
                 {
@@ -248,7 +248,7 @@ namespace Nethermind.Network
 
         private void LogSessionStats()
         {
-            if (_logger.IsInfoEnabled)
+            if (_logger.IsInfo)
             {
                 var peers = _activePeers.Values.Concat(_candidatePeers.Values).GroupBy(x => x.Node.Id).Select(x => x.First()).ToArray();
 
@@ -308,7 +308,7 @@ namespace Nethermind.Network
 
             var timePassed = DateTime.Now.Subtract(time.Value).TotalMilliseconds;
             var result = timePassed > _networkConfig.DisconnectDelay;
-            if (!result && _logger.IsTraceEnabled)
+            if (!result && _logger.IsTrace)
             {
                 _logger.Trace($"Skipping connection to peer, due to disconnect delay, time from last disconnect: {timePassed}, delay: {_networkConfig.DisconnectDelay}, peer: {peer.Node.Id}");
             }
@@ -326,7 +326,7 @@ namespace Nethermind.Network
 
             var timePassed = DateTime.Now.Subtract(time.Value).TotalMilliseconds;
             var result = timePassed > _networkConfig.FailedConnectionDelay;
-            if (!result && _logger.IsDebugEnabled)
+            if (!result && _logger.IsDebug)
             {
                 _logger.Debug($"Skipping connection to peer, due to failed connection delay, time from last failed connection: {timePassed}, delay: {_networkConfig.FailedConnectionDelay}, peer: {peer.Node.Id}");
             }
@@ -343,12 +343,12 @@ namespace Nethermind.Network
             }
             catch (NetworkingException ex)
             {
-                if (_logger.IsDebugEnabled) _logger.Debug($"Cannot connect to Peer [{ex.NetwokExceptionType.ToString()}]: {candidate.Node.Id}");
+                if (_logger.IsDebug) _logger.Debug($"Cannot connect to Peer [{ex.NetwokExceptionType.ToString()}]: {candidate.Node.Id}");
                 return false;
             }
             catch (Exception e)
             {
-                if (_logger.IsErrorEnabled) _logger.Error($"Error trying to initiate connetion with peer: {candidate.Node.Id}", e);
+                if (_logger.IsError) _logger.Error($"Error trying to initiate connetion with peer: {candidate.Node.Id}", e);
                 return false;
             }
         }
@@ -362,7 +362,7 @@ namespace Nethermind.Network
 
             var peers = _peerStorage.GetPersistedNodes();
 
-            if (_logger.IsInfoEnabled)
+            if (_logger.IsInfo)
             {
                 _logger.Info($"Initializing persisted peers: {peers.Length}.");
             }
@@ -384,7 +384,7 @@ namespace Nethermind.Network
                     continue;
                 }
 
-                if (_logger.IsTraceEnabled)
+                if (_logger.IsTrace)
                 {
                     _logger.Trace($"Adding persisted peer to New collection {node.Id}@{node.Host}:{node.Port}");
                 }
@@ -399,7 +399,7 @@ namespace Nethermind.Network
                 return;
             }
 
-            if (_logger.IsInfoEnabled)
+            if (_logger.IsInfo)
             {
                 _logger.Info($"Initializing trusted peers: {trustedPeers.Length}.");
             }
@@ -418,7 +418,7 @@ namespace Nethermind.Network
                     continue;
                 }
 
-                if (_logger.IsDebugEnabled)
+                if (_logger.IsDebug)
                 {
                     _logger.Debug($"Adding trusted peer to New collection {node.Id}@{node.Host}:{node.Port}");
                 }
@@ -432,7 +432,7 @@ namespace Nethermind.Network
                 //If connection was initiated by remote peer we allow handshake to take place before potencially disconnecting
                 eventArgs.Session.ProtocolInitialized += async (s, e) => await OnProtocolInitialized(s, e);
                 eventArgs.Session.PeerDisconnected += async (s, e) => await OnPeerDisconnected(s, e);
-                if (_logger.IsDebugEnabled)
+                if (_logger.IsDebug)
                 {
                     _logger.Debug($"Initiated IN connection (PeerManager)(handshake completed) for peer: {eventArgs.Session.RemoteNodeId}");
                 }
@@ -443,7 +443,7 @@ namespace Nethermind.Network
             {
                 if (!_activePeers.TryGetValue(eventArgs.Session.RemoteNodeId, out Peer peer))
                 {
-                    if (_logger.IsErrorEnabled)
+                    if (_logger.IsError)
                     {
                         _logger.Error($"Initiated Handshake (out) with Peer without adding it to Active collection: {eventArgs.Session.RemoteNodeId}");
                     }
@@ -451,7 +451,7 @@ namespace Nethermind.Network
                 }
                 peer.NodeStats.AddNodeStatsHandshakeEvent(eventArgs.ClientConnectionType);
             }
-            if (_logger.IsDebugEnabled)
+            if (_logger.IsDebug)
             {
                 _logger.Debug($"Handshake initialized for peer: {eventArgs.Session.RemoteNodeId}");
             }
@@ -464,7 +464,7 @@ namespace Nethermind.Network
 
             if (!_activePeers.TryGetValue(id, out Peer peer))
             {
-                if (_logger.IsErrorEnabled)
+                if (_logger.IsError)
                 {
                     _logger.Error($"Initiated rlpx connection (out) with Peer without adding it to Active collection: {id}");
                 }
@@ -477,7 +477,7 @@ namespace Nethermind.Network
             peer.Session.PeerDisconnected += async (s, e) => await OnPeerDisconnected(s, e);
             peer.Session.ProtocolInitialized += async (s, e) => await OnProtocolInitialized(s, e);
 
-            if (_logger.IsDebugEnabled)
+            if (_logger.IsDebug)
             {
                 _logger.Debug($"Initializing OUT connection (PeerManager) for peer: {eventArgs.Session.RemoteNodeId}");
             }
@@ -487,7 +487,7 @@ namespace Nethermind.Network
 
         private async Task OnProtocolInitialized(object sender, ProtocolInitializedEventArgs e)
         {
-            if(_logger.IsDebugEnabled) _logger.Debug($"Protocol initialized {e.ProtocolHandler.ProtocolCode} {e.ProtocolHandler.ProtocolVersion}.");
+            if(_logger.IsDebug) _logger.Debug($"Protocol initialized {e.ProtocolHandler.ProtocolCode} {e.ProtocolHandler.ProtocolVersion}.");
             
             var session = (IP2PSession)sender;
 
@@ -499,7 +499,7 @@ namespace Nethermind.Network
                     {
                         AddNodeToDiscovery(candidatePeer, (P2PProtocolInitializedEventArgs)e);
                     }
-                    if (_logger.IsWarnEnabled)
+                    if (_logger.IsWarn)
                     {
                         var timeFromLastDisconnect = candidatePeer.NodeStats.LastDisconnectTime.HasValue
                             ? DateTime.Now.Subtract(candidatePeer.NodeStats.LastDisconnectTime.Value).TotalMilliseconds.ToString()
@@ -510,7 +510,7 @@ namespace Nethermind.Network
                 }
                 else
                 {
-                    if (_logger.IsErrorEnabled)
+                    if (_logger.IsError)
                     {
                         _logger.Error($"Protocol initialized for peer not present in active collection, id: {session.RemoteNodeId}, peer not in candidate collection.");
                     }
@@ -561,7 +561,7 @@ namespace Nethermind.Network
                     ethProtocolhandler.ClientId = peer.NodeStats.P2PNodeDetails.ClientId;
                     peer.SynchronizationPeer = ethProtocolhandler;
 
-                    if (_logger.IsDebugEnabled)
+                    if (_logger.IsDebug)
                     {
                         _logger.Debug($"Eth62 initialized, adding sync peer: {peer.Node.Id}");
                     }
@@ -572,7 +572,7 @@ namespace Nethermind.Network
                     break;
             }
             
-            if (_logger.IsDebugEnabled)
+            if (_logger.IsDebug)
             {
                 _logger.Debug($"Protocol Initialized: {session.RemoteNodeId}, {e.ProtocolHandler.GetType().Name}");
             }            
@@ -585,18 +585,18 @@ namespace Nethermind.Network
         {
             if (eventArgs.ListenPort == 0)
             {
-                if (_logger.IsTraceEnabled) _logger.Trace($"Listen port is 0, node is not listening: {peer.Node.Id}, ConnectionType: {peer.Session.ClientConnectionType}, nodePort: {peer.Node.Port}");
+                if (_logger.IsTrace) _logger.Trace($"Listen port is 0, node is not listening: {peer.Node.Id}, ConnectionType: {peer.Session.ClientConnectionType}, nodePort: {peer.Node.Port}");
                 return;
             }
 
             if (peer.Node.Port != eventArgs.ListenPort)
             { 
-                if (_logger.IsDebugEnabled) _logger.Debug($"Updating listen port for node: {peer.Node.Id}, ConnectionType: {peer.Session.ClientConnectionType}, from: {peer.Node.Port} to: {eventArgs.ListenPort}");
+                if (_logger.IsDebug) _logger.Debug($"Updating listen port for node: {peer.Node.Id}, ConnectionType: {peer.Session.ClientConnectionType}, from: {peer.Node.Port} to: {eventArgs.ListenPort}");
                 peer.Node.Port = eventArgs.ListenPort;
 
                 if (peer.NodeLifecycleManager != null)
                 {
-                    if (_logger.IsErrorEnabled) _logger.Error($"Discovery note already initiialized with wrong port, nodeId: {peer.Node.Port}, port: {peer.NodeLifecycleManager.ManagedNode.Port}, listen port: {eventArgs.ListenPort}");
+                    if (_logger.IsError) _logger.Error($"Discovery note already initiialized with wrong port, nodeId: {peer.Node.Port}, port: {peer.NodeLifecycleManager.ManagedNode.Port}, listen port: {eventArgs.ListenPort}");
                     peer.NodeLifecycleManager.ManagedNode.Port = eventArgs.ListenPort;
                 }
             }
@@ -624,7 +624,7 @@ namespace Nethermind.Network
             //if we have already initiated connection before
             if (_activePeers.ContainsKey(session.RemoteNodeId))
             {
-                if (_logger.IsDebugEnabled)
+                if (_logger.IsDebug)
                 {
                     _logger.Debug($"Initiating disconnect, node is already connected: {session.RemoteNodeId}");
                 }
@@ -636,7 +636,7 @@ namespace Nethermind.Network
             //if we have too many acive peers
             if (_activePeers.Count >= _networkConfig.ActivePeersMaxCount)
             {
-                if (_logger.IsDebugEnabled)
+                if (_logger.IsDebug)
                 {
                     _logger.Debug($"Initiating disconnect, we have too many peers: {session.RemoteNodeId}");
                 }
@@ -672,7 +672,7 @@ namespace Nethermind.Network
             }
 
             //if we have already initiated connection before (threding safeguard - it means another thread added this node to active collection after our contains key key check above)
-            if (_logger.IsDebugEnabled)
+            if (_logger.IsDebug)
             {
                 _logger.Debug($"Initiating disconnect, node is already connected: {session.RemoteNodeId}");
             }
@@ -689,7 +689,7 @@ namespace Nethermind.Network
                     var args = (P2PProtocolInitializedEventArgs)eventArgs;
                     if (!ValidateP2PVersion(args.P2PVersion))
                     {
-                        if (_logger.IsDebugEnabled)
+                        if (_logger.IsDebug)
                         {
                             _logger.Debug($"Initiating disconnect with peer: {peer.Node.Id}, incorrect P2PVersion: {args.P2PVersion}");
                         }
@@ -701,7 +701,7 @@ namespace Nethermind.Network
 
                     if (!ValidateCapabilities(args.Capabilities))
                     {
-                        if (_logger.IsDebugEnabled)
+                        if (_logger.IsDebug)
                         {
                             _logger.Debug($"Initiating disconnect with peer: {peer.Node.Id}, no Eth62 capability, supported capabilities: [{string.Join(",", args.Capabilities.Select(x => $"{x.ProtocolCode}v{x.Version}"))}]");
                         }
@@ -715,7 +715,7 @@ namespace Nethermind.Network
                     var ethArgs = (Eth62ProtocolInitializedEventArgs)eventArgs;
                     if (!ValidateChainId(ethArgs.ChainId))
                     {
-                        if (_logger.IsDebugEnabled)
+                        if (_logger.IsDebug)
                         {
                             _logger.Debug($"Initiating disconnect with peer: {peer.Node.Id}, different chainId: {ChainId.GetChainName((int)ethArgs.ChainId)}, our chainId: {ChainId.GetChainName(_synchronizationManager.ChainId)}");
                         }
@@ -726,7 +726,7 @@ namespace Nethermind.Network
                     }
                     if (ethArgs.GenesisHash != _synchronizationManager.Genesis?.Hash)
                     {
-                        if (_logger.IsDebugEnabled)
+                        if (_logger.IsDebug)
                         {
                             _logger.Debug($"Initiating disconnect with peer: {peer.Node.Id}, different genesis hash: {ethArgs.GenesisHash}, our: {_synchronizationManager.Genesis?.Hash}");
                         }
@@ -758,14 +758,14 @@ namespace Nethermind.Network
         private async Task OnPeerDisconnected(object sender, DisconnectEventArgs e)
         {
             var peer = (IP2PSession) sender;
-            if (_logger.IsDebugEnabled)
+            if (_logger.IsDebug)
             {
                 _logger.Debug($"Peer disconnected event in PeerManager: {peer.RemoteNodeId}, disconnectReason: {e.DisconnectReason}, disconnectType: {e.DisconnectType}");
             }
 
             if (peer.RemoteNodeId == null)
             {
-                if (_logger.IsWarnEnabled) _logger.Warn($"Disconnect on session with no RemoteNodeId, sessionId: {peer.SessionId}");
+                if (_logger.IsWarn) _logger.Warn($"Disconnect on session with no RemoteNodeId, sessionId: {peer.SessionId}");
                 return;
             }
 
@@ -773,7 +773,7 @@ namespace Nethermind.Network
             {
                 if (activePeer.Session?.SessionId != e.SessionId)
                 {
-                    if (_logger.IsDebugEnabled)
+                    if (_logger.IsDebug)
                     {
                         _logger.Debug($"Received disconnect on a different session than the active peer runs. Ignoring. Id: {activePeer.Node.Id}");
                     }
@@ -788,12 +788,12 @@ namespace Nethermind.Network
                     _synchronizationManager.RemovePeer(activePeer.SynchronizationPeer);
                 }
 
-                if (_logger.IsDebugEnabled)
+                if (_logger.IsDebug)
                 {
                     _logger.Debug($"Removing Active Peer on disconnect {peer.RemoteNodeId}");
                 }
 
-                if (_logger.IsDebugEnabled && _networkConfig.CaptureNodeStatsEventHistory)
+                if (_logger.IsDebug && _networkConfig.CaptureNodeStatsEventHistory)
                 {
                     LogEventHistory(activePeer.NodeStats);
                 }
@@ -821,7 +821,7 @@ namespace Nethermind.Network
             
             peer.NodeStats.AddNodeStatsEvent(NodeStatsEventType.NodeDiscovered);
 
-            if (_logger.IsTraceEnabled)
+            if (_logger.IsTrace)
             {
                 _logger.Trace($"Adding newly discovered node to Candidates collection {id}@{nodeEventArgs.Manager.ManagedNode.Host}:{nodeEventArgs.Manager.ManagedNode.Port}");
             }
@@ -834,7 +834,7 @@ namespace Nethermind.Network
 
         private void StartActivePeersTimer()
         {
-            if (_logger.IsDebugEnabled) _logger.Debug("Starting active peers timer");
+            if (_logger.IsDebug) _logger.Debug("Starting active peers timer");
             _activePeersTimer = new Timer(_networkConfig.ActivePeerUpdateInterval) {AutoReset = false};
             _activePeersTimer.Elapsed += async (sender, e) =>
             {
@@ -850,7 +850,7 @@ namespace Nethermind.Network
         {
             try
             {
-                if (_logger.IsDebugEnabled) _logger.Debug("Stopping active peers timer");
+                if (_logger.IsDebug) _logger.Debug("Stopping active peers timer");
                 _activePeersTimer?.Stop();
             }
             catch (Exception e)
@@ -861,7 +861,7 @@ namespace Nethermind.Network
 
         private void StartPeerPersistanceTimer()
         {
-            if (_logger.IsDebugEnabled) _logger.Debug("Starting peer persistance timer");
+            if (_logger.IsDebug) _logger.Debug("Starting peer persistance timer");
 
             _peerPersistanceTimer = new Timer(_networkConfig.PeersPersistanceInterval) {AutoReset = false};
             _peerPersistanceTimer.Elapsed += async (sender, e) =>
@@ -878,7 +878,7 @@ namespace Nethermind.Network
         {
             try
             {
-                if (_logger.IsInfoEnabled) _logger.Info("Stopping peer persistance timer");
+                if (_logger.IsInfo) _logger.Info("Stopping peer persistance timer");
                 _peerPersistanceTimer?.Stop();
             }
             catch (Exception e)
@@ -889,7 +889,7 @@ namespace Nethermind.Network
 
         private void StartPingTimer()
         {
-            if (_logger.IsDebugEnabled) _logger.Debug("Starting ping timer");
+            if (_logger.IsDebug) _logger.Debug("Starting ping timer");
 
             _pingTimer = new Timer(_networkConfig.P2PPingInterval) { AutoReset = false };
             _pingTimer.Elapsed += async (sender, e) =>
@@ -906,7 +906,7 @@ namespace Nethermind.Network
         {
             try
             {
-                if (_logger.IsDebugEnabled) _logger.Debug("Stopping ping timer");
+                if (_logger.IsDebug) _logger.Debug("Stopping ping timer");
                 _pingTimer?.Stop();
             }
             catch (Exception e)
@@ -921,7 +921,7 @@ namespace Nethermind.Network
 
             if (!_peerStorage.AnyPendingChange())
             {
-                if (_logger.IsDebugEnabled) _logger.Debug("No changes in peer storage, skipping commit.");
+                if (_logger.IsDebug) _logger.Debug("No changes in peer storage, skipping commit.");
                 return;
             }
 
@@ -972,9 +972,9 @@ namespace Nethermind.Network
             if (pingTasks.Any())
             {
                 var tasks = await Task.WhenAll(pingTasks.Select(x => x.pingTask));
-                if (_logger.IsTraceEnabled) _logger.Trace($"Sent ping messages to {tasks.Length} peers. Disconnected: {tasks.Count(x => x == false)}");
+                if (_logger.IsTrace) _logger.Trace($"Sent ping messages to {tasks.Length} peers. Disconnected: {tasks.Count(x => x == false)}");
             }
-            else if (_logger.IsTraceEnabled) _logger.Trace("Sent no ping messages.");
+            else if (_logger.IsTrace) _logger.Trace("Sent no ping messages.");
         }
 
         private async Task<bool> SendPingMessage(Peer peer)
@@ -988,7 +988,7 @@ namespace Nethermind.Network
                 }
             }
             
-            if (_logger.IsDebugEnabled) _logger.Debug($"Disconnecting due to missed ping messages: {peer.Session.RemoteNodeId}");
+            if (_logger.IsDebug) _logger.Debug($"Disconnecting due to missed ping messages: {peer.Session.RemoteNodeId}");
             await peer.Session.InitiateDisconnectAsync(DisconnectReason.ReceiveMessageTimeout);
             return false;
         }
@@ -1006,12 +1006,12 @@ namespace Nethermind.Network
 
                 if (e.SyncStatus == SyncStatus.Failed)
                 {
-                    if (_logger.IsDebugEnabled) _logger.Debug($"Initializing disconnect on sync failed with node: {e.Peer.NodeId}");
+                    if (_logger.IsDebug) _logger.Debug($"Initializing disconnect on sync failed with node: {e.Peer.NodeId}");
                     
                     await activePeer.Session.InitiateDisconnectAsync(DisconnectReason.BreachOfProtocol);
                 }
             }
-            else if (_logger.IsDebugEnabled) _logger.Debug($"Sync failed, peer not in active collection: {e.Peer.NodeId}");
+            else if (_logger.IsDebug) _logger.Debug($"Sync failed, peer not in active collection: {e.Peer.NodeId}");
         }
 
         private NodeStatsEventType GetSyncEventType(SyncStatus syncStatus)

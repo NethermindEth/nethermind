@@ -17,5 +17,14 @@
       "TestNodeKey": "020102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f",
       "LogFileName": "ropsten_windows_discovery.logs.txt"
     }
+  },
+  {
+    "ConfigModule": "DbConfig",
+    "ConfigItems": {
+      "WriteBufferSize": 67108864,
+      "WriteBufferNumber": 6,
+      "BlockCacheSize": 67108864,
+      "CacheIndexAndFilterBlocks": false
+    }
   }
 ]

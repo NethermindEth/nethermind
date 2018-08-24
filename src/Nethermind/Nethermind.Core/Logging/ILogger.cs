@@ -28,10 +28,10 @@ namespace Nethermind.Core.Logging
         void Trace(string text);
         void Error(string text, Exception ex = null);
 
-        bool IsInfoEnabled { get; }
-        bool IsWarnEnabled { get; }
-        bool IsDebugEnabled { get; }
-        bool IsTraceEnabled { get; }
-        bool IsErrorEnabled { get; }
+        bool IsInfo { get; }
+        bool IsWarn { get; }
+        bool IsDebug { get; }
+        bool IsTrace { get; }
+        bool IsError { get; }
     }
 }

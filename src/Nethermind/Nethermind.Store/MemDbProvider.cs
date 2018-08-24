@@ -49,7 +49,7 @@ namespace Nethermind.Store
 
         public void Restore(int snapshot)
         {
-            if (_logger.IsDebugEnabled) _logger.Debug($"Restoring all DBs to {snapshot}");
+            if (_logger.IsDebug) _logger.Debug($"Restoring all DBs to {snapshot}");
 
             while (Snapshots.Count != snapshot)
             {
@@ -64,7 +64,7 @@ namespace Nethermind.Store
 
         public void Commit(IReleaseSpec spec)
         {
-            if (_logger.IsDebugEnabled) _logger.Debug("Committing all DBs");
+            if (_logger.IsDebug) _logger.Debug("Committing all DBs");
             _stateDb.Commit(spec);
             _codeDb.Commit(spec);
             Snapshots.Pop();
@@ -78,7 +78,7 @@ namespace Nethermind.Store
             Snapshots.Push(dbSnapshots);
 
             int snapshot = Snapshots.Count;
-            if (_logger.IsDebugEnabled) _logger.Debug($"Taking DB snapshot at {snapshot}");
+            if (_logger.IsDebug) _logger.Debug($"Taking DB snapshot at {snapshot}");
             return snapshot;
         }
     }

@@ -39,7 +39,6 @@ namespace Nethermind.Blockchain
         void Start();
         Task StopAsync();
         
-        IBlockTree BlockTree { get; set; }
         int ChainId { get; }
         BlockHeader Genesis { get; }
         BlockHeader Head { get; }

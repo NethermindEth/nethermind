@@ -57,7 +57,7 @@ namespace Nethermind.Db
         {
             if (!_anyPendingChanges)
             {
-                if (_logger.IsDebugEnabled) _logger.Debug($"Skipping commit ({_dbLastDirName}), no changes");
+                if (_logger.IsDebug) _logger.Debug($"Skipping commit ({_dbLastDirName}), no changes");
                 return;
             }
 
@@ -105,7 +105,7 @@ namespace Nethermind.Db
                 var values = line.Split(",");
                 if (values.Length != 2)
                 {
-                    if (_logger.IsErrorEnabled) _logger.Error($"Error in data file, too many items: {line}");
+                    if (_logger.IsError) _logger.Error($"Error in data file, too many items: {line}");
                     continue;
                 }
 

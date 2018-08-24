@@ -105,10 +105,10 @@ namespace Nethermind.Network.Discovery.RoutingTable
                     continue;
                 }
 
-                var availibleCount = bucketSize - nodes.Count;
-                if (bucketItems.Count >= availibleCount)
+                var availableCount = bucketSize - nodes.Count;
+                if (bucketItems.Count >= availableCount)
                 {
-                    nodes.AddRange(bucketItems.Take(availibleCount).ToArray());
+                    nodes.AddRange(bucketItems.Take(availableCount).ToArray());
                     break;
                 }
 

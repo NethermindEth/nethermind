@@ -46,7 +46,7 @@ namespace Nethermind.Network.Rlpx
 
         protected override void Decode(IChannelHandlerContext context, byte[] input, List<object> output)
         {
-            if (_logger.IsTraceEnabled)
+            if (_logger.IsTrace)
             {
                 _logger.Trace("Merging frames");
             }
@@ -62,7 +62,7 @@ namespace Nethermind.Network.Rlpx
                              || contextId.HasValue && _currentSizes.ContainsKey(contextId.Value);
             if (isChunked)
             {
-                if (_logger.IsTraceEnabled)
+                if (_logger.IsTrace)
                 {
                     _logger.Trace("Merging chunked packet");
                 }
@@ -106,7 +106,7 @@ namespace Nethermind.Network.Rlpx
                 totalBodySize = (totalBodySize << 8) + (input[1] & 0xFF);
                 totalBodySize = (totalBodySize << 8) + (input[2] & 0xFF);
 
-                if (_logger.IsTraceEnabled)
+                if (_logger.IsTrace)
                 {
                     _logger.Trace($"Merging single frame packet of length {totalBodySize - 1}");
                 }
@@ -120,14 +120,14 @@ namespace Nethermind.Network.Rlpx
             //In case of SocketException we log it as debug to avoid noise
             if (exception is SocketException)
             {
-                if (_logger.IsDebugEnabled)
+                if (_logger.IsDebug)
                 {
                     _logger.Error($"Error when merging frames (SocketException): {exception}");
                 }
             }
             else
             {
-                if (_logger.IsErrorEnabled)
+                if (_logger.IsError)
                 {
                     _logger.Error($"Error when merging frames: {exception}");
                 }

@@ -155,7 +155,7 @@ namespace Nethermind.Runner
                 }
                 else
                 {
-                    if (Logger.IsInfoEnabled)
+                    if (Logger.IsInfo)
                     {
                         Logger.Info("Json RPC is disabled");
                     }

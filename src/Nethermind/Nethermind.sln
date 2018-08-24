@@ -80,24 +80,15 @@ EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Chains", "Chains", "{D75E83BB-6092-45A4-B751-D05D4A6ED995}"
 	ProjectSection(SolutionItems) = preProject
 		Chains\foundation.json = Chains\foundation.json
-		Chains\foundation_through_vm5.json = Chains\foundation_through_vm5.json
 		Chains\kovan.json = Chains\kovan.json
 		Chains\morden.json = Chains\morden.json
-		Chains\nethermind_alpha.json = Chains\nethermind_alpha.json
-		Chains\nethermind_alpha_client.json = Chains\nethermind_alpha_client.json
 		Chains\olympic.json = Chains\olympic.json
 		Chains\private_client.json = Chains\private_client.json
 		Chains\private_miner1.json = Chains\private_miner1.json
 		Chains\private_miner2.json = Chains\private_miner2.json
 		Chains\ropsten.json = Chains\ropsten.json
-		Chains\ropsten_linux_vm.json = Chains\ropsten_linux_vm.json
-		Chains\ropsten_local.json = Chains\ropsten_local.json
-		Chains\ropsten_through_ethj.json = Chains\ropsten_through_ethj.json
-		Chains\ropsten_through_vm2.json = Chains\ropsten_through_vm2.json
-		Chains\ropsten_through_vm3.json = Chains\ropsten_through_vm3.json
-		Chains\ropsten_through_vm4.json = Chains\ropsten_through_vm4.json
-		Chains\ropsten_through_vm5.json = Chains\ropsten_through_vm5.json
 		Chains\private_bootnode.json = Chains\private_bootnode.json
+		Chains\nethermind_alpha.json = Chains\nethermind_alpha.json
 	EndProjectSection
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.RunnerSpawner", "Nethermind.RunnerSpawner\Nethermind.RunnerSpawner.csproj", "{7285ABAE-A946-437E-A6DD-F1DECFE7F8D5}"

@@ -60,7 +60,7 @@ namespace Nethermind.Network.Discovery
         {
             var alreadyTriedNodes = new List<string>();
             
-            if(_logger.IsDebugEnabled) _logger.Debug($"Starting discovery process for node: {(searchedNodeId != null ? $"randomNode: {new PublicKey(searchedNodeId).ToShortString()}" : $"masterNode: {_masterNode.Id}")}");
+            if(_logger.IsDebug) _logger.Debug($"Starting discovery process for node: {(searchedNodeId != null ? $"randomNode: {new PublicKey(searchedNodeId).ToShortString()}" : $"masterNode: {_masterNode.Id}")}");
             var nodesCountBeforeDiscovery = _nodeTable.Buckets.Sum(x => x.Items.Count);
 
             for (var i = 0; i < _configurationProvider.MaxDiscoveryRounds; i++)
@@ -125,15 +125,15 @@ namespace Nethermind.Network.Discovery
 
                     if (successRequestsCount >= _configurationProvider.Concurrency)
                     {
-                        if(_logger.IsDebugEnabled) _logger.Debug($"Sent {successRequestsCount} successfull requests, failedRequestCounter: {failRequestCount}, nodesTriedCounter: {nodesTriedCount}");
+                        if(_logger.IsDebug) _logger.Debug($"Sent {successRequestsCount} successfull requests, failedRequestCounter: {failRequestCount}, nodesTriedCounter: {nodesTriedCount}");
                         break;
                     }
                 }
             }
             var nodesCountAfterDiscovery = _nodeTable.Buckets.Sum(x => x.Items.Count);
-            if(_logger.IsDebugEnabled) _logger.Debug($"Finished discovery cycle, tried contacting {alreadyTriedNodes.Count} nodes. All nodes count before the process: {nodesCountBeforeDiscovery}, after the process: {nodesCountAfterDiscovery}");
+            if(_logger.IsDebug) _logger.Debug($"Finished discovery cycle, tried contacting {alreadyTriedNodes.Count} nodes. All nodes count before the process: {nodesCountBeforeDiscovery}, after the process: {nodesCountAfterDiscovery}");
 
-            if (_logger.IsDebugEnabled)
+            if (_logger.IsDebug)
             {
                 LogNodeTable();
             }
@@ -156,7 +156,7 @@ namespace Nethermind.Network.Discovery
             }
 
             sb.AppendLine("------------------------------------------------------");
-            if(_logger.IsTraceEnabled) _logger.Trace(sb.ToString());
+            if(_logger.IsTrace) _logger.Trace(sb.ToString());
         }
 
         private async Task<Result[]> SendFindNode(Node[] nodesToSend, byte[] searchedNodeId)

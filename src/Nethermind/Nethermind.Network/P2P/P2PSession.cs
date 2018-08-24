@@ -102,7 +102,7 @@ namespace Nethermind.Network.P2P
         // TODO: this should be one level up
         public void EnableSnappy()
         {
-            if (_logger.IsDebugEnabled) _logger.Debug($"{RemoteNodeId} Enabling Snappy compression");
+            if (_logger.IsDebug) _logger.Debug($"{RemoteNodeId} Enabling Snappy compression");
             _context.Channel.Pipeline.AddBefore($"{nameof(Multiplexor)}#0", null, new SnappyDecoder(_logger));
             _context.Channel.Pipeline.AddBefore($"{nameof(Multiplexor)}#0", null, new SnappyEncoder(_logger));
         }
@@ -114,7 +114,7 @@ namespace Nethermind.Network.P2P
 
         public void DeliverMessage(Packet packet, bool priority = false)
         {
-            if (_logger.IsTraceEnabled) _logger.Trace($"P2P to deliver {packet.Protocol}.{packet.PacketType} with payload {packet.Data.ToHexString()}");
+            if (_logger.IsTrace) _logger.Trace($"P2P to deliver {packet.Protocol}.{packet.PacketType} with payload {packet.Data.ToHexString()}");
 
             packet.PacketType = _adaptiveEncoder((packet.Protocol, packet.PacketType));
             _packetSender.Enqueue(packet, priority);
@@ -126,12 +126,12 @@ namespace Nethermind.Network.P2P
             (string protocol, int messageId) = ResolveMessageCode(dynamicMessageCode);
             packet.Protocol = protocol;
 
-            if (_logger.IsTraceEnabled) _logger.Trace($"{RemoteNodeId} {nameof(P2PSession)} received a message of length {packet.Data.Length} ({dynamicMessageCode} => {protocol}.{messageId})");
+            if (_logger.IsTrace) _logger.Trace($"{RemoteNodeId} {nameof(P2PSession)} received a message of length {packet.Data.Length} ({dynamicMessageCode} => {protocol}.{messageId})");
 
             if (protocol == null)
             {
-                if (_logger.IsWarnEnabled) _logger.Warn($"{RemoteNodeId} {nameof(P2PSession)} received a message ({dynamicMessageCode} => {messageId})");
-                if (_logger.IsWarnEnabled) _logger.Warn($"{RemoteNodeId} known protocols ({_protocols.Count}):");
+                if (_logger.IsWarn) _logger.Warn($"{RemoteNodeId} {nameof(P2PSession)} received a message ({dynamicMessageCode} => {messageId})");
+                if (_logger.IsWarn) _logger.Warn($"{RemoteNodeId} known protocols ({_protocols.Count}):");
                 foreach (KeyValuePair<string, IProtocolHandler> protocolHandler in _protocols)
                 {
                     _logger.Error(
@@ -157,7 +157,7 @@ namespace Nethermind.Network.P2P
         {
             if (_wasDisconnected)
             {
-                if (_logger.IsDebugEnabled)
+                if (_logger.IsDebug)
                 {
                     _logger.Debug($"Session was already disconnected: {RemoteNodeId}, sessioId: {SessionId}");
                 }
@@ -189,7 +189,7 @@ namespace Nethermind.Network.P2P
             {
                 PeerDisconnected.Invoke(this, new DisconnectEventArgs(disconnectReason, disconnectType, SessionId));
             }
-            else if (_logger.IsWarnEnabled) _logger.Warn("No subscriptions for PeerDisconnected");
+            else if (_logger.IsWarn) _logger.Warn("No subscriptions for PeerDisconnected");
 
             //Possible in case of disconnect before p2p initialization
             if (_context == null)
@@ -200,7 +200,7 @@ namespace Nethermind.Network.P2P
             await Task.Delay(Timeouts.Disconnection).ContinueWith(t =>
             {
                 _context.DisconnectAsync();
-                if (_logger.IsDebugEnabled) _logger.Debug($"{RemoteNodeId} Disconnecting now after {Timeouts.Disconnection.TotalMilliseconds} milliseconds");
+                if (_logger.IsDebug) _logger.Debug($"{RemoteNodeId} Disconnecting now after {Timeouts.Disconnection.TotalMilliseconds} milliseconds");
             });
         }
 
@@ -234,12 +234,12 @@ namespace Nethermind.Network.P2P
                     {
                         if (protocolHandler.ProtocolVersion >= 5)
                         {
-                            if (_logger.IsDebugEnabled) _logger.Debug($"{RemoteNodeId} {protocolHandler.ProtocolCode} v{protocolHandler.ProtocolVersion} established - Enabling Snappy");
+                            if (_logger.IsDebug) _logger.Debug($"{RemoteNodeId} {protocolHandler.ProtocolCode} v{protocolHandler.ProtocolVersion} established - Enabling Snappy");
                             EnableSnappy();
                         }
                         else
                         {
-                            if (_logger.IsDebugEnabled) _logger.Debug($"{RemoteNodeId} {protocolHandler.ProtocolCode} v{protocolHandler.ProtocolVersion} established - Disabling Snappy");
+                            if (_logger.IsDebug) _logger.Debug($"{RemoteNodeId} {protocolHandler.ProtocolCode} v{protocolHandler.ProtocolVersion} established - Disabling Snappy");
                         }
 
                         ProtocolInitialized?.Invoke(this, args);
@@ -289,10 +289,10 @@ namespace Nethermind.Network.P2P
                     offset += alphabetically[j].SpaceSize;
                 }
 
-                if(_logger.IsWarnEnabled) _logger.Warn($"Could not resolve message id from {dynamicId} with known:");
+                if(_logger.IsWarn) _logger.Warn($"Could not resolve message id from {dynamicId} with known:");
                 for (int j = 0; j < alphabetically.Length; j++)
                 {
-                    if(_logger.IsWarnEnabled) _logger.Warn($"{alphabetically[j].ProtocolCode} {alphabetically[j].SpaceSize}");
+                    if(_logger.IsWarn) _logger.Warn($"{alphabetically[j].ProtocolCode} {alphabetically[j].SpaceSize}");
                 }
 
                 return (null, 0);
