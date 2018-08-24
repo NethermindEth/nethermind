@@ -76,7 +76,7 @@ namespace Nethermind.Network.Config
         /// <summary>
         /// Pong Timeout in ms
         /// </summary>
-        int PongTimeout { get; }
+        int PongTimeout { get; set; }
 
         /// <summary>
         /// Boot Node Pong Timeout in ms

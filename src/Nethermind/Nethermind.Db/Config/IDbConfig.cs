@@ -25,5 +25,6 @@ namespace Nethermind.Db.Config
         ulong WriteBufferSize { get; }
         uint WriteBufferNumber { get; }
         ulong BlockCacheSize { get; }
+        bool CacheIndexAndFilterBlocks { get; }
     }
 }

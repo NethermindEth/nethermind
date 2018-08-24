@@ -189,6 +189,7 @@ namespace Nethermind.Runner.Runners
             _logger.Info($"DB {nameof(dbConfig.BlockCacheSize)}: {dbConfig.BlockCacheSize}");
             _logger.Info($"DB {nameof(dbConfig.WriteBufferSize)}: {dbConfig.WriteBufferSize}");
             _logger.Info($"DB {nameof(dbConfig.WriteBufferNumber)}: {dbConfig.WriteBufferNumber}");
+            _logger.Info($"DB {nameof(dbConfig.CacheIndexAndFilterBlocks)}: {dbConfig.CacheIndexAndFilterBlocks}");
             
             var blocksDb = new DbOnTheRocks(
                 Path.Combine(_dbBasePath, DbOnTheRocks.BlocksDbPath),

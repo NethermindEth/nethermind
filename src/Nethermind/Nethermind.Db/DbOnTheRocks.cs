@@ -83,7 +83,7 @@ namespace Nethermind.Db
             BlockBasedTableOptions tableOptions = new BlockBasedTableOptions();
             tableOptions.SetBlockSize(16 * 1024);
             tableOptions.SetPinL0FilterAndIndexBlocksInCache(true);
-            tableOptions.SetCacheIndexAndFilterBlocks(true);
+            tableOptions.SetCacheIndexAndFilterBlocks(dbConfig.CacheIndexAndFilterBlocks);
 
             tableOptions.SetFilterPolicy(BloomFilterPolicy.Create(10, true));
             tableOptions.SetFormatVersion(2);

@@ -25,5 +25,6 @@ namespace Nethermind.Db.Config
         public ulong WriteBufferSize { get; set; } = 1024UL * 1024UL * 64UL;
         public uint WriteBufferNumber { get; set; } = 6;
         public ulong BlockCacheSize { get; set; } = 1024UL * 1024UL * 1024UL * 3UL;
+        public bool CacheIndexAndFilterBlocks { get; set; } = true;
     }
 }

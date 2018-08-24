@@ -43,7 +43,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         private readonly BlockingCollection<Request<GetBlockBodiesMessage, Block[]>> _bodiesRequests
             = new BlockingCollection<Request<GetBlockBodiesMessage, Block[]>>();
 
-        private bool _statusSent;
         private bool _statusReceived;
         private Keccak _remoteHeadBlockHash;
         private BigInteger _remoteHeadBlockDifficulty;
@@ -94,7 +93,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             statusMessage.BestHash = head.Hash;
             statusMessage.GenesisHash = _sync.Genesis.Hash;
 
-            _statusSent = true;
             Send(statusMessage);
 
             //We are expecting receiving Status message anytime from the p2p completion, irrespectful from sedning Status from our side
@@ -114,51 +112,43 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         public virtual void HandleMessage(Packet message)
         {
-            try
+            if (Logger.IsTraceEnabled)
             {
-                if (Logger.IsTraceEnabled)
-                {
-                    Logger.Trace($"{P2PSession.RemoteNodeId} {nameof(Eth62ProtocolHandler)} handling a message with code {message.PacketType}.");
-                }
-
-                if (message.PacketType != Eth62MessageCode.Status && !_statusReceived)
-                {
-                    Diagnostics.TestExceptionHere("HandleMessage no status", Logger);
-                    throw new SubprotocolException($"{P2PSession.RemoteNodeId} No {nameof(StatusMessage)} received prior to communication.");
-                }
-
-                switch (message.PacketType)
-                {
-                    case Eth62MessageCode.Status:
-                        Handle(Deserialize<StatusMessage>(message.Data));
-                        break;
-                    case Eth62MessageCode.NewBlockHashes:
-                        Handle(Deserialize<NewBlockHashesMessage>(message.Data));
-                        break;
-                    case Eth62MessageCode.Transactions:
-                        Handle(Deserialize<TransactionsMessage>(message.Data));
-                        break;
-                    case Eth62MessageCode.GetBlockHeaders:
-                        Handle(Deserialize<GetBlockHeadersMessage>(message.Data));
-                        break;
-                    case Eth62MessageCode.BlockHeaders:
-                        Handle(Deserialize<BlockHeadersMessage>(message.Data));
-                        break;
-                    case Eth62MessageCode.GetBlockBodies:
-                        Handle(Deserialize<GetBlockBodiesMessage>(message.Data));
-                        break;
-                    case Eth62MessageCode.BlockBodies:
-                        Handle(Deserialize<BlockBodiesMessage>(message.Data));
-                        break;
-                    case Eth62MessageCode.NewBlock:
-                        Handle(Deserialize<NewBlockMessage>(message.Data));
-                        break;
-                }
+                Logger.Trace($"{P2PSession.RemoteNodeId} {nameof(Eth62ProtocolHandler)} handling a message with code {message.PacketType}.");
             }
-            catch (Exception e)
+
+            if (message.PacketType != Eth62MessageCode.Status && !_statusReceived)
             {
-                Logger.Error($"{P2PSession.RemoteNodeId} TEMP Investigating exception propagation", e);
-                throw;
+                Diagnostics.TestExceptionHere("HandleMessage no status", Logger);
+                throw new SubprotocolException($"{P2PSession.RemoteNodeId} No {nameof(StatusMessage)} received prior to communication.");
+            }
+
+            switch (message.PacketType)
+            {
+                case Eth62MessageCode.Status:
+                    Handle(Deserialize<StatusMessage>(message.Data));
+                    break;
+                case Eth62MessageCode.NewBlockHashes:
+                    Handle(Deserialize<NewBlockHashesMessage>(message.Data));
+                    break;
+                case Eth62MessageCode.Transactions:
+                    Handle(Deserialize<TransactionsMessage>(message.Data));
+                    break;
+                case Eth62MessageCode.GetBlockHeaders:
+                    Handle(Deserialize<GetBlockHeadersMessage>(message.Data));
+                    break;
+                case Eth62MessageCode.BlockHeaders:
+                    Handle(Deserialize<BlockHeadersMessage>(message.Data));
+                    break;
+                case Eth62MessageCode.GetBlockBodies:
+                    Handle(Deserialize<GetBlockBodiesMessage>(message.Data));
+                    break;
+                case Eth62MessageCode.BlockBodies:
+                    Handle(Deserialize<BlockBodiesMessage>(message.Data));
+                    break;
+                case Eth62MessageCode.NewBlock:
+                    Handle(Deserialize<NewBlockMessage>(message.Data));
+                    break;
             }
         }
 
@@ -207,12 +197,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             }
 
             _statusReceived = true;
-            if(Logger.IsDebugEnabled) Logger.Debug($"{P2PSession.RemoteNodeId} ETH received status with" +
-                        Environment.NewLine + $" prot version\t{status.ProtocolVersion}" +
-                        Environment.NewLine + $" network ID\t{status.ChainId}," +
-                        Environment.NewLine + $" genesis hash\t{status.GenesisHash}," +
-                        Environment.NewLine + $" best hash\t{status.BestHash}," +
-                        Environment.NewLine + $" difficulty\t{status.TotalDifficulty}");
+            if (Logger.IsDebugEnabled)
+                Logger.Debug($"{P2PSession.RemoteNodeId} ETH received status with" +
+                             Environment.NewLine + $" prot version\t{status.ProtocolVersion}" +
+                             Environment.NewLine + $" network ID\t{status.ChainId}," +
+                             Environment.NewLine + $" genesis hash\t{status.GenesisHash}," +
+                             Environment.NewLine + $" best hash\t{status.BestHash}," +
+                             Environment.NewLine + $" difficulty\t{status.TotalDifficulty}");
 
             _remoteHeadBlockHash = status.BestHash;
             _remoteHeadBlockDifficulty = status.TotalDifficulty;
@@ -233,7 +224,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 ProtocolVersion = status.ProtocolVersion,
                 TotalDifficulty = status.TotalDifficulty
             };
-            
+
             ProtocolInitialized?.Invoke(this, eventArgs);
         }
 
@@ -278,8 +269,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             Block[] blocks =
                 startingHash == null
                     ? new Block[0]
-                    : _sync.Find(startingHash, (int)getBlockHeadersMessage.MaxHeaders, (int)getBlockHeadersMessage.Skip, getBlockHeadersMessage.Reverse == 1);
-            
+                    : _sync.Find(startingHash, (int) getBlockHeadersMessage.MaxHeaders, (int) getBlockHeadersMessage.Skip, getBlockHeadersMessage.Reverse == 1);
+
             BlockHeader[] headers = new BlockHeader[blocks.Length];
             for (int i = 0; i < blocks.Length; i++)
             {
@@ -350,7 +341,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 Message = message;
             }
 
-            public TMsg Message { get; set; }
+            public TMsg Message { get; }
             public TaskCompletionSource<TResult> CompletionSource { get; }
         }
 
@@ -367,7 +358,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             }
 
             var request = new Request<GetBlockHeadersMessage, BlockHeader[]>(message);
-            _headersRequests.Add(request);
+            _headersRequests.Add(request, token);
             Send(request.Message);
             Task<BlockHeader[]> task = request.CompletionSource.Task;
             var firstTask = await Task.WhenAny(task, Task.Delay(Timeouts.Eth62, token));
@@ -375,6 +366,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             {
                 token.ThrowIfCancellationRequested();
             }
+
             if (firstTask == task)
             {
                 return task.Result;
@@ -393,7 +385,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             }
 
             var request = new Request<GetBlockBodiesMessage, Block[]>(message);
-            _bodiesRequests.Add(request);
+            _bodiesRequests.Add(request, token);
             Send(request.Message);
 
             Task<Block[]> task = request.CompletionSource.Task;
@@ -402,6 +394,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             {
                 token.ThrowIfCancellationRequested();
             }
+
             if (firstTask == task)
             {
                 return task.Result;
@@ -433,7 +426,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
             BlockHeader[] headers = await SendRequest(msg, token);
             return headers;
-        }      
+        }
 
         async Task<Block[]> ISynchronizationPeer.GetBlocks(Keccak[] blockHashes, CancellationToken token)
         {

@@ -201,9 +201,9 @@ namespace Nethermind.Blockchain
         {
             if (!_peers.TryGetValue(receivedFrom, out PeerInfo peerInfo))
             {
-                string errorMessage = $"Received a block hint from an unknown peer {receivedFrom}";
-                _logger.Error(errorMessage);
-                throw new InvalidOperationException(errorMessage);
+                string message = $"Received a block hint from an unknown peer {receivedFrom}";
+                if(_logger.IsDebugEnabled) _logger.Debug(message);
+                return;
             }
 
             peerInfo.NumberAvailable = UInt256.Max(number, peerInfo.NumberAvailable);
