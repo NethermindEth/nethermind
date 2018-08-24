@@ -345,7 +345,7 @@ namespace Nethermind.Blockchain
             long currentTicks = _processingWatch.ElapsedTicks;
             decimal totalMicroseconds = _processingWatch.ElapsedTicks * (1_000_000m / Stopwatch.Frequency);
             decimal chunkMicroseconds = (_processingWatch.ElapsedTicks - _lastElapsedTicks) * (1_000_000m / Stopwatch.Frequency);
-            if (chunkMicroseconds > 10 * 1000 * 1000 || _wasQueueEmptied) // 10s
+            if (chunkMicroseconds > 10 * 1000 * 1000 || (_wasQueueEmptied && chunkMicroseconds > 1 * 1000 * 1000)) // 10s
             {
                 _wasQueueEmptied = false;
                 long currentGen0 = GC.CollectionCount(0);

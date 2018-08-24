@@ -206,7 +206,7 @@ namespace Nethermind.Network.Rlpx.Handshake
 
             if(_logger.IsTrace) _logger.Trace($"Agreed secrets with {handshake.RemoteNodeId}");
             #if DEBUG
-            if (_logger.IsTraceEnabled)
+            if (_logger.IsTrace)
             {
                 _logger.Trace($"{handshake.RemoteNodeId} ephemeral private key {handshake.EphemeralPrivateKey}");
                 _logger.Trace($"{handshake.RemoteNodeId} initiator nonce {handshake.InitiatorNonce.ToHexString()}");

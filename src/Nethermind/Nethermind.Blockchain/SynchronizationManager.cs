@@ -152,6 +152,8 @@ namespace Nethermind.Blockchain
             }
         }
 
+        private int _lastSyncPeersCount;
+
         public void HintBlock(Keccak hash, UInt256 number, NodeId receivedFrom)
         {
             if (!_peers.TryGetValue(receivedFrom, out PeerInfo peerInfo))
@@ -179,6 +181,8 @@ namespace Nethermind.Blockchain
                 return;
             }
 
+            _peers.TryAdd(synchronizationPeer.NodeId, new PeerInfo(synchronizationPeer));
+
             var tokenSource = _initCancelTokens[synchronizationPeer.NodeId] = new CancellationTokenSource();
             // ReSharper disable once MethodSupportsCancellation
             await InitPeerInfo(synchronizationPeer, tokenSource.Token).ContinueWith(t =>
@@ -188,16 +192,23 @@ namespace Nethermind.Blockchain
                 {
                     if (t.Exception != null && t.Exception.InnerExceptions.Any(x => x.InnerException is TimeoutException))
                     {
-                        if (_logger.IsDebug) _logger.Debug($"AddPeer failed due to timeout: {t.Exception.Message}");
+                        if (_logger.IsInfo) _logger.Info($"AddPeer failed due to timeout: {t.Exception.Message}");
                     }
                     else if (_logger.IsError) _logger.Error("AddPeer failed.", t.Exception);
                 }
                 else if (t.IsCanceled)
                 {
-                    if (_logger.IsWarn) _logger.Warn($"Init peer info cancelled: {synchronizationPeer.NodeId}");
+                    if (_logger.IsDebug) _logger.Debug($"Init peer info canceled: {synchronizationPeer.NodeId}");
                 }
                 else
                 {
+                    int initPeerCount = _peers.Count(p => p.Value.IsInitialized);
+                    if (initPeerCount != _lastSyncPeersCount)
+                    {
+                        _lastSyncPeersCount = initPeerCount;
+                        if (_logger.IsInfo) _logger.Info($"Available sync peers: {initPeerCount}/25"); // TODO: make 25 configurable
+                    }
+                    
                     RequestSync();
                 }
             });
@@ -205,6 +216,7 @@ namespace Nethermind.Blockchain
 
         public void RemovePeer(ISynchronizationPeer synchronizationPeer)
         {
+            if (_logger.IsDebug) _logger.Debug($"Removing synchronization peer {synchronizationPeer.NodeId}");
             if (!_isInitialized)
             {
                 if (_logger.IsDebug) _logger.Debug($"Synchronization is disabled, removing peer is blocked: {synchronizationPeer.NodeId}");
@@ -213,10 +225,9 @@ namespace Nethermind.Blockchain
 
             if (!_peers.TryRemove(synchronizationPeer.NodeId, out var _))
             {
+                if (_logger.IsError) _logger.Error($"Synchronization peer was not on the list {synchronizationPeer.NodeId}");
                 return;
             }
-            
-            if (_logger.IsDebug) _logger.Debug($"Removing synchronization peer {synchronizationPeer.NodeId}");
             
             if(_currentSyncingPeerInfo?.Peer.NodeId.Equals(synchronizationPeer.NodeId) ?? false)
             {
@@ -592,7 +603,7 @@ namespace Nethermind.Blockchain
                 {
                     if (t.IsFaulted)
                     {
-                        if (_logger.IsWarn) _logger.Warn($"{nameof(InitPeerInfo)} failed for node: {peer.NodeId}{Environment.NewLine}{t.Exception}");
+                        if (_logger.IsDebug) _logger.Debug($"{nameof(InitPeerInfo)} failed for node: {peer.NodeId}{Environment.NewLine}{t.Exception}");
                         SyncEvent?.Invoke(this, new SyncEventArgs(peer, SyncStatus.InitFailed));
                     }
                     else if (t.IsCanceled)
@@ -611,26 +622,27 @@ namespace Nethermind.Blockchain
                                 OurBestBlockNumber = _blockTree.BestSuggested.Number
                             });
 
-                        PeerInfo peerInfo = new PeerInfo(peer, getNumberTask.Result);
-                        peerInfo.NumberReceived = _blockTree.BestSuggested.Number;
-                        bool addResult = _peers.TryAdd(peer.NodeId, peerInfo);
-                        if (!addResult)
+                        bool result = _peers.TryGetValue(peer.NodeId, out PeerInfo peerInfo);
+                        if (!result)
                         {
-                            _logger.Error($"Adding PeerInfo failed for {peer.NodeId}");
-                            throw new EthSynchronizationException($"Adding peer info failed for {peer.NodeId.ToString()}");
+                            _logger.Error($"Initializing PeerInfo failed for {peer.NodeId}");
+                            throw new EthSynchronizationException($"Initializing peer info failed for {peer.NodeId.ToString()}");
                         }
+                        
+                        peerInfo.NumberAvailable = getNumberTask.Result;
+                        peerInfo.NumberReceived = _blockTree.BestSuggested.Number;
                     }
                 }, token);
         }
 
         private class PeerInfo
         {
-            public PeerInfo(ISynchronizationPeer peer, UInt256 bestRemoteBlockNumber)
+            public PeerInfo(ISynchronizationPeer peer)
             {
                 Peer = peer;
-                NumberAvailable = bestRemoteBlockNumber;
             }
 
+            public bool IsInitialized { get; }
             public ISynchronizationPeer Peer { get; }
             public UInt256 NumberAvailable { get; set; }
             public UInt256 NumberReceived { get; set; }
