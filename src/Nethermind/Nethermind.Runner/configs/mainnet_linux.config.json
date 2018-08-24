@@ -14,7 +14,7 @@
       "ChainSpecPath": "chainspec/foundation.json",
       "GenesisHash": "0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3",
       "BaseDbPath": "../db/mainnet/full",
-      "TestNodeKey": "020102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f",
+      "TestNodeKey": "320102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f",
       "LogFileName": "mainnet_linux.logs.txt"
     }
   }
