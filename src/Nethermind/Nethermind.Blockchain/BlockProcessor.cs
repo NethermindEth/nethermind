@@ -70,7 +70,7 @@ namespace Nethermind.Blockchain
             for (int i = 0; i < transactions.Length; i++)
             {
                 var transaction = transactions[i];
-                if (_logger.IsTraceEnabled) _logger.Trace($"Processing transaction {i}");
+                if (_logger.IsTrace) _logger.Trace($"Processing transaction {i}");
 
                 // TODO: setup a DB for this
 //                _transactionStore.AddTransaction(transaction);
@@ -144,7 +144,7 @@ namespace Nethermind.Blockchain
 
                 if (tryOnly)
                 {
-                    if (_logger.IsTraceEnabled)
+                    if (_logger.IsTrace)
                     {
                         _logger.Trace($"REVERTING BLOCKS - STATE ROOT {_stateProvider.StateRoot}");
                     }
@@ -154,7 +154,7 @@ namespace Nethermind.Blockchain
                     _stateProvider.Reset();
                     _stateProvider.StateRoot = snapshotStateRoot;
 
-                    if (_logger.IsTraceEnabled)
+                    if (_logger.IsTrace)
                     {
                         _logger.Trace($"REVERTED BLOCKS (JUST VALIDATED FOR MINING) - STATE ROOT {_stateProvider.StateRoot}");
                     }
@@ -164,7 +164,7 @@ namespace Nethermind.Blockchain
             }
             catch (InvalidBlockException) // TODO: which exception to catch here?
             {
-                if (_logger.IsTraceEnabled)
+                if (_logger.IsTrace)
                 {
                     _logger.Trace($"REVERTING BLOCKS - STATE ROOT {_stateProvider.StateRoot}");
                 }
@@ -174,12 +174,12 @@ namespace Nethermind.Blockchain
                 _stateProvider.Reset();
                 _stateProvider.StateRoot = snapshotStateRoot;
 
-                if (_logger.IsTraceEnabled)
+                if (_logger.IsTrace)
                 {
                     _logger.Trace($"REVERTED BLOCKS - STATE ROOT {_stateProvider.StateRoot}");
                 }
 
-                if (_logger.IsWarnEnabled)
+                if (_logger.IsWarn)
                 {
                     _logger.Warn($"Invalid block");
                 }
@@ -221,7 +221,7 @@ namespace Nethermind.Blockchain
         {
             if (_specProvider.DaoBlockNumber.HasValue && _specProvider.DaoBlockNumber.Value == suggestedBlock.Header.Number)
             {
-                if (_logger.IsInfoEnabled)
+                if (_logger.IsInfo)
                 {
                     _logger.Info($"Applying DAO transition");
                 }
@@ -233,13 +233,13 @@ namespace Nethermind.Blockchain
             Keccak transactionsRoot = GetTransactionsRoot(suggestedBlock.Transactions);
             if (transactionsRoot != suggestedBlock.Header.TransactionsRoot)
             {
-                if (_logger.IsTraceEnabled)
+                if (_logger.IsTrace)
                 {
                     _logger.Trace($"TRANSACTIONS_ROOT {transactionsRoot} != TRANSACTIONS_ROOT {transactionsRoot}");
                 }
             }
 
-            if (_logger.IsTraceEnabled)
+            if (_logger.IsTrace)
             {
                 _logger.Trace($"Block beneficiary {suggestedBlock.Header.Beneficiary}");
                 _logger.Trace($"Block gas limit {suggestedBlock.Header.GasLimit}");
@@ -267,7 +267,7 @@ namespace Nethermind.Blockchain
 
             if (!tryOnly && !_blockValidator.ValidateProcessedBlock(processedBlock, suggestedBlock))
             {
-                if (_logger.IsErrorEnabled)
+                if (_logger.IsError)
                 {
                     _logger.Error($"Processed block is not valid {processedBlock.ToString(Block.Format.Short)}");
                 }
@@ -275,7 +275,7 @@ namespace Nethermind.Blockchain
                 throw new InvalidBlockException($"{processedBlock}");
             }
 
-            if (_logger.IsTraceEnabled)
+            if (_logger.IsTrace)
             {
                 _logger.Trace($"Committing block - state root {_stateProvider.StateRoot}");
             }
@@ -309,11 +309,11 @@ namespace Nethermind.Blockchain
 
         private void ApplyMinerRewards(Block block)
         {
-            if (_logger.IsTraceEnabled) _logger.Trace("Applying miner rewards:");
+            if (_logger.IsTrace) _logger.Trace("Applying miner rewards:");
             BlockReward[] rewards = _rewardCalculator.CalculateRewards(block);
             for (int i = 0; i < rewards.Length; i++)
             {
-                if(_logger.IsTraceEnabled) _logger.Trace($"    {((decimal)rewards[i].Value / (decimal)Unit.Ether):N3}{Unit.EthSymbol} for account at {rewards[i].Address}");
+                if(_logger.IsTrace) _logger.Trace($"    {((decimal)rewards[i].Value / (decimal)Unit.Ether):N3}{Unit.EthSymbol} for account at {rewards[i].Address}");
                 if (!_stateProvider.AccountExists(rewards[i].Address))
                 {
                     _stateProvider.CreateAccount(rewards[i].Address, (UInt256)rewards[i].Value);

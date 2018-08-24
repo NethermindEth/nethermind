@@ -54,14 +54,14 @@ namespace Nethermind.Network.Rlpx
         {
             if (_state == FrameDecoderState.WaitingForHeader)
             {
-                if (_logger.IsTraceEnabled)
+                if (_logger.IsTrace)
                 {
                     _logger.Trace($"Decoding frame header {input.ReadableBytes}");
                 }
 
                 if (input.ReadableBytes == 0)
                 {
-                    if(_logger.IsDebugEnabled) _logger.Debug($"{context.Channel.RemoteAddress} sent an empty frame, disconnecting");
+                    if(_logger.IsDebug) _logger.Debug($"{context.Channel.RemoteAddress} sent an empty frame, disconnecting");
                     context.CloseAsync();
                     return;
                 }
@@ -69,7 +69,7 @@ namespace Nethermind.Network.Rlpx
                 if (input.ReadableBytes >= 32)
                 {
                     input.ReadBytes(_headerBuffer);
-                    if (_logger.IsTraceEnabled)
+                    if (_logger.IsTrace)
                     {
                         _logger.Trace($"Decoding encrypted frame header {_headerBuffer.ToHexString()}");
                     }
@@ -88,14 +88,14 @@ namespace Nethermind.Network.Rlpx
                         paddingSize = 0;
                     }
 
-                    if (_logger.IsTraceEnabled)
+                    if (_logger.IsTrace)
                     {
                         _logger.Trace($"Expecting a message {_totalBodySize} + {paddingSize} + 16");
                     }
                 }
                 else
                 {
-                    if (_logger.IsTraceEnabled)
+                    if (_logger.IsTrace)
                     {
                         _logger.Trace("Waiting for full 32 bytes of the header");
                     }
@@ -106,7 +106,7 @@ namespace Nethermind.Network.Rlpx
 
             if (_state == FrameDecoderState.WaitingForPayload)
             {
-                if (_logger.IsTraceEnabled)
+                if (_logger.IsTrace)
                 {
                     _logger.Trace($"Decoding payload {input.ReadableBytes}");
                 }
@@ -129,7 +129,7 @@ namespace Nethermind.Network.Rlpx
                     return;
                 }
 
-                if (_logger.IsTraceEnabled)
+                if (_logger.IsTrace)
                 {
                     _logger.Trace($"Decoding encrypted payload {buffer.ToHexString()}");
                 }
@@ -140,7 +140,7 @@ namespace Nethermind.Network.Rlpx
 
                 output.Add(Bytes.Concat(_headerBuffer, buffer));
                 
-                if (_logger.IsTraceEnabled)
+                if (_logger.IsTrace)
                 {
                     _logger.Trace($"Decrypted message {((byte[])output.Last()).ToHexString()}");
                 }
@@ -154,14 +154,14 @@ namespace Nethermind.Network.Rlpx
             //In case of SocketException we log it as debug to avoid noise
             if (exception is SocketException)
             {
-                if (_logger.IsDebugEnabled)
+                if (_logger.IsDebug)
                 {
                     _logger.Error("Frame decoding failed (SocketException)", exception);
                 }
             }
             else
             {
-                if (_logger.IsErrorEnabled)
+                if (_logger.IsError)
                 {
                     _logger.Error($"{GetType().Name} error in netty frame decoder: {exception}");
                 }

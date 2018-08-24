@@ -115,7 +115,7 @@ namespace Nethermind.Network.Discovery
 
         private void InitializeUdpChannel()
         {
-            if(_logger.IsInfoEnabled) _logger.Info($"Starting Discovery UDP Channel: {_configurationProvider.MasterHost}:{_configurationProvider.MasterPort}");
+            if(_logger.IsInfo) _logger.Info($"Starting Discovery UDP Channel: {_configurationProvider.MasterHost}:{_configurationProvider.MasterPort}");
             _group = new MultithreadEventLoopGroup(1);
             var bootstrap = new Bootstrap();
             bootstrap
@@ -168,7 +168,7 @@ namespace Nethermind.Network.Discovery
                 AddPersistedNodes();
 
                 //Step 2 - initialize bootNodes
-                if(_logger.IsDebugEnabled) _logger.Debug("Initializing bootnodes.");
+                if(_logger.IsDebug) _logger.Debug("Initializing bootnodes.");
                 while (true)
                 {
                     if (await InitializeBootnodes())
@@ -213,22 +213,22 @@ namespace Nethermind.Network.Discovery
                 var manager = _discoveryManager.GetNodeLifecycleManager(node, true);
                 if (manager == null)
                 {
-                    if (_logger.IsDebugEnabled)
+                    if (_logger.IsDebug)
                     {
                         _logger.Debug($"Skiping persisted node {networkNode.NodeId}@{networkNode.Host}:{networkNode.Port}, manager couldnt be created");
                     }
                     continue;;
                 }
                 manager.NodeStats.CurrentPersistedNodeReputation = networkNode.Reputation;
-                if (_logger.IsTraceEnabled) _logger.Trace($"Adding persisted node {networkNode.NodeId}@{networkNode.Host}:{networkNode.Port}");
+                if (_logger.IsTrace) _logger.Trace($"Adding persisted node {networkNode.NodeId}@{networkNode.Host}:{networkNode.Port}");
             }
 
-            if (_logger.IsInfoEnabled) _logger.Info($"Added persisted discovery nodes: {nodes.Length}");
+            if (_logger.IsInfo) _logger.Info($"Added persisted discovery nodes: {nodes.Length}");
         }
 
         private void InitializeDiscoveryTimer()
         {
-            if(_logger.IsDebugEnabled) _logger.Debug("Starting discovery timer");
+            if(_logger.IsDebug) _logger.Debug("Starting discovery timer");
             _discoveryTimer = new Timer(_configurationProvider.DiscoveryInterval) {AutoReset = false};
             _discoveryTimer.Elapsed += async (sender, e) =>
             {
@@ -244,7 +244,7 @@ namespace Nethermind.Network.Discovery
         {
             try
             {
-                if(_logger.IsDebugEnabled) _logger.Debug("Stopping discovery timer");
+                if(_logger.IsDebug) _logger.Debug("Stopping discovery timer");
                 _discoveryTimer?.Stop();
             }
             catch (Exception e)
@@ -255,7 +255,7 @@ namespace Nethermind.Network.Discovery
 
         private void InitializeDiscoveryPersistanceTimer()
         {
-            if(_logger.IsDebugEnabled) _logger.Debug("Starting discovery persistance timer");
+            if(_logger.IsDebug) _logger.Debug("Starting discovery persistance timer");
             _discoveryPersistanceTimer = new Timer(_configurationProvider.DiscoveryPersistanceInterval) {AutoReset = false};
             _discoveryPersistanceTimer.Elapsed += async (sender, e) =>
             {
@@ -270,7 +270,7 @@ namespace Nethermind.Network.Discovery
         {
             try
             {
-                if(_logger.IsDebugEnabled) _logger.Debug("Stopping discovery persistance timer");
+                if(_logger.IsDebug) _logger.Debug("Stopping discovery persistance timer");
                 _discoveryPersistanceTimer?.Stop();
             }
             catch (Exception e)
@@ -308,7 +308,7 @@ namespace Nethermind.Network.Discovery
             var bootNodes = _configurationProvider.BootNodes;
             if (bootNodes == null || !bootNodes.Any())
             {
-                if (_logger.IsWarnEnabled) _logger.Warn("No bootnodes specified in configuration");
+                if (_logger.IsWarn) _logger.Warn("No bootnodes specified in configuration");
                 return true;
             }
             
@@ -342,7 +342,7 @@ namespace Nethermind.Network.Discovery
                     break;
                 }
 
-                if (_logger.IsTraceEnabled) _logger.Trace($"Waiting {itemTime} ms for bootnodes to respond");
+                if (_logger.IsTrace) _logger.Trace($"Waiting {itemTime} ms for bootnodes to respond");
                 await Task.Delay(1000); // TODO: do we need this?
             }
 
@@ -352,28 +352,28 @@ namespace Nethermind.Network.Discovery
                 var manager = managers[i];
                 if (manager.State != NodeLifecycleState.Active)
                 {
-                    if (_logger.IsDebugEnabled) _logger.Debug($"Could not reach bootnode: {manager.ManagedNode.Host}:{manager.ManagedNode.Port}");
+                    if (_logger.IsDebug) _logger.Debug($"Could not reach bootnode: {manager.ManagedNode.Host}:{manager.ManagedNode.Port}");
                 }
                 else
                 {
-                    if (_logger.IsDebugEnabled) _logger.Debug($"Reached bootnode: {manager.ManagedNode.Host}:{manager.ManagedNode.Port}");
+                    if (_logger.IsDebug) _logger.Debug($"Reached bootnode: {manager.ManagedNode.Host}:{manager.ManagedNode.Port}");
                     reachedNodeCounter++;
                 }
             }
 
-            if (_logger.IsInfoEnabled) _logger.Info($"Connected to {reachedNodeCounter} bootnodes");
+            if (_logger.IsInfo) _logger.Info($"Connected to {reachedNodeCounter} bootnodes");
             return reachedNodeCounter > 0;
         }
 
         private async Task RunDiscoveryAsync()
         {
-            if (_logger.IsDebugEnabled) _logger.Debug("Running discovery process.");
+            if (_logger.IsDebug) _logger.Debug("Running discovery process.");
             await _nodesLocator.LocateNodesAsync();
         }
 
         private async Task RunRefreshAsync()
         {
-            if (_logger.IsDebugEnabled) _logger.Debug("Running refresh process.");            
+            if (_logger.IsDebug) _logger.Debug("Running refresh process.");            
             var randomId = _cryptoRandom.GenerateRandomBytes(64);
             await _nodesLocator.LocateNodesAsync(randomId);
         }

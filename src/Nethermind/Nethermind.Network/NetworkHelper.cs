@@ -72,7 +72,7 @@ namespace Nethermind.Network
                     socket.Connect("www.google.com", 80);
                     IPEndPoint endPoint = socket.LocalEndPoint as IPEndPoint;
                     var address = endPoint?.Address;
-                    if(_logger.IsDebugEnabled) _logger.Debug($"Local ip: {address}");
+                    if(_logger.IsDebug) _logger.Debug($"Local ip: {address}");
                     return address;
                 }
             }

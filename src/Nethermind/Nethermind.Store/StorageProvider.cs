@@ -74,7 +74,7 @@ namespace Nethermind.Store
 
         public int TakeSnapshot()
         {
-            if (_logger.IsTraceEnabled)
+            if (_logger.IsTrace)
             {
                 _logger.Trace($"  STORAGE SNAPSHOT {_currentPosition}");
             }
@@ -84,7 +84,7 @@ namespace Nethermind.Store
 
         public void Restore(int snapshot)
         {
-            if (_logger.IsTraceEnabled)
+            if (_logger.IsTrace)
             {
                 _logger.Trace($"  RESTORING STORAGE SNAPSHOT {snapshot}");
             }
@@ -149,11 +149,11 @@ namespace Nethermind.Store
         {
             if (_currentPosition == -1)
             {
-                if (_logger.IsTraceEnabled) _logger.Trace("No storage changes to commit");
+                if (_logger.IsTrace) _logger.Trace("No storage changes to commit");
                 return;
             }
 
-            if (_logger.IsTraceEnabled) _logger.Trace("  Committing storage changes");
+            if (_logger.IsTrace) _logger.Trace("  Committing storage changes");
 
             if (_changes[_currentPosition] == null)
             {
@@ -190,7 +190,7 @@ namespace Nethermind.Store
                         break;
                     case ChangeType.Update:
 
-                        if (_logger.IsTraceEnabled)
+                        if (_logger.IsTrace)
                         {
                             _logger.Trace($"  UPDATE {change.StorageAddress.Address}_{change.StorageAddress.Index} V = {change.Value.ToHexString(true)}");
                         }
@@ -224,7 +224,7 @@ namespace Nethermind.Store
 
         public void ClearCaches()
         {
-            if (_logger.IsTraceEnabled)
+            if (_logger.IsTrace)
             {
                 _logger.Trace("  CLEARING STORAGE PROVIDER CACHES");
             }

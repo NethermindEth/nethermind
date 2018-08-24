@@ -48,11 +48,11 @@ namespace Nethermind.Core
             if (_stopwatches.TryRemove(id, out var watch))
             {
                 watch.Stop();
-                if (_logger.IsDebugEnabled) _logger.Debug($"PerfCalc: {logMsg}, time: {watch.ElapsedMilliseconds} milis");
+                if (_logger.IsDebug) _logger.Debug($"PerfCalc: {logMsg}, time: {watch.ElapsedMilliseconds} milis");
             }
             else
             {
-                if (_logger.IsWarnEnabled) _logger.Warn($"Stopwatch cannot be found in dict: {id}");
+                if (_logger.IsWarn) _logger.Warn($"Stopwatch cannot be found in dict: {id}");
             }
         }
     }

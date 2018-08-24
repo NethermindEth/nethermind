@@ -45,12 +45,12 @@ namespace Nethermind.Network.Rlpx
                 throw new InvalidOperationException($"Frame length should be a multiple of 16");
             }
             
-            if(_logger.IsTraceEnabled) _logger.Trace($"Sending frame (before encryption): {message.ToHexString()}");
+            if(_logger.IsTrace) _logger.Trace($"Sending frame (before encryption): {message.ToHexString()}");
             _frameCipher.Encrypt(message, 0, 16, message, 0);
             _frameMacProcessor.AddMac(message, 0, 16, true);
             _frameCipher.Encrypt(message, 32, message.Length - 48, message, 32);
             _frameMacProcessor.AddMac(message, 32, message.Length - 48, false);
-            if(_logger.IsTraceEnabled) _logger.Trace($"Sending frame (after encryption):  {message.ToHexString()}");
+            if(_logger.IsTrace) _logger.Trace($"Sending frame (after encryption):  {message.ToHexString()}");
             output.WriteBytes(message);
         }
     }

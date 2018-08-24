@@ -77,12 +77,12 @@ namespace Nethermind.Blockchain
             
             Block block = blockEventArgs.Block;
             
-            if (_logger.IsTraceEnabled) _logger.Trace($"Enqueuing a new block {block.ToString(Block.Format.Short)} for processing.");
+            if (_logger.IsTrace) _logger.Trace($"Enqueuing a new block {block.ToString(Block.Format.Short)} for processing.");
             
             BlockRef blockRef = _recoveryQueue.Count > MaxRecoveryQueueSize ? new BlockRef(block.Hash) : new BlockRef(block);
             _recoveryQueue.Add(blockRef);
             
-            if (_logger.IsTraceEnabled) _logger.Trace($"A new block {block.ToString(Block.Format.Short)} enqueued for processing.");
+            if (_logger.IsTrace) _logger.Trace($"A new block {block.ToString(Block.Format.Short)} enqueued for processing.");
         }
 
         private CancellationTokenSource _loopCancellationSource;
@@ -118,15 +118,15 @@ namespace Nethermind.Blockchain
             {
                 if (t.IsFaulted)
                 {
-                    if (_logger.IsErrorEnabled) _logger.Error("Sender address recovery encountered an exception.", t.Exception);
+                    if (_logger.IsError) _logger.Error("Sender address recovery encountered an exception.", t.Exception);
                 }
                 else if (t.IsCanceled)
                 {
-                    if (_logger.IsDebugEnabled) _logger.Debug("Sender address recovery stopped.");
+                    if (_logger.IsDebug) _logger.Debug("Sender address recovery stopped.");
                 }
                 else if (t.IsCompleted)
                 {
-                    if (_logger.IsDebugEnabled) _logger.Debug("Sender address recovery complete.");
+                    if (_logger.IsDebug) _logger.Debug("Sender address recovery complete.");
                 }
             });
 
@@ -138,25 +138,25 @@ namespace Nethermind.Blockchain
             {
                 if (t.IsFaulted)
                 {
-                    if (_logger.IsErrorEnabled) _logger.Error($"{nameof(BlockchainProcessor)} encountered an exception.", t.Exception);
+                    if (_logger.IsError) _logger.Error($"{nameof(BlockchainProcessor)} encountered an exception.", t.Exception);
                 }
                 else if (t.IsCanceled)
                 {
-                    if (_logger.IsDebugEnabled) _logger.Debug($"{nameof(BlockchainProcessor)} stopped.");
+                    if (_logger.IsDebug) _logger.Debug($"{nameof(BlockchainProcessor)} stopped.");
                 }
                 else if (t.IsCompleted)
                 {
-                    if (_logger.IsDebugEnabled) _logger.Debug($"{nameof(BlockchainProcessor)} complete.");
+                    if (_logger.IsDebug) _logger.Debug($"{nameof(BlockchainProcessor)} complete.");
                 }
             });
         }
 
         private void RunRecoveryLoop()
         {
-            if (_logger.IsDebugEnabled) _logger.Debug($"Starting recovery loop - {_blockQueue.Count} blocks waiting in the queue.");
+            if (_logger.IsDebug) _logger.Debug($"Starting recovery loop - {_blockQueue.Count} blocks waiting in the queue.");
             foreach (BlockRef blockRef in _recoveryQueue.GetConsumingEnumerable(_loopCancellationSource.Token))
             {
-                if (_logger.IsTraceEnabled) _logger.Trace($"Recovering addresses for block {blockRef.BlockHash ?? blockRef.Block.Hash}.");
+                if (_logger.IsTrace) _logger.Trace($"Recovering addresses for block {blockRef.BlockHash ?? blockRef.Block.Hash}.");
                 ResolveBlockRef(blockRef);
                 _signer.RecoverAddresses(blockRef.Block);
 
@@ -201,13 +201,13 @@ namespace Nethermind.Blockchain
         private void RunProcessingLoop()
         {
             _processingWatch.Start();
-            if (_logger.IsDebugEnabled) _logger.Debug($"Starting block processor - {_blockQueue.Count} blocks waiting in the queue.");
+            if (_logger.IsDebug) _logger.Debug($"Starting block processor - {_blockQueue.Count} blocks waiting in the queue.");
 
             if (_blockQueue.Count == 0 && _sealEngine.IsMining)
             {
-                if (_logger.IsDebugEnabled) _logger.Debug("Nothing in the queue so I mine my own.");
+                if (_logger.IsDebug) _logger.Debug("Nothing in the queue so I mine my own.");
                 BuildAndSeal();
-                if (_logger.IsTraceEnabled) _logger.Trace("Will go and wait for another block now...");
+                if (_logger.IsTrace) _logger.Trace("Will go and wait for another block now...");
             }
 
             foreach (BlockRef blockRef in _blockQueue.GetConsumingEnumerable(_loopCancellationSource.Token))
@@ -215,7 +215,7 @@ namespace Nethermind.Blockchain
                 ResolveBlockRef(blockRef);
                 Block block = blockRef.Block;
                 
-                if (_logger.IsTraceEnabled) _logger.Trace($"Processing block {block.ToString(Block.Format.Short)}).");
+                if (_logger.IsTrace) _logger.Trace($"Processing block {block.ToString(Block.Format.Short)}).");
                 if (_blockQueue.Count == 0)
                 {
                     _wasQueueEmptied = true;
@@ -223,12 +223,12 @@ namespace Nethermind.Blockchain
 
                 Process(block);
 
-                if (_logger.IsTraceEnabled) _logger.Trace($"Now {_blockQueue.Count} blocks waiting in the queue.");
+                if (_logger.IsTrace) _logger.Trace($"Now {_blockQueue.Count} blocks waiting in the queue.");
                 if (_blockQueue.Count == 0 && _sealEngine.IsMining)
                 {
-                    if (_logger.IsDebugEnabled) _logger.Debug("Nothing in the queue so I mine my own.");
+                    if (_logger.IsDebug) _logger.Debug("Nothing in the queue so I mine my own.");
                     BuildAndSeal();
-                    if (_logger.IsTraceEnabled) _logger.Trace("Will go and wait for another block now...");
+                    if (_logger.IsTrace) _logger.Trace("Will go and wait for another block now...");
                 }
             }
         }
@@ -257,14 +257,14 @@ namespace Nethermind.Blockchain
                 Encoding.UTF8.GetBytes("Nethermind"));
 
             header.TotalDifficulty = parent.TotalDifficulty + difficulty;
-            if (_logger.IsDebugEnabled) _logger.Debug($"Setting total difficulty to {parent.TotalDifficulty} + {difficulty}.");
+            if (_logger.IsDebug) _logger.Debug($"Setting total difficulty to {parent.TotalDifficulty} + {difficulty}.");
 
             var transactions = _transactionStore.GetAllPending().OrderBy(t => t?.Nonce); // by nonce in case there are two transactions for the same account, TODO: test it
 
             List<Transaction> selected = new List<Transaction>();
             BigInteger gasRemaining = header.GasLimit;
 
-            if (_logger.IsDebugEnabled) _logger.Debug($"Collecting pending transactions at min gas price {MinGasPriceForMining} and block gas limit {gasRemaining}.");
+            if (_logger.IsDebug) _logger.Debug($"Collecting pending transactions at min gas price {MinGasPriceForMining} and block gas limit {gasRemaining}.");
 
             int total = 0;
             foreach (Transaction transaction in transactions)
@@ -277,13 +277,13 @@ namespace Nethermind.Blockchain
 
                 if (transaction.GasPrice < MinGasPriceForMining)
                 {
-                    if (_logger.IsTraceEnabled) _logger.Trace($"Rejecting transaction - gas price ({transaction.GasPrice}) too low (min gas price: {MinGasPriceForMining}.");
+                    if (_logger.IsTrace) _logger.Trace($"Rejecting transaction - gas price ({transaction.GasPrice}) too low (min gas price: {MinGasPriceForMining}.");
                     continue;
                 }
 
                 if (transaction.GasLimit > gasRemaining)
                 {
-                    if (_logger.IsTraceEnabled) _logger.Trace($"Rejecting transaction - gas limit ({transaction.GasPrice}) more than remaining gas ({gasRemaining}).");
+                    if (_logger.IsTrace) _logger.Trace($"Rejecting transaction - gas limit ({transaction.GasPrice}) more than remaining gas ({gasRemaining}).");
                     break;
                 }
 
@@ -291,7 +291,7 @@ namespace Nethermind.Blockchain
                 gasRemaining -= transaction.GasLimit;
             }
 
-            if (_logger.IsDebugEnabled) _logger.Debug($"Collected {selected.Count} out of {total} pending transactions.");
+            if (_logger.IsDebug) _logger.Debug($"Collected {selected.Count} out of {total} pending transactions.");
             header.TransactionsRoot = GetTransactionsRoot(selected);
 
             Block block = new Block(header, selected, new BlockHeader[0]);
@@ -337,7 +337,7 @@ namespace Nethermind.Blockchain
         public void Process(Block suggestedBlock)
         {
             Process(suggestedBlock, false);
-            if (_logger.IsTraceEnabled) _logger.Trace($"Processed block {suggestedBlock.ToString(Block.Format.Full)}");
+            if (_logger.IsTrace) _logger.Trace($"Processed block {suggestedBlock.ToString(Block.Format.Full)}");
 
             _currentTotalMGas += suggestedBlock.GasUsed / 1_000_000m;
             _currentTotalTx += suggestedBlock.Transactions.Length;
@@ -364,8 +364,8 @@ namespace Nethermind.Blockchain
                 decimal mgasPerSecond = chunkMicroseconds == 0 ? -1 : chunkMGas / chunkMicroseconds * 1000 * 1000;
                 decimal totalMgasPerSecond = totalMicroseconds == 0 ? -1 : _currentTotalMGas / totalMicroseconds * 1000 * 1000;
                 decimal txps = chunkMicroseconds == 0 ? -1 : chunkTx / chunkMicroseconds * 1000m * 1000m;
-                if (_logger.IsInfoEnabled) _logger.Info($"Processed blocks up to {suggestedBlock.Number,9} in {(chunkMicroseconds == 0 ? -1 : chunkMicroseconds / 1000),7:N0}ms, tx={chunkTx,5} mgas={chunkMGas,8:F2}, mgasps={mgasPerSecond,7:F2}, txps={txps,7:F2}, total mgasps={totalMgasPerSecond,7:F2}, queue={_blockQueue.Count}");
-                if (_logger.IsDebugEnabled) _logger.Debug($"Gen0: {currentGen0 - _lastGen0,6}, Gen1: {currentGen1 - _lastGen1,6}, Gen2: {currentGen2 - _lastGen2,6}, maxmem: {_maxMemory / 1000000,5}, mem: {currentMemory / 1000000,5}, reads: {currentStateDbReads - _lastStateDbReads,9}, writes: {currentStateDbWrites - _lastStateDbWrites,9}, rlp: {currentTreeNodeRlp - _lastTreeNodeRlp,9}, exceptions:{evmExceptions - _lastEvmExceptions}, selfdstrcs={currentSelfDestructs - _lastSelfDestructs}");
+                if (_logger.IsInfo) _logger.Info($"Processed blocks up to {suggestedBlock.Number,9} in {(chunkMicroseconds == 0 ? -1 : chunkMicroseconds / 1000),7:N0}ms, tx={chunkTx,5} mgas={chunkMGas,8:F2}, mgasps={mgasPerSecond,7:F2}, txps={txps,7:F2}, total mgasps={totalMgasPerSecond,7:F2}, queue={_blockQueue.Count}");
+                if (_logger.IsDebug) _logger.Debug($"Gen0: {currentGen0 - _lastGen0,6}, Gen1: {currentGen1 - _lastGen1,6}, Gen2: {currentGen2 - _lastGen2,6}, maxmem: {_maxMemory / 1000000,5}, mem: {currentMemory / 1000000,5}, reads: {currentStateDbReads - _lastStateDbReads,9}, writes: {currentStateDbWrites - _lastStateDbWrites,9}, rlp: {currentTreeNodeRlp - _lastTreeNodeRlp,9}, exceptions:{evmExceptions - _lastEvmExceptions}, selfdstrcs={currentSelfDestructs - _lastSelfDestructs}");
                 _lastTotalMGas = _currentTotalMGas;
                 _lastElapsedTicks = currentTicks;
                 _lastTotalTx = _currentTotalTx;
@@ -407,7 +407,7 @@ namespace Nethermind.Blockchain
 
             BigInteger totalDifficulty = suggestedBlock.TotalDifficulty ?? 0;
             BigInteger totalTransactions = suggestedBlock.TotalTransactions ?? 0;
-            if (_logger.IsTraceEnabled)
+            if (_logger.IsTrace)
             {
                 _logger.Trace($"Total difficulty of block {suggestedBlock.ToString(Block.Format.Short)} is {totalDifficulty}");
                 _logger.Trace($"Total transactions of block {suggestedBlock.ToString(Block.Format.Short)} is {totalTransactions}");
@@ -432,7 +432,7 @@ namespace Nethermind.Blockchain
                 BlockHeader branchingPoint = toBeProcessed?.Header;
                 if (branchingPoint != null && branchingPoint.Hash != _blockTree.Head?.Hash)
                 {
-                    if (_logger.IsTraceEnabled)
+                    if (_logger.IsTrace)
                     {
                         _logger.Trace($"Head block was: {_blockTree.Head?.ToString(BlockHeader.Format.Short)}");
                         _logger.Trace($"Branching from: {branchingPoint.ToString(BlockHeader.Format.Short)}");
@@ -440,11 +440,11 @@ namespace Nethermind.Blockchain
                 }
                 else
                 {
-                    if (_logger.IsTraceEnabled) _logger.Trace(branchingPoint == null ? "Setting as genesis block" : $"Adding on top of {branchingPoint.ToString(BlockHeader.Format.Short)}");
+                    if (_logger.IsTrace) _logger.Trace(branchingPoint == null ? "Setting as genesis block" : $"Adding on top of {branchingPoint.ToString(BlockHeader.Format.Short)}");
                 }
 
                 Keccak stateRoot = branchingPoint?.StateRoot;
-                if (_logger.IsTraceEnabled) _logger.Trace($"State root lookup: {stateRoot}");
+                if (_logger.IsTrace) _logger.Trace($"State root lookup: {stateRoot}");
 
                 List<Block> unprocessedBlocksToBeAddedToMain = new List<Block>();
 
@@ -453,7 +453,7 @@ namespace Nethermind.Blockchain
                     if (!forMining && _blockTree.WasProcessed(block.Hash))
                     {
                         stateRoot = block.Header.StateRoot;
-                        if (_logger.IsTraceEnabled) _logger.Trace($"State root lookup: {stateRoot}");
+                        if (_logger.IsTrace) _logger.Trace($"State root lookup: {stateRoot}");
                         break;
                     }
 
@@ -466,7 +466,7 @@ namespace Nethermind.Blockchain
                     blocks[blocks.Length - i - 1] = unprocessedBlocksToBeAddedToMain[i];
                 }
 
-                if (_logger.IsTraceEnabled) _logger.Trace($"Processing {blocks.Length} blocks from state root {stateRoot}");
+                if (_logger.IsTrace) _logger.Trace($"Processing {blocks.Length} blocks from state root {stateRoot}");
 
                 //TODO: process blocks one by one here, refactor this, test
                 for (int i = 0; i < blocks.Length; i++)
@@ -496,7 +496,7 @@ namespace Nethermind.Blockchain
                 {
                     foreach (Block processedBlock in processedBlocks)
                     {
-                        if (_logger.IsTraceEnabled) _logger.Trace($"Marking {processedBlock.ToString(Block.Format.Short)} as processed");
+                        if (_logger.IsTrace) _logger.Trace($"Marking {processedBlock.ToString(Block.Format.Short)} as processed");
 
                         // TODO: review storage and retrieval of receipts since we removed them from the block class
                         _blockTree.MarkAsProcessed(processedBlock.Hash);
@@ -507,12 +507,12 @@ namespace Nethermind.Blockchain
                         Block newHeadBlock = processedBlocks[processedBlocks.Length - 1];
                         newHeadBlock.Header.TotalDifficulty =
                             suggestedBlock.TotalDifficulty; // TODO: cleanup total difficulty
-                        if (_logger.IsTraceEnabled) _logger.Trace($"Setting head block to {newHeadBlock.ToString(Block.Format.Short)}");
+                        if (_logger.IsTrace) _logger.Trace($"Setting head block to {newHeadBlock.ToString(Block.Format.Short)}");
                     }
 
                     foreach (BlockHeader blockHeader in blocksToBeRemovedFromMain)
                     {
-                        if (_logger.IsTraceEnabled) _logger.Trace($"Moving {blockHeader.ToString(BlockHeader.Format.Short)} to branch");
+                        if (_logger.IsTrace) _logger.Trace($"Moving {blockHeader.ToString(BlockHeader.Format.Short)} to branch");
                         _blockTree.MoveToBranch(blockHeader.Hash);
                         // TODO: only for miners
                         //foreach (Transaction transaction in block.Transactions)
@@ -520,12 +520,12 @@ namespace Nethermind.Blockchain
                         //    _transactionStore.AddPending(transaction);
                         //}
 
-                        if (_logger.IsTraceEnabled) _logger.Trace($"Block {blockHeader.ToString(BlockHeader.Format.Short)} moved to branch");
+                        if (_logger.IsTrace) _logger.Trace($"Block {blockHeader.ToString(BlockHeader.Format.Short)} moved to branch");
                     }
 
                     foreach (Block block in blocksToBeAddedToMain)
                     {
-                        if (_logger.IsTraceEnabled) _logger.Trace($"Moving {block.ToString(Block.Format.Short)} to main");
+                        if (_logger.IsTrace) _logger.Trace($"Moving {block.ToString(Block.Format.Short)} to main");
 
                         _blockTree.MoveToMain(block);
                         // TODO: only for miners
@@ -534,11 +534,11 @@ namespace Nethermind.Blockchain
                             _transactionStore.RemovePending(transaction);
                         }
 
-                        if (_logger.IsTraceEnabled) _logger.Trace($"Block {block.ToString(Block.Format.Short)} added to main chain");
+                        if (_logger.IsTrace) _logger.Trace($"Block {block.ToString(Block.Format.Short)} added to main chain");
                     }
 
-                    if (_logger.IsTraceEnabled) _logger.Trace($"Updating total difficulty of the main chain to {totalDifficulty}");
-                    if (_logger.IsTraceEnabled) _logger.Trace($"Updating total transactions of the main chain to {totalTransactions}");
+                    if (_logger.IsTrace) _logger.Trace($"Updating total difficulty of the main chain to {totalDifficulty}");
+                    if (_logger.IsTrace) _logger.Trace($"Updating total transactions of the main chain to {totalTransactions}");
                 }
                 else if (_blockTree.CanAcceptNewBlocks)
                 {
@@ -550,7 +550,7 @@ namespace Nethermind.Blockchain
                     {
                         anyCancellation.Dispose();
 
-                        if (_logger.IsInfoEnabled) _logger.Info($"Mined a block {t.Result.ToString(Block.Format.Short)} with parent {t.Result.Header.ParentHash}");
+                        if (_logger.IsInfo) _logger.Info($"Mined a block {t.Result.ToString(Block.Format.Short)} with parent {t.Result.Header.ParentHash}");
 
                         Block minedBlock = t.Result;
 

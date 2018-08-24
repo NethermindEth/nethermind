@@ -160,7 +160,7 @@ namespace Nethermind.Blockchain.Test
 
             resetEvent.WaitOne(TimeSpan.FromSeconds(1));
 
-            Assert.AreEqual(miner1Tree.BestSuggested.Hash, _manager.BlockTree.BestSuggested.Hash, "client agrees with miner before split");
+            Assert.AreEqual(miner1Tree.BestSuggested.Hash, _blockTree.BestSuggested.Hash, "client agrees with miner before split");
             
             Block splitBlock = Build.A.Block.WithParent(miner1Tree.FindParent(miner1Tree.Head)).WithDifficulty(miner1Tree.Head.Difficulty - 1).TestObject;
             Block splitBlockChild = Build.A.Block.WithParent(splitBlock).TestObject;
@@ -180,7 +180,7 @@ namespace Nethermind.Blockchain.Test
             
             resetEvent.WaitOne(TimeSpan.FromSeconds(1));
             
-            Assert.AreEqual(miner1Tree.BestSuggested.Hash, _manager.BlockTree.BestSuggested.Hash, "client agrees with miner after split");
+            Assert.AreEqual(miner1Tree.BestSuggested.Hash, _blockTree.BestSuggested.Hash, "client agrees with miner after split");
         }
         
         [Test]
@@ -198,11 +198,11 @@ namespace Nethermind.Blockchain.Test
 
             resetEvent.WaitOne(TimeSpan.FromSeconds(1));
 
-            Assert.AreEqual(miner1Tree.BestSuggested.Hash, _manager.BlockTree.BestSuggested.Hash, "client agrees with miner before split");
+            Assert.AreEqual(miner1Tree.BestSuggested.Hash, _blockTree.BestSuggested.Hash, "client agrees with miner before split");
             
             miner1Tree.AddBranch(7, 0, 1);
             
-            Assert.AreNotEqual(miner1Tree.BestSuggested.Hash, _manager.BlockTree.BestSuggested.Hash, "client does not agree with miner after split");
+            Assert.AreNotEqual(miner1Tree.BestSuggested.Hash, _blockTree.BestSuggested.Hash, "client does not agree with miner after split");
             
             resetEvent.Reset();
             
@@ -210,7 +210,7 @@ namespace Nethermind.Blockchain.Test
             
             resetEvent.WaitOne(TimeSpan.FromSeconds(1));
             
-            Assert.AreEqual(miner1Tree.BestSuggested.Hash, _manager.BlockTree.BestSuggested.Hash, "client agrees with miner after split");
+            Assert.AreEqual(miner1Tree.BestSuggested.Hash, _blockTree.BestSuggested.Hash, "client agrees with miner after split");
         }
         
         [Test]
@@ -228,7 +228,7 @@ namespace Nethermind.Blockchain.Test
 
             resetEvent.WaitOne(TimeSpan.FromSeconds(1));
 
-            Assert.AreEqual(minerTree.BestSuggested.Hash, _manager.BlockTree.BestSuggested.Hash, "client agrees with miner before split");
+            Assert.AreEqual(minerTree.BestSuggested.Hash, _blockTree.BestSuggested.Hash, "client agrees with miner before split");
 
             Block newBlock = Build.A.Block.WithParent(minerTree.Head).TestObject;
             minerTree.SuggestBlock(newBlock);
@@ -263,7 +263,7 @@ namespace Nethermind.Blockchain.Test
 
             resetEvent.WaitOne(TimeSpan.FromSeconds(1));
 
-            Assert.AreEqual(minerTree.BestSuggested.Hash, _manager.BlockTree.BestSuggested.Hash, "client agrees with miner before split");
+            Assert.AreEqual(minerTree.BestSuggested.Hash, _blockTree.BestSuggested.Hash, "client agrees with miner before split");
 
             Block newBlock = Build.A.Block.WithParent(minerTree.Head).TestObject;
             minerTree.SuggestBlock(newBlock);

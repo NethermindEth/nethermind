@@ -25,11 +25,11 @@ namespace Nethermind.Core.Logging
 {
     public class NLogLogger : ILogger
     {
-        public bool IsErrorEnabled { get; }
-        public bool IsWarnEnabled { get; }
-        public bool IsInfoEnabled { get; }
-        public bool IsDebugEnabled { get; }
-        public bool IsTraceEnabled { get; }
+        public bool IsError { get; }
+        public bool IsWarn { get; }
+        public bool IsInfo { get; }
+        public bool IsDebug { get; }
+        public bool IsTrace { get; }
 
         internal readonly NLog.Logger Logger;
 
@@ -48,38 +48,38 @@ namespace Nethermind.Core.Logging
             }
 
             /* NOTE: minor perf gain - not planning to switch logging levels while app is running */
-            IsInfoEnabled = Logger.IsInfoEnabled;
-            IsWarnEnabled = Logger.IsWarnEnabled;
-            IsDebugEnabled = Logger.IsDebugEnabled;
-            IsTraceEnabled = Logger.IsTraceEnabled;
-            IsErrorEnabled = Logger.IsErrorEnabled || Logger.IsFatalEnabled;
+            IsInfo = Logger.IsInfoEnabled;
+            IsWarn = Logger.IsWarnEnabled;
+            IsDebug = Logger.IsDebugEnabled;
+            IsTrace = Logger.IsTraceEnabled;
+            IsError = Logger.IsErrorEnabled || Logger.IsFatalEnabled;
         }
 
         private string Level
         {
             get
             {
-                if (IsTraceEnabled)
+                if (IsTrace)
                 {
                     return "Trace";
                 }
 
-                if (IsDebugEnabled)
+                if (IsDebug)
                 {
                     return "Debug";
                 }
 
-                if (IsInfoEnabled)
+                if (IsInfo)
                 {
                     return "Info";
                 }
 
-                if (IsWarnEnabled)
+                if (IsWarn)
                 {
                     return "Warn";
                 }
 
-                if (IsErrorEnabled)
+                if (IsError)
                 {
                     return "Error";
                 }

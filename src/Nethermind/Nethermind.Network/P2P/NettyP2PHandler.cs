@@ -42,7 +42,7 @@ namespace Nethermind.Network.P2P
 
         public override void ChannelRegistered(IChannelHandlerContext context)
         {
-            if (_logger.IsDebugEnabled)
+            if (_logger.IsDebug)
             {
                 _logger.Debug($"Registering {nameof(NettyP2PHandler)}");
             }
@@ -52,7 +52,7 @@ namespace Nethermind.Network.P2P
 
         protected override void ChannelRead0(IChannelHandlerContext ctx, Packet msg)
         {
-            if (_logger.IsTraceEnabled)
+            if (_logger.IsTrace)
             {
                 _logger.Trace($"Channel read... data length {msg.Data.Length}");
             }
@@ -65,14 +65,14 @@ namespace Nethermind.Network.P2P
             //In case of SocketException we log it as debug to avoid noise
             if (exception is SocketException)
             {
-                if (_logger.IsDebugEnabled)
+                if (_logger.IsDebug)
                 {
                     _logger.Error($"{GetType().Name} error in p2p netty handler (SocketException): {exception}");
                 }
             }
             else
             {
-                if (_logger.IsErrorEnabled)
+                if (_logger.IsError)
                 {
                     _logger.Error($"{GetType().Name} error in p2p netty handler: {exception}");
                 }

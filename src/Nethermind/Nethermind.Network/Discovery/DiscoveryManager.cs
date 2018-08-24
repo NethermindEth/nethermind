@@ -72,7 +72,7 @@ namespace Nethermind.Network.Discovery
         {
             try
             {
-                if(_logger.IsTraceEnabled) _logger.Trace($"Received msg: {message}");
+                if(_logger.IsTrace) _logger.Trace($"Received msg: {message}");
 
                 MessageType msgType = message.MessageType;
 
@@ -122,7 +122,7 @@ namespace Nethermind.Network.Discovery
 
             if (node.Port == 0)
             {
-                if (_logger.IsDebugEnabled) _logger.Debug($"Node is not listening - Port 0, blocking add to discovery, id: {node.Id}");
+                if (_logger.IsDebug) _logger.Debug($"Node is not listening - Port 0, blocking add to discovery, id: {node.Id}");
                 return null;
             }
 
@@ -178,7 +178,7 @@ namespace Nethermind.Network.Discovery
         {
             if (message.DestinationAddress == null || message.SourceAddress == null || message.FarAddress == null)
             {
-                if (_logger.IsWarnEnabled)
+                if (_logger.IsWarn)
                 {
                     _logger.Warn($"Received ping message with empty address, message: {message}");
                 }
@@ -201,7 +201,7 @@ namespace Nethermind.Network.Discovery
 
             if (message.FarAddress.Port != message.SourceAddress.Port)
             {
-                if (_logger.IsWarnEnabled)
+                if (_logger.IsWarn)
                 {
                     _logger.Warn($"Received message with incorect source port, message: {message}");
                 }
@@ -244,14 +244,14 @@ namespace Nethermind.Network.Discovery
             if (activeExcluded.Length == cleanupCount)
             {
                 int removeCounter = RemoveManagers(activeExcluded, activeExcluded.Length);
-                if(_logger.IsDebugEnabled) _logger.Debug($"Removed: {removeCounter} activeExcluded node lifecycle managers");
+                if(_logger.IsDebug) _logger.Debug($"Removed: {removeCounter} activeExcluded node lifecycle managers");
                 return;
             }
 
             KeyValuePair<string, INodeLifecycleManager>[] unreachable = _nodeLifecycleManagers.Where(x => x.Value.State == NodeLifecycleState.Unreachable).Take(cleanupCount - activeExcluded.Length).ToArray();
             int removeCount = RemoveManagers(activeExcluded, activeExcluded.Length);
             removeCount = removeCount + RemoveManagers(unreachable, unreachable.Length);
-            if(_logger.IsTraceEnabled) _logger.Trace($"Removed: {removeCount} unreachable node lifecycle managers");
+            if(_logger.IsTrace) _logger.Trace($"Removed: {removeCount} unreachable node lifecycle managers");
         }
 
         private int RemoveManagers(KeyValuePair<string, INodeLifecycleManager>[] items, int count)

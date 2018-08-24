@@ -87,7 +87,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
             BlockHeader head = _sync.Head;
             StatusMessage statusMessage = new StatusMessage();
-            statusMessage.ChainId = _sync.BlockTree.ChainId;
+            statusMessage.ChainId = _sync.ChainId;
             statusMessage.ProtocolVersion = ProtocolVersion;
             statusMessage.TotalDifficulty = head.Difficulty;
             statusMessage.BestHash = head.Hash;
@@ -98,7 +98,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             //We are expecting receiving Status message anytime from the p2p completion, irrespectful from sedning Status from our side
             CheckProtocolInitTimeout().ContinueWith(x =>
             {
-                if (x.IsFaulted && Logger.IsErrorEnabled)
+                if (x.IsFaulted && Logger.IsError)
                 {
                     Logger.Error("Error during eth62Protocol handler timeout logic", x.Exception);
                 }
@@ -112,7 +112,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         public virtual void HandleMessage(Packet message)
         {
-            if (Logger.IsTraceEnabled)
+            if (Logger.IsTrace)
             {
                 Logger.Trace($"{P2PSession.RemoteNodeId} {nameof(Eth62ProtocolHandler)} handling a message with code {message.PacketType}.");
             }
@@ -197,7 +197,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             }
 
             _statusReceived = true;
-            if (Logger.IsDebugEnabled)
+            if (Logger.IsDebug)
                 Logger.Debug($"{P2PSession.RemoteNodeId} ETH received status with" +
                              Environment.NewLine + $" prot version\t{status.ProtocolVersion}" +
                              Environment.NewLine + $" network ID\t{status.ChainId}," +
@@ -251,7 +251,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         private void Handle(GetBlockHeadersMessage getBlockHeadersMessage)
         {
-            if (Logger.IsTraceEnabled)
+            if (Logger.IsTrace)
             {
                 Logger.Trace($"GetBlockHeaders.MaxHeaders: {getBlockHeadersMessage.MaxHeaders}");
                 Logger.Trace($"GetBlockHeaders.Reverse: {getBlockHeadersMessage.Reverse}");
@@ -347,7 +347,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         private async Task<BlockHeader[]> SendRequest(GetBlockHeadersMessage message, CancellationToken token)
         {
-            if (Logger.IsTraceEnabled)
+            if (Logger.IsTrace)
             {
                 Logger.Trace("Sending headers request:");
                 Logger.Trace($"Starting blockhash: {message.StartingBlockHash}");
@@ -378,7 +378,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         private async Task<Block[]> SendRequest(GetBlockBodiesMessage message, CancellationToken token)
         {
-            if (Logger.IsTraceEnabled)
+            if (Logger.IsTrace)
             {
                 Logger.Trace("Sending bodies request:");
                 Logger.Trace($"Blockhashes count: {message.BlockHashes.Length}");

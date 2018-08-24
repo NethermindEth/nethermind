@@ -54,14 +54,14 @@ namespace Nethermind.Network.Discovery
             //In case of SocketException we log it as debug to avoid noise
             if (exception is SocketException)
             {
-                if (_logger.IsDebugEnabled)
+                if (_logger.IsDebug)
                 {
                     _logger.Error($"Exception when processing discovery messages (SocketException): {exception}");
                 }
             }
             else
             {
-                if (_logger.IsErrorEnabled)
+                if (_logger.IsError)
                 {
                     _logger.Error("Exception when processing discovery messages", exception);
                 }
@@ -81,7 +81,7 @@ namespace Nethermind.Network.Discovery
 
             try
             {
-                if(_logger.IsTraceEnabled) _logger.Trace($"Sending message: {discoveryMessage}");
+                if(_logger.IsTrace) _logger.Trace($"Sending message: {discoveryMessage}");
                 message = Seserialize(discoveryMessage);
             }
             catch (Exception e)
@@ -95,7 +95,7 @@ namespace Nethermind.Network.Discovery
             {
                 if (t.IsFaulted)
                 {
-                    if(_logger.IsDebugEnabled) _logger.Debug($"Error when sending a discovery message Msg: {discoveryMessage.ToString()} ,Exp: {t.Exception}");
+                    if(_logger.IsDebug) _logger.Debug($"Error when sending a discovery message Msg: {discoveryMessage.ToString()} ,Exp: {t.Exception}");
                 }
             });
         }
@@ -123,7 +123,7 @@ namespace Nethermind.Network.Discovery
             }
             
             var type = (MessageType)typeRaw;
-            if(_logger.IsTraceEnabled) _logger.Trace($"Received message: {type}");
+            if(_logger.IsTrace) _logger.Trace($"Received message: {type}");
 
             DiscoveryMessage message;
 

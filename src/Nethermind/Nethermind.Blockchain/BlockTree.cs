@@ -109,11 +109,11 @@ namespace Nethermind.Blockchain
             BigInteger blocksToLoad = BigInteger.Min(FindNumberOfBlocksToLoadFromDb(), maxBlocksToLoad);
             if (blocksToLoad == 0)
             {
-                if (_logger.IsInfoEnabled) _logger.Info("Found no blocks to load from DB.");
+                if (_logger.IsInfo) _logger.Info("Found no blocks to load from DB.");
             }
             else
             {
-                if (_logger.IsInfoEnabled) _logger.Info($"Found {blocksToLoad} blocks to load from DB starting from current head block {Head?.ToString(BlockHeader.Format.Short)}.");
+                if (_logger.IsInfo) _logger.Info($"Found {blocksToLoad} blocks to load from DB starting from current head block {Head?.ToString(BlockHeader.Format.Short)}.");
             }
 
             UInt256 blockNumber = startBlockNumber.Value;
@@ -148,7 +148,7 @@ namespace Nethermind.Blockchain
 
                 if (i % batchSize == batchSize - 1 && !(i == blocksToLoad - 1))
                 {
-                    if (_logger.IsInfoEnabled)
+                    if (_logger.IsInfo)
                     {
                         _logger.Info($"Loaded {i + 1} out of {blocksToLoad} blocks from DB into processing queue, waiting for processor before loading more.");
                     }
@@ -169,7 +169,7 @@ namespace Nethermind.Blockchain
                 _logger.Info($"Cancelled loading blocks from DB at block {blockNumber}");
             }
 
-            if (_logger.IsInfoEnabled)
+            if (_logger.IsInfo)
             {
                 _logger.Info($"Completed loading blocks from DB at block {blockNumber}");
             }
@@ -205,7 +205,7 @@ namespace Nethermind.Blockchain
             }
             else if (IsKnownBlock(block.Hash))
             {
-                if (_logger.IsDebugEnabled)
+                if (_logger.IsDebug)
                 {
                     _logger.Debug($"Block {block.Hash} already known.");
                 }
@@ -214,7 +214,7 @@ namespace Nethermind.Blockchain
             }
             else if (!IsKnownBlock(block.Header.ParentHash))
             {
-                if (_logger.IsDebugEnabled)
+                if (_logger.IsDebug)
                 {
                     _logger.Debug($"Could not find parent ({block.Header.ParentHash}) of block {block.Hash}");
                 }
@@ -657,7 +657,7 @@ namespace Nethermind.Blockchain
 
         private void SetTotalDifficulty(Block block)
         {
-            if (_logger.IsDebugEnabled)
+            if (_logger.IsDebug)
             {
                 _logger.Debug($"Calculating total difficulty for {block}");
             }
@@ -683,7 +683,7 @@ namespace Nethermind.Blockchain
                 block.Header.TotalDifficulty = parent.TotalDifficulty + block.Difficulty;
             }
 
-            if (_logger.IsDebugEnabled)
+            if (_logger.IsDebug)
             {
                 _logger.Debug($"Calculated total difficulty for {block} is {block.TotalDifficulty}");
             }

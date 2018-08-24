@@ -58,7 +58,7 @@ namespace Nethermind.Network
                 var node = nodes[i];
                 _db[node.NodeId.Bytes] = Rlp.Encode(node).Bytes;
                 _updateCounter++;
-                if (_logger.IsTraceEnabled) _logger.Trace($"[{_dbDirectory}] Node update: {node.NodeId}, data: {node.Host}:{node.Port}, {node.Description}, {node.Reputation}");
+                if (_logger.IsTrace) _logger.Trace($"[{_dbDirectory}] Node update: {node.NodeId}, data: {node.Host}:{node.Port}, {node.Description}, {node.Reputation}");
             }
         }
 
@@ -80,9 +80,9 @@ namespace Nethermind.Network
 
         public void Commit()
         {
-            if (_logger.IsDebugEnabled) _logger.Debug($"[{_dbDirectory}] Committing nodes, updates: {_updateCounter}, removes: {_removeCounter}");
+            if (_logger.IsDebug) _logger.Debug($"[{_dbDirectory}] Committing nodes, updates: {_updateCounter}, removes: {_removeCounter}");
             _db.CommitBatch();
-            if (_logger.IsTraceEnabled)
+            if (_logger.IsTrace)
             {
                 LogDbContent(_db.Values);
             }
