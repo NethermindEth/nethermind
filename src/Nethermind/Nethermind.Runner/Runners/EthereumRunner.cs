@@ -351,7 +351,7 @@ namespace Nethermind.Runner.Runners
                 }
                 else if (t.IsCanceled)
                 {
-                    _logger.Warn("Loading blocks from DB cancelled.");
+                    _logger.Warn("Loading blocks from DB canceled.");
                 }
                 else
                 {

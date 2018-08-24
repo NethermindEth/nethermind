@@ -33,7 +33,7 @@ namespace Ethereum.Trie.Test
         /// </summary>
         /// <param name="items">Items to permute in each possible ways</param>
         /// <param name="funcExecuteAndTellIfShouldStop"></param>
-        /// <returns>Return true if cancelled</returns> 
+        /// <returns>Return true if canceled</returns> 
         public static bool ForAllPermutation<T>(T[] items, Func<T[], bool> funcExecuteAndTellIfShouldStop)
         {
             int countOfItem = items.Length;

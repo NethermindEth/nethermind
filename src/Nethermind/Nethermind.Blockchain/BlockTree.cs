@@ -166,7 +166,7 @@ namespace Nethermind.Blockchain
 
             if (cancellationToken.IsCancellationRequested)
             {
-                _logger.Info($"Cancelled loading blocks from DB at block {blockNumber}");
+                _logger.Info($"Canceled loading blocks from DB at block {blockNumber}");
             }
 
             if (_logger.IsInfo)

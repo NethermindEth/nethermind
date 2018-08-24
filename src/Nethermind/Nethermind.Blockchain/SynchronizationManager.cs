@@ -188,7 +188,7 @@ namespace Nethermind.Blockchain
                 {
                     if (t.Exception != null && t.Exception.InnerExceptions.Any(x => x.InnerException is TimeoutException))
                     {
-                        if (_logger.IsWarn) _logger.Warn($"AddPeer failed due to timeout: {t.Exception.Message}");
+                        if (_logger.IsDebug) _logger.Debug($"AddPeer failed due to timeout: {t.Exception.Message}");
                     }
                     else if (_logger.IsError) _logger.Error("AddPeer failed.", t.Exception);
                 }
@@ -316,7 +316,7 @@ namespace Nethermind.Blockchain
                 _isSyncing = true;
             }
 
-            if (_logger.IsDebug) _logger.Debug($"Starting chain synchronization from {_blockTree.BestSuggested}");
+            if (_logger.IsInfo) _logger.Info($"Starting chain synchronization from {_blockTree.BestSuggested}");
 
             _aggregateSyncCancellationTokenSource = new CancellationTokenSource();
             var syncTask = Task.Run(() => SynchronizeAsync(_aggregateSyncCancellationTokenSource.Token), _aggregateSyncCancellationTokenSource.Token);
@@ -420,7 +420,7 @@ namespace Nethermind.Blockchain
                     }
 
                     if (_logger.IsInfo) _logger.Info(
-                        $"Finished sync process [{(t.IsFaulted ? "FAULTED" : t.IsCanceled ? "CANCELLED" : t.IsCompleted ? "COMPLETED" : "OTHER")}] with Node: {peerInfo.Peer.NodeId} [{peerInfo.Peer.ClientId}], " +
+                        $"Finished peer sync process [{(t.IsFaulted ? "FAULTED" : t.IsCanceled ? "CANCELED" : t.IsCompleted ? "COMPLETED" : "OTHER")}] with Node: {peerInfo.Peer.NodeId} [{peerInfo.Peer.ClientId}], " +
                         $"peer highest block #: {peerInfo.NumberAvailable}, " +
                         $"our highest block #: {_blockTree.BestSuggested.Number}");
                 }, syncCancellationToken);
@@ -429,7 +429,7 @@ namespace Nethermind.Blockchain
 
         private async Task SynchronizeWithPeerAsync(PeerInfo peerInfo, CancellationToken peerSyncToken)
         {
-            bool wasCancelled = false;
+            bool wasCanceled = false;
 
             ISynchronizationPeer peer = peerInfo.Peer;
             BigInteger bestNumber = _blockTree.BestSuggested.Number;
@@ -468,7 +468,7 @@ namespace Nethermind.Blockchain
                 BlockHeader[] headers = await headersTask;
                 if (_currentSyncTask.IsCanceled)
                 {
-                    wasCancelled = true;
+                    wasCanceled = true;
                     break;
                 }
 
@@ -496,7 +496,7 @@ namespace Nethermind.Blockchain
                 Block[] blocks = await bodiesTask;
                 if (_currentSyncTask.IsCanceled)
                 {
-                    wasCancelled = true;
+                    wasCanceled = true;
                     break;
                 }
 
@@ -578,7 +578,7 @@ namespace Nethermind.Blockchain
                 bestNumber = _blockTree.BestSuggested.Number;
             }
 
-            if (_logger.IsDebug) _logger.Debug($"Stopping sync processes with Node: {peerInfo.Peer.NodeId}, wasCancelled: {wasCancelled}");
+            if (_logger.IsDebug) _logger.Debug($"Stopping sync processes with Node: {peerInfo.Peer.NodeId}, wasCancelled: {wasCanceled}");
         }
 
         private async Task InitPeerInfo(ISynchronizationPeer peer, CancellationToken token)
