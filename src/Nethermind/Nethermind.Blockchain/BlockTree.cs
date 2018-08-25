@@ -657,9 +657,9 @@ namespace Nethermind.Blockchain
 
         private void SetTotalDifficulty(Block block)
         {
-            if (_logger.IsDebug)
+            if (_logger.IsTrace)
             {
-                _logger.Debug($"Calculating total difficulty for {block}");
+                _logger.Trace($"Calculating total difficulty for {block}");
             }
 
             if (block.Number == 0)
@@ -683,9 +683,9 @@ namespace Nethermind.Blockchain
                 block.Header.TotalDifficulty = parent.TotalDifficulty + block.Difficulty;
             }
 
-            if (_logger.IsDebug)
+            if (_logger.IsTrace)
             {
-                _logger.Debug($"Calculated total difficulty for {block} is {block.TotalDifficulty}");
+                _logger.Trace($"Calculated total difficulty for {block} is {block.TotalDifficulty}");
             }
         }
 

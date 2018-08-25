@@ -55,7 +55,7 @@ namespace Nethermind.Network.Discovery.RoutingTable
 
         public NodeAddResult AddNode(Node node)
         {
-            _logger.Debug($"Adding node to NodeTable: {node}");
+            if (_logger.IsTrace) _logger.Trace($"Adding node to NodeTable: {node}");
             var distanceFromMaster = _nodeDistanceCalculator.CalculateDistance(MasterNode.IdHash.Bytes, node.IdHash.Bytes);
             var bucket = Buckets[distanceFromMaster > 0 ? distanceFromMaster - 1 : 0];
             _nodes.AddOrUpdate(node.IdHashText, node, (x, y) => node);
@@ -155,7 +155,7 @@ namespace Nethermind.Network.Discovery.RoutingTable
             } 
 
             MasterNode = _nodeFactory.CreateNode(masterNodeKey, _configurationProvider.MasterHost, _configurationProvider.MasterPort);
-            _logger.Debug($"Created MasterNode: {MasterNode}");
+            if (_logger.IsTrace) _logger.Trace($"Created MasterNode: {MasterNode}");
 
             for (var i = 0; i < Buckets.Length; i++)
             {

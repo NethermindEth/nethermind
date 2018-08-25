@@ -201,7 +201,7 @@ namespace Nethermind.Network.Discovery
 
             if (message.FarAddress.Port != message.SourceAddress.Port)
             {
-                if (_logger.IsWarn)
+                if (_logger.IsTrace)
                 {
                     _logger.Warn($"Received message with incorect source port, message: {message}");
                 }
@@ -251,7 +251,7 @@ namespace Nethermind.Network.Discovery
             KeyValuePair<string, INodeLifecycleManager>[] unreachable = _nodeLifecycleManagers.Where(x => x.Value.State == NodeLifecycleState.Unreachable).Take(cleanupCount - activeExcluded.Length).ToArray();
             int removeCount = RemoveManagers(activeExcluded, activeExcluded.Length);
             removeCount = removeCount + RemoveManagers(unreachable, unreachable.Length);
-            if(_logger.IsTrace) _logger.Trace($"Removed: {removeCount} unreachable node lifecycle managers");
+            if(_logger.IsDebug) _logger.Debug($"Removed: {removeCount} unreachable node lifecycle managers");
         }
 
         private int RemoveManagers(KeyValuePair<string, INodeLifecycleManager>[] items, int count)

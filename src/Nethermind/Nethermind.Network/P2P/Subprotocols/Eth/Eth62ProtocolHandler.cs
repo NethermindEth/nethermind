@@ -79,7 +79,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         public void Init()
         {
-            Logger.Debug($"{P2PSession.RemoteNodeId} {ProtocolCode} v{ProtocolVersion} subprotocol initializing");
+            Logger.Trace($"{P2PSession.RemoteNodeId} {ProtocolCode} v{ProtocolVersion} subprotocol initializing");
             if (_sync.Head == null)
             {
                 throw new InvalidOperationException("Initializing sync protocol without the head block set");
@@ -197,8 +197,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             }
 
             _statusReceived = true;
-            if (Logger.IsDebug)
-                Logger.Debug($"{P2PSession.RemoteNodeId} ETH received status with" +
+            if (Logger.IsTrace)
+                Logger.Trace($"{P2PSession.RemoteNodeId} ETH received status with" +
                              Environment.NewLine + $" prot version\t{status.ProtocolVersion}" +
                              Environment.NewLine + $" network ID\t{status.ChainId}," +
                              Environment.NewLine + $" genesis hash\t{status.GenesisHash}," +

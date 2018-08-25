@@ -65,7 +65,7 @@ namespace Nethermind.Network.P2P
             //In case of SocketException we log it as debug to avoid noise
             if (exception is SocketException)
             {
-                if (_logger.IsDebug)
+                if (_logger.IsTrace)
                 {
                     _logger.Error($"{GetType().Name} error in p2p netty handler (SocketException): {exception}");
                 }

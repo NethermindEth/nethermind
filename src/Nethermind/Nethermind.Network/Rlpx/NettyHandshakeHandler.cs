@@ -71,7 +71,7 @@ namespace Nethermind.Network.Rlpx
             {
                 Packet auth = _service.Auth(_remoteId, _handshake);
 
-                if (_logger.IsDebug) _logger.Debug($"Sending AUTH to {_remoteId} @ {context.Channel.RemoteAddress}");
+                if (_logger.IsTrace) _logger.Trace($"Sending AUTH to {_remoteId} @ {context.Channel.RemoteAddress}");
                 _buffer.WriteBytes(auth.Data);
                 context.WriteAndFlushAsync(_buffer);
             }
@@ -89,25 +89,25 @@ namespace Nethermind.Network.Rlpx
 
         public override void ChannelInactive(IChannelHandlerContext context)
         {
-            if (_logger.IsDebug) _logger.Debug("Channel Inactive");
+            if (_logger.IsTrace) _logger.Trace("Channel Inactive");
             base.ChannelInactive(context);
         }
 
         public override Task DisconnectAsync(IChannelHandlerContext context)
         {
-            if (_logger.IsDebug) _logger.Debug("Disconnected");
+            if (_logger.IsTrace) _logger.Trace("Disconnected");
             return base.DisconnectAsync(context);
         }
 
         public override void ChannelUnregistered(IChannelHandlerContext context)
         {
-            if (_logger.IsDebug) _logger.Debug("Channel Unregistered");
+            if (_logger.IsTrace) _logger.Trace("Channel Unregistered");
             base.ChannelUnregistered(context);
         }
 
         public override void ChannelRegistered(IChannelHandlerContext context)
         {
-            if (_logger.IsDebug)  _logger.Debug("Channel Registered");
+            if (_logger.IsTrace)  _logger.Trace("Channel Registered");
             base.ChannelRegistered(context);
         }
 
@@ -116,7 +116,7 @@ namespace Nethermind.Network.Rlpx
             //In case of SocketException we log it as debug to avoid noise
             if (exception is SocketException)
             {
-                if (_logger.IsDebug)
+                if (_logger.IsTrace)
                 {
                     _logger.Error("Exception when processing encryption handshake (SocketException):", exception);
                 }
@@ -143,19 +143,19 @@ namespace Nethermind.Network.Rlpx
             {
                 if (_role == EncryptionHandshakeRole.Recipient)
                 {
-                    if (_logger.IsDebug) _logger.Debug($"AUTH received from {context.Channel.RemoteAddress}");
+                    if (_logger.IsTrace) _logger.Trace($"AUTH received from {context.Channel.RemoteAddress}");
                     byte[] authData = new byte[byteBuffer.ReadableBytes];
                     byteBuffer.ReadBytes(authData);
                     Packet ack = _service.Ack(_handshake, new Packet(authData));
                     _remoteId = _handshake.RemoteNodeId;
 
-                    if (_logger.IsDebug) _logger.Debug($"Sending ACK to {_remoteId} @ {context.Channel.RemoteAddress}");
+                    if (_logger.IsTrace) _logger.Trace($"Sending ACK to {_remoteId} @ {context.Channel.RemoteAddress}");
                     _buffer.WriteBytes(ack.Data);
                     context.WriteAndFlushAsync(_buffer);
                 }
                 else
                 {
-                    if (_logger.IsDebug) _logger.Debug($"Received ACK from {_remoteId} @ {context.Channel.RemoteAddress}");
+                    if (_logger.IsTrace) _logger.Trace($"Received ACK from {_remoteId} @ {context.Channel.RemoteAddress}");
                     byte[] ackData = new byte[byteBuffer.ReadableBytes];
                     byteBuffer.ReadBytes(ackData);
                     _service.Agree(_handshake, new Packet(ackData));
@@ -203,7 +203,7 @@ namespace Nethermind.Network.Rlpx
 
         public override void HandlerRemoved(IChannelHandlerContext context)
         {
-            if (_logger.IsDebug) _logger.Debug($"Handshake with {_remoteId} @ {context.Channel.RemoteAddress} finished. Removing {nameof(NettyHandshakeHandler)} from the pipeline");
+            if (_logger.IsTrace) _logger.Trace($"Handshake with {_remoteId} @ {context.Channel.RemoteAddress} finished. Removing {nameof(NettyHandshakeHandler)} from the pipeline");
         }
 
         public event EventHandler<HandshakeInitializedEventArgs> HandshakeInitialized;
@@ -215,7 +215,7 @@ namespace Nethermind.Network.Rlpx
 
             if (firstTask != receivedInitMsgTask)
             {
-                if (_logger.IsDebug) _logger.Debug($"Disconnecting due to timeout for handshake: {_p2PSession.RemoteNodeId}@{_p2PSession.RemoteHost}:{_p2PSession.RemotePort}");
+                if (_logger.IsTrace) _logger.Trace($"Disconnecting due to timeout for handshake: {_p2PSession.RemoteNodeId}@{_p2PSession.RemoteHost}:{_p2PSession.RemotePort}");
                 //It will trigger channel.CloseCompletion which will trigger DisconnectAsync on the session
                 await _channel.DisconnectAsync();
             }

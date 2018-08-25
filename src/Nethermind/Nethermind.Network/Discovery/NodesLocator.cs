@@ -102,7 +102,7 @@ namespace Nethermind.Network.Discovery
                     var nodesToSend = tryCandidates.Skip(nodesTriedCount).Take(count).ToArray();
                     if (!nodesToSend.Any())
                     {
-                        _logger.Debug($"No more nodes to send, sent {successRequestsCount} successfull requests, failedRequestCounter: {failRequestCount}, nodesTriedCounter: {nodesTriedCount}");
+                        _logger.Trace($"No more nodes to send, sent {successRequestsCount} successfull requests, failedRequestCounter: {failRequestCount}, nodesTriedCounter: {nodesTriedCount}");
                         break;
                     }
 
@@ -125,7 +125,7 @@ namespace Nethermind.Network.Discovery
 
                     if (successRequestsCount >= _configurationProvider.Concurrency)
                     {
-                        if(_logger.IsDebug) _logger.Debug($"Sent {successRequestsCount} successfull requests, failedRequestCounter: {failRequestCount}, nodesTriedCounter: {nodesTriedCount}");
+                        if(_logger.IsTrace) _logger.Trace($"Sent {successRequestsCount} successfull requests, failedRequestCounter: {failRequestCount}, nodesTriedCounter: {nodesTriedCount}");
                         break;
                     }
                 }
@@ -133,7 +133,7 @@ namespace Nethermind.Network.Discovery
             var nodesCountAfterDiscovery = _nodeTable.Buckets.Sum(x => x.Items.Count);
             if(_logger.IsDebug) _logger.Debug($"Finished discovery cycle, tried contacting {alreadyTriedNodes.Count} nodes. All nodes count before the process: {nodesCountBeforeDiscovery}, after the process: {nodesCountAfterDiscovery}");
 
-            if (_logger.IsDebug)
+            if (_logger.IsTrace)
             {
                 LogNodeTable();
             }
@@ -156,7 +156,7 @@ namespace Nethermind.Network.Discovery
             }
 
             sb.AppendLine("------------------------------------------------------");
-            if(_logger.IsTrace) _logger.Trace(sb.ToString());
+            _logger.Trace(sb.ToString());
         }
 
         private async Task<Result[]> SendFindNode(Node[] nodesToSend, byte[] searchedNodeId)

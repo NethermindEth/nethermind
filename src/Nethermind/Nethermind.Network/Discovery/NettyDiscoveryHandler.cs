@@ -54,7 +54,7 @@ namespace Nethermind.Network.Discovery
             //In case of SocketException we log it as debug to avoid noise
             if (exception is SocketException)
             {
-                if (_logger.IsDebug)
+                if (_logger.IsTrace)
                 {
                     _logger.Error($"Exception when processing discovery messages (SocketException): {exception}");
                 }

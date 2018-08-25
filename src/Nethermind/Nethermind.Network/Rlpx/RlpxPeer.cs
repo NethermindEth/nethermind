@@ -66,12 +66,9 @@ namespace Nethermind.Network.Rlpx
             _nodeStatsProvider = nodeStatsProvider;
             _logger = logManager.GetClassLogger();
 
-            _synchronizationManager =
-                synchronizationManager ?? throw new ArgumentNullException(nameof(synchronizationManager));
-            _encryptionHandshakeService = encryptionHandshakeService ??
-                                          throw new ArgumentNullException(nameof(encryptionHandshakeService));
-            _serializationService =
-                serializationService ?? throw new ArgumentNullException(nameof(serializationService));
+            _synchronizationManager = synchronizationManager ?? throw new ArgumentNullException(nameof(synchronizationManager));
+            _encryptionHandshakeService = encryptionHandshakeService ?? throw new ArgumentNullException(nameof(encryptionHandshakeService));
+            _serializationService = serializationService ?? throw new ArgumentNullException(nameof(serializationService));
 
             LocalNodeId = localNodeId ?? throw new ArgumentNullException(nameof(localNodeId));
             _localPort = localPort;
@@ -171,23 +168,21 @@ namespace Nethermind.Network.Rlpx
                 Task.Delay(Timeouts.InitialConnection.Add(TimeSpan.FromSeconds(5))));
             if (firstTask != connectTask)
             {
-                if (_logger.IsDebug) _logger.Debug($"Connection timed out: {remoteId}@{host}:{port}");
-                throw new NetworkingException($"Failed to connect to {remoteId} (timeout)",
-                    NetwokExceptionType.Timeout);
+                if (_logger.IsTrace) _logger.Trace($"Connection timed out: {remoteId}@{host}:{port}");
+                throw new NetworkingException($"Failed to connect to {remoteId} (timeout)", NetwokExceptionType.Timeout);
             }
 
             if (connectTask.IsFaulted)
             {
-                if (_logger.IsDebug)
+                if (_logger.IsTrace)
                 {
-                    _logger.Debug($"Error when connecting to {remoteId}@{host}:{port}, error: {connectTask.Exception}");
+                    _logger.Trace($"Error when connecting to {remoteId}@{host}:{port}, error: {connectTask.Exception}");
                 }
 
-                throw new NetworkingException($"Failed to connect to {remoteId}", NetwokExceptionType.TargetUnreachable,
-                    connectTask.Exception);
+                throw new NetworkingException($"Failed to connect to {remoteId}", NetwokExceptionType.TargetUnreachable,connectTask.Exception);
             }
 
-            if (_logger.IsDebug) _logger.Debug($"Connected to {remoteId}@{host}:{port}");
+            if (_logger.IsTrace) _logger.Trace($"Connected to {remoteId}@{host}:{port}");
         }
 
         public event EventHandler<ConnectionInitializedEventArgs> OutConnectionInitialized;
@@ -210,10 +205,9 @@ namespace Nethermind.Network.Rlpx
             //This is the first moment we get confirmed publicKey of remote node in case of outgoing connections
             if (connectionType == ClientConnectionType.Out)
             {
-                if (_logger.IsDebug)
+                if (_logger.IsTrace)
                 {
-                    _logger.Debug(
-                        $"Initializing {connectionType.ToString().ToUpper()} channel{(connectionType == ClientConnectionType.Out ? $": {remoteId}@{remoteHost}:{remoteId}" : string.Empty)}");
+                    _logger.Trace($"Initializing {connectionType.ToString().ToUpper()} channel{(connectionType == ClientConnectionType.Out ? $": {remoteId}@{remoteHost}:{remoteId}" : string.Empty)}");
                 }
 
                 p2PSession.RemoteNodeId = remoteId;
@@ -230,10 +224,9 @@ namespace Nethermind.Network.Rlpx
                 //This is the first moment we get confirmed publicKey of remote node in case of incoming connections
                 if (connectionType == ClientConnectionType.In)
                 {
-                    if (_logger.IsDebug)
+                    if (_logger.IsTrace)
                     {
-                        _logger.Debug(
-                            $"Handshake initialized {connectionType.ToString().ToUpper()} channel {p2PSession.RemoteNodeId}@{p2PSession.RemoteHost}:{p2PSession.RemotePort}");
+                        _logger.Trace($"Handshake initialized {connectionType.ToString().ToUpper()} channel {p2PSession.RemoteNodeId}@{p2PSession.RemoteHost}:{p2PSession.RemotePort}");
                     }
                 }
 
@@ -241,17 +234,15 @@ namespace Nethermind.Network.Rlpx
             };
 
             IChannelPipeline pipeline = channel.Pipeline;
-            pipeline.AddLast(new LoggingHandler(connectionType.ToString().ToUpper(),
-                DotNetty.Handlers.Logging.LogLevel.TRACE));
-            pipeline.AddLast("enc-handshake-dec",
-                new LengthFieldBasedFrameDecoder(ByteOrder.BigEndian, ushort.MaxValue, 0, 2, 0, 0, true));
+            pipeline.AddLast(new LoggingHandler(connectionType.ToString().ToUpper(), DotNetty.Handlers.Logging.LogLevel.TRACE));
+            pipeline.AddLast("enc-handshake-dec", new LengthFieldBasedFrameDecoder(ByteOrder.BigEndian, ushort.MaxValue, 0, 2, 0, 0, true));
             pipeline.AddLast("enc-handshake-handler", handshakeHandler);
 
             channel.CloseCompletion.ContinueWith(async x =>
             {
-                if (_logger.IsDebug)
+                if (_logger.IsTrace)
                 {
-                    _logger.Debug($"Channel disconnected: {p2PSession.RemoteNodeId}");
+                    _logger.Trace($"Channel disconnected: {p2PSession.RemoteNodeId}");
                 }
 
                 await p2PSession.DisconnectAsync(DisconnectReason.ClientQuitting, DisconnectType.Remote);

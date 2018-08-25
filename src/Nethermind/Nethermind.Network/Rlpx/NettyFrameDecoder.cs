@@ -61,7 +61,7 @@ namespace Nethermind.Network.Rlpx
 
                 if (input.ReadableBytes == 0)
                 {
-                    if(_logger.IsDebug) _logger.Debug($"{context.Channel.RemoteAddress} sent an empty frame, disconnecting");
+                    if(_logger.IsTrace) _logger.Trace($"{context.Channel.RemoteAddress} sent an empty frame, disconnecting");
                     context.CloseAsync();
                     return;
                 }
@@ -154,7 +154,7 @@ namespace Nethermind.Network.Rlpx
             //In case of SocketException we log it as debug to avoid noise
             if (exception is SocketException)
             {
-                if (_logger.IsDebug)
+                if (_logger.IsTrace)
                 {
                     _logger.Error("Frame decoding failed (SocketException)", exception);
                 }

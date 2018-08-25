@@ -122,9 +122,9 @@ namespace Nethermind.Blockchain.Validators
                 _logger.Warn($"Invalid block header ({header.Hash}) - invalid block hash");
             }
 
-            if (_logger.IsDebug)
+            if (_logger.IsTrace)
             {
-                _logger.Debug($"Validating block {header.Hash} ({header.Number}) - DAO block {_daoBlockNumber}, extraData {header.ExtraData.ToHexString(true)}");
+                _logger.Trace($"Validating block {header.Hash} ({header.Number}) - DAO block {_daoBlockNumber}, extraData {header.ExtraData.ToHexString(true)}");
             }
 
             bool extraDataValid = isOmmer

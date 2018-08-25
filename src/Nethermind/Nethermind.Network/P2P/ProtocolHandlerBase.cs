@@ -59,9 +59,9 @@ namespace Nethermind.Network.P2P
 
             if (firstTask != receivedInitMsgTask)
             {
-                if (Logger.IsDebug)
+                if (Logger.IsTrace)
                 {
-                    Logger.Debug($"Disconnecting due to timeout for protocol init message ({GetType().Name}): {P2PSession.RemoteNodeId}");
+                    Logger.Trace($"Disconnecting due to timeout for protocol init message ({GetType().Name}): {P2PSession.RemoteNodeId}");
                 }
                 
                 await P2PSession.InitiateDisconnectAsync(DisconnectReason.ReceiveMessageTimeout);

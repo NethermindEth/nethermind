@@ -59,6 +59,7 @@ namespace Nethermind.Network.Discovery
         private IChannel _channel;
         private MultithreadEventLoopGroup _group;
         private NettyDiscoveryHandler _discoveryHandler;
+        private Task _storageCommitTask;
 
         public DiscoveryApp(
             INodesLocator nodesLocator,
@@ -110,6 +111,18 @@ namespace Nethermind.Network.Discovery
             StopDiscoveryTimer();
             //StopRefreshTimer();
             StopDiscoveryPersistanceTimer();
+
+            if (_storageCommitTask != null)
+            {
+                await _storageCommitTask.ContinueWith(x =>
+                {
+                    if (x.IsFaulted)
+                    {
+                        if (_logger.IsError) _logger.Error("Error during discovery persisntance stop.", x.Exception);
+                    }
+                });
+            }
+
             await StopUdpChannelAsync();
         }
 
@@ -260,7 +273,13 @@ namespace Nethermind.Network.Discovery
             _discoveryPersistanceTimer.Elapsed += async (sender, e) =>
             {
                 _discoveryPersistanceTimer.Enabled = false;
-                await Task.Run(() => RunDiscoveryCommit()); 
+                await RunDiscoveryCommit().ContinueWith(x =>
+                {
+                    if (x.IsFaulted)
+                    {
+                        if (_logger.IsError) _logger.Error("Error during RunDiscoveryCommit", x.Exception);
+                    }
+                });
                 _discoveryPersistanceTimer.Enabled = true;
             };
             _discoveryPersistanceTimer.Start();
@@ -343,7 +362,7 @@ namespace Nethermind.Network.Discovery
                 }
 
                 if (_logger.IsTrace) _logger.Trace($"Waiting {itemTime} ms for bootnodes to respond");
-                await Task.Delay(1000); // TODO: do we need this?
+                await Task.Delay(itemTime); // TODO: do we need this?
             }
 
             var reachedNodeCounter = 0;
@@ -352,11 +371,11 @@ namespace Nethermind.Network.Discovery
                 var manager = managers[i];
                 if (manager.State != NodeLifecycleState.Active)
                 {
-                    if (_logger.IsDebug) _logger.Debug($"Could not reach bootnode: {manager.ManagedNode.Host}:{manager.ManagedNode.Port}");
+                    if (_logger.IsTrace) _logger.Trace($"Could not reach bootnode: {manager.ManagedNode.Host}:{manager.ManagedNode.Port}");
                 }
                 else
                 {
-                    if (_logger.IsDebug) _logger.Debug($"Reached bootnode: {manager.ManagedNode.Host}:{manager.ManagedNode.Port}");
+                    if (_logger.IsTrace) _logger.Trace($"Reached bootnode: {manager.ManagedNode.Host}:{manager.ManagedNode.Port}");
                     reachedNodeCounter++;
                 }
             }
@@ -367,18 +386,18 @@ namespace Nethermind.Network.Discovery
 
         private async Task RunDiscoveryAsync()
         {
-            if (_logger.IsDebug) _logger.Debug("Running discovery process.");
+            if (_logger.IsTrace) _logger.Trace("Running discovery process.");
             await _nodesLocator.LocateNodesAsync();
         }
 
         private async Task RunRefreshAsync()
         {
-            if (_logger.IsDebug) _logger.Debug("Running refresh process.");            
+            if (_logger.IsTrace) _logger.Trace("Running refresh process.");            
             var randomId = _cryptoRandom.GenerateRandomBytes(64);
             await _nodesLocator.LocateNodesAsync(randomId);
         }
 
-        private void RunDiscoveryCommit()
+        private async Task RunDiscoveryCommit()
         {
             var managers = _discoveryManager.GetNodeLifecycleManagers();
             //we need to update all notes to update reputation
@@ -386,11 +405,17 @@ namespace Nethermind.Network.Discovery
 
             if (!_discoveryStorage.AnyPendingChange())
             {
+                if (_logger.IsTrace) _logger.Trace("No changes in discovery storage, skipping commit.");
                 return;
             }
 
-            _discoveryStorage.Commit();
-            _discoveryStorage.StartBatch();
+            _storageCommitTask = Task.Run(() =>
+            {
+                _discoveryStorage.Commit();
+                _discoveryStorage.StartBatch();
+            });
+            await _storageCommitTask;
+            _storageCommitTask = null;
         }
     }
 }

@@ -120,7 +120,7 @@ namespace Nethermind.Network.Rlpx
             //In case of SocketException we log it as debug to avoid noise
             if (exception is SocketException)
             {
-                if (_logger.IsDebug)
+                if (_logger.IsTrace)
                 {
                     _logger.Error($"Error when merging frames (SocketException): {exception}");
                 }

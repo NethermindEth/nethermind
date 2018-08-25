@@ -102,7 +102,7 @@ namespace Nethermind.Network.P2P
         // TODO: this should be one level up
         public void EnableSnappy()
         {
-            if (_logger.IsDebug) _logger.Debug($"{RemoteNodeId} Enabling Snappy compression");
+            if (_logger.IsTrace) _logger.Trace($"{RemoteNodeId} Enabling Snappy compression");
             _context.Channel.Pipeline.AddBefore($"{nameof(Multiplexor)}#0", null, new SnappyDecoder(_logger));
             _context.Channel.Pipeline.AddBefore($"{nameof(Multiplexor)}#0", null, new SnappyEncoder(_logger));
         }
@@ -157,9 +157,9 @@ namespace Nethermind.Network.P2P
         {
             if (_wasDisconnected)
             {
-                if (_logger.IsDebug)
+                if (_logger.IsTrace)
                 {
-                    _logger.Debug($"Session was already disconnected: {RemoteNodeId}, sessioId: {SessionId}");
+                    _logger.Trace($"Session was already disconnected: {RemoteNodeId}, sessioId: {SessionId}");
                 }
 
                 return;
@@ -200,7 +200,7 @@ namespace Nethermind.Network.P2P
             await Task.Delay(Timeouts.Disconnection).ContinueWith(t =>
             {
                 _context.DisconnectAsync();
-                if (_logger.IsDebug) _logger.Debug($"{RemoteNodeId} Disconnecting now after {Timeouts.Disconnection.TotalMilliseconds} milliseconds");
+                if (_logger.IsTrace) _logger.Trace($"{RemoteNodeId} Disconnecting now after {Timeouts.Disconnection.TotalMilliseconds} milliseconds");
             });
         }
 
@@ -234,12 +234,12 @@ namespace Nethermind.Network.P2P
                     {
                         if (protocolHandler.ProtocolVersion >= 5)
                         {
-                            if (_logger.IsDebug) _logger.Debug($"{RemoteNodeId} {protocolHandler.ProtocolCode} v{protocolHandler.ProtocolVersion} established - Enabling Snappy");
+                            if (_logger.IsTrace) _logger.Trace($"{RemoteNodeId} {protocolHandler.ProtocolCode} v{protocolHandler.ProtocolVersion} established - Enabling Snappy");
                             EnableSnappy();
                         }
                         else
                         {
-                            if (_logger.IsDebug) _logger.Debug($"{RemoteNodeId} {protocolHandler.ProtocolCode} v{protocolHandler.ProtocolVersion} established - Disabling Snappy");
+                            if (_logger.IsTrace) _logger.Trace($"{RemoteNodeId} {protocolHandler.ProtocolCode} v{protocolHandler.ProtocolVersion} established - Disabling Snappy");
                         }
 
                         ProtocolInitialized?.Invoke(this, args);

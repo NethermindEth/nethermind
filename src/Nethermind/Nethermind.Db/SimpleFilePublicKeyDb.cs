@@ -57,17 +57,13 @@ namespace Nethermind.Db
         {
             if (!_anyPendingChanges)
             {
-                if (_logger.IsDebug) _logger.Debug($"Skipping commit ({_dbLastDirName}), no changes");
+                if (_logger.IsTrace) _logger.Trace($"Skipping commit ({_dbLastDirName}), no changes");
                 return;
             }
 
             var key = _perfService.StartPerfCalc();
 
-            var tempName = $"{_dbPath}_old";
-            if (File.Exists(_dbPath))
-            {
-                File.Move(_dbPath, tempName);
-            }
+            var tempFilePath = CreateBackup();
 
             _anyPendingChanges = false;
             var snapshot = _cache.ToArray();
@@ -80,9 +76,45 @@ namespace Nethermind.Db
                 }
             }
 
-            File.Delete(tempName);
+            RemoveBackup(tempFilePath);
 
             _perfService.EndPerfCalc(key, $"Db commit ({_dbLastDirName}), items count: {snapshot.Length}");
+        }
+
+        private void RemoveBackup(string tempFilePath)
+        {
+            try
+            {
+                if (tempFilePath != null && File.Exists(tempFilePath))
+                {
+                    File.Delete(tempFilePath);
+                }
+            }
+            catch (Exception e)
+            {
+                if (_logger.IsError) _logger.Error($"Error during backup removal: {_dbPath}, tempFilePath: {tempFilePath}", e);
+            }
+        }
+
+        private string CreateBackup()
+        {
+            try
+            {
+                var tempFilePath = $"{_dbPath}_{Guid.NewGuid().ToString()}";
+
+                if (File.Exists(_dbPath))
+                {
+                    File.Move(_dbPath, tempFilePath);
+                    return tempFilePath;
+                }
+
+                return null;
+            }
+            catch (Exception e)
+            {
+                if (_logger.IsError) _logger.Error($"Error during backup creation: {_dbPath}", e);
+                return null;
+            }
         }
 
         public ICollection<byte[]> Keys => _cache.Keys.Select(x => x.Bytes).ToArray();

@@ -80,7 +80,7 @@ namespace Nethermind.Network
 
         public void Commit()
         {
-            if (_logger.IsDebug) _logger.Debug($"[{_dbDirectory}] Committing nodes, updates: {_updateCounter}, removes: {_removeCounter}");
+            if (_logger.IsTrace) _logger.Trace($"[{_dbDirectory}] Committing nodes, updates: {_updateCounter}, removes: {_removeCounter}");
             _db.CommitBatch();
             if (_logger.IsTrace)
             {
