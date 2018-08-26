@@ -33,10 +33,14 @@ namespace Nethermind.Core.Logging
 
         internal readonly NLog.Logger Logger;
 
-        public NLogLogger(string fileName)
+        public NLogLogger(string fileName) : this(fileName, null)
         {
-            Logger = NLog.LogManager.GetLogger(StackTraceUsageUtils.GetClassFullName()
-                .Replace("Nethermind.", string.Empty));
+        }
+
+        public NLogLogger(string fileName, string loggerName)
+        {
+            var name = string.IsNullOrEmpty(loggerName) ? StackTraceUsageUtils.GetClassFullName().Replace("Nethermind.", string.Empty) : loggerName;
+            Logger = NLog.LogManager.GetLogger(name);
             if (!Directory.Exists("logs"))
             {
                 Directory.CreateDirectory("logs");

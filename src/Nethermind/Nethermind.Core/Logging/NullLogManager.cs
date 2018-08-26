@@ -34,5 +34,10 @@ namespace Nethermind.Core.Logging
         {
             return NullLogger.Instance;
         }
+
+        public ILogger GetLogger(string loggerName)
+        {
+            return NullLogger.Instance;
+        }
     }
 }

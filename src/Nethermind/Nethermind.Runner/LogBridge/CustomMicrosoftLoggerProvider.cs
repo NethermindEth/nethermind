@@ -16,25 +16,30 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.Core.Logging
+using Microsoft.Extensions.Logging;
+using Nethermind.Runner.Runners;
+
+namespace Nethermind.Runner.LogBridge
 {
-    public class OneLoggerLogManager : ILogManager
+    public class CustomMicrosoftLoggerProvider : ILoggerProvider
     {
-        private readonly ILogger _logger;
+        private readonly Core.Logging.ILogManager _logManager;
+        private const string WebApiLogNamePrefix = "JsonWebAPI";
 
-        public OneLoggerLogManager(ILogger logger)
+        public CustomMicrosoftLoggerProvider(Core.Logging.ILogManager logManager)
         {
-            _logger = logger;
+            _logManager = logManager;
         }
 
-        public ILogger GetClassLogger()
+        public ILogger CreateLogger(string categoryName)
         {
-            return _logger;
+            var coreLogger = _logManager.GetLogger($"{WebApiLogNamePrefix}.{categoryName}");
+            var customLogger = new CustomMicrosoftLogger(coreLogger);
+            return customLogger;
         }
 
-        public ILogger GetLogger(string loggerName)
+        public void Dispose()
         {
-            return _logger;
         }
     }
 }

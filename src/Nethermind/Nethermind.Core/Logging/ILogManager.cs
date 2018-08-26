@@ -21,5 +21,6 @@ namespace Nethermind.Core.Logging
     public interface ILogManager
     {
         ILogger GetClassLogger();
+        ILogger GetLogger(string loggerName);
     }
 }

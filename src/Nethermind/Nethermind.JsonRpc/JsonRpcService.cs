@@ -40,7 +40,7 @@ namespace Nethermind.JsonRpc
 
         public JsonRpcService(IJsonSerializer jsonSerializer, IModuleProvider moduleProvider, IConfigProvider configurationProvider, ILogManager logManager)
         {
-            _logger = logManager?.GetClassLogger();
+            _logger = logManager.GetClassLogger();
             _jsonRpcConfig = configurationProvider.GetConfig<IJsonRpcConfig>();
             _jsonSerializer = jsonSerializer;
             _moduleProvider = moduleProvider;
@@ -62,7 +62,7 @@ namespace Nethermind.JsonRpc
                     var response = SendRequest(rpcRequest.Model, request);
                     var serializedReponse = _jsonSerializer.Serialize(response);
 
-                    _logger.Debug($"Successfull request processing, method: {rpcRequest.Model.Method ?? "none"}, id: {rpcRequest.Model.Id ?? "none"}, result: {serializedReponse}");
+                    if (_logger.IsTrace) _logger.Trace($"Successfull request processing, method: {rpcRequest.Model.Method ?? "none"}, id: {rpcRequest.Model.Id ?? "none"}, result: {serializedReponse}");
                     return serializedReponse;
                 }
 

@@ -22,6 +22,7 @@ using System.Security;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Model;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.JsonRpc.Module
 {
@@ -33,6 +34,7 @@ namespace Nethermind.JsonRpc.Module
         BlockHeader Head { get; }
         BlockHeader BestSuggested { get; }
         Block FindBlock(Keccak blockHash, bool mainChainOnly);
+        Block FindBlock(UInt256 blockNumber);
         Block RetrieveHeadBlock();
         Block RetrieveGenesisBlock();
 

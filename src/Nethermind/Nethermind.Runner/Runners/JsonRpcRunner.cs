@@ -24,26 +24,30 @@ using Microsoft.AspNetCore;
 using Microsoft.AspNetCore.Hosting;
 using Nethermind.Config;
 using Nethermind.Core;
-using Nethermind.Core.Logging;
+using Log = Nethermind.Core.Logging;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Config;
 using Nethermind.JsonRpc.DataModel;
 using Nethermind.Runner.Config;
+using Microsoft.Extensions.Logging;
+using Nethermind.Runner.LogBridge;
 
 namespace Nethermind.Runner.Runners
 {
     public class JsonRpcRunner : IJsonRpcRunner
     {
-        private readonly ILogger _logger;
+        private readonly Log.ILogger _logger;
+        private readonly Log.ILogManager _logManager;
         private readonly IJsonRpcConfig _configurationProvider;
         private readonly IInitConfig _initConfig;
         private IWebHost _webHost;
 
-        public JsonRpcRunner(IConfigProvider configurationProvider, ILogger logger)
+        public JsonRpcRunner(IConfigProvider configurationProvider, Log.ILogManager logManager)
         {
             _configurationProvider = configurationProvider.GetConfig<IJsonRpcConfig>();
             _initConfig = configurationProvider.GetConfig<IInitConfig>();
-            _logger = logger;
+            _logManager = logManager;
+            _logger = logManager.GetClassLogger();
         }
 
         public Task Start()
@@ -55,6 +59,12 @@ namespace Nethermind.Runner.Runners
             var webHost = WebHost.CreateDefaultBuilder()
                 .UseStartup<Startup>()
                 .UseUrls(host)
+                .ConfigureLogging(logging =>
+                {
+                    logging.SetMinimumLevel(LogLevel.Information);
+                    logging.ClearProviders();
+                    logging.AddProvider(new CustomMicrosoftLoggerProvider(_logManager));
+                })
                 .Build();
 
             var modules = GetModules(_initConfig.JsonRpcEnabledModules)?.ToList();

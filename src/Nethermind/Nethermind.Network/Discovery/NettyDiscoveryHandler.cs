@@ -95,7 +95,7 @@ namespace Nethermind.Network.Discovery
             {
                 if (t.IsFaulted)
                 {
-                    if(_logger.IsDebug) _logger.Debug($"Error when sending a discovery message Msg: {discoveryMessage.ToString()} ,Exp: {t.Exception}");
+                    if(_logger.IsTrace) _logger.Trace($"Error when sending a discovery message Msg: {discoveryMessage.ToString()} ,Exp: {t.Exception}");
                 }
             });
         }

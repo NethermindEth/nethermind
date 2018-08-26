@@ -82,13 +82,13 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Chains", "Chains", "{D75E83
 		Chains\foundation.json = Chains\foundation.json
 		Chains\kovan.json = Chains\kovan.json
 		Chains\morden.json = Chains\morden.json
+		Chains\nethermind_alpha.json = Chains\nethermind_alpha.json
 		Chains\olympic.json = Chains\olympic.json
+		Chains\private_bootnode.json = Chains\private_bootnode.json
 		Chains\private_client.json = Chains\private_client.json
 		Chains\private_miner1.json = Chains\private_miner1.json
 		Chains\private_miner2.json = Chains\private_miner2.json
 		Chains\ropsten.json = Chains\ropsten.json
-		Chains\private_bootnode.json = Chains\private_bootnode.json
-		Chains\nethermind_alpha.json = Chains\nethermind_alpha.json
 	EndProjectSection
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.RunnerSpawner", "Nethermind.RunnerSpawner\Nethermind.RunnerSpawner.csproj", "{7285ABAE-A946-437E-A6DD-F1DECFE7F8D5}"
@@ -111,17 +111,17 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Tools", "Tools", "{E627BFEF
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Numerics", "Numerics", "{4FD45249-02DC-483E-B76E-100704B3B337}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Dirichlet.Numerics", "..\Dirichlet\Nethermind.Dirichlet.Numerics\Nethermind.Dirichlet.Numerics.csproj", "{F582324E-2820-4284-B991-CADFCD835632}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Dirichlet.Numerics", "..\Dirichlet\Nethermind.Dirichlet.Numerics\Nethermind.Dirichlet.Numerics.csproj", "{F582324E-2820-4284-B991-CADFCD835632}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Benchmarks", "Benchmarks", "{AE494DDC-4577-46C6-8AC1-4F6254FDA31D}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Evm.Benchmark", "Nethermind.Evm.Benchmark\Nethermind.Evm.Benchmark.csproj", "{E74D4CB5-1F66-4224-A775-494F05C35816}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Evm.Benchmark", "Nethermind.Evm.Benchmark\Nethermind.Evm.Benchmark.csproj", "{E74D4CB5-1F66-4224-A775-494F05C35816}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.DataStreams", "Nethermind.DataStreams\Nethermind.DataStreams.csproj", "{2BFC65EC-03AD-48AC-8FA5-1FB3B10A8539}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.DataStreams", "Nethermind.DataStreams\Nethermind.DataStreams.csproj", "{2BFC65EC-03AD-48AC-8FA5-1FB3B10A8539}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.DataStreams.Test", "Nethermind.DataStreams.Test\Nethermind.DataStreams.Test.csproj", "{95DCBAA9-7C9A-4280-92C9-B34F087E5938}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.DataStreams.Test", "Nethermind.DataStreams.Test\Nethermind.DataStreams.Test.csproj", "{95DCBAA9-7C9A-4280-92C9-B34F087E5938}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.DbDiagnostics", "Nethermind.DbDiagnostics\Nethermind.DbDiagnostics.csproj", "{75EB98BF-A07E-4D6B-BAAB-F37EC0459792}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.DbDiagnostics", "Nethermind.DbDiagnostics\Nethermind.DbDiagnostics.csproj", "{75EB98BF-A07E-4D6B-BAAB-F37EC0459792}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -344,6 +344,7 @@ Global
 		{C7E3A120-D595-4A7F-B551-FCC04EF1A697} = {DDCD43A0-C84B-474A-A41A-31112376EF29}
 		{658F7F8A-0314-4005-93E8-03B4EB367597} = {1564814A-27F8-40A3-943E-8E950D5EE17D}
 		{AA36DA58-F349-44AF-94BF-E49396259A41} = {DDCD43A0-C84B-474A-A41A-31112376EF29}
+		{2AC694C4-AB0F-42BD-9DD9-AD6C428B1BE8} = {E627BFEF-ABD3-4B8F-A9AC-204251AE440C}
 		{E6C8C319-1BA8-437D-961D-1357FF5A9699} = {1564814A-27F8-40A3-943E-8E950D5EE17D}
 		{B6C47D29-78D6-4966-B5A0-D4D651EE068F} = {1564814A-27F8-40A3-943E-8E950D5EE17D}
 		{7285ABAE-A946-437E-A6DD-F1DECFE7F8D5} = {E627BFEF-ABD3-4B8F-A9AC-204251AE440C}
@@ -356,7 +357,6 @@ Global
 		{E74D4CB5-1F66-4224-A775-494F05C35816} = {AE494DDC-4577-46C6-8AC1-4F6254FDA31D}
 		{95DCBAA9-7C9A-4280-92C9-B34F087E5938} = {1564814A-27F8-40A3-943E-8E950D5EE17D}
 		{75EB98BF-A07E-4D6B-BAAB-F37EC0459792} = {E627BFEF-ABD3-4B8F-A9AC-204251AE440C}
-		{2AC694C4-AB0F-42BD-9DD9-AD6C428B1BE8} = {E627BFEF-ABD3-4B8F-A9AC-204251AE440C}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {092CA5E3-6180-4ED7-A3CB-9B57FAC2AA85}

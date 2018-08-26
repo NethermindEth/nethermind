@@ -31,5 +31,10 @@ namespace Nethermind.Core.Logging
         {
             return new NLogLogger(_logFileName);
         }
+
+        public ILogger GetLogger(string loggerName)
+        {
+            return new NLogLogger(_logFileName, loggerName);
+        }
     }
 }

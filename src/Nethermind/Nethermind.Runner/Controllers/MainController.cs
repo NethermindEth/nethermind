@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using System.Threading.Tasks;
@@ -10,7 +11,8 @@ using Nethermind.JsonRpc;
 namespace Nethermind.Runner.Controllers
 {
     [Route("")]
-    public class MainController : Controller
+    [ApiController]
+    public class MainController : ControllerBase
     {
         private readonly ILogger _logger;
         private readonly IJsonRpcService _jsonRpcService;
@@ -19,6 +21,12 @@ namespace Nethermind.Runner.Controllers
         {
             _logger = logManager.GetClassLogger();
             _jsonRpcService = jsonRpcService;
+        }
+
+        [HttpGet]
+        public ActionResult<string> Get()
+        {
+            return "Test successfull";
         }
 
         [HttpPost]

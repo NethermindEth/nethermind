@@ -361,6 +361,12 @@ namespace Nethermind.Network.Discovery
                     break;
                 }
 
+                if (_discoveryManager.GetNodeLifecycleManagers(x => x.State == NodeLifecycleState.Active).Any())
+                {
+                    if(_logger.IsTrace) _logger.Trace("Couldnt connect to any of the bootnodes, but succsessfully connected to at least one persisted node.");
+                    break;
+                }
+
                 if (_logger.IsTrace) _logger.Trace($"Waiting {itemTime} ms for bootnodes to respond");
                 await Task.Delay(itemTime); // TODO: do we need this?
             }

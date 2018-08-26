@@ -135,13 +135,10 @@ namespace Nethermind.Runner
                 networkConfig.DbBasePath = initParams.BaseDbPath;
 
                 _ethereumRunner = new EthereumRunner(configProvider, networkHelper, logManager);
-                
-                Task ethRunnerTask = _ethereumRunner.Start();
-                await ethRunnerTask;
-                if (ethRunnerTask.IsFaulted)
-                {
-                    
-                }
+                 await _ethereumRunner.Start().ContinueWith(x =>
+                 {
+                     if (x.IsFaulted && Logger.IsError) Logger.Error("Error during ethereum runner start", x.Exception);
+                 });
 
                 if (initParams.JsonRpcEnabled)
                 {
@@ -150,8 +147,11 @@ namespace Nethermind.Runner
                     Bootstrap.Instance.BlockchainBridge = _ethereumRunner.BlockchainBridge;
                     Bootstrap.Instance.EthereumSigner = _ethereumRunner.EthereumSigner;
 
-                    _jsonRpcRunner = new JsonRpcRunner(configProvider, Logger);
-                    await _jsonRpcRunner.Start();
+                    _jsonRpcRunner = new JsonRpcRunner(configProvider, logManager);
+                    await _jsonRpcRunner.Start().ContinueWith(x =>
+                    {
+                        if (x.IsFaulted && Logger.IsError) Logger.Error("Error during jsonRpc runner start", x.Exception);
+                    });
                 }
                 else
                 {

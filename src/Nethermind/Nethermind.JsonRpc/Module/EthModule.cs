@@ -28,6 +28,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.JsonRpc.DataModel;
 using Nethermind.Store;
@@ -651,13 +652,13 @@ namespace Nethermind.JsonRpc.Module
                     {
                         return ResultWrapper<Core.Block>.Fail("Invalid block id", ErrorType.InvalidParams);
                     }
-                    throw new NotImplementedException(); // TODO: TKS - discuss with me later, there was a rebuilt of BlockStore / Blockchain, work in progress now, so just commenting it out 
-//                    var block = _blockTree.FindBlock(value.Value);
-//                    if (block == null)
-//                    {
-//                        return ResultWrapper<Core.Block>.Fail($"Cannot find block for {value.Value}", ErrorType.NotFound);
-//                    }
-//                    return ResultWrapper<Core.Block>.Success(block);
+
+                    var block = _blockchainBridge.FindBlock(new UInt256(value.Value));
+                    if (block == null)
+                    {
+                        return ResultWrapper<Core.Block>.Fail($"Cannot find block for {value.Value}", ErrorType.NotFound);
+                    }
+                    return ResultWrapper<Core.Block>.Success(block);
                 default:
                     throw new Exception($"BlockParameterType not supported: {blockParameter.Type}");
             }
