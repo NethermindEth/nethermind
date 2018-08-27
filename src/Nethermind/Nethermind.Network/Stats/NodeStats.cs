@@ -142,7 +142,7 @@ namespace Nethermind.Network.Stats
                 return;
             }
 
-            if (eventType.ToString().Contains("Discovery"))
+            if (eventType.ToString().Contains("Discovery") || new []{NodeStatsEventType.P2PPingIn, NodeStatsEventType.P2PPingOut}.Contains(eventType))
             {
                 return;
             }

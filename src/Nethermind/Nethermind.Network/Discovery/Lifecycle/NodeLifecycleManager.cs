@@ -92,7 +92,7 @@ namespace Nethermind.Network.Discovery.Lifecycle
                 {
                     if (node.Address.Address.ToString().Contains("127.0.0.1"))
                     {
-                        if (_logger.IsDebug) _logger.Debug($"Received localhost as node address from: {discoveryMessage.FarPublicKey}"); 
+                        if (_logger.IsTrace) _logger.Trace($"Received localhost as node address from: {discoveryMessage.FarPublicKey}, node: {node}"); 
                         continue;
                     }
                     //If node is new it will create a new nodeLifecycleManager and will update state to New, which will trigger Ping

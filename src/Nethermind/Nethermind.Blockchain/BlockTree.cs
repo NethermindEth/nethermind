@@ -199,24 +199,23 @@ namespace Nethermind.Blockchain
             {
                 if (BestSuggested != null)
                 {
-                    throw new InvalidOperationException(
-                        "Genesis block should be added only once"); // TODO: make sure it cannot happen
+                    throw new InvalidOperationException("Genesis block should be added only once"); // TODO: make sure it cannot happen
                 }
             }
             else if (IsKnownBlock(block.Hash))
             {
-                if (_logger.IsDebug)
+                if (_logger.IsTrace)
                 {
-                    _logger.Debug($"Block {block.Hash} already known.");
+                    _logger.Trace($"Block {block.Hash} already known.");
                 }
 
                 return AddBlockResult.AlreadyKnown;
             }
             else if (!IsKnownBlock(block.Header.ParentHash))
             {
-                if (_logger.IsDebug)
+                if (_logger.IsTrace)
                 {
-                    _logger.Debug($"Could not find parent ({block.Header.ParentHash}) of block {block.Hash}");
+                    _logger.Trace($"Could not find parent ({block.Header.ParentHash}) of block {block.Hash}");
                 }
 
                 return AddBlockResult.UnknownParent;

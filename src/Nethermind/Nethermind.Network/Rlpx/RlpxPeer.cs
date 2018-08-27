@@ -188,10 +188,9 @@ namespace Nethermind.Network.Rlpx
         public event EventHandler<ConnectionInitializedEventArgs> OutConnectionInitialized;
         public event EventHandler<ConnectionInitializedEventArgs> HandshakeInitialized;
 
-        private void InitializeChannel(IChannel channel, EncryptionHandshakeRole role, NodeId remoteId = null,
-            string remoteHost = null, int? remotePort = null, INodeStats nodeStats = null)
+        private void InitializeChannel(IChannel channel, EncryptionHandshakeRole role, NodeId remoteId = null, string remoteHost = null, int? remotePort = null, INodeStats nodeStats = null)
         {
-            var connectionType = remoteId == null ? ClientConnectionType.In : ClientConnectionType.Out;
+            var connectionType = role == EncryptionHandshakeRole.Recipient ? ClientConnectionType.In : ClientConnectionType.Out;
             P2PSession p2PSession = new P2PSession(
                 LocalNodeId,
                 _localPort,
@@ -207,7 +206,7 @@ namespace Nethermind.Network.Rlpx
             {
                 if (_logger.IsTrace)
                 {
-                    _logger.Trace($"Initializing {connectionType.ToString().ToUpper()} channel{(connectionType == ClientConnectionType.Out ? $": {remoteId}@{remoteHost}:{remoteId}" : string.Empty)}");
+                    _logger.Trace($"Initializing {connectionType.ToString().ToUpper()} channel{(connectionType == ClientConnectionType.Out ? $": {remoteId}@{remoteHost}:{remotePort}" : string.Empty)}");
                 }
 
                 p2PSession.RemoteNodeId = remoteId;
@@ -217,8 +216,7 @@ namespace Nethermind.Network.Rlpx
                 OutConnectionInitialized?.Invoke(this, new ConnectionInitializedEventArgs(p2PSession, connectionType));
             }
 
-            var handshakeHandler =
-                new NettyHandshakeHandler(_encryptionHandshakeService, p2PSession, role, remoteId, _logManager);
+            var handshakeHandler = new NettyHandshakeHandler(_encryptionHandshakeService, p2PSession, role, remoteId, _logManager);
             handshakeHandler.HandshakeInitialized += (s, e) =>
             {
                 //This is the first moment we get confirmed publicKey of remote node in case of incoming connections

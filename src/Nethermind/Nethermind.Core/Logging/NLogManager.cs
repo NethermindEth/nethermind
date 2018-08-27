@@ -21,20 +21,22 @@ namespace Nethermind.Core.Logging
     public class NLogManager : ILogManager
     {
         private readonly string _logFileName;
+        private readonly string _logDirectory;
 
-        public NLogManager(string logFileName)
+        public NLogManager(string logFileName, string logDirectory)
         {
             _logFileName = logFileName;
+            _logDirectory = logDirectory;
         }
         
         public ILogger GetClassLogger()
         {
-            return new NLogLogger(_logFileName);
+            return new NLogLogger(_logFileName, _logDirectory);
         }
 
         public ILogger GetLogger(string loggerName)
         {
-            return new NLogLogger(_logFileName, loggerName);
+            return new NLogLogger(_logFileName, _logDirectory, loggerName);
         }
     }
 }

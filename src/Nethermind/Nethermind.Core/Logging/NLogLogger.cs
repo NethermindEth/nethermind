@@ -19,6 +19,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using Nethermind.Core.Utils;
 using NLog.Targets;
 
 namespace Nethermind.Core.Logging
@@ -33,17 +34,15 @@ namespace Nethermind.Core.Logging
 
         internal readonly NLog.Logger Logger;
 
-        public NLogLogger(string fileName) : this(fileName, null)
-        {
-        }
-
-        public NLogLogger(string fileName, string loggerName)
+        public NLogLogger(string fileName, string logDirectory = null, string loggerName = null)
         {
             var name = string.IsNullOrEmpty(loggerName) ? StackTraceUsageUtils.GetClassFullName().Replace("Nethermind.", string.Empty) : loggerName;
             Logger = NLog.LogManager.GetLogger(name);
-            if (!Directory.Exists("logs"))
+
+            var logsDir = string.IsNullOrEmpty(logDirectory) ? Path.Combine(PathUtils.GetExecutingDirectory(), "logs") : logDirectory;
+            if (!Directory.Exists(logsDir))
             {
-                Directory.CreateDirectory("logs");
+                Directory.CreateDirectory(logsDir);
             }
 
             if (NLog.LogManager.Configuration.AllTargets.SingleOrDefault(t => t.Name == "file") is FileTarget target)
@@ -63,30 +62,15 @@ namespace Nethermind.Core.Logging
         {
             get
             {
-                if (IsTrace)
-                {
-                    return "Trace";
-                }
+                if (IsTrace) return "Trace";
 
-                if (IsDebug)
-                {
-                    return "Debug";
-                }
+                if (IsDebug) return "Debug";
 
-                if (IsInfo)
-                {
-                    return "Info";
-                }
+                if (IsInfo) return "Info";
 
-                if (IsWarn)
-                {
-                    return "Warn";
-                }
+                if (IsWarn) return "Warn";
 
-                if (IsError)
-                {
-                    return "Error";
-                }
+                if (IsError) return "Error";
 
                 return "None";
             }

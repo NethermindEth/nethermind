@@ -2,8 +2,7 @@
   "profiles": {
     "Nethermind.Runner": {
       "commandName": "Project",
-      "commandLineArgs": "--config configs\\ropsten_windows_discovery.config.json --baseDbPath F:\\IT\\projects\\Crypto\\db",
-      "launchBrowser": false,
+      "commandLineArgs": "--config configs\\mainnet_windows_discovery.config.json --baseDbPath F:\\IT\\projects\\Crypto\\db",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }

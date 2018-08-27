@@ -1031,7 +1031,7 @@ namespace Nethermind.Network
                 {
                     if (_logger.IsDebug) _logger.Debug($"Initializing disconnect on sync failed with node: {e.Peer.NodeId}");
                     
-                    await activePeer.Session.InitiateDisconnectAsync(DisconnectReason.BreachOfProtocol);
+                    await activePeer.Session.InitiateDisconnectAsync(DisconnectReason.Other);
                 }
             }
             else if (_logger.IsTrace) _logger.Trace($"Sync failed, peer not in active collection: {e.Peer.NodeId}");

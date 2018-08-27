@@ -130,15 +130,8 @@ namespace Nethermind.Network.P2P
 
             if (protocol == null)
             {
-                if (_logger.IsWarn) _logger.Warn($"{RemoteNodeId} {nameof(P2PSession)} received a message ({dynamicMessageCode} => {messageId})");
-                if (_logger.IsWarn) _logger.Warn($"{RemoteNodeId} known protocols ({_protocols.Count}):");
-                foreach (KeyValuePair<string, IProtocolHandler> protocolHandler in _protocols)
-                {
-                    _logger.Error(
-                        $"{RemoteNodeId} {protocolHandler.Key} {protocolHandler.Value.ProtocolVersion} {protocolHandler.Value.MessageIdSpaceSize}");
-                }
-
-                throw new InvalidProtocolException(packet.Protocol);
+                if (_logger.IsTrace) _logger.Warn($"Received a message from node: {RemoteNodeId}, ({dynamicMessageCode} => {messageId}), known protocols ({_protocols.Count}): {string.Join(", ", _protocols.Select(x => $"{x.Key} {x.Value.ProtocolVersion} {x.Value.MessageIdSpaceSize}"))}");
+                return;
             }
 
             packet.PacketType = messageId;
@@ -289,11 +282,7 @@ namespace Nethermind.Network.P2P
                     offset += alphabetically[j].SpaceSize;
                 }
 
-                if(_logger.IsWarn) _logger.Warn($"Could not resolve message id from {dynamicId} with known:");
-                for (int j = 0; j < alphabetically.Length; j++)
-                {
-                    if(_logger.IsWarn) _logger.Warn($"{alphabetically[j].ProtocolCode} {alphabetically[j].SpaceSize}");
-                }
+                if(_logger.IsTrace) _logger.Warn($"Could not resolve message id from {dynamicId} with known: {string.Join(", ", alphabetically.Select(x => $"{x.ProtocolCode} {x.SpaceSize}"))}");
 
                 return (null, 0);
             };

@@ -295,7 +295,7 @@ namespace Nethermind.PerfTest
         private static async Task RunRopstenBlocks()
         {
             /* logging & instrumentation */
-            _logManager = new NLogManager("perTest.logs.txt");
+            _logManager = new NLogManager("perTest.logs.txt", null);
             _logger = _logManager.GetClassLogger();
 
             if (_logger.IsInfo) _logger.Info("Deleting state DBs");

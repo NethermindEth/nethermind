@@ -37,9 +37,10 @@ namespace Nethermind.Runner.Config
         string ChainSpecPath { get; set; }
         string BaseDbPath { get; set; }
         string TestNodeKey { get; set; }
-        string LogFileName { get; set; }
         string GenesisHash { get; set; }
         string[] JsonRpcEnabledModules { get; set; }
         bool RemovingLogFilesEnabled { get; set; }
+        string LogFileName { get; set; }
+        string LogDirectory { get; set; }
     }
 }

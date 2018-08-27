@@ -19,6 +19,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.CommandLineUtils;
@@ -26,6 +27,7 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Specs.ChainSpec;
+using Nethermind.Core.Utils;
 using Nethermind.JsonRpc.Config;
 using Nethermind.KeyStore.Config;
 using Nethermind.Network;
@@ -59,10 +61,10 @@ namespace Nethermind.Runner
                 
                 if (initConfig.RemovingLogFilesEnabled)
                 {
-                    RemoveLogFiles();
+                    RemoveLogFiles(initConfig.LogDirectory);
                 }
 
-                Logger = new NLogLogger(initConfig.LogFileName);
+                Logger = new NLogLogger(initConfig.LogFileName, initConfig.LogDirectory);
 
                 var pathDbPath = getDbBasePath();
                 if (!string.IsNullOrWhiteSpace(pathDbPath))
@@ -110,7 +112,7 @@ namespace Nethermind.Runner
             try
             {
                 var initParams = configProvider.GetConfig<IInitConfig>();
-                var logManager = new NLogManager(initParams.LogFileName);
+                var logManager = new NLogManager(initParams.LogFileName, initParams.LogDirectory);
 
                 //discovering and setting local, remote ips for client machine
                 var networkHelper = new NetworkHelper(Logger);
@@ -195,10 +197,17 @@ namespace Nethermind.Runner
             return node;
         }
 
-        private void RemoveLogFiles()
+        private void RemoveLogFiles(string logDirectory)
         {
             Console.WriteLine("Removing log files.");
-            var files = Directory.GetFiles("logs");
+
+            var logsDir = string.IsNullOrEmpty(logDirectory) ?  Path.Combine(PathUtils.GetExecutingDirectory(), "logs") : logDirectory;
+            if (!Directory.Exists(logsDir))
+            {
+                return;
+            }
+
+            var files = Directory.GetFiles(logsDir);
             foreach (string file in files)
             {
                 try
@@ -207,6 +216,7 @@ namespace Nethermind.Runner
                 }
                 catch (Exception e)
                 {
+                    Console.WriteLine($"Error removing log file: {file}, exp: {e}");
                 }
             }
         }

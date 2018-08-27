@@ -158,8 +158,7 @@ namespace Nethermind.Blockchain
         {
             if (!_peers.TryGetValue(receivedFrom, out PeerInfo peerInfo))
             {
-                string message = $"Received a block hint from an unknown peer {receivedFrom}";
-                if (_logger.IsError) _logger.Error(message);
+                if (_logger.IsTrace) _logger.Trace($"Received a block hint from an unknown peer {receivedFrom}, ignoring");
                 return;
             }
 
@@ -225,7 +224,7 @@ namespace Nethermind.Blockchain
 
             if (!_peers.TryRemove(synchronizationPeer.NodeId, out _))
             {
-                if (_logger.IsError) _logger.Error($"Synchronization peer was not on the list {synchronizationPeer.NodeId}");
+                //possible if sync failed - we remove peer and eventually initiate disconnect, which calls remove peer again
                 return;
             }
             
