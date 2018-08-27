@@ -16,10 +16,12 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.JsonRpc.DataModel;
+
 namespace Nethermind.JsonRpc
 {
     public interface IJsonRpcService
     {
-        string SendRequest(string request);
+        JsonRpcResponse SendRequest(string request);
     }
 }

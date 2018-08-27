@@ -17,7 +17,6 @@
  */
 
 using Microsoft.Extensions.Logging;
-using Nethermind.Runner.Runners;
 
 namespace Nethermind.Runner.LogBridge
 {

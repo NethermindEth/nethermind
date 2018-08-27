@@ -73,23 +73,21 @@ namespace Nethermind.JsonRpc
         }
 
         public Transaction MapTransaction(Core.Transaction transaction, Core.Block block)
-        {
-            throw new NotImplementedException(); // TODO: look at new transaction recover (that takes block number)
-            
-//            return new Transaction
-//            {
-//                Hash = new Data(transaction.Hash.Bytes),
-//                Nonce = new Quantity(transaction.Nonce),
-//                BlockHash = block != null ? new Data(block.Hash.Bytes) : null,
-//                BlockNumber = block?.Header != null ? new Quantity(block.Header.Number) : null,
-//                TransactionIndex = block?.Transactions != null ? new Quantity(GetTransactionIndex(transaction, block)) : null,
-//                From = new Data(_signer.RecoverAddress(transaction, block.Number).Hex),
-//                To = new Data(transaction.To.Hex),
-//                Value = new Quantity(transaction.Value),
-//                GasPrice = new Quantity(transaction.GasPrice),
-//                Gas = new Quantity(transaction.GasLimit),
-//                Data = new Data(transaction.Data)
-//            };
+        {   
+            return new Transaction
+            {
+                Hash = new Data(transaction.Hash.Bytes),
+                Nonce = new Quantity(transaction.Nonce),
+                BlockHash = block != null ? new Data(block.Hash.Bytes) : null,
+                BlockNumber = block?.Header != null ? new Quantity(block.Header.Number) : null,
+                TransactionIndex = block?.Transactions != null ? new Quantity(GetTransactionIndex(transaction, block)) : null,
+                From = new Data(_signer.RecoverAddress(transaction, block.Number).Bytes),
+                To = new Data(transaction.To.Bytes),
+                Value = new Quantity(transaction.Value),
+                GasPrice = new Quantity(transaction.GasPrice),
+                Gas = new Quantity(transaction.GasLimit),
+                Data = new Data(transaction.Data)
+            };
         }
 
         public TransactionReceipt MapTransactionReceipt(Core.TransactionReceipt receipt, Core.Transaction transaction, Core.Block block)

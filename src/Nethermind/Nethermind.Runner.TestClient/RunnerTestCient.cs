@@ -39,7 +39,7 @@ namespace Nethermind.Runner.TestClient
             _logger = logger;
             _jsonSerializer = jsonSerializer;
 
-            _client = new HttpClient {BaseAddress = new Uri("http://127.0.0.1:8345") };
+            _client = new HttpClient {BaseAddress = new Uri("http://127.0.0.1:8545") };
             _client.DefaultRequestHeaders.Accept.Clear();
             _client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         }

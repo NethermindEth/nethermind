@@ -31,7 +31,7 @@ namespace Nethermind.Runner.Config
         public bool IsMining { get; set; } = false;
         public int FakeMiningDelay { get; set; } = 12000;
         public string HttpHost { get; set; } = "127.0.0.1";
-        public int HttpPort { get; set; } = 8345;
+        public int HttpPort { get; set; } = 8545;
         public int DiscoveryPort { get; set; } = 30312;
         public int P2PPort { get; set; } = 30312;
         public string ChainSpecPath { get; set; }

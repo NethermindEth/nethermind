@@ -22,10 +22,16 @@ using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Core.Encoding
 {
+    // TODO: unit tests
     public class HeaderDecoder : IRlpDecoder<BlockHeader>
     {
         public BlockHeader Decode(Rlp.DecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
+            if (context.Length == 1 && context.Data[0] == 192)
+            {
+                return null;
+            }
+            
             var headerRlp = context.PeekNextItem();
 
             int headerSequenceLength = context.ReadSequenceLength();
@@ -75,6 +81,11 @@ namespace Nethermind.Core.Encoding
 
         public Rlp Encode(BlockHeader item, RlpBehaviors behaviors = RlpBehaviors.None)
         {
+            if (item == null)
+            {
+                return Rlp.OfEmptySequence;
+            }
+            
             bool withMixHashAndNonce = !behaviors.HasFlag(RlpBehaviors.ExcludeBlockMixHashAndNonce);
             int numberOfElements = withMixHashAndNonce ? 15 : 13;
             Rlp[] elements = new Rlp[numberOfElements];

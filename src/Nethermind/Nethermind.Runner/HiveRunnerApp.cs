@@ -34,7 +34,7 @@ namespace Nethermind.Runner
 
         private const string DefaultHost = "localhost";
         private const string DefaultBootNode = "enode://6ce05930c72abc632c58e2e4324f7c7ea478cec0ed4fa2528982cf34483094e9cbc9216e7aa349691242576d552a2a56aaeae426c5303ded677ce455ba1acd9d@13.84.180.240:30303";
-        private const int DefaultHttpPort = 8545;
+        private const int DefaultHttpPort = 8345;
         private const int DefaultDiscoveryPort = 30303;
         private readonly string _defaultGenesisFile = Path.Combine("Data", "genesis.json");
         private const string DefaultChainFile = "chain.rlp";

@@ -21,6 +21,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.InteropServices.WindowsRuntime;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Logging;
@@ -46,7 +47,7 @@ namespace Nethermind.JsonRpc
             _moduleProvider = moduleProvider;
         }
 
-        public string SendRequest(string request)
+        public JsonRpcResponse SendRequest(string request)
         {
             try
             {
@@ -54,7 +55,8 @@ namespace Nethermind.JsonRpc
                 if (rpcRequest.Model == null && rpcRequest.Collection == null)
                 {
                     var reponse = GetErrorResponse(ErrorType.InvalidRequest, "Invalid request", null, null);
-                    return _jsonSerializer.Serialize(reponse);
+                    return reponse;
+//                    return _jsonSerializer.Serialize(reponse);
                 }
 
                 if (rpcRequest.Model != null)
@@ -63,18 +65,20 @@ namespace Nethermind.JsonRpc
                     var serializedReponse = _jsonSerializer.Serialize(response);
 
                     if (_logger.IsTrace) _logger.Trace($"Successfull request processing, method: {rpcRequest.Model.Method ?? "none"}, id: {rpcRequest.Model.Id ?? "none"}, result: {serializedReponse}");
-                    return serializedReponse;
+                    return response;
                 }
 
                 var responses = rpcRequest.Collection.Select(x => SendRequest(x, request)).ToArray();
-                return _jsonSerializer.Serialize(responses);
+//                return _jsonSerializer.Serialize(responses);
+                throw new NotImplementedException();
 
             }
             catch (Exception ex)
             {
                 _logger.Error($"Error during parsing/validation, request: {request}", ex);
                 var response = GetErrorResponse(ErrorType.ParseError, "Incorrect message", null, null);
-                return _jsonSerializer.Serialize(response);
+//                return _jsonSerializer.Serialize(response);
+                return response;
             }
         }
 
@@ -103,7 +107,6 @@ namespace Nethermind.JsonRpc
                 return GetErrorResponse(ErrorType.ParseError, "Incorrect message", null, null);
             }         
         }
-
         private JsonRpcResponse ExecuteRequest(JsonRpcRequest rpcRequest)
         {
             var methodName = rpcRequest.Method.Trim().ToLower();

@@ -135,6 +135,7 @@ namespace Nethermind.Config
                 throw new Exception($"Incorrent config key, no property on {configInstance.GetType().Name} config: {item.Key}");
             }
 
+            object value = null;
             var valueType = property.PropertyType;
             if (valueType.IsArray || (valueType.IsGenericType && valueType.GetGenericTypeDefinition() == typeof(IEnumerable<>)))
             {
@@ -145,34 +146,38 @@ namespace Nethermind.Config
                 if (itemType.IsClass && typeof(IConfigModel).IsAssignableFrom(itemType))
                 {
                     var objCollection = JsonConvert.DeserializeObject(item.Value, valueType);
-                    property.SetValue(configInstance, objCollection);
-                    return;
+                    value = objCollection;
                 }
-
-                var valueItems = item.Value.Split(',').ToArray();
-                var collection = valueType.IsGenericType 
-                    ? (IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(itemType)) 
-                    : (IList)Activator.CreateInstance(valueType, valueItems.Length);
-
-                var i = 0;
-                foreach (var valueItem in valueItems)
+                else
                 {
-                    var itemValue = GetValue(itemType, valueItem, item.Key);
-                    if (valueType.IsGenericType)
-                    {
-                        collection.Add(itemValue);
-                    }
-                    else
-                    {
-                        collection[i] = itemValue;
-                        i++;
-                    }
-                }
+                    var valueItems = item.Value.Split(',').ToArray();
+                    var collection = valueType.IsGenericType 
+                        ? (IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(itemType)) 
+                        : (IList)Activator.CreateInstance(valueType, valueItems.Length);
 
-                property.SetValue(configInstance, collection);
-                return;
+                    var i = 0;
+                    foreach (var valueItem in valueItems)
+                    {
+                        var itemValue = GetValue(itemType, valueItem, item.Key);
+                        if (valueType.IsGenericType)
+                        {
+                            collection.Add(itemValue);
+                        }
+                        else
+                        {
+                            collection[i] = itemValue;
+                            i++;
+                        }
+                    }
+
+                    value = collection;
+                }
             }
-            var value = GetValue(valueType, item.Value, item.Key);
+            else
+            {
+                value = GetValue(valueType, item.Value, item.Key);    
+            }
+            
             property.SetValue(configInstance, value);
         }
 

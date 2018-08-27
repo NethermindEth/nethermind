@@ -31,11 +31,13 @@ namespace Nethermind.JsonRpc.DataModel
             {
                 throw new Exception("Empty parameter");
             }
+            
             if (Enum.TryParse(jsonValue, true, out BlockParameterType type))
             {
                 Type = type;
                 return;
             }
+            
             Type = BlockParameterType.BlockId;
             BlockId = new Quantity();
             BlockId.FromJson(jsonValue);
@@ -43,7 +45,7 @@ namespace Nethermind.JsonRpc.DataModel
 
         public override string ToString()
         {
-            return $"{Type}, {BlockId.ToJson()}";
+            return $"{Type}, {BlockId?.ToJson()}";
         }
     }
 }

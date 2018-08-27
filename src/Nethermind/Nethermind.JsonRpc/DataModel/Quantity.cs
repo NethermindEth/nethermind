@@ -16,9 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
 using System.Numerics;
-using Nethermind.Core;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.JsonRpc.DataModel
@@ -42,9 +40,10 @@ namespace Nethermind.JsonRpc.DataModel
             Value = Bytes.FromHexString(value);
         }
 
+        // TODO: use UInt256 here?
         public BigInteger? GetValue()
         {
-            return Value != null ? new BigInteger(Value) : (BigInteger?)null;
+            return Value != null ? new BigInteger(Value, false, true) : (BigInteger?)null;
         }
 
         public object ToJson()
