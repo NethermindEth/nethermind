@@ -162,8 +162,6 @@ namespace Nethermind.Network.Rlpx
                 }
 
                 _p2PSession.RemoteNodeId = _handshake.RemoteNodeId;
-                //_p2PSession.RemoteHost = ((IPEndPoint)context.Channel.RemoteAddress).Address.ToString();
-                //_p2PSession.RemotePort = ((IPEndPoint)context.Channel.RemoteAddress).Port;
 
                 _initCompletionSource?.SetResult(message);
                 HandshakeInitialized?.Invoke(this, new HandshakeInitializedEventArgs());

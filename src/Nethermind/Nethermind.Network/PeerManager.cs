@@ -32,6 +32,7 @@ using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery;
+using Nethermind.Network.Discovery.Lifecycle;
 using Nethermind.Network.Discovery.RoutingTable;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth;
@@ -50,7 +51,7 @@ namespace Nethermind.Network
         private readonly INetworkConfig _networkConfig;
         private readonly ISynchronizationManager _synchronizationManager;
         private readonly INodeStatsProvider _nodeStatsProvider;
-        private readonly IPeerStorage _peerStorage;
+        private readonly INetworkStorage _peerStorage;
         private readonly INodeFactory _nodeFactory;
         private Timer _activePeersTimer;
         private Timer _peerPersistanceTimer;
@@ -70,7 +71,7 @@ namespace Nethermind.Network
             IDiscoveryManager discoveryManager,
             ISynchronizationManager synchronizationManager,
             INodeStatsProvider nodeStatsProvider,
-            IPeerStorage peerStorage,
+            INetworkStorage peerStorage,
             INodeFactory nodeFactory,
             IConfigProvider configurationProvider,
             IPerfService perfService,
@@ -88,8 +89,8 @@ namespace Nethermind.Network
             _peerStorage.StartBatch();
         }
 
-        public IReadOnlyCollection<Peer> CandidatePeers => _candidatePeers.Values.ToArray();
-        public IReadOnlyCollection<Peer> ActivePeers => _activePeers.Values.ToArray();
+        internal IReadOnlyCollection<Peer> CandidatePeers => _candidatePeers.Values.ToArray();
+        internal IReadOnlyCollection<Peer> ActivePeers => _activePeers.Values.ToArray();
 
         public void Initialize(bool isDiscoveryEnabled)
         {
@@ -441,7 +442,7 @@ namespace Nethermind.Network
         {
             if (eventArgs.ClientConnectionType == ClientConnectionType.In)
             {
-                //If connection was initiated by remote peer we allow handshake to take place before potencially disconnecting
+                //If connection was initiated by remote peer we allow handshake to take place before potentially disconnecting
                 eventArgs.Session.ProtocolInitialized += async (s, e) => await OnProtocolInitialized(s, e);
                 eventArgs.Session.PeerDisconnected += async (s, e) => await OnPeerDisconnected(s, e);
                 if (_logger.IsTrace)
@@ -511,6 +512,7 @@ namespace Nethermind.Network
                     {
                         AddNodeToDiscovery(candidatePeer, (P2PProtocolInitializedEventArgs)e);
                     }
+                    
                     if (_logger.IsWarn)
                     {
                         var timeFromLastDisconnect = candidatePeer.NodeStats.LastDisconnectTime.HasValue
@@ -1112,6 +1114,30 @@ namespace Nethermind.Network
             }
 
             return string.Join("|", nodeDetails.Capabilities.Select(x => $"{x.ProtocolCode}v{x.Version}"));
+        }
+        
+        internal class Peer
+        {
+            public Peer(Node node, INodeStats nodeStats)
+            {
+                Node = node;
+                NodeStats = nodeStats;
+            }
+
+            public Peer(INodeLifecycleManager manager)
+            {
+                Node = manager.ManagedNode;
+                NodeLifecycleManager = manager;
+                NodeStats = manager.NodeStats;
+            }
+
+            public Node Node { get; }
+            public INodeLifecycleManager NodeLifecycleManager { get; set; }
+            public INodeStats NodeStats { get; }
+            public IP2PSession Session { get; set; }
+            public ISynchronizationPeer SynchronizationPeer { get; set; }
+            public IP2PMessageSender P2PMessageSender { get; set; }
+            public ClientConnectionType ClientConnectionType { get; set; }
         }
     }
 }

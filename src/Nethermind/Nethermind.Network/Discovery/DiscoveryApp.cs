@@ -49,7 +49,7 @@ namespace Nethermind.Network.Discovery
         private readonly ILogger _logger;
         private readonly IMessageSerializationService _messageSerializationService;
         private readonly ICryptoRandom _cryptoRandom;
-        private readonly IDiscoveryStorage _discoveryStorage;
+        private readonly INetworkStorage _discoveryStorage;
 
         private Timer _discoveryTimer;
         //private Timer _refreshTimer;
@@ -68,7 +68,7 @@ namespace Nethermind.Network.Discovery
             INodeTable nodeTable,
             IMessageSerializationService messageSerializationService,
             ICryptoRandom cryptoRandom,
-            IDiscoveryStorage discoveryStorage,
+            INetworkStorage discoveryStorage,
             IConfigProvider configurationProvider,
             ILogManager logManager)
         {

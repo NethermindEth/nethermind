@@ -30,7 +30,7 @@ using Nethermind.Store;
 
 namespace Nethermind.Network
 {
-    public abstract class NetworkStorageBase : INetworkStorage
+    public class NetworkStorage : INetworkStorage
     {
         private readonly IFullDb _db;
         private readonly ILogger _logger;
@@ -38,7 +38,7 @@ namespace Nethermind.Network
         private long _removeCounter;
         private readonly string _dbDirectory;
 
-        protected NetworkStorageBase(string dbDirectory, IConfigProvider configurationProvider, ILogManager logManager, IPerfService perfService)
+        public NetworkStorage(string dbDirectory, IConfigProvider configurationProvider, ILogManager logManager, IPerfService perfService)
         {
             _logger = logManager?.GetClassLogger();
             INetworkConfig networkConfig = configurationProvider.GetConfig<INetworkConfig>();

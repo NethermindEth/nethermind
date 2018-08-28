@@ -549,7 +549,7 @@ namespace Nethermind.Runner.Runners
 
         private void InitPeerManager()
         {
-            var peerStorage = new PeerStorage(PeersDbPath, _configProvider, _logManager, _perfService);
+            var peerStorage = new NetworkStorage(PeersDbPath, _configProvider, _logManager, _perfService);
             _peerManager = new PeerManager(_localPeer, _discoveryManager, _syncManager, _nodeStatsProvider, peerStorage,
                 _nodeFactory, _configProvider, _perfService, _logManager);
             _peerManager.Initialize(_initConfig.DiscoveryEnabled);
@@ -583,7 +583,7 @@ namespace Nethermind.Runner.Runners
                 evictionManager, _nodeStatsProvider, _configProvider, _logManager);
 
             var discoveryStorage =
-                new DiscoveryStorage(DiscoveryNodesDbPath, _configProvider, _logManager, _perfService);
+                new NetworkStorage(DiscoveryNodesDbPath, _configProvider, _logManager, _perfService);
             _discoveryManager = new DiscoveryManager(nodeLifeCycleFactory, _nodeFactory, nodeTable, discoveryStorage,
                 _configProvider, _logManager);
 

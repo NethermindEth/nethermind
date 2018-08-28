@@ -27,7 +27,7 @@ namespace Nethermind.Network.Test
     [TestFixture]
     public class PeerManagerTests
     {
-        private IPeerManager _peerManager;
+        private PeerManager _peerManager;
         private INodeFactory _nodeFactory;
         private IConfigProvider _configurationProvider;
         private IDiscoveryManager _discoveryManager;
@@ -55,10 +55,10 @@ namespace Nethermind.Network.Test
             var nodeTable = new NodeTable(_nodeFactory, Substitute.For<IKeyStore>(), new NodeDistanceCalculator(_configurationProvider), _configurationProvider, _logManager);
             nodeTable.Initialize(new NodeId(key));
 
-            _discoveryManager = new DiscoveryManager(new NodeLifecycleManagerFactory(_nodeFactory, nodeTable, new DiscoveryMessageFactory(_configurationProvider), Substitute.For<IEvictionManager>(), new NodeStatsProvider(_configurationProvider, _logManager, _nodeFactory), _configurationProvider, _logManager), _nodeFactory, nodeTable, new DiscoveryStorage("test", _configurationProvider, _logManager, new PerfService(_logManager)), _configurationProvider, _logManager);
+            _discoveryManager = new DiscoveryManager(new NodeLifecycleManagerFactory(_nodeFactory, nodeTable, new DiscoveryMessageFactory(_configurationProvider), Substitute.For<IEvictionManager>(), new NodeStatsProvider(_configurationProvider, _logManager, _nodeFactory), _configurationProvider, _logManager), _nodeFactory, nodeTable, new NetworkStorage("test", _configurationProvider, _logManager, new PerfService(_logManager)), _configurationProvider, _logManager);
             _discoveryManager.MessageSender = Substitute.For<IMessageSender>();
 
-            _peerManager = new PeerManager(_localPeer, _discoveryManager, _synchronizationManager, new NodeStatsProvider(_configurationProvider, _logManager, _nodeFactory), new PeerStorage("test", _configurationProvider, _logManager, new PerfService(_logManager)), _nodeFactory, _configurationProvider, new PerfService(_logManager), _logManager);
+            _peerManager = new PeerManager(_localPeer, _discoveryManager, _synchronizationManager, new NodeStatsProvider(_configurationProvider, _logManager, _nodeFactory), new NetworkStorage("test", _configurationProvider, _logManager, new PerfService(_logManager)), _nodeFactory, _configurationProvider, new PerfService(_logManager), _logManager);
             _peerManager.Initialize(true);
         }
 

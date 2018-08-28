@@ -42,7 +42,7 @@ namespace Nethermind.Network.Discovery
         private readonly INodeLifecycleManagerFactory _nodeLifecycleManagerFactory;
         private readonly ConcurrentDictionary<string, INodeLifecycleManager> _nodeLifecycleManagers = new ConcurrentDictionary<string, INodeLifecycleManager>();
         private readonly INodeTable _nodeTable;
-        private readonly IDiscoveryStorage _discoveryStorage;
+        private readonly INetworkStorage _discoveryStorage;
 
         private readonly ConcurrentDictionary<MessageTypeKey, ManualResetEvent> _waitingEvents = new ConcurrentDictionary<MessageTypeKey, ManualResetEvent>();
         private IMessageSender _messageSender;
@@ -50,7 +50,7 @@ namespace Nethermind.Network.Discovery
         public DiscoveryManager(INodeLifecycleManagerFactory nodeLifecycleManagerFactory,
             INodeFactory nodeFactory,
             INodeTable nodeTable,
-            IDiscoveryStorage discoveryStorage,
+            INetworkStorage discoveryStorage,
             IConfigProvider configurationProvider,
             ILogManager logManager)
         {
