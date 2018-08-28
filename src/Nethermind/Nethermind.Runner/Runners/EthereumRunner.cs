@@ -68,11 +68,10 @@ namespace Nethermind.Runner.Runners
         private readonly IInitConfig _initConfig;
         private readonly INetworkHelper _networkHelper;
         private IBlockchainProcessor _blockchainProcessor;
-        private ICryptoRandom _cryptoRandom;
+        private ICryptoRandom _cryptoRandom = new CryptoRandom();
         private IDiscoveryApp _discoveryApp;
         private IDiscoveryManager _discoveryManager;
-        private IRlpxPeer _localPeer;
-        private IMessageSerializationService _messageSerializationService;
+        private IMessageSerializationService _messageSerializationService = new MessageSerializationService();
         private INodeFactory _nodeFactory;
         private INodeStatsProvider _nodeStatsProvider;
         private IPerfService _perfService;
@@ -135,8 +134,6 @@ namespace Nethermind.Runner.Runners
             await (_syncManager?.StopAsync() ?? Task.CompletedTask);
             _logger.Debug("Stopping blockchain processor...");
             await (_blockchainProcessor?.StopAsync() ?? Task.CompletedTask);
-            _logger.Debug("Stopping local peer...");
-            await (_localPeer?.Shutdown() ?? Task.CompletedTask);
             _logger.Info("Goodbye...");
         }
 
@@ -338,7 +335,11 @@ namespace Nethermind.Runner.Runners
             LoadBlocksFromDb();
 #pragma warning restore 4014
 
-            await InitializeNetwork(transactionStore, blockValidator, headerValidator, txValidator);
+            await InitializeNetwork(
+                transactionStore,
+                blockValidator,
+                headerValidator,
+                txValidator);
         }
 
         private async Task LoadBlocksFromDb()
@@ -360,8 +361,11 @@ namespace Nethermind.Runner.Runners
             });
         }
 
-        private async Task InitializeNetwork(TransactionStore transactionStore, BlockValidator blockValidator,
-            HeaderValidator headerValidator, TransactionValidator txValidator)
+        private async Task InitializeNetwork(
+            TransactionStore transactionStore,
+            BlockValidator blockValidator,
+            HeaderValidator headerValidator,
+            TransactionValidator txValidator)
         {
             if (!_initConfig.NetworkEnabled)
             {
@@ -369,24 +373,23 @@ namespace Nethermind.Runner.Runners
                 return;
             }
 
-            InitSync(transactionStore, blockValidator, headerValidator, txValidator);
-            InitNet();
+            _syncManager = new SynchronizationManager(
+                _blockTree,
+                blockValidator,
+                headerValidator,
+                transactionStore,
+                txValidator,
+                _logManager,
+                new BlockchainConfig());
+            
             InitDiscovery();
-            InitPeerManager();
+            await InitPeer();
 
             await StartSync().ContinueWith(initNetTask =>
             {
                 if (initNetTask.IsFaulted)
                 {
                     _logger.Error("Unable to start sync.", initNetTask.Exception);
-                }
-            });
-
-            await StartNet().ContinueWith(initNetTask =>
-            {
-                if (initNetTask.IsFaulted)
-                {
-                    _logger.Error("Unable to start network layer.", initNetTask.Exception);
                 }
             });
 
@@ -398,13 +401,17 @@ namespace Nethermind.Runner.Runners
                 }
             });
 
-            await StartPeerManager().ContinueWith(initPeerManagerTask =>
+            await StartPeer().ContinueWith(initPeerManagerTask =>
             {
                 if (initPeerManagerTask.IsFaulted)
                 {
                     _logger.Error("Unable to start peer manager.", initPeerManagerTask.Exception);
                 }
             });
+            
+            var localIp = _networkHelper.GetLocalIp();
+            if (_logger.IsInfo) _logger.Info($"Node is up and listening on {localIp}:{_initConfig.P2PPort}");
+            if (_logger.IsInfo) _logger.Info($"enode://{_privateKey.PublicKey}@{localIp}:{_initConfig.P2PPort}");
         }
 
         private ISealEngine ConfigureSealEngine(TransactionStore transactionStore, EthereumSigner ethereumSigner)
@@ -470,20 +477,6 @@ namespace Nethermind.Runner.Runners
             }
         }
 
-        private void InitSync(TransactionStore transactionStore, BlockValidator blockValidator,
-            HeaderValidator headerValidator, TransactionValidator txValidator)
-        {
-            // TODO: only start sync manager after queued blocks are processed
-            _syncManager = new SynchronizationManager(
-                _blockTree,
-                blockValidator,
-                headerValidator,
-                transactionStore,
-                txValidator,
-                _logManager,
-                new BlockchainConfig());
-        }
-
         private Task StartSync()
         {
             if (!_initConfig.SynchronizationEnabled)
@@ -501,20 +494,20 @@ namespace Nethermind.Runner.Runners
             return Task.CompletedTask;
         }
 
-        private void InitNet()
+        private async Task StartNet()
         {
-            /* tools */
-            _messageSerializationService = new MessageSerializationService();
-            _cryptoRandom = new CryptoRandom();
-            _signer = new Signer();
+            
+        }
 
+        private async Task InitPeer()
+        {
             /* rlpx */
             var eciesCipher = new EciesCipher(_cryptoRandom);
             var eip8Pad = new Eip8MessagePad(_cryptoRandom);
             _messageSerializationService.Register(new AuthEip8MessageSerializer(eip8Pad));
             _messageSerializationService.Register(new AckEip8MessageSerializer(eip8Pad));
             var encryptionHandshakeServiceA = new EncryptionHandshakeService(_messageSerializationService, eciesCipher,
-                _cryptoRandom, _signer, _privateKey, _logManager);
+                _cryptoRandom, new Signer(), _privateKey, _logManager);
 
             /* p2p */
             _messageSerializationService.Register(new HelloMessageSerializer());
@@ -531,31 +524,15 @@ namespace Nethermind.Runner.Runners
             _messageSerializationService.Register(new BlockHeadersMessageSerializer());
             _messageSerializationService.Register(new BlockBodiesMessageSerializer());
             _messageSerializationService.Register(new NewBlockMessageSerializer());
-
-            _localPeer = new RlpxPeer(new NodeId(_privateKey.PublicKey), _initConfig.P2PPort,
-                encryptionHandshakeServiceA, _messageSerializationService, _syncManager, _logManager,
-                _nodeStatsProvider);
-        }
-
-        private async Task StartNet()
-        {
-            if (_logger.IsDebug) _logger.Debug("Initializing Net");
-            await _localPeer.Init();
-
-            var localIp = _networkHelper.GetLocalIp();
-            if (_logger.IsInfo) _logger.Info($"Node is up and listening on {localIp}:{_initConfig.P2PPort}");
-            if (_logger.IsInfo) _logger.Info($"enode://{_privateKey.PublicKey}@{localIp}:{_initConfig.P2PPort}");
-        }
-
-        private void InitPeerManager()
-        {
+            
             var peerStorage = new NetworkStorage(PeersDbPath, _configProvider, _logManager, _perfService);
-            _peerManager = new PeerManager(_localPeer, _discoveryManager, _syncManager, _nodeStatsProvider, peerStorage,
+            _peerManager = new PeerManager(new NodeId(_privateKey.PublicKey), _initConfig.P2PPort,
+                encryptionHandshakeServiceA, _messageSerializationService, _discoveryManager, _syncManager, _nodeStatsProvider, peerStorage,
                 _nodeFactory, _configProvider, _perfService, _logManager);
-            _peerManager.Initialize(_initConfig.DiscoveryEnabled);
+            await _peerManager.Init(_initConfig.DiscoveryEnabled);
         }
 
-        private async Task StartPeerManager()
+        private async Task StartPeer()
         {
             if (_logger.IsDebug) _logger.Debug("Initializing peer manager");
             await _peerManager.Start();

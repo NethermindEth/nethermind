@@ -9,8 +9,11 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
+using Nethermind.Core.Test;
+using Nethermind.Core.Test.Builders;
 using Nethermind.KeyStore;
 using Nethermind.Network.Config;
+using Nethermind.Network.Crypto;
 using Nethermind.Network.Discovery;
 using Nethermind.Network.Discovery.Lifecycle;
 using Nethermind.Network.Discovery.Messages;
@@ -18,7 +21,9 @@ using Nethermind.Network.Discovery.RoutingTable;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.Rlpx;
+using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Network.Stats;
+using Nethermind.Network.Test.Builders;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -31,12 +36,19 @@ namespace Nethermind.Network.Test
         private INodeFactory _nodeFactory;
         private IConfigProvider _configurationProvider;
         private IDiscoveryManager _discoveryManager;
-        private TestRlpxPeer _localPeer;
         private ISynchronizationManager _synchronizationManager;
         private ILogManager _logManager;
 
+        private const int PortA = 30301;
+        private const int PortB = 30302;
+        private const int PortC = 30303;
+
+        private static PrivateKey _keyA;
+        private static PrivateKey _keyB;
+        private static PrivateKey _keyC;
+        
         [SetUp]
-        public void Initialize()
+        public async Task Initialize()
         {
             _logManager = new OneLoggerLogManager(new SimpleConsoleLogger());
             _configurationProvider = new JsonConfigProvider();
@@ -45,6 +57,26 @@ namespace Nethermind.Network.Test
             {
                 Directory.CreateDirectory(_configurationProvider.GetConfig<INetworkConfig>().DbBasePath);
             }
+            
+            /* tools */
+            var cryptoRandom = new CryptoRandom();
+            
+            /* rlpx + p2p + eth */
+            _keyA = TestObject.PrivateKeyA;
+            _keyB = TestObject.PrivateKeyB;
+            _keyC = TestObject.PrivateKeyC;
+
+            var signer = new Signer();
+            var eciesCipher = new EciesCipher(cryptoRandom);
+            
+            var serializationService = Build.A.SerializationService().WithEncryptionHandshake().WithP2P().WithEth().TestObject;
+
+            var encryptionHandshakeServiceA = new EncryptionHandshakeService(serializationService, eciesCipher, cryptoRandom, signer, _keyA, _logManager);
+
+            var syncManager = Substitute.For<ISynchronizationManager>();
+            Block genesisBlock = Build.A.Block.Genesis.TestObject;
+            syncManager.Head.Returns(genesisBlock.Header);
+            syncManager.Genesis.Returns(genesisBlock.Header);
             
             _nodeFactory = new NodeFactory();
             _localPeer = new TestRlpxPeer();
@@ -58,8 +90,8 @@ namespace Nethermind.Network.Test
             _discoveryManager = new DiscoveryManager(new NodeLifecycleManagerFactory(_nodeFactory, nodeTable, new DiscoveryMessageFactory(_configurationProvider), Substitute.For<IEvictionManager>(), new NodeStatsProvider(_configurationProvider, _logManager, _nodeFactory), _configurationProvider, _logManager), _nodeFactory, nodeTable, new NetworkStorage("test", _configurationProvider, _logManager, new PerfService(_logManager)), _configurationProvider, _logManager);
             _discoveryManager.MessageSender = Substitute.For<IMessageSender>();
 
-            _peerManager = new PeerManager(_localPeer, _discoveryManager, _synchronizationManager, new NodeStatsProvider(_configurationProvider, _logManager, _nodeFactory), new NetworkStorage("test", _configurationProvider, _logManager, new PerfService(_logManager)), _nodeFactory, _configurationProvider, new PerfService(_logManager), _logManager);
-            _peerManager.Initialize(true);
+            _peerManager = new PeerManager(new NodeId(_keyA.PublicKey), PortA, encryptionHandshakeServiceA, serializationService, _discoveryManager, _synchronizationManager, new NodeStatsProvider(_configurationProvider, _logManager, _nodeFactory), new NetworkStorage("test", _configurationProvider, _logManager, new PerfService(_logManager)), _nodeFactory, _configurationProvider, new PerfService(_logManager), _logManager);
+            await _peerManager.Init(true);
         }
 
         [Test]
@@ -331,37 +363,37 @@ namespace Nethermind.Network.Test
         public event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized;
     }
 
-    public class TestRlpxPeer : IRlpxPeer
-    {
-        public int ConnectionAsyncCallsCounter = 0;
-
-        public Task Shutdown()
-        {
-            return Task.CompletedTask;
-        }
-
-        public void TriggerConnectionInitialized(IP2PSession session, ClientConnectionType clientConnectionType = ClientConnectionType.Out)
-        {
-            OutConnectionInitialized?.Invoke(this, new ConnectionInitializedEventArgs(session, clientConnectionType));
-        }
-
-        public void TriggerHandshakeInitialized(IP2PSession session, ClientConnectionType clientConnectionType = ClientConnectionType.Out)
-        {
-            HandshakeInitialized?.Invoke(this, new ConnectionInitializedEventArgs(session, clientConnectionType));
-        }
-
-        public Task Init()
-        {
-            return Task.CompletedTask;
-        }
-
-        public Task ConnectAsync(NodeId remoteNodeId, string remoteHost, int remotePort, INodeStats nodeStats)
-        {
-            ConnectionAsyncCallsCounter++;
-            return Task.CompletedTask;
-        }
-
-        public event EventHandler<ConnectionInitializedEventArgs> OutConnectionInitialized;
-        public event EventHandler<ConnectionInitializedEventArgs> HandshakeInitialized;
-    }
+//    public class TestRlpxPeer : IRlpxPeer
+//    {
+//        public int ConnectionAsyncCallsCounter = 0;
+//
+//        public Task Shutdown()
+//        {
+//            return Task.CompletedTask;
+//        }
+//
+//        public void TriggerConnectionInitialized(IP2PSession session, ClientConnectionType clientConnectionType = ClientConnectionType.Out)
+//        {
+//            OutConnectionInitialized?.Invoke(this, new ConnectionInitializedEventArgs(session, clientConnectionType));
+//        }
+//
+//        public void TriggerHandshakeInitialized(IP2PSession session, ClientConnectionType clientConnectionType = ClientConnectionType.Out)
+//        {
+//            HandshakeInitialized?.Invoke(this, new ConnectionInitializedEventArgs(session, clientConnectionType));
+//        }
+//
+//        public Task Init()
+//        {
+//            return Task.CompletedTask;
+//        }
+//
+//        public Task ConnectAsync(NodeId remoteNodeId, string remoteHost, int remotePort, INodeStats nodeStats)
+//        {
+//            ConnectionAsyncCallsCounter++;
+//            return Task.CompletedTask;
+//        }
+//
+//        public event EventHandler<ConnectionInitializedEventArgs> OutConnectionInitialized;
+//        public event EventHandler<ConnectionInitializedEventArgs> HandshakeInitialized;
+//    }
 }
