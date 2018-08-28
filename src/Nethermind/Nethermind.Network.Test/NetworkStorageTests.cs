@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.IO;
 using System.Linq;
 using Nethermind.Config;
@@ -34,16 +35,27 @@ namespace Nethermind.Network.Test
     public class NetworkStorageTests
     {
         [SetUp]
-        public void Initialize()
+        public void SetUp()
         {
             NullLogManager logManager = NullLogManager.Instance;
             _configurationProvider = new JsonConfigProvider();
-            ((NetworkConfig) _configurationProvider.GetConfig<INetworkConfig>()).DbBasePath = Path.Combine(Path.GetTempPath(), "PeerStorageTests");
+            _tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
+            ((NetworkConfig) _configurationProvider.GetConfig<INetworkConfig>()).DbBasePath = _tempDir;
 
             _nodeFactory = new NodeFactory();
             _storage = new NetworkStorage("test", _configurationProvider, logManager, new PerfService(logManager));
         }
+        
+        [TearDown]
+        public void TearDown()
+        {
+            if (Directory.Exists(_tempDir))
+            {
+                Directory.Delete(_tempDir, true);
+            }
+        }
 
+        private string _tempDir;
         private INetworkStorage _storage;
         private INodeFactory _nodeFactory;
         private IConfigProvider _configurationProvider;

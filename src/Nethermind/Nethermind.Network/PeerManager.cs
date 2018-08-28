@@ -99,31 +99,22 @@ namespace Nethermind.Network
             _localPeer.OutConnectionInitialized += OnRemoteOutConnectionInitialized;
             _localPeer.HandshakeInitialized += async (s, e) => await OnHandshakeInitialized(s, e);
             _synchronizationManager.SyncEvent += async (s, e) => await OnSyncEvent(s, e);
-            //_synchronizationManager.SyncStarted += OnSyncStarted;
 
-            //Step 1 - load configured trusted peers
-            AddTrustedPeers();
-
-            //Step 2 - read peers from db
-            AddPersistedPeers();
+            LoadConfiguredtrustedPeers();
+            LoadPeersFromDb();
         }
 
         public async Task Start()
         {
-            //Step 3 - start active peers timer - timer is needed to support reconnecting, event based connection is also supported
+            //timer is needed to support reconnecting, event based connection is also supported
             if (_networkConfig.IsActivePeerTimerEnabled)
             {
                 StartActivePeersTimer();
             }
 
-            //Step 4 - start peer persistance timer
             StartPeerPersistanceTimer();
-
-            //Step 5 - start ping timer
             StartPingTimer();
-
-            //Step 6 - Running initial peer update
-            await RunPeerUpdate();
+            await RunPeerUpdate(); // initial peer update
 
             _isInitialized = true;
         }
@@ -366,7 +357,7 @@ namespace Nethermind.Network
             }
         }
 
-        private void AddPersistedPeers()
+        private void LoadPeersFromDb()
         {
             if (!_networkConfig.IsPeersPersistenceOn)
             {
@@ -404,7 +395,7 @@ namespace Nethermind.Network
             }
         }
 
-        private void AddTrustedPeers()
+        private void LoadConfiguredtrustedPeers()
         {
             var trustedPeers = _networkConfig.TrustedPeers;
             if (trustedPeers == null || !trustedPeers.Any())
