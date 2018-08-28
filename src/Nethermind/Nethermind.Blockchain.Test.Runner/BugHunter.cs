@@ -57,7 +57,7 @@ namespace Nethermind.Blockchain.Test.Runner
                     Console.ForegroundColor = ConsoleColor.Red;
                     Console.WriteLine("FAIL");
                     Console.ForegroundColor = defaultColor;
-                    NLogManager manager = new NLogManager(Path.Combine(directoryName, string.Concat(subset, "_", test.Name, ".txt")));
+                    NLogManager manager = new NLogManager(string.Concat(subset, "_", test.Name, ".txt"), directoryName);
                     try
                     {
                         if (!Directory.Exists(directoryName))

@@ -24,5 +24,10 @@ namespace Nethermind.JsonRpc.DataModel
         public string Method { get; set; }
         public string[] Params { get; set; }
         public string Id { get; set; }
+
+        public override string ToString()
+        {
+            return $"Id: {Id},  JSON RPC: {Jsonrpc}, Method: {Method}, Params: {string.Concat(Params, ", ")}";
+        }
     }
 }

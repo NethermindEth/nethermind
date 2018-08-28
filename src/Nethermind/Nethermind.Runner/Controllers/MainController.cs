@@ -16,12 +16,16 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
+using Nethermind.Core;
 using Nethermind.Core.Logging;
 using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.DataModel;
 
 namespace Nethermind.Runner.Controllers
 {
@@ -31,11 +35,13 @@ namespace Nethermind.Runner.Controllers
     {
         private readonly ILogger _logger;
         private readonly IJsonRpcService _jsonRpcService;
+        private readonly IJsonSerializer _jsonSerializer;
 
-        public MainController(ILogManager logManager, IJsonRpcService jsonRpcService)
+        public MainController(ILogManager logManager, IJsonRpcService jsonRpcService, IJsonSerializer jsonSerializer)
         {
-            _logger = logManager.GetClassLogger();
-            _jsonRpcService = jsonRpcService;
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _jsonRpcService = jsonRpcService ?? throw new ArgumentNullException(nameof(jsonRpcService));
+            _jsonSerializer = jsonSerializer ?? throw new ArgumentNullException(nameof(jsonSerializer));
         }
 
         [HttpGet]
@@ -49,11 +55,42 @@ namespace Nethermind.Runner.Controllers
         {
             using (var reader = new StreamReader(Request.Body, Encoding.UTF8))
             {
-                var value = await reader.ReadToEndAsync();
-                _logger.Info($"Received request: {value}");
-                var response = _jsonRpcService.SendRequest(value);
-                _logger.Info($"Returning response: {response}");
-                return new JsonResult(response);
+                var body = await reader.ReadToEndAsync();
+                _logger.Info($"Received request: {body}");
+
+
+                (JsonRpcRequest Model, IEnumerable<JsonRpcRequest> Collection) rpcRequest;
+                try
+                {
+                    rpcRequest = _jsonSerializer.DeserializeObjectOrArray<JsonRpcRequest>(body);
+                }
+                catch (Exception ex)
+                {
+                    _logger.Error($"Error during parsing/validation, request: {body}", ex);
+                    var response = _jsonRpcService.GetErrorResponse(ErrorType.ParseError, "Incorrect message");
+                    return new JsonResult(response);
+                }
+
+                if (rpcRequest.Model != null)
+                {
+                    return new JsonResult(_jsonRpcService.SendRequest(rpcRequest.Model));
+                }
+
+                if (rpcRequest.Collection != null)
+                {
+                    List<JsonRpcResponse> responses = new List<JsonRpcResponse>();
+                    foreach (JsonRpcRequest jsonRpcRequest in rpcRequest.Collection)
+                    {
+                        responses.Add(_jsonRpcService.SendRequest(jsonRpcRequest));
+                    }
+
+                    return new JsonResult(responses);
+                }
+
+                {
+                    var response = _jsonRpcService.GetErrorResponse(ErrorType.InvalidRequest, "Incorrect request");
+                    return new JsonResult(response);    
+                }
             }
         }
     }

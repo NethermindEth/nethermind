@@ -36,53 +36,16 @@ namespace Nethermind.JsonRpc
     {
         private readonly ILogger _logger;
         private readonly IJsonRpcConfig _jsonRpcConfig;
-        private readonly IJsonSerializer _jsonSerializer;
         private readonly IModuleProvider _moduleProvider;
 
-        public JsonRpcService(IJsonSerializer jsonSerializer, IModuleProvider moduleProvider, IConfigProvider configurationProvider, ILogManager logManager)
+        public JsonRpcService(IModuleProvider moduleProvider, IConfigProvider configurationProvider, ILogManager logManager)
         {
             _logger = logManager.GetClassLogger();
             _jsonRpcConfig = configurationProvider.GetConfig<IJsonRpcConfig>();
-            _jsonSerializer = jsonSerializer;
             _moduleProvider = moduleProvider;
         }
 
-        public JsonRpcResponse SendRequest(string request)
-        {
-            try
-            {
-                var rpcRequest = _jsonSerializer.DeserializeObjectOrArray<JsonRpcRequest>(request);
-                if (rpcRequest.Model == null && rpcRequest.Collection == null)
-                {
-                    var reponse = GetErrorResponse(ErrorType.InvalidRequest, "Invalid request", null, null);
-                    return reponse;
-//                    return _jsonSerializer.Serialize(reponse);
-                }
-
-                if (rpcRequest.Model != null)
-                {
-                    var response = SendRequest(rpcRequest.Model, request);
-                    var serializedReponse = _jsonSerializer.Serialize(response);
-
-                    if (_logger.IsTrace) _logger.Trace($"Successfull request processing, method: {rpcRequest.Model.Method ?? "none"}, id: {rpcRequest.Model.Id ?? "none"}, result: {serializedReponse}");
-                    return response;
-                }
-
-                var responses = rpcRequest.Collection.Select(x => SendRequest(x, request)).ToArray();
-//                return _jsonSerializer.Serialize(responses);
-                throw new NotImplementedException();
-
-            }
-            catch (Exception ex)
-            {
-                _logger.Error($"Error during parsing/validation, request: {request}", ex);
-                var response = GetErrorResponse(ErrorType.ParseError, "Incorrect message", null, null);
-//                return _jsonSerializer.Serialize(response);
-                return response;
-            }
-        }
-
-        private JsonRpcResponse SendRequest(JsonRpcRequest rpcRequest, string rawRequest)
+        public JsonRpcResponse SendRequest(JsonRpcRequest rpcRequest)
         {
             try
             {
@@ -97,13 +60,13 @@ namespace Nethermind.JsonRpc
                 }
                 catch (Exception ex)
                 {
-                    _logger.Error($"Error during method execution, request: {rawRequest}", ex);
+                    _logger.Error($"Error during method execution, request: {rpcRequest}", ex);
                     return GetErrorResponse(ErrorType.InternalError, "Internal error", rpcRequest?.Id, rpcRequest?.Method);
                 }
             }
             catch (Exception ex)
             {
-                _logger.Error($"Error during parsing/validation, request: {rawRequest}", ex);
+                _logger.Error($"Error during validation, request: {rpcRequest}", ex);
                 return GetErrorResponse(ErrorType.ParseError, "Incorrect message", null, null);
             }         
         }
@@ -158,7 +121,7 @@ namespace Nethermind.JsonRpc
             if (!(data is IEnumerable collection) || data is string)
             {
                 var json = GetDataObject(data);
-                return GetSuccessResponse(json, request.Id, methodName);        
+                return GetSuccessResponse(json, request.Id);        
             }
             var items = new List<object>();
             foreach (var item in collection)
@@ -166,7 +129,7 @@ namespace Nethermind.JsonRpc
                 var jsonItem = GetDataObject(item);
                 items.Add(jsonItem);
             }
-            return GetSuccessResponse(items, request.Id, methodName);
+            return GetSuccessResponse(items, request.Id);
         }
 
         private object GetDataObject(object data)
@@ -205,18 +168,23 @@ namespace Nethermind.JsonRpc
             }
         }
 
-        private JsonRpcResponse GetSuccessResponse(object result, string id, string methodName)
+        private JsonRpcResponse GetSuccessResponse(object result, string id)
         {
             var response = new JsonRpcResponse
             {
                 Jsonrpc = _jsonRpcConfig.JsonRpcVersion,
                 Id = id,
-                Result = result
+                Result = result,
             };
 
             return response;
         }
 
+        public JsonRpcResponse GetErrorResponse(ErrorType errorType, string message)
+        {
+            return GetErrorResponse(errorType, message, null, null);
+        }
+        
         private JsonRpcResponse GetErrorResponse(ErrorType errorType, string message, string id, string methodName)
         {
             _logger.Error($"Error during processing the request, method: {methodName ?? "none"}, id: {id ?? "none"}, errorType: {errorType}, message: {message}");

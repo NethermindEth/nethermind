@@ -18,6 +18,7 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using System.Net.Http;
 using System.Numerics;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -38,17 +39,14 @@ namespace Nethermind.JsonRpc.Test
     {
         private IJsonRpcService _jsonRpcService;
         private IConfigProvider _configurationProvider;
-        private IJsonSerializer _jsonSerializer;
         private ILogManager _logManager;
 
         [SetUp]
         public void Initialize()
         {
             var jConfig = typeof(JsonRpcConfig).Assembly;
-            
             _configurationProvider = new JsonConfigProvider();         
             _logManager = NullLogManager.Instance;
-            _jsonSerializer = new JsonSerializer(_logManager);
         }
 
         [Test]
@@ -63,12 +61,10 @@ namespace Nethermind.JsonRpc.Test
 
             var moduleProvider = new ModuleProvider(_configurationProvider, netModule, ethModule, web3Module, shhModule);
 
-            _jsonSerializer = new JsonSerializer(_logManager);
-            _jsonRpcService = new JsonRpcService(_jsonSerializer, moduleProvider, _configurationProvider, _logManager);
+            _jsonRpcService = new JsonRpcService(moduleProvider, _configurationProvider, _logManager);
 
             var requestJson = GetJsonRequest("net_peerCount", null); 
-            var rawResponse = _jsonRpcService.SendRequest(requestJson);
-            var response = _jsonSerializer.Deserialize<JsonRpcResponse>(rawResponse);
+            var response = _jsonRpcService.SendRequest(requestJson);
             var quantity = new Quantity();
             quantity.FromJson(response.Result.ToString());
             Assert.AreEqual(quantity.GetValue(), new BigInteger(2));
@@ -80,18 +76,16 @@ namespace Nethermind.JsonRpc.Test
             var netModule = Substitute.For<INetModule>();
             var ethModule = Substitute.For<IEthModule>();
             var web3Module = Substitute.For<IWeb3Module>();
-            web3Module.web3_sha3(Arg.Any<Data>()).ReturnsForAnyArgs(x => new ResultWrapper<Data> { Result = new Result { ResultType = ResultType.Success }, Data = new Data("test data") });
+            web3Module.web3_sha3(Arg.Any<Data>()).ReturnsForAnyArgs(x => new ResultWrapper<Data> { Result = new Result { ResultType = ResultType.Success }, Data = new Data("abcdef") });
             var shhModule = Substitute.For<IShhModule>();
 
             var moduleProvider = new ModuleProvider(_configurationProvider, netModule, ethModule, web3Module, shhModule);
 
-            _jsonSerializer = new JsonSerializer(_logManager);
-            _jsonRpcService = new JsonRpcService(_jsonSerializer, moduleProvider, _configurationProvider, _logManager);
+            _jsonRpcService = new JsonRpcService(moduleProvider, _configurationProvider, _logManager);
 
             var requestJson = GetJsonRequest("web3_sha3", new[] { "0x68656c6c6f20776f726c64" });
-            var rawResponse = _jsonRpcService.SendRequest(requestJson);
-            var response = _jsonSerializer.Deserialize<JsonRpcResponse>(rawResponse);
-            Assert.AreEqual("0xtest data", response.Result);
+            var response = _jsonRpcService.SendRequest(requestJson);
+            Assert.AreEqual("0xabcdef", response.Result);
         }
 
         [Test]
@@ -105,12 +99,10 @@ namespace Nethermind.JsonRpc.Test
 
             var moduleProvider = new ModuleProvider(_configurationProvider, netModule, ethModule, web3Module, shhModule);
 
-            _jsonSerializer = new JsonSerializer(_logManager);
-            _jsonRpcService = new JsonRpcService(_jsonSerializer, moduleProvider, _configurationProvider, _logManager);
+            _jsonRpcService = new JsonRpcService(moduleProvider, _configurationProvider, _logManager);
 
-            var requestJson = GetJsonRequest("eth_getBlockByNumber", new[] {"0x1b4", "true"});
-            var rawResponse = _jsonRpcService.SendRequest(requestJson);
-            var response = _jsonSerializer.Deserialize<JsonRpcResponse>(rawResponse);
+            var request = GetJsonRequest("eth_getBlockByNumber", new[] {"0x1b4", "true"});
+            var response = _jsonRpcService.SendRequest(request);
 
             Assert.IsTrue(response.Result.ToString().Contains("0x02"));
         }
@@ -121,20 +113,20 @@ namespace Nethermind.JsonRpc.Test
             var netModule = Substitute.For<INetModule>();
             var ethModule = Substitute.For<IEthModule>();
             var web3Module = Substitute.For<IWeb3Module>();
-            ethModule.eth_getWork().ReturnsForAnyArgs(x => new ResultWrapper<IEnumerable<Data>> { Result = new Result { ResultType = ResultType.Success }, Data = new [] { new Data("t1"), new Data("t2")   } });
+            ethModule.eth_getWork().ReturnsForAnyArgs(x => new ResultWrapper<IEnumerable<Data>> { Result = new Result { ResultType = ResultType.Success }, Data = new [] { new Data("aa"), new Data("01")   } });
             var shhModule = Substitute.For<IShhModule>();
 
             var moduleProvider = new ModuleProvider(_configurationProvider, netModule, ethModule, web3Module, shhModule);
 
-            _jsonSerializer = new JsonSerializer(_logManager);
-            _jsonRpcService = new JsonRpcService(_jsonSerializer, moduleProvider, _configurationProvider, _logManager);
+            _jsonRpcService = new JsonRpcService(moduleProvider, _configurationProvider, _logManager);
 
-            var requestJson = GetJsonRequest("eth_getWork", null);
-            var rawResponse = _jsonRpcService.SendRequest(requestJson);
-            var response = _jsonSerializer.Deserialize<JsonRpcResponse>(rawResponse);
+            var request = GetJsonRequest("eth_getWork", null);
+            var response = _jsonRpcService.SendRequest(request);
 
-            Assert.IsTrue(response.Result.ToString().Contains("0xt1"));
-            Assert.IsTrue(response.Result.ToString().Contains("0xt2"));
+            
+            
+            Assert.Contains("0xaa", (List<object>)response.Result);
+            Assert.Contains("0x01", (List<object>)response.Result);
         }
 
         [Test]
@@ -148,14 +140,10 @@ namespace Nethermind.JsonRpc.Test
 
             var moduleProvider = new ModuleProvider(_configurationProvider, netModule, ethModule, web3Module, shhModule);
 
-            _jsonSerializer = new JsonSerializer(_logManager);
-            _jsonRpcService = new JsonRpcService(_jsonSerializer, moduleProvider, _configurationProvider, _logManager);
+            _jsonRpcService = new JsonRpcService(moduleProvider, _configurationProvider, _logManager);
 
-            var requestJson = GetJsonRequest("net_version", null);
-            var rawResponse = _jsonRpcService.SendRequest(requestJson);
-
-            var request = _jsonSerializer.Deserialize<JsonRpcRequest>(requestJson);
-            var response = _jsonSerializer.Deserialize<JsonRpcResponse>(rawResponse);
+            var request = GetJsonRequest("net_version", null);
+            var response = _jsonRpcService.SendRequest(request);
 
             Assert.AreEqual(response.Id, request.Id);
             Assert.AreEqual(response.Result, "1");
@@ -173,46 +161,15 @@ namespace Nethermind.JsonRpc.Test
 
             var moduleProvider = new ModuleProvider(_configurationProvider, netModule, ethModule, web3Module, shhModule);
 
-            _jsonSerializer = new JsonSerializer(_logManager);
-            _jsonRpcService = new JsonRpcService(_jsonSerializer, moduleProvider, _configurationProvider, _logManager);
+            _jsonRpcService = new JsonRpcService(moduleProvider, _configurationProvider, _logManager);
 
-            var requestJson = GetJsonRequest("incorrect_method", null);
-            var rawResponse = _jsonRpcService.SendRequest(requestJson);
-
-            var request = _jsonSerializer.Deserialize<JsonRpcRequest>(requestJson);
-            var response = _jsonSerializer.Deserialize<JsonRpcResponse>(rawResponse);
+            var request = GetJsonRequest("incorrect_method", null);
+            var response = _jsonRpcService.SendRequest(request);
 
             Assert.AreEqual(response.Id, request.Id);
             Assert.AreEqual(response.Error.Code, _configurationProvider.GetConfig<IJsonRpcConfig>().ErrorCodes[ErrorType.MethodNotFound]);
             Assert.IsNull(response.Result);
             Assert.AreEqual(response.Jsonrpc, _configurationProvider.GetConfig<IJsonRpcConfig>().JsonRpcVersion);
-        }
-
-        [Test]
-        public void RequestCollectionTest()
-        {
-            var netModule = Substitute.For<INetModule>();
-            var ethModule = Substitute.For<IEthModule>();
-            var web3Module = Substitute.For<IWeb3Module>();
-            netModule.net_version().ReturnsForAnyArgs(x => new ResultWrapper<string> { Result = new Result { ResultType = ResultType.Success }, Data = "1" });
-            ethModule.eth_protocolVersion().ReturnsForAnyArgs(x => new ResultWrapper<string> { Result = new Result { ResultType = ResultType.Success }, Data = "1" });
-            var shhModule = Substitute.For<IShhModule>();
-
-            var moduleProvider = new ModuleProvider(_configurationProvider, netModule, ethModule, web3Module, shhModule);
-
-            _jsonSerializer = new JsonSerializer(_logManager);
-            _jsonRpcService = new JsonRpcService(_jsonSerializer, moduleProvider, _configurationProvider, _logManager);
-
-            var netRequestJson = GetJsonRequest("net_version", null);
-            var ethRequestJson = GetJsonRequest("eth_protocolVersion", null);
-
-            var jsonRequest = $"[{netRequestJson},{ethRequestJson}]";
-            var rawResponse = _jsonRpcService.SendRequest(jsonRequest);         
-            var response = _jsonSerializer.DeserializeObjectOrArray<JsonRpcResponse>(rawResponse);
-
-            Assert.IsNotNull(response);
-            Assert.IsNotNull(response.Collection);
-            Assert.IsNull(response.Model);
         }
 
         //{
@@ -221,16 +178,17 @@ namespace Nethermind.JsonRpc.Test
         //    "params": [ "0x1b4", true ],
         //    "id": 67
         //}
-        public string GetJsonRequest(string method, IEnumerable<object> parameters)
+        public JsonRpcRequest GetJsonRequest(string method, IEnumerable<string> parameters)
         {
-            var request = new
+            var request = new JsonRpcRequest()
             {
-                jsonrpc = "2.0",
-                method,
-                Params = parameters ?? Enumerable.Empty<object>(),
-                id = 67
+                Jsonrpc = "2.0",
+                Method = method,
+                Params = parameters?.ToArray() ?? new string[0],
+                Id = "67"
             };
-            return _jsonSerializer.Serialize(request);
+            
+            return request;
         }
     }
 }
