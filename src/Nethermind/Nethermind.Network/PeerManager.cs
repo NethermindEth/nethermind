@@ -409,7 +409,7 @@ namespace Nethermind.Network
             }
         }
 
-        private void LoadConfiguredtrustedPeers()
+        private void LoadConfiguredTrustedPeers()
         {
             var trustedPeers = _networkConfig.TrustedPeers;
             if (trustedPeers == null || !trustedPeers.Any())
@@ -1223,7 +1223,7 @@ namespace Nethermind.Network
             HandshakeInitialized += async (s, e) => await OnHandshakeInitialized(s, e);
             _synchronizationManager.SyncEvent += async (s, e) => await OnSyncEvent(s, e);
 
-            LoadConfiguredtrustedPeers();
+            LoadConfiguredTrustedPeers();
             LoadPeersFromDb();
         }
 
