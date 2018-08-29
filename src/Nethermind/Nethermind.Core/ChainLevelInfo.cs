@@ -16,8 +16,11 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Diagnostics;
+
 namespace Nethermind.Core
 {
+    [DebuggerDisplay("Main: {HasBlockOnMainChain}, Blocks: {BlockInfos.Length}")]
     public class ChainLevelInfo // TODO: move to blockchain namespace
     {
         public ChainLevelInfo(bool hasBlockInMainChain,  BlockInfo[] blockInfos)

@@ -57,10 +57,12 @@ namespace Nethermind.Network.Discovery.Serializers
             var version = rlp.DecodeInt();
 
             rlp.ReadSequenceLength();
-            var source = GetAddress(rlp.DecodeByteArray(), rlp.DecodeInt());
+            byte[] sourceAddress = rlp.DecodeByteArray();
+            var source = GetAddress(sourceAddress, rlp.DecodeInt());
             rlp.DecodeInt(); // UDP port
             rlp.ReadSequenceLength();
-            var destination = GetAddress(rlp.DecodeByteArray(), rlp.DecodeInt());
+            byte[] destinationAddress = rlp.DecodeByteArray();
+            var destination = GetAddress(destinationAddress, rlp.DecodeInt());
             rlp.DecodeInt(); // UDP port
 
             var expireTime = rlp.DecodeLong();
