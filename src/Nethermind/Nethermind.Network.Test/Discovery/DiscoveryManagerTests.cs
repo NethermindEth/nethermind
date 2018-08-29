@@ -57,7 +57,8 @@ namespace Nethermind.Network.Test.Discovery
             var logManager = NullLogManager.Instance;
             //var config = new NetworkConfigurationProvider(new NetworkHelper(logger)) { PongTimeout = 100 };
             var config = new JsonConfigProvider();
-            config.GetConfig<INetworkConfig>().PongTimeout = 100;
+            var networkConfig =config.GetConfig<INetworkConfig>(); 
+            networkConfig.PongTimeout = 100;
 
             _messageSender = Substitute.For<IMessageSender>();
             _nodeFactory = new NodeFactory();
@@ -67,11 +68,11 @@ namespace Nethermind.Network.Test.Discovery
             _nodeTable.Initialize();
 
             var evictionManager = new EvictionManager(_nodeTable, logManager);
-            var lifecycleFactory = new NodeLifecycleManagerFactory(_nodeFactory, _nodeTable, new DiscoveryMessageFactory(config), evictionManager, new NodeStatsProvider(config, logManager, _nodeFactory), config, logManager);
+            var lifecycleFactory = new NodeLifecycleManagerFactory(_nodeFactory, _nodeTable, new DiscoveryMessageFactory(config), evictionManager, new NodeStatsProvider(networkConfig, _nodeFactory), config, logManager);
 
             _nodes = new[] { _nodeFactory.CreateNode("192.168.1.18", 1), _nodeFactory.CreateNode("192.168.1.19", 2) };
 
-            _discoveryManager = new DiscoveryManager(lifecycleFactory, _nodeFactory, _nodeTable, new NetworkStorage("test", config, logManager, new PerfService(logManager)), config, logManager);
+            _discoveryManager = new DiscoveryManager(lifecycleFactory, _nodeFactory, _nodeTable, new NetworkStorage("test", networkConfig, logManager, new PerfService(logManager)), config, logManager);
             _discoveryManager.MessageSender = _messageSender;
         }
 

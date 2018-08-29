@@ -25,11 +25,9 @@ namespace Nethermind.Network.Rlpx
 {
     public interface IRlpxPeer
     {
-        Task Shutdown();
         Task Init();
-        Task ConnectAsync(NodeId remoteNodeId, string remoteHost, int remotePort, INodeStats nodeStats);
-
-        event EventHandler<ConnectionInitializedEventArgs> OutConnectionInitialized;
-        event EventHandler<ConnectionInitializedEventArgs> HandshakeInitialized;
+        Task ConnectAsync(NodeId remoteId, string host, int port, INodeStats nodeStats);
+        Task Shutdown();
+        event EventHandler<SessionEventArgs> SessionCreated;
     }
 }

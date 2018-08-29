@@ -18,7 +18,7 @@
 
 namespace Nethermind.Network.Rlpx
 {
-    public enum ClientConnectionType
+    public enum ConnectionDirection
     {
         In,
         Out

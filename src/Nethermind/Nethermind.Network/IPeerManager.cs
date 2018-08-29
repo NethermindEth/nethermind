@@ -20,11 +20,10 @@ using System.Threading.Tasks;
 
 namespace Nethermind.Network
 {
-    public interface IPeerManager : IPeerStatusProvider
+    public interface IPeerManager
     {
-        void Initialize(bool isDiscoveryEnabled);
+        void Init(bool isDiscoveryEnabled);
         Task Start();
         Task StopAsync();
-        Task RunPeerUpdate();
     }
 }

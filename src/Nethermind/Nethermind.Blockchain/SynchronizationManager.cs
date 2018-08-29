@@ -548,7 +548,7 @@ namespace Nethermind.Blockchain
                     if (parent == null)
                     {
                         ancestorLookupLevel += BatchSize;
-                        peerInfo.NumberReceived -= BatchSize;
+                        peerInfo.NumberReceived = peerInfo.NumberReceived >= BatchSize ? peerInfo.NumberReceived - BatchSize : 0;
                         continue;
                     }
                 }
@@ -644,6 +644,7 @@ namespace Nethermind.Blockchain
                         
                         peerInfo.NumberAvailable = getNumberTask.Result;
                         peerInfo.NumberReceived = _blockTree.BestSuggested.Number;
+                        peerInfo.IsInitialized = true;
                     }
                 }, token);
         }
@@ -655,7 +656,7 @@ namespace Nethermind.Blockchain
                 Peer = peer;
             }
 
-            public bool IsInitialized { get; }
+            public bool IsInitialized { get; set; }
             public ISynchronizationPeer Peer { get; }
             public UInt256 NumberAvailable { get; set; }
             public UInt256 NumberReceived { get; set; }

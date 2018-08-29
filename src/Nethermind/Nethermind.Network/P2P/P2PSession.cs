@@ -50,33 +50,36 @@ namespace Nethermind.Network.P2P
         private bool _wasDisconnected;
         private INodeStats _nodeStats;
 
-        public P2PSession(
-            NodeId localNodeId,
+        public P2PSession(NodeId localNodeId,
+            NodeId remoteId,
             int localPort,
+            ConnectionDirection connectionDirection,
             IMessageSerializationService serializer,
             ISynchronizationManager syncManager,
-            ILogManager logManager,
             INodeStatsProvider nodeStatsProvider,
-            INodeStats nodeStats)
+            INodeStats nodeStats,
+            ILogManager logManager)
         {
             _serializer = serializer ?? throw new ArgumentNullException(nameof(serializer));
             _syncManager = syncManager ?? throw new ArgumentNullException(nameof(syncManager));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _logger = logManager.GetClassLogger();
 
-            NodeStats = nodeStats;
             _nodeStatsProvider = nodeStatsProvider;
+            NodeStats = nodeStats;
             LocalNodeId = localNodeId;
+            RemoteNodeId = remoteId;
             LocalPort = localPort;
             SessionId = Guid.NewGuid().ToString();
+            ConnectionDirection = connectionDirection;
         }
 
         public NodeId LocalNodeId { get; }
         public int LocalPort { get; }
         public NodeId RemoteNodeId { get; set; }
-        public int? RemotePort { get; set; }
         public string RemoteHost { get; set; }
-        public ClientConnectionType ClientConnectionType { get; set; }
+        public int? RemotePort { get; set; }
+        public ConnectionDirection ConnectionDirection { get; set; }
         public string SessionId { get; }
 
         public INodeStats NodeStats
@@ -105,11 +108,6 @@ namespace Nethermind.Network.P2P
             if (_logger.IsTrace) _logger.Trace($"{RemoteNodeId} Enabling Snappy compression");
             _context.Channel.Pipeline.AddBefore($"{nameof(Multiplexor)}#0", null, new SnappyDecoder(_logger));
             _context.Channel.Pipeline.AddBefore($"{nameof(Multiplexor)}#0", null, new SnappyEncoder(_logger));
-        }
-
-        public void Enqueue(Packet message, bool priority = false)
-        {
-            _packetSender.Enqueue(message, priority);
         }
 
         public void DeliverMessage(Packet packet, bool priority = false)
@@ -146,6 +144,11 @@ namespace Nethermind.Network.P2P
             InitProtocol(Protocol.P2P, p2PVersion);
         }
 
+        public void Handshake()
+        {
+            HandshakeComplete?.Invoke(this, EventArgs.Empty);
+        }
+
         public async Task InitiateDisconnectAsync(DisconnectReason disconnectReason)
         {
             if (_wasDisconnected)
@@ -180,7 +183,7 @@ namespace Nethermind.Network.P2P
             _wasDisconnected = true;
             if (PeerDisconnected != null)
             {
-                PeerDisconnected.Invoke(this, new DisconnectEventArgs(disconnectReason, disconnectType, SessionId));
+                PeerDisconnected.Invoke(this, new DisconnectEventArgs(disconnectReason, disconnectType));
             }
             else if (_logger.IsWarn) _logger.Warn("No subscriptions for PeerDisconnected");
 
@@ -199,6 +202,7 @@ namespace Nethermind.Network.P2P
 
         public event EventHandler<DisconnectEventArgs> PeerDisconnected;
         public event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized;
+        public event EventHandler<EventArgs> HandshakeComplete;
 
         private (string, int) ResolveMessageCode(int adaptiveId)
         {

@@ -42,8 +42,6 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
         public void Setup()
         {
             _ip2PSession = Substitute.For<IP2PSession>();
-            _serializationService = Substitute.For<IMessageSerializationService>();
-            _nodeStatsProvider = Substitute.For<INodeStatsProvider>();
 
             _pipeline = Substitute.For<IChannelPipeline>();
 
@@ -70,8 +68,6 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
         private IChannelHandlerContext _channelHandlerContext;
         private IEncryptionHandshakeService _service;
         private IP2PSession _ip2PSession;
-        private INodeStatsProvider _nodeStatsProvider;
-        private IMessageSerializationService _serializationService;
         private ILogManager _logger;
         private NodeId _remotePublicKey;
 
@@ -79,7 +75,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
         [Test]
         public async Task Ignores_non_byte_buffer_input()
         {
-            NettyHandshakeHandler handler = new NettyHandshakeHandler(_service, _ip2PSession, EncryptionHandshakeRole.Recipient, _remotePublicKey, _logger);
+            NettyHandshakeHandler handler = new NettyHandshakeHandler(_service, _ip2PSession, HandshakeRole.Recipient, _remotePublicKey, _logger);
             handler.ChannelRead(_channelHandlerContext, new object());
 
             _service.Received(0).Ack(Arg.Any<EncryptionHandshake>(), Arg.Any<Packet>());
@@ -89,7 +85,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
         [Test]
         public void Initator_adds_frame_encryption_codecs_to_pipeline_on_receiving_ack()
         {
-            NettyHandshakeHandler handler = new NettyHandshakeHandler(_service, _ip2PSession, EncryptionHandshakeRole.Initiator, _remotePublicKey, _logger);
+            NettyHandshakeHandler handler = new NettyHandshakeHandler(_service, _ip2PSession, HandshakeRole.Initiator, _remotePublicKey, _logger);
             handler.ChannelRead(_channelHandlerContext, Unpooled.Buffer(0, 0));
 
             _pipeline.Received(1).AddLast(Arg.Any<NettyFrameEncoder>());
@@ -99,7 +95,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
         [Test]
         public void Initator_adds_framing_codecs_to_pipeline_on_receiving_ack()
         {
-            NettyHandshakeHandler handler = new NettyHandshakeHandler(_service, _ip2PSession, EncryptionHandshakeRole.Initiator, _remotePublicKey, _logger);
+            NettyHandshakeHandler handler = new NettyHandshakeHandler(_service, _ip2PSession, HandshakeRole.Initiator, _remotePublicKey, _logger);
             handler.ChannelRead(_channelHandlerContext, Unpooled.Buffer(0, 0));
 
             _pipeline.Received(1).AddLast(Arg.Any<NettyPacketSplitter>());
@@ -109,7 +105,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
         [Test]
         public void Initator_adds_p2p_handlers_to_pipeline_on_receiving_ack()
         {
-            NettyHandshakeHandler handler = new NettyHandshakeHandler(_service, _ip2PSession, EncryptionHandshakeRole.Initiator, _remotePublicKey, _logger);
+            NettyHandshakeHandler handler = new NettyHandshakeHandler(_service, _ip2PSession, HandshakeRole.Initiator, _remotePublicKey, _logger);
             handler.ChannelRead(_channelHandlerContext, Unpooled.Buffer(0, 0));
 
             _pipeline.Received(1).AddLast(Arg.Any<NettyP2PHandler>());
@@ -119,7 +115,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
         [Test]
         public void Initator_removes_itself_from_pipeline_on_receiving_ack()
         {
-            NettyHandshakeHandler handler = new NettyHandshakeHandler(_service, _ip2PSession, EncryptionHandshakeRole.Initiator, _remotePublicKey, _logger);
+            NettyHandshakeHandler handler = new NettyHandshakeHandler(_service, _ip2PSession, HandshakeRole.Initiator, _remotePublicKey, _logger);
             handler.ChannelRead(_channelHandlerContext, Unpooled.Buffer(0, 0));
 
             _pipeline.Received(1).Remove(handler);
@@ -128,7 +124,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
         [Test]
         public void Initator_removes_length_field_based_decoder_from_pipeline_on_receiving_ack()
         {
-            NettyHandshakeHandler handler = new NettyHandshakeHandler(_service, _ip2PSession, EncryptionHandshakeRole.Initiator, _remotePublicKey, _logger);
+            NettyHandshakeHandler handler = new NettyHandshakeHandler(_service, _ip2PSession, HandshakeRole.Initiator, _remotePublicKey, _logger);
             handler.ChannelRead(_channelHandlerContext, Unpooled.Buffer(0, 0));
 
             _pipeline.Received(1).Remove<LengthFieldBasedFrameDecoder>();
@@ -137,7 +133,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
         [Test]
         public async Task Initiator_sends_auth_on_channel_activation()
         {
-            NettyHandshakeHandler handler = new NettyHandshakeHandler(_service, _ip2PSession, EncryptionHandshakeRole.Initiator, _remotePublicKey, _logger);
+            NettyHandshakeHandler handler = new NettyHandshakeHandler(_service, _ip2PSession, HandshakeRole.Initiator, _remotePublicKey, _logger);
             handler.ChannelActive(_channelHandlerContext);
 
             _service.Received(1).Auth(_remotePublicKey, Arg.Any<EncryptionHandshake>());
@@ -147,7 +143,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
         [Test]
         public void Recipient_adds_frame_encryption_codecs_to_pipeline_on_sending_ack()
         {
-            NettyHandshakeHandler handler = new NettyHandshakeHandler(_service, _ip2PSession, EncryptionHandshakeRole.Recipient, _remotePublicKey, _logger);
+            NettyHandshakeHandler handler = new NettyHandshakeHandler(_service, _ip2PSession, HandshakeRole.Recipient, _remotePublicKey, _logger);
             handler.ChannelRead(_channelHandlerContext, Unpooled.Buffer(0, 0));
 
             _pipeline.Received(1).AddLast(Arg.Any<NettyFrameEncoder>());
@@ -157,7 +153,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
         [Test]
         public void Recipient_adds_framing_codecs_to_pipeline_on_sending_ack()
         {
-            NettyHandshakeHandler handler = new NettyHandshakeHandler(_service, _ip2PSession, EncryptionHandshakeRole.Recipient, _remotePublicKey, _logger);
+            NettyHandshakeHandler handler = new NettyHandshakeHandler(_service, _ip2PSession, HandshakeRole.Recipient, _remotePublicKey, _logger);
             handler.ChannelRead(_channelHandlerContext, Unpooled.Buffer(0, 0));
 
             _pipeline.Received(1).AddLast(Arg.Any<NettyPacketSplitter>());
@@ -167,7 +163,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
         [Test]
         public void Recipient_adds_p2p_handlers_to_pipeline_on_sending_ack()
         {
-            NettyHandshakeHandler handler = new NettyHandshakeHandler(_service, _ip2PSession, EncryptionHandshakeRole.Recipient, _remotePublicKey, _logger);
+            NettyHandshakeHandler handler = new NettyHandshakeHandler(_service, _ip2PSession, HandshakeRole.Recipient, _remotePublicKey, _logger);
             handler.ChannelRead(_channelHandlerContext, Unpooled.Buffer(0, 0));
 
             _pipeline.Received(1).AddLast(Arg.Any<NettyP2PHandler>());
@@ -177,7 +173,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
         [Test]
         public async Task Recipient_does_not_send_anything_on_channel_activation()
         {
-            NettyHandshakeHandler handler = new NettyHandshakeHandler(_service, _ip2PSession, EncryptionHandshakeRole.Recipient, _remotePublicKey, _logger);
+            NettyHandshakeHandler handler = new NettyHandshakeHandler(_service, _ip2PSession, HandshakeRole.Recipient, _remotePublicKey, _logger);
             handler.ChannelActive(_channelHandlerContext);
 
             _service.Received(0).Auth(Arg.Any<NodeId>(), Arg.Any<EncryptionHandshake>());
@@ -187,7 +183,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
         [Test]
         public void Recipient_removes_itself_from_pipeline_on_sending_ack()
         {
-            NettyHandshakeHandler handler = new NettyHandshakeHandler(_service, _ip2PSession, EncryptionHandshakeRole.Recipient, _remotePublicKey, _logger);
+            NettyHandshakeHandler handler = new NettyHandshakeHandler(_service, _ip2PSession, HandshakeRole.Recipient, _remotePublicKey, _logger);
             handler.ChannelRead(_channelHandlerContext, Unpooled.Buffer(0, 0));
 
             _pipeline.Received(1).Remove(handler);
@@ -196,7 +192,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
         [Test]
         public void Recipient_removes_length_field_based_decoder_from_pipeline_on_sending_ack()
         {
-            NettyHandshakeHandler handler = new NettyHandshakeHandler(_service, _ip2PSession, EncryptionHandshakeRole.Recipient, _remotePublicKey, _logger);
+            NettyHandshakeHandler handler = new NettyHandshakeHandler(_service, _ip2PSession, HandshakeRole.Recipient, _remotePublicKey, _logger);
             handler.ChannelRead(_channelHandlerContext, Unpooled.Buffer(0, 0));
 
             _pipeline.Received(1).Remove<LengthFieldBasedFrameDecoder>();
@@ -205,7 +201,7 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
         [Test]
         public async Task Recipient_sends_ack_on_receiving_auth()
         {
-            NettyHandshakeHandler handler = new NettyHandshakeHandler(_service, _ip2PSession, EncryptionHandshakeRole.Recipient, _remotePublicKey, _logger);
+            NettyHandshakeHandler handler = new NettyHandshakeHandler(_service, _ip2PSession, HandshakeRole.Recipient, _remotePublicKey, _logger);
             handler.ChannelRead(_channelHandlerContext, Unpooled.Buffer(0, 0));
 
             _service.Received(1).Ack(Arg.Any<EncryptionHandshake>(), Arg.Any<Packet>());

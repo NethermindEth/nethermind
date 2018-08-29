@@ -27,15 +27,16 @@ namespace Nethermind.Network.P2P
 {
     public interface IP2PSession
     {
-        NodeId RemoteNodeId { get; set; }
+        NodeId RemoteNodeId { get; }
         string RemoteHost { get; set; }
         int? RemotePort { get; set; }
-        ClientConnectionType ClientConnectionType { get; set; }
+        ConnectionDirection ConnectionDirection { get; set; }
         string SessionId { get; }
         INodeStats NodeStats { get; }
 
         void ReceiveMessage(Packet packet);
         void DeliverMessage(Packet packet, bool priority = false);
+        
         void Init(byte p2PVersion, IChannelHandlerContext context, IPacketSender packetSender);
 
         /// <summary>
@@ -48,7 +49,10 @@ namespace Nethermind.Network.P2P
         /// </summary>     
         Task DisconnectAsync(DisconnectReason disconnectReason, DisconnectType disconnectType);
 
+        void Handshake();
+
         event EventHandler<DisconnectEventArgs> PeerDisconnected;
         event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized;
+        event EventHandler<EventArgs> HandshakeComplete;
     }
 }

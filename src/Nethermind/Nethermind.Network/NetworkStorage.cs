@@ -38,10 +38,9 @@ namespace Nethermind.Network
         private long _removeCounter;
         private readonly string _dbDirectory;
 
-        public NetworkStorage(string dbDirectory, IConfigProvider configurationProvider, ILogManager logManager, IPerfService perfService)
+        public NetworkStorage(string dbDirectory, INetworkConfig networkConfig, ILogManager logManager, IPerfService perfService)
         {
             _logger = logManager?.GetClassLogger();
-            INetworkConfig networkConfig = configurationProvider.GetConfig<INetworkConfig>();
             _dbDirectory = dbDirectory;
             _db = new SimpleFilePublicKeyDb(Path.Combine(networkConfig.DbBasePath, _dbDirectory), logManager, perfService);
         }

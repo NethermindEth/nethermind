@@ -21,15 +21,11 @@ using System.Net;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
 using DotNetty.Codecs;
-using DotNetty.Common.Internal.Logging;
 using DotNetty.Handlers.Logging;
 using DotNetty.Transport.Bootstrapping;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
-using Microsoft.Extensions.Logging.Console;
 using Nethermind.Blockchain;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
 using Nethermind.Network.P2P;
@@ -38,71 +34,40 @@ using Nethermind.Network.Stats;
 
 namespace Nethermind.Network.Rlpx
 {
-    // TODO: integration tests for this one
     public class RlpxPeer : IRlpxPeer
     {
+        private IChannel _bootstrapChannel;
+        private IEventLoopGroup _bossGroup;
+        private IEventLoopGroup _workerGroup;
+
+        private bool _isInitialized;
+        internal readonly NodeId LocalNodeId;
         private readonly int _localPort;
         private readonly IEncryptionHandshakeService _encryptionHandshakeService;
+        private readonly INodeStatsProvider _nodeStatsProvider;
         private readonly IMessageSerializationService _serializationService;
         private readonly ISynchronizationManager _synchronizationManager;
         private readonly ILogManager _logManager;
         private readonly ILogger _logger;
-        private readonly INodeStatsProvider _nodeStatsProvider;
-        private IChannel _bootstrapChannel;
-        private IEventLoopGroup _bossGroup;
 
-        private bool _isInitialized;
-        private IEventLoopGroup _workerGroup;
-
-        public RlpxPeer(
-            NodeId localNodeId,
-            int localPort,
-            IEncryptionHandshakeService encryptionHandshakeService,
-            IMessageSerializationService serializationService,
-            ISynchronizationManager synchronizationManager,
-            ILogManager logManager, INodeStatsProvider nodeStatsProvider)
+        public RlpxPeer(NodeId localNodeId, int localPort, ISynchronizationManager synchronizationManager, IMessageSerializationService messageSerializationService, IEncryptionHandshakeService encryptionHandshakeService, INodeStatsProvider nodeStatsProvider, ILogManager logManager)
         {
-            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-            _nodeStatsProvider = nodeStatsProvider;
-            _logger = logManager.GetClassLogger();
-
-            _synchronizationManager = synchronizationManager ?? throw new ArgumentNullException(nameof(synchronizationManager));
             _encryptionHandshakeService = encryptionHandshakeService ?? throw new ArgumentNullException(nameof(encryptionHandshakeService));
-            _serializationService = serializationService ?? throw new ArgumentNullException(nameof(serializationService));
-
-            LocalNodeId = localNodeId ?? throw new ArgumentNullException(nameof(localNodeId));
+            _nodeStatsProvider = nodeStatsProvider ?? throw new ArgumentNullException(nameof(nodeStatsProvider));
+            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager.GetClassLogger();
+            _serializationService = messageSerializationService ?? throw new ArgumentNullException(nameof(messageSerializationService));
+            _synchronizationManager = synchronizationManager ?? throw new ArgumentNullException(nameof(synchronizationManager));
+            
+            LocalNodeId =  localNodeId ?? throw new ArgumentNullException(nameof(localNodeId));
             _localPort = localPort;
         }
-
-        public NodeId LocalNodeId { get; }
-
-        public async Task Shutdown()
-        {
-            InternalLoggerFactory.DefaultFactory.AddProvider(new ConsoleLoggerProvider((s, level) => true, false));
-
-            await _bootstrapChannel.CloseAsync().ContinueWith(t =>
-            {
-                if (t.IsFaulted)
-                {
-                    _logger.Error($"{nameof(Shutdown)} failed", t.Exception);
-                }
-            });
-
-            await Task.WhenAll(_bossGroup.ShutdownGracefullyAsync(), _workerGroup.ShutdownGracefullyAsync())
-                .ContinueWith(t =>
-                {
-                    if (t.IsFaulted)
-                    {
-                        _logger.Error($"Groups shutdown failed in {nameof(RlpxPeer)}", t.Exception);
-                    }
-                });
-        }
-
+        
         public async Task Init()
         {
             if (_isInitialized)
             {
-                throw new InvalidOperationException($"{nameof(RlpxPeer)} already initialized.");
+                throw new InvalidOperationException($"{nameof(PeerManager)} already initialized.");
             }
 
             _isInitialized = true;
@@ -119,7 +84,7 @@ namespace Nethermind.Network.Rlpx
                     .ChildOption(ChannelOption.SoBacklog, 100)
                     .Handler(new LoggingHandler("BOSS", DotNetty.Handlers.Logging.LogLevel.TRACE))
                     .ChildHandler(new ActionChannelInitializer<ISocketChannel>(ch =>
-                        InitializeChannel(ch, EncryptionHandshakeRole.Recipient, null,
+                        InitializeChannel(ch, ConnectionDirection.Out, null,
                             ((IPEndPoint) ch.RemoteAddress).Address.ToString(), ((IPEndPoint) ch.RemoteAddress).Port)));
 
                 _bootstrapChannel = await bootstrap.BindAsync(_localPort).ContinueWith(t =>
@@ -160,12 +125,10 @@ namespace Nethermind.Network.Rlpx
             clientBootstrap.Option(ChannelOption.ConnectTimeout, Timeouts.InitialConnection);
             clientBootstrap.RemoteAddress(host, port);
 
-            clientBootstrap.Handler(new ActionChannelInitializer<ISocketChannel>(ch =>
-                InitializeChannel(ch, EncryptionHandshakeRole.Initiator, remoteId, host, port, nodeStats)));
+            clientBootstrap.Handler(new ActionChannelInitializer<ISocketChannel>(ch => InitializeChannel(ch, ConnectionDirection.Out, remoteId, host, port, nodeStats)));
 
             var connectTask = clientBootstrap.ConnectAsync(new IPEndPoint(IPAddress.Parse(host), port));
-            var firstTask = await Task.WhenAny(connectTask,
-                Task.Delay(Timeouts.InitialConnection.Add(TimeSpan.FromSeconds(5))));
+            var firstTask = await Task.WhenAny(connectTask, Task.Delay(Timeouts.InitialConnection.Add(TimeSpan.FromSeconds(5))));
             if (firstTask != connectTask)
             {
                 if (_logger.IsTrace) _logger.Trace($"Connection timed out: {remoteId}@{host}:{port}");
@@ -185,54 +148,41 @@ namespace Nethermind.Network.Rlpx
             if (_logger.IsTrace) _logger.Trace($"Connected to {remoteId}@{host}:{port}");
         }
 
-        public event EventHandler<ConnectionInitializedEventArgs> OutConnectionInitialized;
-        public event EventHandler<ConnectionInitializedEventArgs> HandshakeInitialized;
-
-        private void InitializeChannel(IChannel channel, EncryptionHandshakeRole role, NodeId remoteId = null, string remoteHost = null, int? remotePort = null, INodeStats nodeStats = null)
-        {
-            var connectionType = role == EncryptionHandshakeRole.Recipient ? ClientConnectionType.In : ClientConnectionType.Out;
-            P2PSession p2PSession = new P2PSession(
+        public event EventHandler<SessionEventArgs> SessionCreated; 
+        
+        private void InitializeChannel(IChannel channel, ConnectionDirection connectionDirection, NodeId remoteId = null, string remoteHost = null, int? remotePort = null, INodeStats nodeStats = null)
+        {   
+            P2PSession session = new P2PSession(
                 LocalNodeId,
+                remoteId,
                 _localPort,
+                connectionDirection,
                 _serializationService,
                 _synchronizationManager,
-                _logManager, _nodeStatsProvider, nodeStats)
-            {
-                ClientConnectionType = connectionType
-            };
+                _nodeStatsProvider,
+                nodeStats,
+                _logManager);
 
-            //This is the first moment we get confirmed publicKey of remote node in case of outgoing connections
-            if (connectionType == ClientConnectionType.Out)
+            if (connectionDirection == ConnectionDirection.Out)
             {
                 if (_logger.IsTrace)
                 {
-                    _logger.Trace($"Initializing {connectionType.ToString().ToUpper()} channel{(connectionType == ClientConnectionType.Out ? $": {remoteId}@{remoteHost}:{remotePort}" : string.Empty)}");
+                    _logger.Trace($"Initializing {connectionDirection.ToString().ToUpper()} channel{(connectionDirection == ConnectionDirection.Out ? $": {remoteId}@{remoteHost}:{remotePort}" : string.Empty)}");
                 }
 
-                p2PSession.RemoteNodeId = remoteId;
-                p2PSession.RemoteHost = remoteHost;
-                p2PSession.RemotePort = remotePort;
-
-                OutConnectionInitialized?.Invoke(this, new ConnectionInitializedEventArgs(p2PSession, connectionType));
+                // this is the first moment we get confirmed publicKey of remote node in case of outgoing connections
+                session.RemoteNodeId = remoteId;
+                session.RemoteHost = remoteHost;
+                session.RemotePort = remotePort;
             }
+            
+            SessionCreated?.Invoke(this, new SessionEventArgs(session));
 
-            var handshakeHandler = new NettyHandshakeHandler(_encryptionHandshakeService, p2PSession, role, remoteId, _logManager);
-            handshakeHandler.HandshakeInitialized += (s, e) =>
-            {
-                //This is the first moment we get confirmed publicKey of remote node in case of incoming connections
-                if (connectionType == ClientConnectionType.In)
-                {
-                    if (_logger.IsTrace)
-                    {
-                        _logger.Trace($"Handshake initialized {connectionType.ToString().ToUpper()} channel {p2PSession.RemoteNodeId}@{p2PSession.RemoteHost}:{p2PSession.RemotePort}");
-                    }
-                }
-
-                HandshakeInitialized?.Invoke(this, new ConnectionInitializedEventArgs(p2PSession, connectionType));
-            };
-
+            HandshakeRole role = connectionDirection == ConnectionDirection.In ? HandshakeRole.Recipient : HandshakeRole.Initiator;
+            var handshakeHandler = new NettyHandshakeHandler(_encryptionHandshakeService, session, role, remoteId, _logManager);
+            
             IChannelPipeline pipeline = channel.Pipeline;
-            pipeline.AddLast(new LoggingHandler(connectionType.ToString().ToUpper(), DotNetty.Handlers.Logging.LogLevel.TRACE));
+            pipeline.AddLast(new LoggingHandler(connectionDirection.ToString().ToUpper(), DotNetty.Handlers.Logging.LogLevel.TRACE));
             pipeline.AddLast("enc-handshake-dec", new LengthFieldBasedFrameDecoder(ByteOrder.BigEndian, ushort.MaxValue, 0, 2, 0, 0, true));
             pipeline.AddLast("enc-handshake-handler", handshakeHandler);
 
@@ -240,11 +190,33 @@ namespace Nethermind.Network.Rlpx
             {
                 if (_logger.IsTrace)
                 {
-                    _logger.Trace($"Channel disconnected: {p2PSession.RemoteNodeId}");
+                    _logger.Trace($"Channel disconnected: {session.RemoteNodeId}");
                 }
 
-                await p2PSession.DisconnectAsync(DisconnectReason.ClientQuitting, DisconnectType.Remote);
+                await session.DisconnectAsync(DisconnectReason.ClientQuitting, DisconnectType.Remote);
             });
+        }
+        
+        public async Task Shutdown()
+        {
+//            InternalLoggerFactory.DefaultFactory.AddProvider(new ConsoleLoggerProvider((s, level) => true, false));
+
+            await _bootstrapChannel.CloseAsync().ContinueWith(t =>
+            {
+                if (t.IsFaulted)
+                {
+                    _logger.Error($"{nameof(Shutdown)} failed", t.Exception);
+                }
+            });
+
+            await Task.WhenAll(_bossGroup.ShutdownGracefullyAsync(), _workerGroup.ShutdownGracefullyAsync())
+                .ContinueWith(t =>
+                {
+                    if (t.IsFaulted)
+                    {
+                        _logger.Error($"Groups shutdown failed in {nameof(PeerManager)}", t.Exception);
+                    }
+                });
         }
     }
 }

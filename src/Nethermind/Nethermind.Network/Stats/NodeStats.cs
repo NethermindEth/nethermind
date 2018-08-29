@@ -36,15 +36,15 @@ namespace Nethermind.Network.Stats
     /// </summary>
     public class NodeStats : INodeStats
     {
-        private readonly INetworkConfig _configurationProvider;
+        private readonly INetworkConfig _networkConfig;
         private Dictionary<NodeStatsEventType, AtomicLong> _statCounters;
         private Dictionary<DisconnectType, (DisconnectReason DisconnectReason, DateTime DisconnectTime)> _lastDisconnects;        
         private readonly IList<NodeStatsEvent> _eventHistory;
 
-        public NodeStats(Node node, IConfigProvider configurationProvider)
+        public NodeStats(Node node, INetworkConfig networkConfig)
         {
             Node = node;
-            _configurationProvider = configurationProvider.GetConfig<INetworkConfig>();
+            _networkConfig = networkConfig;
             _eventHistory = new List<NodeStatsEvent>();
             Initialize();
         }
@@ -61,10 +61,10 @@ namespace Nethermind.Network.Stats
             CaptureEvent(nodeStatsEventType);
         }
 
-        public void AddNodeStatsHandshakeEvent(ClientConnectionType clientConnectionType)
+        public void AddNodeStatsHandshakeEvent(ConnectionDirection connectionDirection)
         {
             _statCounters[NodeStatsEventType.HandshakeCompleted].Increment();
-            CaptureEvent(NodeStatsEventType.HandshakeCompleted, null, null, null, clientConnectionType);
+            CaptureEvent(NodeStatsEventType.HandshakeCompleted, null, null, null, connectionDirection);
         }
 
         public void AddNodeStatsDisconnectEvent(DisconnectType disconnectType, DisconnectReason disconnectReason)
@@ -135,9 +135,9 @@ namespace Nethermind.Network.Stats
 
         public Node Node { get; }
 
-        private void CaptureEvent(NodeStatsEventType eventType, P2PNodeDetails p2PNodeDetails = null, Eth62NodeDetails eth62NodeDetails = null, DisconnectDetails disconnectDetails = null, ClientConnectionType? clientConnectionType = null, SyncNodeDetails syncNodeDetails = null)
+        private void CaptureEvent(NodeStatsEventType eventType, P2PNodeDetails p2PNodeDetails = null, Eth62NodeDetails eth62NodeDetails = null, DisconnectDetails disconnectDetails = null, ConnectionDirection? connectionDirection = null, SyncNodeDetails syncNodeDetails = null)
         {
-            if (!_configurationProvider.CaptureNodeStatsEventHistory)
+            if (!_networkConfig.CaptureNodeStatsEventHistory)
             {
                 return;
             }
@@ -154,7 +154,7 @@ namespace Nethermind.Network.Stats
                 P2PNodeDetails = p2PNodeDetails,
                 Eth62NodeDetails = eth62NodeDetails,
                 DisconnectDetails = disconnectDetails,
-                ClientConnectionType = clientConnectionType,
+                ConnectionDirection = connectionDirection,
                 SyncNodeDetails = syncNodeDetails
             });
         }
@@ -164,7 +164,7 @@ namespace Nethermind.Network.Stats
             return IsReputationPenalized()
                 ? -100
                 : CurrentPersistedNodeReputation / 2 + CalculateSessionReputation() +
-                  (IsTrustedPeer ? _configurationProvider.PredefinedReputation : 0);
+                  (IsTrustedPeer ? _networkConfig.PredefinedReputation : 0);
         }
 
         private long CalculateSessionReputation()
@@ -231,7 +231,7 @@ namespace Nethermind.Network.Stats
             if (_lastDisconnects.ContainsKey(DisconnectType.Local))
             {
                 var localDisconnect = _lastDisconnects[DisconnectType.Local];               
-                if (_configurationProvider.PenalizedReputationLocalDisconnectReasons.Contains(localDisconnect.DisconnectReason))
+                if (_networkConfig.PenalizedReputationLocalDisconnectReasons.Contains(localDisconnect.DisconnectReason))
                 {
                     return true;
                 }
@@ -248,12 +248,12 @@ namespace Nethermind.Network.Stats
             {
                 lastOverallDisconnectTime = remoteDisconnect.DisconnectTime;
             }
-            if (_configurationProvider.PenalizedReputationRemoteDisconnectReasons.Contains(remoteDisconnect.DisconnectReason))
+            if (_networkConfig.PenalizedReputationRemoteDisconnectReasons.Contains(remoteDisconnect.DisconnectReason))
             {
                 if (new[] {DisconnectReason.AlreadyConnected, DisconnectReason.TooManyPeers}.Contains(remoteDisconnect.DisconnectReason))
                 {
                     var timeFromLastDisconnect = DateTime.Now.Subtract(lastOverallDisconnectTime).TotalMilliseconds;
-                    return timeFromLastDisconnect < _configurationProvider.PenalizedReputationTooManyPeersTimeout;
+                    return timeFromLastDisconnect < _networkConfig.PenalizedReputationTooManyPeersTimeout;
                 }
 
                 return true;

@@ -27,7 +27,7 @@ namespace Nethermind.Network.Stats
     public interface INodeStats
     {
         void AddNodeStatsEvent(NodeStatsEventType nodeStatsEventType);
-        void AddNodeStatsHandshakeEvent(ClientConnectionType clientConnectionType);
+        void AddNodeStatsHandshakeEvent(ConnectionDirection connectionDirection);
         void AddNodeStatsDisconnectEvent(DisconnectType disconnectType, DisconnectReason disconnectReason);
         void AddNodeStatsP2PInitializedEvent(P2PNodeDetails nodeDetails);
         void AddNodeStatsEth62InitializedEvent(Eth62NodeDetails nodeDetails);

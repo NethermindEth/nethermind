@@ -67,18 +67,19 @@ namespace Nethermind.Runner.Runners
         private readonly IConfigProvider _configProvider;
         private readonly IInitConfig _initConfig;
         private readonly INetworkHelper _networkHelper;
+        
+        private PrivateKey _privateKey;
+        private ICryptoRandom _cryptoRandom = new CryptoRandom();
+        private ISigner _signer = new Signer();
+        
         private IBlockchainProcessor _blockchainProcessor;
-        private ICryptoRandom _cryptoRandom;
         private IDiscoveryApp _discoveryApp;
         private IDiscoveryManager _discoveryManager;
-        private IRlpxPeer _localPeer;
-        private IMessageSerializationService _messageSerializationService;
+        private IMessageSerializationService _messageSerializationService = new MessageSerializationService();
         private INodeFactory _nodeFactory;
         private INodeStatsProvider _nodeStatsProvider;
         private IPerfService _perfService;
-        private PrivateKey _privateKey;
         private CancellationTokenSource _runnerCancellation;
-        private ISigner _signer;
         private ISynchronizationManager _syncManager;
         private ITransactionTracer _tracer;
         private IKeyStore _keyStore;
@@ -129,14 +130,13 @@ namespace Nethermind.Runner.Runners
         {
             _logger.Info("Shutting down...");
             _runnerCancellation.Cancel();
+            await (_rlpxPeer?.Shutdown() ?? Task.CompletedTask);
             _logger.Debug("Stopping peer manager...");
             await (_peerManager?.StopAsync() ?? Task.CompletedTask);
             _logger.Debug("Stopping sync manager...");
             await (_syncManager?.StopAsync() ?? Task.CompletedTask);
             _logger.Debug("Stopping blockchain processor...");
             await (_blockchainProcessor?.StopAsync() ?? Task.CompletedTask);
-            _logger.Debug("Stopping local peer...");
-            await (_localPeer?.Shutdown() ?? Task.CompletedTask);
             _logger.Info("Goodbye...");
         }
 
@@ -300,8 +300,7 @@ namespace Nethermind.Runner.Runners
             // create shared objects between discovery and peer manager
             _nodeFactory = new NodeFactory();
             _nodeStatsProvider = new NodeStatsProvider(
-                _configProvider,
-                _logManager,
+                _configProvider.GetConfig<INetworkConfig>(),
                 _nodeFactory);
             
             var jsonSerializer = new JsonSerializer(
@@ -338,7 +337,11 @@ namespace Nethermind.Runner.Runners
             LoadBlocksFromDb();
 #pragma warning restore 4014
 
-            await InitializeNetwork(transactionStore, blockValidator, headerValidator, txValidator);
+            await InitializeNetwork(
+                transactionStore,
+                blockValidator,
+                headerValidator,
+                txValidator);
         }
 
         private async Task LoadBlocksFromDb()
@@ -360,8 +363,11 @@ namespace Nethermind.Runner.Runners
             });
         }
 
-        private async Task InitializeNetwork(TransactionStore transactionStore, BlockValidator blockValidator,
-            HeaderValidator headerValidator, TransactionValidator txValidator)
+        private async Task InitializeNetwork(
+            TransactionStore transactionStore,
+            BlockValidator blockValidator,
+            HeaderValidator headerValidator,
+            TransactionValidator txValidator)
         {
             if (!_initConfig.NetworkEnabled)
             {
@@ -369,24 +375,23 @@ namespace Nethermind.Runner.Runners
                 return;
             }
 
-            InitSync(transactionStore, blockValidator, headerValidator, txValidator);
-            InitNet();
+            _syncManager = new SynchronizationManager(
+                _blockTree,
+                blockValidator,
+                headerValidator,
+                transactionStore,
+                txValidator,
+                _logManager,
+                new BlockchainConfig());
+            
             InitDiscovery();
-            InitPeerManager();
+            await InitPeer();
 
             await StartSync().ContinueWith(initNetTask =>
             {
                 if (initNetTask.IsFaulted)
                 {
                     _logger.Error("Unable to start sync.", initNetTask.Exception);
-                }
-            });
-
-            await StartNet().ContinueWith(initNetTask =>
-            {
-                if (initNetTask.IsFaulted)
-                {
-                    _logger.Error("Unable to start network layer.", initNetTask.Exception);
                 }
             });
 
@@ -398,13 +403,17 @@ namespace Nethermind.Runner.Runners
                 }
             });
 
-            await StartPeerManager().ContinueWith(initPeerManagerTask =>
+            await StartPeer().ContinueWith(initPeerManagerTask =>
             {
                 if (initPeerManagerTask.IsFaulted)
                 {
                     _logger.Error("Unable to start peer manager.", initPeerManagerTask.Exception);
                 }
             });
+            
+            var localIp = _networkHelper.GetLocalIp();
+            if (_logger.IsInfo) _logger.Info($"Node is up and listening on {localIp}:{_initConfig.P2PPort}");
+            if (_logger.IsInfo) _logger.Info($"enode://{_privateKey.PublicKey}@{localIp}:{_initConfig.P2PPort}");
         }
 
         private ISealEngine ConfigureSealEngine(TransactionStore transactionStore, EthereumSigner ethereumSigner)
@@ -470,20 +479,8 @@ namespace Nethermind.Runner.Runners
             }
         }
 
-        private void InitSync(TransactionStore transactionStore, BlockValidator blockValidator,
-            HeaderValidator headerValidator, TransactionValidator txValidator)
-        {
-            // TODO: only start sync manager after queued blocks are processed
-            _syncManager = new SynchronizationManager(
-                _blockTree,
-                blockValidator,
-                headerValidator,
-                transactionStore,
-                txValidator,
-                _logManager,
-                new BlockchainConfig());
-        }
-
+        private IRlpxPeer _rlpxPeer;
+        
         private Task StartSync()
         {
             if (!_initConfig.SynchronizationEnabled)
@@ -501,20 +498,15 @@ namespace Nethermind.Runner.Runners
             return Task.CompletedTask;
         }
 
-        private void InitNet()
+        private async Task InitPeer()
         {
-            /* tools */
-            _messageSerializationService = new MessageSerializationService();
-            _cryptoRandom = new CryptoRandom();
-            _signer = new Signer();
-
             /* rlpx */
             var eciesCipher = new EciesCipher(_cryptoRandom);
             var eip8Pad = new Eip8MessagePad(_cryptoRandom);
             _messageSerializationService.Register(new AuthEip8MessageSerializer(eip8Pad));
             _messageSerializationService.Register(new AckEip8MessageSerializer(eip8Pad));
             var encryptionHandshakeServiceA = new EncryptionHandshakeService(_messageSerializationService, eciesCipher,
-                _cryptoRandom, _signer, _privateKey, _logManager);
+                _cryptoRandom, new Signer(), _privateKey, _logManager);
 
             /* p2p */
             _messageSerializationService.Register(new HelloMessageSerializer());
@@ -531,31 +523,23 @@ namespace Nethermind.Runner.Runners
             _messageSerializationService.Register(new BlockHeadersMessageSerializer());
             _messageSerializationService.Register(new BlockBodiesMessageSerializer());
             _messageSerializationService.Register(new NewBlockMessageSerializer());
+            
+            _rlpxPeer = new RlpxPeer(new NodeId(_privateKey.PublicKey), _initConfig.P2PPort,
+                _syncManager,
+                _messageSerializationService,
+                encryptionHandshakeServiceA,
+                _nodeStatsProvider,
+                _logManager);
 
-            _localPeer = new RlpxPeer(new NodeId(_privateKey.PublicKey), _initConfig.P2PPort,
-                encryptionHandshakeServiceA, _messageSerializationService, _syncManager, _logManager,
-                _nodeStatsProvider);
-        }
-
-        private async Task StartNet()
-        {
-            if (_logger.IsDebug) _logger.Debug("Initializing Net");
-            await _localPeer.Init();
-
-            var localIp = _networkHelper.GetLocalIp();
-            if (_logger.IsInfo) _logger.Info($"Node is up and listening on {localIp}:{_initConfig.P2PPort}");
-            if (_logger.IsInfo) _logger.Info($"enode://{_privateKey.PublicKey}@{localIp}:{_initConfig.P2PPort}");
-        }
-
-        private void InitPeerManager()
-        {
-            var peerStorage = new NetworkStorage(PeersDbPath, _configProvider, _logManager, _perfService);
-            _peerManager = new PeerManager(_localPeer, _discoveryManager, _syncManager, _nodeStatsProvider, peerStorage,
+            await _rlpxPeer.Init();
+            
+            var peerStorage = new NetworkStorage(PeersDbPath, _configProvider.GetConfig<INetworkConfig>(), _logManager, _perfService);
+            _peerManager = new PeerManager(_rlpxPeer, _discoveryManager, _syncManager, _nodeStatsProvider, peerStorage,
                 _nodeFactory, _configProvider, _perfService, _logManager);
-            _peerManager.Initialize(_initConfig.DiscoveryEnabled);
+            _peerManager.Init(_initConfig.DiscoveryEnabled);
         }
 
-        private async Task StartPeerManager()
+        private async Task StartPeer()
         {
             if (_logger.IsDebug) _logger.Debug("Initializing peer manager");
             await _peerManager.Start();
@@ -570,26 +554,69 @@ namespace Nethermind.Runner.Runners
             var discoveryMessageFactory = new DiscoveryMessageFactory(_configProvider);
             var nodeIdResolver = new NodeIdResolver(_signer);
 
-            var msgSerializersProvider = new DiscoveryMsgSerializersProvider(_messageSerializationService, _signer,
-                privateKeyProvider, discoveryMessageFactory, nodeIdResolver, _nodeFactory);
+            var msgSerializersProvider = new DiscoveryMsgSerializersProvider(
+                _messageSerializationService,
+                _signer,
+                privateKeyProvider,
+                discoveryMessageFactory,
+                nodeIdResolver,
+                _nodeFactory);
+            
             msgSerializersProvider.RegisterDiscoverySerializers();
 
             var nodeDistanceCalculator = new NodeDistanceCalculator(_configProvider);
-            var nodeTable = new NodeTable(_nodeFactory, _keyStore, nodeDistanceCalculator, _configProvider,
+            
+            var nodeTable = new NodeTable(
+                _nodeFactory,
+                _keyStore,
+                nodeDistanceCalculator,
+                _configProvider,
                 _logManager);
 
-            var evictionManager = new EvictionManager(nodeTable, _logManager);
-            var nodeLifeCycleFactory = new NodeLifecycleManagerFactory(_nodeFactory, nodeTable, discoveryMessageFactory,
-                evictionManager, _nodeStatsProvider, _configProvider, _logManager);
+            var evictionManager = new EvictionManager(
+                nodeTable,
+                _logManager);
+            
+            var nodeLifeCycleFactory = new NodeLifecycleManagerFactory(
+                _nodeFactory,
+                nodeTable,
+                discoveryMessageFactory,
+                evictionManager,
+                _nodeStatsProvider,
+                _configProvider,
+                _logManager);
 
-            var discoveryStorage =
-                new NetworkStorage(DiscoveryNodesDbPath, _configProvider, _logManager, _perfService);
-            _discoveryManager = new DiscoveryManager(nodeLifeCycleFactory, _nodeFactory, nodeTable, discoveryStorage,
-                _configProvider, _logManager);
+            var discoveryStorage = new NetworkStorage(
+                DiscoveryNodesDbPath,
+                _configProvider.GetConfig<INetworkConfig>(),
+                _logManager,
+                _perfService);
+            
+            _discoveryManager = new DiscoveryManager(
+                nodeLifeCycleFactory,
+                _nodeFactory,
+                nodeTable,
+                discoveryStorage,
+                _configProvider,
+                _logManager);
 
-            var nodesLocator = new NodesLocator(nodeTable, _discoveryManager, _configProvider, _logManager);
-            _discoveryApp = new DiscoveryApp(nodesLocator, _discoveryManager, _nodeFactory, nodeTable,
-                _messageSerializationService, _cryptoRandom, discoveryStorage, _configProvider, _logManager);
+            var nodesLocator = new NodesLocator(
+                nodeTable,
+                _discoveryManager,
+                _configProvider,
+                _logManager);
+            
+            _discoveryApp = new DiscoveryApp(
+                nodesLocator,
+                _discoveryManager,
+                _nodeFactory,
+                nodeTable,
+                _messageSerializationService,
+                _cryptoRandom,
+                discoveryStorage,
+                _configProvider,
+                _logManager);
+            
             _discoveryApp.Initialize(_privateKey.PublicKey);
         }
 

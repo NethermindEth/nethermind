@@ -16,12 +16,11 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
-
-namespace Nethermind.Network.Rlpx
+namespace Nethermind.Network.Rlpx.Handshake
 {
-    public class HandshakeInitializedEventArgs : EventArgs
+    public enum HandshakeRole
     {
-
+        Initiator,
+        Recipient
     }
 }
