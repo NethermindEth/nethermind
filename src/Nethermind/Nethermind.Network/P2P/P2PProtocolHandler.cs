@@ -157,6 +157,13 @@ namespace Nethermind.Network.P2P
             }
 
             _isInitialized = true;
+            
+            // TODO: proper validation on connection
+            if(!capabilities.Any(x => x.ProtocolCode == Protocol.Eth && x.Version == 62))
+            {    
+                Disconnect(DisconnectReason.UselessPeer);
+            }
+                
             ReceivedProtocolInitMsg(hello);
 
             var eventArgs = new P2PProtocolInitializedEventArgs(this)
