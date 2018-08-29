@@ -108,13 +108,17 @@ namespace Nethermind.Network.Discovery.Serializers
 
         protected IPEndPoint GetAddress(byte[] ip, int port)
         {
-            if (ip.Length > 16)
+            IPAddress ipAddress;
+            try
             {
-                // TODO: handle NodeIds here
-                ip = new byte[] {0, 0, 0, 0};
+                ipAddress = new IPAddress(ip);
+            }
+            catch (Exception exception)
+            {
+                ipAddress = IPAddress.Any;
             }
             
-            return new IPEndPoint(new IPAddress(ip), port);
+            return new IPEndPoint(ipAddress, port);
         }
     }
 }
