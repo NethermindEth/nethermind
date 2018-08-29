@@ -97,7 +97,7 @@ namespace Nethermind.Blockchain
         public BlockHeader Genesis => _blockTree.Genesis;
         public BlockHeader Head => _blockTree.Head;
         public BigInteger HeadNumber => _blockTree.Head.Number;
-        public BigInteger TotalDifficulty => _blockTree.Head?.TotalDifficulty ?? 0;
+        public BigInteger TotalDifficulty => _blockTree.Head.TotalDifficulty ?? 0;
         public event EventHandler<SyncEventArgs> SyncEvent;
 
         public Block Find(Keccak hash)
@@ -128,6 +128,7 @@ namespace Nethermind.Blockchain
             }
 
             peerInfo.NumberAvailable = UInt256.Max(block.Number, peerInfo.NumberAvailable);
+            peerInfo.Difficulty = UInt256.Max(block.Difficulty, peerInfo.Difficulty);
 
             lock (_isSyncingLock)
             {
@@ -303,7 +304,7 @@ namespace Nethermind.Blockchain
             Block block = blockEventArgs.Block;
             foreach ((NodeId nodeId, PeerInfo peerInfo) in _peers)
             {
-                if (peerInfo.NumberAvailable < block.Number) // TODO: total difficulty instead
+                if (peerInfo.Difficulty < block.Difficulty) // TODO: total difficulty instead
                 {
                     peerInfo.Peer.SendNewBlock(block);
                 }
@@ -352,7 +353,7 @@ namespace Nethermind.Blockchain
         {
             while (true)
             {
-                PeerInfo peerInfo = _currentSyncingPeerInfo = _peers.Values.OrderBy(p => p.NumberAvailable).LastOrDefault();
+                PeerInfo peerInfo = _currentSyncingPeerInfo = _peers.Values.OrderBy(p => p.Difficulty).ThenBy(p => p.NumberAvailable).LastOrDefault();
                 if (peerInfo == null)
                 {
                     if (_logger.IsInfo) _logger.Info($"No sync peers available, finishing sync process, best known block #: {_blockTree.BestSuggested.Number}");
@@ -365,12 +366,12 @@ namespace Nethermind.Blockchain
                     return;
                 }
 
-                if (_blockTree.BestSuggested.Number >= peerInfo.NumberAvailable)
+                if (_blockTree.BestSuggested.Difficulty >= peerInfo.Difficulty)
                 {
                     if (_logger.IsInfo) _logger.Info(
-                        "No more peers with higher block number available, finishing sync process, " +
-                        $"best known block #: {_blockTree.BestSuggested.Number}, " +
-                        $"best peer block #: {peerInfo.NumberAvailable}");
+                        "No more peers with better block available, finishing sync process, " +
+                        $"best known block #: {_blockTree.BestSuggested.Number} ({_blockTree.BestSuggested.Difficulty}), " +
+                        $"best peer block #: {peerInfo.NumberAvailable} ({peerInfo.Difficulty})");
                     return;
                 }
 
@@ -382,8 +383,8 @@ namespace Nethermind.Blockchain
 
                 if (_logger.IsInfo) _logger.Info(
                     $"Starting sync processes with Node: {peerInfo.Peer.NodeId} [{peerInfo.Peer.ClientId}], " +
-                    $"best known block #: {_blockTree.BestSuggested.Number}, " + 
-                    $"best peer block #: {peerInfo.NumberAvailable}");
+                    $"best known block #: {_blockTree.BestSuggested.Number} ({_blockTree.BestSuggested.Difficulty}), " +
+                    $"best peer block #: {peerInfo.NumberAvailable} ({peerInfo.Difficulty})");
 
                 var currentPeerNodeId = peerInfo.Peer?.NodeId;
 
@@ -435,8 +436,8 @@ namespace Nethermind.Blockchain
 
                     if (_logger.IsInfo) _logger.Info(
                         $"Finished peer sync process [{(t.IsFaulted ? "FAULTED" : t.IsCanceled ? "CANCELED" : t.IsCompleted ? "COMPLETED" : "OTHER")}] with Node: {peerInfo.Peer.NodeId} [{peerInfo.Peer.ClientId}], " +
-                        $"peer highest block #: {peerInfo.NumberAvailable}, " +
-                        $"our highest block #: {_blockTree.BestSuggested.Number}");
+                        $"best known block #: {_blockTree.BestSuggested.Number} ({_blockTree.BestSuggested.Difficulty}), " +
+                        $"best peer block #: {peerInfo.NumberAvailable} ({peerInfo.Difficulty})");
                 }, syncCancellationToken);
             }
         }
@@ -447,12 +448,13 @@ namespace Nethermind.Blockchain
 
             ISynchronizationPeer peer = peerInfo.Peer;
             BigInteger bestNumber = _blockTree.BestSuggested.Number;
+            UInt256 bestDifficulty = _blockTree.BestSuggested.Difficulty;
 
             const int maxLookup = 64;
             int ancestorLookupLevel = 0;
             bool isCommonAncestorKnown = false;
 
-            while (peerInfo.NumberAvailable > bestNumber && peerInfo.NumberReceived <= peerInfo.NumberAvailable)
+            while (peerInfo.Difficulty > bestDifficulty && peerInfo.NumberReceived <= peerInfo.NumberAvailable)
             {
                 if (_logger.IsTrace) _logger.Trace($"Continue syncing with {peerInfo} (our best {bestNumber})");
 
@@ -611,10 +613,11 @@ namespace Nethermind.Blockchain
         private async Task InitPeerInfo(ISynchronizationPeer peer, CancellationToken token)
         {
             if (_logger.IsTrace) _logger.Trace($"Requesting head block info from {peer.NodeId}");
-            Task<Keccak> getHashTask = peer.GetHeadBlockHash();
+            Task<Keccak> getHashTask = peer.GetHeadBlockHash(token);
             Task<UInt256> getNumberTask = peer.GetHeadBlockNumber(token);
+            Task<UInt256> getDifficultyTask = peer.GetHeadDifficulty(token);
 
-            await Task.WhenAll(getHashTask, getNumberTask).ContinueWith(
+            await Task.WhenAny(Task.WhenAll(getHashTask, getNumberTask, getDifficultyTask), Task.Delay(10000, token)).ContinueWith(
                 t =>
                 {
                     if (t.IsFaulted)
@@ -646,6 +649,7 @@ namespace Nethermind.Blockchain
                         }
                         
                         peerInfo.NumberAvailable = getNumberTask.Result;
+                        peerInfo.Difficulty = getDifficultyTask.Result;
                         peerInfo.NumberReceived = _blockTree.BestSuggested.Number;
                         peerInfo.IsInitialized = true;
                     }
@@ -661,6 +665,7 @@ namespace Nethermind.Blockchain
 
             public bool IsInitialized { get; set; }
             public ISynchronizationPeer Peer { get; }
+            public UInt256 Difficulty { get; set; }
             public UInt256 NumberAvailable { get; set; }
             public UInt256 NumberReceived { get; set; }
 
