@@ -56,7 +56,7 @@ namespace Nethermind.Network.P2P
         {
             var receivedInitMsgTask = InitCompletionSource.Task;
             var firstTask = await Task.WhenAny(receivedInitMsgTask, Task.Delay(InitTimeout));
-
+            
             if (firstTask != receivedInitMsgTask)
             {
                 if (Logger.IsTrace)

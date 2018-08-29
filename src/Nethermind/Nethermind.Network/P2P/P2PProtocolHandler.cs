@@ -118,10 +118,11 @@ namespace Nethermind.Network.P2P
         }
 
         public void HandleHello(HelloMessage hello)
-        {
+        {   
             if(Logger.IsTrace) Logger.Trace($"{P2PSession.RemoteNodeId} P2P received hello.");
             if (!hello.NodeId.Equals(P2PSession.RemoteNodeId))
             {
+                Logger.Error("MISMATCH");
                 throw new NodeDetailsMismatchException();
             }
 
