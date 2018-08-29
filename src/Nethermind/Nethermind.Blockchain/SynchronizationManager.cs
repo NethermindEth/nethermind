@@ -23,6 +23,7 @@ using System.Linq;
 using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Timers;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -78,6 +79,13 @@ namespace Nethermind.Blockchain
             _headerValidator = headerValidator ?? throw new ArgumentNullException(nameof(headerValidator));
 
             if (_logger.IsDebug) _logger.Debug($"Initialized {nameof(SynchronizationManager)} with head block {Head.ToString(BlockHeader.Format.Short)}");
+            System.Timers.Timer syncTimer = new System.Timers.Timer(10000);
+            syncTimer.Elapsed += (s, e) =>
+            {
+                if (_isInitialized) RequestSync();
+            };
+            
+            syncTimer.Start();
         }
 
         public int ChainId => _blockTree.ChainId;
@@ -326,8 +334,6 @@ namespace Nethermind.Blockchain
                 _isSyncing = true;
             }
 
-            if (_logger.IsInfo) _logger.Info($"Starting chain synchronization from {_blockTree.BestSuggested}");
-
             _aggregateSyncCancellationTokenSource = new CancellationTokenSource();
             var syncTask = Task.Run(() => SynchronizeAsync(_aggregateSyncCancellationTokenSource.Token), _aggregateSyncCancellationTokenSource.Token);
             syncTask.ContinueWith(t =>
@@ -454,8 +460,8 @@ namespace Nethermind.Blockchain
 
                 if (ancestorLookupLevel > maxLookup)
                 {
-                    if (_logger.IsWarn) _logger.Warn($"Could not find common ancestor with {peerInfo.Peer.NodeId}");    
-                    break;
+                    if (_logger.IsWarn) _logger.Warn($"Could not find common ancestor with {peerInfo.Peer.NodeId}");
+                    throw new EthSynchronizationException("Peer with inconsistent chain in sync");
                 }
 
                 if (peerSyncToken.IsCancellationRequested)
