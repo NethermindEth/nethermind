@@ -454,7 +454,8 @@ namespace Nethermind.Blockchain
 
                 if (ancestorLookupLevel > maxLookup)
                 {
-                    throw new InvalidOperationException("Cannot find ancestor"); // TODO: remodel this after full sync test is added
+                    if (_logger.IsWarn) _logger.Warn($"Could not find common ancestor with {peerInfo.Peer.NodeId}");    
+                    break;
                 }
 
                 if (peerSyncToken.IsCancellationRequested)
@@ -529,8 +530,6 @@ namespace Nethermind.Blockchain
                     }
                     throw _currentSyncTask.Exception;
                 }
-
-                ancestorLookupLevel = 0;
 
                 for (int i = 0; i < blocks.Length; i++)
                 {
