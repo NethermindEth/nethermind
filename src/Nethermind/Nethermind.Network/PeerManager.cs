@@ -214,7 +214,7 @@ namespace Nethermind.Network
             {
                 if (_cancellationTokenSource.IsCancellationRequested)
                 {
-                    return;
+                    break;
                 }
                 
                 var key = _perfService.StartPerfCalc();
@@ -230,7 +230,7 @@ namespace Nethermind.Network
                 remainingCandidates = remainingCandidates.Skip(nodesToTry).ToArray();
                 Parallel.ForEach(candidatesToTry, async (c, loopState) =>
                 {
-                    if (loopState.ShouldExitCurrentIteration)
+                    if (loopState.ShouldExitCurrentIteration || _cancellationTokenSource.IsCancellationRequested)
                     {
                         return;
                     }
