@@ -23,7 +23,6 @@ using System.Linq;
 using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Timers;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -83,6 +82,12 @@ namespace Nethermind.Blockchain
             syncTimer.Elapsed += (s, e) =>
             {
                 if (_isInitialized) RequestSync();
+                int initPeerCount = _peers.Count(p => p.Value.IsInitialized);
+                if (initPeerCount != _lastSyncPeersCount)
+                {
+                    _lastSyncPeersCount = initPeerCount;
+                    if (_logger.IsInfo) _logger.Info($"Available sync peers: {initPeerCount}/25"); // TODO: make 25 configurable
+                }
             };
             
             syncTimer.Start();
@@ -209,13 +214,6 @@ namespace Nethermind.Blockchain
                 }
                 else
                 {
-                    int initPeerCount = _peers.Count(p => p.Value.IsInitialized);
-                    if (initPeerCount != _lastSyncPeersCount)
-                    {
-                        _lastSyncPeersCount = initPeerCount;
-                        if (_logger.IsInfo) _logger.Info($"Available sync peers: {initPeerCount}/25"); // TODO: make 25 configurable
-                    }
-                    
                     RequestSync();
                 }
             });
