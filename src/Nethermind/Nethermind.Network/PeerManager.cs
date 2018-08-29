@@ -154,7 +154,7 @@ namespace Nethermind.Network
 
         private bool AddActivePeer(NodeId nodeId, Peer peer, string reason)
         {
-            if(_logger.IsDebug) _logger.Debug($"ADDING {nodeId} {reason}"));
+            if(_logger.IsDebug) _logger.Debug($"ADDING {nodeId} {reason}");
             return _activePeers.TryAdd(nodeId, peer);
         }
 
