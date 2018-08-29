@@ -92,8 +92,11 @@ namespace Nethermind.Blockchain
 
         public bool CanAcceptNewBlocks { get; private set; } = true;// no need to sync it at the moment
 
-        public async Task LoadBlocksFromDb(CancellationToken cancellationToken, UInt256? startBlockNumber = null,
-            int batchSize = DbLoadBatchSize, int maxBlocksToLoad = int.MaxValue)
+        public async Task LoadBlocksFromDb(
+            CancellationToken cancellationToken,
+            UInt256? startBlockNumber = null,
+            int batchSize = DbLoadBatchSize,
+            int maxBlocksToLoad = int.MaxValue)
         {
             CanAcceptNewBlocks = false;
 
@@ -142,6 +145,12 @@ namespace Nethermind.Blockchain
                 }
 
                 Block block = FindBlock(maxDifficultyBlock.BlockHash, false);
+                if (block == null)
+                {
+                    if(_logger.IsError) _logger.Error($"Could not find block {maxDifficultyBlock.BlockHash}. DB load cancelled.");
+                    _dbBatchProcessed?.SetResult(null);
+                    break;
+                }
 
                 BestSuggested = block.Header;
                 NewBestSuggestedBlock?.Invoke(this, new BlockEventArgs(block));

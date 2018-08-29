@@ -41,7 +41,7 @@ namespace Nethermind.Network.Discovery.Serializers
 
         public byte[] Serialize(NeighborsMessage message)
         {
-            byte[] typeBytes = { (byte)message.MessageType };
+            byte[] typeBytes = {(byte) message.MessageType};
 
             Rlp[] nodes = null;
             if (message.Nodes != null && message.Nodes.Any())
@@ -54,7 +54,7 @@ namespace Nethermind.Network.Discovery.Serializers
                     nodes[i] = serializedNode;
                 }
             }
-            
+
             byte[] data = Rlp.Encode(
                 nodes == null ? Rlp.OfEmptySequence : Rlp.Encode(nodes),
                 Rlp.Encode(message.ExpirationTime)
@@ -86,7 +86,9 @@ namespace Nethermind.Network.Discovery.Serializers
             {
                 int lastPosition = ctx.ReadSequenceLength() + ctx.Position;
                 int count = ctx.ReadNumberOfItemsRemaining(lastPosition);
-                var address = GetAddress(ctx.DecodeByteArray(), ctx.DecodeInt());
+
+                byte[] ip = ctx.DecodeByteArray();
+                var address = GetAddress(ip, ctx.DecodeInt());
                 if (count > 3)
                 {
                     ctx.DecodeInt();
