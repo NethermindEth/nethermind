@@ -16,14 +16,11 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Threading.Tasks;
-
-namespace Nethermind.Network
+namespace Nethermind.Network.Rlpx
 {
-    public interface IPeerManager
+    public enum ConnectionDirection
     {
-        void Init(bool isDiscoveryEnabled);
-        Task Start();
-        Task StopAsync();
+        In,
+        Out
     }
 }

@@ -30,6 +30,7 @@ namespace Nethermind.Network.Discovery.RoutingTable
             {
                 IsDicoveryNode = false
             };
+            
             node.InitializeAddress(address);
             return node;
         }
@@ -40,6 +41,7 @@ namespace Nethermind.Network.Discovery.RoutingTable
             {
                 IsDicoveryNode = isDiscovery
             };
+            
             node.InitializeAddress(host, port);
             return node;
         }
@@ -51,6 +53,7 @@ namespace Nethermind.Network.Discovery.RoutingTable
             {
                 IsDicoveryNode = true
             };
+            
             node.InitializeAddress(host, port);
             return node;
         }

@@ -34,16 +34,19 @@ namespace Nethermind.Network.Test
     [TestFixture]
     public class NetworkStorageTests
     {
+        private INetworkConfig _networkConfig;
+        
         [SetUp]
         public void SetUp()
         {
             NullLogManager logManager = NullLogManager.Instance;
-            _configurationProvider = new JsonConfigProvider();
+            JsonConfigProvider configProvider = new JsonConfigProvider();
             _tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
-            ((NetworkConfig) _configurationProvider.GetConfig<INetworkConfig>()).DbBasePath = _tempDir;
+            _networkConfig = configProvider.GetConfig<INetworkConfig>();
+            _networkConfig.DbBasePath = _tempDir;
 
             _nodeFactory = new NodeFactory();
-            _storage = new NetworkStorage("test", _configurationProvider, logManager, new PerfService(logManager));
+            _storage = new NetworkStorage("test", _networkConfig, logManager, new PerfService(logManager));
         }
         
         [TearDown]
@@ -58,13 +61,12 @@ namespace Nethermind.Network.Test
         private string _tempDir;
         private INetworkStorage _storage;
         private INodeFactory _nodeFactory;
-        private IConfigProvider _configurationProvider;
 
         private INodeLifecycleManager CreateLifecycleManager(Node node)
         {
             INodeLifecycleManager manager = Substitute.For<INodeLifecycleManager>();
             manager.ManagedNode.Returns(node);
-            manager.NodeStats.Returns(new NodeStats(node, _configurationProvider)
+            manager.NodeStats.Returns(new NodeStats(node, _networkConfig)
             {
                 CurrentPersistedNodeReputation = node.Port
             });

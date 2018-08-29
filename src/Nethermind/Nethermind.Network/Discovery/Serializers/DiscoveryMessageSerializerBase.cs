@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Net;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -35,13 +36,18 @@ namespace Nethermind.Network.Discovery.Serializers
         protected readonly INodeIdResolver NodeIdResolver;
         protected readonly INodeFactory NodeFactory;
 
-        protected DiscoveryMessageSerializerBase(ISigner signer, IPrivateKeyProvider privateKeyProvider, IDiscoveryMessageFactory messageFactory, INodeIdResolver nodeIdResolver, INodeFactory nodeFactory)
+        protected DiscoveryMessageSerializerBase(
+            ISigner signer,
+            IPrivateKeyProvider privateKeyProvider,
+            IDiscoveryMessageFactory messageFactory,
+            INodeIdResolver nodeIdResolver,
+            INodeFactory nodeFactory)
         {
-            _signer = signer;
-            _privateKey = privateKeyProvider.PrivateKey;
-            MessageFactory = messageFactory;
-            NodeIdResolver = nodeIdResolver;
-            NodeFactory = nodeFactory;
+            _signer = signer ?? throw new ArgumentNullException(nameof(signer));
+            _privateKey = privateKeyProvider.PrivateKey ?? throw new ArgumentNullException(nameof(_privateKey));
+            MessageFactory = messageFactory ?? throw new ArgumentNullException(nameof(messageFactory));
+            NodeIdResolver = nodeIdResolver ?? throw new ArgumentNullException(nameof(nodeIdResolver));
+            NodeFactory = nodeFactory ?? throw new ArgumentNullException(nameof(nodeFactory));
         }
 
         protected byte[] Serialize(byte[] type, byte[] data)

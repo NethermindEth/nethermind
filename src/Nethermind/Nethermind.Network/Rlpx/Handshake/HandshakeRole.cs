@@ -16,11 +16,11 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.Network.Rlpx
+namespace Nethermind.Network.Rlpx.Handshake
 {
-    public enum ClientConnectionType
+    public enum HandshakeRole
     {
-        In,
-        Out
+        Initiator,
+        Recipient
     }
 }

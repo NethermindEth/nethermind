@@ -17,11 +17,17 @@
  */
 
 using System;
+using System.Threading.Tasks;
+using Nethermind.Core.Model;
+using Nethermind.Network.Stats;
 
 namespace Nethermind.Network.Rlpx
 {
-    public class HandshakeInitializedEventArgs : EventArgs
+    public interface IRlpxPeer
     {
-
+        Task Init();
+        Task ConnectAsync(NodeId remoteId, string host, int port, INodeStats nodeStats);
+        Task Shutdown();
+        event EventHandler<SessionEventArgs> SessionCreated;
     }
 }

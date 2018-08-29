@@ -24,12 +24,12 @@ namespace Nethermind.Network.Rlpx
     public class ConnectionInitializedEventArgs : EventArgs
     {
         public IP2PSession Session { get; set; }
-        public ClientConnectionType ClientConnectionType { get; set; }
+        public ConnectionDirection ConnectionDirection { get; set; }
 
-        public ConnectionInitializedEventArgs(IP2PSession session, ClientConnectionType clientConnectionType)
+        public ConnectionInitializedEventArgs(IP2PSession session, ConnectionDirection connectionDirection)
         {
             Session = session;
-            ClientConnectionType = clientConnectionType;
+            ConnectionDirection = connectionDirection;
         }
     }
 }

@@ -26,12 +26,12 @@ namespace Nethermind.Network.Config
         /// <summary>
         /// Kademlia - k
         /// </summary>
-        int BucketSize { get; }
+        int BucketSize { get; set; }
 
         /// <summary>
         /// Buckets count
         /// </summary>
-        int BucketsCount { get; }
+        int BucketsCount { get; set; }
 
         /// <summary>
         /// Kademlia - alpha

@@ -30,7 +30,12 @@ namespace Nethermind.Network.Discovery.Serializers
 {
     public class NeighborsMessageSerializer : DiscoveryMessageSerializerBase, IMessageSerializer<NeighborsMessage>
     {
-        public NeighborsMessageSerializer(ISigner signer, IPrivateKeyProvider privateKeyProvider, IDiscoveryMessageFactory messageFactory, INodeIdResolver nodeIdResolver, INodeFactory nodeFactory) : base(signer, privateKeyProvider, messageFactory, nodeIdResolver, nodeFactory)
+        public NeighborsMessageSerializer(
+            ISigner signer,
+            IPrivateKeyProvider privateKeyProvider,
+            IDiscoveryMessageFactory messageFactory,
+            INodeIdResolver nodeIdResolver,
+            INodeFactory nodeFactory) : base(signer, privateKeyProvider, messageFactory, nodeIdResolver, nodeFactory)
         {
         }
 
@@ -52,7 +57,6 @@ namespace Nethermind.Network.Discovery.Serializers
             
             byte[] data = Rlp.Encode(
                 nodes == null ? Rlp.OfEmptySequence : Rlp.Encode(nodes),
-                //TODO verify if encoding is correct
                 Rlp.Encode(message.ExpirationTime)
             ).Bytes;
 

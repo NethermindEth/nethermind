@@ -52,7 +52,11 @@ namespace Nethermind.Network.Discovery.Serializers
 
             rlp.ReadSequenceLength();
             rlp.ReadSequenceLength();
-            GetAddress(rlp.DecodeByteArray(), rlp.DecodeInt());
+
+            // GetAddress(rlp.DecodeByteArray(), rlp.DecodeInt());
+            rlp.DecodeByteArray();
+            rlp.DecodeInt();
+
             rlp.DecodeInt(); // UDP port
             var token = rlp.DecodeByteArray();
             var expirationTime = rlp.DecodeLong();

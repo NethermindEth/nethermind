@@ -62,9 +62,10 @@ namespace Nethermind.Network.Test.Discovery
             //setting config to store 3 nodes in a bucket and for table to have one bucket//setting config to store 3 nodes in a bucket and for table to have one bucket
 
             _configurationProvider = new JsonConfigProvider();
-            ((NetworkConfig)_configurationProvider.GetConfig<INetworkConfig>()).PongTimeout = 50;
-            ((NetworkConfig)_configurationProvider.GetConfig<INetworkConfig>()).BucketSize = 3;
-            ((NetworkConfig)_configurationProvider.GetConfig<INetworkConfig>()).BucketsCount = 1;
+            INetworkConfig networkConfig = _configurationProvider.GetConfig<INetworkConfig>();
+            networkConfig.PongTimeout = 50;
+            networkConfig.BucketSize = 3;
+            networkConfig.BucketsCount = 1;
 
             _nodeFactory = new NodeFactory();
             var calculator = new NodeDistanceCalculator(_configurationProvider);
@@ -73,11 +74,11 @@ namespace Nethermind.Network.Test.Discovery
             _nodeTable.Initialize();
 
             var evictionManager = new EvictionManager(_nodeTable, logManager);
-            var lifecycleFactory = new NodeLifecycleManagerFactory(_nodeFactory, _nodeTable, new DiscoveryMessageFactory(_configurationProvider), evictionManager, new NodeStatsProvider(_configurationProvider, logManager, _nodeFactory), _configurationProvider, logManager);
+            var lifecycleFactory = new NodeLifecycleManagerFactory(_nodeFactory, _nodeTable, new DiscoveryMessageFactory(_configurationProvider), evictionManager, new NodeStatsProvider(_configurationProvider.GetConfig<INetworkConfig>(), _nodeFactory), _configurationProvider, logManager);
 
             _udpClient = Substitute.For<IMessageSender>();
 
-            _discoveryManager = new DiscoveryManager(lifecycleFactory, _nodeFactory, _nodeTable, new NetworkStorage("test", _configurationProvider, logManager, new PerfService(logManager)), _configurationProvider, logManager);
+            _discoveryManager = new DiscoveryManager(lifecycleFactory, _nodeFactory, _nodeTable, new NetworkStorage("test", networkConfig, logManager, new PerfService(logManager)), _configurationProvider, logManager);
             _discoveryManager.MessageSender = _udpClient;
         }
 

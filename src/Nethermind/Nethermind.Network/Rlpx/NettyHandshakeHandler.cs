@@ -38,7 +38,7 @@ namespace Nethermind.Network.Rlpx
         private readonly EncryptionHandshake _handshake = new EncryptionHandshake();
         private readonly ILogManager _logManager;
         private readonly ILogger _logger;
-        private readonly EncryptionHandshakeRole _role;
+        private readonly HandshakeRole _role;
 
         private readonly IEncryptionHandshakeService _service;
         private readonly IP2PSession _p2PSession;
@@ -49,7 +49,7 @@ namespace Nethermind.Network.Rlpx
         public NettyHandshakeHandler(
             IEncryptionHandshakeService service,
             IP2PSession p2PSession,
-            EncryptionHandshakeRole role,
+            HandshakeRole role,
             NodeId remoteId,
             ILogManager logManager)
         {
@@ -67,7 +67,7 @@ namespace Nethermind.Network.Rlpx
         {
             _channel = context.Channel;
 
-            if (_role == EncryptionHandshakeRole.Initiator)
+            if (_role == HandshakeRole.Initiator)
             {
                 Packet auth = _service.Auth(_remoteId, _handshake);
 
@@ -75,6 +75,7 @@ namespace Nethermind.Network.Rlpx
                 _buffer.WriteBytes(auth.Data);
                 context.WriteAndFlushAsync(_buffer);
             }
+            
             _p2PSession.RemoteHost = ((IPEndPoint)context.Channel.RemoteAddress).Address.ToString();
             _p2PSession.RemotePort = ((IPEndPoint)context.Channel.RemoteAddress).Port;
 
@@ -141,7 +142,7 @@ namespace Nethermind.Network.Rlpx
             _logger.Trace($"Channel read {nameof(NettyHandshakeHandler)} from {context.Channel.RemoteAddress}");
             if (message is IByteBuffer byteBuffer)
             {
-                if (_role == EncryptionHandshakeRole.Recipient)
+                if (_role == HandshakeRole.Recipient)
                 {
                     if (_logger.IsTrace) _logger.Trace($"AUTH received from {context.Channel.RemoteAddress}");
                     byte[] authData = new byte[byteBuffer.ReadableBytes];
@@ -161,10 +162,8 @@ namespace Nethermind.Network.Rlpx
                     _service.Agree(_handshake, new Packet(ackData));
                 }
 
-                _p2PSession.RemoteNodeId = _handshake.RemoteNodeId;
-
                 _initCompletionSource?.SetResult(message);
-                HandshakeInitialized?.Invoke(this, new HandshakeInitializedEventArgs());
+                _p2PSession.Handshake();
 
                 FrameCipher frameCipher = new FrameCipher(_handshake.Secrets.AesSecret);
                 FrameMacProcessor macProcessor = new FrameMacProcessor(_handshake.Secrets);
@@ -203,8 +202,6 @@ namespace Nethermind.Network.Rlpx
         {
             if (_logger.IsTrace) _logger.Trace($"Handshake with {_remoteId} @ {context.Channel.RemoteAddress} finished. Removing {nameof(NettyHandshakeHandler)} from the pipeline");
         }
-
-        public event EventHandler<HandshakeInitializedEventArgs> HandshakeInitialized;
 
         private async Task CheckHandshakeInitTimeout()
         {

@@ -16,11 +16,18 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.Network.Rlpx.Handshake
+using System;
+using Nethermind.Network.P2P;
+
+namespace Nethermind.Network.Rlpx
 {
-    public enum EncryptionHandshakeRole
+    public class SessionEventArgs : EventArgs
     {
-        Initiator,
-        Recipient
+        public IP2PSession Session { get; }
+
+        public SessionEventArgs(IP2PSession session)
+        {
+            Session = session;
+        }
     }
 }

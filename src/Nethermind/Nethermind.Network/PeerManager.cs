@@ -26,12 +26,10 @@ using System.Threading.Tasks;
 using System.Timers;
 using DotNetty.Buffers;
 using DotNetty.Codecs;
-using DotNetty.Common.Internal.Logging;
 using DotNetty.Handlers.Logging;
 using DotNetty.Transport.Bootstrapping;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
-using Microsoft.Extensions.Logging.Console;
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -55,17 +53,11 @@ namespace Nethermind.Network
     /// </summary>
     public class PeerManager : IPeerManager
     {
-        private readonly int _localPort;
-        private readonly IEncryptionHandshakeService _encryptionHandshakeService;
-        private readonly IMessageSerializationService _serializationService;
-        private IChannel _bootstrapChannel;
-        private IEventLoopGroup _bossGroup;
-        private IEventLoopGroup _workerGroup;
-        
         private readonly ILogger _logger;
-        private readonly ILogManager _logManager;
+        
         private readonly IDiscoveryManager _discoveryManager;
         private readonly INetworkConfig _networkConfig;
+        private readonly IRlpxPeer _rlpxPeer;
         private readonly ISynchronizationManager _synchronizationManager;
         private readonly INodeStatsProvider _nodeStatsProvider;
         private readonly INetworkStorage _peerStorage;
@@ -85,10 +77,7 @@ namespace Nethermind.Network
         private readonly ConcurrentDictionary<NodeId, Peer> _candidatePeers = new ConcurrentDictionary<NodeId, Peer>();
 
         public PeerManager(
-            NodeId localNodeId, // TODO: move to network config
-            int localPort, // TODO: move to network config
-            IEncryptionHandshakeService encryptionHandshakeService,
-            IMessageSerializationService messageSerializationService,
+            IRlpxPeer rlpxPeer,
             IDiscoveryManager discoveryManager,
             ISynchronizationManager synchronizationManager,
             INodeStatsProvider nodeStatsProvider,
@@ -98,26 +87,19 @@ namespace Nethermind.Network
             IPerfService perfService,
             ILogManager logManager)
         {
-            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _logger = logManager.GetClassLogger();
             _networkConfig = configurationProvider.GetConfig<INetworkConfig>();
-            _synchronizationManager = synchronizationManager;
-            _nodeStatsProvider = nodeStatsProvider;
-            _discoveryManager = discoveryManager;
-            _perfService = perfService;
-            _nodeFactory = nodeFactory;
-            _peerStorage = peerStorage;
+            _rlpxPeer = rlpxPeer ?? throw new ArgumentNullException(nameof(rlpxPeer));
+            _synchronizationManager = synchronizationManager ?? throw new ArgumentNullException(nameof(synchronizationManager));
+            _nodeStatsProvider = nodeStatsProvider ?? throw new ArgumentNullException(nameof(nodeStatsProvider));
+            _discoveryManager = discoveryManager ?? throw new ArgumentNullException(nameof(discoveryManager));
+            _perfService = perfService ?? throw new ArgumentNullException(nameof(perfService));
+            _nodeFactory = nodeFactory ?? throw new ArgumentNullException(nameof(nodeFactory));
+            _peerStorage = peerStorage ?? throw new ArgumentNullException(nameof(peerStorage));
             _peerStorage.StartBatch();
             
             _nodeStatsProvider = nodeStatsProvider;
             _logger = logManager.GetClassLogger();
-
-            _synchronizationManager = synchronizationManager ?? throw new ArgumentNullException(nameof(synchronizationManager));
-            _encryptionHandshakeService = encryptionHandshakeService ?? throw new ArgumentNullException(nameof(encryptionHandshakeService));
-            _serializationService = messageSerializationService ?? throw new ArgumentNullException(nameof(messageSerializationService));
-
-            LocalNodeId =  localNodeId ?? throw new ArgumentNullException(nameof(localNodeId));
-            _localPort = localPort;
         }
 
         internal IReadOnlyCollection<Peer> CandidatePeers => _candidatePeers.Values.ToArray();
@@ -125,7 +107,7 @@ namespace Nethermind.Network
 
         public async Task Start()
         {
-            //timer is needed to support reconnecting, event based connection is also supported
+            // timer is needed to support reconnecting, event based connection is also supported
             if (_networkConfig.IsActivePeerTimerEnabled)
             {
                 StartActivePeersTimer();
@@ -168,6 +150,18 @@ namespace Nethermind.Network
             }
 
             LogSessionStats(); 
+        }
+
+        private bool AddActivePeer(NodeId nodeId, Peer peer, string reason)
+        {
+            if(_logger.IsDebug) _logger.Debug($"ADDING {nodeId} {reason}"));
+            return _activePeers.TryAdd(nodeId, peer);
+        }
+
+        private void RemoveActivePeer(NodeId nodeId, string reason)
+        {
+            if(_logger.IsDebug) _logger.Debug($"REMOVING {nodeId} {reason}");
+            _activePeers.TryRemove(nodeId, out _);
         }
 
         public async Task RunPeerUpdate()
@@ -220,9 +214,9 @@ namespace Nethermind.Network
                 var candidate = candidates[i];
                 tryCount++;
 
-                //Can happen when In connection is received from the same peer and is initialized before we get here
-                //In this case we do not initialze OUT connection
-                if (!_activePeers.TryAdd(candidate.Key, candidate.Value))
+                // Can happen when In connection is received from the same peer and is initialized before we get here
+                // In this case we do not initialze OUT connection
+                if (!AddActivePeer(candidate.Key, candidate.Value, "upgrading candidate"))
                 {
                     if (_logger.IsTrace)
                     {
@@ -236,7 +230,7 @@ namespace Nethermind.Network
                 {
                     candidate.Value.NodeStats.AddNodeStatsEvent(NodeStatsEventType.ConnectionFailed);
                     failedInitialConnect++;
-                    _activePeers.TryRemove(candidate.Key, out _);
+                    RemoveActivePeer(candidate.Key, "Failed to initialize connections");
                     continue;
                 }
 
@@ -312,6 +306,7 @@ namespace Nethermind.Network
             {
                 return "0";
             }
+            
             var validationGroups = incompatibleNodes.GroupBy(x => x.Value.NodeStats.FailedCompatibilityValidation).ToArray();
             return $"[{string.Join(", ", validationGroups.Select(x => $"{x.Key.ToString()}:{x.Count()}"))}]";
         }
@@ -356,7 +351,7 @@ namespace Nethermind.Network
         {
             try
             {
-                await ConnectAsync(candidate.Node.Id, candidate.Node.Host, candidate.Node.Port, candidate.NodeStats);
+                await _rlpxPeer.ConnectAsync(candidate.Node.Id, candidate.Node.Host, candidate.Node.Port, candidate.NodeStats);
                 return true;
             }
             catch (NetworkingException ex)
@@ -441,66 +436,6 @@ namespace Nethermind.Network
                     _logger.Debug($"Adding trusted peer to New collection {node.Id}@{node.Host}:{node.Port}");
                 }
             }
-        }
-
-        private async Task OnHandshakeInitialized(object sender, ConnectionInitializedEventArgs eventArgs)
-        {
-            if (eventArgs.ClientConnectionType == ClientConnectionType.In)
-            {
-                //If connection was initiated by remote peer we allow handshake to take place before potentially disconnecting
-                eventArgs.Session.ProtocolInitialized += async (s, e) => await OnProtocolInitialized(s, e);
-                eventArgs.Session.PeerDisconnected += async (s, e) => await OnPeerDisconnected(s, e);
-                if (_logger.IsTrace)
-                {
-                    _logger.Trace($"Initiated IN connection (PeerManager)(handshake completed) for peer: {eventArgs.Session.RemoteNodeId}");
-                }
-
-                await ProcessIncomingConnection(eventArgs.Session);
-            }
-            else
-            {
-                if (!_activePeers.TryGetValue(eventArgs.Session.RemoteNodeId, out Peer peer))
-                {
-                    if (_logger.IsError)
-                    {
-                        _logger.Error($"Initiated Handshake (out) with Peer without adding it to Active collection: {eventArgs.Session.RemoteNodeId}");
-                    }
-                    return;
-                }
-                peer.NodeStats.AddNodeStatsHandshakeEvent(eventArgs.ClientConnectionType);
-            }
-            if (_logger.IsTrace)
-            {
-                _logger.Trace($"Handshake initialized for peer: {eventArgs.Session.RemoteNodeId}");
-            }
-        }
-
-        private void OnRemoteOutConnectionInitialized(object sender, ConnectionInitializedEventArgs eventArgs)
-        {
-            //happens only for out connections
-            var id = eventArgs.Session.RemoteNodeId;
-
-            if (!_activePeers.TryGetValue(id, out Peer peer))
-            {
-                if (_logger.IsError)
-                {
-                    _logger.Error($"Initiated rlpx connection (out) with Peer without adding it to Active collection: {id}");
-                }
-                return;
-            }
-
-            peer.NodeStats.AddNodeStatsEvent(NodeStatsEventType.ConnectionEstablished);
-            peer.ClientConnectionType = eventArgs.ClientConnectionType;
-            peer.Session = eventArgs.Session;       
-            peer.Session.PeerDisconnected += async (s, e) => await OnPeerDisconnected(s, e);
-            peer.Session.ProtocolInitialized += async (s, e) => await OnProtocolInitialized(s, e);
-
-            if (_logger.IsTrace)
-            {
-                _logger.Trace($"Initializing OUT connection (PeerManager) for peer: {eventArgs.Session.RemoteNodeId}");
-            }
-
-            AddNodeToDiscovery(peer);
         }
 
         private async Task OnProtocolInitialized(object sender, ProtocolInitializedEventArgs e)
@@ -604,13 +539,13 @@ namespace Nethermind.Network
         {
             if (eventArgs.ListenPort == 0)
             {
-                if (_logger.IsTrace) _logger.Trace($"Listen port is 0, node is not listening: {peer.Node.Id}, ConnectionType: {peer.Session.ClientConnectionType}, nodePort: {peer.Node.Port}");
+                if (_logger.IsTrace) _logger.Trace($"Listen port is 0, node is not listening: {peer.Node.Id}, ConnectionType: {peer.Session.ConnectionDirection}, nodePort: {peer.Node.Port}");
                 return;
             }
 
             if (peer.Node.Port != eventArgs.ListenPort)
             { 
-                if (_logger.IsDebug) _logger.Debug($"Updating listen port for node: {peer.Node.Id}, ConnectionType: {peer.Session.ClientConnectionType}, from: {peer.Node.Port} to: {eventArgs.ListenPort}");
+                if (_logger.IsDebug) _logger.Debug($"Updating listen port for node: {peer.Node.Id}, ConnectionType: {peer.Session.ConnectionDirection}, from: {peer.Node.Port} to: {eventArgs.ListenPort}");
                 peer.Node.Port = eventArgs.ListenPort;
 
                 if (peer.NodeLifecycleManager != null)
@@ -638,9 +573,35 @@ namespace Nethermind.Network
             }
         }
 
+        private void ProcessOutgoingConnection(IP2PSession session)
+        {
+            var id = session.RemoteNodeId;
+
+            if (!_activePeers.TryGetValue(id, out Peer peer))
+            {
+                if (_logger.IsError)
+                {
+                    _logger.Error($"Initiated rlpx connection (out) with Peer without adding it to Active collection: {id}");
+                }
+                
+                return;
+            }
+
+            peer.NodeStats.AddNodeStatsEvent(NodeStatsEventType.ConnectionEstablished);
+            peer.ConnectionDirection = session.ConnectionDirection;
+            peer.Session = session;       
+
+            if (_logger.IsTrace)
+            {
+                _logger.Trace($"Initializing OUT connection (PeerManager) for peer: {session.RemoteNodeId}");
+            }
+
+            AddNodeToDiscovery(peer);
+        }
+        
         private async Task ProcessIncomingConnection(IP2PSession session)
         {
-            //if we have already initiated connection before
+            // if we have already initiated connection before
             if (_activePeers.ContainsKey(session.RemoteNodeId))
             {
                 if (_logger.IsTrace)
@@ -652,7 +613,7 @@ namespace Nethermind.Network
                 return;
             }
 
-            //if we have too many acive peers
+            // if we have too many active peers
             if (_activePeers.Count >= _networkConfig.ActivePeersMaxCount)
             {
                 if (_logger.IsTrace)
@@ -664,33 +625,33 @@ namespace Nethermind.Network
                 return;
             }
 
-            //it is possible we already have this node as a candidate
+            // it is possible we already have this node as a candidate
             if (_candidatePeers.TryGetValue(session.RemoteNodeId, out var peer))
             {
                 peer.Session = session;
-                peer.ClientConnectionType = session.ClientConnectionType;
+                peer.ConnectionDirection = session.ConnectionDirection;
             }
             else
             {
                 var node = _nodeFactory.CreateNode(session.RemoteNodeId, session.RemoteHost, session.RemotePort ?? 0);
                 peer = new Peer(node, _nodeStatsProvider.GetOrAddNodeStats(node))
                 {
-                    ClientConnectionType = session.ClientConnectionType,
+                    ConnectionDirection = session.ConnectionDirection,
                     Session = session
                 };
             }
 
-            if (_activePeers.TryAdd(session.RemoteNodeId, peer))
+            if (AddActivePeer(session.RemoteNodeId, peer, "incoming connection"))
             {
-                peer.NodeStats.AddNodeStatsHandshakeEvent(ClientConnectionType.In);
+                peer.NodeStats.AddNodeStatsHandshakeEvent(ConnectionDirection.In);
 
-                //we also add this node to candidates for future connection (if we dont have it yet)
+                // we also add this node to candidates for future connection (if we dont have it yet)
                 _candidatePeers.TryAdd(session.RemoteNodeId, peer);
 
                 return;
             }
 
-            //if we have already initiated connection before (threding safeguard - it means another thread added this node to active collection after our contains key key check above)
+            // if we have already initiated connection before (threding safeguard - it means another thread added this node to active collection after our contains key key check above)
             if (_logger.IsTrace)
             {
                 _logger.Trace($"Initiating disconnect, node is already connected: {session.RemoteNodeId}");
@@ -776,21 +737,21 @@ namespace Nethermind.Network
 
         private async Task OnPeerDisconnected(object sender, DisconnectEventArgs e)
         {
-            var peer = (IP2PSession) sender;
+            var session = (IP2PSession) sender;
             if (_logger.IsTrace)
             {
-                _logger.Trace($"Peer disconnected event in PeerManager: {peer.RemoteNodeId}, disconnectReason: {e.DisconnectReason}, disconnectType: {e.DisconnectType}");
+                _logger.Trace($"Peer disconnected event in PeerManager: {session.RemoteNodeId}, disconnectReason: {e.DisconnectReason}, disconnectType: {e.DisconnectType}");
             }
 
-            if (peer.RemoteNodeId == null)
+            if (session.RemoteNodeId == null)
             {
-                if (_logger.IsWarn) _logger.Warn($"Disconnect on session with no RemoteNodeId, sessionId: {peer.SessionId}");
+                if (_logger.IsWarn) _logger.Warn($"Disconnect on session with no RemoteNodeId, sessionId: {session.SessionId}");
                 return;
             }
 
-            if (_activePeers.TryGetValue(peer.RemoteNodeId, out var activePeer))
+            if (_activePeers.TryGetValue(session.RemoteNodeId, out var activePeer))
             {
-                if (activePeer.Session?.SessionId != e.SessionId)
+                if (activePeer.Session?.SessionId != session.SessionId)
                 {
                     if (_logger.IsTrace)
                     {
@@ -800,7 +761,7 @@ namespace Nethermind.Network
                     return;
                 }
 
-                _activePeers.TryRemove(peer.RemoteNodeId, out _);
+                RemoveActivePeer(session.RemoteNodeId, "peer disconnected");
                 activePeer.NodeStats.AddNodeStatsDisconnectEvent(e.DisconnectType, e.DisconnectReason);
                 if (activePeer.SynchronizationPeer != null)
                 {
@@ -809,7 +770,7 @@ namespace Nethermind.Network
 
                 if (_logger.IsTrace)
                 {
-                    _logger.Trace($"Removing Active Peer on disconnect {peer.RemoteNodeId}");
+                    _logger.Trace($"Removing Active Peer on disconnect {session.RemoteNodeId}");
                 }
 
                 if (_logger.IsTrace && _networkConfig.CaptureNodeStatsEventHistory)
@@ -821,6 +782,39 @@ namespace Nethermind.Network
                 {
                     await RunPeerUpdate();
                 }
+            }
+        }
+        
+        private async Task OnHandshakeComplete(IP2PSession session)
+        {
+            //This is the first moment we get confirmed publicKey of remote node in case of incoming connections
+            if (session.ConnectionDirection == ConnectionDirection.In)
+            {
+                if (_logger.IsTrace)
+                {
+                    _logger.Trace($"Handshake initialized {session.ConnectionDirection.ToString().ToUpper()} channel {session.RemoteNodeId}@{session.RemoteHost}:{session.RemotePort}");
+                }
+     
+                await ProcessIncomingConnection(session);
+            }
+            else
+            {
+                if (!_activePeers.TryGetValue(session.RemoteNodeId, out Peer peer))
+                {
+                    if (_logger.IsError)
+                    {
+                        _logger.Error($"Initiated Handshake (OUT) with Peer without adding it to Active collection: {session.RemoteNodeId}");
+                    }
+                    
+                    return;
+                }
+                
+                peer.NodeStats.AddNodeStatsHandshakeEvent(ConnectionDirection.Out);
+            }
+                
+            if (_logger.IsTrace)
+            {
+                _logger.Trace($"Handshake initialized for peer: {session.RemoteNodeId}");
             }
         }
         
@@ -1085,9 +1079,9 @@ namespace Nethermind.Network
             foreach (var statsEvent in nodeStats.EventHistory.OrderBy(x => x.EventDate).ToArray())
             {
                 sb.Append($"{statsEvent.EventDate.ToString(_networkConfig.DetailedTimeDateFormat)} | {statsEvent.EventType}");
-                if (statsEvent.ClientConnectionType.HasValue)
+                if (statsEvent.ConnectionDirection.HasValue)
                 {
-                    sb.Append($" | {statsEvent.ClientConnectionType.Value.ToString()}");
+                    sb.Append($" | {statsEvent.ConnectionDirection.Value.ToString()}");
                 }
                 if (statsEvent.P2PNodeDetails != null)
                 {
@@ -1142,34 +1136,10 @@ namespace Nethermind.Network
             public IP2PSession Session { get; set; }
             public ISynchronizationPeer SynchronizationPeer { get; set; }
             public IP2PMessageSender P2PMessageSender { get; set; }
-            public ClientConnectionType ClientConnectionType { get; set; }
+            public ConnectionDirection ConnectionDirection { get; set; }
         }
         
-        public NodeId LocalNodeId { get; }
-
-        public async Task Shutdown()
-        {
-//            InternalLoggerFactory.DefaultFactory.AddProvider(new ConsoleLoggerProvider((s, level) => true, false));
-
-            await _bootstrapChannel.CloseAsync().ContinueWith(t =>
-            {
-                if (t.IsFaulted)
-                {
-                    _logger.Error($"{nameof(Shutdown)} failed", t.Exception);
-                }
-            });
-
-            await Task.WhenAll(_bossGroup.ShutdownGracefullyAsync(), _workerGroup.ShutdownGracefullyAsync())
-                .ContinueWith(t =>
-                {
-                    if (t.IsFaulted)
-                    {
-                        _logger.Error($"Groups shutdown failed in {nameof(PeerManager)}", t.Exception);
-                    }
-                });
-        }
-
-        public async Task Init(bool isDiscoveryEnabled)
+        public void Init(bool isDiscoveryEnabled)
         {
             if (_isInitialized)
             {
@@ -1177,153 +1147,26 @@ namespace Nethermind.Network
             }
 
             _isInitialized = true;
-
-            try
-            {
-                _bossGroup = new MultithreadEventLoopGroup(1);
-                _workerGroup = new MultithreadEventLoopGroup();
-
-                ServerBootstrap bootstrap = new ServerBootstrap();
-                bootstrap
-                    .Group(_bossGroup, _workerGroup)
-                    .Channel<TcpServerSocketChannel>()
-                    .ChildOption(ChannelOption.SoBacklog, 100)
-                    .Handler(new LoggingHandler("BOSS", DotNetty.Handlers.Logging.LogLevel.TRACE))
-                    .ChildHandler(new ActionChannelInitializer<ISocketChannel>(ch =>
-                        InitializeChannel(ch, EncryptionHandshakeRole.Recipient, null,
-                            ((IPEndPoint) ch.RemoteAddress).Address.ToString(), ((IPEndPoint) ch.RemoteAddress).Port)));
-
-                _bootstrapChannel = await bootstrap.BindAsync(_localPort).ContinueWith(t =>
-                {
-                    if (t.IsFaulted)
-                    {
-                        _logger.Error($"{nameof(Init)} failed", t.Exception);
-                        return null;
-                    }
-
-                    return t.Result;
-                });
-
-                if (_bootstrapChannel == null)
-                {
-                    throw new NetworkingException($"Failed to initialize {nameof(_bootstrapChannel)}", NetwokExceptionType.Other);
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.Error($"{nameof(Init)} failed.", ex);
-                // TODO: check what happens on nulls
-                await Task.WhenAll(_bossGroup?.ShutdownGracefullyAsync(), _workerGroup?.ShutdownGracefullyAsync());
-                throw;
-            }
             
             _isDiscoveryEnabled = isDiscoveryEnabled;
             _discoveryManager.NodeDiscovered += async (s, e) => await OnNodeDiscovered(s, e);
-            OutConnectionInitialized += OnRemoteOutConnectionInitialized;
-            HandshakeInitialized += async (s, e) => await OnHandshakeInitialized(s, e);
             _synchronizationManager.SyncEvent += async (s, e) => await OnSyncEvent(s, e);
 
             LoadConfiguredTrustedPeers();
             LoadPeersFromDb();
-        }
 
-        public async Task ConnectAsync(NodeId remoteId, string host, int port, INodeStats nodeStats)
-        {
-            if (_logger.IsTrace) _logger.Trace($"Connecting to {remoteId}@{host}:{port}");
-
-            Bootstrap clientBootstrap = new Bootstrap();
-            clientBootstrap.Group(_workerGroup);
-            clientBootstrap.Channel<TcpSocketChannel>();
-
-            clientBootstrap.Option(ChannelOption.TcpNodelay, true);
-            clientBootstrap.Option(ChannelOption.MessageSizeEstimator, DefaultMessageSizeEstimator.Default);
-            clientBootstrap.Option(ChannelOption.ConnectTimeout, Timeouts.InitialConnection);
-            clientBootstrap.RemoteAddress(host, port);
-
-            clientBootstrap.Handler(new ActionChannelInitializer<ISocketChannel>(ch => InitializeChannel(ch, EncryptionHandshakeRole.Initiator, remoteId, host, port, nodeStats)));
-
-            var connectTask = clientBootstrap.ConnectAsync(new IPEndPoint(IPAddress.Parse(host), port));
-            var firstTask = await Task.WhenAny(connectTask,
-                Task.Delay(Timeouts.InitialConnection.Add(TimeSpan.FromSeconds(5))));
-            if (firstTask != connectTask)
+            _rlpxPeer.SessionCreated += (sender, args) =>
             {
-                if (_logger.IsTrace) _logger.Trace($"Connection timed out: {remoteId}@{host}:{port}");
-                throw new NetworkingException($"Failed to connect to {remoteId} (timeout)", NetwokExceptionType.Timeout);
-            }
+                IP2PSession session = args.Session;
+                session.PeerDisconnected += async (s, e) => await OnPeerDisconnected(s, e);
+                session.ProtocolInitialized += async (s, e) => await OnProtocolInitialized(s, e);
+                session.HandshakeComplete += async (s, e) => await OnHandshakeComplete((IP2PSession) s);
 
-            if (connectTask.IsFaulted)
-            {
-                if (_logger.IsTrace)
+                if (session.ConnectionDirection == ConnectionDirection.Out)
                 {
-                    _logger.Trace($"Error when connecting to {remoteId}@{host}:{port}, error: {connectTask.Exception}");
+                    ProcessOutgoingConnection(session);
                 }
-
-                throw new NetworkingException($"Failed to connect to {remoteId}", NetwokExceptionType.TargetUnreachable,connectTask.Exception);
-            }
-
-            if (_logger.IsTrace) _logger.Trace($"Connected to {remoteId}@{host}:{port}");
-        }
-
-        public event EventHandler<ConnectionInitializedEventArgs> OutConnectionInitialized;
-        public event EventHandler<ConnectionInitializedEventArgs> HandshakeInitialized;
-
-        private void InitializeChannel(IChannel channel, EncryptionHandshakeRole role, NodeId remoteId = null, string remoteHost = null, int? remotePort = null, INodeStats nodeStats = null)
-        {
-            var connectionType = role == EncryptionHandshakeRole.Recipient ? ClientConnectionType.In : ClientConnectionType.Out;
-            P2PSession p2PSession = new P2PSession(
-                LocalNodeId,
-                _localPort,
-                _serializationService,
-                _synchronizationManager,
-                _logManager, _nodeStatsProvider, nodeStats)
-            {
-                ClientConnectionType = connectionType
             };
-
-            //This is the first moment we get confirmed publicKey of remote node in case of outgoing connections
-            if (connectionType == ClientConnectionType.Out)
-            {
-                if (_logger.IsTrace)
-                {
-                    _logger.Trace($"Initializing {connectionType.ToString().ToUpper()} channel{(connectionType == ClientConnectionType.Out ? $": {remoteId}@{remoteHost}:{remotePort}" : string.Empty)}");
-                }
-
-                p2PSession.RemoteNodeId = remoteId;
-                p2PSession.RemoteHost = remoteHost;
-                p2PSession.RemotePort = remotePort;
-
-                OutConnectionInitialized?.Invoke(this, new ConnectionInitializedEventArgs(p2PSession, connectionType));
-            }
-
-            var handshakeHandler = new NettyHandshakeHandler(_encryptionHandshakeService, p2PSession, role, remoteId, _logManager);
-            handshakeHandler.HandshakeInitialized += (s, e) =>
-            {
-                //This is the first moment we get confirmed publicKey of remote node in case of incoming connections
-                if (connectionType == ClientConnectionType.In)
-                {
-                    if (_logger.IsTrace)
-                    {
-                        _logger.Trace($"Handshake initialized {connectionType.ToString().ToUpper()} channel {p2PSession.RemoteNodeId}@{p2PSession.RemoteHost}:{p2PSession.RemotePort}");
-                    }
-                }
-
-                HandshakeInitialized?.Invoke(this, new ConnectionInitializedEventArgs(p2PSession, connectionType));
-            };
-
-            IChannelPipeline pipeline = channel.Pipeline;
-            pipeline.AddLast(new LoggingHandler(connectionType.ToString().ToUpper(), DotNetty.Handlers.Logging.LogLevel.TRACE));
-            pipeline.AddLast("enc-handshake-dec", new LengthFieldBasedFrameDecoder(ByteOrder.BigEndian, ushort.MaxValue, 0, 2, 0, 0, true));
-            pipeline.AddLast("enc-handshake-handler", handshakeHandler);
-
-            channel.CloseCompletion.ContinueWith(async x =>
-            {
-                if (_logger.IsTrace)
-                {
-                    _logger.Trace($"Channel disconnected: {p2PSession.RemoteNodeId}");
-                }
-
-                await p2PSession.DisconnectAsync(DisconnectReason.ClientQuitting, DisconnectType.Remote);
-            });
         }
     }
 }

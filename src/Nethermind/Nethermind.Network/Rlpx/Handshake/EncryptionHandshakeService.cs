@@ -139,7 +139,7 @@ namespace Nethermind.Network.Rlpx.Handshake
             byte[] sizeBytes = size.ToBigEndianByteArray().Slice(2, 2);
             byte[] packetData = _eciesCipher.Encrypt(handshake.RemoteNodeId.PublicKey, ackData, sizeBytes);
             handshake.AckPacket = new Packet(Bytes.Concat(sizeBytes, packetData));
-            SetSecrets(handshake, EncryptionHandshakeRole.Recipient);
+            SetSecrets(handshake, HandshakeRole.Recipient);
             return handshake.AckPacket;
         }
 
@@ -167,10 +167,10 @@ namespace Nethermind.Network.Rlpx.Handshake
                 handshake.RecipientNonce = ackMessage.Nonce;
             }
 
-            SetSecrets(handshake, EncryptionHandshakeRole.Initiator);
+            SetSecrets(handshake, HandshakeRole.Initiator);
         }
 
-        private void SetSecrets(EncryptionHandshake handshake, EncryptionHandshakeRole encryptionHandshakeRole)
+        private void SetSecrets(EncryptionHandshake handshake, HandshakeRole handshakeRole)
         {
             byte[] ephemeralSharedSecret = BouncyCrypto.Agree(handshake.EphemeralPrivateKey, handshake.RemoteEphemeralPublicKey);
             byte[] nonceHash = Keccak.Compute(Bytes.Concat(handshake.RecipientNonce, handshake.InitiatorNonce)).Bytes;
@@ -193,7 +193,7 @@ namespace Nethermind.Network.Rlpx.Handshake
             mac2.BlockUpdate(macSecret.Xor(handshake.InitiatorNonce), 0, macSecret.Length);
             mac2.BlockUpdate(handshake.AckPacket.Data, 0, handshake.AckPacket.Data.Length);
 
-            if (encryptionHandshakeRole == EncryptionHandshakeRole.Initiator)
+            if (handshakeRole == HandshakeRole.Initiator)
             {
                 handshake.Secrets.EgressMac = mac1;
                 handshake.Secrets.IngressMac = mac2;

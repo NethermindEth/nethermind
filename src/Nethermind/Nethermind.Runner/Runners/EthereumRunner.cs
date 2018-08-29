@@ -67,17 +67,19 @@ namespace Nethermind.Runner.Runners
         private readonly IConfigProvider _configProvider;
         private readonly IInitConfig _initConfig;
         private readonly INetworkHelper _networkHelper;
-        private IBlockchainProcessor _blockchainProcessor;
+        
+        private PrivateKey _privateKey;
         private ICryptoRandom _cryptoRandom = new CryptoRandom();
+        private ISigner _signer = new Signer();
+        
+        private IBlockchainProcessor _blockchainProcessor;
         private IDiscoveryApp _discoveryApp;
         private IDiscoveryManager _discoveryManager;
         private IMessageSerializationService _messageSerializationService = new MessageSerializationService();
         private INodeFactory _nodeFactory;
         private INodeStatsProvider _nodeStatsProvider;
         private IPerfService _perfService;
-        private PrivateKey _privateKey;
         private CancellationTokenSource _runnerCancellation;
-        private ISigner _signer;
         private ISynchronizationManager _syncManager;
         private ITransactionTracer _tracer;
         private IKeyStore _keyStore;
@@ -128,6 +130,7 @@ namespace Nethermind.Runner.Runners
         {
             _logger.Info("Shutting down...");
             _runnerCancellation.Cancel();
+            await (_rlpxPeer?.Shutdown() ?? Task.CompletedTask);
             _logger.Debug("Stopping peer manager...");
             await (_peerManager?.StopAsync() ?? Task.CompletedTask);
             _logger.Debug("Stopping sync manager...");
@@ -297,8 +300,7 @@ namespace Nethermind.Runner.Runners
             // create shared objects between discovery and peer manager
             _nodeFactory = new NodeFactory();
             _nodeStatsProvider = new NodeStatsProvider(
-                _configProvider,
-                _logManager,
+                _configProvider.GetConfig<INetworkConfig>(),
                 _nodeFactory);
             
             var jsonSerializer = new JsonSerializer(
@@ -477,6 +479,8 @@ namespace Nethermind.Runner.Runners
             }
         }
 
+        private IRlpxPeer _rlpxPeer;
+        
         private Task StartSync()
         {
             if (!_initConfig.SynchronizationEnabled)
@@ -492,11 +496,6 @@ namespace Nethermind.Runner.Runners
 
             _syncManager.Start();
             return Task.CompletedTask;
-        }
-
-        private async Task StartNet()
-        {
-            
         }
 
         private async Task InitPeer()
@@ -525,11 +524,19 @@ namespace Nethermind.Runner.Runners
             _messageSerializationService.Register(new BlockBodiesMessageSerializer());
             _messageSerializationService.Register(new NewBlockMessageSerializer());
             
-            var peerStorage = new NetworkStorage(PeersDbPath, _configProvider, _logManager, _perfService);
-            _peerManager = new PeerManager(new NodeId(_privateKey.PublicKey), _initConfig.P2PPort,
-                encryptionHandshakeServiceA, _messageSerializationService, _discoveryManager, _syncManager, _nodeStatsProvider, peerStorage,
+            _rlpxPeer = new RlpxPeer(new NodeId(_privateKey.PublicKey), _initConfig.P2PPort,
+                _syncManager,
+                _messageSerializationService,
+                encryptionHandshakeServiceA,
+                _nodeStatsProvider,
+                _logManager);
+
+            await _rlpxPeer.Init();
+            
+            var peerStorage = new NetworkStorage(PeersDbPath, _configProvider.GetConfig<INetworkConfig>(), _logManager, _perfService);
+            _peerManager = new PeerManager(_rlpxPeer, _discoveryManager, _syncManager, _nodeStatsProvider, peerStorage,
                 _nodeFactory, _configProvider, _perfService, _logManager);
-            await _peerManager.Init(_initConfig.DiscoveryEnabled);
+            _peerManager.Init(_initConfig.DiscoveryEnabled);
         }
 
         private async Task StartPeer()
@@ -547,26 +554,69 @@ namespace Nethermind.Runner.Runners
             var discoveryMessageFactory = new DiscoveryMessageFactory(_configProvider);
             var nodeIdResolver = new NodeIdResolver(_signer);
 
-            var msgSerializersProvider = new DiscoveryMsgSerializersProvider(_messageSerializationService, _signer,
-                privateKeyProvider, discoveryMessageFactory, nodeIdResolver, _nodeFactory);
+            var msgSerializersProvider = new DiscoveryMsgSerializersProvider(
+                _messageSerializationService,
+                _signer,
+                privateKeyProvider,
+                discoveryMessageFactory,
+                nodeIdResolver,
+                _nodeFactory);
+            
             msgSerializersProvider.RegisterDiscoverySerializers();
 
             var nodeDistanceCalculator = new NodeDistanceCalculator(_configProvider);
-            var nodeTable = new NodeTable(_nodeFactory, _keyStore, nodeDistanceCalculator, _configProvider,
+            
+            var nodeTable = new NodeTable(
+                _nodeFactory,
+                _keyStore,
+                nodeDistanceCalculator,
+                _configProvider,
                 _logManager);
 
-            var evictionManager = new EvictionManager(nodeTable, _logManager);
-            var nodeLifeCycleFactory = new NodeLifecycleManagerFactory(_nodeFactory, nodeTable, discoveryMessageFactory,
-                evictionManager, _nodeStatsProvider, _configProvider, _logManager);
+            var evictionManager = new EvictionManager(
+                nodeTable,
+                _logManager);
+            
+            var nodeLifeCycleFactory = new NodeLifecycleManagerFactory(
+                _nodeFactory,
+                nodeTable,
+                discoveryMessageFactory,
+                evictionManager,
+                _nodeStatsProvider,
+                _configProvider,
+                _logManager);
 
-            var discoveryStorage =
-                new NetworkStorage(DiscoveryNodesDbPath, _configProvider, _logManager, _perfService);
-            _discoveryManager = new DiscoveryManager(nodeLifeCycleFactory, _nodeFactory, nodeTable, discoveryStorage,
-                _configProvider, _logManager);
+            var discoveryStorage = new NetworkStorage(
+                DiscoveryNodesDbPath,
+                _configProvider.GetConfig<INetworkConfig>(),
+                _logManager,
+                _perfService);
+            
+            _discoveryManager = new DiscoveryManager(
+                nodeLifeCycleFactory,
+                _nodeFactory,
+                nodeTable,
+                discoveryStorage,
+                _configProvider,
+                _logManager);
 
-            var nodesLocator = new NodesLocator(nodeTable, _discoveryManager, _configProvider, _logManager);
-            _discoveryApp = new DiscoveryApp(nodesLocator, _discoveryManager, _nodeFactory, nodeTable,
-                _messageSerializationService, _cryptoRandom, discoveryStorage, _configProvider, _logManager);
+            var nodesLocator = new NodesLocator(
+                nodeTable,
+                _discoveryManager,
+                _configProvider,
+                _logManager);
+            
+            _discoveryApp = new DiscoveryApp(
+                nodesLocator,
+                _discoveryManager,
+                _nodeFactory,
+                nodeTable,
+                _messageSerializationService,
+                _cryptoRandom,
+                discoveryStorage,
+                _configProvider,
+                _logManager);
+            
             _discoveryApp.Initialize(_privateKey.PublicKey);
         }
 
