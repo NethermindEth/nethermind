@@ -17,6 +17,7 @@
  */
 
 using System.Collections.Generic;
+using System.Diagnostics.Contracts;
 using System.Linq;
 using System.Net.Http;
 using System.Numerics;
@@ -58,8 +59,9 @@ namespace Nethermind.JsonRpc.Test
             var ethModule = Substitute.For<IEthModule>();
             var web3Module = Substitute.For<IWeb3Module>();
             var shhModule = Substitute.For<IShhModule>();
+            var nethmModule = Substitute.For<INethmModule>();
 
-            var moduleProvider = new ModuleProvider(_configurationProvider, netModule, ethModule, web3Module, shhModule);
+            var moduleProvider = new ModuleProvider(_configurationProvider, netModule, ethModule, web3Module, shhModule, nethmModule);
 
             _jsonRpcService = new JsonRpcService(moduleProvider, _configurationProvider, _logManager);
 
@@ -78,8 +80,9 @@ namespace Nethermind.JsonRpc.Test
             var web3Module = Substitute.For<IWeb3Module>();
             web3Module.web3_sha3(Arg.Any<Data>()).ReturnsForAnyArgs(x => new ResultWrapper<Data> { Result = new Result { ResultType = ResultType.Success }, Data = new Data("abcdef") });
             var shhModule = Substitute.For<IShhModule>();
+            var nethmModule = Substitute.For<INethmModule>();
 
-            var moduleProvider = new ModuleProvider(_configurationProvider, netModule, ethModule, web3Module, shhModule);
+            var moduleProvider = new ModuleProvider(_configurationProvider, netModule, ethModule, web3Module, shhModule, nethmModule);
 
             _jsonRpcService = new JsonRpcService(moduleProvider, _configurationProvider, _logManager);
 
@@ -96,8 +99,9 @@ namespace Nethermind.JsonRpc.Test
             var web3Module = Substitute.For<IWeb3Module>();
             ethModule.eth_getBlockByNumber(Arg.Any<BlockParameter>(), true).ReturnsForAnyArgs(x => new ResultWrapper<Block> { Result = new Result { ResultType = ResultType.Success }, Data = new Block{Number = new Quantity(2)} });
             var shhModule = Substitute.For<IShhModule>();
+            var nethmModule = Substitute.For<INethmModule>();
 
-            var moduleProvider = new ModuleProvider(_configurationProvider, netModule, ethModule, web3Module, shhModule);
+            var moduleProvider = new ModuleProvider(_configurationProvider, netModule, ethModule, web3Module, shhModule, nethmModule);
 
             _jsonRpcService = new JsonRpcService(moduleProvider, _configurationProvider, _logManager);
 
@@ -115,8 +119,9 @@ namespace Nethermind.JsonRpc.Test
             var web3Module = Substitute.For<IWeb3Module>();
             ethModule.eth_getWork().ReturnsForAnyArgs(x => new ResultWrapper<IEnumerable<Data>> { Result = new Result { ResultType = ResultType.Success }, Data = new [] { new Data("aa"), new Data("01")   } });
             var shhModule = Substitute.For<IShhModule>();
+            var nethmModule = Substitute.For<INethmModule>();
 
-            var moduleProvider = new ModuleProvider(_configurationProvider, netModule, ethModule, web3Module, shhModule);
+            var moduleProvider = new ModuleProvider(_configurationProvider, netModule, ethModule, web3Module, shhModule, nethmModule);
 
             _jsonRpcService = new JsonRpcService(moduleProvider, _configurationProvider, _logManager);
 
@@ -137,8 +142,9 @@ namespace Nethermind.JsonRpc.Test
             var web3Module = Substitute.For<IWeb3Module>();
             netModule.net_version().ReturnsForAnyArgs(x => new ResultWrapper<string> { Result = new Result { ResultType = ResultType.Success }, Data = "1" });
             var shhModule = Substitute.For<IShhModule>();
+            var nethmModule = Substitute.For<INethmModule>();
 
-            var moduleProvider = new ModuleProvider(_configurationProvider, netModule, ethModule, web3Module, shhModule);
+            var moduleProvider = new ModuleProvider(_configurationProvider, netModule, ethModule, web3Module, shhModule, nethmModule);
 
             _jsonRpcService = new JsonRpcService(moduleProvider, _configurationProvider, _logManager);
 
@@ -158,8 +164,9 @@ namespace Nethermind.JsonRpc.Test
             var ethModule = Substitute.For<IEthModule>();
             var web3Module = Substitute.For<IWeb3Module>();
             var shhModule = Substitute.For<IShhModule>();
+            var nethmModule = Substitute.For<INethmModule>();
 
-            var moduleProvider = new ModuleProvider(_configurationProvider, netModule, ethModule, web3Module, shhModule);
+            var moduleProvider = new ModuleProvider(_configurationProvider, netModule, ethModule, web3Module, shhModule, nethmModule);
 
             _jsonRpcService = new JsonRpcService(moduleProvider, _configurationProvider, _logManager);
 
@@ -189,6 +196,44 @@ namespace Nethermind.JsonRpc.Test
             };
             
             return request;
+        }
+
+        [Test]
+        public void CompileSolidityTest()
+        {
+            var netModule = Substitute.For<INetModule>();
+            var ethModule = Substitute.For<IEthModule>();
+            var web3Module = Substitute.For<IWeb3Module>();
+            var shhModule = Substitute.For<IShhModule>();
+            var nethmModule = Substitute.For<INethmModule>();
+            nethmModule.nethm_compileSolidity(Arg.Any<string>()).ReturnsForAnyArgs(r => new ResultWrapper<string>()
+            {
+                Result = new Result() {ResultType = ResultType.Success},
+                Data =
+                    "608060405234801561001057600080fd5b5060bb8061001f6000396000f300608060405260043610603f576000357c0100000000000000000000000000000000000000000000000000000000900463ffffffff168063c6888fa1146044575b600080fd5b348015604f57600080fd5b50606c600480360381019080803590602001909291905050506082565b6040518082815260200191505060405180910390f35b60006007820290509190505600a165627a7a72305820cb09d883ac888f0961fd8d82f8dae501d09d54f4bda397e8ca0fb9c05e2ec72a0029"
+            });
+
+            var moduleProvider = new ModuleProvider(_configurationProvider, netModule, ethModule, web3Module, shhModule,
+                nethmModule);
+
+            _jsonRpcService = new JsonRpcService(moduleProvider, _configurationProvider, _logManager);
+
+            var parameters = new CompilerParameters
+            {
+                Contract =
+                    "pragma solidity ^0.4.22; contract test { function multiply(uint a) public returns(uint d) {   return a * 7;   } }",
+                EvmVersion = "byzantium",
+                Optimize = false,
+                Runs = 2
+            };
+
+            var request = GetJsonRequest("nethm_compileSolidity", new[] { parameters.ToJson() });
+
+        var response = _jsonRpcService.SendRequest(request);
+
+            TestContext.Write(response.Result);
+            Assert.IsNotNull(response);
+            Assert.IsNull(response.Error);
         }
     }
 }
