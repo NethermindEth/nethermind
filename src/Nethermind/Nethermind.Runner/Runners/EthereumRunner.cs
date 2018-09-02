@@ -130,13 +130,16 @@ namespace Nethermind.Runner.Runners
         {
             _logger.Info("Shutting down...");
             _runnerCancellation.Cancel();
-            await (_rlpxPeer?.Shutdown() ?? Task.CompletedTask);
+            var rlpxPeerTask = (_rlpxPeer?.Shutdown() ?? Task.CompletedTask);
             _logger.Debug("Stopping peer manager...");
-            await (_peerManager?.StopAsync() ?? Task.CompletedTask);
+           var peerManagerTask =  (_peerManager?.StopAsync() ?? Task.CompletedTask);
             _logger.Debug("Stopping sync manager...");
-            await (_syncManager?.StopAsync() ?? Task.CompletedTask);
+            var syncManagerTask = (_syncManager?.StopAsync() ?? Task.CompletedTask);
             _logger.Debug("Stopping blockchain processor...");
-            await (_blockchainProcessor?.StopAsync() ?? Task.CompletedTask);
+            var blockchainProcessorTask = (_blockchainProcessor?.StopAsync() ?? Task.CompletedTask);
+
+            await Task.WhenAll(rlpxPeerTask, peerManagerTask, syncManagerTask, blockchainProcessorTask);
+
             _logger.Info("Goodbye...");
         }
 

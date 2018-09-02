@@ -174,15 +174,9 @@ namespace Nethermind.Runner
 
         protected async Task StopAsync()
         {
-            if (_jsonRpcRunner != null)
-            {
-                await _jsonRpcRunner.StopAsync();
-            }
-
-            if (_ethereumRunner != null)
-            {
-                await _ethereumRunner.StopAsync();
-            }
+            var jsonTask = _jsonRpcRunner?.StopAsync() ?? Task.CompletedTask;
+            var ethereumTask = _ethereumRunner?.StopAsync() ?? Task.CompletedTask;
+            await Task.WhenAll(jsonTask, ethereumTask);
         }
 
         private ConfigNode GetNode(NetworkNode networkNode, string localHost)

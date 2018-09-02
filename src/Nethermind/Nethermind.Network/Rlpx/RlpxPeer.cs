@@ -84,7 +84,7 @@ namespace Nethermind.Network.Rlpx
                     .ChildOption(ChannelOption.SoBacklog, 100)
                     .Handler(new LoggingHandler("BOSS", DotNetty.Handlers.Logging.LogLevel.TRACE))
                     .ChildHandler(new ActionChannelInitializer<ISocketChannel>(ch =>
-                        InitializeChannel(ch, ConnectionDirection.Out, null,
+                        InitializeChannel(ch, ConnectionDirection.Out, null, null,
                             ((IPEndPoint) ch.RemoteAddress).Address.ToString(), ((IPEndPoint) ch.RemoteAddress).Port)));
 
                 _bootstrapChannel = await bootstrap.BindAsync(_localPort).ContinueWith(t =>
@@ -125,18 +125,22 @@ namespace Nethermind.Network.Rlpx
             clientBootstrap.Option(ChannelOption.ConnectTimeout, Timeouts.InitialConnection);
             clientBootstrap.RemoteAddress(host, port);
 
-            clientBootstrap.Handler(new ActionChannelInitializer<ISocketChannel>(ch => InitializeChannel(ch, ConnectionDirection.Out, remoteId, host, port, nodeStats)));
+            var connStatus = new ConnStatus {Timeout = false};
+
+            clientBootstrap.Handler(new ActionChannelInitializer<ISocketChannel>(ch => InitializeChannel(ch, ConnectionDirection.Out, connStatus, remoteId, host, port, nodeStats)));
 
             var connectTask = clientBootstrap.ConnectAsync(new IPEndPoint(IPAddress.Parse(host), port));
             var firstTask = await Task.WhenAny(connectTask, Task.Delay(Timeouts.InitialConnection.Add(TimeSpan.FromSeconds(5))));
             if (firstTask != connectTask)
             {
+                connStatus.Timeout = true;
                 if (_logger.IsTrace) _logger.Trace($"Connection timed out: {remoteId}@{host}:{port}");
                 throw new NetworkingException($"Failed to connect to {remoteId} (timeout)", NetwokExceptionType.Timeout);
             }
 
             if (connectTask.IsFaulted)
             {
+                connStatus.Timeout = true;
                 if (_logger.IsTrace)
                 {
                     _logger.Trace($"Error when connecting to {remoteId}@{host}:{port}, error: {connectTask.Exception}");
@@ -150,7 +154,7 @@ namespace Nethermind.Network.Rlpx
 
         public event EventHandler<SessionEventArgs> SessionCreated; 
         
-        private void InitializeChannel(IChannel channel, ConnectionDirection connectionDirection, NodeId remoteId = null, string remoteHost = null, int? remotePort = null, INodeStats nodeStats = null)
+        private void InitializeChannel(IChannel channel, ConnectionDirection connectionDirection, ConnStatus connStatus, NodeId remoteId = null, string remoteHost = null, int? remotePort = null, INodeStats nodeStats = null)
         {   
             P2PSession session = new P2PSession(
                 LocalNodeId,
@@ -179,7 +183,7 @@ namespace Nethermind.Network.Rlpx
             SessionCreated?.Invoke(this, new SessionEventArgs(session));
 
             HandshakeRole role = connectionDirection == ConnectionDirection.In ? HandshakeRole.Recipient : HandshakeRole.Initiator;
-            var handshakeHandler = new NettyHandshakeHandler(_encryptionHandshakeService, session, role, remoteId, _logManager);
+            var handshakeHandler = new NettyHandshakeHandler(_encryptionHandshakeService, session, role, remoteId, _logManager, connStatus);
             
             IChannelPipeline pipeline = channel.Pipeline;
             pipeline.AddLast(new LoggingHandler(connectionDirection.ToString().ToUpper(), DotNetty.Handlers.Logging.LogLevel.TRACE));
@@ -218,5 +222,10 @@ namespace Nethermind.Network.Rlpx
                     }
                 });
         }
+    }
+
+    public class ConnStatus
+    {
+        public bool Timeout { get; set; }
     }
 }

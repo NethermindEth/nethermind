@@ -16,13 +16,6 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
-using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -38,6 +31,13 @@ using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Stats;
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Nethermind.Network
 {
@@ -116,13 +116,17 @@ namespace Nethermind.Network
 
         public async Task StopAsync()
         {
-            await _synchronizationManager.StopAsync().ContinueWith(x =>
+            _cancellationTokenSource.Cancel();
+
+            var closingTasks = new List<Task>();
+            var syncCloseTask = _synchronizationManager.StopAsync().ContinueWith(x =>
             {
                 if (x.IsFaulted)
                 {
                     if (_logger.IsError) _logger.Error("Error during _synchronizationManager stop.", x.Exception);
                 }
             });
+            closingTasks.Add(syncCloseTask);
 
             if (_networkConfig.IsActivePeerTimerEnabled)
             {
@@ -134,32 +138,33 @@ namespace Nethermind.Network
 
             if (_storageCommitTask != null)
             {
-                await _storageCommitTask.ContinueWith(x =>
+                var storageCloseTask = _storageCommitTask.ContinueWith(x =>
                 {
                     if (x.IsFaulted)
                     {
                         if (_logger.IsError) _logger.Error("Error during peer persisntance stop.", x.Exception);
                     }
                 });
+                closingTasks.Add(storageCloseTask);
             }
 
-            _cancellationTokenSource.Cancel();
+            await Task.WhenAll(closingTasks);
+
             LogSessionStats();
         }
 
-        private bool AddActivePeer(NodeId nodeId, Peer peer, string reason)
-        {
-//            if (_logger.IsDebug) _logger.Debug($"ADDING {nodeId} {reason}");
-            return _activePeers.TryAdd(nodeId, peer);
-        }
-
-        private void RemoveActivePeer(NodeId nodeId, string reason)
-        {
-//            if (_logger.IsDebug) _logger.Debug($"REMOVING {nodeId} {reason}");
-            _activePeers.TryRemove(nodeId, out _);
-        }
-
         public async Task RunPeerUpdate()
+        {
+            await Task.Run(() => RunPeerUpdateSync()).ContinueWith(x =>
+            {
+                if (x.IsFaulted)
+                {
+                    if (_logger.IsError) _logger.Error("Error during reep updates", x.Exception);
+                }
+            });
+        }
+
+        private void RunPeerUpdateSync()
         {
             lock (_isPeerUpdateInProgressLock)
             {
@@ -171,116 +176,198 @@ namespace Nethermind.Network
                 _isPeerUpdateInProgress = true;
             }
 
-            int tryCount = 0;
-            int newActiveNodes = 0;
-            int failedInitialConnect = 0;
-            int filteredByZeroPort = 0;
-            int filteredByDisconnect = 0;
-            int filteredByFailedConnection = 0;
-
-            int availableActiveCount = _networkConfig.ActivePeersMaxCount - _activePeers.Count;
-            if (availableActiveCount <= 0)
-            {
-                _isPeerUpdateInProgress = false; // TODO: try finally
-                return;
-            }
-
-            var candidates = _candidatePeers.Where(x => !_activePeers.ContainsKey(x.Key)).ToArray();
-            if (candidates.Length == 0)
-            {
-                _isPeerUpdateInProgress = false; // TODO: try finally
-                return;
-            }
-
-            var allNonActiveCandidates = candidates.Length;
-
-            var nonZeroPortCandidates = candidates.Where(x => x.Value.Node.Port != 0).ToArray();
-            filteredByZeroPort = filteredByZeroPort +  (allNonActiveCandidates - nonZeroPortCandidates.Length);
-
-            var lastDisconnCandidates = nonZeroPortCandidates.Where(x => CheckLastDisconnectTime(x.Value)).ToArray();
-            filteredByDisconnect = filteredByDisconnect + (nonZeroPortCandidates.Length - lastDisconnCandidates.Length);
-
-            var lastFailedConnCandidates = lastDisconnCandidates.Where(x => CheckLastFailedConnectionTime(x.Value)).ToArray();
-            filteredByFailedConnection = filteredByFailedConnection + (lastDisconnCandidates.Length - lastFailedConnCandidates.Length);
-
-            var incompatibleNodes = lastFailedConnCandidates.Where(x => x.Value.NodeStats.FailedCompatibilityValidation.HasValue).ToArray();
-            candidates = lastFailedConnCandidates.Where(x => !x.Value.NodeStats.FailedCompatibilityValidation.HasValue)
-                .OrderBy(x => x.Value.NodeStats.IsTrustedPeer)
-                .ThenByDescending(x => x.Value.NodeStats.CurrentNodeReputation).ToArray();
-            
-            var remainingCandidates = candidates;
-            
-            while (true)
+            try
             {
                 if (_cancellationTokenSource.IsCancellationRequested)
                 {
-                    break;
+                    return;
                 }
-                
-                var key = _perfService.StartPerfCalc();
 
-                availableActiveCount = _networkConfig.ActivePeersMaxCount - _activePeers.Count;
-                int nodesToTry = Math.Min(remainingCandidates.Length, availableActiveCount);
-                if (nodesToTry == 0)
+                var tryCount = 0;
+                var newActiveNodes = 0;
+                var failedInitialConnect = 0;
+                var connectionRounds = 0;
+
+                var candidateSelection = SelectCandidates();
+                var remainingCandidates = candidateSelection.Candidates;
+                if (!remainingCandidates.Any())
                 {
-                    break;
+                    return;
                 }
+
+                //int availableActiveCount = _networkConfig.ActivePeersMaxCount - _activePeers.Count;
+                //if (availableActiveCount <= 0)
+                //{
+                //    _isPeerUpdateInProgress = false; // TODO: try finally
+                //    return;
+                //}
+
+                //var candidates = _candidatePeers.Where(x => !_activePeers.ContainsKey(x.Key)).ToArray();
+                //if (candidates.Length == 0)
+                //{
+                //    _isPeerUpdateInProgress = false; // TODO: try finally
+                //    return;
+                //}
+
+                //var allNonActiveCandidates = candidates.Length;
+
+                //var nonZeroPortCandidates = candidates.Where(x => x.Value.Node.Port != 0).ToArray();
+                //filteredByZeroPort = filteredByZeroPort +  (allNonActiveCandidates - nonZeroPortCandidates.Length);
+
+                //var lastDisconnCandidates = nonZeroPortCandidates.Where(x => CheckLastDisconnectTime(x.Value)).ToArray();
+                //filteredByDisconnect = filteredByDisconnect + (nonZeroPortCandidates.Length - lastDisconnCandidates.Length);
+
+                //var lastFailedConnCandidates = lastDisconnCandidates.Where(x => CheckLastFailedConnectionTime(x.Value)).ToArray();
+                //filteredByFailedConnection = filteredByFailedConnection + (lastDisconnCandidates.Length - lastFailedConnCandidates.Length);
+
+                //var incompatibleNodes = lastFailedConnCandidates.Where(x => x.Value.NodeStats.FailedCompatibilityValidation.HasValue).ToArray();
+                //candidates = lastFailedConnCandidates.Where(x => !x.Value.NodeStats.FailedCompatibilityValidation.HasValue)
+                //    .OrderBy(x => x.Value.NodeStats.IsTrustedPeer)
+                //    .ThenByDescending(x => x.Value.NodeStats.CurrentNodeReputation).ToArray();
                 
-                var candidatesToTry = remainingCandidates.Take(nodesToTry).ToArray();
-                remainingCandidates = remainingCandidates.Skip(nodesToTry).ToArray();
-                Parallel.ForEach(candidatesToTry, async (c, loopState) =>
+                //var remainingCandidates = candidates;
+                
+                while (true)
                 {
-                    if (loopState.ShouldExitCurrentIteration || _cancellationTokenSource.IsCancellationRequested)
+                    if (_cancellationTokenSource.IsCancellationRequested)
                     {
-                        return;
+                        break;
                     }
+                    
+                    var key = _perfService.StartPerfCalc();
 
-                    Interlocked.Increment(ref tryCount);
-
-                    // Can happen when In connection is received from the same peer and is initialized before we get here
-                    // In this case we do not initialze OUT connection
-                    if (!AddActivePeer(c.Key, c.Value, "upgrading candidate"))
+                    var availableActiveCount = _networkConfig.ActivePeersMaxCount - _activePeers.Count;
+                    int nodesToTry = Math.Min(remainingCandidates.Count(), availableActiveCount);
+                    if (nodesToTry == 0)
                     {
-                        if (_logger.IsTrace)
+                        break;
+                    }
+                    
+                    var candidatesToTry = remainingCandidates.Take(nodesToTry).ToArray();
+                    remainingCandidates = remainingCandidates.Skip(nodesToTry).ToArray();
+                    Parallel.ForEach(candidatesToTry, async (peer, loopState) =>
+                    {
+                        if (loopState.ShouldExitCurrentIteration || _cancellationTokenSource.IsCancellationRequested)
                         {
-                            _logger.Trace($"Active peer was already added to collection: {c.Key}");
+                            return;
                         }
 
-                        return;
-                    }
+                        Interlocked.Increment(ref tryCount);
 
-                    var result = await InitializePeerConnection(c.Value);
-                    if (!result)
-                    {
-                        c.Value.NodeStats.AddNodeStatsEvent(NodeStatsEventType.ConnectionFailed);
-                        failedInitialConnect++;
-                        RemoveActivePeer(c.Key, "Failed to initialize connections");
-                    }
+                        // Can happen when In connection is received from the same peer and is initialized before we get here
+                        // In this case we do not initialze OUT connection
+                        if (!AddActivePeer(peer.Node.Id, peer, "upgrading candidate"))
+                        {
+                            if (_logger.IsTrace)
+                            {
+                                _logger.Trace($"Active peer was already added to collection: {peer.Node.Id}");
+                            }
 
-                    newActiveNodes++;
-                });
+                            return;
+                        }
 
-                _perfService.EndPerfCalc(key, "RunPeerUpdate");
-            }
-            
-            if (_logger.IsTrace)
-            {
-                _logger.Trace($"RunPeerUpdate | AllNonActive: {allNonActiveCandidates}, FilteredByZeroPort: {filteredByZeroPort}, FilteredByDisconnectDelay: {filteredByDisconnect}, FileteredByFailedConnDelay: {filteredByFailedConnection}, Incompatible: {GetIncompatibleDesc(incompatibleNodes)}, EligibleCandidates: {candidates.Length}, " +
-                              $"Tried: {tryCount}, Failed initial connect: {failedInitialConnect}, Established initial connect: {newActiveNodes}, Current candidate peers: {_candidatePeers.Count}, Current active peers: {_activePeers.Count}");
-            }
+                        var result = await InitializePeerConnection(peer);
+                        if (!result)
+                        {
+                            peer.NodeStats.AddNodeStatsEvent(NodeStatsEventType.ConnectionFailed);
+                            Interlocked.Increment(ref failedInitialConnect);
+                            RemoveActivePeer(peer.Node.Id, "Failed to initialize connections");
+                            return;
+                        }
 
-            if (_logger.IsTrace)
-            {
-                if (_logCounter % 5 == 0)
+                        Interlocked.Increment(ref newActiveNodes);
+                    });
+
+                    _perfService.EndPerfCalc(key, "RunPeerUpdate");
+                    connectionRounds++;
+                }
+                
+                if (_logger.IsDebug)
                 {
-                    string nl = Environment.NewLine;
-                    _logger.Trace($"{nl}{nl}All active peers: {nl}{string.Join(nl, ActivePeers.Select(x => $"{x.Node.ToString()} | P2PInitialized: {x.NodeStats.DidEventHappen(NodeStatsEventType.P2PInitialized)} | Eth62Initialized: {x.NodeStats.DidEventHappen(NodeStatsEventType.Eth62Initialized)} | ClientId: {x.NodeStats.P2PNodeDetails?.ClientId}"))} {nl}{nl}");
+                    var countersLog = string.Join(", ", candidateSelection.Counters.Select(x => $"{x.Key.ToString()}: {x.Value}"));
+                    _logger.Debug($"RunPeerUpdate | {countersLog}, Incompatible: {GetIncompatibleDesc(candidateSelection.IncompatiblePeers)}, EligibleCandidates: {candidateSelection.Candidates.Count()}, " +
+                                  $"Tried: {tryCount}, Rounds: {connectionRounds}, Failed initial connect: {failedInitialConnect}, Established initial connect: {newActiveNodes}, Current candidate peers: {_candidatePeers.Count}, Current active peers: {_activePeers.Count}");
                 }
 
-                _logCounter++;
+                if (_logger.IsTrace)
+                {
+                    if (_logCounter % 5 == 0)
+                    {
+                        string nl = Environment.NewLine;
+                        _logger.Trace($"{nl}{nl}All active peers: {nl}{string.Join(nl, ActivePeers.Select(x => $"{x.Node.ToString()} | P2PInitialized: {x.NodeStats.DidEventHappen(NodeStatsEventType.P2PInitialized)} | Eth62Initialized: {x.NodeStats.DidEventHappen(NodeStatsEventType.Eth62Initialized)} | ClientId: {x.NodeStats.P2PNodeDetails?.ClientId}"))} {nl}{nl}");
+                    }
+
+                    _logCounter++;
+                }
+            }
+            finally
+            {
+                _isPeerUpdateInProgress = false;
+            }
+        }
+
+        private bool AddActivePeer(NodeId nodeId, Peer peer, string reason)
+        {
+            //if (_logger.IsDebug) _logger.Debug($"ADDING {nodeId} {reason}");
+            return _activePeers.TryAdd(nodeId, peer);
+        }
+
+        private void RemoveActivePeer(NodeId nodeId, string reason)
+        {
+            //if (_logger.IsDebug) _logger.Debug($"REMOVING {nodeId} {reason}");
+            _activePeers.TryRemove(nodeId, out _);
+        }
+
+        private (IEnumerable<Peer> Candidates, IDictionary<ActivePeerSelectionCounter, int> Counters, IEnumerable<Peer> IncompatiblePeers) SelectCandidates()
+        {
+            var counters = Enum.GetValues(typeof(ActivePeerSelectionCounter)).OfType<ActivePeerSelectionCounter>().ToDictionary(x => x, y => 0);
+            var candidates = new List<Peer>();
+            var incompatiblePeers = new List<Peer>();
+            var availableActiveCount = _networkConfig.ActivePeersMaxCount - _activePeers.Count;
+            if (availableActiveCount <= 0)
+            {
+                return (candidates, counters, incompatiblePeers);
             }
 
-            _isPeerUpdateInProgress = false; // TODO: try finally
+            var candidatesSnapshot = _candidatePeers.Where(x => !_activePeers.ContainsKey(x.Key)).ToArray();
+            if (!candidatesSnapshot.Any())
+            {
+                return (candidates, counters, incompatiblePeers);
+            }
+
+            counters[ActivePeerSelectionCounter.AllNonActiveCandidates] = candidatesSnapshot.Length;
+
+            for (var i = 0; i < candidatesSnapshot.Length; i++)
+            {
+                var candidate = candidatesSnapshot[i];
+                if (candidate.Value.Node.Port == 0)
+                {
+                    counters[ActivePeerSelectionCounter.FilteredByZeroPort] = counters[ActivePeerSelectionCounter.FilteredByZeroPort] + 1;
+                    continue;
+                }
+
+                if (!CheckLastDisconnectTime(candidate.Value))
+                {
+                    counters[ActivePeerSelectionCounter.FilteredByDisconnect] = counters[ActivePeerSelectionCounter.FilteredByDisconnect] + 1;
+                    continue;
+                }
+
+                if (!CheckLastFailedConnectionTime(candidate.Value))
+                {
+                    counters[ActivePeerSelectionCounter.FilteredByFailedConnection] = counters[ActivePeerSelectionCounter.FilteredByFailedConnection] + 1;
+                    continue;
+                }
+
+                if (candidate.Value.NodeStats.FailedCompatibilityValidation.HasValue)
+                {
+                    incompatiblePeers.Add(candidate.Value);
+                    continue;
+                }
+
+                candidates.Add(candidate.Value);
+            }
+
+            return (candidates.OrderBy(x => x.NodeStats.IsTrustedPeer).ThenByDescending(x => x.NodeStats.CurrentNodeReputation).ToArray(), counters, incompatiblePeers);
         }
 
         private void LogSessionStats()
@@ -325,14 +412,14 @@ namespace Nethermind.Network
             }
         }
 
-        private string GetIncompatibleDesc(KeyValuePair<NodeId, Peer>[] incompatibleNodes)
+        private string GetIncompatibleDesc(IEnumerable<Peer> incompatibleNodes)
         {
             if (!incompatibleNodes.Any())
             {
                 return "0";
             }
 
-            var validationGroups = incompatibleNodes.GroupBy(x => x.Value.NodeStats.FailedCompatibilityValidation).ToArray();
+            var validationGroups = incompatibleNodes.GroupBy(x => x.NodeStats.FailedCompatibilityValidation).ToArray();
             return $"[{string.Join(", ", validationGroups.Select(x => $"{x.Key.ToString()}:{x.Count()}"))}]";
         }
 
