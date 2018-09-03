@@ -24,6 +24,27 @@ namespace Nethermind.JsonRpc.Module
             throw new NotImplementedException();
         }
 
+        /// <summary>
+        /// Compiles Solidity code
+        /// </summary>
+        /// <param name="parameters"> A JSON string containing the contract to compile and extra parameters to feed
+        /// to the compiler
+        /// </param>
+        /// <returns>Returns the raw compiler output containing the bytecode and metadata; or errors encountered by the
+        /// compiler whilst trying to compile
+        /// </returns>
+        /// <example>
+        /// This example shows how a sample 'params' input should look like when running a JSON RPC call
+        /// <code>
+        /// params: [{
+        /// "Contract": "pragma solidity ^0.4.22; contract test { function multiply(uint a) public returns(uint d) {return a * 7;} }",
+        /// "EvmVersion": "byzantium", //optional
+        /// "Optimize": true,
+        /// "Runs": 200  //optional
+        /// }]
+        /// </code>
+        /// </example>
+        
         public ResultWrapper<string> nethm_compileSolidity(string parameters)
         {            
             CompilerParameters compilerParameters = new CompilerParameters();
