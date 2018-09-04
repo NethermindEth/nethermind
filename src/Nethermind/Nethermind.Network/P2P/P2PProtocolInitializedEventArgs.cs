@@ -17,6 +17,7 @@
  */
 
 using System.Collections.Generic;
+using Nethermind.Stats;
 
 namespace Nethermind.Network.P2P
 {

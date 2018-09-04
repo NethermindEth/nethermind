@@ -19,7 +19,7 @@
 using System.Numerics;
 using Nethermind.Core.Crypto;
 
-namespace Nethermind.Network.Stats
+namespace Nethermind.Stats
 {
     public class Eth62NodeDetails
     {

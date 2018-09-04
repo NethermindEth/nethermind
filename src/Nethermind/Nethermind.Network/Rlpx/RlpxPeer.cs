@@ -26,11 +26,13 @@ using DotNetty.Transport.Bootstrapping;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
 using Nethermind.Blockchain;
+using Nethermind.Core;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
 using Nethermind.Network.P2P;
 using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Network.Stats;
+using Nethermind.Stats;
 
 namespace Nethermind.Network.Rlpx
 {
@@ -49,12 +51,14 @@ namespace Nethermind.Network.Rlpx
         private readonly ISynchronizationManager _synchronizationManager;
         private readonly ILogManager _logManager;
         private readonly ILogger _logger;
+        private readonly IPerfService _perfService;
 
-        public RlpxPeer(NodeId localNodeId, int localPort, ISynchronizationManager synchronizationManager, IMessageSerializationService messageSerializationService, IEncryptionHandshakeService encryptionHandshakeService, INodeStatsProvider nodeStatsProvider, ILogManager logManager)
+        public RlpxPeer(NodeId localNodeId, int localPort, ISynchronizationManager synchronizationManager, IMessageSerializationService messageSerializationService, IEncryptionHandshakeService encryptionHandshakeService, INodeStatsProvider nodeStatsProvider, ILogManager logManager, IPerfService perfService)
         {
             _encryptionHandshakeService = encryptionHandshakeService ?? throw new ArgumentNullException(nameof(encryptionHandshakeService));
             _nodeStatsProvider = nodeStatsProvider ?? throw new ArgumentNullException(nameof(nodeStatsProvider));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+            _perfService = perfService;
             _logger = logManager.GetClassLogger();
             _serializationService = messageSerializationService ?? throw new ArgumentNullException(nameof(messageSerializationService));
             _synchronizationManager = synchronizationManager ?? throw new ArgumentNullException(nameof(synchronizationManager));
@@ -84,7 +88,7 @@ namespace Nethermind.Network.Rlpx
                     .ChildOption(ChannelOption.SoBacklog, 100)
                     .Handler(new LoggingHandler("BOSS", DotNetty.Handlers.Logging.LogLevel.TRACE))
                     .ChildHandler(new ActionChannelInitializer<ISocketChannel>(ch =>
-                        InitializeChannel(ch, ConnectionDirection.Out, null, null,
+                        InitializeChannel(ch, ConnectionDirection.Out, null,
                             ((IPEndPoint) ch.RemoteAddress).Address.ToString(), ((IPEndPoint) ch.RemoteAddress).Port)));
 
                 _bootstrapChannel = await bootstrap.BindAsync(_localPort).ContinueWith(t =>
@@ -124,23 +128,19 @@ namespace Nethermind.Network.Rlpx
             clientBootstrap.Option(ChannelOption.MessageSizeEstimator, DefaultMessageSizeEstimator.Default);
             clientBootstrap.Option(ChannelOption.ConnectTimeout, Timeouts.InitialConnection);
             clientBootstrap.RemoteAddress(host, port);
-
-            var connStatus = new ConnStatus {Timeout = false};
-
-            clientBootstrap.Handler(new ActionChannelInitializer<ISocketChannel>(ch => InitializeChannel(ch, ConnectionDirection.Out, connStatus, remoteId, host, port, nodeStats)));
+            
+            clientBootstrap.Handler(new ActionChannelInitializer<ISocketChannel>(ch => InitializeChannel(ch, ConnectionDirection.Out, remoteId, host, port, nodeStats)));
 
             var connectTask = clientBootstrap.ConnectAsync(new IPEndPoint(IPAddress.Parse(host), port));
-            var firstTask = await Task.WhenAny(connectTask, Task.Delay(Timeouts.InitialConnection.Add(TimeSpan.FromSeconds(5))));
+            var firstTask = await Task.WhenAny(connectTask, Task.Delay(Timeouts.InitialConnection.Add(TimeSpan.FromSeconds(10))));
             if (firstTask != connectTask)
             {
-                connStatus.Timeout = true;
                 if (_logger.IsTrace) _logger.Trace($"Connection timed out: {remoteId}@{host}:{port}");
                 throw new NetworkingException($"Failed to connect to {remoteId} (timeout)", NetwokExceptionType.Timeout);
             }
 
             if (connectTask.IsFaulted)
             {
-                connStatus.Timeout = true;
                 if (_logger.IsTrace)
                 {
                     _logger.Trace($"Error when connecting to {remoteId}@{host}:{port}, error: {connectTask.Exception}");
@@ -154,8 +154,8 @@ namespace Nethermind.Network.Rlpx
 
         public event EventHandler<SessionEventArgs> SessionCreated; 
         
-        private void InitializeChannel(IChannel channel, ConnectionDirection connectionDirection, ConnStatus connStatus, NodeId remoteId = null, string remoteHost = null, int? remotePort = null, INodeStats nodeStats = null)
-        {   
+        private void InitializeChannel(IChannel channel, ConnectionDirection connectionDirection, NodeId remoteId = null, string remoteHost = null, int? remotePort = null, INodeStats nodeStats = null)
+        {
             P2PSession session = new P2PSession(
                 LocalNodeId,
                 remoteId,
@@ -165,7 +165,7 @@ namespace Nethermind.Network.Rlpx
                 _synchronizationManager,
                 _nodeStatsProvider,
                 nodeStats,
-                _logManager);
+                _logManager, channel, _perfService);
 
             if (connectionDirection == ConnectionDirection.Out)
             {
@@ -179,11 +179,11 @@ namespace Nethermind.Network.Rlpx
                 session.RemoteHost = remoteHost;
                 session.RemotePort = remotePort;
             }
-            
+
             SessionCreated?.Invoke(this, new SessionEventArgs(session));
 
             HandshakeRole role = connectionDirection == ConnectionDirection.In ? HandshakeRole.Recipient : HandshakeRole.Initiator;
-            var handshakeHandler = new NettyHandshakeHandler(_encryptionHandshakeService, session, role, remoteId, _logManager, connStatus);
+            var handshakeHandler = new NettyHandshakeHandler(_encryptionHandshakeService, session, role, remoteId, _logManager);
             
             IChannelPipeline pipeline = channel.Pipeline;
             pipeline.AddLast(new LoggingHandler(connectionDirection.ToString().ToUpper(), DotNetty.Handlers.Logging.LogLevel.TRACE));
@@ -222,10 +222,5 @@ namespace Nethermind.Network.Rlpx
                     }
                 });
         }
-    }
-
-    public class ConnStatus
-    {
-        public bool Timeout { get; set; }
     }
 }

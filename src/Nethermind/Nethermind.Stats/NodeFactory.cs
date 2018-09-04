@@ -19,8 +19,9 @@
 using System.Net;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Model;
+using Nethermind.Network.Discovery.RoutingTable;
 
-namespace Nethermind.Network.Discovery.RoutingTable
+namespace Nethermind.Stats
 {
     public class NodeFactory : INodeFactory
     {

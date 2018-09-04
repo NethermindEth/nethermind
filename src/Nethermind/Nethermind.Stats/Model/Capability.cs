@@ -18,7 +18,7 @@
 
 using System;
 
-namespace Nethermind.Network.P2P
+namespace Nethermind.Stats
 {
     public class Capability : IEquatable<Capability>
     {

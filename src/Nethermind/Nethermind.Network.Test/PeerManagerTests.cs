@@ -40,6 +40,7 @@ using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Network.Stats;
 using Nethermind.Network.Test.Builders;
+using Nethermind.Stats;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -84,11 +85,12 @@ namespace Nethermind.Network.Test
             nodeTable.Initialize(new NodeId(key));
 
             INetworkConfig networkConfig = _configurationProvider.GetConfig<INetworkConfig>();
-            _discoveryManager = new DiscoveryManager(new NodeLifecycleManagerFactory(_nodeFactory, nodeTable, new DiscoveryMessageFactory(_configurationProvider), Substitute.For<IEvictionManager>(), new NodeStatsProvider(_configurationProvider.GetConfig<INetworkConfig>(), _nodeFactory), _configurationProvider, _logManager), _nodeFactory, nodeTable, new NetworkStorage("test", networkConfig, _logManager, new PerfService(_logManager)), _configurationProvider, _logManager);
+            IStatsConfig statsConfig = _configurationProvider.GetConfig<IStatsConfig>();
+            _discoveryManager = new DiscoveryManager(new NodeLifecycleManagerFactory(_nodeFactory, nodeTable, new DiscoveryMessageFactory(_configurationProvider), Substitute.For<IEvictionManager>(), new NodeStatsProvider(_configurationProvider.GetConfig<IStatsConfig>(), _nodeFactory), _configurationProvider, _logManager), _nodeFactory, nodeTable, new NetworkStorage("test", networkConfig, _logManager, new PerfService(_logManager)), _configurationProvider, _logManager);
             _discoveryManager.MessageSender = Substitute.For<IMessageSender>();
 
             var networkStorage = new NetworkStorage("test", networkConfig, _logManager, new PerfService(_logManager));
-            _peerManager = new PeerManager(_localPeer, _discoveryManager, _synchronizationManager, new NodeStatsProvider(networkConfig, _nodeFactory), networkStorage, _nodeFactory, _configurationProvider, new PerfService(_logManager), _logManager);
+            _peerManager = new PeerManager(_localPeer, _discoveryManager, _synchronizationManager, new NodeStatsProvider(statsConfig, _nodeFactory), networkStorage, _nodeFactory, _configurationProvider, new PerfService(_logManager), _logManager);
             _peerManager.Init(true);
         }
 
@@ -98,7 +100,7 @@ namespace Nethermind.Network.Test
             var p2pSession = InitializeNode();
 
             //trigger p2p initialization
-            var p2pProtocol = new P2PProtocolHandler(p2pSession, new MessageSerializationService(), p2pSession.RemoteNodeId, p2pSession.RemotePort ?? 0, _logManager);
+            var p2pProtocol = new P2PProtocolHandler(p2pSession, new MessageSerializationService(), p2pSession.RemoteNodeId, p2pSession.RemotePort ?? 0, _logManager, new PerfService(_logManager));
             var p2pArgs = new P2PProtocolInitializedEventArgs(p2pProtocol)
             {
                 P2PVersion = 4,
@@ -108,7 +110,7 @@ namespace Nethermind.Network.Test
             Assert.IsTrue(_peerManager.ActivePeers.First().NodeStats.DidEventHappen(NodeStatsEventType.P2PInitialized));
 
             //trigger eth62 initialization
-            var eth62 = new Eth62ProtocolHandler(p2pSession, new MessageSerializationService(), _synchronizationManager, _logManager);
+            var eth62 = new Eth62ProtocolHandler(p2pSession, new MessageSerializationService(), _synchronizationManager, _logManager, new PerfService(_logManager));
             var args = new Eth62ProtocolInitializedEventArgs(eth62)
             {
                 ChainId = _synchronizationManager.ChainId
@@ -144,7 +146,7 @@ namespace Nethermind.Network.Test
             p2pSession.TriggerHandshakeComplete();
 
             //trigger p2p initialization
-            var p2pProtocol = new P2PProtocolHandler(p2pSession, new MessageSerializationService(), p2pSession.RemoteNodeId, p2pSession.RemotePort ?? 0, _logManager);
+            var p2pProtocol = new P2PProtocolHandler(p2pSession, new MessageSerializationService(), p2pSession.RemoteNodeId, p2pSession.RemotePort ?? 0, _logManager, new PerfService(_logManager));
             var p2pArgs = new P2PProtocolInitializedEventArgs(p2pProtocol)
             {
                 P2PVersion = 4,
@@ -154,7 +156,7 @@ namespace Nethermind.Network.Test
             Assert.IsTrue(_peerManager.ActivePeers.First().NodeStats.DidEventHappen(NodeStatsEventType.P2PInitialized));
 
             //trigger eth62 initialization
-            var eth62 = new Eth62ProtocolHandler(p2pSession, new MessageSerializationService(), _synchronizationManager, _logManager);
+            var eth62 = new Eth62ProtocolHandler(p2pSession, new MessageSerializationService(), _synchronizationManager, _logManager, new PerfService(_logManager));
             var args = new Eth62ProtocolInitializedEventArgs(eth62)
             {
                 ChainId = _synchronizationManager.ChainId
@@ -184,7 +186,7 @@ namespace Nethermind.Network.Test
             var p2pSession = InitializeNode();
 
             //trigger p2p initialization
-            var p2pProtocol = new P2PProtocolHandler(p2pSession, new MessageSerializationService(), p2pSession.RemoteNodeId, p2pSession.RemotePort??0, _logManager);
+            var p2pProtocol = new P2PProtocolHandler(p2pSession, new MessageSerializationService(), p2pSession.RemoteNodeId, p2pSession.RemotePort??0, _logManager, new PerfService(_logManager));
             var p2pArgs = new P2PProtocolInitializedEventArgs(p2pProtocol)
             {
                 P2PVersion = 1,
@@ -201,7 +203,7 @@ namespace Nethermind.Network.Test
             var p2pSession = InitializeNode();
 
             //trigger p2p initialization
-            var p2pProtocol = new P2PProtocolHandler(p2pSession, new MessageSerializationService(), p2pSession.RemoteNodeId, p2pSession.RemotePort ?? 0, _logManager);
+            var p2pProtocol = new P2PProtocolHandler(p2pSession, new MessageSerializationService(), p2pSession.RemoteNodeId, p2pSession.RemotePort ?? 0, _logManager, new PerfService(_logManager));
             var p2pArgs = new P2PProtocolInitializedEventArgs(p2pProtocol)
             {
                 P2PVersion = 5,
@@ -218,7 +220,7 @@ namespace Nethermind.Network.Test
             var p2pSession = InitializeNode();
 
             //trigger eth62 initialization
-            var eth62 = new Eth62ProtocolHandler(p2pSession, new MessageSerializationService(), _synchronizationManager, _logManager);
+            var eth62 = new Eth62ProtocolHandler(p2pSession, new MessageSerializationService(), _synchronizationManager, _logManager, new PerfService(_logManager));
             var args = new Eth62ProtocolInitializedEventArgs(eth62)
             {
                 ChainId = 100

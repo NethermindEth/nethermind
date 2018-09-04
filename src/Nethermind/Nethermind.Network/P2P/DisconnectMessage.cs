@@ -16,6 +16,8 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.Stats;
+
 namespace Nethermind.Network.P2P
 {
     public class DisconnectMessage : P2PMessage

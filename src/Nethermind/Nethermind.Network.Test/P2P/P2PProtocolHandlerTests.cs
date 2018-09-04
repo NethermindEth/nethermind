@@ -53,7 +53,7 @@ namespace Nethermind.Network.Test.P2P
                 _serializer,
                 new NodeId(NetTestVectors.StaticKeyA.PublicKey), 
                 ListenPort,
-                NullLogManager.Instance);
+                NullLogManager.Instance, new PerfService(NullLogManager.Instance));
         }
 
         [Test]

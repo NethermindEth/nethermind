@@ -16,36 +16,16 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.Network.Stats
+using System.Net;
+using Nethermind.Core.Model;
+using Nethermind.Network.Discovery.RoutingTable;
+
+namespace Nethermind.Stats
 {
-    public enum NodeStatsEventType
+    public interface INodeFactory
     {
-        DiscoveryPingOut,
-        DiscoveryPingIn,
-        DiscoveryPongOut,
-        DiscoveryPongIn,
-        DiscoveryNeighboursOut,
-        DiscoveryNeighboursIn,
-        DiscoveryFindNodeOut,
-        DiscoveryFindNodeIn,
-
-        P2PPingIn,
-        P2PPingOut,
-
-        NodeDiscovered,
-        ConnectionEstablished,
-        ConnectionFailed,
-        HandshakeCompleted,
-        P2PInitialized,
-        Eth62Initialized,
-        SyncInitFailed,
-        SyncInitCancelled,
-        SyncInitCompleted,
-        SyncStarted,
-        SyncCancelled,
-        SyncFailed,
-        SyncCompleted,
-
-        Disconnect
+        Node CreateNode(NodeId id, IPEndPoint address);
+        Node CreateNode(NodeId id, string host, int port, bool isDiscovery = false);
+        Node CreateNode(string host, int port);
     }
 }

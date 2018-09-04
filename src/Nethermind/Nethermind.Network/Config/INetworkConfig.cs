@@ -144,26 +144,6 @@ namespace Nethermind.Network.Config
         int NodeLifecycleManagersCleaupCount { get; }
 
         /// <summary>
-        /// Value of predefied reputation for trusted nodes
-        /// </summary>
-        long PredefinedReputation { get; }
-
-        /// <summary>
-        /// Local disconnect reasons for penalizing node reputation
-        /// </summary>
-        DisconnectReason[] PenalizedReputationLocalDisconnectReasons { get; }
-
-        /// <summary>
-        /// Remote disconnect reasons for penalizing node reputation
-        /// </summary>
-        DisconnectReason[] PenalizedReputationRemoteDisconnectReasons { get; }
-
-        /// <summary>
-        /// Time within which we penalized peer if disconnection happends due to too many peers
-        /// </summary>
-        long PenalizedReputationTooManyPeersTimeout { get; }
-
-        /// <summary>
         /// List of trusted nodes - we connect to them and set predefined high reputation
         /// </summary>
         ConfigNode[] TrustedPeers { get; }

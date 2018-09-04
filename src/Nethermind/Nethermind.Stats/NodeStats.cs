@@ -17,39 +17,37 @@
  */
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
-using Nethermind.Config;
 using Nethermind.Core;
-using Nethermind.Core.Logging;
-using Nethermind.Network.Config;
-using Nethermind.Network.Discovery;
 using Nethermind.Network.Discovery.RoutingTable;
-using Nethermind.Network.P2P;
-using Nethermind.Network.Rlpx;
+using Nethermind.Network.Stats;
 
-namespace Nethermind.Network.Stats
+namespace Nethermind.Stats
 {
     /// <summary>
     /// Initial version of Reputation calculation mostly based on EthereumJ impl
     /// </summary>
     public class NodeStats : INodeStats
     {
-        private readonly INetworkConfig _networkConfig;
+        private readonly IStatsConfig _statsConfig;
+        private ConcurrentDictionary<NodeLatencyStatType, ConcurrentBag<NodeLatencyStatsEvent>> _latencyStats;
         private Dictionary<NodeStatsEventType, AtomicLong> _statCounters;
         private Dictionary<DisconnectType, (DisconnectReason DisconnectReason, DateTime DisconnectTime)> _lastDisconnects;        
-        private readonly IList<NodeStatsEvent> _eventHistory;
+        private readonly ConcurrentBag<NodeStatsEvent> _eventHistory;
 
-        public NodeStats(Node node, INetworkConfig networkConfig)
+        public NodeStats(Node node, IStatsConfig statsConfig)
         {
             Node = node;
-            _networkConfig = networkConfig;
-            _eventHistory = new List<NodeStatsEvent>();
+            _statsConfig = statsConfig;
+            _eventHistory = new ConcurrentBag<NodeStatsEvent>();
             Initialize();
         }
 
-        public IEnumerable<NodeStatsEvent> EventHistory => new ReadOnlyCollection<NodeStatsEvent>(_eventHistory);
+        public IEnumerable<NodeStatsEvent> EventHistory => _eventHistory.ToArray();
+        public IEnumerable<NodeLatencyStatsEvent> LatencyHistory => _latencyStats.SelectMany(x => x.Value).ToArray();
 
         public void AddNodeStatsEvent(NodeStatsEventType nodeStatsEventType)
         {
@@ -113,6 +111,28 @@ namespace Nethermind.Network.Stats
             return _statCounters[nodeStatsEventType].Value > 0;
         }
 
+        public void AddLatencyCaptureEvent(NodeLatencyStatType latencyType, long miliseconds)
+        {
+            var collection = _latencyStats[latencyType];
+            collection.Add(new NodeLatencyStatsEvent
+            {
+                StatType = latencyType,
+                CaptureTime = DateTime.Now,
+                Latency = miliseconds
+            });
+        }
+
+        public long? GetAverageLatency(NodeLatencyStatType latencyType)
+        {
+            var collection = _latencyStats[latencyType];
+            if (!collection.Any())
+            {
+                return null;
+            }
+
+            return collection.Sum(x => x.Latency) / collection.Count;
+        }
+
         public long CurrentNodeReputation => CalculateCurrentReputation();
 
         public long CurrentPersistedNodeReputation { get; set; }
@@ -137,7 +157,7 @@ namespace Nethermind.Network.Stats
 
         private void CaptureEvent(NodeStatsEventType eventType, P2PNodeDetails p2PNodeDetails = null, Eth62NodeDetails eth62NodeDetails = null, DisconnectDetails disconnectDetails = null, ConnectionDirection? connectionDirection = null, SyncNodeDetails syncNodeDetails = null)
         {
-            if (!_networkConfig.CaptureNodeStatsEventHistory)
+            if (!_statsConfig.CaptureNodeStatsEventHistory)
             {
                 return;
             }
@@ -164,7 +184,7 @@ namespace Nethermind.Network.Stats
             return IsReputationPenalized()
                 ? -100
                 : CurrentPersistedNodeReputation / 2 + CalculateSessionReputation() +
-                  (IsTrustedPeer ? _networkConfig.PredefinedReputation : 0);
+                  (IsTrustedPeer ? _statsConfig.PredefinedReputation : 0);
         }
 
         private long CalculateSessionReputation()
@@ -231,7 +251,7 @@ namespace Nethermind.Network.Stats
             if (_lastDisconnects.ContainsKey(DisconnectType.Local))
             {
                 var localDisconnect = _lastDisconnects[DisconnectType.Local];               
-                if (_networkConfig.PenalizedReputationLocalDisconnectReasons.Contains(localDisconnect.DisconnectReason))
+                if (_statsConfig.PenalizedReputationLocalDisconnectReasons.Contains(localDisconnect.DisconnectReason))
                 {
                     return true;
                 }
@@ -248,12 +268,12 @@ namespace Nethermind.Network.Stats
             {
                 lastOverallDisconnectTime = remoteDisconnect.DisconnectTime;
             }
-            if (_networkConfig.PenalizedReputationRemoteDisconnectReasons.Contains(remoteDisconnect.DisconnectReason))
+            if (_statsConfig.PenalizedReputationRemoteDisconnectReasons.Contains(remoteDisconnect.DisconnectReason))
             {
                 if (new[] {DisconnectReason.AlreadyConnected, DisconnectReason.TooManyPeers}.Contains(remoteDisconnect.DisconnectReason))
                 {
                     var timeFromLastDisconnect = DateTime.Now.Subtract(lastOverallDisconnectTime).TotalMilliseconds;
-                    return timeFromLastDisconnect < _networkConfig.PenalizedReputationTooManyPeersTimeout;
+                    return timeFromLastDisconnect < _statsConfig.PenalizedReputationTooManyPeersTimeout;
                 }
 
                 return true;
@@ -270,6 +290,13 @@ namespace Nethermind.Network.Stats
             {
                 _statCounters[statType] = new AtomicLong();
             }
+
+            _latencyStats = new ConcurrentDictionary<NodeLatencyStatType, ConcurrentBag<NodeLatencyStatsEvent>>();
+            foreach (NodeLatencyStatType statType in Enum.GetValues(typeof(NodeLatencyStatType)))
+            {
+                _latencyStats[statType] = new ConcurrentBag<NodeLatencyStatsEvent>();
+            }
+
             _lastDisconnects = new Dictionary<DisconnectType, (DisconnectReason DisconnectReason, DateTime DisconnectTime)>();
         }
     }

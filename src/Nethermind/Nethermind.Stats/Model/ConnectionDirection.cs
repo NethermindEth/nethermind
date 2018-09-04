@@ -16,15 +16,11 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Net;
-using Nethermind.Core.Model;
-
-namespace Nethermind.Network.Discovery.RoutingTable
+namespace Nethermind.Stats
 {
-    public interface INodeFactory
+    public enum ConnectionDirection
     {
-        Node CreateNode(NodeId id, IPEndPoint address);
-        Node CreateNode(NodeId id, string host, int port, bool isDiscovery = false);
-        Node CreateNode(string host, int port);
+        In,
+        Out
     }
 }

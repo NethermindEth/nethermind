@@ -22,12 +22,14 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Model;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.Stats;
 
 namespace Nethermind.Blockchain
 {
     public interface ISynchronizationPeer
     {
         NodeId NodeId { get; }
+        INodeStats NodeStats { get; }
         string ClientId { get; }
         Task<Block[]> GetBlocks(Keccak[] blockHashes, CancellationToken token);
         Task<BlockHeader[]> GetBlockHeaders(Keccak blockHash, int maxBlocks, int skip, CancellationToken token);

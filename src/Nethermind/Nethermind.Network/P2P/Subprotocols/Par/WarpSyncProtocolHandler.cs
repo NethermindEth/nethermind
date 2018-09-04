@@ -19,6 +19,7 @@
 using System;
 using Nethermind.Core.Crypto;
 using Nethermind.Network.Rlpx;
+using Nethermind.Stats;
 
 namespace Nethermind.Network.P2P.Subprotocols.Par
 {

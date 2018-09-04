@@ -53,19 +53,7 @@ namespace Nethermind.Network.Config
         public int DiscoveryMsgExpiryTime { get; set; } = 60 * 90;
         public int MaxNodeLifecycleManagersCount { get; set; } = 2000;
         public int NodeLifecycleManagersCleaupCount { get; set; } = 200;
-        public long PredefinedReputation { get; set; } = 1000500;
-
-        public DisconnectReason[] PenalizedReputationLocalDisconnectReasons { get; set; } = {
-            DisconnectReason.UnexpectedIdentity, DisconnectReason.IncompatibleP2PVersion, DisconnectReason.UselessPeer,
-            DisconnectReason.BreachOfProtocol
-        };
-
-        public DisconnectReason[] PenalizedReputationRemoteDisconnectReasons { get; set; } = {
-            DisconnectReason.UnexpectedIdentity, DisconnectReason.IncompatibleP2PVersion, DisconnectReason.UselessPeer,
-            DisconnectReason.BreachOfProtocol, DisconnectReason.TooManyPeers, DisconnectReason.AlreadyConnected
-        };
-
-        public long PenalizedReputationTooManyPeersTimeout { get; set; } = 10 * 1000;
+        
         public ConfigNode[] TrustedPeers { get; set; } = new ConfigNode[0];
         public string DbBasePath { get; set; } = Path.GetTempPath();
         public bool IsDiscoveryNodesPersistenceOn { get; set; } = true;

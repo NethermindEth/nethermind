@@ -20,6 +20,7 @@ using System;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Logging;
+using Nethermind.Stats;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 {
@@ -29,7 +30,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             IP2PSession p2PSession,
             IMessageSerializationService serializer,
             ISynchronizationManager sync,
-            ILogManager logManager) : base(p2PSession, serializer, sync, logManager)
+            ILogManager logManager, IPerfService perfService) : base(p2PSession, serializer, sync, logManager, perfService)
         {
         }
         

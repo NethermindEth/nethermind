@@ -30,6 +30,7 @@ using Nethermind.Network.Discovery.Lifecycle;
 using Nethermind.Network.Discovery.Messages;
 using Nethermind.Network.Discovery.RoutingTable;
 using Nethermind.Network.Stats;
+using Nethermind.Stats;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -60,6 +61,8 @@ namespace Nethermind.Network.Test.Discovery
             var networkConfig =config.GetConfig<INetworkConfig>(); 
             networkConfig.PongTimeout = 100;
 
+            var statsConfig = config.GetConfig<IStatsConfig>();
+
             _messageSender = Substitute.For<IMessageSender>();
             _nodeFactory = new NodeFactory();
             var calculator = new NodeDistanceCalculator(config);
@@ -68,7 +71,7 @@ namespace Nethermind.Network.Test.Discovery
             _nodeTable.Initialize();
 
             var evictionManager = new EvictionManager(_nodeTable, logManager);
-            var lifecycleFactory = new NodeLifecycleManagerFactory(_nodeFactory, _nodeTable, new DiscoveryMessageFactory(config), evictionManager, new NodeStatsProvider(networkConfig, _nodeFactory), config, logManager);
+            var lifecycleFactory = new NodeLifecycleManagerFactory(_nodeFactory, _nodeTable, new DiscoveryMessageFactory(config), evictionManager, new NodeStatsProvider(statsConfig, _nodeFactory), config, logManager);
 
             _nodes = new[] { _nodeFactory.CreateNode("192.168.1.18", 1), _nodeFactory.CreateNode("192.168.1.19", 2) };
 

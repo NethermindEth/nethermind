@@ -18,6 +18,7 @@
 
 using System;
 using Nethermind.Network.P2P;
+using Nethermind.Stats;
 
 namespace Nethermind.Network.Rlpx
 {
