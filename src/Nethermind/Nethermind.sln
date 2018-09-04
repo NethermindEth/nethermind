@@ -123,6 +123,8 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.DataStreams.Test
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.DbDiagnostics", "Nethermind.DbDiagnostics\Nethermind.DbDiagnostics.csproj", "{75EB98BF-A07E-4D6B-BAAB-F37EC0459792}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Stats", "Nethermind.Stats\Nethermind.Stats.csproj", "{9BEFCE4E-8814-42F4-B405-16195F9E1244}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -317,6 +319,10 @@ Global
 		{75EB98BF-A07E-4D6B-BAAB-F37EC0459792}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{75EB98BF-A07E-4D6B-BAAB-F37EC0459792}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{75EB98BF-A07E-4D6B-BAAB-F37EC0459792}.Release|Any CPU.Build.0 = Release|Any CPU
+		{9BEFCE4E-8814-42F4-B405-16195F9E1244}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9BEFCE4E-8814-42F4-B405-16195F9E1244}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9BEFCE4E-8814-42F4-B405-16195F9E1244}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9BEFCE4E-8814-42F4-B405-16195F9E1244}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

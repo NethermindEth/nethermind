@@ -122,7 +122,7 @@ namespace Nethermind.Network.Rlpx
             {
                 if (_logger.IsTrace)
                 {
-                    _logger.Error($"Error when merging frames (SocketException): {exception}");
+                    _logger.Trace($"Error when merging frames (SocketException): {exception}");
                 }
             }
             else

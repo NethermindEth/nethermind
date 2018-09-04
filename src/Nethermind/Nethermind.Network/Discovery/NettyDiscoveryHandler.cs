@@ -56,7 +56,7 @@ namespace Nethermind.Network.Discovery
             {
                 if (_logger.IsTrace)
                 {
-                    _logger.Error($"Exception when processing discovery messages (SocketException): {exception}");
+                    _logger.Trace($"Exception when processing discovery messages (SocketException): {exception}");
                 }
             }
             else

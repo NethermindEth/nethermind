@@ -30,6 +30,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Stats;
+using Nethermind.Stats;
 
 namespace Nethermind.Network.P2P
 {
@@ -40,8 +41,10 @@ namespace Nethermind.Network.P2P
         private readonly IMessageSerializationService _serializer;
         private readonly ISynchronizationManager _syncManager;
         private readonly INodeStatsProvider _nodeStatsProvider;
+        private readonly IPerfService _perfService;
         private readonly Dictionary<string, IProtocolHandler> _protocols = new Dictionary<string, IProtocolHandler>();
 
+        private readonly IChannel _channel;
         private IChannelHandlerContext _context;
         private IPacketSender _packetSender;
 
@@ -58,12 +61,15 @@ namespace Nethermind.Network.P2P
             ISynchronizationManager syncManager,
             INodeStatsProvider nodeStatsProvider,
             INodeStats nodeStats,
-            ILogManager logManager)
+            ILogManager logManager,
+            IChannel channel, IPerfService perfService)
         {
             _serializer = serializer ?? throw new ArgumentNullException(nameof(serializer));
             _syncManager = syncManager ?? throw new ArgumentNullException(nameof(syncManager));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _logger = logManager.GetClassLogger();
+            _channel = channel;
+            _perfService = perfService;
 
             _nodeStatsProvider = nodeStatsProvider;
             NodeStats = nodeStats;
@@ -190,9 +196,10 @@ namespace Nethermind.Network.P2P
             //Possible in case of disconnect before p2p initialization
             if (_context == null)
             {
+                //in case pipeline did not get to p2p - no disconnect delay
+                await _channel.DisconnectAsync();
                 return;
             }
-
             await Task.Delay(Timeouts.Disconnection).ContinueWith(t =>
             {
                 _context.DisconnectAsync();
@@ -226,7 +233,7 @@ namespace Nethermind.Network.P2P
             switch (protocolCode)
             {
                 case Protocol.P2P:
-                    protocolHandler = new P2PProtocolHandler(this, _serializer, LocalNodeId, LocalPort, _logManager);
+                    protocolHandler = new P2PProtocolHandler(this, _serializer, LocalNodeId, LocalPort, _logManager, _perfService);
                     protocolHandler.ProtocolInitialized += (sender, args) =>
                     {
                         if (protocolHandler.ProtocolVersion >= 5)
@@ -249,8 +256,8 @@ namespace Nethermind.Network.P2P
                     }
 
                     protocolHandler = version == 62
-                        ? new Eth62ProtocolHandler(this, _serializer, _syncManager, _logManager)
-                        : new Eth63ProtocolHandler(this, _serializer, _syncManager, _logManager);
+                        ? new Eth62ProtocolHandler(this, _serializer, _syncManager, _logManager, _perfService)
+                        : new Eth63ProtocolHandler(this, _serializer, _syncManager, _logManager, _perfService);
                     protocolHandler.ProtocolInitialized += (sender, args) =>
                     {
                         //await _syncManager.AddPeer((Eth62ProtocolHandler)protocolHandler);

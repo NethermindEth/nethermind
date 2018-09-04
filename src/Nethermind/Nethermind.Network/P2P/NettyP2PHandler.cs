@@ -67,7 +67,7 @@ namespace Nethermind.Network.P2P
             {
                 if (_logger.IsTrace)
                 {
-                    _logger.Error($"{GetType().Name} error in p2p netty handler (SocketException): {exception}");
+                    _logger.Trace($"NettyP2PHandler error in p2p netty handler (SocketException): {exception}");
                 }
             }
             else

@@ -34,6 +34,7 @@ using Nethermind.Core.Model;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Lifecycle;
 using Nethermind.Network.Discovery.RoutingTable;
+using Nethermind.Stats;
 using Timer = System.Timers.Timer;
 
 namespace Nethermind.Network.Discovery

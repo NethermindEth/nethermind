@@ -7,6 +7,8 @@ using Nethermind.JsonRpc.DataModel;
 using Nethermind.KeyStore.Config;
 using Nethermind.Network.Config;
 using Nethermind.Network.P2P;
+using Nethermind.Network.Stats;
+using Nethermind.Stats;
 using NUnit.Framework;
 
 namespace Nethermind.Config.Test
@@ -22,6 +24,7 @@ namespace Nethermind.Config.Test
             var keystoreConfig = new KeystoreConfig();
             var networkConfig = new NetworkConfig();
             var jsonRpcConfig = new JsonRpcConfig();
+            var statsConfig = new StatsConfig();
 
             _configProvider = new JsonConfigProvider();
         }
@@ -34,6 +37,7 @@ namespace Nethermind.Config.Test
             var keystoreConfig = _configProvider.GetConfig<IKeystoreConfig>();
             var networkConfig = _configProvider.GetConfig<INetworkConfig>();
             var jsonRpcConfig = _configProvider.GetConfig<IJsonRpcConfig>();
+            var statsConfig = _configProvider.GetConfig<IStatsConfig>();
 
             Assert.AreEqual(100, keystoreConfig.KdfparamsDklen);
             Assert.AreEqual("test", keystoreConfig.Cipher);
@@ -47,11 +51,11 @@ namespace Nethermind.Config.Test
             });
 
             Assert.AreEqual(4, networkConfig.Concurrency);
-            Assert.AreEqual(3, networkConfig.PenalizedReputationLocalDisconnectReasons.Length);
+            Assert.AreEqual(3, statsConfig.PenalizedReputationLocalDisconnectReasons.Length);
             new[] { DisconnectReason.UnexpectedIdentity, DisconnectReason.IncompatibleP2PVersion, DisconnectReason.BreachOfProtocol }
                 .ToList().ForEach(x =>
             {
-                Assert.IsTrue(networkConfig.PenalizedReputationLocalDisconnectReasons.Contains(x));
+                Assert.IsTrue(statsConfig.PenalizedReputationLocalDisconnectReasons.Contains(x));
             });
             Assert.AreEqual(2, networkConfig.BootNodes.Length);
 

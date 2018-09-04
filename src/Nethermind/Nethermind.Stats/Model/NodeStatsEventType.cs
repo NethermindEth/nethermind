@@ -16,14 +16,43 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Core.Model;
-using Nethermind.Network.Discovery.RoutingTable;
-
 namespace Nethermind.Network.Stats
 {
-    public interface INodeStatsProvider
+    public enum NodeLatencyStatType
     {
-        INodeStats GetOrAddNodeStats(Node node);
-        INodeStats GetOrAddNodeStats(NodeId nodeId, string host, int port);
+        P2PPingPong,
+        BlockHeaders,
+        BlockBodies
+    }
+
+    public enum NodeStatsEventType
+    {
+        DiscoveryPingOut,
+        DiscoveryPingIn,
+        DiscoveryPongOut,
+        DiscoveryPongIn,
+        DiscoveryNeighboursOut,
+        DiscoveryNeighboursIn,
+        DiscoveryFindNodeOut,
+        DiscoveryFindNodeIn,
+
+        P2PPingIn,
+        P2PPingOut,
+
+        NodeDiscovered,
+        ConnectionEstablished,
+        ConnectionFailed,
+        HandshakeCompleted,
+        P2PInitialized,
+        Eth62Initialized,
+        SyncInitFailed,
+        SyncInitCancelled,
+        SyncInitCompleted,
+        SyncStarted,
+        SyncCancelled,
+        SyncFailed,
+        SyncCompleted,
+
+        Disconnect
     }
 }

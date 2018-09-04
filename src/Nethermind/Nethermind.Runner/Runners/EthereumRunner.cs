@@ -52,6 +52,7 @@ using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Network.Stats;
 using Nethermind.Runner.Config;
+using Nethermind.Stats;
 using Nethermind.Store;
 using PingMessageSerializer = Nethermind.Network.P2P.PingMessageSerializer;
 using PongMessageSerializer = Nethermind.Network.P2P.PongMessageSerializer;
@@ -131,14 +132,20 @@ namespace Nethermind.Runner.Runners
             _logger.Info("Shutting down...");
             _runnerCancellation.Cancel();
             var rlpxPeerTask = (_rlpxPeer?.Shutdown() ?? Task.CompletedTask);
+
+            _logger.Debug("Stopping discovery app...");
+            var discoveryStopTask = _discoveryApp?.StopAsync() ?? Task.CompletedTask;
+
             _logger.Debug("Stopping peer manager...");
            var peerManagerTask =  (_peerManager?.StopAsync() ?? Task.CompletedTask);
+
             _logger.Debug("Stopping sync manager...");
             var syncManagerTask = (_syncManager?.StopAsync() ?? Task.CompletedTask);
+
             _logger.Debug("Stopping blockchain processor...");
             var blockchainProcessorTask = (_blockchainProcessor?.StopAsync() ?? Task.CompletedTask);
 
-            await Task.WhenAll(rlpxPeerTask, peerManagerTask, syncManagerTask, blockchainProcessorTask);
+            await Task.WhenAll(discoveryStopTask, rlpxPeerTask, peerManagerTask, syncManagerTask, blockchainProcessorTask);
 
             _logger.Info("Goodbye...");
         }
@@ -303,7 +310,7 @@ namespace Nethermind.Runner.Runners
             // create shared objects between discovery and peer manager
             _nodeFactory = new NodeFactory();
             _nodeStatsProvider = new NodeStatsProvider(
-                _configProvider.GetConfig<INetworkConfig>(),
+                _configProvider.GetConfig<IStatsConfig>(),
                 _nodeFactory);
             
             var jsonSerializer = new JsonSerializer(
@@ -532,7 +539,7 @@ namespace Nethermind.Runner.Runners
                 _messageSerializationService,
                 encryptionHandshakeServiceA,
                 _nodeStatsProvider,
-                _logManager);
+                _logManager, _perfService);
 
             await _rlpxPeer.Init();
             

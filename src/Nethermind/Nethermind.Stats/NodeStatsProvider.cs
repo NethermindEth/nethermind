@@ -18,26 +18,25 @@
 
 using System.Collections.Concurrent;
 using Nethermind.Core.Model;
-using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.RoutingTable;
 
-namespace Nethermind.Network.Stats
+namespace Nethermind.Stats
 {
     public class NodeStatsProvider : INodeStatsProvider
     {
-        private readonly INetworkConfig _networkConfig;
+        private readonly IStatsConfig _statsConfig;
         private readonly INodeFactory _nodeFactory;
         private readonly ConcurrentDictionary<NodeId, INodeStats> _nodeStats = new ConcurrentDictionary<NodeId, INodeStats>();
 
-        public NodeStatsProvider(INetworkConfig networkConfig, INodeFactory nodeFactory)
+        public NodeStatsProvider(IStatsConfig statsConfig, INodeFactory nodeFactory)
         {
-            _networkConfig = networkConfig;
+            _statsConfig = statsConfig;
             _nodeFactory = nodeFactory;
         }
 
         public INodeStats GetOrAddNodeStats(Node node)
         {
-            return _nodeStats.GetOrAdd(node.Id, x => new NodeStats(node, _networkConfig));
+            return _nodeStats.GetOrAdd(node.Id, x => new NodeStats(node, _statsConfig));
         }
 
         public INodeStats GetOrAddNodeStats(NodeId nodeId, string host, int port)

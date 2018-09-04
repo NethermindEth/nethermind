@@ -24,6 +24,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Model;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.Stats;
 
 namespace Nethermind.Blockchain.Test
 {
@@ -37,6 +38,7 @@ namespace Nethermind.Blockchain.Test
         }
 
         public NodeId NodeId { get; set; } = new NodeId(TestObject.PublicKeyA);
+        public INodeStats NodeStats { get; set; }
         public string ClientId { get; set; }
 
         public Task<Block[]> GetBlocks(Keccak[] blockHashes, CancellationToken token)

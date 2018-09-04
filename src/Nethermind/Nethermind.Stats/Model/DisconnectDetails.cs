@@ -16,11 +16,11 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.Network.Rlpx
+namespace Nethermind.Stats
 {
-    public enum ConnectionDirection
+    public class DisconnectDetails
     {
-        In,
-        Out
+        public DisconnectType DisconnectType { get; set; }
+        public DisconnectReason DisconnectReason { get; set; }
     }
 }

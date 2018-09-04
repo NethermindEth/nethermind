@@ -45,17 +45,14 @@ namespace Nethermind.Network.Rlpx
         private NodeId _remoteId;
         private readonly TaskCompletionSource<object> _initCompletionSource;
         private IChannel _channel;
-        private ConnStatus _connStatus;
 
         public NettyHandshakeHandler(
             IEncryptionHandshakeService service,
             IP2PSession p2PSession,
             HandshakeRole role,
             NodeId remoteId,
-            ILogManager logManager,
-            ConnStatus connStatus)
+            ILogManager logManager)
         {
-            _connStatus = connStatus;
             _handshake.RemoteNodeId = remoteId;
             _role = role;
             _remoteId = remoteId;
@@ -72,13 +69,6 @@ namespace Nethermind.Network.Rlpx
 
             if (_role == HandshakeRole.Initiator)
             {
-                if (_connStatus?.Timeout ?? false)
-                {
-                    if(_logger.IsTrace) _logger.Warn($"Handshake handler runs despite timeout: {_remoteId}");
-                    Task.Run(async () => { await _channel.DisconnectAsync(); });
-                    return;
-                }
-
                 Packet auth = _service.Auth(_remoteId, _handshake);
 
                 if (_logger.IsTrace) _logger.Trace($"Sending AUTH to {_remoteId} @ {context.Channel.RemoteAddress}");
@@ -129,7 +119,7 @@ namespace Nethermind.Network.Rlpx
             {
                 if (_logger.IsTrace)
                 {
-                    _logger.Error("Exception when processing encryption handshake (SocketException):", exception);
+                    _logger.Trace($"Exception when processing encryption handshake (SocketException): {exception}");
                 }
             }
             else

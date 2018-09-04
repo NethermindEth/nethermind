@@ -19,10 +19,9 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Network.Discovery.RoutingTable;
-using Nethermind.Network.P2P;
-using Nethermind.Network.Rlpx;
+using Nethermind.Network.Stats;
 
-namespace Nethermind.Network.Stats
+namespace Nethermind.Stats
 {
     public interface INodeStats
     {
@@ -34,6 +33,9 @@ namespace Nethermind.Network.Stats
         void AddNodeStatsSyncEvent(NodeStatsEventType nodeStatsEventType, SyncNodeDetails syncDetails);
 
         bool DidEventHappen(NodeStatsEventType nodeStatsEventType);
+
+        void AddLatencyCaptureEvent(NodeLatencyStatType latencyType, long miliseconds);
+        long? GetAverageLatency(NodeLatencyStatType latencyType);
 
         long CurrentNodeReputation { get; }
         long CurrentPersistedNodeReputation { get; set; }
@@ -47,5 +49,6 @@ namespace Nethermind.Network.Stats
         Node Node { get; }
 
         IEnumerable<NodeStatsEvent> EventHistory { get; }
+        IEnumerable<NodeLatencyStatsEvent> LatencyHistory { get; }
     }
 }

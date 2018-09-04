@@ -21,5 +21,6 @@ namespace Nethermind.Blockchain
     public interface IBlockchainConfig
     {
         int SyncTimerInterval { get; }
+        int SyncPeersMaxCount { get; }
     }
 }

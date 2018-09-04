@@ -38,6 +38,7 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Stats;
 
 namespace Nethermind.Network
 {
@@ -97,8 +98,38 @@ namespace Nethermind.Network
         internal IReadOnlyCollection<Peer> CandidatePeers => _candidatePeers.Values.ToArray();
         internal IReadOnlyCollection<Peer> ActivePeers => _activePeers.Values.ToArray();
 
-        private CancellationTokenSource _cancellationTokenSource = new CancellationTokenSource();
-        
+        private readonly CancellationTokenSource _cancellationTokenSource = new CancellationTokenSource();
+
+        public void Init(bool isDiscoveryEnabled)
+        {
+            if (_isInitialized)
+            {
+                throw new InvalidOperationException($"{nameof(PeerManager)} already initialized.");
+            }
+
+            _isInitialized = true;
+
+            _isDiscoveryEnabled = isDiscoveryEnabled;
+            _discoveryManager.NodeDiscovered += async (s, e) => await OnNodeDiscovered(s, e);
+            _synchronizationManager.SyncEvent += async (s, e) => await OnSyncEvent(s, e);
+
+            LoadConfiguredTrustedPeers();
+            LoadPeersFromDb();
+
+            _rlpxPeer.SessionCreated += (sender, args) =>
+            {
+                IP2PSession session = args.Session;
+                session.PeerDisconnected += async (s, e) => await OnPeerDisconnected(s, e);
+                session.ProtocolInitialized += async (s, e) => await OnProtocolInitialized(s, e);
+                session.HandshakeComplete += async (s, e) => await OnHandshakeComplete((IP2PSession)s);
+
+                if (session.ConnectionDirection == ConnectionDirection.Out)
+                {
+                    ProcessOutgoingConnection(session);
+                }
+            };
+        }
+
         public async Task Start()
         {
             // timer is needed to support reconnecting, event based connection is also supported
@@ -194,38 +225,6 @@ namespace Nethermind.Network
                 {
                     return;
                 }
-
-                //int availableActiveCount = _networkConfig.ActivePeersMaxCount - _activePeers.Count;
-                //if (availableActiveCount <= 0)
-                //{
-                //    _isPeerUpdateInProgress = false; // TODO: try finally
-                //    return;
-                //}
-
-                //var candidates = _candidatePeers.Where(x => !_activePeers.ContainsKey(x.Key)).ToArray();
-                //if (candidates.Length == 0)
-                //{
-                //    _isPeerUpdateInProgress = false; // TODO: try finally
-                //    return;
-                //}
-
-                //var allNonActiveCandidates = candidates.Length;
-
-                //var nonZeroPortCandidates = candidates.Where(x => x.Value.Node.Port != 0).ToArray();
-                //filteredByZeroPort = filteredByZeroPort +  (allNonActiveCandidates - nonZeroPortCandidates.Length);
-
-                //var lastDisconnCandidates = nonZeroPortCandidates.Where(x => CheckLastDisconnectTime(x.Value)).ToArray();
-                //filteredByDisconnect = filteredByDisconnect + (nonZeroPortCandidates.Length - lastDisconnCandidates.Length);
-
-                //var lastFailedConnCandidates = lastDisconnCandidates.Where(x => CheckLastFailedConnectionTime(x.Value)).ToArray();
-                //filteredByFailedConnection = filteredByFailedConnection + (lastDisconnCandidates.Length - lastFailedConnCandidates.Length);
-
-                //var incompatibleNodes = lastFailedConnCandidates.Where(x => x.Value.NodeStats.FailedCompatibilityValidation.HasValue).ToArray();
-                //candidates = lastFailedConnCandidates.Where(x => !x.Value.NodeStats.FailedCompatibilityValidation.HasValue)
-                //    .OrderBy(x => x.Value.NodeStats.IsTrustedPeer)
-                //    .ThenByDescending(x => x.Value.NodeStats.CurrentNodeReputation).ToArray();
-                
-                //var remainingCandidates = candidates;
                 
                 while (true)
                 {
@@ -272,6 +271,11 @@ namespace Nethermind.Network
                             peer.NodeStats.AddNodeStatsEvent(NodeStatsEventType.ConnectionFailed);
                             Interlocked.Increment(ref failedInitialConnect);
                             RemoveActivePeer(peer.Node.Id, "Failed to initialize connections");
+                            if (peer.Session != null)
+                            {
+                                if (_logger.IsTrace) _logger.Trace($"Timeout, doing additional disconnect: {peer.Node.Id}");
+                                peer.Session?.DisconnectAsync(DisconnectReason.ReceiveMessageTimeout, DisconnectType.Local);
+                            }
                             return;
                         }
 
@@ -565,13 +569,13 @@ namespace Nethermind.Network
                         AddNodeToDiscovery(candidatePeer, (P2PProtocolInitializedEventArgs) e);
                     }
 
-                    if (_logger.IsWarn)
+                    if (_logger.IsTrace)
                     {
                         var timeFromLastDisconnect = candidatePeer.NodeStats.LastDisconnectTime.HasValue
                             ? DateTime.Now.Subtract(candidatePeer.NodeStats.LastDisconnectTime.Value).TotalMilliseconds.ToString()
                             : "no disconnect";
 
-                        _logger.Warn($"Protocol initialized for peer not present in active collection, id: {session.RemoteNodeId}, time from last disconnect: {timeFromLastDisconnect}.");
+                        _logger.Trace($"Protocol initialized for peer not present in active collection, id: {session.RemoteNodeId}, time from last disconnect: {timeFromLastDisconnect}.");
                     }
                 }
                 else
@@ -1151,10 +1155,10 @@ namespace Nethermind.Network
                     OurBestBlockNumber = e.OurBestBlockNumber
                 });
 
-                if (e.SyncStatus == SyncStatus.Failed)
+                if (new []{ SyncStatus.InitFailed, SyncStatus.InitCancelled, SyncStatus.Failed, SyncStatus.Cancelled }.Contains(e.SyncStatus))
                 {
-                    if (_logger.IsDebug) _logger.Debug($"Initializing disconnect on sync failed with node: {e.Peer.NodeId}");
-
+                    if (_logger.IsDebug) _logger.Debug($"Initializing disconnect on sync {e.SyncStatus.ToString()} with node: {e.Peer.NodeId}");
+                    RemoveActivePeer(e.Peer.NodeId, $"Sync event: {e.SyncStatus.ToString()}");
                     await activePeer.Session.InitiateDisconnectAsync(DisconnectReason.Other);
                 }
             }
@@ -1231,6 +1235,22 @@ namespace Nethermind.Network
                 sb.AppendLine();
             }
 
+            if (nodeStats.LatencyHistory.Any())
+            {
+                sb.AppendLine("Latency averages:");
+                var averageLatencies = Enum.GetValues(typeof(NodeLatencyStatType)).OfType<NodeLatencyStatType>().ToDictionary(x => x, nodeStats.GetAverageLatency);
+                foreach (var latency in averageLatencies.Where(x => x.Value.HasValue))
+                {
+                    sb.AppendLine($"{latency.Key.ToString()} = {latency.Value}");
+                }
+
+                sb.AppendLine("Latency events:");
+                foreach (var statsEvent in nodeStats.LatencyHistory.OrderBy(x => x.StatType).ThenBy(x => x.CaptureTime).ToArray())
+                {
+                    sb.AppendLine($"{statsEvent.StatType.ToString()} | {statsEvent.CaptureTime.ToString(_networkConfig.DetailedTimeDateFormat)} | {statsEvent.Latency}");
+                }
+            }
+
             _logger.Debug(sb.ToString());
         }
 
@@ -1266,36 +1286,6 @@ namespace Nethermind.Network
             public ISynchronizationPeer SynchronizationPeer { get; set; }
             public IP2PMessageSender P2PMessageSender { get; set; }
             public ConnectionDirection ConnectionDirection { get; set; }
-        }
-
-        public void Init(bool isDiscoveryEnabled)
-        {
-            if (_isInitialized)
-            {
-                throw new InvalidOperationException($"{nameof(PeerManager)} already initialized.");
-            }
-
-            _isInitialized = true;
-
-            _isDiscoveryEnabled = isDiscoveryEnabled;
-            _discoveryManager.NodeDiscovered += async (s, e) => await OnNodeDiscovered(s, e);
-            _synchronizationManager.SyncEvent += async (s, e) => await OnSyncEvent(s, e);
-
-            LoadConfiguredTrustedPeers();
-            LoadPeersFromDb();
-
-            _rlpxPeer.SessionCreated += (sender, args) =>
-            {
-                IP2PSession session = args.Session;
-                session.PeerDisconnected += async (s, e) => await OnPeerDisconnected(s, e);
-                session.ProtocolInitialized += async (s, e) => await OnProtocolInitialized(s, e);
-                session.HandshakeComplete += async (s, e) => await OnHandshakeComplete((IP2PSession) s);
-
-                if (session.ConnectionDirection == ConnectionDirection.Out)
-                {
-                    ProcessOutgoingConnection(session);
-                }
-            };
         }
     }
 }

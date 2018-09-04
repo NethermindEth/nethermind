@@ -20,6 +20,7 @@ using System;
 using System.Threading.Tasks;
 using Nethermind.Core.Model;
 using Nethermind.Network.Stats;
+using Nethermind.Stats;
 
 namespace Nethermind.Network.Rlpx
 {

@@ -1,4 +1,5 @@
 ﻿using System;
+using Nethermind.Stats;
 
 namespace Nethermind.Network.P2P
 {

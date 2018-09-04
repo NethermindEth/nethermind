@@ -156,7 +156,7 @@ namespace Nethermind.Network.Rlpx
             {
                 if (_logger.IsTrace)
                 {
-                    _logger.Error("Frame decoding failed (SocketException)", exception);
+                    _logger.Trace($"Frame decoding failed (SocketException): {exception}");
                 }
             }
             else

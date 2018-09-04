@@ -16,13 +16,14 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.Network.Stats
+using Nethermind.Core.Model;
+using Nethermind.Network.Discovery.RoutingTable;
+
+namespace Nethermind.Stats
 {
-    public enum CompatibilityValidationType
+    public interface INodeStatsProvider
     {
-        P2PVersion,
-        Capabilities,
-        ChainId,
-        DifferentGenesis
+        INodeStats GetOrAddNodeStats(Node node);
+        INodeStats GetOrAddNodeStats(NodeId nodeId, string host, int port);
     }
 }

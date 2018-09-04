@@ -26,7 +26,9 @@ using Nethermind.Db.Config;
 using Nethermind.JsonRpc.Config;
 using Nethermind.KeyStore.Config;
 using Nethermind.Network.Config;
+using Nethermind.Network.Stats;
 using Nethermind.Runner.Config;
+using Nethermind.Stats;
 
 namespace Nethermind.Runner
 {
@@ -56,6 +58,7 @@ namespace Nethermind.Runner
                 config = typeof(JsonRpcConfig).Assembly;
                 config = typeof(InitConfig).Assembly;
                 config = typeof(DbConfig).Assembly;
+                config = typeof(StatsConfig).Assembly;
 
                 var configProvider = new JsonConfigProvider();
                 configProvider.LoadJsonConfig(configFile.HasValue() ? configFile.Value() : DefaultConfigFile);

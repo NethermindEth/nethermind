@@ -55,5 +55,17 @@ namespace Nethermind.Core
                 if (_logger.IsWarn) _logger.Warn($"Stopwatch cannot be found in dict: {id}");
             }
         }
+
+        public long? EndPerfCalc(Guid id)
+        {
+            if (_stopwatches.TryRemove(id, out var watch))
+            {
+                watch.Stop();
+                return watch.ElapsedMilliseconds;
+            }
+
+            if (_logger.IsWarn) _logger.Warn($"Stopwatch cannot be found in dict: {id}");
+            return null;
+        }
     }
 }

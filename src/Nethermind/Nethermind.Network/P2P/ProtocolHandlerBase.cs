@@ -18,8 +18,10 @@
 
 using System;
 using System.Threading.Tasks;
+using Nethermind.Core;
 using Nethermind.Core.Logging;
 using Nethermind.Network.Rlpx;
+using Nethermind.Stats;
 
 namespace Nethermind.Network.P2P
 {
@@ -28,13 +30,15 @@ namespace Nethermind.Network.P2P
         private readonly IMessageSerializationService _serializer;
         protected IP2PSession P2PSession { get; }
         protected readonly TaskCompletionSource<MessageBase> InitCompletionSource;
+        protected IPerfService PerfService { get; }
 
-        protected ProtocolHandlerBase(IP2PSession p2PSession, IMessageSerializationService serializer, ILogManager logManager)
+        protected ProtocolHandlerBase(IP2PSession p2PSession, IMessageSerializationService serializer, ILogManager logManager, IPerfService perfService)
         {
             Logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _serializer = serializer ?? throw new ArgumentNullException(nameof(serializer));
             P2PSession = p2PSession ?? throw new ArgumentNullException(nameof(p2PSession));
             InitCompletionSource = new TaskCompletionSource<MessageBase>();
+            PerfService = perfService;
         }
 
         protected ILogger Logger { get; }

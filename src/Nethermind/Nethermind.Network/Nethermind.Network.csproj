@@ -15,6 +15,7 @@
     </ProjectReference>
     <ProjectReference Include="..\Nethermind.Db\Nethermind.Db.csproj" />
     <ProjectReference Include="..\Nethermind.KeyStore\Nethermind.KeyStore.csproj" />
+    <ProjectReference Include="..\Nethermind.Stats\Nethermind.Stats.csproj" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="DotNetty.Handlers" Version="0.5.0" />

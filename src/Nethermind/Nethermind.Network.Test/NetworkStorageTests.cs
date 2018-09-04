@@ -26,6 +26,7 @@ using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Lifecycle;
 using Nethermind.Network.Discovery.RoutingTable;
 using Nethermind.Network.Stats;
+using Nethermind.Stats;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -35,7 +36,8 @@ namespace Nethermind.Network.Test
     public class NetworkStorageTests
     {
         private INetworkConfig _networkConfig;
-        
+        private IStatsConfig _statsConfig;
+
         [SetUp]
         public void SetUp()
         {
@@ -44,6 +46,7 @@ namespace Nethermind.Network.Test
             _tempDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
             _networkConfig = configProvider.GetConfig<INetworkConfig>();
             _networkConfig.DbBasePath = _tempDir;
+            _statsConfig = configProvider.GetConfig<IStatsConfig>();
 
             _nodeFactory = new NodeFactory();
             _storage = new NetworkStorage("test", _networkConfig, logManager, new PerfService(logManager));
@@ -66,7 +69,7 @@ namespace Nethermind.Network.Test
         {
             INodeLifecycleManager manager = Substitute.For<INodeLifecycleManager>();
             manager.ManagedNode.Returns(node);
-            manager.NodeStats.Returns(new NodeStats(node, _networkConfig)
+            manager.NodeStats.Returns(new NodeStats(node, _statsConfig)
             {
                 CurrentPersistedNodeReputation = node.Port
             });

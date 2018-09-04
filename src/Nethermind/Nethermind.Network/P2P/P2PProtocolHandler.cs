@@ -25,6 +25,7 @@ using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Stats;
+using Nethermind.Stats;
 
 namespace Nethermind.Network.P2P
 {
@@ -39,8 +40,8 @@ namespace Nethermind.Network.P2P
             IMessageSerializationService serializer,
             NodeId localNodeId,
             int listenPort,
-            ILogManager logManager)
-            : base(p2PSession, serializer, logManager)
+            ILogManager logManager, IPerfService perfService)
+            : base(p2PSession, serializer, logManager, perfService)
         {
             LocalNodeId = localNodeId;
             ListenPort = listenPort;
@@ -195,11 +196,22 @@ namespace Nethermind.Network.P2P
             if (Logger.IsTrace) Logger.Trace($"{P2PSession.RemoteNodeId} P2P sending ping on {P2PSession.RemotePort} ({RemoteClientId})");
             Send(PingMessage.Instance);
             P2PSession?.NodeStats.AddNodeStatsEvent(NodeStatsEventType.P2PPingOut);
+            var pingPerfCalcId = PerfService.StartPerfCalc(); 
 
             var firstTask = await Task.WhenAny(pongTask, Task.Delay(Timeouts.P2PPing));
             _pongCompletionSource = null;
+            if (firstTask != pongTask)
+            {
+                return false;
+            }
 
-            return firstTask == pongTask;
+            var latency = PerfService.EndPerfCalc(pingPerfCalcId);
+            if (latency.HasValue)
+            {
+                P2PSession?.NodeStats.AddLatencyCaptureEvent(NodeLatencyStatType.P2PPingPong, latency.Value);
+            }
+
+            return true;
         }
 
         public void Disconnect(DisconnectReason disconnectReason)

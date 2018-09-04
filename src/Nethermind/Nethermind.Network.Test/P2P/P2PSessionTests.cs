@@ -26,6 +26,7 @@ using Nethermind.Network.P2P;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Stats;
 using Nethermind.Network.Test.Builders;
+using Nethermind.Stats;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -52,7 +53,7 @@ namespace Nethermind.Network.Test.P2P
                 Substitute.For<ISynchronizationManager>(),
                 Substitute.For<INodeStatsProvider>(),
                 Substitute.For<INodeStats>(),
-                NullLogManager.Instance);
+                NullLogManager.Instance, null, null);
             factory.Init(4, Substitute.For<IChannelHandlerContext>(), sender);
             
             sender.Received().Enqueue(Arg.Is<Packet>(p => p.PacketType == 0 && p.Protocol == "p2p"));

@@ -54,9 +54,11 @@ namespace Nethermind.Blockchain
         
         private PeerInfo _currentSyncingPeerInfo;
         private Task _currentSyncTask;
+        private System.Timers.Timer _syncTimer;
 
         private CancellationTokenSource _peerSyncCancellationTokenSource;
         private CancellationTokenSource _aggregateSyncCancellationTokenSource;
+        private int _lastSyncPeersCount;
 
         public SynchronizationManager(
             IBlockTree blockTree,
@@ -77,20 +79,7 @@ namespace Nethermind.Blockchain
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
             _headerValidator = headerValidator ?? throw new ArgumentNullException(nameof(headerValidator));
 
-            if (_logger.IsDebug) _logger.Debug($"Initialized {nameof(SynchronizationManager)} with head block {Head.ToString(BlockHeader.Format.Short)}");
-            System.Timers.Timer syncTimer = new System.Timers.Timer(10000);
-            syncTimer.Elapsed += (s, e) =>
-            {
-                if (_isInitialized) RequestSync();
-                int initPeerCount = _peers.Count(p => p.Value.IsInitialized);
-                if (initPeerCount != _lastSyncPeersCount)
-                {
-                    _lastSyncPeersCount = initPeerCount;
-                    if (_logger.IsInfo) _logger.Info($"Available sync peers: {initPeerCount}/25" + (_isSyncing ? " (sync in progress)" : string.Empty)); // TODO: make 25 configurable
-                }
-            };
-            
-            syncTimer.Start();
+            if (_logger.IsDebug) _logger.Debug($"Initialized SynchronizationManager with head block {Head.ToString(BlockHeader.Format.Short)}");
         }
 
         public int ChainId => _blockTree.ChainId;
@@ -165,8 +154,6 @@ namespace Nethermind.Blockchain
                 RequestSync();
             }
         }
-
-        private int _lastSyncPeersCount;
 
         public void HintBlock(Keccak hash, UInt256 number, NodeId receivedFrom)
         {
@@ -252,11 +239,14 @@ namespace Nethermind.Blockchain
             _isInitialized = true;
             _blockTree.NewHeadBlock += OnNewHeadBlock;
             _transactionStore.NewPending += OnNewPendingTransaction;
+            StartSyncTimer();
         }
 
         public async Task StopAsync()
         {
             _isInitialized = false;
+            StopSyncTimer();
+
             if (_aggregateSyncCancellationTokenSource == null || _aggregateSyncCancellationTokenSource.IsCancellationRequested)
             {
                 return;
@@ -271,6 +261,42 @@ namespace Nethermind.Blockchain
                     if (_logger.IsError) _logger.Error($"StopAsync failed. Ex: {t.Exception}");
                 }
             });
+        }
+
+        private void StartSyncTimer()
+        {
+            if (_logger.IsDebug) _logger.Debug("Starting sync timer");
+            _syncTimer = new System.Timers.Timer(_blockchainConfig.SyncTimerInterval);
+            _syncTimer.Elapsed += (s, e) =>
+            {
+                _syncTimer.Enabled = false;
+                if (_isInitialized)
+                {
+                    RequestSync();
+                }
+                var initPeerCount = _peers.Count(p => p.Value.IsInitialized);
+                if (initPeerCount != _lastSyncPeersCount)
+                {
+                    _lastSyncPeersCount = initPeerCount;
+                    if (_logger.IsInfo) _logger.Info($"Available sync peers: {initPeerCount}/{_blockchainConfig.SyncPeersMaxCount}[{_peers.Count}] {(_isSyncing ? $" (sync in progress with peer: {_currentSyncingPeerInfo?.Peer?.NodeId})" : string.Empty)}"); 
+                }
+                _syncTimer.Enabled = true;
+            };
+
+            _syncTimer.Start();
+        }
+
+        private void StopSyncTimer()
+        {
+            try
+            {
+                if (_logger.IsDebug) _logger.Debug("Stopping sync timer");
+                _syncTimer?.Stop();
+            }
+            catch (Exception e)
+            {
+                _logger.Error("Error during sync timer stop", e);
+            }
         }
 
         private void OnNewPendingTransaction(object sender, TransactionEventArgs transactionEventArgs)
@@ -625,11 +651,13 @@ namespace Nethermind.Blockchain
                 {
                     if (t.IsFaulted)
                     {
-                        if (_logger.IsTrace) _logger.Trace($"{nameof(InitPeerInfo)} failed for node: {peer.NodeId}{Environment.NewLine}{t.Exception}");
+                        if (_logger.IsTrace) _logger.Trace($"InitPeerInfo failed for node: {peer.NodeId}{Environment.NewLine}{t.Exception}");
+                        RemovePeer(peer);
                         SyncEvent?.Invoke(this, new SyncEventArgs(peer, SyncStatus.InitFailed));
                     }
                     else if (t.IsCanceled)
                     {
+                        RemovePeer(peer);
                         SyncEvent?.Invoke(this, new SyncEventArgs(peer, SyncStatus.InitCancelled));
                         token.ThrowIfCancellationRequested();
                     }

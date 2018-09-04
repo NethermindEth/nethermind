@@ -25,6 +25,7 @@ using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Messages;
 using Nethermind.Network.Discovery.RoutingTable;
 using Nethermind.Network.Test.Builders;
+using Nethermind.Stats;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.Discovery

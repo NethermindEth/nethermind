@@ -31,6 +31,7 @@ using Nethermind.Network.Discovery.Lifecycle;
 using Nethermind.Network.Discovery.Messages;
 using Nethermind.Network.Discovery.RoutingTable;
 using Nethermind.Network.Stats;
+using Nethermind.Stats;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -74,7 +75,7 @@ namespace Nethermind.Network.Test.Discovery
             _nodeTable.Initialize();
 
             var evictionManager = new EvictionManager(_nodeTable, logManager);
-            var lifecycleFactory = new NodeLifecycleManagerFactory(_nodeFactory, _nodeTable, new DiscoveryMessageFactory(_configurationProvider), evictionManager, new NodeStatsProvider(_configurationProvider.GetConfig<INetworkConfig>(), _nodeFactory), _configurationProvider, logManager);
+            var lifecycleFactory = new NodeLifecycleManagerFactory(_nodeFactory, _nodeTable, new DiscoveryMessageFactory(_configurationProvider), evictionManager, new NodeStatsProvider(_configurationProvider.GetConfig<IStatsConfig>(), _nodeFactory), _configurationProvider, logManager);
 
             _udpClient = Substitute.For<IMessageSender>();
 
