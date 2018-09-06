@@ -31,10 +31,10 @@ namespace Nethermind.JsonRpc.Module
         private ModuleInfo[] _modules;
         private ModuleInfo[] _enabledModules;
 
-        public ModuleProvider(IConfigProvider configurationProvider, INetModule netModule, IEthModule ethModule, IWeb3Module web3Module, IShhModule shhModule)
+        public ModuleProvider(IConfigProvider configurationProvider, INetModule netModule, IEthModule ethModule, IWeb3Module web3Module, IShhModule shhModule, INethmModule nethmModule)
         {
             _configurationProvider = configurationProvider.GetConfig<IJsonRpcConfig>();
-            Initialize(netModule, ethModule, web3Module, shhModule);
+            Initialize(netModule, ethModule, web3Module, shhModule, nethmModule);
         }
 
         public IReadOnlyCollection<ModuleInfo> GetEnabledModules()
@@ -47,14 +47,15 @@ namespace Nethermind.JsonRpc.Module
             return _modules;
         }
 
-        private void Initialize(INetModule netModule, IEthModule ethModule, IWeb3Module web3Module, IShhModule shhModule)
+        private void Initialize(INetModule netModule, IEthModule ethModule, IWeb3Module web3Module, IShhModule shhModule, INethmModule nethmModule)
         {
             _modules = new[]
             {
                 new ModuleInfo(ModuleType.Net, typeof(INetModule), netModule),
                 new ModuleInfo(ModuleType.Eth, typeof(IEthModule), ethModule),
                 new ModuleInfo(ModuleType.Web3, typeof(IWeb3Module), web3Module),
-                new ModuleInfo(ModuleType.Shh, typeof(IShhModule), shhModule)
+                new ModuleInfo(ModuleType.Shh, typeof(IShhModule), shhModule),
+                new ModuleInfo(ModuleType.Nethm, typeof(INethmModule), nethmModule) 
             };
 
             _enabledModules = _modules.Where(x => _configurationProvider.EnabledModules.Contains(x.ModuleType)).ToArray();

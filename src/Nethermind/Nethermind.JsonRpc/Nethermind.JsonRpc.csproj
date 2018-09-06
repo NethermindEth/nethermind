@@ -23,5 +23,6 @@
       <Project>{31AFB372-BE97-4804-B2B9-AD4C515924B6}</Project>
       <Name>Nethermind.KeyStore</Name>
     </ProjectReference>
+    <ProjectReference Include="..\Nethermind.LibSolc\Nethermind.LibSolc.csproj" />
   </ItemGroup>
 </Project>

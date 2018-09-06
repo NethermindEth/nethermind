@@ -30,6 +30,7 @@ namespace Nethermind.JsonRpc.DataModel
         Net,
         Web3,
         Db,
-        Shh
+        Shh,
+        Nethm
     }
 }
