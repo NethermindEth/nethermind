@@ -38,9 +38,9 @@ using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
-using Nethermind.Network.Stats;
 using Nethermind.Network.Test.Builders;
 using Nethermind.Stats;
+using Nethermind.Stats.Model;
 using NSubstitute;
 using NUnit.Framework;
 

@@ -31,8 +31,8 @@ using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
 using Nethermind.Network.P2P;
 using Nethermind.Network.Rlpx.Handshake;
-using Nethermind.Network.Stats;
 using Nethermind.Stats;
+using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Rlpx
 {

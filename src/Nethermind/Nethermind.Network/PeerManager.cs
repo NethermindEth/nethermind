@@ -30,7 +30,6 @@ using Nethermind.Network.Discovery.RoutingTable;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.Rlpx;
-using Nethermind.Network.Stats;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -39,6 +38,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Stats;
+using Nethermind.Stats.Model;
 
 namespace Nethermind.Network
 {
@@ -65,6 +65,7 @@ namespace Nethermind.Network
         private readonly IPerfService _perfService;
         private bool _isDiscoveryEnabled;
         private Task _storageCommitTask;
+        private long _prevActivePeersCount = 0;
 
         private readonly ConcurrentDictionary<NodeId, Peer> _activePeers = new ConcurrentDictionary<NodeId, Peer>();
         private readonly ConcurrentDictionary<NodeId, Peer> _candidatePeers = new ConcurrentDictionary<NodeId, Peer>();
@@ -288,9 +289,14 @@ namespace Nethermind.Network
                 
                 if (_logger.IsDebug)
                 {
-                    var countersLog = string.Join(", ", candidateSelection.Counters.Select(x => $"{x.Key.ToString()}: {x.Value}"));
-                    _logger.Debug($"RunPeerUpdate | {countersLog}, Incompatible: {GetIncompatibleDesc(candidateSelection.IncompatiblePeers)}, EligibleCandidates: {candidateSelection.Candidates.Count()}, " +
-                                  $"Tried: {tryCount}, Rounds: {connectionRounds}, Failed initial connect: {failedInitialConnect}, Established initial connect: {newActiveNodes}, Current candidate peers: {_candidatePeers.Count}, Current active peers: {_activePeers.Count}");
+                    var activePeersCount = _activePeers.Count;
+                    if (activePeersCount != _prevActivePeersCount)
+                    {
+                        var countersLog = string.Join(", ", candidateSelection.Counters.Select(x => $"{x.Key.ToString()}: {x.Value}"));
+                        _logger.Debug($"RunPeerUpdate | {countersLog}, Incompatible: {GetIncompatibleDesc(candidateSelection.IncompatiblePeers)}, EligibleCandidates: {candidateSelection.Candidates.Count()}, " +
+                                      $"Tried: {tryCount}, Rounds: {connectionRounds}, Failed initial connect: {failedInitialConnect}, Established initial connect: {newActiveNodes}, Current candidate peers: {_candidatePeers.Count}, Current active peers: {_activePeers.Count}");
+                    }
+                    _prevActivePeersCount = activePeersCount;
                 }
 
                 if (_logger.IsTrace)
@@ -402,6 +408,12 @@ namespace Nethermind.Network
                              $"CLIENTS:{Environment.NewLine}" +
                              $"{string.Join(Environment.NewLine, clients.Select(x => $"{x.ClientId}:{x.Count}"))}{Environment.NewLine}");
 
+                var peersWithLatencyStats = peers.Where(x => x.NodeStats.LatencyHistory.Any()).ToArray();
+                if (peersWithLatencyStats.Any())
+                {
+                    LogLatencyComparison(peersWithLatencyStats);
+                }
+
                 if (_networkConfig.CaptureNodeStatsEventHistory)
                 {
                     _logger.Debug($"Logging {peers.Length} peers log event histories");
@@ -414,6 +426,12 @@ namespace Nethermind.Network
                     _logger.Debug("Logging event histories finished");
                 }
             }
+        }
+
+        private void LogLatencyComparison(Peer[] peers)
+        {
+            var latencyDict = peers.Select(x => new {x,  Av = GetAverageLatencies(x.NodeStats)}).OrderBy(x => x.Av.Select(y => new {y.Key, y.Value}).FirstOrDefault(y => y.Key == NodeLatencyStatType.BlockHeaders)?.Value ?? 10000);
+            _logger.Info($"Overall latency stats: {Environment.NewLine}{string.Join(Environment.NewLine, latencyDict.Select(x => $"{x.x.Node.Id}: {string.Join(" | ", x.Av.Select(y => $"{y.Key.ToString()}: {y.Value?.ToString() ?? "-"}"))}"))}");
         }
 
         private string GetIncompatibleDesc(IEnumerable<Peer> incompatibleNodes)
@@ -1238,7 +1256,7 @@ namespace Nethermind.Network
             if (nodeStats.LatencyHistory.Any())
             {
                 sb.AppendLine("Latency averages:");
-                var averageLatencies = Enum.GetValues(typeof(NodeLatencyStatType)).OfType<NodeLatencyStatType>().ToDictionary(x => x, nodeStats.GetAverageLatency);
+                var averageLatencies = GetAverageLatencies(nodeStats);
                 foreach (var latency in averageLatencies.Where(x => x.Value.HasValue))
                 {
                     sb.AppendLine($"{latency.Key.ToString()} = {latency.Value}");
@@ -1252,6 +1270,11 @@ namespace Nethermind.Network
             }
 
             _logger.Debug(sb.ToString());
+        }
+
+        private static Dictionary<NodeLatencyStatType, long?> GetAverageLatencies(INodeStats nodeStats)
+        {
+            return Enum.GetValues(typeof(NodeLatencyStatType)).OfType<NodeLatencyStatType>().ToDictionary(x => x, nodeStats.GetAverageLatency);
         }
 
         private string GetCapabilities(P2PNodeDetails nodeDetails)

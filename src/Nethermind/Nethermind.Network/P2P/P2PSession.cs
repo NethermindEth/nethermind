@@ -29,8 +29,8 @@ using Nethermind.Core.Model;
 using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63;
 using Nethermind.Network.Rlpx;
-using Nethermind.Network.Stats;
 using Nethermind.Stats;
+using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.P2P
 {

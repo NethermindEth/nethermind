@@ -17,6 +17,7 @@
  */
 
 using Nethermind.Config;
+using Nethermind.Stats.Model;
 
 namespace Nethermind.Stats
 {

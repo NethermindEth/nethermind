@@ -29,7 +29,6 @@ using Nethermind.Core.Model;
 using Nethermind.Network.P2P;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
-using Nethermind.Network.Stats;
 using NSubstitute;
 using NUnit.Framework;
 

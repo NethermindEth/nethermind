@@ -19,7 +19,7 @@
 using System.Net;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Model;
-using Nethermind.Network.Discovery.RoutingTable;
+using Nethermind.Stats.Model;
 
 namespace Nethermind.Stats
 {

@@ -17,6 +17,7 @@
  */
 
 using Nethermind.Stats;
+using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.P2P
 {

@@ -22,8 +22,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using Nethermind.Core;
-using Nethermind.Network.Discovery.RoutingTable;
-using Nethermind.Network.Stats;
+using Nethermind.Stats.Model;
 
 namespace Nethermind.Stats
 {

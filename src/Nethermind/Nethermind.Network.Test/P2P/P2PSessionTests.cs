@@ -24,9 +24,9 @@ using Nethermind.Core.Model;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P;
 using Nethermind.Network.Rlpx;
-using Nethermind.Network.Stats;
 using Nethermind.Network.Test.Builders;
 using Nethermind.Stats;
+using Nethermind.Stats.Model;
 using NSubstitute;
 using NUnit.Framework;
 

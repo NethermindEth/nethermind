@@ -29,8 +29,8 @@ using Nethermind.Network.Discovery;
 using Nethermind.Network.Discovery.Lifecycle;
 using Nethermind.Network.Discovery.Messages;
 using Nethermind.Network.Discovery.RoutingTable;
-using Nethermind.Network.Stats;
 using Nethermind.Stats;
+using Nethermind.Stats.Model;
 using NSubstitute;
 using NUnit.Framework;
 

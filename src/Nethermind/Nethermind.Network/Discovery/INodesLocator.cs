@@ -18,6 +18,7 @@
 
 using System.Threading.Tasks;
 using Nethermind.Network.Discovery.RoutingTable;
+using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery
 {

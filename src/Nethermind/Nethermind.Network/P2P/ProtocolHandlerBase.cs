@@ -22,6 +22,7 @@ using Nethermind.Core;
 using Nethermind.Core.Logging;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
+using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.P2P
 {

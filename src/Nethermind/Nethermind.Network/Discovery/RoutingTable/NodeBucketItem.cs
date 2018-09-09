@@ -17,6 +17,7 @@
  */
 
 using System;
+using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery.RoutingTable
 {

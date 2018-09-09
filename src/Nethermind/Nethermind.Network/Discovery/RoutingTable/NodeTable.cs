@@ -29,6 +29,7 @@ using Nethermind.Core.Model;
 using Nethermind.KeyStore;
 using Nethermind.Network.Config;
 using Nethermind.Stats;
+using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery.RoutingTable
 {

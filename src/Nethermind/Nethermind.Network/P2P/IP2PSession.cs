@@ -21,8 +21,8 @@ using System.Threading.Tasks;
 using DotNetty.Transport.Channels;
 using Nethermind.Core.Model;
 using Nethermind.Network.Rlpx;
-using Nethermind.Network.Stats;
 using Nethermind.Stats;
+using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.P2P
 {

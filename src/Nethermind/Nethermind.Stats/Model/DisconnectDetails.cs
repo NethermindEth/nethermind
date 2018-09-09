@@ -16,7 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.Stats
+namespace Nethermind.Stats.Model
 {
     public class DisconnectDetails
     {

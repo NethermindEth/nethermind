@@ -19,6 +19,7 @@
 using Nethermind.Core.Extensions;
 using Nethermind.Network.P2P;
 using Nethermind.Stats;
+using Nethermind.Stats.Model;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P

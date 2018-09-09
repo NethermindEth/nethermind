@@ -32,6 +32,7 @@ using Nethermind.Network.Discovery.Lifecycle;
 using Nethermind.Network.Discovery.Messages;
 using Nethermind.Network.Discovery.RoutingTable;
 using Nethermind.Stats;
+using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery
 {

@@ -25,7 +25,7 @@ using Nethermind.Core.Model;
 using Nethermind.Network.Discovery.Messages;
 using Nethermind.Network.Discovery.RoutingTable;
 using Nethermind.Stats;
-using Node = Nethermind.Network.Discovery.RoutingTable.Node;
+using Node = Nethermind.Stats.Model.Node;
 
 namespace Nethermind.Network.Discovery.Serializers
 {

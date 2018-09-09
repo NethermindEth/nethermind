@@ -18,8 +18,7 @@
 
 using System;
 using System.Collections.Generic;
-using Nethermind.Network.Discovery.RoutingTable;
-using Nethermind.Network.Stats;
+using Nethermind.Stats.Model;
 
 namespace Nethermind.Stats
 {

@@ -50,7 +50,6 @@ using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
-using Nethermind.Network.Stats;
 using Nethermind.Runner.Config;
 using Nethermind.Stats;
 using Nethermind.Store;

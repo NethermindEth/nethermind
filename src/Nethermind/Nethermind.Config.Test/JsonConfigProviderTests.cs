@@ -7,8 +7,8 @@ using Nethermind.JsonRpc.DataModel;
 using Nethermind.KeyStore.Config;
 using Nethermind.Network.Config;
 using Nethermind.Network.P2P;
-using Nethermind.Network.Stats;
 using Nethermind.Stats;
+using Nethermind.Stats.Model;
 using NUnit.Framework;
 
 namespace Nethermind.Config.Test

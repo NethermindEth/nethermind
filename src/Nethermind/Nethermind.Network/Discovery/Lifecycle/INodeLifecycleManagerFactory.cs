@@ -18,6 +18,7 @@
 
 using Nethermind.Core.Model;
 using Nethermind.Network.Discovery.RoutingTable;
+using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery.Lifecycle
 {

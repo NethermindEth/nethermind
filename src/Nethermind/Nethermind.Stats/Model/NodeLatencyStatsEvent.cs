@@ -16,30 +16,14 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Core.Model;
-using Nethermind.Stats.Model;
+using System;
 
-namespace Nethermind.Network.Discovery.RoutingTable
+namespace Nethermind.Stats.Model
 {
-    public interface INodeTable
+    public class NodeLatencyStatsEvent
     {
-        void Initialize(NodeId masterNodeKey = null);
-        Node MasterNode { get; }
-        NodeBucket[] Buckets { get; }
-        NodeAddResult AddNode(Node node);
-        void DeleteNode(Node node);
-        void ReplaceNode(Node nodeToRemove, Node nodeToAdd);
-        Node GetNode(byte[] nodeId);
-        void RefreshNode(Node node);
-
-        /// <summary>
-        /// GetClosestNodes to MasterNode
-        /// </summary>
-        Node[] GetClosestNodes();
-
-        /// <summary>
-        /// GetClosestNodes to provided Node
-        /// </summary>
-        Node[] GetClosestNodes(byte[] nodeId);
+        public NodeLatencyStatType StatType { get; set; }
+        public DateTime CaptureTime { get; set; }
+        public long Latency { get; set; }
     }
 }

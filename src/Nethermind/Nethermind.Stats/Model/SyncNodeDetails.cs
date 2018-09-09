@@ -18,7 +18,7 @@
 
 using System.Numerics;
 
-namespace Nethermind.Network.Stats
+namespace Nethermind.Stats.Model
 {
     public class SyncNodeDetails
     {

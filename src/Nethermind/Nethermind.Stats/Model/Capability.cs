@@ -18,7 +18,7 @@
 
 using System;
 
-namespace Nethermind.Stats
+namespace Nethermind.Stats.Model
 {
     public class Capability : IEquatable<Capability>
     {

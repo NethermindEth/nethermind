@@ -16,15 +16,8 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.Network.Stats
+namespace Nethermind.Stats.Model
 {
-    public enum NodeLatencyStatType
-    {
-        P2PPingPong,
-        BlockHeaders,
-        BlockBodies
-    }
-
     public enum NodeStatsEventType
     {
         DiscoveryPingOut,

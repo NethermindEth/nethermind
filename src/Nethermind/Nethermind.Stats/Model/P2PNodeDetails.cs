@@ -16,9 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Stats;
-
-namespace Nethermind.Network.Stats
+namespace Nethermind.Stats.Model
 {
     public class P2PNodeDetails
     {

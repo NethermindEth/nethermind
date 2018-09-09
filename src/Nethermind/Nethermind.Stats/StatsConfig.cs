@@ -16,6 +16,8 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.Stats.Model;
+
 namespace Nethermind.Stats
 {
     public class StatsConfig : IStatsConfig
