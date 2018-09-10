@@ -45,6 +45,7 @@ namespace Nethermind.Blockchain
         private readonly IDifficultyCalculator _difficultyCalculator;
         private readonly ILogger _logger;
         private readonly ISealEngine _sealEngine;
+        private readonly IPerfService _perfService;
 
         private readonly BlockingCollection<BlockRef> _recoveryQueue = new BlockingCollection<BlockRef>(new ConcurrentQueue<BlockRef>());
         private readonly BlockingCollection<BlockRef> _blockQueue = new BlockingCollection<BlockRef>(new ConcurrentQueue<BlockRef>());
@@ -57,7 +58,7 @@ namespace Nethermind.Blockchain
             IDifficultyCalculator difficultyCalculator,
             IBlockProcessor blockProcessor,
             IEthereumSigner signer,
-            ILogManager logManager)
+            ILogManager logManager, IPerfService perfService)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -68,6 +69,7 @@ namespace Nethermind.Blockchain
             _sealEngine = sealEngine ?? throw new ArgumentNullException(nameof(sealEngine));
             _blockProcessor = blockProcessor ?? throw new ArgumentNullException(nameof(blockProcessor));
             _signer = signer ?? throw new ArgumentNullException(nameof(signer));
+            _perfService = perfService;
         }
 
         private void OnNewBestBlock(object sender, BlockEventArgs blockEventArgs)
@@ -92,6 +94,7 @@ namespace Nethermind.Blockchain
 
         public async Task StopAsync(bool processRamainingBlocks)
         {
+            var key = _perfService.StartPerfCalc();
             if (processRamainingBlocks)
             {
                 _recoveryQueue.CompleteAdding();
@@ -104,6 +107,7 @@ namespace Nethermind.Blockchain
             }
 
             await Task.WhenAll(_recoveryTask, _processorTask);
+            _perfService.EndPerfCalc(key, "Close: BlockchainProcessor");
         }
 
         public void Start()

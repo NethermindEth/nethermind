@@ -203,6 +203,7 @@ namespace Nethermind.Network.Rlpx
         
         public async Task Shutdown()
         {
+            var key = _perfService.StartPerfCalc();
 //            InternalLoggerFactory.DefaultFactory.AddProvider(new ConsoleLoggerProvider((s, level) => true, false));
 
             await _bootstrapChannel.CloseAsync().ContinueWith(t =>
@@ -213,14 +214,21 @@ namespace Nethermind.Network.Rlpx
                 }
             });
 
-            await Task.WhenAll(_bossGroup.ShutdownGracefullyAsync(), _workerGroup.ShutdownGracefullyAsync())
-                .ContinueWith(t =>
-                {
-                    if (t.IsFaulted)
-                    {
-                        _logger.Error($"Groups shutdown failed in {nameof(PeerManager)}", t.Exception);
-                    }
-                });
+            _logger.Debug("Closed _bootstrapChannel");
+
+            var nettyCloseTimeout = TimeSpan.FromMilliseconds(100);
+            var closingTask = Task.WhenAll(_bossGroup.ShutdownGracefullyAsync(nettyCloseTimeout, nettyCloseTimeout),
+                _workerGroup.ShutdownGracefullyAsync(nettyCloseTimeout, nettyCloseTimeout));
+                
+            //we need to add additional timeout on our side as netty is not executing internal timeout properly, often it just hangs forever on closing
+            if (await Task.WhenAny(closingTask, Task.Delay(Timeouts.TcpClose)) != closingTask)
+            {
+                _logger.Warn($"Could not close rlpx connection in {Timeouts.TcpClose.TotalSeconds} seconds");
+            }
+
+            _logger.Debug("Closed _bossGroup and _workerGroup");
+
+            _perfService.EndPerfCalc(key, "Close: Rlpx");
         }
     }
 }

@@ -51,6 +51,7 @@ namespace Nethermind.Network.Discovery
         private readonly IMessageSerializationService _messageSerializationService;
         private readonly ICryptoRandom _cryptoRandom;
         private readonly INetworkStorage _discoveryStorage;
+        private readonly IPerfService _perfService;
 
         private Timer _discoveryTimer;
         //private Timer _refreshTimer;
@@ -71,9 +72,10 @@ namespace Nethermind.Network.Discovery
             ICryptoRandom cryptoRandom,
             INetworkStorage discoveryStorage,
             IConfigProvider configurationProvider,
-            ILogManager logManager)
+            ILogManager logManager, IPerfService perfService)
         {
             _logManager = logManager;
+            _perfService = perfService;
             _logger = _logManager.GetClassLogger();
             _configurationProvider = configurationProvider.GetConfig<INetworkConfig>();
             _nodesLocator = nodesLocator;
@@ -108,6 +110,7 @@ namespace Nethermind.Network.Discovery
 
         public async Task StopAsync()
         {
+            var key = _perfService.StartPerfCalc();
             _appShutdown = true;
             StopDiscoveryTimer();
             //StopRefreshTimer();
@@ -125,6 +128,7 @@ namespace Nethermind.Network.Discovery
             }
 
             await StopUdpChannelAsync();
+            _perfService.EndPerfCalc(key, "Close: DiscoveryApp");
         }
 
         private void InitializeUdpChannel()

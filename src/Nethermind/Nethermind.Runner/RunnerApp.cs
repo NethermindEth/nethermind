@@ -18,6 +18,7 @@
 
 using System;
 using Microsoft.Extensions.CommandLineUtils;
+using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -58,6 +59,7 @@ namespace Nethermind.Runner
                 config = typeof(InitConfig).Assembly;
                 config = typeof(DbConfig).Assembly;
                 config = typeof(StatsConfig).Assembly;
+                config = typeof(BlockchainConfig).Assembly;
 
                 var configProvider = new JsonConfigProvider();
                 configProvider.LoadJsonConfig(configFile.HasValue() ? configFile.Value() : DefaultConfigFile);

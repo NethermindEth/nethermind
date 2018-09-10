@@ -25,5 +25,6 @@ namespace Nethermind.Core
         Guid StartPerfCalc();
         void EndPerfCalc(Guid id, string logMsg);
         long? EndPerfCalc(Guid id);
+        bool LogOnDebug { get; set; }
     }
 }

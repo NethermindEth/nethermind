@@ -17,6 +17,7 @@
  */
 
 using System.Collections.Concurrent;
+using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
 using Nethermind.Stats.Model;
 
@@ -26,17 +27,19 @@ namespace Nethermind.Stats
     {
         private readonly IStatsConfig _statsConfig;
         private readonly INodeFactory _nodeFactory;
+        private readonly ILogManager _logManager;
         private readonly ConcurrentDictionary<NodeId, INodeStats> _nodeStats = new ConcurrentDictionary<NodeId, INodeStats>();
 
-        public NodeStatsProvider(IStatsConfig statsConfig, INodeFactory nodeFactory)
+        public NodeStatsProvider(IStatsConfig statsConfig, INodeFactory nodeFactory, ILogManager logManager)
         {
             _statsConfig = statsConfig;
             _nodeFactory = nodeFactory;
+            _logManager = logManager;
         }
 
         public INodeStats GetOrAddNodeStats(Node node)
         {
-            return _nodeStats.GetOrAdd(node.Id, x => new NodeStats(node, _statsConfig));
+            return _nodeStats.GetOrAdd(node.Id, x => new NodeStats(node, _statsConfig, _logManager));
         }
 
         public INodeStats GetOrAddNodeStats(NodeId nodeId, string host, int port)

@@ -48,7 +48,14 @@ namespace Nethermind.Core
             if (_stopwatches.TryRemove(id, out var watch))
             {
                 watch.Stop();
-                if (_logger.IsTrace) _logger.Trace($"PerfCalc: {logMsg}, time: {watch.ElapsedMilliseconds} milis");
+                if (LogOnDebug)
+                {
+                    if (_logger.IsDebug) _logger.Debug($"PerfCalc: {logMsg}, time: {watch.ElapsedMilliseconds} milis");
+                }
+                else
+                {
+                    if (_logger.IsTrace) _logger.Trace($"PerfCalc: {logMsg}, time: {watch.ElapsedMilliseconds} milis");
+                }
             }
             else
             {
@@ -67,5 +74,7 @@ namespace Nethermind.Core
             if (_logger.IsWarn) _logger.Warn($"Stopwatch cannot be found in dict: {id}");
             return null;
         }
+
+        public bool LogOnDebug { get; set; }
     }
 }

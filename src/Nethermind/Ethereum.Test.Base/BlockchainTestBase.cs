@@ -239,7 +239,7 @@ namespace Ethereum.Test.Base
 
             IBlockchainProcessor blockchainProcessor = new BlockchainProcessor(blockTree,
                 sealEngine, 
-                transactionStore, difficultyCalculator, blockProcessor, signer, _logManager);
+                transactionStore, difficultyCalculator, blockProcessor, signer, _logManager, new PerfService(_logManager));
 
             InitializeTestState(test, stateProvider, storageProvider, specProvider);
 

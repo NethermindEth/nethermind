@@ -29,6 +29,11 @@ namespace Nethermind.Stats
         bool CaptureNodeStatsEventHistory { get; }
 
         /// <summary>
+        /// Whether we should capture Node Latency Stats events history
+        /// </summary>
+        bool CaptureNodeLatencyStatsEventHistory { get; }
+
+        /// <summary>
         /// Value of predefied reputation for trusted nodes
         /// </summary>
         long PredefinedReputation { get; }

@@ -148,7 +148,16 @@ namespace Nethermind.Network
 
         public async Task StopAsync()
         {
+            var key = _perfService.StartPerfCalc();
             _cancellationTokenSource.Cancel();
+
+            if (_networkConfig.IsActivePeerTimerEnabled)
+            {
+                StopActivePeersTimer();
+            }
+
+            StopPeerPersistanceTimer();
+            StopPingTimer();
 
             var closingTasks = new List<Task>();
             var syncCloseTask = _synchronizationManager.StopAsync().ContinueWith(x =>
@@ -159,14 +168,6 @@ namespace Nethermind.Network
                 }
             });
             closingTasks.Add(syncCloseTask);
-
-            if (_networkConfig.IsActivePeerTimerEnabled)
-            {
-                StopActivePeersTimer();
-            }
-
-            StopPeerPersistanceTimer();
-            StopPingTimer();
 
             if (_storageCommitTask != null)
             {
@@ -183,6 +184,7 @@ namespace Nethermind.Network
             await Task.WhenAll(closingTasks);
 
             LogSessionStats();
+            _perfService.EndPerfCalc(key, "Close: PeerManager");
         }
 
         public async Task RunPeerUpdate()

@@ -16,9 +16,11 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.Config;
+
 namespace Nethermind.Blockchain
 {
-    public interface IBlockchainConfig
+    public interface IBlockchainConfig : IConfig
     {
         int SyncTimerInterval { get; }
         int SyncPeersMaxCount { get; }

@@ -43,5 +43,6 @@ namespace Nethermind.Runner.Config
         public bool RemovingLogFilesEnabled { get; set; } = true;
         //in case of null, the path is set to ExecutingAssembly.Location\logs
         public string LogDirectory { get; set; } = null;
+        public bool LogPerfStatsOnDebug { get; set; } = false;
     }
 }

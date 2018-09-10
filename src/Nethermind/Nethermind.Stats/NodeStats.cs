@@ -22,6 +22,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using Nethermind.Core;
+using Nethermind.Core.Logging;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Stats
@@ -32,21 +33,25 @@ namespace Nethermind.Stats
     public class NodeStats : INodeStats
     {
         private readonly IStatsConfig _statsConfig;
-        private ConcurrentDictionary<NodeLatencyStatType, ConcurrentBag<NodeLatencyStatsEvent>> _latencyStats;
+        private readonly ILogger _logger;
+        private ConcurrentDictionary<NodeLatencyStatType, ConcurrentBag<NodeLatencyStatsEvent>> _latencyStatsLog;
+        private ConcurrentDictionary<NodeLatencyStatType, (long EventCount, decimal? Latency)> _latencyStats;
+        private ConcurrentDictionary<NodeLatencyStatType, object> _latencyStatsLocks;
         private Dictionary<NodeStatsEventType, AtomicLong> _statCounters;
         private Dictionary<DisconnectType, (DisconnectReason DisconnectReason, DateTime DisconnectTime)> _lastDisconnects;        
         private readonly ConcurrentBag<NodeStatsEvent> _eventHistory;
 
-        public NodeStats(Node node, IStatsConfig statsConfig)
+        public NodeStats(Node node, IStatsConfig statsConfig, ILogManager logManager)
         {
             Node = node;
             _statsConfig = statsConfig;
+            _logger = logManager.GetClassLogger();
             _eventHistory = new ConcurrentBag<NodeStatsEvent>();
             Initialize();
         }
 
         public IEnumerable<NodeStatsEvent> EventHistory => _eventHistory.ToArray();
-        public IEnumerable<NodeLatencyStatsEvent> LatencyHistory => _latencyStats.SelectMany(x => x.Value).ToArray();
+        public IEnumerable<NodeLatencyStatsEvent> LatencyHistory => _latencyStatsLog.SelectMany(x => x.Value).ToArray();
 
         public void AddNodeStatsEvent(NodeStatsEventType nodeStatsEventType)
         {
@@ -112,24 +117,49 @@ namespace Nethermind.Stats
 
         public void AddLatencyCaptureEvent(NodeLatencyStatType latencyType, long miliseconds)
         {
-            var collection = _latencyStats[latencyType];
-            collection.Add(new NodeLatencyStatsEvent
+            lock (_latencyStatsLocks[latencyType])
             {
-                StatType = latencyType,
-                CaptureTime = DateTime.Now,
-                Latency = miliseconds
-            });
+                if (_statsConfig.CaptureNodeLatencyStatsEventHistory)
+                {
+                    var collection = _latencyStatsLog[latencyType];
+                    collection.Add(new NodeLatencyStatsEvent
+                    {
+                        StatType = latencyType,
+                        CaptureTime = DateTime.Now,
+                        Latency = miliseconds
+                    });
+                }
+
+                var latencyInfo = _latencyStats[latencyType];
+                var latency = ((latencyInfo.EventCount * (latencyInfo.Latency ?? 0)) + miliseconds) / (latencyInfo.EventCount + 1);
+                _latencyStats[latencyType] = (latencyInfo.EventCount + 1, latency);
+            }
         }
 
         public long? GetAverageLatency(NodeLatencyStatType latencyType)
         {
-            var collection = _latencyStats[latencyType];
-            if (!collection.Any())
+            lock (_latencyStatsLocks[latencyType])
             {
-                return null;
-            }
+                //var collection = _latencyStatsLog[latencyType];
+                //if (!collection.Any())
+                //{
+                //    return null;
+                //}
 
-            return collection.Sum(x => x.Latency) / collection.Count;
+                //var verifyLat = collection.Sum(x => x.Latency) / (decimal)collection.Count;
+                var lat = _latencyStats[latencyType].Latency;
+
+                //if (verifyLat != lat)
+                //{
+                //    _logger.Error($"Wrong latency calc: {verifyLat}-{lat}, node: {Node.Id}");
+                //}
+                //else
+                //{
+                //    _logger.Info($"TESTTEST Correct latency calc: {verifyLat}-{lat}");
+                //}
+
+                return lat != null ? (long)lat : (long?)null;
+            }
         }
 
         public long CurrentNodeReputation => CalculateCurrentReputation();
@@ -290,10 +320,14 @@ namespace Nethermind.Stats
                 _statCounters[statType] = new AtomicLong();
             }
 
-            _latencyStats = new ConcurrentDictionary<NodeLatencyStatType, ConcurrentBag<NodeLatencyStatsEvent>>();
+            _latencyStatsLog = new ConcurrentDictionary<NodeLatencyStatType, ConcurrentBag<NodeLatencyStatsEvent>>();
+            _latencyStats = new ConcurrentDictionary<NodeLatencyStatType, (long EventCount, decimal? Latency)>();
+            _latencyStatsLocks = new ConcurrentDictionary<NodeLatencyStatType, object>();
             foreach (NodeLatencyStatType statType in Enum.GetValues(typeof(NodeLatencyStatType)))
             {
-                _latencyStats[statType] = new ConcurrentBag<NodeLatencyStatsEvent>();
+                _latencyStatsLog[statType] = new ConcurrentBag<NodeLatencyStatsEvent>();
+                _latencyStats[statType] = (0, null);
+                _latencyStatsLocks[statType] = new object();
             }
 
             _lastDisconnects = new Dictionary<DisconnectType, (DisconnectReason DisconnectReason, DateTime DisconnectTime)>();

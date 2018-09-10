@@ -23,6 +23,9 @@ namespace Nethermind.Stats
     public class StatsConfig : IStatsConfig
     {
         public bool CaptureNodeStatsEventHistory { get; } = true;
+
+        public bool CaptureNodeLatencyStatsEventHistory { get; } = false;
+
         public long PredefinedReputation { get; set; } = 1000500;
 
         public DisconnectReason[] PenalizedReputationLocalDisconnectReasons { get; set; } = {

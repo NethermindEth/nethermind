@@ -42,5 +42,6 @@ namespace Nethermind.Runner.Config
         bool RemovingLogFilesEnabled { get; set; }
         string LogFileName { get; set; }
         string LogDirectory { get; set; }
+        bool LogPerfStatsOnDebug { get; set; }
     }
 }

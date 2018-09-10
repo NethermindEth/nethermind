@@ -123,26 +123,33 @@ namespace Nethermind.Runner.Runners
             _tracer = _initConfig.TransactionTracingEnabled
                 ? new TransactionTracer(_initConfig.BaseTracingPath, new UnforgivingJsonSerializer())
                 : NullTracer.Instance;
-            _perfService = new PerfService(_logManager);
+            _perfService = new PerfService(_logManager) {LogOnDebug = _initConfig.LogPerfStatsOnDebug};
         }
 
         public async Task StopAsync()
         {
             _logger.Info("Shutting down...");
             _runnerCancellation.Cancel();
-            var rlpxPeerTask = (_rlpxPeer?.Shutdown() ?? Task.CompletedTask);
 
-            _logger.Debug("Stopping discovery app...");
-            var discoveryStopTask = _discoveryApp?.StopAsync() ?? Task.CompletedTask;
+            _logger.Debug("Stopping rlpx peer...");
+            var rlpxPeerTask = (_rlpxPeer?.Shutdown() ?? Task.CompletedTask);
+           // await rlpxPeerTask;
 
             _logger.Debug("Stopping peer manager...");
-           var peerManagerTask =  (_peerManager?.StopAsync() ?? Task.CompletedTask);
+            var peerManagerTask =  (_peerManager?.StopAsync() ?? Task.CompletedTask);
+            //await peerManagerTask;
 
             _logger.Debug("Stopping sync manager...");
             var syncManagerTask = (_syncManager?.StopAsync() ?? Task.CompletedTask);
+            //await syncManagerTask;
 
             _logger.Debug("Stopping blockchain processor...");
             var blockchainProcessorTask = (_blockchainProcessor?.StopAsync() ?? Task.CompletedTask);
+            //await blockchainProcessorTask;
+
+            _logger.Debug("Stopping discovery app...");
+            var discoveryStopTask = _discoveryApp?.StopAsync() ?? Task.CompletedTask;
+            //await discoveryStopTask;
 
             await Task.WhenAll(discoveryStopTask, rlpxPeerTask, peerManagerTask, syncManagerTask, blockchainProcessorTask);
 
@@ -304,13 +311,11 @@ namespace Nethermind.Runner.Runners
                 difficultyCalculator,
                 blockProcessor,
                 ethereumSigner,
-                _logManager);
+                _logManager, _perfService);
 
             // create shared objects between discovery and peer manager
             _nodeFactory = new NodeFactory();
-            _nodeStatsProvider = new NodeStatsProvider(
-                _configProvider.GetConfig<IStatsConfig>(),
-                _nodeFactory);
+            _nodeStatsProvider = new NodeStatsProvider(_configProvider.GetConfig<IStatsConfig>(), _nodeFactory, _logManager);
             
             var jsonSerializer = new JsonSerializer(
                 _logManager);
@@ -391,7 +396,7 @@ namespace Nethermind.Runner.Runners
                 transactionStore,
                 txValidator,
                 _logManager,
-                new BlockchainConfig());
+                _configProvider.GetConfig<IBlockchainConfig>(), _perfService);
             
             InitDiscovery();
             await InitPeer();
@@ -624,7 +629,7 @@ namespace Nethermind.Runner.Runners
                 _cryptoRandom,
                 discoveryStorage,
                 _configProvider,
-                _logManager);
+                _logManager, _perfService);
             
             _discoveryApp.Initialize(_privateKey.PublicKey);
         }
