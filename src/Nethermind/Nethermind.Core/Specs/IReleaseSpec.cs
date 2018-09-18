@@ -132,7 +132,7 @@ namespace Nethermind.Core.Specs
         /// <summary>
         /// Net gas metering for SSTORE operations
         /// </summary>
-        bool IsEip1087Enabled { get; }
+        bool IsEip1283Enabled { get; }
         
         /// <summary>
         /// Constantinople Difficulty Bomb Delay and Block Reward Adjustment

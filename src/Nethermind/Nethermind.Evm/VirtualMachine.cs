@@ -1593,6 +1593,68 @@ namespace Nethermind.Evm
                         PushBytes(value, bytesOnStack);
                         break;
                     }
+//                    case Instruction.SSTORE:
+//                    {
+//                        if (evmState.IsStatic)
+//                        {
+//                            Metrics.EvmExceptions++;
+//                            return CallResult.StaticCallViolationException;
+//                        }
+//
+//                        // fail fast before the first storage read
+//                        if (!UpdateGas(GasCostOf.SReset, ref gasAvailable))
+//                        {
+//                            return CallResult.OutOfGasException;
+//                        }
+//
+//                        UInt256 storageIndex = PopUInt256(bytesOnStack);
+//                        byte[] data = PopBytes(bytesOnStack).WithoutLeadingZeros().ToArray();
+//
+//                        bool isNewValueZero = data.IsZero();
+//
+//                        StorageAddress storageAddress = new StorageAddress(env.ExecutingAccount, storageIndex);
+//                        byte[] previousValue = _storage.Get(storageAddress);
+//
+//                        bool isValueChanged = !(isNewValueZero && previousValue.IsZero()) ||
+//                                              !Bytes.AreEqual(previousValue, data);
+//
+//
+//                        if (isNewValueZero)
+//                        {
+//                            // either case would be reset cost here first
+//                            if (isValueChanged)
+//                            {
+//                                evmState.Refund += RefundOf.SClear;
+//                            }
+//                        }
+//                        else
+//                        {
+//                            // if not zero would be reset cost here
+//                            if (previousValue.IsZero() && !UpdateGas(GasCostOf.SSet - GasCostOf.SReset, ref gasAvailable))
+//                            {
+//                                return CallResult.OutOfGasException;
+//                            }
+//                        }
+//
+//                        if (isValueChanged)
+//                        {
+//                            byte[] newValue = isNewValueZero ? BytesZero : data;
+//                            _storage.Set(storageAddress, newValue);
+//                            if (_logger.IsTrace)
+//                            {
+//                                _logger.Trace($"  UPDATING STORAGE: {env.ExecutingAccount} {storageIndex} {newValue.ToHexString(true)}");
+//                            }
+//                        }
+//
+//                        if (_trace != null)
+//                        {
+//                            byte[] bigEndian = new byte[32];
+//                            storageIndex.ToBigEndian(bigEndian);
+//                            _traceEntry.Storage[bigEndian.ToHexString(false)] = data.PadLeft(32).ToHexString(false);
+//                        }
+//
+//                        break;
+//                    }
                     case Instruction.SSTORE:
                     {
                         if (evmState.IsStatic)
@@ -1601,48 +1663,116 @@ namespace Nethermind.Evm
                             return CallResult.StaticCallViolationException;
                         }
 
-                        // fail fast before the first storage read
-                        if (!UpdateGas(GasCostOf.SReset, ref gasAvailable))
+                        // fail fast before the first storage read if gas is not enough even for reset
+                        if (!spec.IsEip1283Enabled && !UpdateGas(GasCostOf.SReset, ref gasAvailable))
                         {
                             return CallResult.OutOfGasException;
                         }
 
                         UInt256 storageIndex = PopUInt256(bytesOnStack);
-                        byte[] data = PopBytes(bytesOnStack).WithoutLeadingZeros().ToArray();
-
-                        bool isNewValueZero = data.IsZero();
+                        byte[] newValue = PopBytes(bytesOnStack).WithoutLeadingZeros().ToArray();
+                        bool newIsZero = newValue.IsZero();
 
                         StorageAddress storageAddress = new StorageAddress(env.ExecutingAccount, storageIndex);
-                        byte[] previousValue = _storage.Get(storageAddress);
+                        byte[] currentValue = _storage.Get(storageAddress);
+                        bool currentIsZero = currentValue.IsZero();
+                        
+                        bool newSameAsCurrent = (newIsZero && currentIsZero) || Bytes.AreEqual(currentValue, newValue);
 
-                        bool isValueChanged = !(isNewValueZero && previousValue.IsZero()) ||
-                                              !Bytes.AreEqual(previousValue, data);
-
-
-                        if (isNewValueZero)
+                        if (!spec.IsEip1283Enabled) // note that for this case we already deducted 5000
                         {
-                            // either case would be reset cost here first
-                            if (isValueChanged)
+                            if (newIsZero)
                             {
-                                evmState.Refund += RefundOf.SClear;
+                                if (!newSameAsCurrent)
+                                {
+                                    evmState.Refund += RefundOf.SClear;
+                                }
                             }
-                        }
-                        else
-                        {
-                            // if not zero would be reset cost here
-                            if (previousValue.IsZero() && !UpdateGas(GasCostOf.SSet - GasCostOf.SReset, ref gasAvailable))
+                            else if (currentIsZero && !UpdateGas(GasCostOf.SSet - GasCostOf.SReset, ref gasAvailable))
                             {
                                 return CallResult.OutOfGasException;
                             }
                         }
-
-                        if (isValueChanged)
+                        else // eip1283enabled
                         {
-                            byte[] newValue = isNewValueZero ? BytesZero : data;
-                            _storage.Set(storageAddress, newValue);
+                            if (newSameAsCurrent)
+                            {
+                                if(!UpdateGas(GasCostOf.SStoreEip1283, ref gasAvailable))
+                                {
+                                    return CallResult.OutOfGasException;
+                                }
+                            }
+                            else // eip1283enabled, C != N
+                            {
+                                byte[] originalValue = _storage.GetOriginal(storageAddress);
+                                bool originalIsZero = originalValue.IsZero();
+
+                                bool currentSameAsOriginal = Bytes.AreEqual(originalValue, currentValue);
+                                if (currentSameAsOriginal)
+                                {
+                                    if (currentIsZero)
+                                    {
+                                        if (!UpdateGas(GasCostOf.SSet, ref gasAvailable))
+                                        {
+                                            return CallResult.OutOfGasException;
+                                        }
+                                    }
+                                    else // eip1283enabled, C == O != N, !currentIsZero
+                                    {
+                                        if (!UpdateGas(GasCostOf.SReset, ref gasAvailable))
+                                        {
+                                            return CallResult.OutOfGasException;
+                                        }
+
+                                        if (newIsZero)
+                                        {
+                                            evmState.Refund += RefundOf.SClear;
+                                        }
+                                    }
+                                }
+                                else // eip1283enabled, N != C != O
+                                {
+                                    if (!UpdateGas(GasCostOf.SStoreEip1283, ref gasAvailable))
+                                    {
+                                        return CallResult.OutOfGasException;
+                                    }
+
+                                    if (!originalIsZero) // eip1283enabled, N != C != O != 0
+                                    {
+                                        if (currentIsZero)
+                                        {
+                                            evmState.Refund -= RefundOf.SClear; 
+                                        }
+
+                                        if (newIsZero)
+                                        {
+                                            evmState.Refund += RefundOf.SClear;
+                                        }
+                                    }
+                                    
+                                    bool newSameAsOriginal = Bytes.AreEqual(originalValue, newValue);
+                                    if(newSameAsOriginal)
+                                    {
+                                        if (originalIsZero)
+                                        {
+                                            evmState.Refund += RefundOf.SSetReversed;
+                                        }
+                                        else
+                                        {
+                                            evmState.Refund += RefundOf.SClearReversed;
+                                        }
+                                    }
+                                }  
+                            }
+                        }
+
+                        if (!newSameAsCurrent)
+                        {
+                            byte[] valueToStore = newIsZero ? BytesZero : newValue;
+                            _storage.Set(storageAddress, valueToStore);
                             if (_logger.IsTrace)
                             {
-                                _logger.Trace($"  UPDATING STORAGE: {env.ExecutingAccount} {storageIndex} {newValue.ToHexString(true)}");
+                                _logger.Trace($"  UPDATING STORAGE: {env.ExecutingAccount} {storageIndex} {valueToStore.ToHexString(true)}");
                             }
                         }
 
@@ -1650,7 +1780,7 @@ namespace Nethermind.Evm
                         {
                             byte[] bigEndian = new byte[32];
                             storageIndex.ToBigEndian(bigEndian);
-                            _traceEntry.Storage[bigEndian.ToHexString(false)] = data.PadLeft(32).ToHexString(false);
+                            _traceEntry.Storage[bigEndian.ToHexString(false)] = newValue.PadLeft(32).ToHexString(false);
                         }
 
                         break;

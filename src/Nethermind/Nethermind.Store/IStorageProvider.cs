@@ -23,6 +23,8 @@ namespace Nethermind.Store
 {
     public interface IStorageProvider : ISnapshotable
     {
+        byte[] GetOriginal(StorageAddress storageAddress);
+        
         byte[] Get(StorageAddress storageAddress);
 
         void Set(StorageAddress storageAddress, byte[] newValue);

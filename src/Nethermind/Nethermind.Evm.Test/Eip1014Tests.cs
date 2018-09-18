@@ -20,6 +20,7 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
 using NUnit.Framework;
@@ -29,7 +30,7 @@ namespace Nethermind.Evm.Test
     [TestFixture]
     public class Eip1014Tests : VirtualMachineTestsBase
     {
-        protected override UInt256 BlockNumber => 6000000;
+        protected override UInt256 BlockNumber => RopstenSpecProvider.ConstantinopleBlockNumber;
 
         private void AssertEip1014(Address address, byte[] code)
         {

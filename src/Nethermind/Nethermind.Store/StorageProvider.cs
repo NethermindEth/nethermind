@@ -31,6 +31,9 @@ namespace Nethermind.Store
         internal const int StartCapacity = 16;
 
         private readonly Dictionary<StorageAddress, Stack<int>> _cache = new Dictionary<StorageAddress, Stack<int>>();
+        
+        // TODO: this is quick implementation of 1283
+        private readonly Dictionary<StorageAddress, byte[]> _cacheOriginal = new Dictionary<StorageAddress, byte[]>();
 
         private readonly HashSet<StorageAddress> _committedThisRound = new HashSet<StorageAddress>();
         
@@ -53,6 +56,16 @@ namespace Nethermind.Store
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
+        }
+
+        public byte[] GetOriginal(StorageAddress storageAddress)
+        {
+            if (!_cacheOriginal.ContainsKey(storageAddress))
+            {
+                throw new InvalidOperationException("Get original should only be called after get within the same caching round");
+            }
+            
+            return _cacheOriginal[storageAddress];
         }
 
         public byte[] Get(StorageAddress storageAddress)
@@ -230,6 +243,7 @@ namespace Nethermind.Store
             }
 
             _cache.Clear();
+            _cacheOriginal.Clear();
             _currentPosition = -1;
             _committedThisRound.Clear();
             Array.Clear(_changes, 0, _changes.Length);
@@ -293,6 +307,7 @@ namespace Nethermind.Store
             SetupCache(address);
             IncrementPosition();
             _cache[address].Push(_currentPosition);
+            _cacheOriginal[address] = value;
             _changes[_currentPosition] = new Change(ChangeType.JustCache, address, value);
         }
 

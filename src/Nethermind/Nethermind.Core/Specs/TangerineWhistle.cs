@@ -51,7 +51,7 @@ namespace Nethermind.Core.Specs
         public bool IsEip210Enabled => false;
         public bool IsEip1014Enabled => false;
         public bool IsEip1052Enabled => false;
-        public bool IsEip1087Enabled => false;
+        public bool IsEip1283Enabled => false;
         public bool IsEip1234Enabled => false;
     }
 }

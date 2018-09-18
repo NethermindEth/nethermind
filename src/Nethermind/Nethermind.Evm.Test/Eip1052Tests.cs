@@ -19,6 +19,7 @@
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm.Precompiles;
@@ -29,7 +30,7 @@ namespace Nethermind.Evm.Test
     [TestFixture]
     public class Eip1052Tests : VirtualMachineTestsBase
     {
-        protected override UInt256 BlockNumber => 6000000;
+        protected override UInt256 BlockNumber => RopstenSpecProvider.ConstantinopleBlockNumber;
 
         [Test]
         public void Account_without_code_returns_empty_data_hash()
