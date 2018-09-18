@@ -17,9 +17,7 @@
  */
 
 using System.Collections;
-using System.Numerics;
 using Nethermind.Core;
-using Nethermind.Core.Extensions;
 
 namespace Nethermind.Evm
 {

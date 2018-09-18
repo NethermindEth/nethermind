@@ -16,9 +16,9 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using Nethermind.Core.Encoding;
 using NUnit.Framework;
-using System.Collections.Generic;
 
 namespace Nethermind.Core.Test
 {
@@ -26,100 +26,142 @@ namespace Nethermind.Core.Test
     public class RlpTests
     {
         [Test]
-        public void Serialized_form_is_same_as_input_when_input_length_is_1_and_value_is_less_than_128()
-        {
-            Assert.AreEqual(0, Rlp.Encode(new byte[] { 0 })[0], "0");
-            Assert.AreEqual(127, Rlp.Encode(new byte[] { 127 })[0], "127");
-            Assert.AreEqual(128, Rlp.Encode(new byte[] { })[0], "128");
-            Assert.AreEqual(1, Rlp.Encode(new byte[] { 1 })[0], "1");
-        }
-
-        [Test]
-        public void Serialized_form_is_128_when_input_is_empty()
-        {
-            Assert.AreEqual(128, Rlp.Encode(new byte[] { })[0]);
-        }
-
-        [Test]
-        public void
-            Serialized_form_is_input_prefixed_with_128_plus_length_of_input_when_input_length_is_between_1_and_56()
-        {
-            byte[] input = new byte[55];
-            input[0] = 255;
-            input[1] = 128;
-            input[2] = 1;
-
-            Assert.AreEqual(183, Rlp.Encode(input)[0]);
-            Assert.AreEqual(56, Rlp.Encode(input).Length);
-            for (int i = 0; i < 55; i++)
-            {
-                Assert.AreEqual(input[i], Rlp.Encode(input)[i + 1]);
-            }
-        }
-
-        [TestCase(128L, (byte)(1 + 183), (byte)128)]
-        [TestCase(256L, (byte)(1 + 1 + 183), (byte)1)]
-        [TestCase(256L * 256L, (byte)(1 + 2 + 183), (byte)1)]
-        [TestCase(256L * 256L * 256L, (byte)(1 + 3 + 183), (byte)1)]
-        //[TestCase(256L * 256L * 256L * 256L, (byte)(1 + 4 + 183), (byte)1)]
-        public void Serialized_form_is_input_prefixed_with_big_endian_length_and_prefixed_with_length_of_it_plus_183(
-            long inputLength, byte expectedFirstByte, byte expectedSecondByte)
-        {
-            byte[] input = new byte[inputLength];
-            input[0] = 255;
-            input[1] = 128;
-            input[2] = 1;
-
-            Assert.AreEqual(expectedFirstByte, Rlp.Encode(input)[0]);
-            Assert.AreEqual(expectedSecondByte, Rlp.Encode(input)[1]);
-
-            if (inputLength < 256)
-            {
-                for (int i = 0; i < 128; i++)
-                {
-                    Assert.AreEqual(input[i], Rlp.Encode(input)[i + 1 + expectedFirstByte - 183]);
-                }
-            }
-        }
-
-        [Test]
         public void Serializing_sequences()
         {
             Rlp output = Rlp.Encode(
                 Rlp.Encode(255L),
-                Rlp.Encode(new byte[] { 255 }));
-            Assert.AreEqual(new byte[] { 196, 129, 255, 129, 255 }, output.Bytes);
+                Rlp.Encode(new byte[] {255}));
+            Assert.AreEqual(new byte[] {196, 129, 255, 129, 255}, output.Bytes);
         }
 
         [Test]
         public void Serializing_empty_sequence()
         {
             Rlp output = Rlp.Encode(new Rlp[] { });
-            Assert.AreEqual(new byte[] { 192 }, output.Bytes);
+            Assert.AreEqual(new byte[] {192}, output.Bytes);
         }
 
         [Test]
         public void Serializing_sequence_with_one_int_regression()
         {
-            Rlp output = Rlp.Encode(new[] { Rlp.Encode(1) });
-            Assert.AreEqual(new byte[] { 193, 1 }, output.Bytes);
+            Rlp output = Rlp.Encode(new[] {Rlp.Encode(1)});
+            Assert.AreEqual(new byte[] {193, 1}, output.Bytes);
         }
 
         [Test]
         public void Serializing_object_int_regression()
         {
-            Rlp output = Rlp.Encode(new Rlp[] { Rlp.Encode(1) });
-            Assert.AreEqual(new byte[] { 1 }, output.Bytes);
+            Rlp output = Rlp.Encode(new Rlp[] {Rlp.Encode(1)});
+            Assert.AreEqual(new byte[] {1}, output.Bytes);
         }
-        
+
         [Test]
         public void Long_negative()
         {
             Rlp output = Rlp.Encode(-1L);
             var context = new Rlp.DecoderContext(output.Bytes);
             long value = context.DecodeLong();
-            
+
             Assert.AreEqual(-1L, value);
+        }
+
+        [Test]
+        public void Empty_byte_array()
+        {
+            byte[] bytes = new byte[0];
+            Rlp rlp = Rlp.Encode(bytes);
+            Rlp rlpSpan = Rlp.Encode(bytes.AsSpan());
+            Rlp expectedResult = new Rlp(new byte[] {128});
+            Assert.AreEqual(expectedResult, rlp, "byte array");
+            Assert.AreEqual(expectedResult, rlpSpan, "span");
+        }
+
+        [TestCase(0)]
+        [TestCase(1)]
+        [TestCase(127)]
+        public void Byte_array_of_length_1_and_first_byte_value_less_than_128(byte value)
+        {
+            byte[] bytes = {value};
+            Rlp rlp = Rlp.Encode(bytes);
+            Rlp rlpSpan = Rlp.Encode(bytes.AsSpan());
+            Rlp expectedResult = new Rlp(new [] {value});
+            Assert.AreEqual(expectedResult, rlp, "byte array");
+            Assert.AreEqual(expectedResult, rlpSpan, "span");
+        }
+        
+        [TestCase(128)]
+        [TestCase(255)]
+        public void Byte_array_of_length_1_and_first_byte_value_equal_or_more_than_128(byte value)
+        {
+            byte[] bytes = {value};
+            Rlp rlp = Rlp.Encode(bytes);
+            Rlp rlpSpan = Rlp.Encode(bytes.AsSpan());
+            Rlp expectedResult = new Rlp(new [] {(byte)129, value});
+            Assert.AreEqual(expectedResult, rlp, "byte array");
+            Assert.AreEqual(expectedResult, rlpSpan, "span");
+        }
+        
+        [Test]
+        public void Byte_array_of_length_55()
+        {
+            byte[] input = new byte[55];
+            input[0] = 255;
+            input[1] = 128;
+            input[2] = 1;
+
+            byte[] expectedResultBytes = new byte[1 + input.Length];
+            expectedResultBytes[0] = (byte)(128 + input.Length);
+            expectedResultBytes[1] = input[0];
+            expectedResultBytes[2] = input[1];
+            expectedResultBytes[3] = input[2];
+            
+            Rlp expectedResult = new Rlp(expectedResultBytes);
+            
+            Assert.AreEqual(expectedResult, Rlp.Encode(input), "byte array");
+            Assert.AreEqual(expectedResult, Rlp.Encode(input.AsSpan()), "span");
+        }
+        
+        [Test]
+        public void Byte_array_of_length_56()
+        {
+            byte[] input = new byte[56];
+            input[0] = 255;
+            input[1] = 128;
+            input[2] = 1;
+
+            byte[] expectedResultBytes = new byte[1 + 1 + input.Length];
+            expectedResultBytes[0] = 183 + 1;
+            expectedResultBytes[1] = (byte)input.Length;
+            expectedResultBytes[2] = input[0];
+            expectedResultBytes[3] = input[1];
+            expectedResultBytes[4] = input[2];
+            
+            Rlp expectedResult = new Rlp(expectedResultBytes);
+            
+            Assert.AreEqual(expectedResult, Rlp.Encode(input), "byte array");
+            Assert.AreEqual(expectedResult, Rlp.Encode(input.AsSpan()), "span");
+        }
+        
+        [Test]
+        public void Long_byte_array()
+        {
+            byte[] input = new byte[1025];
+            input[0] = 255;
+            input[1] = 128;
+            input[2] = 1;
+
+            byte[] expectedResultBytes = new byte[1 + 2 + input.Length];
+            expectedResultBytes[0] = 183 + 2;
+            expectedResultBytes[1] = (byte)(input.Length / (16 * 16));
+            expectedResultBytes[2] = (byte)(input.Length % (16 * 16));
+            expectedResultBytes[3] = input[0];
+            expectedResultBytes[4] = input[1];
+            expectedResultBytes[5] = input[2];
+            
+            Rlp expectedResult = new Rlp(expectedResultBytes);
+            
+            Assert.AreEqual(expectedResult, Rlp.Encode(input), "byte array");
+            Assert.AreEqual(expectedResult, Rlp.Encode(input.AsSpan()), "span");
         }
     }
 }
