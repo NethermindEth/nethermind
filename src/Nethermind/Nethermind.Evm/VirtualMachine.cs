@@ -1900,7 +1900,13 @@ namespace Nethermind.Evm
                         break;
                     }
                     case Instruction.CREATE:
+                    case Instruction.CREATE2:
                     {
+                        if(!spec.IsEip1014Enabled && instruction == Instruction.CREATE2)
+                        {
+                            return CallResult.InvalidInstructionException;
+                        }
+                        
                         if (evmState.IsStatic)
                         {
                             Metrics.EvmExceptions++;
@@ -1916,6 +1922,11 @@ namespace Nethermind.Evm
                         UInt256 value = PopUInt256(bytesOnStack);
                         UInt256 memoryPositionOfInitCode = PopUInt256(bytesOnStack);
                         UInt256 initCodeLength = PopUInt256(bytesOnStack);
+                        Span<byte> salt = null;
+                        if (instruction == Instruction.CREATE2)
+                        {
+                            salt = PopBytes(bytesOnStack);
+                        }
 
                         if (!UpdateGas(GasCostOf.Create, ref gasAvailable))
                         {
@@ -1933,7 +1944,7 @@ namespace Nethermind.Evm
                             break;
                         }
 
-                        byte[] initCode = evmState.Memory.Load(memoryPositionOfInitCode, initCodeLength);
+                        Span<byte> initCode = evmState.Memory.LoadSpan(memoryPositionOfInitCode, initCodeLength);
                         UInt256 balance = _state.GetBalance(env.ExecutingAccount);
                         if (value > _state.GetBalance(env.ExecutingAccount))
                         {
@@ -1952,7 +1963,11 @@ namespace Nethermind.Evm
                             return CallResult.OutOfGasException;
                         }
 
-                        Address contractAddress = Address.OfContract(env.ExecutingAccount, _state.GetNonce(env.ExecutingAccount));
+
+                        Address contractAddress = instruction == Instruction.CREATE
+                            ? Address.OfContract(env.ExecutingAccount, _state.GetNonce(env.ExecutingAccount))
+                            : Address.OfContract(env.ExecutingAccount, salt, initCode);
+                            
                         _state.IncrementNonce(env.ExecutingAccount);
 
                         bool accountExists = _state.AccountExists(contractAddress);
@@ -1985,7 +2000,7 @@ namespace Nethermind.Evm
                         callEnv.CurrentBlock = env.CurrentBlock;
                         callEnv.GasPrice = env.GasPrice;
                         callEnv.ExecutingAccount = contractAddress;
-                        callEnv.CodeInfo = new CodeInfo(initCode);
+                        callEnv.CodeInfo = new CodeInfo(initCode.ToArray());
                         callEnv.InputData = Bytes.Empty;
                         EvmState callState = new EvmState(
                             callGas,

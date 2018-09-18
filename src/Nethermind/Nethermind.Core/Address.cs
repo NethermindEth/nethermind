@@ -22,6 +22,7 @@ using System.Numerics;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Core
 {
@@ -120,6 +121,19 @@ namespace Nethermind.Core
                     Rlp.Encode(
                         Rlp.Encode(deployingAddress),
                         Rlp.Encode(nonce)));
+
+            return new Address(contractAddressKeccak);
+        }
+        
+        public static Address OfContract(Address deployingAddress, Span<byte> salt, Span<byte> initCode)
+        {
+            Keccak contractAddressKeccak =
+                Keccak.Compute(
+                    Rlp.Encode(
+                        // new byte[] {129, 255} // 0xff RLP-encoded in option 2
+                        Rlp.Encode(deployingAddress),
+                        Rlp.Encode(salt),
+                        Rlp.Encode(initCode)));
 
             return new Address(contractAddressKeccak);
         }

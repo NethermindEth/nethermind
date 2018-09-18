@@ -16,7 +16,6 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -145,7 +144,7 @@ namespace Nethermind.Evm.Test
         public void Self_destructed_returns_zero()
         {
             byte[] selfDestructCode = Prepare.EvmCode
-                .PushData(B)
+                .PushData(Recipient)
                 .Op(Instruction.SELFDESTRUCT).Done;
 
             TestState.CreateAccount(TestObject.AddressC, 1.Ether());
@@ -173,7 +172,7 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.REVERT).Done;
 
             byte[] selfDestructCode = Prepare.EvmCode
-                .PushData(B)
+                .PushData(Recipient)
                 .Op(Instruction.SELFDESTRUCT).Done;
 
             TestState.CreateAccount(TestObject.AddressD, 1.Ether());
@@ -225,7 +224,7 @@ namespace Nethermind.Evm.Test
             IsTracingEnabled = true;
             byte[] code = Prepare.EvmCode
                 .Create(Bytes.Empty, 0)
-                .PushData(Address.OfContract(B, 0))
+                .PushData(Address.OfContract(Recipient, 0))
                 .Op(Instruction.EXTCODEHASH)
                 .PushData(0)
                 .Op(Instruction.SSTORE)
@@ -235,7 +234,7 @@ namespace Nethermind.Evm.Test
 
             // todo: so far EIP does not define whether it should be zero or empty data
             AssertStorage(0, Keccak.OfAnEmptyString);
-            Assert.True(TestState.AccountExists(Address.OfContract(B, 0)),
+            Assert.True(TestState.AccountExists(Address.OfContract(Recipient, 0)),
                 "did not test the right thing - it was not a newly created empty account scenario");
         }
 
@@ -281,13 +280,7 @@ namespace Nethermind.Evm.Test
             Keccak deployedCodeHash = Keccak.Compute(deployedCode);
             
             byte[] initCode = Prepare.EvmCode
-                .PushData(deployedCode.PadRight(32))
-                .PushData(0)
-                .Op(Instruction.MSTORE)
-                .PushData(3)
-                .PushData(0)
-                .Op(Instruction.RETURN)
-                .Done;
+                .ForInitOf(deployedCode).Done;
             
             byte[] createCode = Prepare.EvmCode
                 .Create(initCode, 0).Done;

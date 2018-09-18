@@ -350,7 +350,7 @@ namespace Nethermind.Core.Encoding
             return position;
         }
 
-        public static Rlp Encode(byte[] input)
+        public static Rlp Encode(Span<byte> input)
         {
             if (input.Length == 0)
             {
@@ -365,12 +365,26 @@ namespace Nethermind.Core.Encoding
             if (input.Length < 56)
             {
                 byte smallPrefix = (byte) (input.Length + 128);
-                return new Rlp(Extensions.Bytes.Concat(smallPrefix, input));
+                byte[] rlpResult = new byte[input.Length + 1];
+                rlpResult[0] = smallPrefix;
+                input.CopyTo(rlpResult.AsSpan(1));
+                return new Rlp(rlpResult);
             }
-
-            byte[] serializedLength = SerializeLength(input.Length);
-            byte prefix = (byte) (183 + serializedLength.Length);
-            return new Rlp(Extensions.Bytes.Concat(prefix, serializedLength, input));
+            else
+            {
+                byte[] serializedLength = SerializeLength(input.Length);
+                byte prefix = (byte) (183 + serializedLength.Length);
+                byte[] rlpResult = new byte[1 + serializedLength.Length + input.Length];
+                rlpResult[0] = prefix;
+                serializedLength.CopyTo(rlpResult.AsSpan(1));
+                input.CopyTo(rlpResult.AsSpan(1 + serializedLength.Length));
+                return new Rlp(rlpResult);    
+            }
+        }
+        
+        public static Rlp Encode(byte[] input)
+        {
+            return Encode(input.AsSpan());
         }
 
         public static void SerializeLength(MemoryStream stream, int value)
@@ -1108,14 +1122,19 @@ namespace Nethermind.Core.Encoding
             }
         }
 
+        public override bool Equals(object other)
+        {            
+            return Equals(other as Rlp);
+        }
+
+        public override int GetHashCode()
+        {
+            return Bytes != null ? Bytes.GetSimplifiedHashCode() : 0;
+        }
+
         public bool Equals(Rlp other)
         {
-            if (other == null)
-            {
-                return false;
-            }
-
-            return Extensions.Bytes.AreEqual(Bytes, other.Bytes);
+            return null != other && Extensions.Bytes.AreEqual(Bytes, other.Bytes);
         }
 
         public override string ToString()
@@ -1126,11 +1145,6 @@ namespace Nethermind.Core.Encoding
         public string ToString(bool withZeroX)
         {
             return Bytes.ToHexString(withZeroX);
-        }
-
-        public int GetHashCode(Rlp obj)
-        {
-            return obj.Bytes.GetXxHashCode();
         }
     }
 }
