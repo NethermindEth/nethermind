@@ -29,17 +29,17 @@ namespace Nethermind.Core.Specs
         public IReleaseSpec GetSpec(BigInteger blockNumber)
         {            
             // TODO: this is not covered by test at the moment
-            if (blockNumber < 10)
+            if (blockNumber < SpuriousDragonBlockNumber)
             {
                 return TangerineWhistle.Instance;
             }
             
-            if (blockNumber < 1700000)
+            if (blockNumber < ByzantiumBlockNumber)
             {
                 return SpuriousDragon.Instance;
             }
             
-            if (blockNumber < 5000000)
+            if (blockNumber < ConstantinopleBlockNumber)
             {
                 return Byzantium.Instance;
             }
@@ -48,6 +48,9 @@ namespace Nethermind.Core.Specs
         }
         
         public BigInteger? DaoBlockNumber { get; } = null;
+        public static BigInteger SpuriousDragonBlockNumber { get; } = 10;
+        public static BigInteger ByzantiumBlockNumber { get; } = 1700000;
+        public static BigInteger ConstantinopleBlockNumber { get; } = 6000000;
         
         public int ChainId => 3;
 

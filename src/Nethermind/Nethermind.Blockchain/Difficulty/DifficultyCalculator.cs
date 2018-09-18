@@ -96,6 +96,11 @@ namespace Nethermind.Blockchain.Difficulty
             {
                 blockNumber = blockNumber - UInt256.Min(blockNumber, 3000000);
             }
+            
+            if (spec.IsEip1234Enabled)
+            {
+                blockNumber = blockNumber - UInt256.Min(blockNumber, 5000000);
+            }
 
             return blockNumber < 200000 ? UInt256.Zero : BigInteger.Pow(2, (int)(BigInteger.Divide(blockNumber, 100000) - 2));
         }

@@ -17,9 +17,9 @@
  */
 
 using Nethermind.Core;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Dirichlet.Numerics;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test
@@ -66,6 +66,40 @@ namespace Nethermind.Blockchain.Test
             
             Assert.AreEqual(1, rewards.Length);
             Assert.AreEqual(5000000000000000000, (long)rewards[0].Value, "miner");
+        }
+        
+        [Test]
+        public void Byzantium_reward_two_uncles()
+        {
+            UInt256 blockNumber = (UInt256)(RopstenSpecProvider.ByzantiumBlockNumber + 1);
+            Block ommer = Build.A.Block.WithNumber(blockNumber - 2).TestObject;
+            Block ommer2 = Build.A.Block.WithNumber(blockNumber - 2).TestObject;
+            Block block = Build.A.Block.WithNumber(blockNumber).WithOmmers(ommer, ommer2).TestObject;
+            
+            RewardCalculator calculator = new RewardCalculator(RopstenSpecProvider.Instance);
+            BlockReward[] rewards = calculator.CalculateRewards(block);
+            
+            Assert.AreEqual(3, rewards.Length);
+            Assert.AreEqual(3187500000000000000, (long)rewards[0].Value, "miner");
+            Assert.AreEqual(2250000000000000000, (long)rewards[1].Value, "uncle1");
+            Assert.AreEqual(2250000000000000000, (long)rewards[2].Value, "uncle2");
+        }
+        
+        [Test]
+        public void Constantinople_reward_two_uncles()
+        {
+            UInt256 blockNumber = (UInt256)(RopstenSpecProvider.ConstantinopleBlockNumber + 1);
+            Block ommer = Build.A.Block.WithNumber(blockNumber - 2).TestObject;
+            Block ommer2 = Build.A.Block.WithNumber(blockNumber - 2).TestObject;
+            Block block = Build.A.Block.WithNumber(blockNumber).WithOmmers(ommer, ommer2).TestObject;
+            
+            RewardCalculator calculator = new RewardCalculator(RopstenSpecProvider.Instance);
+            BlockReward[] rewards = calculator.CalculateRewards(block);
+            
+            Assert.AreEqual(3, rewards.Length);
+            Assert.AreEqual(2125000000000000000, (long)rewards[0].Value, "miner");
+            Assert.AreEqual(1500000000000000000, (long)rewards[1].Value, "uncle1");
+            Assert.AreEqual(1500000000000000000, (long)rewards[2].Value, "uncle2");
         }
     }
 }
