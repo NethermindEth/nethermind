@@ -23,9 +23,9 @@ using NUnit.Framework;
 namespace Ethereum.Blockchain.Test
 {
     [TestFixture]
-    public class WalletTests : BlockchainTestBase
+    public class ShiftTests : BlockchainTestBase
     {
-        [TestCaseSource(nameof(LoadTests), new object[] { "stWalletTest" })]
+        [TestCaseSource(nameof(LoadTests), new object[] { "stShift" })]
         public async Task Test(BlockchainTest test)
         {
             await RunTest(test);
