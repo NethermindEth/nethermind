@@ -1593,68 +1593,6 @@ namespace Nethermind.Evm
                         PushBytes(value, bytesOnStack);
                         break;
                     }
-//                    case Instruction.SSTORE:
-//                    {
-//                        if (evmState.IsStatic)
-//                        {
-//                            Metrics.EvmExceptions++;
-//                            return CallResult.StaticCallViolationException;
-//                        }
-//
-//                        // fail fast before the first storage read
-//                        if (!UpdateGas(GasCostOf.SReset, ref gasAvailable))
-//                        {
-//                            return CallResult.OutOfGasException;
-//                        }
-//
-//                        UInt256 storageIndex = PopUInt256(bytesOnStack);
-//                        byte[] data = PopBytes(bytesOnStack).WithoutLeadingZeros().ToArray();
-//
-//                        bool isNewValueZero = data.IsZero();
-//
-//                        StorageAddress storageAddress = new StorageAddress(env.ExecutingAccount, storageIndex);
-//                        byte[] previousValue = _storage.Get(storageAddress);
-//
-//                        bool isValueChanged = !(isNewValueZero && previousValue.IsZero()) ||
-//                                              !Bytes.AreEqual(previousValue, data);
-//
-//
-//                        if (isNewValueZero)
-//                        {
-//                            // either case would be reset cost here first
-//                            if (isValueChanged)
-//                            {
-//                                evmState.Refund += RefundOf.SClear;
-//                            }
-//                        }
-//                        else
-//                        {
-//                            // if not zero would be reset cost here
-//                            if (previousValue.IsZero() && !UpdateGas(GasCostOf.SSet - GasCostOf.SReset, ref gasAvailable))
-//                            {
-//                                return CallResult.OutOfGasException;
-//                            }
-//                        }
-//
-//                        if (isValueChanged)
-//                        {
-//                            byte[] newValue = isNewValueZero ? BytesZero : data;
-//                            _storage.Set(storageAddress, newValue);
-//                            if (_logger.IsTrace)
-//                            {
-//                                _logger.Trace($"  UPDATING STORAGE: {env.ExecutingAccount} {storageIndex} {newValue.ToHexString(true)}");
-//                            }
-//                        }
-//
-//                        if (_trace != null)
-//                        {
-//                            byte[] bigEndian = new byte[32];
-//                            storageIndex.ToBigEndian(bigEndian);
-//                            _traceEntry.Storage[bigEndian.ToHexString(false)] = data.PadLeft(32).ToHexString(false);
-//                        }
-//
-//                        break;
-//                    }
                     case Instruction.SSTORE:
                     {
                         if (evmState.IsStatic)
