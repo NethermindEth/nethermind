@@ -127,14 +127,14 @@ namespace Nethermind.Core
         
         public static Address OfContract(Address deployingAddress, Span<byte> salt, Span<byte> initCode)
         {
-            Keccak contractAddressKeccak =
-                Keccak.Compute(
-                    Rlp.Encode(
-                        // new byte[] {129, 255} // 0xff RLP-encoded in option 2
-                        Rlp.Encode(deployingAddress),
-                        Rlp.Encode(salt),
-                        Rlp.Encode(initCode)));
-
+            // sha3(0xff ++ msg.sender ++ salt ++ sha3(init_code)))
+            Span<byte> bytes = new byte[1 + ByteLength + 32 + salt.Length];
+            bytes[0] = 0xff;
+            deployingAddress.Bytes.CopyTo(bytes.Slice(1, 20));
+            salt.CopyTo(bytes.Slice(21, salt.Length));
+            Keccak.Compute(initCode).Bytes.CopyTo(bytes.Slice(21 + salt.Length, 32));
+                
+            Keccak contractAddressKeccak = Keccak.Compute(bytes);
             return new Address(contractAddressKeccak);
         }
 

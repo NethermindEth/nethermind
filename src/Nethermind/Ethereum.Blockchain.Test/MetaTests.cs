@@ -20,6 +20,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using NUnit.Framework;
 
 namespace Ethereum.Blockchain.Test
@@ -38,7 +39,10 @@ namespace Ethereum.Blockchain.Test
             foreach (string directory in directories)
             {
                 string expectedTypeName = ExpectedTypeName(directory);
-                if (types.All(t => !string.Equals(t.Name, expectedTypeName, StringComparison.InvariantCultureIgnoreCase)))
+                Type type = types.SingleOrDefault(t => string.Equals(t.Name, expectedTypeName, StringComparison.InvariantCultureIgnoreCase));
+                MethodInfo methodInfo = type?.GetMethod("Test");
+                TestCaseSourceAttribute attribute = methodInfo?.GetCustomAttribute<TestCaseSourceAttribute>();
+                if(attribute == null || !attribute.MethodParams.Contains(directory))
                 {
                     missingCategories.Add(directory);
                 }
