@@ -22,6 +22,6 @@ namespace Nethermind.Blockchain.Validators
 {
     public interface IHeaderValidator
     {
-        bool Validate(BlockHeader blockHeader, bool isOmmer = false, bool ignoreProof = false);
+        bool Validate(BlockHeader blockHeader, bool isOmmer = false);
     }
 }

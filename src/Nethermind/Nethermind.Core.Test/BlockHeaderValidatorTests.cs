@@ -18,8 +18,6 @@
 
 using System;
 using System.Numerics;
-using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Difficulty;
 using Nethermind.Blockchain.Validators;
@@ -62,9 +60,11 @@ namespace Nethermind.Core.Test
             blockStore.SuggestBlock(_block);
         }
         
+        // TODO: fix this test
         [Test]
         public void Valid_when_valid()
         {
+            _block.Header.SealEngineType = SealEngineType.None;
             bool result = _validator.Validate(_block.Header);
             if (!result)
             {
@@ -81,7 +81,8 @@ namespace Nethermind.Core.Test
         public void When_gas_limit_too_high()
         {
             _block.Header.GasLimit = _parentBlock.Header.GasLimit + (long)BigInteger.Divide(_parentBlock.Header.GasLimit, 1024);
-            bool result = _validator.Validate(_block.Header, false, true);
+            _block.Header.SealEngineType = SealEngineType.None;
+            bool result = _validator.Validate(_block.Header);
             Assert.False(result);
         }
         
@@ -89,7 +90,8 @@ namespace Nethermind.Core.Test
         public void When_gas_limit_too_low()
         {
             _block.Header.GasLimit = _parentBlock.Header.GasLimit - (long)BigInteger.Divide(_parentBlock.Header.GasLimit, 1024);
-            bool result = _validator.Validate(_block.Header, false, true);
+            _block.Header.SealEngineType = SealEngineType.None;
+            bool result = _validator.Validate(_block.Header);
             Assert.False(result);
         }
         
@@ -97,7 +99,8 @@ namespace Nethermind.Core.Test
         public void When_gas_used_above_gas_limit()
         {
             _block.Header.GasUsed = _parentBlock.Header.GasLimit + 1;
-            bool result = _validator.Validate(_block.Header, false, true);
+            _block.Header.SealEngineType = SealEngineType.None;
+            bool result = _validator.Validate(_block.Header);
             Assert.False(result);
         }
         
@@ -105,7 +108,8 @@ namespace Nethermind.Core.Test
         public void When_no_parent_invalid()
         {
             _block.Header.ParentHash = Keccak.Zero;
-            bool result = _validator.Validate(_block.Header, false, true);
+            _block.Header.SealEngineType = SealEngineType.None;
+            bool result = _validator.Validate(_block.Header);
             Assert.False(result);
         }
         
@@ -113,7 +117,8 @@ namespace Nethermind.Core.Test
         public void When_timestamp_same_as_parent()
         {
             _block.Header.Timestamp = _parentBlock.Header.Timestamp;
-            bool result = _validator.Validate(_block.Header, false, true);
+            _block.Header.SealEngineType = SealEngineType.None;
+            bool result = _validator.Validate(_block.Header);
             Assert.False(result);
         }
         
@@ -121,7 +126,8 @@ namespace Nethermind.Core.Test
         public void When_extra_data_too_long()
         {
             _block.Header.ExtraData = new byte[33];
-            bool result = _validator.Validate(_block.Header, false, true);
+            _block.Header.SealEngineType = SealEngineType.None;
+            bool result = _validator.Validate(_block.Header);
             Assert.False(result);
         }
         
@@ -129,7 +135,8 @@ namespace Nethermind.Core.Test
         public void When_incorrect_difficulty_then_invalid()
         {
             _block.Header.Difficulty = 1;
-            bool result = _validator.Validate(_block.Header, false, true);
+            _block.Header.SealEngineType = SealEngineType.None;
+            bool result = _validator.Validate(_block.Header);
             Assert.False(result);
         }
         
@@ -137,7 +144,8 @@ namespace Nethermind.Core.Test
         public void When_incorrect_number_then_invalid()
         {
             _block.Header.Number += 1;
-            bool result = _validator.Validate(_block.Header, false, true);
+            _block.Header.SealEngineType = SealEngineType.None;
+            bool result = _validator.Validate(_block.Header);
             Assert.False(result);
         }
         

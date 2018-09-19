@@ -45,7 +45,7 @@ namespace Nethermind.Blockchain.Validators
             _daoBlockNumber = specProvider?.DaoBlockNumber;
         }
         
-        public bool Validate(BlockHeader header, bool isOmmer = false, bool ignoreProof = false)
+        public bool Validate(BlockHeader header, bool isOmmer = false)
         {
             Block parent = _blockTree.FindBlock(header.ParentHash, false);
             if (parent == null)
@@ -65,7 +65,7 @@ namespace Nethermind.Blockchain.Validators
                 return false;
             }
 
-            bool areNonceValidAndMixHashValid = ignoreProof || _sealEngine.Validate(header);
+            bool areNonceValidAndMixHashValid = header.SealEngineType == SealEngineType.None || _sealEngine.Validate(header);
             if (!areNonceValidAndMixHashValid)
             {
                 _logger.Warn($"Invalid block header ({header.Hash}) - invalid mix hash / nonce");

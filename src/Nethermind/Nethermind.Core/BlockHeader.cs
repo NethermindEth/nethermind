@@ -64,6 +64,7 @@ namespace Nethermind.Core
         public Keccak Hash { get; set; }
         public UInt256? TotalDifficulty { get; set; }
         public UInt256? TotalTransactions { get; set; }
+        public SealEngineType SealEngineType { get; set; } = SealEngineType.Ethash;
 
         public static Keccak CalculateHash(Rlp headerRlp)
         {

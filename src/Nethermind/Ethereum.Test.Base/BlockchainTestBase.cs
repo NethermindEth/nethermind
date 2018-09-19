@@ -256,6 +256,8 @@ namespace Ethereum.Test.Base
                     TestBlockJson testBlockJson = test.Blocks[i];
                     var rlpContext = Bytes.FromHexString(testBlockJson.Rlp).AsRlpContext();
                     Block suggestedBlock = Rlp.Decode<Block>(rlpContext);
+                    suggestedBlock.Header.SealEngineType = test.SealEngineUsed ? SealEngineType.Ethash : SealEngineType.None;
+                    
                     Assert.AreEqual(new Keccak(testBlockJson.BlockHeader.Hash), suggestedBlock.Header.Hash, "hash of the block");
                     for (int ommerIndex = 0; ommerIndex < suggestedBlock.Ommers.Length; ommerIndex++)
                     {
@@ -315,8 +317,7 @@ namespace Ethereum.Test.Base
                     }
                     
                     // TODO: mimic the actual behaviour where block goes through validating sync manager?
-//                    if (blockValidator.ValidateSuggestedBlock(correctRlpsBlocks[i].Block))
-                    if(true)
+                    if (!test.SealEngineUsed || blockValidator.ValidateSuggestedBlock(correctRlpsBlocks[i].Block))
                     {
                         blockTree.SuggestBlock(correctRlpsBlocks[i].Block);
                     }
