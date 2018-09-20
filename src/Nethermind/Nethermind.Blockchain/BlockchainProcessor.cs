@@ -621,7 +621,6 @@ namespace Nethermind.Blockchain
 
             public void Start()
             {
-                _logger.Error("STARTING ELAPSED!!!");
                 _processingWatch.Start();
             }
         }
