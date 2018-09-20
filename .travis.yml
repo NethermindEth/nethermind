@@ -5,11 +5,11 @@ dotnet: 2.1.402
 jobs:
   include:
     - stage: restore and build
-      before_script: cd src/Nethermind
-      script:
-        - dotnet restore
-        - dotnet build
-    - stage: test
+      script: dotnet restore src/Nethermind
+      name: "Restore projects"
+    - script: dotnet build src/Nethermind
+      name: "Build projects"
+    - stage: run tests
       script: dotnet test src/Nethermind/Ethereum.Basic.Test
       name: "Ethereum.Basic.Test"
     - script: dotnet test src/Nethermind/Ethereum.Blockchain.Block.Test
