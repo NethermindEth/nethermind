@@ -37,7 +37,7 @@ using Nethermind.Store;
 namespace Nethermind.Blockchain
 {
     public class BlockchainProcessor : IBlockchainProcessor
-    {  
+    {
         private static readonly BigInteger MinGasPriceForMining = 1;
         private readonly IBlockProcessor _blockProcessor;
         private readonly IEthereumSigner _signer;
@@ -50,6 +50,7 @@ namespace Nethermind.Blockchain
         private readonly BlockingCollection<BlockRef> _recoveryQueue = new BlockingCollection<BlockRef>(new ConcurrentQueue<BlockRef>());
         private readonly BlockingCollection<BlockRef> _blockQueue = new BlockingCollection<BlockRef>(new ConcurrentQueue<BlockRef>());
         private readonly ITransactionStore _transactionStore;
+        private readonly ProcessingStats _stats;
 
         public BlockchainProcessor(
             IBlockTree blockTree,
@@ -70,19 +71,20 @@ namespace Nethermind.Blockchain
             _blockProcessor = blockProcessor ?? throw new ArgumentNullException(nameof(blockProcessor));
             _signer = signer ?? throw new ArgumentNullException(nameof(signer));
             _perfService = perfService;
+            _stats = new ProcessingStats(_logger);
         }
 
         private void OnNewBestBlock(object sender, BlockEventArgs blockEventArgs)
         {
             _miningCancellation?.Cancel();
-            
+
             Block block = blockEventArgs.Block;
-            
+
             if (_logger.IsTrace) _logger.Trace($"Enqueuing a new block {block.ToString(Block.Format.Short)} for processing.");
-            
+
             BlockRef blockRef = _recoveryQueue.Count > MaxRecoveryQueueSize ? new BlockRef(block.Hash) : new BlockRef(block);
             _recoveryQueue.Add(blockRef);
-            
+
             if (_logger.IsTrace) _logger.Trace($"A new block {block.ToString(Block.Format.Short)} enqueued for processing.");
         }
 
@@ -181,7 +183,7 @@ namespace Nethermind.Blockchain
                 blockRef.IsInDb = true;
             }
         }
-        
+
         private void ResolveBlockRef(BlockRef blockRef)
         {
             if (blockRef.IsInDb)
@@ -203,7 +205,7 @@ namespace Nethermind.Blockchain
 
         private void RunProcessingLoop()
         {
-            _processingWatch.Start();
+            _stats.Start();
             if (_logger.IsDebug) _logger.Debug($"Starting block processor - {_blockQueue.Count} blocks waiting in the queue.");
 
             if (_blockQueue.Count == 0 && _sealEngine.IsMining)
@@ -217,12 +219,8 @@ namespace Nethermind.Blockchain
             {
                 ResolveBlockRef(blockRef);
                 Block block = blockRef.Block;
-                
+
                 if (_logger.IsTrace) _logger.Trace($"Processing block {block.ToString(Block.Format.Short)}).");
-                if (_blockQueue.Count == 0)
-                {
-                    _wasQueueEmptied = true;
-                }
 
                 Process(block);
 
@@ -319,68 +317,13 @@ namespace Nethermind.Blockchain
             return txTree.RootHash;
         }
 
-        // TODO: move these stats into a separate class
-        private readonly Stopwatch _processingWatch = new Stopwatch(); // TODO: TEMP?
-        private long _lastElapsedTicks;
-        private decimal _lastTotalMGas;
-        private long _lastTotalTx;
-        private decimal _currentTotalMGas;
-        private long _currentTotalTx;
-        private long _lastStateDbReads;
-        private long _lastStateDbWrites;
-        private long _lastGen0;
-        private long _lastGen1;
-        private long _lastGen2;
-        private long _lastTreeNodeRlp;
-        private long _lastEvmExceptions;
-        private long _lastSelfDestructs;
-        private long _maxMemory;
-        private bool _wasQueueEmptied;
-
+        // TODO: move stats to a separate class
         public void Process(Block suggestedBlock)
         {
             Process(suggestedBlock, false);
             if (_logger.IsTrace) _logger.Trace($"Processed block {suggestedBlock.ToString(Block.Format.Full)}");
 
-            _currentTotalMGas += suggestedBlock.GasUsed / 1_000_000m;
-            _currentTotalTx += suggestedBlock.Transactions.Length;
-            //            
-            long currentTicks = _processingWatch.ElapsedTicks;
-            decimal totalMicroseconds = _processingWatch.ElapsedTicks * (1_000_000m / Stopwatch.Frequency);
-            decimal chunkMicroseconds = (_processingWatch.ElapsedTicks - _lastElapsedTicks) * (1_000_000m / Stopwatch.Frequency);
-            if (chunkMicroseconds > 10 * 1000 * 1000 || (_wasQueueEmptied && chunkMicroseconds > 1 * 1000 * 1000)) // 10s
-            {
-                _wasQueueEmptied = false;
-                long currentGen0 = GC.CollectionCount(0);
-                long currentGen1 = GC.CollectionCount(1);
-                long currentGen2 = GC.CollectionCount(2);
-                long currentMemory = GC.GetTotalMemory(false);
-                _maxMemory = Math.Max(_maxMemory, currentMemory);
-                long currentStateDbReads = Metrics.StateDbReads;
-                long currentStateDbWrites = Metrics.StateDbWrites;
-                long currentTreeNodeRlp = Metrics.TreeNodeRlpEncodings + Metrics.TreeNodeRlpDecodings;
-                long evmExceptions = Metrics.EvmExceptions;
-                long currentSelfDestructs = Metrics.SelfDestructs;
-
-                long chunkTx = _currentTotalTx - _lastTotalTx;
-                decimal chunkMGas = _currentTotalMGas - _lastTotalMGas;
-                decimal mgasPerSecond = chunkMicroseconds == 0 ? -1 : chunkMGas / chunkMicroseconds * 1000 * 1000;
-                decimal totalMgasPerSecond = totalMicroseconds == 0 ? -1 : _currentTotalMGas / totalMicroseconds * 1000 * 1000;
-                decimal txps = chunkMicroseconds == 0 ? -1 : chunkTx / chunkMicroseconds * 1000m * 1000m;
-                if (_logger.IsInfo) _logger.Info($"Processed blocks up to {suggestedBlock.Number,9} in {(chunkMicroseconds == 0 ? -1 : chunkMicroseconds / 1000),7:N0}ms, tx={chunkTx,5} mgas={chunkMGas,8:F2}, mgasps={mgasPerSecond,7:F2}, txps={txps,7:F2}, total mgasps={totalMgasPerSecond,7:F2}, queue={_blockQueue.Count}");
-                if (_logger.IsTrace) _logger.Trace($"Gen0: {currentGen0 - _lastGen0,6}, Gen1: {currentGen1 - _lastGen1,6}, Gen2: {currentGen2 - _lastGen2,6}, maxmem: {_maxMemory / 1000000,5}, mem: {currentMemory / 1000000,5}, reads: {currentStateDbReads - _lastStateDbReads,9}, writes: {currentStateDbWrites - _lastStateDbWrites,9}, rlp: {currentTreeNodeRlp - _lastTreeNodeRlp,9}, exceptions:{evmExceptions - _lastEvmExceptions}, selfdstrcs={currentSelfDestructs - _lastSelfDestructs}");
-                _lastTotalMGas = _currentTotalMGas;
-                _lastElapsedTicks = currentTicks;
-                _lastTotalTx = _currentTotalTx;
-                _lastGen0 = currentGen0;
-                _lastGen1 = currentGen1;
-                _lastGen2 = currentGen2;
-                _lastStateDbReads = currentStateDbReads;
-                _lastStateDbWrites = currentStateDbWrites;
-                _lastTreeNodeRlp = currentTreeNodeRlp;
-                _lastEvmExceptions = evmExceptions;
-                _lastSelfDestructs = currentSelfDestructs;
-            }
+            _stats.UpdateStats(suggestedBlock, _recoveryQueue.Count, _blockQueue.Count);
         }
 
         private void Process(Block suggestedBlock, bool forMining)
@@ -587,6 +530,100 @@ namespace Nethermind.Blockchain
             public bool IsInDb { get; set; }
             public Keccak BlockHash { get; set; }
             public Block Block { get; set; }
+        }
+
+        private class ProcessingStats
+        {
+            private readonly ILogger _logger;
+            private readonly Stopwatch _processingWatch = new Stopwatch();
+            private UInt256 _lastBlockNumber;
+            private long _lastElapsedTicks;
+            private decimal _lastTotalMGas;
+            private long _lastTotalTx;
+            private decimal _currentTotalMGas;
+            private long _currentTotalTx;
+            private UInt256 _currentTotalBlocks;
+            private long _lastStateDbReads;
+            private long _lastStateDbWrites;
+            private long _lastGen0;
+            private long _lastGen1;
+            private long _lastGen2;
+            private long _lastTreeNodeRlp;
+            private long _lastEvmExceptions;
+            private long _lastSelfDestructs;
+            private long _maxMemory;
+            private bool _wasQueueEmptied;
+
+            public ProcessingStats(ILogger logger)
+            {
+                _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            }
+
+            public void UpdateStats(Block block, int recoveryQueueSize, int blockQueueSize)
+            {
+                _wasQueueEmptied = blockQueueSize == 0;
+                
+                if (_lastBlockNumber.IsZero)
+                {
+                    _lastBlockNumber = block.Number;
+                }
+
+                _currentTotalMGas += block.GasUsed / 1_000_000m;
+                _currentTotalTx += block.Transactions.Length;
+                //            
+                long currentTicks = _processingWatch.ElapsedTicks;
+                decimal totalMicroseconds = _processingWatch.ElapsedTicks * (1_000_000m / Stopwatch.Frequency);
+                decimal chunkMicroseconds = (_processingWatch.ElapsedTicks - _lastElapsedTicks) * (1_000_000m / Stopwatch.Frequency);
+                
+                if (chunkMicroseconds > 10 * 1000 * 1000 || (_wasQueueEmptied && chunkMicroseconds > 1 * 1000 * 1000)) // 10s
+                {
+                    _wasQueueEmptied = false;
+                    long currentGen0 = GC.CollectionCount(0);
+                    long currentGen1 = GC.CollectionCount(1);
+                    long currentGen2 = GC.CollectionCount(2);
+                    long currentMemory = GC.GetTotalMemory(false);
+                    _maxMemory = Math.Max(_maxMemory, currentMemory);
+                    long currentStateDbReads = Metrics.StateDbReads;
+                    long currentStateDbWrites = Metrics.StateDbWrites;
+                    long currentTreeNodeRlp = Metrics.TreeNodeRlpEncodings + Metrics.TreeNodeRlpDecodings;
+                    long evmExceptions = Metrics.EvmExceptions;
+                    long currentSelfDestructs = Metrics.SelfDestructs;
+
+                    long chunkTx = _currentTotalTx - _lastTotalTx;
+                    UInt256 chunkBlocks = block.Number - _lastBlockNumber;
+                    _lastBlockNumber = block.Number;
+                    _currentTotalBlocks += chunkBlocks;
+
+                    decimal chunkMGas = _currentTotalMGas - _lastTotalMGas;
+                    decimal mgasPerSecond = chunkMicroseconds == 0 ? -1 : chunkMGas / chunkMicroseconds * 1000 * 1000;
+                    decimal totalMgasPerSecond = totalMicroseconds == 0 ? -1 : _currentTotalMGas / totalMicroseconds * 1000 * 1000;
+                    decimal totalTxPerSecond = totalMicroseconds == 0 ? -1 : _currentTotalTx / totalMicroseconds * 1000 * 1000;
+                    decimal totalBlocksPerSecond = totalMicroseconds == 0 ? -1 : (decimal) _currentTotalBlocks / totalMicroseconds * 1000 * 1000;
+                    decimal txps = chunkMicroseconds == 0 ? -1 : chunkTx / chunkMicroseconds * 1000m * 1000m;
+                    decimal bps = chunkMicroseconds == 0 ? -1 : (decimal) chunkBlocks / chunkMicroseconds * 1000m * 1000m;
+
+                    if (_logger.IsInfo) _logger.Info($"Processed blocks up to {block.Number,9} in {(chunkMicroseconds == 0 ? -1 : chunkMicroseconds / 1000),7:N0}ms, mgasps {mgasPerSecond,7:F2} total {totalMgasPerSecond,7:F2}, tps {txps,7:F2} total {totalTxPerSecond,7:F2}, bps {bps,7:F2} total {totalBlocksPerSecond,7:F2}, recv queue {recoveryQueueSize}, proc queue {blockQueueSize}");
+                    if (_logger.IsDebug) _logger.Trace($"Gen0 {currentGen0 - _lastGen0,6}, Gen1 {currentGen1 - _lastGen1,6}, Gen2 {currentGen2 - _lastGen2,6}, maxmem {_maxMemory / 1000000,5}, mem {currentMemory / 1000000,5}, reads {currentStateDbReads - _lastStateDbReads,9}, writes {currentStateDbWrites - _lastStateDbWrites,9}, rlp {currentTreeNodeRlp - _lastTreeNodeRlp,9}, exceptions {evmExceptions - _lastEvmExceptions}, selfdstrcs {currentSelfDestructs - _lastSelfDestructs}");
+
+                    _lastTotalMGas = _currentTotalMGas;
+                    _lastElapsedTicks = currentTicks;
+                    _lastTotalTx = _currentTotalTx;
+                    _lastGen0 = currentGen0;
+                    _lastGen1 = currentGen1;
+                    _lastGen2 = currentGen2;
+                    _lastStateDbReads = currentStateDbReads;
+                    _lastStateDbWrites = currentStateDbWrites;
+                    _lastTreeNodeRlp = currentTreeNodeRlp;
+                    _lastEvmExceptions = evmExceptions;
+                    _lastSelfDestructs = currentSelfDestructs;
+                }
+            }
+
+            public void Start()
+            {
+                _logger.Error("STARTING ELAPSED!!!");
+                _processingWatch.Start();
+            }
         }
     }
 }

@@ -201,7 +201,7 @@ namespace Nethermind.Blockchain
                 {
                     if (t.Exception != null && t.Exception.InnerExceptions.Any(x => x.InnerException is TimeoutException))
                     {
-                        if (_logger.IsInfo) _logger.Info($"AddPeer failed due to timeout: {t.Exception.Message}");
+                        if (_logger.IsDebug) _logger.Debug($"AddPeer failed due to timeout: {t.Exception.Message}");
                     }
                     else if (_logger.IsError) _logger.Error("AddPeer failed.", t.Exception);
                 }
@@ -290,7 +290,7 @@ namespace Nethermind.Blockchain
                 if (initPeerCount != _lastSyncPeersCount)
                 {
                     _lastSyncPeersCount = initPeerCount;
-                    if (_logger.IsInfo) _logger.Info($"Available sync peers: {initPeerCount}/{_blockchainConfig.SyncPeersMaxCount}[{_peers.Count}] {(_isSyncing ? $" (sync in progress with peer: {_currentSyncingPeerInfo?.Peer?.NodeId})" : string.Empty)}"); 
+                    if (_logger.IsInfo) _logger.Info($"Available sync peers: {initPeerCount}({_peers.Count})/{_blockchainConfig.SyncPeersMaxCount} {(_isSyncing ? $" (sync in progress with peer: {_currentSyncingPeerInfo?.Peer?.NodeId})" : string.Empty)}"); 
                 }
 
                 CheckIfSyningWithFastestPeer();

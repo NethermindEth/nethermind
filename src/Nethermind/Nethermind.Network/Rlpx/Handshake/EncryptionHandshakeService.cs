@@ -50,11 +50,11 @@ namespace Nethermind.Network.Rlpx.Handshake
             ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _messageSerializationService = messageSerializationService;
-            _eciesCipher = eciesCipher;
-            _privateKey = privateKey;
-            _cryptoRandom = cryptoRandom;
-            _signer = signer;
+            _messageSerializationService = messageSerializationService ?? throw new ArgumentNullException(nameof(messageSerializationService));
+            _eciesCipher = eciesCipher ?? throw new ArgumentNullException(nameof(eciesCipher));
+            _privateKey = privateKey ?? throw new ArgumentNullException(nameof(privateKey));;
+            _cryptoRandom = cryptoRandom ?? throw new ArgumentNullException(nameof(cryptoRandom));
+            _signer = signer ?? throw new ArgumentNullException(nameof(signer));
         }
 
         public Packet Auth(NodeId remoteNodeId, EncryptionHandshake handshake)
