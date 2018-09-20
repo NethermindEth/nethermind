@@ -1,0 +1,15 @@
+language: csharp
+mono: none
+dotnet: 2.1.402
+
+jobs:
+  include:
+    - stage: restore and build
+      before_script: cd src/Nethermind
+      script:
+        - dotnet restore
+        - dotnet build
+    - stage: test
+      before_script: cd src/Nethermind
+      script:
+        - dotnet test
