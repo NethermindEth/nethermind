@@ -2,6 +2,7 @@
 Full .NET Core Ethereum client.
 
 [gitter](https://gitter.im/nethermindeth/nethermind?utm_source=share-link&utm_medium=link&utm_campaign=share-link)
+
 [![Build Status](https://travis-ci.org/rlanga/nethermind.svg?branch=master)](https://travis-ci.org/rlanga/nethermind)
 
 ## Build (Windows / Linux / MacOS)
