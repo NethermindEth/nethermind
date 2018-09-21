@@ -17,7 +17,9 @@ namespace Nethermind.Network.Test
         {
             var nodeFactory = new NodeFactory();
             var node = nodeFactory.CreateNode("192.1.1.1", 3333);
-            _nodeStats = new NodeStats(node, new StatsConfig(), NullLogManager.Instance);
+            StatsConfig config = new StatsConfig();
+            config.CaptureNodeLatencyStatsEventHistory = true;
+            _nodeStats = new NodeStats(node, config, NullLogManager.Instance);
         }
 
         [Test]
@@ -38,7 +40,7 @@ namespace Nethermind.Network.Test
             _nodeStats.AddLatencyCaptureEvent(NodeLatencyStatType.BlockHeaders, 133);
 
             var av = _nodeStats.GetAverageLatency(NodeLatencyStatType.BlockHeaders);
-            var events = _nodeStats.LatencyHistory;
+            var events = _nodeStats.LatencyHistory.ToList();
             var avCompare = events.Sum(x => x.Latency) / events.Count();
             Assert.AreEqual(av, avCompare);
         }

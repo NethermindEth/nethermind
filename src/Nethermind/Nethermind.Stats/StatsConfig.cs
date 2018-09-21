@@ -24,7 +24,7 @@ namespace Nethermind.Stats
     {
         public bool CaptureNodeStatsEventHistory { get; } = true;
 
-        public bool CaptureNodeLatencyStatsEventHistory { get; } = false;
+        public bool CaptureNodeLatencyStatsEventHistory { get; set; } = false;
 
         public long PredefinedReputation { get; set; } = 1000500;
 

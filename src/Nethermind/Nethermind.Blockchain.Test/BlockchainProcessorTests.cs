@@ -19,7 +19,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Difficulty;
@@ -37,17 +36,20 @@ using NUnit.Framework;
 namespace Nethermind.Blockchain.Test
 {
     [TestFixture]
-    public class PrivateChainTests
+    public class BlockchainProcessorTests
     {
         [Test]
-        public async Task Build_some_chain()
+        public async Task Test()
         {
+            TimeSpan miningDelay = TimeSpan.FromMilliseconds(50);
+            
             /* logging & instrumentation */
-            var logger = new OneLoggerLogManager(new SimpleConsoleLogger());
+            var logger = new OneLoggerLogManager(new SimpleConsoleLogger(true));
 
             /* spec */
-            var blockMiningTime = TimeSpan.FromMilliseconds(500);
-            var sealEngine = new FakeSealEngine(blockMiningTime);
+            var sealEngine = new FakeSealEngine(miningDelay);
+            sealEngine.IsMining = true;
+            
             var specProvider = RopstenSpecProvider.Instance;
 
             /* store & validation */
@@ -59,10 +61,12 @@ namespace Nethermind.Blockchain.Test
             var blockValidator = new BlockValidator(transactionValidator, headerValidator, ommersValidator, specProvider, logger);
 
             /* state & storage */
-            var dbProvider = new MemDbProvider(logger);
-            var stateTree = new StateTree(dbProvider.GetOrCreateStateDb());
-            var stateProvider = new StateProvider(stateTree, dbProvider.GetOrCreateCodeDb(), logger);
-            var storageProvider = new StorageProvider(dbProvider, stateProvider, logger);
+            var codeDb = new MemDb();
+            var stateDb = new MemDb();
+            var stateTree = new StateTree(stateDb);
+            var stateProvider = new StateProvider(stateTree, codeDb, logger);
+            var storageDbProvider = new MemDbProvider(logger);
+            var storageProvider = new StorageProvider(storageDbProvider, stateProvider, logger);
 
             /* blockchain processing */
             var ethereumSigner = new EthereumSigner(specProvider, logger);
@@ -71,7 +75,7 @@ namespace Nethermind.Blockchain.Test
             var virtualMachine = new VirtualMachine(stateProvider, storageProvider, blockhashProvider, logger);
             var processor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, NullTracer.Instance, logger);
             var rewardCalculator = new RewardCalculator(specProvider);
-            var blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, processor, dbProvider, stateProvider, storageProvider, transactionStore, logger);
+            var blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, processor, storageDbProvider, stateProvider, storageProvider, transactionStore, logger);
             var blockchainProcessor = new BlockchainProcessor(blockTree, sealEngine, transactionStore, difficultyCalculator, blockProcessor, ethereumSigner, logger, new PerfService(NullLogManager.Instance));
 
             /* load ChainSpec and init */
@@ -93,18 +97,28 @@ namespace Nethermind.Blockchain.Test
             }
 
             /* start processing */
-            sealEngine.IsMining = true;
-            var testTransactionsGenerator = new TestTransactionsGenerator(transactionStore, ethereumSigner, blockMiningTime, logger);
-            testTransactionsGenerator.Start();
-            
-            blockchainProcessor.Start();
             blockTree.SuggestBlock(chainSpec.Genesis);
+            blockchainProcessor.Start();
             
-            BigInteger roughlyNumberOfBlocks = 6;
-            Thread.Sleep(blockMiningTime * (int)roughlyNumberOfBlocks);
-            await blockchainProcessor.StopAsync(false);
-            Assert.GreaterOrEqual(blockTree.Head.Number, roughlyNumberOfBlocks - 2, "number of blocks");
-            Assert.GreaterOrEqual(blockTree.Head.TotalTransactions, roughlyNumberOfBlocks - 2, "number of transactions");
+            ManualResetEvent manualResetEvent = new ManualResetEvent(false);
+
+            blockTree.NewHeadBlock += (sender, args) =>
+            {
+                if (args.Block.Number == 6) manualResetEvent.Set();
+            };
+
+            manualResetEvent.WaitOne(miningDelay * 12);
+            
+            await blockchainProcessor.StopAsync(true).ContinueWith(
+                t =>
+                {
+                    if (t.IsFaulted)
+                    {
+                        throw t.Exception;
+                    }
+
+                    Assert.GreaterOrEqual((int)blockTree.Head.Number, 6);
+                });
         }
     }
 }
