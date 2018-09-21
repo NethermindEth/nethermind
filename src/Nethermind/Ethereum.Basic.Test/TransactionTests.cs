@@ -29,6 +29,7 @@ using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
+using Nethermind.Dirichlet.Numerics;
 using NUnit.Framework;
 
 namespace Ethereum.Basic.Test
@@ -53,16 +54,16 @@ namespace Ethereum.Basic.Test
         {
             EthereumSigner ethereumSigner = new EthereumSigner(OlympicSpecProvider.Instance, NullLogManager.Instance);
             Transaction decodedUnsigned = Rlp.Decode<Transaction>(test.Unsigned);
-            Assert.AreEqual(test.Value, decodedUnsigned.Value);
-            Assert.AreEqual(test.GasPrice, decodedUnsigned.GasPrice);
-            Assert.AreEqual(test.StartGas, decodedUnsigned.GasLimit);
-            Assert.AreEqual(test.Data, decodedUnsigned.Data ?? decodedUnsigned.Init);
-            Assert.AreEqual(test.To, decodedUnsigned.To);
-            Assert.AreEqual(test.Nonce, decodedUnsigned.Nonce);
+            Assert.AreEqual(test.Value, decodedUnsigned.Value, "value");
+            Assert.AreEqual(test.GasPrice, decodedUnsigned.GasPrice, "gasPrice");
+            Assert.AreEqual(test.StartGas, decodedUnsigned.GasLimit, "gasLimit");
+            Assert.AreEqual(test.Data, decodedUnsigned.Data ?? decodedUnsigned.Init, "data");
+            Assert.AreEqual(test.To, decodedUnsigned.To, "to");
+            Assert.AreEqual(test.Nonce, decodedUnsigned.Nonce, "nonce");
 
             Transaction decodedSigned = Rlp.Decode<Transaction>(test.Signed);
             ethereumSigner.Sign(test.PrivateKey, decodedUnsigned, 0);
-            Assert.AreEqual(decodedSigned.Signature.R, decodedUnsigned.Signature.R);
+            Assert.AreEqual(decodedSigned.Signature.R, decodedUnsigned.Signature.R, "R");
             BigInteger expectedS = decodedSigned.Signature.S.ToUnsignedBigInteger();
             BigInteger actualS = decodedUnsigned.Signature.S.ToUnsignedBigInteger();
             BigInteger otherS = EthereumSigner.LowSTransform - actualS;
@@ -79,17 +80,17 @@ namespace Ethereum.Basic.Test
                 vToCompare = vToCompare == 27 ? 28 : 27;
             }
 
-            Assert.AreEqual(decodedSigned.Signature.V, vToCompare);
+            Assert.AreEqual(decodedSigned.Signature.V, vToCompare, "V");
         }
 
         private static TransactionTest Convert(TransactionTestJson testJson)
         {
             TransactionTest test = new TransactionTest();
-            test.Value = testJson.Value;
+            test.Value = (UInt256)testJson.Value;
             test.Data = Bytes.FromHexString(testJson.Data);
-            test.GasPrice = testJson.GasPrice;
+            test.GasPrice = (UInt256)testJson.GasPrice;
             test.PrivateKey = new PrivateKey(testJson.Key);
-            test.Nonce = testJson.Nonce;
+            test.Nonce = (UInt256)testJson.Nonce;
             test.Signed = new Rlp(Bytes.FromHexString(testJson.Signed));
             byte[] unsigned = Bytes.FromHexString(testJson.Unsigned);
             if (unsigned[0] == 0xf8)
@@ -102,7 +103,7 @@ namespace Ethereum.Basic.Test
             }
 
             test.Unsigned = new Rlp(unsigned.Slice(0, unsigned.Length - 3));
-            test.StartGas = testJson.StartGas;
+            test.StartGas = (UInt256)testJson.StartGas;
             test.To = string.IsNullOrEmpty(testJson.To) ? null : new Address(testJson.To);
             return test;
         }
@@ -124,11 +125,11 @@ namespace Ethereum.Basic.Test
         public class TransactionTest
         {
             public PrivateKey PrivateKey { get; set; }
-            public BigInteger Nonce { get; set; }
-            public BigInteger GasPrice { get; set; }
-            public BigInteger StartGas { get; set; }
+            public UInt256 Nonce { get; set; }
+            public UInt256 GasPrice { get; set; }
+            public UInt256 StartGas { get; set; }
             public Address To { get; set; }
-            public BigInteger Value { get; set; }
+            public UInt256 Value { get; set; }
             public byte[] Data { get; set; }
             public Rlp Unsigned { get; set; }
             public Rlp Signed { get; set; }
