@@ -61,7 +61,7 @@ namespace Nethermind.Evm.Test
 
             TransactionReceipt receipt = Execute(code);
             AssertGas(receipt,
-                GasCostOf.Transaction + GasCostOf.VeryLow * 2 + GasCostOf.SReset + GasCostOf.ExtCodeHash);
+                GasCostOf.Transaction + GasCostOf.VeryLow * 2 + GasCostOf.SStoreEip1283 + GasCostOf.ExtCodeHash);
             AssertStorage(UInt256.Zero, Keccak.Zero);
         }
 
