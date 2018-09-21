@@ -23,7 +23,7 @@ using Newtonsoft.Json;
 namespace Nethermind.LibSolc.Test
 {
     [TestFixture]
-    public class UnitTest1
+    public class LibSolcTests
     {
         [Test]
         public void Get_License()
