@@ -34,6 +34,8 @@ namespace Nethermind.Core
                     privateKey = new PrivateKey(bytes);
                 }
             } while (privateKey == null);
+
+            PrivateKey = privateKey;
         }
 
         public PrivateKeyProvider(PrivateKey privateKey)
