@@ -18,7 +18,6 @@
     "ConfigModule": "NetworkConfig",
     "ConfigItems": {
       "Concurrency": "4",
-      "PenalizedReputationLocalDisconnectReasons": "UnexpectedIdentity,IncompatibleP2PVersion,BreachOfProtocol",     
       "BootNodes": [
         {
           "NodeId": "testNodeId",
@@ -31,6 +30,12 @@
           "Port": "44"
         }
       ]
+    }
+  },
+  {
+    "ConfigModule": "StatsConfig",
+    "ConfigItems": {
+      "PenalizedReputationLocalDisconnectReasons": "UnexpectedIdentity,IncompatibleP2PVersion,BreachOfProtocol"
     }
   }
 ]
