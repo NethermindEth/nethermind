@@ -23,6 +23,13 @@ namespace Nethermind.Core.Logging
 {
     public class SimpleConsoleLogger : ILogger
     {
+        private readonly bool _warnPlusOnly;
+
+        public SimpleConsoleLogger(bool warnPlusOnly = false)
+        {
+            _warnPlusOnly = warnPlusOnly;
+        }
+        
         public void Log(string text)
         {
             Console.WriteLine($"{DateTime.Now.ToLongTimeString()} [{Thread.CurrentThread.ManagedThreadId}] {text}");
@@ -53,10 +60,10 @@ namespace Nethermind.Core.Logging
             Log(ex != null ? $"{text}, Exception: {ex}" : text);
         }
         
-        public bool IsInfo => true;
+        public bool IsInfo => !_warnPlusOnly;
         public bool IsWarn => true;
-        public bool IsDebug => true;
-        public bool IsTrace => true;
+        public bool IsDebug => !_warnPlusOnly;
+        public bool IsTrace => !_warnPlusOnly;
         public bool IsError => true;
     }
 }

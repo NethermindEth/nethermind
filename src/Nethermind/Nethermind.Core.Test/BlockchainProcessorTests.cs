@@ -19,21 +19,17 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
-using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Difficulty;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Encoding;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Specs.ChainSpec;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
-using Nethermind.Runner;
 using Nethermind.Store;
 using NUnit.Framework;
 
@@ -103,8 +99,15 @@ namespace Nethermind.Core.Test
             /* start processing */
             blockTree.SuggestBlock(chainSpec.Genesis);
             blockchainProcessor.Start();
+            
+            ManualResetEvent manualResetEvent = new ManualResetEvent(false);
 
-            Thread.Sleep(miningDelay * 10);
+            blockTree.NewHeadBlock += (sender, args) =>
+            {
+                if (args.Block.Number == 6) manualResetEvent.Set();
+            };
+
+            manualResetEvent.WaitOne(miningDelay * 12);
             
             await blockchainProcessor.StopAsync(true).ContinueWith(
                 t =>

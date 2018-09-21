@@ -123,6 +123,7 @@ namespace Nethermind.Blockchain
 
         public Block[] Process(Keccak branchStateRoot, Block[] suggestedBlocks, bool tryOnly)
         {
+            IDb db = _dbProvider.GetOrCreateStateDb();
             int dbSnapshot = _dbProvider.TakeSnapshot();
             Keccak snapshotStateRoot = _stateProvider.StateRoot;
 
@@ -158,6 +159,12 @@ namespace Nethermind.Blockchain
                     {
                         _logger.Trace($"REVERTED BLOCKS (JUST VALIDATED FOR MINING) - STATE ROOT {_stateProvider.StateRoot}");
                     }
+                }
+                else
+                {
+                    db.StartBatch();
+                    _dbProvider.Commit(_specProvider.GetSpec(suggestedBlocks[0].Number));
+                    db.CommitBatch();
                 }
 
                 return processedBlocks;
@@ -201,18 +208,14 @@ namespace Nethermind.Blockchain
 
         private Block ProcessOne(Block suggestedBlock, bool tryOnly)
         {
-            IDb db = _dbProvider.GetOrCreateStateDb();
             Block processedBlock = suggestedBlock;
             if (!suggestedBlock.IsGenesis)
             {
                 processedBlock = ProcessNonGenesis(suggestedBlock, tryOnly);
             }
 
-            db.StartBatch();
             _stateProvider.CommitTree();
             _storageProvider.CommitTrees();
-            _dbProvider.Commit(_specProvider.GetSpec(suggestedBlock.Number));
-            db.CommitBatch();
             
             return processedBlock;
         }

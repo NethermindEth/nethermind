@@ -45,7 +45,7 @@ namespace Nethermind.Core.Logging
                 Directory.CreateDirectory(logsDir);
             }
 
-            if (NLog.LogManager.Configuration.AllTargets.SingleOrDefault(t => t.Name == "file") is FileTarget target)
+            if (NLog.LogManager.Configuration?.AllTargets.SingleOrDefault(t => t.Name == "file") is FileTarget target)
             {
                 target.FileName = !Path.IsPathFullyQualified(fileName) ? Path.Combine("logs", fileName) : fileName;
             }
