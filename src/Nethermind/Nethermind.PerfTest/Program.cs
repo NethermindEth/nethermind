@@ -274,8 +274,8 @@ namespace Nethermind.PerfTest
             public event EventHandler<BlockEventArgs> NewHeadBlock;
         }
 
-//        private const string DbBasePath = @"D:\chains\Nethermind\Ropsten\perf100k";
-        private const string DbBasePath = @"C:\chains\blocks_1M";
+        private const string DbBasePath = @"D:\chains\ropsten\discovery";
+//        private const string DbBasePath = @"C:\chains\blocks_1M";
 
         private static void DeleteDb(string dbPath)
         {
@@ -290,7 +290,7 @@ namespace Nethermind.PerfTest
         private static readonly string FullBlocksDbPath = Path.Combine(DbBasePath, DbOnTheRocks.BlocksDbPath);
         private static readonly string FullBlockInfosDbPath = Path.Combine(DbBasePath, DbOnTheRocks.BlockInfosDbPath);
 
-        private const int BlocksToLoad = 1_000_000;
+        private const int BlocksToLoad = 3_000_000;
 
         private static async Task RunRopstenBlocks()
         {

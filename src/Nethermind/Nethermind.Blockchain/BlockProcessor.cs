@@ -123,6 +123,11 @@ namespace Nethermind.Blockchain
 
         public Block[] Process(Keccak branchStateRoot, Block[] suggestedBlocks, bool tryOnly)
         {
+            if (suggestedBlocks.Length == 0)
+            {
+                return Array.Empty<Block>();
+            }
+            
             IDb db = _dbProvider.GetOrCreateStateDb();
             int dbSnapshot = _dbProvider.TakeSnapshot();
             Keccak snapshotStateRoot = _stateProvider.StateRoot;
