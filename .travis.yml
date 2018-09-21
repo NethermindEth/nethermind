@@ -6,12 +6,12 @@ sudo: required
 jobs:
   include:
     - stage: restore and build
-      script: dotnet restore src/Nethermind
-      name: "Restore projects"
-    - script: dotnet build src/Nethermind
-      name: "Build projects"
+      script: 
+        - dotnet restore src/Nethermind
+        - dotnet build src/Nethermind
+      name: "Restore and build projects"
     - stage: run tests
-    - script: dotnet test src/Nethermind/Nethermind.KeyStore.Test
+      script: dotnet test src/Nethermind/Nethermind.KeyStore.Test
       name: "Nethermind.KeyStore.Test"
     - script: dotnet test src/Nethermind/Nethermind.LibSolc.Test
       name: "Nethermind.LibSolc.Test.Linux"
