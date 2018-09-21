@@ -17,6 +17,14 @@ Full .NET Core Ethereum client.
 ### source and build
 
 ```
+on Linux:
+sudo apt-get update
+sudo apt-get install libsnappy-dev
+sudo apt-get install libc6-dev
+sudo apt-get install libc6
+
+then (any platform):
+
 git clone https://github.com/tkstanczak/nethermind.git
 cd nethermind/src/Nethermind
 git submodule update --init
