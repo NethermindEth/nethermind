@@ -32,7 +32,7 @@ namespace Nethermind.Store
     public class PatriciaTree
     {
         private static readonly LruCache<Keccak, Rlp> NodeCache = new LruCache<Keccak, Rlp>(64 * 1024);
-        private static readonly LruCache<byte[], byte[]> ValueCache = new LruCache<byte[], byte[]>(128 * 1024);
+//        private static readonly LruCache<byte[], byte[]> ValueCache = new LruCache<byte[], byte[]>(128 * 1024);
 
         /// <summary>
         ///     0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421
@@ -210,11 +210,11 @@ namespace Nethermind.Store
 
         public byte[] Get(byte[] rawKey)
         {
-            byte[] value = ValueCache.Get(rawKey);
-            if (value != null)
-            {
-                return value;
-            }
+//            byte[] value = ValueCache.Get(rawKey);
+//            if (value != null)
+//            {
+//                return value;
+//            }
 
             return Run(Nibbles.BytesToNibbleBytes(rawKey), null, false);
         }
@@ -222,14 +222,14 @@ namespace Nethermind.Store
         [DebuggerStepThrough]
         public void Set(byte[] rawKey, byte[] value)
         {
-            ValueCache.Delete(rawKey);
+//            ValueCache.Delete(rawKey);
             Run(Nibbles.BytesToNibbleBytes(rawKey), value, true);
         }
 
         [DebuggerStepThrough]
         public void Set(byte[] rawKey, Rlp value)
         {
-            ValueCache.Delete(rawKey);
+//            ValueCache.Delete(rawKey);
             Run(Nibbles.BytesToNibbleBytes(rawKey), value == null ? new byte[0] : value.Bytes, true);
         }
 

@@ -192,13 +192,15 @@ namespace Nethermind.Store.Test
         }
         
         [Test]
-        public void Commit_clear_caches_get_previous_root()
+        public void Commit_trees_clear_caches_get_previous_root()
         {
             // block 1
             StorageProvider storageProvider = BuildStorageProvider();
             storageProvider.Set(new StorageAddress(_address1, 1), _values[1]);
             storageProvider.Commit(Frontier.Instance);
             _stateProvider.Commit(Frontier.Instance);
+            storageProvider.CommitTrees();
+            _stateProvider.CommitTree();
             
             // block 2
             Keccak stateRoot = _stateProvider.StateRoot;

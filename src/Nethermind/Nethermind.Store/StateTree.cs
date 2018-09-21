@@ -64,7 +64,6 @@ namespace Nethermind.Store
 
         private static readonly Rlp EmptyAccountRlp = Rlp.Encode(Account.TotallyEmpty);
 
-        [DebuggerStepThrough]
         public void Set(Address address, Account account)
         {
             Keccak keccak = Keccak.Compute(address.Bytes);

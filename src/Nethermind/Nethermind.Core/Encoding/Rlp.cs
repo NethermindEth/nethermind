@@ -185,9 +185,14 @@ namespace Nethermind.Core.Encoding
 
         public static Rlp Encode(UInt256 value)
         {
+            if (value.IsZero)
+            {
+                return OfEmptyByteArray;
+            }
+            
             byte[] bytes = new byte[32];
             value.ToBigEndian(bytes);
-            return value == 0 ? OfEmptyByteArray : Encode(bytes.WithoutLeadingZeros());
+            return Encode(bytes.WithoutLeadingZeros());
         }
 
         private static Rlp EncodeNumber(long item)

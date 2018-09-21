@@ -246,7 +246,7 @@ namespace Nethermind.Store
             _cacheOriginal.Clear();
             _currentPosition = -1;
             _committedThisRound.Clear();
-            Array.Clear(_changes, 0, _changes.Length);
+            Array.Clear(_changes, 0, _changes.Length); // do we have to clear it?
             _storages.Clear();
         }
 
@@ -264,14 +264,10 @@ namespace Nethermind.Store
         {
             if (!_storages.ContainsKey(address))
             {
-                _storages[address] = new StorageTree(_dbProvider.GetOrCreateStateDb(), _stateProvider.GetStorageRoot(address));
+                StorageTree storageTree = new StorageTree(_dbProvider.GetOrCreateStateDb(), _stateProvider.GetStorageRoot(address));
+                return _storages[address] = storageTree;
             }
 
-            return GetStorage(address);
-        }
-
-        private StorageTree GetStorage(Address address)
-        {
             return _storages[address];
         }
 
