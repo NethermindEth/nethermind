@@ -17,6 +17,7 @@
  */
 
 using Nethermind.Core.Crypto;
+using Nethermind.Secp256k1;
 
 namespace Nethermind.Core
 {
@@ -24,7 +25,15 @@ namespace Nethermind.Core
     {
         public PrivateKeyProvider(ICryptoRandom cryptoRandom)
         {
-            PrivateKey = new PrivateKey(cryptoRandom.GenerateRandomBytes(32));
+            PrivateKey privateKey = null;
+            do
+            {
+                var bytes = cryptoRandom.GenerateRandomBytes(32);
+                if (Proxy.VerifyPrivateKey(bytes))
+                {
+                    privateKey = new PrivateKey(bytes);
+                }
+            } while (privateKey == null);
         }
 
         public PrivateKeyProvider(PrivateKey privateKey)

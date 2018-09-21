@@ -23,6 +23,7 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
+using Nethermind.Core.Test.Builders;
 using Nethermind.KeyStore;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery;
@@ -126,7 +127,7 @@ namespace Nethermind.Network.Test.Discovery
             Assert.AreEqual(NodeLifecycleState.Active, manager.State);
 
             //receiving findNode
-            _discoveryManager.OnIncomingMessage(new FindNodeMessage{ FarAddress = new IPEndPoint(IPAddress.Parse(_host), _port), FarPublicKey = _publicKey, SearchedNodeId = new PrivateKey(new CryptoRandom().GenerateRandomBytes(32)).PublicKey.Bytes});
+            _discoveryManager.OnIncomingMessage(new FindNodeMessage{ FarAddress = new IPEndPoint(IPAddress.Parse(_host), _port), FarPublicKey = _publicKey, SearchedNodeId = Build.A.PrivateKey.TestObject.PublicKey.Bytes});
 
             //expecting to respond with sending Neighbors
             _messageSender.Received(1).SendMessage(Arg.Is<NeighborsMessage>(m => m.FarAddress.Address.ToString() == _host && m.FarAddress.Port == _port));

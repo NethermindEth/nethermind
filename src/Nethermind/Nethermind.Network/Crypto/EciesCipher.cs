@@ -17,6 +17,7 @@
  */
 
 using System.IO;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Org.BouncyCastle.Crypto;
 using Org.BouncyCastle.Crypto.Agreement;
@@ -60,7 +61,7 @@ namespace Nethermind.Network.Crypto
         public byte[] Encrypt(PublicKey recipientPublicKey, byte[] plaintext, byte[] macData)
         {
             byte[] iv = _cryptoRandom.GenerateRandomBytes(KeySize / 8);
-            PrivateKey ephemeralPrivateKey = new PrivateKey(_cryptoRandom.GenerateRandomBytes(32));
+            PrivateKey ephemeralPrivateKey = new PrivateKeyProvider(_cryptoRandom).PrivateKey;
 
             ECPublicKeyParameters publicKeyParameters = BouncyCrypto.WrapPublicKey(recipientPublicKey);
             ECPrivateKeyParameters ephemeralPrivateKeyParameters = BouncyCrypto.WrapPrivateKey(ephemeralPrivateKey);

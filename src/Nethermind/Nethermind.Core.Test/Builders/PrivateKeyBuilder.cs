@@ -21,13 +21,12 @@ using Nethermind.Core.Crypto;
 namespace Nethermind.Core.Test.Builders
 {
     public class PrivateKeyBuilder : BuilderBase<PrivateKey>
-    {   
+    {
         private static readonly ICryptoRandom CryptoRandom = new CryptoRandom();
-        
+
         public PrivateKeyBuilder()
         {
-            byte[] bytes = CryptoRandom.GenerateRandomBytes(32);
-            TestObject = new PrivateKey(bytes);
+            TestObject = new PrivateKeyProvider(CryptoRandom).PrivateKey;
         }
     }
 }

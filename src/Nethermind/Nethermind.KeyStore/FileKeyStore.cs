@@ -151,7 +151,7 @@ namespace Nethermind.KeyStore
 
         public (PrivateKey PrivateKey, Result Result) GenerateKey(SecureString password)
         {
-            var privateKey = new PrivateKey(_cryptoRandom.GenerateRandomBytes(32));
+            var privateKey = new PrivateKeyProvider(_cryptoRandom).PrivateKey;
             var result = StoreKey(privateKey, password);
             return result.ResultType == ResultType.Success ? (privateKey, result) : (null, result);
         }

@@ -43,6 +43,11 @@ namespace Nethermind.Core.Crypto
                 throw new ArgumentNullException(nameof(keyBytes));
             }
 
+            if (!Proxy.VerifyPrivateKey(keyBytes))
+            {
+                throw new ArgumentException("provided value is not a valid private key", nameof(keyBytes));
+            }
+
             if (keyBytes.Length != PrivateKeyLengthInBytes)
             {
                 throw new ArgumentException($"{nameof(PrivateKey)} should be {PrivateKeyLengthInBytes} bytes long",

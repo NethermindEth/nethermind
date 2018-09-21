@@ -32,6 +32,11 @@ namespace Nethermind.Secp256k1.Test
             Assert.False(result);
         }
         
+        /// <summary>
+        /// https://en.bitcoin.it/wiki/Private_key
+        /// Nearly every 256-bit number is a valid ECDSA private key. Specifically, any 256-bit number from 0x1 to 0xFFFF FFFF FFFF FFFF FFFF FFFF FFFF FFFE BAAE DCE6 AF48 A03B BFD2 5E8C D036 4140 is a valid private key.
+        /// The range of valid private keys is governed by the secp256k1 ECDSA standard used by Bitcoin.
+        /// </summary>
         [Test]
         public void Does_allow_valid_keys()
         {

@@ -21,6 +21,7 @@ using System.IO;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test
@@ -28,8 +29,6 @@ namespace Nethermind.Core.Test
     [TestFixture]
     public class SignerTests
     {
-        private readonly ICryptoRandom _cryptoRandom = new CryptoRandom();
-
         [OneTimeSetUp]
         public void SetUp()
         {
@@ -51,7 +50,7 @@ namespace Nethermind.Core.Test
             EthereumSigner ethereumSigner = new EthereumSigner(OlympicSpecProvider.Instance, NullLogManager.Instance);
 
             Keccak message = Keccak.Compute("Test message");
-            PrivateKey privateKey = new PrivateKey(_cryptoRandom.GenerateRandomBytes(32));
+            PrivateKey privateKey = Build.A.PrivateKey.TestObject;
             Signature signature = ethereumSigner.Sign(privateKey, message);
             Assert.AreEqual(privateKey.Address, ethereumSigner.RecoverAddress(signature, message));
         }

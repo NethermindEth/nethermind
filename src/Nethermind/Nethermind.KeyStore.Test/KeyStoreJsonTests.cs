@@ -1,4 +1,5 @@
-﻿using System.IO;
+﻿using System.Collections.Immutable;
+using System.IO;
 using System.Linq;
 using System.Security;
 using Nethermind.Config;
@@ -7,6 +8,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
+using Nethermind.Core.Test.Builders;
 using Nethermind.KeyStore.Config;
 using NUnit.Framework;
 
@@ -41,7 +43,7 @@ namespace Nethermind.KeyStore.Test
             var testsContent = File.ReadAllText("basic_tests.json");
             _testsModel = _serializer.Deserialize<KeyStoreTestsModel>(testsContent);
 
-            _testAddress = new PrivateKey(_cryptoRandom.GenerateRandomBytes(32)).Address;
+            _testAddress = Build.A.PrivateKey.TestObject.Address;
         }
 
         [Test]

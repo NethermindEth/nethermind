@@ -61,7 +61,7 @@ namespace Nethermind.Network.Rlpx.Handshake
         {
             handshake.RemoteNodeId = remoteNodeId;
             handshake.InitiatorNonce = _cryptoRandom.GenerateRandomBytes(32);
-            handshake.EphemeralPrivateKey = new PrivateKey(_cryptoRandom.GenerateRandomBytes(32));
+            handshake.EphemeralPrivateKey = new PrivateKeyProvider(_cryptoRandom).PrivateKey;
 
             byte[] staticSharedSecret = BouncyCrypto.Agree(_privateKey, remoteNodeId.PublicKey);
             byte[] forSigning = staticSharedSecret.Xor(handshake.InitiatorNonce);
@@ -109,7 +109,7 @@ namespace Nethermind.Network.Rlpx.Handshake
 
             handshake.RemoteNodeId = nodeId;
             handshake.RecipientNonce = _cryptoRandom.GenerateRandomBytes(32);
-            handshake.EphemeralPrivateKey = new PrivateKey(_cryptoRandom.GenerateRandomBytes(32));
+            handshake.EphemeralPrivateKey = new PrivateKeyProvider(_cryptoRandom).PrivateKey;
 
             handshake.InitiatorNonce = authMessage.Nonce;
             byte[] staticSharedSecret = BouncyCrypto.Agree(_privateKey, handshake.RemoteNodeId.PublicKey);

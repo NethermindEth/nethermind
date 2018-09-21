@@ -28,7 +28,7 @@ namespace Nethermind.Core.Test
     public class PrivateKeyTests
     {
         private const string TestPrivateKeyHex = "0x3a1076bf45ab87712ad64ccb3b10217737f7faacbf2872e88fdd9a537d8fe266";
-        
+
         [OneTimeSetUp]
         public void SetUp()
         {
@@ -51,14 +51,14 @@ namespace Nethermind.Core.Test
         public void Cannot_be_initialized_with_null_bytes()
         {
             // ReSharper disable once ObjectCreationAsStatement
-            Assert.Throws<ArgumentNullException>(() => new PrivateKey((byte[])null));
+            Assert.Throws<ArgumentNullException>(() => new PrivateKey((byte[]) null));
         }
 
         [Test]
         public void Cannot_be_initialized_with_null_string()
         {
             // ReSharper disable once ObjectCreationAsStatement
-            Assert.Throws<ArgumentNullException>(() => new PrivateKey((string)null));
+            Assert.Throws<ArgumentNullException>(() => new PrivateKey((string) null));
         }
 
         [Test]
@@ -94,6 +94,25 @@ namespace Nethermind.Core.Test
             Address address1 = privateKey.Address;
             Address address2 = privateKey.Address;
             Assert.AreSame(address1, address2);
+        }
+
+        /// <summary>
+        /// https://en.bitcoin.it/wiki/Private_key
+        /// </summary>
+        [TestCase("0000000000000000000000000000000000000000000000000000000000000000", false)]
+        [TestCase("0000000000000000000000000000000000000000000000000000000000000001", true)]
+        [TestCase("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364140", true)]
+        [TestCase("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141", false)]
+        public void Fails_on_invalid(string hex, bool expectedValid)
+        {
+            if (!expectedValid)
+            {
+                Assert.Throws<ArgumentException>(() => _ = new PrivateKey(Bytes.FromHexString(hex)));
+            }
+            else
+            {
+                _ = new PrivateKey(Bytes.FromHexString(hex));
+            }
         }
     }
 }
