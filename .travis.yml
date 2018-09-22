@@ -1,0 +1,73 @@
+language: csharp
+mono: none
+dotnet: 2.1.402
+sudo: required
+
+jobs:
+  include:
+    - stage: restore and build
+      script: 
+        - dotnet restore src/Nethermind
+        - dotnet build src/Nethermind
+      name: "Restore and build projects"
+    - script: dotnet build src/Nethermind
+      name: "Build projects"
+    - stage: run tests
+      script: dotnet test src/Nethermind/Ethereum.Basic.Test
+      name: "Ethereum.Basic.Test"
+    - script: dotnet test src/Nethermind/Ethereum.Blockchain.Block.Test
+      name: "Ethereum.Blockchain.Block.Test"
+    - script: dotnet test src/Nethermind/Ethereum.Blockchain.Test
+      name: "Ethereum.Blockchain.Test"
+    - script: dotnet test src/Nethermind/Ethereum.Difficulty.Test
+      name: "Ethereum.Difficulty.Test"
+    - script: dotnet test src/Nethermind/Ethereum.HexPrefix.Test
+      name: "Ethereum.HexPrefix.Test"
+    - script: dotnet test src/Nethermind/Ethereum.KeyAddress.Test
+      name: "Ethereum.KeyAddress.Test"
+    - script: dotnet test src/Nethermind/Ethereum.PoW.Test
+      name: "Ethereum.PoW.Test"
+    - script: dotnet test src/Nethermind/Ethereum.Rlp.Test
+      name: "Ethereum.Rlp.Test"
+    - script: dotnet test src/Nethermind/Ethereum.Transaction.Test
+      name: "Ethereum.Transaction.Test"
+    - script: dotnet test src/Nethermind/Ethereum.Transition.Test
+      name: "Ethereum.Transition.Test"
+    - script: dotnet test src/Nethermind/Ethereum.Trie.Test
+      name: "Ethereum.Trie.Test"
+    - script: dotnet test src/Nethermind/Ethereum.VM.Test
+      name: "Ethereum.VM.Test"
+    - script: dotnet test src/Nethermind/Nethermind.Blockchain.Test
+      name: "Nethermind.Blockchain.Test"
+    - script: dotnet test src/Nethermind/Nethermind.Config.Test
+      name: "Nethermind.Config.Test"
+    - script: dotnet test src/Nethermind/Nethermind.Core.Test
+      name: "Nethermind.Core.Test"
+    - script: dotnet test src/Nethermind/Nethermind.DataStreams.Test
+      name: "Nethermind.DataStreams.Test"
+    - script: dotnet test src/Nethermind/Nethermind.Evm.Test
+      name: "Nethermind.Evm.Test"
+    - script: dotnet test src/Nethermind/Nethermind.JsonRpc.Test
+      name: "Nethermind.JsonRpc.Test"
+    - script: dotnet test src/Nethermind/Nethermind.KeyStore.Test
+      name: "Nethermind.KeyStore.Test"
+    - script: dotnet test src/Nethermind/Nethermind.LibSolc.Test
+      name: "Nethermind.LibSolc.Test.Linux"
+    - script: dotnet test src/Nethermind/Nethermind.LibSolc.Test
+      name: "Nethermind.LibSolc.Test.Osx"
+      os: osx
+    - script: dotnet test src/Nethermind/Nethermind.Mining.Test
+      name: "Nethermind.Mining.Test"
+    - script:
+      - sudo apt-get install libsnappy-dev 
+      - dotnet test src/Nethermind/Nethermind.Network.Test
+      name: "Nethermind.Network.Test"
+    - script: dotnet test src/Nethermind/Nethermind.Runner.Test
+      name: "Nethermind.Runner.Test"
+    - script: dotnet test src/Nethermind/Nethermind.Secp256k1.Test
+      name: "Nethermind.Secp256k1.Test.Linux"
+    - script: dotnet test src/Nethermind/Nethermind.Secp256k1.Test
+      name: "Nethermind.Secp256k1.Test.Osx"
+      os: osx
+    - script: dotnet test src/Nethermind/Nethermind.Store.Test
+      name: "Nethermind.Store.Test"
