@@ -2,7 +2,8 @@ language: csharp
 mono: none
 dotnet: 2.1.402
 sudo: required
-
+git:
+  depth: 3
 jobs:
   include:
     - stage: restore and build
