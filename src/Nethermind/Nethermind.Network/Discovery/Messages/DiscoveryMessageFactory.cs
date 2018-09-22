@@ -21,7 +21,6 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Network.Config;
-using Nethermind.Network.Discovery.RoutingTable;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery.Messages

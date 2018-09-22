@@ -18,7 +18,6 @@
 
 using System;
 using System.Collections.Concurrent;
-using Nethermind.Core;
 using Nethermind.Core.Logging;
 using Nethermind.Network.Discovery.RoutingTable;
 

@@ -22,5 +22,12 @@ namespace Nethermind.Store
 {
     public class StateException : Exception
     {
+        public StateException()
+        {
+        }
+        
+        public StateException(string message, Exception inner) : base(message, inner)
+        {
+        }
     }
 }

@@ -20,7 +20,6 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Network.Discovery.Lifecycle;
 using Nethermind.Network.Discovery.Messages;
-using Nethermind.Network.Discovery.RoutingTable;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery

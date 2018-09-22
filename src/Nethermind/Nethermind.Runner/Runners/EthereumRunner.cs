@@ -568,7 +568,7 @@ namespace Nethermind.Runner.Runners
             var discoveryMessageFactory = new DiscoveryMessageFactory(_configProvider);
             var nodeIdResolver = new NodeIdResolver(_signer);
 
-            var msgSerializersProvider = new DiscoveryMsgSerializersProvider(
+            IDiscoveryMsgSerializersProvider msgSerializersProvider = new DiscoveryMsgSerializersProvider(
                 _messageSerializationService,
                 _signer,
                 privateKeyProvider,

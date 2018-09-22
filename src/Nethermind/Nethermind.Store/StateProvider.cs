@@ -63,7 +63,7 @@ namespace Nethermind.Store
                 _state.UpdateRootHash();
                 return _state.RootHash;
             }
-            set =>_state.RootHash = value;
+            set => _state.RootHash = value;
         }
 
         private readonly StateTree _state;
@@ -153,15 +153,16 @@ namespace Nethermind.Store
             Account account = GetThroughCache(address);
             if (account == null)
             {
-               if(_logger.IsError) _logger.Error("Updating balance of a non-existing account");
+                if (_logger.IsError) _logger.Error("Updating balance of a non-existing account");
                 throw new InvalidOperationException("Updating balance of a non-existing account");
             }
 
-            UInt256 newBalance = isSubtracting ? account.Balance - balanceChange : account.Balance + balanceChange;
-            if (newBalance < 0)
+            if (isSubtracting && account.Balance < balanceChange)
             {
-                throw new InsufficientBalanceException(); // TODO: check if this is handled on EVM level
+                throw new InsufficientBalanceException();
             }
+
+            UInt256 newBalance = isSubtracting ? account.Balance - balanceChange : account.Balance + balanceChange;
 
             Account changedAccount = account.WithChangedBalance(newBalance);
             if (_logger.IsTrace)
@@ -171,12 +172,12 @@ namespace Nethermind.Store
 
             PushUpdate(address, changedAccount);
         }
-        
+
         public void SubtractFromBalance(Address address, UInt256 balanceChange, IReleaseSpec releaseSpec)
         {
             SetNewBalance(address, balanceChange, releaseSpec, true);
         }
-        
+
         public void AddToBalance(Address address, UInt256 balanceChange, IReleaseSpec releaseSpec)
         {
             SetNewBalance(address, balanceChange, releaseSpec, false);

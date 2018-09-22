@@ -17,7 +17,6 @@
  */
 
 using System.Net;
-using Nethermind.Core;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Network.Discovery.Messages

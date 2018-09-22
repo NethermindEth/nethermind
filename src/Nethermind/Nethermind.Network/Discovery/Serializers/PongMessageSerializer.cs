@@ -21,7 +21,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
 using Nethermind.Network.Discovery.Messages;
-using Nethermind.Network.Discovery.RoutingTable;
 using Nethermind.Stats;
 
 namespace Nethermind.Network.Discovery.Serializers
