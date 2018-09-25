@@ -123,11 +123,17 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.DataStreams.Test
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.DbDiagnostics", "Nethermind.DbDiagnostics\Nethermind.DbDiagnostics.csproj", "{75EB98BF-A07E-4D6B-BAAB-F37EC0459792}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.LibSolc", "Nethermind.LibSolc\Nethermind.LibSolc.csproj", "{39947D60-6151-4C6E-BFF8-B407676D6858}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.LibSolc", "Nethermind.LibSolc\Nethermind.LibSolc.csproj", "{39947D60-6151-4C6E-BFF8-B407676D6858}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.LibSolc.Test", "Nethermind.LibSolc.Test\Nethermind.LibSolc.Test.csproj", "{39000D58-9F72-4FDC-AB03-AED799129DE6}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.LibSolc.Test", "Nethermind.LibSolc.Test\Nethermind.LibSolc.Test.csproj", "{39000D58-9F72-4FDC-AB03-AED799129DE6}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Stats", "Nethermind.Stats\Nethermind.Stats.csproj", "{9BEFCE4E-8814-42F4-B405-16195F9E1244}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Stats", "Nethermind.Stats\Nethermind.Stats.csproj", "{9BEFCE4E-8814-42F4-B405-16195F9E1244}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "RocksDbSharp", "RocksDbSharp", "{499A7CDB-1708-4460-A6B5-9A2B9AC50FAE}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "RocksDbSharp", "..\rocksdb-sharp\RocksDbSharp\RocksDbSharp.csproj", "{294F2DF2-1F01-4478-A613-EF911C21DD2E}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "RocksDbNative", "..\rocksdb-sharp\RocksDbNative\RocksDbNative.csproj", "{0CD42613-757B-4AA6-903D-CDFC0EAC697B}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -335,6 +341,14 @@ Global
 		{9BEFCE4E-8814-42F4-B405-16195F9E1244}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{9BEFCE4E-8814-42F4-B405-16195F9E1244}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{9BEFCE4E-8814-42F4-B405-16195F9E1244}.Release|Any CPU.Build.0 = Release|Any CPU
+		{294F2DF2-1F01-4478-A613-EF911C21DD2E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{294F2DF2-1F01-4478-A613-EF911C21DD2E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{294F2DF2-1F01-4478-A613-EF911C21DD2E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{294F2DF2-1F01-4478-A613-EF911C21DD2E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{0CD42613-757B-4AA6-903D-CDFC0EAC697B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{0CD42613-757B-4AA6-903D-CDFC0EAC697B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{0CD42613-757B-4AA6-903D-CDFC0EAC697B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{0CD42613-757B-4AA6-903D-CDFC0EAC697B}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -376,6 +390,8 @@ Global
 		{95DCBAA9-7C9A-4280-92C9-B34F087E5938} = {1564814A-27F8-40A3-943E-8E950D5EE17D}
 		{75EB98BF-A07E-4D6B-BAAB-F37EC0459792} = {E627BFEF-ABD3-4B8F-A9AC-204251AE440C}
 		{39000D58-9F72-4FDC-AB03-AED799129DE6} = {1564814A-27F8-40A3-943E-8E950D5EE17D}
+		{294F2DF2-1F01-4478-A613-EF911C21DD2E} = {499A7CDB-1708-4460-A6B5-9A2B9AC50FAE}
+		{0CD42613-757B-4AA6-903D-CDFC0EAC697B} = {499A7CDB-1708-4460-A6B5-9A2B9AC50FAE}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {092CA5E3-6180-4ED7-A3CB-9B57FAC2AA85}

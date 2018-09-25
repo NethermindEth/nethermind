@@ -6,6 +6,11 @@ rm -rf snappy-visual-cpp
 rm -rf zlib-1.2.11
 rm -rf lz4-1.7.5
 
+git clone https://github.com/facebook/rocksdb.git
+cd rocksdb
+git checkout tags/v5.15.10
+cd ..
+
 wget https://github.com/gflags/gflags/archive/v2.2.0.zip
 unzip v2.2.0.zip
 rm v2.2.0.zip
@@ -47,10 +52,8 @@ cp x64/ZlibDllDebug/zlibwapi.lib x64/ZlibStatDebug/
 cp x64/ZlibDllRelease/zlibwapi.lib x64/ZlibStatRelease/
 cd ../../../..
 
-
-git clone https://github.com/facebook/rocksdb.git
 cd rocksdb
-git checkout tags/v5.15.10
+sed -i 's/\/MD/\/MT/g' CMakeLists.txt
 
 sed -i 's/Gflags\.Library/gflags-2.2.0/g' thirdparty.inc
 sed -i 's/\${GFLAGS_HOME}\/build\/native\/include/\${GFLAGS_HOME}\/target\/include/g' thirdparty.inc
@@ -75,6 +78,11 @@ sed -i 's/\${ZLIB_HOME}\/lib\/native\/retail\/amd64\/zlib\.lib/\${ZLIB_HOME}\/co
 mkdir build
 cd build
 export THIRDPARTY_HOME=C:/src/
-cmake -G "Visual Studio 14 Win64" -DJNI=1 -DGFLAGS=1 -DSNAPPY=1 -DLZ4=1 -DZLIB=1 -DXPRESS=1 ..
-"C:/Program Files (x86)/MSBuild/14.0/Bin/msbuild.exe" rocksdb.sln //p:Configuration=Release //p:Platform=x64
+cmake -G "Visual Studio 15 2017 Win64" -DOPTDBG=1 -DPORTABLE=0 -DWITH_MD_LIBRARY=0 -DWITH_AVX2=1 -DWITH_JNI=0 -DWITH_GFLAGS=0 -DWITH_SNAPPY=1 -DWITH_LZ4=1 -DWITH_ZLIB=1 -DWITH_XPRESS=0 ..
+/bin/find . -type f -name '*.vcxproj' -exec sed -i 's/MultiThreadedDLL/MultiThreaded/g; s/MultiThreadedDebugDLL/MultiThreadedDebug/g' '{}' ';'
+#cmake -G "Visual Studio 15 Win64" -DCMAKE_SYSTEM_VERSION=10.0.10240 -DJNI=1 -DGFLAGS=1 -DSNAPPY=1 -DLZ4=1 -DZLIB=1 -DXPRESS=0 ..
+#cmake -G "Visual Studio 14 Win64" -DJNI=1 -DGFLAGS=1 -DSNAPPY=1 -DLZ4=1 -DZLIB=1 -DXPRESS=1 ..
+
+"C:/Program Files (x86)/Microsoft Visual Studio/2017/Community/MSBuild/15.0/Bin/msbuild.exe" //m rocksdb.sln //p:Configuration=Release //p:Platform=x64
+#"C:/Program Files (x86)/MSBuild/14.0/Bin/msbuild.exe" //m rocksdb.sln //p:Configuration=Release //p:Platform=x64
 cd ../..
