@@ -2,10 +2,8 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>netcoreapp2.1</TargetFramework>
+    <LangVersion>7.2</LangVersion>
   </PropertyGroup>
-  <ItemGroup>
-    <PackageReference Include="RocksDbSharp" Version="5.4.6.10" />
-  </ItemGroup>
   <ItemGroup>
     <Reference Include="System.Console, Version=4.1.1.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a">
       <HintPath>..\..\..\..\..\Program Files\dotnet\sdk\NuGetFallbackFolder\microsoft.netcore.app\2.1.0\ref\netcoreapp2.1\System.Console.dll</HintPath>
