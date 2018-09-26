@@ -2,6 +2,9 @@ language: csharp
 mono: none
 dotnet: 2.1.402
 sudo: required
+os:
+  - linux
+  - osx
 git:
   depth: 3
 jobs:
