@@ -2,9 +2,6 @@ language: csharp
 mono: none
 dotnet: 2.1.402
 sudo: required
-os:
-  - linux
-  - osx
 git:
   depth: 3
 jobs:
@@ -50,7 +47,10 @@ jobs:
     - script: dotnet test src/Nethermind/Nethermind.DataStreams.Test
       name: "Nethermind.DataStreams.Test"
     - script: dotnet test src/Nethermind/Nethermind.Db.Test
-      name: "Nethermind.Db.Test"
+      name: "Nethermind.Db.Test.Linux"
+    - script: dotnet test src/Nethermind/Nethermind.Db.Test
+      name: "Nethermind.Db.Test.Osx"
+      os: osx
     - script: dotnet test src/Nethermind/Nethermind.Evm.Test
       name: "Nethermind.Evm.Test"
     - script: dotnet test src/Nethermind/Nethermind.JsonRpc.Test
