@@ -46,7 +46,7 @@ namespace Nethermind.Blockchain
 
         public const int DbLoadBatchSize = 1000;
 
-        private BigInteger _currentDbLoadBatchEnd;
+        private UInt256 _currentDbLoadBatchEnd;
 
         private readonly IDb _blockDb;
 
@@ -155,7 +155,7 @@ namespace Nethermind.Blockchain
                 BestSuggested = block.Header;
                 NewBestSuggestedBlock?.Invoke(this, new BlockEventArgs(block));
 
-                if (i % batchSize == batchSize - 1 && !(i == blocksToLoad - 1))
+                if (i % batchSize == batchSize - 1 && !(i == blocksToLoad - 1) && (Head.Number + (UInt256)batchSize) < blockNumber)
                 {
                     if (_logger.IsInfo)
                     {
@@ -165,7 +165,7 @@ namespace Nethermind.Blockchain
                     _dbBatchProcessed = new TaskCompletionSource<object>();
                     using (cancellationToken.Register(() => _dbBatchProcessed.SetCanceled()))
                     {
-                        _currentDbLoadBatchEnd = blockNumber;
+                        _currentDbLoadBatchEnd = blockNumber - (UInt256)batchSize;
                         await _dbBatchProcessed.Task;
                     }
                 }
