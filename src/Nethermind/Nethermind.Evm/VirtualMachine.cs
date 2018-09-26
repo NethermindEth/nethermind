@@ -19,6 +19,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.IO.IsolatedStorage;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -423,14 +424,12 @@ namespace Nethermind.Evm
             try
             {
                 (byte[] output, bool success) = precompile.Run(callData);
-                CallResult callResult = new CallResult(output);
-                callResult.PrecompileSuccess = success;
+                CallResult callResult = new CallResult(output, success);
                 return callResult;
             }
             catch (Exception ex)
             {
-                CallResult callResult = new CallResult(EmptyBytes);
-                callResult.PrecompileSuccess = false;
+                CallResult callResult = new CallResult(EmptyBytes, false);
                 return callResult;
             }
         }
@@ -2095,7 +2094,7 @@ namespace Nethermind.Evm
 
                         UpdateCurrentState();
                         EndInstructionTrace();
-                        return new CallResult(returnData);
+                        return new CallResult(returnData, null);
                     }
                     case Instruction.CALL:
                     case Instruction.CALLCODE:
@@ -2472,9 +2471,9 @@ namespace Nethermind.Evm
         }
     }
 
-    public class CallResult
+    public struct CallResult
     {
-        public static CallResult Exception = new CallResult(StatusCode.FailureBytes) {IsException = true};
+        public static CallResult Exception = new CallResult(StatusCode.FailureBytes, null, false, true);
         public static CallResult OutOfGasException = Exception;
         public static CallResult AccessViolationException = Exception;
         public static CallResult InvalidJumpDestination = Exception;
@@ -2482,29 +2481,32 @@ namespace Nethermind.Evm
         public static CallResult StaticCallViolationException = Exception;
         public static CallResult StackOverflowException = Exception; // TODO: use these to avoid CALL POP attacks
         public static CallResult StackUnderflowException = Exception; // TODO: use these to avoid CALL POP attacks
-        public static readonly CallResult Empty = new CallResult();
+        public static readonly CallResult Empty = new CallResult(Bytes.Empty, null);
 
         public CallResult(EvmState stateToExecute)
         {
             StateToExecute = stateToExecute;
+            Output = Bytes.Empty;
+            PrecompileSuccess = null;
+            ShouldRevert = false;
+            IsException = false;
         }
 
-        private CallResult()
+        public CallResult(byte[] output, bool? precompileSuccess, bool shouldRevert = false, bool isException = false)
         {
-        }
-
-        public CallResult(byte[] output, bool shouldRevert = false)
-        {
-            ShouldRevert = shouldRevert;
+            StateToExecute = null;
             Output = output;
+            PrecompileSuccess = precompileSuccess;
+            ShouldRevert = shouldRevert;
+            IsException = isException;
         }
 
         public bool ShouldRevert { get; }
-        public bool? PrecompileSuccess { get; set; } // TODO: check this behaviour as it seems it is required and previously that was not the case
+        public bool? PrecompileSuccess { get; } // TODO: check this behaviour as it seems it is required and previously that was not the case
 
         public EvmState StateToExecute { get; }
-        public byte[] Output { get; } = Bytes.Empty;
+        public byte[] Output { get; }
         public bool IsReturn => StateToExecute == null;
-        public bool IsException { get; set; }
+        public bool IsException { get; }
     }
 }
