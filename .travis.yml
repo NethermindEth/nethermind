@@ -46,6 +46,8 @@ jobs:
       name: "Nethermind.Core.Test"
     - script: dotnet test src/Nethermind/Nethermind.DataStreams.Test
       name: "Nethermind.DataStreams.Test"
+    - script: dotnet test src/Nethermind/Nethermind.Db.Test
+      name: "Nethermind.Db.Test"
     - script: dotnet test src/Nethermind/Nethermind.Evm.Test
       name: "Nethermind.Evm.Test"
     - script: dotnet test src/Nethermind/Nethermind.JsonRpc.Test
