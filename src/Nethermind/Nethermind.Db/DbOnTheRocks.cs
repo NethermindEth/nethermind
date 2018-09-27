@@ -239,5 +239,11 @@ namespace Nethermind.Db
             Receipts,
             Other
         }
+
+        public void Dispose()
+        {
+            _db?.Dispose();
+            _currentBatch?.Dispose();
+        }
     }
 }

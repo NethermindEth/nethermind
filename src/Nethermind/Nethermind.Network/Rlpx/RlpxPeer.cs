@@ -226,8 +226,7 @@ namespace Nethermind.Network.Rlpx
                 _logger.Warn($"Could not close rlpx connection in {Timeouts.TcpClose.TotalSeconds} seconds");
             }
 
-            _logger.Debug("Closed _bossGroup and _workerGroup");
-
+            if(_logger.IsInfo) _logger.Info("Local peer shutdown complete.. please wait for all components to close");
             _perfService.EndPerfCalc(key, "Close: Rlpx");
         }
     }

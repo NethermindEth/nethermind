@@ -62,5 +62,9 @@ namespace Nethermind.Store
         {
             _db = new Dictionary<byte[], byte[]>(1024, Bytes.EqualityComparer);
         }
+
+        public void Dispose()
+        {
+        }
     }
 }

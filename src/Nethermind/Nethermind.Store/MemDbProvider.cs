@@ -81,5 +81,11 @@ namespace Nethermind.Store
             if (_logger.IsDebug) _logger.Debug($"Taking DB snapshot at {snapshot}");
             return snapshot;
         }
+
+        public void Dispose()
+        {
+            _stateDb?.Dispose();
+            _codeDb?.Dispose();
+        }
     }
 }

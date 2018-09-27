@@ -16,9 +16,11 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
+
 namespace Nethermind.Store
 {
-    public interface IDbProvider : ISnapshotable
+    public interface IDbProvider : ISnapshotable, IDisposable
     {
         ISnapshotableDb GetOrCreateStateDb();
         ISnapshotableDb GetOrCreateCodeDb();

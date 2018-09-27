@@ -109,6 +109,7 @@ namespace Nethermind.Blockchain
             }
 
             await Task.WhenAll(_recoveryTask, _processorTask);
+            if(_logger.IsInfo) _logger.Info("Blockchain Processor shutdown complete.. please wait for all components to close");
             _perfService.EndPerfCalc(key, "Close: BlockchainProcessor");
         }
 

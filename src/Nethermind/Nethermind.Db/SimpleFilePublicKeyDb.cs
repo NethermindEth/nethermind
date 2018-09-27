@@ -162,5 +162,9 @@ namespace Nethermind.Db
             _anyPendingChanges = true;
             return value;
         }
+
+        public void Dispose()
+        {
+        }
     }
 }

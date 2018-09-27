@@ -16,9 +16,11 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
+
 namespace Nethermind.Store
 {
-    public interface IDb
+    public interface IDb : IDisposable
     {
         byte[] this[byte[] key]
         {

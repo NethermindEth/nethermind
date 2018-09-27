@@ -22,6 +22,7 @@ using System.Linq;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
+using DotNetty.Common.Concurrency;
 using Microsoft.Extensions.CommandLineUtils;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -43,11 +44,17 @@ namespace Nethermind.Runner
         protected readonly IPrivateKeyProvider PrivateKeyProvider;
         private IJsonRpcRunner _jsonRpcRunner = NullRunner.Instance;
         private IEthereumRunner _ethereumRunner = NullRunner.Instance;
+        private TaskCompletionSource<object> _cancelKeySource;
 
         protected RunnerAppBase(ILogger logger, IPrivateKeyProvider privateKeyProvider)
         {
             Logger = logger;
             PrivateKeyProvider = privateKeyProvider;
+            AppDomain.CurrentDomain.ProcessExit +=CurrentDomainOnProcessExit;
+        }
+
+        private void CurrentDomainOnProcessExit(object sender, EventArgs e)
+        {
         }
 
         public void Run(string[] args)
@@ -58,7 +65,7 @@ namespace Nethermind.Runner
             {
                 var configProvider = buildConfigProvider();
                 var initConfig = configProvider.GetConfig<IInitConfig>();
-                
+
                 if (initConfig.RemovingLogFilesEnabled)
                 {
                     RemoveLogFiles(initConfig.LogDirectory);
@@ -75,10 +82,12 @@ namespace Nethermind.Runner
                 }
 
                 Console.Title = initConfig.LogFileName;
+                Console.CancelKeyPress += ConsoleOnCancelKeyPress;
 
                 var serializer = new UnforgivingJsonSerializer();
                 Logger.Info($"Running Nethermind Runner, parameters:\n{serializer.Serialize(initConfig, true)}\n");
 
+                _cancelKeySource = new TaskCompletionSource<object>();
                 Task userCancelTask = Task.Factory.StartNew(() =>
                 {
                     Console.WriteLine("Enter 'e' to exit");
@@ -93,7 +102,7 @@ namespace Nethermind.Runner
                 });
 
                 await StartRunners(configProvider);
-                await userCancelTask;
+                await Task.WhenAny(userCancelTask, _cancelKeySource.Task);
 
                 Console.WriteLine("Closing, please wait until all functions are stopped properly...");
                 StopAsync().Wait();
@@ -105,6 +114,12 @@ namespace Nethermind.Runner
 
             app.Execute(args);
             appClosed.WaitOne();
+        }
+
+        private void ConsoleOnCancelKeyPress(object sender, ConsoleCancelEventArgs e)
+        {
+            _cancelKeySource.SetResult(null);
+            e.Cancel = false;
         }
 
         protected async Task StartRunners(IConfigProvider configProvider)
@@ -120,7 +135,7 @@ namespace Nethermind.Runner
                 var networkConfig = configProvider.GetConfig<INetworkConfig>();
                 networkConfig.MasterExternalIp = localHost;
                 networkConfig.MasterHost = localHost;
-                
+
                 ChainSpecLoader chainSpecLoader = new ChainSpecLoader(new UnforgivingJsonSerializer());
 
                 string path = initParams.ChainSpecPath;
@@ -137,10 +152,10 @@ namespace Nethermind.Runner
                 networkConfig.DbBasePath = initParams.BaseDbPath;
 
                 _ethereumRunner = new EthereumRunner(configProvider, networkHelper, logManager);
-                 await _ethereumRunner.Start().ContinueWith(x =>
-                 {
-                     if (x.IsFaulted && Logger.IsError) Logger.Error("Error during ethereum runner start", x.Exception);
-                 });
+                await _ethereumRunner.Start().ContinueWith(x =>
+                {
+                    if (x.IsFaulted && Logger.IsError) Logger.Error("Error during ethereum runner start", x.Exception);
+                });
 
                 if (initParams.JsonRpcEnabled)
                 {
@@ -174,9 +189,9 @@ namespace Nethermind.Runner
 
         protected async Task StopAsync()
         {
-            var jsonTask = _jsonRpcRunner?.StopAsync() ?? Task.CompletedTask;
+            _jsonRpcRunner?.StopAsync(); // do not await
             var ethereumTask = _ethereumRunner?.StopAsync() ?? Task.CompletedTask;
-            await Task.WhenAll(jsonTask, ethereumTask);
+            await ethereumTask;
         }
 
         private ConfigNode GetNode(NetworkNode networkNode, string localHost)
@@ -195,7 +210,7 @@ namespace Nethermind.Runner
         {
             Console.WriteLine("Removing log files.");
 
-            var logsDir = string.IsNullOrEmpty(logDirectory) ?  Path.Combine(PathUtils.GetExecutingDirectory(), "logs") : logDirectory;
+            var logsDir = string.IsNullOrEmpty(logDirectory) ? Path.Combine(PathUtils.GetExecutingDirectory(), "logs") : logDirectory;
             if (!Directory.Exists(logsDir))
             {
                 return;

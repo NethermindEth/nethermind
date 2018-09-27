@@ -24,8 +24,8 @@ namespace Nethermind.Core.Model
     public class NodeId : IEquatable<NodeId>, IEquatable<PublicKey>
     {
         public NodeId(PublicKey publicKey)
-        {
-            PublicKey = publicKey;
+        {       
+            PublicKey = publicKey ?? throw new ArgumentNullException(nameof(publicKey));
         }
 
         public PublicKey PublicKey { get; }
@@ -70,6 +70,21 @@ namespace Nethermind.Core.Model
         public override int GetHashCode()
         {
             return PublicKey.GetHashCode();
+        }
+        
+        public static bool operator ==(NodeId a, NodeId b)
+        {
+            if (ReferenceEquals(a, b))
+            {
+                return true;
+            }
+
+            return a?.Equals(b) ?? false;
+        }
+
+        public static bool operator !=(NodeId a, NodeId b)
+        {
+            return !(a == b);
         }
     }
 }

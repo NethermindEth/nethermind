@@ -16,9 +16,11 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Core.Crypto;
@@ -52,12 +54,12 @@ namespace Nethermind.Network.Discovery
             _masterNode = masterNode;
         }
 
-        public async Task LocateNodesAsync()
+        public async Task LocateNodesAsync(CancellationToken cancellationToken)
         {
-            await LocateNodesAsync(null);
+            await LocateNodesAsync(null, cancellationToken);
         }
 
-        public async Task LocateNodesAsync(byte[] searchedNodeId)
+        public async Task LocateNodesAsync(byte[] searchedNodeId, CancellationToken cancellationToken)
         {
             var alreadyTriedNodes = new List<string>();
             
@@ -84,8 +86,15 @@ namespace Nethermind.Network.Discovery
                     candTryIndex = candTryIndex + 1;
 
                     _logger.Trace($"Waiting {_configurationProvider.DiscoveryNewCycleWaitTime} for new nodes");
-                    //we need to wait some time for pong messages received from new nodes we reached out to    
-                    await Task.Delay(_configurationProvider.DiscoveryNewCycleWaitTime);
+                    //we need to wait some time for pong messages received from new nodes we reached out to
+                    try
+                    {
+                        await Task.Delay(_configurationProvider.DiscoveryNewCycleWaitTime, cancellationToken);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        return;
+                    }
                 }
 
                 if (!tryCandidates.Any())
@@ -110,11 +119,11 @@ namespace Nethermind.Network.Discovery
                     nodesTriedCount += nodesToSend.Length;
                     alreadyTriedNodes.AddRange(nodesToSend.Select(x => x.IdHashText));
 
-                    var results = await SendFindNode(nodesToSend, searchedNodeId);
+                    var results = await SendFindNode(nodesToSend, searchedNodeId, cancellationToken);
                     
                     foreach (var result in results)
                     {
-                        if (result.ResultType == ResultType.Failure)
+                        if ((result?.ResultType ?? ResultType.Failure) == ResultType.Failure)
                         {
                             failRequestCount++;
                         }
@@ -160,21 +169,28 @@ namespace Nethermind.Network.Discovery
             _logger.Trace(sb.ToString());
         }
 
-        private async Task<Result[]> SendFindNode(Node[] nodesToSend, byte[] searchedNodeId)
+        private async Task<Result[]> SendFindNode(Node[] nodesToSend, byte[] searchedNodeId, CancellationToken cancellationToken)
         {
             var sendFindNodeTasks = new List<Task<Result>>();
             foreach (var node in nodesToSend)
             {
-                var task = SendFindNode(node, searchedNodeId);
+                var task = SendFindNode(node, searchedNodeId, cancellationToken);
                 sendFindNodeTasks.Add(task);
             }
 
             return await Task.WhenAll(sendFindNodeTasks);
         }
 
-        private async Task<Result> SendFindNode(Node destinationNode, byte[] searchedNodeId)
+        private async Task<Result> SendFindNode(Node destinationNode, byte[] searchedNodeId, CancellationToken cancellationToken)
         {
-            return await Task.Run(() => SendFindNodeSync(destinationNode, searchedNodeId));
+            try
+            {
+                return await Task.Run(() => SendFindNodeSync(destinationNode, searchedNodeId), cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                return Result.Fail("Cancelled");
+            } 
         }
 
         private Result SendFindNodeSync(Node destinationNode, byte[] searchedNodeId)
@@ -186,6 +202,7 @@ namespace Nethermind.Network.Discovery
             {
                 return Result.Success();
             }
+            
             return Result.Fail($"Did not receive Neighbors reponse in time from: {destinationNode.Host}");
         }
     }

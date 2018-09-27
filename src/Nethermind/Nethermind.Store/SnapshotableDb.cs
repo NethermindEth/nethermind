@@ -292,5 +292,10 @@ namespace Nethermind.Store
             public byte[] Value { get; set; }
             public ChangeType ChangeType { get; set; }
         }
+
+        public void Dispose()
+        {
+            _db?.Dispose();
+        }
     }
 }

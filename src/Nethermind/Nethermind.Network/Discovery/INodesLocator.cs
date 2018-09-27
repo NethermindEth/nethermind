@@ -16,8 +16,8 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Network.Discovery.RoutingTable;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery
@@ -27,12 +27,12 @@ namespace Nethermind.Network.Discovery
         /// <summary>
         /// locate nodes for master node
         /// </summary>
-        Task LocateNodesAsync();
+        Task LocateNodesAsync(CancellationToken cancellationToken);
 
         /// <summary>
         /// locate nodes for specified node id
         /// </summary>
-        Task LocateNodesAsync(byte[] searchedNodeId);
+        Task LocateNodesAsync(byte[] searchedNodeId, CancellationToken cancellationToken);
         
         void Initialize(Node masterNode);
     }

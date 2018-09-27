@@ -54,5 +54,9 @@ namespace Nethermind.Store
 
         public ICollection<byte[]> Keys { get; }
         public ICollection<byte[]> Values { get; }
+
+        public void Dispose()
+        {
+        }
     }
 }

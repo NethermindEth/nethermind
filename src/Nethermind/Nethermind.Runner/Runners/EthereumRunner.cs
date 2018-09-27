@@ -131,29 +131,29 @@ namespace Nethermind.Runner.Runners
             _logger.Info("Shutting down...");
             _runnerCancellation.Cancel();
 
-            _logger.Debug("Stopping rlpx peer...");
+            _logger.Info("Stopping rlpx peer...");
             var rlpxPeerTask = (_rlpxPeer?.Shutdown() ?? Task.CompletedTask);
-           // await rlpxPeerTask;
 
-            _logger.Debug("Stopping peer manager...");
+            _logger.Info("Stopping peer manager...");
             var peerManagerTask =  (_peerManager?.StopAsync() ?? Task.CompletedTask);
-            //await peerManagerTask;
 
-            _logger.Debug("Stopping sync manager...");
+            _logger.Info("Stopping sync manager...");
             var syncManagerTask = (_syncManager?.StopAsync() ?? Task.CompletedTask);
-            //await syncManagerTask;
 
-            _logger.Debug("Stopping blockchain processor...");
+            _logger.Info("Stopping blockchain processor...");
             var blockchainProcessorTask = (_blockchainProcessor?.StopAsync() ?? Task.CompletedTask);
-            //await blockchainProcessorTask;
 
-            _logger.Debug("Stopping discovery app...");
+            _logger.Info("Stopping discovery app...");
             var discoveryStopTask = _discoveryApp?.StopAsync() ?? Task.CompletedTask;
-            //await discoveryStopTask;
 
             await Task.WhenAll(discoveryStopTask, rlpxPeerTask, peerManagerTask, syncManagerTask, blockchainProcessorTask);
-
-            _logger.Info("Goodbye...");
+            
+            _logger.Info("Closing DBs...");
+            _blockInfosDb.Dispose();
+            _receiptsDb.Dispose();
+            _blocksDb.Dispose();
+            _rocksDbProvider.Dispose();
+            _logger.Info("Ethereum shutdown complete... please wait for all components to close");
         }
 
         private ChainSpec LoadChainSpec(string chainSpecFile)
@@ -206,23 +206,23 @@ namespace Nethermind.Runner.Runners
                 _logger.Info($"DB {propertyInfo.Name}: {propertyInfo.GetValue(dbConfig)}");    
             }
             
-            var blocksDb = new DbOnTheRocks(
+            _blocksDb = new DbOnTheRocks(
                 Path.Combine(_dbBasePath, DbOnTheRocks.BlocksDbPath),
                 dbConfig);
             
-            var blockInfosDb = new DbOnTheRocks(
+            _blockInfosDb = new DbOnTheRocks(
                 Path.Combine(_dbBasePath, DbOnTheRocks.BlockInfosDbPath),
                 dbConfig);
             
-            var receiptsDb = new DbOnTheRocks(
+            _receiptsDb = new DbOnTheRocks(
                 Path.Combine(_dbBasePath, DbOnTheRocks.ReceiptsDbPath),
                 dbConfig);
 
             /* blockchain */
             _blockTree = new BlockTree(
-                blocksDb,
-                blockInfosDb,
-                receiptsDb,
+                _blocksDb,
+                _blockInfosDb,
+                _receiptsDb,
                 specProvider,
                 _logManager);
             
@@ -253,22 +253,22 @@ namespace Nethermind.Runner.Runners
                 _logManager);
 
             /* state */
-            var dbProvider = new RocksDbProvider(
+            _rocksDbProvider = new RocksDbProvider(
                 _dbBasePath,
                 _logManager,
                 dbConfig);
 
-            var stateDb = dbProvider.GetOrCreateStateDb();
+            var stateDb = _rocksDbProvider.GetOrCreateStateDb();
 
             var stateTree = new StateTree(stateDb);
 
             var stateProvider = new StateProvider(
                 stateTree,
-                dbProvider.GetOrCreateCodeDb(),
+                _rocksDbProvider.GetOrCreateCodeDb(),
                 _logManager);
 
             var storageProvider = new StorageProvider(
-                dbProvider,
+                _rocksDbProvider,
                 stateProvider,
                 _logManager);
 
@@ -298,7 +298,7 @@ namespace Nethermind.Runner.Runners
                 blockValidator,
                 rewardCalculator,
                 transactionProcessor,
-                dbProvider,
+                _rocksDbProvider,
                 stateProvider,
                 storageProvider,
                 transactionStore,
@@ -494,7 +494,11 @@ namespace Nethermind.Runner.Runners
         }
 
         private IRlpxPeer _rlpxPeer;
-        
+        private RocksDbProvider _rocksDbProvider;
+        private DbOnTheRocks _receiptsDb;
+        private DbOnTheRocks _blockInfosDb;
+        private DbOnTheRocks _blocksDb;
+
         private Task StartSync()
         {
             if (!_initConfig.SynchronizationEnabled)

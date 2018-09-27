@@ -68,5 +68,11 @@ namespace Nethermind.Db
         {
             return -1;
         }
+
+        public void Dispose()
+        {
+            _stateDb?.Dispose();
+            _codeDb?.Dispose();
+        }
     }
 }

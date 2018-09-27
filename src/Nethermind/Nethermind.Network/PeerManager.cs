@@ -160,14 +160,6 @@ namespace Nethermind.Network
             StopPingTimer();
 
             var closingTasks = new List<Task>();
-            var syncCloseTask = _synchronizationManager.StopAsync().ContinueWith(x =>
-            {
-                if (x.IsFaulted)
-                {
-                    if (_logger.IsError) _logger.Error("Error during _synchronizationManager stop.", x.Exception);
-                }
-            });
-            closingTasks.Add(syncCloseTask);
 
             if (_storageCommitTask != null)
             {
@@ -175,15 +167,17 @@ namespace Nethermind.Network
                 {
                     if (x.IsFaulted)
                     {
-                        if (_logger.IsError) _logger.Error("Error during peer persisntance stop.", x.Exception);
+                        if (_logger.IsError) _logger.Error("Error during peer persistance stop.", x.Exception);
                     }
                 });
+                
                 closingTasks.Add(storageCloseTask);
             }
 
             await Task.WhenAll(closingTasks);
 
             LogSessionStats();
+            if(_logger.IsInfo) _logger.Info("Peer Manager shutdown complete.. please wait for all components to close");
             _perfService.EndPerfCalc(key, "Close: PeerManager");
         }
 
@@ -1096,6 +1090,7 @@ namespace Nethermind.Network
                 _peerStorage.Commit();
                 _peerStorage.StartBatch();
             });
+            
             await _storageCommitTask;
             _storageCommitTask = null;
         }
