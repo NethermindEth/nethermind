@@ -30,7 +30,7 @@ then (any platform):
 git clone https://github.com/tkstanczak/nethermind.git
 cd nethermind/src/Nethermind
 git submodule update --init
-dotnet build
+dotnet build -c Release
 ```
 
 ## mainnet sync (networking is very unstable, current version should not be considered secure or correct, do not use for anything but experimenting with the source code)
