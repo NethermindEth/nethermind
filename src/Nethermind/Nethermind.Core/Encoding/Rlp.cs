@@ -958,10 +958,22 @@ namespace Nethermind.Core.Encoding
 
             public Bloom DecodeBloom()
             {
-                Span<byte> bloomBytes = DecodeByteArraySpan();
-                if (bloomBytes.Length == 0)
+                Span<byte> bloomBytes;
+                
+                // tks: not sure why but some nodes send us Blooms in a sequence form
+                // https://github.com/NethermindEth/nethermind/issues/113
+                if (Data[Position] == 249)
                 {
-                    return null;
+                    Position += 5; // tks: skip 249 1 2 129 127 and read 256 bytes 
+                    bloomBytes = Read(256);
+                }
+                else
+                {
+                    bloomBytes = DecodeByteArraySpan();
+                    if (bloomBytes.Length == 0)
+                    {
+                        return null;
+                    }
                 }
 
                 Bloom bloom = bloomBytes.Length == 256
@@ -1111,7 +1123,7 @@ namespace Nethermind.Core.Encoding
 
                     return Read(length);
                 }
-
+                
                 throw new RlpException($"Unexpected prefix value of {prefix} when decoding a byte array.");
             }
 

@@ -17,18 +17,12 @@
  */
 
 using System;
-using System.Collections.Generic;
-using System.Diagnostics;
-using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Blockchain.Difficulty;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
-using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using NSubstitute;
 using NUnit.Framework;
