@@ -111,7 +111,8 @@ namespace Nethermind.Network.P2P
         // TODO: this should be one level up
         public void EnableSnappy()
         {
-            if (_logger.IsTrace) _logger.Trace($"{RemoteNodeId} Enabling Snappy compression");
+            if (_logger.IsTrace) _logger.Trace($"{RemoteNodeId} Enabling Snappy compression and disabling framing");
+            _context.Channel.Pipeline.Get<NettyPacketSplitter>().DisableFraming();
             _context.Channel.Pipeline.AddBefore($"{nameof(Multiplexor)}#0", null, new SnappyDecoder(_logger));
             _context.Channel.Pipeline.AddBefore($"{nameof(Multiplexor)}#0", null, new SnappyEncoder(_logger));
         }

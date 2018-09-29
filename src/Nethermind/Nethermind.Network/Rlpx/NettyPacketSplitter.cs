@@ -29,9 +29,14 @@ namespace Nethermind.Network.Rlpx
     {
         public const int FrameBoundary = 16;
 
-        public const int MaxFrameSize = FrameBoundary * 64;
+        public int MaxFrameSize = FrameBoundary * 64;
         private int _contextId;
 
+        public void DisableFraming()
+        {
+            MaxFrameSize = int.MaxValue;
+        }
+        
         protected override void Encode(IChannelHandlerContext context, Packet message, List<object> output)
         {
             Interlocked.Increment(ref _contextId);

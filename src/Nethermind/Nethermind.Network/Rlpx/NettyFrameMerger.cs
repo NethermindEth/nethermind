@@ -21,7 +21,6 @@ using System.Collections.Generic;
 using System.Net.Sockets;
 using DotNetty.Codecs;
 using DotNetty.Transport.Channels;
-using Nethermind.Core;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;

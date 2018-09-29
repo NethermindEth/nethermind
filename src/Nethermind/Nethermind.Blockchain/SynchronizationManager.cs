@@ -37,7 +37,7 @@ namespace Nethermind.Blockchain
     // TODO: forks
     public class SynchronizationManager : ISynchronizationManager
     {
-        public const int BatchSize = 8; // need to dynamically adjust - look at this with multiplexor
+        public const int BatchSize = 192;
 
         private readonly ILogger _logger;
         private readonly IBlockValidator _blockValidator;
