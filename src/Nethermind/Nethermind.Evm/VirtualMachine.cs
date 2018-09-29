@@ -2268,7 +2268,7 @@ namespace Nethermind.Evm
 
                         UpdateCurrentState();
                         EndInstructionTrace();
-                        return new CallResult(errorDetails, true);
+                        return new CallResult(errorDetails, null, true);
                     }
                     case Instruction.INVALID:
                     {
