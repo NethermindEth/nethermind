@@ -1,4 +1,22 @@
-﻿using System;
+﻿/*
+ * Copyright (c) 2018 Demerzel Solutions Limited
+ * This file is part of the Nethermind library.
+ *
+ * The Nethermind library is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * The Nethermind library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+using System;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
@@ -10,48 +28,64 @@ using Newtonsoft.Json;
 
 namespace Nethermind.DiagTools
 {
-    class Program
+    internal class Program
     {
+        private static TxTraceCompare _comparer = new TxTraceCompare();
+        private static HttpClient _client = new HttpClient();
+        private static IJsonSerializer _serializer = new UnforgivingJsonSerializer();
+
         public static async Task Main(params string[] args)
         {
-            HttpClient client = new HttpClient();
-            string[] transactionHashes = Directory.GetFiles(@"D:\tx_traces\nethermind").Select(Path.GetFileNameWithoutExtension).ToArray();
+            var transactionHashes = Directory.GetFiles(@"D:\tx_traces\nethermind").Select(Path.GetFileNameWithoutExtension).ToArray();
             for (int i = 0; i < transactionHashes.Length; i++)
             {
+                string txHash = transactionHashes[i];
+                Console.WriteLine($"comparing {txHash} ({i} of {transactionHashes.Length})");
                 try
                 {
-                    string gethPath = "D:\\tx_traces\\geth_" + transactionHashes[i] + ".txt";
-                    string nethPath = "D:\\tx_traces\\nethermind\\" + transactionHashes[i] + ".txt";
-
-                    Console.WriteLine($"Downloading {i} of {transactionHashes.Length}");
-                    HttpRequestMessage msg = new HttpRequestMessage(HttpMethod.Post, "http://94.237.53.197:8545");
-                    msg.Content = new StringContent($"{{\"jsonrpc\":\"2.0\",\"method\":\"debug_traceTransaction\",\"params\":[\"{transactionHashes[i]}\"],\"id\":42}}");
-                    msg.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
-                    HttpResponseMessage rsp = await client.SendAsync(msg);
-                    string text = await rsp.Content.ReadAsStringAsync();
-                    dynamic parsedJson = JsonConvert.DeserializeObject(text);
-                    text = JsonConvert.SerializeObject(parsedJson, Formatting.Indented);
-                    
-                    File.WriteAllText(gethPath, text);
-
-                    IJsonSerializer serializer = new UnforgivingJsonSerializer();
-                    WrappedTransactionTrace gethTrace = serializer.Deserialize<WrappedTransactionTrace>(text);
-                    string nethText = File.ReadAllText(nethPath);
-                    TransactionTrace nethTrace = serializer.Deserialize<TransactionTrace>(nethText);
-
-                    if (gethTrace.Result.Gas != nethTrace.Gas)
-                    {
-                        Console.WriteLine($"Gas difference in {transactionHashes[i]} - neth {nethTrace.Gas} vs geth {gethTrace.Result.Gas}");
-                    }
+                    TransactionTrace gethTrace = await DownloadGethTrace(txHash);
+                    TransactionTrace nethTrace = DownloadNethTrace(txHash);
+                    _comparer.Compare(gethTrace, nethTrace);
                 }
                 catch (Exception e)
                 {
-                    Console.WriteLine($"Failed at {i} with {e}");
+                    Console.WriteLine($"  failed at {i} with {e}");
                 }
             }
 
             Console.WriteLine("Complete");
             Console.ReadLine();
+        }
+
+        private static TransactionTrace DownloadNethTrace(string txHash)
+        {
+            string nethPath = "D:\\tx_traces\\nethermind\\" + txHash + ".txt";
+            string nethText = File.ReadAllText(nethPath);
+            return _serializer.Deserialize<TransactionTrace>(nethText);
+        }
+
+        private static async Task<TransactionTrace> DownloadGethTrace(string txHash)
+        {
+            string gethPath = "D:\\tx_traces\\geth_" + txHash + ".txt";
+            string text;
+            if (!File.Exists(gethPath))
+            {
+                HttpRequestMessage msg = new HttpRequestMessage(HttpMethod.Post, "http://94.237.53.197:8545");
+                msg.Content = new StringContent($"{{\"jsonrpc\":\"2.0\",\"method\":\"debug_traceTransaction\",\"params\":[\"{txHash}\"],\"id\":42}}");
+                msg.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+                HttpResponseMessage rsp = await _client.SendAsync(msg);
+                text = await rsp.Content.ReadAsStringAsync();
+                File.WriteAllText(gethPath, text);
+            }
+            else
+            {
+                text = File.ReadAllText(gethPath);
+            }
+            
+            dynamic parsedJson = JsonConvert.DeserializeObject(text);
+            WrappedTransactionTrace gethTrace = _serializer.Deserialize<WrappedTransactionTrace>(text);
+            text = _serializer.Serialize(parsedJson, true);
+            return gethTrace.Result;
         }
     }
 }

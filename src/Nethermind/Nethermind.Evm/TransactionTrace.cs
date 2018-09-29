@@ -45,7 +45,7 @@ namespace Nethermind.Evm
         public BigInteger Gas { get; set; } // TODO: not implemented
 
         [JsonProperty("failed", Order = 1)]
-        public bool Failed { get; set; } // TODO: not implemented
+        public bool Failed { get; set; }
 
         [JsonProperty("returnValue", Order = 2)]
         public byte[] ReturnValue { get; set; } // TODO: not implemented

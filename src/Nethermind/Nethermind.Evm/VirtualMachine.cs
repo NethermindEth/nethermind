@@ -162,6 +162,7 @@ namespace Nethermind.Evm
 
                             if (currentState.ExecutionType == ExecutionType.Transaction || currentState.ExecutionType == ExecutionType.DirectPrecompile || currentState.ExecutionType == ExecutionType.DirectCreate)
                             {
+                                if(_trace != null) _trace.Failed = true;
                                 throw new EvmException();
                             }
 
@@ -179,6 +180,7 @@ namespace Nethermind.Evm
 
                     if (currentState.ExecutionType == ExecutionType.Transaction || currentState.ExecutionType == ExecutionType.DirectCreate || currentState.ExecutionType == ExecutionType.DirectPrecompile)
                     {
+                        if(_trace != null) _trace.Failed = _trace.Failed = callResult.ShouldRevert || callResult.IsException;
                         // TODO: review refund logic as there was a quick change for Refunds for Ropsten 2005537
                         return (callResult.Output, new TransactionSubstate(currentState.Refund, currentState.DestroyList, currentState.Logs, callResult.ShouldRevert));
                     }
@@ -291,6 +293,7 @@ namespace Nethermind.Evm
 
                     if (currentState.ExecutionType == ExecutionType.Transaction || currentState.ExecutionType == ExecutionType.DirectPrecompile || currentState.ExecutionType == ExecutionType.DirectCreate)
                     {
+                        if(_trace != null) _trace.Failed = true;
                         throw;
                     }
 

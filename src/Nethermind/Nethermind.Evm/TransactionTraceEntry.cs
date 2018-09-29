@@ -22,6 +22,7 @@ using Newtonsoft.Json;
 
 namespace Nethermind.Evm
 {
+    [JsonObject]
     public class TransactionTraceEntry
     {
         public TransactionTraceEntry()
@@ -49,7 +50,10 @@ namespace Nethermind.Evm
         [JsonProperty("stack", Order = 5)]
         public List<string> Stack { get; set; }
 
-        [JsonProperty("memory", Order = 6)]
+        [JsonProperty("error", Order = 6)]
+        public Error Error { get; set; }
+        
+        [JsonProperty("memory", Order = 7)]
         public List<string> Memory { get; set; }
 
         [JsonIgnore]
@@ -62,5 +66,10 @@ namespace Nethermind.Evm
         {
             return base.ToString();
         }
+    }
+
+    [JsonObject]
+    public class Error
+    {    
     }
 }
