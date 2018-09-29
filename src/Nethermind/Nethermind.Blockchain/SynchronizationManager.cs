@@ -37,7 +37,10 @@ namespace Nethermind.Blockchain
     // TODO: forks
     public class SynchronizationManager : ISynchronizationManager
     {
-        public const int BatchSize = 192;
+        public const int MinBatchSize = 8;
+        private int _batchSize = 256;
+        public const int MaxBatchSize = 256;
+        private int _sinceLastTimeout = 0;
 
         private readonly ILogger _logger;
         private readonly IBlockValidator _blockValidator;
@@ -617,7 +620,7 @@ namespace Nethermind.Blockchain
                 }
 
                 BigInteger blocksLeft = peerInfo.NumberAvailable - peerInfo.NumberReceived;
-                int blocksToRequest = (int) BigInteger.Min(blocksLeft + 1, BatchSize);
+                int blocksToRequest = (int) BigInteger.Min(blocksLeft + 1, _batchSize);
                 if (_logger.IsTrace) _logger.Trace($"Sync request to peer with {peerInfo.NumberAvailable} blocks. Got {peerInfo.NumberReceived} and asking for {blocksToRequest} more.");
                 
                 Task<BlockHeader[]> headersTask = peer.GetBlockHeaders(peerInfo.NumberReceived, blocksToRequest, 0, _peerSyncCancellationTokenSource.Token);
@@ -630,8 +633,10 @@ namespace Nethermind.Blockchain
 
                 if (headersTask.IsFaulted)
                 {
+                    _sinceLastTimeout = 0;
                     if (headersTask.Exception.InnerExceptions.Any(x => x.InnerException is TimeoutException))
                     {
+                        _batchSize = Math.Max(MinBatchSize, _batchSize / 2);
                         if (_logger.IsTrace) _logger.Error("Failed to retrieve headers when synchronizing (Timeout)", headersTask.Exception);
                     }
                     else
@@ -666,6 +671,7 @@ namespace Nethermind.Blockchain
 
                 if (bodiesTask.IsFaulted)
                 {
+                    _sinceLastTimeout = 0;
                     if (bodiesTask.Exception.InnerExceptions.Any(x => x.InnerException is TimeoutException))
                     {
                         if (_logger.IsTrace) _logger.Error("Failed to retrieve bodies when synchronizing (Timeout)", bodiesTask.Exception);
@@ -675,6 +681,12 @@ namespace Nethermind.Blockchain
                         if (_logger.IsError) _logger.Error("Failed to retrieve bodies when synchronizing", bodiesTask.Exception);
                     }
                     throw bodiesTask.Exception;
+                }
+                
+                _sinceLastTimeout++;
+                if (_sinceLastTimeout > 8)
+                {
+                    _batchSize = Math.Min(MaxBatchSize, _batchSize * 2);
                 }
 
                 for (int i = 0; i < blocks.Length; i++)
@@ -692,8 +704,8 @@ namespace Nethermind.Blockchain
                     Block parent = _blockTree.FindParent(blocks[0]);
                     if (parent == null)
                     {
-                        ancestorLookupLevel += BatchSize;
-                        peerInfo.NumberReceived = peerInfo.NumberReceived >= BatchSize ? peerInfo.NumberReceived - BatchSize : 0;
+                        ancestorLookupLevel += _batchSize;
+                        peerInfo.NumberReceived = peerInfo.NumberReceived >= _batchSize ? (peerInfo.NumberReceived - (UInt256)_batchSize) : UInt256.Zero;
                         continue;
                     }
                 }

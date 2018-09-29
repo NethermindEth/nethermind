@@ -42,7 +42,7 @@ namespace Nethermind.Network.Test.Rlpx
         [TestCase(3)]
         public void Splits_packet_into_frames(int framesCount)
         {
-            Packet packet = new Packet("eth", 2, new byte[(framesCount - 1) * NettyPacketSplitter.MaxFrameSize + 1]);
+            Packet packet = new Packet("eth", 2, new byte[(framesCount - 1) * NettyPacketSplitter.FrameBoundary * 64 + 1]);
             List<object> output = new List<object>();
 
             UnderTest underTest = new UnderTest();
@@ -54,7 +54,7 @@ namespace Nethermind.Network.Test.Rlpx
         [Test]
         public void Splits_packet_into_two_frames()
         {
-            Packet packet = new Packet("eth", 2, new byte[NettyPacketSplitter.MaxFrameSize + 1]);
+            Packet packet = new Packet("eth", 2, new byte[NettyPacketSplitter.FrameBoundary * 64 + 1]);
             List<object> output = new List<object>();
 
             UnderTest underTest = new UnderTest();
@@ -66,7 +66,7 @@ namespace Nethermind.Network.Test.Rlpx
         [Test]
         public void Padding_is_done_after_adding_packet_size()
         {
-            Packet packet = new Packet("eth", 2, new byte[NettyPacketSplitter.MaxFrameSize - 1]);
+            Packet packet = new Packet("eth", 2, new byte[NettyPacketSplitter.FrameBoundary * 64 - 1]);
             List<object> output = new List<object>();
 
             UnderTest underTest = new UnderTest();
