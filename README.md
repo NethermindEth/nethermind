@@ -1,5 +1,6 @@
 <img src="Nethermind.png" width="600">
-## Full .NET Core Ethereum client.
+
+# Full .NET Core Ethereum client.
 
 [![Gitter](https://img.shields.io/gitter/room/nethermindeth/nethermind.svg)](https://gitter.im/nethermindeth/nethermind)
 [![Build Status](https://travis-ci.org/NethermindEth/nethermind.svg?branch=master)](https://travis-ci.org/NethermindEth/nethermind)
