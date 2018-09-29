@@ -16,16 +16,28 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.JsonRpc.Module
-{
-    using System.Collections.Generic;
-    using Nethermind.JsonRpc.DataModel;
+using System.Collections.Generic;
+using System.Linq;
+using System.Numerics;
 
-    public interface INethmModule : IModule
+namespace Nethermind.JsonRpc.DataModel
+{
+    public class TransactionTrace : IJsonRpcResult
     {
-        ResultWrapper<IEnumerable<string>> nethm_getCompilers();
-        ResultWrapper<Data> nethm_compileLLL(string code);
-        ResultWrapper<string> nethm_compileSolidity(string parameters);
-        ResultWrapper<Data> nethm_compileSerpent(string code);
+        public BigInteger Gas { get; set; }
+        public bool Failed { get; set; }
+        public Data ReturnValue { get; set; }
+        public IEnumerable<TransactionTraceEntry> Entries { get; set; }
+
+        public object ToJson()
+        {
+            return new
+            {
+                gas = Gas,
+                failed = Failed,
+                returnValue = ReturnValue?.ToJson(),
+                structLogs = Entries?.Select(x => x.ToJson()).ToArray()
+            };
+        }
     }
 }

@@ -21,18 +21,13 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Security;
 using System.Text;
-using Nethermind.Blockchain.Validators;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Encoding;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
 using Nethermind.Dirichlet.Numerics;
-using Nethermind.Evm;
 using Nethermind.JsonRpc.DataModel;
-using Nethermind.Store;
-using NLog;
 using Block = Nethermind.JsonRpc.DataModel.Block;
 using Transaction = Nethermind.JsonRpc.DataModel.Transaction;
 using TransactionReceipt = Nethermind.JsonRpc.DataModel.TransactionReceipt;
@@ -44,7 +39,6 @@ namespace Nethermind.JsonRpc.Module
         private readonly IBlockchainBridge _blockchainBridge;
 
         //private readonly IEthereumSigner _signer;
-        private readonly IJsonSerializer _jsonSerializer;
         //private readonly IBlockTree _blockTree;
         //private readonly ITransactionStore _transactionStore;
         //private readonly ILogManager _logManager;
@@ -55,10 +49,9 @@ namespace Nethermind.JsonRpc.Module
         private readonly IJsonRpcModelMapper _modelMapper;
         //private readonly IReleaseSpec _releaseSpec;
 
-        public EthModule(IJsonSerializer jsonSerializer, IConfigProvider configurationProvider, IJsonRpcModelMapper modelMapper, ILogManager logManager, IBlockchainBridge blockchainBridge) : base(configurationProvider, logManager)
+        public EthModule(IJsonSerializer jsonSerializer, IConfigProvider configurationProvider, IJsonRpcModelMapper modelMapper, ILogManager logManager, IBlockchainBridge blockchainBridge) : base(configurationProvider, logManager, jsonSerializer)
         {
             _blockchainBridge = blockchainBridge;
-            _jsonSerializer = jsonSerializer;
             _modelMapper = modelMapper;
         }
 
@@ -695,11 +688,6 @@ namespace Nethermind.JsonRpc.Module
             //TODO confirm it is correct
             var code = _blockchainBridge.GetCode(account.CodeHash);
             return ResultWrapper<Data>.Success(new Data(code));
-        }
-
-        private string GetJsonLog(object model)
-        {
-            return _jsonSerializer.Serialize(model);
         }
     }
 }

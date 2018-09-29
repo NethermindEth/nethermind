@@ -24,6 +24,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Model;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.Evm;
 using Nethermind.KeyStore;
 using Nethermind.Store;
 
@@ -98,6 +99,26 @@ namespace Nethermind.JsonRpc.Module
         public TransactionReceipt GetTransactionReceipt(Keccak transactionHash)
         {
             return _transactionStore.GetTransactionReceipt(transactionHash);
+        }
+
+        public TransactionTrace GetTransactionTrace(Keccak transactionHash)
+        {
+            return new TransactionTrace
+            {
+                Gas = 111000,
+                Failed = false,
+                Entries = new List<TransactionTraceEntry>
+                {
+                    new TransactionTraceEntry
+                    {
+                        Gas = 1200,
+                        Depth = 3,
+                        GasCost = 2122,
+                        Pc = 121212,
+                        Operation = "Add"
+                    }
+                }
+            };
         }
 
         public byte[] GetCode(Address address)

@@ -24,6 +24,7 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
 
 namespace Nethermind.Runner.TestClient
@@ -39,7 +40,7 @@ namespace Nethermind.Runner.TestClient
             _logger = logger;
             _jsonSerializer = jsonSerializer;
 
-            _client = new HttpClient {BaseAddress = new Uri("http://127.0.0.1:8545") };
+            _client = new HttpClient {BaseAddress = new Uri("http://127.0.0.1:8345") };
             _client.DefaultRequestHeaders.Accept.Clear();
             _client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         }
@@ -81,6 +82,22 @@ namespace Nethermind.Runner.TestClient
             try
             {
                 var request = GetJsonRequest("eth_accounts", null);
+                var response = await _client.PostAsync("", new StringContent(request, Encoding.UTF8, "application/json"));
+                var content = await response.Content.ReadAsStringAsync();
+                return content;
+            }
+            catch (Exception e)
+            {
+                _logger.Error("Error during execution", e);
+                return $"Error: {e.Message}";
+            }
+        }
+
+        public async Task<string> SendDebugTraceTransaction()
+        {
+            try
+            {
+                var request = GetJsonRequest("debug_traceTransaction", new []{ "0x41941023680923e0fe4d74a34bdac8141f2540e3ae90623718e47d66d1ca4a2d" } );
                 var response = await _client.PostAsync("", new StringContent(request, Encoding.UTF8, "application/json"));
                 var content = await response.Content.ReadAsStringAsync();
                 return content;

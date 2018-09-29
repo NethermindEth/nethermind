@@ -107,6 +107,27 @@ namespace Nethermind.JsonRpc
             };
         }
 
+        public TransactionTrace MapTransactionTrace(Evm.TransactionTrace transactionTrace)
+        {
+            return new TransactionTrace
+            {
+                Gas = transactionTrace.Gas,
+                Failed = transactionTrace.Failed,
+                ReturnValue = transactionTrace.ReturnValue != null ? new Data(transactionTrace.ReturnValue) : null,
+                Entries = transactionTrace.Entries?.Select(x => new TransactionTraceEntry
+                {
+                    Pc = x.Pc,
+                    Operation = x.Operation,
+                    Gas = x.Gas,
+                    GasCost = x.GasCost,
+                    Depth = x.Depth,
+                    Stack = x.Stack,
+                    Memory = x.Memory,
+                    Storage = x.Storage
+                }).ToArray()
+            };
+        }
+
         public Log MapLog(LogEntry logEntry)
         {
             throw new System.NotImplementedException();

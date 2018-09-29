@@ -23,6 +23,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Model;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.Evm;
 
 namespace Nethermind.JsonRpc.Module
 {
@@ -43,6 +44,7 @@ namespace Nethermind.JsonRpc.Module
         Transaction GetTransaction(Keccak transactionHash);
         Keccak GetBlockHash(Keccak transactionHash);
         TransactionReceipt GetTransactionReceipt(Keccak transactionHash);
+        TransactionTrace GetTransactionTrace(Keccak transactionHash);
 
         byte[] GetCode(Address address);
         byte[] GetCode(Keccak codeHash);
