@@ -104,6 +104,45 @@ namespace Nethermind.Secp256k1
             [DllImport("secp256k1.so")]
             public static extern bool secp256k1_ecdsa_recover( /* secp256k1_context */ IntPtr context, byte[] publicKey, byte[] signature, byte[] message);
         }
+        
+        private static class MacLib
+        {
+            [SuppressUnmanagedCodeSecurity]
+            [DllImport("secp256k1.osx.so")]
+            public static extern /* secp256k1_context */ IntPtr secp256k1_context_create(uint flags);
+
+            [SuppressUnmanagedCodeSecurity]
+            [DllImport("secp256k1.osx.so")]
+            public static extern /* void */ IntPtr secp256k1_context_destroy(IntPtr context);
+
+            [SuppressUnmanagedCodeSecurity]
+            [DllImport("secp256k1.osx.so")]
+            public static extern bool secp256k1_ec_seckey_verify( /* secp256k1_context */ IntPtr context, byte[] seckey);
+
+            [SuppressUnmanagedCodeSecurity]
+            [DllImport("secp256k1.osx.so")]
+            public static extern bool secp256k1_ec_pubkey_create( /* secp256k1_context */ IntPtr context, byte[] pubkey, byte[] seckey);
+
+            [SuppressUnmanagedCodeSecurity]
+            [DllImport("secp256k1.osx.so")]
+            public static extern bool secp256k1_ec_pubkey_serialize( /* secp256k1_context */ IntPtr context, byte[] serializedPublicKey, ref uint outputSize, byte[] publicKey, uint flags);
+
+            [SuppressUnmanagedCodeSecurity]
+            [DllImport("secp256k1.osx.so")]
+            public static extern bool secp256k1_ecdsa_sign_recoverable( /* secp256k1_context */ IntPtr context, byte[] signature, byte[] messageHash, byte[] privateKey, IntPtr nonceFunction, IntPtr nonceData);
+
+            [SuppressUnmanagedCodeSecurity]
+            [DllImport("secp256k1.osx.so")]
+            public static extern bool secp256k1_ecdsa_recoverable_signature_serialize_compact( /* secp256k1_context */ IntPtr context, byte[] compactSignature, out int recoveryId, byte[] signature);
+
+            [SuppressUnmanagedCodeSecurity]
+            [DllImport("secp256k1.osx.so")]
+            public static extern bool secp256k1_ecdsa_recoverable_signature_parse_compact( /* secp256k1_context */ IntPtr context, byte[] signature, byte[] compactSignature, int recoveryId);
+
+            [SuppressUnmanagedCodeSecurity]
+            [DllImport("secp256k1.osx.so")]
+            public static extern bool secp256k1_ecdsa_recover( /* secp256k1_context */ IntPtr context, byte[] publicKey, byte[] signature, byte[] message);
+        }
 
         /* constants from pycoin (https://github.com/richardkiss/pycoin)*/
         private const uint Secp256K1FlagsTypeMask = (1 << 8) - 1;
@@ -127,41 +166,64 @@ namespace Nethermind.Secp256k1
         private const uint Secp256K1EcCompressed = Secp256K1FlagsTypeCompression | Secp256K1FlagsBitCompression;
         private const uint Secp256K1EcUncompressed = Secp256K1FlagsTypeCompression;
 
-        private static readonly bool IsWindows;
+        private static readonly OsPlatform Platform;
+        private static bool IsWindows => Platform == OsPlatform.Windows;
         private static readonly IntPtr Context;
+
+        private enum OsPlatform
+        {
+            Windows,
+            Linux,
+            Mac
+        }
 
         static Proxy()
         {
-            IsWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows); // TODO: test with MACs
-            Context = IsWindows
-                ? Win64Lib.secp256k1_context_create(Secp256K1ContextSign | Secp256K1ContextVerify)
-                : PosixLib.secp256k1_context_create(Secp256K1ContextSign | Secp256K1ContextVerify);
+            Platform = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? OsPlatform.Windows : 
+                (RuntimeInformation.IsOSPlatform(OSPlatform.Linux) ? OsPlatform.Linux : OsPlatform.Mac);
+
+            Context = For(() => Win64Lib.secp256k1_context_create(Secp256K1ContextSign | Secp256K1ContextVerify),
+                () => PosixLib.secp256k1_context_create(Secp256K1ContextSign | Secp256K1ContextVerify),
+                () => MacLib.secp256k1_context_create(Secp256K1ContextSign | Secp256K1ContextVerify));
         }
 
         public static bool VerifyPrivateKey(byte[] privateKey)
+            => For(() => Win64Lib.secp256k1_ec_seckey_verify(Context, privateKey),
+                () => PosixLib.secp256k1_ec_seckey_verify(Context, privateKey),
+                () => MacLib.secp256k1_ec_seckey_verify(Context, privateKey));
+
+        private static T For<T>(Func<T> windows, Func<T> linux, Func<T> mac)
         {
-            bool result = IsWindows
-                ? Win64Lib.secp256k1_ec_seckey_verify(Context, privateKey)
-                : PosixLib.secp256k1_ec_seckey_verify(Context, privateKey);
-            return result;
+            switch (Platform)
+            {
+                case OsPlatform.Windows: return windows();
+                case OsPlatform.Linux: return linux();
+                case OsPlatform.Mac: return mac();
+            }
+
+            throw new InvalidOperationException("Invalid platform.");
         }
 
         public static byte[] GetPublicKey(byte[] privateKey, bool compressed)
         {
             byte[] publicKey = new byte[64];
             byte[] serializedPublicKey = new byte[compressed ? 33 : 65];
-            if (IsWindows
-                ? !Win64Lib.secp256k1_ec_pubkey_create(Context, publicKey, privateKey)
-                : !PosixLib.secp256k1_ec_pubkey_create(Context, publicKey, privateKey))
+
+            if (Unavailable(
+                () => Win64Lib.secp256k1_ec_pubkey_create(Context, publicKey, privateKey),
+                () => PosixLib.secp256k1_ec_pubkey_create(Context, publicKey, privateKey),
+                () => MacLib.secp256k1_ec_pubkey_create(Context, publicKey, privateKey)))
             {
                 return null;
             }
 
             uint outputSize = (uint)serializedPublicKey.Length;
             uint flags = compressed ? Secp256K1EcCompressed : Secp256K1EcUncompressed;
-            if (IsWindows
-                ? !Win64Lib.secp256k1_ec_pubkey_serialize(Context, serializedPublicKey, ref outputSize, publicKey, flags)
-                : !PosixLib.secp256k1_ec_pubkey_serialize(Context, serializedPublicKey, ref outputSize, publicKey, flags))
+
+            if (Unavailable(
+                () => Win64Lib.secp256k1_ec_pubkey_serialize(Context, serializedPublicKey, ref outputSize, publicKey, flags),
+                () => PosixLib.secp256k1_ec_pubkey_serialize(Context, serializedPublicKey, ref outputSize, publicKey, flags),
+                () => MacLib.secp256k1_ec_pubkey_serialize(Context, serializedPublicKey, ref outputSize, publicKey, flags)))
             {
                 return null;
             }
@@ -174,16 +236,20 @@ namespace Nethermind.Secp256k1
             byte[] recoverableSignature = new byte[65];
             byte[] compactSignature = new byte[64];
             recoveryId = 0;
-            if (IsWindows
-                ? !Win64Lib.secp256k1_ecdsa_sign_recoverable(Context, recoverableSignature, messageHash, privateKey, IntPtr.Zero, IntPtr.Zero)
-                : !PosixLib.secp256k1_ecdsa_sign_recoverable(Context, recoverableSignature, messageHash, privateKey, IntPtr.Zero, IntPtr.Zero))
+
+            if (Unavailable(
+                () => Win64Lib.secp256k1_ecdsa_sign_recoverable(Context, recoverableSignature, messageHash, privateKey, IntPtr.Zero, IntPtr.Zero),
+                () => PosixLib.secp256k1_ecdsa_sign_recoverable(Context, recoverableSignature, messageHash, privateKey, IntPtr.Zero, IntPtr.Zero),
+                () => MacLib.secp256k1_ecdsa_sign_recoverable(Context, recoverableSignature, messageHash, privateKey, IntPtr.Zero, IntPtr.Zero)))
             {
                 return null;
             }
 
-            if (IsWindows
-                ? !Win64Lib.secp256k1_ecdsa_recoverable_signature_serialize_compact(Context, compactSignature, out recoveryId, recoverableSignature)
-                : !PosixLib.secp256k1_ecdsa_recoverable_signature_serialize_compact(Context, compactSignature, out recoveryId, recoverableSignature))
+            if (IsWindows ? 
+                !Win64Lib.secp256k1_ecdsa_recoverable_signature_serialize_compact(Context, compactSignature, out recoveryId, recoverableSignature)
+                : (Platform == OsPlatform.Linux ? 
+                    !PosixLib.secp256k1_ecdsa_recoverable_signature_serialize_compact(Context, compactSignature, out recoveryId, recoverableSignature)
+                    : !MacLib.secp256k1_ecdsa_recoverable_signature_serialize_compact(Context, compactSignature, out recoveryId, recoverableSignature)))
             {
                 return null;
             }
@@ -199,28 +265,35 @@ namespace Nethermind.Secp256k1
             uint flags = compressed ? Secp256K1EcCompressed : Secp256K1EcUncompressed;
 
             byte[] recoverableSignature = new byte[65];
-            if (IsWindows
-                ? !Win64Lib.secp256k1_ecdsa_recoverable_signature_parse_compact(Context, recoverableSignature, compactSignature, recoveryId)
-                : !PosixLib.secp256k1_ecdsa_recoverable_signature_parse_compact(Context, recoverableSignature, compactSignature, recoveryId))
+
+            if (Unavailable(
+                () => Win64Lib.secp256k1_ecdsa_recoverable_signature_parse_compact(Context, recoverableSignature, compactSignature, recoveryId),
+                () => PosixLib.secp256k1_ecdsa_recoverable_signature_parse_compact(Context, recoverableSignature, compactSignature, recoveryId),
+                () => MacLib.secp256k1_ecdsa_recoverable_signature_parse_compact(Context, recoverableSignature, compactSignature, recoveryId)))
             {
                 return null;
             }
 
-            if (IsWindows
-                ? !Win64Lib.secp256k1_ecdsa_recover(Context, publicKey, recoverableSignature, messageHash)
-                : !PosixLib.secp256k1_ecdsa_recover(Context, publicKey, recoverableSignature, messageHash))
+            if (Unavailable(
+                () => Win64Lib.secp256k1_ecdsa_recover(Context, publicKey, recoverableSignature, messageHash),
+                () => PosixLib.secp256k1_ecdsa_recover(Context, publicKey, recoverableSignature, messageHash),
+                () => MacLib.secp256k1_ecdsa_recover(Context, publicKey, recoverableSignature, messageHash)))
             {
                 return null;
             }
 
-            if (IsWindows
-                ? !Win64Lib.secp256k1_ec_pubkey_serialize(Context, serializedPublicKey, ref outputSize, publicKey, flags)
-                : !PosixLib.secp256k1_ec_pubkey_serialize(Context, serializedPublicKey, ref outputSize, publicKey, flags))
+            if (Unavailable(
+                () => Win64Lib.secp256k1_ec_pubkey_serialize(Context, serializedPublicKey, ref outputSize, publicKey, flags),
+                () => PosixLib.secp256k1_ec_pubkey_serialize(Context, serializedPublicKey, ref outputSize, publicKey, flags),
+                () => MacLib.secp256k1_ec_pubkey_serialize(Context, serializedPublicKey, ref outputSize, publicKey, flags)))
             {
                 return null;
             }
 
             return serializedPublicKey;
         }
+
+        private static bool Unavailable(Func<bool> windows, Func<bool> linux, Func<bool> mac)
+            => IsWindows ? !windows() : (Platform == OsPlatform.Linux ? !linux() : !mac());
     }
 }
