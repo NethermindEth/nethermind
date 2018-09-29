@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Text.RegularExpressions;
 using Nethermind.Config;
+using Nethermind.Core;
 using Nethermind.Core.Logging;
 using Nethermind.JsonRpc.DataModel;
 using Nethermind.LibSolc;
@@ -13,8 +14,7 @@ namespace Nethermind.JsonRpc.Module
 {
     public class NethmModule : ModuleBase, INethmModule
     {
-        public NethmModule(IConfigProvider configurationProvider, ILogManager logManager) : base(configurationProvider,
-            logManager)
+        public NethmModule(IConfigProvider configurationProvider, ILogManager logManager, IJsonSerializer jsonSerializer) : base(configurationProvider, logManager, jsonSerializer)
         {
             
         }

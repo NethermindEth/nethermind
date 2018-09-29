@@ -26,7 +26,7 @@ namespace Nethermind.JsonRpc.Module
 {
     public class ShhModule : ModuleBase, IShhModule
     {
-        public ShhModule(IConfigProvider configurationProvider, ILogManager logManager) : base(configurationProvider, logManager)
+        public ShhModule(IConfigProvider configurationProvider, ILogManager logManager, IJsonSerializer jsonSerializer) : base(configurationProvider, logManager, jsonSerializer)
         {
         }
 

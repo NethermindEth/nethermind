@@ -26,7 +26,7 @@ namespace Nethermind.JsonRpc.Module
 {
     public class NetModule : ModuleBase, INetModule
     {
-        public NetModule(IConfigProvider configurationProvider, ILogManager logManager) : base(configurationProvider, logManager)
+        public NetModule(IConfigProvider configurationProvider, ILogManager logManager, IJsonSerializer jsonSerializer) : base(configurationProvider, logManager, jsonSerializer)
         {
         }
 

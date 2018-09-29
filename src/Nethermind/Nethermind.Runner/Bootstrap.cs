@@ -69,6 +69,8 @@ namespace Nethermind.Runner
             services.AddSingleton<IWeb3Module, Web3Module>();
             services.AddSingleton<IEthModule, EthModule>();
             services.AddSingleton<IShhModule, ShhModule>();
+            services.AddSingleton<INethmModule, NethmModule>();
+            services.AddSingleton<IDebugModule, DebugModule>();
             services.AddSingleton<IJsonRpcService, JsonRpcService>();
         }
     }

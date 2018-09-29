@@ -29,11 +29,17 @@ namespace Nethermind.JsonRpc.Module
     {
         protected readonly ILogger Logger;
         protected readonly IJsonRpcConfig ConfigurationProvider;
+        protected readonly IJsonSerializer _jsonSerializer;
 
-        protected ModuleBase(IConfigProvider configurationProvider, ILogManager logManager)
+        protected ModuleBase(IConfigProvider configurationProvider, ILogManager logManager, IJsonSerializer jsonSerializer)
         {
+            _jsonSerializer = jsonSerializer;
             Logger = logManager.GetClassLogger();
             ConfigurationProvider = configurationProvider.GetConfig<IJsonRpcConfig>();
+        }
+
+        public virtual void Initialize()
+        {
         }
 
         protected Data Sha3(Data data)
@@ -43,8 +49,9 @@ namespace Nethermind.JsonRpc.Module
             return new Data(keccakValue);
         }
 
-        public virtual void Initialize()
+        protected string GetJsonLog(object model)
         {
+            return _jsonSerializer.Serialize(model);
         }
     }
 }

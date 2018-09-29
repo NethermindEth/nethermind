@@ -29,6 +29,7 @@ namespace Nethermind.JsonRpc
         Block MapBlock(Core.Block block, bool returnFullTransactionObjects);
         Transaction MapTransaction(Core.Transaction transaction, Core.Block block);
         TransactionReceipt MapTransactionReceipt(Core.TransactionReceipt receipt, Core.Transaction transaction, Core.Block block);
+        TransactionTrace MapTransactionTrace(Evm.TransactionTrace transactionTrace);
         Log MapLog(LogEntry logEntry);
     }
 }

@@ -16,16 +16,12 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.JsonRpc.DataModel;
+
 namespace Nethermind.JsonRpc.Module
 {
-    using System.Collections.Generic;
-    using Nethermind.JsonRpc.DataModel;
-
-    public interface INethmModule : IModule
+    public interface IDebugModule : IModule
     {
-        ResultWrapper<IEnumerable<string>> nethm_getCompilers();
-        ResultWrapper<Data> nethm_compileLLL(string code);
-        ResultWrapper<string> nethm_compileSolidity(string parameters);
-        ResultWrapper<Data> nethm_compileSerpent(string code);
+        ResultWrapper<TransactionTrace> debug_traceTransaction(Data transationHash);
     }
 }

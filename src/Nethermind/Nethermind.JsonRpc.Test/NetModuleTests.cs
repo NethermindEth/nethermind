@@ -32,7 +32,7 @@ namespace Nethermind.JsonRpc.Test
         [SetUp]
         public void Initialize()
         {
-            _netModule = new NetModule(new JsonConfigProvider(), NullLogManager.Instance);
+            _netModule = new NetModule(new JsonConfigProvider(), NullLogManager.Instance, new JsonSerializer(NullLogManager.Instance));
         }
 
         [Test]

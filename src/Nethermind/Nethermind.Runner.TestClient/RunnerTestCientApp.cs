@@ -35,7 +35,7 @@ namespace Nethermind.Runner.TestClient
         {
             while (true)
             {
-                Console.WriteLine("Options: 1 - eth_protocolVersion, 2 - eth_getBlockByNumber, 3 - eth_accounts, e - exit");
+                Console.WriteLine("Options: 1 - eth_protocolVersion, 2 - eth_getBlockByNumber, 3 - eth_accounts, 4 - debug_traceTransaction, e - exit");
                 Console.WriteLine("Enter command: ");
                 var action = Console.ReadLine();
                 if (action.CompareIgnoreCaseTrim("e"))
@@ -59,6 +59,12 @@ namespace Nethermind.Runner.TestClient
                 else if (action.CompareIgnoreCaseTrim("3"))
                 {
                     var result = Task.Run(() => _cient.SendEthAccounts());
+                    result.Wait();
+                    PrintResult(result.Result);
+                }
+                else if (action.CompareIgnoreCaseTrim("4"))
+                {
+                    var result = Task.Run(() => _cient.SendDebugTraceTransaction());
                     result.Wait();
                     PrintResult(result.Result);
                 }

@@ -28,7 +28,7 @@ namespace Nethermind.JsonRpc.Module
 {
     public class Web3Module : ModuleBase, IWeb3Module
     {
-        public Web3Module(IConfigProvider configurationProvider, ILogManager logManager) : base(configurationProvider, logManager)
+        public Web3Module(IConfigProvider configurationProvider, ILogManager logManager, IJsonSerializer jsonSerializer) : base(configurationProvider, logManager, jsonSerializer)
         {
         }
 
