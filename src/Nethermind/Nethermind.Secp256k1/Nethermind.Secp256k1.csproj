@@ -7,12 +7,6 @@
     <None Include="./External/Win64/secp256k1.dll" Link="secp256k1.dll">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Include="./External/Posix/libsecp256k1.a" Link="libsecp256k1.a">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Include="./External/Posix/libsecp256k1.la" Link="libsecp256k1.la">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
     <None Include="./External/Posix/libsecp256k1.so" Link="libsecp256k1.so">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
@@ -20,6 +14,12 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Include="./External/Posix/libsecp256k1.so.0.0.0" Link="libsecp256k1.so.0.0.0">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="./External/Mac/libsecp256k1.osx.so" Link="libsecp256k1.osx.so">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="./External/Mac/libsecp256k1.0.osx.so" Link="libsecp256k1.0.osx.so">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>
