@@ -6,6 +6,7 @@ using System.Net.Http.Headers;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Evm;
+using Newtonsoft.Json;
 
 namespace Nethermind.DiagTools
 {
@@ -23,11 +24,14 @@ namespace Nethermind.DiagTools
                     string nethPath = "D:\\tx_traces\\nethermind\\" + transactionHashes[i] + ".txt";
 
                     Console.WriteLine($"Downloading {i} of {transactionHashes.Length}");
-                    HttpRequestMessage msg = new HttpRequestMessage(HttpMethod.Post, "http://10.0.1.6:8545");
+                    HttpRequestMessage msg = new HttpRequestMessage(HttpMethod.Post, "http://94.237.53.197:8545");
                     msg.Content = new StringContent($"{{\"jsonrpc\":\"2.0\",\"method\":\"debug_traceTransaction\",\"params\":[\"{transactionHashes[i]}\"],\"id\":42}}");
                     msg.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
                     HttpResponseMessage rsp = await client.SendAsync(msg);
                     string text = await rsp.Content.ReadAsStringAsync();
+                    dynamic parsedJson = JsonConvert.DeserializeObject(text);
+                    text = JsonConvert.SerializeObject(parsedJson, Formatting.Indented);
+                    
                     File.WriteAllText(gethPath, text);
 
                     IJsonSerializer serializer = new UnforgivingJsonSerializer();
