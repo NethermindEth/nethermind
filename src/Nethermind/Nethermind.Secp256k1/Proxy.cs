@@ -104,7 +104,7 @@ namespace Nethermind.Secp256k1
             [DllImport("secp256k1.so")]
             public static extern bool secp256k1_ecdsa_recover( /* secp256k1_context */ IntPtr context, byte[] publicKey, byte[] signature, byte[] message);
         }
-        
+
         private static class MacLib
         {
             [SuppressUnmanagedCodeSecurity]
@@ -167,7 +167,6 @@ namespace Nethermind.Secp256k1
         private const uint Secp256K1EcUncompressed = Secp256K1FlagsTypeCompression;
 
         private static readonly OsPlatform Platform;
-        private static bool IsWindows => Platform == OsPlatform.Windows;
         private static readonly IntPtr Context;
 
         private enum OsPlatform
@@ -179,30 +178,34 @@ namespace Nethermind.Secp256k1
 
         static Proxy()
         {
-            Platform = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? OsPlatform.Windows : 
-                (RuntimeInformation.IsOSPlatform(OSPlatform.Linux) ? OsPlatform.Linux : OsPlatform.Mac);
-
+            Platform = GetPlatform();
             Context = For(() => Win64Lib.secp256k1_context_create(Secp256K1ContextSign | Secp256K1ContextVerify),
                 () => PosixLib.secp256k1_context_create(Secp256K1ContextSign | Secp256K1ContextVerify),
                 () => MacLib.secp256k1_context_create(Secp256K1ContextSign | Secp256K1ContextVerify));
+        }
+
+        private static OsPlatform GetPlatform()
+        {
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows)) 
+            {
+                return OsPlatform.Windows;
+            }
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux)) 
+            {
+                return OsPlatform.Linux;
+            }
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX)) 
+            {
+                return OsPlatform.Mac;
+            }
+
+            throw new InvalidOperationException("Unsupported platform.");
         }
 
         public static bool VerifyPrivateKey(byte[] privateKey)
             => For(() => Win64Lib.secp256k1_ec_seckey_verify(Context, privateKey),
                 () => PosixLib.secp256k1_ec_seckey_verify(Context, privateKey),
                 () => MacLib.secp256k1_ec_seckey_verify(Context, privateKey));
-
-        private static T For<T>(Func<T> windows, Func<T> linux, Func<T> mac)
-        {
-            switch (Platform)
-            {
-                case OsPlatform.Windows: return windows();
-                case OsPlatform.Linux: return linux();
-                case OsPlatform.Mac: return mac();
-            }
-
-            throw new InvalidOperationException("Invalid platform.");
-        }
 
         public static byte[] GetPublicKey(byte[] privateKey, bool compressed)
         {
@@ -220,10 +223,11 @@ namespace Nethermind.Secp256k1
             uint outputSize = (uint)serializedPublicKey.Length;
             uint flags = compressed ? Secp256K1EcCompressed : Secp256K1EcUncompressed;
 
-            if (Unavailable(
-                () => Win64Lib.secp256k1_ec_pubkey_serialize(Context, serializedPublicKey, ref outputSize, publicKey, flags),
-                () => PosixLib.secp256k1_ec_pubkey_serialize(Context, serializedPublicKey, ref outputSize, publicKey, flags),
-                () => MacLib.secp256k1_ec_pubkey_serialize(Context, serializedPublicKey, ref outputSize, publicKey, flags)))
+            if (Platform == OsPlatform.Windows ? 
+                !Win64Lib.secp256k1_ec_pubkey_serialize(Context, serializedPublicKey, ref outputSize, publicKey, flags)
+                : !(Platform == OsPlatform.Linux ? 
+                    PosixLib.secp256k1_ec_pubkey_serialize(Context, serializedPublicKey, ref outputSize, publicKey, flags)
+                    : MacLib.secp256k1_ec_pubkey_serialize(Context, serializedPublicKey, ref outputSize, publicKey, flags)))
             {
                 return null;
             }
@@ -245,11 +249,11 @@ namespace Nethermind.Secp256k1
                 return null;
             }
 
-            if (IsWindows ? 
+            if (Platform == OsPlatform.Windows ? 
                 !Win64Lib.secp256k1_ecdsa_recoverable_signature_serialize_compact(Context, compactSignature, out recoveryId, recoverableSignature)
-                : (Platform == OsPlatform.Linux ? 
-                    !PosixLib.secp256k1_ecdsa_recoverable_signature_serialize_compact(Context, compactSignature, out recoveryId, recoverableSignature)
-                    : !MacLib.secp256k1_ecdsa_recoverable_signature_serialize_compact(Context, compactSignature, out recoveryId, recoverableSignature)))
+                : !(Platform == OsPlatform.Linux ? 
+                    PosixLib.secp256k1_ecdsa_recoverable_signature_serialize_compact(Context, compactSignature, out recoveryId, recoverableSignature)
+                    : MacLib.secp256k1_ecdsa_recoverable_signature_serialize_compact(Context, compactSignature, out recoveryId, recoverableSignature)))
             {
                 return null;
             }
@@ -263,7 +267,6 @@ namespace Nethermind.Secp256k1
             byte[] serializedPublicKey = new byte[compressed ? 33 : 65];
             uint outputSize = (uint)serializedPublicKey.Length;
             uint flags = compressed ? Secp256K1EcCompressed : Secp256K1EcUncompressed;
-
             byte[] recoverableSignature = new byte[65];
 
             if (Unavailable(
@@ -282,10 +285,11 @@ namespace Nethermind.Secp256k1
                 return null;
             }
 
-            if (Unavailable(
-                () => Win64Lib.secp256k1_ec_pubkey_serialize(Context, serializedPublicKey, ref outputSize, publicKey, flags),
-                () => PosixLib.secp256k1_ec_pubkey_serialize(Context, serializedPublicKey, ref outputSize, publicKey, flags),
-                () => MacLib.secp256k1_ec_pubkey_serialize(Context, serializedPublicKey, ref outputSize, publicKey, flags)))
+            if (Platform == OsPlatform.Windows ? 
+                !Win64Lib.secp256k1_ec_pubkey_serialize(Context, serializedPublicKey, ref outputSize, publicKey, flags)
+                : !(Platform == OsPlatform.Linux ? 
+                    PosixLib.secp256k1_ec_pubkey_serialize(Context, serializedPublicKey, ref outputSize, publicKey, flags)
+                    : MacLib.secp256k1_ec_pubkey_serialize(Context, serializedPublicKey, ref outputSize, publicKey, flags)))
             {
                 return null;
             }
@@ -294,6 +298,18 @@ namespace Nethermind.Secp256k1
         }
 
         private static bool Unavailable(Func<bool> windows, Func<bool> linux, Func<bool> mac)
-            => IsWindows ? !windows() : (Platform == OsPlatform.Linux ? !linux() : !mac());
+            => !For(windows, linux, mac);
+
+        private static T For<T>(Func<T> windows, Func<T> linux, Func<T> mac)
+        {
+            switch (Platform)
+            {
+                case OsPlatform.Windows: return windows();
+                case OsPlatform.Linux: return linux();
+                case OsPlatform.Mac: return mac();
+            }
+
+            throw new InvalidOperationException("Unsupported platform.");
+        }
     }
 }
