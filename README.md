@@ -1,7 +1,7 @@
 <img src="Nethermind.png" width="600">
 Full .NET Core Ethereum client.
 
-[![Gitter](https://img.shields.io/gitter/room/nwjs/nw.js.svg)](https://gitter.im/nethermindeth/nethermind)
+[![Gitter](https://img.shields.io/gitter/room/nethermindeth/nethermind.svg)](https://gitter.im/nethermindeth/nethermind)
 [![Build Status](https://travis-ci.org/NethermindEth/nethermind.svg?branch=master)](https://travis-ci.org/NethermindEth/nethermind)
 
 ## Build (Windows / Linux / MacOS)
@@ -42,9 +42,9 @@ dotnet run --config configs//ropsten_windows_discovery.config.json
 ```
 
 ## Contributors welcome
-[![GitHub issues](https://img.shields.io/github/issues/badges/shields.svg)](https://github.com/NethermindEth/nethermind/issues)
-[![Gitter](https://img.shields.io/gitter/room/nwjs/nw.js.svg)](https://gitter.im/nethermindeth/nethermind)
-[![GitHub contributors](https://img.shields.io/github/contributors/cdnjs/cdnjs.svg)](https://github.com/NethermindEth/nethermind/graphs/contributors)
+[![GitHub issues](https://img.shields.io/github/issues/nethermindeth/nethermind.svg)](https://github.com/NethermindEth/nethermind/issues)
+[![Gitter](https://img.shields.io/gitter/room/nethermindeth/nethermind.svg)](https://gitter.im/nethermindeth/nethermind)
+[![GitHub contributors](https://img.shields.io/github/contributors/nethermindeth/nethermind.svg)](https://github.com/NethermindEth/nethermind/graphs/contributors)
 
 At Nethermind we are building an Open Source multiplatform Ethereum client implementation in .NET Core (running seamlessly both on Linux and Windows). Simultaneously our team works on Nethermind trading tools, analytics and decentralized exchange (0x relay).
 
