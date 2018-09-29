@@ -77,3 +77,7 @@ Nethermind client can be used in your projects, when setting up private Ethereum
 
 # Links
 http://nethermind.io/
+
+# License
+[![GitHub](https://img.shields.io/github/license/nethermindeth/nethermind.svg)](https://github.com/NethermindEth/nethermind/blob/master/LICENSE)
+
