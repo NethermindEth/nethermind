@@ -150,7 +150,7 @@ namespace Ethereum.Test.Base
             return state;
         }
 
-        private class LoggingTraceListener : TraceListener
+        private class LoggingTraceListener : System.Diagnostics.TraceListener
         {
             private readonly StringBuilder _line = new StringBuilder();
 

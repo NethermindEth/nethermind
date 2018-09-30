@@ -34,6 +34,7 @@ using Nethermind.Core.Logging;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.Store;
+using TraceListener = Nethermind.Evm.TraceListener;
 
 namespace Nethermind.Blockchain
 {
@@ -298,7 +299,7 @@ namespace Nethermind.Blockchain
             header.TransactionsRoot = GetTransactionsRoot(selected);
 
             Block block = new Block(header, selected, new BlockHeader[0]);
-            Process(block, true);
+            Process(block, true, false, NullTraceListener.Instance);
         }
 
         private Keccak GetTransactionsRoot(List<Transaction> transactions)
@@ -322,7 +323,7 @@ namespace Nethermind.Blockchain
         // TODO: move stats to a separate class
         public void Process(Block suggestedBlock)
         {
-            Process(suggestedBlock, false);
+            Process(suggestedBlock, false, false, NullTraceListener.Instance);
             if (_logger.IsTrace) _logger.Trace($"Processed block {suggestedBlock.ToString(Block.Format.Full)}");
 
             _stats.UpdateStats(suggestedBlock, _recoveryQueue.Count, _blockQueue.Count);
@@ -330,7 +331,7 @@ namespace Nethermind.Blockchain
 
         public void AddTxData(Block block)
         {
-            Process(block, false, true);
+            Process(block, false, true, NullTraceListener.Instance);
         }
 
         public TransactionTrace Trace(Keccak txHash)
@@ -341,14 +342,13 @@ namespace Nethermind.Blockchain
             {
                 throw new InvalidOperationException("Only historical blocks");
             }
-            
-            Process(block, false, true);
-            
-            // need to extract trace now
-            throw new NotImplementedException();
+
+            TraceListener listener = new TraceListener(txHash);
+            Process(block, false, true, listener);
+            return listener.Trace;
         }
 
-        private void Process(Block suggestedBlock, bool forMining, bool onlyForTxData = false)
+        private void Process(Block suggestedBlock, bool forMining, bool onlyForTxData, ITraceListener traceListener)
         {
             if (forMining && onlyForTxData)
             {
@@ -386,7 +386,7 @@ namespace Nethermind.Blockchain
                 _logger.Trace($"Total transactions of block {suggestedBlock.ToString(Block.Format.Short)} is {totalTransactions}");
             }
 
-            if (totalDifficulty > (_blockTree.Head?.TotalDifficulty ?? 0))
+            if (totalDifficulty > (_blockTree.Head?.TotalDifficulty ?? 0) || onlyForTxData)
             {
                 List<Block> blocksToBeAddedToMain = new List<Block>();
                 Block toBeProcessed = suggestedBlock;
@@ -461,7 +461,7 @@ namespace Nethermind.Blockchain
                     blocks[0] = suggestedBlock;
                 }
                 
-                Block[] processedBlocks = _blockProcessor.Process(stateRoot, blocks, forMining | onlyForTxData, onlyForTxData);
+                Block[] processedBlocks = _blockProcessor.Process(stateRoot, blocks, forMining | onlyForTxData, onlyForTxData, traceListener);
 
                 if (onlyForTxData)
                 {

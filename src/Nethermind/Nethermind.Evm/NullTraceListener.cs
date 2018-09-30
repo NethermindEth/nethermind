@@ -16,27 +16,33 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using NUnit.Framework;
+using System;
+using System.Threading;
+using Nethermind.Core.Crypto;
 
-namespace Nethermind.Evm.Test
+namespace Nethermind.Evm
 {
-    [TestFixture]
-    public class EvmPooledMemoryTests : EvmMemoryTestsBase
+    public class NullTraceListener : ITraceListener
     {
-        protected override IEvmMemory CreateEvmMemory()
+        private static NullTraceListener _instance;
+
+        private NullTraceListener()
         {
-            return new EvmPooledMemory();
         }
 
-        [TestCase(32, 1)]
-        [TestCase(0, 0)]
-        [TestCase(33, 2)]
-        [TestCase(64, 2)]
-        [TestCase(int.MaxValue, int.MaxValue / 32 + 1)]
-        public void Div32Ceiling(int input, int expectedResult)
+        public static NullTraceListener Instance
         {
-            long result = EvmPooledMemory.Div32Ceiling((ulong)input);
-            Assert.AreEqual(expectedResult, result);
+            get { return LazyInitializer.EnsureInitialized(ref _instance, () => new NullTraceListener()); }
+        }
+
+        public bool ShouldTrace(Keccak txHash)
+        {
+            return false;
+        }
+
+        public void RecordTrace(Keccak txHash, TransactionTrace trace)
+        {
+            throw new InvalidOperationException("I am not interested in this trace.");
         }
     }
 }

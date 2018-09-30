@@ -18,11 +18,12 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Evm;
 
 namespace Nethermind.Blockchain
 {
     public interface IBlockProcessor
     {
-        Block[] Process(Keccak branchStateRoot, Block[] suggestedBlocks, bool tryOnly, bool storeTxData = false);
+        Block[] Process(Keccak branchStateRoot, Block[] suggestedBlocks, bool tryOnly, bool storeTxData, ITraceListener traceListener);
     }
 }

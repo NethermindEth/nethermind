@@ -351,7 +351,7 @@ namespace Nethermind.Evm
             };
         }
 
-        public bool UpdateGas(long gasCost, ref long gasAvailable)
+        private bool UpdateGas(long gasCost, ref long gasAvailable)
         {
             if (_logger.IsTrace)
             {
@@ -368,7 +368,7 @@ namespace Nethermind.Evm
             return true;
         }
 
-        public void RefundGas(long refund, ref long gasAvailable)
+        private void RefundGas(long refund, ref long gasAvailable)
         {
             if (_logger.IsTrace)
             {
@@ -378,7 +378,7 @@ namespace Nethermind.Evm
             gasAvailable += refund;
         }
 
-        public CallResult ExecutePrecompile(EvmState state, IReleaseSpec spec)
+        private CallResult ExecutePrecompile(EvmState state, IReleaseSpec spec)
         {
             byte[] callData = state.Env.InputData;
             UInt256 transferValue = state.Env.TransferValue;
@@ -445,7 +445,7 @@ namespace Nethermind.Evm
             }
         }
 
-        public CallResult ExecuteCall(EvmState evmState, byte[] previousCallResult, byte[] previousCallOutput, UInt256 previousCallOutputDestination, IReleaseSpec spec)
+        private CallResult ExecuteCall(EvmState evmState, byte[] previousCallResult, byte[] previousCallOutput, UInt256 previousCallOutputDestination, IReleaseSpec spec)
         {
             ExecutionEnvironment env = evmState.Env;
             if (!evmState.IsContinuation)
@@ -2480,44 +2480,44 @@ namespace Nethermind.Evm
             UpdateCurrentState();
             return CallResult.Empty;
         }
-    }
-
-    public struct CallResult
-    {
-        public static CallResult Exception = new CallResult(StatusCode.FailureBytes, null, false, true);
-        public static CallResult OutOfGasException = Exception;
-        public static CallResult AccessViolationException = Exception;
-        public static CallResult InvalidJumpDestination = Exception;
-        public static CallResult InvalidInstructionException = Exception;
-        public static CallResult StaticCallViolationException = Exception;
-        public static CallResult StackOverflowException = Exception; // TODO: use these to avoid CALL POP attacks
-        public static CallResult StackUnderflowException = Exception; // TODO: use these to avoid CALL POP attacks
-        public static readonly CallResult Empty = new CallResult(Bytes.Empty, null);
-
-        public CallResult(EvmState stateToExecute)
+        
+        private struct CallResult
         {
-            StateToExecute = stateToExecute;
-            Output = Bytes.Empty;
-            PrecompileSuccess = null;
-            ShouldRevert = false;
-            IsException = false;
+            public static CallResult Exception = new CallResult(StatusCode.FailureBytes, null, false, true);
+            public static CallResult OutOfGasException = Exception;
+            public static CallResult AccessViolationException = Exception;
+            public static CallResult InvalidJumpDestination = Exception;
+            public static CallResult InvalidInstructionException = Exception;
+            public static CallResult StaticCallViolationException = Exception;
+            public static CallResult StackOverflowException = Exception; // TODO: use these to avoid CALL POP attacks
+            public static CallResult StackUnderflowException = Exception; // TODO: use these to avoid CALL POP attacks
+            public static readonly CallResult Empty = new CallResult(Bytes.Empty, null);
+
+            public CallResult(EvmState stateToExecute)
+            {
+                StateToExecute = stateToExecute;
+                Output = Bytes.Empty;
+                PrecompileSuccess = null;
+                ShouldRevert = false;
+                IsException = false;
+            }
+
+            public CallResult(byte[] output, bool? precompileSuccess, bool shouldRevert = false, bool isException = false)
+            {
+                StateToExecute = null;
+                Output = output;
+                PrecompileSuccess = precompileSuccess;
+                ShouldRevert = shouldRevert;
+                IsException = isException;
+            }
+
+            public bool ShouldRevert { get; }
+            public bool? PrecompileSuccess { get; } // TODO: check this behaviour as it seems it is required and previously that was not the case
+
+            public EvmState StateToExecute { get; }
+            public byte[] Output { get; }
+            public bool IsReturn => StateToExecute == null;
+            public bool IsException { get; }
         }
-
-        public CallResult(byte[] output, bool? precompileSuccess, bool shouldRevert = false, bool isException = false)
-        {
-            StateToExecute = null;
-            Output = output;
-            PrecompileSuccess = precompileSuccess;
-            ShouldRevert = shouldRevert;
-            IsException = isException;
-        }
-
-        public bool ShouldRevert { get; }
-        public bool? PrecompileSuccess { get; } // TODO: check this behaviour as it seems it is required and previously that was not the case
-
-        public EvmState StateToExecute { get; }
-        public byte[] Output { get; }
-        public bool IsReturn => StateToExecute == null;
-        public bool IsException { get; }
     }
 }

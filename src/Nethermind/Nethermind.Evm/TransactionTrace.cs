@@ -18,6 +18,7 @@
 
 using System.Collections.Generic;
 using System.Numerics;
+using Nethermind.Core.Extensions;
 using Newtonsoft.Json;
 
 namespace Nethermind.Evm
@@ -52,5 +53,7 @@ namespace Nethermind.Evm
 
         [JsonProperty("structLogs", Order = 3)]
         public List<TransactionTraceEntry> Entries { get; set; }
+
+        public static TransactionTrace QuickFail { get; } = new TransactionTrace {Failed = true, ReturnValue = Bytes.Empty};
     }
 }

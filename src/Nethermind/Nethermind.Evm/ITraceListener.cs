@@ -16,27 +16,13 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using NUnit.Framework;
+using Nethermind.Core.Crypto;
 
-namespace Nethermind.Evm.Test
+namespace Nethermind.Evm
 {
-    [TestFixture]
-    public class EvmPooledMemoryTests : EvmMemoryTestsBase
+    public interface ITraceListener
     {
-        protected override IEvmMemory CreateEvmMemory()
-        {
-            return new EvmPooledMemory();
-        }
-
-        [TestCase(32, 1)]
-        [TestCase(0, 0)]
-        [TestCase(33, 2)]
-        [TestCase(64, 2)]
-        [TestCase(int.MaxValue, int.MaxValue / 32 + 1)]
-        public void Div32Ceiling(int input, int expectedResult)
-        {
-            long result = EvmPooledMemory.Div32Ceiling((ulong)input);
-            Assert.AreEqual(expectedResult, result);
-        }
+        bool ShouldTrace(Keccak txHash);
+        void RecordTrace(Keccak txHash, TransactionTrace trace);
     }
 }

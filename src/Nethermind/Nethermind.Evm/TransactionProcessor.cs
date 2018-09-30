@@ -49,13 +49,11 @@ namespace Nethermind.Evm
             _storageProvider = storageProvider ?? throw new ArgumentNullException(nameof(storageProvider));
         }
 
-        private TransactionReceipt GetNullReceipt(BlockHeader block, long gasUsed)
+        private TransactionReceipt GetNullReceipt(BlockHeader block)
         {
-            block.GasUsed += gasUsed;
             TransactionReceipt transactionReceipt = new TransactionReceipt();
             transactionReceipt.Logs = LogEntry.EmptyLogs;
             transactionReceipt.Bloom = Bloom.Empty;
-            transactionReceipt.GasUsed = block.GasUsed;
             if (!_specProvider.GetSpec(block.Number).IsEip658Enabled)
             {
                 transactionReceipt.PostTransactionState = _stateProvider.StateRoot; // TODO: do not call it in Byzantium - no longer needed to calculate root hash
@@ -99,7 +97,7 @@ namespace Nethermind.Evm
                     _logger.Trace($"SENDER_NOT_SPECIFIED");
                 }
 
-                return (GetNullReceipt(block, 0L), null);
+                return (GetNullReceipt(block), TransactionTrace.QuickFail);
             }
 
             long intrinsicGas = _intrinsicGasCalculator.Calculate(transaction, spec);
@@ -115,7 +113,7 @@ namespace Nethermind.Evm
                     _logger.Trace($"GAS_LIMIT_BELOW_INTRINSIC_GAS {gasLimit} < {intrinsicGas}");
                 }
 
-                return (GetNullReceipt(block, 0L), null);
+                return (GetNullReceipt(block), TransactionTrace.QuickFail);
             }
 
             if (gasLimit > block.GasLimit - block.GasUsed)
@@ -125,7 +123,7 @@ namespace Nethermind.Evm
                     _logger.Trace($"BLOCK_GAS_LIMIT_EXCEEDED {gasLimit} > {block.GasLimit} - {block.GasUsed}");
                 }
 
-                return (GetNullReceipt(block, 0L), null);
+                return (GetNullReceipt(block), TransactionTrace.QuickFail);
             }
 
             if (!_stateProvider.AccountExists(sender))
@@ -146,7 +144,7 @@ namespace Nethermind.Evm
                     _logger.Trace($"INSUFFICIENT_SENDER_BALANCE: ({sender})b = {senderBalance}");
                 }
 
-                return (GetNullReceipt(block, 0L), null);
+                return (GetNullReceipt(block), TransactionTrace.QuickFail);
             }
 
             if (transaction.Nonce != _stateProvider.GetNonce(sender))
@@ -156,7 +154,7 @@ namespace Nethermind.Evm
                     _logger.Trace($"WRONG_TRANSACTION_NONCE: {transaction.Nonce} (expected {_stateProvider.GetNonce(sender)})");
                 }
 
-                return (GetNullReceipt(block, 0L), null);
+                return (GetNullReceipt(block), TransactionTrace.QuickFail);
             }
 
             _stateProvider.IncrementNonce(sender);

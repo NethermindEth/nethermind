@@ -27,13 +27,13 @@ namespace Nethermind.Blockchain
     {
         void Start();
         Task StopAsync(bool processRemainingBlocks = false);
-        void Process(Block block);
+        void Process(Block block); // TODO: tks: should be queued only
         
         /// <summary>
         /// Executes a block from the past, stores receipts and tx hash -> block number mapping.
         /// </summary>
         /// <param name="block"></param>
-        void AddTxData(Block block);
-        TransactionTrace Trace(Keccak txHash);
+        void AddTxData(Block block); // TODO: tks: should be queued
+        TransactionTrace Trace(Keccak txHash); // TODO: tks: should be queued
     }
 }

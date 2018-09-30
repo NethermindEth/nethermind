@@ -25,9 +25,11 @@ using Nethermind.Blockchain.Difficulty;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Specs.ChainSpec;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.Store;
@@ -42,14 +44,14 @@ namespace Nethermind.Blockchain.Test
         public async Task Test()
         {
             TimeSpan miningDelay = TimeSpan.FromMilliseconds(50);
-            
+
             /* logging & instrumentation */
             var logger = new OneLoggerLogManager(new SimpleConsoleLogger(true));
 
             /* spec */
             var sealEngine = new FakeSealEngine(miningDelay);
             sealEngine.IsMining = true;
-            
+
             var specProvider = RopstenSpecProvider.Instance;
 
             /* store & validation */
@@ -72,7 +74,11 @@ namespace Nethermind.Blockchain.Test
 
             /* blockchain processing */
             var ethereumSigner = new EthereumSigner(specProvider, logger);
+            
             var transactionStore = new TransactionStore(receiptsDb, txDb, specProvider);
+            TestTransactionsGenerator generator = new TestTransactionsGenerator(transactionStore, new EthereumSigner(specProvider, NullLogManager.Instance), TimeSpan.FromMilliseconds(5), NullLogManager.Instance);
+            generator.Start();
+            
             var blockhashProvider = new BlockhashProvider(blockTree);
             var virtualMachine = new VirtualMachine(stateProvider, storageProvider, blockhashProvider, logger);
             var processor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, logger);
@@ -101,7 +107,7 @@ namespace Nethermind.Blockchain.Test
             /* start processing */
             blockTree.SuggestBlock(chainSpec.Genesis);
             blockchainProcessor.Start();
-            
+
             ManualResetEvent manualResetEvent = new ManualResetEvent(false);
 
             blockTree.NewHeadBlock += (sender, args) =>
@@ -110,7 +116,7 @@ namespace Nethermind.Blockchain.Test
             };
 
             manualResetEvent.WaitOne(miningDelay * 12);
-            
+
             await blockchainProcessor.StopAsync(true).ContinueWith(
                 t =>
                 {
@@ -119,8 +125,15 @@ namespace Nethermind.Blockchain.Test
                         throw t.Exception;
                     }
 
-                    Assert.GreaterOrEqual((int)blockTree.Head.Number, 6);
+                    Assert.GreaterOrEqual((int) blockTree.Head.Number, 6);
                 });
+
+            blockchainProcessor.AddTxData(blockTree.FindBlock(1));
+            Assert.AreNotEqual(0, receiptsDb.Keys.Count, "receipts");
+            Assert.AreNotEqual(0, txDb.Keys.Count, "txs");
+
+            TransactionTrace trace = blockchainProcessor.Trace(blockTree.FindBlock(1).Transactions[0].Hash);
+            Assert.AreSame(TransactionTrace.QuickFail, trace);
         }
     }
 }
