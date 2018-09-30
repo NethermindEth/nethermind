@@ -62,7 +62,12 @@ namespace Nethermind.Network.Test
         {
             _logManager = new OneLoggerLogManager(new SimpleConsoleLogger());
             _configurationProvider = new JsonConfigProvider();
-            ((NetworkConfig)_configurationProvider.GetConfig<INetworkConfig>()).DbBasePath = Path.Combine(Path.GetTempPath(), "PeerManagerTests");
+            var config = ((NetworkConfig)_configurationProvider.GetConfig<INetworkConfig>());
+            config.DbBasePath = Path.Combine(Path.GetTempPath(), "PeerManagerTests");
+            config.IsActivePeerTimerEnabled = false;
+            config.IsDiscoveryNodesPersistenceOn = false;
+            config.IsPeersPersistenceOn = false;
+
             if (!Directory.Exists(_configurationProvider.GetConfig<INetworkConfig>().DbBasePath))
             {
                 Directory.CreateDirectory(_configurationProvider.GetConfig<INetworkConfig>().DbBasePath);
