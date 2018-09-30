@@ -327,8 +327,20 @@ namespace Nethermind.Blockchain
             _stats.UpdateStats(suggestedBlock, _recoveryQueue.Count, _blockQueue.Count);
         }
 
-        private void Process(Block suggestedBlock, bool forMining)
+        public void AddTxData(Block block)
         {
+            Process(block, false, true);
+            
+            throw new NotImplementedException();
+        }
+
+        private void Process(Block suggestedBlock, bool forMining, bool onlyForTxData = false)
+        {
+            if (forMining && onlyForTxData)
+            {
+                throw new InvalidOperationException("mining and tx data options are not allowed together when processing blocks");
+            }
+            
             if (suggestedBlock.Number != 0 && _blockTree.FindParent(suggestedBlock) == null)
             {
                 throw new InvalidOperationException("Got an orphaned block for porcessing.");
@@ -366,6 +378,11 @@ namespace Nethermind.Blockchain
                 Block toBeProcessed = suggestedBlock;
                 do
                 {
+                    if (onlyForTxData)
+                    {
+                        break;
+                    }
+                    
                     blocksToBeAddedToMain.Add(toBeProcessed);
                     toBeProcessed = toBeProcessed.Number == 0 ? null : _blockTree.FindParent(toBeProcessed);
                     // TODO: need to remove the hardcoded head block store at keccak zero as it would be referenced by the genesis... 
@@ -424,7 +441,18 @@ namespace Nethermind.Blockchain
                     }
                 }
 
-                Block[] processedBlocks = _blockProcessor.Process(stateRoot, blocks, forMining);
+                if (onlyForTxData)
+                {
+                    blocks = new Block[1];
+                    blocks[0] = suggestedBlock;
+                }
+                
+                Block[] processedBlocks = _blockProcessor.Process(stateRoot, blocks, forMining | onlyForTxData, onlyForTxData);
+
+                if (onlyForTxData)
+                {
+                    return;
+                }
 
                 // TODO: lots of unnecessary loading and decoding here, review after adding support for loading headers only
                 List<BlockHeader> blocksToBeRemovedFromMain = new List<BlockHeader>();

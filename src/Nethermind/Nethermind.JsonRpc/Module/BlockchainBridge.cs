@@ -39,7 +39,14 @@ namespace Nethermind.JsonRpc.Module
         private readonly IStateProvider _stateProvider;
         private readonly IKeyStore _keyStore;
 
-        public BlockchainBridge(IEthereumSigner signer, IStateProvider stateProvider, IKeyStore keyStore, IBlockTree blockTree, IDb db, ITransactionStore transactionStore)
+        public BlockchainBridge(
+            IEthereumSigner signer,
+            IStateProvider stateProvider,
+            IKeyStore keyStore,
+            IBlockTree blockTree,
+            IBlockchainProcessor blockchainProcessor,
+            IDb db,
+            ITransactionStore transactionStore)
         {
             _signer = signer;
             _stateProvider = stateProvider;
@@ -88,17 +95,19 @@ namespace Nethermind.JsonRpc.Module
 
         public Transaction GetTransaction(Keccak transactionHash)
         {
-            return _transactionStore.GetTransaction(transactionHash);
+            TxInfo txInfo = _transactionStore.GetTxInfo(transactionHash);
+            Block block = _blockTree.FindBlock(txInfo.BlockHash, true);
+            return block.Transactions[txInfo.Index];
         }
 
         public Keccak GetBlockHash(Keccak transactionHash)
         {
-            return _transactionStore.GetBlockHash(transactionHash);
+            return _transactionStore.GetTxInfo(transactionHash).BlockHash;
         }
 
         public TransactionReceipt GetTransactionReceipt(Keccak transactionHash)
         {
-            return _transactionStore.GetTransactionReceipt(transactionHash);
+            return _transactionStore.GetReceipt(transactionHash);
         }
 
         public TransactionTrace GetTransactionTrace(Keccak transactionHash)

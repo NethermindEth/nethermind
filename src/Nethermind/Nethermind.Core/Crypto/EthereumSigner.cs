@@ -37,11 +37,11 @@ namespace Nethermind.Core.Crypto
         private readonly ISpecProvider _specProvider;
         private readonly ILogger _logger;
 
-        public EthereumSigner(ISpecProvider specProviderProvider, ILogManager logManager)
+        public EthereumSigner(ISpecProvider specProvider, ILogManager logManager)
         {
-            _specProvider = specProviderProvider;
+            _specProvider = specProvider;
             _logger = logManager.GetClassLogger();
-            _chainIdValue = specProviderProvider.ChainId;
+            _chainIdValue = specProvider.ChainId;
         }
         
         public void Sign(PrivateKey privateKey, Transaction transaction, BigInteger blockNumber)

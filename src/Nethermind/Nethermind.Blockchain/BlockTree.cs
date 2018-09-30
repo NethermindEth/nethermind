@@ -17,7 +17,6 @@
  */
 
 using System;
-using System.Data.SqlTypes;
 using System.Linq;
 using System.Numerics;
 using System.Threading;
@@ -30,7 +29,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
 using Nethermind.Dirichlet.Numerics;
-using Nethermind.HashLib;
 using Nethermind.Store;
 
 namespace Nethermind.Blockchain
@@ -53,21 +51,18 @@ namespace Nethermind.Blockchain
         private readonly BlockDecoder _blockDecoder = new BlockDecoder();
         private readonly IDb _blockInfoDb;
         private readonly ILogger _logger;
-        private readonly IDb _receiptsDb;
         private readonly ISpecProvider _specProvider;
 
         // TODO: validators should be here
         public BlockTree(
             IDb blockDb,
             IDb blockInfoDb,
-            IDb receiptsDb,
             ISpecProvider specProvider,
             ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _blockDb = blockDb;
             _blockInfoDb = blockInfoDb;
-            _receiptsDb = receiptsDb;
             _specProvider = specProvider;
 
             ChainLevelInfo genesisLevel = LoadLevel(0);
@@ -339,7 +334,7 @@ namespace Nethermind.Blockchain
             UpdateLevel(number, level);
         }
 
-        public void MarkAsProcessed(Keccak blockHash, TransactionReceipt[] receipts = null)
+        public void MarkAsProcessed(Keccak blockHash)
         {
             UInt256 number = LoadNumberOnly(blockHash);
             (BlockInfo info, ChainLevelInfo level) = LoadInfo(number, blockHash);
@@ -351,14 +346,6 @@ namespace Nethermind.Blockchain
 
             info.WasProcessed = true;
             UpdateLevel(number, level);
-            if (receipts != null)
-            {
-                IReleaseSpec spec = _specProvider.GetSpec(number);
-                _receiptsDb.Set(blockHash,
-                    Rlp.Encode(receipts.Select(r =>
-                            Rlp.Encode(r, spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None))
-                        .ToArray()).Bytes);
-            }
         }
 
         public bool WasProcessed(Keccak blockHash)

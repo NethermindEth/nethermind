@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,21 +16,29 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Threading.Tasks;
-using Nethermind.Core;
+using Nethermind.Core.Encoding;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Dirichlet.Numerics;
+using NUnit.Framework;
 
-namespace Nethermind.Blockchain
+namespace Nethermind.Core.Test.Encoding
 {
-    public interface IBlockchainProcessor
+    [TestFixture]
+    public class TxInfoDecoderTests
     {
-        void Start();
-        Task StopAsync(bool processRemainingBlocks = false);
-        void Process(Block block);
-        
-        /// <summary>
-        /// Executes a block from the past, stores receipts and tx hash -> block number mapping.
-        /// </summary>
-        /// <param name="block"></param>
-        void AddTxData(Block block);
+        [Test]
+        public void Can_do_roundtrip()
+        {
+            TxInfo txInfo = new TxInfo();
+            txInfo.BlockHash = TestObject.KeccakA;
+            txInfo.BlockNumber = UInt256.One;
+            txInfo.Index = 2;
+
+            Rlp rlp = Rlp.Encode(txInfo);
+            TxInfo decoded = Rlp.Decode<TxInfo>(rlp);            
+            Assert.AreEqual(TestObject.KeccakA, decoded.BlockHash, "block hash");
+            Assert.AreEqual(UInt256.One, decoded.BlockNumber, "number");
+            Assert.AreEqual(2, decoded.Index, "index");
+        }
     }
 }

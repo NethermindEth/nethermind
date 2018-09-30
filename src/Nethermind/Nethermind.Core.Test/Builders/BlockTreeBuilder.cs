@@ -41,7 +41,7 @@ namespace Nethermind.Core.Test.Builders
             blocksDb.Set(Keccak.Zero, Rlp.Encode(Build.A.BlockHeader.TestObject).Bytes);
             
             _genesisBlock = genesisBlock;
-            TestObjectInternal = new BlockTree(blocksDb, new MemDb(), new MemDb(), RopstenSpecProvider.Instance, NullLogManager.Instance);
+            TestObjectInternal = new BlockTree(blocksDb, new MemDb(), RopstenSpecProvider.Instance, NullLogManager.Instance);
         }
 
         public BlockTreeBuilder OfChainLength(int chainLength, int splitBlockNumber = 0, int splitVariant = 0)

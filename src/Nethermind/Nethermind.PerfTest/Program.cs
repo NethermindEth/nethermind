@@ -151,7 +151,7 @@ namespace Nethermind.PerfTest
             MemDbProvider memDbProvider = new MemDbProvider(logManager);
             StateTree stateTree = new StateTree(memDbProvider.GetOrCreateStateDb());
             IStateProvider stateProvider = new StateProvider(stateTree, memDbProvider.GetOrCreateCodeDb(), logManager);
-            IBlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), new MemDb(), FrontierSpecProvider.Instance, logManager);
+            IBlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), FrontierSpecProvider.Instance, logManager);
             _machine = new VirtualMachine(stateProvider, new StorageProvider(memDbProvider, stateProvider, logManager), new BlockhashProvider(blockTree), logManager);
 
             Stopwatch stopwatch = new Stopwatch();
@@ -263,7 +263,7 @@ namespace Nethermind.PerfTest
                 //return _processed.ContainsKey(blockHash) && _blockTree.WasProcessed(blockHash); // to mimic the reads at least
             }
 
-            public void MarkAsProcessed(Keccak blockHash, TransactionReceipt[] receipts = null)
+            public void MarkAsProcessed(Keccak blockHash)
             {
                 //const byte ignored = 1;
                 //_processed.TryAdd(blockHash, ignored);
@@ -286,6 +286,7 @@ namespace Nethermind.PerfTest
         private static readonly string FullStorageDbPath = Path.Combine(DbBasePath, DbOnTheRocks.StorageDbPath);
         private static readonly string FullCodeDbPath = Path.Combine(DbBasePath, DbOnTheRocks.CodeDbPath);
         private static readonly string FullReceiptsDbPath = Path.Combine(DbBasePath, DbOnTheRocks.ReceiptsDbPath);
+        private static readonly string FullTxDbPath = Path.Combine(DbBasePath, DbOnTheRocks.TxsDbPath);
 
         private static readonly string FullBlocksDbPath = Path.Combine(DbBasePath, DbOnTheRocks.BlocksDbPath);
         private static readonly string FullBlockInfosDbPath = Path.Combine(DbBasePath, DbOnTheRocks.BlockInfosDbPath);
@@ -313,9 +314,10 @@ namespace Nethermind.PerfTest
             var blocksDb = new DbOnTheRocks(FullBlocksDbPath, DbConfig.Default);
             var blockInfosDb = new DbOnTheRocks(FullBlockInfosDbPath, DbConfig.Default);
             var receiptsDb = new DbOnTheRocks(FullReceiptsDbPath, DbConfig.Default);
+            var txDb = new DbOnTheRocks(FullTxDbPath, DbConfig.Default);
 
             /* store & validation */
-            var blockTree = new UnprocessedBlockTreeWrapper(new BlockTree(blocksDb, blockInfosDb, receiptsDb, specProvider, _logManager));
+            var blockTree = new UnprocessedBlockTreeWrapper(new BlockTree(blocksDb, blockInfosDb, specProvider, _logManager));
             var difficultyCalculator = new DifficultyCalculator(specProvider);
             var headerValidator = new HeaderValidator(difficultyCalculator, blockTree, sealEngine, specProvider, _logManager);
             var ommersValidator = new OmmersValidator(blockTree, headerValidator, _logManager);
@@ -331,7 +333,7 @@ namespace Nethermind.PerfTest
 
             /* blockchain processing */
             var ethereumSigner = new EthereumSigner(specProvider, _logManager);
-            var transactionStore = new TransactionStore();
+            var transactionStore = new TransactionStore(receiptsDb, txDb, specProvider);
             var blockhashProvider = new BlockhashProvider(blockTree);
             var virtualMachine = new VirtualMachine(stateProvider, storageProvider, blockhashProvider, _logManager);
             //var processor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, new TransactionTracer("D:\\tx_traces\\perf_test", new UnforgivingJsonSerializer()), _logManager);

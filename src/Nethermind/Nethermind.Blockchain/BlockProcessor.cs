@@ -18,7 +18,6 @@
 
 using System;
 using System.Linq;
-using System.Numerics;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -64,7 +63,7 @@ namespace Nethermind.Blockchain
 
         private readonly IBlockValidator _blockValidator;
 
-        private void ProcessTransactions(Block block, Transaction[] transactions)
+        private void ProcessTransactions(Block block, Transaction[] transactions, bool storeTxData)
         {
             TransactionReceipt[] receipts = new TransactionReceipt[transactions.Length];
             for (int i = 0; i < transactions.Length; i++)
@@ -80,8 +79,11 @@ namespace Nethermind.Blockchain
                     throw new InvalidOperationException("Transaction's hash is null when processing");
                 }
 
-                // TODO: setup a DB for this
-//                _transactionStore.AddTransactionReceipt(transaction.Hash, receipt, block.Hash);
+                if (storeTxData)
+                {
+                   _transactionStore.StoreProcessedTransaction(transaction, receipt, block.Hash, block.Number, i);
+                }
+
                 receipts[i] = receipt;
             }
 
@@ -121,7 +123,7 @@ namespace Nethermind.Blockchain
             return txTree.RootHash;
         }
 
-        public Block[] Process(Keccak branchStateRoot, Block[] suggestedBlocks, bool tryOnly)
+        public Block[] Process(Keccak branchStateRoot, Block[] suggestedBlocks, bool tryOnly, bool storeTxData)
         {
             if (suggestedBlocks.Length == 0)
             {
@@ -145,7 +147,7 @@ namespace Nethermind.Blockchain
             {
                 for (int i = 0; i < suggestedBlocks.Length; i++)
                 {
-                    processedBlocks[i] = ProcessOne(suggestedBlocks[i], tryOnly);
+                    processedBlocks[i] = ProcessOne(suggestedBlocks[i], tryOnly, storeTxData);
                 }
 
                 if (tryOnly)
@@ -211,12 +213,12 @@ namespace Nethermind.Blockchain
             }
         }
 
-        private Block ProcessOne(Block suggestedBlock, bool tryOnly)
+        private Block ProcessOne(Block suggestedBlock, bool tryOnly, bool storeTxData)
         {
             Block processedBlock = suggestedBlock;
             if (!suggestedBlock.IsGenesis)
             {
-                processedBlock = ProcessNonGenesis(suggestedBlock, tryOnly);
+                processedBlock = ProcessNonGenesis(suggestedBlock, tryOnly, storeTxData);
             }
 
             _stateProvider.CommitTree();
@@ -225,7 +227,7 @@ namespace Nethermind.Blockchain
             return processedBlock;
         }
 
-        private Block ProcessNonGenesis(Block suggestedBlock, bool tryOnly)
+        private Block ProcessNonGenesis(Block suggestedBlock, bool tryOnly, bool storeTxData)
         {
             if (_specProvider.DaoBlockNumber.HasValue && _specProvider.DaoBlockNumber.Value == suggestedBlock.Header.Number)
             {
@@ -267,7 +269,8 @@ namespace Nethermind.Blockchain
                 suggestedBlock.Header.MixHash,
                 suggestedBlock.Header.Nonce,
                 suggestedBlock.Header.OmmersHash,
-                suggestedBlock.Ommers);
+                suggestedBlock.Ommers,
+                storeTxData);
 
             processedBlock.Transactions = suggestedBlock.Transactions;
             processedBlock.Header.TransactionsRoot = transactionsRoot;
@@ -303,13 +306,14 @@ namespace Nethermind.Blockchain
             Keccak mixHash,
             ulong nonce,
             Keccak ommersHash,
-            BlockHeader[] ommers)
+            BlockHeader[] ommers,
+            bool storeTxData)
         {
             BlockHeader header = new BlockHeader(parentHash, ommersHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData);
             header.MixHash = mixHash;
             header.Nonce = nonce;
             Block block = new Block(header, ommers);
-            ProcessTransactions(block, transactions);
+            ProcessTransactions(block, transactions, storeTxData);
             ApplyMinerRewards(block);
             header.StateRoot = _stateProvider.StateRoot;
             return block;

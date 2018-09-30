@@ -47,7 +47,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
             byte[] expectedBytes = Bytes.FromHexString("f84ae48203e8640a940000000000000000000000000000000000000000822710830102031b0102e48203e8640a940000000000000000000000000000000000000000822710830102031b0102");
 
             Assert.True(Bytes.AreEqual(bytes, expectedBytes), "bytes");
-            
+
             TransactionsMessage deserialized = serializer.Deserialize(bytes);
             Assert.AreEqual(message.Transactions.Length, deserialized.Transactions.Length, "length");
             // TODO: Chain IDs need to be handled properly
@@ -62,6 +62,16 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth
             Assert.AreEqual(message.Transactions[0].Signature, deserialized.Transactions[0].Signature, $"{nameof(Transaction.Signature)}");
             Assert.AreEqual(message.Transactions[0].To, deserialized.Transactions[0].To, $"{nameof(Transaction.To)}");
             Assert.AreEqual(message.Transactions[0].Value, deserialized.Transactions[0].Value, $"{nameof(Transaction.Value)}");
+        }
+
+        [Test]
+        public void Can_handle_empty()
+        {
+            TransactionsMessageSerializer serializer = new TransactionsMessageSerializer();
+            TransactionsMessage message = new TransactionsMessage();
+            byte[] bytes = serializer.Serialize(message);
+            TransactionsMessage deserialized = serializer.Deserialize(bytes);
+            Assert.AreEqual(message.Transactions.Length, deserialized.Transactions.Length);
         }
     }
 }

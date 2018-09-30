@@ -27,10 +27,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         
         public Transaction[] Transactions { get; set; }
 
-        public TransactionsMessage()
-        {
-        }
-
         public TransactionsMessage(params Transaction[] transactions)
         {
             Transactions = transactions;

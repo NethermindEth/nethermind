@@ -27,5 +27,11 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal = new TransactionReceipt();
             TestObjectInternal.Logs = new [] {new LogEntry(Address.Zero, new byte[0], new [] {Keccak.Zero}),};
         }
+
+        public ReceiptBuilder WithState(Keccak state)
+        {
+            TestObjectInternal.PostTransactionState = state;
+            return this;
+        }
     }
 }

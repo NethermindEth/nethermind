@@ -31,8 +31,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
         public TransactionsMessage Deserialize(byte[] bytes)
         {
-            TransactionsMessage message = new TransactionsMessage();
-            message.Transactions = Rlp.DecodeArray<Transaction>(bytes.AsRlpContext());
+            TransactionsMessage message = new TransactionsMessage(Rlp.DecodeArray<Transaction>(bytes.AsRlpContext()));
             return message;
         }
     }

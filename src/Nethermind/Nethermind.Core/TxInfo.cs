@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,21 +16,22 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Threading.Tasks;
-using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.Blockchain
+namespace Nethermind.Core
 {
-    public interface IBlockchainProcessor
+    public struct TxInfo
     {
-        void Start();
-        Task StopAsync(bool processRemainingBlocks = false);
-        void Process(Block block);
-        
-        /// <summary>
-        /// Executes a block from the past, stores receipts and tx hash -> block number mapping.
-        /// </summary>
-        /// <param name="block"></param>
-        void AddTxData(Block block);
+        public TxInfo(Keccak blockHash, UInt256 blockNumber, int index)
+        {
+            BlockHash = blockHash;
+            BlockNumber = blockNumber;
+            Index = index;
+        }
+
+        public Keccak BlockHash { get; set; }
+        public UInt256 BlockNumber { get; set; }
+        public int Index { get; set; }
     }
 }

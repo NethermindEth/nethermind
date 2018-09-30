@@ -16,7 +16,8 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
+using Nethermind.Core.Encoding;
+using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Encoding
@@ -27,7 +28,13 @@ namespace Nethermind.Core.Test.Encoding
         [Test]
         public void Can_decode()
         {
-            throw new NotImplementedException();
+            BlockHeader header = Build.A.BlockHeader.TestObject;
+            HeaderDecoder decoder = new HeaderDecoder();
+            Rlp rlp = decoder.Encode(header);
+            BlockHeader decoded = decoder.Decode(new Rlp.DecoderContext(rlp.Bytes));
+            decoded.Hash = BlockHeader.CalculateHash(decoded);
+            
+            Assert.AreEqual(header.Hash, decoded.Hash, "hash");
         }
     }
 }

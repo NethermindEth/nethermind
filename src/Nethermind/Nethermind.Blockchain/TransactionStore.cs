@@ -21,61 +21,53 @@ using System.Collections.Concurrent;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Encoding;
+using Nethermind.Core.Specs;
+using Nethermind.Dirichlet.Numerics;
+using Nethermind.Store;
 
 namespace Nethermind.Blockchain
 {
     public class TransactionStore : ITransactionStore
     {
+        private readonly IDb _txDb;
+        private readonly IDb _receiptsDb;
+        private readonly ISpecProvider _specProvider;
         private readonly ConcurrentDictionary<Keccak, Transaction> _pending = new ConcurrentDictionary<Keccak, Transaction>();
-        private readonly ConcurrentDictionary<Keccak, Transaction> _transactions = new ConcurrentDictionary<Keccak, Transaction>();
-        private readonly ConcurrentDictionary<Keccak, TransactionReceipt> _transactionRecepits = new ConcurrentDictionary<Keccak, TransactionReceipt>();
-        private readonly ConcurrentBag<Keccak> _processedTransactions = new ConcurrentBag<Keccak>();
-        private readonly ConcurrentDictionary<Keccak, Keccak> _blockHashes = new ConcurrentDictionary<Keccak, Keccak>();
 
-        public void AddTransaction(Transaction transaction)
+        public TransactionStore(IDb receiptsDb, IDb txDb, ISpecProvider specProvider)
         {
-            if (transaction.Hash == null)
-            {
-                throw new InvalidOperationException("Transaction hash is null when adding to the store.");
-            }
-
-            _transactions[transaction.Hash] = transaction;
+            _receiptsDb = receiptsDb;
+            _txDb = txDb;
+            _specProvider = specProvider;
+        }
+        
+        public void StoreProcessedTransaction(Transaction transaction, TransactionReceipt receipt, Keccak blockHash, UInt256 blockNumber, int index)
+        {
+            if(receipt == null) throw new ArgumentNullException(nameof(receipt));
+            if(transaction == null) throw new ArgumentNullException(nameof(transaction));
+            
+            IReleaseSpec spec = _specProvider.GetSpec(blockNumber);
+            _receiptsDb.Set(transaction.Hash, Rlp.Encode(receipt, spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None).Bytes);
+            
+            TxInfo txInfo = new TxInfo(blockHash, blockNumber, index);
+            _txDb.Set(transaction.Hash, Rlp.Encode(txInfo).Bytes);
         }
 
-        public void AddTransactionReceipt(Keccak transactionHash, TransactionReceipt transactionReceipt, Keccak blockHash)
+        public TransactionReceipt GetReceipt(Keccak txHash)
         {
-            _transactionRecepits[transactionHash] = transactionReceipt;
-            _blockHashes[transactionHash] = blockHash;
-            _processedTransactions.Add(transactionHash);
+            Rlp rlp = new Rlp(_receiptsDb.Get(txHash));
+            return Rlp.Decode<TransactionReceipt>(rlp);
         }
 
-        public Transaction GetTransaction(Keccak transactionHash)
+        public TxInfo GetTxInfo(Keccak txHash)
         {
-            return _transactions.TryGetValue(transactionHash, out var transaction) ? transaction : null;
-        }
-
-        public TransactionReceipt GetTransactionReceipt(Keccak transactionHash)
-        {
-            return _transactionRecepits.TryGetValue(transactionHash, out var transaction) ? transaction : null;
-        }
-
-        public bool WasProcessed(Keccak transactionHash)
-        {
-            return _processedTransactions.Contains(transactionHash);
-        }
-
-        public Keccak GetBlockHash(Keccak transactionHash)
-        {
-            return _blockHashes.TryGetValue(transactionHash, out var blockHash) ? blockHash : null;
+            Rlp rlp = new Rlp(_txDb.Get(txHash));
+            return Rlp.Decode<TxInfo>(rlp);
         }
 
         public AddTransactionResult AddPending(Transaction transaction)
         {
-            if (_processedTransactions.Contains(transaction.Hash))
-            {
-                return AddTransactionResult.AlreadyProcessed;
-            }
-
             if (_pending.ContainsKey(transaction.Hash))
             {
                 return AddTransactionResult.AlreadyKnown;

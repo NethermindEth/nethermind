@@ -207,7 +207,7 @@ namespace Ethereum.Test.Base
             IDifficultyCalculator difficultyCalculator = new DifficultyCalculator(specProvider);
             IRewardCalculator rewardCalculator = new RewardCalculator(specProvider);
             
-            IBlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), new MemDb(), specProvider, _logManager);
+            IBlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), specProvider, _logManager);
             IBlockhashProvider blockhashProvider = new BlockhashProvider(blockTree);
             ISignatureValidator signatureValidator = new SignatureValidator(ChainId.MainNet);
             ITransactionValidator transactionValidator = new TransactionValidator(signatureValidator);
@@ -223,7 +223,7 @@ namespace Ethereum.Test.Base
                 _logManager);
 
             ISealEngine sealEngine = new EthashSealEngine(new Ethash(_logManager), _logManager);
-            ITransactionStore transactionStore = new TransactionStore();
+            ITransactionStore transactionStore = new TransactionStore(new MemDb(), new MemDb(), specProvider);
             IEthereumSigner signer = new EthereumSigner(specProvider, _logManager);
             IBlockProcessor blockProcessor = new BlockProcessor(
                 specProvider,

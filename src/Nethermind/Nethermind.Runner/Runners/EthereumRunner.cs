@@ -117,7 +117,16 @@ namespace Nethermind.Runner.Runners
             _logger.Debug($"Server GC           : {System.Runtime.GCSettings.IsServerGC}");
             _logger.Debug($"GC latency mode     : {System.Runtime.GCSettings.LatencyMode}");
             _logger.Debug($"LOH compaction mode : {System.Runtime.GCSettings.LargeObjectHeapCompactionMode}");
-            _privateKey = new PrivateKey(_initConfig.TestNodeKey);
+            if (_initConfig.TestNodeKey == null)
+            {
+                _logger.Warn("Generating temp private key for the node (no node key in configuration)");
+                _privateKey = new PrivateKeyProvider(_cryptoRandom).PrivateKey;    
+            }
+            else
+            {
+                _privateKey = new PrivateKey(_initConfig.TestNodeKey);
+            }
+            
             _dbBasePath = _initConfig.BaseDbPath ?? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "db");
 
             _tracer = _initConfig.TransactionTracingEnabled
@@ -192,12 +201,6 @@ namespace Nethermind.Runner.Runners
             var ethereumSigner = new EthereumSigner(
                 specProvider,
                 _logManager);
-            
-            var transactionStore = new TransactionStore();
-            
-            var sealEngine = ConfigureSealEngine(
-                transactionStore,
-                ethereumSigner);
 
             /* sync */
             IDbConfig dbConfig = _configProvider.GetConfig<IDbConfig>();
@@ -205,6 +208,10 @@ namespace Nethermind.Runner.Runners
             {
                 _logger.Info($"DB {propertyInfo.Name}: {propertyInfo.GetValue(dbConfig)}");    
             }
+            
+            _blocksDb = new DbOnTheRocks(
+                Path.Combine(_dbBasePath, DbOnTheRocks.ReceiptsDbPath),
+                dbConfig);
             
             _blocksDb = new DbOnTheRocks(
                 Path.Combine(_dbBasePath, DbOnTheRocks.BlocksDbPath),
@@ -217,12 +224,21 @@ namespace Nethermind.Runner.Runners
             _receiptsDb = new DbOnTheRocks(
                 Path.Combine(_dbBasePath, DbOnTheRocks.ReceiptsDbPath),
                 dbConfig);
+            
+            _txDb = new DbOnTheRocks(
+                Path.Combine(_dbBasePath, DbOnTheRocks.TxsDbPath),
+                dbConfig);
 
+            var transactionStore = new TransactionStore(_receiptsDb, _txDb, specProvider);
+            
+            var sealEngine = ConfigureSealEngine(
+                transactionStore,
+                ethereumSigner);
+            
             /* blockchain */
             _blockTree = new BlockTree(
                 _blocksDb,
-                _blockInfosDb,
-                _receiptsDb,
+                _blockInfosDb,                
                 specProvider,
                 _logManager);
             
@@ -337,6 +353,7 @@ namespace Nethermind.Runner.Runners
                 stateProvider,
                 _keyStore,
                 _blockTree,
+                _blockchainProcessor,
                 stateDb,
                 transactionStore);
             
@@ -496,6 +513,7 @@ namespace Nethermind.Runner.Runners
         private IRlpxPeer _rlpxPeer;
         private RocksDbProvider _rocksDbProvider;
         private DbOnTheRocks _receiptsDb;
+        private DbOnTheRocks _txDb;
         private DbOnTheRocks _blockInfosDb;
         private DbOnTheRocks _blocksDb;
 
