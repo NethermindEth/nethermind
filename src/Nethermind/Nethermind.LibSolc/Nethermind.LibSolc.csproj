@@ -9,7 +9,7 @@
     <None Include="./External/Posix/libsolc.so" Link="libsolc.so">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Include="./External/Mac/libsolc.osx.so" Link="libsolc.osx.so">
+    <None Include="./External/Mac/libsolc.dylib" Link="libsolc.dylib">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>
