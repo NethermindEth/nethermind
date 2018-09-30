@@ -46,7 +46,7 @@ namespace Nethermind.Evm
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _virtualMachine = virtualMachine ?? throw new ArgumentNullException(nameof(virtualMachine));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
-            _storageProvider = storageProvider ?? throw new ArgumentNullException(nameof(storageProvider));            
+            _storageProvider = storageProvider ?? throw new ArgumentNullException(nameof(storageProvider));
         }
 
         private TransactionReceipt GetNullReceipt(BlockHeader block, long gasUsed)
@@ -71,7 +71,7 @@ namespace Nethermind.Evm
             Address recipient = transaction.To;
             UInt256 value = transaction.Value;
             UInt256 gasPrice = transaction.GasPrice;
-            long gasLimit = (long)transaction.GasLimit;
+            long gasLimit = (long) transaction.GasLimit;
             byte[] machineCode = transaction.Init;
             byte[] data = transaction.Data ?? Bytes.Empty;
 
@@ -139,7 +139,7 @@ namespace Nethermind.Evm
             }
 
             UInt256 senderBalance = _stateProvider.GetBalance(sender);
-            if ((ulong)intrinsicGas * gasPrice + value > senderBalance)
+            if ((ulong) intrinsicGas * gasPrice + value > senderBalance)
             {
                 if (_logger.IsTrace)
                 {
@@ -160,7 +160,7 @@ namespace Nethermind.Evm
             }
 
             _stateProvider.IncrementNonce(sender);
-            _stateProvider.SubtractFromBalance(sender, (ulong)gasLimit * gasPrice, spec);
+            _stateProvider.SubtractFromBalance(sender, (ulong) gasLimit * gasPrice, spec);
             _stateProvider.Commit(spec);
 
             long unspentGas = gasLimit - intrinsicGas;
@@ -184,98 +184,79 @@ namespace Nethermind.Evm
 
             try
             {
-                if (transaction.IsContractCreation)
+                bool isPrecompile = recipient.IsPrecompiled(spec);
+
+                ExecutionEnvironment env = new ExecutionEnvironment();
+                env.Value = value;
+                env.TransferValue = value;
+                env.Sender = sender;
+                env.ExecutingAccount = recipient;
+                env.CurrentBlock = block;
+                env.GasPrice = gasPrice;
+                env.InputData = data ?? new byte[0];
+                env.CodeInfo = isPrecompile ? new CodeInfo(recipient) : machineCode == null ? _virtualMachine.GetCachedCodeInfo(recipient) : new CodeInfo(machineCode);
+                env.Originator = sender;
+
+                ExecutionType executionType = isPrecompile
+                    ? ExecutionType.DirectPrecompile
+                    : transaction.IsContractCreation
+                        ? ExecutionType.DirectCreate
+                        : ExecutionType.Transaction;
+
+                using (EvmState state = new EvmState(unspentGas, env, executionType, false))
                 {
-                    // TODO: review tests around it as it fails on Ropsten 230881 when we throw an exception
-                    if (_stateProvider.AccountExists(recipient) && !_stateProvider.IsEmptyAccount(recipient))
-                    {
-                        // TODO: review
-//                        throw new TransactionCollisionException();
-                    }
+                    substate = _virtualMachine.Run(state, spec, shouldTrace);
+                    unspentGas = state.GasAvailable;
                 }
 
-                if (transaction.IsTransfer) // TODO: this is never called and wrong, to be removed
+                if (substate.ShouldRevert)
                 {
-                    _stateProvider.SubtractFromBalance(sender, value, spec);
-                    _stateProvider.AddToBalance(recipient, value, spec);
-                    statusCode = StatusCode.Success;
+                    if (_logger.IsTrace)
+                    {
+                        _logger.Trace("REVERTING");
+                    }
+
+                    logEntries.Clear();
+                    _stateProvider.Restore(snapshot);
+                    _storageProvider.Restore(storageSnapshot);
                 }
                 else
                 {
-                    bool isPrecompile = recipient.IsPrecompiled(spec);
-
-                    ExecutionEnvironment env = new ExecutionEnvironment();
-                    env.Value = value;
-                    env.TransferValue = value;
-                    env.Sender = sender;
-                    env.ExecutingAccount = recipient;
-                    env.CurrentBlock = block;
-                    env.GasPrice = gasPrice;
-                    env.InputData = data ?? new byte[0];
-                    env.CodeInfo = isPrecompile ? new CodeInfo(recipient) : machineCode == null ? _virtualMachine.GetCachedCodeInfo(recipient) : new CodeInfo(machineCode);
-                    env.Originator = sender;
-
-                    ExecutionType executionType = isPrecompile
-                        ? ExecutionType.DirectPrecompile
-                        : transaction.IsContractCreation
-                            ? ExecutionType.DirectCreate
-                            : ExecutionType.Transaction;
-
-                    using (EvmState state = new EvmState(unspentGas, env, executionType, false))
+                    if (transaction.IsContractCreation)
                     {
-                        substate = _virtualMachine.Run(state, spec, shouldTrace);
-                        unspentGas = state.GasAvailable;
-                    }
-
-                    if (substate.ShouldRevert)
-                    {
-                        if (_logger.IsTrace)
+                        long codeDepositGasCost = substate.Output.Length * GasCostOf.CodeDeposit;
+                        if (spec.IsEip170Enabled && substate.Output.Length > 0x6000)
                         {
-                            _logger.Trace("REVERTING");
+                            codeDepositGasCost = long.MaxValue;
                         }
 
-                        logEntries.Clear();
-                        _stateProvider.Restore(snapshot);
-                        _storageProvider.Restore(storageSnapshot);
-                    }
-                    else
-                    {
-                        if (transaction.IsContractCreation)
+                        if (unspentGas < codeDepositGasCost && spec.IsEip2Enabled)
                         {
-                            long codeDepositGasCost = substate.Output.Length * GasCostOf.CodeDeposit;
-                            if (spec.IsEip170Enabled && substate.Output.Length > 0x6000)
-                            {
-                                codeDepositGasCost = long.MaxValue;
-                            }
-
-                            if (unspentGas < codeDepositGasCost && spec.IsEip2Enabled)
-                            {
-                                throw new OutOfGasException();
-                            }
-
-                            if (unspentGas >= codeDepositGasCost)
-                            {
-                                Keccak codeHash = _stateProvider.UpdateCode(substate.Output);
-                                _stateProvider.UpdateCodeHash(recipient, codeHash, spec);
-                                unspentGas -= codeDepositGasCost;
-                            }
+                            throw new OutOfGasException();
                         }
 
-                        logEntries.AddRange(substate.Logs);
-                        foreach (Address toBeDestroyed in substate.DestroyList)
+                        if (unspentGas >= codeDepositGasCost)
                         {
-                            if (_logger.IsTrace) _logger.Trace($"DESTROYING: {toBeDestroyed}");
-                            _stateProvider.DeleteAccount(toBeDestroyed);
+                            Keccak codeHash = _stateProvider.UpdateCode(substate.Output);
+                            _stateProvider.UpdateCodeHash(recipient, codeHash, spec);
+                            unspentGas -= codeDepositGasCost;
                         }
-
-                        statusCode = StatusCode.Success;
                     }
 
-                    spentGas = Refund(gasLimit, unspentGas, substate, sender, gasPrice, spec);
-                    if (shouldTrace)
+                    logEntries.AddRange(substate.Logs);
+                    foreach (Address toBeDestroyed in substate.DestroyList)
                     {
-                        substate.Trace.Gas = spentGas;
+                        if (_logger.IsTrace) _logger.Trace($"DESTROYING: {toBeDestroyed}");
+                        _stateProvider.DeleteAccount(toBeDestroyed);
                     }
+
+                    statusCode = StatusCode.Success;
+                }
+
+                spentGas = Refund(gasLimit, unspentGas, substate, sender, gasPrice, spec);
+                if (shouldTrace)
+                {
+                    substate.Trace.Gas = spentGas;
                 }
             }
             catch (Exception ex) when (ex is EvmException || ex is OverflowException) // TODO: OverflowException? still needed? hope not
@@ -296,11 +277,11 @@ namespace Nethermind.Evm
             {
                 if (!_stateProvider.AccountExists(block.Beneficiary))
                 {
-                    _stateProvider.CreateAccount(block.Beneficiary, (ulong)spentGas * gasPrice);
+                    _stateProvider.CreateAccount(block.Beneficiary, (ulong) spentGas * gasPrice);
                 }
                 else
                 {
-                    _stateProvider.AddToBalance(block.Beneficiary, (ulong)spentGas * gasPrice, spec);
+                    _stateProvider.AddToBalance(block.Beneficiary, (ulong) spentGas * gasPrice, spec);
                 }
             }
 
@@ -326,7 +307,7 @@ namespace Nethermind.Evm
                 _logger.Trace("REFUNDING UNUSED GAS OF " + unspentGas + " AND REFUND OF " + refund);
             }
 
-            _stateProvider.AddToBalance(sender, (ulong)(unspentGas + refund) * gasPrice, spec);
+            _stateProvider.AddToBalance(sender, (ulong) (unspentGas + refund) * gasPrice, spec);
             spentGas -= refund;
             return spentGas;
         }
@@ -337,7 +318,7 @@ namespace Nethermind.Evm
             transactionReceipt.Logs = logEntries;
             transactionReceipt.Bloom = logEntries.Length == 0 ? Bloom.Empty : BuildBloom(logEntries);
             transactionReceipt.GasUsed = block.GasUsed;
-            if(!_specProvider.GetSpec(block.Number).IsEip658Enabled)
+            if (!_specProvider.GetSpec(block.Number).IsEip658Enabled)
             {
                 transactionReceipt.PostTransactionState = _stateProvider.StateRoot;
             }
@@ -348,7 +329,7 @@ namespace Nethermind.Evm
         }
 
         public static Bloom BuildBloom(LogEntry[] logEntries)
-        {            
+        {
             Bloom bloom = new Bloom();
             for (int entryIndex = 0; entryIndex < logEntries.Length; entryIndex++)
             {
