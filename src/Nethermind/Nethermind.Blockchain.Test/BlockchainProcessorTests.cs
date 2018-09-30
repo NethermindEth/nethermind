@@ -75,7 +75,7 @@ namespace Nethermind.Blockchain.Test
             var transactionStore = new TransactionStore(receiptsDb, txDb, specProvider);
             var blockhashProvider = new BlockhashProvider(blockTree);
             var virtualMachine = new VirtualMachine(stateProvider, storageProvider, blockhashProvider, logger);
-            var processor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, NullTracer.Instance, logger);
+            var processor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, logger);
             var rewardCalculator = new RewardCalculator(specProvider);
             var blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, processor, storageDbProvider, stateProvider, storageProvider, transactionStore, logger);
             var blockchainProcessor = new BlockchainProcessor(blockTree, sealEngine, transactionStore, difficultyCalculator, blockProcessor, ethereumSigner, logger, new PerfService(NullLogManager.Instance));

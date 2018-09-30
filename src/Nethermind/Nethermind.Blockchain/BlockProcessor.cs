@@ -73,7 +73,7 @@ namespace Nethermind.Blockchain
 
                 // TODO: setup a DB for this
 //                _transactionStore.AddTransaction(transaction);
-                TransactionReceipt receipt = _transactionProcessor.Execute(transaction, block.Header);
+                (TransactionReceipt receipt, TransactionTrace trace) = _transactionProcessor.Execute(transaction, block.Header, false);
                 if (transaction.Hash == null)
                 {
                     throw new InvalidOperationException("Transaction's hash is null when processing");

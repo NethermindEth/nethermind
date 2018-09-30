@@ -24,17 +24,23 @@ namespace Nethermind.Evm
     public class TransactionSubstate
     {
         public TransactionSubstate(
+            byte[] output,
             long refund,
             IReadOnlyCollection<Address> destroyList,
             IReadOnlyCollection<LogEntry> logs,
-            bool shouldRevert)
+            bool shouldRevert,
+            TransactionTrace trace)
         {
+            Output = output;
             Refund = refund;
             DestroyList = destroyList;
             Logs = logs;
             ShouldRevert = shouldRevert;
+            Trace = trace;
         }
 
+        public byte[] Output { get; }
+        
         public bool ShouldRevert { get; }
 
         public long Refund { get; }
@@ -42,5 +48,7 @@ namespace Nethermind.Evm
         public IReadOnlyCollection<LogEntry> Logs { get; }
 
         public IReadOnlyCollection<Address> DestroyList { get; }
+        
+        public TransactionTrace Trace { get; }
     }
 }

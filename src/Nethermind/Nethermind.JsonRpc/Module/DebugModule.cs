@@ -21,6 +21,7 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.JsonRpc.DataModel;
 
 namespace Nethermind.JsonRpc.Module
@@ -47,6 +48,17 @@ namespace Nethermind.JsonRpc.Module
 
             if (Logger.IsTrace) Logger.Trace($"debug_traceTransaction request {transationHash.ToJson()}, result: {GetJsonLog(transactionModel.ToJson())}");
             return ResultWrapper<TransactionTrace>.Success(transactionModel);
+        }
+
+        public ResultWrapper<bool> debug_addTxData(BlockParameter blockParameter)
+        {
+            if (blockParameter.Type != BlockParameterType.BlockId)
+            {
+                throw new InvalidOperationException("Can only addTxData for historical blocks");
+            }
+            
+            _blockchainBridge.AddTxData((UInt256)blockParameter.BlockId.GetValue().Value); // tks ...
+            return ResultWrapper<bool>.Success(true);
         }
     }
 }

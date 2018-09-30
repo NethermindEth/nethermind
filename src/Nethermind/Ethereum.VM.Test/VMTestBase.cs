@@ -188,17 +188,17 @@ namespace Ethereum.VM.Test
 
             if (test.Out == null)
             {
-                Assert.That(() => machine.Run(state, Olympic.Instance, null), Throws.Exception);
+                Assert.That(() => machine.Run(state, Olympic.Instance, false), Throws.Exception);
                 return;
             }
 
             _stateProvider.Commit(Olympic.Instance);
             _storageProvider.Commit(Olympic.Instance);
 
-            (byte[] output, TransactionSubstate substate) = machine.Run(state, Olympic.Instance, null);
+            TransactionSubstate substate = machine.Run(state, Olympic.Instance, false);
 
-            Assert.True(Bytes.AreEqual(test.Out, output),
-                $"Exp: {test.Out.ToHexString(true)} != Actual: {output.ToHexString(true)}");
+            Assert.True(Bytes.AreEqual(test.Out, substate.Output),
+                $"Exp: {test.Out.ToHexString(true)} != Actual: {substate.Output.ToHexString(true)}");
             Assert.AreEqual((long)test.Gas, state.GasAvailable);
             foreach (KeyValuePair<Address, AccountState> accountState in test.Post)
             {

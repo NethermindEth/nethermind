@@ -234,7 +234,6 @@ namespace Ethereum.Test.Base
                     stateProvider,
                     storageProvider,
                     virtualMachine,
-                    NullTracer.Instance,
                     _logManager),
                 dbProvider,
                 stateProvider,

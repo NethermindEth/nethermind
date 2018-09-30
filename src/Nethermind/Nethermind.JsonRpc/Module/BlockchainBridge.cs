@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Collections.Generic;
 using System.Numerics;
 using System.Security;
@@ -34,6 +35,7 @@ namespace Nethermind.JsonRpc.Module
     {
         private readonly IEthereumSigner _signer;
         private readonly IBlockTree _blockTree;
+        private readonly IBlockchainProcessor _blockchainProcessor;
         private readonly ITransactionStore _transactionStore;
         private readonly IDb _db;
         private readonly IStateProvider _stateProvider;
@@ -52,6 +54,7 @@ namespace Nethermind.JsonRpc.Module
             _stateProvider = stateProvider;
             _keyStore = keyStore;
             _blockTree = blockTree;
+            _blockchainProcessor = blockchainProcessor;
             _db = db;
             _transactionStore = transactionStore;
         }
@@ -93,6 +96,17 @@ namespace Nethermind.JsonRpc.Module
             return _signer.Sign(privateKey, message);
         }
 
+        public void AddTxData(UInt256 blockNumber)
+        {
+            Block block = _blockTree.FindBlock(blockNumber);
+            if (block == null)
+            {
+                throw new InvalidOperationException("Only blocks from the past");
+            }
+            
+            _blockchainProcessor.AddTxData(block);
+        }
+
         public Transaction GetTransaction(Keccak transactionHash)
         {
             TxInfo txInfo = _transactionStore.GetTxInfo(transactionHash);
@@ -112,22 +126,7 @@ namespace Nethermind.JsonRpc.Module
 
         public TransactionTrace GetTransactionTrace(Keccak transactionHash)
         {
-            return new TransactionTrace
-            {
-                Gas = 111000,
-                Failed = false,
-                Entries = new List<TransactionTraceEntry>
-                {
-                    new TransactionTraceEntry
-                    {
-                        Gas = 1200,
-                        Depth = 3,
-                        GasCost = 2122,
-                        Pc = 121212,
-                        Operation = "Add"
-                    }
-                }
-            };
+            return _blockchainProcessor.Trace(transactionHash);
         }
 
         public byte[] GetCode(Address address)

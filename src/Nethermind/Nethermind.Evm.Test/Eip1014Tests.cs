@@ -54,7 +54,6 @@ namespace Nethermind.Evm.Test
             Keccak createCodeHash = TestState.UpdateCode(createCode);
             TestState.UpdateCodeHash(TestObject.AddressC, createCodeHash, Spec);
 
-            IsTracingEnabled = true;
             byte[] code = Prepare.EvmCode
                 .Call(TestObject.AddressC, 50000)
                 .PushData(Address.OfContract(TestObject.AddressC, 0))

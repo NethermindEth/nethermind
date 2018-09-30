@@ -81,7 +81,6 @@ namespace Nethermind.Runner.Runners
         private IPerfService _perfService;
         private CancellationTokenSource _runnerCancellation;
         private ISynchronizationManager _syncManager;
-        private ITransactionTracer _tracer;
         private IKeyStore _keyStore;
         private IPeerManager _peerManager;
         private BlockTree _blockTree;
@@ -128,10 +127,6 @@ namespace Nethermind.Runner.Runners
             }
             
             _dbBasePath = _initConfig.BaseDbPath ?? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "db");
-
-            _tracer = _initConfig.TransactionTracingEnabled
-                ? new TransactionTracer(_initConfig.BaseTracingPath, new UnforgivingJsonSerializer())
-                : NullTracer.Instance;
             _perfService = new PerfService(_logManager) {LogOnDebug = _initConfig.LogPerfStatsOnDebug};
         }
 
@@ -303,7 +298,6 @@ namespace Nethermind.Runner.Runners
                 stateProvider,
                 storageProvider,
                 virtualMachine,
-                _tracer,
                 _logManager);
 
             var rewardCalculator = new RewardCalculator(

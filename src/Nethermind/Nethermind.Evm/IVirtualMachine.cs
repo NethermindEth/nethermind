@@ -23,7 +23,7 @@ namespace Nethermind.Evm
 {
     public interface IVirtualMachine
     {
-        (byte[] output, TransactionSubstate) Run(EvmState state, IReleaseSpec spec, TransactionTrace trace);
+        TransactionSubstate Run(EvmState state, IReleaseSpec spec, bool enableTracing);
         CodeInfo GetCachedCodeInfo(Address codeSource); // TODO: this needs to be removed when we refine the API around making calls
     }
 }

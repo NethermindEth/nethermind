@@ -10,13 +10,11 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Store;
 using NUnit.Framework;
-using Org.BouncyCastle.Utilities.Encoders;
 
 namespace Nethermind.Evm.Test
 {
-    public class VirtualMachineTestsBase : ITransactionTracer
+    public class VirtualMachineTestsBase
     {
-        private readonly ConsoleTransactionTracer _tracer = new ConsoleTransactionTracer(new UnforgivingJsonSerializer());
         private readonly IEthereumSigner _ethereumSigner;
         private readonly ITransactionProcessor _processor;
         private readonly ISnapshotableDb _stateDb;
@@ -46,29 +44,12 @@ namespace Nethermind.Evm.Test
             IBlockhashProvider blockhashProvider = new TestBlockhashProvider();
             IVirtualMachine virtualMachine = new VirtualMachine(TestState, Storage, blockhashProvider, logger);
 
-            _processor = new TransactionProcessor(SpecProvider, TestState, Storage, virtualMachine, this, logger);
-        }
-
-        protected TransactionTrace TransactionTrace { get; private set; }
-
-        public bool IsTracingEnabled
-        {
-            get => _tracer.IsTracingEnabled;
-            protected set => _tracer.IsTracingEnabled = value;
-        }
-
-        public void SaveTrace(Keccak hash, TransactionTrace trace)
-        {
-            TransactionTrace = trace;
-            _tracer.SaveTrace(hash, trace);
+            _processor = new TransactionProcessor(SpecProvider, TestState, Storage, virtualMachine, logger);
         }
 
         [SetUp]
         public void Setup()
         {
-            _tracer.IsTracingEnabled = false;
-            TransactionTrace = null;
-
             _stateDbSnapshot = _stateDb.TakeSnapshot();
             _storageDbSnapshot = _storageDbProvider.TakeSnapshot();
             _stateRoot = TestState.StateRoot;
@@ -89,12 +70,27 @@ namespace Nethermind.Evm.Test
             _stateDb.Restore(_stateDbSnapshot);
         }
 
+        protected (TransactionReceipt Receipt, TransactionTrace Trace) ExecuteAndTrace(params byte[] code)
+        {
+            return Execute(BlockNumber, 100000, code, true);
+        }
+        
+        protected (TransactionReceipt Receipt, TransactionTrace Trace) ExecuteAndTrace(UInt256 blockNumber, long gasLimit, byte[] code)
+        {
+            return Execute(blockNumber, gasLimit, code, true);
+        }
+        
         protected TransactionReceipt Execute(params byte[] code)
         {
-            return Execute(BlockNumber, 100000, code);
+            return Execute(BlockNumber, 100000, code, false).Receipt;
         }
 
         protected TransactionReceipt Execute(UInt256 blockNumber, long gasLimit, byte[] code)
+        {
+            return Execute(blockNumber, gasLimit, code, false).Receipt;
+        }
+        
+        private (TransactionReceipt Receipt, TransactionTrace Trace) Execute(UInt256 blockNumber, long gasLimit, byte[] code, bool shouldTrace)
         {
             TestState.CreateAccount(Sender, 100.Ether());
             TestState.CreateAccount(Recipient, 100.Ether());
@@ -111,8 +107,7 @@ namespace Nethermind.Evm.Test
                 .TestObject;
 
             Block block = Build.A.Block.WithNumber(blockNumber).TestObject;
-            TransactionReceipt receipt = _processor.Execute(transaction, block.Header);
-            return receipt;
+            return _processor.Execute(transaction, block.Header, shouldTrace);
         }
 
         protected void AssertGas(TransactionReceipt receipt, long gas)

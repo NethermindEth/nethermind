@@ -23,5 +23,6 @@ namespace Nethermind.JsonRpc.Module
     public interface IDebugModule : IModule
     {
         ResultWrapper<TransactionTrace> debug_traceTransaction(Data transationHash);
+        ResultWrapper<bool> debug_addTxData(BlockParameter blockParameter);
     }
 }

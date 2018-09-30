@@ -132,7 +132,7 @@ namespace Nethermind.Config
             var property = configProperties.FirstOrDefault(x => CompareIgnoreCaseTrim(x.Name, item.Key));
             if (property == null)
             {
-                throw new Exception($"Incorrent config key, no property on {configInstance.GetType().Name} config: {item.Key}");
+                throw new Exception($"Invalid configuration. {configInstance.GetType().Name} does not contain property {item.Key}.");
             }
 
             object value = null;

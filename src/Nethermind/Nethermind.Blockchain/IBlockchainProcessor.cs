@@ -18,6 +18,8 @@
 
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Evm;
 
 namespace Nethermind.Blockchain
 {
@@ -32,5 +34,6 @@ namespace Nethermind.Blockchain
         /// </summary>
         /// <param name="block"></param>
         void AddTxData(Block block);
+        TransactionTrace Trace(Keccak txHash);
     }
 }

@@ -1,0 +1,43 @@
+[
+  {
+    "ConfigModule": "InitConfig",
+    "ConfigItems": {
+      "TransactionTracingEnabled": true,
+      "JsonRpcEnabled": false,
+      "NetworkEnabled": true,
+      "DiscoveryEnabled": false,
+      "SynchronizationEnabled": true,
+      "IsMining": false,
+      "DiscoveryPort": 30312,
+      "P2PPort": 30312,
+      "HttpHost": "127.0.0.1",
+      "HttpPort": 8545,
+      "ChainSpecPath": "chainspec\\ropsten.json",
+      "GenesisHash": "0x41941023680923e0fe4d74a34bdac8141f2540e3ae90623718e47d66d1ca4a2d",
+      "BaseDbPath": "ropsten\\discovery",
+      "LogFileName": "ropsten_windows_discovery.logs.txt"
+    }
+  },
+  {
+    "ConfigModule": "DbConfig",
+    "ConfigItems": {
+      "WriteBufferSize": 67108864,
+      "WriteBufferNumber": 6,
+      "BlockCacheSize": 67108864,
+      "CacheIndexAndFilterBlocks": false
+    }
+  },
+  {
+    "ConfigModule": "NetworkConfig",
+    "ConfigItems": {
+      "TrustedPeers": [
+        {
+          "NodeId" : "3136ab17c6d3150feca469c974f70a729cc4f60100b3e558bcc7bad3e2093d4f612d0853637edb6bd9d6187db2415c583a95a593e7e7f4702e6475064851cb9a",
+          "Host" : "127.0.0.1",
+          "Port" : "30303",
+          "Description" : "ethj_ropsten_local"
+        }
+      ]
+    }
+  }
+]

@@ -32,6 +32,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Logging;
 using Nethermind.Dirichlet.Numerics;
+using Nethermind.Evm;
 using Nethermind.Store;
 
 namespace Nethermind.Blockchain
@@ -330,7 +331,20 @@ namespace Nethermind.Blockchain
         public void AddTxData(Block block)
         {
             Process(block, false, true);
+        }
+
+        public TransactionTrace Trace(Keccak txHash)
+        {
+            TxInfo txInfo = _transactionStore.GetTxInfo(txHash);
+            Block block = _blockTree.FindBlock(txInfo.BlockNumber);
+            if (block == null)
+            {
+                throw new InvalidOperationException("Only historical blocks");
+            }
             
+            Process(block, false, true);
+            
+            // need to extract trace now
             throw new NotImplementedException();
         }
 

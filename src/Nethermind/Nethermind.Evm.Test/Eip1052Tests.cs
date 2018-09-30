@@ -152,7 +152,6 @@ namespace Nethermind.Evm.Test
             Keccak selfDestructCodeHash = TestState.UpdateCode(selfDestructCode);
             TestState.UpdateCodeHash(TestObject.AddressC, selfDestructCodeHash, Spec);
 
-            IsTracingEnabled = true;
             byte[] code = Prepare.EvmCode
                 .Call(TestObject.AddressC, 50000)
                 .PushData(TestObject.AddressC)
@@ -184,7 +183,6 @@ namespace Nethermind.Evm.Test
             Keccak revertCodeHash = TestState.UpdateCode(callAndRevertCode);
             TestState.UpdateCodeHash(TestObject.AddressC, revertCodeHash, Spec);
 
-            IsTracingEnabled = true;
             byte[] code = Prepare.EvmCode
                 .Call(TestObject.AddressC, 50000)
                 .PushData(TestObject.AddressD)
@@ -202,7 +200,6 @@ namespace Nethermind.Evm.Test
         {
             TestState.CreateAccount(TestObject.AddressC, 0.Ether());
 
-            IsTracingEnabled = true;
             byte[] code = Prepare.EvmCode
                 .Call(TestObject.AddressC, 0)
                 .PushData(TestObject.AddressC)
@@ -222,7 +219,6 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Newly_created_empty_account_returns_empty_data_hash()
         {
-            IsTracingEnabled = true;
             byte[] code = Prepare.EvmCode
                 .Create(Bytes.Empty, 0)
                 .PushData(Address.OfContract(Recipient, 0))
@@ -260,8 +256,7 @@ namespace Nethermind.Evm.Test
             TestState.CreateAccount(TestObject.AddressC, 1.Ether());
             Keccak createCodeHash = TestState.UpdateCode(createCode);
             TestState.UpdateCodeHash(TestObject.AddressC, createCodeHash, Spec);
-
-            IsTracingEnabled = true;
+            
             byte[] code = Prepare.EvmCode
                 .Call(TestObject.AddressC, 50000)
                 .PushData(Address.OfContract(TestObject.AddressC, 0))
@@ -290,7 +285,6 @@ namespace Nethermind.Evm.Test
             Keccak createCodeHash = TestState.UpdateCode(createCode);
             TestState.UpdateCodeHash(TestObject.AddressC, createCodeHash, Spec);
 
-            IsTracingEnabled = true;
             byte[] code = Prepare.EvmCode
                 .Call(TestObject.AddressC, 50000)
                 .PushData(Address.OfContract(TestObject.AddressC, 0))

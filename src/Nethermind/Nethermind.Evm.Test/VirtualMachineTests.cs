@@ -37,8 +37,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Trace()
         {
-            IsTracingEnabled = true;
-            Execute(
+            (TransactionReceipt _, TransactionTrace Trace) = ExecuteAndTrace(
                 (byte)Instruction.PUSH1,
                 0,
                 (byte)Instruction.PUSH1,
@@ -48,14 +47,14 @@ namespace Nethermind.Evm.Test
                 0,
                 (byte)Instruction.SSTORE);
             
-            Assert.AreEqual(5, TransactionTrace.Entries.Count, "number of entries");
-            TransactionTraceEntry entry = TransactionTrace.Entries[1];
+            Assert.AreEqual(5, Trace.Entries.Count, "number of entries");
+            TransactionTraceEntry entry = Trace.Entries[1];
             Assert.AreEqual(0, entry.Depth, nameof(entry.Depth));
             Assert.AreEqual(79000 - GasCostOf.VeryLow, entry.Gas, nameof(entry.Gas));
             Assert.AreEqual(GasCostOf.VeryLow, entry.GasCost, nameof(entry.GasCost));
             Assert.AreEqual(0, entry.Memory.Count, nameof(entry.Memory));
             Assert.AreEqual(1, entry.Stack.Count, nameof(entry.Stack));
-            Assert.AreEqual(1, TransactionTrace.Entries[4].Storage.Count, nameof(entry.Storage));
+            Assert.AreEqual(1, Trace.Entries[4].Storage.Count, nameof(entry.Storage));
             Assert.AreEqual(2, entry.Pc, nameof(entry.Pc));
             Assert.AreEqual("PUSH1", entry.Operation, nameof(entry.Operation));
         }

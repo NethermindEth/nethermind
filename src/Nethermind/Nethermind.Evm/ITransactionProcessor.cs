@@ -25,6 +25,6 @@ namespace Nethermind.Evm
 {
     public interface ITransactionProcessor
     {
-        TransactionReceipt Execute(Transaction transaction, BlockHeader block);
+        (TransactionReceipt Receipt, TransactionTrace Trace) Execute(Transaction transaction, BlockHeader block, bool shouldTrace);
     }
 }

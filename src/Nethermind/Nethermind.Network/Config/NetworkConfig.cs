@@ -17,8 +17,6 @@
  */
 
 using System.IO;
-using Nethermind.Config;
-using Nethermind.Network.P2P;
 
 namespace Nethermind.Network.Config
 {

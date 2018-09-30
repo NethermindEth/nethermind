@@ -39,12 +39,10 @@ namespace Nethermind.Evm
         private readonly IStorageProvider _storageProvider;
         private readonly ISpecProvider _specProvider;
         private readonly IVirtualMachine _virtualMachine;
-        private readonly ITransactionTracer _tracer;
 
-        public TransactionProcessor(ISpecProvider specProvider, IStateProvider stateProvider, IStorageProvider storageProvider, IVirtualMachine virtualMachine, ITransactionTracer tracer, ILogManager logManager)
+        public TransactionProcessor(ISpecProvider specProvider, IStateProvider stateProvider, IStorageProvider storageProvider, IVirtualMachine virtualMachine, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _tracer = tracer ?? throw new ArgumentNullException(nameof(tracer));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _virtualMachine = virtualMachine ?? throw new ArgumentNullException(nameof(virtualMachine));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
@@ -67,16 +65,8 @@ namespace Nethermind.Evm
             return transactionReceipt;
         }
 
-        public TransactionReceipt Execute(
-            Transaction transaction,
-            BlockHeader block)
+        public (TransactionReceipt, TransactionTrace) Execute(Transaction transaction, BlockHeader block, bool shouldTrace)
         {
-            TransactionTrace trace = null;
-            if (_tracer.IsTracingEnabled)
-            {
-                trace = new TransactionTrace();
-            }
-
             IReleaseSpec spec = _specProvider.GetSpec(block.Number);
             Address recipient = transaction.To;
             UInt256 value = transaction.Value;
@@ -109,7 +99,7 @@ namespace Nethermind.Evm
                     _logger.Trace($"SENDER_NOT_SPECIFIED");
                 }
 
-                return GetNullReceipt(block, 0L);
+                return (GetNullReceipt(block, 0L), null);
             }
 
             long intrinsicGas = _intrinsicGasCalculator.Calculate(transaction, spec);
@@ -125,7 +115,7 @@ namespace Nethermind.Evm
                     _logger.Trace($"GAS_LIMIT_BELOW_INTRINSIC_GAS {gasLimit} < {intrinsicGas}");
                 }
 
-                return GetNullReceipt(block, 0L);
+                return (GetNullReceipt(block, 0L), null);
             }
 
             if (gasLimit > block.GasLimit - block.GasUsed)
@@ -135,7 +125,7 @@ namespace Nethermind.Evm
                     _logger.Trace($"BLOCK_GAS_LIMIT_EXCEEDED {gasLimit} > {block.GasLimit} - {block.GasUsed}");
                 }
 
-                return GetNullReceipt(block, 0L);
+                return (GetNullReceipt(block, 0L), null);
             }
 
             if (!_stateProvider.AccountExists(sender))
@@ -156,7 +146,7 @@ namespace Nethermind.Evm
                     _logger.Trace($"INSUFFICIENT_SENDER_BALANCE: ({sender})b = {senderBalance}");
                 }
 
-                return GetNullReceipt(block, 0L);
+                return (GetNullReceipt(block, 0L), null);
             }
 
             if (transaction.Nonce != _stateProvider.GetNonce(sender))
@@ -166,7 +156,7 @@ namespace Nethermind.Evm
                     _logger.Trace($"WRONG_TRANSACTION_NONCE: {transaction.Nonce} (expected {_stateProvider.GetNonce(sender)})");
                 }
 
-                return GetNullReceipt(block, 0L);
+                return (GetNullReceipt(block, 0L), null);
             }
 
             _stateProvider.IncrementNonce(sender);
@@ -190,8 +180,8 @@ namespace Nethermind.Evm
             int storageSnapshot = _storageProvider.TakeSnapshot();
             _stateProvider.SubtractFromBalance(sender, value, spec);
             byte statusCode = StatusCode.Failure;
+            TransactionSubstate substate = null;
 
-            HashSet<Address> destroyedAccounts = new HashSet<Address>();
             try
             {
                 if (transaction.IsContractCreation)
@@ -231,11 +221,9 @@ namespace Nethermind.Evm
                             ? ExecutionType.DirectCreate
                             : ExecutionType.Transaction;
 
-                    TransactionSubstate substate;
-                    byte[] output;
                     using (EvmState state = new EvmState(unspentGas, env, executionType, false))
                     {
-                        (output, substate) = _virtualMachine.Run(state, spec, trace);
+                        substate = _virtualMachine.Run(state, spec, shouldTrace);
                         unspentGas = state.GasAvailable;
                     }
 
@@ -247,7 +235,6 @@ namespace Nethermind.Evm
                         }
 
                         logEntries.Clear();
-                        destroyedAccounts.Clear();
                         _stateProvider.Restore(snapshot);
                         _storageProvider.Restore(storageSnapshot);
                     }
@@ -255,8 +242,8 @@ namespace Nethermind.Evm
                     {
                         if (transaction.IsContractCreation)
                         {
-                            long codeDepositGasCost = output.Length * GasCostOf.CodeDeposit;
-                            if (spec.IsEip170Enabled && output.Length > 0x6000)
+                            long codeDepositGasCost = substate.Output.Length * GasCostOf.CodeDeposit;
+                            if (spec.IsEip170Enabled && substate.Output.Length > 0x6000)
                             {
                                 codeDepositGasCost = long.MaxValue;
                             }
@@ -268,7 +255,7 @@ namespace Nethermind.Evm
 
                             if (unspentGas >= codeDepositGasCost)
                             {
-                                Keccak codeHash = _stateProvider.UpdateCode(output);
+                                Keccak codeHash = _stateProvider.UpdateCode(substate.Output);
                                 _stateProvider.UpdateCodeHash(recipient, codeHash, spec);
                                 unspentGas -= codeDepositGasCost;
                             }
@@ -277,13 +264,18 @@ namespace Nethermind.Evm
                         logEntries.AddRange(substate.Logs);
                         foreach (Address toBeDestroyed in substate.DestroyList)
                         {
-                            destroyedAccounts.Add(toBeDestroyed);
+                            if (_logger.IsTrace) _logger.Trace($"DESTROYING: {toBeDestroyed}");
+                            _stateProvider.DeleteAccount(toBeDestroyed);
                         }
 
                         statusCode = StatusCode.Success;
                     }
 
                     spentGas = Refund(gasLimit, unspentGas, substate, sender, gasPrice, spec);
+                    if (shouldTrace)
+                    {
+                        substate.Trace.Gas = spentGas;
+                    }
                 }
             }
             catch (Exception ex) when (ex is EvmException || ex is OverflowException) // TODO: OverflowException? still needed? hope not
@@ -294,20 +286,13 @@ namespace Nethermind.Evm
                 }
 
                 logEntries.Clear();
-                destroyedAccounts.Clear();
                 _stateProvider.Restore(snapshot);
                 _storageProvider.Restore(storageSnapshot);
             }
 
-            foreach (Address toBeDestroyed in destroyedAccounts)
-            {
-                if (_logger.IsTrace) _logger.Trace($"DESTROYING: {toBeDestroyed}");
-                _stateProvider.DeleteAccount(toBeDestroyed);
-            }
-
             if (_logger.IsTrace) _logger.Trace("GAS SPENT: " + spentGas);
 
-            if (!destroyedAccounts.Contains(block.Beneficiary))
+            if (statusCode == StatusCode.Failure || !(substate?.DestroyList.Contains(block.Beneficiary) ?? false))
             {
                 if (!_stateProvider.AccountExists(block.Beneficiary))
                 {
@@ -324,13 +309,7 @@ namespace Nethermind.Evm
 
             block.GasUsed += spentGas;
 
-            if (_tracer.IsTracingEnabled)
-            {
-                trace.Gas = spentGas;
-                _tracer.SaveTrace(Transaction.CalculateHash(transaction), trace);
-            }
-
-            return BuildTransactionReceipt(block, statusCode, logEntries.Any() ? logEntries.ToArray() : LogEntry.EmptyLogs, recipient);
+            return (BuildTransactionReceipt(block, statusCode, logEntries.Any() ? logEntries.ToArray() : LogEntry.EmptyLogs, recipient), substate?.Trace);
         }
 
         private long Refund(long gasLimit, long unspentGas, TransactionSubstate substate, Address sender, UInt256 gasPrice, IReleaseSpec spec)
