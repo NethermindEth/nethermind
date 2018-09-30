@@ -46,9 +46,9 @@ jobs:
       name: "Nethermind.Core.Test"
     - script: dotnet test src/Nethermind/Nethermind.DataStreams.Test
       name: "Nethermind.DataStreams.Test"
-    - script: dotnet test src/Nethermind/Nethermind.Db.Test --blame
+    - script: dotnet test src/Nethermind/Nethermind.Db.Test
       name: "Nethermind.Db.Test.Linux"
-    - script: dotnet test src/Nethermind/Nethermind.Db.Test --blame
+    - script: dotnet test src/Nethermind/Nethermind.Db.Test
       name: "Nethermind.Db.Test.Osx"
       os: osx
     - script: dotnet test src/Nethermind/Nethermind.Evm.Test
