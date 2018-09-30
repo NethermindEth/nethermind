@@ -143,54 +143,54 @@ namespace Nethermind.LibSolc
         private static class PosixLib
         {
             [SuppressUnmanagedCodeSecurity]
-            [DllImport("solc")]
+            [DllImport("solc.so")]
             public static extern string license();
             
             [SuppressUnmanagedCodeSecurity]
-            [DllImport("solc")]
+            [DllImport("solc.so")]
             public static extern string version();
             
             [SuppressUnmanagedCodeSecurity]
-            [DllImport("solc")]
+            [DllImport("solc.so")]
             public static extern string compileJSON(string _input, bool _optimize);
             
             [SuppressUnmanagedCodeSecurity]
-            [DllImport("solc")]
+            [DllImport("solc.so")]
             public static extern string compileJSONMulti(string _input, bool _optimize);
             
             [SuppressUnmanagedCodeSecurity]
-            [DllImport("solc")]
+            [DllImport("solc.so")]
             public static extern string compileJSONCallback(string _input, bool _optimize, ReadFileCallback _readCallback);
             
             [SuppressUnmanagedCodeSecurity]
-            [DllImport("solc")]
+            [DllImport("solc.so")]
             public static extern string compileStandard(string _input, ReadFileCallback _readCallback);
         }
 
         private static class MacLib
         {
             [SuppressUnmanagedCodeSecurity]
-            [DllImport("solc")]
+            [DllImport("solc.dylib")]
             public static extern string license();
             
             [SuppressUnmanagedCodeSecurity]
-            [DllImport("solc")]
+            [DllImport("solc.dylib")]
             public static extern string version();
             
             [SuppressUnmanagedCodeSecurity]
-            [DllImport("solc")]
+            [DllImport("solc.dylib")]
             public static extern string compileJSON(string _input, bool _optimize);
             
             [SuppressUnmanagedCodeSecurity]
-            [DllImport("solc")]
+            [DllImport("solc.dylib")]
             public static extern string compileJSONMulti(string _input, bool _optimize);
             
             [SuppressUnmanagedCodeSecurity]
-            [DllImport("solc")]
+            [DllImport("solc.dylib")]
             public static extern string compileJSONCallback(string _input, bool _optimize, ReadFileCallback _readCallback);
             
             [SuppressUnmanagedCodeSecurity]
-            [DllImport("solc")]
+            [DllImport("solc.dylib")]
             public static extern string compileStandard(string _input, ReadFileCallback _readCallback);
         }
 
