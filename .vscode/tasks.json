@@ -1,0 +1,15 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "build",
+            "command": "dotnet",
+            "type": "process",
+            "args": [
+                "build",
+                "${workspaceFolder}/src/Nethermind/Nethermind.Blockchain.Test.Runner/Nethermind.Blockchain.Test.Runner.csproj"
+            ],
+            "problemMatcher": "$msCompile"
+        }
+    ]
+}
