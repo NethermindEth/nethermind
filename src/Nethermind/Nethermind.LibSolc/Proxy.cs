@@ -34,8 +34,15 @@ namespace Nethermind.LibSolc
 {
     public static class Proxy
     {
-        private static readonly bool IsWindows;
+        private static readonly OsPlatform Platform;
         private static readonly ReadFileCallback Callback;
+
+        private enum OsPlatform
+        {
+            Windows,
+            Linux,
+            Mac
+        }
         
         private delegate void ReadFileCallback(string _path, ref string o_contents, ref string o_error);
         /* Looks for the solidity file in the given filepath and uses the contents reference to
@@ -72,8 +79,26 @@ namespace Nethermind.LibSolc
 
         static Proxy()
         {
-            IsWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
+            Platform = GetPlatform();
             Callback = CallBack;
+        }
+
+        private static OsPlatform GetPlatform()
+        {
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows)) 
+            {
+                return OsPlatform.Windows;
+            }
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux)) 
+            {
+                return OsPlatform.Linux;
+            }
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX)) 
+            {
+                return OsPlatform.Mac;
+            }
+
+            throw new InvalidOperationException("Unsupported platform.");
         }
         
         private static class Win64Lib
@@ -142,33 +167,62 @@ namespace Nethermind.LibSolc
             public static extern string compileStandard(string _input, ReadFileCallback _readCallback);
         }
 
-        public static string GetSolcLicense()
+        private static class MacLib
         {
-            string result = IsWindows
-                ? Win64Lib.license()
-                : PosixLib.license();
-
-            return result;
+            [SuppressUnmanagedCodeSecurity]
+            [DllImport("solc.osx.so")]
+            public static extern string license();
+            
+            [SuppressUnmanagedCodeSecurity]
+            [DllImport("solc.osx.so")]
+            public static extern string version();
+            
+            [SuppressUnmanagedCodeSecurity]
+            [DllImport("solc.osx.so")]
+            public static extern string compileJSON(string _input, bool _optimize);
+            
+            [SuppressUnmanagedCodeSecurity]
+            [DllImport("solc.osx.so")]
+            public static extern string compileJSONMulti(string _input, bool _optimize);
+            
+            [SuppressUnmanagedCodeSecurity]
+            [DllImport("solc.osx.so")]
+            public static extern string compileJSONCallback(string _input, bool _optimize, ReadFileCallback _readCallback);
+            
+            [SuppressUnmanagedCodeSecurity]
+            [DllImport("solc.osx.so")]
+            public static extern string compileStandard(string _input, ReadFileCallback _readCallback);
         }
+
+        public static string GetSolcLicense()
+            => For(() => Win64Lib.license(),
+                () => PosixLib.license(),
+                () => MacLib.license());
 
         public static string GetSolcVersion()
-        {
-            string result = IsWindows
-                ? Win64Lib.version()
-                : PosixLib.version();
-
-            return result;
-        }
+            => For(() => Win64Lib.version(),
+                () => PosixLib.version(),
+                () => MacLib.version());
 
         public static string Compile(string contract, string evmVersion, bool optimize, uint? runs)
         {
             string input = new CompilerInput(contract, evmVersion, optimize, runs).Value();
 
-            string result = IsWindows
-                ? Win64Lib.compileStandard(input, null)
-                : PosixLib.compileStandard(input, null);
+            return For(() => Win64Lib.compileStandard(input, null),
+                () => PosixLib.compileStandard(input, null),
+                () => MacLib.compileStandard(input, null));
+        }
 
-            return result;
+        private static T For<T>(Func<T> windows, Func<T> linux, Func<T> mac)
+        {
+            switch (Platform)
+            {
+                case OsPlatform.Windows: return windows();
+                case OsPlatform.Linux: return linux();
+                case OsPlatform.Mac: return mac();
+            }
+
+            throw new InvalidOperationException("Unsupported platform.");
         }
     }
 }
