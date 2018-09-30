@@ -213,6 +213,11 @@ namespace Nethermind.Evm
                         if (previousState.ExecutionType == ExecutionType.Create || previousState.ExecutionType == ExecutionType.DirectCreate)
                         {
                             long codeDepositGasCost = GasCostOf.CodeDeposit * callResult.Output.Length;
+                            if (spec.IsEip170Enabled && callResult.Output.Length > 0x6000)
+                            {
+                                codeDepositGasCost = long.MaxValue;
+                            }
+                            
                             if (_logger.IsTrace)
                             {
                                 _logger.Trace($"Code deposit cost is {codeDepositGasCost} ({GasCostOf.CodeDeposit} * {callResult.Output.Length})");

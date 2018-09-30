@@ -165,7 +165,6 @@ namespace Nethermind.Evm
 
             long unspentGas = gasLimit - intrinsicGas;
             long spentGas = gasLimit;
-            List<LogEntry> logEntries = new List<LogEntry>();
 
             if (transaction.IsContractCreation)
             {
@@ -216,13 +215,12 @@ namespace Nethermind.Evm
                         _logger.Trace("REVERTING");
                     }
 
-                    logEntries.Clear();
                     _stateProvider.Restore(snapshot);
                     _storageProvider.Restore(storageSnapshot);
                 }
                 else
                 {
-                    if (transaction.IsContractCreation)
+                    if (transaction.IsContractCreation) // TODO: tks: this can be merged with internal VM calls 
                     {
                         long codeDepositGasCost = substate.Output.Length * GasCostOf.CodeDeposit;
                         if (spec.IsEip170Enabled && substate.Output.Length > 0x6000)
@@ -243,7 +241,6 @@ namespace Nethermind.Evm
                         }
                     }
 
-                    logEntries.AddRange(substate.Logs);
                     foreach (Address toBeDestroyed in substate.DestroyList)
                     {
                         if (_logger.IsTrace) _logger.Trace($"DESTROYING: {toBeDestroyed}");
@@ -266,7 +263,6 @@ namespace Nethermind.Evm
                     _logger.Trace($"EVM EXCEPTION: {ex.GetType().Name}");
                 }
 
-                logEntries.Clear();
                 _stateProvider.Restore(snapshot);
                 _storageProvider.Restore(storageSnapshot);
             }
@@ -290,7 +286,7 @@ namespace Nethermind.Evm
 
             block.GasUsed += spentGas;
 
-            return (BuildTransactionReceipt(block, statusCode, logEntries.Any() ? logEntries.ToArray() : LogEntry.EmptyLogs, recipient), substate?.Trace);
+            return (BuildTransactionReceipt(block, statusCode, (statusCode == StatusCode.Success && substate.Logs.Any()) ? substate.Logs.ToArray() : LogEntry.EmptyLogs, recipient), substate?.Trace);
         }
 
         private long Refund(long gasLimit, long unspentGas, TransactionSubstate substate, Address sender, UInt256 gasPrice, IReleaseSpec spec)
