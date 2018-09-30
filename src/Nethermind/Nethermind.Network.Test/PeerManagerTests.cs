@@ -58,7 +58,7 @@ namespace Nethermind.Network.Test
         private ILogManager _logManager;
         
         [SetUp]
-        public async Task Initialize()
+        public void Initialize()
         {
             _logManager = new OneLoggerLogManager(new SimpleConsoleLogger());
             _configurationProvider = new JsonConfigProvider();
@@ -235,14 +235,6 @@ namespace Nethermind.Network.Test
         {
             var p2pSession = InitializeNode(ConnectionDirection.In);
 
-            //trigger p2p initialization
-            //var p2pProtocol = new P2PProtocolHandler(p2pSession, new MessageSerializationService(), p2pSession.RemoteNodeId, p2pSession.RemotePort ?? 0, _logManager);
-            //var p2pArgs = new P2PProtocolInitializedEventArgs(p2pProtocol)
-            //{
-            //    P2PVersion = 1,
-            //    Capabilities = new[] { new Capability(Protocol.Eth, 62) }.ToList()
-            //};
-            //p2pSession.TriggerProtocolInitialized(p2pArgs);
             Assert.IsTrue(p2pSession.Disconected);
             Assert.AreEqual(DisconnectReason.AlreadyConnected, p2pSession.DisconnectReason);
         }
@@ -260,14 +252,6 @@ namespace Nethermind.Network.Test
             _localPeer.TriggerSessionCreated(p2pSession);
             p2pSession.TriggerHandshakeComplete();
 
-            //trigger p2p initialization
-            //var p2pProtocol = new P2PProtocolHandler(p2pSession, new MessageSerializationService(), p2pSession.RemoteNodeId, p2pSession.RemotePort ?? 0, _logManager);
-            //var p2pArgs = new P2PProtocolInitializedEventArgs(p2pProtocol)
-            //{
-            //    P2PVersion = 1,
-            //    Capabilities = new[] { new Capability(Protocol.Eth, 62) }.ToList()
-            //};
-            //p2pSession.TriggerProtocolInitialized(p2pArgs);
             Assert.IsTrue(p2pSession.Disconected);
             Assert.AreEqual(DisconnectReason.TooManyPeers, p2pSession.DisconnectReason);
         }
@@ -275,14 +259,17 @@ namespace Nethermind.Network.Test
         private TestP2PSession InitializeNode(ConnectionDirection connectionDirection = ConnectionDirection.Out)
         {
             var node = _nodeFactory.CreateNode("192.1.1.1", 3333);
+
+            var task = _peerManager.RunPeerUpdate();
             _discoveryManager.GetNodeLifecycleManager(node);
+            task.Wait();
 
             //verify new peer is added
             Assert.AreEqual(1, _peerManager.CandidatePeers.Count);
             Assert.AreEqual(node.Id, _peerManager.CandidatePeers.First().Node.Id);
 
             //trigger connection start
-            var task = _peerManager.RunPeerUpdate();
+            task = _peerManager.RunPeerUpdate();
             task.Wait();
             Assert.AreEqual(1, _localPeer.ConnectionAsyncCallsCounter);
             Assert.AreEqual(1, _peerManager.CandidatePeers.Count);
