@@ -195,34 +195,50 @@ namespace Nethermind.LibSolc
         }
 
         public static string GetSolcLicense()
-            => For(() => Win64Lib.license(),
-                () => PosixLib.license(),
-                () => MacLib.license());
+        {
+            switch (Platform)
+            {
+                case OsPlatform.Windows:
+                    return Win64Lib.license();
+                case OsPlatform.Linux:
+                    return PosixLib.license();
+                case OsPlatform.Mac:
+                    return MacLib.license();
+            }
+
+            throw new InvalidOperationException("Unsupported platform.");
+        }
 
         public static string GetSolcVersion()
-            => For(() => Win64Lib.version(),
-                () => PosixLib.version(),
-                () => MacLib.version());
+        {
+            switch (Platform)
+            {
+                case OsPlatform.Windows:
+                    return Win64Lib.version();
+                case OsPlatform.Linux:
+                    return PosixLib.version();
+                case OsPlatform.Mac:
+                    return MacLib.version();
+            }
+
+            throw new InvalidOperationException("Unsupported platform.");          
+        }
 
         public static string Compile(string contract, string evmVersion, bool optimize, uint? runs)
         {
             string input = new CompilerInput(contract, evmVersion, optimize, runs).Value();
 
-            return For(() => Win64Lib.compileStandard(input, null),
-                () => PosixLib.compileStandard(input, null),
-                () => MacLib.compileStandard(input, null));
-        }
-
-        private static T For<T>(Func<T> windows, Func<T> linux, Func<T> mac)
-        {
             switch (Platform)
             {
-                case OsPlatform.Windows: return windows();
-                case OsPlatform.Linux: return linux();
-                case OsPlatform.Mac: return mac();
+                case OsPlatform.Windows:
+                    return Win64Lib.compileStandard(input, null);
+                case OsPlatform.Linux:
+                    return PosixLib.compileStandard(input, null);
+                case OsPlatform.Mac:
+                    return MacLib.compileStandard(input, null);
             }
 
-            throw new InvalidOperationException("Unsupported platform.");
+            throw new InvalidOperationException("Unsupported platform.");  
         }
     }
 }
