@@ -92,11 +92,8 @@ namespace Nethermind.Evm
         // can refactor and integrate the other call
         public TransactionSubstate Run(EvmState state, IReleaseSpec releaseSpec, bool enableTracing)
         {
-            if (enableTracing)
-            {
-                _traceEntry = null;
-                _trace = new TransactionTrace();
-            }
+            _traceEntry = null;
+            _trace = enableTracing ? new TransactionTrace() : null;
 
             IReleaseSpec spec = releaseSpec;
             EvmState currentState = state;
@@ -185,7 +182,9 @@ namespace Nethermind.Evm
                     {
                         if(_trace != null) _trace.Failed = _trace.Failed = callResult.ShouldRevert || callResult.IsException;
                         // TODO: review refund logic as there was a quick change for Refunds for Ropsten 2005537
-                        return new TransactionSubstate(callResult.Output, currentState.Refund, currentState.DestroyList, currentState.Logs, callResult.ShouldRevert, _trace);
+                        TransactionSubstate substate = new TransactionSubstate(callResult.Output, currentState.Refund, currentState.DestroyList, currentState.Logs, callResult.ShouldRevert, _trace);
+                        _traceEntry = null; _trace = null; // do not keep in memory between blocks
+                        return substate;
                     }
 
                     Address callCodeOwner = currentState.Env.ExecutingAccount;

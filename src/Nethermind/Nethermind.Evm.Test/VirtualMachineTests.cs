@@ -59,6 +59,41 @@ namespace Nethermind.Evm.Test
             Assert.AreEqual("PUSH1", entry.Operation, nameof(entry.Operation));
         }
         
+        [Test(Description = "Test a case where the trace is created for one transaction and subsequent untraced transactions keep adding entries to the first trace created.")]
+        public void Trace_each_tx_separate()
+        {            
+            (TransactionReceipt _, TransactionTrace trace) = ExecuteAndTrace(
+                (byte)Instruction.PUSH1,
+                0,
+                (byte)Instruction.PUSH1,
+                0,
+                (byte)Instruction.ADD,
+                (byte)Instruction.PUSH1,
+                0,
+                (byte)Instruction.SSTORE);
+            
+            Execute(
+                (byte)Instruction.PUSH1,
+                0,
+                (byte)Instruction.PUSH1,
+                0,
+                (byte)Instruction.ADD,
+                (byte)Instruction.PUSH1,
+                0,
+                (byte)Instruction.SSTORE);
+            
+            Assert.AreEqual(5, trace.Entries.Count, "number of entries");
+            TransactionTraceEntry entry = trace.Entries[1];
+            Assert.AreEqual(0, entry.Depth, nameof(entry.Depth));
+            Assert.AreEqual(79000 - GasCostOf.VeryLow, entry.Gas, nameof(entry.Gas));
+            Assert.AreEqual(GasCostOf.VeryLow, entry.GasCost, nameof(entry.GasCost));
+            Assert.AreEqual(0, entry.Memory.Count, nameof(entry.Memory));
+            Assert.AreEqual(1, entry.Stack.Count, nameof(entry.Stack));
+            Assert.AreEqual(1, trace.Entries[4].Storage.Count, nameof(entry.Storage));
+            Assert.AreEqual(2, entry.Pc, nameof(entry.Pc));
+            Assert.AreEqual("PUSH1", entry.Operation, nameof(entry.Operation));
+        }
+        
         [Test]
         public void Add_0_0()
         {

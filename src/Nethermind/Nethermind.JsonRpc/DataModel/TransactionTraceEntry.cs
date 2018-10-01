@@ -37,7 +37,7 @@ namespace Nethermind.JsonRpc.DataModel
             return new
             {
                 pc = Pc,
-                operation = Operation,
+                op = Operation,
                 gas = Gas,
                 gasCost = GasCost,
                 depth = Depth,
