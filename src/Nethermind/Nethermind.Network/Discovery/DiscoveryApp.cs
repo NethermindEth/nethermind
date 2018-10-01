@@ -20,6 +20,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
+using System.Net.Sockets;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Handlers.Logging;
@@ -138,7 +140,15 @@ namespace Nethermind.Network.Discovery
             _group = new MultithreadEventLoopGroup(1);
             var bootstrap = new Bootstrap();
             bootstrap
-                .Group(_group)
+                .Group(_group);
+
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+            {
+                bootstrap
+                    .ChannelFactory(() => new SocketDatagramChannel(AddressFamily.InterNetwork));
+            }
+            
+            bootstrap
                 .Channel<SocketDatagramChannel>()
                 .Handler(new ActionChannelInitializer<IDatagramChannel>(InitializeChannel));
 
