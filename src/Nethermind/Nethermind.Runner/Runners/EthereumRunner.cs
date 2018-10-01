@@ -500,7 +500,7 @@ namespace Nethermind.Runner.Runners
 
             blockTree.NewHeadBlock += GenesisProcessed;
             blockTree.SuggestBlock(genesis);
-            genesisProcessedEvent.WaitOne();
+            genesisProcessedEvent.WaitOne(TimeSpan.FromMilliseconds(5000));
 
             // if expectedGenesisHash is null here then it means that we do not care about the exact value in advance (e.g. in test scenarios)
             if (expectedGenesisHash != null && blockTree.Genesis.Hash != expectedGenesisHash)
