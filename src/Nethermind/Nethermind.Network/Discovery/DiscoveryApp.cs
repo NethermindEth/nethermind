@@ -145,12 +145,15 @@ namespace Nethermind.Network.Discovery
             if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
             {
                 bootstrap
-                    .ChannelFactory(() => new SocketDatagramChannel(AddressFamily.InterNetwork));
+                    .ChannelFactory(() => new SocketDatagramChannel(AddressFamily.InterNetwork))
+                    .Handler(new ActionChannelInitializer<IDatagramChannel>(InitializeChannel));
             }
-            
-            bootstrap
-                .Channel<SocketDatagramChannel>()
-                .Handler(new ActionChannelInitializer<IDatagramChannel>(InitializeChannel));
+            else
+            {
+                bootstrap
+                    .Channel<SocketDatagramChannel>()
+                    .Handler(new ActionChannelInitializer<IDatagramChannel>(InitializeChannel));
+            }
 
             _bindingTask = bootstrap.BindAsync(IPAddress.Parse(_configurationProvider.MasterHost), _configurationProvider.MasterPort)
                 .ContinueWith(t => _channel = t.Result);
