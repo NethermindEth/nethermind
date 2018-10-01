@@ -264,6 +264,7 @@ namespace Nethermind.Blockchain
             }
 
             Block processedBlock = ProcessBlock(
+                suggestedBlock.Header.Hash,
                 suggestedBlock.Header.ParentHash,
                 suggestedBlock.Header.Difficulty,
                 suggestedBlock.Header.Number,
@@ -302,6 +303,7 @@ namespace Nethermind.Blockchain
         }
 
         private Block ProcessBlock(
+            Keccak hash,
             Keccak parentHash,
             UInt256 difficulty,
             UInt256 number,
@@ -318,6 +320,7 @@ namespace Nethermind.Blockchain
             ITraceListener traceListener)
         {
             BlockHeader header = new BlockHeader(parentHash, ommersHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData);
+            header.Hash = hash;
             header.MixHash = mixHash;
             header.Nonce = nonce;
             Block block = new Block(header, ommers);

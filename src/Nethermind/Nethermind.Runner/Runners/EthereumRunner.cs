@@ -370,7 +370,12 @@ namespace Nethermind.Runner.Runners
         }
 
         private async Task LoadBlocksFromDb()
-        {
+        {   
+            if (!_initConfig.SynchronizationEnabled)
+            {
+                return;
+            }
+            
             await _blockTree.LoadBlocksFromDb(_runnerCancellation.Token).ContinueWith(t =>
             {
                 if (t.IsFaulted)
@@ -419,7 +424,7 @@ namespace Nethermind.Runner.Runners
                     _logger.Error("Unable to start sync.", initNetTask.Exception);
                 }
             });
-
+            
             await StartDiscovery().ContinueWith(initDiscoveryTask =>
             {
                 if (initDiscoveryTask.IsFaulted)

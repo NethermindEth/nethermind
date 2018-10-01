@@ -111,7 +111,7 @@ namespace Nethermind.Blockchain
             }
 
             await Task.WhenAll(_recoveryTask, _processorTask);
-            if(_logger.IsInfo) _logger.Info("Blockchain Processor shutdown complete.. please wait for all components to close");
+            if (_logger.IsInfo) _logger.Info("Blockchain Processor shutdown complete.. please wait for all components to close");
             _perfService.EndPerfCalc(key, "Close: BlockchainProcessor");
         }
 
@@ -354,7 +354,7 @@ namespace Nethermind.Blockchain
             {
                 throw new InvalidOperationException("mining and tx data options are not allowed together when processing blocks");
             }
-            
+
             if (suggestedBlock.Number != 0 && _blockTree.FindParent(suggestedBlock) == null)
             {
                 throw new InvalidOperationException("Got an orphaned block for porcessing.");
@@ -392,11 +392,6 @@ namespace Nethermind.Blockchain
                 Block toBeProcessed = suggestedBlock;
                 do
                 {
-                    if (onlyForTxData)
-                    {
-                        break;
-                    }
-                    
                     blocksToBeAddedToMain.Add(toBeProcessed);
                     toBeProcessed = toBeProcessed.Number == 0 ? null : _blockTree.FindParent(toBeProcessed);
                     // TODO: need to remove the hardcoded head block store at keccak zero as it would be referenced by the genesis... 
@@ -426,24 +421,38 @@ namespace Nethermind.Blockchain
 
                 List<Block> unprocessedBlocksToBeAddedToMain = new List<Block>();
 
-                foreach (Block block in blocksToBeAddedToMain)
+                if (!onlyForTxData)
                 {
-                    if (!forMining && _blockTree.WasProcessed(block.Hash))
+                    blocksToBeAddedToMain.Clear();
+                }
+
+                Block[] blocks;
+                if (onlyForTxData)
+                {
+                    blocks = new Block[1];
+                    blocks[0] = suggestedBlock;
+                }
+                else
+                {
+                    foreach (Block block in blocksToBeAddedToMain)
                     {
-                        stateRoot = block.Header.StateRoot;
-                        if (_logger.IsTrace) _logger.Trace($"State root lookup: {stateRoot}");
-                        break;
+                        if (!forMining && _blockTree.WasProcessed(block.Hash))
+                        {
+                            stateRoot = block.Header.StateRoot;
+                            if (_logger.IsTrace) _logger.Trace($"State root lookup: {stateRoot}");
+                            break;
+                        }
+
+                        unprocessedBlocksToBeAddedToMain.Add(block);
                     }
-
-                    unprocessedBlocksToBeAddedToMain.Add(block);
+                    
+                    blocks = new Block[unprocessedBlocksToBeAddedToMain.Count];
+                    for (int i = 0; i < unprocessedBlocksToBeAddedToMain.Count; i++)
+                    {
+                        blocks[blocks.Length - i - 1] = unprocessedBlocksToBeAddedToMain[i];
+                    }
                 }
-
-                Block[] blocks = new Block[unprocessedBlocksToBeAddedToMain.Count];
-                for (int i = 0; i < unprocessedBlocksToBeAddedToMain.Count; i++)
-                {
-                    blocks[blocks.Length - i - 1] = unprocessedBlocksToBeAddedToMain[i];
-                }
-
+                
                 if (_logger.IsTrace) _logger.Trace($"Processing {blocks.Length} blocks from state root {stateRoot}");
 
                 //TODO: process blocks one by one here, refactor this, test
@@ -455,12 +464,6 @@ namespace Nethermind.Blockchain
                     }
                 }
 
-                if (onlyForTxData)
-                {
-                    blocks = new Block[1];
-                    blocks[0] = suggestedBlock;
-                }
-                
                 Block[] processedBlocks = _blockProcessor.Process(stateRoot, blocks, forMining | onlyForTxData, onlyForTxData, traceListener);
 
                 if (onlyForTxData)
@@ -605,7 +608,7 @@ namespace Nethermind.Blockchain
             public void UpdateStats(Block block, int recoveryQueueSize, int blockQueueSize)
             {
                 _wasQueueEmptied = blockQueueSize == 0;
-                
+
                 if (_lastBlockNumber.IsZero)
                 {
                     _lastBlockNumber = block.Number;
@@ -617,7 +620,7 @@ namespace Nethermind.Blockchain
                 long currentTicks = _processingWatch.ElapsedTicks;
                 decimal totalMicroseconds = _processingWatch.ElapsedTicks * (1_000_000m / Stopwatch.Frequency);
                 decimal chunkMicroseconds = (_processingWatch.ElapsedTicks - _lastElapsedTicks) * (1_000_000m / Stopwatch.Frequency);
-                
+
                 if (chunkMicroseconds > 10 * 1000 * 1000 || (_wasQueueEmptied && chunkMicroseconds > 1 * 1000 * 1000)) // 10s
                 {
                     _wasQueueEmptied = false;

@@ -185,6 +185,12 @@ namespace Nethermind.Blockchain
         public async Task AddPeer(ISynchronizationPeer synchronizationPeer)
         {
             if (_logger.IsTrace) _logger.Trace($"Adding synchronization peer {synchronizationPeer.NodeId}");
+            if (!_isInitialized)
+            {
+                if (_logger.IsTrace) _logger.Trace($"Synchronization is disabled, adding peer is blocked: {synchronizationPeer.NodeId}");
+                return;    
+            }
+            
             if (_peers.ContainsKey(synchronizationPeer.NodeId))
             {
                 if (_logger.IsError) _logger.Error($"Sync peer already in peers collection: {synchronizationPeer.NodeId}");
@@ -293,7 +299,7 @@ namespace Nethermind.Blockchain
                     if (_logger.IsInfo) _logger.Info($"Available sync peers: {initPeerCount}({_peers.Count})/{_blockchainConfig.SyncPeersMaxCount} {(_isSyncing ? $" (sync in progress with peer: {_currentSyncingPeerInfo?.Peer?.NodeId} ({_currentSyncingPeerInfo?.NumberReceived}/{_currentSyncingPeerInfo?.NumberAvailable}))" : string.Empty)}"); 
                 }
 
-                CheckIfSyningWithFastestPeer();
+                CheckIfSyncingWithFastestPeer();
                 LogSyncMilestones();
                 _syncTimer.Enabled = true;
             };
@@ -317,7 +323,7 @@ namespace Nethermind.Blockchain
             }
         }
 
-        private void CheckIfSyningWithFastestPeer()
+        private void CheckIfSyncingWithFastestPeer()
         {
             var bestLatencyPeer = _peers.Values.OrderBy(x => x.Peer.NodeStats.GetAverageLatency(NodeLatencyStatType.BlockHeaders) ?? 100000).FirstOrDefault();
             if (bestLatencyPeer != null && _currentSyncingPeerInfo != null && _currentSyncingPeerInfo.Peer?.NodeId != bestLatencyPeer.Peer?.NodeId)

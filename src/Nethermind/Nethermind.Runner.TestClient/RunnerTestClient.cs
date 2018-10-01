@@ -29,13 +29,13 @@ using Nethermind.Core.Logging;
 
 namespace Nethermind.Runner.TestClient
 {
-    public class RunnerTestCient : IRunnerTestCient
+    public class RunnerTestClient : IRunnerTestCient
     {
         private readonly ILogger _logger;
         private readonly IJsonSerializer _jsonSerializer;
         private readonly HttpClient _client;
 
-        public RunnerTestCient(ILogger logger, IJsonSerializer jsonSerializer)
+        public RunnerTestClient(ILogger logger, IJsonSerializer jsonSerializer)
         {
             _logger = logger;
             _jsonSerializer = jsonSerializer;
@@ -93,11 +93,27 @@ namespace Nethermind.Runner.TestClient
             }
         }
 
-        public async Task<string> SendDebugTraceTransaction()
+        public async Task<string> SendDebugTraceTransaction(string txHash)
         {
             try
             {
-                var request = GetJsonRequest("debug_traceTransaction", new []{ "0x41941023680923e0fe4d74a34bdac8141f2540e3ae90623718e47d66d1ca4a2d" } );
+                var request = GetJsonRequest("debug_traceTransaction", new []{ txHash } );
+                var response = await _client.PostAsync("", new StringContent(request, Encoding.UTF8, "application/json"));
+                var content = await response.Content.ReadAsStringAsync();
+                return content;
+            }
+            catch (Exception e)
+            {
+                _logger.Error("Error during execution", e);
+                return $"Error: {e.Message}";
+            }
+        }
+        
+        public async Task<string> SendAddTxData(string blockNumber)
+        {
+            try
+            {
+                var request = GetJsonRequest("debug_addTxData", new []{ blockNumber } );
                 var response = await _client.PostAsync("", new StringContent(request, Encoding.UTF8, "application/json"));
                 var content = await response.Content.ReadAsStringAsync();
                 return content;

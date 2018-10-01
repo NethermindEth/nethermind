@@ -25,7 +25,8 @@ namespace Nethermind.Runner.TestClient
         Task<string> SendEthProtocolVersion();
         Task<string> SendEthGetBlockNumber(string blockNumber, bool returnFullTransactionObjects);
         Task<string> SendEthAccounts();
-        Task<string> SendDebugTraceTransaction();
+        Task<string> SendDebugTraceTransaction(string txHash);
+        Task<string> SendAddTxData(string blockNumber);
         string SendNetVersion();
         string SendWeb3ClientVersion();
         string SendWeb3Sha3(string content);

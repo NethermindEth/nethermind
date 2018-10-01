@@ -22,11 +22,11 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.Runner.TestClient
 {
-    public class RunnerTestCientApp : IRunnerTestCientApp
+    public class RunnerTestClientApp : IRunnerTestCientApp
     {
         private readonly IRunnerTestCient _cient;
 
-        public RunnerTestCientApp(IRunnerTestCient cient)
+        public RunnerTestClientApp(IRunnerTestCient cient)
         {
             _cient = cient;
         }
@@ -35,7 +35,7 @@ namespace Nethermind.Runner.TestClient
         {
             while (true)
             {
-                Console.WriteLine("Options: 1 - eth_protocolVersion, 2 - eth_getBlockByNumber, 3 - eth_accounts, 4 - debug_traceTransaction, e - exit");
+                Console.WriteLine("Options: 1 - eth_protocolVersion, 2 - eth_getBlockByNumber, 3 - eth_accounts, 4 - debug_traceTransaction, 5 - debug_addTxData, e - exit");
                 Console.WriteLine("Enter command: ");
                 var action = Console.ReadLine();
                 if (action.CompareIgnoreCaseTrim("e"))
@@ -64,7 +64,17 @@ namespace Nethermind.Runner.TestClient
                 }
                 else if (action.CompareIgnoreCaseTrim("4"))
                 {
-                    var result = Task.Run(() => _cient.SendDebugTraceTransaction());
+                    Console.Write("Tx hash: ");
+                    var txHash = Console.ReadLine();
+                    var result = Task.Run(() => _cient.SendDebugTraceTransaction(txHash));
+                    result.Wait();
+                    PrintResult(result.Result);
+                }
+                else if (action.CompareIgnoreCaseTrim("5"))
+                {
+                    Console.Write("Block Nr: ");
+                    var number = Console.ReadLine();
+                    var result = Task.Run(() => _cient.SendAddTxData($"0x{number}"));
                     result.Wait();
                     PrintResult(result.Result);
                 }
