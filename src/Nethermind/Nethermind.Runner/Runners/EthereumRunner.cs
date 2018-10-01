@@ -492,15 +492,21 @@ namespace Nethermind.Runner.Runners
 
             ManualResetEvent genesisProcessedEvent = new ManualResetEvent(false);
 
+            bool genesisLoaded = false;
             void GenesisProcessed(object sender, BlockEventArgs args)
             {
+                genesisLoaded = true;
                 blockTree.NewHeadBlock -= GenesisProcessed;
                 genesisProcessedEvent.Set();
             }
 
             blockTree.NewHeadBlock += GenesisProcessed;
             blockTree.SuggestBlock(genesis);
-            genesisProcessedEvent.WaitOne(TimeSpan.FromMilliseconds(5000));
+            genesisProcessedEvent.WaitOne(TimeSpan.FromSeconds(5));
+            if (!genesisLoaded)
+            {
+                throw new BlockchainException("Genesis block processing failure");
+            }
 
             // if expectedGenesisHash is null here then it means that we do not care about the exact value in advance (e.g. in test scenarios)
             if (expectedGenesisHash != null && blockTree.Genesis.Hash != expectedGenesisHash)

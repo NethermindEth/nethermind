@@ -421,14 +421,10 @@ namespace Nethermind.Blockchain
 
                 List<Block> unprocessedBlocksToBeAddedToMain = new List<Block>();
 
-                if (!onlyForTxData)
-                {
-                    blocksToBeAddedToMain.Clear();
-                }
-
                 Block[] blocks;
                 if (onlyForTxData)
                 {
+                    blocksToBeAddedToMain.Clear();
                     blocks = new Block[1];
                     blocks[0] = suggestedBlock;
                 }
