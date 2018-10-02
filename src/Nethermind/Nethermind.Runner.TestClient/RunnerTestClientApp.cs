@@ -17,6 +17,7 @@
  */
 
 using System;
+using System.Text;
 using System.Threading.Tasks;
 using Nethermind.Core.Extensions;
 
@@ -31,52 +32,43 @@ namespace Nethermind.Runner.TestClient
             _cient = cient;
         }
 
-        public void Start()
+        public async Task Run()
         {
+            Option[] options =
+            {
+                new Option("eth_protocolVersion"),
+                new Option("eth_getBlockByNumber", ("Block Number", ToBlockNumberHex), ("Full Transaction Data?", ToBool)),
+                new Option("eth_accounts"),
+                new Option("debug_traceTransaction", ("Tx Hash", p => p)),
+                new Option("debug_traceBlockByHash", ("Block Hash", p => p)),
+                new Option("debug_traceBlockByNumber", ("Block Number", ToBlockNumberHex)),
+                new Option("debug_addTxData", ("Block Number", ToBlockNumberHex))
+            };
+
+            StringBuilder prompt = new StringBuilder("Options:");
+            for (int i = 0; i < options.Length; i++) prompt.Append($"{i} - {options[i].Command}, ");
+
+            prompt.AppendLine("e - exit");
+            prompt.AppendLine("Enter command:");
+
             while (true)
             {
-                Console.WriteLine("Options: 1 - eth_protocolVersion, 2 - eth_getBlockByNumber, 3 - eth_accounts, 4 - debug_traceTransaction, 5 - debug_addTxData, e - exit");
-                Console.WriteLine("Enter command: ");
-                var action = Console.ReadLine();
-                if (action.CompareIgnoreCaseTrim("e"))
+                Console.Write(prompt);
+                string action = Console.ReadLine();
+                if (action.CompareIgnoreCaseTrim("e")) return;
+
+                if (int.TryParse(action, out int chosenCommand) && options.Length > chosenCommand)
                 {
-                    return;
-                }
-                else if (action.CompareIgnoreCaseTrim("1"))
-                {
-                    var result = Task.Run(() => _cient.SendEthProtocolVersion());
-                    result.Wait();
-                    PrintResult(result.Result);
-                }
-                else if (action.CompareIgnoreCaseTrim("2"))
-                {
-                    Console.Write("Block Nr: ");
-                    var number = int.Parse(Console.ReadLine());
-                    var result = Task.Run(() => _cient.SendEthGetBlockNumber($"0x{number}", false));
-                    result.Wait();
-                    PrintResult(result.Result);
-                }
-                else if (action.CompareIgnoreCaseTrim("3"))
-                {
-                    var result = Task.Run(() => _cient.SendEthAccounts());
-                    result.Wait();
-                    PrintResult(result.Result);
-                }
-                else if (action.CompareIgnoreCaseTrim("4"))
-                {
-                    Console.Write("Tx hash: ");
-                    var txHash = Console.ReadLine();
-                    var result = Task.Run(() => _cient.SendDebugTraceTransaction(txHash));
-                    result.Wait();
-                    PrintResult(result.Result);
-                }
-                else if (action.CompareIgnoreCaseTrim("5"))
-                {
-                    Console.Write("Block Nr: ");
-                    var number = Console.ReadLine();
-                    var result = Task.Run(() => _cient.SendAddTxData($"0x{number}"));
-                    result.Wait();
-                    PrintResult(result.Result);
+                    Option option = options[chosenCommand];
+                    var parameters = new object[option.Parameters.Length];
+                    for (int i = 0; i < option.Parameters.Length; i++)
+                    {
+                        Console.Write($"{option.Parameters[i].Name}: ");
+                        parameters[i] = option.Parameters[i].Parse(Console.ReadLine());
+                    }
+
+                    string result = await _cient.Post(option.Command, parameters);
+                    PrintResult(result);
                 }
                 else
                 {
@@ -85,10 +77,43 @@ namespace Nethermind.Runner.TestClient
             }
         }
 
+        private object ToBlockNumberHex(string number)
+        {
+            return string.Format("0x{0:x}", int.Parse(number));
+        }
+        
+        private object ToBool(string yesNo)
+        {
+            return
+                yesNo == "y" ||
+                yesNo == "1" ||
+                yesNo == "t" ||
+                yesNo == "Y" ||
+                yesNo == "T" ||
+                yesNo == "yes" ||
+                yesNo == "YES" ||
+                yesNo == "Yes" ||
+                yesNo == "True" ||
+                yesNo == "true" ||
+                yesNo == "TRUE";
+        }
+
         private void PrintResult(string result)
         {
             Console.WriteLine("Response:");
             Console.WriteLine(result);
+        }
+
+        public class Option
+        {
+            public Option(string command, params (string, Func<string, object>)[] parameters)
+            {
+                Command = command;
+                Parameters = parameters;
+            }
+
+            public string Command { get; set; }
+            public (string Name, Func<string, object> Parse)[] Parameters { get; }
         }
     }
 }

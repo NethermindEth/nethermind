@@ -17,6 +17,7 @@
  */
 
 using System;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Logging;
 
@@ -24,11 +25,11 @@ namespace Nethermind.Runner.TestClient
 {
     class Program
     {
-        static void Main(string[] args)
+        static async Task Main(string[] args)
         {
             Console.WriteLine("Welcome in Runner Test Client");
             var client = new RunnerTestClientApp(new RunnerTestClient(NullLogger.Instance, new JsonSerializer(NullLogManager.Instance)));
-            client.Start();
+            await client.Run();
             Console.WriteLine("Exiting Runner Test Client");
         }
     }

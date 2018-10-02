@@ -347,6 +347,30 @@ namespace Nethermind.Blockchain
             Process(block, false, true, listener);
             return listener.Trace;
         }
+        
+        public BlockTrace TraceBlock(Keccak blockHash)
+        {
+            Block block = _blockTree.FindBlock(blockHash, true);
+            return TraceBlock(block);
+        }
+
+        public BlockTrace TraceBlock(UInt256 blockNumber)
+        {
+            Block block = _blockTree.FindBlock(blockNumber);
+            return TraceBlock(block);
+        }
+        
+        private BlockTrace TraceBlock(Block block)
+        {
+            if (block == null)
+            {
+                throw new InvalidOperationException("Only canonical, historical blocks supported");
+            }
+            
+            BlockTraceListener listener = new BlockTraceListener(block);
+            Process(block, false, true, listener);
+            return listener.BlockTrace;
+        }
 
         private void Process(Block suggestedBlock, bool forMining, bool onlyForTxData, ITraceListener traceListener)
         {

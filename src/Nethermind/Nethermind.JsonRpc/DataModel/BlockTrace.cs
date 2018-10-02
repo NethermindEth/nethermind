@@ -16,12 +16,31 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Threading.Tasks;
+using System.Linq;
 
-namespace Nethermind.Runner.TestClient
+namespace Nethermind.JsonRpc.DataModel
 {
-    public interface IRunnerTestCient
+    public class BlockTraceItem : IJsonRpcResult
     {
-        Task<string> Post(string method, params object[] parameters);
+        public BlockTraceItem(TransactionTrace trace)
+        {
+            Trace = trace;
+        }
+
+        public TransactionTrace Trace { get; set; }
+
+        public object ToJson()
+        {
+            return new
+            {
+                result = new
+                {
+                    gas = Trace?.Gas,
+                    failed = Trace?.Failed,
+                    returnValue = Trace?.ReturnValue?.ToJson(),
+                    structLogs = Trace?.Entries?.Select(x => x.ToJson()).ToArray()
+                }
+            };
+        }
     }
 }

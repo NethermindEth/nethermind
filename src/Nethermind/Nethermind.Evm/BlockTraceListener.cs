@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,27 +16,34 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Threading.Tasks;
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Dirichlet.Numerics;
-using Nethermind.Evm;
 
-namespace Nethermind.Blockchain
+namespace Nethermind.Evm
 {
-    public interface IBlockchainProcessor
+    public class BlockTraceListener : ITraceListener
     {
-        void Start();
-        Task StopAsync(bool processRemainingBlocks = false);
-        void Process(Block block); // TODO: tks: should be queued only
-        
-        /// <summary>
-        /// Executes a block from the past, stores receipts and tx hash -> block number mapping.
-        /// </summary>
-        /// <param name="block"></param>
-        void AddTxData(Block block); // TODO: tks: should be queued
-        TransactionTrace Trace(Keccak txHash); // TODO: tks: should be queued
-        BlockTrace TraceBlock(Keccak blokHash); // TODO: tks: should be queued
-        BlockTrace TraceBlock(UInt256 blokNumber); // TODO: tks: should be queued
+        private Keccak _blockHash;
+        private int _currentIndex;
+
+        public BlockTraceListener(Block block)
+        {
+            _blockHash = block.Hash;
+            BlockTrace = new BlockTrace(new TransactionTrace[block.Transactions.Length]);
+        }
+
+        public BlockTrace BlockTrace { get; set; }
+
+        public bool ShouldTrace(Keccak txHash)
+        {
+            return true;
+        }
+
+        public void RecordTrace(Keccak txHash, TransactionTrace trace)
+        {
+            if (_currentIndex > BlockTrace.TxTraces.Length - 1) throw new InvalidOperationException($"Unexpected trace for tx {txHash} beyond the number of transactions in block {_blockHash}");
+            BlockTrace.TxTraces[_currentIndex++] = trace;
+        }
     }
 }
