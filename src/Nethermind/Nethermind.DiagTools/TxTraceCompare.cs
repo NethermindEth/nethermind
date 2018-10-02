@@ -16,9 +16,9 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Core.Extensions;
+using System.Linq;
 using Nethermind.Core.Logging;
-using Nethermind.Evm;
+using Nethermind.JsonRpc.DataModel;
 
 namespace Nethermind.DiagTools
 {
@@ -45,11 +45,14 @@ namespace Nethermind.DiagTools
                 _logger.Warn($"  failed diff geth {gethTrace.Failed} != neth {nethTrace.Failed}");
             }
 
+            var gethEntries = gethTrace.Entries.ToList();
+            var nethEntries = gethTrace.Entries.ToList();
+            
             int ixDiff = 0;
-            for (int i = 0; i < gethTrace.Entries.Count; i++)
+            for (int i = 0; i < gethEntries.Count; i++)
             {
 //                _logger.Info($"  comparing evm entry {i}");
-                var gethEntry = gethTrace.Entries[i];
+                var gethEntry = gethEntries[i];
                 if (gethEntry.Error != null)
                 {
                     ixDiff++;
@@ -58,13 +61,13 @@ namespace Nethermind.DiagTools
 
                 int nethIx = i - ixDiff;
                 
-                string entryDesc = $"ix {i}/{nethIx} pc {gethTrace.Entries[i].Pc} op {gethTrace.Entries[i].Operation} gas {gethTrace.Entries[i].Gas} | ";
-                if (nethTrace.Entries.Count < nethIx + 1)
+                string entryDesc = $"ix {i}/{nethIx} pc {gethEntries[i].Pc} op {gethEntries[i].Operation} gas {gethEntries[i].Gas} | ";
+                if (nethEntries.Count < nethIx + 1)
                 {
                     _logger.Warn($"    neth entry missing");        
                 }
                 
-                var nethEntry = nethTrace.Entries[nethIx];
+                var nethEntry = nethEntries[nethIx];
                 if (gethEntry.Operation != nethEntry.Operation)
                 {
                     _logger.Warn($"    {entryDesc} operation geth {gethEntry.Operation} neth {nethEntry.Operation}");

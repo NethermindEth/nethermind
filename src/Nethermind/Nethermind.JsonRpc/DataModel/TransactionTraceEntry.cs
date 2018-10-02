@@ -28,6 +28,7 @@ namespace Nethermind.JsonRpc.DataModel
         public long Gas { get; set; }
         public long GasCost { get; set; }
         public int Depth { get; set; }
+        public string Error { get; set; }
         public List<string> Stack { get; set; }
         public List<string> Memory { get; set; }
         public Dictionary<string, string> Storage { get; set; }

@@ -31,4 +31,16 @@ namespace Nethermind.JsonRpc.DataModel
         [JsonProperty(PropertyName = "id")]
         public string Id { get; set; }
     }
+    
+    public class JsonRpcResponse<T>
+    {
+        [JsonProperty(PropertyName = "jsonrpc")]
+        public string Jsonrpc { get; set; }
+        [JsonProperty(PropertyName = "result")]
+        public T Result { get; set; }
+        [JsonProperty(PropertyName = "error")]
+        public Error Error { get; set; }
+        [JsonProperty(PropertyName = "id")]
+        public string Id { get; set; }
+    }
 }

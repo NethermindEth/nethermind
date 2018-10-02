@@ -24,10 +24,10 @@ namespace Nethermind.JsonRpc.DataModel
     {
         public BlockTraceItem(TransactionTrace trace)
         {
-            Trace = trace;
+            Result = trace;
         }
 
-        public TransactionTrace Trace { get; set; }
+        public TransactionTrace Result { get; set; }
 
         public object ToJson()
         {
@@ -35,10 +35,10 @@ namespace Nethermind.JsonRpc.DataModel
             {
                 result = new
                 {
-                    gas = Trace?.Gas,
-                    failed = Trace?.Failed,
-                    returnValue = Trace?.ReturnValue?.ToJson(),
-                    structLogs = Trace?.Entries?.Select(x => x.ToJson()).ToArray()
+                    gas = Result?.Gas,
+                    failed = Result?.Failed,
+                    returnValue = Result?.ReturnValue,
+                    structLogs = Result?.Entries?.Select(x => x.ToJson()).ToArray()
                 }
             };
         }

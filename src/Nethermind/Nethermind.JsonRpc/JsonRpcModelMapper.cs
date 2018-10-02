@@ -121,7 +121,7 @@ namespace Nethermind.JsonRpc
             {
                 Gas = transactionTrace.Gas,
                 Failed = transactionTrace.Failed,
-                ReturnValue = transactionTrace.ReturnValue != null ? new Data(transactionTrace.ReturnValue) : null,
+                ReturnValue = transactionTrace.ReturnValue != null ? transactionTrace.ReturnValue : null,
                 Entries = transactionTrace.Entries?.Select(x => new TransactionTraceEntry
                 {
                     Pc = x.Pc,
