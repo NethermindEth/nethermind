@@ -17,7 +17,6 @@
  */
 
 using System.Diagnostics;
-using System.Numerics;
 using System.Text;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;

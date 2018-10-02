@@ -24,5 +24,15 @@ namespace Nethermind.JsonRpc.Module
     {
         ResultWrapper<TransactionTrace> debug_traceTransaction(Data transationHash);
         ResultWrapper<bool> debug_addTxData(BlockParameter blockParameter);
+        ResultWrapper<BlockTraceItem[]> debug_traceBlock(Data blockRlp);
+        ResultWrapper<BlockTraceItem[]> debug_traceBlockByNumber(BlockParameter blockParameter);
+        ResultWrapper<BlockTraceItem[]> debug_traceBlockByHash(Data blockHash);
+        ResultWrapper<BlockTraceItem[]> debug_traceBlockFromFile(string fileName);
+        ResultWrapper<State> debug_dumpBlock(BlockParameter blockParameter);
+        ResultWrapper<GcStats> debug_gcStats();
+        ResultWrapper<Data> debug_getBlockRlp(BlockParameter blockParameter);
+        ResultWrapper<MemStats> debug_memStats(BlockParameter blockParameter);
+        ResultWrapper<Data> debug_seedHash(BlockParameter blockParameter);
+        ResultWrapper<bool> debug_setHead(BlockParameter blockParameter);
     }
 }

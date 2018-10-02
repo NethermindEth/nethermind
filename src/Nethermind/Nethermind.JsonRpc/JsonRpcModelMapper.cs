@@ -21,10 +21,13 @@ using System.Linq;
 using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Evm;
 using Nethermind.JsonRpc.DataModel;
 using Block = Nethermind.JsonRpc.DataModel.Block;
 using Transaction = Nethermind.JsonRpc.DataModel.Transaction;
 using TransactionReceipt = Nethermind.JsonRpc.DataModel.TransactionReceipt;
+using TransactionTrace = Nethermind.JsonRpc.DataModel.TransactionTrace;
+using TransactionTraceEntry = Nethermind.JsonRpc.DataModel.TransactionTraceEntry;
 
 namespace Nethermind.JsonRpc
 {
@@ -109,6 +112,11 @@ namespace Nethermind.JsonRpc
 
         public TransactionTrace MapTransactionTrace(Evm.TransactionTrace transactionTrace)
         {
+            if (transactionTrace == null)
+            {
+                return null;
+            }
+            
             return new TransactionTrace
             {
                 Gas = transactionTrace.Gas,
@@ -126,6 +134,11 @@ namespace Nethermind.JsonRpc
                     Storage = x.Storage
                 }).ToArray()
             };
+        }
+
+        public BlockTraceItem[] MapBlockTrace(BlockTrace blockTrace)
+        {
+            return blockTrace.TxTraces.Select(t => new BlockTraceItem(MapTransactionTrace(t))).ToArray();
         }
 
         public Log MapLog(LogEntry logEntry)

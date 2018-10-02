@@ -16,12 +16,15 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Threading.Tasks;
-
-namespace Nethermind.Runner.TestClient
+namespace Nethermind.Evm
 {
-    public interface IRunnerTestCient
+    public class BlockTrace
     {
-        Task<string> Post(string method, params object[] parameters);
+        public TransactionTrace[] TxTraces { get; }
+
+        public BlockTrace(TransactionTrace[] txTraces)
+        {
+            TxTraces = txTraces;
+        }
     }
 }

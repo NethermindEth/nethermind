@@ -42,16 +42,12 @@ namespace Nethermind.Evm
             Entries = new List<TransactionTraceEntry>();
         }
 
-        [JsonProperty("gas", Order = 0)]
         public BigInteger Gas { get; set; } // TODO: not implemented
 
-        [JsonProperty("failed", Order = 1)]
         public bool Failed { get; set; }
 
-        [JsonProperty("returnValue", Order = 2)]
         public byte[] ReturnValue { get; set; } // TODO: not implemented
 
-        [JsonProperty("structLogs", Order = 3)]
         public List<TransactionTraceEntry> Entries { get; set; }
 
         public static TransactionTrace QuickFail { get; } = new TransactionTrace {Failed = true, ReturnValue = Bytes.Empty};

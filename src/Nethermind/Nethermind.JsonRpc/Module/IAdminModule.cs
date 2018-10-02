@@ -16,12 +16,16 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Threading.Tasks;
+using Nethermind.JsonRpc.DataModel;
 
-namespace Nethermind.Runner.TestClient
+namespace Nethermind.JsonRpc.Module
 {
-    public interface IRunnerTestCient
+    public interface IAdminmodule : IModule
     {
-        Task<string> Post(string method, params object[] parameters);
+        ResultWrapper<PeerInfo[]> admin_addPeer();
+        ResultWrapper<PeerInfo[]> admin_peers();
+        ResultWrapper<PeerInfo[]> admin_nodeInfo();
+        ResultWrapper<PeerInfo[]> admin_dataDir();
+        ResultWrapper<PeerInfo[]> admin_setSolc();
     }
 }

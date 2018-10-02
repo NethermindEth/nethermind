@@ -16,10 +16,12 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Threading.Tasks;
+
 namespace Nethermind.Runner.TestClient
 {
     public interface IRunnerTestCientApp
     {
-        void Start();
+        Task Run();
     }
 }

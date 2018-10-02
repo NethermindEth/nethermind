@@ -17,6 +17,7 @@
  */
 
 using System;
+using System.Linq;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -57,8 +58,83 @@ namespace Nethermind.JsonRpc.Module
                 throw new InvalidOperationException("Can only addTxData for historical blocks");
             }
             
-            _blockchainBridge.AddTxData((UInt256)blockParameter.BlockId.GetValue().Value); // tks ...
+            UInt256 blockNo = (UInt256) blockParameter.BlockId.GetValue().Value;
+            _blockchainBridge.AddTxData(blockNo);
             return ResultWrapper<bool>.Success(true);
+        }
+
+        public ResultWrapper<BlockTraceItem[]> debug_traceBlock(Data blockRlp)
+        {
+            throw new NotImplementedException();
+        }
+
+        public ResultWrapper<BlockTraceItem[]> debug_traceBlockByNumber(BlockParameter blockParameter)
+        {
+            if (blockParameter.Type != BlockParameterType.BlockId)
+            {
+                throw new InvalidOperationException("Can only addTxData for historical blocks");
+            }
+
+            UInt256 blockNo = (UInt256) blockParameter.BlockId.GetValue().Value;
+            var blockTrace = _blockchainBridge.GetBlockTrace(blockNo); // tks ...
+            if (blockTrace == null)
+            {
+                return ResultWrapper<BlockTraceItem[]>.Fail($"Trace is null for block {blockNo}", ErrorType.NotFound);
+            }
+            
+            var blockTraceModel = _modelMapper.MapBlockTrace(blockTrace);
+
+            if (Logger.IsTrace) Logger.Trace($"{nameof(debug_traceBlockByHash)} request {blockParameter}, result: {GetJsonLog(blockTraceModel.Select(btm => btm.ToJson()))}");
+            return ResultWrapper<BlockTraceItem[]>.Success(blockTraceModel);
+        }
+
+        public ResultWrapper<BlockTraceItem[]> debug_traceBlockByHash(Data blockHash)
+        {
+            var blockTrace = _blockchainBridge.GetBlockTrace(new Keccak(blockHash.Value));
+            if (blockTrace == null)
+            {
+                return ResultWrapper<BlockTraceItem[]>.Fail($"Trace is null for block {blockHash}", ErrorType.NotFound);
+            }
+            
+            var blockTraceModel = _modelMapper.MapBlockTrace(blockTrace);
+
+            if (Logger.IsTrace) Logger.Trace($"{nameof(debug_traceBlockByHash)} request {blockHash.ToJson()}, result: {GetJsonLog(blockTraceModel.Select(btm => btm.ToJson()))}");
+            return ResultWrapper<BlockTraceItem[]>.Success(blockTraceModel);
+        }
+
+        public ResultWrapper<BlockTraceItem[]> debug_traceBlockFromFile(string fileName)
+        {
+            throw new NotImplementedException();
+        }
+
+        public ResultWrapper<State> debug_dumpBlock(BlockParameter blockParameter)
+        {
+            throw new NotImplementedException();
+        }
+
+        public ResultWrapper<GcStats> debug_gcStats()
+        {
+            throw new NotImplementedException();
+        }
+
+        public ResultWrapper<Data> debug_getBlockRlp(BlockParameter blockParameter)
+        {
+            throw new NotImplementedException();
+        }
+
+        public ResultWrapper<MemStats> debug_memStats(BlockParameter blockParameter)
+        {
+            throw new NotImplementedException();
+        }
+
+        public ResultWrapper<Data> debug_seedHash(BlockParameter blockParameter)
+        {
+            throw new NotImplementedException();
+        }
+
+        public ResultWrapper<bool> debug_setHead(BlockParameter blockParameter)
+        {
+            throw new NotImplementedException();
         }
     }
 }

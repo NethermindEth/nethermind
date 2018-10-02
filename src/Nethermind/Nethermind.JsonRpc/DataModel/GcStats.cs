@@ -16,12 +16,22 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Threading.Tasks;
-
-namespace Nethermind.Runner.TestClient
+namespace Nethermind.JsonRpc.DataModel
 {
-    public interface IRunnerTestCient
+    public class GcStats : IJsonRpcResult
     {
-        Task<string> Post(string method, params object[] parameters);
+        public int Gen0 { get; set; }
+        public int Gen1 { get; set; }
+        public int Gen2 { get; set; }
+
+        public object ToJson()
+        {
+            return new
+            {
+                gen0 = Gen0,
+                gen1 = Gen0,
+                gen2 = Gen0
+            };
+        }
     }
 }
