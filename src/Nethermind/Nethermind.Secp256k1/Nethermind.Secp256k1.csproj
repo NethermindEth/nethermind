@@ -10,16 +10,7 @@
     <None Include="./External/Posix/libsecp256k1.so" Link="libsecp256k1.so">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Include="./External/Posix/libsecp256k1.so.0" Link="libsecp256k1.so.0">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Include="./External/Posix/libsecp256k1.so.0.0.0" Link="libsecp256k1.so.0.0.0">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
     <None Include="./External/Mac/libsecp256k1.dylib" Link="libsecp256k1.dylib">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Include="./External/Mac/libsecp256k1.0.dylib" Link="libsecp256k1.0.dylib">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>
