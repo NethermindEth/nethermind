@@ -21,6 +21,7 @@ using System.Linq;
 using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Evm;
 using Nethermind.JsonRpc.DataModel;
 using Block = Nethermind.JsonRpc.DataModel.Block;
@@ -155,7 +156,7 @@ namespace Nethermind.JsonRpc
                     OldValue= x.OldValue,
                     NewValue = x.NewValue,
                     Address = x.Address.Address.ToString(),
-                    Key = x.Address.Index.ToString(),
+                    Key = ((BigInteger)x.Address.Index).ToByteArray().ToHexString(),
                 }).ToArray()
             };
         }
