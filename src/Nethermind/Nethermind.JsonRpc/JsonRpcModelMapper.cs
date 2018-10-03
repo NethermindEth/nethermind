@@ -132,6 +132,7 @@ namespace Nethermind.JsonRpc
                     Op = x.Operation,
                     Gas = x.Gas,
                     GasCost = x.GasCost,
+                    Error = x.Error,
                     Depth = x.Depth,
                     Stack = x.Stack,
                     Memory = x.Memory,

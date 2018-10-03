@@ -22,7 +22,6 @@ using Newtonsoft.Json;
 
 namespace Nethermind.Evm
 {
-    [JsonObject]
     public class TransactionTraceEntry
     {
         public TransactionTraceEntry()
@@ -32,44 +31,29 @@ namespace Nethermind.Evm
             Storage = new Dictionary<string, string>();
         }
 
-        [JsonProperty("pc", Order = 0)]
         public long Pc { get; set; }
 
-        [JsonProperty("op", Order = 1)]
         public string Operation { get; set; }
 
-        [JsonProperty("gas", Order = 2)]
         public long Gas { get; set; }
 
-        [JsonProperty("gasCost", Order = 3)]
         public long GasCost { get; set; }
 
-        [JsonProperty("depth", Order = 4)]
         public int Depth { get; set; }
 
-        [JsonProperty("stack", Order = 5)]
         public List<string> Stack { get; set; }
 
-        [JsonProperty("error", Order = 6)]
-        public Error Error { get; set; }
+        public string Error { get; set; }
         
-        [JsonProperty("memory", Order = 7)]
         public List<string> Memory { get; set; }
 
-        [JsonIgnore]
         public Dictionary<string, string> Storage { get; set; }
 
-        [JsonProperty("storage", Order = 7)]
         public Dictionary<string, string> SortedStorage => Storage.OrderBy(p => p.Key).ToDictionary(p => p.Key, p => p.Value);
 
         public override string ToString()
         {
             return base.ToString();
         }
-    }
-
-    [JsonObject]
-    public class Error
-    {    
     }
 }
