@@ -183,8 +183,7 @@ namespace Nethermind.Evm
 
                 if (cost > long.MaxValue)
                 {
-                    Metrics.EvmExceptions++;
-                    throw new OutOfGasException();
+                    return long.MaxValue;
                 }
                 
                 UpdateSize((ulong)newSize, 0, false);

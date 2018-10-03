@@ -223,6 +223,7 @@ namespace Nethermind.Evm
                                 _logger.Trace($"Code deposit cost is {codeDepositGasCost} ({GasCostOf.CodeDeposit} * {callResult.Output.Length})");
                             }
 
+                            _logger.Error($"CODE DEPOSIT {codeDepositGasCost}, AVAIL {gasAvailableForCodeDeposit}");
                             if (gasAvailableForCodeDeposit >= codeDepositGasCost)
                             {
                                 Keccak codeHash = _state.UpdateCode(callResult.Output);
@@ -234,6 +235,7 @@ namespace Nethermind.Evm
                             }
                             else
                             {
+                                _logger.Error("CODE DEPOSIT COST ERROR");
                                 // TODO: out of gas - try to handle as everywhere else - test with 61362 (7933dd) on Ropsten - second contract creation
                                 previousCallResult = BytesZero;
                                 if (releaseSpec.IsEip2Enabled)
