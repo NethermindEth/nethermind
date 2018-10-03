@@ -40,6 +40,7 @@ namespace Nethermind.Runner.TestClient
                 new Option("eth_getBlockByNumber", ("Block Number", ToBlockNumberHex), ("Full Transaction Data?", ToBool)),
                 new Option("eth_accounts"),
                 new Option("debug_traceTransaction", ("Tx Hash", p => p)),
+                new Option("debug_traceTransactionByBlockAndIndex", ("Block Number", ToBlockNumberHex), ("Tx Index", s => int.Parse(s))),
                 new Option("debug_traceBlockByHash", ("Block Hash", p => p)),
                 new Option("debug_traceBlockByNumber", ("Block Number", ToBlockNumberHex)),
                 new Option("debug_addTxData", ("Block Number", ToBlockNumberHex))

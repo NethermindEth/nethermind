@@ -133,6 +133,11 @@ namespace Nethermind.JsonRpc.Module
             return _blockchainProcessor.Trace(transactionHash);
         }
 
+        public TransactionTrace GetTransactionTrace(UInt256 blockNumber, int index)
+        {
+            return _blockchainProcessor.Trace(blockNumber, index);
+        }
+
         public BlockTrace GetBlockTrace(Keccak blockHash)
         {
             return _blockchainProcessor.TraceBlock(blockHash);

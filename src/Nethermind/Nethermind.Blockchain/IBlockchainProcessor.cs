@@ -36,6 +36,7 @@ namespace Nethermind.Blockchain
         /// <param name="block"></param>
         void AddTxData(Block block); // TODO: tks: should be queued
         TransactionTrace Trace(Keccak txHash); // TODO: tks: should be queued
+        TransactionTrace Trace(UInt256 blockNumber, int txIndex); // TODO: tks: should be queued
         BlockTrace TraceBlock(Keccak blokHash); // TODO: tks: should be queued
         BlockTrace TraceBlock(UInt256 blokNumber); // TODO: tks: should be queued
     }

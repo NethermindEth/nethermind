@@ -50,6 +50,20 @@ namespace Nethermind.JsonRpc.Module
             if (Logger.IsTrace) Logger.Trace($"debug_traceTransaction request {transationHash.ToJson()}, result: {GetJsonLog(transactionModel.ToJson())}");
             return ResultWrapper<TransactionTrace>.Success(transactionModel);
         }
+        
+        public ResultWrapper<TransactionTrace> debug_traceTransactionByBlockAndIndex(BlockParameter blockParameter, int index)
+        {
+            UInt256 blockNo = (UInt256) blockParameter.BlockId.GetValue().Value;
+            var transactionTrace = _blockchainBridge.GetTransactionTrace(blockNo, index);
+            if (transactionTrace == null)
+            {
+                return ResultWrapper<TransactionTrace>.Fail($"Cannot find transactionTrace {blockNo}", ErrorType.NotFound);
+            }
+            var transactionModel = _modelMapper.MapTransactionTrace(transactionTrace);
+
+            if (Logger.IsTrace) Logger.Trace($"debug_traceTransactionByBlockAndIndex request {blockNo}, result: {GetJsonLog(transactionModel.ToJson())}");
+            return ResultWrapper<TransactionTrace>.Success(transactionModel);
+        }
 
         public ResultWrapper<bool> debug_addTxData(BlockParameter blockParameter)
         {

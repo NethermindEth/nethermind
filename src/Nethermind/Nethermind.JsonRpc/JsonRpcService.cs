@@ -219,7 +219,7 @@ namespace Nethermind.JsonRpc
             var module = _moduleProvider.GetAllModules().FirstOrDefault(x => x.MethodDictionary.ContainsKey(methodName));
             if (module == null)
             {
-                return (ErrorType.MethodNotFound, "Method is not supported");
+                return (ErrorType.MethodNotFound, $"Method {methodName} is not supported");
             }
 
             if (_moduleProvider.GetEnabledModules().All(x => x.ModuleType != module.ModuleType))
