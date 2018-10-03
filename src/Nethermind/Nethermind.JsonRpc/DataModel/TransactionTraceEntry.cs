@@ -41,6 +41,7 @@ namespace Nethermind.JsonRpc.DataModel
                 op = Op,
                 gas = Gas,
                 gasCost = GasCost,
+                error = Error,
                 depth = Depth,
                 stack = Stack,
                 memory = Memory,
