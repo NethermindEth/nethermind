@@ -52,6 +52,7 @@ namespace Nethermind.JsonRpc.Module
         TransactionReceipt GetTransactionReceipt(Keccak transactionHash);
         TransactionTrace GetTransactionTrace(Keccak transactionHash);
         TransactionTrace GetTransactionTrace(UInt256 blockNumber, int index);
+        TransactionTrace GetTransactionTrace(Keccak blockHash, int index);
         BlockTrace GetBlockTrace(Keccak blockHash);
         BlockTrace GetBlockTrace(UInt256 blockNumber);
 
