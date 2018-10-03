@@ -45,8 +45,8 @@ namespace Nethermind.DiagTools
                 _logger.Warn($"  failed diff geth {gethTrace.Failed} != neth {nethTrace.Failed}");
             }
 
-            var gethEntries = gethTrace.Entries.ToList();
-            var nethEntries = gethTrace.Entries.ToList();
+            var gethEntries = gethTrace.StructLogs.ToList();
+            var nethEntries = gethTrace.StructLogs.ToList();
             
             int ixDiff = 0;
             for (int i = 0; i < gethEntries.Count; i++)

@@ -38,7 +38,7 @@ namespace Nethermind.JsonRpc.DataModel
                     gas = Result?.Gas,
                     failed = Result?.Failed,
                     returnValue = Result?.ReturnValue,
-                    structLogs = Result?.Entries?.Select(x => x.ToJson()).ToArray()
+                    structLogs = Result?.StructLogs?.Select(x => x.ToJson()).ToArray()
                 }
             };
         }

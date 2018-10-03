@@ -27,7 +27,7 @@ namespace Nethermind.JsonRpc.DataModel
         public BigInteger Gas { get; set; }
         public bool Failed { get; set; }
         public byte[] ReturnValue { get; set; }
-        public IEnumerable<TransactionTraceEntry> Entries { get; set; }
+        public IEnumerable<TransactionTraceEntry> StructLogs { get; set; }
 
         public object ToJson()
         {
@@ -36,7 +36,7 @@ namespace Nethermind.JsonRpc.DataModel
                 gas = Gas,
                 failed = Failed,
                 returnValue = ReturnValue,
-                structLogs = Entries?.Select(x => x.ToJson()).ToArray()
+                structLogs = StructLogs?.Select(x => x.ToJson()).ToArray()
             };
         }
     }
