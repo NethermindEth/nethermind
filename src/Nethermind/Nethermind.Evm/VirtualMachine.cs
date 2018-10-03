@@ -1648,14 +1648,17 @@ namespace Nethermind.Evm
                                     }
                                 }
                             }
-                            else if (currentIsZero && !UpdateGas(GasCostOf.SSet - GasCostOf.SReset, ref gasAvailable))
+                            else if (currentIsZero)
                             {
+                                if (!UpdateGas(GasCostOf.SSet - GasCostOf.SReset, ref gasAvailable))
+                                {
+                                    return CallResult.OutOfGasException;    
+                                }
+                                
                                 if (storageTraceEntry != null)
                                 {
                                     storageTraceEntry.Cost = (int)GasCostOf.SSet;
                                 }
-                                
-                                return CallResult.OutOfGasException;
                             }
                         }
                         else // eip1283enabled
