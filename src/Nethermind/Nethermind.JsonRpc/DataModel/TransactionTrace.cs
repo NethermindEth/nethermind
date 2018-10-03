@@ -19,6 +19,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
+using Nethermind.Evm;
 
 namespace Nethermind.JsonRpc.DataModel
 {
@@ -28,7 +29,8 @@ namespace Nethermind.JsonRpc.DataModel
         public bool Failed { get; set; }
         public byte[] ReturnValue { get; set; }
         public IEnumerable<TransactionTraceEntry> StructLogs { get; set; }
-
+        public StorageTrace StorageTrace { get; set; }
+        
         public object ToJson()
         {
             return new
@@ -36,7 +38,8 @@ namespace Nethermind.JsonRpc.DataModel
                 gas = Gas,
                 failed = Failed,
                 returnValue = ReturnValue,
-                structLogs = StructLogs?.Select(x => x.ToJson()).ToArray()
+                structLogs = StructLogs?.Select(x => x.ToJson()).ToArray(),
+                storageTrace = StorageTrace.ToJson()
             };
         }
     }

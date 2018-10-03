@@ -24,10 +24,12 @@ using Nethermind.Core.Crypto;
 using Nethermind.Evm;
 using Nethermind.JsonRpc.DataModel;
 using Block = Nethermind.JsonRpc.DataModel.Block;
+using StorageTrace = Nethermind.JsonRpc.DataModel.StorageTrace;
 using Transaction = Nethermind.JsonRpc.DataModel.Transaction;
 using TransactionReceipt = Nethermind.JsonRpc.DataModel.TransactionReceipt;
 using TransactionTrace = Nethermind.JsonRpc.DataModel.TransactionTrace;
 using TransactionTraceEntry = Nethermind.JsonRpc.DataModel.TransactionTraceEntry;
+using StorageTraceEntry = Nethermind.JsonRpc.DataModel.StorageTraceEntry;
 
 namespace Nethermind.JsonRpc
 {
@@ -121,17 +123,39 @@ namespace Nethermind.JsonRpc
             {
                 Gas = transactionTrace.Gas,
                 Failed = transactionTrace.Failed,
-                ReturnValue = transactionTrace.ReturnValue != null ? transactionTrace.ReturnValue : null,
+                ReturnValue = transactionTrace.ReturnValue,
+                StorageTrace = MapStorageTrace(transactionTrace.StorageTrace),
                 StructLogs = transactionTrace.Entries?.Select(x => new TransactionTraceEntry
                 {
                     Pc = x.Pc,
-                    Operation = x.Operation,
+                    Op = x.Operation,
                     Gas = x.Gas,
                     GasCost = x.GasCost,
                     Depth = x.Depth,
                     Stack = x.Stack,
                     Memory = x.Memory,
                     Storage = x.Storage
+                }).ToArray()
+            };
+        }
+        
+        public StorageTrace MapStorageTrace(Evm.StorageTrace storageTrace)
+        {
+            if (storageTrace == null)
+            {
+                return null;
+            }
+            
+            return new StorageTrace
+            {
+                Entries = storageTrace.Entries?.Select(x => new StorageTraceEntry
+                {
+                    Cost = x.Cost,
+                    Refund = x.Refund,
+                    OldValue= x.OldValue,
+                    NewValue = x.NewValue,
+                    Address = x.Address.Address.ToString(),
+                    Key = x.Address.Index.ToString(),
                 }).ToArray()
             };
         }

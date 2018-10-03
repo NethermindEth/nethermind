@@ -16,35 +16,27 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Collections.Generic;
-using System.Linq;
-
 namespace Nethermind.JsonRpc.DataModel
 {
-    public class TransactionTraceEntry : IJsonRpcResult
+    public class StorageTraceEntry : IJsonRpcResult
     {
-        public long Pc { get; set; }
-        public string Op { get; set; }
-        public long Gas { get; set; }
-        public long GasCost { get; set; }
-        public int Depth { get; set; }
-        public string Error { get; set; }
-        public List<string> Stack { get; set; }
-        public List<string> Memory { get; set; }
-        public Dictionary<string, string> Storage { get; set; }
+        public long Refund { get; set; }
+        public long Cost { get; set; }
+        public string Address { get; set; }
+        public string Key { get; set; }
+        public string OldValue { get; set; }
+        public string NewValue { get; set; }
 
         public object ToJson()
         {
             return new
             {
-                pc = Pc,
-                op = Op,
-                gas = Gas,
-                gasCost = GasCost,
-                depth = Depth,
-                stack = Stack,
-                memory = Memory,
-                storage = Storage.OrderBy(p => p.Key).ToDictionary(p => p.Key, p => p.Value)
+                cost = Cost,
+                refund = Refund,
+                address = Address,
+                key = Key,
+                oldValue = OldValue,
+                newValue = NewValue,
             };
         }
     }

@@ -21,30 +21,15 @@ using System.Linq;
 
 namespace Nethermind.JsonRpc.DataModel
 {
-    public class TransactionTraceEntry : IJsonRpcResult
+    public class StorageTrace : IJsonRpcResult
     {
-        public long Pc { get; set; }
-        public string Op { get; set; }
-        public long Gas { get; set; }
-        public long GasCost { get; set; }
-        public int Depth { get; set; }
-        public string Error { get; set; }
-        public List<string> Stack { get; set; }
-        public List<string> Memory { get; set; }
-        public Dictionary<string, string> Storage { get; set; }
-
+        public IEnumerable<StorageTraceEntry> Entries { get; set; }
+        
         public object ToJson()
         {
             return new
             {
-                pc = Pc,
-                op = Op,
-                gas = Gas,
-                gasCost = GasCost,
-                depth = Depth,
-                stack = Stack,
-                memory = Memory,
-                storage = Storage.OrderBy(p => p.Key).ToDictionary(p => p.Key, p => p.Value)
+                entries = Entries?.Select(x => x.ToJson()).ToArray()
             };
         }
     }

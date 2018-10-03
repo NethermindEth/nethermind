@@ -16,31 +16,16 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Collections.Generic;
-using System.Numerics;
-using Nethermind.Core.Extensions;
-using Newtonsoft.Json;
+using Nethermind.Store;
 
 namespace Nethermind.Evm
 {
-    public class TransactionTrace
+    public class StorageTraceEntry
     {
-        public TransactionTrace()
-        {
-            Entries = new List<TransactionTraceEntry>();
-            StorageTrace = new StorageTrace();
-        }
-
-        public StorageTrace StorageTrace { get; set; }
-        
-        public BigInteger Gas { get; set; } // TODO: not implemented
-
-        public bool Failed { get; set; }
-
-        public byte[] ReturnValue { get; set; } // TODO: not implemented
-
-        public List<TransactionTraceEntry> Entries { get; set; }
-
-        public static TransactionTrace QuickFail { get; } = new TransactionTrace {Failed = true, ReturnValue = Bytes.Empty};
+        public StorageAddress Address { get; set; }
+        public string OldValue { get; set; }
+        public string NewValue { get; set; }
+        public long Cost { get; set; }
+        public long Refund { get; set; }
     }
 }

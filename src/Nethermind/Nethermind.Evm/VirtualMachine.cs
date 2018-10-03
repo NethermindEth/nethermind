@@ -1603,7 +1603,7 @@ namespace Nethermind.Evm
                         break;
                     }
                     case Instruction.SSTORE:
-                    {
+                    {                        
                         if (evmState.IsStatic)
                         {
                             Metrics.EvmExceptions++;
@@ -1625,6 +1625,15 @@ namespace Nethermind.Evm
                         bool currentIsZero = currentValue.IsZero();
                         
                         bool newSameAsCurrent = (newIsZero && currentIsZero) || Bytes.AreEqual(currentValue, newValue);
+                        StorageTraceEntry storageTraceEntry = null;
+                        if(_trace != null)
+                        {
+                            storageTraceEntry = new StorageTraceEntry();
+                            storageTraceEntry.Address = storageAddress;
+                            storageTraceEntry.NewValue = newValue.ToHexString();
+                            storageTraceEntry.OldValue = currentValue.ToHexString();
+                            storageTraceEntry.Cost = (int)GasCostOf.SReset;
+                        }
 
                         if (!spec.IsEip1283Enabled) // note that for this case we already deducted 5000
                         {
@@ -1633,10 +1642,19 @@ namespace Nethermind.Evm
                                 if (!newSameAsCurrent)
                                 {
                                     evmState.Refund += RefundOf.SClear;
+                                    if (storageTraceEntry != null)
+                                    {
+                                        storageTraceEntry.Refund = (int)RefundOf.SClear;
+                                    }
                                 }
                             }
                             else if (currentIsZero && !UpdateGas(GasCostOf.SSet - GasCostOf.SReset, ref gasAvailable))
                             {
+                                if (storageTraceEntry != null)
+                                {
+                                    storageTraceEntry.Cost = (int)GasCostOf.SSet;
+                                }
+                                
                                 return CallResult.OutOfGasException;
                             }
                         }
@@ -1725,6 +1743,7 @@ namespace Nethermind.Evm
 
                         if (_trace != null)
                         {
+                            _trace.StorageTrace.Entries.Add(storageTraceEntry);
                             byte[] bigEndian = new byte[32];
                             storageIndex.ToBigEndian(bigEndian);
                             _traceEntry.Storage[bigEndian.ToHexString(false)] = newValue.PadLeft(32).ToHexString(false);

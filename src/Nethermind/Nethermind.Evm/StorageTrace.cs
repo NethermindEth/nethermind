@@ -17,30 +17,16 @@
  */
 
 using System.Collections.Generic;
-using System.Numerics;
-using Nethermind.Core.Extensions;
-using Newtonsoft.Json;
 
 namespace Nethermind.Evm
 {
-    public class TransactionTrace
+    public class StorageTrace
     {
-        public TransactionTrace()
+        public StorageTrace()
         {
-            Entries = new List<TransactionTraceEntry>();
-            StorageTrace = new StorageTrace();
+            Entries = new List<StorageTraceEntry>();
         }
-
-        public StorageTrace StorageTrace { get; set; }
         
-        public BigInteger Gas { get; set; } // TODO: not implemented
-
-        public bool Failed { get; set; }
-
-        public byte[] ReturnValue { get; set; } // TODO: not implemented
-
-        public List<TransactionTraceEntry> Entries { get; set; }
-
-        public static TransactionTrace QuickFail { get; } = new TransactionTrace {Failed = true, ReturnValue = Bytes.Empty};
+        public List<StorageTraceEntry> Entries { get; set; }
     }
 }

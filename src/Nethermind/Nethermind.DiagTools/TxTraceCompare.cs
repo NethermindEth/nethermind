@@ -61,16 +61,16 @@ namespace Nethermind.DiagTools
 
                 int nethIx = i - ixDiff;
                 
-                string entryDesc = $"ix {i}/{nethIx} pc {gethEntries[i].Pc} op {gethEntries[i].Operation} gas {gethEntries[i].Gas} | ";
+                string entryDesc = $"ix {i}/{nethIx} pc {gethEntries[i].Pc} op {gethEntries[i].Op} gas {gethEntries[i].Gas} | ";
                 if (nethEntries.Count < nethIx + 1)
                 {
                     _logger.Warn($"    neth entry missing");        
                 }
                 
                 var nethEntry = nethEntries[nethIx];
-                if (gethEntry.Operation != nethEntry.Operation)
+                if (gethEntry.Op != nethEntry.Op)
                 {
-                    _logger.Warn($"    {entryDesc} operation geth {gethEntry.Operation} neth {nethEntry.Operation}");
+                    _logger.Warn($"    {entryDesc} operation geth {gethEntry.Op} neth {nethEntry.Op}");
                     break;
                 }
                 
