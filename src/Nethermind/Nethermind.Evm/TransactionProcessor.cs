@@ -207,11 +207,11 @@ namespace Nethermind.Evm
                     unspentGas = state.GasAvailable;
                 }
 
-                if (substate.ShouldRevert)
+                if (substate.ShouldRevert || substate.IsError)
                 {
                     if (_logger.IsTrace)
                     {
-                        _logger.Trace("REVERTING");
+                        _logger.Trace("Restoring state from before transaction");
                     }
 
                     _stateProvider.Restore(snapshot);
@@ -250,10 +250,6 @@ namespace Nethermind.Evm
                 }
 
                 spentGas = Refund(gasLimit, unspentGas, substate, sender, gasPrice, spec);
-                if (shouldTrace)
-                {
-                    substate.Trace.Gas = spentGas;
-                }
             }
             catch (Exception ex) when (ex is EvmException || ex is OverflowException) // TODO: OverflowException? still needed? hope not
             {
@@ -290,20 +286,26 @@ namespace Nethermind.Evm
 
         private long Refund(long gasLimit, long unspentGas, TransactionSubstate substate, Address sender, UInt256 gasPrice, IReleaseSpec spec)
         {
-            long spentGas = gasLimit - unspentGas;
-            long refund = Math.Min(spentGas / 2L, substate.Refund + substate.DestroyList.Count * RefundOf.Destroy);
-            if (substate.ShouldRevert) // TODO: not tested anywhere
+            long spentGas = gasLimit;
+            if (!substate.IsError)
             {
-                refund = 0;
+                spentGas -= unspentGas;
+                long refund = substate.ShouldRevert ? 0 : Math.Min(spentGas / 2L, substate.Refund + substate.DestroyList.Count * RefundOf.Destroy);
+
+                if (_logger.IsTrace)
+                {
+                    _logger.Trace("Refunding unused gas of " + unspentGas + " and refund of " + refund);
+                }
+
+                _stateProvider.AddToBalance(sender, (ulong) (unspentGas + refund) * gasPrice, spec);
+                spentGas -=  refund;
             }
 
-            if (_logger.IsTrace)
+            if (substate.Trace != null)
             {
-                _logger.Trace("REFUNDING UNUSED GAS OF " + unspentGas + " AND REFUND OF " + refund);
+                substate.Trace.Gas = spentGas;
             }
-
-            _stateProvider.AddToBalance(sender, (ulong) (unspentGas + refund) * gasPrice, spec);
-            spentGas -= refund;
+            
             return spentGas;
         }
 

@@ -16,9 +16,12 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Linq;
 using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.Store;
 using NUnit.Framework;
 
@@ -37,7 +40,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Trace()
         {
-            (TransactionReceipt _, TransactionTrace Trace) = ExecuteAndTrace(
+            (TransactionReceipt _, TransactionTrace trace) = ExecuteAndTrace(
                 (byte)Instruction.PUSH1,
                 0,
                 (byte)Instruction.PUSH1,
@@ -47,16 +50,45 @@ namespace Nethermind.Evm.Test
                 0,
                 (byte)Instruction.SSTORE);
             
-            Assert.AreEqual(5, Trace.Entries.Count, "number of entries");
-            TransactionTraceEntry entry = Trace.Entries[1];
+            Assert.AreEqual(5, trace.Entries.Count, "number of entries");
+            TransactionTraceEntry entry = trace.Entries[1];
             Assert.AreEqual(0, entry.Depth, nameof(entry.Depth));
             Assert.AreEqual(79000 - GasCostOf.VeryLow, entry.Gas, nameof(entry.Gas));
             Assert.AreEqual(GasCostOf.VeryLow, entry.GasCost, nameof(entry.GasCost));
             Assert.AreEqual(0, entry.Memory.Count, nameof(entry.Memory));
             Assert.AreEqual(1, entry.Stack.Count, nameof(entry.Stack));
-            Assert.AreEqual(1, Trace.Entries[4].Storage.Count, nameof(entry.Storage));
+            Assert.AreEqual(1, trace.Entries[4].Storage.Count, nameof(entry.Storage));
             Assert.AreEqual(2, entry.Pc, nameof(entry.Pc));
             Assert.AreEqual("PUSH1", entry.Operation, nameof(entry.Operation));
+        }
+        
+        [Test]
+        public void Trace_vm_errors()
+        {
+            (TransactionReceipt _, TransactionTrace trace) = ExecuteAndTrace(UInt256.One, 21000L + 19000L, 
+                (byte)Instruction.PUSH1,
+                1,
+                (byte)Instruction.PUSH1,
+                1,
+                (byte)Instruction.ADD,
+                (byte)Instruction.PUSH1,
+                0,
+                (byte)Instruction.SSTORE);
+            
+            Assert.True(trace.Entries.Any(e => e.Error != null));
+        }
+        
+        [Test]
+        public void Trace_memory_out_of_gas_exception()
+        {
+            byte[] code = Prepare.EvmCode
+                .PushData(10 * 1000 * 1000)
+                .Op(Instruction.MLOAD)
+                .Done;
+            (TransactionReceipt _, TransactionTrace trace) = ExecuteAndTrace(UInt256.One, 21000L + 19000L, 
+                code);
+            
+            Assert.True(trace.Entries.Any(e => e.Error != null));
         }
         
         [Test(Description = "Test a case where the trace is created for one transaction and subsequent untraced transactions keep adding entries to the first trace created.")]

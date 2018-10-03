@@ -19,13 +19,10 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.IO.IsolatedStorage;
 using System.Numerics;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
@@ -37,7 +34,7 @@ using Nethermind.Store;
 namespace Nethermind.Evm
 {
     public class VirtualMachine : IVirtualMachine
-    {
+    {   
         public const int MaxCallDepth = 1024;
         public const int MaxStackSize = 1025;
 
@@ -163,7 +160,7 @@ namespace Nethermind.Evm
                             if (currentState.ExecutionType == ExecutionType.Transaction || currentState.ExecutionType == ExecutionType.DirectPrecompile || currentState.ExecutionType == ExecutionType.DirectCreate)
                             {
                                 if(_trace != null) _trace.Failed = true;
-                                throw new EvmException();
+                                return new TransactionSubstate("Error", _trace);
                             }
 
                             previousCallResult = StatusCode.FailureBytes;
@@ -301,7 +298,7 @@ namespace Nethermind.Evm
                     if (currentState.ExecutionType == ExecutionType.Transaction || currentState.ExecutionType == ExecutionType.DirectPrecompile || currentState.ExecutionType == ExecutionType.DirectCreate)
                     {
                         if(_trace != null) _trace.Failed = true;
-                        throw;
+                        return new TransactionSubstate("Error", _trace);
                     }
 
                     previousCallResult = StatusCode.FailureBytes;

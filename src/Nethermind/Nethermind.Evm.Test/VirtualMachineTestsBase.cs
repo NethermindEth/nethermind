@@ -93,7 +93,7 @@ namespace Nethermind.Evm.Test
             return Execute(BlockNumber, 100000, code, true);
         }
         
-        protected (TransactionReceipt Receipt, TransactionTrace Trace) ExecuteAndTrace(UInt256 blockNumber, long gasLimit, byte[] code)
+        protected (TransactionReceipt Receipt, TransactionTrace Trace) ExecuteAndTrace(UInt256 blockNumber, long gasLimit, params byte[] code)
         {
             return Execute(blockNumber, gasLimit, code, true);
         }

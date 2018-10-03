@@ -23,6 +23,19 @@ namespace Nethermind.Evm
 {
     public class TransactionSubstate
     {
+        private static List<Address> _emptyDestroyList = new List<Address>(0);
+        private static List<LogEntry> _emptyLogs = new List<LogEntry>(0);
+        
+        public TransactionSubstate(string error, TransactionTrace trace)
+        {
+            Error = error;
+            Refund = 0;
+            DestroyList = _emptyDestroyList;
+            Logs = _emptyLogs;
+            ShouldRevert = false;
+            Trace = trace;
+        }
+        
         public TransactionSubstate(
             byte[] output,
             long refund,
@@ -39,6 +52,10 @@ namespace Nethermind.Evm
             Trace = trace;
         }
 
+        public bool IsError => Error != null;
+        
+        public string Error { get; set; }
+        
         public byte[] Output { get; }
         
         public bool ShouldRevert { get; }
