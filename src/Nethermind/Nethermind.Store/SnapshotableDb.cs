@@ -20,6 +20,7 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Store
 {
@@ -27,8 +28,6 @@ namespace Nethermind.Store
     {
         private const int InitialCapacity = 4;
 
-        private readonly LruCache<Keccak, byte[]> _cache;
-        private readonly bool _cachingEnabled;
         private readonly IDb _db;
 
         private int _capacity = InitialCapacity;
@@ -38,11 +37,9 @@ namespace Nethermind.Store
         private int _currentPosition = -1;
         private Dictionary<Keccak, int> _pendingChanges = new Dictionary<Keccak, int>(InitialCapacity);
 
-        public SnapshotableDb(IDb db, bool cachingEnabled = false, int cacheSize = 1024 * 1024 * 2)
+        public SnapshotableDb(IDb db)
         {
             _db = db;
-            _cachingEnabled = cachingEnabled;
-            if (_cachingEnabled) _cache = new LruCache<Keccak, byte[]>(cacheSize);
         }
 
         public byte[] this[byte[] key]
@@ -82,7 +79,6 @@ namespace Nethermind.Store
             {
                 Change change = _changes[_currentPosition - i];
                 _db[change.Hash.Bytes] = change.Value;
-                if (_cachingEnabled) _cache.Set(change.Hash, change.Value);
             }
 
             _currentPosition = -1;
@@ -104,23 +100,16 @@ namespace Nethermind.Store
         private byte[] Get(Keccak hash)
         {
             if (_pendingChanges.TryGetValue(hash, out int pendingCHangeIndex)) return _changes[pendingCHangeIndex].Value;
-
-            if (_cachingEnabled)
-            {
-                var value = _cache.Get(hash);
-                if (value != null) return value;
-
-                value = _db[hash.Bytes];
-                _cache.Set(hash, value);
-
-                return value;
-            }
-
             return _db[hash.Bytes];
         }
 
         private void Set(Keccak hash, byte[] value)
         {
+            if (_pendingChanges.ContainsKey(hash))
+            {
+                return;
+            }
+            
             if (value == null) throw new ArgumentNullException(nameof(value), "Cannot store null values");
 
             _currentPosition++;
