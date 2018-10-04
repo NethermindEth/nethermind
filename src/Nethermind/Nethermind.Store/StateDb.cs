@@ -18,14 +18,12 @@
 
 using System;
 using System.Collections.Generic;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Store
 {
     /// <summary>
-    /// State DB where keys are hashes of values and only inserts are allowed.
+    ///     State DB where keys are hashes of values and only inserts are allowed.
     /// </summary>
     public class StateDb : ISnapshotableDb
     {
@@ -38,7 +36,7 @@ namespace Nethermind.Store
         private Change[] _changes = new Change[InitialCapacity];
 
         private int _currentPosition = -1;
-        private Dictionary<Keccak, int> _pendingChanges = new Dictionary<Keccak, int>(InitialCapacity);
+        private Dictionary<byte[], int> _pendingChanges = new Dictionary<byte[], int>(InitialCapacity, Bytes.EqualityComparer);
 
         public StateDb(IDb db)
         {
@@ -47,8 +45,8 @@ namespace Nethermind.Store
 
         public byte[] this[byte[] key]
         {
-            get => Get(new Keccak(key));
-            set => Set(new Keccak(key), value);
+            get => Get(key);
+            set => Set(key, value);
         }
 
         public void StartBatch()
@@ -68,7 +66,7 @@ namespace Nethermind.Store
             for (int i = _currentPosition; i > snapshot; i--)
             {
                 Change change = _changes[i];
-                _pendingChanges.Remove(change.Hash);
+                _pendingChanges.Remove(change.Key);
             }
 
             _currentPosition = snapshot;
@@ -81,7 +79,7 @@ namespace Nethermind.Store
             for (int i = 0; i <= _currentPosition; i++)
             {
                 Change change = _changes[_currentPosition - i];
-                _db[change.Hash.Bytes] = change.Value;
+                _db[change.Key] = change.Value;
             }
 
             _currentPosition = -1;
@@ -100,31 +98,29 @@ namespace Nethermind.Store
             _db?.Dispose();
         }
 
-        private byte[] Get(Keccak hash)
+        private byte[] Get(byte[] key)
         {
-            if (_pendingChanges.TryGetValue(hash, out int pendingCHangeIndex)) return _changes[pendingCHangeIndex].Value;
-            return _db[hash.Bytes];
+            if (_pendingChanges.TryGetValue(key, out int pendingCHangeIndex)) return _changes[pendingCHangeIndex].Value;
+            return _db[key];
         }
 
         /// <summary>
-        /// Note that state DB assumes that they keys are hashes of values so trying to update values may to lead unexpected results.
-        /// If the value has already been committed to the DB then the update succeeds, otherwise it is ignored.
+        ///     Note that state DB assumes that they keys are hashes of values so trying to update values may to lead unexpected
+        ///     results.
+        ///     If the value has already been committed to the DB then the update succeeds, otherwise it is ignored.
         /// </summary>
-        private void Set(Keccak hash, byte[] value)
+        private void Set(byte[] key, byte[] value)
         {
-            if (_pendingChanges.ContainsKey(hash))
-            {
-                return;
-            }
-            
+            if (_pendingChanges.ContainsKey(key)) return;
+
             if (value == null) throw new ArgumentNullException(nameof(value), "Cannot store null values");
 
             _currentPosition++;
             AdjustSize();
 
-            Change change = new Change(hash, value);
+            Change change = new Change(key, value);
             _changes[_currentPosition] = change;
-            _pendingChanges[hash] = _currentPosition;
+            _pendingChanges[key] = _currentPosition;
         }
 
         private void AdjustSize()
@@ -143,13 +139,13 @@ namespace Nethermind.Store
 
         private struct Change
         {
-            public Change(Keccak hash, byte[] value)
+            public Change(byte[] key, byte[] value)
             {
-                Hash = hash;
+                Key = key;
                 Value = value;
             }
 
-            public Keccak Hash { get; }
+            public byte[] Key { get; }
             public byte[] Value { get; }
         }
     }
