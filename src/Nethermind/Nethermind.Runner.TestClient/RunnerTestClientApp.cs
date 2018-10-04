@@ -45,7 +45,8 @@ namespace Nethermind.Runner.TestClient
                 new Option("debug_traceTransactionByBlockhashAndIndex", ("Block Hash", p => p), ("Tx Index", s => int.Parse(s))),
                 new Option("debug_traceBlockByHash", ("Block Hash", p => p)),
                 new Option("debug_traceBlockByNumber", ("Block Number", ToBlockNumberHex)),
-                new Option("debug_addTxData", ("Block Number", ToBlockNumberHex))
+                new Option("debug_addTxData", ("Block Number", ToBlockNumberHex)),
+                new Option("debug_getFromDb", ("DB Name", p => p), ("Bytes", p => p)),
             };
 
             StringBuilder prompt = new StringBuilder("Options:");

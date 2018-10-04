@@ -63,7 +63,7 @@ namespace Nethermind.JsonRpc.Module
             IDb codeDb = dbProvider?.CodeDb ?? throw new ArgumentNullException(nameof(dbProvider.CodeDb));
             _transactionStore = transactionStore ?? throw new ArgumentNullException(nameof(transactionStore));
 
-            _dbMappings = new Dictionary<string, IDb>
+            _dbMappings = new Dictionary<string, IDb>(StringComparer.InvariantCultureIgnoreCase)
             {
                 {DbNames.State, _stateDb},
                 {DbNames.Storage, _stateDb},

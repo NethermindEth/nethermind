@@ -24,6 +24,7 @@ using System.Reflection;
 using System.Runtime.InteropServices.WindowsRuntime;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
 using Nethermind.JsonRpc.Config;
@@ -110,6 +111,7 @@ namespace Nethermind.JsonRpc
                 _logger.Error($"Method {methodName} execution result does not implement IResultWrapper");
                 return GetErrorResponse(ErrorType.InternalError, "Internal error", request.Id, methodName);
             }
+            
             if (resultWrapper.GetResult() == null || resultWrapper.GetResult().ResultType == ResultType.Failure)
             {
                 _logger.Error($"Error during method: {methodName} execution: {resultWrapper.GetResult()?.Error ?? "no result"}");
@@ -118,23 +120,30 @@ namespace Nethermind.JsonRpc
 
             //process response
             var data = resultWrapper.GetData();
+            if (data is byte[] bytes)
+            {
+                return GetSuccessResponse(bytes.ToHexString(), request.Id);        
+            }
+            
             if (!(data is IEnumerable collection) || data is string)
             {
                 var json = GetDataObject(data);
                 return GetSuccessResponse(json, request.Id);        
             }
+            
             var items = new List<object>();
             foreach (var item in collection)
             {
                 var jsonItem = GetDataObject(item);
                 items.Add(jsonItem);
             }
+            
             return GetSuccessResponse(items, request.Id);
         }
 
         private object GetDataObject(object data)
         {
-            return data is IJsonRpcResult rpcResult ? rpcResult.ToJson() : data.ToString();
+            return data is IJsonRpcResult rpcResult ? rpcResult.ToJson() : data?.ToString();
         }
 
         private object[] GetParameters(ParameterInfo[] expectedParameters, string[] providedParameters)

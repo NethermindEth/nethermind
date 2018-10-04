@@ -76,7 +76,7 @@ namespace Nethermind.Store.Rpc
 
         private byte[] GetThroughRpc(byte[] key)
         {
-            string response = _rpcClient.Post("debug_getFromDb", _dbName, key).Result;
+            string response = _rpcClient.Post("debug_getFromDb", _dbName, key.ToHexString()).Result;
             return _jsonSerializer.Deserialize<byte[]>(response);
         }
     }

@@ -33,7 +33,8 @@ namespace Nethermind.JsonRpc.Module
         private readonly IBlockchainBridge _blockchainBridge;
         private readonly IJsonRpcModelMapper _modelMapper;
 
-        public DebugModule(IConfigProvider configurationProvider, ILogManager logManager, IBlockchainBridge blockchainBridge, IJsonRpcModelMapper modelMapper, IJsonSerializer jsonSerializer) : base(configurationProvider, logManager, jsonSerializer)
+        public DebugModule(IConfigProvider configurationProvider, ILogManager logManager, IBlockchainBridge blockchainBridge, IJsonRpcModelMapper modelMapper, IJsonSerializer jsonSerializer)
+            : base(configurationProvider, logManager, jsonSerializer)
         {
             _blockchainBridge = blockchainBridge;
             _modelMapper = modelMapper;
