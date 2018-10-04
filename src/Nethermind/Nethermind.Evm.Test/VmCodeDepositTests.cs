@@ -16,7 +16,6 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -59,14 +58,12 @@ namespace Nethermind.Evm.Test
 
             byte[] code = Prepare.EvmCode
                 .Call(TestObject.AddressC, 32000 + 20000 + 5000 + 500 + 0) // not enough
-                .PushData(0)
-                .Op(Instruction.SSTORE) // we store return bytes from Call (should be failure)
                 .Done;
 
             (TransactionReceipt receipt, TransactionTrace trace) = ExecuteAndTrace(code);
             byte[] result = Storage.Get(storageAddress);
             Assert.AreEqual(new byte[] {0}, result, "storage reverted");
-            Assert.AreEqual(98827, receipt.GasUsed, "no refund");
+            Assert.AreEqual(78824, receipt.GasUsed, "no refund");
         }
     }
 }
