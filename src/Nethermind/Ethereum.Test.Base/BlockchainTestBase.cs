@@ -180,8 +180,9 @@ namespace Ethereum.Test.Base
 //            Debug.Listeners.Clear();
 //            Debug.Listeners.Add(traceListener);
             
-            IDbProvider dbProvider = new MemDbProvider(_logManager);
-            StateTree stateTree = new StateTree(dbProvider.GetOrCreateStateDb());
+            ISnapshotableDb stateDb = new StateDb();
+            ISnapshotableDb codeDb = new StateDb();
+            StateTree stateTree = new StateTree(stateDb);
             
 
             ISpecProvider specProvider;
@@ -214,8 +215,8 @@ namespace Ethereum.Test.Base
             IHeaderValidator headerValidator = new HeaderValidator(difficultyCalculator, blockTree, SealEngine, specProvider, _logManager);
             IOmmersValidator ommersValidator = new OmmersValidator(blockTree, headerValidator, _logManager);
             IBlockValidator blockValidator = new BlockValidator(transactionValidator, headerValidator, ommersValidator, specProvider, _logManager);
-            IStateProvider stateProvider = new StateProvider(stateTree, dbProvider.GetOrCreateCodeDb(), _logManager);
-            IStorageProvider storageProvider = new StorageProvider(dbProvider, stateProvider, _logManager);
+            IStateProvider stateProvider = new StateProvider(stateTree, codeDb, _logManager);
+            IStorageProvider storageProvider = new StorageProvider(stateDb, stateProvider, _logManager);
             IVirtualMachine virtualMachine = new VirtualMachine(
                 stateProvider,
                 storageProvider,
@@ -235,7 +236,8 @@ namespace Ethereum.Test.Base
                     storageProvider,
                     virtualMachine,
                     _logManager),
-                dbProvider,
+                stateDb,
+                codeDb,
                 stateProvider,
                 storageProvider,
                 transactionStore,

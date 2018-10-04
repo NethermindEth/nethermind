@@ -46,18 +46,19 @@ namespace Nethermind.Runner.Runners
         private readonly IBlockTree _blockTree;
         private readonly IBlockchainProcessor _blockchainProcessor;
         private readonly IStateProvider _stateProvider;
+        private readonly ISnapshotableDb _stateDb;
         private readonly ISpecProvider _specProvider;
-        private readonly IDbProvider _dbProvider;
         private readonly ILogger _logger;
         private readonly IConfigProvider _configurationProvider;
 
-        public HiveEthereumRunner(IJsonSerializer jsonSerializer, IBlockchainProcessor blockchainProcessor, IBlockTree blockTree, IStateProvider stateProvider, IDbProvider dbProvider, ILogger logger, IConfigProvider configurationProvider, ISpecProvider specProvider)
+        public HiveEthereumRunner(IJsonSerializer jsonSerializer, IBlockchainProcessor blockchainProcessor, IBlockTree blockTree, IStateProvider stateProvider, ISnapshotableDb stateDb , ILogger logger, IConfigProvider configurationProvider, ISpecProvider specProvider)
         {
             _jsonSerializer = jsonSerializer;
             _blockchainProcessor = blockchainProcessor;
             _blockTree = blockTree;
             _stateProvider = stateProvider;
-            _dbProvider = dbProvider;
+            _stateDb = stateDb;
+
             _logger = logger;
             _configurationProvider = configurationProvider;
             _specProvider = specProvider;
@@ -201,16 +202,17 @@ namespace Nethermind.Runner.Runners
         }
 
         private Keccak InitializeAccounts(IDictionary<string, TestAccount> alloc)
-        {
-            
+        {   
             foreach (var account in alloc)
             {
                 UInt256.CreateFromBigEndian(out UInt256 allocation, Bytes.FromHexString(account.Value.Balance));
                 _stateProvider.CreateAccount(new Address(account.Key), account.Value.Balance.StartsWith("0x") 
                     ? allocation : UInt256.Parse(account.Value.Balance));
             }
+            
             _stateProvider.Commit(_specProvider.GenesisSpec);
-            _dbProvider.Commit();
+            _stateDb.Commit();
+            
             return _stateProvider.StateRoot;
         }
 

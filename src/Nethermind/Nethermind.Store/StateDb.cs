@@ -38,6 +38,11 @@ namespace Nethermind.Store
         private int _currentPosition = -1;
         private Dictionary<byte[], int> _pendingChanges = new Dictionary<byte[], int>(InitialCapacity, Bytes.EqualityComparer);
 
+        public StateDb()
+            :this(new MemDb())
+        {
+        }
+        
         public StateDb(IDb db)
         {
             _db = db;
@@ -76,11 +81,14 @@ namespace Nethermind.Store
         {
             if (_currentPosition == -1) return;
 
+            _db.StartBatch();
             for (int i = 0; i <= _currentPosition; i++)
             {
                 Change change = _changes[_currentPosition - i];
                 _db[change.Key] = change.Value;
             }
+            
+            _db.CommitBatch();
 
             _currentPosition = -1;
             AdjustSize();

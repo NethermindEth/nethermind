@@ -47,18 +47,17 @@ namespace Nethermind.JsonRpc.Module
         private readonly IDb _txDb;
         private Dictionary<string, IDb> _dbMappings;
 
-        public BlockchainBridge(
-            IEthereumSigner signer,
+        public BlockchainBridge(IEthereumSigner signer,
             IStateProvider stateProvider,
             IKeyStore keyStore,
             IBlockTree blockTree,
             IBlockchainProcessor blockchainProcessor,
             IDb stateDb,
+            IDb codeDb,
             IDb blockInfosDb,
             IDb blocksDb,
             IDb txDb,
             IDb receiptsDb,
-            IDb codeDb,
             ITransactionStore transactionStore)
         {
             _signer = signer ?? throw new ArgumentNullException(nameof(signer));

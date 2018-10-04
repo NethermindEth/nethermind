@@ -61,14 +61,13 @@ namespace Nethermind.Blockchain.Test
             var blockValidator = new BlockValidator(transactionValidator, headerValidator, ommersValidator, specProvider, logger);
 
             /* state & storage */
-            var codeDb = new MemDb();
-            var stateDb = new MemDb();
+            var codeDb = new StateDb();
+            var stateDb = new StateDb();
             var receiptsDb = new MemDb();
             var txDb = new MemDb();
             var stateTree = new StateTree(stateDb);
             var stateProvider = new StateProvider(stateTree, codeDb, logger);
-            var storageDbProvider = new MemDbProvider(logger);
-            var storageProvider = new StorageProvider(storageDbProvider, stateProvider, logger);
+            var storageProvider = new StorageProvider(stateDb, stateProvider, logger);
 
             /* blockchain processing */
             var ethereumSigner = new EthereumSigner(specProvider, logger);
@@ -81,7 +80,7 @@ namespace Nethermind.Blockchain.Test
             var virtualMachine = new VirtualMachine(stateProvider, storageProvider, blockhashProvider, logger);
             var processor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, logger);
             var rewardCalculator = new RewardCalculator(specProvider);
-            var blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, processor, storageDbProvider, stateProvider, storageProvider, transactionStore, logger);
+            var blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, processor, stateDb, codeDb, stateProvider, storageProvider, transactionStore, logger);
             var blockchainProcessor = new BlockchainProcessor(blockTree, sealEngine, transactionStore, difficultyCalculator, blockProcessor, ethereumSigner, logger, new PerfService(NullLogManager.Instance));
 
             /* load ChainSpec and init */

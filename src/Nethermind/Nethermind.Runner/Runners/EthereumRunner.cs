@@ -154,9 +154,11 @@ namespace Nethermind.Runner.Runners
             
             _logger.Info("Closing DBs...");
             _blockInfosDb.Dispose();
-            _receiptsDb.Dispose();
             _blocksDb.Dispose();
-            _rocksDbProvider.Dispose();
+            _txDb.Dispose();
+            _receiptsDb.Dispose();
+            _stateDb.Dispose();
+            _codeDb.Dispose();
             _logger.Info("Ethereum shutdown complete... please wait for all components to close");
         }
 
@@ -206,10 +208,6 @@ namespace Nethermind.Runner.Runners
             
             _blocksDb = new DbOnTheRocks(
                 Path.Combine(_dbBasePath, DbOnTheRocks.ReceiptsDbPath),
-                dbConfig);
-            
-            _blocksDb = new DbOnTheRocks(
-                Path.Combine(_dbBasePath, DbOnTheRocks.BlocksDbPath),
                 dbConfig);
             
             _blockInfosDb = new DbOnTheRocks(
@@ -263,23 +261,20 @@ namespace Nethermind.Runner.Runners
                 specProvider,
                 _logManager);
 
-            /* state */
-            _rocksDbProvider = new RocksDbProvider(
-                _dbBasePath,
-                _logManager,
-                dbConfig);
+            _stateDb = new StateDb(
+                new DbOnTheRocks(Path.Combine(_dbBasePath, DbOnTheRocks.StateDbPath), dbConfig));
+            _codeDb = new StateDb(
+                new DbOnTheRocks(Path.Combine(_dbBasePath, DbOnTheRocks.CodeDbPath), dbConfig));
 
-            var stateDb = _rocksDbProvider.GetOrCreateStateDb();
-
-            var stateTree = new StateTree(stateDb);
+            var stateTree = new StateTree(_stateDb);
 
             var stateProvider = new StateProvider(
                 stateTree,
-                _rocksDbProvider.GetOrCreateCodeDb(),
+                _codeDb,
                 _logManager);
 
             var storageProvider = new StorageProvider(
-                _rocksDbProvider,
+                _stateDb,
                 stateProvider,
                 _logManager);
 
@@ -308,7 +303,8 @@ namespace Nethermind.Runner.Runners
                 blockValidator,
                 rewardCalculator,
                 transactionProcessor,
-                _rocksDbProvider,
+                _stateDb,
+                _codeDb,
                 stateProvider,
                 storageProvider,
                 transactionStore,
@@ -348,12 +344,12 @@ namespace Nethermind.Runner.Runners
                 _keyStore,
                 _blockTree,
                 _blockchainProcessor,
-                stateDb,
+                _stateDb,
+                _codeDb,
                 _blockInfosDb,
                 _blocksDb,
                 _txDb,
                 _receiptsDb,
-                _rocksDbProvider.GetOrCreateCodeDb(),
                 transactionStore);
             
             EthereumSigner = ethereumSigner;
@@ -521,11 +517,12 @@ namespace Nethermind.Runner.Runners
         }
 
         private IRlpxPeer _rlpxPeer;
-        private RocksDbProvider _rocksDbProvider;
-        private DbOnTheRocks _receiptsDb;
-        private DbOnTheRocks _txDb;
-        private DbOnTheRocks _blockInfosDb;
-        private DbOnTheRocks _blocksDb;
+        private IDb _receiptsDb;
+        private IDb _txDb;
+        private IDb _blockInfosDb;
+        private IDb _blocksDb;
+        private ISnapshotableDb _codeDb;
+        private ISnapshotableDb _stateDb;
 
         private Task StartSync()
         {
