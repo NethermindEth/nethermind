@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,16 +16,25 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Collections.Generic;
-
 namespace Nethermind.Store
 {
-    public interface IFullDb : IDb
+    public class MemDbProvider: IDbProvider
     {
-        ICollection<byte[]> Keys { get; }
+        public ISnapshotableDb StateDb { get; } = new StateDb();
+        public ISnapshotableDb CodeDb { get; } = new StateDb();
+        public IDb TxDb { get; } = new MemDb();
+        public IDb ReceiptsDb { get; } = new MemDb();
+        public IDb BlocksDb { get; } = new MemDb();
+        public IDb BlockInfosDb { get; } = new MemDb();
 
-        ICollection<byte[]> Values { get; }
-        
-        void Remove(byte[] key);
+        public void Dispose()
+        {
+            StateDb?.Dispose();
+            CodeDb?.Dispose();
+            TxDb?.Dispose();
+            ReceiptsDb?.Dispose();
+            BlocksDb?.Dispose();
+            BlockInfosDb?.Dispose();
+        }
     }
 }

@@ -26,6 +26,7 @@
       <Name>Nethermind.JsonRpc</Name>
     </ProjectReference>
     <ProjectReference Include="..\Nethermind.Network\Nethermind.Network.csproj" />
+    <ProjectReference Include="..\Nethermind.Store.Rpc\Nethermind.Store.Rpc.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="..\Chains\**\*.*">

@@ -309,12 +309,14 @@ namespace Nethermind.PerfTest
             var sealEngine = new EthashSealEngine(new Ethash(_logManager), _logManager);
             var specProvider = RopstenSpecProvider.Instance;
 
-            var stateDb = new StateDb(new DbOnTheRocks(FullStateDbPath, DbConfig.Default));
-            var codeDb = new StateDb(new DbOnTheRocks(FullCodeDbPath, DbConfig.Default));
-            var blocksDb = new DbOnTheRocks(FullBlocksDbPath, DbConfig.Default);
-            var blockInfosDb = new DbOnTheRocks(FullBlockInfosDbPath, DbConfig.Default);
-            var receiptsDb = new DbOnTheRocks(FullReceiptsDbPath, DbConfig.Default);
-            var txDb = new DbOnTheRocks(FullTxDbPath, DbConfig.Default);
+            
+            var dbProvider = new RocksDbProvider(DbBasePath, DbConfig.Default);
+            var stateDb = dbProvider.StateDb;
+            var codeDb = dbProvider.CodeDb;
+            var blocksDb = dbProvider.BlocksDb;
+            var blockInfosDb = dbProvider.BlockInfosDb;
+            var receiptsDb = dbProvider.ReceiptsDb;
+            var txDb = dbProvider.TxDb;
 
             /* store & validation */
             var blockTree = new UnprocessedBlockTreeWrapper(new BlockTree(blocksDb, blockInfosDb, specProvider, _logManager));

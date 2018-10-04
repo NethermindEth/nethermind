@@ -36,6 +36,7 @@ using Nethermind.Db;
 using Nethermind.Db.Config;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
+using Nethermind.JsonRpc.Client;
 using Nethermind.JsonRpc.Module;
 using Nethermind.KeyStore;
 using Nethermind.Network;
@@ -53,6 +54,7 @@ using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Runner.Config;
 using Nethermind.Stats;
 using Nethermind.Store;
+using Nethermind.Store.Rpc;
 using PingMessageSerializer = Nethermind.Network.P2P.PingMessageSerializer;
 using PongMessageSerializer = Nethermind.Network.P2P.PongMessageSerializer;
 
@@ -70,6 +72,7 @@ namespace Nethermind.Runner.Runners
         
         private PrivateKey _privateKey;
         private ICryptoRandom _cryptoRandom = new CryptoRandom();
+        private IJsonSerializer _jsonSerializer = new UnforgivingJsonSerializer();
         private ISigner _signer = new Signer();
         
         private IBlockchainProcessor _blockchainProcessor;
@@ -153,19 +156,14 @@ namespace Nethermind.Runner.Runners
             await Task.WhenAll(discoveryStopTask, rlpxPeerTask, peerManagerTask, syncManagerTask, blockchainProcessorTask);
             
             _logger.Info("Closing DBs...");
-            _blockInfosDb.Dispose();
-            _blocksDb.Dispose();
-            _txDb.Dispose();
-            _receiptsDb.Dispose();
-            _stateDb.Dispose();
-            _codeDb.Dispose();
+            _dbProvider.Dispose();
             _logger.Info("Ethereum shutdown complete... please wait for all components to close");
         }
 
         private ChainSpec LoadChainSpec(string chainSpecFile)
         {
             _logger.Info($"Loading chain spec from {chainSpecFile}");
-            ChainSpecLoader loader = new ChainSpecLoader(new UnforgivingJsonSerializer());
+            ChainSpecLoader loader = new ChainSpecLoader(_jsonSerializer);
             if (!Path.IsPathRooted(chainSpecFile))
             {
                 chainSpecFile = Path.Combine(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, chainSpecFile));
@@ -205,24 +203,11 @@ namespace Nethermind.Runner.Runners
             {
                 _logger.Info($"DB {propertyInfo.Name}: {propertyInfo.GetValue(dbConfig)}");    
             }
-            
-            _blocksDb = new DbOnTheRocks(
-                Path.Combine(_dbBasePath, DbOnTheRocks.ReceiptsDbPath),
-                dbConfig);
-            
-            _blockInfosDb = new DbOnTheRocks(
-                Path.Combine(_dbBasePath, DbOnTheRocks.BlockInfosDbPath),
-                dbConfig);
-            
-            _receiptsDb = new DbOnTheRocks(
-                Path.Combine(_dbBasePath, DbOnTheRocks.ReceiptsDbPath),
-                dbConfig);
-            
-            _txDb = new DbOnTheRocks(
-                Path.Combine(_dbBasePath, DbOnTheRocks.TxsDbPath),
-                dbConfig);
 
-            var transactionStore = new TransactionStore(_receiptsDb, _txDb, specProvider);
+            _dbProvider = new RocksDbProvider(_dbBasePath, dbConfig);
+//            _dbProvider = new RpcDbProvider(_jsonSerializer, new BasicJsonRpcClient(KnownRpcUris.Localhost, _jsonSerializer, _logManager), _logManager);
+            
+            var transactionStore = new TransactionStore(_dbProvider.ReceiptsDb, _dbProvider.TxDb, specProvider);
             
             var sealEngine = ConfigureSealEngine(
                 transactionStore,
@@ -230,8 +215,8 @@ namespace Nethermind.Runner.Runners
             
             /* blockchain */
             _blockTree = new BlockTree(
-                _blocksDb,
-                _blockInfosDb,                
+                _dbProvider.BlocksDb,
+                _dbProvider.BlockInfosDb,
                 specProvider,
                 _logManager);
             
@@ -261,20 +246,15 @@ namespace Nethermind.Runner.Runners
                 specProvider,
                 _logManager);
 
-            _stateDb = new StateDb(
-                new DbOnTheRocks(Path.Combine(_dbBasePath, DbOnTheRocks.StateDbPath), dbConfig));
-            _codeDb = new StateDb(
-                new DbOnTheRocks(Path.Combine(_dbBasePath, DbOnTheRocks.CodeDbPath), dbConfig));
-
-            var stateTree = new StateTree(_stateDb);
+            var stateTree = new StateTree(_dbProvider.StateDb);
 
             var stateProvider = new StateProvider(
                 stateTree,
-                _codeDb,
+                _dbProvider.CodeDb,
                 _logManager);
 
             var storageProvider = new StorageProvider(
-                _stateDb,
+                _dbProvider.StateDb,
                 stateProvider,
                 _logManager);
 
@@ -303,8 +283,8 @@ namespace Nethermind.Runner.Runners
                 blockValidator,
                 rewardCalculator,
                 transactionProcessor,
-                _stateDb,
-                _codeDb,
+                _dbProvider.StateDb,
+                _dbProvider.CodeDb,
                 stateProvider,
                 storageProvider,
                 transactionStore,
@@ -344,12 +324,7 @@ namespace Nethermind.Runner.Runners
                 _keyStore,
                 _blockTree,
                 _blockchainProcessor,
-                _stateDb,
-                _codeDb,
-                _blockInfosDb,
-                _blocksDb,
-                _txDb,
-                _receiptsDb,
+                _dbProvider,
                 transactionStore);
             
             EthereumSigner = ethereumSigner;
@@ -517,12 +492,7 @@ namespace Nethermind.Runner.Runners
         }
 
         private IRlpxPeer _rlpxPeer;
-        private IDb _receiptsDb;
-        private IDb _txDb;
-        private IDb _blockInfosDb;
-        private IDb _blocksDb;
-        private ISnapshotableDb _codeDb;
-        private ISnapshotableDb _stateDb;
+        private IDbProvider _dbProvider;
 
         private Task StartSync()
         {

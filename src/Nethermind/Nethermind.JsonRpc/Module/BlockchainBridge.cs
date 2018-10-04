@@ -34,17 +34,12 @@ namespace Nethermind.JsonRpc.Module
     public class BlockchainBridge : IBlockchainBridge
     {
         private readonly IBlockchainProcessor _blockchainProcessor;
-        private readonly IDb _blockInfosDb;
-        private readonly IDb _blocksDb;
         private readonly IBlockTree _blockTree;
-        private readonly IDb _codeDb;
         private readonly IKeyStore _keyStore;
-        private readonly IDb _receiptsDb;
         private readonly IEthereumSigner _signer;
         private readonly IDb _stateDb;
         private readonly IStateProvider _stateProvider;
         private readonly ITransactionStore _transactionStore;
-        private readonly IDb _txDb;
         private Dictionary<string, IDb> _dbMappings;
 
         public BlockchainBridge(IEthereumSigner signer,
@@ -52,12 +47,7 @@ namespace Nethermind.JsonRpc.Module
             IKeyStore keyStore,
             IBlockTree blockTree,
             IBlockchainProcessor blockchainProcessor,
-            IDb stateDb,
-            IDb codeDb,
-            IDb blockInfosDb,
-            IDb blocksDb,
-            IDb txDb,
-            IDb receiptsDb,
+            IDbProvider dbProvider,
             ITransactionStore transactionStore)
         {
             _signer = signer ?? throw new ArgumentNullException(nameof(signer));
@@ -65,23 +55,23 @@ namespace Nethermind.JsonRpc.Module
             _keyStore = keyStore ?? throw new ArgumentNullException(nameof(keyStore));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _blockchainProcessor = blockchainProcessor ?? throw new ArgumentNullException(nameof(blockchainProcessor));
-            _stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));
-            _blockInfosDb = blockInfosDb ?? throw new ArgumentNullException(nameof(blockInfosDb));
-            _blocksDb = blocksDb ?? throw new ArgumentNullException(nameof(blocksDb));
-            _txDb = txDb ?? throw new ArgumentNullException(nameof(txDb));
-            _receiptsDb = receiptsDb ?? throw new ArgumentNullException(nameof(receiptsDb));
-            _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
+            _stateDb = dbProvider?.StateDb ?? throw new ArgumentNullException(nameof(dbProvider.StateDb));
+            IDb blockInfosDb = dbProvider?.BlockInfosDb ?? throw new ArgumentNullException(nameof(dbProvider.BlockInfosDb));
+            IDb blocksDb = dbProvider?.BlocksDb ?? throw new ArgumentNullException(nameof(dbProvider.BlocksDb));
+            IDb txDb = dbProvider?.TxDb ?? throw new ArgumentNullException(nameof(dbProvider.TxDb));
+            IDb receiptsDb = dbProvider?.ReceiptsDb ?? throw new ArgumentNullException(nameof(dbProvider.ReceiptsDb));
+            IDb codeDb = dbProvider?.CodeDb ?? throw new ArgumentNullException(nameof(dbProvider.CodeDb));
             _transactionStore = transactionStore ?? throw new ArgumentNullException(nameof(transactionStore));
 
             _dbMappings = new Dictionary<string, IDb>
             {
                 {DbNames.State, _stateDb},
                 {DbNames.Storage, _stateDb},
-                {DbNames.BlockInfos, _blockInfosDb},
-                {DbNames.Blocks, _blocksDb},
-                {DbNames.Code, _codeDb},
-                {DbNames.Transactions, _txDb},
-                {DbNames.Receipts, _receiptsDb}
+                {DbNames.BlockInfos, blockInfosDb},
+                {DbNames.Blocks, blocksDb},
+                {DbNames.Code, codeDb},
+                {DbNames.Transactions, txDb},
+                {DbNames.Receipts, receiptsDb}
             };
         }
 
