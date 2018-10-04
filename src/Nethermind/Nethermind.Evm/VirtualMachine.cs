@@ -124,7 +124,6 @@ namespace Nethermind.Evm
                             if (currentState.ExecutionType == ExecutionType.DirectPrecompile)
                             {
                                 Metrics.EvmExceptions++;
-                                _logger.Error("PRECOMPILE ERROR");
                                 // TODO: when direct / calls are treated same we should not need such differentiation
                                 throw new PrecompileExecutionFailureException();
                             }
@@ -212,6 +211,10 @@ namespace Nethermind.Evm
                         long gasAvailableForCodeDeposit = previousState.GasAvailable; // TODO: refactor, this is to fix 61363 Ropsten
                         if (previousState.ExecutionType == ExecutionType.Create || previousState.ExecutionType == ExecutionType.DirectCreate)
                         {
+                            previousCallOutput = Bytes.Empty;
+                            previousCallOutputDestination = UInt256.Zero;
+                            _returnDataBuffer = Bytes.Empty;
+                            
                             long codeDepositGasCost = GasCostOf.CodeDeposit * callResult.Output.Length;
                             if (spec.IsEip170Enabled && callResult.Output.Length > 0x6000)
                             {
@@ -223,7 +226,6 @@ namespace Nethermind.Evm
                                 _logger.Trace($"Code deposit cost is {codeDepositGasCost} ({GasCostOf.CodeDeposit} * {callResult.Output.Length})");
                             }
 
-                            _logger.Error($"CODE DEPOSIT {codeDepositGasCost}, AVAIL {gasAvailableForCodeDeposit}");
                             if (gasAvailableForCodeDeposit >= codeDepositGasCost)
                             {
                                 Keccak codeHash = _state.UpdateCode(callResult.Output);
@@ -235,7 +237,6 @@ namespace Nethermind.Evm
                             }
                             else
                             {
-                                _logger.Error("CODE DEPOSIT COST ERROR");
                                 // TODO: out of gas - try to handle as everywhere else - test with 61362 (7933dd) on Ropsten - second contract creation
                                 previousCallResult = BytesZero;
                                 if (releaseSpec.IsEip2Enabled)
@@ -244,16 +245,13 @@ namespace Nethermind.Evm
                                     // TODO: there should be an OutOfGasException here and a proper reversal of the account creation (and value transfer and all state changes called in the CREATE call)
                                     // TODO: instead just adding the simplest way to fix 552387 on Ropsten
                                     _state.DeleteAccount(callCodeOwner);
+                                    currentState.Refund -= previousState.Refund;
                                 }
                                 else
                                 {
                                     previousCallResult = callCodeOwner.Bytes;
                                 }
                             }
-
-                            previousCallOutput = Bytes.Empty;
-                            previousCallOutputDestination = UInt256.Zero;
-                            _returnDataBuffer = Bytes.Empty;
                         }
                         else
                         {
@@ -408,19 +406,17 @@ namespace Nethermind.Evm
                 }
 
                 Metrics.EvmExceptions++;
-                _logger.Error("PRECOMPILE GAS ERROR");
                 throw new OutOfGasException();
             }
 
+            //if(!UpdateGas(dataGasCost, ref gasAvailable)) return CallResult.Exception;
             if (!UpdateGas(baseGasCost, ref gasAvailable))
             {
-                _logger.Error("PRECOMPILE GAS ERROR");
                 throw new OutOfGasException();
             }
 
             if (!UpdateGas(dataGasCost, ref gasAvailable))
             {
-                _logger.Error("PRECOMPILE GAS ERROR");
                 throw new OutOfGasException();
             }
 
@@ -432,7 +428,7 @@ namespace Nethermind.Evm
                 CallResult callResult = new CallResult(output, success);
                 return callResult;
             }
-            catch (Exception)
+            catch (Exception ex)
             {
                 CallResult callResult = new CallResult(EmptyBytes, false);
                 return callResult;
@@ -513,7 +509,6 @@ namespace Nethermind.Evm
             
             void EndInstructionTraceError(string error)
             {
-                _logger.Error($"END INSTRUCTION TRACE ERROR {error}");
                 if (_trace != null)
                 {
                     _traceEntry.Error = error;
@@ -534,7 +529,6 @@ namespace Nethermind.Evm
                 if (stackHead >= MaxStackSize)
                 {
                     Metrics.EvmExceptions++;
-                    _logger.Error($"ERROR");
                     throw new EvmStackOverflowException();
                 }
             }
@@ -551,7 +545,6 @@ namespace Nethermind.Evm
                 if (stackHead >= MaxStackSize)
                 {
                     Metrics.EvmExceptions++;
-                    _logger.Error($"ERROR");
                     throw new EvmStackOverflowException();
                 }
             }
@@ -564,7 +557,6 @@ namespace Nethermind.Evm
                 if (stackHead >= MaxStackSize)
                 {
                     Metrics.EvmExceptions++;
-                    _logger.Error($"ERROR");
                     throw new EvmStackOverflowException();
                 }
             }
@@ -577,7 +569,6 @@ namespace Nethermind.Evm
                 if (stackHead >= MaxStackSize)
                 {
                     Metrics.EvmExceptions++;
-                    _logger.Error($"ERROR");
                     throw new EvmStackOverflowException();
                 }
             }
@@ -589,7 +580,6 @@ namespace Nethermind.Evm
                 if (stackHead >= MaxStackSize)
                 {
                     Metrics.EvmExceptions++;
-                    _logger.Error($"ERROR");
                     throw new EvmStackOverflowException();
                 }
             }
@@ -603,7 +593,6 @@ namespace Nethermind.Evm
                 if (stackHead >= MaxStackSize)
                 {
                     Metrics.EvmExceptions++;
-                    _logger.Error($"ERROR");
                     throw new EvmStackOverflowException();
                 }
             }
@@ -624,7 +613,6 @@ namespace Nethermind.Evm
                 if (stackHead >= MaxStackSize)
                 {
                     Metrics.EvmExceptions++;
-                    _logger.Error($"ERROR");
                     throw new EvmStackOverflowException();
                 }
             }
@@ -659,7 +647,6 @@ namespace Nethermind.Evm
                 if (stackHead >= MaxStackSize)
                 {
                     Metrics.EvmExceptions++;
-                    _logger.Error($"ERROR");
                     throw new EvmStackOverflowException();
                 }
             }
@@ -669,7 +656,6 @@ namespace Nethermind.Evm
                 if (stackHead == 0)
                 {
                     Metrics.EvmExceptions++;
-                    _logger.Error($"ERROR");
                     throw new StackUnderflowException();
                 }
 
@@ -681,7 +667,6 @@ namespace Nethermind.Evm
                 if (stackHead < depth)
                 {
                     Metrics.EvmExceptions++;
-                    _logger.Error($"ERROR");
                     throw new StackUnderflowException();
                 }
 
@@ -690,7 +675,6 @@ namespace Nethermind.Evm
                 if (stackHead >= MaxStackSize)
                 {
                     Metrics.EvmExceptions++;
-                    _logger.Error($"ERROR");
                     throw new EvmStackOverflowException();
                 }
             }
@@ -702,7 +686,6 @@ namespace Nethermind.Evm
                 if (stackHead < depth)
                 {
                     Metrics.EvmExceptions++;
-                    _logger.Error($"ERROR");
                     throw new StackUnderflowException();
                 }
 
@@ -719,7 +702,6 @@ namespace Nethermind.Evm
                 if (stackHead == 0)
                 {
                     Metrics.EvmExceptions++;
-                    _logger.Error($"ERROR");
                     throw new StackUnderflowException();
                 }
 
@@ -733,7 +715,6 @@ namespace Nethermind.Evm
                 if (stackHead == 0)
                 {
                     Metrics.EvmExceptions++;
-                    _logger.Error($"ERROR");
                     throw new StackUnderflowException();
                 }
 
@@ -775,7 +756,6 @@ namespace Nethermind.Evm
                 if (stackHead == 0)
                 {
                     Metrics.EvmExceptions++;
-                    _logger.Error($"ERROR");
                     throw new StackUnderflowException();
                 }
 
@@ -789,7 +769,7 @@ namespace Nethermind.Evm
                 long memoryCost = evmState.Memory.CalculateMemoryCost(position, length);
                 if (_logger.IsTrace)
                 {
-                    _logger.Trace($"  MEMORY COST {memoryCost}");
+                    _logger.Trace($"  memory cost {memoryCost}");
                 }
 
                 if (!UpdateGas(memoryCost, ref gasAvailable))
