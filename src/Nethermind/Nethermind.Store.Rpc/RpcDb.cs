@@ -34,7 +34,7 @@ namespace Nethermind.Store.Rpc
         private IDb _memDb = new MemDb();
         private HashSet<byte[]> _removedValues = new HashSet<byte[]>(Bytes.EqualityComparer);
 
-        public RpcDb(string uri, string dbName, IJsonSerializer jsonSerializer, IJsonRpcClient rpcClient, ILogManager logManager)
+        public RpcDb(string dbName, IJsonSerializer jsonSerializer, IJsonRpcClient rpcClient, ILogManager logManager)
         {
             _dbName = dbName;
             _rpcClient = rpcClient ?? throw new ArgumentNullException(nameof(rpcClient));

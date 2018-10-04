@@ -57,11 +57,11 @@ namespace Nethermind.Db
             _codeDb.Restore(-1);
         }
 
-        public void Commit(IReleaseSpec spec)
+        public void Commit()
         {
             if (_logger.IsTrace) _logger.Trace("Committing all DBs");
-            _stateDb.Commit(spec);
-            _codeDb.Commit(spec);
+            _stateDb.Commit();
+            _codeDb.Commit();
         }
 
         public int TakeSnapshot()

@@ -7,5 +7,7 @@ namespace Nethermind.Store
         ICollection<byte[]> Keys { get; }
 
         ICollection<byte[]> Values { get; }
+        
+        void Remove(byte[] key);
     }
 }

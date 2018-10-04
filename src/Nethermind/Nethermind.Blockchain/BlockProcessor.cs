@@ -176,7 +176,7 @@ namespace Nethermind.Blockchain
                 else
                 {
                     db.StartBatch();
-                    _dbProvider.Commit(_specProvider.GetSpec(suggestedBlocks[0].Number));
+                    _dbProvider.Commit();
                     db.CommitBatch();
                 }
 

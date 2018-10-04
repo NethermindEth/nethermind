@@ -210,7 +210,7 @@ namespace Nethermind.Runner.Runners
                     ? allocation : UInt256.Parse(account.Value.Balance));
             }
             _stateProvider.Commit(_specProvider.GenesisSpec);
-            _dbProvider.Commit(_specProvider.GenesisSpec);
+            _dbProvider.Commit();
             return _stateProvider.StateRoot;
         }
 

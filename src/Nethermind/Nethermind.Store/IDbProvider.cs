@@ -20,9 +20,12 @@ using System;
 
 namespace Nethermind.Store
 {
-    public interface IDbProvider : ISnapshotable, IDisposable
+    public interface IDbProvider : IDisposable
     {
         ISnapshotableDb GetOrCreateStateDb();
         ISnapshotableDb GetOrCreateCodeDb();
+        void Restore(int snapshot);
+        void Commit();
+        int TakeSnapshot();
     }
 }

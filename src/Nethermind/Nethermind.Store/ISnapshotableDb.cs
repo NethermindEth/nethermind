@@ -18,7 +18,12 @@
 
 namespace Nethermind.Store
 {
-    public interface ISnapshotableDb : IDb, ISnapshotable
+    public interface ISnapshotableDb : IDb
     {
+        void Restore(int snapshot);
+
+        void Commit();
+        
+        int TakeSnapshot();
     }
 }

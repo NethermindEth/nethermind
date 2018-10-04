@@ -17,7 +17,6 @@
  */
 
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
 using Nethermind.Store;
 using NUnit.Framework;
 
@@ -26,7 +25,7 @@ namespace Nethermind.Core.Test
     [TestFixture]
     public class SnapshotableDbTests
     {
-        private readonly Keccak _hash1 = Keccak.Compute("1");
+        private Keccak _hash1 = Keccak.Compute("1");
 
         private readonly byte[] _bytes1 = new byte[] {1};
         private readonly byte[] _bytes2 = new byte[] {2};
@@ -48,16 +47,6 @@ namespace Nethermind.Core.Test
             db.Set(_hash1, _bytes2);
             byte[] getResult = db.Get(_hash1);
             Assert.AreEqual(_bytes2, getResult);
-        }
-        
-        [Test]
-        public void Set_delete_get()
-        {
-            SnapshotableDb db = new SnapshotableDb(new MemDb());
-            db.Set(_hash1, _bytes1);
-            db.Remove(_hash1);
-            byte[] getResult = db.Get(_hash1);
-            Assert.AreEqual(null, getResult);
         }
         
         [Test]
@@ -90,32 +79,36 @@ namespace Nethermind.Core.Test
         {
             SnapshotableDb db = new SnapshotableDb(new MemDb());
             db.Set(_hash1, _bytes1);
-            db.Commit(Frontier.Instance);
+            db.Commit();
             byte[] getResult = db.Get(_hash1);
             Assert.AreEqual(_bytes1, getResult);
         }
         
         [Test]
-        public void Set_commit_delete_restore_get()
+        public void Capacity_grwoth_and_shrinkage()
         {
             SnapshotableDb db = new SnapshotableDb(new MemDb());
-            db.Set(_hash1, _bytes1);
-            db.Commit(Frontier.Instance);
-            db.Remove(_hash1);
+            for (int i = 0; i < 16; i++)
+            {
+                _hash1 = Keccak.Compute(_hash1.Bytes); 
+                db.Set(_hash1, _bytes1);
+            }
+            
             db.Restore(-1);
+            
             byte[] getResult = db.Get(_hash1);
+            Assert.AreEqual(null, getResult);
+            
+            for (int i = 0; i < 16; i++)
+            {
+                _hash1 = Keccak.Compute(_hash1.Bytes);
+                db.Set(_hash1, _bytes1);
+            }
+            
+            db.Commit();
+            
+            getResult = db.Get(_hash1);
             Assert.AreEqual(_bytes1, getResult);
-        }
-        
-        [Test]
-        public void Set_delete_set_get()
-        {
-            SnapshotableDb db = new SnapshotableDb(new MemDb());
-            db.Set(_hash1, _bytes1);
-            db.Remove(_hash1);
-            db.Set(_hash1, _bytes2);
-            byte[] getResult = db.Get(_hash1);
-            Assert.AreEqual(_bytes2, getResult);
         }
     }
 }

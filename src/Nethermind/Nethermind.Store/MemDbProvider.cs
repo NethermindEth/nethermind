@@ -62,11 +62,11 @@ namespace Nethermind.Store
             _codeDb.Restore(dbSnapshots.ContainsKey(_codeDb) ? dbSnapshots[_codeDb] : -1);
         }
 
-        public void Commit(IReleaseSpec spec)
+        public void Commit()
         {
             if (_logger.IsDebug) _logger.Debug("Committing all DBs");
-            _stateDb.Commit(spec);
-            _codeDb.Commit(spec);
+            _stateDb.Commit();
+            _codeDb.Commit();
             Snapshots.Pop();
         }
 
