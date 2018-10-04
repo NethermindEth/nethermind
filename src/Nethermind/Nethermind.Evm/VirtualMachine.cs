@@ -211,6 +211,7 @@ namespace Nethermind.Evm
                         long gasAvailableForCodeDeposit = previousState.GasAvailable; // TODO: refactor, this is to fix 61363 Ropsten
                         if (previousState.ExecutionType == ExecutionType.Create || previousState.ExecutionType == ExecutionType.DirectCreate)
                         {
+                            previousCallResult = callCodeOwner.Bytes;
                             previousCallOutput = Bytes.Empty;
                             previousCallOutputDestination = UInt256.Zero;
                             _returnDataBuffer = Bytes.Empty;
@@ -229,10 +230,7 @@ namespace Nethermind.Evm
                             if (gasAvailableForCodeDeposit >= codeDepositGasCost)
                             {
                                 Keccak codeHash = _state.UpdateCode(callResult.Output);
-
                                 _state.UpdateCodeHash(callCodeOwner, codeHash, spec);
-                                previousCallResult = callCodeOwner.Bytes;
-
                                 currentState.GasAvailable -= codeDepositGasCost;
                             }
                             else
@@ -244,12 +242,11 @@ namespace Nethermind.Evm
                                     currentState.GasAvailable -= gasAvailableForCodeDeposit;
                                     // TODO: there should be an OutOfGasException here and a proper reversal of the account creation (and value transfer and all state changes called in the CREATE call)
                                     // TODO: instead just adding the simplest way to fix 552387 on Ropsten
+                                    _state.Restore(previousState.StateSnapshot);
+                                    _storage.Restore(previousState.StorageSnapshot);
                                     _state.DeleteAccount(callCodeOwner);
                                     currentState.Refund -= previousState.Refund;
-                                }
-                                else
-                                {
-                                    previousCallResult = callCodeOwner.Bytes;
+                                    
                                 }
                             }
                         }
