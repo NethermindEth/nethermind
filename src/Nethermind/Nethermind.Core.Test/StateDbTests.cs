@@ -23,9 +23,10 @@ using NUnit.Framework;
 namespace Nethermind.Core.Test
 {
     [TestFixture]
-    public class SnapshotableDbTests
+    public class StateDbTests
     {
         private Keccak _hash1 = Keccak.Compute("1");
+        private Keccak _hash2 = Keccak.Compute(Keccak.Compute("1").Bytes);
 
         private readonly byte[] _bytes1 = new byte[] {1};
         private readonly byte[] _bytes2 = new byte[] {2};
@@ -33,7 +34,7 @@ namespace Nethermind.Core.Test
         [Test]
         public void Set_get()
         {
-            SnapshotableDb db = new SnapshotableDb(new MemDb());
+            StateDb db = new StateDb(new MemDb());
             db.Set(_hash1, _bytes1);
             byte[] getResult = db.Get(_hash1);
             Assert.AreEqual(_bytes1, getResult);
@@ -42,24 +43,24 @@ namespace Nethermind.Core.Test
         [Test]
         public void Double_set_get()
         {
-            SnapshotableDb db = new SnapshotableDb(new MemDb());
+            StateDb db = new StateDb(new MemDb());
             db.Set(_hash1, _bytes1);
-            db.Set(_hash1, _bytes2);
+            db.Set(_hash1, _bytes1);
             byte[] getResult = db.Get(_hash1);
-            Assert.AreEqual(_bytes2, getResult);
+            Assert.AreEqual(_bytes1, getResult);
         }
         
         [Test]
         public void Initial_take_snapshot()
         {
-            SnapshotableDb db = new SnapshotableDb(new MemDb());
+            StateDb db = new StateDb(new MemDb());
             Assert.AreEqual(-1, db.TakeSnapshot());
         }
         
         [Test]
         public void Set_take_snapshot()
         {
-            SnapshotableDb db = new SnapshotableDb(new MemDb());
+            StateDb db = new StateDb(new MemDb());
             db.Set(_hash1, _bytes1);
             Assert.AreEqual(0, db.TakeSnapshot());
         }
@@ -67,7 +68,7 @@ namespace Nethermind.Core.Test
         [Test]
         public void Set_restore_get()
         {
-            SnapshotableDb db = new SnapshotableDb(new MemDb());
+            StateDb db = new StateDb(new MemDb());
             db.Set(_hash1, _bytes1);
             db.Restore(-1);
             byte[] getResult = db.Get(_hash1);
@@ -77,7 +78,7 @@ namespace Nethermind.Core.Test
         [Test]
         public void Set_commit_get()
         {
-            SnapshotableDb db = new SnapshotableDb(new MemDb());
+            StateDb db = new StateDb(new MemDb());
             db.Set(_hash1, _bytes1);
             db.Commit();
             byte[] getResult = db.Get(_hash1);
@@ -85,9 +86,21 @@ namespace Nethermind.Core.Test
         }
         
         [Test]
+        public void Restore_in_the_middle()
+        {
+            StateDb db = new StateDb(new MemDb());
+            db.Set(_hash1, _bytes1);
+            int snapshot = db.TakeSnapshot();
+            db.Set(_hash2, _bytes2);
+            db.Restore(snapshot);
+            byte[] getResult = db.Get(_hash2);
+            Assert.IsNull(getResult);
+        }
+        
+        [Test]
         public void Capacity_grwoth_and_shrinkage()
         {
-            SnapshotableDb db = new SnapshotableDb(new MemDb());
+            StateDb db = new StateDb(new MemDb());
             for (int i = 0; i < 16; i++)
             {
                 _hash1 = Keccak.Compute(_hash1.Bytes); 

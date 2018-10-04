@@ -53,7 +53,7 @@ namespace Nethermind.Evm.Test
             SpecProvider = RopstenSpecProvider.Instance;
             ILogManager logger = NullLogManager.Instance;
             IDb codeDb = new MemDb();
-            _stateDb = new SnapshotableDb(new MemDb());
+            _stateDb = new StateDb(new MemDb());
             StateTree stateTree = new StateTree(_stateDb);
             TestState = new StateProvider(stateTree, codeDb, logger);
             _storageDbProvider = new MemDbProvider(logger);

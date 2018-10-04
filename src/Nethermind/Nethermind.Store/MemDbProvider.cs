@@ -25,8 +25,8 @@ namespace Nethermind.Store
 {
     public class MemDbProvider : IDbProvider
     {
-        private readonly ISnapshotableDb _stateDb = new SnapshotableDb(new MemDb());
-        private readonly ISnapshotableDb _codeDb = new SnapshotableDb(new MemDb());
+        private readonly ISnapshotableDb _stateDb = new StateDb(new MemDb());
+        private readonly ISnapshotableDb _codeDb = new StateDb(new MemDb());
 
         public ISnapshotableDb GetOrCreateStateDb()
         {

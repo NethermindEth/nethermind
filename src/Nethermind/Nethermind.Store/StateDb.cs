@@ -24,7 +24,10 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.Store
 {
-    public class SnapshotableDb : ISnapshotableDb
+    /// <summary>
+    /// State DB where keys are hashes of values and only inserts are allowed.
+    /// </summary>
+    public class StateDb : ISnapshotableDb
     {
         private const int InitialCapacity = 4;
 
@@ -37,7 +40,7 @@ namespace Nethermind.Store
         private int _currentPosition = -1;
         private Dictionary<Keccak, int> _pendingChanges = new Dictionary<Keccak, int>(InitialCapacity);
 
-        public SnapshotableDb(IDb db)
+        public StateDb(IDb db)
         {
             _db = db;
         }
@@ -60,7 +63,7 @@ namespace Nethermind.Store
 
         public void Restore(int snapshot)
         {
-            if (snapshot > _currentPosition) throw new InvalidOperationException($"Trying to restore snapshot beyond current positions at {nameof(SnapshotableDb)}");
+            if (snapshot > _currentPosition) throw new InvalidOperationException($"Trying to restore snapshot beyond current positions at {nameof(StateDb)}");
 
             for (int i = _currentPosition; i > snapshot; i--)
             {
@@ -103,6 +106,10 @@ namespace Nethermind.Store
             return _db[hash.Bytes];
         }
 
+        /// <summary>
+        /// Note that state DB assumes that they keys are hashes of values so trying to update values may to lead unexpected results.
+        /// If the value has already been committed to the DB then the update succeeds, otherwise it is ignored.
+        /// </summary>
         private void Set(Keccak hash, byte[] value)
         {
             if (_pendingChanges.ContainsKey(hash))

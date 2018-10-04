@@ -46,8 +46,8 @@ namespace Nethermind.Db
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             
-            _stateDb = new SnapshotableDb(new DbOnTheRocks(Path.Combine(dbBasePath, DbOnTheRocks.StateDbPath), dbConfig));
-            _codeDb = new SnapshotableDb(new DbOnTheRocks(Path.Combine(dbBasePath, DbOnTheRocks.CodeDbPath), dbConfig));
+            _stateDb = new StateDb(new DbOnTheRocks(Path.Combine(dbBasePath, DbOnTheRocks.StateDbPath), dbConfig));
+            _codeDb = new StateDb(new DbOnTheRocks(Path.Combine(dbBasePath, DbOnTheRocks.CodeDbPath), dbConfig));
         }
 
         public void Restore(int snapshot)
