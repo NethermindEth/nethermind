@@ -34,7 +34,7 @@ namespace Nethermind.Store.Test
             for (int i = 0; i < 1000; i++)
             {
                 provider.TakeSnapshot();
-                provider.Commit(Olympic.Instance);    
+                provider.Commit();    
             }
             
             Assert.AreEqual(0, provider.Snapshots.Count);

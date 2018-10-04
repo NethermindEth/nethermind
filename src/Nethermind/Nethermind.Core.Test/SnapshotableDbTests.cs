@@ -85,6 +85,21 @@ namespace Nethermind.Core.Test
         }
         
         [Test]
+        public void Over_cache_capacity()
+        {
+            SnapshotableDb db = new SnapshotableDb(new MemDb(), true, 4);
+            Keccak firstHash = Keccak.Compute(_hash1.Bytes);
+            for (int i = 0; i < 8; i++)
+            {
+                _hash1 = Keccak.Compute(_hash1.Bytes);
+                db.Set(_hash1, _bytes1);    
+            }
+            
+            byte[] getResult = db.Get(firstHash);
+            Assert.AreEqual(_bytes1, getResult);
+        }
+        
+        [Test]
         public void Capacity_grwoth_and_shrinkage()
         {
             SnapshotableDb db = new SnapshotableDb(new MemDb());
