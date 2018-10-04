@@ -20,7 +20,7 @@ namespace Nethermind.Store
 {
     public static class DbNames
     {
-        public const string Storage = "state";
+        public const string Storage = "storage";
         public const string State = "state";
         public const string Code = "code";
         public const string Blocks = "blocks";
