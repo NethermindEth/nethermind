@@ -28,22 +28,24 @@ using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.KeyStore;
 using Nethermind.Store;
-using Block = Nethermind.Core.Block;
-using Transaction = Nethermind.Core.Transaction;
-using TransactionReceipt = Nethermind.Core.TransactionReceipt;
-using TransactionTrace = Nethermind.Evm.TransactionTrace;
 
 namespace Nethermind.JsonRpc.Module
 {
     public class BlockchainBridge : IBlockchainBridge
     {
-        private readonly IEthereumSigner _signer;
-        private readonly IBlockTree _blockTree;
         private readonly IBlockchainProcessor _blockchainProcessor;
-        private readonly ITransactionStore _transactionStore;
-        private readonly IDb _db;
-        private readonly IStateProvider _stateProvider;
+        private readonly IDb _blockInfosDb;
+        private readonly IDb _blocksDb;
+        private readonly IBlockTree _blockTree;
+        private readonly IDb _codeDb;
         private readonly IKeyStore _keyStore;
+        private readonly IDb _receiptsDb;
+        private readonly IEthereumSigner _signer;
+        private readonly IDb _stateDb;
+        private readonly IStateProvider _stateProvider;
+        private readonly ITransactionStore _transactionStore;
+        private readonly IDb _txDb;
+        private Dictionary<string, IDb> _dbMappings;
 
         public BlockchainBridge(
             IEthereumSigner signer,
@@ -51,16 +53,37 @@ namespace Nethermind.JsonRpc.Module
             IKeyStore keyStore,
             IBlockTree blockTree,
             IBlockchainProcessor blockchainProcessor,
-            IDb db,
+            IDb stateDb,
+            IDb blockInfosDb,
+            IDb blocksDb,
+            IDb txDb,
+            IDb receiptsDb,
+            IDb codeDb,
             ITransactionStore transactionStore)
         {
-            _signer = signer;
-            _stateProvider = stateProvider;
-            _keyStore = keyStore;
-            _blockTree = blockTree;
-            _blockchainProcessor = blockchainProcessor;
-            _db = db;
-            _transactionStore = transactionStore;
+            _signer = signer ?? throw new ArgumentNullException(nameof(signer));
+            _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
+            _keyStore = keyStore ?? throw new ArgumentNullException(nameof(keyStore));
+            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+            _blockchainProcessor = blockchainProcessor ?? throw new ArgumentNullException(nameof(blockchainProcessor));
+            _stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));
+            _blockInfosDb = blockInfosDb ?? throw new ArgumentNullException(nameof(blockInfosDb));
+            _blocksDb = blocksDb ?? throw new ArgumentNullException(nameof(blocksDb));
+            _txDb = txDb ?? throw new ArgumentNullException(nameof(txDb));
+            _receiptsDb = receiptsDb ?? throw new ArgumentNullException(nameof(receiptsDb));
+            _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
+            _transactionStore = transactionStore ?? throw new ArgumentNullException(nameof(transactionStore));
+
+            _dbMappings = new Dictionary<string, IDb>
+            {
+                {DbNames.State, _stateDb},
+                {DbNames.Storage, _stateDb},
+                {DbNames.BlockInfos, _blockInfosDb},
+                {DbNames.Blocks, _blocksDb},
+                {DbNames.Code, _codeDb},
+                {DbNames.Transactions, _txDb},
+                {DbNames.Receipts, _receiptsDb}
+            };
         }
 
         public (IReadOnlyCollection<Address> Addresses, Result Result) GetKeyAddresses()
@@ -75,6 +98,7 @@ namespace Nethermind.JsonRpc.Module
 
         public BlockHeader Head => _blockTree.Head;
         public BlockHeader BestSuggested => _blockTree.BestSuggested;
+
         public Block FindBlock(Keccak blockHash, bool mainChainOnly)
         {
             return _blockTree.FindBlock(blockHash, mainChainOnly);
@@ -103,11 +127,8 @@ namespace Nethermind.JsonRpc.Module
         public void AddTxData(UInt256 blockNumber)
         {
             Block block = _blockTree.FindBlock(blockNumber);
-            if (block == null)
-            {
-                throw new InvalidOperationException("Only blocks from the past");
-            }
-            
+            if (block == null) throw new InvalidOperationException("Only blocks from the past");
+
             _blockchainProcessor.AddTxData(block);
         }
 
@@ -137,7 +158,7 @@ namespace Nethermind.JsonRpc.Module
         {
             return _blockchainProcessor.Trace(blockNumber, index);
         }
-        
+
         public TransactionTrace GetTransactionTrace(Keccak blockHash, int index)
         {
             return _blockchainProcessor.Trace(blockHash, index);
@@ -151,6 +172,11 @@ namespace Nethermind.JsonRpc.Module
         public BlockTrace GetBlockTrace(UInt256 blockNumber)
         {
             return _blockchainProcessor.TraceBlock(blockNumber);
+        }
+
+        public byte[] GetDbValue(string dbName, byte[] key)
+        {
+            return _dbMappings[dbName][key];
         }
 
         public byte[] GetCode(Address address)
@@ -175,7 +201,7 @@ namespace Nethermind.JsonRpc.Module
 
         public Account GetAccount(Address address, Keccak stateRoot)
         {
-            var stateTree = new StateTree(_db, stateRoot);
+            StateTree stateTree = new StateTree(_stateDb, stateRoot);
             return stateTree.Get(address);
         }
     }

@@ -49,10 +49,10 @@ namespace Nethermind.JsonRpc
         {
             try
             {
-                (ErrorType?, string) validateResult = Validate(rpcRequest);
-                if (validateResult.Item1.HasValue)
+                (ErrorType? errorType, string errorMessage) = Validate(rpcRequest);
+                if (errorType.HasValue)
                 {
-                    return GetErrorResponse(validateResult.Item1.Value, validateResult.Item2, rpcRequest?.Id, rpcRequest?.Method);
+                    return GetErrorResponse(errorType.Value, errorMessage, rpcRequest?.Id, rpcRequest?.Method);
                 }
                 try
                 {
@@ -202,7 +202,7 @@ namespace Nethermind.JsonRpc
             return response;
         }
 
-        private (ErrorType?, string) Validate(JsonRpcRequest rpcRequest)
+        private (ErrorType? ErrorType, string ErrorMessage) Validate(JsonRpcRequest rpcRequest)
         {
             if (rpcRequest == null)
             {

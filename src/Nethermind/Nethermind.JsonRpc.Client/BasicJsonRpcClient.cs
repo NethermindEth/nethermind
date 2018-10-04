@@ -18,7 +18,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Headers;
@@ -26,22 +25,22 @@ using System.Text;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Logging;
-using Nethermind.Evm;
 
-namespace Nethermind.Runner.TestClient
+namespace Nethermind.JsonRpc.Client
 {
-    public class RunnerTestClient : IRunnerTestCient
+    public class BasicJsonRpcClient : IJsonRpcClient
     {
         private readonly HttpClient _client;
         private readonly IJsonSerializer _jsonSerializer;
         private readonly ILogger _logger;
 
-        public RunnerTestClient(ILogger logger, IJsonSerializer jsonSerializer)
+        public BasicJsonRpcClient(Uri uri, IJsonSerializer jsonSerializer, ILogManager logManager)
         {
-            _logger = logger;
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _jsonSerializer = jsonSerializer;
 
-            _client = new HttpClient {BaseAddress = new Uri("http://127.0.0.1:8545")};
+//            _client = new HttpClient {BaseAddress = new Uri("http://94.237.51.104:8345")}; // neth vm1
+            _client = new HttpClient {BaseAddress = uri};
             _client.DefaultRequestHeaders.Accept.Clear();
             _client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         }
@@ -62,7 +61,7 @@ namespace Nethermind.Runner.TestClient
             }
         }
 
-        public string GetJsonRequest(string method, IEnumerable<object> parameters)
+        private string GetJsonRequest(string method, IEnumerable<object> parameters)
         {
             var request = new
             {
@@ -71,6 +70,7 @@ namespace Nethermind.Runner.TestClient
                 Params = parameters ?? Enumerable.Empty<object>(),
                 id = 67
             };
+
             return _jsonSerializer.Serialize(request);
         }
     }

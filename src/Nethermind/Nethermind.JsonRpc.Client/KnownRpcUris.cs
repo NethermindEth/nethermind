@@ -17,22 +17,13 @@
  */
 
 using System;
-using System.Threading.Tasks;
-using Nethermind.Core;
-using Nethermind.Core.Logging;
-using Nethermind.JsonRpc.Client;
 
-namespace Nethermind.Runner.TestClient
+namespace Nethermind.JsonRpc.Client
 {
-    class Program
+    public static class KnownRpcUris
     {
-        static async Task Main(string[] args)
-        {
-            Console.WriteLine("Welcome in Runner Test Client");
-            IJsonRpcClient jsonRpcClient = new BasicJsonRpcClient(KnownRpcUris.Localhost, new JsonSerializer(NullLogManager.Instance), NullLogManager.Instance);
-            var client = new RunnerTestClientApp(jsonRpcClient);
-            await client.Run();
-            Console.WriteLine("Exiting Runner Test Client");
-        }
+        public static Uri Localhost = new Uri("http://127.0.0.1:8545");
+        public static Uri NethVm1 = new Uri("http://127.0.0.1:8345");
+        public static Uri GethVm4 = new Uri("http://127.0.0.1:8345");
     }
 }

@@ -17,7 +17,6 @@
  */
 
 using System.Diagnostics;
-using Nethermind.Core;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.Store

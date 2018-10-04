@@ -18,9 +18,9 @@
 
 using System.Threading.Tasks;
 
-namespace Nethermind.Runner.TestClient
+namespace Nethermind.JsonRpc.Client
 {
-    public interface IRunnerTestCient
+    public interface IJsonRpcClient
     {
         Task<string> Post(string method, params object[] parameters);
     }

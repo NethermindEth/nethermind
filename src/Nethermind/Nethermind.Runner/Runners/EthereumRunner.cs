@@ -349,6 +349,11 @@ namespace Nethermind.Runner.Runners
                 _blockTree,
                 _blockchainProcessor,
                 stateDb,
+                _blockInfosDb,
+                _blocksDb,
+                _txDb,
+                _receiptsDb,
+                _rocksDbProvider.GetOrCreateCodeDb(),
                 transactionStore);
             
             EthereumSigner = ethereumSigner;

@@ -16,23 +16,16 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
-using System.Threading.Tasks;
-using Nethermind.Core;
-using Nethermind.Core.Logging;
-using Nethermind.JsonRpc.Client;
-
-namespace Nethermind.Runner.TestClient
+namespace Nethermind.Store
 {
-    class Program
+    public static class DbNames
     {
-        static async Task Main(string[] args)
-        {
-            Console.WriteLine("Welcome in Runner Test Client");
-            IJsonRpcClient jsonRpcClient = new BasicJsonRpcClient(KnownRpcUris.Localhost, new JsonSerializer(NullLogManager.Instance), NullLogManager.Instance);
-            var client = new RunnerTestClientApp(jsonRpcClient);
-            await client.Run();
-            Console.WriteLine("Exiting Runner Test Client");
-        }
+        public const string Storage = "state";
+        public const string State = "state";
+        public const string Code = "code";
+        public const string Blocks = "blocks";
+        public const string Receipts = "receipts";
+        public const string Transactions = "txs";
+        public const string BlockInfos = "blockInfos";
     }
 }

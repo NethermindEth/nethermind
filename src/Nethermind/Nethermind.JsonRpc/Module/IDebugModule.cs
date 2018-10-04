@@ -36,5 +36,6 @@ namespace Nethermind.JsonRpc.Module
         ResultWrapper<MemStats> debug_memStats(BlockParameter blockParameter);
         ResultWrapper<Data> debug_seedHash(BlockParameter blockParameter);
         ResultWrapper<bool> debug_setHead(BlockParameter blockParameter);
+        ResultWrapper<byte[]> debug_getFromDb(string dbName, Data key);
     }
 }
