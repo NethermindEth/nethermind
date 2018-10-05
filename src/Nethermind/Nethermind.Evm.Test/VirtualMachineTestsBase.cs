@@ -64,7 +64,7 @@ namespace Nethermind.Evm.Test
         }
 
         [SetUp]
-        public void Setup()
+        public virtual void Setup()
         {
             _stateDbSnapshot = _stateDb.TakeSnapshot();
             _stateRoot = TestState.StateRoot;
@@ -183,14 +183,7 @@ namespace Nethermind.Evm.Test
             
             public Prepare ForInitOf(byte[] codeToBeDeployed)
             {
-                if (codeToBeDeployed.Length > 32)
-                {
-                    throw new NotSupportedException();
-                }
-                
-                PushData(codeToBeDeployed.PadRight(32));
-                PushData(0);
-                Op(Instruction.MSTORE);
+                StoreDataInMemory(0, codeToBeDeployed.PadRight(32));
                 PushData(codeToBeDeployed.Length);
                 PushData(0);
                 Op(Instruction.RETURN);
