@@ -235,8 +235,6 @@ namespace Nethermind.Evm
                             }
                             else
                             {
-                                // TODO: out of gas - try to handle as everywhere else - test with 61362 (7933dd) on Ropsten - second contract creation
-                                // previousCallResult = BytesZero; - this fails on mainnet 226522
                                 if (releaseSpec.IsEip2Enabled)
                                 {
                                     currentState.GasAvailable -= gasAvailableForCodeDeposit;
@@ -245,6 +243,7 @@ namespace Nethermind.Evm
                                     _state.Restore(previousState.StateSnapshot);
                                     _storage.Restore(previousState.StorageSnapshot);
                                     _state.DeleteAccount(callCodeOwner);
+                                    previousCallResult = BytesZero;
                                     currentState.Refund -= previousState.Refund;
                                 }
                             }

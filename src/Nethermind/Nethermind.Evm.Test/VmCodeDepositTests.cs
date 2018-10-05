@@ -30,7 +30,7 @@ namespace Nethermind.Evm.Test
     [TestFixture]
     public class VmCodeDepositTests : VirtualMachineTestsBase
     {
-        protected override UInt256 BlockNumber => RopstenSpecProvider.ByzantiumBlockNumber;
+        protected override UInt256 BlockNumber => MainNetSpecProvider.ByzantiumBlockNumber;
 
         [Test(Description = "Refunds should not be given when the call fails due to lack of gas for code deposit payment")]
         public void Regression_mainnet_6108276()

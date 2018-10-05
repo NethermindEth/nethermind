@@ -22,6 +22,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Dirichlet.Numerics;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Crypto
@@ -34,7 +35,7 @@ namespace Nethermind.Core.Test.Crypto
         [TestCase(1000000)]
         [TestCase(1700000)]
         [TestCase(2000000)]
-        public void Signature_test_ropsten(int blockNumber)
+        public void Signature_test_ropsten(UInt256 blockNumber)
         {
             EthereumSigner signer = new EthereumSigner(RopstenSpecProvider.Instance, NullLogManager.Instance);
             PrivateKey key = Build.A.PrivateKey.TestObject;
@@ -60,7 +61,7 @@ namespace Nethermind.Core.Test.Crypto
         [TestCase(1000000)]
         [TestCase(1700000)]
         [TestCase(2000000)]
-        public void Signature_test_olympic(int blockNumber)
+        public void Signature_test_olympic(UInt256 blockNumber)
         {
             EthereumSigner signer = new EthereumSigner(OlympicSpecProvider.Instance, NullLogManager.Instance);
             PrivateKey key = Build.A.PrivateKey.TestObject;

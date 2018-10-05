@@ -526,7 +526,7 @@ namespace Ethereum.Test.Base
             test.Name = name;
             test.Network = testJson.EthereumNetwork;
             test.NetworkAfterTransition = testJson.EthereumNetworkAfterTransition;
-            test.TransitionBlockNumber = testJson.TransitionBlockNumber;
+            test.TransitionBlockNumber = (UInt256)testJson.TransitionBlockNumber;
             test.LastBlockHash = new Keccak(testJson.LastBlockHash);
             test.GenesisRlp = testJson.GenesisRlp == null ? null : new Rlp(Bytes.FromHexString(testJson.GenesisRlp));
             test.GenesisBlockHeader = testJson.GenesisBlockHeader;

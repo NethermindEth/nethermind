@@ -65,14 +65,14 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
         
-        public TransactionBuilder Signed(IEthereumSigner signer, PrivateKey privateKey, BigInteger blockNumber)
+        public TransactionBuilder Signed(IEthereumSigner signer, PrivateKey privateKey, UInt256 blockNumber)
         {
             signer.Sign(privateKey, TestObjectInternal, blockNumber);
             return this;
         }
 
         // TODO: auto create signer here
-        public TransactionBuilder SignedAndResolved(IEthereumSigner signer, PrivateKey privateKey, BigInteger blockNumber)
+        public TransactionBuilder SignedAndResolved(IEthereumSigner signer, PrivateKey privateKey, UInt256 blockNumber)
         {
             signer.Sign(privateKey, TestObjectInternal, blockNumber);
             TestObjectInternal.SenderAddress = privateKey.Address;

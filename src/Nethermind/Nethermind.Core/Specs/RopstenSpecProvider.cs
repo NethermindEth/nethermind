@@ -16,7 +16,6 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Numerics;
 using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Core.Specs
@@ -27,9 +26,8 @@ namespace Nethermind.Core.Specs
 
         public IReleaseSpec GenesisSpec => TangerineWhistle.Instance;
 
-        public IReleaseSpec GetSpec(BigInteger blockNumber)
+        public IReleaseSpec GetSpec(UInt256 blockNumber)
         {            
-            // TODO: this is not covered by test at the moment
             if (blockNumber < SpuriousDragonBlockNumber)
             {
                 return TangerineWhistle.Instance;
@@ -48,7 +46,7 @@ namespace Nethermind.Core.Specs
             return Constantinople.Instance;
         }
         
-        public BigInteger? DaoBlockNumber { get; } = null;
+        public UInt256? DaoBlockNumber { get; } = null;
         public static UInt256 SpuriousDragonBlockNumber { get; } = 10;
         public static UInt256 ByzantiumBlockNumber { get; } = 1700000;
         public static UInt256 ConstantinopleBlockNumber { get; } = 4200000;
