@@ -3,9 +3,9 @@
     "ConfigModule": "InitConfig",
     "ConfigItems": {
       "JsonRpcEnabled": true,
-      "NetworkEnabled": true,
-      "DiscoveryEnabled": true,
-      "SynchronizationEnabled": true,
+      "NetworkEnabled": false,
+      "DiscoveryEnabled": false,
+      "SynchronizationEnabled": false,
       "IsMining": false,
       "DiscoveryPort": 30312,
       "P2PPort": 30312,
@@ -13,9 +13,9 @@
       "HttpPort": 8545,
       "ChainSpecPath": "chainspec\\ropsten.json",
       "GenesisHash": "0x41941023680923e0fe4d74a34bdac8141f2540e3ae90623718e47d66d1ca4a2d",
-      "BaseDbPath": "ropsten\\discovery",
-      "TestNodeKey": "201808290405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f",
-      "LogFileName": "ropsten_windows_discovery.logs.txt"
+      "BaseDbPath": "ropsten",
+      "TestNodeKey": "221808290405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f",
+      "LogFileName": "ropsten.logs.txt"
     }
   },
   {

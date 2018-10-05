@@ -82,7 +82,6 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Chains", "Chains", "{D75E83
 		Chains\foundation.json = Chains\foundation.json
 		Chains\kovan.json = Chains\kovan.json
 		Chains\morden.json = Chains\morden.json
-		Chains\nethermind_alpha.json = Chains\nethermind_alpha.json
 		Chains\olympic.json = Chains\olympic.json
 		Chains\private_bootnode.json = Chains\private_bootnode.json
 		Chains\private_client.json = Chains\private_client.json

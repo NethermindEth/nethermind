@@ -13,7 +13,7 @@
       "HttpPort": 8345,
       "ChainSpecPath": "chainspec/ropsten.json",
       "GenesisHash": "0x41941023680923e0fe4d74a34bdac8141f2540e3ae90623718e47d66d1ca4a2d",
-      "BaseDbPath": "db/ropsten/full",
+      "BaseDbPath": "db/ropsten",
       "TestNodeKey": "020102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f",
       "LogFileName": "ropsten_linux_vm.logs.txt"
     }
