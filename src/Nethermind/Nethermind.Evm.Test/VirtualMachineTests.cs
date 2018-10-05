@@ -52,7 +52,7 @@ namespace Nethermind.Evm.Test
             
             Assert.AreEqual(5, trace.Entries.Count, "number of entries");
             TransactionTraceEntry entry = trace.Entries[1];
-            Assert.AreEqual(0, entry.Depth, nameof(entry.Depth));
+            Assert.AreEqual(1, entry.Depth, nameof(entry.Depth));
             Assert.AreEqual(79000 - GasCostOf.VeryLow, entry.Gas, nameof(entry.Gas));
             Assert.AreEqual(GasCostOf.VeryLow, entry.GasCost, nameof(entry.GasCost));
             Assert.AreEqual(0, entry.Memory.Count, nameof(entry.Memory));
@@ -85,8 +85,37 @@ namespace Nethermind.Evm.Test
                 .PushData(10 * 1000 * 1000)
                 .Op(Instruction.MLOAD)
                 .Done;
-            (TransactionReceipt _, TransactionTrace trace) = ExecuteAndTrace(UInt256.One, 21000L + 19000L, 
-                code);
+            
+            (TransactionReceipt _, TransactionTrace trace) = ExecuteAndTrace(UInt256.One, 21000L + 19000L, code);
+            
+            Assert.True(trace.Entries.Any(e => e.Error != null));
+        }
+        
+        [Test]
+        [Ignore("// https://github.com/NethermindEth/nethermind/issues/140")]
+        public void Trace_invalid_jump_exception()
+        {
+            byte[] code = Prepare.EvmCode
+                .PushData(255)
+                .Op(Instruction.JUMP)
+                .Done;
+            
+            (TransactionReceipt _, TransactionTrace trace) = ExecuteAndTrace(UInt256.One, 21000L + 19000L, code);
+            
+            Assert.True(trace.Entries.Any(e => e.Error != null));
+        }
+        
+        [Test]
+        [Ignore("// https://github.com/NethermindEth/nethermind/issues/140")]
+        public void Trace_invalid_jumpi_exception()
+        {
+            byte[] code = Prepare.EvmCode
+                .PushData(1)
+                .PushData(255)
+                .Op(Instruction.JUMPI)
+                .Done;
+            
+            (TransactionReceipt _, TransactionTrace trace) = ExecuteAndTrace(UInt256.One, 21000L + 19000L, code);
             
             Assert.True(trace.Entries.Any(e => e.Error != null));
         }
@@ -116,7 +145,7 @@ namespace Nethermind.Evm.Test
             
             Assert.AreEqual(5, trace.Entries.Count, "number of entries");
             TransactionTraceEntry entry = trace.Entries[1];
-            Assert.AreEqual(0, entry.Depth, nameof(entry.Depth));
+            Assert.AreEqual(1, entry.Depth, nameof(entry.Depth));
             Assert.AreEqual(79000 - GasCostOf.VeryLow, entry.Gas, nameof(entry.Gas));
             Assert.AreEqual(GasCostOf.VeryLow, entry.GasCost, nameof(entry.GasCost));
             Assert.AreEqual(0, entry.Memory.Count, nameof(entry.Memory));

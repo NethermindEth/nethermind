@@ -21,6 +21,7 @@ using System.Linq;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.JsonRpc.DataModel;
@@ -32,7 +33,8 @@ namespace Nethermind.JsonRpc.Module
         private readonly IBlockchainBridge _blockchainBridge;
         private readonly IJsonRpcModelMapper _modelMapper;
 
-        public DebugModule(IConfigProvider configurationProvider, ILogManager logManager, IBlockchainBridge blockchainBridge, IJsonRpcModelMapper modelMapper, IJsonSerializer jsonSerializer) : base(configurationProvider, logManager, jsonSerializer)
+        public DebugModule(IConfigProvider configurationProvider, ILogManager logManager, IBlockchainBridge blockchainBridge, IJsonRpcModelMapper modelMapper, IJsonSerializer jsonSerializer)
+            : base(configurationProvider, logManager, jsonSerializer)
         {
             _blockchainBridge = blockchainBridge;
             _modelMapper = modelMapper;
@@ -47,7 +49,7 @@ namespace Nethermind.JsonRpc.Module
             }
             var transactionModel = _modelMapper.MapTransactionTrace(transactionTrace);
 
-            if (Logger.IsTrace) Logger.Trace($"debug_traceTransaction request {transationHash.ToJson()}, result: {GetJsonLog(transactionModel.ToJson())}");
+            if (Logger.IsTrace) Logger.Trace($"{nameof(debug_traceTransaction)} request {transationHash.ToJson()}, result: {GetJsonLog(transactionModel.ToJson())}");
             return ResultWrapper<TransactionTrace>.Success(transactionModel);
         }
         
@@ -60,7 +62,7 @@ namespace Nethermind.JsonRpc.Module
             }
             var transactionModel = _modelMapper.MapTransactionTrace(transactionTrace);
 
-            if (Logger.IsTrace) Logger.Trace($"debug_traceTransactionByBlockAndIndex request {blockhash}, result: {GetJsonLog(transactionModel.ToJson())}");
+            if (Logger.IsTrace) Logger.Trace($"{nameof(debug_traceTransactionByBlockhashAndIndex)} request {blockhash}, result: {GetJsonLog(transactionModel.ToJson())}");
             return ResultWrapper<TransactionTrace>.Success(transactionModel);
         }
         
@@ -74,7 +76,7 @@ namespace Nethermind.JsonRpc.Module
             }
             var transactionModel = _modelMapper.MapTransactionTrace(transactionTrace);
 
-            if (Logger.IsTrace) Logger.Trace($"debug_traceTransactionByBlockAndIndex request {blockNo}, result: {GetJsonLog(transactionModel.ToJson())}");
+            if (Logger.IsTrace) Logger.Trace($"{nameof(debug_traceTransactionByBlockAndIndex)} request {blockNo}, result: {GetJsonLog(transactionModel.ToJson())}");
             return ResultWrapper<TransactionTrace>.Success(transactionModel);
         }
 
@@ -111,7 +113,7 @@ namespace Nethermind.JsonRpc.Module
             
             var blockTraceModel = _modelMapper.MapBlockTrace(blockTrace);
 
-            if (Logger.IsTrace) Logger.Trace($"{nameof(debug_traceBlockByHash)} request {blockParameter}, result: {GetJsonLog(blockTraceModel.Select(btm => btm.ToJson()))}");
+            if (Logger.IsTrace) Logger.Trace($"{nameof(debug_traceBlockByNumber)} request {blockParameter}, result: {GetJsonLog(blockTraceModel.Select(btm => btm.ToJson()))}");
             return ResultWrapper<BlockTraceItem[]>.Success(blockTraceModel);
         }
 
@@ -162,6 +164,13 @@ namespace Nethermind.JsonRpc.Module
         public ResultWrapper<bool> debug_setHead(BlockParameter blockParameter)
         {
             throw new NotImplementedException();
+        }
+
+        public ResultWrapper<byte[]> debug_getFromDb(string dbName, Data key)
+        {
+            var dbValue = _blockchainBridge.GetDbValue(dbName, key.Value);
+            if (Logger.IsTrace) Logger.Trace($"{nameof(debug_getFromDb)} request [{dbName}, {key.Value.ToHexString()}], result: {dbValue.ToHexString()}");
+            return ResultWrapper<byte[]>.Success(dbValue);
         }
     }
 }

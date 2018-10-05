@@ -38,7 +38,8 @@ namespace Ethereum.VM.Test
 {
     public class VMTestBase
     {
-        private IDbProvider _dbProvider;
+        private ISnapshotableDb _stateDb;
+        private ISnapshotableDb _codeDb;
         private IStorageProvider _storageProvider;
         private IBlockhashProvider _blockhashProvider;
         private IStateProvider _stateProvider;
@@ -48,10 +49,11 @@ namespace Ethereum.VM.Test
         [SetUp]
         public void Setup()
         {
-            _dbProvider = new MemDbProvider(_logManager);
+            _stateDb = new StateDb();
+            _codeDb = new StateDb();
             _blockhashProvider = new TestBlockhashProvider();
-            _stateProvider = new StateProvider(new StateTree(_dbProvider.GetOrCreateStateDb()), _dbProvider.GetOrCreateCodeDb(), _logManager);
-            _storageProvider = new StorageProvider(new MemDbProvider(_logManager), _stateProvider, _logManager);
+            _stateProvider = new StateProvider(new StateTree(_stateDb), _codeDb, _logManager);
+            _storageProvider = new StorageProvider(_stateDb, _stateProvider, _logManager);
         }
 
         public static IEnumerable<VirtualMachineTest> LoadTests(string testSet)

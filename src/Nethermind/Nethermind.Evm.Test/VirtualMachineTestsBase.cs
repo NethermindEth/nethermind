@@ -36,7 +36,6 @@ namespace Nethermind.Evm.Test
         private readonly IEthereumSigner _ethereumSigner;
         private readonly ITransactionProcessor _processor;
         private readonly ISnapshotableDb _stateDb;
-        private readonly IDbProvider _storageDbProvider;
         protected internal readonly ISpecProvider SpecProvider;
         protected internal IStateProvider TestState { get; }
         protected internal IStorageProvider Storage { get; }
@@ -44,20 +43,19 @@ namespace Nethermind.Evm.Test
         protected internal static Address Sender { get; } = TestObject.AddressA;
         protected internal static Address Recipient { get; } = TestObject.AddressB;
 
-        protected virtual UInt256 BlockNumber => 10000;
+        protected virtual UInt256 BlockNumber => MainNetSpecProvider.ByzantiumBlockNumber;
 
         protected IReleaseSpec Spec => SpecProvider.GetSpec(BlockNumber);
 
         public VirtualMachineTestsBase()
         {
-            SpecProvider = RopstenSpecProvider.Instance;
+            SpecProvider = MainNetSpecProvider.Instance;
             ILogManager logger = NullLogManager.Instance;
-            IDb codeDb = new MemDb();
-            _stateDb = new SnapshotableDb(new MemDb());
+            IDb codeDb = new StateDb();
+            _stateDb = new StateDb();
             StateTree stateTree = new StateTree(_stateDb);
             TestState = new StateProvider(stateTree, codeDb, logger);
-            _storageDbProvider = new MemDbProvider(logger);
-            Storage = new StorageProvider(_storageDbProvider, TestState, logger);
+            Storage = new StorageProvider(_stateDb, TestState, logger);
             _ethereumSigner = new EthereumSigner(SpecProvider, logger);
             IBlockhashProvider blockhashProvider = new TestBlockhashProvider();
             IVirtualMachine virtualMachine = new VirtualMachine(TestState, Storage, blockhashProvider, logger);
@@ -66,15 +64,13 @@ namespace Nethermind.Evm.Test
         }
 
         [SetUp]
-        public void Setup()
+        public virtual void Setup()
         {
             _stateDbSnapshot = _stateDb.TakeSnapshot();
-            _storageDbSnapshot = _storageDbProvider.TakeSnapshot();
             _stateRoot = TestState.StateRoot;
         }
 
         private int _stateDbSnapshot;
-        private int _storageDbSnapshot;
         private Keccak _stateRoot;
 
         [TearDown]
@@ -84,7 +80,6 @@ namespace Nethermind.Evm.Test
             TestState.Reset();
             TestState.StateRoot = _stateRoot;
 
-            _storageDbProvider.Restore(_storageDbSnapshot);
             _stateDb.Restore(_stateDbSnapshot);
         }
 
@@ -188,14 +183,7 @@ namespace Nethermind.Evm.Test
             
             public Prepare ForInitOf(byte[] codeToBeDeployed)
             {
-                if (codeToBeDeployed.Length > 32)
-                {
-                    throw new NotSupportedException();
-                }
-                
-                PushData(codeToBeDeployed.PadRight(32));
-                PushData(0);
-                Op(Instruction.MSTORE);
+                StoreDataInMemory(0, codeToBeDeployed.PadRight(32));
                 PushData(codeToBeDeployed.Length);
                 PushData(0);
                 Op(Instruction.RETURN);

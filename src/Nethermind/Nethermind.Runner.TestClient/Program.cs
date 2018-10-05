@@ -20,6 +20,7 @@ using System;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Logging;
+using Nethermind.JsonRpc.Client;
 
 namespace Nethermind.Runner.TestClient
 {
@@ -28,7 +29,8 @@ namespace Nethermind.Runner.TestClient
         static async Task Main(string[] args)
         {
             Console.WriteLine("Welcome in Runner Test Client");
-            var client = new RunnerTestClientApp(new RunnerTestClient(NullLogger.Instance, new JsonSerializer(NullLogManager.Instance)));
+            IJsonRpcClient jsonRpcClient = new BasicJsonRpcClient(KnownRpcUris.Localhost, new JsonSerializer(NullLogManager.Instance), NullLogManager.Instance);
+            var client = new RunnerTestClientApp(jsonRpcClient);
             await client.Run();
             Console.WriteLine("Exiting Runner Test Client");
         }

@@ -148,11 +148,11 @@ namespace Nethermind.PerfTest
         private static void RunVmPerfTests()
         {
             ILogManager logManager = NullLogManager.Instance;
-            MemDbProvider memDbProvider = new MemDbProvider(logManager);
-            StateTree stateTree = new StateTree(memDbProvider.GetOrCreateStateDb());
-            IStateProvider stateProvider = new StateProvider(stateTree, memDbProvider.GetOrCreateCodeDb(), logManager);
+            ISnapshotableDb stateDb = new StateDb();
+            StateTree stateTree = new StateTree(stateDb);
+            IStateProvider stateProvider = new StateProvider(stateTree, new StateDb(), logManager);
             IBlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), FrontierSpecProvider.Instance, logManager);
-            _machine = new VirtualMachine(stateProvider, new StorageProvider(memDbProvider, stateProvider, logManager), new BlockhashProvider(blockTree), logManager);
+            _machine = new VirtualMachine(stateProvider, new StorageProvider(stateDb, stateProvider, logManager), new BlockhashProvider(blockTree), logManager);
 
             Stopwatch stopwatch = new Stopwatch();
             stopwatch.Start();
@@ -283,7 +283,6 @@ namespace Nethermind.PerfTest
         }
 
         private static readonly string FullStateDbPath = Path.Combine(DbBasePath, DbOnTheRocks.StateDbPath);
-        private static readonly string FullStorageDbPath = Path.Combine(DbBasePath, DbOnTheRocks.StorageDbPath);
         private static readonly string FullCodeDbPath = Path.Combine(DbBasePath, DbOnTheRocks.CodeDbPath);
         private static readonly string FullReceiptsDbPath = Path.Combine(DbBasePath, DbOnTheRocks.ReceiptsDbPath);
         private static readonly string FullTxDbPath = Path.Combine(DbBasePath, DbOnTheRocks.TxsDbPath);
@@ -291,7 +290,7 @@ namespace Nethermind.PerfTest
         private static readonly string FullBlocksDbPath = Path.Combine(DbBasePath, DbOnTheRocks.BlocksDbPath);
         private static readonly string FullBlockInfosDbPath = Path.Combine(DbBasePath, DbOnTheRocks.BlockInfosDbPath);
 
-        private const int BlocksToLoad = 2_000_000;
+        private const int BlocksToLoad = 100_000;
 
         private static async Task RunRopstenBlocks()
         {
@@ -302,7 +301,6 @@ namespace Nethermind.PerfTest
             if (_logger.IsInfo) _logger.Info("Deleting state DBs");
 
             DeleteDb(FullStateDbPath);
-            DeleteDb(FullStorageDbPath);
             DeleteDb(FullCodeDbPath);
             DeleteDb(FullReceiptsDbPath);
             if (_logger.IsInfo) _logger.Info("State DBs deleted");
@@ -311,10 +309,14 @@ namespace Nethermind.PerfTest
             var sealEngine = new EthashSealEngine(new Ethash(_logManager), _logManager);
             var specProvider = RopstenSpecProvider.Instance;
 
-            var blocksDb = new DbOnTheRocks(FullBlocksDbPath, DbConfig.Default);
-            var blockInfosDb = new DbOnTheRocks(FullBlockInfosDbPath, DbConfig.Default);
-            var receiptsDb = new DbOnTheRocks(FullReceiptsDbPath, DbConfig.Default);
-            var txDb = new DbOnTheRocks(FullTxDbPath, DbConfig.Default);
+            
+            var dbProvider = new RocksDbProvider(DbBasePath, DbConfig.Default);
+            var stateDb = dbProvider.StateDb;
+            var codeDb = dbProvider.CodeDb;
+            var blocksDb = dbProvider.BlocksDb;
+            var blockInfosDb = dbProvider.BlockInfosDb;
+            var receiptsDb = dbProvider.ReceiptsDb;
+            var txDb = dbProvider.TxDb;
 
             /* store & validation */
             var blockTree = new UnprocessedBlockTreeWrapper(new BlockTree(blocksDb, blockInfosDb, specProvider, _logManager));
@@ -326,10 +328,9 @@ namespace Nethermind.PerfTest
 
             /* state & storage */
 
-            var dbProvider = new RocksDbProvider(DbBasePath, _logManager, DbConfig.Default);
-            var stateTree = new StateTree(dbProvider.GetOrCreateStateDb());
-            var stateProvider = new StateProvider(stateTree, dbProvider.GetOrCreateCodeDb(), _logManager);
-            var storageProvider = new StorageProvider(dbProvider, stateProvider, _logManager);
+            var stateTree = new StateTree(stateDb);
+            var stateProvider = new StateProvider(stateTree, codeDb, _logManager);
+            var storageProvider = new StorageProvider(stateDb, stateProvider, _logManager);
 
             /* blockchain processing */
             var ethereumSigner = new EthereumSigner(specProvider, _logManager);
@@ -339,7 +340,7 @@ namespace Nethermind.PerfTest
             //var processor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, new TransactionTracer("D:\\tx_traces\\perf_test", new UnforgivingJsonSerializer()), _logManager);
             var processor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, _logManager);
             var rewardCalculator = new RewardCalculator(specProvider);
-            var blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, processor, dbProvider, stateProvider, storageProvider, transactionStore, _logManager);
+            var blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, processor, stateDb, codeDb, stateProvider, storageProvider, transactionStore, _logManager);
             var blockchainProcessor = new BlockchainProcessor(blockTree, sealEngine, transactionStore, difficultyCalculator, blockProcessor, ethereumSigner, _logManager, new PerfService(_logManager));
 
             /* load ChainSpec and init */

@@ -27,8 +27,6 @@ namespace Nethermind.Store
             get;
             set;
         }
-        
-        void Remove(byte[] key);
 
         void StartBatch();
 

@@ -82,7 +82,6 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Chains", "Chains", "{D75E83
 		Chains\foundation.json = Chains\foundation.json
 		Chains\kovan.json = Chains\kovan.json
 		Chains\morden.json = Chains\morden.json
-		Chains\nethermind_alpha.json = Chains\nethermind_alpha.json
 		Chains\olympic.json = Chains\olympic.json
 		Chains\private_bootnode.json = Chains\private_bootnode.json
 		Chains\private_client.json = Chains\private_client.json
@@ -136,6 +135,10 @@ EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "RocksDbNative", "..\rocksdb-sharp\RocksDbNative\RocksDbNative.csproj", "{0CD42613-757B-4AA6-903D-CDFC0EAC697B}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Db.Test", "Nethermind.Db.Test\Nethermind.Db.Test.csproj", "{462BCF0B-2B76-45F0-A73D-34B540FEA569}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Store.Rpc", "Nethermind.Store.Rpc\Nethermind.Store.Rpc.csproj", "{FC966422-78F7-4D8E-9012-F5E3843CD217}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.JsonRpc.Client", "Nethermind.JsonRpc.Client\Nethermind.JsonRpc.Client.csproj", "{B4FAD285-1FCC-49FC-BBE8-EA8A9356097F}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -355,6 +358,14 @@ Global
 		{462BCF0B-2B76-45F0-A73D-34B540FEA569}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{462BCF0B-2B76-45F0-A73D-34B540FEA569}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{462BCF0B-2B76-45F0-A73D-34B540FEA569}.Release|Any CPU.Build.0 = Release|Any CPU
+		{FC966422-78F7-4D8E-9012-F5E3843CD217}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{FC966422-78F7-4D8E-9012-F5E3843CD217}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{FC966422-78F7-4D8E-9012-F5E3843CD217}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{FC966422-78F7-4D8E-9012-F5E3843CD217}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B4FAD285-1FCC-49FC-BBE8-EA8A9356097F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B4FAD285-1FCC-49FC-BBE8-EA8A9356097F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B4FAD285-1FCC-49FC-BBE8-EA8A9356097F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B4FAD285-1FCC-49FC-BBE8-EA8A9356097F}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

@@ -16,14 +16,10 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Core;
-
 namespace Nethermind.Runner.Config
 {
     public class InitConfig : IInitConfig
     {
-        public bool TransactionTracingEnabled { get; set; } = false;
-        public string BaseTracingPath { get; set; } = "traces";
         public bool JsonRpcEnabled { get; set; } = true;
         public bool DiscoveryEnabled { get; set; } = true;
         public bool SynchronizationEnabled { get; set; } = true;

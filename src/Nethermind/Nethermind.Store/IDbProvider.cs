@@ -20,9 +20,14 @@ using System;
 
 namespace Nethermind.Store
 {
-    public interface IDbProvider : ISnapshotable, IDisposable
+    public interface IDbProvider : IDisposable
     {
-        ISnapshotableDb GetOrCreateStateDb();
-        ISnapshotableDb GetOrCreateCodeDb();
+        ISnapshotableDb StateDb { get; }
+        ISnapshotableDb CodeDb { get; }
+        IDb TxDb { get; }
+        IDb ReceiptsDb { get; }
+        IDb BlocksDb { get; }
+        IDb BlockInfosDb { get; }
+        // add C#8 Dispose (default implementation)
     }
 }

@@ -16,7 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Numerics;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Core.Specs
 {
@@ -26,7 +26,7 @@ namespace Nethermind.Core.Specs
 
         public IReleaseSpec GenesisSpec => Frontier.Instance;
 
-        public IReleaseSpec GetSpec(BigInteger blockNumber)
+        public IReleaseSpec GetSpec(UInt256 blockNumber)
         {
             if (blockNumber < 494000)
             {
@@ -46,7 +46,7 @@ namespace Nethermind.Core.Specs
             return SpuriousDragon.Instance;
         }
         
-        public BigInteger? DaoBlockNumber { get; } = null;
+        public UInt256? DaoBlockNumber { get; } = null;
 
         public int ChainId => 2;
     }

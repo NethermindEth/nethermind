@@ -33,7 +33,8 @@ namespace Nethermind.Blockchain
     public class BlockProcessor : IBlockProcessor
     {
         private readonly ITransactionProcessor _transactionProcessor;
-        private readonly IDbProvider _dbProvider;
+        private readonly ISnapshotableDb _stateDb;
+        private readonly ISnapshotableDb _codeDb;
         private readonly IStateProvider _stateProvider;
         private readonly IStorageProvider _storageProvider;
         private readonly ISpecProvider _specProvider;
@@ -46,19 +47,21 @@ namespace Nethermind.Blockchain
             IBlockValidator blockValidator,
             IRewardCalculator rewardCalculator,
             ITransactionProcessor transactionProcessor,
-            IDbProvider dbProvider,
+            ISnapshotableDb stateDb,
+            ISnapshotableDb codeDb,
             IStateProvider stateProvider,
             IStorageProvider storageProvider, ITransactionStore transactionStore, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-            _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));;
-            _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));;
-            _storageProvider = storageProvider ?? throw new ArgumentNullException(nameof(storageProvider));;
-            _transactionStore = transactionStore ?? throw new ArgumentNullException(nameof(transactionStore));;
-            _rewardCalculator = rewardCalculator ?? throw new ArgumentNullException(nameof(rewardCalculator));;
-            _transactionProcessor = transactionProcessor ?? throw new ArgumentNullException(nameof(transactionProcessor));;
-            _dbProvider = dbProvider;
+            _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
+            _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
+            _storageProvider = storageProvider ?? throw new ArgumentNullException(nameof(storageProvider));
+            _transactionStore = transactionStore ?? throw new ArgumentNullException(nameof(transactionStore));
+            _rewardCalculator = rewardCalculator ?? throw new ArgumentNullException(nameof(rewardCalculator));
+            _transactionProcessor = transactionProcessor ?? throw new ArgumentNullException(nameof(transactionProcessor));
+            _stateDb = stateDb?? throw new ArgumentNullException(nameof(stateDb));
+            _codeDb = codeDb?? throw new ArgumentNullException(nameof(codeDb));
         }
 
         private readonly IBlockValidator _blockValidator;
@@ -136,8 +139,8 @@ namespace Nethermind.Blockchain
                 return Array.Empty<Block>();
             }
             
-            IDb db = _dbProvider.GetOrCreateStateDb();
-            int dbSnapshot = _dbProvider.TakeSnapshot();
+            int stateSnapshot = _stateDb.TakeSnapshot();
+            int codeSnapshot = _codeDb.TakeSnapshot();
             Keccak snapshotStateRoot = _stateProvider.StateRoot;
 
             if (branchStateRoot != null && _stateProvider.StateRoot != branchStateRoot)
@@ -163,7 +166,8 @@ namespace Nethermind.Blockchain
                         _logger.Trace($"REVERTING BLOCKS - STATE ROOT {_stateProvider.StateRoot}");
                     }
 
-                    _dbProvider.Restore(dbSnapshot);
+                    _stateDb.Restore(stateSnapshot);
+                    _codeDb.Restore(codeSnapshot);
                     _storageProvider.ClearCaches();
                     _stateProvider.Reset();
                     _stateProvider.StateRoot = snapshotStateRoot;
@@ -175,9 +179,9 @@ namespace Nethermind.Blockchain
                 }
                 else
                 {
-                    db.StartBatch();
-                    _dbProvider.Commit(_specProvider.GetSpec(suggestedBlocks[0].Number));
-                    db.CommitBatch();
+                    // todo: should be transactional so worth to look at column families
+                    _stateDb.Commit();
+                    _codeDb.Commit();   
                 }
 
                 return processedBlocks;
@@ -189,7 +193,8 @@ namespace Nethermind.Blockchain
                     _logger.Trace($"REVERTING BLOCKS - STATE ROOT {_stateProvider.StateRoot}");
                 }
 
-                _dbProvider.Restore(dbSnapshot);
+                _stateDb.Restore(stateSnapshot);
+                _codeDb.Restore(codeSnapshot);
                 _storageProvider.ClearCaches();
                 _stateProvider.Reset();
                 _stateProvider.StateRoot = snapshotStateRoot;
@@ -288,10 +293,10 @@ namespace Nethermind.Blockchain
             {
                 if (_logger.IsError)
                 {
-                    _logger.Error($"Processed block is not valid {processedBlock.ToString(Block.Format.Short)}");
+                    _logger.Error($"Processed block is not valid {suggestedBlock.ToString(Block.Format.HashAndNumber)}");
                 }
 
-                throw new InvalidBlockException($"{processedBlock}");
+                throw new InvalidBlockException($"{suggestedBlock}");
             }
 
             if (_logger.IsTrace)

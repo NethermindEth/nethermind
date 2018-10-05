@@ -16,10 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
 using System.IO;
-using Nethermind.Core.Logging;
-using Nethermind.Core.Specs;
 using Nethermind.Db.Config;
 using Nethermind.Store;
 
@@ -27,52 +24,46 @@ namespace Nethermind.Db
 {
     public class RocksDbProvider : IDbProvider
     {
-        private readonly ISnapshotableDb _stateDb;
-        private readonly ISnapshotableDb _codeDb;
-
-        public ISnapshotableDb GetOrCreateStateDb()
+        public RocksDbProvider(string basePath, IDbConfig dbConfig)
         {
-            return _stateDb;
-        }
-
-        public ISnapshotableDb GetOrCreateCodeDb()
-        {
-            return _codeDb;
-        }
-
-        private readonly ILogger _logger;
-
-        public RocksDbProvider(string dbBasePath, ILogManager logManager, IDbConfig dbConfig)
-        {
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            BlocksDb = new DbOnTheRocks(
+                Path.Combine(basePath, DbOnTheRocks.BlocksDbPath),
+                dbConfig);
             
-            _stateDb = new SnapshotableDb(new DbOnTheRocks(Path.Combine(dbBasePath, DbOnTheRocks.StateDbPath), dbConfig));
-            _codeDb = new SnapshotableDb(new DbOnTheRocks(Path.Combine(dbBasePath, DbOnTheRocks.CodeDbPath), dbConfig));
+            BlockInfosDb = new DbOnTheRocks(
+                Path.Combine(basePath, DbOnTheRocks.BlockInfosDbPath),
+                dbConfig);
+            
+            ReceiptsDb = new DbOnTheRocks(
+                Path.Combine(basePath, DbOnTheRocks.ReceiptsDbPath),
+                dbConfig);
+            
+            TxDb = new DbOnTheRocks(
+                Path.Combine(basePath, DbOnTheRocks.TxsDbPath),
+                dbConfig);
+            
+            StateDb = new StateDb(
+                new DbOnTheRocks(Path.Combine(basePath, DbOnTheRocks.StateDbPath), dbConfig));
+            
+            CodeDb = new StateDb(
+                new DbOnTheRocks(Path.Combine(basePath, DbOnTheRocks.CodeDbPath), dbConfig));
         }
-
-        public void Restore(int snapshot)
-        {
-            if (_logger.IsTrace) _logger.Trace($"Restoring all DBs to {snapshot}");
-            _stateDb.Restore(-1);
-            _codeDb.Restore(-1);
-        }
-
-        public void Commit(IReleaseSpec spec)
-        {
-            if (_logger.IsTrace) _logger.Trace("Committing all DBs");
-            _stateDb.Commit(spec);
-            _codeDb.Commit(spec);
-        }
-
-        public int TakeSnapshot()
-        {
-            return -1;
-        }
+        
+        public ISnapshotableDb StateDb { get; }
+        public ISnapshotableDb CodeDb { get; }
+        public IDb TxDb { get; }
+        public IDb ReceiptsDb { get; }
+        public IDb BlocksDb { get; }
+        public IDb BlockInfosDb { get; }
 
         public void Dispose()
         {
-            _stateDb?.Dispose();
-            _codeDb?.Dispose();
+            StateDb?.Dispose();
+            CodeDb?.Dispose();
+            TxDb?.Dispose();
+            ReceiptsDb?.Dispose();
+            BlocksDb?.Dispose();
+            BlockInfosDb?.Dispose();
         }
     }
 }

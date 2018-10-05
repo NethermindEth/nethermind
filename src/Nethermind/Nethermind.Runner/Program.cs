@@ -17,33 +17,43 @@
  */
 
 using System;
-using Nethermind.Core;
 using Nethermind.Core.Logging;
 
 namespace Nethermind.Runner
 {
     public class Program
     {
+        private const string FailureString = "Failure";
+
         public static void Main(string[] args)
         {
             ILogger logger = new NLogLogger("logs.txt");
 
             AppDomain.CurrentDomain.UnhandledException += (sender, eventArgs) =>
             {
-                logger.Error("Unhandled exception " + eventArgs.ExceptionObject?.ToString());
-                Console.ReadLine(); // TODO: remove later
-            }; 
-            
+                if (eventArgs.ExceptionObject is Exception e)
+                    logger.Error(FailureString, e);
+                else
+                    logger.Error(FailureString + eventArgs.ExceptionObject?.ToString());
+            };
+
             try
-            {   
+            {
                 IRunnerApp runner = new RunnerApp(logger);
                 runner.Run(args);
+                return;
+            }
+            catch (AggregateException e)
+            {
+                logger.Error(FailureString, e.InnerException);
             }
             catch (Exception e)
             {
-                logger.Error("Runner exception", e);
-                Console.ReadLine(); // TODO: remove later
+                logger.Error(FailureString, e);
             }
+
+            Console.WriteLine("Press any key to exit.");
+            Console.ReadKey();
         }
     }
 }

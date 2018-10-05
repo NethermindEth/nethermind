@@ -16,7 +16,9 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
 using Nethermind.JsonRpc.DataModel;
 
@@ -33,12 +35,12 @@ namespace Nethermind.DiagTools
                 _logger.Warn($"  gas geth {gethTrace.Gas} != neth {nethTrace.Gas} (diff: {gethTrace.Gas - nethTrace.Gas})");
             }
 
-//            string gethReturnValue = gethTrace.ReturnValue?.ToHexString();
-//            string nethReturnValue = nethTrace.ReturnValue?.ToHexString();
-//            if (gethReturnValue != nethReturnValue)
-//            {
-//                _logger.Warn($"  return value geth {gethReturnValue} != neth {nethReturnValue}");
-//            }
+            string gethReturnValue = gethTrace.ReturnValue;
+            string nethReturnValue = nethTrace.ReturnValue;
+            if (gethReturnValue != nethReturnValue)
+            {
+                _logger.Warn($"  return value geth {gethReturnValue} != neth {nethReturnValue}");
+            }
             
             if (gethTrace.Failed != nethTrace.Failed)
             {
@@ -46,7 +48,7 @@ namespace Nethermind.DiagTools
             }
 
             var gethEntries = gethTrace.StructLogs.ToList();
-            var nethEntries = gethTrace.StructLogs.ToList();
+            var nethEntries = nethTrace.StructLogs.ToList();
             
             int ixDiff = 0;
             for (int i = 0; i < gethEntries.Count; i++)
@@ -68,24 +70,92 @@ namespace Nethermind.DiagTools
                 }
                 
                 var nethEntry = nethEntries[nethIx];
-                if (gethEntry.Op != nethEntry.Op)
+                if (!CompareEntry(gethEntry, nethEntry, entryDesc)) break;
+            }
+        }
+
+        private bool CompareEntry(TransactionTraceEntry gethEntry, TransactionTraceEntry nethEntry, string entryDesc)
+        {
+            if (gethEntry.Op != nethEntry.Op)
+            {
+                _logger.Warn($"    {entryDesc} operation geth {gethEntry.Op} neth {nethEntry.Op}");
+                return false;
+            }
+
+            if (gethEntry.Depth != nethEntry.Depth)
+            {
+                _logger.Warn($"    {entryDesc} depth geth {gethEntry.Depth} neth {nethEntry.Depth}");
+                return false;
+            }
+
+            if (gethEntry.Gas != nethEntry.Gas)
+            {
+                _logger.Warn($"    {entryDesc} gas geth {gethEntry.Gas} neth {nethEntry.Gas}");
+                return false;
+            }
+
+            if (gethEntry.GasCost != nethEntry.GasCost)
+            {
+                _logger.Warn($"    {entryDesc} gas cost geth {gethEntry.GasCost} neth {nethEntry.GasCost}");
+                return false;
+            }
+
+            return
+                CompareLists(gethEntry.Stack, nethEntry.Stack, "stack", entryDesc) &&
+                CompareLists(gethEntry.Memory, nethEntry.Memory, "memory", entryDesc) &&
+                CompareStorage(gethEntry, nethEntry, entryDesc);
+        }
+
+        private bool CompareLists(List<string> gethList, List<string> nethList, string listName, string entryDesc)
+        {
+            if (gethList.Count != nethList.Count)
+            {
+                _logger.Warn($"    {entryDesc} {listName} lengths differ geth {gethList.Count} neth {nethList.Count}");
+                return false;
+            }
+
+            for (int i = 0; i < gethList.Count; i++)
+            {
+                if (gethList[i] != nethList[i])
                 {
-                    _logger.Warn($"    {entryDesc} operation geth {gethEntry.Op} neth {nethEntry.Op}");
-                    break;
-                }
-                
-                if (gethEntry.Gas != nethEntry.Gas)
-                {
-                    _logger.Warn($"    {entryDesc} gas geth {gethEntry.Gas} neth {nethEntry.Gas}");
-                    break;
-                }
-                
-                if (gethEntry.GasCost != nethEntry.GasCost)
-                {
-                    _logger.Warn($"    {entryDesc} gas cost geth {gethEntry.GasCost} neth {nethEntry.GasCost}");
-                    break;
+                    _logger.Warn($"    {entryDesc} {listName} values differ at index {i} geth {gethList[i]} neth {nethList[i]}");
+                    return false;
                 }
             }
+
+            return true;
+        }
+
+        private bool CompareStorage(TransactionTraceEntry gethEntry, TransactionTraceEntry nethEntry, string entryDesc)
+        {
+            foreach (KeyValuePair<string,string> keyValuePair in gethEntry.Storage)
+            {
+                if (!nethEntry.Storage.ContainsKey(keyValuePair.Key))
+                {
+                    _logger.Warn($"   {entryDesc} missing neth storage {keyValuePair.Key}");
+                    return false;
+                }
+            }
+            
+            foreach (KeyValuePair<string,string> keyValuePair in nethEntry.Storage)
+            {
+                if (!gethEntry.Storage.ContainsKey(keyValuePair.Key))
+                {
+                    _logger.Warn($"   {entryDesc} extra neth storage {keyValuePair.Key}");
+                    return false;
+                }
+            }
+            
+            foreach (KeyValuePair<string,string> keyValuePair in nethEntry.Storage)
+            {
+                if(nethEntry.Storage[keyValuePair.Key] != gethEntry.Storage[keyValuePair.Key])
+                {
+                    _logger.Warn($"   {entryDesc} different storage values at {keyValuePair.Key} geth {gethEntry.Storage[keyValuePair.Key]} neth {nethEntry.Storage[keyValuePair.Key]}");
+                    return false;
+                }
+            }
+
+            return true;
         }
     }
 }

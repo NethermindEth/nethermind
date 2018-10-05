@@ -36,11 +36,10 @@ namespace Nethermind.Store
         private readonly Dictionary<StorageAddress, byte[]> _cacheOriginal = new Dictionary<StorageAddress, byte[]>();
 
         private readonly HashSet<StorageAddress> _committedThisRound = new HashSet<StorageAddress>();
-        
-        private readonly IDbProvider _dbProvider;
 
         private readonly ILogger _logger;
-        
+
+        private readonly ISnapshotableDb _stateDb;
         private readonly IStateProvider _stateProvider;
 
         //private readonly LruCache<StorageAddress, byte[]> _storageCache = new LruCache<StorageAddress, byte[]>(1024 * 32 * 10); // ~100MB
@@ -51,10 +50,10 @@ namespace Nethermind.Store
         private Change[] _changes = new Change[StartCapacity];
         private int _currentPosition = -1;
 
-        public StorageProvider(IDbProvider dbProvider, IStateProvider stateProvider, ILogManager logManager)
+        public StorageProvider(ISnapshotableDb stateDb, IStateProvider stateProvider, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
+            _stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
         }
 
@@ -264,7 +263,7 @@ namespace Nethermind.Store
         {
             if (!_storages.ContainsKey(address))
             {
-                StorageTree storageTree = new StorageTree(_dbProvider.GetOrCreateStateDb(), _stateProvider.GetStorageRoot(address));
+                StorageTree storageTree = new StorageTree(_stateDb, _stateProvider.GetStorageRoot(address));
                 return _storages[address] = storageTree;
             }
 

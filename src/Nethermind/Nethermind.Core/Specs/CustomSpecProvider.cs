@@ -19,14 +19,15 @@
 using System;
 using System.Linq;
 using System.Numerics;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Core.Specs
 {
     public class CustomSpecProvider : ISpecProvider
     {
-        private readonly (BigInteger BlockNumber, IReleaseSpec Release)[] _transitions;
+        private readonly (UInt256 BlockNumber, IReleaseSpec Release)[] _transitions;
 
-        public CustomSpecProvider(params (BigInteger BlockNumber, IReleaseSpec Release)[] transitions)
+        public CustomSpecProvider(params (UInt256 BlockNumber, IReleaseSpec Release)[] transitions)
         {
             if (transitions.Length == 0)
             {
@@ -45,7 +46,7 @@ namespace Nethermind.Core.Specs
 
         public IReleaseSpec GenesisSpec => _transitions.First().Release;
         
-        public IReleaseSpec GetSpec(BigInteger blockNumber)
+        public IReleaseSpec GetSpec(UInt256 blockNumber)
         {
             IReleaseSpec spec = _transitions[0].Release;
             for (int i = 1; i < _transitions.Length; i++)
@@ -63,12 +64,12 @@ namespace Nethermind.Core.Specs
             return spec;
         }
 
-        public BigInteger? DaoBlockNumber
+        public UInt256? DaoBlockNumber
         {
             get
             {
-                (BigInteger blockNumber, IReleaseSpec daoRelease) = _transitions.SingleOrDefault(t => t.Release == Dao.Instance);
-                return daoRelease != null ? blockNumber : (BigInteger?)null;
+                (UInt256 blockNumber, IReleaseSpec daoRelease) = _transitions.SingleOrDefault(t => t.Release == Dao.Instance);
+                return daoRelease != null ? blockNumber : (UInt256?)null;
             }
         }
 

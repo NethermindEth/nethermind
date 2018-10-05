@@ -46,7 +46,7 @@ namespace Nethermind.Blockchain.Validators
         {
             if (!_ommersValidator.Validate(suggestedBlock.Header, suggestedBlock.Ommers))
             {
-                _logger?.Info($"Invalid block ({suggestedBlock.Hash}) - invalid ommers");
+                _logger?.Debug($"Invalid block ({suggestedBlock.Hash}) - invalid ommers");
                 return false;
             }
 
@@ -54,7 +54,7 @@ namespace Nethermind.Blockchain.Validators
             {
                 if (!_transactionValidator.IsWellFormed(transaction, _specProvider.GetSpec(suggestedBlock.Number)))
                 {
-                    _logger?.Info($"Invalid block ({suggestedBlock.Hash}) - invalid transaction ({transaction.Hash})");
+                    _logger?.Debug($"Invalid block ({suggestedBlock.Hash}) - invalid transaction ({transaction.Hash})");
                     return false;
                 }
             }
@@ -62,14 +62,14 @@ namespace Nethermind.Blockchain.Validators
             // TODO it may not be needed here (computing twice?)
             if (suggestedBlock.Header.OmmersHash != Keccak.Compute(Rlp.Encode(suggestedBlock.Ommers)))
             {
-                _logger?.Info($"Invalid block ({suggestedBlock.Hash}) - invalid ommers hash");
+                _logger?.Debug($"Invalid block ({suggestedBlock.Hash}) - invalid ommers hash");
                 return false;
             }
 
             bool blockHeaderValid = _headerValidator.Validate(suggestedBlock.Header);
             if (!blockHeaderValid)
             {
-                _logger?.Info($"Invalid block ({suggestedBlock.Hash}) - invalid header");
+                _logger?.Debug($"Invalid block ({suggestedBlock.Hash}) - invalid header");
                 return false;
             }
 
@@ -83,22 +83,22 @@ namespace Nethermind.Blockchain.Validators
             {
                 if (processedBlock.Header.GasUsed != suggestedBlock.Header.GasUsed)
                 {
-                    _logger?.Info($"PROCESSED_GASUSED {processedBlock.Header.GasUsed} != SUGGESTED_GASUSED {suggestedBlock.Header.GasUsed} ({processedBlock.Header.GasUsed - suggestedBlock.Header.GasUsed} difference)");
+                    _logger?.Debug($"PROCESSED_GASUSED {processedBlock.Header.GasUsed} != SUGGESTED_GASUSED {suggestedBlock.Header.GasUsed} ({processedBlock.Header.GasUsed - suggestedBlock.Header.GasUsed} difference)");
                 }
                 
                 if (processedBlock.Header.Bloom != suggestedBlock.Header.Bloom)
                 {
-                    _logger?.Info($"PROCESSED_BLOOM {processedBlock.Header.Bloom} != SUGGESTED_BLOOM {suggestedBlock.Header.Bloom}");
+                    _logger?.Debug($"PROCESSED_BLOOM {processedBlock.Header.Bloom} != SUGGESTED_BLOOM {suggestedBlock.Header.Bloom}");
                 }
                 
                 if (processedBlock.Header.ReceiptsRoot != suggestedBlock.Header.ReceiptsRoot)
                 {
-                    _logger?.Info($"PROCESSED_RECEIPTS {processedBlock.Header.ReceiptsRoot} != SUGGESTED_RECEIPTS {suggestedBlock.Header.ReceiptsRoot}");
+                    _logger?.Debug($"PROCESSED_RECEIPTS {processedBlock.Header.ReceiptsRoot} != SUGGESTED_RECEIPTS {suggestedBlock.Header.ReceiptsRoot}");
                 }
                 
                 if (processedBlock.Header.StateRoot != suggestedBlock.Header.StateRoot)
                 {
-                    _logger?.Info($"PROCESSED_STATE {processedBlock.Header.StateRoot} != SUGGESTED_STATE {suggestedBlock.Header.StateRoot}");
+                    _logger?.Debug($"PROCESSED_STATE {processedBlock.Header.StateRoot} != SUGGESTED_STATE {suggestedBlock.Header.StateRoot}");
                 }
                 
                 // this is tested before processing

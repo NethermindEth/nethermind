@@ -34,7 +34,10 @@ using Nethermind.Store;
 namespace Nethermind.Evm
 {
     public class VirtualMachine : IVirtualMachine
-    {   
+    {
+        private const string BadInstructionErrorText = "BadInstruction";
+        private const string OutOfGasErrorText = "OutOfGas";
+        
         public const int MaxCallDepth = 1024;
         public const int MaxStackSize = 1025;
 
@@ -208,6 +211,11 @@ namespace Nethermind.Evm
                         long gasAvailableForCodeDeposit = previousState.GasAvailable; // TODO: refactor, this is to fix 61363 Ropsten
                         if (previousState.ExecutionType == ExecutionType.Create || previousState.ExecutionType == ExecutionType.DirectCreate)
                         {
+                            previousCallResult = callCodeOwner.Bytes;
+                            previousCallOutput = Bytes.Empty;
+                            previousCallOutputDestination = UInt256.Zero;
+                            _returnDataBuffer = Bytes.Empty;
+                            
                             long codeDepositGasCost = GasCostOf.CodeDeposit * callResult.Output.Length;
                             if (spec.IsEip170Enabled && callResult.Output.Length > 0x6000)
                             {
@@ -222,32 +230,23 @@ namespace Nethermind.Evm
                             if (gasAvailableForCodeDeposit >= codeDepositGasCost)
                             {
                                 Keccak codeHash = _state.UpdateCode(callResult.Output);
-
                                 _state.UpdateCodeHash(callCodeOwner, codeHash, spec);
-                                previousCallResult = callCodeOwner.Bytes;
-
                                 currentState.GasAvailable -= codeDepositGasCost;
                             }
                             else
                             {
-                                // TODO: out of gas - try to handle as everywhere else - test with 61362 (7933dd) on Ropsten - second contract creation
-                                previousCallResult = BytesZero;
                                 if (releaseSpec.IsEip2Enabled)
                                 {
                                     currentState.GasAvailable -= gasAvailableForCodeDeposit;
                                     // TODO: there should be an OutOfGasException here and a proper reversal of the account creation (and value transfer and all state changes called in the CREATE call)
                                     // TODO: instead just adding the simplest way to fix 552387 on Ropsten
+                                    _state.Restore(previousState.StateSnapshot);
+                                    _storage.Restore(previousState.StorageSnapshot);
                                     _state.DeleteAccount(callCodeOwner);
-                                }
-                                else
-                                {
-                                    previousCallResult = callCodeOwner.Bytes;
+                                    previousCallResult = BytesZero;
+                                    currentState.Refund -= previousState.Refund;
                                 }
                             }
-
-                            previousCallOutput = Bytes.Empty;
-                            previousCallOutputDestination = UInt256.Zero;
-                            _returnDataBuffer = Bytes.Empty;
                         }
                         else
                         {
@@ -349,11 +348,6 @@ namespace Nethermind.Evm
 
         private bool UpdateGas(long gasCost, ref long gasAvailable)
         {
-            if (_logger.IsTrace)
-            {
-                _logger.Trace($"  update gas (-{gasCost})");
-            }
-
             if (gasAvailable < gasCost)
             {
                 Metrics.EvmExceptions++;
@@ -366,11 +360,6 @@ namespace Nethermind.Evm
 
         private void RefundGas(long refund, ref long gasAvailable)
         {
-            if (_logger.IsTrace)
-            {
-                _logger.Trace($"  update gas (+{refund})");
-            }
-
             gasAvailable += refund;
         }
 
@@ -487,20 +476,38 @@ namespace Nethermind.Evm
                     return;
                 }
 
-                Dictionary<string, string> previousStorage = _traceEntry?.Storage;
+                TransactionTraceEntry previousTraceEntry = _traceEntry;
                 _traceEntry = new TransactionTraceEntry();
-                _traceEntry.Depth = env.CallDepth;
+                _traceEntry.Depth = env.CallDepth + 1; // todo: call depth in geth starts with 1 - is it for trace only or also consensus?
                 _traceEntry.Gas = gasAvailable;
                 _traceEntry.Operation = Enum.GetName(typeof(Instruction), instruction);
                 _traceEntry.Memory = evmState.Memory.GetTrace();
                 _traceEntry.Pc = (long)programCounter;
                 _traceEntry.Stack = GetStackTrace(stack);
-                if (previousStorage != null)
+
+                if (_traceEntry.Depth > (previousTraceEntry?.Depth ?? 0))
                 {
-                    foreach (KeyValuePair<string, string> storageEntry in previousStorage)
+                    _traceEntry.Storage = new Dictionary<string, string>();
+                    _trace.StoragesByDepth.Add(_traceEntry.Storage);
+                }
+                else if (_traceEntry.Depth < (previousTraceEntry?.Depth ?? 0))
+                {
+                    if (previousTraceEntry == null)
                     {
-                        _traceEntry.Storage.Add(storageEntry.Key, storageEntry.Value);
+                        throw new InvalidOperationException("Unexpected missing previous trace when leaving a call.");
                     }
+                    
+                    _trace.StoragesByDepth.Remove(previousTraceEntry.Storage);
+                    _trace.StoragesByDepth[_trace.StoragesByDepth.Count - 1] = _traceEntry.Storage = new Dictionary<string, string>(_trace.StoragesByDepth[_trace.StoragesByDepth.Count - 1]);
+                }
+                else
+                {
+                    if (previousTraceEntry == null)
+                    {
+                        throw new InvalidOperationException("Unexpected missing previous trace on continuation.");
+                    }
+                    
+                    _traceEntry.Storage = new Dictionary<string, string>(previousTraceEntry.Storage);    
                 }
             }
 
@@ -508,6 +515,7 @@ namespace Nethermind.Evm
             {
                 if (_trace != null)
                 {
+                    _traceEntry.UpdateMemorySize(evmState.Memory.Size);
                     _traceEntry.GasCost = _traceEntry.Gas - gasAvailable;
                     _trace.Entries.Add(_traceEntry);
                 }
@@ -775,12 +783,13 @@ namespace Nethermind.Evm
                 long memoryCost = evmState.Memory.CalculateMemoryCost(position, length);
                 if (_logger.IsTrace)
                 {
-                    _logger.Trace($"  MEMORY COST {memoryCost}");
+                    _logger.Trace($"  memory cost {memoryCost}");
                 }
 
                 if (!UpdateGas(memoryCost, ref gasAvailable))
                 {
-                    EndInstructionTraceError("OutOfGas");
+                    Metrics.EvmExceptions++;
+                    EndInstructionTraceError(OutOfGasErrorText);
                     throw new OutOfGasException();
                 }
             }
@@ -824,7 +833,7 @@ namespace Nethermind.Evm
                     {
                         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable))
                         {
-                            EndInstructionTraceError("OutOfGas");
+                            EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
                         }
 
@@ -839,7 +848,7 @@ namespace Nethermind.Evm
                     {
                         if (!UpdateGas(GasCostOf.Low, ref gasAvailable))
                         {
-                            EndInstructionTraceError("OutOfGas");
+                            EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
                         }
 
@@ -853,7 +862,7 @@ namespace Nethermind.Evm
                     {
                         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable))
                         {
-                            EndInstructionTraceError("OutOfGas");
+                            EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
                         }
 
@@ -869,7 +878,7 @@ namespace Nethermind.Evm
                     {
                         if (!UpdateGas(GasCostOf.Low, ref gasAvailable))
                         {
-                            EndInstructionTraceError("OutOfGas");
+                            EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
                         }
 
@@ -891,7 +900,7 @@ namespace Nethermind.Evm
                     {
                         if (!UpdateGas(GasCostOf.Low, ref gasAvailable))
                         {
-                            EndInstructionTraceError("OutOfGas");
+                            EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
                         }
 
@@ -916,7 +925,7 @@ namespace Nethermind.Evm
                     {
                         if (!UpdateGas(GasCostOf.Low, ref gasAvailable))
                         {
-                            EndInstructionTraceError("OutOfGas");
+                            EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
                         }
 
@@ -929,7 +938,7 @@ namespace Nethermind.Evm
                     {
                         if (!UpdateGas(GasCostOf.Low, ref gasAvailable))
                         {
-                            EndInstructionTraceError("OutOfGas");
+                            EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
                         }
 
@@ -950,7 +959,7 @@ namespace Nethermind.Evm
                     {
                         if (!UpdateGas(GasCostOf.Mid, ref gasAvailable))
                         {
-                            EndInstructionTraceError("OutOfGas");
+                            EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
                         }
 
@@ -973,7 +982,7 @@ namespace Nethermind.Evm
                     {
                         if (!UpdateGas(GasCostOf.Mid, ref gasAvailable))
                         {
-                            EndInstructionTraceError("OutOfGas");
+                            EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
                         }
 
@@ -996,7 +1005,7 @@ namespace Nethermind.Evm
                     {
                         if (!UpdateGas(GasCostOf.Exp, ref gasAvailable))
                         {
-                            EndInstructionTraceError("OutOfGas");
+                            EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
                         }
 
@@ -1018,7 +1027,7 @@ namespace Nethermind.Evm
 
                             if (!UpdateGas((spec.IsEip160Enabled ? GasCostOf.ExpByteEip160 : GasCostOf.ExpByte) * (1L + expSize), ref gasAvailable))
                             {
-                                EndInstructionTraceError("OutOfGas");
+                                EndInstructionTraceError(OutOfGasErrorText);
                                 return CallResult.OutOfGasException;
                             }
                         }
@@ -1047,7 +1056,7 @@ namespace Nethermind.Evm
                     {
                         if (!UpdateGas(GasCostOf.Low, ref gasAvailable))
                         {
-                            EndInstructionTraceError("OutOfGas");
+                            EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
                         }
 
@@ -1073,7 +1082,7 @@ namespace Nethermind.Evm
                     {
                         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable))
                         {
-                            EndInstructionTraceError("OutOfGas");
+                            EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
                         }
 
@@ -1094,7 +1103,7 @@ namespace Nethermind.Evm
                     {
                         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable))
                         {
-                            EndInstructionTraceError("OutOfGas");
+                            EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
                         }
 
@@ -1115,7 +1124,7 @@ namespace Nethermind.Evm
                     {
                         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable))
                         {
-                            EndInstructionTraceError("OutOfGas");
+                            EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
                         }
 
@@ -1137,7 +1146,7 @@ namespace Nethermind.Evm
                     {
                         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable))
                         {
-                            EndInstructionTraceError("OutOfGas");
+                            EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
                         }
 
@@ -1158,7 +1167,7 @@ namespace Nethermind.Evm
                     {
                         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable))
                         {
-                            EndInstructionTraceError("OutOfGas");
+                            EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
                         }
 
@@ -1179,7 +1188,7 @@ namespace Nethermind.Evm
                     {
                         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable))
                         {
-                            EndInstructionTraceError("OutOfGas");
+                            EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
                         }
 
@@ -1199,7 +1208,7 @@ namespace Nethermind.Evm
                     {
                         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable))
                         {
-                            EndInstructionTraceError("OutOfGas");
+                            EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
                         }
 
@@ -1217,7 +1226,7 @@ namespace Nethermind.Evm
                     {
                         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable))
                         {
-                            EndInstructionTraceError("OutOfGas");
+                            EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
                         }
 
@@ -1235,7 +1244,7 @@ namespace Nethermind.Evm
                     {
                         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable))
                         {
-                            EndInstructionTraceError("OutOfGas");
+                            EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
                         }
 
@@ -1253,7 +1262,7 @@ namespace Nethermind.Evm
                     {
                         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable))
                         {
-                            EndInstructionTraceError("OutOfGas");
+                            EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
                         }
 
@@ -1270,7 +1279,7 @@ namespace Nethermind.Evm
                     {
                         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable))
                         {
-                            EndInstructionTraceError("OutOfGas");
+                            EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
                         }
 
@@ -1302,7 +1311,7 @@ namespace Nethermind.Evm
                         if (!UpdateGas(GasCostOf.Sha3 + GasCostOf.Sha3Word * EvmPooledMemory.Div32Ceiling(memLength),
                             ref gasAvailable))
                         {
-                            EndInstructionTraceError("OutOfGas");
+                            EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
                         }
 
@@ -1316,7 +1325,7 @@ namespace Nethermind.Evm
                     {
                         if (!UpdateGas(GasCostOf.Base, ref gasAvailable))
                         {
-                            EndInstructionTraceError("OutOfGas");
+                            EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
                         }
 
@@ -1327,7 +1336,7 @@ namespace Nethermind.Evm
                     {
                         if (!UpdateGas(spec.IsEip150Enabled ? GasCostOf.BalanceEip150 : GasCostOf.Balance, ref gasAvailable))
                         {
-                            EndInstructionTraceError("OutOfGas");
+                            EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
                         }
 
@@ -1340,7 +1349,7 @@ namespace Nethermind.Evm
                     {
                         if (!UpdateGas(GasCostOf.Base, ref gasAvailable))
                         {
-                            EndInstructionTraceError("OutOfGas");
+                            EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
                         }
 
@@ -1351,7 +1360,7 @@ namespace Nethermind.Evm
                     {
                         if (!UpdateGas(GasCostOf.Base, ref gasAvailable))
                         {
-                            EndInstructionTraceError("OutOfGas");
+                            EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
                         }
 
@@ -1362,7 +1371,7 @@ namespace Nethermind.Evm
                     {
                         if (!UpdateGas(GasCostOf.Base, ref gasAvailable))
                         {
-                            EndInstructionTraceError("OutOfGas");
+                            EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
                         }
 
@@ -1373,7 +1382,7 @@ namespace Nethermind.Evm
                     {
                         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable))
                         {
-                            EndInstructionTraceError("OutOfGas");
+                            EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
                         }
 
@@ -1385,7 +1394,7 @@ namespace Nethermind.Evm
                     {
                         if (!UpdateGas(GasCostOf.Base, ref gasAvailable))
                         {
-                            EndInstructionTraceError("OutOfGas");
+                            EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
                         }
 
@@ -1400,7 +1409,7 @@ namespace Nethermind.Evm
                         if (!UpdateGas(GasCostOf.VeryLow + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(length),
                             ref gasAvailable))
                         {
-                            EndInstructionTraceError("OutOfGas");
+                            EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
                         }
 
@@ -1414,7 +1423,7 @@ namespace Nethermind.Evm
                     {
                         if (!UpdateGas(GasCostOf.Base, ref gasAvailable))
                         {
-                            EndInstructionTraceError("OutOfGas");
+                            EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
                         }
 
@@ -1428,7 +1437,7 @@ namespace Nethermind.Evm
                         UInt256 length = PopUInt256(bytesOnStack);
                         if (!UpdateGas(GasCostOf.VeryLow + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(length), ref gasAvailable))
                         {
-                            EndInstructionTraceError("OutOfGas");
+                            EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
                         }
 
@@ -1441,7 +1450,7 @@ namespace Nethermind.Evm
                     {
                         if (!UpdateGas(GasCostOf.Base, ref gasAvailable))
                         {
-                            EndInstructionTraceError("OutOfGas");
+                            EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
                         }
 
@@ -1452,7 +1461,7 @@ namespace Nethermind.Evm
                     {
                         if (!UpdateGas(spec.IsEip150Enabled ? GasCostOf.ExtCodeSizeEip150 : GasCostOf.ExtCodeSize, ref gasAvailable))
                         {
-                            EndInstructionTraceError("OutOfGas");
+                            EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
                         }
 
@@ -1470,7 +1479,7 @@ namespace Nethermind.Evm
                         if (!UpdateGas((spec.IsEip150Enabled ? GasCostOf.ExtCodeEip150 : GasCostOf.ExtCode) + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(length),
                             ref gasAvailable))
                         {
-                            EndInstructionTraceError("OutOfGas");
+                            EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
                         }
 
@@ -1485,12 +1494,13 @@ namespace Nethermind.Evm
                         if (!spec.IsEip211Enabled)
                         {
                             Metrics.EvmExceptions++;
+                            EndInstructionTraceError(BadInstructionErrorText);
                             return CallResult.InvalidInstructionException;
                         }
 
                         if (!UpdateGas(GasCostOf.Base, ref gasAvailable))
                         {
-                            EndInstructionTraceError("OutOfGas");
+                            EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
                         }
 
@@ -1502,6 +1512,7 @@ namespace Nethermind.Evm
                         if (!spec.IsEip211Enabled)
                         {
                             Metrics.EvmExceptions++;
+                            EndInstructionTraceError(BadInstructionErrorText);
                             return CallResult.InvalidInstructionException;
                         }
 
@@ -1510,7 +1521,7 @@ namespace Nethermind.Evm
                         UInt256 length = PopUInt256(bytesOnStack);
                         if (!UpdateGas(GasCostOf.VeryLow + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(length), ref gasAvailable))
                         {
-                            EndInstructionTraceError("OutOfGas");
+                            EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
                         }
 
@@ -1530,7 +1541,7 @@ namespace Nethermind.Evm
                     {
                         if (!UpdateGas(GasCostOf.BlockHash, ref gasAvailable))
                         {
-                            EndInstructionTraceError("OutOfGas");
+                            EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
                         }
 
@@ -1543,7 +1554,7 @@ namespace Nethermind.Evm
                     {
                         if (!UpdateGas(GasCostOf.Base, ref gasAvailable))
                         {
-                            EndInstructionTraceError("OutOfGas");
+                            EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
                         }
 
@@ -1554,7 +1565,7 @@ namespace Nethermind.Evm
                     {
                         if (!UpdateGas(GasCostOf.Base, ref gasAvailable))
                         {
-                            EndInstructionTraceError("OutOfGas");
+                            EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
                         }
 
@@ -1565,7 +1576,7 @@ namespace Nethermind.Evm
                     {
                         if (!UpdateGas(GasCostOf.Base, ref gasAvailable))
                         {
-                            EndInstructionTraceError("OutOfGas");
+                            EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
                         }
 
@@ -1576,7 +1587,7 @@ namespace Nethermind.Evm
                     {
                         if (!UpdateGas(GasCostOf.Base, ref gasAvailable))
                         {
-                            EndInstructionTraceError("OutOfGas");
+                            EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
                         }
 
@@ -1587,7 +1598,7 @@ namespace Nethermind.Evm
                     {
                         if (!UpdateGas(GasCostOf.Base, ref gasAvailable))
                         {
-                            EndInstructionTraceError("OutOfGas");
+                            EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
                         }
 
@@ -1598,7 +1609,7 @@ namespace Nethermind.Evm
                     {
                         if (!UpdateGas(GasCostOf.Base, ref gasAvailable))
                         {
-                            EndInstructionTraceError("OutOfGas");
+                            EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
                         }
 
@@ -1609,7 +1620,7 @@ namespace Nethermind.Evm
                     {
                         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable))
                         {
-                            EndInstructionTraceError("OutOfGas");
+                            EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
                         }
 
@@ -1623,7 +1634,7 @@ namespace Nethermind.Evm
                     {
                         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable))
                         {
-                            EndInstructionTraceError("OutOfGas");
+                            EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
                         }
 
@@ -1637,7 +1648,7 @@ namespace Nethermind.Evm
                     {
                         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable))
                         {
-                            EndInstructionTraceError("OutOfGas");
+                            EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
                         }
 
@@ -1651,7 +1662,7 @@ namespace Nethermind.Evm
                     {
                         if (!UpdateGas(spec.IsEip150Enabled ? GasCostOf.SLoadEip150 : GasCostOf.SLoad, ref gasAvailable))
                         {
-                            EndInstructionTraceError("OutOfGas");
+                            EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
                         }
 
@@ -1671,7 +1682,7 @@ namespace Nethermind.Evm
                         // fail fast before the first storage read if gas is not enough even for reset
                         if (!spec.IsEip1283Enabled && !UpdateGas(GasCostOf.SReset, ref gasAvailable))
                         {
-                            EndInstructionTraceError("OutOfGas");
+                            EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
                         }
 
@@ -1711,7 +1722,7 @@ namespace Nethermind.Evm
                             {
                                 if (!UpdateGas(GasCostOf.SSet - GasCostOf.SReset, ref gasAvailable))
                                 {
-                                    EndInstructionTraceError("OutOfGas");
+                                    EndInstructionTraceError(OutOfGasErrorText);
                                     return CallResult.OutOfGasException;    
                                 }
                                 
@@ -1727,7 +1738,7 @@ namespace Nethermind.Evm
                             {
                                 if(!UpdateGas(GasCostOf.SStoreEip1283, ref gasAvailable))
                                 {
-                                    EndInstructionTraceError("OutOfGas");
+                                    EndInstructionTraceError(OutOfGasErrorText);
                                     return CallResult.OutOfGasException;
                                 }
                             }
@@ -1743,7 +1754,7 @@ namespace Nethermind.Evm
                                     {
                                         if (!UpdateGas(GasCostOf.SSet, ref gasAvailable))
                                         {
-                                            EndInstructionTraceError("OutOfGas");
+                                            EndInstructionTraceError(OutOfGasErrorText);
                                             return CallResult.OutOfGasException;
                                         }
                                     }
@@ -1751,7 +1762,7 @@ namespace Nethermind.Evm
                                     {
                                         if (!UpdateGas(GasCostOf.SReset, ref gasAvailable))
                                         {
-                                            EndInstructionTraceError("OutOfGas");
+                                            EndInstructionTraceError(OutOfGasErrorText);
                                             return CallResult.OutOfGasException;
                                         }
 
@@ -1765,7 +1776,7 @@ namespace Nethermind.Evm
                                 {
                                     if (!UpdateGas(GasCostOf.SStoreEip1283, ref gasAvailable))
                                     {
-                                        EndInstructionTraceError("OutOfGas");
+                                        EndInstructionTraceError(OutOfGasErrorText);
                                         return CallResult.OutOfGasException;
                                     }
 
@@ -1822,7 +1833,7 @@ namespace Nethermind.Evm
                     {
                         if (!UpdateGas(GasCostOf.Mid, ref gasAvailable))
                         {
-                            EndInstructionTraceError("OutOfGas");
+                            EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
                         }
 
@@ -1830,12 +1841,19 @@ namespace Nethermind.Evm
                         if (jumpDest > int.MaxValue)
                         {
                             Metrics.EvmExceptions++;
+                            EndInstructionTraceError("Invalid_JUMP");
+                            // https://github.com/NethermindEth/nethermind/issues/140
                             throw new InvalidJumpDestinationException();
                             return CallResult.InvalidJumpDestination;
                         }
 
                         int dest = (int)jumpDest;
-                        if (!env.CodeInfo.ValidateJump(dest)) return CallResult.InvalidJumpDestination;
+                        if (!env.CodeInfo.ValidateJump(dest))
+                        {
+                            // https://github.com/NethermindEth/nethermind/issues/140
+                            EndInstructionTraceError("Invalid_JUMP");
+                            return CallResult.InvalidJumpDestination;
+                        }
 
                         programCounter = jumpDest;
                         break;
@@ -1844,7 +1862,7 @@ namespace Nethermind.Evm
                     {
                         if (!UpdateGas(GasCostOf.High, ref gasAvailable))
                         {
-                            EndInstructionTraceError("OutOfGas");
+                            EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
                         }
 
@@ -1855,6 +1873,8 @@ namespace Nethermind.Evm
                             if (jumpDest > int.MaxValue)
                             {
                                 Metrics.EvmExceptions++;
+                                EndInstructionTraceError("Invalid_JUMP");
+                                // https://github.com/NethermindEth/nethermind/issues/140
                                 throw new InvalidJumpDestinationException();
                                 return CallResult.InvalidJumpDestination; // TODO: add a test, validating inside the condition was not covered by existing tests and fails on 0xf435a354924097686ea88dab3aac1dd464e6a3b387c77aeee94145b0fa5a63d2 mainnet
                             }
@@ -1863,6 +1883,8 @@ namespace Nethermind.Evm
 
                             if (!env.CodeInfo.ValidateJump(dest))
                             {
+                                EndInstructionTraceError("Invalid_JUMP");
+                                // https://github.com/NethermindEth/nethermind/issues/140
                                 throw new InvalidJumpDestinationException();
                                 return CallResult.InvalidJumpDestination; // TODO: add a test, validating inside the condition was not covered by existing tests and fails on 61363 Ropsten
                             }
@@ -1876,7 +1898,7 @@ namespace Nethermind.Evm
                     {
                         if (!UpdateGas(GasCostOf.Base, ref gasAvailable))
                         {
-                            EndInstructionTraceError("OutOfGas");
+                            EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
                         }
 
@@ -1887,7 +1909,7 @@ namespace Nethermind.Evm
                     {
                         if (!UpdateGas(GasCostOf.Base, ref gasAvailable))
                         {
-                            EndInstructionTraceError("OutOfGas");
+                            EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
                         }
 
@@ -1898,7 +1920,7 @@ namespace Nethermind.Evm
                     {
                         if (!UpdateGas(GasCostOf.Base, ref gasAvailable))
                         {
-                            EndInstructionTraceError("OutOfGas");
+                            EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
                         }
 
@@ -1909,7 +1931,7 @@ namespace Nethermind.Evm
                     {
                         if (!UpdateGas(GasCostOf.JumpDest, ref gasAvailable))
                         {
-                            EndInstructionTraceError("OutOfGas");
+                            EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
                         }
 
@@ -1919,7 +1941,7 @@ namespace Nethermind.Evm
                     {
                         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable))
                         {
-                            EndInstructionTraceError("OutOfGas");
+                            EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
                         }
 
@@ -1970,7 +1992,7 @@ namespace Nethermind.Evm
                     {
                         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable))
                         {
-                            EndInstructionTraceError("OutOfGas");
+                            EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
                         }
 
@@ -2002,7 +2024,7 @@ namespace Nethermind.Evm
                     {
                         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable))
                         {
-                            EndInstructionTraceError("OutOfGas");
+                            EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
                         }
 
@@ -2028,7 +2050,7 @@ namespace Nethermind.Evm
                     {
                         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable))
                         {
-                            EndInstructionTraceError("OutOfGas");
+                            EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
                         }
 
@@ -2055,7 +2077,7 @@ namespace Nethermind.Evm
                             GasCostOf.Log + topicsCount * GasCostOf.LogTopic +
                             (long)length * GasCostOf.LogData, ref gasAvailable))
                         {
-                            EndInstructionTraceError("OutOfGas");
+                            EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
                         }
 
@@ -2078,6 +2100,7 @@ namespace Nethermind.Evm
                     {
                         if(!spec.IsEip1014Enabled && instruction == Instruction.CREATE2)
                         {
+                            EndInstructionTraceError(BadInstructionErrorText);
                             return CallResult.InvalidInstructionException;
                         }
                         
@@ -2104,7 +2127,7 @@ namespace Nethermind.Evm
 
                         if (!UpdateGas(GasCostOf.Create, ref gasAvailable))
                         {
-                            EndInstructionTraceError("OutOfGas");
+                            EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
                         }
 
@@ -2132,14 +2155,16 @@ namespace Nethermind.Evm
                             break;
                         }
 
+                        EndInstructionTrace();
+                        // todo: === below is a new call - refactor / move
+                        
                         long callGas = spec.IsEip150Enabled ? gasAvailable - gasAvailable / 64L : gasAvailable;
                         if (!UpdateGas(callGas, ref gasAvailable))
                         {
-                            EndInstructionTraceError("OutOfGas");
+                            EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
                         }
-
-
+                        
                         Address contractAddress = instruction == Instruction.CREATE
                             ? Address.OfContract(env.ExecutingAccount, _state.GetNonce(env.ExecutingAccount))
                             : Address.OfContract(env.ExecutingAccount, salt, initCode);
@@ -2190,7 +2215,6 @@ namespace Nethermind.Evm
                             false);
 
                         UpdateCurrentState();
-                        EndInstructionTrace();
                         return new CallResult(callState);
                     }
                     case Instruction.RETURN:
@@ -2214,6 +2238,7 @@ namespace Nethermind.Evm
                             instruction == Instruction.STATICCALL && !spec.IsEip214Enabled)
                         {
                             Metrics.EvmExceptions++;
+                            EndInstructionTraceError(BadInstructionErrorText);
                             return CallResult.InvalidInstructionException;
                         }
 
@@ -2277,7 +2302,7 @@ namespace Nethermind.Evm
 
                         if (!UpdateGas(spec.IsEip150Enabled ? GasCostOf.CallEip150 : GasCostOf.Call, ref gasAvailable))
                         {
-                            EndInstructionTraceError("OutOfGas");
+                            EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
                         }
 
@@ -2285,7 +2310,7 @@ namespace Nethermind.Evm
                         UpdateMemoryCost(outputOffset, outputLength);
                         if (!UpdateGas(gasExtra, ref gasAvailable))
                         {
-                            EndInstructionTraceError("OutOfGas");
+                            EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
                         }
 
@@ -2297,7 +2322,7 @@ namespace Nethermind.Evm
                         long gasLimitUl = (long)gasLimit;
                         if (!UpdateGas(gasLimitUl, ref gasAvailable))
                         {
-                            EndInstructionTraceError("OutOfGas");
+                            EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
                         }
 
@@ -2369,6 +2394,7 @@ namespace Nethermind.Evm
                         if (!spec.IsEip140Enabled)
                         {
                             Metrics.EvmExceptions++;
+                            EndInstructionTraceError(BadInstructionErrorText);
                             return CallResult.InvalidInstructionException;
                         }
 
@@ -2386,12 +2412,12 @@ namespace Nethermind.Evm
                     {
                         if (!UpdateGas(GasCostOf.High, ref gasAvailable))
                         {
-                            EndInstructionTraceError("OutOfGas");
+                            EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
                         }
 
-                        EndInstructionTrace();
                         Metrics.EvmExceptions++;
+                        EndInstructionTraceError(BadInstructionErrorText);
                         return CallResult.InvalidInstructionException;
                     }
                     case Instruction.SELFDESTRUCT:
@@ -2404,7 +2430,7 @@ namespace Nethermind.Evm
 
                         if (spec.IsEip150Enabled && !UpdateGas(GasCostOf.SelfDestructEip150, ref gasAvailable))
                         {
-                            EndInstructionTraceError("OutOfGas");
+                            EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
                         }
 
@@ -2418,7 +2444,7 @@ namespace Nethermind.Evm
                         {
                             if (!UpdateGas(GasCostOf.NewAccount, ref gasAvailable))
                             {
-                                EndInstructionTraceError("OutOfGas");
+                                EndInstructionTraceError(OutOfGasErrorText);
                                 return CallResult.OutOfGasException;
                             }
                         }
@@ -2428,7 +2454,7 @@ namespace Nethermind.Evm
                         {
                             if (!UpdateGas(GasCostOf.NewAccount, ref gasAvailable))
                             {
-                                EndInstructionTraceError("OutOfGas");
+                                EndInstructionTraceError(OutOfGasErrorText);
                                 return CallResult.OutOfGasException;
                             }
                         }
@@ -2453,12 +2479,13 @@ namespace Nethermind.Evm
                         if (!spec.IsEip145Enabled)
                         {
                             Metrics.EvmExceptions++;
+                            EndInstructionTraceError(BadInstructionErrorText);
                             return CallResult.InvalidInstructionException;
                         }
                         
                         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable))
                         {
-                            EndInstructionTraceError("OutOfGas");
+                            EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
                         }
 
@@ -2481,12 +2508,13 @@ namespace Nethermind.Evm
                         if (!spec.IsEip145Enabled)
                         {
                             Metrics.EvmExceptions++;
+                            EndInstructionTraceError(BadInstructionErrorText);
                             return CallResult.InvalidInstructionException;
                         }
                         
                         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable))
                         {
-                            EndInstructionTraceError("OutOfGas");
+                            EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
                         }
 
@@ -2509,12 +2537,13 @@ namespace Nethermind.Evm
                         if (!spec.IsEip145Enabled)
                         {
                             Metrics.EvmExceptions++;
+                            EndInstructionTraceError(BadInstructionErrorText);
                             return CallResult.InvalidInstructionException;
                         }
                         
                         if (!UpdateGas(GasCostOf.VeryLow, ref gasAvailable))
                         {
-                            EndInstructionTraceError("OutOfGas");
+                            EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
                         }
 
@@ -2549,12 +2578,13 @@ namespace Nethermind.Evm
                         if (!spec.IsEip1052Enabled)
                         {
                             Metrics.EvmExceptions++;
+                            EndInstructionTraceError(BadInstructionErrorText);
                             return CallResult.InvalidInstructionException;
                         }
                         
                         if (!UpdateGas(GasCostOf.ExtCodeHash, ref gasAvailable))
                         {
-                            EndInstructionTraceError("OutOfGas");
+                            EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
                         }
 
@@ -2572,13 +2602,8 @@ namespace Nethermind.Evm
                     }
                     default:
                     {
-                        if (_logger.IsTrace)
-                        {
-                            _logger.Trace("UNKNOWN INSTRUCTION");
-                        }
-
-                        EndInstructionTrace();
                         Metrics.EvmExceptions++;
+                        EndInstructionTraceError(BadInstructionErrorText);
                         return CallResult.InvalidInstructionException;
                     }
                 }

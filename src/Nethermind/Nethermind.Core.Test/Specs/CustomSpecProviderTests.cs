@@ -17,8 +17,8 @@
  */
 
 using System;
-using System.Numerics;
 using Nethermind.Core.Specs;
+using Nethermind.Dirichlet.Numerics;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Specs
@@ -40,10 +40,6 @@ namespace Nethermind.Core.Test.Specs
             Assert.Throws<ArgumentException>(() => _ = new CustomSpecProvider(
                 (1, Byzantium.Instance),
                 (0, Frontier.Instance)), "not ordered");
-
-            Assert.Throws<ArgumentException>(() => _ = new CustomSpecProvider(
-                (1, Byzantium.Instance),
-                (-1, Frontier.Instance)), "not ordered, negative");
         }
 
         [Test]
@@ -57,9 +53,9 @@ namespace Nethermind.Core.Test.Specs
         [Test]
         public void Can_find_dao_block_number()
         {
-            BigInteger daoBlockNumber = new BigInteger(100);
+            UInt256 daoBlockNumber = 100;
             var specProvider = new CustomSpecProvider(
-                (BigInteger.Zero, Frontier.Instance),
+                (UInt256.Zero, Frontier.Instance),
                 (daoBlockNumber, Dao.Instance));
             
             Assert.AreEqual(daoBlockNumber, specProvider.DaoBlockNumber);
@@ -69,8 +65,8 @@ namespace Nethermind.Core.Test.Specs
         public void If_no_dao_then_no_dao_block_number()
         {
             var specProvider = new CustomSpecProvider(
-                (BigInteger.Zero, Frontier.Instance),
-                (BigInteger.One, Homestead.Instance));
+                (UInt256.Zero, Frontier.Instance),
+                (UInt256.One, Homestead.Instance));
             
             Assert.IsNull(specProvider.DaoBlockNumber);
         }

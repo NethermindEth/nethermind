@@ -24,6 +24,7 @@ using System.Reflection;
 using System.Runtime.InteropServices.WindowsRuntime;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
 using Nethermind.JsonRpc.Config;
@@ -49,14 +50,19 @@ namespace Nethermind.JsonRpc
         {
             try
             {
-                (ErrorType?, string) validateResult = Validate(rpcRequest);
-                if (validateResult.Item1.HasValue)
+                (ErrorType? errorType, string errorMessage) = Validate(rpcRequest);
+                if (errorType.HasValue)
                 {
-                    return GetErrorResponse(validateResult.Item1.Value, validateResult.Item2, rpcRequest?.Id, rpcRequest?.Method);
+                    return GetErrorResponse(errorType.Value, errorMessage, rpcRequest?.Id, rpcRequest?.Method);
                 }
                 try
                 {
                     return ExecuteRequest(rpcRequest);
+                }
+                catch (TargetInvocationException ex)
+                {
+                    _logger.Error($"Error during method execution, request: {rpcRequest}", ex.InnerException);
+                    return GetErrorResponse(ErrorType.InternalError, "Internal error", rpcRequest?.Id, rpcRequest?.Method);
                 }
                 catch (Exception ex)
                 {
@@ -110,6 +116,7 @@ namespace Nethermind.JsonRpc
                 _logger.Error($"Method {methodName} execution result does not implement IResultWrapper");
                 return GetErrorResponse(ErrorType.InternalError, "Internal error", request.Id, methodName);
             }
+            
             if (resultWrapper.GetResult() == null || resultWrapper.GetResult().ResultType == ResultType.Failure)
             {
                 _logger.Error($"Error during method: {methodName} execution: {resultWrapper.GetResult()?.Error ?? "no result"}");
@@ -118,23 +125,30 @@ namespace Nethermind.JsonRpc
 
             //process response
             var data = resultWrapper.GetData();
+            if (data is byte[] bytes)
+            {
+                return GetSuccessResponse(bytes.ToHexString(), request.Id);        
+            }
+            
             if (!(data is IEnumerable collection) || data is string)
             {
                 var json = GetDataObject(data);
                 return GetSuccessResponse(json, request.Id);        
             }
+            
             var items = new List<object>();
             foreach (var item in collection)
             {
                 var jsonItem = GetDataObject(item);
                 items.Add(jsonItem);
             }
+            
             return GetSuccessResponse(items, request.Id);
         }
 
         private object GetDataObject(object data)
         {
-            return data is IJsonRpcResult rpcResult ? rpcResult.ToJson() : data.ToString();
+            return data is IJsonRpcResult rpcResult ? rpcResult.ToJson() : data?.ToString();
         }
 
         private object[] GetParameters(ParameterInfo[] expectedParameters, string[] providedParameters)
@@ -187,8 +201,7 @@ namespace Nethermind.JsonRpc
         
         private JsonRpcResponse GetErrorResponse(ErrorType errorType, string message, string id, string methodName)
         {
-            _logger.Error($"Error during processing the request, method: {methodName ?? "none"}, id: {id ?? "none"}, errorType: {errorType}, message: {message}");
-
+            _logger.Debug($"Sending error response, method: {methodName ?? "none"}, id: {id ?? "none"}, errorType: {errorType}, message: {message}");
             var response = new JsonRpcResponse
             {
                 Jsonrpc = _jsonRpcConfig.JsonRpcVersion,
@@ -199,10 +212,11 @@ namespace Nethermind.JsonRpc
                     Message = message
                 }
             };
+            
             return response;
         }
 
-        private (ErrorType?, string) Validate(JsonRpcRequest rpcRequest)
+        private (ErrorType? ErrorType, string ErrorMessage) Validate(JsonRpcRequest rpcRequest)
         {
             if (rpcRequest == null)
             {

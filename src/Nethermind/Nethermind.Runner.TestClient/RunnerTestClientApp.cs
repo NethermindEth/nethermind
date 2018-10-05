@@ -20,16 +20,17 @@ using System;
 using System.Text;
 using System.Threading.Tasks;
 using Nethermind.Core.Extensions;
+using Nethermind.JsonRpc.Client;
 
 namespace Nethermind.Runner.TestClient
 {
     public class RunnerTestClientApp : IRunnerTestCientApp
     {
-        private readonly IRunnerTestCient _cient;
+        private readonly IJsonRpcClient _client;
 
-        public RunnerTestClientApp(IRunnerTestCient cient)
+        public RunnerTestClientApp(IJsonRpcClient client)
         {
-            _cient = cient;
+            _client = client;
         }
 
         public async Task Run()
@@ -44,7 +45,8 @@ namespace Nethermind.Runner.TestClient
                 new Option("debug_traceTransactionByBlockhashAndIndex", ("Block Hash", p => p), ("Tx Index", s => int.Parse(s))),
                 new Option("debug_traceBlockByHash", ("Block Hash", p => p)),
                 new Option("debug_traceBlockByNumber", ("Block Number", ToBlockNumberHex)),
-                new Option("debug_addTxData", ("Block Number", ToBlockNumberHex))
+                new Option("debug_addTxData", ("Block Number", ToBlockNumberHex)),
+                new Option("debug_getFromDb", ("DB Name", p => p), ("Bytes", p => p)),
             };
 
             StringBuilder prompt = new StringBuilder("Options:");
@@ -69,7 +71,7 @@ namespace Nethermind.Runner.TestClient
                         parameters[i] = option.Parameters[i].Parse(Console.ReadLine());
                     }
 
-                    string result = await _cient.Post(option.Command, parameters);
+                    string result = await _client.Post(option.Command, parameters);
                     PrintResult(result);
                 }
                 else

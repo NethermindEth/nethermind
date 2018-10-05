@@ -16,7 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Numerics;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Core.Specs
 {
@@ -26,38 +26,48 @@ namespace Nethermind.Core.Specs
 
         public IReleaseSpec GenesisSpec => Frontier.Instance;
 
-        public IReleaseSpec GetSpec(BigInteger blockNumber)
+        public IReleaseSpec GetSpec(UInt256 blockNumber)
         {
-            if (blockNumber < 1150000)
+            if (blockNumber < HomesteadBlockNumber)
             {
                 return Frontier.Instance;
             }
 
-            if (blockNumber < 1920000)
+            if (blockNumber < DaoBlockNumber)
             {
                 return Homestead.Instance;
             }
 
-            if (blockNumber < 2463000)
+            if (blockNumber < TangerineWhistleBlockNumber)
             {
                 return Dao.Instance;
             }
 
-            if (blockNumber < 2675000)
+            if (blockNumber < SpuriousDragonBlockNumber)
             {
                 return TangerineWhistle.Instance;
             }
 
-            if (blockNumber < 4370000)
+            if (blockNumber < ByzantiumBlockNumber)
             {
                 return SpuriousDragon.Instance;
             }
+            
+            if (blockNumber < ConstantinopleBlockNumber)
+            {
+                return Byzantium.Instance;
+            }
 
 
-            return Byzantium.Instance;
+            return Constantinople.Instance;
         }
 
-        public BigInteger? DaoBlockNumber { get; } = new BigInteger(1920000);
+        public static UInt256 HomesteadBlockNumber { get; } = 1150000;
+        public UInt256? DaoBlockNumber { get; } = 1920000;
+        public static UInt256 TangerineWhistleBlockNumber { get; } = 2463000;
+        public static UInt256 SpuriousDragonBlockNumber { get; } = 2675000;
+        public static UInt256 ByzantiumBlockNumber { get; } = 4370000;
+        public static UInt256 ConstantinopleBlockNumber { get; } = 100000000; // no constantinople set yet - just for tests
         
         public int ChainId => 1;
         

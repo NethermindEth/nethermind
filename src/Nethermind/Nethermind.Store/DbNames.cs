@@ -16,12 +16,16 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Threading.Tasks;
-
-namespace Nethermind.Runner.TestClient
+namespace Nethermind.Store
 {
-    public interface IRunnerTestCient
+    public static class DbNames
     {
-        Task<string> Post(string method, params object[] parameters);
+        public const string Storage = "storage";
+        public const string State = "state";
+        public const string Code = "code";
+        public const string Blocks = "blocks";
+        public const string Receipts = "receipts";
+        public const string Transactions = "txs";
+        public const string BlockInfos = "blockInfos";
     }
 }

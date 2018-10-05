@@ -27,7 +27,7 @@ namespace Nethermind.JsonRpc.DataModel
     {
         public BigInteger Gas { get; set; }
         public bool Failed { get; set; }
-        public byte[] ReturnValue { get; set; }
+        public string ReturnValue { get; set; }
         public IEnumerable<TransactionTraceEntry> StructLogs { get; set; }
         public StorageTrace StorageTrace { get; set; }
         

@@ -23,6 +23,8 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Logging;
+using Nethermind.JsonRpc.Client;
 using Nethermind.JsonRpc.DataModel;
 
 namespace Nethermind.DiagTools
@@ -35,76 +37,109 @@ namespace Nethermind.DiagTools
 
         public static async Task Main(params string[] args)
         {
-            int blockNumber = 81000;
-            string pathBase = $"D:\\block_traces\\{blockNumber}";
-            try
+//            int blockNumber = 6108276;
+//            string hash = "?";
+
+            int blockNumber = 226522;
+            string hash = "0x63de8ba970ca56da5f12d5c4ff826501ab4e945f36338ae20be42f9e42e13b7a";
+//            Console.WriteLine("Block Number:");
+            // int blockNumber = int.Parse(Console.ReadLine());
+
+            string nethPathBase = $"D:\\block_traces\\{blockNumber}\\neth\\";
+            if (!Directory.Exists(nethPathBase)) Directory.CreateDirectory(nethPathBase);
+
+            string gethPathBase = $"D:\\block_traces\\{blockNumber}\\geth\\";
+            if (!Directory.Exists(gethPathBase)) Directory.CreateDirectory(gethPathBase);
+
+            BasicJsonRpcClient localhostClient = new BasicJsonRpcClient(KnownRpcUris.Localhost, _serializer, NullLogManager.Instance);
+//            await TraceBlock(localhostClient, blockNumber, nethPathBase);
+            await TraceBlockByHash(localhostClient, hash, nethPathBase);
+
+            BasicJsonRpcClient gethClient = new BasicJsonRpcClient(KnownRpcUris.GethVm4, _serializer, NullLogManager.Instance);
+//            await TraceBlock(gethClient, blockNumber, gethPathBase);
+            await TraceBlockByHash(gethClient, hash, gethPathBase);
+
+            string nethTx = File.ReadAllText(Path.Combine(nethPathBase, "0.txt"));
+            string gethTx = File.ReadAllText(Path.Combine(gethPathBase, "0.txt"));
+
+            TransactionTrace gethTrace = _serializer.Deserialize<TransactionTrace>(gethTx);
+            TransactionTrace nethTrace = _serializer.Deserialize<TransactionTrace>(nethTx);
+            
+            _comparer.Compare(gethTrace, nethTrace);
+
+//            try
+//            {
+//                for (int i = 41; i < 42; i++) await TraceTxByBlockhashAndIndex(KnownRpcUris.Localhost, pathBase, blockNumber, i);
+//            }
+//            catch (Exception e)
+//            {
+//                Console.WriteLine(e);
+//                throw;
+//            }
+
+            Console.WriteLine("Press any key to exit.");
+            Console.ReadKey();
+        }
+
+        private static async Task TraceBlock(BasicJsonRpcClient localhostClient, int blockNumber, string pathBase)
+        {
+            string response = await localhostClient.Post("debug_traceBlockByNumber", string.Format("0x{0:x}", blockNumber));
+            var blockTraceItems = _serializer.Deserialize<JsonRpcResponse<BlockTraceItem[]>>(response);
+            if (blockTraceItems == null)
             {
-                if (!Directory.Exists(pathBase))
-                {
-                    Directory.CreateDirectory(pathBase);
-                }
-
-                HttpRequestMessage msg = new HttpRequestMessage(HttpMethod.Post, "http://127.0.0.1:8545");
-                msg.Content = new StringContent($"{{\"jsonrpc\":\"2.0\",\"method\":\"debug_traceBlockByNumber\",\"params\":[\"{string.Format("0x{0:x}", blockNumber)}\"],\"id\":42}}");
-                msg.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
-                HttpResponseMessage rsp = await _client.SendAsync(msg);
-                string text = await rsp.Content.ReadAsStringAsync();
-                var nethTrace = _serializer.Deserialize<JsonRpcResponse<BlockTraceItem[]>>(text);
-
-                for (int i = 0; i < nethTrace.Result.Length; i++)
-                {
-                    if (nethTrace.Result[i].Result == null)
-                    {
-                        string nethPath = Path.Combine(pathBase, $"{i}_empty.txt");
-                        File.WriteAllText(nethPath, "empty");    
-                    }
-                    else
-                    {
-                        text = _serializer.Serialize(nethTrace.Result[i].Result, true);
-                        string nethPath = Path.Combine(pathBase, $"{i}.txt");
-                        File.WriteAllText(nethPath, text);
-                    }
-                }
+                return;
             }
-            catch (Exception e)
+
+            for (int i = 0; i < blockTraceItems.Result.Length; i++)
             {
-                Console.WriteLine(e);
-                throw;
+                if (blockTraceItems.Result[i].Result == null)
+                {
+                    string nethPath = Path.Combine(pathBase, $"{i}_empty.txt");
+                    File.WriteAllText(nethPath, "empty");
+                }
+                else
+                {
+                    string singleTxJson = _serializer.Serialize(blockTraceItems.Result[i].Result, true);
+                    string txPath = Path.Combine(pathBase, $"{i}.txt");
+                    File.WriteAllText(txPath, singleTxJson);
+                }
             }
         }
 
-        private static async Task DownloadBaseOnTheFolderData()
+        private static async Task TraceBlockByHash(BasicJsonRpcClient localhostClient, string hash, string pathBase)
         {
-            var transactionHashes = Directory.GetFiles(@"D:\tx_traces\nethermind").Select(Path.GetFileNameWithoutExtension).ToArray();
-            for (int i = 0; i < transactionHashes.Length; i++)
+            string response = await localhostClient.Post("debug_traceBlockByHash", hash);
+            var blockTraceItems = _serializer.Deserialize<JsonRpcResponse<BlockTraceItem[]>>(response);
+            if (blockTraceItems.Error != null)
             {
-                string txHash = transactionHashes[i];
-                Console.WriteLine($"comparing {txHash} ({i} of {transactionHashes.Length})");
-                try
-                {
-                    TransactionTrace gethTrace = await DownloadGethTrace(txHash);
-                    TransactionTrace nethTrace = await DownloadNethTrace(txHash);
-                    _comparer.Compare(gethTrace, nethTrace);
-                }
-                catch (Exception e)
-                {
-                    Console.WriteLine($"  failed at {i} with {e}");
-                }
+                return;
             }
 
-            Console.WriteLine("Complete");
-            Console.ReadLine();
+            for (int i = 0; i < blockTraceItems.Result.Length; i++)
+            {
+                if (blockTraceItems.Result[i].Result == null)
+                {
+                    string nethPath = Path.Combine(pathBase, $"{i}_empty.txt");
+                    File.WriteAllText(nethPath, "empty");
+                }
+                else
+                {
+                    string singleTxJson = _serializer.Serialize(blockTraceItems.Result[i].Result, true);
+                    string txPath = Path.Combine(pathBase, $"{i}.txt");
+                    File.WriteAllText(txPath, singleTxJson);
+                }
+            }
         }
 
-        private static async Task<TransactionTrace> DownloadNethTrace(string txHash)
+        private static async Task<TransactionTrace> TraceTx(string uri, string pathBase, string txHash)
         {
-            string nethPath = "D:\\tx_traces\\neth_" + txHash + ".txt";
+            string nethPath = Path.Combine(pathBase, $"{txHash}.txt");
             string text;
 
-            JsonRpcResponse<JsonRpc.DataModel.TransactionTrace> nethTrace;
+            JsonRpcResponse<TransactionTrace> nethTrace;
             if (!File.Exists(nethPath))
             {
-                HttpRequestMessage msg = new HttpRequestMessage(HttpMethod.Post, "http://127.0.0.1:8345");
+                HttpRequestMessage msg = new HttpRequestMessage(HttpMethod.Post, uri);
                 msg.Content = new StringContent($"{{\"jsonrpc\":\"2.0\",\"method\":\"debug_traceTransaction\",\"params\":[\"{txHash}\"],\"id\":42}}");
                 msg.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
                 HttpResponseMessage rsp = await _client.SendAsync(msg);
@@ -122,30 +157,56 @@ namespace Nethermind.DiagTools
             return nethTrace.Result;
         }
 
-        private static async Task<TransactionTrace> DownloadGethTrace(string txHash)
+        private static async Task<TransactionTrace> TraceTx(string uri, string pathBase, int blockNumber, int txIndex)
         {
-            string gethPath = "D:\\tx_traces\\geth_" + txHash + ".txt";
+            string nethPath = Path.Combine(pathBase, $"{txIndex}.txt");
             string text;
 
-            JsonRpcResponse<JsonRpc.DataModel.TransactionTrace> gethTrace;
-            if (!File.Exists(gethPath))
+            JsonRpcResponse<TransactionTrace> trace;
+            if (!File.Exists(nethPath))
             {
-                HttpRequestMessage msg = new HttpRequestMessage(HttpMethod.Post, "http://94.237.53.197:8545");
-                msg.Content = new StringContent($"{{\"jsonrpc\":\"2.0\",\"method\":\"debug_traceTransaction\",\"params\":[\"{txHash}\"],\"id\":42}}");
+                HttpRequestMessage msg = new HttpRequestMessage(HttpMethod.Post, uri);
+                msg.Content = new StringContent($"{{\"jsonrpc\":\"2.0\",\"method\":\"debug_traceTransactionByBlockAndIndex\",\"params\":[\"{string.Format("0x{0:x}", blockNumber)}\", \"{txIndex}\"],\"id\":42}}");
                 msg.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
                 HttpResponseMessage rsp = await _client.SendAsync(msg);
                 text = await rsp.Content.ReadAsStringAsync();
-                gethTrace = _serializer.Deserialize<JsonRpcResponse<TransactionTrace>>(text);
-                text = _serializer.Serialize(gethTrace, true);
-                File.WriteAllText(gethPath, text);
+                trace = _serializer.Deserialize<JsonRpcResponse<TransactionTrace>>(text);
+                text = _serializer.Serialize(trace, true);
+                File.WriteAllText(nethPath, text);
             }
             else
             {
-                text = File.ReadAllText(gethPath);
-                gethTrace = _serializer.Deserialize<JsonRpcResponse<TransactionTrace>>(text);
+                text = File.ReadAllText(nethPath);
+                trace = _serializer.Deserialize<JsonRpcResponse<TransactionTrace>>(text);
             }
 
-            return gethTrace.Result;
+            return trace.Result;
+        }
+
+        private static async Task<TransactionTrace> TraceTxByBlockhashAndIndex(Uri uri, string pathBase, int blockNumber, int txIndex)
+        {
+            string nethPath = Path.Combine(pathBase, $"{txIndex}.txt");
+            string text;
+
+            JsonRpcResponse<TransactionTrace> trace;
+            if (!File.Exists(nethPath))
+            {
+                HttpRequestMessage msg = new HttpRequestMessage(HttpMethod.Post, uri);
+                msg.Content = new StringContent($"{{\"jsonrpc\":\"2.0\",\"method\":\"debug_traceTransactionByBlockhashAndIndex\",\"params\":[\"0x27ba6cf216ae4f28c5f15c064033f304d43d9ae5be5e0d12b22539f04a9328f0\", \"{txIndex}\"],\"id\":42}}");
+                msg.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+                HttpResponseMessage rsp = await _client.SendAsync(msg);
+                text = await rsp.Content.ReadAsStringAsync();
+                trace = _serializer.Deserialize<JsonRpcResponse<TransactionTrace>>(text);
+                text = _serializer.Serialize(trace, true);
+                File.WriteAllText(nethPath, text);
+            }
+            else
+            {
+                text = File.ReadAllText(nethPath);
+                trace = _serializer.Deserialize<JsonRpcResponse<TransactionTrace>>(text);
+            }
+
+            return trace.Result;
         }
     }
 }

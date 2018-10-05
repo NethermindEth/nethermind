@@ -70,7 +70,7 @@ namespace Nethermind.Store.Test
 
         private StorageProvider BuildStorageProvider()
         {
-            StorageProvider provider = new StorageProvider(new MemDbProvider(LogManager), _stateProvider, LogManager);
+            StorageProvider provider = new StorageProvider(new StateDb(), _stateProvider, LogManager);
             return provider;
         }
 
