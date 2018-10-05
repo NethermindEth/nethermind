@@ -293,10 +293,10 @@ namespace Nethermind.Blockchain
             {
                 if (_logger.IsError)
                 {
-                    _logger.Error($"Processed block is not valid {processedBlock.ToString(Block.Format.Short)}");
+                    _logger.Error($"Processed block is not valid {suggestedBlock.ToString(Block.Format.HashAndNumber)}");
                 }
 
-                throw new InvalidBlockException($"{processedBlock}");
+                throw new InvalidBlockException($"{suggestedBlock}");
             }
 
             if (_logger.IsTrace)

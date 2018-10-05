@@ -59,6 +59,11 @@ namespace Nethermind.JsonRpc
                 {
                     return ExecuteRequest(rpcRequest);
                 }
+                catch (TargetInvocationException ex)
+                {
+                    _logger.Error($"Error during method execution, request: {rpcRequest}", ex.InnerException);
+                    return GetErrorResponse(ErrorType.InternalError, "Internal error", rpcRequest?.Id, rpcRequest?.Method);
+                }
                 catch (Exception ex)
                 {
                     _logger.Error($"Error during method execution, request: {rpcRequest}", ex);
@@ -196,8 +201,7 @@ namespace Nethermind.JsonRpc
         
         private JsonRpcResponse GetErrorResponse(ErrorType errorType, string message, string id, string methodName)
         {
-            _logger.Error($"Error during processing the request, method: {methodName ?? "none"}, id: {id ?? "none"}, errorType: {errorType}, message: {message}");
-
+            _logger.Debug($"Sending error response, method: {methodName ?? "none"}, id: {id ?? "none"}, errorType: {errorType}, message: {message}");
             var response = new JsonRpcResponse
             {
                 Jsonrpc = _jsonRpcConfig.JsonRpcVersion,
@@ -208,6 +212,7 @@ namespace Nethermind.JsonRpc
                     Message = message
                 }
             };
+            
             return response;
         }
 

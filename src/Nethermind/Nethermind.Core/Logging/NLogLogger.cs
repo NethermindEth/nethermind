@@ -36,8 +36,14 @@ namespace Nethermind.Core.Logging
 
         public NLogLogger(string fileName, string logDirectory = null, string loggerName = null)
         {
-            var name = string.IsNullOrEmpty(loggerName) ? StackTraceUsageUtils.GetClassFullName().Replace("Nethermind.", string.Empty) : loggerName;
-            Logger = NLog.LogManager.GetLogger(name);
+            if (string.IsNullOrEmpty(loggerName))
+            {
+                string fullClassName = StackTraceUsageUtils.GetClassFullName();
+                loggerName = fullClassName.Substring(fullClassName.LastIndexOf('.') + 1);
+                // loggerName = StackTraceUsageUtils.GetClassFullName().Replace("Nethermind.", string.Empty) : loggerName;
+            }
+            
+            Logger = NLog.LogManager.GetLogger(loggerName);
 
             var logsDir = string.IsNullOrEmpty(logDirectory) ? Path.Combine(PathUtils.GetExecutingDirectory(), "logs") : logDirectory;
             if (!Directory.Exists(logsDir))

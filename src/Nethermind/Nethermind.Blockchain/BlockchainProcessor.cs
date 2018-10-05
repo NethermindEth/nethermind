@@ -386,7 +386,7 @@ namespace Nethermind.Blockchain
         
         public BlockTrace TraceBlock(Keccak blockHash)
         {
-            Block block = _blockTree.FindBlock(blockHash, true);
+            Block block = _blockTree.FindBlock(blockHash, false);
             return TraceBlock(block);
         }
 
@@ -401,6 +401,12 @@ namespace Nethermind.Blockchain
             if (block == null)
             {
                 throw new InvalidOperationException("Only canonical, historical blocks supported");
+            }
+
+            Block parent = _blockTree.FindParent(block);
+            if (!_blockTree.IsMainChain(parent.Hash))
+            {
+                throw new InvalidOperationException("Cannot trace orphaned blocks");
             }
             
             BlockTraceListener listener = new BlockTraceListener(block);
