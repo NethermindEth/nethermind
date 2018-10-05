@@ -40,7 +40,7 @@ namespace Nethermind.Blockchain
         private readonly LruCache<BigInteger, ChainLevelInfo> _blockInfoCache =
             new LruCache<BigInteger, ChainLevelInfo>(64);
 
-        private const int MaxQueueSize = 3_000_000;
+        private const int MaxQueueSize = 10_000_000;
 
         public const int DbLoadBatchSize = 1000;
 
