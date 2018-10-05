@@ -25,6 +25,8 @@ namespace Nethermind.Evm
 {
     public class TransactionTrace
     {
+        public List<Dictionary<string, string>> StoragesByDepth { get; } = new List<Dictionary<string, string>>();
+
         public TransactionTrace()
         {
             Entries = new List<TransactionTraceEntry>();
@@ -37,10 +39,10 @@ namespace Nethermind.Evm
 
         public bool Failed { get; set; }
 
-        public byte[] ReturnValue { get; set; } // TODO: not implemented
-
+        public string ReturnValue { get; set; } // TODO: not implemented
+        
         public List<TransactionTraceEntry> Entries { get; set; }
 
-        public static TransactionTrace QuickFail { get; } = new TransactionTrace {Failed = true, ReturnValue = Bytes.Empty};
+        public static TransactionTrace QuickFail { get; } = new TransactionTrace {Failed = true, ReturnValue = string.Empty};
     }
 }

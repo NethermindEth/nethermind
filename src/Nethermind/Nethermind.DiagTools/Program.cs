@@ -34,30 +34,38 @@ namespace Nethermind.DiagTools
         private static TxTraceCompare _comparer = new TxTraceCompare();
         private static HttpClient _client = new HttpClient();
         private static IJsonSerializer _serializer = new UnforgivingJsonSerializer();
-        
+
         public static async Task Main(params string[] args)
         {
 //            int blockNumber = 6108276;
 //            string hash = "?";
-            
+
             int blockNumber = 226522;
             string hash = "0x63de8ba970ca56da5f12d5c4ff826501ab4e945f36338ae20be42f9e42e13b7a";
 //            Console.WriteLine("Block Number:");
             // int blockNumber = int.Parse(Console.ReadLine());
-            
+
             string nethPathBase = $"D:\\block_traces\\{blockNumber}\\neth\\";
             if (!Directory.Exists(nethPathBase)) Directory.CreateDirectory(nethPathBase);
-            
+
             string gethPathBase = $"D:\\block_traces\\{blockNumber}\\geth\\";
             if (!Directory.Exists(gethPathBase)) Directory.CreateDirectory(gethPathBase);
-            
+
             BasicJsonRpcClient localhostClient = new BasicJsonRpcClient(KnownRpcUris.Localhost, _serializer, NullLogManager.Instance);
 //            await TraceBlock(localhostClient, blockNumber, nethPathBase);
             await TraceBlockByHash(localhostClient, hash, nethPathBase);
-            
+
             BasicJsonRpcClient gethClient = new BasicJsonRpcClient(KnownRpcUris.GethVm4, _serializer, NullLogManager.Instance);
 //            await TraceBlock(gethClient, blockNumber, gethPathBase);
             await TraceBlockByHash(gethClient, hash, gethPathBase);
+
+            string nethTx = File.ReadAllText(Path.Combine(nethPathBase, "0.txt"));
+            string gethTx = File.ReadAllText(Path.Combine(gethPathBase, "0.txt"));
+
+            TransactionTrace gethTrace = _serializer.Deserialize<TransactionTrace>(gethTx);
+            TransactionTrace nethTrace = _serializer.Deserialize<TransactionTrace>(nethTx);
+            
+            _comparer.Compare(gethTrace, nethTrace);
 
 //            try
 //            {
@@ -68,6 +76,9 @@ namespace Nethermind.DiagTools
 //                Console.WriteLine(e);
 //                throw;
 //            }
+
+            Console.WriteLine("Press any key to exit.");
+            Console.ReadKey();
         }
 
         private static async Task TraceBlock(BasicJsonRpcClient localhostClient, int blockNumber, string pathBase)
@@ -78,7 +89,7 @@ namespace Nethermind.DiagTools
             {
                 return;
             }
-            
+
             for (int i = 0; i < blockTraceItems.Result.Length; i++)
             {
                 if (blockTraceItems.Result[i].Result == null)
@@ -94,7 +105,7 @@ namespace Nethermind.DiagTools
                 }
             }
         }
-        
+
         private static async Task TraceBlockByHash(BasicJsonRpcClient localhostClient, string hash, string pathBase)
         {
             string response = await localhostClient.Post("debug_traceBlockByHash", hash);
@@ -103,7 +114,7 @@ namespace Nethermind.DiagTools
             {
                 return;
             }
-            
+
             for (int i = 0; i < blockTraceItems.Result.Length; i++)
             {
                 if (blockTraceItems.Result[i].Result == null)
@@ -171,7 +182,7 @@ namespace Nethermind.DiagTools
 
             return trace.Result;
         }
-        
+
         private static async Task<TransactionTrace> TraceTxByBlockhashAndIndex(Uri uri, string pathBase, int blockNumber, int txIndex)
         {
             string nethPath = Path.Combine(pathBase, $"{txIndex}.txt");

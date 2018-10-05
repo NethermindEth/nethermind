@@ -478,20 +478,38 @@ namespace Nethermind.Evm
                     return;
                 }
 
-                Dictionary<string, string> previousStorage = _traceEntry?.Storage;
+                TransactionTraceEntry previousTraceEntry = _traceEntry;
                 _traceEntry = new TransactionTraceEntry();
-                _traceEntry.Depth = env.CallDepth;
+                _traceEntry.Depth = env.CallDepth + 1; // todo: call depth in geth starts with 1 - is it for trace only or also consensus?
                 _traceEntry.Gas = gasAvailable;
                 _traceEntry.Operation = Enum.GetName(typeof(Instruction), instruction);
                 _traceEntry.Memory = evmState.Memory.GetTrace();
                 _traceEntry.Pc = (long)programCounter;
                 _traceEntry.Stack = GetStackTrace(stack);
-                if (previousStorage != null)
+
+                if (_traceEntry.Depth > (previousTraceEntry?.Depth ?? 0))
                 {
-                    foreach (KeyValuePair<string, string> storageEntry in previousStorage)
+                    _traceEntry.Storage = new Dictionary<string, string>();
+                    _trace.StoragesByDepth.Add(_traceEntry.Storage);
+                }
+                else if (_traceEntry.Depth < (previousTraceEntry?.Depth ?? 0))
+                {
+                    if (previousTraceEntry == null)
                     {
-                        _traceEntry.Storage.Add(storageEntry.Key, storageEntry.Value);
+                        throw new InvalidOperationException("Unexpected missing previous trace when leaving a call.");
                     }
+                    
+                    _trace.StoragesByDepth.Remove(previousTraceEntry.Storage);
+                    _trace.StoragesByDepth[_trace.StoragesByDepth.Count - 1] = _traceEntry.Storage = new Dictionary<string, string>(_trace.StoragesByDepth[_trace.StoragesByDepth.Count - 1]);
+                }
+                else
+                {
+                    if (previousTraceEntry == null)
+                    {
+                        throw new InvalidOperationException("Unexpected missing previous trace on continuation.");
+                    }
+                    
+                    _traceEntry.Storage = new Dictionary<string, string>(previousTraceEntry.Storage);    
                 }
             }
 
@@ -499,6 +517,7 @@ namespace Nethermind.Evm
             {
                 if (_trace != null)
                 {
+                    _traceEntry.UpdateMemorySize(evmState.Memory.Size);
                     _traceEntry.GasCost = _traceEntry.Gas - gasAvailable;
                     _trace.Entries.Add(_traceEntry);
                 }
@@ -2138,13 +2157,16 @@ namespace Nethermind.Evm
                             break;
                         }
 
+                        EndInstructionTrace();
+                        // todo: === below is a new call - refactor / move
+                        
                         long callGas = spec.IsEip150Enabled ? gasAvailable - gasAvailable / 64L : gasAvailable;
                         if (!UpdateGas(callGas, ref gasAvailable))
                         {
                             EndInstructionTraceError(OutOfGasErrorText);
                             return CallResult.OutOfGasException;
                         }
-
+                        
                         Address contractAddress = instruction == Instruction.CREATE
                             ? Address.OfContract(env.ExecutingAccount, _state.GetNonce(env.ExecutingAccount))
                             : Address.OfContract(env.ExecutingAccount, salt, initCode);
@@ -2195,7 +2217,6 @@ namespace Nethermind.Evm
                             false);
 
                         UpdateCurrentState();
-                        EndInstructionTrace();
                         return new CallResult(callState);
                     }
                     case Instruction.RETURN:
