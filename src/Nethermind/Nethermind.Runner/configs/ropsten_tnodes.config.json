@@ -2,7 +2,6 @@
   {
     "ConfigModule": "InitConfig",
     "ConfigItems": {
-      "TransactionTracingEnabled": true,
       "JsonRpcEnabled": false,
       "NetworkEnabled": true,
       "DiscoveryEnabled": false,

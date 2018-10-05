@@ -22,7 +22,6 @@ namespace Nethermind.Runner.Config
 {
     public interface IInitConfig : IConfig
     {
-        bool TransactionTracingEnabled { get; set; }
         string BaseTracingPath { get; set; }
         bool JsonRpcEnabled { get; set; }
         bool DiscoveryEnabled { get; set; }
