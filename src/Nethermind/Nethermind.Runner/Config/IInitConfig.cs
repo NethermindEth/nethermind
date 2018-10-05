@@ -22,7 +22,6 @@ namespace Nethermind.Runner.Config
 {
     public interface IInitConfig : IConfig
     {
-        string BaseTracingPath { get; set; }
         bool JsonRpcEnabled { get; set; }
         bool DiscoveryEnabled { get; set; }
         bool SynchronizationEnabled { get; set; }
