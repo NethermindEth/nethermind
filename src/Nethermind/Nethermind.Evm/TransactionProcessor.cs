@@ -281,10 +281,11 @@ namespace Nethermind.Evm
 
             block.GasUsed += spentGas;
 
-            if (substate != null)
+            if (substate?.Trace != null)
             {
                 substate.Trace.ReturnValue = substate.Output.ToHexString();
             }
+            
             return (BuildTransactionReceipt(block, statusCode, (statusCode == StatusCode.Success && substate.Logs.Any()) ? substate.Logs.ToArray() : LogEntry.EmptyLogs, recipient), substate?.Trace ?? TransactionTrace.QuickFail);
         }
 
