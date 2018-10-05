@@ -38,13 +38,16 @@
     <Content Update="configs\mainnet_linux.config.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Update="configs\mainnet_windows_discovery.config.json">
+    <Content Update="configs\mainnet_windows.config.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Update="configs\ropsten_linux_vm.config.json">
+    <Content Update="configs\ropsten_linux.config.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Update="configs\ropsten_windows_discovery.config.json">
+    <Content Update="configs\ropsten_windows.config.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Update="configs\ropsten_tnodes.config.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
     <Content Update="configs\runner.config.json">

@@ -22,6 +22,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Text;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
@@ -39,7 +40,7 @@ namespace Nethermind.Config
 
         public void ApplyJsonConfig(string jsonContent)
         {
-            var json = (JArray)JToken.Parse(jsonContent);
+            var json = (JArray) JToken.Parse(jsonContent);
             foreach (var moduleEntry in json)
             {
                 LoadModule(moduleEntry);
@@ -50,9 +51,26 @@ namespace Nethermind.Config
         {
             if (!File.Exists(configFilePath))
             {
-                throw new Exception($"Config file does not exist: {configFilePath}");
+                StringBuilder missingConfigFileMessage = new StringBuilder($"Config file does not exist {configFilePath}");
+                try
+                {
+                    missingConfigFileMessage.AppendLine().AppendLine("Did you mean any of these:");
+                    string[] configFiles = Directory.GetFiles(Path.GetDirectoryName(configFilePath), "*.config.json");
+                    for (int i = 0; i < configFiles.Length; i++)
+                    {
+                        missingConfigFileMessage.AppendLine($"  * {configFiles[i]}");
+                    }
+                }
+                catch (Exception)
+                {
+                    // do nothing - the lines above just give extra info and config is loaded at the beginning so unlikely we have any catastrophic errors here
+                }
+                finally
+                {
+                    throw new Exception(missingConfigFileMessage.ToString());
+                }
             }
-            
+
             ApplyJsonConfig(File.ReadAllText(configFilePath));
         }
 
@@ -61,15 +79,15 @@ namespace Nethermind.Config
             var moduleType = typeof(T);
             if (_instances.ContainsKey(moduleType))
             {
-                return (T)_instances[moduleType];
+                return (T) _instances[moduleType];
             }
-            
+
             throw new Exception($"Config type: {moduleType.Name} is not available in ConfigModule.");
         }
 
         private void Initialize()
         {
-            var assemblies = AppDomain.CurrentDomain.GetAssemblies().Where(a => a.FullName.StartsWith("Nethermind")).ToArray(); 
+            var assemblies = AppDomain.CurrentDomain.GetAssemblies().Where(a => a.FullName.StartsWith("Nethermind")).ToArray();
             var type = typeof(IConfig);
             var interfaces = assemblies.SelectMany(x => x.GetTypes()).Where(x => type.IsAssignableFrom(x) && x.IsInterface).ToArray();
             for (int i = 0; i < interfaces.Length; i++)
@@ -78,7 +96,7 @@ namespace Nethermind.Config
                 if (module != null)
                 {
                     _instances[interfaces[i]] = Activator.CreateInstance(module);
-                    _properties[interfaces[i]] = module.GetProperties(BindingFlags.Public | BindingFlags.Instance).ToArray();    
+                    _properties[interfaces[i]] = module.GetProperties(BindingFlags.Public | BindingFlags.Instance).ToArray();
                 }
             }
         }
@@ -140,7 +158,7 @@ namespace Nethermind.Config
             if (valueType.IsArray || (valueType.IsGenericType && valueType.GetGenericTypeDefinition() == typeof(IEnumerable<>)))
             {
                 //supports Arrays, e.g int[] and generic IEnumerable<T>, IList<T>
-                var itemType = valueType.IsGenericType ? valueType.GetGenericArguments()[0]: valueType.GetElementType();
+                var itemType = valueType.IsGenericType ? valueType.GetGenericArguments()[0] : valueType.GetElementType();
 
                 //In case of collection of objects (more complex config models) we parse entire collection 
                 if (itemType.IsClass && typeof(IConfigModel).IsAssignableFrom(itemType))
@@ -151,9 +169,9 @@ namespace Nethermind.Config
                 else
                 {
                     var valueItems = item.Value.Split(',').ToArray();
-                    var collection = valueType.IsGenericType 
-                        ? (IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(itemType)) 
-                        : (IList)Activator.CreateInstance(valueType, valueItems.Length);
+                    var collection = valueType.IsGenericType
+                        ? (IList) Activator.CreateInstance(typeof(List<>).MakeGenericType(itemType))
+                        : (IList) Activator.CreateInstance(valueType, valueItems.Length);
 
                     var i = 0;
                     foreach (var valueItem in valueItems)
@@ -175,9 +193,9 @@ namespace Nethermind.Config
             }
             else
             {
-                value = GetValue(valueType, item.Value, item.Key);    
+                value = GetValue(valueType, item.Value, item.Key);
             }
-            
+
             property.SetValue(configInstance, value);
         }
 
@@ -189,6 +207,7 @@ namespace Nethermind.Config
                 {
                     return enumValue;
                 }
+
                 throw new Exception($"Cannot parse enum value: {itemValue}, type: {valueType.Name}, key: {key}");
             }
 
@@ -201,12 +220,12 @@ namespace Nethermind.Config
             {
                 return true;
             }
-            
+
             if (string.IsNullOrEmpty(value1) || string.IsNullOrEmpty(value2))
             {
                 return false;
             }
-            
+
             return string.Compare(value1.Trim(), value2.Trim(), StringComparison.CurrentCultureIgnoreCase) == 0;
         }
     }
