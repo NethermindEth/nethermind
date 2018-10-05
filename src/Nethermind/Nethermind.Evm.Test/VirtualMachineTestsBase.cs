@@ -43,13 +43,13 @@ namespace Nethermind.Evm.Test
         protected internal static Address Sender { get; } = TestObject.AddressA;
         protected internal static Address Recipient { get; } = TestObject.AddressB;
 
-        protected virtual UInt256 BlockNumber => 10000;
+        protected virtual UInt256 BlockNumber => MainNetSpecProvider.ByzantiumBlockNumber;
 
         protected IReleaseSpec Spec => SpecProvider.GetSpec(BlockNumber);
 
         public VirtualMachineTestsBase()
         {
-            SpecProvider = RopstenSpecProvider.Instance;
+            SpecProvider = MainNetSpecProvider.Instance;
             ILogManager logger = NullLogManager.Instance;
             IDb codeDb = new StateDb();
             _stateDb = new StateDb();

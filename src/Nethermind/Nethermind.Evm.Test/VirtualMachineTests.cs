@@ -52,7 +52,7 @@ namespace Nethermind.Evm.Test
             
             Assert.AreEqual(5, trace.Entries.Count, "number of entries");
             TransactionTraceEntry entry = trace.Entries[1];
-            Assert.AreEqual(0, entry.Depth, nameof(entry.Depth));
+            Assert.AreEqual(1, entry.Depth, nameof(entry.Depth));
             Assert.AreEqual(79000 - GasCostOf.VeryLow, entry.Gas, nameof(entry.Gas));
             Assert.AreEqual(GasCostOf.VeryLow, entry.GasCost, nameof(entry.GasCost));
             Assert.AreEqual(0, entry.Memory.Count, nameof(entry.Memory));
@@ -145,7 +145,7 @@ namespace Nethermind.Evm.Test
             
             Assert.AreEqual(5, trace.Entries.Count, "number of entries");
             TransactionTraceEntry entry = trace.Entries[1];
-            Assert.AreEqual(0, entry.Depth, nameof(entry.Depth));
+            Assert.AreEqual(1, entry.Depth, nameof(entry.Depth));
             Assert.AreEqual(79000 - GasCostOf.VeryLow, entry.Gas, nameof(entry.Gas));
             Assert.AreEqual(GasCostOf.VeryLow, entry.GasCost, nameof(entry.GasCost));
             Assert.AreEqual(0, entry.Memory.Count, nameof(entry.Memory));
