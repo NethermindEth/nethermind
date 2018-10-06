@@ -30,12 +30,12 @@ namespace Nethermind.Core.Test.Crypto
     [TestFixture]
     public class EthereumSignerTests
     {   
-        [TestCase(0)]
-        [TestCase(1)]
-        [TestCase(1000000)]
-        [TestCase(1700000)]
-        [TestCase(2000000)]
-        public void Signature_test_ropsten(UInt256 blockNumber)
+        [TestCase(0U)]
+        [TestCase(1U)]
+        [TestCase(1000000U)]
+        [TestCase(1700000U)]
+        [TestCase(2000000U)]
+        public void Signature_test_ropsten(uint blockNumber)
         {
             EthereumSigner signer = new EthereumSigner(RopstenSpecProvider.Instance, NullLogManager.Instance);
             PrivateKey key = Build.A.PrivateKey.TestObject;
@@ -56,12 +56,12 @@ namespace Nethermind.Core.Test.Crypto
             Assert.AreEqual(new Address("0x874b54a8bd152966d63f706bae1ffeb0411921e5"), from, "from");
         }
         
-        [TestCase(0)]
-        [TestCase(1)]
-        [TestCase(1000000)]
-        [TestCase(1700000)]
-        [TestCase(2000000)]
-        public void Signature_test_olympic(UInt256 blockNumber)
+        [TestCase(0U)]
+        [TestCase(1U)]
+        [TestCase(1000000U)]
+        [TestCase(1700000U)]
+        [TestCase(2000000U)]
+        public void Signature_test_olympic(uint blockNumber)
         {
             EthereumSigner signer = new EthereumSigner(OlympicSpecProvider.Instance, NullLogManager.Instance);
             PrivateKey key = Build.A.PrivateKey.TestObject;

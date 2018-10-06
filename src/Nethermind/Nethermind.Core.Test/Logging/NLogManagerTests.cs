@@ -25,11 +25,20 @@ namespace Nethermind.Core.Test.Logging
     public class NLogManagerTests
     {
         [Test]
+        [Ignore("Only class namenow")]
         public void Logger_name_is_set_to_full_class_name()
         {
             NLogManager manager = new NLogManager("test", null);
             NLogLogger logger = (NLogLogger)manager.GetClassLogger();
             Assert.AreEqual(GetType().FullName.Replace("Nethermind.", string.Empty), logger.Logger.Name);
+        }
+        
+        [Test]
+        public void Logger_name_is_set_to_class_name()
+        {
+            NLogManager manager = new NLogManager("test", null);
+            NLogLogger logger = (NLogLogger)manager.GetClassLogger();
+            Assert.AreEqual(GetType().Name, logger.Logger.Name);
         }
     }
 }
