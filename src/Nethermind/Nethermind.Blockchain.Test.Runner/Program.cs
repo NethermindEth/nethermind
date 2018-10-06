@@ -87,8 +87,10 @@ namespace Nethermind.Blockchain.Test.Runner
 
         private static async Task Run(ITestInRunner bugHunter, string testWildcard)
         {
+            await Run(bugHunter, "stArgsZeroOneBalance", testWildcard);
             await Run(bugHunter, "stAttackTest", testWildcard);
             await Run(bugHunter, "stBadOpcode", testWildcard);
+            await Run(bugHunter, "stBugs", testWildcard);
             await Run(bugHunter, "stCallCodes", testWildcard);
             await Run(bugHunter, "stCallCreateCallCodeTest", testWildcard);
             await Run(bugHunter, "stCallDelegateCodesCallCodeHomestead", testWildcard);
@@ -96,6 +98,7 @@ namespace Nethermind.Blockchain.Test.Runner
             await Run(bugHunter, "stChangedEIP150", testWildcard);
             await Run(bugHunter, "stCodeCopyTest", testWildcard);
             await Run(bugHunter, "stCodeSizeLimit", testWildcard);
+            await Run(bugHunter, "stCreate2", testWildcard);
             await Run(bugHunter, "stCreateTest", testWildcard);
             await Run(bugHunter, "stDelegatecallTestHomestead", testWildcard);
             await Run(bugHunter, "stEIP150singleCodeGasPrices", testWildcard);
@@ -118,6 +121,7 @@ namespace Nethermind.Blockchain.Test.Runner
             await Run(bugHunter, "stRefundTest", testWildcard);
             await Run(bugHunter, "stReturnDataTest", testWildcard);
             await Run(bugHunter, "stRevertTest", testWildcard);
+//            await Run(bugHunter, "stShift", testWildcard);
             await Run(bugHunter, "stSolidityTest", testWildcard);
             await Run(bugHunter, "stSpecialTest", testWildcard);
             await Run(bugHunter, "stStackTests", testWildcard);
