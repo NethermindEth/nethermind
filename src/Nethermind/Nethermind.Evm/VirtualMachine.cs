@@ -839,7 +839,8 @@ namespace Nethermind.Evm
                         // TODO: can calculate in place...
                         UInt256 b = PopUInt256(bytesOnStack);
                         UInt256 a = PopUInt256(bytesOnStack);
-                        PushUInt256(a + b, bytesOnStack);
+                        UInt256.Add(out UInt256 c, ref a, ref b, false);
+                        PushUInt256(c, bytesOnStack);
                         
                         break;
                     }
