@@ -204,13 +204,13 @@ namespace Nethermind.Runner.Runners
                 _logger.Info($"DB {propertyInfo.Name}: {propertyInfo.GetValue(dbConfig)}");    
             }
 
-//            _dbProvider = new RocksDbProvider(_dbBasePath, dbConfig);
+            _dbProvider = new RocksDbProvider(_dbBasePath, dbConfig);
             
 //            IDbProvider debugRecorder = new RocksDbProvider(Path.Combine(_dbBasePath, "debug"), dbConfig);
 //            _dbProvider = new RpcDbProvider(_jsonSerializer, new BasicJsonRpcClient(KnownRpcUris.NethVm1, _jsonSerializer, _logManager), _logManager, debugRecorder);
             
-            IDbProvider debugReader = new ReadOnlyDbProvider(new RocksDbProvider(Path.Combine(_dbBasePath, "debug"), dbConfig));
-            _dbProvider = debugReader;
+//            IDbProvider debugReader = new ReadOnlyDbProvider(new RocksDbProvider(Path.Combine(_dbBasePath, "debug"), dbConfig));
+//            _dbProvider = debugReader;
             
             var transactionStore = new TransactionStore(_dbProvider.ReceiptsDb, _dbProvider.TxDb, specProvider);
             
