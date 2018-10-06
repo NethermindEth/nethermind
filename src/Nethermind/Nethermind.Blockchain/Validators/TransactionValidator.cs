@@ -22,13 +22,10 @@ using Nethermind.Evm;
 
 namespace Nethermind.Blockchain.Validators
 {
-    // TODO: this will need some work to validate depending on the block number
     public class TransactionValidator : ITransactionValidator
     {
-        private readonly ISignatureValidator _signatureValidator;
-
-        // TODO: this will be calculated twice, refactor
         private readonly IntrinsicGasCalculator _intrinsicGasCalculator;
+        private readonly ISignatureValidator _signatureValidator;
 
         public TransactionValidator(ISignatureValidator signatureValidator)
         {
@@ -36,18 +33,28 @@ namespace Nethermind.Blockchain.Validators
             _intrinsicGasCalculator = new IntrinsicGasCalculator();
         }
 
+        /* Full and orrect validation is only possible in the context of a specific block
+           as we cannot generalize correctness of the transaction without knowing the EIPs implemented
+           and the world state (account nonce in particular ).
+           Even without protocol change the tx can become invalid if another tx
+           from the same account with the same nonce got included on the chain.
+           As such we can decide whether tx is well formed but we also have to validate nonce
+           just before the execution of the block / tx. */
         public bool IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, bool ignoreSignature = false)
         {
-            return Validator.IsInP256(transaction.Nonce) &&
+            return 
+                   Validator.IsInP256(transaction.Nonce) &&
                    Validator.IsInP256(transaction.GasPrice) &&
                    Validator.IsInP256(transaction.GasLimit) &&
+                   /* This is unnecessarilly calculated twice - at validation and execution times. */
                    transaction.GasLimit >= _intrinsicGasCalculator.Calculate(transaction, releaseSpec) &&
-                   (transaction.To != null || transaction.Init != null) && // TODO: check tests where this is the case and still state changes (is the gas substracted?)
+                   /* if it is a call or a transfer then we require the 'To' field to have a value
+                      while for an init it will be empty */
+                   (transaction.To != null || transaction.Init != null) &&
                    Validator.IsInP256(transaction.Value) &&
-                   // both null: transfer; data not null: message call; init not null: account creation
+                   /* can be a simple transfer, a call, or an init but not both an init and a call */
                    !(transaction.Data != null && transaction.Init != null) &&
                    (ignoreSignature || _signatureValidator.Validate(transaction.Signature, releaseSpec));
-            // TODO: also check if nonce is equal to sending account nonce
         }
     }
 }

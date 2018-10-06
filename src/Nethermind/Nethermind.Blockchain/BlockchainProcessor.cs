@@ -403,12 +403,15 @@ namespace Nethermind.Blockchain
                 throw new InvalidOperationException("Only canonical, historical blocks supported");
             }
 
-            Block parent = _blockTree.FindParent(block);
-            if (!_blockTree.IsMainChain(parent.Hash))
+            if (block.Number != 0)
             {
-                throw new InvalidOperationException("Cannot trace orphaned blocks");
+                Block parent = _blockTree.FindParent(block);
+                if (!_blockTree.IsMainChain(parent.Hash))
+                {
+                    throw new InvalidOperationException("Cannot trace orphaned blocks");
+                }
             }
-            
+
             BlockTraceListener listener = new BlockTraceListener(block);
             Process(block, false, true, listener);
             return listener.BlockTrace;

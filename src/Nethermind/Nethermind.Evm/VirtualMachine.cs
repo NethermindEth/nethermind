@@ -242,6 +242,22 @@ namespace Nethermind.Evm
                             _returnDataBuffer = callResult.Output;
                         }
 
+                        if (previousStateSucceeded)
+                        {
+                            currentState.Refund += previousState.Refund;
+
+                            foreach (Address address in previousState.DestroyList)
+                            {
+                                currentState.DestroyList.Add(address);
+                            }
+
+                            for (int i = 0; i < previousState.Logs.Count; i++)
+                            {
+                                LogEntry logEntry = previousState.Logs[i];
+                                currentState.Logs.Add(logEntry);
+                            }
+                        }
+                        
                         if (_logger.IsTrace)
                         {
                             _logger.Trace($"END {previousState.ExecutionType} AT DEPTH {previousState.Env.CallDepth} (RESULT {(previousCallResult ?? Bytes.Empty).ToHexString(true)}) RETURNS ({previousCallOutputDestination} : {previousCallOutput.ToHexString(true)})");
@@ -260,22 +276,6 @@ namespace Nethermind.Evm
                         previousCallOutput = callResult.Output.SliceWithZeroPadding(0, Math.Min(callResult.Output.Length, (int)previousState.OutputLength));
                         previousCallOutputDestination = (ulong)previousState.OutputDestination;
                         _returnDataBuffer = callResult.Output;
-                    }
-
-                    if (previousStateSucceeded)
-                    {
-                        currentState.Refund += previousState.Refund;
-
-                        foreach (Address address in previousState.DestroyList)
-                        {
-                            currentState.DestroyList.Add(address);
-                        }
-
-                        for (int i = 0; i < previousState.Logs.Count; i++)
-                        {
-                            LogEntry logEntry = previousState.Logs[i];
-                            currentState.Logs.Add(logEntry);
-                        }
                     }
 
                     previousState.Dispose();
@@ -1701,7 +1701,7 @@ namespace Nethermind.Evm
                         if(_trace != null)
                         {
                             storageTraceEntry = new StorageTraceEntry();
-                            storageTraceEntry.Address = storageAddress;
+                            storageTraceEntry.Address = storageAddress.Address.ToString();
                             storageTraceEntry.NewValue = newValue.ToHexString();
                             storageTraceEntry.OldValue = currentValue.ToHexString();
                             storageTraceEntry.Cost = (int)GasCostOf.SReset;

@@ -76,7 +76,7 @@ namespace Nethermind.Evm.Test
         [TearDown]
         public void TearDown()
         {
-            Storage.ClearCaches();
+            Storage.Reset();
             TestState.Reset();
             TestState.StateRoot = _stateRoot;
 

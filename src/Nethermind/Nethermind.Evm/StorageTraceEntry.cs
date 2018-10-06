@@ -16,13 +16,14 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Store;
+using System.Numerics;
 
 namespace Nethermind.Evm
 {
     public class StorageTraceEntry
     {
-        public StorageAddress Address { get; set; }
+        public string Address { get; set; }
+        public BigInteger Index { get; set; }
         public string OldValue { get; set; }
         public string NewValue { get; set; }
         public long Cost { get; set; }

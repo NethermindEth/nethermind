@@ -339,7 +339,14 @@ namespace Ethereum.Test.Base
             await blockchainProcessor.StopAsync(true);
             stopwatch?.Stop();
 
-            RunAssertions(test, blockTree.RetrieveHeadBlock(), storageProvider, stateProvider);
+            List<string> differences = RunAssertions(test, blockTree.RetrieveHeadBlock(), storageProvider, stateProvider);
+            if (differences.Any())
+            {
+                BlockTrace blockTrace = blockchainProcessor.TraceBlock(blockTree.BestSuggested.Hash);
+                _logger.Info(new UnforgivingJsonSerializer().Serialize(blockTrace, true));
+            }
+            
+            Assert.Zero(differences.Count, "differences");
         }
 
         private void InitializeTestState(BlockchainTest test, IStateProvider stateProvider, IStorageProvider storageProvider, ISpecProvider specProvider)
@@ -362,9 +369,15 @@ namespace Ethereum.Test.Base
 
             storageProvider.Commit(specProvider.GenesisSpec);
             stateProvider.Commit(specProvider.GenesisSpec);
+            
+            storageProvider.CommitTrees();
+            stateProvider.CommitTree();
+            
+            storageProvider.Reset();
+            stateProvider.Reset();
         }
 
-        private void RunAssertions(BlockchainTest test, Block headBlock, IStorageProvider storageProvider, IStateProvider stateProvider)
+        private List<string> RunAssertions(BlockchainTest test, Block headBlock, IStorageProvider storageProvider, IStateProvider stateProvider)
         {
             TestBlockHeaderJson testHeaderJson = test.Blocks
                                                      .Where(b => b.BlockHeader != null)
@@ -423,7 +436,6 @@ namespace Ethereum.Test.Base
                 }
             }
 
-
             BigInteger gasUsed = headBlock.Header.GasUsed;
             if ((testHeader?.GasUsed ?? 0) != gasUsed)
             {
@@ -460,7 +472,7 @@ namespace Ethereum.Test.Base
                 _logger.Info(difference);
             }
 
-            Assert.Zero(differences.Count, "differences");
+            return differences;
         }
 
         private static BlockHeader Convert(TestBlockHeaderJson headerJson)

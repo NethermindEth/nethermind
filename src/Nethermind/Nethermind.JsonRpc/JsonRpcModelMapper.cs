@@ -156,8 +156,8 @@ namespace Nethermind.JsonRpc
                     Refund = x.Refund,
                     OldValue= x.OldValue,
                     NewValue = x.NewValue,
-                    Address = x.Address.Address.ToString(),
-                    Key = ((BigInteger)x.Address.Index).ToByteArray().ToHexString(),
+                    Address = x.Address,
+                    Key = ((BigInteger)x.Index).ToByteArray().ToHexString(),
                 }).ToArray()
             };
         }

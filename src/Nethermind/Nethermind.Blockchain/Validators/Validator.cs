@@ -17,6 +17,7 @@
  */
 
 using System.Numerics;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Blockchain.Validators
 {
@@ -28,6 +29,8 @@ namespace Nethermind.Blockchain.Validators
 
         private static readonly BigInteger P5 = BigInteger.Pow(2, 5);
 
+        public static bool IsInP256(UInt256 value) => true;
+        
         public static bool IsInP256(BigInteger value)
         {
             return value >= BigInteger.Zero && value < P256;

@@ -35,8 +35,6 @@ namespace Nethermind.Store
     {
         private const int StartCapacity = 8;
 
-        //private readonly LruCache<Address, Account> _longTermCache = new LruCache<Address, Account>(1024 * 1024); // ~100MB
-
         private readonly Dictionary<Address, Stack<int>> _intraBlockCache = new Dictionary<Address, Stack<int>>();
 
         private readonly HashSet<Address> _committedThisRound = new HashSet<Address>();
@@ -183,6 +181,12 @@ namespace Nethermind.Store
             SetNewBalance(address, balanceChange, releaseSpec, false);
         }
 
+        /// <summary>
+        /// This is a coupling point between storage provider and state provider.
+        /// This is pointing at the architectural change likely required where Storage and State Provider are represented by a single world state class.
+        /// </summary>
+        /// <param name="address"></param>
+        /// <param name="storageRoot"></param>
         public void UpdateStorageRoot(Address address, Keccak storageRoot)
         {
             Account account = GetThroughCache(address);
@@ -580,7 +584,7 @@ namespace Nethermind.Store
         {
             if (_logger.IsTrace)
             {
-                _logger.Trace("  CLEARING STATE PROVIDER CACHES");
+                _logger.Trace("Clearing state provider caches");
             }
 
             _intraBlockCache.Clear();
