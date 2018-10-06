@@ -369,6 +369,12 @@ namespace Ethereum.Test.Base
 
             storageProvider.Commit(specProvider.GenesisSpec);
             stateProvider.Commit(specProvider.GenesisSpec);
+            
+            storageProvider.CommitTrees();
+            stateProvider.CommitTree();
+            
+            storageProvider.Reset();
+            stateProvider.Reset();
         }
 
         private List<string> RunAssertions(BlockchainTest test, Block headBlock, IStorageProvider storageProvider, IStateProvider stateProvider)

@@ -29,9 +29,7 @@ namespace Nethermind.Store
 
         void Set(StorageAddress storageAddress, byte[] newValue);
 
-        Keccak GetRoot(Address address);
-        
-        void ClearCaches(); // TODO: temp while designing DB <-> store interaction
+        void Reset();
 
         void CommitTrees();
     }

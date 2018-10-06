@@ -19,6 +19,7 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
 using NSubstitute;
@@ -160,7 +161,7 @@ namespace Nethermind.Store.Test
             provider.Restore(-1);
             provider.Commit(Frontier.Instance);
 
-            Assert.AreEqual(Keccak.EmptyTreeHash, provider.GetRoot(_address1));
+            Assert.IsTrue(provider.Get(new StorageAddress(_address1, 1)).IsZero());
         }
 
         [Test]
@@ -188,7 +189,7 @@ namespace Nethermind.Store.Test
             provider.Get(new StorageAddress(_address1, 1));
             provider.Commit(Frontier.Instance);
 
-            Assert.AreEqual(Keccak.EmptyTreeHash, provider.GetRoot(_address1));
+            Assert.True(provider.Get(new StorageAddress(_address1, 1)).IsZero());
         }
         
         [Test]
@@ -210,7 +211,7 @@ namespace Nethermind.Store.Test
             
             // revert
             _stateProvider.Reset();
-            storageProvider.ClearCaches();
+            storageProvider.Reset();
             _stateProvider.StateRoot = stateRoot;
             
             byte[] valueAfter = storageProvider.Get(new StorageAddress(_address1, 1));

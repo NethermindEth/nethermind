@@ -146,7 +146,7 @@ namespace Nethermind.Blockchain
             if (branchStateRoot != null && _stateProvider.StateRoot != branchStateRoot)
             {
                 // discarding one of the branches
-                _storageProvider.ClearCaches();
+                _storageProvider.Reset();
                 _stateProvider.Reset();
                 _stateProvider.StateRoot = branchStateRoot;
             }
@@ -168,7 +168,7 @@ namespace Nethermind.Blockchain
 
                     _stateDb.Restore(stateSnapshot);
                     _codeDb.Restore(codeSnapshot);
-                    _storageProvider.ClearCaches();
+                    _storageProvider.Reset();
                     _stateProvider.Reset();
                     _stateProvider.StateRoot = snapshotStateRoot;
 
@@ -195,7 +195,7 @@ namespace Nethermind.Blockchain
 
                 _stateDb.Restore(stateSnapshot);
                 _codeDb.Restore(codeSnapshot);
-                _storageProvider.ClearCaches();
+                _storageProvider.Reset();
                 _stateProvider.Reset();
                 _stateProvider.StateRoot = snapshotStateRoot;
 

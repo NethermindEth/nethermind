@@ -177,7 +177,6 @@ namespace Ethereum.VM.Test
                 _stateProvider.UpdateCode(accountState.Value.Code);
 
                 _stateProvider.CreateAccount(accountState.Key, accountState.Value.Balance);
-                _stateProvider.UpdateStorageRoot(accountState.Key, _storageProvider.GetRoot(accountState.Key));
                 Keccak codeHash = _stateProvider.UpdateCode(accountState.Value.Code);
                 _stateProvider.UpdateCodeHash(accountState.Key, codeHash, Olympic.Instance);
                 for (int i = 0; i < accountState.Value.Nonce; i++)
@@ -188,8 +187,8 @@ namespace Ethereum.VM.Test
 
             EvmState state = new EvmState((long)test.Execution.Gas, environment, ExecutionType.Transaction, false);
 
-            _stateProvider.Commit(Olympic.Instance);
             _storageProvider.Commit(Olympic.Instance);
+            _stateProvider.Commit(Olympic.Instance);
 
             TransactionSubstate substate = machine.Run(state, Olympic.Instance, false);
             if (test.Out == null)

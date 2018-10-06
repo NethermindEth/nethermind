@@ -75,86 +75,45 @@ namespace Nethermind.Evm
             byte[] data = transaction.Data ?? Bytes.Empty;
 
             Address sender = transaction.SenderAddress;
-            if (_logger.IsTrace)
-            {
-                _logger.Trace($"SPEC: {spec.GetType().Name}");
-                _logger.Trace("HASH: " + transaction.Hash);
-                _logger.Trace("IS_CONTRACT_CREATION: " + transaction.IsContractCreation);
-                _logger.Trace("IS_MESSAGE_CALL: " + transaction.IsMessageCall);
-                _logger.Trace("IS_TRANSFER: " + transaction.IsTransfer);
-                _logger.Trace("SENDER: " + sender);
-                _logger.Trace("TO: " + transaction.To);
-                _logger.Trace("GAS LIMIT: " + transaction.GasLimit);
-                _logger.Trace("GAS PRICE: " + transaction.GasPrice);
-                _logger.Trace("VALUE: " + transaction.Value);
-                _logger.Trace("DATA_LENGTH: " + (transaction.Data?.Length ?? 0));
-                _logger.Trace("NONCE: " + transaction.Nonce);
-            }
+            if (_logger.IsTrace) _logger.Trace($"Executing tx {transaction.Hash}");
 
             if (sender == null)
             {
-                if (_logger.IsTrace)
-                {
-                    _logger.Trace($"SENDER_NOT_SPECIFIED");
-                }
-
+                TraceLogInvalidTx(transaction, "SENDER_NOT_SPECIFIED");
                 return (GetNullReceipt(block), TransactionTrace.QuickFail);
             }
 
             long intrinsicGas = _intrinsicGasCalculator.Calculate(transaction, spec);
-            if (_logger.IsTrace)
-            {
-                _logger.Trace("INTRINSIC GAS: " + intrinsicGas);
-            }
+            if (_logger.IsTrace) _logger.Trace($"Intrinsic gas calculated for {transaction.Hash}: " + intrinsicGas);
 
             if (gasLimit < intrinsicGas)
             {
-                if (_logger.IsTrace)
-                {
-                    _logger.Trace($"GAS_LIMIT_BELOW_INTRINSIC_GAS {gasLimit} < {intrinsicGas}");
-                }
-
+                TraceLogInvalidTx(transaction, $"GAS_LIMIT_BELOW_INTRINSIC_GAS {gasLimit} < {intrinsicGas}");
                 return (GetNullReceipt(block), TransactionTrace.QuickFail);
             }
 
             if (gasLimit > block.GasLimit - block.GasUsed)
             {
-                if (_logger.IsTrace)
-                {
-                    _logger.Trace($"BLOCK_GAS_LIMIT_EXCEEDED {gasLimit} > {block.GasLimit} - {block.GasUsed}");
-                }
-
+                TraceLogInvalidTx(transaction, $"BLOCK_GAS_LIMIT_EXCEEDED {gasLimit} > {block.GasLimit} - {block.GasUsed}");
                 return (GetNullReceipt(block), TransactionTrace.QuickFail);
             }
 
             if (!_stateProvider.AccountExists(sender))
             {
-                if (_logger.IsTrace)
-                {
-                    _logger.Trace($"SENDER_ACCOUNT_DOES_NOT_EXIST {sender}");
-                }
-
+                TraceLogInvalidTx(transaction, $"SENDER_ACCOUNT_DOES_NOT_EXIST {sender}");
                 _stateProvider.CreateAccount(sender, 0);
             }
 
             UInt256 senderBalance = _stateProvider.GetBalance(sender);
             if ((ulong) intrinsicGas * gasPrice + value > senderBalance)
             {
-                if (_logger.IsTrace)
-                {
-                    _logger.Trace($"INSUFFICIENT_SENDER_BALANCE: ({sender})b = {senderBalance}");
-                }
-
+                TraceLogInvalidTx(transaction, $"INSUFFICIENT_SENDER_BALANCE: ({sender})_BALANCE = {senderBalance}");
                 return (GetNullReceipt(block), TransactionTrace.QuickFail);
             }
 
             if (transaction.Nonce != _stateProvider.GetNonce(sender))
             {
-                if (_logger.IsTrace)
-                {
-                    _logger.Trace($"WRONG_TRANSACTION_NONCE: {transaction.Nonce} (expected {_stateProvider.GetNonce(sender)})");
-                }
-
+                TraceLogInvalidTx(transaction, $"WRONG_TRANSACTION_NONCE: {transaction.Nonce} (expected {_stateProvider.GetNonce(sender)})");
                 return (GetNullReceipt(block), TransactionTrace.QuickFail);
             }
 
@@ -165,17 +124,19 @@ namespace Nethermind.Evm
             long unspentGas = gasLimit - intrinsicGas;
             long spentGas = gasLimit;
 
-            if (transaction.IsContractCreation)
-            {
-                Rlp addressBaseRlp = Rlp.Encode(
-                    Rlp.Encode(sender),
-                    Rlp.Encode(_stateProvider.GetNonce(sender) - 1));
-                Keccak addressBaseKeccak = Keccak.Compute(addressBaseRlp);
-                recipient = new Address(addressBaseKeccak);
-            }
-
             int snapshot = _stateProvider.TakeSnapshot();
             int storageSnapshot = _storageProvider.TakeSnapshot();
+            
+            if (transaction.IsContractCreation)
+            {
+                recipient = Address.OfContract(sender, _stateProvider.GetNonce(sender) - 1);
+                // wipe out storage on hash collision
+                if (_stateProvider.AccountExists(recipient))
+                {
+                    _stateProvider.UpdateStorageRoot(recipient, Keccak.EmptyTreeHash);
+                }
+            }
+            
             _stateProvider.SubtractFromBalance(sender, value, spec);
             byte statusCode = StatusCode.Failure;
             TransactionSubstate substate = null;
@@ -209,17 +170,15 @@ namespace Nethermind.Evm
 
                 if (substate.ShouldRevert || substate.IsError)
                 {
-                    if (_logger.IsTrace)
-                    {
-                        _logger.Trace("Restoring state from before transaction");
-                    }
-
+                    if (_logger.IsTrace) _logger.Trace("Restoring state from before transaction");
                     _stateProvider.Restore(snapshot);
                     _storageProvider.Restore(storageSnapshot);
                 }
                 else
                 {
-                    if (transaction.IsContractCreation) // TODO: tks: this can be merged with internal VM calls 
+                    // tks: there is similar code fo contract creation from init and from CREATE
+                    // this may lead to inconsistencies (however it is tested extensively in blockchain tests)
+                    if (transaction.IsContractCreation) 
                     {
                         long codeDepositGasCost = substate.Output.Length * GasCostOf.CodeDeposit;
                         if (spec.IsEip170Enabled && substate.Output.Length > 0x6000)
@@ -242,7 +201,7 @@ namespace Nethermind.Evm
 
                     foreach (Address toBeDestroyed in substate.DestroyList)
                     {
-                        if (_logger.IsTrace) _logger.Trace($"DESTROYING: {toBeDestroyed}");
+                        if (_logger.IsTrace) _logger.Trace($"Destroying account {toBeDestroyed}");
                         _stateProvider.DeleteAccount(toBeDestroyed);
                     }
 
@@ -253,16 +212,12 @@ namespace Nethermind.Evm
             }
             catch (Exception ex) when (ex is EvmException || ex is OverflowException) // TODO: OverflowException? still needed? hope not
             {
-                if (_logger.IsTrace)
-                {
-                    _logger.Trace($"EVM EXCEPTION: {ex.GetType().Name}");
-                }
-
+                if (_logger.IsTrace) _logger.Trace($"EVM EXCEPTION: {ex.GetType().Name}");
                 _stateProvider.Restore(snapshot);
                 _storageProvider.Restore(storageSnapshot);
             }
 
-            if (_logger.IsTrace) _logger.Trace("GAS SPENT: " + spentGas);
+            if (_logger.IsTrace) _logger.Trace("Gas spent: " + spentGas);
 
             if (statusCode == StatusCode.Failure || !(substate?.DestroyList.Contains(block.Beneficiary) ?? false))
             {
@@ -289,6 +244,11 @@ namespace Nethermind.Evm
             return (BuildTransactionReceipt(block, statusCode, (statusCode == StatusCode.Success && substate.Logs.Any()) ? substate.Logs.ToArray() : LogEntry.EmptyLogs, recipient), substate?.Trace ?? TransactionTrace.QuickFail);
         }
 
+        private void TraceLogInvalidTx(Transaction transaction, string reason)
+        {
+            if (_logger.IsTrace) _logger.Trace($"Invalid tx {transaction.Hash} ({reason})");
+        }
+
         private long Refund(long gasLimit, long unspentGas, TransactionSubstate substate, Address sender, UInt256 gasPrice, IReleaseSpec spec)
         {
             long spentGas = gasLimit;
@@ -297,11 +257,7 @@ namespace Nethermind.Evm
                 spentGas -= unspentGas;
                 long refund = substate.ShouldRevert ? 0 : Math.Min(spentGas / 2L, substate.Refund + substate.DestroyList.Count * RefundOf.Destroy);
 
-                if (_logger.IsTrace)
-                {
-                    _logger.Trace("Refunding unused gas of " + unspentGas + " and refund of " + refund);
-                }
-
+                if (_logger.IsTrace) _logger.Trace("Refunding unused gas of " + unspentGas + " and refund of " + refund);
                 _stateProvider.AddToBalance(sender, (ulong) (unspentGas + refund) * gasPrice, spec);
                 spentGas -=  refund;
             }

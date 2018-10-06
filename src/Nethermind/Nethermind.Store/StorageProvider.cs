@@ -30,10 +30,12 @@ namespace Nethermind.Store
     {
         internal const int StartCapacity = 16;
 
-        private readonly Dictionary<StorageAddress, Stack<int>> _cache = new Dictionary<StorageAddress, Stack<int>>();
+        private readonly Dictionary<StorageAddress, Stack<int>> _intraBlockCache = new Dictionary<StorageAddress, Stack<int>>();
         
-        // TODO: this is quick implementation of 1283
-        private readonly Dictionary<StorageAddress, byte[]> _cacheOriginal = new Dictionary<StorageAddress, byte[]>();
+        /// <summary>
+        /// EIP-1283
+        /// </summary>
+        private readonly Dictionary<StorageAddress, byte[]> _originalValues = new Dictionary<StorageAddress, byte[]>();
 
         private readonly HashSet<StorageAddress> _committedThisRound = new HashSet<StorageAddress>();
 
@@ -41,9 +43,7 @@ namespace Nethermind.Store
 
         private readonly ISnapshotableDb _stateDb;
         private readonly IStateProvider _stateProvider;
-
-        //private readonly LruCache<StorageAddress, byte[]> _storageCache = new LruCache<StorageAddress, byte[]>(1024 * 32 * 10); // ~100MB
-
+        
         private readonly Dictionary<Address, StorageTree> _storages = new Dictionary<Address, StorageTree>();
 
         private int _capacity = StartCapacity;
@@ -59,17 +59,17 @@ namespace Nethermind.Store
 
         public byte[] GetOriginal(StorageAddress storageAddress)
         {
-            if (!_cacheOriginal.ContainsKey(storageAddress))
+            if (!_originalValues.ContainsKey(storageAddress))
             {
                 throw new InvalidOperationException("Get original should only be called after get within the same caching round");
             }
             
-            return _cacheOriginal[storageAddress];
+            return _originalValues[storageAddress];
         }
 
         public byte[] Get(StorageAddress storageAddress)
         {
-            return GetThroughCache(storageAddress);
+            return GetCurrentValue(storageAddress);
         }
 
         public void Set(StorageAddress storageAddress, byte[] newValue)
@@ -77,7 +77,7 @@ namespace Nethermind.Store
             PushUpdate(storageAddress, newValue);
         }
 
-        public Keccak GetRoot(Address address)
+        private Keccak RecalculateRootHash(Address address)
         {
             StorageTree storageTree = GetOrCreateStorage(address);
             storageTree.UpdateRootHash();
@@ -86,20 +86,13 @@ namespace Nethermind.Store
 
         public int TakeSnapshot()
         {
-            if (_logger.IsTrace)
-            {
-                _logger.Trace($"  STORAGE SNAPSHOT {_currentPosition}");
-            }
-
+            if (_logger.IsTrace) _logger.Trace($"Storage snapshot {_currentPosition}");
             return _currentPosition;
         }
 
         public void Restore(int snapshot)
         {
-            if (_logger.IsTrace)
-            {
-                _logger.Trace($"  RESTORING STORAGE SNAPSHOT {snapshot}");
-            }
+            if (_logger.IsTrace) _logger.Trace($"Restoring storage snapshot {snapshot}");
 
             if (snapshot > _currentPosition)
             {
@@ -116,11 +109,11 @@ namespace Nethermind.Store
             for (int i = 0; i < _currentPosition - snapshot; i++)
             {
                 Change change = _changes[_currentPosition - i];
-                if (_cache[change.StorageAddress].Count == 1)
+                if (_intraBlockCache[change.StorageAddress].Count == 1)
                 {
-                    if (_changes[_cache[change.StorageAddress].Peek()].ChangeType == ChangeType.JustCache)
+                    if (_changes[_intraBlockCache[change.StorageAddress].Peek()].ChangeType == ChangeType.JustCache)
                     {
-                        int actualPosition = _cache[change.StorageAddress].Pop();
+                        int actualPosition = _intraBlockCache[change.StorageAddress].Pop();
                         if (actualPosition != _currentPosition - i)
                         {
                             throw new InvalidOperationException($"Expected actual position {actualPosition} to be equal to {_currentPosition} - {i}");
@@ -132,7 +125,7 @@ namespace Nethermind.Store
                     }
                 }
 
-                int forAssertion = _cache[change.StorageAddress].Pop();
+                int forAssertion = _intraBlockCache[change.StorageAddress].Pop();
                 if (forAssertion != _currentPosition - i)
                 {
                     throw new InvalidOperationException($"Expected checked value {forAssertion} to be equal to {_currentPosition} - {i}");
@@ -140,10 +133,9 @@ namespace Nethermind.Store
 
                 _changes[_currentPosition - i] = null;
 
-                if (_cache[change.StorageAddress].Count == 0)
+                if (_intraBlockCache[change.StorageAddress].Count == 0)
                 {
-                    _cache.Remove(change.StorageAddress);
-                    //_storageCache.Set(change.StorageAddress, null);
+                    _intraBlockCache.Remove(change.StorageAddress);
                 }
             }
 
@@ -152,8 +144,7 @@ namespace Nethermind.Store
             {
                 _currentPosition++;
                 _changes[_currentPosition] = kept;
-                //_storageCache.Set(kept.StorageAddress, kept.Value);
-                _cache[kept.StorageAddress].Push(_currentPosition);
+                _intraBlockCache[kept.StorageAddress].Push(_currentPosition);
             }
         }
 
@@ -165,7 +156,7 @@ namespace Nethermind.Store
                 return;
             }
 
-            if (_logger.IsTrace) _logger.Trace("  Committing storage changes");
+            if (_logger.IsTrace) _logger.Trace("Committing storage changes");
 
             if (_changes[_currentPosition] == null)
             {
@@ -187,7 +178,7 @@ namespace Nethermind.Store
                     continue;
                 }
 
-                int forAssertion = _cache[change.StorageAddress].Pop();
+                int forAssertion = _intraBlockCache[change.StorageAddress].Pop();
                 if (forAssertion != _currentPosition - i)
                 {
                     throw new InvalidOperationException($"Expected checked value {forAssertion} to be equal to {_currentPosition} - {i}");
@@ -210,7 +201,6 @@ namespace Nethermind.Store
                         StorageTree tree = GetOrCreateStorage(change.StorageAddress.Address);
                         Metrics.StorageTreeWrites++;
                         tree.Set(change.StorageAddress.Index, change.Value);
-                        //_storageCache.Set(change.StorageAddress, change.Value);
                         break;
                     default:
                         throw new ArgumentOutOfRangeException();
@@ -219,10 +209,10 @@ namespace Nethermind.Store
 
             foreach (Address address in toUpdateRoots)
             {
-                // TODO: this is tricky... for EIP-158
+                // since the accounts could be empty accounts that are removing (EIP-158)
                 if (_stateProvider.AccountExists(address))
                 {
-                    Keccak root = GetRoot(address);
+                    Keccak root = RecalculateRootHash(address);
                     _stateProvider.UpdateStorageRoot(address, root);
                 }
             }
@@ -231,21 +221,18 @@ namespace Nethermind.Store
             _changes = new Change[_capacity];
             _currentPosition = -1;
             _committedThisRound.Clear();
-            _cache.Clear();
+            _intraBlockCache.Clear();
         }
 
-        public void ClearCaches()
+        public void Reset()
         {
-            if (_logger.IsTrace)
-            {
-                _logger.Trace("  CLEARING STORAGE PROVIDER CACHES");
-            }
+            if (_logger.IsTrace) _logger.Trace("Resetting storage.");
 
-            _cache.Clear();
-            _cacheOriginal.Clear();
+            _intraBlockCache.Clear();
+            _originalValues.Clear();
             _currentPosition = -1;
             _committedThisRound.Clear();
-            Array.Clear(_changes, 0, _changes.Length); // do we have to clear it?
+            Array.Clear(_changes, 0, _changes.Length);
             _storages.Clear();
         }
 
@@ -256,6 +243,7 @@ namespace Nethermind.Store
                 storage.Value.Commit();
             }
 
+            // only needed here as there is no control over cached storage size otherwise
             _storages.Clear();
         }
 
@@ -270,47 +258,40 @@ namespace Nethermind.Store
             return _storages[address];
         }
 
-        private byte[] GetThroughCache(StorageAddress storageAddress)
+        private byte[] GetCurrentValue(StorageAddress storageAddress)
         {
-            if (_cache.ContainsKey(storageAddress))
+            if (_intraBlockCache.ContainsKey(storageAddress))
             {
-                return _changes[_cache[storageAddress].Peek()].Value;
+                return _changes[_intraBlockCache[storageAddress].Peek()].Value;
             }
 
-            return GetAndAddToCache(storageAddress);
+            return LoadFromTree(storageAddress);
         }
 
-        private byte[] GetAndAddToCache(StorageAddress storageAddress)
+        private byte[] LoadFromTree(StorageAddress storageAddress)
         {
-            //byte[] cached = _storageCache.Get(storageAddress);
-            //if (cached != null)
-            //{
-            //    return cached;
-            //}
-
             StorageTree tree = GetOrCreateStorage(storageAddress.Address);
 
             Metrics.StorageTreeReads++;
             byte[] value = tree.Get(storageAddress.Index);
-            PushJustCache(storageAddress, value);
-            //_storageCache.Set(storageAddress, value);
+            PushToRegistryOnly(storageAddress, value);
             return value;
         }
 
-        private void PushJustCache(StorageAddress address, byte[] value)
+        private void PushToRegistryOnly(StorageAddress address, byte[] value)
         {
-            SetupCache(address);
+            SetupRegistry(address);
             IncrementPosition();
-            _cache[address].Push(_currentPosition);
-            _cacheOriginal[address] = value;
+            _intraBlockCache[address].Push(_currentPosition);
+            _originalValues[address] = value;
             _changes[_currentPosition] = new Change(ChangeType.JustCache, address, value);
         }
 
         private void PushUpdate(StorageAddress address, byte[] value)
         {
-            SetupCache(address);
+            SetupRegistry(address);
             IncrementPosition();
-            _cache[address].Push(_currentPosition);
+            _intraBlockCache[address].Push(_currentPosition);
             _changes[_currentPosition] = new Change(ChangeType.Update, address, value);
         }
 
@@ -324,11 +305,11 @@ namespace Nethermind.Store
             }
         }
 
-        private void SetupCache(StorageAddress address)
+        private void SetupRegistry(StorageAddress address)
         {
-            if (!_cache.ContainsKey(address))
+            if (!_intraBlockCache.ContainsKey(address))
             {
-                _cache[address] = new Stack<int>();
+                _intraBlockCache[address] = new Stack<int>();
             }
         }
 
