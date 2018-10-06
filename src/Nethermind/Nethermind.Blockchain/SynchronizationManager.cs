@@ -325,7 +325,7 @@ namespace Nethermind.Blockchain
 
         private void CheckIfSyncingWithFastestPeer()
         {
-            var bestLatencyPeer = _peers.Values.OrderBy(x => x.Peer.NodeStats.GetAverageLatency(NodeLatencyStatType.BlockHeaders) ?? 100000).FirstOrDefault();
+            var bestLatencyPeer = _peers.Values.Where(x => x.NumberAvailable > _blockTree.BestSuggested.Number).OrderBy(x => x.Peer.NodeStats.GetAverageLatency(NodeLatencyStatType.BlockHeaders) ?? 100000).FirstOrDefault();
             if (bestLatencyPeer != null && _currentSyncingPeerInfo != null && _currentSyncingPeerInfo.Peer?.NodeId != bestLatencyPeer.Peer?.NodeId)
             {
                 if (_logger.IsTrace) _logger.Trace("Checking if any available peer is faster than current sync peer");
@@ -370,8 +370,11 @@ namespace Nethermind.Blockchain
                 }
             }
 
-            if (peerInfo.NumberAvailable - _blockTree.BestSuggested.Number < _blockchainConfig.MinAvailableBlockDiffForSyncSwitch)
+            //As we deal with UInt256 if we substruct bigger value from smaller value we get very big value as a result (overflow) which is incorret (unsigned)
+            var letencyDiff = peerInfo.NumberAvailable > _blockTree.BestSuggested.Number ? peerInfo.NumberAvailable - _blockTree.BestSuggested.Number : 0;
+            if (letencyDiff < _blockchainConfig.MinAvailableBlockDiffForSyncSwitch)
             {
+                if (_logger.IsDebug) _logger.Debug($"Skipping latency switch due to lower latency benefit than threshold - letencyDiff: {letencyDiff}, threshold: {_blockchainConfig.MinAvailableBlockDiffForSyncSwitch}");
                 return;
             }
 
@@ -588,7 +591,12 @@ namespace Nethermind.Blockchain
             }
                 
             if (_logger.IsDebug) _logger.Debug($"Candidates for Sync: {Environment.NewLine}{string.Join(Environment.NewLine, availiblePeers.Select(x => $"{x.PeerInfo.Peer.NodeId} | NumberAvailable: {x.PeerInfo.NumberAvailable} | BlockHeaderAvLatency: {x.AvLat?.ToString() ?? "none"}").ToArray())}");
-            return availiblePeers.First().PeerInfo;
+            var selectedInfo = availiblePeers.First().PeerInfo;
+            if (selectedInfo.Peer.NodeId == _currentSyncingPeerInfo?.Peer?.NodeId)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Potencial error, selecting same peer for sync as prev sync peer, id: {selectedInfo.Peer.NodeId}");
+            }
+            return selectedInfo;
         }
          
         private async Task SynchronizeWithPeerAsync(PeerInfo peerInfo)
