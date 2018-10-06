@@ -121,7 +121,7 @@ namespace Nethermind.Blockchain.Test.Runner
             await Run(bugHunter, "stRefundTest", testWildcard);
             await Run(bugHunter, "stReturnDataTest", testWildcard);
             await Run(bugHunter, "stRevertTest", testWildcard);
-//            await Run(bugHunter, "stShift", testWildcard);
+            await Run(bugHunter, "stShift", testWildcard);
             await Run(bugHunter, "stSolidityTest", testWildcard);
             await Run(bugHunter, "stSpecialTest", testWildcard);
             await Run(bugHunter, "stStackTests", testWildcard);
