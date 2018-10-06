@@ -37,5 +37,6 @@ namespace Ethereum.Test.Base
         public Dictionary<string, AccountStateJson> PostState { get; set; }
         
         public string SealEngine { get; set; }
+        public string LoadFailure { get; set; }
     }
 }

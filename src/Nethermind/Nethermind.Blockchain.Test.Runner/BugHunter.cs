@@ -22,6 +22,7 @@ using System.IO;
 using System.Threading.Tasks;
 using Ethereum.Test.Base;
 using Nethermind.Core.Logging;
+using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Runner
 {
@@ -46,6 +47,8 @@ namespace Nethermind.Blockchain.Test.Runner
                 try
                 {
                     Console.Write($"{test.Name,-80} ");
+                    Assert.IsNull(test.LoadFailure);
+
                     await RunTest(test);
                     Console.ForegroundColor = ConsoleColor.Green;
                     Console.WriteLine("PASS");
