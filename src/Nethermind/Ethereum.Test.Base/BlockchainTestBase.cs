@@ -183,7 +183,7 @@ namespace Ethereum.Test.Base
         protected async Task RunTest(BlockchainTest test, Stopwatch stopwatch = null)
         {
             Assert.IsNull(test.LoadFailure, "test data loading failure");
-            
+
             // TODO: not supported in .NET Core, need to replace?
             // LoggingTraceListener traceListener = new LoggingTraceListener();
             // Debug.Listeners.Clear();
@@ -393,6 +393,16 @@ namespace Ethereum.Test.Base
                                                      .SingleOrDefault(b => new Keccak(b.BlockHeader.Hash) == headBlock.Hash)?.BlockHeader ?? test.GenesisBlockHeader;
             BlockHeader testHeader = Convert(testHeaderJson);
             List<string> differences = new List<string>();
+
+            var deletedAccounts = test.Pre.Where(pre => !test.PostState.ContainsKey(pre.Key));
+            foreach (KeyValuePair<Address, AccountState> deletedAccount in deletedAccounts)
+            {
+                if (stateProvider.AccountExists(deletedAccount.Key))
+                {
+                    differences.Add($"Pre state account {deletedAccount.Key} was not deleted as expected.");
+                }
+            }
+
             foreach (KeyValuePair<Address, AccountState> accountState in test.PostState)
             {
                 int differencesBefore = differences.Count;
@@ -429,6 +439,21 @@ namespace Ethereum.Test.Base
                 }
 
                 differencesBefore = differences.Count;
+
+                KeyValuePair<UInt256, byte[]>[] clearedStorages = new KeyValuePair<UInt256, byte[]>[0]; 
+                if (test.Pre.ContainsKey(accountState.Key))
+                {
+                    clearedStorages = test.Pre[accountState.Key].Storage.Where(s => !accountState.Value.Storage.ContainsKey(s.Key)).ToArray();
+                }
+
+                foreach (KeyValuePair<UInt256, byte[]> clearedStorage in clearedStorages)
+                {
+                    byte[] value = storageProvider.Get(new StorageAddress(accountState.Key, clearedStorage.Key));
+                    if (!value.IsZero())
+                    {
+                        differences.Add($"{accountState.Key} storage[{clearedStorage.Key}] exp: 0x00, actual: {value.ToHexString(true)}");
+                    }
+                }
 
                 foreach (KeyValuePair<UInt256, byte[]> storageItem in accountState.Value.Storage)
                 {
