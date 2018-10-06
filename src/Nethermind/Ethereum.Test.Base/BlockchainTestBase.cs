@@ -47,7 +47,7 @@ namespace Ethereum.Test.Base
     {
         private static ILogManager _logManager = NullLogManager.Instance;
         private static ILogger _logger = new SimpleConsoleLogger();
-        
+
         private static readonly ISealEngine SealEngine = new EthashSealEngine(new Ethash(_logManager), _logManager); // temporarily keep reusing the same one as otherwise it would recreate cache for each test
 
         [SetUp]
@@ -106,32 +106,39 @@ namespace Ethereum.Test.Base
             List<string> testFiles = Directory.EnumerateFiles(testDir).ToList();
             foreach (string testFile in testFiles)
             {
-                if (testFile.StartsWith(".stub"))
+                try
                 {
-                    continue;
+                    if (Path.GetFileName(testFile).StartsWith("."))
+                    {
+                        continue;
+                    }
+
+                    string json = File.ReadAllText(testFile);
+                    Dictionary<string, BlockchainTestJson> testsInFile = JsonConvert.DeserializeObject<Dictionary<string, BlockchainTestJson>>(json);
+                    foreach (KeyValuePair<string, BlockchainTestJson> namedTest in testsInFile)
+                    {
+                        string[] transitionInfo = namedTest.Value.Network.Split("At");
+                        string[] networks = transitionInfo[0].Split("To");
+                        for (int i = 0; i < networks.Length; i++)
+                        {
+                            networks[i] = networks[i].Replace("EIP150", "TangerineWhistle");
+                            networks[i] = networks[i].Replace("EIP158", "SpuriousDragon");
+                            networks[i] = networks[i].Replace("DAO", "Dao");
+                        }
+
+                        namedTest.Value.EthereumNetwork = ParseSpec(networks[0]);
+                        if (transitionInfo.Length > 1)
+                        {
+                            namedTest.Value.TransitionBlockNumber = int.Parse(transitionInfo[1]);
+                            namedTest.Value.EthereumNetworkAfterTransition = ParseSpec(networks[1]);
+                        }
+
+                        testsByName.Add(namedTest.Key, namedTest.Value);
+                    }
                 }
-                
-                string json = File.ReadAllText(testFile);
-                Dictionary<string, BlockchainTestJson> testsInFile = JsonConvert.DeserializeObject<Dictionary<string, BlockchainTestJson>>(json);
-                foreach (KeyValuePair<string, BlockchainTestJson> namedTest in testsInFile)
+                catch (Exception e)
                 {
-                    string[] transitionInfo = namedTest.Value.Network.Split("At");
-                    string[] networks = transitionInfo[0].Split("To");
-                    for (int i = 0; i < networks.Length; i++)
-                    {
-                        networks[i] = networks[i].Replace("EIP150", "TangerineWhistle");
-                        networks[i] = networks[i].Replace("EIP158", "SpuriousDragon");
-                        networks[i] = networks[i].Replace("DAO", "Dao");
-                    }
-
-                    namedTest.Value.EthereumNetwork = ParseSpec(networks[0]);
-                    if (transitionInfo.Length > 1)
-                    {
-                        namedTest.Value.TransitionBlockNumber = int.Parse(transitionInfo[1]);
-                        namedTest.Value.EthereumNetworkAfterTransition = ParseSpec(networks[1]);
-                    }
-
-                    testsByName.Add(namedTest.Key, namedTest.Value);
+                    testsByName.Add(testFile, new BlockchainTestJson {LoadFailure = $"Failed to load: {e.Message}"});
                 }
             }
 
@@ -175,15 +182,17 @@ namespace Ethereum.Test.Base
 
         protected async Task RunTest(BlockchainTest test, Stopwatch stopwatch = null)
         {
-            LoggingTraceListener traceListener = new LoggingTraceListener();
-            // TODO: not supported in .NET Core, need to replace?
-//            Debug.Listeners.Clear();
-//            Debug.Listeners.Add(traceListener);
+            Assert.IsNull(test.LoadFailure, "test data loading failure");
             
+            // TODO: not supported in .NET Core, need to replace?
+            // LoggingTraceListener traceListener = new LoggingTraceListener();
+            // Debug.Listeners.Clear();
+            // Debug.Listeners.Add(traceListener);
+
             ISnapshotableDb stateDb = new StateDb();
             ISnapshotableDb codeDb = new StateDb();
             StateTree stateTree = new StateTree(stateDb);
-            
+
 
             ISpecProvider specProvider;
             if (test.NetworkAfterTransition != null)
@@ -204,10 +213,10 @@ namespace Ethereum.Test.Base
             {
                 Assert.Fail("Expected genesis spec to be Frontier for blockchain tests");
             }
-            
+
             IDifficultyCalculator difficultyCalculator = new DifficultyCalculator(specProvider);
             IRewardCalculator rewardCalculator = new RewardCalculator(specProvider);
-            
+
             IBlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), specProvider, _logManager);
             IBlockhashProvider blockhashProvider = new BlockhashProvider(blockTree);
             ISignatureValidator signatureValidator = new SignatureValidator(ChainId.MainNet);
@@ -244,7 +253,7 @@ namespace Ethereum.Test.Base
                 _logManager);
 
             IBlockchainProcessor blockchainProcessor = new BlockchainProcessor(blockTree,
-                sealEngine, 
+                sealEngine,
                 transactionStore, difficultyCalculator, blockProcessor, signer, _logManager, new PerfService(_logManager));
 
             InitializeTestState(test, stateProvider, storageProvider, specProvider);
@@ -258,13 +267,13 @@ namespace Ethereum.Test.Base
                     var rlpContext = Bytes.FromHexString(testBlockJson.Rlp).AsRlpContext();
                     Block suggestedBlock = Rlp.Decode<Block>(rlpContext);
                     suggestedBlock.Header.SealEngineType = test.SealEngineUsed ? SealEngineType.Ethash : SealEngineType.None;
-                    
+
                     Assert.AreEqual(new Keccak(testBlockJson.BlockHeader.Hash), suggestedBlock.Header.Hash, "hash of the block");
                     for (int ommerIndex = 0; ommerIndex < suggestedBlock.Ommers.Length; ommerIndex++)
                     {
-                        Assert.AreEqual(new Keccak(testBlockJson.UncleHeaders[ommerIndex].Hash), suggestedBlock.Ommers[ommerIndex].Hash, "hash of the ommer");    
+                        Assert.AreEqual(new Keccak(testBlockJson.UncleHeaders[ommerIndex].Hash), suggestedBlock.Ommers[ommerIndex].Hash, "hash of the ommer");
                     }
-                    
+
                     correctRlpsBlocks.Add((suggestedBlock, testBlockJson.ExpectedException));
                 }
                 catch (Exception e)
@@ -286,7 +295,7 @@ namespace Ethereum.Test.Base
 
             Block genesisBlock = Rlp.Decode<Block>(test.GenesisRlp.Bytes);
             Assert.AreEqual(new Keccak(test.GenesisBlockHeader.Hash), genesisBlock.Header.Hash, "genesis header hash");
-            
+
             ManualResetEvent genesisProcessed = new ManualResetEvent(false);
             blockTree.NewHeadBlock += (sender, args) =>
             {
@@ -296,7 +305,7 @@ namespace Ethereum.Test.Base
                     genesisProcessed.Set();
                 }
             };
-                
+
             blockchainProcessor.Start();
             blockTree.SuggestBlock(genesisBlock);
 
@@ -309,14 +318,14 @@ namespace Ethereum.Test.Base
                 {
                     if (correctRlpsBlocks[i].ExpectedException != null)
                     {
-                        _logger.Info($"Expecting block exception: {correctRlpsBlocks[i].ExpectedException}");    
+                        _logger.Info($"Expecting block exception: {correctRlpsBlocks[i].ExpectedException}");
                     }
 
                     if (correctRlpsBlocks[i].Block.Hash == null)
                     {
                         throw new Exception($"null hash in {test.Name} block {i}");
                     }
-                    
+
                     // TODO: mimic the actual behaviour where block goes through validating sync manager?
                     if (!test.SealEngineUsed || blockValidator.ValidateSuggestedBlock(correctRlpsBlocks[i].Block))
                     {
@@ -345,7 +354,7 @@ namespace Ethereum.Test.Base
                 BlockTrace blockTrace = blockchainProcessor.TraceBlock(blockTree.BestSuggested.Hash);
                 _logger.Info(new UnforgivingJsonSerializer().Serialize(blockTrace, true));
             }
-            
+
             Assert.Zero(differences.Count, "differences");
         }
 
@@ -369,10 +378,10 @@ namespace Ethereum.Test.Base
 
             storageProvider.Commit(specProvider.GenesisSpec);
             stateProvider.Commit(specProvider.GenesisSpec);
-            
+
             storageProvider.CommitTrees();
             stateProvider.CommitTree();
-            
+
             storageProvider.Reset();
             stateProvider.Reset();
         }
@@ -395,8 +404,8 @@ namespace Ethereum.Test.Base
                 }
 
                 bool accountExists = stateProvider.AccountExists(accountState.Key);
-                BigInteger? balance = accountExists ? stateProvider.GetBalance(accountState.Key) : (BigInteger?)null;
-                BigInteger? nonce = accountExists ? stateProvider.GetNonce(accountState.Key) : (BigInteger?)null;
+                BigInteger? balance = accountExists ? stateProvider.GetBalance(accountState.Key) : (BigInteger?) null;
+                BigInteger? nonce = accountExists ? stateProvider.GetNonce(accountState.Key) : (BigInteger?) null;
 
                 if (accountState.Value.Balance != balance)
                 {
@@ -416,7 +425,7 @@ namespace Ethereum.Test.Base
 
                 if (differences.Count != differencesBefore)
                 {
-                    _logger.Info($"ACCOUNT STATE ({accountState.Key}) HAS DIFFERENCES");    
+                    _logger.Info($"ACCOUNT STATE ({accountState.Key}) HAS DIFFERENCES");
                 }
 
                 differencesBefore = differences.Count;
@@ -432,7 +441,7 @@ namespace Ethereum.Test.Base
 
                 if (differences.Count != differencesBefore)
                 {
-                    _logger.Info($"ACCOUNT STORAGE ({accountState.Key}) HAS DIFFERENCES");    
+                    _logger.Info($"ACCOUNT STORAGE ({accountState.Key}) HAS DIFFERENCES");
                 }
             }
 
@@ -488,16 +497,16 @@ namespace Ethereum.Test.Base
                 new Address(headerJson.Coinbase),
                 Bytes.FromHexString(headerJson.Difficulty).ToUInt256(),
                 Bytes.FromHexString(headerJson.Number).ToUInt256(),
-                (long)Bytes.FromHexString(headerJson.GasLimit).ToUnsignedBigInteger(),
+                (long) Bytes.FromHexString(headerJson.GasLimit).ToUnsignedBigInteger(),
                 Bytes.FromHexString(headerJson.Timestamp).ToUInt256(),
                 Bytes.FromHexString(headerJson.ExtraData)
             );
-            
+
             header.Bloom = new Bloom(Bytes.FromHexString(headerJson.Bloom).ToBigEndianBitArray2048());
-            header.GasUsed = (long)Bytes.FromHexString(headerJson.GasUsed).ToUnsignedBigInteger();
+            header.GasUsed = (long) Bytes.FromHexString(headerJson.GasUsed).ToUnsignedBigInteger();
             header.Hash = new Keccak(headerJson.Hash);
             header.MixHash = new Keccak(headerJson.MixHash);
-            header.Nonce = (ulong)Bytes.FromHexString(headerJson.Nonce).ToUnsignedBigInteger();
+            header.Nonce = (ulong) Bytes.FromHexString(headerJson.Nonce).ToUnsignedBigInteger();
             header.ReceiptsRoot = new Keccak(headerJson.ReceiptTrie);
             header.StateRoot = new Keccak(headerJson.StateRoot);
             header.TransactionsRoot = new Keccak(headerJson.TransactionsTrie);
@@ -534,11 +543,20 @@ namespace Ethereum.Test.Base
 
         private static BlockchainTest Convert(string name, BlockchainTestJson testJson)
         {
+            if (testJson.LoadFailure != null)
+            {
+                return new BlockchainTest
+                {
+                    Name = name,
+                    LoadFailure = testJson.LoadFailure
+                };
+            }
+
             BlockchainTest test = new BlockchainTest();
             test.Name = name;
             test.Network = testJson.EthereumNetwork;
             test.NetworkAfterTransition = testJson.EthereumNetworkAfterTransition;
-            test.TransitionBlockNumber = (UInt256)testJson.TransitionBlockNumber;
+            test.TransitionBlockNumber = (UInt256) testJson.TransitionBlockNumber;
             test.LastBlockHash = new Keccak(testJson.LastBlockHash);
             test.GenesisRlp = testJson.GenesisRlp == null ? null : new Rlp(Bytes.FromHexString(testJson.GenesisRlp));
             test.GenesisBlockHeader = testJson.GenesisBlockHeader;

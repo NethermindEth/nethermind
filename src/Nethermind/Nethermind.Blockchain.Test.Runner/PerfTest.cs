@@ -21,6 +21,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading.Tasks;
 using Ethereum.Test.Base;
+using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Runner
 {
@@ -47,6 +48,7 @@ namespace Nethermind.Blockchain.Test.Runner
                     Setup(null);
                     try
                     {
+                        Assert.IsNull(test.LoadFailure);
                         await RunTest(test, stopwatch);
                     }
                     catch (Exception e)
