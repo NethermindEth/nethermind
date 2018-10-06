@@ -1529,7 +1529,7 @@ namespace Nethermind.Evm
 
                         UpdateMemoryCost(dest, length);
 
-                        if (src + length > _returnDataBuffer.Length)
+                        if (UInt256.AddWouldOverflow(ref length, ref src) || length + src > _returnDataBuffer.Length)
                         {
                             Metrics.EvmExceptions++;
                             return CallResult.AccessViolationException;
