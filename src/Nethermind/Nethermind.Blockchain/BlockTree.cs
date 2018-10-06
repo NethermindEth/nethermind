@@ -42,7 +42,7 @@ namespace Nethermind.Blockchain
 
         private const int MaxQueueSize = 10_000_000;
 
-        public const int DbLoadBatchSize = 1000;
+        public const int DbLoadBatchSize = 1;
 
         private UInt256 _currentDbLoadBatchEnd;
 

@@ -5,6 +5,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.JsonRpc.Client\Nethermind.JsonRpc.Client.csproj" />
+    <ProjectReference Include="..\Nethermind.JsonRpc\Nethermind.JsonRpc.csproj" />
     <ProjectReference Include="..\Nethermind.Store\Nethermind.Store.csproj" />
   </ItemGroup>
 </Project>

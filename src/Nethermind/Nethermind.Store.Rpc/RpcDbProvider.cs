@@ -24,14 +24,17 @@ namespace Nethermind.Store.Rpc
 {
     public class RpcDbProvider : IDbProvider
     {
-        public RpcDbProvider(IJsonSerializer serializer, IJsonRpcClient client, ILogManager logManager)
+        private readonly IDbProvider _recordDbProvider;
+
+        public RpcDbProvider(IJsonSerializer serializer, IJsonRpcClient client, ILogManager logManager, IDbProvider recordDbProvider)
         {
-            StateDb = new StateDb(new RpcDb(DbNames.State, serializer, client, logManager));
-            CodeDb = new StateDb(new RpcDb(DbNames.Code, serializer, client, logManager));
-            TxDb = new StateDb(new RpcDb(DbNames.Transactions, serializer, client, logManager));
-            ReceiptsDb = new StateDb(new RpcDb(DbNames.Receipts, serializer, client, logManager));
-            BlocksDb = new StateDb(new RpcDb(DbNames.Blocks, serializer, client, logManager));
-            BlockInfosDb = new StateDb(new RpcDb(DbNames.BlockInfos, serializer, client, logManager));
+            _recordDbProvider = recordDbProvider;
+            StateDb = new StateDb(new ReadOnlyDb(new RpcDb(DbNames.State, serializer, client, logManager, recordDbProvider?.StateDb)));
+            CodeDb = new StateDb(new ReadOnlyDb(new RpcDb(DbNames.Code, serializer, client, logManager, recordDbProvider?.CodeDb)));
+            TxDb = new StateDb(new ReadOnlyDb(new RpcDb(DbNames.Transactions, serializer, client, logManager, recordDbProvider?.TxDb)));
+            ReceiptsDb = new StateDb(new ReadOnlyDb(new RpcDb(DbNames.Receipts, serializer, client, logManager, recordDbProvider?.ReceiptsDb)));
+            BlocksDb = new StateDb(new ReadOnlyDb(new RpcDb(DbNames.Blocks, serializer, client, logManager, recordDbProvider?.BlocksDb)));
+            BlockInfosDb = new StateDb(new ReadOnlyDb(new RpcDb(DbNames.BlockInfos, serializer, client, logManager, recordDbProvider?.BlockInfosDb)));
         }
         
         public ISnapshotableDb StateDb { get; }
@@ -49,6 +52,7 @@ namespace Nethermind.Store.Rpc
             ReceiptsDb?.Dispose();
             BlocksDb?.Dispose();
             BlockInfosDb?.Dispose();
+            _recordDbProvider?.Dispose();
         }
     }
 }

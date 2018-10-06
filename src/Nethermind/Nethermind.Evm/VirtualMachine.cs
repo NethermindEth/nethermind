@@ -238,8 +238,6 @@ namespace Nethermind.Evm
                                 if (releaseSpec.IsEip2Enabled)
                                 {
                                     currentState.GasAvailable -= gasAvailableForCodeDeposit;
-                                    // TODO: there should be an OutOfGasException here and a proper reversal of the account creation (and value transfer and all state changes called in the CREATE call)
-                                    // TODO: instead just adding the simplest way to fix 552387 on Ropsten
                                     _state.Restore(previousState.StateSnapshot);
                                     _storage.Restore(previousState.StorageSnapshot);
                                     _state.DeleteAccount(callCodeOwner);

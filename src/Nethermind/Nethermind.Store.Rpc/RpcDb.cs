@@ -17,11 +17,11 @@
  */
 
 using System;
-using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
 using Nethermind.JsonRpc.Client;
+using Nethermind.JsonRpc.DataModel;
 
 namespace Nethermind.Store.Rpc
 {
@@ -31,53 +31,62 @@ namespace Nethermind.Store.Rpc
         private readonly IJsonSerializer _jsonSerializer;
         private readonly ILogger _logger;
         private readonly IJsonRpcClient _rpcClient;
-        private IDb _memDb = new MemDb();
-        private HashSet<byte[]> _removedValues = new HashSet<byte[]>(Bytes.EqualityComparer);
+        private readonly IDb _recordDb;
 
-        public RpcDb(string dbName, IJsonSerializer jsonSerializer, IJsonRpcClient rpcClient, ILogManager logManager)
+        public RpcDb(string dbName, IJsonSerializer jsonSerializer, IJsonRpcClient rpcClient, ILogManager logManager, IDb recordDb)
         {
             _dbName = dbName;
             _rpcClient = rpcClient ?? throw new ArgumentNullException(nameof(rpcClient));
             _jsonSerializer = jsonSerializer ?? throw new ArgumentNullException(nameof(jsonSerializer));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _recordDb = recordDb;
         }
 
         public void Dispose()
         {
+            if (_recordDb is StateDb stateDb)
+            {
+                stateDb.Commit();
+            }
         }
 
         public byte[] this[byte[] key]
         {
-            get
-            {
-                if (_removedValues.Contains(key)) return null;
-
-                return _memDb[key] ?? GetThroughRpc(key);
-            }
-            set
-            {
-                _removedValues.Remove(key);
-                _memDb[key] = value;
-            }
+            get => GetThroughRpc(key);
+            set => throw new InvalidOperationException("RPC DB does not support writes");
         }
 
         public void Remove(byte[] key)
         {
-            _removedValues.Add(key);
+            throw new InvalidOperationException("RPC DB does not support writes");
         }
 
         public void StartBatch()
         {
+            throw new InvalidOperationException("RPC DB does not support writes");
         }
 
         public void CommitBatch()
         {
+            throw new InvalidOperationException("RPC DB does not support writes");
         }
 
         private byte[] GetThroughRpc(byte[] key)
         {
-            string response = _rpcClient.Post("debug_getFromDb", _dbName, key.ToHexString()).Result;
-            return _jsonSerializer.Deserialize<byte[]>(response);
+            string responseJson = _rpcClient.Post("debug_getFromDb", _dbName, key.ToHexString()).Result;
+            JsonRpcResponse response = _jsonSerializer.Deserialize<JsonRpcResponse>(responseJson);
+
+            byte[] value = null;
+            if (response.Result != null)
+            {
+                value = Bytes.FromHexString((string) response.Result);
+                if (_recordDb != null)
+                {
+                    _recordDb[key] = value;
+                }
+            }
+
+            return value;
         }
     }
 }
