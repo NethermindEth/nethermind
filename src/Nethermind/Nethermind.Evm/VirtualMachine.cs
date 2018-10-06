@@ -140,15 +140,15 @@ namespace Nethermind.Evm
                             _stateStack.Push(currentState);
                             currentState = callResult.StateToExecute;
                             previousCallResult = null; // TODO: testing on ropsten sync, write VirtualMachineTest for this case as it was not covered by Ethereum tests (failing block 9411 on Ropsten https://ropsten.etherscan.io/vmtrace?txhash=0x666194d15c14c54fffafab1a04c08064af165870ef9a87f65711dcce7ed27fe1)
-                            previousCallOutput = Bytes.Empty; // TODO: testing on ropsten sync, write VirtualMachineTest for this case as it was not covered by Ethereum tests
+                            _returnDataBuffer = previousCallOutput = Bytes.Empty; // TODO: testing on ropsten sync, write VirtualMachineTest for this case as it was not covered by Ethereum tests
                             continue;
                         }
 
                         if (callResult.IsException)
                         {
-                            //if (_logger.IsDebugEnabled)
+                            //if (_logger.IsTrace)
                             //{
-                            //    _logger.Debug($"EXCEPTION ({ex.GetType().Name}) IN {currentState.ExecutionType} AT DEPTH {currentState.Env.CallDepth} - RESTORING SNAPSHOT");
+                            //    _logger.Trace($"EXCEPTION ({ex.GetType().Name}) IN {currentState.ExecutionType} AT DEPTH {currentState.Env.CallDepth} - RESTORING SNAPSHOT");
                             //}
 
                             _state.Restore(currentState.StateSnapshot);
@@ -167,9 +167,8 @@ namespace Nethermind.Evm
                             }
 
                             previousCallResult = StatusCode.FailureBytes;
-                            previousCallOutput = Bytes.Empty;
                             previousCallOutputDestination = UInt256.Zero;
-                            _returnDataBuffer = Bytes.Empty;
+                            _returnDataBuffer = previousCallOutput = Bytes.Empty;
 
                             currentState.Dispose();
                             currentState = _stateStack.Pop();
@@ -200,9 +199,8 @@ namespace Nethermind.Evm
                         if (previousState.ExecutionType == ExecutionType.Create || previousState.ExecutionType == ExecutionType.DirectCreate)
                         {
                             previousCallResult = callCodeOwner.Bytes;
-                            previousCallOutput = Bytes.Empty;
                             previousCallOutputDestination = UInt256.Zero;
-                            _returnDataBuffer = Bytes.Empty;
+                            _returnDataBuffer = previousCallOutput = Bytes.Empty;
                             
                             long codeDepositGasCost = GasCostOf.CodeDeposit * callResult.Output.Length;
                             if (spec.IsEip170Enabled && callResult.Output.Length > 0x6000)
@@ -236,10 +234,10 @@ namespace Nethermind.Evm
                         }
                         else
                         {
+                            _returnDataBuffer = callResult.Output;
                             previousCallResult = callResult.PrecompileSuccess.HasValue ? (callResult.PrecompileSuccess.Value ? StatusCode.SuccessBytes : StatusCode.FailureBytes) : StatusCode.SuccessBytes;
                             previousCallOutput = callResult.Output.SliceWithZeroPadding(0, Math.Min(callResult.Output.Length, (int)previousState.OutputLength));
                             previousCallOutputDestination = (ulong)previousState.OutputDestination;
-                            _returnDataBuffer = callResult.Output;
                         }
 
                         if (previousStateSucceeded)
@@ -272,10 +270,10 @@ namespace Nethermind.Evm
 
                         _state.Restore(previousState.StateSnapshot);
                         _storage.Restore(previousState.StorageSnapshot);
+                        _returnDataBuffer = callResult.Output;
                         previousCallResult = StatusCode.FailureBytes;
                         previousCallOutput = callResult.Output.SliceWithZeroPadding(0, Math.Min(callResult.Output.Length, (int)previousState.OutputLength));
                         previousCallOutputDestination = (ulong)previousState.OutputDestination;
-                        _returnDataBuffer = callResult.Output;
                     }
 
                     previousState.Dispose();
@@ -303,9 +301,8 @@ namespace Nethermind.Evm
                     }
 
                     previousCallResult = StatusCode.FailureBytes;
-                    previousCallOutput = Bytes.Empty;
                     previousCallOutputDestination = UInt256.Zero;
-                    _returnDataBuffer = Bytes.Empty;
+                    _returnDataBuffer = previousCallOutput = Bytes.Empty;
 
                     currentState.Dispose();
                     currentState = _stateStack.Pop();
