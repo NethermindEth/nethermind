@@ -192,22 +192,10 @@ namespace Nethermind.Evm
                     currentState = _stateStack.Pop();
                     currentState.IsContinuation = true;
                     currentState.GasAvailable += previousState.GasAvailable;
-
+                    bool previousStateSucceeded = true;
+                    
                     if (!callResult.ShouldRevert)
                     {
-                        currentState.Refund += previousState.Refund;
-
-                        foreach (Address address in previousState.DestroyList)
-                        {
-                            currentState.DestroyList.Add(address);
-                        }
-
-                        for (int i = 0; i < previousState.Logs.Count; i++)
-                        {
-                            LogEntry logEntry = previousState.Logs[i];
-                            currentState.Logs.Add(logEntry);
-                        }
-
                         long gasAvailableForCodeDeposit = previousState.GasAvailable; // TODO: refactor, this is to fix 61363 Ropsten
                         if (previousState.ExecutionType == ExecutionType.Create || previousState.ExecutionType == ExecutionType.DirectCreate)
                         {
@@ -242,7 +230,7 @@ namespace Nethermind.Evm
                                     _storage.Restore(previousState.StorageSnapshot);
                                     _state.DeleteAccount(callCodeOwner);
                                     previousCallResult = BytesZero;
-                                    currentState.Refund -= previousState.Refund;
+                                    previousStateSucceeded = false;
                                 }
                             }
                         }
@@ -272,6 +260,22 @@ namespace Nethermind.Evm
                         previousCallOutput = callResult.Output.SliceWithZeroPadding(0, Math.Min(callResult.Output.Length, (int)previousState.OutputLength));
                         previousCallOutputDestination = (ulong)previousState.OutputDestination;
                         _returnDataBuffer = callResult.Output;
+                    }
+
+                    if (previousStateSucceeded)
+                    {
+                        currentState.Refund += previousState.Refund;
+
+                        foreach (Address address in previousState.DestroyList)
+                        {
+                            currentState.DestroyList.Add(address);
+                        }
+
+                        for (int i = 0; i < previousState.Logs.Count; i++)
+                        {
+                            LogEntry logEntry = previousState.Logs[i];
+                            currentState.Logs.Add(logEntry);
+                        }
                     }
 
                     previousState.Dispose();
