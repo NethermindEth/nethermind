@@ -59,7 +59,7 @@ namespace Nethermind.Network
         private System.Timers.Timer _peerPersistanceTimer;
         private System.Timers.Timer _pingTimer;
         private int _logCounter = 1;
-        private bool _isInitialized;
+        private bool _isStarted;
         private bool _isPeerUpdateInProgress;
         private readonly object _isPeerUpdateInProgressLock = new object();
         private readonly IPerfService _perfService;
@@ -103,13 +103,6 @@ namespace Nethermind.Network
 
         public void Init(bool isDiscoveryEnabled)
         {
-            if (_isInitialized)
-            {
-                throw new InvalidOperationException($"{nameof(PeerManager)} already initialized.");
-            }
-
-            _isInitialized = true;
-
             _isDiscoveryEnabled = isDiscoveryEnabled;
             _discoveryManager.NodeDiscovered += async (s, e) => await OnNodeDiscovered(s, e);
             _synchronizationManager.SyncEvent += async (s, e) => await OnSyncEvent(s, e);
@@ -141,9 +134,9 @@ namespace Nethermind.Network
 
             StartPeerPersistanceTimer();
             StartPingTimer();
-            await RunPeerUpdate(); // initial peer update
 
-            _isInitialized = true;
+            _isStarted = true;
+            await RunPeerUpdate(); // initial peer update
         }
 
         public async Task StopAsync()
@@ -919,7 +912,7 @@ namespace Nethermind.Network
                     LogEventHistory(activePeer.NodeStats);
                 }
 
-                if (_isInitialized)
+                if (_isStarted)
                 {
                     await RunPeerUpdate();
                 }
@@ -980,7 +973,7 @@ namespace Nethermind.Network
                 _logger.Trace($"Adding newly discovered node to Candidates collection {id}@{nodeEventArgs.Manager.ManagedNode.Host}:{nodeEventArgs.Manager.ManagedNode.Port}");
             }
 
-            if (_isInitialized)
+            if (_isStarted)
             {
                 await RunPeerUpdate();
             }

@@ -124,7 +124,7 @@ namespace Nethermind.Network.Discovery.Lifecycle
         public void SendPing()
         {
             _isPongExpected = true;
-            Task.Run(() => SendPingSync(_configurationProvider.PingRetryCount));
+            Task.Run(() => SendPingAsync(_configurationProvider.PingRetryCount));
         }
 
         public void SendPong(PingMessage discoveryMessage)
@@ -163,8 +163,7 @@ namespace Nethermind.Network.Discovery.Lifecycle
                 //if node is just discovered we send ping to confirm it is active
                 SendPing();
             }
-
-            if (newState == NodeLifecycleState.Active)
+            else if (newState == NodeLifecycleState.Active)
             {
                 //TODO && !ManagedNode.IsDicoveryNode - should we exclude discovery nodes
                 //received pong first time
@@ -198,7 +197,7 @@ namespace Nethermind.Network.Discovery.Lifecycle
             }
         }
 
-        private void SendPingSync(int counter)
+        private async Task SendPingAsync(int counter)
         {
             try
             {
@@ -209,11 +208,12 @@ namespace Nethermind.Network.Discovery.Lifecycle
                 _discoveryManager.SendMessage(msg);
                 NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryPingOut);
 
-                if (!_discoveryManager.WasMessageReceived(ManagedNode.IdHashText, MessageType.Pong, _configurationProvider.PongTimeout))
+                var result = await _discoveryManager.WasMessageReceived(ManagedNode.IdHashText, MessageType.Pong, _configurationProvider.PongTimeout);
+                if (!result)
                 {
                     if (counter > 1)
                     {
-                        SendPingSync(counter - 1);
+                        await SendPingAsync(counter - 1);
                     }
                     else
                     {

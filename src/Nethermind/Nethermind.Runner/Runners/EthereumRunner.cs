@@ -559,6 +559,11 @@ namespace Nethermind.Runner.Runners
 
         private async Task StartPeer()
         {
+            if (!_initConfig.PeerManagerEnabled)
+            {
+                if (_logger.IsInfo) _logger.Info("Skipping peer manager init (PeerManagerEnabled} = false)");
+                return;
+            }
             if (_logger.IsDebug) _logger.Debug("Initializing peer manager");
             await _peerManager.Start();
             if (_logger.IsDebug) _logger.Debug("Peer manager initialization completed");

@@ -62,7 +62,7 @@ namespace Nethermind.Network.Discovery
         public async Task LocateNodesAsync(byte[] searchedNodeId, CancellationToken cancellationToken)
         {
             var alreadyTriedNodes = new List<string>();
-            
+
             if(_logger.IsDebug) _logger.Debug($"Starting discovery process for node: {(searchedNodeId != null ? $"randomNode: {new PublicKey(searchedNodeId).ToShortString()}" : $"masterNode: {_masterNode.Id}")}");
             var nodesCountBeforeDiscovery = _nodeTable.Buckets.Sum(x => x.Items.Count);
 
@@ -185,7 +185,15 @@ namespace Nethermind.Network.Discovery
         {
             try
             {
-                return await Task.Run(() => SendFindNodeSync(destinationNode, searchedNodeId), cancellationToken);
+                var nodeManager = _discoveryManager.GetNodeLifecycleManager(destinationNode);
+                nodeManager?.SendFindNode(searchedNodeId ?? _masterNode.Id.Bytes);
+
+                if (await _discoveryManager.WasMessageReceived(destinationNode.IdHashText, MessageType.Neighbors, _configurationProvider.SendNodeTimeout))
+                {
+                    return Result.Success();
+                }
+
+                return Result.Fail($"Did not receive Neighbors reponse in time from: {destinationNode.Host}");
             }
             catch (OperationCanceledException)
             {
@@ -193,17 +201,17 @@ namespace Nethermind.Network.Discovery
             } 
         }
 
-        private Result SendFindNodeSync(Node destinationNode, byte[] searchedNodeId)
-        {
-            var nodeManager = _discoveryManager.GetNodeLifecycleManager(destinationNode);
-            nodeManager?.SendFindNode(searchedNodeId ?? _masterNode.Id.Bytes);
+        //private Result SendFindNodeSync(Node destinationNode, byte[] searchedNodeId)
+        //{
+        //    var nodeManager = _discoveryManager.GetNodeLifecycleManager(destinationNode);
+        //    nodeManager?.SendFindNode(searchedNodeId ?? _masterNode.Id.Bytes);
 
-            if (_discoveryManager.WasMessageReceived(destinationNode.IdHashText, MessageType.Neighbors, _configurationProvider.SendNodeTimeout))
-            {
-                return Result.Success();
-            }
+        //    if (_discoveryManager.WasMessageReceived(destinationNode.IdHashText, MessageType.Neighbors, _configurationProvider.SendNodeTimeout))
+        //    {
+        //        return Result.Success();
+        //    }
             
-            return Result.Fail($"Did not receive Neighbors reponse in time from: {destinationNode.Host}");
-        }
+        //    return Result.Fail($"Did not receive Neighbors reponse in time from: {destinationNode.Host}");
+        //}
     }
 }

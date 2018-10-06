@@ -2,10 +2,11 @@
   {
     "ConfigModule": "InitConfig",
     "ConfigItems": {
-      "JsonRpcEnabled": false,
+      "JsonRpcEnabled": true,
       "NetworkEnabled": true,
       "DiscoveryEnabled": true,
       "SynchronizationEnabled": true,
+      "PeerManagerEnabled": true,
       "IsMining": false,
       "DiscoveryPort": 30312,
       "P2PPort": 30312,

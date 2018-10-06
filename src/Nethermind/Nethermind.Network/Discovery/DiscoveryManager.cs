@@ -22,6 +22,7 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -46,7 +47,7 @@ namespace Nethermind.Network.Discovery
         private readonly INodeTable _nodeTable;
         private readonly INetworkStorage _discoveryStorage;
 
-        private readonly ConcurrentDictionary<MessageTypeKey, ManualResetEvent> _waitingEvents = new ConcurrentDictionary<MessageTypeKey, ManualResetEvent>();
+        private readonly ConcurrentDictionary<MessageTypeKey, TaskCompletionSource<DiscoveryMessage>> _waitingEvents = new ConcurrentDictionary<MessageTypeKey, TaskCompletionSource<DiscoveryMessage>>();
         private IMessageSender _messageSender;
 
         public DiscoveryManager(INodeLifecycleManagerFactory nodeLifecycleManagerFactory,
@@ -106,7 +107,7 @@ namespace Nethermind.Network.Discovery
                         return;
                 }
 
-                NotifySubscribersOnMsgReceived(msgType, nodeManager.ManagedNode);
+                NotifySubscribersOnMsgReceived(msgType, nodeManager.ManagedNode, message);
                 CleanUpLifecycleManagers();
             }
             catch (Exception e)
@@ -152,16 +153,11 @@ namespace Nethermind.Network.Discovery
             }
         }
 
-        public bool WasMessageReceived(string senderIdHash, MessageType messageType, int timeout)
+        public async Task<bool> WasMessageReceived(string senderIdHash, MessageType messageType, int timeout)
         {
-            ManualResetEvent resetEvent = GetResetEvent(senderIdHash, (int)messageType);
-            bool result = resetEvent.WaitOne(timeout);
-            if (result)
-            {
-                resetEvent.Reset();
-            }
-
-            return result;
+            var completionSource = GetCompletionSource(senderIdHash, (int)messageType);
+            var firstTask = await Task.WhenAny(completionSource.Task, Task.Delay(timeout));
+            return firstTask == completionSource.Task;
         }
 
         public event EventHandler<NodeEventArgs> NodeDiscovered;
@@ -215,23 +211,23 @@ namespace Nethermind.Network.Discovery
             NodeDiscovered?.Invoke(this, new NodeEventArgs(manager));
         }
 
-        private void NotifySubscribersOnMsgReceived(MessageType msgType, Node node)
+        private void NotifySubscribersOnMsgReceived(MessageType msgType, Node node, DiscoveryMessage message)
         {
-            ManualResetEvent resetEvent = RemoveResetEvent(node.IdHashText, (int)msgType);
-            resetEvent?.Set();
+            var completionSource = RemoveCompletionSource(node.IdHashText, (int)msgType);
+            completionSource?.TrySetResult(message);
         }
 
-        private ManualResetEvent GetResetEvent(string senderAddressHash, int messageType)
+        private TaskCompletionSource<DiscoveryMessage> GetCompletionSource(string senderAddressHash, int messageType)
         {
-            MessageTypeKey key = new MessageTypeKey(senderAddressHash, messageType);
-            ManualResetEvent resetEvent = _waitingEvents.GetOrAdd(key, new ManualResetEvent(false));
-            return resetEvent;
+            var key = new MessageTypeKey(senderAddressHash, messageType);
+            var completionSource = _waitingEvents.GetOrAdd(key, new TaskCompletionSource<DiscoveryMessage>());
+            return completionSource;
         }
 
-        private ManualResetEvent RemoveResetEvent(string senderAddressHash, int messageType)
+        private TaskCompletionSource<DiscoveryMessage> RemoveCompletionSource(string senderAddressHash, int messageType)
         {
-            MessageTypeKey key = new MessageTypeKey(senderAddressHash, messageType);
-            return _waitingEvents.TryRemove(key, out ManualResetEvent resetEvent) ? resetEvent : null;
+            var key = new MessageTypeKey(senderAddressHash, messageType);
+            return _waitingEvents.TryRemove(key, out var completionSource) ? completionSource : null;
         }
 
         private void CleanUpLifecycleManagers()
@@ -242,27 +238,27 @@ namespace Nethermind.Network.Discovery
             }
 
             int cleanupCount = _configurationProvider.NodeLifecycleManagersCleaupCount;
-            KeyValuePair<string, INodeLifecycleManager>[] activeExcluded = _nodeLifecycleManagers.Where(x => x.Value.State == NodeLifecycleState.ActiveExcluded).Take(cleanupCount).ToArray();
+            var activeExcluded = _nodeLifecycleManagers.Where(x => x.Value.State == NodeLifecycleState.ActiveExcluded).Take(cleanupCount).ToArray();
             if (activeExcluded.Length == cleanupCount)
             {
-                int removeCounter = RemoveManagers(activeExcluded, activeExcluded.Length);
+                var removeCounter = RemoveManagers(activeExcluded, activeExcluded.Length);
                 if(_logger.IsTrace) _logger.Trace($"Removed: {removeCounter} activeExcluded node lifecycle managers");
                 return;
             }
 
-            KeyValuePair<string, INodeLifecycleManager>[] unreachable = _nodeLifecycleManagers.Where(x => x.Value.State == NodeLifecycleState.Unreachable).Take(cleanupCount - activeExcluded.Length).ToArray();
-            int removeCount = RemoveManagers(activeExcluded, activeExcluded.Length);
+            var unreachable = _nodeLifecycleManagers.Where(x => x.Value.State == NodeLifecycleState.Unreachable).Take(cleanupCount - activeExcluded.Length).ToArray();
+            var removeCount = RemoveManagers(activeExcluded, activeExcluded.Length);
             removeCount = removeCount + RemoveManagers(unreachable, unreachable.Length);
             if(_logger.IsTrace) _logger.Trace($"Removed: {removeCount} unreachable node lifecycle managers");
         }
 
         private int RemoveManagers(KeyValuePair<string, INodeLifecycleManager>[] items, int count)
         {
-            int removeCount = 0;
+            var removeCount = 0;
             for (var i = 0; i < count; i++)
             {
                 var item = items[i];
-                if (_nodeLifecycleManagers.TryRemove(item.Key, out var _))
+                if (_nodeLifecycleManagers.TryRemove(item.Key, out _))
                 {
                     _discoveryStorage.RemoveNodes(new[] { new NetworkNode(item.Value.ManagedNode.Id.PublicKey, item.Value.ManagedNode.Host, item.Value.ManagedNode.Port, item.Value.ManagedNode.Description, item.Value.NodeStats.NewPersistedNodeReputation),  });
                     removeCount++;
