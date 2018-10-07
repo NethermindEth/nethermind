@@ -349,11 +349,11 @@ namespace Ethereum.Test.Base
             stopwatch?.Stop();
 
             List<string> differences = RunAssertions(test, blockTree.RetrieveHeadBlock(), storageProvider, stateProvider);
-            if (differences.Any())
-            {
-                BlockTrace blockTrace = blockchainProcessor.TraceBlock(blockTree.BestSuggested.Hash);
-                _logger.Info(new UnforgivingJsonSerializer().Serialize(blockTrace, true));
-            }
+//            if (differences.Any())
+//            {
+//                BlockTrace blockTrace = blockchainProcessor.TraceBlock(blockTree.BestSuggested.Hash);
+//                _logger.Info(new UnforgivingJsonSerializer().Serialize(blockTrace, true));
+//            }
 
             Assert.Zero(differences.Count, "differences");
         }
