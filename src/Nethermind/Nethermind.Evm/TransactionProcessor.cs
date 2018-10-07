@@ -126,23 +126,32 @@ namespace Nethermind.Evm
 
             int snapshot = _stateProvider.TakeSnapshot();
             int storageSnapshot = _storageProvider.TakeSnapshot();
-            
-            if (transaction.IsContractCreation)
-            {
-                recipient = Address.OfContract(sender, _stateProvider.GetNonce(sender) - 1);
-                // wipe out storage on hash collision
-                if (_stateProvider.AccountExists(recipient))
-                {
-                    _stateProvider.UpdateStorageRoot(recipient, Keccak.EmptyTreeHash);
-                }
-            }
-            
+
             _stateProvider.SubtractFromBalance(sender, value, spec);
             byte statusCode = StatusCode.Failure;
             TransactionSubstate substate = null;
 
             try
             {
+                if (transaction.IsContractCreation)
+                {
+                    recipient = Address.OfContract(sender, _stateProvider.GetNonce(sender) - 1);
+                    if (_stateProvider.AccountExists(recipient))
+                    {
+                        if ((_virtualMachine.GetCachedCodeInfo(recipient)?.MachineCode?.Length ?? 0) != 0 || _stateProvider.GetNonce(recipient) != 0)
+                        {
+                            if (_logger.IsTrace)
+                            {
+                                _logger.Trace($"Contract collision at {recipient}"); // the account already owns the contract with the code
+                            }
+
+                            throw new TransactionCollisionException();
+                        }
+
+                        _stateProvider.UpdateStorageRoot(recipient, Keccak.EmptyTreeHash);
+                    }
+                }
+
                 bool isPrecompile = recipient.IsPrecompiled(spec);
 
                 ExecutionEnvironment env = new ExecutionEnvironment();
@@ -178,7 +187,7 @@ namespace Nethermind.Evm
                 {
                     // tks: there is similar code fo contract creation from init and from CREATE
                     // this may lead to inconsistencies (however it is tested extensively in blockchain tests)
-                    if (transaction.IsContractCreation) 
+                    if (transaction.IsContractCreation)
                     {
                         long codeDepositGasCost = substate.Output.Length * GasCostOf.CodeDeposit;
                         if (spec.IsEip170Enabled && substate.Output.Length > 0x6000)
@@ -240,7 +249,7 @@ namespace Nethermind.Evm
             {
                 substate.Trace.ReturnValue = substate.Output?.ToHexString();
             }
-            
+
             return (BuildTransactionReceipt(block, statusCode, (statusCode == StatusCode.Success && substate.Logs.Any()) ? substate.Logs.ToArray() : LogEntry.EmptyLogs, recipient), substate?.Trace ?? TransactionTrace.QuickFail);
         }
 
@@ -259,14 +268,14 @@ namespace Nethermind.Evm
 
                 if (_logger.IsTrace) _logger.Trace("Refunding unused gas of " + unspentGas + " and refund of " + refund);
                 _stateProvider.AddToBalance(sender, (ulong) (unspentGas + refund) * gasPrice, spec);
-                spentGas -=  refund;
+                spentGas -= refund;
             }
 
             if (substate.Trace != null)
             {
                 substate.Trace.Gas = spentGas;
             }
-            
+
             return spentGas;
         }
 

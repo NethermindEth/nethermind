@@ -31,7 +31,7 @@ namespace Nethermind.Store
         internal const int StartCapacity = 16;
 
         private readonly Dictionary<StorageAddress, Stack<int>> _intraBlockCache = new Dictionary<StorageAddress, Stack<int>>();
-        
+
         /// <summary>
         /// EIP-1283
         /// </summary>
@@ -43,7 +43,7 @@ namespace Nethermind.Store
 
         private readonly ISnapshotableDb _stateDb;
         private readonly IStateProvider _stateProvider;
-        
+
         private readonly Dictionary<Address, StorageTree> _storages = new Dictionary<Address, StorageTree>();
 
         private int _capacity = StartCapacity;
@@ -63,7 +63,7 @@ namespace Nethermind.Store
             {
                 throw new InvalidOperationException("Get original should only be called after get within the same caching round");
             }
-            
+
             return _originalValues[storageAddress];
         }
 
@@ -131,6 +131,12 @@ namespace Nethermind.Store
                     throw new InvalidOperationException($"Expected checked value {forAssertion} to be equal to {_currentPosition} - {i}");
                 }
 
+//                if (change.ChangeType == ChangeType.Destroy)
+//                {
+//                    _storages[change.StorageAddress.Address] = _destructedStorages[change.StorageAddress.Address].Storage;
+//                    _destructedStorages.Remove(change.StorageAddress.Address);
+//                }
+                
                 _changes[_currentPosition - i] = null;
 
                 if (_intraBlockCache[change.StorageAddress].Count == 0)
@@ -178,17 +184,32 @@ namespace Nethermind.Store
                     continue;
                 }
 
+//                if (_destructedStorages.ContainsKey(change.StorageAddress.Address))
+//                {
+//                    if (_destructedStorages[change.StorageAddress.Address].ChangeIndex > _currentPosition - i)
+//                    {
+//                        continue;
+//                    }
+//                }
+                
+                _committedThisRound.Add(change.StorageAddress);
+                toUpdateRoots.Add(change.StorageAddress.Address);
+
+                if (change.ChangeType == ChangeType.Destroy)
+                {
+                    continue;
+                }
+
                 int forAssertion = _intraBlockCache[change.StorageAddress].Pop();
                 if (forAssertion != _currentPosition - i)
                 {
                     throw new InvalidOperationException($"Expected checked value {forAssertion} to be equal to {_currentPosition} - {i}");
                 }
 
-                _committedThisRound.Add(change.StorageAddress);
-                toUpdateRoots.Add(change.StorageAddress.Address);
-
                 switch (change.ChangeType)
                 {
+                    case ChangeType.Destroy:
+                        break;
                     case ChangeType.JustCache:
                         break;
                     case ChangeType.Update:
@@ -222,6 +243,7 @@ namespace Nethermind.Store
             _currentPosition = -1;
             _committedThisRound.Clear();
             _intraBlockCache.Clear();
+//            _destructedStorages.Clear();
         }
 
         public void Reset()
@@ -234,6 +256,20 @@ namespace Nethermind.Store
             _committedThisRound.Clear();
             Array.Clear(_changes, 0, _changes.Length);
             _storages.Clear();
+//            _destructedStorages.Clear();
+        }
+
+        /// <summary>
+        /// The code handlign destroy is commented out. There are plenty of ethereum tests which handle collision of addresses.
+        /// I would like to clarify why we even consider it a possibility?
+        /// </summary>
+        /// <param name="address"></param>
+        public void Destroy(Address address)
+        {
+//            IncrementPosition();
+//            _destructedStorages.Add(address, (_currentPosition, GetOrCreateStorage(address)));
+//            _changes[_currentPosition] = new Change(ChangeType.Destroy, new StorageAddress(address, 0), null);
+//            _storages[address] = new StorageTree(_stateDb, Keccak.EmptyTreeHash);
         }
 
         public void CommitTrees()
@@ -258,11 +294,22 @@ namespace Nethermind.Store
             return _storages[address];
         }
 
+//        private Dictionary<Address, (int ChangeIndex, StorageTree Storage)> _destructedStorages = new Dictionary<Address, (int, StorageTree)>();
+
         private byte[] GetCurrentValue(StorageAddress storageAddress)
         {
             if (_intraBlockCache.ContainsKey(storageAddress))
             {
-                return _changes[_intraBlockCache[storageAddress].Peek()].Value;
+                int lastChangeIndex = _intraBlockCache[storageAddress].Peek();
+//                if (_destructedStorages.ContainsKey(storageAddress.Address))
+//                {
+//                    if (lastChangeIndex < _destructedStorages[storageAddress.Address].ChangeIndex)
+//                    {
+//                        return new byte[] {0};
+//                    }
+//                }
+
+                return _changes[lastChangeIndex].Value;
             }
 
             return LoadFromTree(storageAddress);
@@ -330,7 +377,8 @@ namespace Nethermind.Store
         private enum ChangeType
         {
             JustCache,
-            Update
+            Update,
+            Destroy,
         }
     }
 }
