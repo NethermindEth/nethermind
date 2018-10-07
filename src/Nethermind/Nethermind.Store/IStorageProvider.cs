@@ -17,7 +17,6 @@
  */
 
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 
 namespace Nethermind.Store
 {
@@ -30,7 +29,9 @@ namespace Nethermind.Store
         void Set(StorageAddress storageAddress, byte[] newValue);
 
         void Reset();
-
+        
+        void Destroy(Address address);
+        
         void CommitTrees();
     }
 }

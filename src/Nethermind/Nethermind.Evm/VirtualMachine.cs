@@ -2438,6 +2438,7 @@ namespace Nethermind.Evm
 
                         Address inheritor = PopAddress(bytesOnStack);
                         evmState.DestroyList.Add(env.ExecutingAccount);
+                        _storage.Destroy(env.ExecutingAccount);
 
                         UInt256 ownerBalance = _state.GetBalance(env.ExecutingAccount);
                         if (spec.IsEip158Enabled && ownerBalance != 0 && _state.IsDeadAccount(inheritor))
