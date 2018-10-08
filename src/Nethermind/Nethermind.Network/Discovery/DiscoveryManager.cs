@@ -162,12 +162,12 @@ namespace Nethermind.Network.Discovery
 
         public event EventHandler<NodeEventArgs> NodeDiscovered;
 
-        public IReadOnlyCollection<INodeLifecycleManager> GetNodeLifecycleManagers()
+        public IReadOnlyCollection<INodeLifecycleManager> GetOrAddNodeLifecycleManagers()
         {
             return _nodeLifecycleManagers.Values.ToArray();
         }
 
-        public IReadOnlyCollection<INodeLifecycleManager> GetNodeLifecycleManagers(Func<INodeLifecycleManager, bool> query)
+        public IReadOnlyCollection<INodeLifecycleManager> GetOrAddNodeLifecycleManagers(Func<INodeLifecycleManager, bool> query)
         {
             return _nodeLifecycleManagers.Values.Where(query.Invoke).ToArray();
         }

@@ -184,7 +184,7 @@ namespace Nethermind.Blockchain
 
         public async Task AddPeer(ISynchronizationPeer synchronizationPeer)
         {
-            if (_logger.IsTrace) _logger.Trace($"Adding synchronization peer {synchronizationPeer.NodeId}");
+            if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Adding synchronization peer {synchronizationPeer.NodeId}");
             if (!_isInitialized)
             {
                 if (_logger.IsTrace) _logger.Trace($"Synchronization is disabled, adding peer is blocked: {synchronizationPeer.NodeId}");
@@ -511,7 +511,7 @@ namespace Nethermind.Blockchain
                 });
 
                 if (_logger.IsInfo) _logger.Info(
-                    $"Starting sync processes with Node: {peerInfo.Peer.NodeId} [{peerInfo.Peer.ClientId}], " +
+                    $"Starting sync processes with Node: {peerInfo.Peer.NodeId} [{peerInfo.Peer.ClientId}], FullNodeId: {peerInfo.Peer.NodeId.PublicKey} " +
                     $"best known block #: {_blockTree.BestSuggested.Number}, " +
                     $"best peer block #: {peerInfo.NumberAvailable}");
 

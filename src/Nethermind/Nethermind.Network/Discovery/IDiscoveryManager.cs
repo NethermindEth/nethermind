@@ -33,7 +33,7 @@ namespace Nethermind.Network.Discovery
         Task<bool> WasMessageReceived(string senderIdHash, MessageType messageType, int timeout);
         event EventHandler<NodeEventArgs> NodeDiscovered;
 
-        IReadOnlyCollection<INodeLifecycleManager> GetNodeLifecycleManagers();
-        IReadOnlyCollection<INodeLifecycleManager> GetNodeLifecycleManagers(Func<INodeLifecycleManager, bool> query);
+        IReadOnlyCollection<INodeLifecycleManager> GetOrAddNodeLifecycleManagers();
+        IReadOnlyCollection<INodeLifecycleManager> GetOrAddNodeLifecycleManagers(Func<INodeLifecycleManager, bool> query);
     }
 }

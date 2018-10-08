@@ -145,7 +145,7 @@ namespace Nethermind.Network.Config
         /// <summary>
         /// List of trusted nodes - we connect to them and set predefined high reputation
         /// </summary>
-        ConfigNode[] TrustedPeers { get; }
+        ConfigNode[] TrustedPeers { get; set; }
 
         /// <summary>
         /// Base path for discovery db

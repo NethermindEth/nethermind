@@ -118,7 +118,7 @@ namespace Nethermind.Network.Rlpx
 
         public async Task ConnectAsync(NodeId remoteId, string host, int port, INodeStats nodeStats)
         {
-            if (_logger.IsTrace) _logger.Trace($"Connecting to {remoteId}@{host}:{port}");
+            if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Connecting to {remoteId}@{host}:{port}");
 
             Bootstrap clientBootstrap = new Bootstrap();
             clientBootstrap.Group(_workerGroup);
@@ -135,7 +135,7 @@ namespace Nethermind.Network.Rlpx
             var firstTask = await Task.WhenAny(connectTask, Task.Delay(Timeouts.InitialConnection.Add(TimeSpan.FromSeconds(10))));
             if (firstTask != connectTask)
             {
-                if (_logger.IsTrace) _logger.Trace($"Connection timed out: {remoteId}@{host}:{port}");
+                if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Connection timed out: {remoteId}@{host}:{port}");
                 throw new NetworkingException($"Failed to connect to {remoteId} (timeout)", NetwokExceptionType.Timeout);
             }
 
@@ -149,7 +149,7 @@ namespace Nethermind.Network.Rlpx
                 throw new NetworkingException($"Failed to connect to {remoteId}", NetwokExceptionType.TargetUnreachable,connectTask.Exception);
             }
 
-            if (_logger.IsTrace) _logger.Trace($"Connected to {remoteId}@{host}:{port}");
+            if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| Connected to {remoteId}@{host}:{port}");
         }
 
         public event EventHandler<SessionEventArgs> SessionCreated; 
