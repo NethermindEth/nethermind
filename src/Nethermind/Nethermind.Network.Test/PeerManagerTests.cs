@@ -265,8 +265,8 @@ namespace Nethermind.Network.Test
         {
             var node = _nodeFactory.CreateNode("192.1.1.1", 3333);
 
-            var task = _peerManager.RunPeerUpdate();
             _discoveryManager.GetNodeLifecycleManager(node);
+            var task = _peerManager.Start();
             task.Wait();
 
             //verify new peer is added
@@ -324,11 +324,15 @@ namespace Nethermind.Network.Test
         public void TriggerProtocolInitialized(ProtocolInitializedEventArgs eventArgs)
         {
             ProtocolInitialized?.Invoke(this, eventArgs);
+            var task = Task.Delay(1000);
+            task.Wait();
         }
 
         public void TriggerPeerDisconnected()
         {
             PeerDisconnected?.Invoke(this, new DisconnectEventArgs(DisconnectReason.TooManyPeers, DisconnectType.Local));
+            var task = Task.Delay(1000);
+            task.Wait();
         }
 
         public void DeliverMessage(Packet packet, bool priority = false)
@@ -354,6 +358,8 @@ namespace Nethermind.Network.Test
         public void Handshake()
         {
             HandshakeComplete?.Invoke(this, EventArgs.Empty);
+            var task = Task.Delay(1000);
+            task.Wait();
         }
 
         public event EventHandler<DisconnectEventArgs> PeerDisconnected;
@@ -363,11 +369,15 @@ namespace Nethermind.Network.Test
         public void TriggerPeerDisconnected(DisconnectReason reason, DisconnectType disconnectType)
         {
             PeerDisconnected?.Invoke(this, new DisconnectEventArgs(reason, disconnectType));
+            var task = Task.Delay(1000);
+            task.Wait();
         }
 
         public void TriggerHandshakeComplete()
         {
             HandshakeComplete?.Invoke(this, EventArgs.Empty);
+            var task = Task.Delay(1000);
+            task.Wait();
         }
     }
 
