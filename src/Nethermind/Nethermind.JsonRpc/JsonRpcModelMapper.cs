@@ -22,6 +22,7 @@ using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.JsonRpc.DataModel;
 using Block = Nethermind.JsonRpc.DataModel.Block;
@@ -94,6 +95,27 @@ namespace Nethermind.JsonRpc
                 Gas = new Quantity(transaction.GasLimit),
                 Data = new Data(transaction.Data)
             };
+        }
+
+        public Core.Transaction MapTransaction(Transaction transaction)
+        {
+            Core.Transaction tx = new Core.Transaction();
+            tx.GasLimit = transaction.Gas?.Value.ToUInt256() ?? 90000;
+            tx.GasPrice = transaction.GasPrice?.Value.ToUInt256() ?? 0;
+            tx.Nonce = transaction.Nonce?.Value.ToUInt256() ?? 0; // here pick the last nonce?
+            tx.To = transaction.To == null ? null : new Address(transaction.To.Value);
+            tx.SenderAddress = new Address(transaction.From.Value);
+            tx.Value = transaction.Value?.Value.ToUInt256() ?? UInt256.Zero;
+            if (tx.To == null)
+            {
+                tx.Init = transaction.Data.Value;
+            }
+            else
+            {
+                tx.Data = transaction.Data.Value;
+            }
+
+            return tx;
         }
 
         public TransactionReceipt MapTransactionReceipt(Core.TransactionReceipt receipt, Core.Transaction transaction, Core.Block block)

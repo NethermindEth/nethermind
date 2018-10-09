@@ -454,7 +454,7 @@ namespace Nethermind.Blockchain
                 _logger.Trace($"Total transactions of block {suggestedBlock.ToString(Block.Format.Short)} is {totalTransactions}");
             }
 
-            if (totalDifficulty > (_blockTree.Head?.TotalDifficulty ?? 0) || onlyForTxData)
+            if (suggestedBlock.IsGenesis || totalDifficulty > (_blockTree.Head?.TotalDifficulty ?? 0) || onlyForTxData)
             {
                 List<Block> blocksToBeAddedToMain = new List<Block>();
                 Block toBeProcessed = suggestedBlock;

@@ -26,16 +26,16 @@ namespace Nethermind.JsonRpc.Module
 {
     public class NetModule : ModuleBase, INetModule
     {
-        public NetModule(IConfigProvider configurationProvider, ILogManager logManager, IJsonSerializer jsonSerializer) : base(configurationProvider, logManager, jsonSerializer)
+        private readonly IBlockchainBridge _blockchainBridge;
+
+        public NetModule(IConfigProvider configurationProvider, ILogManager logManager, IJsonSerializer jsonSerializer, IBlockchainBridge blockchainBridge) : base(configurationProvider, logManager, jsonSerializer)
         {
+            _blockchainBridge = blockchainBridge;
         }
 
         public ResultWrapper<string> net_version()
         {
-            //TODO implement properly
-            return ResultWrapper<string>.Success("1");
-            throw new NotImplementedException();
-//            return ResultWrapper<string>.Success(EthereumNetwork.Main.GetNetworkId().ToString());
+            return ResultWrapper<string>.Success(_blockchainBridge.GetNetworkId().ToString());
         }
 
         public ResultWrapper<bool> net_listening()

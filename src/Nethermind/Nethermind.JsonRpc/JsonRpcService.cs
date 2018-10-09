@@ -53,7 +53,7 @@ namespace Nethermind.JsonRpc
                 (ErrorType? errorType, string errorMessage) = Validate(rpcRequest);
                 if (errorType.HasValue)
                 {
-                    return GetErrorResponse(errorType.Value, errorMessage, rpcRequest?.Id, rpcRequest?.Method);
+                    return GetErrorResponse(errorType.Value, errorMessage, rpcRequest.Id, rpcRequest?.Method);
                 }
                 try
                 {
@@ -62,18 +62,18 @@ namespace Nethermind.JsonRpc
                 catch (TargetInvocationException ex)
                 {
                     _logger.Error($"Error during method execution, request: {rpcRequest}", ex.InnerException);
-                    return GetErrorResponse(ErrorType.InternalError, "Internal error", rpcRequest?.Id, rpcRequest?.Method);
+                    return GetErrorResponse(ErrorType.InternalError, "Internal error", rpcRequest.Id, rpcRequest?.Method);
                 }
                 catch (Exception ex)
                 {
                     _logger.Error($"Error during method execution, request: {rpcRequest}", ex);
-                    return GetErrorResponse(ErrorType.InternalError, "Internal error", rpcRequest?.Id, rpcRequest?.Method);
+                    return GetErrorResponse(ErrorType.InternalError, "Internal error", rpcRequest.Id, rpcRequest?.Method);
                 }
             }
             catch (Exception ex)
             {
                 _logger.Error($"Error during validation, request: {rpcRequest}", ex);
-                return GetErrorResponse(ErrorType.ParseError, "Incorrect message", null, null);
+                return GetErrorResponse(ErrorType.ParseError, "Incorrect message", 0, null);
             }         
         }
         private JsonRpcResponse ExecuteRequest(JsonRpcRequest rpcRequest)
@@ -182,12 +182,12 @@ namespace Nethermind.JsonRpc
             }
         }
 
-        private JsonRpcResponse GetSuccessResponse(object result, string id)
+        private JsonRpcResponse GetSuccessResponse(object result, int id)
         {
             var response = new JsonRpcResponse
             {
-                Jsonrpc = _jsonRpcConfig.JsonRpcVersion,
                 Id = id,
+                Jsonrpc = _jsonRpcConfig.JsonRpcVersion,
                 Result = result,
             };
 
@@ -196,12 +196,12 @@ namespace Nethermind.JsonRpc
 
         public JsonRpcResponse GetErrorResponse(ErrorType errorType, string message)
         {
-            return GetErrorResponse(errorType, message, null, null);
+            return GetErrorResponse(errorType, message, 0, null);
         }
         
-        private JsonRpcResponse GetErrorResponse(ErrorType errorType, string message, string id, string methodName)
+        private JsonRpcResponse GetErrorResponse(ErrorType errorType, string message, int id, string methodName)
         {
-            _logger.Debug($"Sending error response, method: {methodName ?? "none"}, id: {id ?? "none"}, errorType: {errorType}, message: {message}");
+            _logger.Debug($"Sending error response, method: {methodName ?? "none"}, id: {id}, errorType: {errorType}, message: {message}");
             var response = new JsonRpcResponse
             {
                 Jsonrpc = _jsonRpcConfig.JsonRpcVersion,

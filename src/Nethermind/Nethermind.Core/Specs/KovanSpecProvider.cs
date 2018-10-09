@@ -16,7 +16,6 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-
 using System;
 using System.Numerics;
 using Nethermind.Dirichlet.Numerics;

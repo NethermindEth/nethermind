@@ -22,25 +22,25 @@ namespace Nethermind.JsonRpc.DataModel
 {
     public class JsonRpcResponse
     {
-        [JsonProperty(PropertyName = "jsonrpc")]
+        [JsonProperty(PropertyName = "jsonrpc", Order = 1)]
         public string Jsonrpc { get; set; }
-        [JsonProperty(PropertyName = "result")]
+        [JsonProperty(PropertyName = "result", Order = 2)]
         public object Result { get; set; }
-        [JsonProperty(PropertyName = "error")]
+        [JsonProperty(PropertyName = "error", NullValueHandling = NullValueHandling.Ignore, Order = 3)]
         public Error Error { get; set; }
-        [JsonProperty(PropertyName = "id")]
-        public string Id { get; set; }
+        [JsonProperty(PropertyName = "id", Order = 0)]
+        public int Id { get; set; }
     }
     
     public class JsonRpcResponse<T>
     {
-        [JsonProperty(PropertyName = "jsonrpc")]
+        [JsonProperty(PropertyName = "jsonrpc", Order = 1)]
         public string Jsonrpc { get; set; }
-        [JsonProperty(PropertyName = "result")]
+        [JsonProperty(PropertyName = "result", Order = 2)]
         public T Result { get; set; }
-        [JsonProperty(PropertyName = "error")]
+        [JsonProperty(PropertyName = "error", NullValueHandling = NullValueHandling.Ignore, Order = 3)]
         public Error Error { get; set; }
-        [JsonProperty(PropertyName = "id")]
-        public string Id { get; set; }
+        [JsonProperty(PropertyName = "id", Order = 0)]
+        public int Id { get; set; }
     }
 }

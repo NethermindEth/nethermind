@@ -185,7 +185,7 @@ namespace Nethermind.Runner.Runners
             }
             else
             {
-                throw new NotSupportedException($"Not yet tested, not yet supported ChainId {chainSpec.ChainId}");
+                specProvider = new SingleReleaseSpecProvider(LatestRelease.Instance, chainSpec.ChainId);
             }
 
             var ethereumSigner = new EthereumSigner(

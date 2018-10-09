@@ -402,7 +402,7 @@ namespace Nethermind.Blockchain
 
             BlockAddedToMain?.Invoke(this, new BlockEventArgs(block));
 
-            if (block.TotalDifficulty > (Head?.TotalDifficulty ?? 0))
+            if (block.IsGenesis || block.TotalDifficulty > (Head?.TotalDifficulty ?? 0))
             {
                 if (block.Number == 0)
                 {
