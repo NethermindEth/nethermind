@@ -25,6 +25,9 @@ sudo apt-get install libsnappy-dev
 sudo apt-get install libc6-dev
 sudo apt-get install libc6
 
+on Mac:
+brew install gmp
+
 then (any platform):
 
 git clone https://github.com/tkstanczak/nethermind.git
