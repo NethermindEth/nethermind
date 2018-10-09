@@ -124,7 +124,8 @@ namespace Nethermind.Network.Test
             p2pSession.TriggerProtocolInitialized(args);
             AssertTrue(() => _peerManager.ActivePeers.First().NodeStats.DidEventHappen(NodeStatsEventType.Eth62Initialized), 5000);
             //Assert.IsTrue(_peerManager.ActivePeers.First().NodeStats.DidEventHappen(NodeStatsEventType.Eth62Initialized));
-            Assert.NotNull(_peerManager.ActivePeers.First().SynchronizationPeer);
+            AssertTrue(() => _peerManager.ActivePeers.First().SynchronizationPeer != null, 5000);
+            //Assert.NotNull(_peerManager.ActivePeers.First().SynchronizationPeer);
 
             //verify active peer was added to synch manager
             _synchronizationManager.Received(1).AddPeer(Arg.Any<ISynchronizationPeer>());
