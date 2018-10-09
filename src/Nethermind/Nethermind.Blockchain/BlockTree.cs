@@ -85,7 +85,7 @@ namespace Nethermind.Blockchain
             }
         }
 
-        public bool CanAcceptNewBlocks { get; private set; } = true;// no need to sync it at the moment
+        public bool CanAcceptNewBlocks { get; private set; } = true; // no need to sync it at the moment
 
         public async Task LoadBlocksFromDb(
             CancellationToken cancellationToken,
@@ -142,7 +142,7 @@ namespace Nethermind.Blockchain
                 Block block = FindBlock(maxDifficultyBlock.BlockHash, false);
                 if (block == null)
                 {
-                    if(_logger.IsError) _logger.Error($"Could not find block {maxDifficultyBlock.BlockHash}. DB load cancelled.");
+                    if (_logger.IsError) _logger.Error($"Could not find block {maxDifficultyBlock.BlockHash}. DB load cancelled.");
                     _dbBatchProcessed?.SetResult(null);
                     break;
                 }
@@ -150,7 +150,7 @@ namespace Nethermind.Blockchain
                 BestSuggested = block.Header;
                 NewBestSuggestedBlock?.Invoke(this, new BlockEventArgs(block));
 
-                if (i % batchSize == batchSize - 1 && !(i == blocksToLoad - 1) && (Head.Number + (UInt256)batchSize) < blockNumber)
+                if (i % batchSize == batchSize - 1 && !(i == blocksToLoad - 1) && (Head.Number + (UInt256) batchSize) < blockNumber)
                 {
                     if (_logger.IsInfo)
                     {
@@ -160,7 +160,7 @@ namespace Nethermind.Blockchain
                     _dbBatchProcessed = new TaskCompletionSource<object>();
                     using (cancellationToken.Register(() => _dbBatchProcessed.SetCanceled()))
                     {
-                        _currentDbLoadBatchEnd = blockNumber - (UInt256)batchSize;
+                        _currentDbLoadBatchEnd = blockNumber - (UInt256) batchSize;
                         await _dbBatchProcessed.Task;
                     }
                 }
@@ -301,13 +301,10 @@ namespace Nethermind.Blockchain
             {
                 return level.BlockInfos[0].BlockHash;
             }
-            else
+
+            if (level.BlockInfos.Length > 0)
             {
-                if (level.BlockInfos.Length > 0)
-                {
-                    throw new InvalidOperationException(
-                        "Unexpected request by number for a block that is not on the main chain");
-                }
+                throw new InvalidOperationException($"Unexpected request by number for a block {blockNumber} that is not on the main chain");
             }
 
             return null;
@@ -382,13 +379,13 @@ namespace Nethermind.Blockchain
             {
                 throw new InvalidOperationException($"Cannot move unknown block {block.ToString(Block.Format.HashAndNumber)} to main");
             }
-            
+
             BlockInfo info = level.BlockInfos[index.Value];
             if (!info.WasProcessed)
             {
                 throw new InvalidOperationException($"Cannot move unprocessed block {block.ToString(Block.Format.HashAndNumber)} to main");
             }
-            
+
             if (index.Value != 0)
             {
                 (level.BlockInfos[index.Value], level.BlockInfos[0]) = (level.BlockInfos[0], level.BlockInfos[index.Value]);
