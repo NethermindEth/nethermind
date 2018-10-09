@@ -114,10 +114,11 @@ namespace Nethermind.Network.Discovery
                 _logger.Error($"Incorrect message, length: {msg.Length}, sender: {address}");
                 return;
             }
+            
             var typeRaw = msg[97];
             if (!Enum.IsDefined(typeof(MessageType), (int)typeRaw))
             {
-                _logger.Error($"Unsupported message type: {typeRaw}, sender: {address}");
+                _logger.Debug($"Unsupported message type: {typeRaw}, sender: {address}, message {msg.ToHexString()}");
                 return;
             }
             
