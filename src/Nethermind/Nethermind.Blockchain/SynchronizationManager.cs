@@ -105,7 +105,8 @@ namespace Nethermind.Blockchain
 
         public Block Find(UInt256 number)
         {
-            return _blockTree.FindBlock(number);
+            
+            return _blockTree.Head.Number >= number ? _blockTree.FindBlock(number) : null;
         }
 
         public Block[] Find(Keccak hash, int numberOfBlocks, int skip, bool reverse)
