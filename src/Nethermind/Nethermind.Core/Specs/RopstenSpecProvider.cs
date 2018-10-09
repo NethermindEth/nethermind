@@ -49,7 +49,7 @@ namespace Nethermind.Core.Specs
         public UInt256? DaoBlockNumber { get; } = null;
         public static UInt256 SpuriousDragonBlockNumber { get; } = 10;
         public static UInt256 ByzantiumBlockNumber { get; } = 1700000;
-        public static UInt256 ConstantinopleBlockNumber { get; } = 4200000;
+        public static UInt256 ConstantinopleBlockNumber { get; } = 4230000;
         
         public int ChainId => 3;
 

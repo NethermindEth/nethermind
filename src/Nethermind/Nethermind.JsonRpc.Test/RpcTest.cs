@@ -54,7 +54,7 @@ namespace Nethermind.JsonRpc.Test
                 Jsonrpc = "2.0",
                 Method = method,
                 Params = parameters?.ToArray() ?? new string[0],
-                Id = "67"
+                Id = 67
             };
 
             return request;

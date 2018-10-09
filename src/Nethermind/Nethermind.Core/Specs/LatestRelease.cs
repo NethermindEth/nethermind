@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,18 +16,10 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.JsonRpc.DataModel
+namespace Nethermind.Core.Specs
 {
-    public class JsonRpcRequest
+    public class LatestRelease
     {
-        public string Jsonrpc { get; set; }
-        public string Method { get; set; }
-        public string[] Params { get; set; }
-        public int Id { get; set; }
-
-        public override string ToString()
-        {
-            return $"Id: {Id},  JSON RPC: {Jsonrpc}, Method: {Method}, Params: {string.Concat(Params, ", ")}";
-        }
+        public static IReleaseSpec Instance => Byzantium.Instance;
     }
 }

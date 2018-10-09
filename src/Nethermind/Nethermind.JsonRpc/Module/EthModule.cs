@@ -251,7 +251,9 @@ namespace Nethermind.JsonRpc.Module
 
         public ResultWrapper<Data> eth_sendTransaction(Transaction transaction)
         {
-            throw new NotImplementedException();
+            Core.Transaction tx = _modelMapper.MapTransaction(transaction);
+            _blockchainBridge.SendTransaction(tx);
+            return ResultWrapper<Data>.Success(new Data(Keccak.Zero.Bytes));
         }
 
         public ResultWrapper<Data> eth_sendRawTransaction(Data transation)

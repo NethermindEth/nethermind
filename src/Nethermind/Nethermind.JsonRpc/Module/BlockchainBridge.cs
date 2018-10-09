@@ -135,12 +135,17 @@ namespace Nethermind.JsonRpc.Module
 
         public void SendTransaction(Transaction transaction)
         {
+            PrivateKey mock = new PrivateKeyProvider(new CryptoRandom()).PrivateKey;
+            transaction.SenderAddress = mock.Address;
+            _signer.Sign(mock, transaction, _blockTree.Head.Number);
+            transaction.Hash = Transaction.CalculateHash(transaction);
+            
             if (_signer.RecoverAddress(transaction, _blockTree.Head.Number) != transaction.SenderAddress)
             {
                 throw new InvalidOperationException("Invalid signature");
             }
 
-            if (_stateProvider.GetNonce(transaction.SenderAddress) != transaction.Nonce - 1)
+            if (_stateProvider.GetNonce(transaction.SenderAddress) != transaction.Nonce)
             {
                 throw new InvalidOperationException("Invalid nonce");
             }
@@ -207,6 +212,11 @@ namespace Nethermind.JsonRpc.Module
         {
             StateTree stateTree = new StateTree(_stateDb, stateRoot);
             return stateTree.Get(address);
+        }
+
+        public int GetNetworkId()
+        {
+            return _blockTree.ChainId;
         }
     }
 }

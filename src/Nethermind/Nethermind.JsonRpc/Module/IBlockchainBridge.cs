@@ -63,5 +63,6 @@ namespace Nethermind.JsonRpc.Module
         BigInteger GetBalance(Address address);
 
         Account GetAccount(Address address, Keccak stateRoot);
+        int GetNetworkId();
     }
 }
