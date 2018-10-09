@@ -78,7 +78,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         public INodeStats NodeStats => P2PSession.NodeStats;
         public string ClientId { get; set; }
         public event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized;
-        public event EventHandler<ProtocolEventArgs> SubprotocolRequested;
+        event EventHandler<ProtocolEventArgs> IProtocolHandler.SubprotocolRequested
+        {
+            add
+            {
+            }
+            remove
+            {
+            }
+        }
 
         public void Init()
         {

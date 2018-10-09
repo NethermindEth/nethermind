@@ -393,14 +393,14 @@ namespace Nethermind.Blockchain
             */
             return;
 
-            Transaction transaction = transactionEventArgs.Transaction;
-            foreach ((NodeId nodeId, PeerInfo peerInfo) in _peers)
-            {
-                if (!(transaction.DeliveredBy?.Equals(nodeId.PublicKey) ?? false))
-                {
-                    peerInfo.Peer.SendNewTransaction(transaction);
-                }
-            }
+//            Transaction transaction = transactionEventArgs.Transaction;
+//            foreach ((NodeId nodeId, PeerInfo peerInfo) in _peers)
+//            {
+//                if (!(transaction.DeliveredBy?.Equals(nodeId.PublicKey) ?? false))
+//                {
+//                    peerInfo.Peer.SendNewTransaction(transaction);
+//                }
+//            }
         }
 
         private void OnNewHeadBlock(object sender, BlockEventArgs blockEventArgs)
@@ -661,7 +661,6 @@ namespace Nethermind.Blockchain
                 }
 
                 Task<Block[]> bodiesTask = peer.GetBlocks(hashes.ToArray(), _peerSyncCancellationTokenSource.Token);
-                bodiesTask = bodiesTask;
                 Block[] blocks = await bodiesTask;
                 if (bodiesTask.IsCanceled)
                 {

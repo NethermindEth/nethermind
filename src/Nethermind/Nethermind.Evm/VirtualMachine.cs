@@ -407,7 +407,7 @@ namespace Nethermind.Evm
                 CallResult callResult = new CallResult(output, success);
                 return callResult;
             }
-            catch (Exception ex)
+            catch (Exception)
             {
                 CallResult callResult = new CallResult(EmptyBytes, false);
                 return callResult;
@@ -1817,7 +1817,7 @@ namespace Nethermind.Evm
                             EndInstructionTraceError("Invalid_JUMP");
                             // https://github.com/NethermindEth/nethermind/issues/140
                             throw new InvalidJumpDestinationException();
-                            return CallResult.InvalidJumpDestination;
+//                            return CallResult.InvalidJumpDestination;
                         }
 
                         int dest = (int)jumpDest;
@@ -1849,7 +1849,7 @@ namespace Nethermind.Evm
                                 EndInstructionTraceError("Invalid_JUMP");
                                 // https://github.com/NethermindEth/nethermind/issues/140
                                 throw new InvalidJumpDestinationException();
-                                return CallResult.InvalidJumpDestination; // TODO: add a test, validating inside the condition was not covered by existing tests and fails on 0xf435a354924097686ea88dab3aac1dd464e6a3b387c77aeee94145b0fa5a63d2 mainnet
+//                                return CallResult.InvalidJumpDestination; // TODO: add a test, validating inside the condition was not covered by existing tests and fails on 0xf435a354924097686ea88dab3aac1dd464e6a3b387c77aeee94145b0fa5a63d2 mainnet
                             }
 
                             int dest = (int)jumpDest;
@@ -1859,7 +1859,7 @@ namespace Nethermind.Evm
                                 EndInstructionTraceError("Invalid_JUMP");
                                 // https://github.com/NethermindEth/nethermind/issues/140
                                 throw new InvalidJumpDestinationException();
-                                return CallResult.InvalidJumpDestination; // TODO: add a test, validating inside the condition was not covered by existing tests and fails on 61363 Ropsten
+//                                return CallResult.InvalidJumpDestination; // TODO: add a test, validating inside the condition was not covered by existing tests and fails on 61363 Ropsten
                             }
 
                             programCounter = jumpDest;

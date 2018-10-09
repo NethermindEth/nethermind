@@ -20,12 +20,6 @@ namespace Nethermind.Store
 {
     public interface ISnapshotableDb : IDb
     {
-        byte[] this[byte[] key]
-        {
-            get;
-            set;
-        }
-        
         void Restore(int snapshot);
 
         void Commit();

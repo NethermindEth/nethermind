@@ -37,16 +37,15 @@ namespace Nethermind.Blockchain
 
         public AuraSealEngine(IEthash ethash, ILogManager logManager)
         {
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager)); 
-           
+            _ethash = ethash;
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
         public BigInteger MinGasPrice { get; set; } = 0;
 
         public async Task<Block> MineAsync(Block processed, CancellationToken cancellationToken)
         {
-            
-
+            await Task.CompletedTask;
             return null;
         }
 

@@ -446,8 +446,9 @@ namespace Nethermind.Blockchain
                 {
                     headBlockHeader = Rlp.Decode<BlockHeader>(data.AsRlpContext(), RlpBehaviors.AllowExtraData);
                 }
-                catch (Exception e)
+                catch (Exception)
                 {
+                    // in the old times we stored the whole block here, I guess it can be removed now
                     headBlockHeader = Rlp.Decode<Block>(data.AsRlpContext(), RlpBehaviors.AllowExtraData).Header;
                 }
 

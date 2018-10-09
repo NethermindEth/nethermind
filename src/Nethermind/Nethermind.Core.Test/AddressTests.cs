@@ -94,7 +94,9 @@ namespace Nethermind.Core.Test
             Address addressB = new Address(Keccak.Compute("b"));
             Assert.True(addressA == addressA2);
             // ReSharper disable once EqualExpressionComparison
+#pragma warning disable CS1718
             Assert.True(addressA == addressA);
+#pragma warning restore CS1718
             Assert.False(addressA == addressB);
             Assert.False(addressA == null);
             Assert.False(null == addressA);
@@ -109,7 +111,9 @@ namespace Nethermind.Core.Test
             Address addressB = new Address(Keccak.Compute("b"));
             Assert.False(addressA != addressA2);
             // ReSharper disable once EqualExpressionComparison
+#pragma warning disable CS1718
             Assert.False(addressA != addressA);
+#pragma warning restore CS1718
             Assert.True(addressA != addressB);
             Assert.True(addressA != null);
             Assert.True(null != addressA);
