@@ -557,8 +557,11 @@ namespace Nethermind.Blockchain
                         $"Finished peer sync process [{(t.IsFaulted ? "FAULTED" : t.IsCanceled ? "CANCELED" : t.IsCompleted ? "COMPLETED" : "OTHER")}] with Node: {peerInfo.Peer.NodeId} [{peerInfo.Peer.ClientId}], " +
                         $"best known block #: {_blockTree.BestSuggested.Number} ({_blockTree.BestSuggested.Number}), " +
                         $"best peer block #: {peerInfo.NumberAvailable} ({peerInfo.NumberAvailable})");
+
+                    var source = _peerSyncCancellationTokenSource;
+                    _peerSyncCancellationTokenSource = null;
+                    source?.Dispose();
                     
-                    _peerSyncCancellationTokenSource?.Dispose();
                 }, syncCancellationToken);
             }
         }
