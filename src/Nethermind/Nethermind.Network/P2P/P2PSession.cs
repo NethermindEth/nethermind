@@ -160,11 +160,7 @@ namespace Nethermind.Network.P2P
         {
             if (_wasDisconnected)
             {
-                if (_logger.IsTrace)
-                {
-                    _logger.Trace($"Session was already disconnected: {RemoteNodeId}, sessioId: {SessionId}");
-                }
-
+                if (_logger.IsTrace) _logger.Trace($"Session was already disconnected: {RemoteNodeId}, sessioId: {SessionId}");
                 return;
             }
 
@@ -192,7 +188,7 @@ namespace Nethermind.Network.P2P
             {
                 PeerDisconnected.Invoke(this, new DisconnectEventArgs(disconnectReason, disconnectType));
             }
-            else if (_logger.IsWarn) _logger.Warn("No subscriptions for PeerDisconnected");
+            else if (_logger.IsDebug) _logger.Debug("No subscriptions for PeerDisconnected");
 
             //Possible in case of disconnect before p2p initialization
             if (_context == null)
