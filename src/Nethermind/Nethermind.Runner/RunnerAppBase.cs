@@ -46,7 +46,7 @@ namespace Nethermind.Runner
         {
             Logger = logger;
             PrivateKeyProvider = privateKeyProvider;
-            AppDomain.CurrentDomain.ProcessExit +=CurrentDomainOnProcessExit;
+            AppDomain.CurrentDomain.ProcessExit += CurrentDomainOnProcessExit;
         }
 
         private void CurrentDomainOnProcessExit(object sender, EventArgs e)
@@ -120,64 +120,49 @@ namespace Nethermind.Runner
 
         protected async Task StartRunners(IConfigProvider configProvider)
         {
-            try
+            var initParams = configProvider.GetConfig<IInitConfig>();
+            var logManager = new NLogManager(initParams.LogFileName, initParams.LogDirectory);
+
+            //discovering and setting local, remote ips for client machine
+            var networkHelper = new NetworkHelper(Logger);
+            var localHost = networkHelper.GetLocalIp()?.ToString() ?? "127.0.0.1";
+            var networkConfig = configProvider.GetConfig<INetworkConfig>();
+            networkConfig.MasterExternalIp = localHost;
+            networkConfig.MasterHost = localHost;
+
+            string path = initParams.ChainSpecPath;
+            ChainSpecLoader chainSpecLoader = new ChainSpecLoader(new UnforgivingJsonSerializer());
+            ChainSpec chainSpec = chainSpecLoader.LoadFromFile(path);
+
+            var nodes = chainSpec.NetworkNodes.Select(nn => GetNode(nn, localHost)).ToArray();
+            networkConfig.BootNodes = nodes;
+            networkConfig.DbBasePath = initParams.BaseDbPath;
+
+            _ethereumRunner = new EthereumRunner(configProvider, networkHelper, logManager);
+            await _ethereumRunner.Start().ContinueWith(x =>
             {
-                var initParams = configProvider.GetConfig<IInitConfig>();
-                var logManager = new NLogManager(initParams.LogFileName, initParams.LogDirectory);
+                if (x.IsFaulted && Logger.IsError) Logger.Error("Error during ethereum runner start", x.Exception);
+            });
 
-                //discovering and setting local, remote ips for client machine
-                var networkHelper = new NetworkHelper(Logger);
-                var localHost = networkHelper.GetLocalIp()?.ToString() ?? "127.0.0.1";
-                var networkConfig = configProvider.GetConfig<INetworkConfig>();
-                networkConfig.MasterExternalIp = localHost;
-                networkConfig.MasterHost = localHost;
+            if (initParams.JsonRpcEnabled)
+            {
+                Bootstrap.Instance.ConfigProvider = configProvider;
+                Bootstrap.Instance.LogManager = logManager;
+                Bootstrap.Instance.BlockchainBridge = _ethereumRunner.BlockchainBridge;
+                Bootstrap.Instance.EthereumSigner = _ethereumRunner.EthereumSigner;
 
-                ChainSpecLoader chainSpecLoader = new ChainSpecLoader(new UnforgivingJsonSerializer());
-
-                string path = initParams.ChainSpecPath;
-                if (!Path.IsPathRooted(path))
+                _jsonRpcRunner = new JsonRpcRunner(configProvider, logManager);
+                await _jsonRpcRunner.Start().ContinueWith(x =>
                 {
-                    path = Path.Combine(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, path));
-                }
-
-                byte[] chainSpecData = File.ReadAllBytes(path);
-                ChainSpec chainSpec = chainSpecLoader.Load(chainSpecData);
-
-                var nodes = chainSpec.NetworkNodes.Select(nn => GetNode(nn, localHost)).ToArray();
-                networkConfig.BootNodes = nodes;
-                networkConfig.DbBasePath = initParams.BaseDbPath;
-
-                _ethereumRunner = new EthereumRunner(configProvider, networkHelper, logManager);
-                await _ethereumRunner.Start().ContinueWith(x =>
-                {
-                    if (x.IsFaulted && Logger.IsError) Logger.Error("Error during ethereum runner start", x.Exception);
+                    if (x.IsFaulted && Logger.IsError) Logger.Error("Error during jsonRpc runner start", x.Exception);
                 });
-
-                if (initParams.JsonRpcEnabled)
-                {
-                    Bootstrap.Instance.ConfigProvider = configProvider;
-                    Bootstrap.Instance.LogManager = logManager;
-                    Bootstrap.Instance.BlockchainBridge = _ethereumRunner.BlockchainBridge;
-                    Bootstrap.Instance.EthereumSigner = _ethereumRunner.EthereumSigner;
-
-                    _jsonRpcRunner = new JsonRpcRunner(configProvider, logManager);
-                    await _jsonRpcRunner.Start().ContinueWith(x =>
-                    {
-                        if (x.IsFaulted && Logger.IsError) Logger.Error("Error during jsonRpc runner start", x.Exception);
-                    });
-                }
-                else
-                {
-                    if (Logger.IsInfo)
-                    {
-                        Logger.Info("Json RPC is disabled");
-                    }
-                }
             }
-            catch (Exception e)
+            else
             {
-                Logger.Error("Error while starting Nethermind.Runner", e);
-                throw;
+                if (Logger.IsInfo)
+                {
+                    Logger.Info("Json RPC is disabled");
+                }
             }
         }
 

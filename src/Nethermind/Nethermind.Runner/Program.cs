@@ -39,7 +39,6 @@ namespace Nethermind.Runner
 
             try
             {
-                //Task.Run(() => Test(logger));
                 IRunnerApp runner = new RunnerApp(logger);
                 runner.Run(args);
                 return;
@@ -56,14 +55,5 @@ namespace Nethermind.Runner
             Console.WriteLine("Press any key to exit.");
             Console.ReadKey();
         }
-
-        //private static async Task Test(ILogger logger)
-        //{
-        //    while (true)
-        //    {
-        //        logger.Info($"Thread count: {Process.GetCurrentProcess().Threads.Count}");
-        //        await Task.Delay(5000);
-        //    }
-        //}
     }
 }
