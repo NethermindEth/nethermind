@@ -30,24 +30,27 @@ namespace Nethermind.Core.Specs.ChainSpec
             {
                 filePath = Path.Combine(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, filePath));
             }
-            
-            StringBuilder missingChainspecFileMessage = new StringBuilder($"Chainspec file does not exist {filePath}");
-            try
+
+            if (!File.Exists(filePath))
             {
-                missingChainspecFileMessage.AppendLine().AppendLine("Did you mean any of these:");
-                string[] configFiles = Directory.GetFiles(Path.GetDirectoryName(filePath), "*.json");
-                for (int i = 0; i < configFiles.Length; i++)
+                StringBuilder missingChainspecFileMessage = new StringBuilder($"Chainspec file does not exist {filePath}");
+                try
                 {
-                    missingChainspecFileMessage.AppendLine($"  * {configFiles[i]}");
+                    missingChainspecFileMessage.AppendLine().AppendLine("Did you mean any of these:");
+                    string[] configFiles = Directory.GetFiles(Path.GetDirectoryName(filePath), "*.json");
+                    for (int i = 0; i < configFiles.Length; i++)
+                    {
+                        missingChainspecFileMessage.AppendLine($"  * {configFiles[i]}");
+                    }
                 }
-            }
-            catch (Exception)
-            {
-                // do nothing - the lines above just give extra info and config is loaded at the beginning so unlikely we have any catastrophic errors here
-            }
-            finally
-            {
-                throw new Exception(missingChainspecFileMessage.ToString());
+                catch (Exception)
+                {
+                    // do nothing - the lines above just give extra info and config is loaded at the beginning so unlikely we have any catastrophic errors here
+                }
+                finally
+                {
+                    throw new Exception(missingChainspecFileMessage.ToString());
+                }
             }
 
             return chainSpecLoader.Load(File.ReadAllBytes(filePath));
