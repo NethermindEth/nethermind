@@ -50,11 +50,12 @@ namespace Nethermind.Blockchain.Validators
                 return false;
             }
 
-            foreach (Transaction transaction in suggestedBlock.Transactions)
+            Transaction[] txs = suggestedBlock.Transactions; 
+            for (int i = 0; i < txs.Length; i++)
             {
-                if (!_transactionValidator.IsWellFormed(transaction, _specProvider.GetSpec(suggestedBlock.Number)))
+                if (!_transactionValidator.IsWellFormed(txs[i], _specProvider.GetSpec(suggestedBlock.Number)))
                 {
-                    _logger?.Debug($"Invalid block ({suggestedBlock.Hash}) - invalid transaction ({transaction.Hash})");
+                    _logger?.Debug($"Invalid block ({suggestedBlock.Hash}) - invalid transaction ({txs[i].Hash})");
                     return false;
                 }
             }

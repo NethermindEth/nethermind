@@ -378,16 +378,20 @@ namespace Nethermind.Blockchain
         private void MoveToMain(ChainLevelInfo level, Block block)
         {
             int? index = FindIndex(block.Hash, level);
-            if (index.Value != 0)
+            if (index == null)
             {
-                (level.BlockInfos[index.Value], level.BlockInfos[0]) =
-                    (level.BlockInfos[0], level.BlockInfos[index.Value]);
+                throw new InvalidOperationException($"Cannot move unknown block {block.ToString(Block.Format.HashAndNumber)} to main");
             }
-
+            
             BlockInfo info = level.BlockInfos[index.Value];
             if (!info.WasProcessed)
             {
-                throw new InvalidOperationException("Cannot move unprocessed blocks to main");
+                throw new InvalidOperationException($"Cannot move unprocessed block {block.ToString(Block.Format.HashAndNumber)} to main");
+            }
+            
+            if (index.Value != 0)
+            {
+                (level.BlockInfos[index.Value], level.BlockInfos[0]) = (level.BlockInfos[0], level.BlockInfos[index.Value]);
             }
 
             // TODO: in testing chains we have a chain full of processed blocks that we process again
@@ -437,7 +441,7 @@ namespace Nethermind.Blockchain
 
         private void LoadHeadBlock()
         {
-            byte[] data = _blockDb.Get(Keccak.Zero);
+            byte[] data = _blockInfoDb.Get(Keccak.Zero) ?? _blockDb.Get(Keccak.Zero);
             if (data != null)
             {
                 BlockHeader headBlockHeader;
@@ -473,7 +477,7 @@ namespace Nethermind.Blockchain
             }
 
             Head = block.Header;
-            _blockDb.Set(Keccak.Zero, Rlp.Encode(Head).Bytes);
+            _blockInfoDb.Set(Keccak.Zero, Rlp.Encode(Head).Bytes);
             NewHeadBlock?.Invoke(this, new BlockEventArgs(block));
             if (_dbBatchProcessed != null)
             {

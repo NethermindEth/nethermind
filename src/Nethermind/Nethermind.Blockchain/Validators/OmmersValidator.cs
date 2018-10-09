@@ -50,8 +50,9 @@ namespace Nethermind.Blockchain.Validators
                 return false;
             }
 
-            foreach (BlockHeader ommer in ommers)
-            {   
+            for (int i = 0; i < ommers.Length; i++)
+            {
+                BlockHeader ommer = ommers[i];
                 if (!_headerValidator.Validate(ommer, true))
                 {
                     _logger?.Info($"Invalid block ({header.ToString(BlockHeader.Format.Full)}) - ommer's header invalid");
@@ -65,7 +66,7 @@ namespace Nethermind.Blockchain.Validators
                 }
 
                 Block ancestor = _blockTree.FindBlock(header.ParentHash, false);
-                for (int i = 0; i < 5; i++)
+                for (int ancestorLevel = 0; ancestorLevel < 5; ancestorLevel++)
                 {
                     if (ancestor == null)
                     {

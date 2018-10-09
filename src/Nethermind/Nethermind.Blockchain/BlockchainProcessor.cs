@@ -438,16 +438,16 @@ namespace Nethermind.Blockchain
                 throw new InvalidOperationException("block hash should be known at this stage if the block is not mining");
             }
 
-            foreach (BlockHeader ommerHeader in suggestedBlock.Ommers)
+            for (int i = 0; i < suggestedBlock.Ommers.Length; i++)
             {
-                if (ommerHeader.Hash == null)
+                if (suggestedBlock.Ommers[i].Hash == null)
                 {
                     throw new InvalidOperationException("ommer's hash is null when processing block");
                 }
             }
 
-            BigInteger totalDifficulty = suggestedBlock.TotalDifficulty ?? 0;
-            BigInteger totalTransactions = suggestedBlock.TotalTransactions ?? 0;
+            UInt256 totalDifficulty = suggestedBlock.TotalDifficulty ?? 0;
+            UInt256 totalTransactions = suggestedBlock.TotalTransactions ?? 0;
             if (_logger.IsTrace)
             {
                 _logger.Trace($"Total difficulty of block {suggestedBlock.ToString(Block.Format.Short)} is {totalDifficulty}");
