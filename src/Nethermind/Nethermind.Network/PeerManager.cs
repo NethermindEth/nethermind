@@ -248,11 +248,7 @@ namespace Nethermind.Network
                         // In this case we do not initialze OUT connection
                         if (!AddActivePeer(peer.Node.Id, peer, "upgrading candidate"))
                         {
-                            if (_logger.IsTrace)
-                            {
-                                _logger.Trace($"Active peer was already added to collection: {peer.Node.Id}");
-                            }
-
+                            if (_logger.IsTrace) _logger.Trace($"Active peer was already added to collection: {peer.Node.Id}");
                             return;
                         }
 
@@ -647,10 +643,7 @@ namespace Nethermind.Network
                     ethProtocolhandler.ClientId = peer.NodeStats.P2PNodeDetails.ClientId;
                     peer.SynchronizationPeer = ethProtocolhandler;
 
-                    if (_logger.IsTrace)
-                    {
-                        _logger.Trace($"Eth62 initialized, adding sync peer: {peer.Node.Id}");
-                    }
+                    if (_logger.IsTrace) _logger.Trace($"Eth62 initialized, adding sync peer: {peer.Node.Id}");
 
                     //Add/Update peer to the storage and to sync manager
                     _peerStorage.UpdateNodes(new[] {new NetworkNode(peer.Node.Id.PublicKey, peer.Node.Host, peer.Node.Port, peer.Node.Description, peer.NodeStats.NewPersistedNodeReputation)});
@@ -659,10 +652,7 @@ namespace Nethermind.Network
                     break;
             }
 
-            if (_logger.IsTrace)
-            {
-                _logger.Trace($"Protocol Initialized: {session.RemoteNodeId}, {e.ProtocolHandler.GetType().Name}");
-            }
+            if (_logger.IsTrace) _logger.Trace($"Protocol Initialized: {session.RemoteNodeId}, {e.ProtocolHandler.GetType().Name}");
         }
 
         /// <summary>
@@ -724,11 +714,7 @@ namespace Nethermind.Network
             peer.ConnectionDirection = session.ConnectionDirection;
             peer.Session = session;
 
-            if (_logger.IsTrace)
-            {
-                _logger.Trace($"Initializing OUT connection (PeerManager) for peer: {session.RemoteNodeId}");
-            }
-
+            if (_logger.IsTrace) _logger.Trace($"Initializing OUT connection (PeerManager) for peer: {session.RemoteNodeId}");
             AddNodeToDiscovery(peer);
         }
 
@@ -749,11 +735,7 @@ namespace Nethermind.Network
             // if we have too many active peers
             if (_activePeers.Count >= _networkConfig.ActivePeersMaxCount)
             {
-                if (_logger.IsTrace)
-                {
-                    _logger.Trace($"Initiating disconnect, we have too many peers: {session.RemoteNodeId}");
-                }
-
+                if (_logger.IsTrace) _logger.Trace($"Initiating disconnect, we have too many peers: {session.RemoteNodeId}");
                 await session.InitiateDisconnectAsync(DisconnectReason.TooManyPeers);
                 return;
             }
@@ -785,10 +767,7 @@ namespace Nethermind.Network
             }
 
             // if we have already initiated connection before (threding safeguard - it means another thread added this node to active collection after our contains key key check above)
-            if (_logger.IsTrace)
-            {
-                _logger.Trace($"Initiating disconnect, node is already connected: {session.RemoteNodeId}");
-            }
+            if (_logger.IsTrace) _logger.Trace($"Initiating disconnect, node is already connected: {session.RemoteNodeId}");
 
             await session.InitiateDisconnectAsync(DisconnectReason.AlreadyConnected);
         }
@@ -802,11 +781,7 @@ namespace Nethermind.Network
                     var args = (P2PProtocolInitializedEventArgs) eventArgs;
                     if (!ValidateP2PVersion(args.P2PVersion))
                     {
-                        if (_logger.IsTrace)
-                        {
-                            _logger.Trace($"Initiating disconnect with peer: {peer.Node.Id}, incorrect P2PVersion: {args.P2PVersion}");
-                        }
-
+                        if (_logger.IsTrace) _logger.Trace($"Initiating disconnect with peer: {peer.Node.Id}, incorrect P2PVersion: {args.P2PVersion}");
                         peer.NodeStats.FailedCompatibilityValidation = CompatibilityValidationType.P2PVersion;
                         await peer.Session.InitiateDisconnectAsync(DisconnectReason.IncompatibleP2PVersion);
                         return false;
@@ -814,11 +789,7 @@ namespace Nethermind.Network
 
                     if (!ValidateCapabilities(args.Capabilities))
                     {
-                        if (_logger.IsTrace)
-                        {
-                            _logger.Trace($"Initiating disconnect with peer: {peer.Node.Id}, no Eth62 capability, supported capabilities: [{string.Join(",", args.Capabilities.Select(x => $"{x.ProtocolCode}v{x.Version}"))}]");
-                        }
-
+                        if (_logger.IsTrace) _logger.Trace($"Initiating disconnect with peer: {peer.Node.Id}, no Eth62 capability, supported capabilities: [{string.Join(",", args.Capabilities.Select(x => $"{x.ProtocolCode}v{x.Version}"))}]");
                         peer.NodeStats.FailedCompatibilityValidation = CompatibilityValidationType.Capabilities;
                         //TODO confirm disconnect reason
                         await peer.Session.InitiateDisconnectAsync(DisconnectReason.Other);

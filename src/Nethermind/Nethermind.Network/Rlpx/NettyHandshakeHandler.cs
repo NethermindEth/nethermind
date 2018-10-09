@@ -124,11 +124,12 @@ namespace Nethermind.Network.Rlpx
             }
             else
             {
-                if (_logger.IsError)
+                if (_logger.IsDebug)
                 {
-                    _logger.Error("Exception when processing encryption handshake", exception);
+                    _logger.Debug($"Exception when processing encryption handshake: {exception}");
                 }
             }
+            
             base.ExceptionCaught(context, exception);
         }
 
@@ -139,7 +140,7 @@ namespace Nethermind.Network.Rlpx
 
         public override void ChannelRead(IChannelHandlerContext context, object message)
         {
-            _logger.Trace($"Channel read {nameof(NettyHandshakeHandler)} from {context.Channel.RemoteAddress}");
+            if(_logger.IsTrace) _logger.Trace($"Channel read {nameof(NettyHandshakeHandler)} from {context.Channel.RemoteAddress}");
             if (message is IByteBuffer byteBuffer)
             {
                 if (_role == HandshakeRole.Recipient)

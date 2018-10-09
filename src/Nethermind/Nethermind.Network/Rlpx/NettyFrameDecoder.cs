@@ -54,10 +54,7 @@ namespace Nethermind.Network.Rlpx
         {
             if (_state == FrameDecoderState.WaitingForHeader)
             {
-                if (_logger.IsTrace)
-                {
-                    _logger.Trace($"Decoding frame header {input.ReadableBytes}");
-                }
+                if (_logger.IsTrace) _logger.Trace($"Decoding frame header {input.ReadableBytes}");
 
                 if (input.ReadableBytes == 0)
                 {
@@ -69,10 +66,7 @@ namespace Nethermind.Network.Rlpx
                 if (input.ReadableBytes >= 32)
                 {
                     input.ReadBytes(_headerBuffer);
-                    if (_logger.IsTrace)
-                    {
-                        _logger.Trace($"Decoding encrypted frame header {_headerBuffer.ToHexString()}");
-                    }
+                    if (_logger.IsTrace) _logger.Trace($"Decoding encrypted frame header {_headerBuffer.ToHexString()}");
 
                     _frameMacProcessor.CheckMac(_headerBuffer, 0, 16, true);
                     _frameCipher.Decrypt(_headerBuffer, 0, 16, _headerBuffer, 0);
@@ -88,28 +82,18 @@ namespace Nethermind.Network.Rlpx
                         paddingSize = 0;
                     }
 
-                    if (_logger.IsTrace)
-                    {
-                        _logger.Trace($"Expecting a message {_totalBodySize} + {paddingSize} + 16");
-                    }
+                    if (_logger.IsTrace) _logger.Trace($"Expecting a message {_totalBodySize} + {paddingSize} + 16");
                 }
                 else
                 {
-                    if (_logger.IsTrace)
-                    {
-                        _logger.Trace("Waiting for full 32 bytes of the header");
-                    }
-
+                    if (_logger.IsTrace) _logger.Trace("Waiting for full 32 bytes of the header");
                     return;
                 }
             }
 
             if (_state == FrameDecoderState.WaitingForPayload)
             {
-                if (_logger.IsTrace)
-                {
-                    _logger.Trace($"Decoding payload {input.ReadableBytes}");
-                }
+                if (_logger.IsTrace)_logger.Trace($"Decoding payload {input.ReadableBytes}");
 
                 int paddingSize = 16 - _totalBodySize % 16;
                 if (paddingSize == 16)
@@ -129,10 +113,7 @@ namespace Nethermind.Network.Rlpx
                     return;
                 }
 
-                if (_logger.IsTrace)
-                {
-                    _logger.Trace($"Decoding encrypted payload {buffer.ToHexString()}");
-                }
+                if (_logger.IsTrace) _logger.Trace($"Decoding encrypted payload {buffer.ToHexString()}");
 
                 int frameSize = buffer.Length - MacSize;
                 _frameMacProcessor.CheckMac(buffer, 0, frameSize, false);
@@ -140,10 +121,7 @@ namespace Nethermind.Network.Rlpx
 
                 output.Add(Bytes.Concat(_headerBuffer, buffer));
                 
-                if (_logger.IsTrace)
-                {
-                    _logger.Trace($"Decrypted message {((byte[])output.Last()).ToHexString()}");
-                }
+                if (_logger.IsTrace) _logger.Trace($"Decrypted message {((byte[])output.Last()).ToHexString()}");
                 
                 _state = FrameDecoderState.WaitingForHeader;
             }
@@ -154,17 +132,11 @@ namespace Nethermind.Network.Rlpx
             //In case of SocketException we log it as debug to avoid noise
             if (exception is SocketException)
             {
-                if (_logger.IsTrace)
-                {
-                    _logger.Trace($"Frame decoding failed (SocketException): {exception}");
-                }
+                if (_logger.IsTrace) _logger.Trace($"Frame decoding failed (SocketException): {exception}");
             }
             else
             {
-                if (_logger.IsError)
-                {
-                    _logger.Error($"{GetType().Name} error in netty frame decoder: {exception}");
-                }
+                if (_logger.IsError) _logger.Error($"{GetType().Name} error in netty frame decoder: {exception}");
             }
 
             base.ExceptionCaught(context, exception);
