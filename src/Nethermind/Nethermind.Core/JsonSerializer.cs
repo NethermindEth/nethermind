@@ -88,19 +88,19 @@ namespace Nethermind.Core
         private void UpdateParams(JToken token)
         {
             var paramsToken = token.SelectToken("params");
-            var fixedParams = new List<string>();
-            foreach (var parameter in paramsToken.Value<IEnumerable<object>>())
+            var values = new List<string>();
+            foreach (var value in paramsToken.Value<IEnumerable<object>>())
             {
-                var value = parameter.ToString();
-                if (value.StartsWith("{"))
+                var valueString = value.ToString();
+                if (valueString.StartsWith("{") || valueString.StartsWith("["))
                 {
-                    fixedParams.Add(Serialize(value));
+                    values.Add(Serialize(valueString));
                     continue;
                 }
-                fixedParams.Add($"\"{value}\"");
+                values.Add($"\"{valueString}\"");
             }
 
-            var json = $"[{string.Join(",", fixedParams)}]";
+            var json = $"[{string.Join(",", values)}]";
             paramsToken.Replace(JToken.Parse(json));
         }
 
