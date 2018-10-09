@@ -108,7 +108,7 @@ namespace Nethermind.Blockchain.Validators
 //                }
             }
 
-            return isValid;
+            return true;
         }
     }
 }

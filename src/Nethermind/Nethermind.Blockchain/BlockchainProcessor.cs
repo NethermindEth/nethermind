@@ -237,13 +237,12 @@ namespace Nethermind.Blockchain
             }
         }
 
-        // TODO: there will be a need for cancellation of current mining whenever a new block arrives
         private void BuildAndSeal()
         {
             BlockHeader parentHeader = _blockTree.Head;
             if (parentHeader == null)
             {
-                return; // TODO: review
+                return;
             }
 
             Block parent = _blockTree.FindBlock(parentHeader.Hash, false);
@@ -320,7 +319,6 @@ namespace Nethermind.Blockchain
             return txTree.RootHash;
         }
 
-        // TODO: move stats to a separate class
         public void Process(Block suggestedBlock)
         {
             Process(suggestedBlock, false, false, NullTraceListener.Instance);
@@ -334,18 +332,23 @@ namespace Nethermind.Blockchain
             Process(block, false, true, NullTraceListener.Instance);
         }
 
-        public TransactionTrace Trace(Keccak txHash)
+        private TransactionTrace Trace(Block block, Keccak txHash)
         {
+            TraceListener listener = new TraceListener(txHash);
+            Process(block, false, true, listener);
+            return listener.Trace;
+        }
+        
+        public TransactionTrace Trace(Keccak txHash)
+        {   
             TxInfo txInfo = _transactionStore.GetTxInfo(txHash);
             Block block = _blockTree.FindBlock(txInfo.BlockNumber);
             if (block == null)
             {
                 throw new InvalidOperationException("Only historical blocks");
             }
-
-            TraceListener listener = new TraceListener(txHash);
-            Process(block, false, true, listener);
-            return listener.Trace;
+            
+            return Trace(block, txHash);
         }
         
         public TransactionTrace Trace(Keccak blockHash, int txIndex)
@@ -360,10 +363,8 @@ namespace Nethermind.Blockchain
             {
                 throw new InvalidOperationException($"Block {blockHash} has only {block.Transactions.Length} transactions and the requested tx index was {txIndex}");
             }
-            
-            TraceListener listener = new TraceListener(block.Transactions[txIndex].Hash);
-            Process(block, false, true, listener);
-            return listener.Trace;
+
+            return Trace(block, block.Transactions[txIndex].Hash);
         }
         
         public TransactionTrace Trace(UInt256 blockNumber, int txIndex)
@@ -379,9 +380,7 @@ namespace Nethermind.Blockchain
                 throw new InvalidOperationException($"Block {blockNumber} has only {block.Transactions.Length} transactions and the requested tx index was {txIndex}");
             }
             
-            TraceListener listener = new TraceListener(block.Transactions[txIndex].Hash);
-            Process(block, false, true, listener);
-            return listener.Trace;
+            return Trace(block, block.Transactions[txIndex].Hash);
         }
         
         public BlockTrace TraceBlock(Keccak blockHash)
@@ -520,17 +519,16 @@ namespace Nethermind.Blockchain
                 
                 if (_logger.IsTrace) _logger.Trace($"Processing {blocks.Length} blocks from state root {stateRoot}");
 
-                //TODO: process blocks one by one here, refactor this, test
                 for (int i = 0; i < blocks.Length; i++)
                 {
-                    if (blocks[i].Transactions.Length > 0 && blocks[i].Transactions[0].SenderAddress == null)
+                    /* this can happen if the block was loaded as an ancestor and did not go thtough the recovery queue */
+                    if (!blocks[i].HasAddressesRecovered)
                     {
                         _signer.RecoverAddresses(blocks[i]);
                     }
                 }
 
                 Block[] processedBlocks = _blockProcessor.Process(stateRoot, blocks, forMining | onlyForTxData, onlyForTxData, traceListener);
-
                 if (onlyForTxData)
                 {
                     return;
@@ -554,16 +552,13 @@ namespace Nethermind.Blockchain
                     foreach (Block processedBlock in processedBlocks)
                     {
                         if (_logger.IsTrace) _logger.Trace($"Marking {processedBlock.ToString(Block.Format.Short)} as processed");
-
-                        // TODO: review storage and retrieval of receipts since we removed them from the block class
                         _blockTree.MarkAsProcessed(processedBlock.Hash);
                     }
 
                     if (processedBlocks.Length > 0)
                     {
                         Block newHeadBlock = processedBlocks[processedBlocks.Length - 1];
-                        newHeadBlock.Header.TotalDifficulty =
-                            suggestedBlock.TotalDifficulty; // TODO: cleanup total difficulty
+                        newHeadBlock.Header.TotalDifficulty = suggestedBlock.TotalDifficulty;
                         if (_logger.IsTrace) _logger.Trace($"Setting head block to {newHeadBlock.ToString(Block.Format.Short)}");
                     }
 
@@ -602,7 +597,7 @@ namespace Nethermind.Blockchain
                     Block blockToBeMined = processedBlocks[processedBlocks.Length - 1];
                     _miningCancellation = new CancellationTokenSource();
                     CancellationTokenSource anyCancellation =
-                        CancellationTokenSource.CreateLinkedTokenSource(_miningCancellation.Token, _loopCancellationSource.Token);
+CancellationTokenSource.CreateLinkedTokenSource(_miningCancellation.Token, _loopCancellationSource.Token);
                     _sealEngine.MineAsync(blockToBeMined, anyCancellation.Token).ContinueWith(t =>
                     {
                         anyCancellation.Dispose();

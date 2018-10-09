@@ -61,9 +61,10 @@ namespace Nethermind.Core.Crypto
 
         public void RecoverAddresses(Block block)
         {
-            foreach (Transaction transaction in block.Transactions)
+            for (int i = 0; i < block.Transactions.Length; i++)
             {
-                transaction.SenderAddress = RecoverAddress(transaction, block.Number);
+                var tx = block.Transactions[i];
+                tx.SenderAddress = RecoverAddress(tx, block.Number);
             }
         }
 
