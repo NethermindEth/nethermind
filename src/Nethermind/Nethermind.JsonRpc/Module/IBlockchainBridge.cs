@@ -24,7 +24,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Model;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
-using Nethermind.JsonRpc.DataModel;
 using Block = Nethermind.Core.Block;
 using Transaction = Nethermind.Core.Transaction;
 using TransactionReceipt = Nethermind.Core.TransactionReceipt;
@@ -49,6 +48,7 @@ namespace Nethermind.JsonRpc.Module
         void AddTxData(UInt256 blockNumber);
         Transaction GetTransaction(Keccak transactionHash);
         Keccak GetBlockHash(Keccak transactionHash);
+        void SendTransaction(Transaction transaction)
         TransactionReceipt GetTransactionReceipt(Keccak transactionHash);
         TransactionTrace GetTransactionTrace(Keccak transactionHash);
         TransactionTrace GetTransactionTrace(UInt256 blockNumber, int index);

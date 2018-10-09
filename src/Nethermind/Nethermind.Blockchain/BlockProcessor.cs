@@ -50,7 +50,9 @@ namespace Nethermind.Blockchain
             ISnapshotableDb stateDb,
             ISnapshotableDb codeDb,
             IStateProvider stateProvider,
-            IStorageProvider storageProvider, ITransactionStore transactionStore, ILogManager logManager)
+            IStorageProvider storageProvider,
+            ITransactionStore transactionStore,
+            ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));

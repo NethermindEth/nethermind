@@ -136,7 +136,7 @@ namespace Nethermind.Network.Rlpx
             }
             else
             {
-                if (_logger.IsError) _logger.Error($"{GetType().Name} error in netty frame decoder: {exception}");
+                if (_logger.IsDebug) _logger.Debug($"{GetType().Name} error: {exception}");
             }
 
             base.ExceptionCaught(context, exception);

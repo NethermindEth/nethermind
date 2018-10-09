@@ -133,6 +133,21 @@ namespace Nethermind.JsonRpc.Module
             return _transactionStore.GetTxInfo(transactionHash).BlockHash;
         }
 
+        public void SendTransaction(Transaction transaction)
+        {
+            if (_signer.RecoverAddress(transaction, _blockTree.Head.Number) != transaction.SenderAddress)
+            {
+                throw new InvalidOperationException("Invalid signature");
+            }
+
+            if (_stateProvider.GetNonce(transaction.SenderAddress) != transaction.Nonce - 1)
+            {
+                throw new InvalidOperationException("Invalid nonce");
+            }
+
+            _transactionStore.AddPending(transaction);
+        }
+
         public TransactionReceipt GetTransactionReceipt(Keccak transactionHash)
         {
             return _transactionStore.GetReceipt(transactionHash);
