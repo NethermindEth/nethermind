@@ -34,7 +34,6 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Blockchain
 {
-    // TODO: forks
     public class SynchronizationManager : ISynchronizationManager
     {
         public const int MinBatchSize = 8;
@@ -146,7 +145,7 @@ namespace Nethermind.Blockchain
                 if (_logger.IsTrace) _logger.Trace($"{block}");
 
                 AddBlockResult result = _blockTree.SuggestBlock(block);
-                if (_logger.IsInfo) _logger.Info($"{block.Hash} ({block.Number}) adding result is {result}");
+                if (_logger.IsTrace) _logger.Info($"{block.Hash} ({block.Number}) adding result is {result}");
                 if (result == AddBlockResult.UnknownParent)
                 {
                     /* here we want to cover scenario when our peer is reorganizing and sends us a head block
@@ -300,27 +299,10 @@ namespace Nethermind.Blockchain
                 }
 
                 CheckIfSyncingWithFastestPeer();
-                LogSyncMilestones();
                 _syncTimer.Enabled = true;
             };
 
             _syncTimer.Start();
-        }
-
-        private UInt256 _nextLogBlockNumer = 100000;
-        private void LogSyncMilestones()
-        {
-            if (!_logger.IsDebug)
-            {
-                return;
-            }
-
-            var headBlockNumber = _blockTree?.Head?.Number ?? 0;
-            if (headBlockNumber > _nextLogBlockNumer)
-            {
-                _nextLogBlockNumer = _nextLogBlockNumer + 100000;
-                _logger.Debug($"Sync milestone log: Process up to block: {headBlockNumber} in {_entireSyncStopWatch.Elapsed}");
-            }
         }
 
         private void CheckIfSyncingWithFastestPeer()
@@ -497,7 +479,7 @@ namespace Nethermind.Blockchain
                 var peerInfo = _currentSyncingPeerInfo = SelectBestPeerForSync();
                 if (peerInfo == null)
                 {
-                    if (_logger.IsInfo) _logger.Info(
+                    if (_logger.IsDebug) _logger.Info(
                         "No more peers with better block available, finishing sync process, " +
                         $"best known block #: {_blockTree.BestSuggested.Number}, " +
                         $"best peer block #: {(_peers.Values.Any() ? _peers.Values.Max(x => x.NumberAvailable) : 0)}");
@@ -510,7 +492,7 @@ namespace Nethermind.Blockchain
                     OurBestBlockNumber = _blockTree.BestSuggested.Number
                 });
 
-                if (_logger.IsInfo) _logger.Info(
+                if (_logger.IsDebug) _logger.Info(
                     $"Starting sync processes with Node: {peerInfo.Peer.NodeId} [{peerInfo.Peer.ClientId}], FullNodeId: {peerInfo.Peer.NodeId.PublicKey} " +
                     $"best known block #: {_blockTree.BestSuggested.Number}, " +
                     $"best peer block #: {peerInfo.NumberAvailable}");
@@ -547,7 +529,7 @@ namespace Nethermind.Blockchain
                     {
                         if (_requestedSyncCancelDueToBetterPeer)
                         {
-                            if (_logger.IsInfo) _logger.Info($"Cancelled sync with {_currentSyncingPeerInfo?.Peer.NodeId} due to connection with better peer.");
+                            if (_logger.IsDebug) _logger.Info($"Cancelled sync with {_currentSyncingPeerInfo?.Peer.NodeId} due to connection with better peer.");
                             _requestedSyncCancelDueToBetterPeer = false;
                         }
                         else
@@ -563,7 +545,7 @@ namespace Nethermind.Blockchain
                     }
                     else if (t.IsCompleted)
                     {
-                        if (_logger.IsInfo) _logger.Info($"Sync process finished with nodeId: {currentPeerNodeId}. Best block now is {_blockTree.BestSuggested.Hash} ({_blockTree.BestSuggested.Number})");
+                        if (_logger.IsDebug) _logger.Info($"Sync process finished with nodeId: {currentPeerNodeId}. Best block now is {_blockTree.BestSuggested.Hash} ({_blockTree.BestSuggested.Number})");
                         SyncEvent?.Invoke(this, new SyncEventArgs(peerInfo.Peer, SyncStatus.Completed)
                         {
                             NodeBestBlockNumber = peerInfo.NumberAvailable,
@@ -571,7 +553,7 @@ namespace Nethermind.Blockchain
                         });
                     }
 
-                    if (_logger.IsInfo) _logger.Info(
+                    if (_logger.IsDebug) _logger.Info(
                         $"Finished peer sync process [{(t.IsFaulted ? "FAULTED" : t.IsCanceled ? "CANCELED" : t.IsCompleted ? "COMPLETED" : "OTHER")}] with Node: {peerInfo.Peer.NodeId} [{peerInfo.Peer.ClientId}], " +
                         $"best known block #: {_blockTree.BestSuggested.Number} ({_blockTree.BestSuggested.Number}), " +
                         $"best peer block #: {peerInfo.NumberAvailable} ({peerInfo.NumberAvailable})");

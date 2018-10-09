@@ -478,7 +478,31 @@ namespace Nethermind.Core.Test
             AddToMain(blockTree, block0);
             AddToMain(blockTree, block1);
 
-            BlockHeader storedInDb = Rlp.Decode<BlockHeader>(new Rlp(blocksDb.Get(Keccak.Zero)));
+            BlockHeader storedInDb = Rlp.Decode<BlockHeader>(new Rlp(blockInfosDb.Get(Keccak.Zero)));
+            Assert.AreEqual(block1.Hash, storedInDb.Hash);
+        }
+        
+        [Test(Description = "There was a bug where we switched positions and used the index from before the positions were switched")]
+        public void When_moving_to_main_one_of_the_two_blocks_at_given_level_the_was_processed_check_is_executed_on_the_correct_block_index_regression()
+        {
+            MemDb blocksDb = new MemDb();
+            MemDb blockInfosDb = new MemDb();
+
+            BlockTree blockTree = new BlockTree(blocksDb, blockInfosDb, OlympicSpecProvider.Instance, NullLogManager.Instance);
+            Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
+            Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
+            Block block2 = Build.A.Block.WithNumber(1).WithDifficulty(3).WithParent(block0).TestObject;
+
+            AddToMain(blockTree, block0);
+            
+            blockTree.SuggestBlock(block2);
+            
+            blockTree.SuggestBlock(block1);
+            blockTree.MarkAsProcessed(block1.Hash);
+            
+            blockTree.MoveToMain(block1.Hash);
+
+            BlockHeader storedInDb = Rlp.Decode<BlockHeader>(new Rlp(blockInfosDb.Get(Keccak.Zero)));
             Assert.AreEqual(block1.Hash, storedInDb.Hash);
         }
     }
