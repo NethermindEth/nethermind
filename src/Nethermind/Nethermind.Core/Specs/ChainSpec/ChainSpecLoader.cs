@@ -16,7 +16,9 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Numerics;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -35,17 +37,24 @@ namespace Nethermind.Core.Specs.ChainSpec
 
         public ChainSpec Load(byte[] data)
         {
-            string jsonData = System.Text.Encoding.UTF8.GetString(data);
-            var chainSpecJson = _serializer.Deserialize<ChainSpecJson>(jsonData);
-            var chainSpec = new ChainSpec();
+            try
+            {
+                string jsonData = System.Text.Encoding.UTF8.GetString(data);
+                var chainSpecJson = _serializer.Deserialize<ChainSpecJson>(jsonData);
+                var chainSpec = new ChainSpec();
 
-            chainSpec.ChainId = ToInt(chainSpecJson.Params.NetworkId);
-            chainSpec.Name = chainSpecJson.Name;
-            LoadGenesis(chainSpecJson, chainSpec);
-            LoadAllocations(chainSpec, chainSpecJson);
-            LoadBootnodes(chainSpecJson, chainSpec);
+                chainSpec.ChainId = ToInt(chainSpecJson.Params.NetworkId);
+                chainSpec.Name = chainSpecJson.Name;
+                LoadGenesis(chainSpecJson, chainSpec);
+                LoadAllocations(chainSpec, chainSpecJson);
+                LoadBootnodes(chainSpecJson, chainSpec);
 
-            return chainSpec;
+                return chainSpec;
+            }
+            catch (Exception e)
+            {
+                throw new InvalidDataException("Error when loading chainspec", e);
+            }
         }
 
         private static void LoadGenesis(ChainSpecJson chainSpecJson, ChainSpec chainSpec)
@@ -70,7 +79,6 @@ namespace Nethermind.Core.Specs.ChainSpec
                 extraData);
 
             genesisHeader.Hash = Keccak.Zero; // need to run the block to know the actual hash
-
             genesisHeader.Bloom = new Bloom();
             genesisHeader.GasUsed = 0;
             genesisHeader.MixHash = mixHash;
@@ -112,7 +120,7 @@ namespace Nethermind.Core.Specs.ChainSpec
                 chainSpec.NetworkNodes[i] = new NetworkNode(chainSpecJson.Nodes[i], $"bootnode{i}");
             }
         }
-        
+
         private static Keccak HexToKeccak(string hexNumber)
         {
             return new Keccak(Bytes.FromHexString(hexNumber));
@@ -120,24 +128,24 @@ namespace Nethermind.Core.Specs.ChainSpec
 
         private static long HexToLong(string hexNumber)
         {
-            return (long)HexToBigInteger(hexNumber);
+            return (long) HexToBigInteger(hexNumber);
         }
 
         private static ulong ToULong(string hexNumber)
         {
-            return (ulong)HexToBigInteger(hexNumber);
+            return (ulong) HexToBigInteger(hexNumber);
         }
 
         private static int ToInt(string hexNumber)
         {
-            return (int)HexToBigInteger(hexNumber);
+            return (int) HexToBigInteger(hexNumber);
         }
 
         private static BigInteger HexToBigInteger(string hexNumber)
         {
             return Bytes.FromHexString(hexNumber).ToUnsignedBigInteger();
         }
-        
+
         private static UInt256 HexToUInt256(string hexNumber)
         {
             UInt256.CreateFromBigEndian(out UInt256 result, Bytes.FromHexString(hexNumber));

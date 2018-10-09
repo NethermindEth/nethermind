@@ -234,7 +234,7 @@ namespace Nethermind.Blockchain
             BlockInfo blockInfo = new BlockInfo(block.Hash, block.TotalDifficulty.Value, block.TotalTransactions.Value);
             UpdateLevel(block.Number, blockInfo);
 
-            if (block.TotalDifficulty > (BestSuggested?.TotalDifficulty ?? 0))
+            if (block.IsGenesis || block.TotalDifficulty > (BestSuggested?.TotalDifficulty ?? 0))
             {
                 BestSuggested = block.Header;
                 NewBestSuggestedBlock?.Invoke(this, new BlockEventArgs(block));

@@ -48,6 +48,20 @@ namespace Nethermind.Core.Test
             Assert.True(hasNotified, "notification");
             Assert.AreEqual(AddBlockResult.Added, result, "result");
         }
+        
+        [Test]
+        public void Add_genesis_shall_work_even_with_0_difficulty()
+        {
+            bool hasNotified = false;
+            BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(),OlympicSpecProvider.Instance, NullLogManager.Instance);
+            blockTree.NewBestSuggestedBlock += (sender, args) => { hasNotified = true; };
+
+            Block block = Build.A.Block.WithNumber(0).WithDifficulty(0).TestObject;
+            var result = blockTree.SuggestBlock(block);
+
+            Assert.True(hasNotified, "notification");
+            Assert.AreEqual(AddBlockResult.Added, result, "result");
+        }
 
         [Test]
         public void Can_only_add_genesis_once()
