@@ -113,7 +113,7 @@ namespace Nethermind.Network.Discovery.Serializers
             {
                 ipAddress = new IPAddress(ip);
             }
-            catch (Exception exception)
+            catch (Exception)
             {
                 ipAddress = IPAddress.Any;
             }

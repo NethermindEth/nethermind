@@ -23,7 +23,6 @@ using System.Linq;
 using System.Security;
 using System.Security.Cryptography;
 using System.Text;
-using CryptSharp.Utility;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -80,6 +79,21 @@ namespace Nethermind.KeyStore
         public int Version => 3;
         public int CryptoVersion => 1;
 
+        public class NoRandom : RandomNumberGenerator
+        {
+            private readonly byte[] _salt;
+
+            public NoRandom(byte[] salt)
+            {
+                _salt = salt;
+            }
+            
+            public override void GetBytes(byte[] data)
+            {
+                _salt.CopyTo(data.AsSpan());
+            }
+        }
+        
         public (PrivateKey PrivateKey, Result Result) GetKey(Address address, SecureString password)
         {
             var serializedKey = ReadKey(address.ToString());
@@ -112,8 +126,9 @@ namespace Nethermind.KeyStore
             switch (kdf)
             {
                 case "scrypt":
-                    derivedKey = SCrypt.ComputeDerivedKey(passBytes, salt, kdfParams.N, kdfParams.R, kdfParams.P, null, kdfParams.DkLen);
-                    break;
+                    throw new NotImplementedException("waiting for Tarsnap bindings");
+//                    derivedKey = SCrypt.ComputeDerivedKey(passBytes, salt, kdfParams.N, kdfParams.R, kdfParams.P, null, kdfParams.DkLen);
+//                    break;
                 case "pbkdf2":
                     var deriveBytes = new Rfc2898DeriveBytes(passBytes, salt, kdfParams.C, HashAlgorithmName.SHA256);
                     derivedKey = deriveBytes.GetBytes(256);
@@ -161,55 +176,56 @@ namespace Nethermind.KeyStore
             var salt = _cryptoRandom.GenerateRandomBytes(32);
             var passBytes = password.ToByteArray(_keyStoreEncoding);
 
-            var derivedKey = SCrypt.ComputeDerivedKey(passBytes, salt, _configurationProvider.KdfparamsN, _configurationProvider.KdfparamsR, _configurationProvider.KdfparamsP, null, _configurationProvider.KdfparamsDklen);
+            throw new NotImplementedException("Waiting for Tarsnap bindings");
+//            var derivedKey = SCrypt.ComputeDerivedKey(passBytes, salt, _configurationProvider.KdfparamsN, _configurationProvider.KdfparamsR, _configurationProvider.KdfparamsP, null, _configurationProvider.KdfparamsDklen);
 
-            var encryptKey = Keccak.Compute(derivedKey.Take(16).ToArray()).Bytes.Take(16).ToArray();
-            var encryptContent = key.KeyBytes;
-            var iv = _cryptoRandom.GenerateRandomBytes(_configurationProvider.IVSize);
-
-            var cipher = _symmetricEncrypter.Encrypt(encryptContent, encryptKey, iv, _configurationProvider.Cipher);
-            if (cipher == null)
-            {
-                return Result.Fail("Error during encryption");
-            }
-
-            var mac = Keccak.Compute(derivedKey.Skip(_configurationProvider.KdfparamsDklen - 16).Take(16).Concat(cipher).ToArray()).Bytes;
-
-            var address = key.Address.ToString();
-            var keyStoreItem = new KeyStoreItem
-            {
-                Address = address,
-                Crypto = new Crypto
-                {
-                    Cipher = _configurationProvider.Cipher,
-                    CipherText = cipher.ToHexString(true),
-                    CipherParams = new CipherParams
-                    {
-                        IV = iv.ToHexString(true)
-                    },
-                    KDF = _configurationProvider.Kdf,
-                    KDFParams = new KDFParams
-                    {
-                       DkLen = _configurationProvider.KdfparamsDklen,
-                       N = _configurationProvider.KdfparamsN,
-                       P = _configurationProvider.KdfparamsP,
-                       R = _configurationProvider.KdfparamsR,
-                       Salt = salt.ToHexString(true)
-                    },
-                    MAC = mac.ToHexString(true),
-                    Version = CryptoVersion
-                },
-                Id = address,
-                Version = Version
-            };
-            
-            var serializedKey = _jsonSerializer.Serialize(keyStoreItem);
-            if (serializedKey == null)
-            {
-                return Result.Fail("Error during key serialization");
-            }
-            
-            return PersistKey(address, serializedKey);
+//            var encryptKey = Keccak.Compute(derivedKey.Take(16).ToArray()).Bytes.Take(16).ToArray();
+//            var encryptContent = key.KeyBytes;
+//            var iv = _cryptoRandom.GenerateRandomBytes(_configurationProvider.IVSize);
+//
+//            var cipher = _symmetricEncrypter.Encrypt(encryptContent, encryptKey, iv, _configurationProvider.Cipher);
+//            if (cipher == null)
+//            {
+//                return Result.Fail("Error during encryption");
+//            }
+//
+//            var mac = Keccak.Compute(derivedKey.Skip(_configurationProvider.KdfparamsDklen - 16).Take(16).Concat(cipher).ToArray()).Bytes;
+//
+//            var address = key.Address.ToString();
+//            var keyStoreItem = new KeyStoreItem
+//            {
+//                Address = address,
+//                Crypto = new Crypto
+//                {
+//                    Cipher = _configurationProvider.Cipher,
+//                    CipherText = cipher.ToHexString(true),
+//                    CipherParams = new CipherParams
+//                    {
+//                        IV = iv.ToHexString(true)
+//                    },
+//                    KDF = _configurationProvider.Kdf,
+//                    KDFParams = new KDFParams
+//                    {
+//                       DkLen = _configurationProvider.KdfparamsDklen,
+//                       N = _configurationProvider.KdfparamsN,
+//                       P = _configurationProvider.KdfparamsP,
+//                       R = _configurationProvider.KdfparamsR,
+//                       Salt = salt.ToHexString(true)
+//                    },
+//                    MAC = mac.ToHexString(true),
+//                    Version = CryptoVersion
+//                },
+//                Id = address,
+//                Version = Version
+//            };
+//            
+//            var serializedKey = _jsonSerializer.Serialize(keyStoreItem);
+//            if (serializedKey == null)
+//            {
+//                return Result.Fail("Error during key serialization");
+//            }
+//            
+//            return PersistKey(address, serializedKey);
         }
 
         public (IReadOnlyCollection<Address> Addresses, Result Result) GetKeyAddresses()

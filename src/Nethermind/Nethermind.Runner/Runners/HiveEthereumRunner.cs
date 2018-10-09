@@ -93,11 +93,10 @@ namespace Nethermind.Runner.Runners
 
             var chainFileContent = File.ReadAllBytes(chainFile);
 
-            var blocksRlps = OldRlp.ExtractRlpList(new Rlp(chainFileContent));
-            foreach (var blockRlp in blocksRlps)
+            var blocks = new Rlp.DecoderContext(chainFileContent).DecodeArray(ctx => Rlp.Decode<Block>(ctx, RlpBehaviors.AllowExtraData));
+            for (int i = 0; i < blocks.Length; i++)
             {
-                Block block = Rlp.Decode<Block>(blockRlp);
-                ProcessBlock(block);
+                ProcessBlock(blocks[i]);
             }
         }
 
