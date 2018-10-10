@@ -24,6 +24,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Difficulty;
+using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -325,7 +326,8 @@ namespace Nethermind.Runner.Runners
                 _blockTree,
                 _blockchainProcessor,
                 _dbProvider,
-                transactionStore);
+                transactionStore,
+                new FilterStore());
             
             EthereumSigner = ethereumSigner;
 
