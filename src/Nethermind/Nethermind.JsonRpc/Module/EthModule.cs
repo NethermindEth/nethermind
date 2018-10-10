@@ -24,6 +24,7 @@ using System.Text;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
 using Nethermind.Dirichlet.Numerics;
@@ -498,9 +499,9 @@ namespace Nethermind.JsonRpc.Module
             throw new NotImplementedException();
         }
 
-        public ResultWrapper<Quantity> eth_newBlockFilter(Filter filter)
+        public ResultWrapper<Quantity> eth_newBlockFilter()
         {
-            throw new NotImplementedException();
+            return ResultWrapper<Quantity>.Success(new Quantity(_blockchainBridge.NewBlockFilter()));
         }
 
         public ResultWrapper<Quantity> eth_newPendingTransactionFilter(Filter filter)
@@ -513,9 +514,12 @@ namespace Nethermind.JsonRpc.Module
             throw new NotImplementedException();
         }
 
-        public ResultWrapper<IEnumerable<Log>> eth_getFilterChanges(Quantity filterId)
+        public ResultWrapper<Data[]> eth_getFilterChanges(Quantity filterId)
         {
-            throw new NotImplementedException();
+            return ResultWrapper<Data[]>.Success(
+                _blockchainBridge.GetFilterChanges(filterId.Value.ToInt32())
+                    .Select(o => new Data(((Keccak)o).Bytes)).ToArray()
+            );
         }
 
         public ResultWrapper<IEnumerable<Log>> eth_getFilterLogs(Quantity filterId)
