@@ -225,7 +225,7 @@ namespace Nethermind.JsonRpc.Module
 
         public int NewBlockFilter()
         {
-            return _filterStore.CreateBlockFilter();
+            return _filterStore.CreateBlockFilter(_blockTree.Head.Number).FilterId;
         }
 
         public object[] GetFilterChanges(int filterId)
