@@ -20,7 +20,7 @@ namespace Nethermind.Runner.Config
 {
     public class InitConfig : IInitConfig
     {
-        public bool JsonRpcEnabled { get; set; } = true;
+        public bool JsonRpcEnabled { get; set; } = false;
         public bool DiscoveryEnabled { get; set; } = true;
         public bool SynchronizationEnabled { get; set; } = true;
         public bool NetworkEnabled { get; set; } = true;
@@ -33,7 +33,7 @@ namespace Nethermind.Runner.Config
         public int P2PPort { get; set; } = 30312;
         public string ChainSpecPath { get; set; }
         public string BaseDbPath { get; set; } = "db";
-        public string TestNodeKey { get; set; } = "020102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f";
+        public string TestNodeKey { get; set; }
         public string LogFileName { get; set; } = "log.txt";
         public string GenesisHash { get; set; }
         public string[] JsonRpcEnabledModules { get; set; } = { "Eth", "Net", "Web3", "Db", "Shh", "Nethm", "Debug" };

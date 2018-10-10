@@ -20,6 +20,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
+using System.Security;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -108,22 +109,34 @@ namespace Nethermind.Runner.Runners
         {
             ConfigureTools();
             await InitBlockchain();
-            _logger.Debug("Ethereum initialization completed");
+            if(_logger.IsDebug) _logger.Debug("Ethereum initialization completed");
         }
 
+        private const string UnsecuredNodeKeyFilePath = "node.key.plain";
+        
         private void ConfigureTools()
         {
             _runnerCancellation = new CancellationTokenSource();
             _logger = _logManager.GetClassLogger();
 
-            _logger.Debug("Initializing Ethereum");
-            _logger.Debug($"Server GC           : {System.Runtime.GCSettings.IsServerGC}");
-            _logger.Debug($"GC latency mode     : {System.Runtime.GCSettings.LatencyMode}");
-            _logger.Debug($"LOH compaction mode : {System.Runtime.GCSettings.LargeObjectHeapCompactionMode}");
+            if(_logger.IsInfo) _logger.Info("Initializing Ethereum");
+            if(_logger.IsDebug) _logger.Debug($"Server GC           : {System.Runtime.GCSettings.IsServerGC}");
+            if(_logger.IsDebug) _logger.Debug($"GC latency mode     : {System.Runtime.GCSettings.LatencyMode}");
+            if(_logger.IsDebug) _logger.Debug($"LOH compaction mode : {System.Runtime.GCSettings.LargeObjectHeapCompactionMode}");
+            
+            // this is not secure at all but this is just the node key, nothing critical so far, will use the key store here later and allow to manage by password when launching the node
             if (_initConfig.TestNodeKey == null)
             {
-                _logger.Warn("Generating temp private key for the node (no node key in configuration)");
-                _privateKey = new PrivateKeyProvider(_cryptoRandom).PrivateKey;    
+                if (!File.Exists(UnsecuredNodeKeyFilePath))
+                {
+                    if(_logger.IsInfo) _logger.Info("Generating private key for the node (no node key in configuration)");
+                    _privateKey = new PrivateKeyProvider(_cryptoRandom).PrivateKey;
+                    File.WriteAllBytes(UnsecuredNodeKeyFilePath, _privateKey.KeyBytes);
+                }
+                else
+                {
+                    _privateKey = new PrivateKey(File.ReadAllBytes(UnsecuredNodeKeyFilePath));
+                }
             }
             else
             {
@@ -136,29 +149,29 @@ namespace Nethermind.Runner.Runners
 
         public async Task StopAsync()
         {
-            _logger.Info("Shutting down...");
+            if(_logger.IsInfo) _logger.Info("Shutting down...");
             _runnerCancellation.Cancel();
 
-            _logger.Info("Stopping rlpx peer...");
+            if(_logger.IsInfo) _logger.Info("Stopping rlpx peer...");
             var rlpxPeerTask = (_rlpxPeer?.Shutdown() ?? Task.CompletedTask);
 
-            _logger.Info("Stopping peer manager...");
+            if(_logger.IsInfo) _logger.Info("Stopping peer manager...");
             var peerManagerTask =  (_peerManager?.StopAsync() ?? Task.CompletedTask);
 
-            _logger.Info("Stopping sync manager...");
+            if(_logger.IsInfo) _logger.Info("Stopping sync manager...");
             var syncManagerTask = (_syncManager?.StopAsync() ?? Task.CompletedTask);
 
-            _logger.Info("Stopping blockchain processor...");
+            if(_logger.IsInfo) _logger.Info("Stopping blockchain processor...");
             var blockchainProcessorTask = (_blockchainProcessor?.StopAsync() ?? Task.CompletedTask);
 
-            _logger.Info("Stopping discovery app...");
+            if(_logger.IsInfo) _logger.Info("Stopping discovery app...");
             var discoveryStopTask = _discoveryApp?.StopAsync() ?? Task.CompletedTask;
 
             await Task.WhenAll(discoveryStopTask, rlpxPeerTask, peerManagerTask, syncManagerTask, blockchainProcessorTask);
             
-            _logger.Info("Closing DBs...");
+            if(_logger.IsInfo) _logger.Info("Closing DBs...");
             _dbProvider.Dispose();
-            _logger.Info("Ethereum shutdown complete... please wait for all components to close");
+            if(_logger.IsInfo) _logger.Info("Ethereum shutdown complete... please wait for all components to close");
         }
 
         private ChainSpec LoadChainSpec(string chainSpecFile)
@@ -358,15 +371,15 @@ namespace Nethermind.Runner.Runners
             {
                 if (t.IsFaulted)
                 {
-                    _logger.Error("Loading blocks from DB failed.", t.Exception);
+                    if(_logger.IsError) _logger.Error("Loading blocks from DB failed.", t.Exception);
                 }
                 else if (t.IsCanceled)
                 {
-                    _logger.Warn("Loading blocks from DB canceled.");
+                    if(_logger.IsWarn) _logger.Warn("Loading blocks from DB canceled.");
                 }
                 else
                 {
-                    _logger.Info("Loaded all blocks from DB");
+                    if(_logger.IsInfo) _logger.Info("Loaded all blocks from DB");
                 }
             });
         }
@@ -504,10 +517,7 @@ namespace Nethermind.Runner.Runners
                 return Task.CompletedTask;
             }
 
-            if (_logger.IsDebug)
-            {
-                _logger.Debug($"Starting synchronization from block {_blockTree.Head.ToString(BlockHeader.Format.Short)}.");
-            }
+            if (_logger.IsDebug) _logger.Debug($"Starting synchronization from block {_blockTree.Head.ToString(BlockHeader.Format.Short)}.");
 
             _syncManager.Start();
             return Task.CompletedTask;
