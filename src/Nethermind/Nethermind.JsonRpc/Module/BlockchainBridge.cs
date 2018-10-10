@@ -21,6 +21,7 @@ using System.Collections.Generic;
 using System.Numerics;
 using System.Security;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Filters;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Model;
@@ -40,6 +41,7 @@ namespace Nethermind.JsonRpc.Module
         private readonly IDb _stateDb;
         private readonly IStateProvider _stateProvider;
         private readonly ITransactionStore _transactionStore;
+        private readonly IFilterStore _filterStore;
         private Dictionary<string, IDb> _dbMappings;
 
         public BlockchainBridge(IEthereumSigner signer,
@@ -48,7 +50,8 @@ namespace Nethermind.JsonRpc.Module
             IBlockTree blockTree,
             IBlockchainProcessor blockchainProcessor,
             IDbProvider dbProvider,
-            ITransactionStore transactionStore)
+            ITransactionStore transactionStore,
+            IFilterStore filterStore)
         {
             _signer = signer ?? throw new ArgumentNullException(nameof(signer));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
@@ -62,6 +65,7 @@ namespace Nethermind.JsonRpc.Module
             IDb receiptsDb = dbProvider?.ReceiptsDb ?? throw new ArgumentNullException(nameof(dbProvider.ReceiptsDb));
             IDb codeDb = dbProvider?.CodeDb ?? throw new ArgumentNullException(nameof(dbProvider.CodeDb));
             _transactionStore = transactionStore ?? throw new ArgumentNullException(nameof(transactionStore));
+            _filterStore = filterStore;
 
             _dbMappings = new Dictionary<string, IDb>(StringComparer.InvariantCultureIgnoreCase)
             {
@@ -139,7 +143,7 @@ namespace Nethermind.JsonRpc.Module
             transaction.SenderAddress = mock.Address;
             _signer.Sign(mock, transaction, _blockTree.Head.Number);
             transaction.Hash = Transaction.CalculateHash(transaction);
-            
+
             if (_signer.RecoverAddress(transaction, _blockTree.Head.Number) != transaction.SenderAddress)
             {
                 throw new InvalidOperationException("Invalid signature");
@@ -217,6 +221,16 @@ namespace Nethermind.JsonRpc.Module
         public int GetNetworkId()
         {
             return _blockTree.ChainId;
+        }
+
+        public int NewBlockFilter()
+        {
+            return _filterStore.CreateBlockFilter();
+        }
+
+        public object[] GetFilterChanges(int filterId)
+        {
+            return new object[] {_blockTree.Head.Hash};
         }
     }
 }
