@@ -496,6 +496,8 @@ namespace Nethermind.JsonRpc.Module
 
         public ResultWrapper<Quantity> eth_newFilter(Filter filter)
         {
+            // TODO: Mapper
+            // return ResultWrapper<Quantity>.Success(new Quantity(_blockchainBridge.NewFilter());
             throw new NotImplementedException();
         }
 
