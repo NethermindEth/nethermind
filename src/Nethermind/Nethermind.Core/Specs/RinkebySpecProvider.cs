@@ -25,17 +25,36 @@ namespace Nethermind.Core.Specs
 {
     public class RinkebySpecProvider : ISpecProvider
     {
-        public IReleaseSpec CurrentSpec => throw new NotImplementedException();
+        public IReleaseSpec CurrentSpec => Byzantium.Instance;
 
-        public IReleaseSpec GenesisSpec => throw new NotImplementedException();
+        public IReleaseSpec GenesisSpec => TangerineWhistle.Instance;
 
         public IReleaseSpec GetSpec(UInt256 blockNumber)
         {
-            throw new NotImplementedException();
+            // TODO: this is not covered by test at the moment
+            if (blockNumber < SpuriousDragonBlockNumber)
+            {
+                return TangerineWhistle.Instance;
+            }
+            
+            if (blockNumber < ByzantiumBlockNumber)
+            {
+                return SpuriousDragon.Instance;
+            }
+            
+            return Byzantium.Instance;
         }
 
         public UInt256? DaoBlockNumber { get; } = null;
+        public static UInt256 SpuriousDragonBlockNumber { get; } = 3;
+        public static UInt256 ByzantiumBlockNumber { get; } = 1035301;
         
         public int ChainId => 4;
+
+        private RinkebySpecProvider()
+        {
+        }
+        
+        public static readonly RinkebySpecProvider Instance = new RinkebySpecProvider();
     }
 }
