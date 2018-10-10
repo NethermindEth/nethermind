@@ -126,9 +126,9 @@ namespace Nethermind.Network.Rlpx
             }
             else
             {
-                if (_logger.IsError)
+                if (_logger.IsDebug)
                 {
-                    _logger.Error($"Error when merging frames: {exception}");
+                    _logger.Debug($"Error when merging frames: {exception}");
                 }
             }
 
