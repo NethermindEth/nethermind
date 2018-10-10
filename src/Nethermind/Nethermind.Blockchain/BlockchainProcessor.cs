@@ -166,11 +166,14 @@ namespace Nethermind.Blockchain
             {
                 if (_logger.IsTrace) _logger.Trace($"Recovering addresses for block {blockRef.BlockHash ?? blockRef.Block.Hash}.");
                 ResolveBlockRef(blockRef);
-                _signer.RecoverAddresses(blockRef.Block);
 
                 if (_blockQueue.Count > MaxProcessingQueueSize)
                 {
                     DetachBlockRef(blockRef);
+                }
+                else
+                {
+                    _signer.RecoverAddresses(blockRef.Block);   
                 }
 
                 _blockQueue.Add(blockRef);
