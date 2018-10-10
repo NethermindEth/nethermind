@@ -17,7 +17,6 @@
  */
 
 using System;
-using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -28,8 +27,8 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Specs.ChainSpec;
-using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
+using Nethermind.Mining;
 using Nethermind.Store;
 using NUnit.Framework;
 
@@ -44,66 +43,63 @@ namespace Nethermind.Blockchain.Test
             TimeSpan miningDelay = TimeSpan.FromMilliseconds(50);
 
             /* logging & instrumentation */
-            var logger = new OneLoggerLogManager(new SimpleConsoleLogger(true));
+            OneLoggerLogManager logger = new OneLoggerLogManager(new SimpleConsoleLogger(true));
 
             /* spec */
-            var sealEngine = new FakeSealEngine(miningDelay);
+            FakeSealEngine sealEngine = new FakeSealEngine(miningDelay);
             sealEngine.IsMining = true;
 
-            var specProvider = RopstenSpecProvider.Instance;
+            RopstenSpecProvider specProvider = RopstenSpecProvider.Instance;
 
             /* store & validation */
-            var blockTree = new BlockTree(new MemDb(), new MemDb(), specProvider, logger);
-            var difficultyCalculator = new DifficultyCalculator(specProvider);
-            var headerValidator = new HeaderValidator(difficultyCalculator, blockTree, sealEngine, specProvider, logger);
-            var ommersValidator = new OmmersValidator(blockTree, headerValidator, logger);
-            var transactionValidator = new TransactionValidator(new SignatureValidator(ChainId.Ropsten));
-            var blockValidator = new BlockValidator(transactionValidator, headerValidator, ommersValidator, specProvider, logger);
+            MemDb receiptsDb = new MemDb();
+            MemDb txDb = new MemDb();
+            TransactionStore transactionStore = new TransactionStore(receiptsDb, txDb, specProvider);
+            BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), specProvider, transactionStore, logger);
+            DifficultyCalculator difficultyCalculator = new DifficultyCalculator(specProvider);
+            HeaderValidator headerValidator = new HeaderValidator(difficultyCalculator, blockTree, sealEngine, specProvider, logger);
+            OmmersValidator ommersValidator = new OmmersValidator(blockTree, headerValidator, logger);
+            TransactionValidator transactionValidator = new TransactionValidator(new SignatureValidator(ChainId.Ropsten));
+            BlockValidator blockValidator = new BlockValidator(transactionValidator, headerValidator, ommersValidator, specProvider, logger);
 
             /* state & storage */
-            var codeDb = new StateDb();
-            var stateDb = new StateDb();
-            var receiptsDb = new MemDb();
-            var txDb = new MemDb();
-            var stateTree = new StateTree(stateDb);
-            var stateProvider = new StateProvider(stateTree, codeDb, logger);
-            var storageProvider = new StorageProvider(stateDb, stateProvider, logger);
+            StateDb codeDb = new StateDb();
+            StateDb stateDb = new StateDb();
+            StateTree stateTree = new StateTree(stateDb);
+            StateProvider stateProvider = new StateProvider(stateTree, codeDb, logger);
+            StorageProvider storageProvider = new StorageProvider(stateDb, stateProvider, logger);
 
             /* blockchain processing */
-            var ethereumSigner = new EthereumSigner(specProvider, logger);
-            
-            var transactionStore = new TransactionStore(receiptsDb, txDb, specProvider);
+            EthereumSigner ethereumSigner = new EthereumSigner(specProvider, logger);
+
             TestTransactionsGenerator generator = new TestTransactionsGenerator(transactionStore, new EthereumSigner(specProvider, NullLogManager.Instance), TimeSpan.FromMilliseconds(5), NullLogManager.Instance);
             generator.Start();
-            
-            var blockhashProvider = new BlockhashProvider(blockTree);
-            var virtualMachine = new VirtualMachine(stateProvider, storageProvider, blockhashProvider, logger);
-            var processor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, logger);
-            var rewardCalculator = new RewardCalculator(specProvider);
-            var blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, processor, stateDb, codeDb, stateProvider, storageProvider, transactionStore, logger);
-            var blockchainProcessor = new BlockchainProcessor(blockTree, sealEngine, transactionStore, difficultyCalculator, blockProcessor, ethereumSigner, logger, new PerfService(NullLogManager.Instance));
+
+            BlockhashProvider blockhashProvider = new BlockhashProvider(blockTree);
+            VirtualMachine virtualMachine = new VirtualMachine(stateProvider, storageProvider, blockhashProvider, logger);
+            TransactionProcessor processor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, logger);
+            RewardCalculator rewardCalculator = new RewardCalculator(specProvider);
+            BlockProcessor blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, processor, stateDb, codeDb, stateProvider, storageProvider, transactionStore, logger);
+            BlockchainProcessor blockchainProcessor = new BlockchainProcessor(blockTree, blockProcessor, ethereumSigner, logger, new PerfService(NullLogManager.Instance));
 
             /* load ChainSpec and init */
             ChainSpecLoader loader = new ChainSpecLoader(new UnforgivingJsonSerializer());
             string path = Path.Combine(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, @"..\..\..\..\Chains", "ropsten.json"));
             logger.GetClassLogger().Info($"Loading ChainSpec from {path}");
             ChainSpec chainSpec = loader.Load(File.ReadAllBytes(path));
-            foreach (KeyValuePair<Address, UInt256> allocation in chainSpec.Allocations)
-            {
-                stateProvider.CreateAccount(allocation.Key, allocation.Value);
-            }
+            foreach (var allocation in chainSpec.Allocations) stateProvider.CreateAccount(allocation.Key, allocation.Value);
 
             stateProvider.Commit(specProvider.GenesisSpec);
             chainSpec.Genesis.Header.StateRoot = stateProvider.StateRoot; // TODO: shall it be HeaderSpec and not BlockHeader?
             chainSpec.Genesis.Header.Hash = BlockHeader.CalculateHash(chainSpec.Genesis.Header);
-            if (chainSpec.Genesis.Hash != new Keccak("0x41941023680923e0fe4d74a34bdac8141f2540e3ae90623718e47d66d1ca4a2d"))
-            {
-                throw new Exception("Unexpected genesis hash");
-            }
+            if (chainSpec.Genesis.Hash != new Keccak("0x41941023680923e0fe4d74a34bdac8141f2540e3ae90623718e47d66d1ca4a2d")) throw new Exception("Unexpected genesis hash");
 
             /* start processing */
             blockTree.SuggestBlock(chainSpec.Genesis);
             blockchainProcessor.Start();
+            
+            BlockProducer blockProducer = new BlockProducer(difficultyCalculator, transactionStore, blockchainProcessor, sealEngine, blockTree, NullLogManager.Instance);
+            await blockProducer.Start();
 
             ManualResetEvent manualResetEvent = new ManualResetEvent(false);
 
@@ -117,10 +113,7 @@ namespace Nethermind.Blockchain.Test
             await blockchainProcessor.StopAsync(true).ContinueWith(
                 t =>
                 {
-                    if (t.IsFaulted)
-                    {
-                        throw t.Exception;
-                    }
+                    if (t.IsFaulted) throw t.Exception;
 
                     Assert.GreaterOrEqual((int) blockTree.Head.Number, 6);
                 });
@@ -129,7 +122,8 @@ namespace Nethermind.Blockchain.Test
             Assert.AreNotEqual(0, receiptsDb.Keys.Count, "receipts");
             Assert.AreNotEqual(0, txDb.Keys.Count, "txs");
 
-            TransactionTrace trace = blockchainProcessor.Trace(blockTree.FindBlock(1).Transactions[0].Hash);
+            TxTracer tracer = new TxTracer(blockchainProcessor, transactionStore, blockTree);
+            TransactionTrace trace = tracer.Trace(blockTree.FindBlock(1).Transactions[0].Hash);
             Assert.AreSame(TransactionTrace.QuickFail, trace);
         }
     }

@@ -16,41 +16,23 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 
-namespace Nethermind.Blockchain
+namespace Nethermind.Mining
 {
-    public class FakeSealEngine : ISealEngine
+    public class NullSealEngine : ISealEngine
     {
-        private readonly TimeSpan _miningDelay;
-        private readonly bool _exact;
-
-        public FakeSealEngine(TimeSpan miningDelay, bool exact = true)
+        private NullSealEngine()
         {
-            _miningDelay = miningDelay;
-            _exact = exact;
         }
 
-        private static readonly Random Random = new Random();
+        public static NullSealEngine Instance { get; } = new NullSealEngine();
 
-        private TimeSpan RandomizeDelay()
-        {
-            return _miningDelay + TimeSpan.FromMilliseconds((_exact ? 0 : 1) * (Random.Next((int)_miningDelay.TotalMilliseconds) - (int)_miningDelay.TotalMilliseconds / 2));
-        }
-        
         public Task<Block> MineAsync(Block block, CancellationToken cancellationToken)
         {
-            block.Header.MixHash = Keccak.Zero;
-            block.Header.Hash = BlockHeader.CalculateHash(block.Header);
-
-            return _miningDelay == TimeSpan.Zero
-                ? Task.FromResult(block)
-                : Task.Delay(RandomizeDelay(), cancellationToken)
-                    .ContinueWith(t => block, cancellationToken);
+            return Task.FromResult(block);
         }
 
         public bool Validate(BlockHeader header)

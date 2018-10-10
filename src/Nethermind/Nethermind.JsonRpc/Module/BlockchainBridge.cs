@@ -35,6 +35,7 @@ namespace Nethermind.JsonRpc.Module
     public class BlockchainBridge : IBlockchainBridge
     {
         private readonly IBlockchainProcessor _blockchainProcessor;
+        private readonly ITxTracer _txTracer;
         private readonly IBlockTree _blockTree;
         private readonly IKeyStore _keyStore;
         private readonly IEthereumSigner _signer;
@@ -49,6 +50,7 @@ namespace Nethermind.JsonRpc.Module
             IKeyStore keyStore,
             IBlockTree blockTree,
             IBlockchainProcessor blockchainProcessor,
+            ITxTracer txTracer,
             IDbProvider dbProvider,
             ITransactionStore transactionStore,
             IFilterStore filterStore)
@@ -58,14 +60,16 @@ namespace Nethermind.JsonRpc.Module
             _keyStore = keyStore ?? throw new ArgumentNullException(nameof(keyStore));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _blockchainProcessor = blockchainProcessor ?? throw new ArgumentNullException(nameof(blockchainProcessor));
+            _txTracer = txTracer ?? throw new ArgumentNullException(nameof(txTracer));
             _stateDb = dbProvider?.StateDb ?? throw new ArgumentNullException(nameof(dbProvider.StateDb));
+            _transactionStore = transactionStore ?? throw new ArgumentNullException(nameof(transactionStore));
+            _filterStore = filterStore ?? throw new ArgumentException(nameof(filterStore));
+            
             IDb blockInfosDb = dbProvider?.BlockInfosDb ?? throw new ArgumentNullException(nameof(dbProvider.BlockInfosDb));
             IDb blocksDb = dbProvider?.BlocksDb ?? throw new ArgumentNullException(nameof(dbProvider.BlocksDb));
             IDb txDb = dbProvider?.TxDb ?? throw new ArgumentNullException(nameof(dbProvider.TxDb));
             IDb receiptsDb = dbProvider?.ReceiptsDb ?? throw new ArgumentNullException(nameof(dbProvider.ReceiptsDb));
             IDb codeDb = dbProvider?.CodeDb ?? throw new ArgumentNullException(nameof(dbProvider.CodeDb));
-            _transactionStore = transactionStore ?? throw new ArgumentNullException(nameof(transactionStore));
-            _filterStore = filterStore;
 
             _dbMappings = new Dictionary<string, IDb>(StringComparer.InvariantCultureIgnoreCase)
             {
@@ -164,27 +168,27 @@ namespace Nethermind.JsonRpc.Module
 
         public TransactionTrace GetTransactionTrace(Keccak transactionHash)
         {
-            return _blockchainProcessor.Trace(transactionHash);
+            return _txTracer.Trace(transactionHash);
         }
 
         public TransactionTrace GetTransactionTrace(UInt256 blockNumber, int index)
         {
-            return _blockchainProcessor.Trace(blockNumber, index);
+            return _txTracer.Trace(blockNumber, index);
         }
 
         public TransactionTrace GetTransactionTrace(Keccak blockHash, int index)
         {
-            return _blockchainProcessor.Trace(blockHash, index);
+            return _txTracer.Trace(blockHash, index);
         }
 
         public BlockTrace GetBlockTrace(Keccak blockHash)
         {
-            return _blockchainProcessor.TraceBlock(blockHash);
+            return _txTracer.TraceBlock(blockHash);
         }
 
         public BlockTrace GetBlockTrace(UInt256 blockNumber)
         {
-            return _blockchainProcessor.TraceBlock(blockNumber);
+            return _txTracer.TraceBlock(blockNumber);
         }
 
         public byte[] GetDbValue(string dbName, byte[] key)

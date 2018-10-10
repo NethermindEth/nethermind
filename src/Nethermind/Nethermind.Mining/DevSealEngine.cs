@@ -16,18 +16,28 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
+using System.Threading;
+using System.Threading.Tasks;
+using Nethermind.Core;
 
-namespace Nethermind.Blockchain
+namespace Nethermind.Mining
 {
-    internal class SealEngineException : Exception
+    /// <summary>
+    ///     Dev seal seals any block that comes with no delay. All blocks are always verified as correct.
+    /// </summary>
+    public class DevSealEngine : ISealEngine
     {
-        public SealEngineException(string message) : base(message)
+        public async Task<Block> MineAsync(Block block, CancellationToken cancellationToken)
         {
+            await Task.CompletedTask;
+            return block;
         }
 
-        public SealEngineException(string message, Exception innerException) : base(message, innerException)
+        public bool Validate(BlockHeader header)
         {
+            return true;
         }
+
+        public bool IsMining { get; set; }
     }
 }

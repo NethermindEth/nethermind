@@ -23,6 +23,7 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
+using Nethermind.Mining;
 
 namespace Nethermind.Blockchain.Validators
 {

@@ -16,20 +16,14 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Core.Logging;
-using NUnit.Framework;
 
-namespace Nethermind.Core.Test.Logging
+using System.Threading.Tasks;
+
+namespace Nethermind.Blockchain
 {
-    [TestFixture]
-    public class NLogManagerTests
+    public interface IBlockProducer
     {
-        [Test]
-        public void Logger_name_is_set_to_full_class_name()
-        {
-            NLogManager manager = new NLogManager("test", null);
-            NLogLogger logger = (NLogLogger)manager.GetClassLogger();
-            Assert.AreEqual(GetType().FullName.Replace("Nethermind.", string.Empty), logger.Logger.Name);
-        }
+        Task Start();
+        Task StopAsync();
     }
 }

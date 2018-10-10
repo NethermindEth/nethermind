@@ -40,13 +40,10 @@ namespace Nethermind.Blockchain
 {
     public class BlockchainProcessor : IBlockchainProcessor
     {
-        private static readonly BigInteger MinGasPriceForMining = 1;
         private readonly IBlockProcessor _blockProcessor;
         private readonly IEthereumSigner _signer;
         private readonly IBlockTree _blockTree;
-        private readonly IDifficultyCalculator _difficultyCalculator;
         private readonly ILogger _logger;
-        private readonly ISealEngine _sealEngine;
         private readonly IPerfService _perfService;
 
         private readonly BlockingCollection<BlockRef> _recoveryQueue = new BlockingCollection<BlockRef>(new ConcurrentQueue<BlockRef>());
@@ -56,9 +53,6 @@ namespace Nethermind.Blockchain
 
         public BlockchainProcessor(
             IBlockTree blockTree,
-            ISealEngine sealEngine,
-            ITransactionStore transactionStore,
-            IDifficultyCalculator difficultyCalculator,
             IBlockProcessor blockProcessor,
             IEthereumSigner signer,
             ILogManager logManager, IPerfService perfService)
@@ -67,9 +61,6 @@ namespace Nethermind.Blockchain
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _blockTree.NewBestSuggestedBlock += OnNewBestBlock;
 
-            _transactionStore = transactionStore ?? throw new ArgumentNullException(nameof(transactionStore));
-            _difficultyCalculator = difficultyCalculator ?? throw new ArgumentNullException(nameof(difficultyCalculator));
-            _sealEngine = sealEngine ?? throw new ArgumentNullException(nameof(sealEngine));
             _blockProcessor = blockProcessor ?? throw new ArgumentNullException(nameof(blockProcessor));
             _signer = signer ?? throw new ArgumentNullException(nameof(signer));
             _perfService = perfService;
@@ -78,8 +69,6 @@ namespace Nethermind.Blockchain
 
         private void OnNewBestBlock(object sender, BlockEventArgs blockEventArgs)
         {
-            _miningCancellation?.Cancel();
-
             Block block = blockEventArgs.Block;
 
             if (_logger.IsTrace) _logger.Trace($"Enqueuing a new block {block.ToString(Block.Format.Short)} for processing.");
@@ -94,7 +83,6 @@ namespace Nethermind.Blockchain
         }
 
         private CancellationTokenSource _loopCancellationSource;
-        private CancellationTokenSource _miningCancellation;
 
         private Task _recoveryTask;
         private Task _processorTask;
@@ -220,11 +208,9 @@ namespace Nethermind.Blockchain
             _stats.Start();
             if (_logger.IsDebug) _logger.Debug($"Starting block processor - {_blockQueue.Count} blocks waiting in the queue.");
 
-            if (_blockQueue.Count == 0 && _sealEngine.IsMining)
+            if (_blockQueue.Count == 0)
             {
-                if (_logger.IsDebug) _logger.Debug("Nothing in the queue so I mine my own.");
-                BuildAndSeal();
-                if (_logger.IsTrace) _logger.Trace("Will go and wait for another block now...");
+                ProcessingQueueEmpty?.Invoke(this, EventArgs.Empty);
             }
 
             foreach (Block block in _blockQueue.GetConsumingEnumerable(_loopCancellationSource.Token))
@@ -234,98 +220,14 @@ namespace Nethermind.Blockchain
                 Process(block);
 
                 if (_logger.IsTrace) _logger.Trace($"Now {_blockQueue.Count} blocks waiting in the queue.");
-                if (_blockQueue.Count == 0 && _sealEngine.IsMining)
+                if (_blockQueue.Count == 0)
                 {
-                    if (_logger.IsDebug) _logger.Debug("Nothing in the queue so I mine my own.");
-                    BuildAndSeal();
-                    if (_logger.IsTrace) _logger.Trace("Will go and wait for another block now...");
+                    ProcessingQueueEmpty?.Invoke(this, EventArgs.Empty);
                 }
             }
         }
 
-        private void BuildAndSeal()
-        {
-            BlockHeader parentHeader = _blockTree.Head;
-            if (parentHeader == null)
-            {
-                return;
-            }
-
-            Block parent = _blockTree.FindBlock(parentHeader.Hash, false);
-            UInt256 timestamp = Timestamp.UnixUtcUntilNowSecs;
-
-            UInt256 difficulty = _difficultyCalculator.Calculate(parent.Difficulty, parent.Timestamp, Timestamp.UnixUtcUntilNowSecs, parent.Number + 1, parent.Ommers.Length > 0);
-            BlockHeader header = new BlockHeader(
-                parent.Hash,
-                Keccak.OfAnEmptySequenceRlp,
-                Address.Zero,
-                difficulty,
-                parent.Number + 1,
-                parent.GasLimit,
-                timestamp > parent.Timestamp ? timestamp : parent.Timestamp + 1,
-                Encoding.UTF8.GetBytes("Nethermind"));
-
-            header.TotalDifficulty = parent.TotalDifficulty + difficulty;
-            if (_logger.IsDebug) _logger.Debug($"Setting total difficulty to {parent.TotalDifficulty} + {difficulty}.");
-
-            var transactions = _transactionStore.GetAllPending().OrderBy(t => t?.Nonce); // by nonce in case there are two transactions for the same account, TODO: test it
-
-            List<Transaction> selected = new List<Transaction>();
-            BigInteger gasRemaining = header.GasLimit;
-
-            if (_logger.IsDebug) _logger.Debug($"Collecting pending transactions at min gas price {MinGasPriceForMining} and block gas limit {gasRemaining}.");
-
-            int total = 0;
-            foreach (Transaction transaction in transactions)
-            {
-                total++;
-                if (transaction == null)
-                {
-                    throw new InvalidOperationException("Block transaction is null");
-                }
-
-                if (transaction.GasPrice < MinGasPriceForMining)
-                {
-                    if (_logger.IsTrace) _logger.Trace($"Rejecting transaction - gas price ({transaction.GasPrice}) too low (min gas price: {MinGasPriceForMining}.");
-                    continue;
-                }
-
-                if (transaction.GasLimit > gasRemaining)
-                {
-                    if (_logger.IsTrace) _logger.Trace($"Rejecting transaction - gas limit ({transaction.GasPrice}) more than remaining gas ({gasRemaining}).");
-                    break;
-                }
-
-                selected.Add(transaction);
-                gasRemaining -= transaction.GasLimit;
-            }
-
-            if (_logger.IsDebug) _logger.Debug($"Collected {selected.Count} out of {total} pending transactions.");
-            header.TransactionsRoot = GetTransactionsRoot(selected);
-
-            Block block = new Block(header, selected, new BlockHeader[0]);
-            Process(block, true, false, NullTraceListener.Instance);
-        }
-
-        private Keccak GetTransactionsRoot(List<Transaction> transactions)
-        {
-            if (transactions.Count == 0)
-            {
-                return PatriciaTree.EmptyTreeHash;
-            }
-
-            PatriciaTree txTree = new PatriciaTree();
-            for (int i = 0; i < transactions.Count; i++)
-            {
-                Rlp transactionRlp = Rlp.Encode(transactions[i]);
-                txTree.Set(Rlp.Encode(i).Bytes, transactionRlp);
-            }
-
-            txTree.UpdateRootHash();
-            return txTree.RootHash;
-        }
-
-        public void Process(Block suggestedBlock)
+        private void Process(Block suggestedBlock)
         {
             Process(suggestedBlock, false, false, NullTraceListener.Instance);
             if (_logger.IsTrace) _logger.Trace($"Processed block {suggestedBlock.ToString(Block.Format.Full)}");
@@ -337,96 +239,14 @@ namespace Nethermind.Blockchain
         {
             Process(block, false, true, NullTraceListener.Instance);
         }
-
-        private TransactionTrace Trace(Block block, Keccak txHash)
+        
+        public event EventHandler ProcessingQueueEmpty;
+        
+        public Block Process(Block suggestedBlock, bool tryOnly, bool onlyForTxData, ITraceListener traceListener)
         {
-            TraceListener listener = new TraceListener(txHash);
-            Process(block, false, true, listener);
-            return listener.Trace;
-        }
-
-        public TransactionTrace Trace(Keccak txHash)
-        {
-            TxInfo txInfo = _transactionStore.GetTxInfo(txHash);
-            Block block = _blockTree.FindBlock(txInfo.BlockNumber);
-            if (block == null)
+            if (tryOnly && onlyForTxData)
             {
-                throw new InvalidOperationException("Only historical blocks");
-            }
-
-            return Trace(block, txHash);
-        }
-
-        public TransactionTrace Trace(Keccak blockHash, int txIndex)
-        {
-            Block block = _blockTree.FindBlock(blockHash, false);
-            if (block == null)
-            {
-                throw new InvalidOperationException("Only historical blocks");
-            }
-
-            if (txIndex > block.Transactions.Length - 1)
-            {
-                throw new InvalidOperationException($"Block {blockHash} has only {block.Transactions.Length} transactions and the requested tx index was {txIndex}");
-            }
-
-            return Trace(block, block.Transactions[txIndex].Hash);
-        }
-
-        public TransactionTrace Trace(UInt256 blockNumber, int txIndex)
-        {
-            Block block = _blockTree.FindBlock(blockNumber);
-            if (block == null)
-            {
-                throw new InvalidOperationException("Only historical blocks");
-            }
-
-            if (txIndex > block.Transactions.Length - 1)
-            {
-                throw new InvalidOperationException($"Block {blockNumber} has only {block.Transactions.Length} transactions and the requested tx index was {txIndex}");
-            }
-
-            return Trace(block, block.Transactions[txIndex].Hash);
-        }
-
-        public BlockTrace TraceBlock(Keccak blockHash)
-        {
-            Block block = _blockTree.FindBlock(blockHash, false);
-            return TraceBlock(block);
-        }
-
-        public BlockTrace TraceBlock(UInt256 blockNumber)
-        {
-            Block block = _blockTree.FindBlock(blockNumber);
-            return TraceBlock(block);
-        }
-
-        private BlockTrace TraceBlock(Block block)
-        {
-            if (block == null)
-            {
-                throw new InvalidOperationException("Only canonical, historical blocks supported");
-            }
-
-            if (block.Number != 0)
-            {
-                Block parent = _blockTree.FindParent(block);
-                if (!_blockTree.IsMainChain(parent.Hash))
-                {
-                    throw new InvalidOperationException("Cannot trace orphaned blocks");
-                }
-            }
-
-            BlockTraceListener listener = new BlockTraceListener(block);
-            Process(block, false, true, listener);
-            return listener.BlockTrace;
-        }
-
-        private void Process(Block suggestedBlock, bool forMining, bool onlyForTxData, ITraceListener traceListener)
-        {
-            if (forMining && onlyForTxData)
-            {
-                throw new InvalidOperationException("mining and tx data options are not allowed together when processing blocks");
+                throw new InvalidOperationException("try and tx data options are not allowed together when processing blocks");
             }
 
             if (suggestedBlock.Number != 0 && _blockTree.FindParent(suggestedBlock) == null)
@@ -436,19 +256,19 @@ namespace Nethermind.Blockchain
 
             if (suggestedBlock.Header.TotalDifficulty == null)
             {
-                throw new InvalidOperationException("block without total difficulty calculated was suggested for processing");
+                throw new InvalidOperationException("Block without total difficulty calculated was suggested for processing");
             }
 
-            if (!forMining && suggestedBlock.Hash == null)
+            if (!tryOnly && suggestedBlock.Hash == null)
             {
-                throw new InvalidOperationException("block hash should be known at this stage if the block is not mining");
+                throw new InvalidOperationException("Block hash should be known at this stage if the block is not mining");
             }
 
             for (int i = 0; i < suggestedBlock.Ommers.Length; i++)
             {
                 if (suggestedBlock.Ommers[i].Hash == null)
                 {
-                    throw new InvalidOperationException("ommer's hash is null when processing block");
+                    throw new InvalidOperationException($"Ommer's {i} hash is null when processing block");
                 }
             }
 
@@ -460,6 +280,7 @@ namespace Nethermind.Blockchain
                 _logger.Trace($"Total transactions of block {suggestedBlock.ToString(Block.Format.Short)} is {totalTransactions}");
             }
 
+            Block[] processedBlocks = null;
             if (suggestedBlock.IsGenesis || totalDifficulty > (_blockTree.Head?.TotalDifficulty ?? 0) || onlyForTxData)
             {
                 List<Block> blocksToBeAddedToMain = new List<Block>();
@@ -506,7 +327,7 @@ namespace Nethermind.Blockchain
                 {
                     foreach (Block block in blocksToBeAddedToMain)
                     {
-                        if (!forMining && _blockTree.WasProcessed(block.Hash))
+                        if (!tryOnly && _blockTree.WasProcessed(block.Hash))
                         {
                             stateRoot = block.Header.StateRoot;
                             if (_logger.IsTrace) _logger.Trace($"State root lookup: {stateRoot}");
@@ -534,27 +355,22 @@ namespace Nethermind.Blockchain
                     }
                 }
 
-                Block[] processedBlocks = _blockProcessor.Process(stateRoot, blocks, forMining | onlyForTxData, onlyForTxData, traceListener);
-                if (onlyForTxData)
+                processedBlocks = _blockProcessor.Process(stateRoot, blocks, tryOnly | onlyForTxData, onlyForTxData, traceListener);
+                if (!(tryOnly || onlyForTxData))
                 {
-                    return;
-                }
-
-                // TODO: lots of unnecessary loading and decoding here, review after adding support for loading headers only
-                List<BlockHeader> blocksToBeRemovedFromMain = new List<BlockHeader>();
-                if (_blockTree.Head?.Hash != branchingPoint?.Hash && _blockTree.Head != null)
-                {
-                    blocksToBeRemovedFromMain.Add(_blockTree.Head);
-                    BlockHeader teBeRemovedFromMain = _blockTree.FindHeader(_blockTree.Head.ParentHash);
-                    while (teBeRemovedFromMain != null && teBeRemovedFromMain.Hash != branchingPoint?.Hash)
+                    // TODO: lots of unnecessary loading and decoding here, review after adding support for loading headers only
+                    List<BlockHeader> blocksToBeRemovedFromMain = new List<BlockHeader>();
+                    if (_blockTree.Head?.Hash != branchingPoint?.Hash && _blockTree.Head != null)
                     {
-                        blocksToBeRemovedFromMain.Add(teBeRemovedFromMain);
-                        teBeRemovedFromMain = _blockTree.FindHeader(teBeRemovedFromMain.ParentHash);
+                        blocksToBeRemovedFromMain.Add(_blockTree.Head);
+                        BlockHeader teBeRemovedFromMain = _blockTree.FindHeader(_blockTree.Head.ParentHash);
+                        while (teBeRemovedFromMain != null && teBeRemovedFromMain.Hash != branchingPoint?.Hash)
+                        {
+                            blocksToBeRemovedFromMain.Add(teBeRemovedFromMain);
+                            teBeRemovedFromMain = _blockTree.FindHeader(teBeRemovedFromMain.ParentHash);
+                        }
                     }
-                }
-
-                if (!forMining)
-                {
+                    
                     foreach (Block processedBlock in processedBlocks)
                     {
                         if (_logger.IsTrace) _logger.Trace($"Marking {processedBlock.ToString(Block.Format.Short)} as processed");
@@ -584,43 +400,16 @@ namespace Nethermind.Blockchain
                     foreach (Block block in blocksToBeAddedToMain)
                     {
                         if (_logger.IsTrace) _logger.Trace($"Moving {block.ToString(Block.Format.Short)} to main");
-
                         _blockTree.MoveToMain(block);
-                        // TODO: only for miners
-                        foreach (Transaction transaction in block.Transactions)
-                        {
-                            _transactionStore.RemovePending(transaction);
-                        }
-
                         if (_logger.IsTrace) _logger.Trace($"Block {block.ToString(Block.Format.Short)} added to main chain");
                     }
 
                     if (_logger.IsTrace) _logger.Trace($"Updating total difficulty of the main chain to {totalDifficulty}");
                     if (_logger.IsTrace) _logger.Trace($"Updating total transactions of the main chain to {totalTransactions}");
                 }
-                else if (_blockTree.CanAcceptNewBlocks)
-                {
-                    Block blockToBeMined = processedBlocks[processedBlocks.Length - 1];
-                    _miningCancellation = new CancellationTokenSource();
-                    CancellationTokenSource anyCancellation =
-                        CancellationTokenSource.CreateLinkedTokenSource(_miningCancellation.Token, _loopCancellationSource.Token);
-                    _sealEngine.MineAsync(blockToBeMined, anyCancellation.Token).ContinueWith(t =>
-                    {
-                        anyCancellation.Dispose();
-
-                        if (_logger.IsInfo) _logger.Info($"Mined a block {t.Result.ToString(Block.Format.Short)} with parent {t.Result.Header.ParentHash}");
-
-                        Block minedBlock = t.Result;
-
-                        if (minedBlock.Hash == null)
-                        {
-                            throw new InvalidOperationException("Mined a block with null hash");
-                        }
-
-                        _blockTree.SuggestBlock(minedBlock);
-                    }, _miningCancellation.Token);
-                }
             }
+            
+            return (processedBlocks?.Length ?? 0) > 0 ? processedBlocks[processedBlocks.Length - 1] : null;
         }
 
         private class BlockRef
@@ -647,7 +436,7 @@ namespace Nethermind.Blockchain
         private class ProcessingStats
         {
             private readonly ILogger _logger;
-            private readonly Stopwatch _processingWatch = new Stopwatch();
+            private readonly Stopwatch _processingStopwatch = new Stopwatch();
             private UInt256 _lastBlockNumber;
             private long _lastElapsedTicks;
             private decimal _lastTotalMGas;
@@ -683,9 +472,9 @@ namespace Nethermind.Blockchain
                 _currentTotalMGas += block.GasUsed / 1_000_000m;
                 _currentTotalTx += block.Transactions.Length;
                 //            
-                long currentTicks = _processingWatch.ElapsedTicks;
-                decimal totalMicroseconds = _processingWatch.ElapsedTicks * (1_000_000m / Stopwatch.Frequency);
-                decimal chunkMicroseconds = (_processingWatch.ElapsedTicks - _lastElapsedTicks) * (1_000_000m / Stopwatch.Frequency);
+                long currentTicks = _processingStopwatch.ElapsedTicks;
+                decimal totalMicroseconds = _processingStopwatch.ElapsedTicks * (1_000_000m / Stopwatch.Frequency);
+                decimal chunkMicroseconds = (_processingStopwatch.ElapsedTicks - _lastElapsedTicks) * (1_000_000m / Stopwatch.Frequency);
 
 
                 if (chunkMicroseconds > 10 * 1000 * 1000 || (_wasQueueEmptied && chunkMicroseconds > 1 * 1000 * 1000)) // 10s
@@ -734,7 +523,7 @@ namespace Nethermind.Blockchain
 
             public void Start()
             {
-                _processingWatch.Start();
+                _processingStopwatch.Start();
             }
         }
     }

@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,31 +16,46 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Config;
+using System;
+using System.Numerics;
+using System.Runtime.CompilerServices;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Logging;
-using Nethermind.JsonRpc.Module;
-using NSubstitute;
-using NUnit.Framework;
 
-namespace Nethermind.JsonRpc.Test
+[assembly: InternalsVisibleTo("Nethermind.Blockchain.Test")]
+
+namespace Nethermind.Mining
 {
-    [TestFixture]
-    public class NetModuleTests
+    public class AuraSealEngine : ISealEngine
     {
-        private INetModule _netModule;
+        private readonly IEthash _ethash;
+        private readonly ILogger _logger;
 
-        [SetUp]
-        public void Initialize()
+        public AuraSealEngine(IEthash ethash, ILogManager logManager)
         {
-            _netModule = new NetModule(new JsonConfigProvider(), NullLogManager.Instance, new JsonSerializer(NullLogManager.Instance), Substitute.For<IBlockchainBridge>());
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager)); 
+           
         }
 
-        [Test]
-        public void NetVersionSuccessTest()
+        public BigInteger MinGasPrice { get; set; } = 0;
+
+        public async Task<Block> MineAsync(Block processed, CancellationToken cancellationToken)
         {
-            var result = _netModule.net_version();
-            Assert.AreEqual(result.Data, "0");
+            
+
+            return null;
         }
+
+        public bool Validate(BlockHeader header)
+        {
+            return _ethash.Validate(header);
+        }
+
+        public bool IsMining { get; set; }
+
+
+
     }
 }

@@ -151,7 +151,7 @@ namespace Nethermind.PerfTest
             ISnapshotableDb stateDb = new StateDb();
             StateTree stateTree = new StateTree(stateDb);
             IStateProvider stateProvider = new StateProvider(stateTree, new StateDb(), logManager);
-            IBlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), FrontierSpecProvider.Instance, logManager);
+            IBlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), FrontierSpecProvider.Instance, new TransactionStore(new MemDb(), new MemDb(), RopstenSpecProvider.Instance), logManager);
             _machine = new VirtualMachine(stateProvider, new StorageProvider(stateDb, stateProvider, logManager), new BlockhashProvider(blockTree), logManager);
 
             Stopwatch stopwatch = new Stopwatch();
@@ -319,7 +319,7 @@ namespace Nethermind.PerfTest
             var txDb = dbProvider.TxDb;
 
             /* store & validation */
-            var blockTree = new UnprocessedBlockTreeWrapper(new BlockTree(blocksDb, blockInfosDb, specProvider, _logManager));
+            var blockTree = new UnprocessedBlockTreeWrapper(new BlockTree(blocksDb, blockInfosDb, specProvider, new TransactionStore(new MemDb(), new MemDb(), RopstenSpecProvider.Instance), _logManager));
             var difficultyCalculator = new DifficultyCalculator(specProvider);
             var headerValidator = new HeaderValidator(difficultyCalculator, blockTree, sealEngine, specProvider, _logManager);
             var ommersValidator = new OmmersValidator(blockTree, headerValidator, _logManager);
@@ -341,7 +341,7 @@ namespace Nethermind.PerfTest
             var processor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, _logManager);
             var rewardCalculator = new RewardCalculator(specProvider);
             var blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, processor, stateDb, codeDb, stateProvider, storageProvider, transactionStore, _logManager);
-            var blockchainProcessor = new BlockchainProcessor(blockTree, sealEngine, transactionStore, difficultyCalculator, blockProcessor, ethereumSigner, _logManager, new PerfService(_logManager));
+            var blockchainProcessor = new BlockchainProcessor(blockTree, blockProcessor, ethereumSigner, _logManager, new PerfService(_logManager));
 
             /* load ChainSpec and init */
             ChainSpecLoader loader = new ChainSpecLoader(new UnforgivingJsonSerializer());
@@ -429,7 +429,7 @@ namespace Nethermind.PerfTest
             {
                 if (!isStarted)
                 {
-                    blockchainProcessor.Process(blockTree.FindBlock(blockTree.Genesis.Hash, true));
+                    blockchainProcessor.Process(blockTree.FindBlock(blockTree.Genesis.Hash, true), false, false, NullTraceListener.Instance);
                     stopwatch.Start();
                     blockchainProcessor.Start();
                     isStarted = true;
