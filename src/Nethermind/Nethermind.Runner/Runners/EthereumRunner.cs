@@ -78,7 +78,7 @@ namespace Nethermind.Runner.Runners
         private IJsonSerializer _jsonSerializer = new UnforgivingJsonSerializer();
         private ISigner _signer = new Signer();
         
-        private IBlockchainProcessor _blockchainProcessor;
+        private IBlockchainProcessor _blockchainProcessor;        
         private IDiscoveryApp _discoveryApp;
         private IDiscoveryManager _discoveryManager;
         private IMessageSerializationService _messageSerializationService = new MessageSerializationService();
@@ -233,6 +233,7 @@ namespace Nethermind.Runner.Runners
                 _dbProvider.BlocksDb,
                 _dbProvider.BlockInfosDb,
                 specProvider,
+                transactionStore,
                 _logManager);
             
             var difficultyCalculator = new DifficultyCalculator(
@@ -307,12 +308,12 @@ namespace Nethermind.Runner.Runners
 
             _blockchainProcessor = new BlockchainProcessor(
                 _blockTree,
-                sealEngine,
-                transactionStore,
-                difficultyCalculator,
                 blockProcessor,
                 ethereumSigner,
-                _logManager, _perfService);
+                _logManager,
+                _perfService);
+
+            ITxTracer txTracer = new TxTracer(_blockchainProcessor, transactionStore, _blockTree);
 
             // create shared objects between discovery and peer manager
             _nodeFactory = new NodeFactory();
@@ -337,8 +338,9 @@ namespace Nethermind.Runner.Runners
                 ethereumSigner,
                 stateProvider,
                 _keyStore,
-                _blockTree,
+                _blockTree,                
                 _blockchainProcessor,
+                txTracer,
                 _dbProvider,
                 transactionStore,
                 new FilterStore());
@@ -443,6 +445,9 @@ namespace Nethermind.Runner.Runners
             var sealEngine = new EthashSealEngine(new Ethash(_logManager), _logManager);
 //
 //            var blockMiningTime = TimeSpan.FromMilliseconds(_initConfig.FakeMiningDelay);
+//            var blockMiningTime = TimeSpan.FromMilliseconds(_initConfig.FakeMiningDelay);
+            // var sealEngine = new EthashSealEngine(new Ethash());
+
 //            var sealEngine = new FakeSealEngine(blockMiningTime, false);
 //            sealEngine.IsMining = _initConfig.IsMining;
 //            if (sealEngine.IsMining)
@@ -454,8 +459,6 @@ namespace Nethermind.Runner.Runners
 //                // stateProvider.Commit(specProvider.GenesisSpec);
 //                testTransactionsGenerator.Start();
 //            }
-//
-//            return sealEngine;
             return sealEngine;
         }
 

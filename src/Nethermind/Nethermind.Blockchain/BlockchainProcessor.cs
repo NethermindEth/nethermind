@@ -48,7 +48,6 @@ namespace Nethermind.Blockchain
 
         private readonly BlockingCollection<BlockRef> _recoveryQueue = new BlockingCollection<BlockRef>(new ConcurrentQueue<BlockRef>());
         private readonly BlockingCollection<Block> _blockQueue = new BlockingCollection<Block>(new ConcurrentQueue<Block>(), MaxProcessingQueueSize);
-        private readonly ITransactionStore _transactionStore;
         private readonly ProcessingStats _stats;
 
         public BlockchainProcessor(
