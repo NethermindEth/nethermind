@@ -569,18 +569,18 @@ namespace Nethermind.Blockchain
 
         private PeerInfo SelectBestPeerForSync()
         {
-            var availiblePeers = _peers.Values.Where(x => x.NumberAvailable > _blockTree.BestSuggested.Number).Select(x => new {PeerInfo = x, AvLat = x.Peer.NodeStats.GetAverageLatency(NodeLatencyStatType.BlockHeaders) })
+            var availablePeers = _peers.Values.Where(x => x.NumberAvailable > _blockTree.BestSuggested.Number).Where(x => x.IsInitialized).Select(x => new {PeerInfo = x, AvLat = x.Peer.NodeStats.GetAverageLatency(NodeLatencyStatType.BlockHeaders) })
                 .OrderBy(x => x.AvLat ?? 100000).ToArray();
-            if (!availiblePeers.Any())
+            if (!availablePeers.Any())
             {
                 return null;
             }
                 
-            if (_logger.IsDebug) _logger.Debug($"Candidates for Sync: {Environment.NewLine}{string.Join(Environment.NewLine, availiblePeers.Select(x => $"{x.PeerInfo.Peer.NodeId} | NumberAvailable: {x.PeerInfo.NumberAvailable} | BlockHeaderAvLatency: {x.AvLat?.ToString() ?? "none"}").ToArray())}");
-            var selectedInfo = availiblePeers.First().PeerInfo;
+            if (_logger.IsDebug) _logger.Debug($"Candidates for Sync: {Environment.NewLine}{string.Join(Environment.NewLine, availablePeers.Select(x => $"{x.PeerInfo.Peer.NodeId} | NumberAvailable: {x.PeerInfo.NumberAvailable} | BlockHeaderAvLatency: {x.AvLat?.ToString() ?? "none"}").ToArray())}");
+            var selectedInfo = availablePeers.First().PeerInfo;
             if (selectedInfo.Peer.NodeId == _currentSyncingPeerInfo?.Peer?.NodeId)
             {
-                if (_logger.IsWarn) _logger.Warn($"Potencial error, selecting same peer for sync as prev sync peer, id: {selectedInfo.Peer.NodeId}");
+                if (_logger.IsWarn) _logger.Warn($"Potential error, selecting same peer for sync as prev sync peer, id: {selectedInfo.Peer.NodeId}");
             }
             return selectedInfo;
         }

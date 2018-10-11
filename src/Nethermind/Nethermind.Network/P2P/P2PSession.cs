@@ -92,7 +92,7 @@ namespace Nethermind.Network.P2P
         {
             get
             {
-                //It is needed for lazy creation of NodeStats, in case  IN connections, publicKey is availible only after handshake
+                //It is needed for lazy creation of NodeStats, in case  IN connections, publicKey is available only after handshake
                 if (_nodeStats == null)
                 {
                     if (RemoteNodeId == null)
