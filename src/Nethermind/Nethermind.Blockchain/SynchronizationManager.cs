@@ -590,13 +590,14 @@ namespace Nethermind.Blockchain
             bool wasCanceled = false;
 
             ISynchronizationPeer peer = peerInfo.Peer;
-            BigInteger bestNumber = _blockTree.BestSuggested.Number;
+            UInt256 bestNumber = _blockTree.BestSuggested.Number;
 //            UInt256 bestDifficulty = _blockTree.BestSuggested.Difficulty;
 
             const int maxLookup = 64;
             int ancestorLookupLevel = 0;
             bool isCommonAncestorKnown = false;
 
+            peerInfo.NumberReceived = bestNumber;
             while (peerInfo.NumberAvailable > bestNumber && peerInfo.NumberReceived <= peerInfo.NumberAvailable)
             {
                 if (_logger.IsTrace) _logger.Trace($"Continue syncing with {peerInfo} (our best {bestNumber})");
