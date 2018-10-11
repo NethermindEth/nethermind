@@ -17,6 +17,8 @@
  */
 
 using System;
+using System.IO;
+using System.Runtime.InteropServices;
 using Microsoft.Extensions.CommandLineUtils;
 using Nethermind.Blockchain;
 using Nethermind.Config;
@@ -36,7 +38,7 @@ namespace Nethermind.Runner
     {
         private static readonly PrivateKey PrivateKey = new PrivateKey("49a7b37aa6f6645917e7b807e9d1c00d4fa71f18343b0d4122a4d2df64dd6fee");
 
-        private const string DefaultConfigFile = "configs\\default.config.json";
+        private readonly string _defaultConfigFile = Path.Combine("configs", "mainnet_" + (RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "windows" : "linux") + ".config.json");
 
         public RunnerApp(ILogger logger) : base(logger, new PrivateKeyProvider(PrivateKey))
         {
@@ -62,7 +64,7 @@ namespace Nethermind.Runner
                 config = typeof(BlockchainConfig).Assembly;
 
                 var configProvider = new JsonConfigProvider();
-                configProvider.LoadJsonConfig(configFile.HasValue() ? configFile.Value() : DefaultConfigFile);
+                configProvider.LoadJsonConfig(configFile.HasValue() ? configFile.Value() : _defaultConfigFile);
                 return configProvider;
             };
 
