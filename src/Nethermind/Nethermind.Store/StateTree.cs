@@ -66,7 +66,7 @@ namespace Nethermind.Store
 
         public void Set(Address address, Account account)
         {
-            if (account.IsTotallyEmpty)
+            if (account?.IsTotallyEmpty ?? false)
             {
                 Metrics.EmptyAccountSaves++;
             }
