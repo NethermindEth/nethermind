@@ -86,9 +86,11 @@ namespace Nethermind.Blockchain
 
             _currentRecoveryQueueSize += block.Transactions.Length;
             BlockRef blockRef = _currentRecoveryQueueSize >= SoftMaxRecoveryQueueSizeInTx ? new BlockRef(block.Hash) : new BlockRef(block);
-            _recoveryQueue.Add(blockRef);
-
-            if (_logger.IsTrace) _logger.Trace($"A new block {block.ToString(Block.Format.Short)} enqueued for processing.");
+            if (!_recoveryQueue.IsAddingCompleted)
+            {
+                _recoveryQueue.Add(blockRef);
+                if (_logger.IsTrace) _logger.Trace($"A new block {block.ToString(Block.Format.Short)} enqueued for processing.");
+            }
         }
 
         private CancellationTokenSource _loopCancellationSource;
@@ -109,6 +111,8 @@ namespace Nethermind.Blockchain
             else
             {
                 _loopCancellationSource.Cancel();
+                _recoveryQueue.CompleteAdding();
+                _blockQueue.CompleteAdding();
             }
 
             await Task.WhenAll(_recoveryTask, _processorTask);
@@ -169,7 +173,15 @@ namespace Nethermind.Blockchain
                 _currentRecoveryQueueSize -= blockRef.Block.Transactions.Length;
                 if (_logger.IsTrace) _logger.Trace($"Recovering addresses for block {blockRef.BlockHash ?? blockRef.Block.Hash}.");
                 _signer.RecoverAddresses(blockRef.Block);
-                _blockQueue.Add(blockRef.Block);
+                try
+                {
+                    _blockQueue.Add(blockRef.Block);
+                }
+                catch (InvalidOperationException)
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Recovery loop stopping.");    
+                    return;
+                }
             }
         }
 
@@ -199,7 +211,7 @@ namespace Nethermind.Blockchain
             }
         }
 
-        private int _currentRecoveryQueueSize = 0; 
+        private int _currentRecoveryQueueSize; 
         private const int SoftMaxRecoveryQueueSizeInTx = 10000; // adjust based on tx or gas
         private const int MaxProcessingQueueSize = 2000; // adjust based on tx or gas
 
