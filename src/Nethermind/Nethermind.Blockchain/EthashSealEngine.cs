@@ -37,7 +37,7 @@ namespace Nethermind.Blockchain
 
         public EthashSealEngine(IEthash ethash, ILogManager logManager)
         {
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager)); 
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _ethash = ethash;
         }
 
@@ -65,7 +65,18 @@ namespace Nethermind.Blockchain
         }
 
         public bool Validate(BlockHeader header)
-        {
+        {   
+            // TODO: all until we properly optimize ethash, still with sensible security measures (although there are many attack vectors for this particular node during sync)
+            if (header.Number < 750000)
+            {
+                return true;
+            }
+
+            if (header.Number < 6500000 && header.Number % 30000 != 0) // TODO: this numbers are here to secure mainnet only (current block and epoch length) 
+            {
+                return true;
+            }
+
             return _ethash.Validate(header);
         }
 

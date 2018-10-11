@@ -23,7 +23,7 @@
       "WriteBufferSize": 67108864,
       "WriteBufferNumber": 6,
       "BlockCacheSize": 67108864,
-      "CacheIndexAndFilterBlocks": false
+      "CacheIndexAndFilterBlocks": true
     }
   }
 ]

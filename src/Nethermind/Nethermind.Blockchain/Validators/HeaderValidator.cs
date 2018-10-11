@@ -65,7 +65,7 @@ namespace Nethermind.Blockchain.Validators
                 return false;
             }
 
-            bool areNonceValidAndMixHashValid = header.SealEngineType == SealEngineType.None || _sealEngine.Validate(header);
+            bool areNonceValidAndMixHashValid = header.Number == 0 || header.SealEngineType == SealEngineType.None || _sealEngine.Validate(header);
             if (!areNonceValidAndMixHashValid)
             {
                 _logger.Warn($"Invalid block header ({header.Hash}) - invalid mix hash / nonce");

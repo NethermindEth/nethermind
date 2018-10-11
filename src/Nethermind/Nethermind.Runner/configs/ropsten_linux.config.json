@@ -16,5 +16,14 @@
       "BaseDbPath": "nethermind_db/ropsten",
       "LogFileName": "ropsten_linux_vm.logs.txt"
     }
+  },
+  {
+    "ConfigModule": "DbConfig",
+    "ConfigItems": {
+      "WriteBufferSize": 67108864,
+      "WriteBufferNumber": 6,
+      "BlockCacheSize": 67108864,
+      "CacheIndexAndFilterBlocks": true
+    }
   }
 ]
