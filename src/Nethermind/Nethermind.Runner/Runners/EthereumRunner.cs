@@ -41,6 +41,7 @@ using Nethermind.Evm;
 using Nethermind.JsonRpc.Client;
 using Nethermind.JsonRpc.Module;
 using Nethermind.KeyStore;
+using Nethermind.Mining;
 using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Network.Crypto;
@@ -439,21 +440,22 @@ namespace Nethermind.Runner.Runners
 
         private ISealEngine ConfigureSealEngine(TransactionStore transactionStore, EthereumSigner ethereumSigner)
         {
-            var blockMiningTime = TimeSpan.FromMilliseconds(_initConfig.FakeMiningDelay);
-            // var sealEngine = new EthashSealEngine(new Ethash());
-
-            var sealEngine = new FakeSealEngine(blockMiningTime, false);
-            sealEngine.IsMining = _initConfig.IsMining;
-            if (sealEngine.IsMining)
-            {
-                var transactionDelay = TimeSpan.FromMilliseconds(_initConfig.FakeMiningDelay / 4);
-                TestTransactionsGenerator testTransactionsGenerator =
-                    new TestTransactionsGenerator(transactionStore, ethereumSigner, transactionDelay, _logManager);
-                // stateProvider.CreateAccount(testTransactionsGenerator.SenderAddress, 1000.Ether());
-                // stateProvider.Commit(specProvider.GenesisSpec);
-                testTransactionsGenerator.Start();
-            }
-
+            var sealEngine = new EthashSealEngine(new Ethash(_logManager), _logManager);
+//
+//            var blockMiningTime = TimeSpan.FromMilliseconds(_initConfig.FakeMiningDelay);
+//            var sealEngine = new FakeSealEngine(blockMiningTime, false);
+//            sealEngine.IsMining = _initConfig.IsMining;
+//            if (sealEngine.IsMining)
+//            {
+//                var transactionDelay = TimeSpan.FromMilliseconds(_initConfig.FakeMiningDelay / 4);
+//                TestTransactionsGenerator testTransactionsGenerator =
+//                    new TestTransactionsGenerator(transactionStore, ethereumSigner, transactionDelay, _logManager);
+//                // stateProvider.CreateAccount(testTransactionsGenerator.SenderAddress, 1000.Ether());
+//                // stateProvider.Commit(specProvider.GenesisSpec);
+//                testTransactionsGenerator.Start();
+//            }
+//
+//            return sealEngine;
             return sealEngine;
         }
 
