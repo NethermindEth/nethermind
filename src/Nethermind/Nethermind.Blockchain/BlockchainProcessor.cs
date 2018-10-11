@@ -84,7 +84,8 @@ namespace Nethermind.Blockchain
 
             if (_logger.IsTrace) _logger.Trace($"Enqueuing a new block {block.ToString(Block.Format.Short)} for processing.");
 
-            BlockRef blockRef = _recoveryQueue.Count >= SoftMaxRecoveryQueueSize ? new BlockRef(block.Hash) : new BlockRef(block);
+            _currentRecoveryQueueSize += block.Transactions.Length;
+            BlockRef blockRef = _currentRecoveryQueueSize >= SoftMaxRecoveryQueueSizeInTx ? new BlockRef(block.Hash) : new BlockRef(block);
             _recoveryQueue.Add(blockRef);
 
             if (_logger.IsTrace) _logger.Trace($"A new block {block.ToString(Block.Format.Short)} enqueued for processing.");
@@ -163,9 +164,10 @@ namespace Nethermind.Blockchain
         {
             if (_logger.IsDebug) _logger.Debug($"Starting recovery loop - {_blockQueue.Count} blocks waiting in the queue.");
             foreach (BlockRef blockRef in _recoveryQueue.GetConsumingEnumerable(_loopCancellationSource.Token))
-            {
-                if (_logger.IsTrace) _logger.Trace($"Recovering addresses for block {blockRef.BlockHash ?? blockRef.Block.Hash}.");
+            { 
                 ResolveBlockRef(blockRef);
+                _currentRecoveryQueueSize -= blockRef.Block.Transactions.Length;
+                if (_logger.IsTrace) _logger.Trace($"Recovering addresses for block {blockRef.BlockHash ?? blockRef.Block.Hash}.");
                 _signer.RecoverAddresses(blockRef.Block);
                 _blockQueue.Add(blockRef.Block);
             }
@@ -197,7 +199,8 @@ namespace Nethermind.Blockchain
             }
         }
 
-        private const int SoftMaxRecoveryQueueSize = 2000; // adjust based on tx or gas
+        private int _currentRecoveryQueueSize = 0; 
+        private const int SoftMaxRecoveryQueueSizeInTx = 10000; // adjust based on tx or gas
         private const int MaxProcessingQueueSize = 2000; // adjust based on tx or gas
 
         private void RunProcessingLoop()
