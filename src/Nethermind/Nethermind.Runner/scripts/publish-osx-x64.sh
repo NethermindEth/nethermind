@@ -2,7 +2,7 @@
 RUNTIME=osx-x64
 OUT=out/$RUNTIME
 ECHO === Publishing $RUNTIME package ===
-dotnet publish -c Release -r $RUNTIME -o $OUT /p:CrossGenDuringPublish=false
+dotnet publish -c Release -r $RUNTIME -o $OUT
 rm -rf $OUT/out
 rm -rf $OUT/native
 rm $OUT/secp256k1.dll
