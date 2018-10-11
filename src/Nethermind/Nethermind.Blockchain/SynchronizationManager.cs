@@ -94,8 +94,8 @@ namespace Nethermind.Blockchain
         public int ChainId => _blockTree.ChainId;
         public BlockHeader Genesis => _blockTree.Genesis;
         public BlockHeader Head => _blockTree.Head;
-        public BigInteger HeadNumber => _blockTree.Head.Number;
-        public BigInteger TotalDifficulty => _blockTree.Head.TotalDifficulty ?? 0;
+        public UInt256 HeadNumber => _blockTree.Head.Number;
+        public UInt256 TotalDifficulty => _blockTree.Head.TotalDifficulty ?? 0;
         public event EventHandler<SyncEventArgs> SyncEvent;
 
         public Block Find(Keccak hash)
@@ -620,7 +620,7 @@ namespace Nethermind.Blockchain
                     isCommonAncestorKnown = true;
                 }
 
-                BigInteger blocksLeft = peerInfo.NumberAvailable - peerInfo.NumberReceived;
+                UInt256 blocksLeft = peerInfo.NumberAvailable - peerInfo.NumberReceived;
                 int blocksToRequest = (int) BigInteger.Min(blocksLeft + 1, _batchSize);
                 if (_logger.IsTrace) _logger.Trace($"Sync request to peer with {peerInfo.NumberAvailable} blocks. Got {peerInfo.NumberReceived} and asking for {blocksToRequest} more.");
                 
@@ -739,6 +739,7 @@ namespace Nethermind.Blockchain
                             {
                                 const string message = "Peer sent orphaned blocks";
                                 _logger.Error(message);
+                                peerInfo.NumberReceived -= peerInfo.NumberReceived <= 60 ? UInt256.Zero : (UInt256) 60;
                                 throw new EthSynchronizationException(message);
 //                                if (_logger.IsTrace) _logger.Trace("Resyncing split");
 //                                peerInfo.NumberReceived -= 1;
