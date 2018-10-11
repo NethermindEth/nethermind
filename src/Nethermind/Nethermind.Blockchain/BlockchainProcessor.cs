@@ -212,11 +212,8 @@ namespace Nethermind.Blockchain
                 if (_logger.IsTrace) _logger.Trace("Will go and wait for another block now...");
             }
 
-            foreach (BlockRef blockRef in _blockQueue.GetConsumingEnumerable(_loopCancellationSource.Token))
+            foreach (Block block in _blockQueue.GetConsumingEnumerable(_loopCancellationSource.Token))
             {
-                ResolveBlockRef(blockRef);
-                Block block = blockRef.Block;
-
                 if (_logger.IsTrace) _logger.Trace($"Processing block {block.ToString(Block.Format.Short)}).");
 
                 Process(block);
