@@ -219,11 +219,11 @@ namespace Nethermind.Mining
             {
                 uint cacheSize = GetCacheSize(epoch);
                 Keccak seed = GetSeedHash(epoch);
-                if(_logger.IsInfo) _logger.Info($"Building cache for epoch {epoch}");
+                if(_logger.IsDebug) _logger.Debug($"Building cache for epoch {epoch}");
                 _cacheStopwatch.Restart();
                 dataSet = new EthashCache(cacheSize, seed.Bytes);
                 _cacheStopwatch.Stop();
-                if(_logger.IsInfo) _logger.Info($"Cache for epoch {epoch} built in {_cacheStopwatch.ElapsedMilliseconds}ms");
+                if(_logger.IsDebug) _logger.Debug($"Cache for epoch {epoch} built in {_cacheStopwatch.ElapsedMilliseconds}ms");
                 _cacheCache.Set(epoch, dataSet);
             }
            
