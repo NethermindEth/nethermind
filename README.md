@@ -18,24 +18,24 @@
 
 ### source and build
 
-```
 on Linux:
+```
 sudo apt-get update
 sudo apt-get install libsnappy-dev
 sudo apt-get install libc6-dev
 sudo apt-get install libc6
+```
 
 on Mac:
+```
 brew install gmp
+```
 
 then (any platform):
-
-git clone https://github.com/tkstanczak/nethermind.git
-cd nethermind/src/Nethermind
-git submodule update --init
-dotnet build -c Release
-
 ```
+git clone https://github.com/tkstanczak/nethermind.git -- recursive
+cd nethermind/src/Nethermind
+dotnet build -c Release
 cd src/Nethermind/Nethermind.Runner
 dotnet run
 ```
