@@ -496,9 +496,19 @@ namespace Nethermind.JsonRpc.Module
 
         public ResultWrapper<Quantity> eth_newFilter(Filter filter)
         {
-            // TODO: Mapper
-            // return ResultWrapper<Quantity>.Success(new Quantity(_blockchainBridge.NewFilter());
-            throw new NotImplementedException();
+            var fromBlock = GetBlock(filter.FromBlock);
+            if (fromBlock.Result.ResultType == ResultType.Failure)
+            {
+                return ResultWrapper<Quantity>.Fail(fromBlock.Result.Error);
+            }
+            var toBlock = GetBlock(filter.ToBlock);
+            if (toBlock.Result.ResultType == ResultType.Failure)
+            {
+                return ResultWrapper<Quantity>.Fail(fromBlock.Result.Error);
+            }
+
+            return ResultWrapper<Quantity>.Success(new Quantity(
+                _blockchainBridge.NewFilter(fromBlock.Data, toBlock.Data, filter.Address, filter.Topics)));
         }
 
         public ResultWrapper<Quantity> eth_newBlockFilter()

@@ -1,14 +1,14 @@
 using System.Collections.Generic;
+using Nethermind.Core;
 using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Blockchain.Filters
 {
     public class Filter : FilterBase
     {
-        //TODO: Number or type (latest etc.)
-        public FilterBlock FromBlock { get; set; }
-        public FilterBlock ToBlock { get; set; }
+        public Block FromBlock { get; set; }
+        public Block ToBlock { get; set; }
         public FilterAddress Address { get; set; }
-        public IEnumerable<FilterData> Topics { get; set; }
+        public IEnumerable<FilterTopic> Topics { get; set; }
     }
 }
