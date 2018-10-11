@@ -179,7 +179,12 @@ namespace Nethermind.Runner.Runners
         {
             _logger.Info($"Loading chain spec from {chainSpecFile}");
             ChainSpecLoader loader = new ChainSpecLoader(_jsonSerializer);
-            ChainSpec chainSpec = loader.LoadFromFile(chainSpecFile);
+            if (!Path.IsPathRooted(chainSpecFile))
+            {
+                chainSpecFile = Path.Combine(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, chainSpecFile));
+            }
+
+            ChainSpec chainSpec = loader.Load(File.ReadAllBytes(chainSpecFile));
             return chainSpec;
         }
 
@@ -200,7 +205,7 @@ namespace Nethermind.Runner.Runners
             }
             else
             {
-                specProvider = new SingleReleaseSpecProvider(LatestRelease.Instance, chainSpec.ChainId);
+                throw new NotSupportedException($"Not yet tested, not yet supported ChainId {chainSpec.ChainId}");
             }
 
             var ethereumSigner = new EthereumSigner(

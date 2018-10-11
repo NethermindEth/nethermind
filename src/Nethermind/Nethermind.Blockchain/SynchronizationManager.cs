@@ -34,6 +34,7 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Blockchain
 {
+    // TODO: forks
     public class SynchronizationManager : ISynchronizationManager
     {
         public const int MinBatchSize = 8;
@@ -105,8 +106,7 @@ namespace Nethermind.Blockchain
 
         public Block Find(UInt256 number)
         {
-            
-            return _blockTree.Head.Number >= number ? _blockTree.FindBlock(number) : null;
+            return _blockTree.FindBlock(number);
         }
 
         public Block[] Find(Keccak hash, int numberOfBlocks, int skip, bool reverse)
@@ -210,9 +210,9 @@ namespace Nethermind.Blockchain
                 {
                     if (t.Exception != null && t.Exception.InnerExceptions.Any(x => x.InnerException is TimeoutException))
                     {
-                        if (_logger.IsTrace) _logger.Trace($"AddPeer failed due to timeout: {t.Exception.Message}");
+                        if (_logger.IsDebug) _logger.Debug($"AddPeer failed due to timeout: {t.Exception.Message}");
                     }
-                    else if (_logger.IsDebug) _logger.Debug("AddPeer failed {t.Exception}");
+                    else if (_logger.IsError) _logger.Error("AddPeer failed.", t.Exception);
                 }
                 else if (t.IsCanceled)
                 {
@@ -300,10 +300,27 @@ namespace Nethermind.Blockchain
                 }
 
                 CheckIfSyncingWithFastestPeer();
+                LogSyncMilestones();
                 _syncTimer.Enabled = true;
             };
 
             _syncTimer.Start();
+        }
+
+        private UInt256 _nextLogBlockNumer = 100000;
+        private void LogSyncMilestones()
+        {
+            if (!_logger.IsDebug)
+            {
+                return;
+            }
+
+            var headBlockNumber = _blockTree?.Head?.Number ?? 0;
+            if (headBlockNumber > _nextLogBlockNumer)
+            {
+                _nextLogBlockNumer = _nextLogBlockNumer + 100000;
+                _logger.Debug($"Sync milestone log: Process up to block: {headBlockNumber} in {_entireSyncStopWatch.Elapsed}");
+            }
         }
 
         private void CheckIfSyncingWithFastestPeer()
@@ -558,11 +575,8 @@ namespace Nethermind.Blockchain
                         $"Finished peer sync process [{(t.IsFaulted ? "FAULTED" : t.IsCanceled ? "CANCELED" : t.IsCompleted ? "COMPLETED" : "OTHER")}] with Node: {peerInfo.Peer.NodeId} [{peerInfo.Peer.ClientId}], " +
                         $"best known block #: {_blockTree.BestSuggested.Number} ({_blockTree.BestSuggested.Number}), " +
                         $"best peer block #: {peerInfo.NumberAvailable} ({peerInfo.NumberAvailable})");
-
-                    var source = _peerSyncCancellationTokenSource;
-                    _peerSyncCancellationTokenSource = null;
-                    source?.Dispose();
                     
+                    _peerSyncCancellationTokenSource?.Dispose();
                 }, syncCancellationToken);
             }
         }
