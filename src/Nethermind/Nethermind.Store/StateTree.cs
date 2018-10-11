@@ -66,6 +66,11 @@ namespace Nethermind.Store
 
         public void Set(Address address, Account account)
         {
+            if (account.IsTotallyEmpty)
+            {
+                Metrics.EmptyAccountSaves++;
+            }
+            
             Keccak keccak = Keccak.Compute(address.Bytes);
             Set(keccak.Bytes, account == null ? null : account.IsTotallyEmpty ? EmptyAccountRlp : Rlp.Encode(account));
         }

@@ -415,6 +415,7 @@ namespace Nethermind.PerfTest
                     _logger.Warn($"TOTAL after {number} receipts DB writes   : {Metrics.ReceiptsDbWrites}");
                     _logger.Warn($"TOTAL after {number} other DB reads       : {Metrics.OtherDbReads}");
                     _logger.Warn($"TOTAL after {number} other DB writes      : {Metrics.OtherDbWrites}");
+                    _logger.Warn($"TOTAL after {number} empty account saves  : {Metrics.EmptyAccountSaves}");
 
                     // disk space
                     stopwatch.Start();

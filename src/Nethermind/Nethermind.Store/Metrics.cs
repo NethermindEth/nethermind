@@ -42,12 +42,8 @@ namespace Nethermind.Store
         public static long TreeNodeRlpEncodings { get; set; }
         public static long TreeNodeRlpDecodings { get; set; }
 
-        public static long DiscoveryNodesDbReads { get; set; }
-        public static long DiscoveryNodesDbWrites { get; set; }
-        public static long PeersDbReads { get; set; }
-        public static long PeersDbWrites { get; set; }
-
         public static long EvmExceptions { get; set; }
         public static long SelfDestructs { get; set; }
+        public static long EmptyAccountSaves { get; set; }
     }
 } 
