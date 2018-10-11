@@ -469,5 +469,13 @@ namespace Nethermind.Store.Test
             StateTree tree = new StateTree(db);
             Assert.AreEqual(PatriciaTree.EmptyTreeHash, tree.RootHash);
         }
+        
+        [Test]
+        public void Can_save_null()
+        {
+            MemDb db = new MemDb();
+            StateTree tree = new StateTree(db);
+            tree.Set(TestObject.AddressA, null);
+        }
     }
 }
