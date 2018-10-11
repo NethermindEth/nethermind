@@ -276,7 +276,7 @@ namespace Ethereum.Test.Base
 
                     correctRlpsBlocks.Add((suggestedBlock, testBlockJson.ExpectedException));
                 }
-                catch (Exception e)
+                catch (Exception)
                 {
                     _logger?.Info($"Invalid RLP ({i})");
                 }
@@ -336,7 +336,7 @@ namespace Ethereum.Test.Base
                         Console.WriteLine("Invalid block");
                     }
                 }
-                catch (InvalidBlockException ex)
+                catch (InvalidBlockException)
                 {
                 }
                 catch (Exception ex)
