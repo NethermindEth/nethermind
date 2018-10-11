@@ -50,7 +50,7 @@ namespace Nethermind.Blockchain
         private readonly IPerfService _perfService;
 
         private readonly BlockingCollection<BlockRef> _recoveryQueue = new BlockingCollection<BlockRef>(new ConcurrentQueue<BlockRef>());
-        private readonly BlockingCollection<BlockRef> _blockQueue = new BlockingCollection<BlockRef>(new ConcurrentQueue<BlockRef>());
+        private readonly BlockingCollection<Block> _blockQueue = new BlockingCollection<Block>(new ConcurrentQueue<Block>(), MaxProcessingQueueSize);
         private readonly ITransactionStore _transactionStore;
         private readonly ProcessingStats _stats;
 
@@ -84,7 +84,7 @@ namespace Nethermind.Blockchain
 
             if (_logger.IsTrace) _logger.Trace($"Enqueuing a new block {block.ToString(Block.Format.Short)} for processing.");
 
-            BlockRef blockRef = _recoveryQueue.Count > MaxRecoveryQueueSize ? new BlockRef(block.Hash) : new BlockRef(block);
+            BlockRef blockRef = _recoveryQueue.Count >= SoftMaxRecoveryQueueSize ? new BlockRef(block.Hash) : new BlockRef(block);
             _recoveryQueue.Add(blockRef);
 
             if (_logger.IsTrace) _logger.Trace($"A new block {block.ToString(Block.Format.Short)} enqueued for processing.");
@@ -166,17 +166,8 @@ namespace Nethermind.Blockchain
             {
                 if (_logger.IsTrace) _logger.Trace($"Recovering addresses for block {blockRef.BlockHash ?? blockRef.Block.Hash}.");
                 ResolveBlockRef(blockRef);
-
-                if (_blockQueue.Count > MaxProcessingQueueSize)
-                {
-                    DetachBlockRef(blockRef);
-                }
-                else
-                {
-                    _signer.RecoverAddresses(blockRef.Block);   
-                }
-
-                _blockQueue.Add(blockRef);
+                _signer.RecoverAddresses(blockRef.Block);
+                _blockQueue.Add(blockRef.Block);
             }
         }
 
@@ -206,8 +197,8 @@ namespace Nethermind.Blockchain
             }
         }
 
-        private const int MaxRecoveryQueueSize = 10000;
-        private const int MaxProcessingQueueSize = 10000;
+        private const int SoftMaxRecoveryQueueSize = 2000; // adjust based on tx or gas
+        private const int MaxProcessingQueueSize = 2000; // adjust based on tx or gas
 
         private void RunProcessingLoop()
         {
@@ -341,19 +332,19 @@ namespace Nethermind.Blockchain
             Process(block, false, true, listener);
             return listener.Trace;
         }
-        
+
         public TransactionTrace Trace(Keccak txHash)
-        {   
+        {
             TxInfo txInfo = _transactionStore.GetTxInfo(txHash);
             Block block = _blockTree.FindBlock(txInfo.BlockNumber);
             if (block == null)
             {
                 throw new InvalidOperationException("Only historical blocks");
             }
-            
+
             return Trace(block, txHash);
         }
-        
+
         public TransactionTrace Trace(Keccak blockHash, int txIndex)
         {
             Block block = _blockTree.FindBlock(blockHash, false);
@@ -369,7 +360,7 @@ namespace Nethermind.Blockchain
 
             return Trace(block, block.Transactions[txIndex].Hash);
         }
-        
+
         public TransactionTrace Trace(UInt256 blockNumber, int txIndex)
         {
             Block block = _blockTree.FindBlock(blockNumber);
@@ -382,10 +373,10 @@ namespace Nethermind.Blockchain
             {
                 throw new InvalidOperationException($"Block {blockNumber} has only {block.Transactions.Length} transactions and the requested tx index was {txIndex}");
             }
-            
+
             return Trace(block, block.Transactions[txIndex].Hash);
         }
-        
+
         public BlockTrace TraceBlock(Keccak blockHash)
         {
             Block block = _blockTree.FindBlock(blockHash, false);
@@ -397,7 +388,7 @@ namespace Nethermind.Blockchain
             Block block = _blockTree.FindBlock(blockNumber);
             return TraceBlock(block);
         }
-        
+
         private BlockTrace TraceBlock(Block block)
         {
             if (block == null)
@@ -512,14 +503,14 @@ namespace Nethermind.Blockchain
 
                         unprocessedBlocksToBeAddedToMain.Add(block);
                     }
-                    
+
                     blocks = new Block[unprocessedBlocksToBeAddedToMain.Count];
                     for (int i = 0; i < unprocessedBlocksToBeAddedToMain.Count; i++)
                     {
                         blocks[blocks.Length - i - 1] = unprocessedBlocksToBeAddedToMain[i];
                     }
                 }
-                
+
                 if (_logger.IsTrace) _logger.Trace($"Processing {blocks.Length} blocks from state root {stateRoot}");
 
                 for (int i = 0; i < blocks.Length; i++)
@@ -600,7 +591,7 @@ namespace Nethermind.Blockchain
                     Block blockToBeMined = processedBlocks[processedBlocks.Length - 1];
                     _miningCancellation = new CancellationTokenSource();
                     CancellationTokenSource anyCancellation =
-CancellationTokenSource.CreateLinkedTokenSource(_miningCancellation.Token, _loopCancellationSource.Token);
+                        CancellationTokenSource.CreateLinkedTokenSource(_miningCancellation.Token, _loopCancellationSource.Token);
                     _sealEngine.MineAsync(blockToBeMined, anyCancellation.Token).ContinueWith(t =>
                     {
                         anyCancellation.Dispose();
@@ -683,6 +674,7 @@ CancellationTokenSource.CreateLinkedTokenSource(_miningCancellation.Token, _loop
                 long currentTicks = _processingWatch.ElapsedTicks;
                 decimal totalMicroseconds = _processingWatch.ElapsedTicks * (1_000_000m / Stopwatch.Frequency);
                 decimal chunkMicroseconds = (_processingWatch.ElapsedTicks - _lastElapsedTicks) * (1_000_000m / Stopwatch.Frequency);
+
 
                 if (chunkMicroseconds > 10 * 1000 * 1000 || (_wasQueueEmptied && chunkMicroseconds > 1 * 1000 * 1000)) // 10s
                 {
