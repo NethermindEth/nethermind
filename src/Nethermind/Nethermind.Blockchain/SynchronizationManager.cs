@@ -514,7 +514,7 @@ namespace Nethermind.Blockchain
                             }
                             else
                             {
-                                _logger.Error($"Stopping Sync with node: {currentPeerNodeId}. Error in the sync process: {t.Exception?.Message}");
+                                _logger.Error($"Stopping Sync with node: {currentPeerNodeId}. Error in the sync process.", t.Exception);
                             }
                         }
 
