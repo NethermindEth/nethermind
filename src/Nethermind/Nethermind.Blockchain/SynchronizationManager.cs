@@ -593,7 +593,7 @@ namespace Nethermind.Blockchain
             UInt256 bestNumber = _blockTree.BestSuggested.Number;
 //            UInt256 bestDifficulty = _blockTree.BestSuggested.Difficulty;
 
-            const int maxLookup = 64;
+            const int maxLookup = 2 * MaxBatchSize;
             int ancestorLookupLevel = 0;
             bool isCommonAncestorKnown = false;
 
