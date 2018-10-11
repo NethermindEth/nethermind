@@ -105,7 +105,7 @@ namespace Nethermind.Blockchain
 
         public Block Find(UInt256 number)
         {
-
+            
             return _blockTree.Head.Number >= number ? _blockTree.FindBlock(number) : null;
         }
 
@@ -212,7 +212,7 @@ namespace Nethermind.Blockchain
                     {
                         if (_logger.IsTrace) _logger.Trace($"AddPeer failed due to timeout: {t.Exception.Message}");
                     }
-                    else if (_logger.IsError) _logger.Error("AddPeer failed.", t.Exception);
+                    else if (_logger.IsDebug) _logger.Debug("AddPeer failed {t.Exception}");
                 }
                 else if (t.IsCanceled)
                 {
@@ -562,7 +562,7 @@ namespace Nethermind.Blockchain
                     var source = _peerSyncCancellationTokenSource;
                     _peerSyncCancellationTokenSource = null;
                     source?.Dispose();
-
+                    
                 }, syncCancellationToken);
             }
         }
