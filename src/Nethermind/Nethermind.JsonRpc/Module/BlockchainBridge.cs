@@ -230,7 +230,7 @@ namespace Nethermind.JsonRpc.Module
         public int NewFilter(Block fromBlock, Block toBlock, 
             object address = null, IEnumerable<object> topics = null)
         {
-            return _filterStore.CreateFilter(fromBlock, toBlock, address, topics).FilterId;
+            return _filterStore.CreateFilter(fromBlock.Hash, toBlock.Hash, address, topics).FilterId;
         }
 
         public int NewBlockFilter()

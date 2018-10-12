@@ -1,8 +1,10 @@
+using Nethermind.Core.Crypto;
+
 namespace Nethermind.Blockchain.Filters
 {
     public class FilterTopic
     {
-        public byte[] First { get; set; }
-        public byte[] Second { get; set; }
+        public Keccak First { get; set; }
+        public Keccak Second { get; set; }
     }
 }

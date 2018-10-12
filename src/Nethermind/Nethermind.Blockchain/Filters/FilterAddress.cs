@@ -5,7 +5,7 @@ namespace Nethermind.Blockchain.Filters
 {
     public class FilterAddress
     {
-        public byte[] Data { get; set; }
+        public Address Address { get; set; }
         public IEnumerable<Address> Addresses { get; set; }
     }
 }

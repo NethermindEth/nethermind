@@ -1,6 +1,8 @@
-﻿using System.Collections.Generic;
+﻿using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
 using Newtonsoft.Json.Serialization;
@@ -24,36 +26,46 @@ namespace Nethermind.Blockchain.Filters
 
     public interface IFilterStore
     {
+        IReadOnlyCollection<Filter> GetAll();
+        
         BlockFilter CreateBlockFilter(UInt256 startBlockNumber);
 
-        Filter CreateFilter(Block fromBlock, Block toBlock, object address = null, 
+        Filter CreateFilter(Keccak fromBlock, Keccak toBlock, object address = null, 
             IEnumerable<object> topics = null);
     }
 
     public class FilterStore : IFilterStore
     {
-        private int _filterId;
+        private readonly ConcurrentDictionary<int, FilterBase> _filters = new ConcurrentDictionary<int, FilterBase>();
+
+        public IReadOnlyCollection<Filter> GetAll() => _filters.Select(f => f.Value).OfType<Filter>().ToList();
 
         public BlockFilter CreateBlockFilter(UInt256 startBlockNumber)
         {
             BlockFilter blockFilter = new BlockFilter(startBlockNumber);
-            blockFilter.FilterId = ++_filterId;
+            AddFilter(blockFilter);
             return blockFilter;
         }
 
-        public Filter CreateFilter(Block fromBlock, Block toBlock,
+        public Filter CreateFilter(Keccak fromBlock, Keccak toBlock,
             object address = null, IEnumerable<object> topics = null)
         {
             var filter = new Filter
             {
-                FilterId = ++_filterId,
                 FromBlock = fromBlock,
                 ToBlock = toBlock,
                 Address = GetAddress(address),
                 Topics = GetTopics(topics),
             };
+            AddFilter(filter);
 
             return filter;
+        }
+
+        private void AddFilter(FilterBase filter)
+        {
+            filter.FilterId = _filters.Any() ? _filters.Max(f => f.Key) + 1 : 1;
+            _filters[filter.FilterId] = filter;
         }
 
         private static FilterAddress GetAddress(object address)
@@ -61,7 +73,7 @@ namespace Nethermind.Blockchain.Filters
                 ? null
                 : new FilterAddress
                 {
-                    Data = address is string s ? Bytes.FromHexString(s) : null,
+                    Address = address is string s ? new Address(s) : null,
                     Addresses = address is IEnumerable<string> e ? e.Select(a => new Address(a)).ToList() : null
                 };
 
@@ -77,7 +89,7 @@ namespace Nethermind.Blockchain.Filters
                 case string topic:
                     return new FilterTopic
                     {
-                        First = Bytes.FromHexString(topic)
+                        First = new Keccak(topic)
                     };
             }
 
@@ -87,8 +99,8 @@ namespace Nethermind.Blockchain.Filters
 
             return new FilterTopic
             {
-                First = first is null ? null : Bytes.FromHexString(first),
-                Second = second is null ? null : Bytes.FromHexString(second),
+                First = first is null ? null : new Keccak(first),
+                Second = second is null ? null : new Keccak(second),
             };
         }
     }
