@@ -21,6 +21,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Security;
 using System.Text;
+using Nethermind.Blockchain.Filters;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -30,6 +31,7 @@ using Nethermind.Core.Model;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.JsonRpc.DataModel;
 using Block = Nethermind.JsonRpc.DataModel.Block;
+using Filter = Nethermind.JsonRpc.DataModel.Filter;
 using Transaction = Nethermind.JsonRpc.DataModel.Transaction;
 using TransactionReceipt = Nethermind.JsonRpc.DataModel.TransactionReceipt;
 
@@ -496,19 +498,27 @@ namespace Nethermind.JsonRpc.Module
 
         public ResultWrapper<Quantity> eth_newFilter(Filter filter)
         {
-            var fromBlock = GetBlock(filter.FromBlock);
-            if (fromBlock.Result.ResultType == ResultType.Failure)
-            {
-                return ResultWrapper<Quantity>.Fail(fromBlock.Result.Error);
-            }
-            var toBlock = GetBlock(filter.ToBlock);
-            if (toBlock.Result.ResultType == ResultType.Failure)
-            {
-                return ResultWrapper<Quantity>.Fail(fromBlock.Result.Error);
-            }
+            var fromBlock = MapFilterBlock(filter.FromBlock);
+            var toBlock = MapFilterBlock(filter.ToBlock);
 
             return ResultWrapper<Quantity>.Success(new Quantity(
-                _blockchainBridge.NewFilter(fromBlock.Data, toBlock.Data, filter.Address, filter.Topics)));
+                _blockchainBridge.NewFilter(fromBlock, toBlock, filter.Address, filter.Topics)));
+        }
+
+        private FilterBlock MapFilterBlock(BlockParameter parameter)
+            => parameter.BlockId != null
+                ? new FilterBlock(new UInt256(parameter.BlockId.GetValue() ?? 0))
+                : new FilterBlock(MapFilterBlockType(parameter.Type));
+
+        private FilterBlockType MapFilterBlockType(BlockParameterType type)
+        {
+            switch (type)
+            {
+                case BlockParameterType.Latest: return FilterBlockType.Latest;
+                case BlockParameterType.Earliest: return FilterBlockType.Earliest;
+                case BlockParameterType.Pending: return FilterBlockType.Pending;
+                default: return FilterBlockType.BlockId;
+            }
         }
 
         public ResultWrapper<Quantity> eth_newBlockFilter()

@@ -5,7 +5,7 @@ namespace Nethermind.Blockchain.Filters
 {
     public interface IFilterManager
     {
-        IReadOnlyCollection<FilterLog> GetLogs(int filterId);
+        FilterLog[] GetLogs(int filterId);
         void AddTransactionReceipt(TransactionReceiptContext receiptContext);
     }
 }

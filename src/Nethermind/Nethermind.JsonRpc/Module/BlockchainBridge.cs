@@ -227,7 +227,7 @@ namespace Nethermind.JsonRpc.Module
             return _blockTree.ChainId;
         }
         
-        public int NewFilter(Block fromBlock, Block toBlock, 
+        public int NewFilter(FilterBlock fromBlock, FilterBlock toBlock, 
             object address = null, IEnumerable<object> topics = null)
         {
             return _filterStore.CreateFilter(fromBlock.Hash, toBlock.Hash, address, topics).FilterId;

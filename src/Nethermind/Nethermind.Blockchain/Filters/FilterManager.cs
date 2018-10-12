@@ -18,8 +18,8 @@ namespace Nethermind.Blockchain.Filters
             _filterStore = filterStore;
         }
 
-        public IReadOnlyCollection<FilterLog> GetLogs(int filterId)
-            => _logs.ContainsKey(filterId) ? _logs[filterId] : new List<FilterLog>();
+        public FilterLog[] GetLogs(int filterId)
+            => (_logs.ContainsKey(filterId) ? _logs[filterId] : new List<FilterLog>()).ToArray();
 
         public void AddTransactionReceipt(TransactionReceiptContext receiptContext)
         {

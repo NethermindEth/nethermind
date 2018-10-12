@@ -68,7 +68,7 @@ namespace Nethermind.JsonRpc.Module
         int NewBlockFilter();
         object[] GetFilterChanges(int filterId);
 
-        int NewFilter(Block fromBlock, Block toBlock, object address = null,
+        int NewFilter(FilterBlock fromBlock, FilterBlock toBlock, object address = null,
             IEnumerable<object> topics = null);
     }
 }
