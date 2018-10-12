@@ -35,7 +35,7 @@ brew install gmp
 
 then (any platform):
 ```
-git clone https://github.com/tkstanczak/nethermind.git -- recursive
+git clone https://github.com/tkstanczak/nethermind.git --recursive
 cd nethermind/src/Nethermind
 dotnet build -c Release
 cd src/Nethermind/Nethermind.Runner
