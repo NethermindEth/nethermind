@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,12 +16,10 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Core.Crypto;
-
-namespace Nethermind.Blockchain.Filters.Topics
+namespace Nethermind.Blockchain.Filters
 {
-    public abstract class TopicExpression
+    public abstract class FilterBase
     {
-        public abstract bool Accepts(Keccak topic);
+        public int FilterId { get; set; }
     }
 }
