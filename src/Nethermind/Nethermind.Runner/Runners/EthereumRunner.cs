@@ -303,8 +303,7 @@ namespace Nethermind.Runner.Runners
                 _blockTree,
                 blockProcessor,
                 ethereumSigner,
-                _logManager,
-                _perfService);
+                _logManager);
             
             ITxTracer txTracer = new TxTracer(_blockchainProcessor, transactionStore, _blockTree);
 
