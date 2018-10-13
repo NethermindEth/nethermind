@@ -51,9 +51,8 @@ namespace Nethermind.Blockchain
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        public async Task Start()
+        public void Start()
         {
-            await Task.CompletedTask;
             _transactionStore.NewPending += OnNewPendingTx;
         }
 

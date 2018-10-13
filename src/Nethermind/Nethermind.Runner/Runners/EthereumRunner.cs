@@ -223,10 +223,7 @@ namespace Nethermind.Runner.Runners
 //            _dbProvider = debugReader;
 
             var transactionStore = new TransactionStore(_dbProvider.ReceiptsDb, _dbProvider.TxDb, _specProvider);
-
-            var sealEngine = ConfigureSealEngine(
-                transactionStore,
-                ethereumSigner);
+            var sealEngine = ConfigureSealEngine();
 
             /* blockchain */
             _blockTree = new BlockTree(
@@ -308,7 +305,7 @@ namespace Nethermind.Runner.Runners
                 ethereumSigner,
                 _logManager,
                 _perfService);
-
+            
             ITxTracer txTracer = new TxTracer(_blockchainProcessor, transactionStore, _blockTree);
 
             // create shared objects between discovery and peer manager
@@ -343,6 +340,12 @@ namespace Nethermind.Runner.Runners
 
             EthereumSigner = ethereumSigner;
 
+            if (_initConfig.IsMining)
+            {
+                var producer = new DevBlockProducer(transactionStore, _blockchainProcessor, _blockTree, _logManager);
+                producer.Start();
+            }
+            
             _blockchainProcessor.Start();
             LoadGenesisBlock(chainSpec,
                 string.IsNullOrWhiteSpace(_initConfig.GenesisHash) ? null : new Keccak(_initConfig.GenesisHash),
@@ -436,11 +439,11 @@ namespace Nethermind.Runner.Runners
             if (_logger.IsInfo) _logger.Info($"enode://{_privateKey.PublicKey}@{localIp}:{_initConfig.P2PPort}");
         }
 
-        private ISealEngine ConfigureSealEngine(TransactionStore transactionStore, EthereumSigner ethereumSigner)
+        private ISealEngine ConfigureSealEngine()
         {
-//            var sealEngine = NullSealEngine.Instance;
-            var difficultyCalculator = new DifficultyCalculator(_specProvider);
-            var sealEngine = new EthashSealEngine(new Ethash(_logManager), difficultyCalculator, _logManager);
+            var sealEngine = NullSealEngine.Instance;
+//            var difficultyCalculator = new DifficultyCalculator(_specProvider);
+//            var sealEngine = new EthashSealEngine(new Ethash(_logManager), difficultyCalculator, _logManager);
 
 //            var blockMiningTime = TimeSpan.FromMilliseconds(_initConfig.FakeMiningDelay);
 //            var sealEngine = new FakeSealEngine(blockMiningTime, false);

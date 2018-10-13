@@ -25,13 +25,11 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Encoding;
 using Nethermind.Core.Logging;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.Mining;
 using Nethermind.Mining.Difficulty;
-using Nethermind.Store;
 
 namespace Nethermind.Blockchain
 {
@@ -176,11 +174,10 @@ namespace Nethermind.Blockchain
             return block;
         }
 
-        public async Task Start()
+        public void Start()
         {
             _processor.ProcessingQueueEmpty += OnBlockProcessorQueueEmpty;
             _blockTree.NewBestSuggestedBlock += BlockTreeOnNewBestSuggestedBlock;
-            await Task.CompletedTask;
         }
 
         public async Task StopAsync()

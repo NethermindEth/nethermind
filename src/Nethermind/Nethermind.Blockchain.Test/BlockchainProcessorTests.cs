@@ -99,7 +99,7 @@ namespace Nethermind.Blockchain.Test
             blockchainProcessor.Start();
             
             MinedBlockProducer minedBlockProducer = new MinedBlockProducer(difficultyCalculator, transactionStore, blockchainProcessor, sealEngine, blockTree, NullLogManager.Instance);
-            await minedBlockProducer.Start();
+            minedBlockProducer.Start();
 
             ManualResetEvent manualResetEvent = new ManualResetEvent(false);
 
