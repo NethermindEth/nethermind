@@ -17,13 +17,9 @@
  */
 
 using System;
-using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
-using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
@@ -57,7 +53,7 @@ namespace Nethermind.Evm
             transactionReceipt.Bloom = Bloom.Empty;
             if (!_specProvider.GetSpec(block.Number).IsEip658Enabled)
             {
-                transactionReceipt.PostTransactionState = _stateProvider.StateRoot; // TODO: do not call it in Byzantium - no longer needed to calculate root hash
+                transactionReceipt.PostTransactionState = _stateProvider.StateRoot;
             }
 
             transactionReceipt.StatusCode = StatusCode.Failure;
