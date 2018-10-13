@@ -65,10 +65,10 @@ namespace Nethermind.Blockchain.Filters
 
         private FilterLog CreateLog(Filter filter, TransactionReceiptContext receiptContext, LogEntry logEntry)
         {
-            if (filter.FromBlock != receiptContext.BlockHash && filter.ToBlock != receiptContext.BlockHash)
-            {
-                return null;
-            }
+//            if (filter.FromBlock != receiptContext.BlockHash && filter.ToBlock != receiptContext.BlockHash)
+//            {
+//                return null;
+//            }
 
             var address = GetAddress(filter, logEntry);
             if (address == null)

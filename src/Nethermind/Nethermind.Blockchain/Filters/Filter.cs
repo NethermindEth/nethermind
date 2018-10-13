@@ -34,11 +34,11 @@ namespace Nethermind.Blockchain.Filters
         public FilterAddress Address { get; set; }
         public IEnumerable<FilterTopic> Topics { get; set; }
         
-        public Filter(FilterBlock fromBlock, FilterBlock toBlock, TopicsFilter topicsFilter, Address address)
+        public Filter(FilterBlock fromBlock, FilterBlock toBlock, Address address, IEnumerable<FilterTopic> topicsFilter)
         {
             FromBlock = fromBlock;
             ToBlock = toBlock;
-            _topicsFilter = topicsFilter;
+            Topics = topicsFilter;
             _address = address;
         }
 

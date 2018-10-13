@@ -41,12 +41,12 @@ namespace Nethermind.Blockchain.Filters
         public Filter CreateFilter(FilterBlock fromBlock, FilterBlock toBlock, object address = null, IEnumerable<object> topics = null)
         {
             var filter = new Filter
-            {
-                FromBlock = fromBlock,
-                ToBlock = toBlock,
-                Address = GetAddress(address),
-                Topics = GetTopics(topics),
-            };
+            (
+                fromBlock,
+                toBlock,
+                GetAddress(address).Address,
+                GetTopics(topics)
+            );
             AddFilter(filter);
 
             return filter;
