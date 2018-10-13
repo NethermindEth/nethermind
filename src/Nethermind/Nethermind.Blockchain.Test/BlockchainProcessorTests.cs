@@ -80,7 +80,7 @@ namespace Nethermind.Blockchain.Test
             TransactionProcessor processor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, logger);
             RewardCalculator rewardCalculator = new RewardCalculator(specProvider);
             BlockProcessor blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, processor, stateDb, codeDb, stateProvider, storageProvider, transactionStore, logger);
-            BlockchainProcessor blockchainProcessor = new BlockchainProcessor(blockTree, blockProcessor, ethereumSigner, logger, new PerfService(NullLogManager.Instance));
+            BlockchainProcessor blockchainProcessor = new BlockchainProcessor(blockTree, blockProcessor, ethereumSigner, logger);
 
             /* load ChainSpec and init */
             ChainSpecLoader loader = new ChainSpecLoader(new UnforgivingJsonSerializer());
