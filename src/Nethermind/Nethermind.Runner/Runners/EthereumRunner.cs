@@ -562,7 +562,7 @@ namespace Nethermind.Runner.Runners
             await _rlpxPeer.Init();
 
             var peerStorage = new NetworkStorage(PeersDbPath, _configProvider.GetConfig<INetworkConfig>(), _logManager, _perfService);
-            _peerManager = new PeerManager(_rlpxPeer, _discoveryManager, _syncManager, _nodeStatsProvider, peerStorage,
+            _peerManager = new PeerManager(_rlpxPeer, _discoveryApp, _syncManager, _nodeStatsProvider, peerStorage,
                 _nodeFactory, _configProvider, _perfService, _logManager);
             _peerManager.Init(_initConfig.DiscoveryEnabled);
         }

@@ -48,7 +48,7 @@ namespace Nethermind.Network
     {
         private readonly ILogger _logger;
 
-        private readonly IDiscoveryManager _discoveryManager;
+        private readonly IDiscoveryApp _discoveryApp;
         private readonly INetworkConfig _networkConfig;
         private readonly IRlpxPeer _rlpxPeer;
         private readonly ISynchronizationManager _synchronizationManager;
@@ -72,7 +72,7 @@ namespace Nethermind.Network
 
         public PeerManager(
             IRlpxPeer rlpxPeer,
-            IDiscoveryManager discoveryManager,
+            IDiscoveryApp discoveryApp,
             ISynchronizationManager synchronizationManager,
             INodeStatsProvider nodeStatsProvider,
             INetworkStorage peerStorage,
@@ -86,7 +86,7 @@ namespace Nethermind.Network
             _rlpxPeer = rlpxPeer ?? throw new ArgumentNullException(nameof(rlpxPeer));
             _synchronizationManager = synchronizationManager ?? throw new ArgumentNullException(nameof(synchronizationManager));
             _nodeStatsProvider = nodeStatsProvider ?? throw new ArgumentNullException(nameof(nodeStatsProvider));
-            _discoveryManager = discoveryManager ?? throw new ArgumentNullException(nameof(discoveryManager));
+            _discoveryApp = discoveryApp ?? throw new ArgumentNullException(nameof(discoveryApp));
             _perfService = perfService ?? throw new ArgumentNullException(nameof(perfService));
             _nodeFactory = nodeFactory ?? throw new ArgumentNullException(nameof(nodeFactory));
             _peerStorage = peerStorage ?? throw new ArgumentNullException(nameof(peerStorage));
@@ -104,7 +104,7 @@ namespace Nethermind.Network
         public void Init(bool isDiscoveryEnabled)
         {
             _isDiscoveryEnabled = isDiscoveryEnabled;
-            _discoveryManager.NodeDiscovered += OnNodeDiscovered;
+            _discoveryApp.NodeDiscovered += OnNodeDiscovered;
             _synchronizationManager.SyncEvent += OnSyncEvent;
 
             LoadConfiguredTrustedPeers();
@@ -669,13 +669,12 @@ namespace Nethermind.Network
             if (peer.Node.Port != eventArgs.ListenPort)
             {
                 if (_logger.IsDebug) _logger.Debug($"Updating listen port for node: {peer.Node.Id}, ConnectionType: {peer.Session.ConnectionDirection}, from: {peer.Node.Port} to: {eventArgs.ListenPort}");
-                peer.Node.Port = eventArgs.ListenPort;
-
-                if (peer.NodeLifecycleManager != null)
+                
+                if (peer.AddedToDiscovery)
                 {
-                    if (_logger.IsError) _logger.Error($"Discovery note already initiialized with wrong port, nodeId: {peer.Node.Port}, port: {peer.NodeLifecycleManager.ManagedNode.Port}, listen port: {eventArgs.ListenPort}");
-                    peer.NodeLifecycleManager.ManagedNode.Port = eventArgs.ListenPort;
+                    if (_logger.IsError) _logger.Error($"Discovery note already initiialized with wrong port, nodeId: {peer.Node.Id}, port: {peer.Node.Port}, listen port: {eventArgs.ListenPort}");
                 }
+                peer.Node.Port = eventArgs.ListenPort;
             }
 
             AddNodeToDiscovery(peer);
@@ -683,17 +682,14 @@ namespace Nethermind.Network
 
         private void AddNodeToDiscovery(Peer peer)
         {
-            if (!_isDiscoveryEnabled || peer.NodeLifecycleManager != null)
+            if (!_isDiscoveryEnabled || peer.AddedToDiscovery)
             {
                 return;
             }
 
             //In case peer was initiated outside of discovery and discovery is enabled, we are adding it to discovery for future use (e.g. trusted peer)
-            var manager = _discoveryManager.GetNodeLifecycleManager(peer.Node);
-            if (manager != null)
-            {
-                peer.NodeLifecycleManager = manager;
-            }
+            _discoveryApp.AddNodeToDiscovery(peer.Node);
+            peer.AddedToDiscovery = true;
         }
 
         private void ProcessOutgoingConnection(IP2PSession session)
@@ -942,15 +938,18 @@ namespace Nethermind.Network
 
         private void OnNodeDiscovered(object sender, NodeEventArgs nodeEventArgs)
         {
-            if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| OnNodeDiscovered {nodeEventArgs.Manager.ManagedNode.Id}");
+            if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| OnNodeDiscovered {nodeEventArgs.Node.Id}");
 
-            var id = nodeEventArgs.Manager.ManagedNode.Id;
+            var id = nodeEventArgs.Node.Id;
             if (_candidatePeers.ContainsKey(id))
             {
                 return;
             }
 
-            var peer = new Peer(nodeEventArgs.Manager);
+            var peer = new Peer(nodeEventArgs.Node, nodeEventArgs.NodeStats)
+            {
+                AddedToDiscovery = true
+            };
             if (!_candidatePeers.TryAdd(id, peer))
             {
                 return;
@@ -960,7 +959,7 @@ namespace Nethermind.Network
 
             if (_logger.IsTrace)
             {
-                _logger.Trace($"Adding newly discovered node to Candidates collection {id}@{nodeEventArgs.Manager.ManagedNode.Host}:{nodeEventArgs.Manager.ManagedNode.Port}");
+                _logger.Trace($"Adding newly discovered node to Candidates collection {id}@{nodeEventArgs.Node.Host}:{nodeEventArgs.Node.Port}");
             }
 
             if (_isStarted)
@@ -1297,18 +1296,13 @@ namespace Nethermind.Network
             public Peer(Node node, INodeStats nodeStats)
             {
                 Node = node;
+                //NodeLifecycleManager = manager;
                 NodeStats = nodeStats;
             }
 
-            public Peer(INodeLifecycleManager manager)
-            {
-                Node = manager.ManagedNode;
-                NodeLifecycleManager = manager;
-                NodeStats = manager.NodeStats;
-            }
-
             public Node Node { get; }
-            public INodeLifecycleManager NodeLifecycleManager { get; set; }
+            public bool AddedToDiscovery { get; set; }
+            //public INodeLifecycleManager NodeLifecycleManager { get; set; }
             public INodeStats NodeStats { get; }
             public IP2PSession Session { get; set; }
             public ISynchronizationPeer SynchronizationPeer { get; set; }

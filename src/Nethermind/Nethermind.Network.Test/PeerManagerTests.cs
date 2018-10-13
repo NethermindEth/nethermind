@@ -93,9 +93,11 @@ namespace Nethermind.Network.Test
             IStatsConfig statsConfig = _configurationProvider.GetConfig<IStatsConfig>();
             _discoveryManager = new DiscoveryManager(new NodeLifecycleManagerFactory(_nodeFactory, nodeTable, new DiscoveryMessageFactory(_configurationProvider), Substitute.For<IEvictionManager>(), new NodeStatsProvider(_configurationProvider.GetConfig<IStatsConfig>(), _nodeFactory, _logManager), _configurationProvider, _logManager), _nodeFactory, nodeTable, new NetworkStorage("test", networkConfig, _logManager, new PerfService(_logManager)), _configurationProvider, _logManager);
             _discoveryManager.MessageSender = Substitute.For<IMessageSender>();
-
+            var app = new DiscoveryApp(new NodesLocator(nodeTable, _discoveryManager, _configurationProvider, _logManager), _discoveryManager, _nodeFactory, nodeTable, Substitute.For<IMessageSerializationService>(), new CryptoRandom(), Substitute.For<INetworkStorage>(), _configurationProvider, _logManager, new PerfService(_logManager));
+            app.Initialize(key);
+            
             var networkStorage = new NetworkStorage("test", networkConfig, _logManager, new PerfService(_logManager));
-            _peerManager = new PeerManager(_localPeer, _discoveryManager, _synchronizationManager, new NodeStatsProvider(statsConfig, _nodeFactory, _logManager), networkStorage, _nodeFactory, _configurationProvider, new PerfService(_logManager), _logManager);
+            _peerManager = new PeerManager(_localPeer, app, _synchronizationManager, new NodeStatsProvider(statsConfig, _nodeFactory, _logManager), networkStorage, _nodeFactory, _configurationProvider, new PerfService(_logManager), _logManager);
             _peerManager.Init(true);
         }
 

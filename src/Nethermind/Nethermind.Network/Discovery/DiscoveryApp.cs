@@ -38,6 +38,7 @@ using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Lifecycle;
 using Nethermind.Network.Discovery.RoutingTable;
 using Nethermind.Stats;
+using Nethermind.Stats.Model;
 using Timer = System.Timers.Timer;
 
 namespace Nethermind.Network.Discovery
@@ -90,9 +91,11 @@ namespace Nethermind.Network.Discovery
             _discoveryStorage.StartBatch();
         }
 
+        public event EventHandler<NodeEventArgs> NodeDiscovered;
+        
         public void Initialize(PublicKey masterPublicKey)
         {
-            // TODO: can we do it so we do not have to call initialize on these classes?
+            _discoveryManager.NodeDiscovered += OnNewNodeDiscovered;
             _nodeTable.Initialize(new NodeId(masterPublicKey));
             _nodesLocator.Initialize(_nodeTable.MasterNode);
         }
@@ -132,6 +135,11 @@ namespace Nethermind.Network.Discovery
             await StopUdpChannelAsync();
             if(_logger.IsInfo) _logger.Info("Discovery shutdown complete.. please wait for all components to close");
             _perfService.EndPerfCalc(key, "Close: DiscoveryApp");
+        }
+
+        public void AddNodeToDiscovery(Node node)
+        {
+            _discoveryManager.GetNodeLifecycleManager(node);
         }
 
         private void InitializeUdpChannel()
@@ -500,6 +508,11 @@ namespace Nethermind.Network.Discovery
             {
                 _logger.Error($"Error during discovery commit: {ex}");
             }
+        }
+        
+        private void OnNewNodeDiscovered(object sender, NodeEventArgs e)
+        {
+            NodeDiscovered?.Invoke(this, e);
         }
     }
 }

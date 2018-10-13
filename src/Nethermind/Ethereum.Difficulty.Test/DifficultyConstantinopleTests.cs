@@ -16,20 +16,26 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
-using System.Threading.Tasks;
-using Nethermind.Core.Crypto;
-using Nethermind.Network.Discovery.Lifecycle;
-using Nethermind.Stats.Model;
 
-namespace Nethermind.Network.Discovery
+using System.Collections.Generic;
+using Nethermind.Core;
+using Nethermind.Core.Specs;
+using NUnit.Framework;
+
+namespace Ethereum.Difficulty.Test
 {
-    public interface IDiscoveryApp
+    [Parallelizable(ParallelScope.None)]
+    public class DifficultyConstantinopleTests : TestsBase
     {
-        void Initialize(PublicKey masterPublicKey);
-        void Start();
-        Task StopAsync();
-        event EventHandler<NodeEventArgs> NodeDiscovered;
-        void AddNodeToDiscovery(Node node);
+        public static IEnumerable<DifficultyTests> LoadFrontierTests()
+        {
+            return LoadHex("difficultyConstantinople.json");
+        }
+
+        [TestCaseSource(nameof(LoadFrontierTests))]
+        public void Test(DifficultyTests test)
+        {
+            RunTest(test, new SingleReleaseSpecProvider(Constantinople.Instance, 1));
+        }    
     }
 }
