@@ -82,7 +82,7 @@ namespace Nethermind.Blockchain
         private TransactionTrace Trace(Block block, Keccak txHash)
         {
             TraceListener listener = new TraceListener(txHash);
-            _processor.Process(block, false, true, listener);
+            _processor.Process(block, ProcessingOptions.StoreTxReceipts, listener);
             return listener.Trace;
         }
 
@@ -97,7 +97,7 @@ namespace Nethermind.Blockchain
             }
 
             BlockTraceListener listener = new BlockTraceListener(block);
-            _processor.Process(block, false, true, listener);
+            _processor.Process(block, ProcessingOptions.StoreTxReceipts, listener);
             return listener.BlockTrace;
         }
     }

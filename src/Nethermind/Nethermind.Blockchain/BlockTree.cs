@@ -328,14 +328,17 @@ namespace Nethermind.Blockchain
 
         public void MoveToBranch(Keccak blockHash)
         {
+            if (_logger.IsTrace) _logger.Trace($"Moving {blockHash} to branch");
             BigInteger number = LoadNumberOnly(blockHash);
             ChainLevelInfo level = LoadLevel(number);
             level.HasBlockOnMainChain = false;
             UpdateLevel(number, level);
+            if (_logger.IsTrace) _logger.Trace($"{blockHash} moved to branch");
         }
 
         public void MarkAsProcessed(Keccak blockHash)
         {
+            if (_logger.IsTrace) _logger.Trace($"Marking {blockHash} as processed");
             UInt256 number = LoadNumberOnly(blockHash);
             (BlockInfo info, ChainLevelInfo level) = LoadInfo(number, blockHash);
 
@@ -346,6 +349,7 @@ namespace Nethermind.Blockchain
 
             info.WasProcessed = true;
             UpdateLevel(number, level);
+            if (_logger.IsTrace) _logger.Trace($"{blockHash} marked as processed");
         }
 
         public bool WasProcessed(Keccak blockHash)
@@ -363,12 +367,14 @@ namespace Nethermind.Blockchain
 
         public void MoveToMain(Block block)
         {
+            if (_logger.IsTrace) _logger.Trace($"Moving {block.ToString(Block.Format.Short)} to main");
             ChainLevelInfo level = LoadLevel(block.Number);
             MoveToMain(level, block);
         }
 
         public void MoveToMain(Keccak blockHash) // TODO: still needed?
         {
+            if (_logger.IsTrace) _logger.Trace($"Moving {blockHash} to main");
             (Block block, BlockInfo _, ChainLevelInfo level) = Load(blockHash);
             MoveToMain(level, block);
         }
@@ -394,7 +400,7 @@ namespace Nethermind.Blockchain
                 (level.BlockInfos[index.Value], level.BlockInfos[0]) = (level.BlockInfos[0], level.BlockInfos[index.Value]);
             }
 
-            // TODO: in testing chains we have a chain full of processed blocks that we process again
+            // tks: in testing chains we have a chain full of processed blocks that we process again
             //if (level.HasBlockOnMainChain)
             //{
             //    throw new InvalidOperationException("When moving to main encountered a block in main on the same level");
@@ -414,12 +420,13 @@ namespace Nethermind.Blockchain
 
                 UpdateHeadBlock(block);
             }
-            
-            // TODO: only for miners
-            foreach (Transaction transaction in block.Transactions)
+
+            for (int i = 0; i < block.Transactions.Length; i++)
             {
-                _transactionStore.RemovePending(transaction);
+                _transactionStore.RemovePending(block.Transactions[i]);
             }
+            
+            if (_logger.IsTrace) _logger.Trace($"Block {block.ToString(Block.Format.Short)} added to main chain");
         }
 
         private BigInteger FindNumberOfBlocksToLoadFromDb()
@@ -606,7 +613,9 @@ namespace Nethermind.Blockchain
             BlockHeader header = block.Header;
             BlockInfo blockInfo = LoadInfo(header.Number, header.Hash).Info;
             header.TotalTransactions = blockInfo.TotalTransactions;
+            if (_logger.IsTrace) _logger.Trace($"Updating total transactions of the main chain to {header.TotalTransactions}");
             header.TotalDifficulty = blockInfo.TotalDifficulty;
+            if (_logger.IsTrace) _logger.Trace($"Updating total difficulty of the main chain to {header.TotalDifficulty}");
 
             return header;
         }

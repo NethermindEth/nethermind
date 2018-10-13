@@ -17,23 +17,15 @@
  */
 
 using System;
-using System.Threading.Tasks;
-using Nethermind.Core;
-using Nethermind.Evm;
 
 namespace Nethermind.Blockchain
 {
-    public interface IBlockchainProcessor
+    [Flags]
+    public enum ProcessingOptions
     {
-        void Start();
-        Task StopAsync(bool processRemainingBlocks = false);
-        Block Process(Block block, ProcessingOptions options, ITraceListener listener);
-        
-        /// <summary>
-        /// Executes a block from the past, stores receipts and tx hash -> block number mapping.
-        /// </summary>
-        /// <param name="block"></param>
-        void AddTxData(Block block); // TODO: tks: should be queued
-        event EventHandler ProcessingQueueEmpty;
+        None,
+        ReadOnlyChain,
+        StoreTxReceipts,
+        All
     }
 }

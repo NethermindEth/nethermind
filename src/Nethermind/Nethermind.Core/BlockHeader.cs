@@ -72,12 +72,12 @@ namespace Nethermind.Core
 
         public static Keccak CalculateHash(BlockHeader header)
         {
-            return Keccak.Compute(Rlp.Encode(header));
+            return CalculateHash(Rlp.Encode(header));
         }
         
         public static Keccak CalculateHash(Block block)
         {
-            return Keccak.Compute(Rlp.Encode(block.Header));
+            return CalculateHash(Rlp.Encode(block.Header));
         }
 
         public string ToString(string indent)

@@ -341,7 +341,7 @@ namespace Nethermind.PerfTest
             var processor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, _logManager);
             var rewardCalculator = new RewardCalculator(specProvider);
             var blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, processor, stateDb, codeDb, stateProvider, storageProvider, transactionStore, _logManager);
-            var blockchainProcessor = new BlockchainProcessor(blockTree, blockProcessor, ethereumSigner, _logManager, new PerfService(_logManager));
+            var blockchainProcessor = new BlockchainProcessor(blockTree, blockProcessor, ethereumSigner, _logManager);
 
             /* load ChainSpec and init */
             ChainSpecLoader loader = new ChainSpecLoader(new UnforgivingJsonSerializer());
@@ -429,7 +429,7 @@ namespace Nethermind.PerfTest
             {
                 if (!isStarted)
                 {
-                    blockchainProcessor.Process(blockTree.FindBlock(blockTree.Genesis.Hash, true), false, false, NullTraceListener.Instance);
+                    blockchainProcessor.Process(blockTree.FindBlock(blockTree.Genesis.Hash, true), ProcessingOptions.None, NullTraceListener.Instance);
                     stopwatch.Start();
                     blockchainProcessor.Start();
                     isStarted = true;

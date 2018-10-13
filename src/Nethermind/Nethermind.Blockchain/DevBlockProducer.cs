@@ -129,7 +129,7 @@ namespace Nethermind.Blockchain
                 return;
             }
 
-            Block processedBlock = _processor.Process(block, true, false, NullTraceListener.Instance);
+            Block processedBlock = _processor.Process(block, ProcessingOptions.ReadOnlyChain, NullTraceListener.Instance);
             _blockTree.SuggestBlock(processedBlock);
         }
     }
