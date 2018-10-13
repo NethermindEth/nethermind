@@ -208,7 +208,7 @@ namespace Nethermind.Network.Discovery
 
         private void OnNewNode(INodeLifecycleManager manager)
         {
-            NodeDiscovered?.Invoke(this, new NodeEventArgs(manager));
+            NodeDiscovered?.Invoke(this, new NodeEventArgs(manager.ManagedNode, manager.NodeStats));
         }
 
         private void NotifySubscribersOnMsgReceived(MessageType msgType, Node node, DiscoveryMessage message)

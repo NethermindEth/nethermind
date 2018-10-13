@@ -16,8 +16,11 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Threading.Tasks;
 using Nethermind.Core.Crypto;
+using Nethermind.Network.Discovery.Lifecycle;
+using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery
 {
@@ -26,5 +29,7 @@ namespace Nethermind.Network.Discovery
         void Initialize(PublicKey masterPublicKey);
         void Start();
         Task StopAsync();
+        event EventHandler<NodeEventArgs> NodeDiscovered;
+        void AddNodeToDiscovery(Node node);
     }
 }

@@ -17,17 +17,20 @@
  */
 
 using System;
-using Nethermind.Network.Discovery.Lifecycle;
+using Nethermind.Stats;
+using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Discovery
 {
     public class NodeEventArgs : EventArgs
     {
-        public INodeLifecycleManager Manager { get; }
+        public Node Node { get; }
+        public INodeStats NodeStats { get; }
 
-        public NodeEventArgs(INodeLifecycleManager manager)
+        public NodeEventArgs(Node node, INodeStats nodeStats)
         {
-            Manager = manager;
+            Node = node;
+            NodeStats = nodeStats;
         }
     }
 }
