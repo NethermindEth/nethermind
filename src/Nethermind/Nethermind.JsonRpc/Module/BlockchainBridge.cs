@@ -141,7 +141,7 @@ namespace Nethermind.JsonRpc.Module
             return _transactionStore.GetTxInfo(transactionHash).BlockHash;
         }
 
-        public void SendTransaction(Transaction transaction)
+        public Keccak SendTransaction(Transaction transaction)
         {
             PrivateKey mock = new PrivateKeyProvider(new CryptoRandom()).PrivateKey;
             transaction.SenderAddress = mock.Address;
@@ -159,6 +159,7 @@ namespace Nethermind.JsonRpc.Module
             }
 
             _transactionStore.AddPending(transaction);
+            return transaction.Hash;
         }
 
         public TransactionReceipt GetTransactionReceipt(Keccak transactionHash)

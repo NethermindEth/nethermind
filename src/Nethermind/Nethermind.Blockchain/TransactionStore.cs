@@ -56,7 +56,13 @@ namespace Nethermind.Blockchain
 
         public TransactionReceipt GetReceipt(Keccak txHash)
         {
-            Rlp rlp = new Rlp(_receiptsDb.Get(txHash));
+            byte[] receiptData = _receiptsDb.Get(txHash);
+            if (receiptData == null)
+            {
+                return null;
+            }
+            
+            Rlp rlp = new Rlp(receiptData);
             return Rlp.Decode<TransactionReceipt>(rlp);
         }
 

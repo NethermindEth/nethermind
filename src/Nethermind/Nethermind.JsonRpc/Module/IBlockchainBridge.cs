@@ -49,7 +49,7 @@ namespace Nethermind.JsonRpc.Module
         void AddTxData(UInt256 blockNumber);
         Transaction GetTransaction(Keccak transactionHash);
         Keccak GetBlockHash(Keccak transactionHash);
-        void SendTransaction(Transaction transaction);
+        Keccak SendTransaction(Transaction transaction);
         TransactionReceipt GetTransactionReceipt(Keccak transactionHash);
         TransactionTrace GetTransactionTrace(Keccak transactionHash);
         TransactionTrace GetTransactionTrace(UInt256 blockNumber, int index);

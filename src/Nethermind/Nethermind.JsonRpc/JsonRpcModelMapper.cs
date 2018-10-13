@@ -49,9 +49,9 @@ namespace Nethermind.JsonRpc
             var blockModel = new Block
             {
                 Hash = new Data(block.Hash.Bytes),               
-                Uncles = block.Ommers?.Select(x => new Data(x.Hash.Bytes)).ToArray(),
+                Uncles = block.Ommers?.Select(x => new Data(x.Hash)).ToArray(),
                 Transactions = returnFullTransactionObjects ? block.Transactions?.Select(x => MapTransaction(x, block)).ToArray() : null,
-                TransactionHashes = !returnFullTransactionObjects ? block.Transactions?.Select(x => new Data(x.Hash.Bytes)).ToArray() : null
+                TransactionHashes = !returnFullTransactionObjects ? block.Transactions?.Select(x => new Data(x.Hash)).ToArray() : null
             };
 
             if (block.Header == null)
@@ -60,14 +60,14 @@ namespace Nethermind.JsonRpc
             }
 
             blockModel.Number = new Quantity(block.Header.Number);
-            blockModel.ParentHash = new Data(block.Header.ParentHash.Bytes);
+            blockModel.ParentHash = new Data(block.Header.ParentHash);
             blockModel.Nonce = new Data(block.Header.Nonce.ToString());
-            blockModel.Sha3Uncles = new Data(block.Header.OmmersHash.Bytes);
+            blockModel.Sha3Uncles = new Data(block.Header.OmmersHash);
             blockModel.LogsBloom = new Data(block.Header.Bloom?.Bytes);
-            blockModel.TransactionsRoot = new Data(block.Header.TransactionsRoot.Bytes);
-            blockModel.StateRoot = new Data(block.Header.StateRoot.Bytes);
-            blockModel.ReceiptsRoot = new Data(block.Header.ReceiptsRoot.Bytes);
-            blockModel.Miner = block.Header.Beneficiary != null ? new Data(block.Header.Beneficiary.Bytes) : null;
+            blockModel.TransactionsRoot = new Data(block.Header.TransactionsRoot);
+            blockModel.StateRoot = new Data(block.Header.StateRoot);
+            blockModel.ReceiptsRoot = new Data(block.Header.ReceiptsRoot);
+            blockModel.Miner = block.Header.Beneficiary != null ? new Data(block.Header.Beneficiary) : null;
             blockModel.Difficulty = new Quantity(block.Header.Difficulty);
             //TotalDifficulty = new Quantity(block.Header.Difficulty),
             blockModel.ExtraData = new Data(block.Header.ExtraData);
@@ -83,13 +83,13 @@ namespace Nethermind.JsonRpc
         {   
             return new Transaction
             {
-                Hash = new Data(transaction.Hash.Bytes),
+                Hash = new Data(transaction.Hash),
                 Nonce = new Quantity(transaction.Nonce),
-                BlockHash = block != null ? new Data(block.Hash.Bytes) : null,
+                BlockHash = block != null ? new Data(block.Hash) : null,
                 BlockNumber = block?.Header != null ? new Quantity(block.Header.Number) : null,
                 TransactionIndex = block?.Transactions != null ? new Quantity(GetTransactionIndex(transaction, block)) : null,
-                From = new Data(_signer.RecoverAddress(transaction, block.Number).Bytes),
-                To = new Data(transaction.To.Bytes),
+                From = new Data(_signer.RecoverAddress(transaction, block.Number)),
+                To = new Data(transaction.To),
                 Value = new Quantity(transaction.Value),
                 GasPrice = new Quantity(transaction.GasPrice),
                 Gas = new Quantity(transaction.GasLimit),
@@ -122,13 +122,13 @@ namespace Nethermind.JsonRpc
         {
             return new TransactionReceipt
             {
-                TransactionHash = new Data(transaction.Hash.Bytes),
+                TransactionHash = new Data(transaction.Hash),
                 TransactionIndex = block?.Transactions != null ? new Quantity(GetTransactionIndex(transaction, block)) : null,
-                BlockHash = block != null ? new Data(block.Hash.Bytes) : null,
+                BlockHash = block != null ? new Data(block.Hash) : null,
                 BlockNumber = block?.Header != null ? new Quantity(block.Header.Number) : null,
                 //CumulativeGasUsed = new Quantity(receipt.GasUsed),
                 GasUsed = new Quantity(receipt.GasUsed),
-                ContractAddress = transaction.IsContractCreation && receipt.Recipient != null ? new Data(receipt.Recipient.Bytes) : null,
+                ContractAddress = transaction.IsContractCreation && receipt.Recipient != null ? new Data(receipt.Recipient) : null,
                 Logs = receipt.Logs?.Select(MapLog).ToArray(),
                 LogsBloom = new Data(receipt.Bloom?.Bytes),
                 Status = new Quantity(receipt.StatusCode)

@@ -1,0 +1,39 @@
+{
+	"name": "Spaceneth",
+	"dataDir": "spaceneth",
+	"params": {
+		"gasLimitBoundDivisor": "0x0400",
+		"accountStartNonce": "0x0",
+		"maximumExtraDataSize": "0x20",
+		"minGasLimit": "0x1388",
+		"networkID" : "0x63"
+	},
+	"genesis": {
+		"seal": {
+			"ethereum": {
+				"nonce": "0x0000000000000042",
+				"mixHash": "0x0000000000000000000000000000000000000000000000000000000000000000"
+			}
+		},
+		"difficulty": "0x01",
+		"author": "0x0000000000000000000000000000000000000000",
+		"timestamp": "0x00",
+		"parentHash": "0x0000000000000000000000000000000000000000000000000000000000000000",
+		"extraData": "0x0000000000000000000000000000000000000000000000000000000000000000",
+		"gasLimit": "0x1000000"
+	},
+	"nodes": [
+	],
+	"accounts": {
+		"0000000000000000000000000000000000000000": { "balance": "1" },
+		"0000000000000000000000000000000000000001": { "balance": "1", "nonce": "0", "builtin": { "name": "ecrecover", "pricing": { "linear": { "base": 3000, "word": 0 } } } },
+		"0000000000000000000000000000000000000002": { "balance": "1", "nonce": "0", "builtin": { "name": "sha256", "pricing": { "linear": { "base": 60, "word": 12 } } } },
+		"0000000000000000000000000000000000000003": { "balance": "1", "nonce": "0", "builtin": { "name": "ripemd160", "pricing": { "linear": { "base": 600, "word": 120 } } } },
+		"0000000000000000000000000000000000000004": { "balance": "1", "nonce": "0", "builtin": { "name": "identity", "pricing": { "linear": { "base": 15, "word": 3 } } } },
+		"0000000000000000000000000000000000000005": { "balance": "1", "nonce": "0", "builtin": { "name": "modexp", "activate_at": 1700000, "pricing": { "modexp": { "divisor": 20 } } } },
+		"0000000000000000000000000000000000000006": { "balance": "1", "nonce": "0", "builtin": { "name": "alt_bn128_add", "activate_at": 1700000, "pricing": { "linear": { "base": 500, "word": 0 } } } },
+		"0000000000000000000000000000000000000007": { "balance": "1", "nonce": "0", "builtin": { "name": "alt_bn128_mul", "activate_at": 1700000, "pricing": { "linear": { "base": 40000, "word": 0 } } } },
+		"0000000000000000000000000000000000000008": { "balance": "1", "nonce": "0", "builtin": { "name": "alt_bn128_pairing", "activate_at": 1700000, "pricing": { "alt_bn128_pairing": { "base": 100000, "pair": 80000 } } } },
+		"0000000000000000000000000000000000000009": { "balance": "1" }
+	}
+}

@@ -16,6 +16,8 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 
 namespace Nethermind.JsonRpc.DataModel
@@ -33,6 +35,16 @@ namespace Nethermind.JsonRpc.DataModel
             Value = Bytes.FromHexString(value);
         }
 
+        public Data(Keccak hash)
+        {
+            Value = hash.Bytes;
+        }
+        
+        public Data(Address address)
+        {
+            Value = address.Bytes;
+        }
+        
         public Data(byte[] value)
         {
             Value = value;
