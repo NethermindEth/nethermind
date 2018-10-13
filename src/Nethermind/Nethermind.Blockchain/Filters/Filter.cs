@@ -17,6 +17,7 @@
  */
 
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Blockchain.Filters.Topics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -43,7 +44,17 @@ namespace Nethermind.Blockchain.Filters
 
         public bool Accepts(LogEntry logEntry)
         {
-            return logEntry.LoggersAddress == _address && _topicsFilter.Accepts(logEntry);
+            if (Address.Address != null && Address.Address != logEntry.LoggersAddress)
+            {
+                return false;
+            }
+            
+            if (Address.Addresses != null && Address.Addresses.All(a => a != logEntry.LoggersAddress))
+            {
+                return false;
+            }
+
+            return _topicsFilter.Accepts(logEntry);
         }
     }
 }
