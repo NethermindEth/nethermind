@@ -53,7 +53,12 @@ namespace Nethermind.Mining
                     .ContinueWith(t => block, cancellationToken);
         }
 
-        public bool Validate(BlockHeader header)
+        public bool ValidateParams(Block parent, BlockHeader header)
+        {
+            return true;
+        }
+
+        public bool ValidateSeal(BlockHeader header)
         {
             return true;
         }

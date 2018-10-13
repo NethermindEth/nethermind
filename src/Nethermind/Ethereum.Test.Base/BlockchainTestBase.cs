@@ -26,7 +26,6 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Difficulty;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -37,6 +36,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.Mining;
+using Nethermind.Mining.Difficulty;
 using Nethermind.Store;
 using Newtonsoft.Json;
 using NUnit.Framework;
@@ -48,8 +48,15 @@ namespace Ethereum.Test.Base
         private static ILogManager _logManager = NullLogManager.Instance;
         private static ILogger _logger = new SimpleConsoleLogger();
 
-        private static readonly ISealEngine SealEngine = new EthashSealEngine(new Ethash(_logManager), _logManager); // temporarily keep reusing the same one as otherwise it would recreate cache for each test
+        private static DifficultuCalculatorWrapper DifficultyCalculator { get; }
+        private static ISealEngine SealEngine { get; }
 
+        static BlockchainTestBase()
+        {
+            DifficultyCalculator = new DifficultuCalculatorWrapper();
+            SealEngine = new EthashSealEngine(new Ethash(_logManager), DifficultyCalculator, _logManager); // temporarily keep reusing the same one as otherwise it would recreate cache for each test    
+        }
+        
         [SetUp]
         public void Setup()
         {
@@ -180,6 +187,16 @@ namespace Ethereum.Test.Base
             _logger = _logManager.GetClassLogger();
         }
 
+        private class DifficultuCalculatorWrapper : IDifficultyCalculator
+        {
+            public IDifficultyCalculator Wrapped { get; set; }
+            
+            public UInt256 Calculate(UInt256 parentDifficulty, UInt256 parentTimestamp, UInt256 currentTimestamp, UInt256 blockNumber, bool parentHasUncles)
+            {
+                return Wrapped.Calculate(parentDifficulty, parentTimestamp, currentTimestamp, blockNumber, parentHasUncles);
+            }
+        }
+        
         protected async Task RunTest(BlockchainTest test, Stopwatch stopwatch = null)
         {
             Assert.IsNull(test.LoadFailure, "test data loading failure");
@@ -214,7 +231,7 @@ namespace Ethereum.Test.Base
                 Assert.Fail("Expected genesis spec to be Frontier for blockchain tests");
             }
 
-            IDifficultyCalculator difficultyCalculator = new DifficultyCalculator(specProvider);
+            DifficultyCalculator.Wrapped = new DifficultyCalculator(specProvider);
             IRewardCalculator rewardCalculator = new RewardCalculator(specProvider);
 
             ITransactionStore transactionStore = new TransactionStore(new MemDb(), new MemDb(), specProvider);
@@ -222,7 +239,7 @@ namespace Ethereum.Test.Base
             IBlockhashProvider blockhashProvider = new BlockhashProvider(blockTree);
             ISignatureValidator signatureValidator = new SignatureValidator(ChainId.MainNet);
             ITransactionValidator transactionValidator = new TransactionValidator(signatureValidator);
-            IHeaderValidator headerValidator = new HeaderValidator(difficultyCalculator, blockTree, SealEngine, specProvider, _logManager);
+            IHeaderValidator headerValidator = new HeaderValidator(blockTree, SealEngine, specProvider, _logManager);
             IOmmersValidator ommersValidator = new OmmersValidator(blockTree, headerValidator, _logManager);
             IBlockValidator blockValidator = new BlockValidator(transactionValidator, headerValidator, ommersValidator, specProvider, _logManager);
             IStateProvider stateProvider = new StateProvider(stateTree, codeDb, _logManager);
@@ -233,7 +250,6 @@ namespace Ethereum.Test.Base
                 blockhashProvider,
                 _logManager);
 
-            ISealEngine sealEngine = new EthashSealEngine(new Ethash(_logManager), _logManager);
             IEthereumSigner signer = new EthereumSigner(specProvider, _logManager);
             IBlockProcessor blockProcessor = new BlockProcessor(
                 specProvider,

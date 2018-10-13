@@ -20,7 +20,6 @@ using System;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Blockchain.Difficulty;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -29,6 +28,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Specs.ChainSpec;
 using Nethermind.Evm;
 using Nethermind.Mining;
+using Nethermind.Mining.Difficulty;
 using Nethermind.Store;
 using NUnit.Framework;
 
@@ -57,7 +57,7 @@ namespace Nethermind.Blockchain.Test
             TransactionStore transactionStore = new TransactionStore(receiptsDb, txDb, specProvider);
             BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), specProvider, transactionStore, logger);
             DifficultyCalculator difficultyCalculator = new DifficultyCalculator(specProvider);
-            HeaderValidator headerValidator = new HeaderValidator(difficultyCalculator, blockTree, sealEngine, specProvider, logger);
+            HeaderValidator headerValidator = new HeaderValidator(blockTree, sealEngine, specProvider, logger);
             OmmersValidator ommersValidator = new OmmersValidator(blockTree, headerValidator, logger);
             TransactionValidator transactionValidator = new TransactionValidator(new SignatureValidator(ChainId.Ropsten));
             BlockValidator blockValidator = new BlockValidator(transactionValidator, headerValidator, ommersValidator, specProvider, logger);
@@ -98,8 +98,8 @@ namespace Nethermind.Blockchain.Test
             blockTree.SuggestBlock(chainSpec.Genesis);
             blockchainProcessor.Start();
             
-            BlockProducer blockProducer = new BlockProducer(difficultyCalculator, transactionStore, blockchainProcessor, sealEngine, blockTree, NullLogManager.Instance);
-            await blockProducer.Start();
+            MinedBlockProducer minedBlockProducer = new MinedBlockProducer(difficultyCalculator, transactionStore, blockchainProcessor, sealEngine, blockTree, NullLogManager.Instance);
+            await minedBlockProducer.Start();
 
             ManualResetEvent manualResetEvent = new ManualResetEvent(false);
 

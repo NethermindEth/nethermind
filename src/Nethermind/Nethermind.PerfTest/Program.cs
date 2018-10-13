@@ -25,7 +25,6 @@ using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Difficulty;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -38,6 +37,7 @@ using Nethermind.Db.Config;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.Mining;
+using Nethermind.Mining.Difficulty;
 using Nethermind.Store;
 
 namespace Nethermind.PerfTest
@@ -306,9 +306,10 @@ namespace Nethermind.PerfTest
             if (_logger.IsInfo) _logger.Info("State DBs deleted");
 
             /* spec */
-            var sealEngine = new EthashSealEngine(new Ethash(_logManager), _logManager);
+            
             var specProvider = RopstenSpecProvider.Instance;
-
+            var difficultyCalculator = new DifficultyCalculator(specProvider);
+            var sealEngine = new EthashSealEngine(new Ethash(_logManager), difficultyCalculator, _logManager);
             
             var dbProvider = new RocksDbProvider(DbBasePath, DbConfig.Default);
             var stateDb = dbProvider.StateDb;
@@ -320,8 +321,7 @@ namespace Nethermind.PerfTest
 
             /* store & validation */
             var blockTree = new UnprocessedBlockTreeWrapper(new BlockTree(blocksDb, blockInfosDb, specProvider, new TransactionStore(new MemDb(), new MemDb(), RopstenSpecProvider.Instance), _logManager));
-            var difficultyCalculator = new DifficultyCalculator(specProvider);
-            var headerValidator = new HeaderValidator(difficultyCalculator, blockTree, sealEngine, specProvider, _logManager);
+            var headerValidator = new HeaderValidator(blockTree, sealEngine, specProvider, _logManager);
             var ommersValidator = new OmmersValidator(blockTree, headerValidator, _logManager);
             var transactionValidator = new TransactionValidator(new SignatureValidator(ChainId.Ropsten));
             var blockValidator = new BlockValidator(transactionValidator, headerValidator, ommersValidator, specProvider, _logManager);
@@ -354,7 +354,7 @@ namespace Nethermind.PerfTest
             }
 
             stateProvider.Commit(specProvider.GenesisSpec);
-            chainSpec.Genesis.Header.StateRoot = stateProvider.StateRoot; // TODO: shall it be HeaderSpec and not BlockHeader?
+            chainSpec.Genesis.Header.StateRoot = stateProvider.StateRoot;
             chainSpec.Genesis.Header.Hash = BlockHeader.CalculateHash(chainSpec.Genesis.Header);
             if (chainSpec.Genesis.Hash != new Keccak("0x41941023680923e0fe4d74a34bdac8141f2540e3ae90623718e47d66d1ca4a2d"))
             {

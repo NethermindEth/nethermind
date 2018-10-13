@@ -25,7 +25,8 @@ namespace Nethermind.Mining
     public interface ISealEngine
     {
         Task<Block> MineAsync(Block block, CancellationToken cancellationToken);
-        bool Validate(BlockHeader header);
+        bool ValidateParams(Block parent, BlockHeader header);
+        bool ValidateSeal(BlockHeader header);
         bool IsMining { get; set; }
     }
 }

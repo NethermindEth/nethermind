@@ -16,12 +16,31 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Encoding;
+using Nethermind.Store;
 
-namespace Nethermind.Blockchain.Difficulty
+namespace Nethermind.Blockchain
 {
-    public interface IDifficultyCalculator
+    public static class BlockExtensions
     {
-        UInt256 Calculate(UInt256 parentDifficulty, UInt256 parentTimestamp, UInt256 currentTimestamp, UInt256 blockNumber, bool parentHasUncles);
+        public static Keccak CalculateTransactionsRoot(this Block block)
+        {
+            if (block.Transactions.Length == 0)
+            {
+                return PatriciaTree.EmptyTreeHash;
+            }
+            
+            PatriciaTree txTree = new PatriciaTree();
+            for (int i = 0; i < block.Transactions.Length; i++)
+            {
+                Rlp transactionRlp = Rlp.Encode(block.Transactions[i]);
+                txTree.Set(Rlp.Encode(i).Bytes, transactionRlp);
+            }
+
+            txTree.UpdateRootHash();
+            return txTree.RootHash;
+        }
     }
 }

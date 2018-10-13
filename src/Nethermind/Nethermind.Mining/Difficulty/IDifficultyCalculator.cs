@@ -16,28 +16,12 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Threading;
-using System.Threading.Tasks;
-using Nethermind.Core;
+using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.Mining
+namespace Nethermind.Mining.Difficulty
 {
-    /// <summary>
-    ///     Dev seal seals any block that comes with no delay. All blocks are always verified as correct.
-    /// </summary>
-    public class DevSealEngine : ISealEngine
+    public interface IDifficultyCalculator
     {
-        public async Task<Block> MineAsync(Block block, CancellationToken cancellationToken)
-        {
-            await Task.CompletedTask;
-            return block;
-        }
-
-        public bool Validate(BlockHeader header)
-        {
-            return true;
-        }
-
-        public bool IsMining { get; set; }
+        UInt256 Calculate(UInt256 parentDifficulty, UInt256 parentTimestamp, UInt256 currentTimestamp, UInt256 blockNumber, bool parentHasUncles);
     }
 }

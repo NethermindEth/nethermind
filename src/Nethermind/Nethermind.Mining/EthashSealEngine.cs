@@ -24,6 +24,8 @@ using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
+using Nethermind.Dirichlet.Numerics;
+using Nethermind.Mining.Difficulty;
 
 [assembly: InternalsVisibleTo("Nethermind.Blockchain.Test")]
 
@@ -32,12 +34,14 @@ namespace Nethermind.Mining
     public class EthashSealEngine : ISealEngine
     {
         private readonly IEthash _ethash;
+        private readonly IDifficultyCalculator _difficultyCalculator;
         private readonly ILogger _logger;
 
-        public EthashSealEngine(IEthash ethash, ILogManager logManager)
+        public EthashSealEngine(IEthash ethash, IDifficultyCalculator difficultyCalculator, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _ethash = ethash;
+            _difficultyCalculator = difficultyCalculator ?? throw new ArgumentNullException(nameof(difficultyCalculator));
+            _ethash = ethash ?? throw new ArgumentNullException(nameof(ethash));
         }
 
         public BigInteger MinGasPrice { get; set; } = 0;
@@ -63,8 +67,8 @@ namespace Nethermind.Mining
             return block;
         }
 
-        public bool Validate(BlockHeader header)
-        {   
+        public bool ValidateSeal(BlockHeader header)
+        {
             // TODO: all until we properly optimize ethash, still with sensible security measures (although there are many attack vectors for this particular node during sync)
             if (header.Number < 750000)
             {
@@ -75,8 +79,20 @@ namespace Nethermind.Mining
             {
                 return true;
             }
-
+            
             return _ethash.Validate(header);
+        }
+        
+        public bool ValidateParams(Block parent, BlockHeader header)
+        {   
+            UInt256 difficulty = _difficultyCalculator.Calculate(parent.Header.Difficulty, parent.Header.Timestamp, header.Timestamp, header.Number, parent.Ommers.Length > 0);
+            bool isDifficultyCorrect = difficulty == header.Difficulty;
+            if (!isDifficultyCorrect)
+            {
+                return false;
+            }
+
+            return true;
         }
 
         public bool IsMining { get; set; }

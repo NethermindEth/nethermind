@@ -35,7 +35,12 @@ namespace Nethermind.Mining
             return Task.FromResult(block);
         }
 
-        public bool Validate(BlockHeader header)
+        public bool ValidateParams(Block parent, BlockHeader header)
+        {
+            return true;
+        }
+
+        public bool ValidateSeal(BlockHeader header)
         {
             return true;
         }

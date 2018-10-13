@@ -23,7 +23,6 @@ using System.Numerics;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Blockchain.Difficulty;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
@@ -31,11 +30,12 @@ using Nethermind.Core.Logging;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.Mining;
+using Nethermind.Mining.Difficulty;
 using Nethermind.Store;
 
 namespace Nethermind.Blockchain
 {
-    public class BlockProducer : IBlockProducer
+    public class MinedBlockProducer : IBlockProducer
     {
         private static readonly BigInteger MinGasPriceForMining = 1;
 
@@ -46,7 +46,7 @@ namespace Nethermind.Blockchain
         private readonly ITransactionStore _transactionStore;
         private readonly ILogger _logger;
 
-        public BlockProducer(
+        public MinedBlockProducer(
             IDifficultyCalculator difficultyCalculator,
             ITransactionStore transactionStore,
             IBlockchainProcessor processor,
@@ -74,7 +74,7 @@ namespace Nethermind.Blockchain
 
         private CancellationTokenSource _cancellationTokenSource = new CancellationTokenSource();
 
-        private void ProcessorOnProcessingQueueEmpty(object sender, EventArgs e)
+        private void OnBlockProcessorQueueEmpty(object sender, EventArgs e)
         {
             CancellationToken token;
             lock (_syncToken)
@@ -171,40 +171,21 @@ namespace Nethermind.Blockchain
             }
 
             if (_logger.IsDebug) _logger.Debug($"Collected {selected.Count} out of {total} pending transactions.");
-            header.TransactionsRoot = GetTransactionsRoot(selected);
-
             Block block = new Block(header, selected, new BlockHeader[0]);
+            header.TransactionsRoot = block.CalculateTransactionsRoot();
             return block;
-        }
-
-        private Keccak GetTransactionsRoot(List<Transaction> transactions)
-        {
-            if (transactions.Count == 0)
-            {
-                return PatriciaTree.EmptyTreeHash;
-            }
-
-            PatriciaTree txTree = new PatriciaTree();
-            for (int i = 0; i < transactions.Count; i++)
-            {
-                Rlp transactionRlp = Rlp.Encode(transactions[i]);
-                txTree.Set(Rlp.Encode(i).Bytes, transactionRlp);
-            }
-
-            txTree.UpdateRootHash();
-            return txTree.RootHash;
         }
 
         public async Task Start()
         {
-            _processor.ProcessingQueueEmpty += ProcessorOnProcessingQueueEmpty;
+            _processor.ProcessingQueueEmpty += OnBlockProcessorQueueEmpty;
             _blockTree.NewBestSuggestedBlock += BlockTreeOnNewBestSuggestedBlock;
             await Task.CompletedTask;
         }
 
         public async Task StopAsync()
         {
-            _processor.ProcessingQueueEmpty -= ProcessorOnProcessingQueueEmpty;
+            _processor.ProcessingQueueEmpty -= OnBlockProcessorQueueEmpty;
             _blockTree.NewBestSuggestedBlock -= BlockTreeOnNewBestSuggestedBlock;
             lock (_syncToken)
             {
