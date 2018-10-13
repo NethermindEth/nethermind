@@ -1,0 +1,29 @@
+[
+  {
+    "ConfigModule": "InitConfig",
+    "ConfigItems": {
+      "JsonRpcEnabled": true,
+      "NetworkEnabled": false,
+      "DiscoveryEnabled": false,
+      "SynchronizationEnabled": false,
+      "PeerManagerEnabled": false,
+      "IsMining": true,
+      "DiscoveryPort": 30312,
+      "P2PPort": 30312,
+      "HttpHost": "127.0.0.1",
+      "HttpPort": 8345,
+      "ChainSpecPath": "chainspec\\spaceneth.json",
+      "BaseDbPath": "spaceneth",
+      "LogFileName": "spaceneth.logs.txt"
+    }
+  },
+  {
+    "ConfigModule": "DbConfig",
+    "ConfigItems": {
+      "WriteBufferSize": 16000000,
+      "WriteBufferNumber": 6,
+      "BlockCacheSize": 16000000,
+      "CacheIndexAndFilterBlocks": true
+    }
+  }
+]

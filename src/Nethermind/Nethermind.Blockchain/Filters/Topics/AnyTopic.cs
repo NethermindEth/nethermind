@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,12 +16,15 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Dirichlet.Numerics;
+using Nethermind.Core.Crypto;
 
-namespace Nethermind.Blockchain.Difficulty
+namespace Nethermind.Blockchain.Filters.Topics
 {
-    public interface IDifficultyCalculator
+    public class AnyTopic : TopicExpression
     {
-        UInt256 Calculate(UInt256 parentDifficulty, UInt256 parentTimestamp, UInt256 currentTimestamp, UInt256 blockNumber, bool parentHasUncles);
+        public override bool Accepts(Keccak topic)
+        {
+            return true;
+        }
     }
 }

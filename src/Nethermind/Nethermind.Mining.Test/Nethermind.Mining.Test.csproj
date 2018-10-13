@@ -6,6 +6,7 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="15.8.0" />
+    <PackageReference Include="NSubstitute" Version="3.1.0" />
     <PackageReference Include="NUnit" Version="3.10.1" />
     <PackageReference Include="NUnit3TestAdapter" Version="3.10.0" />
     <DotNetCliToolReference Include="dotnet-xunit" Version="2.3.1" />
@@ -15,5 +16,10 @@
       <Project>{81CC021C-021C-427C-9CE1-2E521E7F2985}</Project>
       <Name>Nethermind.Mining</Name>
     </ProjectReference>
+  </ItemGroup>
+  <ItemGroup>
+    <Reference Include="NSubstitute, Version=3.1.0.0, Culture=neutral, PublicKeyToken=92dd2e9066daa5ca">
+      <HintPath>..\..\..\..\..\Users\tksta\.nuget\packages\nsubstitute\3.1.0\lib\netstandard1.3\NSubstitute.dll</HintPath>
+    </Reference>
   </ItemGroup>
 </Project>

@@ -22,7 +22,7 @@ using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
-namespace Nethermind.Blockchain
+namespace Nethermind.Mining
 {
     public class FakeSealEngine : ISealEngine
     {
@@ -53,7 +53,12 @@ namespace Nethermind.Blockchain
                     .ContinueWith(t => block, cancellationToken);
         }
 
-        public bool Validate(BlockHeader header)
+        public bool ValidateParams(Block parent, BlockHeader header)
+        {
+            return true;
+        }
+
+        public bool ValidateSeal(BlockHeader header)
         {
             return true;
         }

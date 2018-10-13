@@ -16,10 +16,9 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Threading.Tasks;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 
 namespace Nethermind.Blockchain
@@ -28,17 +27,13 @@ namespace Nethermind.Blockchain
     {
         void Start();
         Task StopAsync(bool processRemainingBlocks = false);
-        void Process(Block block); // TODO: tks: should be queued only
+        Block Process(Block block, ProcessingOptions options, ITraceListener listener);
         
         /// <summary>
         /// Executes a block from the past, stores receipts and tx hash -> block number mapping.
         /// </summary>
         /// <param name="block"></param>
         void AddTxData(Block block); // TODO: tks: should be queued
-        TransactionTrace Trace(Keccak txHash); // TODO: tks: should be queued
-        TransactionTrace Trace(UInt256 blockNumber, int txIndex); // TODO: tks: should be queued
-        TransactionTrace Trace(Keccak blockHash, int txIndex); // TODO: tks: should be queued
-        BlockTrace TraceBlock(Keccak blokHash); // TODO: tks: should be queued
-        BlockTrace TraceBlock(UInt256 blokNumber); // TODO: tks: should be queued
+        event EventHandler ProcessingQueueEmpty;
     }
 }

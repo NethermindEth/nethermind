@@ -18,6 +18,9 @@
 
 using System;
 using System.Collections.Generic;
+using Nethermind.Core;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 namespace Nethermind.JsonRpc.DataModel
 {
@@ -25,12 +28,72 @@ namespace Nethermind.JsonRpc.DataModel
     {
         public BlockParameter FromBlock { get; set; }
         public BlockParameter ToBlock { get; set; }
-        public IEnumerable<Data> Address { get; set; }
-        public IEnumerable<Data> Topics { get; set; }
+        public object Address { get; set; }
+        public IEnumerable<object> Topics { get; set; }
+
+        private readonly IJsonSerializer _jsonSerializer;
+
+        public Filter()
+        {
+            _jsonSerializer = new UnforgivingJsonSerializer();
+        }
+
+        public Filter(IJsonSerializer jsonSerializer)
+        {
+            _jsonSerializer = jsonSerializer;
+        }
 
         public void FromJson(string jsonValue)
         {
-            throw new NotImplementedException();
+            var filter = _jsonSerializer.Deserialize<JObject>(jsonValue);
+            FromBlock = GetBlockParameter(filter["fromBlock"]?.ToObject<string>());
+            ToBlock = GetBlockParameter(filter["toBlock"]?.ToObject<string>());
+            Address = GetAddress(filter["address"]);
+            Topics = GetTopics(filter["topics"] as JArray);
+        }
+
+        private static BlockParameter GetBlockParameter(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return new BlockParameter
+                {
+                    Type = BlockParameterType.Latest
+                };
+            }
+
+            var block = new BlockParameter();
+            block.FromJson(value);
+
+            return block;
+        }
+
+        private static object GetAddress(JToken token) => GetSingleOrMany(token);
+
+        private static IEnumerable<object> GetTopics(JArray array)
+        {
+            if (array is null)
+            {
+                yield break;
+            }
+
+            foreach (var token in array)
+            {
+                yield return GetSingleOrMany(token);
+            }
+        }
+
+        private static object GetSingleOrMany(JToken token)
+        {
+            switch (token)
+            {
+                case null:
+                    return null;
+                case JArray _:
+                    return token.ToObject<IEnumerable<string>>();
+                default:
+                    return token.ToObject<string>();
+            }
         }
     }
 }

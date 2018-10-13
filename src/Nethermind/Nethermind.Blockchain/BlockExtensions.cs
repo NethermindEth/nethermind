@@ -16,18 +16,31 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Encoding;
+using Nethermind.Store;
 
 namespace Nethermind.Blockchain
 {
-    internal class SealEngineException : Exception
+    public static class BlockExtensions
     {
-        public SealEngineException(string message) : base(message)
+        public static Keccak CalculateTransactionsRoot(this Block block)
         {
-        }
+            if (block.Transactions.Length == 0)
+            {
+                return PatriciaTree.EmptyTreeHash;
+            }
+            
+            PatriciaTree txTree = new PatriciaTree();
+            for (int i = 0; i < block.Transactions.Length; i++)
+            {
+                Rlp transactionRlp = Rlp.Encode(block.Transactions[i]);
+                txTree.Set(Rlp.Encode(i).Bytes, transactionRlp);
+            }
 
-        public SealEngineException(string message, Exception innerException) : base(message, innerException)
-        {
+            txTree.UpdateRootHash();
+            return txTree.RootHash;
         }
     }
 }

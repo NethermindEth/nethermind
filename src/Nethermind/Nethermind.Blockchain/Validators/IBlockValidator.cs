@@ -22,7 +22,7 @@ namespace Nethermind.Blockchain.Validators
 {
     public interface IBlockValidator
     {
-        bool ValidateSuggestedBlock(Block suggestedBlock);
+        bool ValidateSuggestedBlock(Block block);
         bool ValidateProcessedBlock(Block processedBlock, Block suggestedBlock);
     }
 }

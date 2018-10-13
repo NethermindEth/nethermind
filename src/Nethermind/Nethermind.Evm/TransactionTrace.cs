@@ -18,8 +18,6 @@
 
 using System.Collections.Generic;
 using System.Numerics;
-using Nethermind.Core.Extensions;
-using Newtonsoft.Json;
 
 namespace Nethermind.Evm
 {

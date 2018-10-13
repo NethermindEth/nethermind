@@ -41,15 +41,13 @@ namespace Nethermind.Blockchain
             BlockReward[] rewards = new BlockReward[1 + block.Ommers.Length];
 
             BlockHeader blockHeader = block.Header;
-            rewards[0] = new BlockReward();
-            rewards[0].Address = blockHeader.Beneficiary;
-            rewards[0].Value = blockReward + (uint)block.Ommers.Length * (blockReward >> 5);
+            BigInteger mainReward = blockReward + (uint) block.Ommers.Length * (blockReward >> 5);
+            rewards[0] = new BlockReward(blockHeader.Beneficiary, mainReward);
 
             for (int i = 0; i < block.Ommers.Length; i++)
             {
-                rewards[i + 1] = new BlockReward();
-                rewards[i + 1].Address = block.Ommers[i].Beneficiary;
-                rewards[i + 1].Value = blockReward - ((uint)(blockHeader.Number - block.Ommers[i].Number) * blockReward >> 3);
+                BigInteger ommerReward = blockReward - ((uint) (blockHeader.Number - block.Ommers[i].Number) * blockReward >> 3);
+                rewards[i + 1] = new BlockReward(block.Ommers[i].Beneficiary, ommerReward);
             }
 
             return rewards;

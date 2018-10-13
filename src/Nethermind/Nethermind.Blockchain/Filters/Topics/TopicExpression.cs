@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,30 +16,12 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Threading;
-using System.Threading.Tasks;
-using Nethermind.Core;
+using Nethermind.Core.Crypto;
 
-namespace Nethermind.Blockchain
+namespace Nethermind.Blockchain.Filters.Topics
 {
-    public class NullSealEngine : ISealEngine
+    public abstract class TopicExpression
     {
-        private NullSealEngine()
-        {
-        }
-
-        public static NullSealEngine Instance { get; } = new NullSealEngine();
-
-        public Task<Block> MineAsync(Block block, CancellationToken cancellationToken)
-        {
-            return Task.FromResult(block);
-        }
-
-        public bool Validate(BlockHeader header)
-        {
-            return true;
-        }
-
-        public bool IsMining { get; set; }
+        public abstract bool Accepts(Keccak topic);
     }
 }

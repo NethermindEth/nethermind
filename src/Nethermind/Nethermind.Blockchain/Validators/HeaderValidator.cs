@@ -18,11 +18,11 @@
 
 using System;
 using System.Numerics;
-using Nethermind.Blockchain.Difficulty;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
+using Nethermind.Mining;
 
 namespace Nethermind.Blockchain.Validators
 {
@@ -33,13 +33,11 @@ namespace Nethermind.Blockchain.Validators
         private readonly ISealEngine _sealEngine;
         private readonly BigInteger? _daoBlockNumber;
         private readonly ILogger _logger;
-        private readonly IDifficultyCalculator _difficultyCalculator;
         private readonly IBlockTree _blockTree;
 
-        public HeaderValidator(IDifficultyCalculator difficultyCalculator, IBlockTree blockTree, ISealEngine sealEngine, ISpecProvider specProvider, ILogManager logManager)
+        public HeaderValidator(IBlockTree blockTree, ISealEngine sealEngine, ISpecProvider specProvider, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _difficultyCalculator = difficultyCalculator ?? throw new ArgumentNullException(nameof(difficultyCalculator));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _sealEngine = sealEngine ?? throw new ArgumentNullException(nameof(sealEngine));
             _daoBlockNumber = specProvider?.DaoBlockNumber;
@@ -47,6 +45,18 @@ namespace Nethermind.Blockchain.Validators
         
         public bool Validate(BlockHeader header, bool isOmmer = false)
         {
+            bool areNonceValidAndMixHashValid = header.Number == 0 || header.SealEngineType == SealEngineType.None || _sealEngine.ValidateSeal(header);
+            if (!areNonceValidAndMixHashValid)
+            {
+                _logger.Warn($"Invalid block header ({header.Hash}) - invalid mix hash / nonce");
+            }
+            
+            bool hashAsExpected = header.Hash == BlockHeader.CalculateHash(header);
+            if (!hashAsExpected)
+            {
+                _logger.Warn($"Invalid block header ({header.Hash}) - invalid block hash");
+            }
+            
             Block parent = _blockTree.FindBlock(header.ParentHash, false);
             if (parent == null)
             {
@@ -65,17 +75,10 @@ namespace Nethermind.Blockchain.Validators
                 return false;
             }
 
-            bool areNonceValidAndMixHashValid = header.Number == 0 || header.SealEngineType == SealEngineType.None || _sealEngine.Validate(header);
-            if (!areNonceValidAndMixHashValid)
+            bool sealParamsCorrect = _sealEngine.ValidateParams(parent, header);
+            if (!sealParamsCorrect)
             {
-                _logger.Warn($"Invalid block header ({header.Hash}) - invalid mix hash / nonce");
-            }
-            
-            BigInteger difficulty = _difficultyCalculator.Calculate(parent.Header.Difficulty, parent.Header.Timestamp, header.Timestamp, header.Number, parent.Ommers.Length > 0);
-            bool isDifficultyCorrect = difficulty == header.Difficulty;
-            if (!isDifficultyCorrect)
-            {
-                _logger.Warn($"Invalid block header ({header.Hash}) - difficulty value incorrect");
+                _logger.Warn($"Invalid block header ({header.Hash}) - seal parameters incorrect");
             }
 
             // difficulty check
@@ -116,12 +119,6 @@ namespace Nethermind.Blockchain.Validators
                 _logger.Warn($"Invalid block header ({header.Hash}) - extra data too long");
             }
 
-            bool hashAsExpected = header.Hash == BlockHeader.CalculateHash(header);
-            if (!hashAsExpected)
-            {
-                _logger.Warn($"Invalid block header ({header.Hash}) - invalid block hash");
-            }
-
             if (_logger.IsTrace)
             {
                 _logger.Trace($"Validating block {header.Hash} ({header.Number}) - DAO block {_daoBlockNumber}, extraData {header.ExtraData.ToHexString(true)}");
@@ -142,7 +139,7 @@ namespace Nethermind.Blockchain.Validators
                 gasUsedBelowLimit &&
                 gasLimitNotTooLow &&
                 gasLimitNotTooHigh &&
-                isDifficultyCorrect &&
+                sealParamsCorrect &&
 //                   gasLimitAboveAbsoluteMinimum && // TODO: tests are consistently not following this rule
                 timestampMoreThanAtParent &&
                 numberIsParentPlusOne &&

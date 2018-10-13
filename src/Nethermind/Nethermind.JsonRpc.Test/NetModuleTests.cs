@@ -40,7 +40,7 @@ namespace Nethermind.JsonRpc.Test
         public void NetVersionSuccessTest()
         {
             var result = _netModule.net_version();
-            Assert.AreEqual(result.Data, "1");
+            Assert.AreEqual(result.Data, "0");
         }
     }
 }

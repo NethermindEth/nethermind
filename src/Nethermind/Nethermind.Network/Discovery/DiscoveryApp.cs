@@ -214,9 +214,7 @@ namespace Nethermind.Network.Discovery
                     {
                         break;
                     }
-                    
-                    _logger.Warn("Could not communicate with any bootnodes.");
-                    
+
                     //Check if we were able to communicate with any trusted nodes or persisted nodes
                     //if so no need to replay bootstraping, we can start discovery process
                     if (_discoveryManager.GetOrAddNodeLifecycleManagers(x => x.State == NodeLifecycleState.Active).Any())
@@ -224,7 +222,7 @@ namespace Nethermind.Network.Discovery
                         break;
                     }
                     
-                    _logger.Warn("Could not communicate with any nodes.");
+                    _logger.Warn("Could not communicate with any nodes (bootnodes, trusted nodes, persisted nodes).");
                     await Task.Delay(1000, cancellationToken); 
                 }
 
@@ -387,8 +385,6 @@ namespace Nethermind.Network.Discovery
                 }
             }
 
-            // TODO: strange sync - can we just have a timeout within which we expect to be notified about an added active manager?
-            // TODO: Task.WhenAny with delay should do
             //Wait for pong message to come back from Boot nodes
             var maxWaitTime = _configurationProvider.BootNodePongTimeout;
             var itemTime = maxWaitTime / 100;
@@ -414,7 +410,7 @@ namespace Nethermind.Network.Discovery
                 
                 try
                 {
-                    await Task.Delay(itemTime, cancellationToken); // TODO: do we need this?
+                    await Task.Delay(itemTime, cancellationToken);
                 }
                 catch (OperationCanceledException)
                 {
@@ -437,7 +433,7 @@ namespace Nethermind.Network.Discovery
                 }
             }
 
-            if (_logger.IsInfo) _logger.Info($"Connected to {reachedNodeCounter} bootnodes");
+            if (_logger.IsInfo) _logger.Info($"Connected to {reachedNodeCounter} bootnodes, {_discoveryManager.GetOrAddNodeLifecycleManagers(x => x.State == NodeLifecycleState.Active).Count} trusted/persisted nodes");
             return reachedNodeCounter > 0;
         }
 

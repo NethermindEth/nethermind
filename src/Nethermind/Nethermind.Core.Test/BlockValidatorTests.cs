@@ -17,10 +17,10 @@
  */
 
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Difficulty;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core.Specs;
 using Nethermind.Mining;
+using Nethermind.Mining.Difficulty;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -35,7 +35,7 @@ namespace Nethermind.Core.Test
         {
             IBlockTree blockchain = Substitute.For<IBlockTree>();
 
-            HeaderValidator headerValidator = new HeaderValidator(new DifficultyCalculator(RopstenSpecProvider.Instance), blockchain, NullSealEngine.Instance, null, null);
+            HeaderValidator headerValidator = new HeaderValidator(blockchain, NullSealEngine.Instance, null, null);
             OmmersValidator ommersValidator = new OmmersValidator(blockchain, headerValidator, null);
             SignatureValidator signatureValidator = new SignatureValidator(ChainId.MainNet);
             TransactionValidator transactionValidator = new TransactionValidator(signatureValidator);

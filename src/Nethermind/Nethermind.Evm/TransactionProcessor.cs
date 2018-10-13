@@ -17,13 +17,9 @@
  */
 
 using System;
-using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
-using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
@@ -57,7 +53,7 @@ namespace Nethermind.Evm
             transactionReceipt.Bloom = Bloom.Empty;
             if (!_specProvider.GetSpec(block.Number).IsEip658Enabled)
             {
-                transactionReceipt.PostTransactionState = _stateProvider.StateRoot; // TODO: do not call it in Byzantium - no longer needed to calculate root hash
+                transactionReceipt.PostTransactionState = _stateProvider.StateRoot;
             }
 
             transactionReceipt.StatusCode = StatusCode.Failure;
@@ -124,7 +120,7 @@ namespace Nethermind.Evm
             long unspentGas = gasLimit - intrinsicGas;
             long spentGas = gasLimit;
 
-            int snapshot = _stateProvider.TakeSnapshot();
+            int stateSnapshot = _stateProvider.TakeSnapshot();
             int storageSnapshot = _storageProvider.TakeSnapshot();
 
             _stateProvider.SubtractFromBalance(sender, value, spec);
@@ -180,7 +176,7 @@ namespace Nethermind.Evm
                 if (substate.ShouldRevert || substate.IsError)
                 {
                     if (_logger.IsTrace) _logger.Trace("Restoring state from before transaction");
-                    _stateProvider.Restore(snapshot);
+                    _stateProvider.Restore(stateSnapshot);
                     _storageProvider.Restore(storageSnapshot);
                 }
                 else
@@ -222,7 +218,7 @@ namespace Nethermind.Evm
             catch (Exception ex) when (ex is EvmException || ex is OverflowException) // TODO: OverflowException? still needed? hope not
             {
                 if (_logger.IsTrace) _logger.Trace($"EVM EXCEPTION: {ex.GetType().Name}");
-                _stateProvider.Restore(snapshot);
+                _stateProvider.Restore(stateSnapshot);
                 _storageProvider.Restore(storageSnapshot);
             }
 
@@ -295,9 +291,26 @@ namespace Nethermind.Evm
             return transactionReceipt;
         }
 
+        public static Bloom BuildBloom(TransactionReceipt[] receipts)
+        {
+            Bloom bloom = new Bloom();
+            for (int i = 0; i < receipts.Length; i++)
+            {
+                AddToBloom(bloom, receipts[i].Logs);
+            }
+            
+            return bloom;
+        }
+        
         public static Bloom BuildBloom(LogEntry[] logEntries)
         {
             Bloom bloom = new Bloom();
+            AddToBloom(bloom, logEntries);
+            return bloom;
+        }
+
+        public static void AddToBloom(Bloom bloom, LogEntry[] logEntries)
+        {
             for (int entryIndex = 0; entryIndex < logEntries.Length; entryIndex++)
             {
                 LogEntry logEntry = logEntries[entryIndex];
@@ -309,8 +322,6 @@ namespace Nethermind.Evm
                     bloom.Set(topic.Bytes);
                 }
             }
-
-            return bloom;
         }
     }
 }

@@ -4,6 +4,11 @@ dotnet: 2.1.402
 sudo: required
 git:
   depth: 3
+notifications:
+  slack:
+    rooms:
+      - demerzelsolutions:hzD3lmq2hbUgHuLFxjCOvk6x#team
+      - demerzelsolutions:hzD3lmq2hbUgHuLFxjCOvk6x#general
 jobs:
   include:
     - stage: restore and build
