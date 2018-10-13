@@ -24,10 +24,11 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
 using Nethermind.Dirichlet.Numerics;
-using Nethermind.Mining;
+using Nethermind.Mining.Difficulty;
+using NSubstitute;
 using NUnit.Framework;
 
-namespace Nethermind.Blockchain.Test
+namespace Nethermind.Mining.Test
 {
     [TestFixture]
     public class EthashSealEngineTests
@@ -45,7 +46,7 @@ namespace Nethermind.Blockchain.Test
             header.Bloom = Bloom.Empty;
 
             Block block = new Block(header);
-            EthashSealEngine ethashSealEngine = new EthashSealEngine(new Ethash(NullLogManager.Instance), NullLogManager.Instance);
+            EthashSealEngine ethashSealEngine = new EthashSealEngine(new Ethash(NullLogManager.Instance), Substitute.For<IDifficultyCalculator>(), NullLogManager.Instance);
             await ethashSealEngine.MineAsync(new CancellationTokenSource(TimeSpan.FromSeconds(5)).Token, block, validNonce - 10);
 
             Assert.AreEqual(validNonce, block.Header.Nonce);
@@ -67,7 +68,7 @@ namespace Nethermind.Blockchain.Test
             header.Bloom = Bloom.Empty;
 
             Block block = new Block(header);
-            EthashSealEngine ethashSealEngine = new EthashSealEngine(new Ethash(NullLogManager.Instance), NullLogManager.Instance);
+            EthashSealEngine ethashSealEngine = new EthashSealEngine(new Ethash(NullLogManager.Instance), Substitute.For<IDifficultyCalculator>(), NullLogManager.Instance);
             await ethashSealEngine.MineAsync(new CancellationTokenSource(TimeSpan.FromMilliseconds(2000)).Token, block, badNonce).ContinueWith(t =>
             {
                 Assert.True(t.IsCanceled);
@@ -88,7 +89,7 @@ namespace Nethermind.Blockchain.Test
             Block block = new Block(blockHeader);
 
             IEthash ethash = new Ethash(NullLogManager.Instance);
-            EthashSealEngine ethashSealEngine = new EthashSealEngine(ethash, NullLogManager.Instance);
+            EthashSealEngine ethashSealEngine = new EthashSealEngine(ethash, Substitute.For<IDifficultyCalculator>(), NullLogManager.Instance);
             await ethashSealEngine.MineAsync(CancellationToken.None, block, 7217048144105167954);
 
             Assert.True(ethash.Validate(block.Header));

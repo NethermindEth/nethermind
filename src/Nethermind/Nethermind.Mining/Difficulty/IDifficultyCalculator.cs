@@ -16,16 +16,12 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Threading;
-using System.Threading.Tasks;
-using Nethermind.Core;
+using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.Blockchain
+namespace Nethermind.Mining.Difficulty
 {
-    public interface ISealEngine
+    public interface IDifficultyCalculator
     {
-        Task<Block> MineAsync(Block block, CancellationToken cancellationToken);
-        bool Validate(BlockHeader header);
-        bool IsMining { get; set; }
+        UInt256 Calculate(UInt256 parentDifficulty, UInt256 parentTimestamp, UInt256 currentTimestamp, UInt256 blockNumber, bool parentHasUncles);
     }
 }

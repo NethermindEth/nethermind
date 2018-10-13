@@ -49,8 +49,8 @@ namespace Nethermind.JsonRpc.Module
         ResultWrapper<Transaction> eth_getTransactionByHash(Data transactionHash);
         ResultWrapper<Transaction> eth_getTransactionByBlockHashAndIndex(Data blockHash, Quantity positionIndex);
         ResultWrapper<Transaction> eth_getTransactionByBlockNumberAndIndex(BlockParameter blockParameter, Quantity positionIndex);
-        ResultWrapper<TransactionReceipt> eth_getTransactionReceipt(Data transactionHash);
-        ResultWrapper<Block> eth_getUncleByBlockHashAndIndex(Data blockHash, Quantity positionIndex);
+        ResultWrapper<TransactionReceipt> eth_getTransactionReceipt(Data txHashData);
+        ResultWrapper<Block> eth_getUncleByBlockHashAndIndex(Data blockHashData, Quantity positionIndex);
         ResultWrapper<Block> eth_getUncleByBlockNumberAndIndex(BlockParameter blockParameter, Quantity positionIndex);
         ResultWrapper<IEnumerable<string>> eth_getCompilers();
         ResultWrapper<Data> eth_compileLLL(string code);

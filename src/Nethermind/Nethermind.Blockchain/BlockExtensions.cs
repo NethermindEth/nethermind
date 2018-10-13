@@ -16,30 +16,31 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Encoding;
+using Nethermind.Store;
 
 namespace Nethermind.Blockchain
 {
-    public class NullSealEngine : ISealEngine
+    public static class BlockExtensions
     {
-        private NullSealEngine()
+        public static Keccak CalculateTransactionsRoot(this Block block)
         {
+            if (block.Transactions.Length == 0)
+            {
+                return PatriciaTree.EmptyTreeHash;
+            }
+            
+            PatriciaTree txTree = new PatriciaTree();
+            for (int i = 0; i < block.Transactions.Length; i++)
+            {
+                Rlp transactionRlp = Rlp.Encode(block.Transactions[i]);
+                txTree.Set(Rlp.Encode(i).Bytes, transactionRlp);
+            }
+
+            txTree.UpdateRootHash();
+            return txTree.RootHash;
         }
-
-        public static NullSealEngine Instance { get; } = new NullSealEngine();
-
-        public Task<Block> MineAsync(Block block, CancellationToken cancellationToken)
-        {
-            return Task.FromResult(block);
-        }
-
-        public bool Validate(BlockHeader header)
-        {
-            return true;
-        }
-
-        public bool IsMining { get; set; }
     }
 }

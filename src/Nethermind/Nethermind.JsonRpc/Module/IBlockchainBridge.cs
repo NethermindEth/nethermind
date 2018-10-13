@@ -19,6 +19,7 @@
 using System.Collections.Generic;
 using System.Numerics;
 using System.Security;
+using Nethermind.Blockchain.Filters;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Model;
@@ -48,7 +49,7 @@ namespace Nethermind.JsonRpc.Module
         void AddTxData(UInt256 blockNumber);
         Transaction GetTransaction(Keccak transactionHash);
         Keccak GetBlockHash(Keccak transactionHash);
-        void SendTransaction(Transaction transaction);
+        Keccak SendTransaction(Transaction transaction);
         TransactionReceipt GetTransactionReceipt(Keccak transactionHash);
         TransactionTrace GetTransactionTrace(Keccak transactionHash);
         TransactionTrace GetTransactionTrace(UInt256 blockNumber, int index);
@@ -66,5 +67,8 @@ namespace Nethermind.JsonRpc.Module
         int GetNetworkId();
         int NewBlockFilter();
         object[] GetFilterChanges(int filterId);
+
+        int NewFilter(FilterBlock fromBlock, FilterBlock toBlock, object address = null,
+            IEnumerable<object> topics = null);
     }
 }

@@ -42,35 +42,40 @@ namespace Nethermind.Blockchain.Validators
             _headerValidator = headerValidator ?? throw new ArgumentNullException(nameof(headerValidator));
         }
 
-        public bool ValidateSuggestedBlock(Block suggestedBlock)
+        public bool ValidateSuggestedBlock(Block block)
         {
-            if (!_ommersValidator.Validate(suggestedBlock.Header, suggestedBlock.Ommers))
+            if (!_ommersValidator.Validate(block.Header, block.Ommers))
             {
-                _logger?.Debug($"Invalid block ({suggestedBlock.Hash}) - invalid ommers");
+                _logger?.Debug($"Invalid block ({block.Hash}) - invalid ommers");
                 return false;
             }
 
-            Transaction[] txs = suggestedBlock.Transactions; 
+            Transaction[] txs = block.Transactions;
             for (int i = 0; i < txs.Length; i++)
             {
-                if (!_transactionValidator.IsWellFormed(txs[i], _specProvider.GetSpec(suggestedBlock.Number)))
+                if (!_transactionValidator.IsWellFormed(txs[i], _specProvider.GetSpec(block.Number)))
                 {
-                    _logger?.Debug($"Invalid block ({suggestedBlock.Hash}) - invalid transaction ({txs[i].Hash})");
+                    if (_logger.IsDebug) _logger.Debug($"Invalid block ({block.ToString(Block.Format.HashAndNumber)}) - invalid transaction ({txs[i].Hash})");
                     return false;
                 }
             }
 
-            // TODO it may not be needed here (computing twice?)
-            if (suggestedBlock.Header.OmmersHash != Keccak.Compute(Rlp.Encode(suggestedBlock.Ommers)))
+            Keccak txsRoot = block.CalculateTransactionsRoot();
+            if (txsRoot != block.Header.TransactionsRoot)
             {
-                _logger?.Debug($"Invalid block ({suggestedBlock.Hash}) - invalid ommers hash");
+                if (_logger.IsDebug) _logger.Debug($"Invalid block ({block.ToString(Block.Format.HashAndNumber)}) tx root {txsRoot} != stated tx root {block.Header.TransactionsRoot}");
+            }
+
+            if (block.Header.OmmersHash != Keccak.Compute(Rlp.Encode(block.Ommers)))
+            {
+                _logger?.Debug($"Invalid block ({block.ToString(Block.Format.HashAndNumber)}) - invalid ommers hash");
                 return false;
             }
 
-            bool blockHeaderValid = _headerValidator.Validate(suggestedBlock.Header);
+            bool blockHeaderValid = _headerValidator.Validate(block.Header);
             if (!blockHeaderValid)
             {
-                _logger?.Debug($"Invalid block ({suggestedBlock.Hash}) - invalid header");
+                if (_logger.IsDebug) _logger.Debug($"Invalid block ({block.ToString(Block.Format.HashAndNumber)}) - invalid header");
                 return false;
             }
 
@@ -84,29 +89,23 @@ namespace Nethermind.Blockchain.Validators
             {
                 if (processedBlock.Header.GasUsed != suggestedBlock.Header.GasUsed)
                 {
-                    _logger?.Debug($"PROCESSED_GASUSED {processedBlock.Header.GasUsed} != SUGGESTED_GASUSED {suggestedBlock.Header.GasUsed} ({processedBlock.Header.GasUsed - suggestedBlock.Header.GasUsed} difference)");
+                    if(_logger.IsError) _logger.Error($"Processed block {processedBlock.ToString(Block.Format.HashAndNumber)} is invalid - gas used {processedBlock.Header.GasUsed} != stated gas used {suggestedBlock.Header.GasUsed} ({processedBlock.Header.GasUsed - suggestedBlock.Header.GasUsed} difference)");
                 }
-                
+
                 if (processedBlock.Header.Bloom != suggestedBlock.Header.Bloom)
                 {
-                    _logger?.Debug($"PROCESSED_BLOOM {processedBlock.Header.Bloom} != SUGGESTED_BLOOM {suggestedBlock.Header.Bloom}");
+                    if(_logger.IsError) _logger.Error($"Processed block {processedBlock.ToString(Block.Format.HashAndNumber)} is invalid - bloom {processedBlock.Header.Bloom} != stated bloom {suggestedBlock.Header.Bloom}");
                 }
-                
+
                 if (processedBlock.Header.ReceiptsRoot != suggestedBlock.Header.ReceiptsRoot)
                 {
-                    _logger?.Debug($"PROCESSED_RECEIPTS {processedBlock.Header.ReceiptsRoot} != SUGGESTED_RECEIPTS {suggestedBlock.Header.ReceiptsRoot}");
+                    if(_logger.IsError) _logger.Error($"Processed block {processedBlock.ToString(Block.Format.HashAndNumber)} is invalid - receipts root {processedBlock.Header.ReceiptsRoot} != stated receipts root {suggestedBlock.Header.ReceiptsRoot}");
                 }
-                
+
                 if (processedBlock.Header.StateRoot != suggestedBlock.Header.StateRoot)
                 {
-                    _logger?.Debug($"PROCESSED_STATE {processedBlock.Header.StateRoot} != SUGGESTED_STATE {suggestedBlock.Header.StateRoot}");
+                    if(_logger.IsError) _logger.Error($"Processed block {processedBlock.ToString(Block.Format.HashAndNumber)} is invalid - state root {processedBlock.Header.StateRoot} != stated state root {suggestedBlock.Header.StateRoot}");
                 }
-                
-                // this is tested before processing
-//                if (processedBlock.Header.TransactionsRoot != suggestedBlock.Header.TransactionsRoot)
-//                {
-//                    _logger?.Info($"TRANSACTIONS_ROOT {processedBlock.Header.TransactionsRoot} != TRANSACTIONS_ROOT {suggestedBlock.Header.TransactionsRoot}");
-//                }
             }
 
             return true;

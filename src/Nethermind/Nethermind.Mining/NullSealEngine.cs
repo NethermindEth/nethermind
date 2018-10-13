@@ -16,20 +16,35 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Core.Logging;
-using NUnit.Framework;
+using System.Threading;
+using System.Threading.Tasks;
+using Nethermind.Core;
 
-namespace Nethermind.Core.Test.Logging
+namespace Nethermind.Mining
 {
-    [TestFixture]
-    public class NLogManagerTests
+    public class NullSealEngine : ISealEngine
     {
-        [Test]
-        public void Logger_name_is_set_to_full_class_name()
+        private NullSealEngine()
         {
-            NLogManager manager = new NLogManager("test", null);
-            NLogLogger logger = (NLogLogger)manager.GetClassLogger();
-            Assert.AreEqual(GetType().FullName.Replace("Nethermind.", string.Empty), logger.Logger.Name);
         }
+
+        public static NullSealEngine Instance { get; } = new NullSealEngine();
+
+        public Task<Block> MineAsync(Block block, CancellationToken cancellationToken)
+        {
+            return Task.FromResult(block);
+        }
+
+        public bool ValidateParams(Block parent, BlockHeader header)
+        {
+            return true;
+        }
+
+        public bool ValidateSeal(BlockHeader header)
+        {
+            return true;
+        }
+
+        public bool IsMining { get; set; }
     }
 }

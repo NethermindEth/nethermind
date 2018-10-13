@@ -52,18 +52,21 @@ namespace Nethermind.Blockchain
         private readonly IDb _blockInfoDb;
         private readonly ILogger _logger;
         private readonly ISpecProvider _specProvider;
+        private readonly ITransactionStore _transactionStore;
 
         // TODO: validators should be here
         public BlockTree(
             IDb blockDb,
             IDb blockInfoDb,
             ISpecProvider specProvider,
+            ITransactionStore transactionStore,
             ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _blockDb = blockDb;
             _blockInfoDb = blockInfoDb;
             _specProvider = specProvider;
+            _transactionStore = transactionStore;
 
             ChainLevelInfo genesisLevel = LoadLevel(0);
             if (genesisLevel != null)
@@ -410,6 +413,12 @@ namespace Nethermind.Blockchain
                 }
 
                 UpdateHeadBlock(block);
+            }
+            
+            // TODO: only for miners
+            foreach (Transaction transaction in block.Transactions)
+            {
+                _transactionStore.RemovePending(transaction);
             }
         }
 

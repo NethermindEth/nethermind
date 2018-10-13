@@ -16,12 +16,18 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Dirichlet.Numerics;
+using System;
 
-namespace Nethermind.Blockchain.Difficulty
+namespace Nethermind.Mining
 {
-    public interface IDifficultyCalculator
+    internal class SealEngineException : Exception
     {
-        UInt256 Calculate(UInt256 parentDifficulty, UInt256 parentTimestamp, UInt256 currentTimestamp, UInt256 blockNumber, bool parentHasUncles);
+        public SealEngineException(string message) : base(message)
+        {
+        }
+
+        public SealEngineException(string message, Exception innerException) : base(message, innerException)
+        {
+        }
     }
 }

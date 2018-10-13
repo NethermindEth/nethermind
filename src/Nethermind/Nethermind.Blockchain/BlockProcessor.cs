@@ -116,24 +116,6 @@ namespace Nethermind.Blockchain
             block.Header.Bloom = receipts.Length > 0 ? TransactionProcessor.BuildBloom(receipts.SelectMany(r => r.Logs).ToArray()) : Bloom.Empty; // TODO not tested anywhere at the time of writing
         }
 
-        private Keccak GetTransactionsRoot(Transaction[] transactions)
-        {
-            if (transactions.Length == 0)
-            {
-                return PatriciaTree.EmptyTreeHash;
-            }
-            
-            PatriciaTree txTree = new PatriciaTree();
-            for (int i = 0; i < transactions.Length; i++)
-            {
-                Rlp transactionRlp = Rlp.Encode(transactions[i]);
-                txTree.Set(Rlp.Encode(i).Bytes, transactionRlp);
-            }
-
-            txTree.UpdateRootHash();
-            return txTree.RootHash;
-        }
-
         public Block[] Process(Keccak branchStateRoot, Block[] suggestedBlocks, bool tryOnly, bool storeTxData, ITraceListener traceListener)
         {
             if (suggestedBlocks.Length == 0)
@@ -252,16 +234,6 @@ namespace Nethermind.Blockchain
                 ApplyDaoTransition();
             }
 
-            // TODO: should be precalculated
-            Keccak transactionsRoot = GetTransactionsRoot(suggestedBlock.Transactions);
-            if (transactionsRoot != suggestedBlock.Header.TransactionsRoot)
-            {
-                if (_logger.IsTrace)
-                {
-                    _logger.Trace($"TRANSACTIONS_ROOT {transactionsRoot} != TRANSACTIONS_ROOT {transactionsRoot}");
-                }
-            }
-
             if (_logger.IsTrace)
             {
                 _logger.Trace($"Block beneficiary {suggestedBlock.Header.Beneficiary}");
@@ -288,7 +260,7 @@ namespace Nethermind.Blockchain
                 traceListener);
 
             processedBlock.Transactions = suggestedBlock.Transactions;
-            processedBlock.Header.TransactionsRoot = transactionsRoot;
+            processedBlock.Header.TransactionsRoot = suggestedBlock.TransactionsRoot;
             processedBlock.Header.Hash = BlockHeader.CalculateHash(processedBlock.Header);
 
             if (!tryOnly && !_blockValidator.ValidateProcessedBlock(processedBlock, suggestedBlock))

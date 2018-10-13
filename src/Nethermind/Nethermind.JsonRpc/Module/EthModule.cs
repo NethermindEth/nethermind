@@ -21,6 +21,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Security;
 using System.Text;
+using Nethermind.Blockchain.Filters;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -30,6 +31,7 @@ using Nethermind.Core.Model;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.JsonRpc.DataModel;
 using Block = Nethermind.JsonRpc.DataModel.Block;
+using Filter = Nethermind.JsonRpc.DataModel.Filter;
 using Transaction = Nethermind.JsonRpc.DataModel.Transaction;
 using TransactionReceipt = Nethermind.JsonRpc.DataModel.TransactionReceipt;
 
@@ -253,8 +255,8 @@ namespace Nethermind.JsonRpc.Module
         public ResultWrapper<Data> eth_sendTransaction(Transaction transaction)
         {
             Core.Transaction tx = _modelMapper.MapTransaction(transaction);
-            _blockchainBridge.SendTransaction(tx);
-            return ResultWrapper<Data>.Success(new Data(Keccak.Zero.Bytes));
+            Keccak txHash = _blockchainBridge.SendTransaction(tx);
+            return ResultWrapper<Data>.Success(new Data(txHash));
         }
 
         public ResultWrapper<Data> eth_sendRawTransaction(Data transation)
@@ -382,22 +384,23 @@ namespace Nethermind.JsonRpc.Module
             return ResultWrapper<Transaction>.Success(transactionModel);
         }
 
-        public ResultWrapper<TransactionReceipt> eth_getTransactionReceipt(Data transactionHash)
+        public ResultWrapper<TransactionReceipt> eth_getTransactionReceipt(Data txHashData)
         {
-            var transactionReceipt = _blockchainBridge.GetTransactionReceipt(new Keccak(transactionHash.Value));
+            Keccak txHash = new Keccak(txHashData.Value);
+            var transactionReceipt = _blockchainBridge.GetTransactionReceipt(txHash);
             if (transactionReceipt == null)
             {
-                return ResultWrapper<TransactionReceipt>.Fail($"Cannot find transactionReceipt for transaction hash: {transactionHash.Value}", ErrorType.NotFound);
+                return ResultWrapper<TransactionReceipt>.Fail($"Cannot find transactionReceipt for transaction hash: {txHash}", ErrorType.NotFound);
             }
-            var transaction = _blockchainBridge.GetTransaction(new Keccak(transactionHash.Value));
+            var transaction = _blockchainBridge.GetTransaction(new Keccak(txHashData.Value));
             if (transaction == null)
             {
-                return ResultWrapper<TransactionReceipt>.Fail($"Cannot find transaction for hash: {transactionHash.Value}", ErrorType.NotFound);
+                return ResultWrapper<TransactionReceipt>.Fail($"Cannot find transaction for hash: {txHash}", ErrorType.NotFound);
             }
-            var blockHash = _blockchainBridge.GetBlockHash(new Keccak(transactionHash.Value));
+            var blockHash = _blockchainBridge.GetBlockHash(new Keccak(txHashData.Value));
             if (blockHash == null)
             {
-                return ResultWrapper<TransactionReceipt>.Fail($"Cannot find block hash for transaction: {transactionHash.Value}", ErrorType.NotFound);
+                return ResultWrapper<TransactionReceipt>.Fail($"Cannot find block hash for transaction: {txHash}", ErrorType.NotFound);
             }
             var block = _blockchainBridge.FindBlock(blockHash, false);
             if (block == null)
@@ -406,16 +409,17 @@ namespace Nethermind.JsonRpc.Module
             }
 
             var transactionReceiptModel = _modelMapper.MapTransactionReceipt(transactionReceipt, transaction, block);
-            if(Logger.IsTrace) Logger.Trace($"eth_getTransactionReceipt request {transactionHash.ToJson()}, result: {GetJsonLog(transactionReceiptModel.ToJson())}");
+            if(Logger.IsTrace) Logger.Trace($"eth_getTransactionReceipt request {txHashData.ToJson()}, result: {GetJsonLog(transactionReceiptModel.ToJson())}");
             return ResultWrapper<TransactionReceipt>.Success(transactionReceiptModel);
         }
 
-        public ResultWrapper<Block> eth_getUncleByBlockHashAndIndex(Data blockHash, Quantity positionIndex)
+        public ResultWrapper<Block> eth_getUncleByBlockHashAndIndex(Data blockHashData, Quantity positionIndex)
         {
-            var block = _blockchainBridge.FindBlock(new Keccak(blockHash.Value), false);
+            Keccak blockHash = new Keccak(blockHashData.Value);
+            var block = _blockchainBridge.FindBlock(blockHash, false);
             if (block == null)
             {
-                return ResultWrapper<Block>.Fail($"Cannot find block for hash: {blockHash.Value}", ErrorType.NotFound);
+                return ResultWrapper<Block>.Fail($"Cannot find block for hash: {blockHash}", ErrorType.NotFound);
             }
             var index = positionIndex.GetValue();
             if (!index.HasValue)
@@ -435,7 +439,7 @@ namespace Nethermind.JsonRpc.Module
             }
             var blockModel = _modelMapper.MapBlock(ommer, false);
 
-            if(Logger.IsTrace) Logger.Trace($"eth_getUncleByBlockHashAndIndex request {blockHash.ToJson()}, index: {positionIndex.ToJson()}, result: {GetJsonLog(blockModel.ToJson())}");
+            if(Logger.IsTrace) Logger.Trace($"eth_getUncleByBlockHashAndIndex request {blockHashData.ToJson()}, index: {positionIndex.ToJson()}, result: {GetJsonLog(blockModel.ToJson())}");
             return ResultWrapper<Block>.Success(blockModel);
         }
 
@@ -496,7 +500,27 @@ namespace Nethermind.JsonRpc.Module
 
         public ResultWrapper<Quantity> eth_newFilter(Filter filter)
         {
-            throw new NotImplementedException();
+            var fromBlock = MapFilterBlock(filter.FromBlock);
+            var toBlock = MapFilterBlock(filter.ToBlock);
+
+            return ResultWrapper<Quantity>.Success(new Quantity(
+                _blockchainBridge.NewFilter(fromBlock, toBlock, filter.Address, filter.Topics)));
+        }
+
+        private FilterBlock MapFilterBlock(BlockParameter parameter)
+            => parameter.BlockId != null
+                ? new FilterBlock(new UInt256(parameter.BlockId.GetValue() ?? 0))
+                : new FilterBlock(MapFilterBlockType(parameter.Type));
+
+        private FilterBlockType MapFilterBlockType(BlockParameterType type)
+        {
+            switch (type)
+            {
+                case BlockParameterType.Latest: return FilterBlockType.Latest;
+                case BlockParameterType.Earliest: return FilterBlockType.Earliest;
+                case BlockParameterType.Pending: return FilterBlockType.Pending;
+                default: return FilterBlockType.BlockId;
+            }
         }
 
         public ResultWrapper<Quantity> eth_newBlockFilter()
@@ -518,7 +542,7 @@ namespace Nethermind.JsonRpc.Module
         {
             return ResultWrapper<Data[]>.Success(
                 _blockchainBridge.GetFilterChanges(filterId.Value.ToInt32())
-                    .Select(o => new Data(((Keccak)o).Bytes)).ToArray()
+                    .Select(o => new Data((Keccak)o)).ToArray()
             );
         }
 
