@@ -65,21 +65,37 @@ namespace Nethermind.Blockchain.Filters
 
         private FilterLog CreateLog(Filter filter, TransactionReceiptContext receiptContext, LogEntry logEntry)
         {
-//            if (filter.FromBlock != receiptContext.BlockHash && filter.ToBlock != receiptContext.BlockHash)
-//            {
-//                return null;
-//            }
-
-            var address = GetAddress(filter, logEntry);
-            if (address == null)
+            if (filter.FromBlock.Type == FilterBlockType.BlockId && filter.FromBlock.BlockId > receiptContext.BlockNumber)
             {
                 return null;
             }
 
-            var topics = GetTopics(filter, logEntry);
+            if (filter.ToBlock.Type == FilterBlockType.BlockId && filter.ToBlock.BlockId < receiptContext.BlockNumber)
+            {
+                return null;
+            }
 
+            if (filter.FromBlock.Type == FilterBlockType.Earliest || filter.FromBlock.Type == FilterBlockType.Pending
+                                                                || filter.ToBlock.Type == FilterBlockType.Earliest ||
+                                                                filter.ToBlock.Type == FilterBlockType.Pending)
+            {
+                return CreateLog(receiptContext, logEntry);
+            }
+
+            if (filter.FromBlock.Type == FilterBlockType.Latest || filter.ToBlock.Type == FilterBlockType.Latest)
+            {
+                //TODO: check if is last mined block
+                return CreateLog(receiptContext, logEntry);
+            }
+
+            return null;
+        }
+
+        private FilterLog CreateLog(TransactionReceiptContext receiptContext, LogEntry logEntry)
+        {
             return new FilterLog(receiptContext.LogIndex, receiptContext.BlockNumber, receiptContext.BlockHash,
-                receiptContext.TransactionIndex, receiptContext.TransactionHash, address, logEntry.Data, topics);
+                receiptContext.TransactionIndex, receiptContext.TransactionHash, logEntry.LoggersAddress,
+                logEntry.Data, logEntry.Topics);
         }
 
         private Address GetAddress(Filter filter, LogEntry logEntry)
@@ -101,44 +117,5 @@ namespace Nethermind.Blockchain.Filters
 
             return filter.Address.Addresses.SingleOrDefault(a => a == logEntry.LoggersAddress);
         }
-
-        private Keccak[] GetTopics(Filter filter, LogEntry logEntry)
-        {
-            if (filter.Topics == null || !filter.Topics.Any())
-            {
-                return logEntry.Topics;
-            }
-
-            var foundTopics = new List<Keccak>();
-            var index = 0;
-            foreach (var filterTopic in filter.Topics)
-            {
-                if (logEntry.Topics.Length == index)
-                {
-                    return foundTopics.ToArray();
-                }
-
-                var foundTopic = GetTopic(filterTopic, logEntry.Topics[index]);
-                foundTopics.Add(foundTopic);
-                index++;
-            }
-
-            return foundTopics.ToArray();
-        }
-
-        private Keccak GetTopic(FilterTopic filterTopic, Keccak topic)
-        {
-            if (filterTopic == null || (filterTopic.First == null && filterTopic.Second == null))
-            {
-                return topic;
-            }
-
-            var firstTopic = GetValidTopic(filterTopic.First, topic);
-
-            return firstTopic != null ? firstTopic : GetValidTopic(filterTopic.Second, topic);
-        }
-
-        private Keccak GetValidTopic(Keccak topicToFilter, Keccak logEntryTopic)
-            => topicToFilter == null || topicToFilter == logEntryTopic ? logEntryTopic : null;
     }
 }
