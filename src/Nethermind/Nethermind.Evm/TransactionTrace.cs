@@ -33,11 +33,11 @@ namespace Nethermind.Evm
 
         public StorageTrace StorageTrace { get; set; }
         
-        public BigInteger Gas { get; set; } // TODO: not implemented
+        public BigInteger Gas { get; set; }
 
         public bool Failed { get; set; }
 
-        public string ReturnValue { get; set; } // TODO: not implemented
+        public string ReturnValue { get; set; }
         
         public List<TransactionTraceEntry> Entries { get; set; }
 

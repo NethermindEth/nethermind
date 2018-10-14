@@ -23,6 +23,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.Store;
@@ -33,6 +34,7 @@ namespace Nethermind.JsonRpc.Module
     [DoNotUseInSecuredContext("Not reviewed, work in progress")]
     [Todo("Split the class into separate modules / bridges")]
     [Todo("Any state requests should be taken from specified state snapshot (potentially current)")]
+    [Todo("We need a concurrent State representation that can track idnependently from a given state root")]
     public class BlockchainBridge : IBlockchainBridge
     {
         private readonly IBlockchainProcessor _blockchainProcessor;
@@ -144,6 +146,8 @@ namespace Nethermind.JsonRpc.Module
 
         public Keccak SendTransaction(Transaction transaction)
         {
+            _stateProvider.StateRoot = _blockTree.Head.StateRoot;
+            
             if (transaction.SenderAddress == null) transaction.SenderAddress = _wallet.GetAccounts()[0];
 
             transaction.Nonce = _stateProvider.GetNonce(transaction.SenderAddress);
@@ -186,6 +190,14 @@ namespace Nethermind.JsonRpc.Module
         public BlockTrace GetBlockTrace(UInt256 blockNumber)
         {
             return _txTracer.TraceBlock(blockNumber);
+        }
+
+        public byte[] Call(Block block, Transaction transaction)
+        {
+            _stateProvider.StateRoot = block.StateRoot;
+            transaction.Nonce = _stateProvider.GetNonce(transaction.SenderAddress);
+            transaction.Hash = Transaction.CalculateHash(transaction);
+            return Bytes.FromHexString(_txTracer.Trace(block.Number, transaction).ReturnValue);
         }
 
         public byte[] GetDbValue(string dbName, byte[] key)

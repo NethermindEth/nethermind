@@ -76,11 +76,6 @@ namespace Nethermind.Blockchain
                 if (_logger.IsTrace) _logger.Trace($"Processing transaction {i}");
                 var currentTx = block.Transactions[i];
                 bool shouldTrace = traceListener.ShouldTrace(currentTx.Hash);
-                UInt256 contractNonce = default;
-                if (currentTx.IsContractCreation)
-                {
-                    contractNonce = _stateProvider.GetNonce(currentTx.SenderAddress);
-                }
                 
                 (TransactionReceipt receipt, TransactionTrace trace) = _transactionProcessor.Execute(i, currentTx, block.Header, shouldTrace);
                 if (shouldTrace)
@@ -114,7 +109,7 @@ namespace Nethermind.Blockchain
             block.Header.Bloom = receipts.Length > 0 ? TransactionProcessor.BuildBloom(receipts) : Bloom.Empty;
         }
 
-        public Block[] Process(Keccak branchStateRoot, Block[] suggestedBlocks, bool tryOnly, bool storeTxData, ITraceListener traceListener)
+        public Block[] Process(Keccak branchStateRoot, Block[] suggestedBlocks, ProcessingOptions options, ITraceListener traceListener)
         {
             if (suggestedBlocks.Length == 0)
             {
@@ -138,10 +133,10 @@ namespace Nethermind.Blockchain
             {
                 for (int i = 0; i < suggestedBlocks.Length; i++)
                 {
-                    processedBlocks[i] = ProcessOne(suggestedBlocks[i], tryOnly, storeTxData, traceListener);
+                    processedBlocks[i] = ProcessOne(suggestedBlocks[i], options, traceListener);
                 }
 
-                if (tryOnly)
+                if ((options & ProcessingOptions.ReadOnlyChain) != 0)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Reverting blocks after test run - state root {_stateProvider.StateRoot}");
                     _stateDb.Restore(stateSnapshot);
@@ -184,12 +179,12 @@ namespace Nethermind.Blockchain
             }
         }
 
-        private Block ProcessOne(Block suggestedBlock, bool tryOnly, bool storeTxData, ITraceListener traceListener)
+        private Block ProcessOne(Block suggestedBlock, ProcessingOptions options, ITraceListener traceListener)
         {
             Block processedBlock = suggestedBlock;
             if (!suggestedBlock.IsGenesis)
             {
-                processedBlock = ProcessNonGenesis(suggestedBlock, tryOnly, storeTxData, traceListener);
+                processedBlock = ProcessNonGenesis(suggestedBlock, options, traceListener);
             }
 
             if (_logger.IsTrace) _logger.Trace($"Committing block - state root {_stateProvider.StateRoot}");
@@ -199,7 +194,7 @@ namespace Nethermind.Blockchain
             return processedBlock;
         }
 
-        private Block ProcessNonGenesis(Block suggestedBlock, bool readOnlyChain, bool storeTxData, ITraceListener traceListener)
+        private Block ProcessNonGenesis(Block suggestedBlock, ProcessingOptions options, ITraceListener traceListener)
         {
             if (_specProvider.DaoBlockNumber.HasValue && _specProvider.DaoBlockNumber.Value == suggestedBlock.Header.Number)
             {
@@ -231,13 +226,15 @@ namespace Nethermind.Blockchain
             processedBlock.Header.TransactionsRoot = suggestedBlock.TransactionsRoot;
             processedBlock.Header.Hash = BlockHeader.CalculateHash(processedBlock.Header);
             
-            if (!readOnlyChain && !_blockValidator.ValidateProcessedBlock(processedBlock, suggestedBlock))
+            if ((options & ProcessingOptions.ReadOnlyChain) == 0 &&
+                (options & ProcessingOptions.NoValidation) == 0 &&
+                !_blockValidator.ValidateProcessedBlock(processedBlock, suggestedBlock))
             {
                 if (_logger.IsError) _logger.Error($"Processed block is not valid {suggestedBlock.ToString(Block.Format.HashAndNumber)}");
                 throw new InvalidBlockException($"{suggestedBlock.ToString(Block.Format.HashAndNumber)}");
             }
             
-            if (storeTxData)
+            if ((options & ProcessingOptions.StoreReceipts) == ProcessingOptions.StoreReceipts)
             {
                 for (int i = 0; i < processedBlock.Transactions.Length; i++)
                 {

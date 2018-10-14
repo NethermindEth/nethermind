@@ -44,7 +44,7 @@ namespace Nethermind.Wallet
             {
                 PrivateKey key = new PrivateKey(_keySeed);
                 _keys.Add(key.Address, key);
-                _keySeed[0]++;
+                _keySeed[31]++;
             }
         }
 

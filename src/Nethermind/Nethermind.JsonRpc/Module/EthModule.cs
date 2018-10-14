@@ -250,14 +250,16 @@ namespace Nethermind.JsonRpc.Module
             return ResultWrapper<Data>.Success(new Data(txHash));
         }
 
-        public ResultWrapper<Data> eth_sendRawTransaction(Data transation)
+        public ResultWrapper<Data> eth_sendRawTransaction(Data transaction)
         {
             throw new NotImplementedException();
         }
 
         public ResultWrapper<Data> eth_call(Transaction transactionCall, BlockParameter blockParameter)
         {
-            throw new NotImplementedException();
+            Core.Block block = GetBlock(blockParameter).Data;
+            byte[] result = _blockchainBridge.Call(block, _modelMapper.MapTransaction(transactionCall));
+            return ResultWrapper<Data>.Success(new Data(result));
         }
 
         public ResultWrapper<Quantity> eth_estimateGas(Transaction transactionCall, BlockParameter blockParameter)
@@ -701,7 +703,6 @@ namespace Nethermind.JsonRpc.Module
                 return ResultWrapper<Data>.Fail("Cannot find account", ErrorType.NotFound);
             }
 
-            //TODO confirm it is correct
             var code = _blockchainBridge.GetCode(account.CodeHash);
             return ResultWrapper<Data>.Success(new Data(code));
         }

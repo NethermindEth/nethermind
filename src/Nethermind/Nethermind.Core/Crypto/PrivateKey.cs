@@ -54,7 +54,8 @@ namespace Nethermind.Core.Crypto
                     nameof(keyBytes));
             }
 
-            KeyBytes = keyBytes;
+            KeyBytes = new byte[32];
+            keyBytes.AsSpan().CopyTo(KeyBytes);
         }
 
         public PublicKey PublicKey => LazyInitializer.EnsureInitialized(ref _publicKey, ComputePublicKey);
