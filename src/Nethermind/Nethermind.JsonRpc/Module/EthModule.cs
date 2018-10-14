@@ -40,17 +40,7 @@ namespace Nethermind.JsonRpc.Module
     public class EthModule : ModuleBase, IEthModule
     {
         private readonly IBlockchainBridge _blockchainBridge;
-
-        //private readonly IEthereumSigner _signer;
-        //private readonly IBlockTree _blockTree;
-        //private readonly ITransactionStore _transactionStore;
-        //private readonly ILogManager _logManager;
-        //private readonly IDb _db;
-        //private readonly IStateProvider _stateProvider;
-        //private readonly IKeyStore _keyStore;
-        //private readonly IJsonRpcConfig _jsonRpcConfig;
         private readonly IJsonRpcModelMapper _modelMapper;
-        //private readonly IReleaseSpec _releaseSpec;
 
         public EthModule(IJsonSerializer jsonSerializer, IConfigProvider configurationProvider, IJsonRpcModelMapper modelMapper, ILogManager logManager, IBlockchainBridge blockchainBridge) : base(configurationProvider, logManager, jsonSerializer)
         {
@@ -309,23 +299,13 @@ namespace Nethermind.JsonRpc.Module
 
         public ResultWrapper<Transaction> eth_getTransactionByHash(Data transactionHash)
         {
-            var transaction = _blockchainBridge.GetTransaction(new Keccak(transactionHash.Value));
+            (Core.TransactionReceipt receipt, Core.Transaction transaction)  = _blockchainBridge.GetTransaction(new Keccak(transactionHash.Value));
             if (transaction == null)
             {
                 return ResultWrapper<Transaction>.Fail($"Cannot find transaction for hash: {transactionHash.Value}", ErrorType.NotFound);
             }
-            var blockHash = _blockchainBridge.GetBlockHash(new Keccak(transactionHash.Value));
-            if (blockHash == null)
-            {
-                return ResultWrapper<Transaction>.Fail($"Cannot find block hash for transaction: {transactionHash.Value}", ErrorType.NotFound);
-            }
-            var block = _blockchainBridge.FindBlock(blockHash, false);
-            if (block == null)
-            {
-                return ResultWrapper<Transaction>.Fail($"Cannot find block for hash: {blockHash}", ErrorType.NotFound);
-            }
-
-            var transactionModel = _modelMapper.MapTransaction(transaction, block);
+            
+            var transactionModel = _modelMapper.MapTransaction(receipt, transaction);
             if(Logger.IsTrace) Logger.Trace($"eth_getTransactionByHash request {transactionHash.ToJson()}, result: {GetJsonLog(transactionModel.ToJson())}");
             return ResultWrapper<Transaction>.Success(transactionModel);
         }
@@ -342,13 +322,14 @@ namespace Nethermind.JsonRpc.Module
             {
                 return ResultWrapper<Transaction>.Fail("Position Index is required", ErrorType.InvalidParams);
             }
+            
             if (index.Value < 0 || index.Value > block.Transactions.Length - 1)
             {
                 return ResultWrapper<Transaction>.Fail("Position Index is incorrect", ErrorType.InvalidParams);
             }
 
             var transaction = block.Transactions[(int)index.Value];
-            var transactionModel = _modelMapper.MapTransaction(transaction, block);
+            var transactionModel = _modelMapper.MapTransaction(block.Hash, block.Number, (int)index.Value, transaction);
 
             Logger.Debug($"eth_getTransactionByBlockHashAndIndex request {blockHash.ToJson()}, index: {positionIndex.ToJson()}, result: {GetJsonLog(transactionModel.ToJson())}");
             return ResultWrapper<Transaction>.Success(transactionModel);
@@ -377,8 +358,9 @@ namespace Nethermind.JsonRpc.Module
                 return ResultWrapper<Transaction>.Fail("Position Index is incorrect", ErrorType.InvalidParams);
             }
 
-            var transaction = result.Data.Transactions[(int)index.Value];
-            var transactionModel = _modelMapper.MapTransaction(transaction, result.Data);
+            Core.Block block = result.Data;
+            var transaction = block.Transactions[(int)index.Value];
+            var transactionModel = _modelMapper.MapTransaction(block.Hash, block.Number, (int)index.Value, transaction);
 
             Logger.Debug($"eth_getTransactionByBlockNumberAndIndex request {blockParameter}, index: {positionIndex.ToJson()}, result: {GetJsonLog(transactionModel.ToJson())}");
             return ResultWrapper<Transaction>.Success(transactionModel);
@@ -392,23 +374,8 @@ namespace Nethermind.JsonRpc.Module
             {
                 return ResultWrapper<TransactionReceipt>.Fail($"Cannot find transactionReceipt for transaction hash: {txHash}", ErrorType.NotFound);
             }
-            var transaction = _blockchainBridge.GetTransaction(new Keccak(txHashData.Value));
-            if (transaction == null)
-            {
-                return ResultWrapper<TransactionReceipt>.Fail($"Cannot find transaction for hash: {txHash}", ErrorType.NotFound);
-            }
-            var blockHash = _blockchainBridge.GetBlockHash(new Keccak(txHashData.Value));
-            if (blockHash == null)
-            {
-                return ResultWrapper<TransactionReceipt>.Fail($"Cannot find block hash for transaction: {txHash}", ErrorType.NotFound);
-            }
-            var block = _blockchainBridge.FindBlock(blockHash, false);
-            if (block == null)
-            {
-                return ResultWrapper<TransactionReceipt>.Fail($"Cannot find block for hash: {blockHash}", ErrorType.NotFound);
-            }
 
-            var transactionReceiptModel = _modelMapper.MapTransactionReceipt(transactionReceipt, transaction, block);
+            var transactionReceiptModel = _modelMapper.MapTransactionReceipt(txHash, transactionReceipt);
             if(Logger.IsTrace) Logger.Trace($"eth_getTransactionReceipt request {txHashData.ToJson()}, result: {GetJsonLog(transactionReceiptModel.ToJson())}");
             return ResultWrapper<TransactionReceipt>.Success(transactionReceiptModel);
         }

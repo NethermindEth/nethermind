@@ -53,8 +53,7 @@ namespace Nethermind.Blockchain.Test
 
             /* store & validation */
             MemDb receiptsDb = new MemDb();
-            MemDb txDb = new MemDb();
-            TransactionStore transactionStore = new TransactionStore(receiptsDb, txDb, specProvider);
+            TransactionStore transactionStore = new TransactionStore(receiptsDb, specProvider);
             BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), specProvider, transactionStore, logger);
             DifficultyCalculator difficultyCalculator = new DifficultyCalculator(specProvider);
             HeaderValidator headerValidator = new HeaderValidator(blockTree, sealEngine, specProvider, logger);
@@ -119,11 +118,13 @@ namespace Nethermind.Blockchain.Test
                 });
 
             blockchainProcessor.AddTxData(blockTree.FindBlock(1));
-            Assert.AreNotEqual(0, receiptsDb.Keys.Count, "receipts");
-            Assert.AreNotEqual(0, txDb.Keys.Count, "txs");
 
             TxTracer tracer = new TxTracer(blockchainProcessor, transactionStore, blockTree);
+
+            blockchainProcessor.Process(blockTree.FindBlock(1), ProcessingOptions.ForceProcessing | ProcessingOptions.StoreReceipts, NullTraceListener.Instance);
+            Assert.AreNotEqual(0, receiptsDb.Keys.Count, "receipts");
             TransactionTrace trace = tracer.Trace(blockTree.FindBlock(1).Transactions[0].Hash);
+            
             Assert.AreSame(TransactionTrace.QuickFail, trace);
         }
     }

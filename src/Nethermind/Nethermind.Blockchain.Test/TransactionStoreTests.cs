@@ -34,28 +34,13 @@ namespace Nethermind.Blockchain.Test
         private static IEthereumSigner _signer = new EthereumSigner(_specProvider, NullLogManager.Instance);
         
         [Test]
-        public void Can_store_and_retrieve_tx_info()
-        {
-            TransactionStore store = new TransactionStore(new MemDb(), new MemDb(), _specProvider);
-
-            Transaction tx = Build.A.Transaction.Signed(_signer, TestObject.PrivateKeyA, 1).TestObject;
-            TransactionReceipt txReceipt = Build.A.TransactionReceipt.TestObject;
-            store.StoreProcessedTransaction(tx, txReceipt, TestObject.KeccakA, UInt256.One, 2);
-
-            TxInfo txInfo = store.GetTxInfo(tx.Hash);
-            Assert.AreEqual(TestObject.KeccakA, txInfo.BlockHash, "block hash");
-            Assert.AreEqual(UInt256.One, txInfo.BlockNumber, "block number");
-            Assert.AreEqual(2, txInfo.Index, "index");
-        }
-        
-        [Test]
         public void Can_store_and_retrieve_receipt()
         {
-            TransactionStore store = new TransactionStore(new MemDb(), new MemDb(), RopstenSpecProvider.Instance);
+            TransactionStore store = new TransactionStore(new MemDb(), RopstenSpecProvider.Instance);
 
             Transaction tx = Build.A.Transaction.Signed(_signer, TestObject.PrivateKeyA, 1).TestObject;
             TransactionReceipt txReceipt = Build.A.TransactionReceipt.WithState(TestObject.KeccakB).TestObject;
-            store.StoreProcessedTransaction(tx, txReceipt, TestObject.KeccakA, UInt256.One, 2);
+            store.StoreProcessedTransaction(tx.Hash, txReceipt);
 
             TransactionReceipt txReceiptRetrieved = store.GetReceipt(tx.Hash);
             Assert.AreEqual(txReceipt.PostTransactionState, txReceiptRetrieved.PostTransactionState, "state");

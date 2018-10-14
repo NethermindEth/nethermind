@@ -31,15 +31,13 @@ namespace Nethermind.Store.Rpc
             _recordDbProvider = recordDbProvider;
             StateDb = new StateDb(new ReadOnlyDb(new RpcDb(DbNames.State, serializer, client, logManager, recordDbProvider?.StateDb)));
             CodeDb = new StateDb(new ReadOnlyDb(new RpcDb(DbNames.Code, serializer, client, logManager, recordDbProvider?.CodeDb)));
-            TxDb = new StateDb(new ReadOnlyDb(new RpcDb(DbNames.Transactions, serializer, client, logManager, recordDbProvider?.TxDb)));
             ReceiptsDb = new StateDb(new ReadOnlyDb(new RpcDb(DbNames.Receipts, serializer, client, logManager, recordDbProvider?.ReceiptsDb)));
             BlocksDb = new StateDb(new ReadOnlyDb(new RpcDb(DbNames.Blocks, serializer, client, logManager, recordDbProvider?.BlocksDb)));
             BlockInfosDb = new StateDb(new ReadOnlyDb(new RpcDb(DbNames.BlockInfos, serializer, client, logManager, recordDbProvider?.BlockInfosDb)));
         }
         
         public ISnapshotableDb StateDb { get; }
-        public ISnapshotableDb CodeDb { get; }
-        public IDb TxDb { get; }
+        public ISnapshotableDb CodeDb { get; }        
         public IDb ReceiptsDb { get; }
         public IDb BlocksDb { get; }
         public IDb BlockInfosDb { get; }
@@ -48,7 +46,6 @@ namespace Nethermind.Store.Rpc
         {
             StateDb?.Dispose();
             CodeDb?.Dispose();
-            TxDb?.Dispose();
             ReceiptsDb?.Dispose();
             BlocksDb?.Dispose();
             BlockInfosDb?.Dispose();

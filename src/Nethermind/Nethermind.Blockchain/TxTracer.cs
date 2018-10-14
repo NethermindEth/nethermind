@@ -50,8 +50,8 @@ namespace Nethermind.Blockchain
 
         public TransactionTrace Trace(Keccak txHash)
         {
-            TxInfo txInfo = _txStore.GetTxInfo(txHash);
-            Block block = _blockTree.FindBlock(txInfo.BlockNumber);
+            TransactionReceipt receipt = _txStore.GetReceipt(txHash);
+            Block block = _blockTree.FindBlock(receipt.BlockNumber);
             if (block == null) throw new InvalidOperationException("Only historical blocks");
 
             return Trace(block, txHash);
@@ -82,7 +82,7 @@ namespace Nethermind.Blockchain
         private TransactionTrace Trace(Block block, Keccak txHash)
         {
             TraceListener listener = new TraceListener(txHash);
-            _processor.Process(block, ProcessingOptions.StoreTxReceipts, listener);
+            _processor.Process(block, ProcessingOptions.ForceProcessing, listener);
             return listener.Trace;
         }
 
@@ -97,7 +97,7 @@ namespace Nethermind.Blockchain
             }
 
             BlockTraceListener listener = new BlockTraceListener(block);
-            _processor.Process(block, ProcessingOptions.StoreTxReceipts, listener);
+            _processor.Process(block, ProcessingOptions.ForceProcessing, listener);
             return listener.BlockTrace;
         }
     }

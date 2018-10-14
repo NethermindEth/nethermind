@@ -38,10 +38,6 @@ namespace Nethermind.Db
                 Path.Combine(basePath, DbOnTheRocks.ReceiptsDbPath),
                 dbConfig);
             
-            TxDb = new DbOnTheRocks(
-                Path.Combine(basePath, DbOnTheRocks.TxsDbPath),
-                dbConfig);
-            
             StateDb = new StateDb(
                 new DbOnTheRocks(Path.Combine(basePath, DbOnTheRocks.StateDbPath), dbConfig));
             
@@ -51,7 +47,6 @@ namespace Nethermind.Db
         
         public ISnapshotableDb StateDb { get; }
         public ISnapshotableDb CodeDb { get; }
-        public IDb TxDb { get; }
         public IDb ReceiptsDb { get; }
         public IDb BlocksDb { get; }
         public IDb BlockInfosDb { get; }
@@ -60,7 +55,6 @@ namespace Nethermind.Db
         {
             StateDb?.Dispose();
             CodeDb?.Dispose();
-            TxDb?.Dispose();
             ReceiptsDb?.Dispose();
             BlocksDb?.Dispose();
             BlockInfosDb?.Dispose();

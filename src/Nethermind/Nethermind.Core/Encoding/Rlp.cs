@@ -69,7 +69,6 @@ namespace Nethermind.Core.Encoding
                 [typeof(NetworkNode)] = new NetworkNodeDecoder(),
                 [typeof(Transaction)] = new TransactionDecoder(),
                 [typeof(TransactionReceipt)] = new TransactionReceiptDecoder(),
-                [typeof(TxInfo)] = new TxInfoDecoder(),
             };
 
         public static T Decode<T>(Rlp oldRlp, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

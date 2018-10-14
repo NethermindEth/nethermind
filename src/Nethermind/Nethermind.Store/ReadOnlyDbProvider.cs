@@ -29,7 +29,6 @@ namespace Nethermind.Store
             _wrappedProvider = wrappedProvider ?? throw new ArgumentNullException(nameof(wrappedProvider));
             StateDb = new StateDb(new ReadOnlyDb(wrappedProvider.StateDb));
             CodeDb = new StateDb(new ReadOnlyDb(wrappedProvider.CodeDb));
-            TxDb = new ReadOnlyDb(wrappedProvider.TxDb);
             ReceiptsDb = new ReadOnlyDb(wrappedProvider.ReceiptsDb);
             BlockInfosDb = new ReadOnlyDb(wrappedProvider.BlockInfosDb);
             BlocksDb = new ReadOnlyDb(wrappedProvider.BlocksDb);
@@ -39,7 +38,6 @@ namespace Nethermind.Store
         {
             StateDb.Dispose();
             CodeDb.Dispose();
-            TxDb.Dispose();
             ReceiptsDb.Dispose();
             BlockInfosDb.Dispose();
             BlocksDb.Dispose();
@@ -47,7 +45,6 @@ namespace Nethermind.Store
 
         public ISnapshotableDb StateDb { get; }
         public ISnapshotableDb CodeDb { get; }
-        public IDb TxDb { get; }
         public IDb ReceiptsDb { get; }
         public IDb BlocksDb { get; }
         public IDb BlockInfosDb { get; }

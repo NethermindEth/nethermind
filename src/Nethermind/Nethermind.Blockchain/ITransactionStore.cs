@@ -25,9 +25,8 @@ namespace Nethermind.Blockchain
 {
     public interface ITransactionStore
     {
-        void StoreProcessedTransaction(Transaction transaction, TransactionReceipt receipt, Keccak blockHash, UInt256 blockNumber, int index);
+        void StoreProcessedTransaction(Keccak txHash, TransactionReceipt receipt);
         TransactionReceipt GetReceipt(Keccak txHash);
-        TxInfo GetTxInfo(Keccak txHash);
         
         // tks: there will be split of TxPool and TxStore where one is responsible for pooling and serving txs for mining and broadcast and the other for storing processed txs and receipts
         AddTransactionResult AddPending(Transaction transaction);

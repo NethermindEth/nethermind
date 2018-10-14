@@ -33,7 +33,7 @@ namespace Nethermind.Blockchain
     public class BlockchainProcessor : IBlockchainProcessor
     {
         private readonly IBlockProcessor _blockProcessor;
-        private readonly IEthereumSigner _signer;
+        private readonly IEthereumSigner _signer;        
         private readonly IBlockTree _blockTree;
         private readonly ILogger _logger;
 
@@ -212,7 +212,7 @@ namespace Nethermind.Blockchain
 
         public void AddTxData(Block block)
         {
-            Process(block, ProcessingOptions.StoreTxReceipts, NullTraceListener.Instance);
+            Process(block, ProcessingOptions.ForceProcessing | ProcessingOptions.StoreReceipts, NullTraceListener.Instance);
         }
 
         public event EventHandler ProcessingQueueEmpty;
@@ -227,7 +227,7 @@ namespace Nethermind.Blockchain
             if (_logger.IsTrace) _logger.Trace($"Total transactions of block {suggestedBlock.ToString(Block.Format.Short)} is {totalTransactions}");
 
             Block[] processedBlocks = null;
-            if (suggestedBlock.IsGenesis || totalDifficulty > (_blockTree.Head?.TotalDifficulty ?? 0) || options.HasFlag(ProcessingOptions.StoreTxReceipts))
+            if (suggestedBlock.IsGenesis || totalDifficulty > (_blockTree.Head?.TotalDifficulty ?? 0) || options.HasFlag(ProcessingOptions.ForceProcessing))
             {
                 List<Block> blocksToBeAddedToMain = new List<Block>();
                 Block toBeProcessed = suggestedBlock;
@@ -257,22 +257,32 @@ namespace Nethermind.Blockchain
                 if (_logger.IsTrace) _logger.Trace($"State root lookup: {stateRoot}");
 
                 List<Block> unprocessedBlocksToBeAddedToMain = new List<Block>();
-                foreach (Block block in blocksToBeAddedToMain)
+                Block[] blocks;
+                if (options.HasFlag(ProcessingOptions.ForceProcessing))
                 {
-                    if (_blockTree.WasProcessed(block.Hash))
-                    {
-                        stateRoot = block.Header.StateRoot;
-                        if (_logger.IsTrace) _logger.Trace($"State root lookup: {stateRoot}");
-                        break;
-                    }
-
-                    unprocessedBlocksToBeAddedToMain.Add(block);
+                    blocksToBeAddedToMain.Clear();
+                    blocks = new Block[1];
+                    blocks[0] = suggestedBlock;
                 }
-
-                var blocks = new Block[unprocessedBlocksToBeAddedToMain.Count];
-                for (int i = 0; i < unprocessedBlocksToBeAddedToMain.Count; i++)
+                else
                 {
-                    blocks[blocks.Length - i - 1] = unprocessedBlocksToBeAddedToMain[i];
+                    foreach (Block block in blocksToBeAddedToMain)
+                    {
+                        if (block.Hash != null && _blockTree.WasProcessed(block.Hash))
+                        {
+                            stateRoot = block.Header.StateRoot;
+                            if (_logger.IsTrace) _logger.Trace($"State root lookup: {stateRoot}");
+                            break;
+                        }
+
+                        unprocessedBlocksToBeAddedToMain.Add(block);
+                    }
+                    
+                    blocks = new Block[unprocessedBlocksToBeAddedToMain.Count];
+                    for (int i = 0; i < unprocessedBlocksToBeAddedToMain.Count; i++)
+                    {
+                        blocks[blocks.Length - i - 1] = unprocessedBlocksToBeAddedToMain[i];
+                    }
                 }
 
                 if (_logger.IsTrace) _logger.Trace($"Processing {blocks.Length} blocks from state root {stateRoot}");
@@ -286,8 +296,8 @@ namespace Nethermind.Blockchain
                     }
                 }
 
-                processedBlocks = _blockProcessor.Process(stateRoot, blocks, options.HasFlag(ProcessingOptions.ReadOnlyChain), options.HasFlag(ProcessingOptions.StoreTxReceipts), traceListener);
-                if (!options.HasFlag(ProcessingOptions.ReadOnlyChain))
+                processedBlocks = _blockProcessor.Process(stateRoot, blocks, options.HasFlag(ProcessingOptions.ReadOnlyChain), options.HasFlag(ProcessingOptions.StoreReceipts), traceListener);
+                if (!options.HasFlag(ProcessingOptions.ReadOnlyChain) && !options.HasFlag(ProcessingOptions.ForceProcessing))
                 {
                     // TODO: lots of unnecessary loading and decoding here, review after adding support for loading headers only
                     List<BlockHeader> blocksToBeRemovedFromMain = new List<BlockHeader>();

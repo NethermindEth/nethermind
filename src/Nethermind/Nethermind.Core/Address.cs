@@ -22,6 +22,7 @@ using System.Numerics;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Core
 {
@@ -113,7 +114,7 @@ namespace Nethermind.Core
             return new Address(number.ToBigEndianByteArray(20));
         }
 
-        public static Address OfContract(Address deployingAddress, BigInteger nonce)
+        public static Address OfContract(Address deployingAddress, UInt256 nonce)
         {
             Keccak contractAddressKeccak =
                 Keccak.Compute(

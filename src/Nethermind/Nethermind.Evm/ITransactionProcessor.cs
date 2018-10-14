@@ -17,12 +17,11 @@
  */
 
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 
 namespace Nethermind.Evm
 {
     public interface ITransactionProcessor
     {
-        (TransactionReceipt Receipt, TransactionTrace Trace) Execute(Transaction transaction, BlockHeader block, bool shouldTrace);
+        (TransactionReceipt Receipt, TransactionTrace Trace) Execute(int index, Transaction transaction, BlockHeader block, bool shouldTrace);
     }
 }

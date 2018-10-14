@@ -29,6 +29,10 @@ using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.KeyStore;
 using Nethermind.Store;
+using Block = Nethermind.Core.Block;
+using Transaction = Nethermind.Core.Transaction;
+using TransactionReceipt = Nethermind.Core.TransactionReceipt;
+using TransactionTrace = Nethermind.Evm.TransactionTrace;
 
 namespace Nethermind.JsonRpc.Module
 {
@@ -64,10 +68,9 @@ namespace Nethermind.JsonRpc.Module
             _stateDb = dbProvider?.StateDb ?? throw new ArgumentNullException(nameof(dbProvider.StateDb));
             _transactionStore = transactionStore ?? throw new ArgumentNullException(nameof(transactionStore));
             _filterStore = filterStore ?? throw new ArgumentException(nameof(filterStore));
-            
+
             IDb blockInfosDb = dbProvider?.BlockInfosDb ?? throw new ArgumentNullException(nameof(dbProvider.BlockInfosDb));
             IDb blocksDb = dbProvider?.BlocksDb ?? throw new ArgumentNullException(nameof(dbProvider.BlocksDb));
-            IDb txDb = dbProvider?.TxDb ?? throw new ArgumentNullException(nameof(dbProvider.TxDb));
             IDb receiptsDb = dbProvider?.ReceiptsDb ?? throw new ArgumentNullException(nameof(dbProvider.ReceiptsDb));
             IDb codeDb = dbProvider?.CodeDb ?? throw new ArgumentNullException(nameof(dbProvider.CodeDb));
 
@@ -78,7 +81,6 @@ namespace Nethermind.JsonRpc.Module
                 {DbNames.BlockInfos, blockInfosDb},
                 {DbNames.Blocks, blocksDb},
                 {DbNames.Code, codeDb},
-                {DbNames.Transactions, txDb},
                 {DbNames.Receipts, receiptsDb}
             };
         }
@@ -129,21 +131,26 @@ namespace Nethermind.JsonRpc.Module
             _blockchainProcessor.AddTxData(block);
         }
 
-        public Transaction GetTransaction(Keccak transactionHash)
+        public (TransactionReceipt, Transaction) GetTransaction(Keccak transactionHash)
         {
-            TxInfo txInfo = _transactionStore.GetTxInfo(transactionHash);
-            Block block = _blockTree.FindBlock(txInfo.BlockHash, true);
-            return block.Transactions[txInfo.Index];
+            TransactionReceipt receipt = _transactionStore.GetReceipt(transactionHash);
+            if (receipt.BlockHash == null)
+            {
+                return (null, null);
+            }
+
+            Block block = _blockTree.FindBlock(receipt.BlockHash, true);
+            return (receipt, block.Transactions[receipt.Index]);
         }
 
         public Keccak GetBlockHash(Keccak transactionHash)
         {
-            return _transactionStore.GetTxInfo(transactionHash).BlockHash;
+            return _transactionStore.GetReceipt(transactionHash).BlockHash;
         }
 
         public Keccak SendTransaction(Transaction transaction)
         {
-            PrivateKey mock = new PrivateKeyProvider(new CryptoRandom()).PrivateKey;
+            PrivateKey mock = new PrivateKey(Keccak.OfAnEmptyString.Bytes);
             transaction.SenderAddress = mock.Address;
             _signer.Sign(mock, transaction, _blockTree.Head.Number);
             transaction.Hash = Transaction.CalculateHash(transaction);
@@ -162,9 +169,9 @@ namespace Nethermind.JsonRpc.Module
             return transaction.Hash;
         }
 
-        public TransactionReceipt GetTransactionReceipt(Keccak transactionHash)
+        public TransactionReceipt GetTransactionReceipt(Keccak txHash)
         {
-            return _transactionStore.GetReceipt(transactionHash);
+            return _transactionStore.GetReceipt(txHash);
         }
 
         public TransactionTrace GetTransactionTrace(Keccak transactionHash)
@@ -227,8 +234,8 @@ namespace Nethermind.JsonRpc.Module
         {
             return _blockTree.ChainId;
         }
-        
-        public int NewFilter(FilterBlock fromBlock, FilterBlock toBlock, 
+
+        public int NewFilter(FilterBlock fromBlock, FilterBlock toBlock,
             object address = null, IEnumerable<object> topics = null)
         {
             return _filterStore.CreateFilter(fromBlock, toBlock, address, topics).FilterId;
