@@ -19,6 +19,7 @@
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Blockchain.Filters.Topics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
@@ -41,15 +42,10 @@ namespace Nethermind.Blockchain.Filters
             return blockFilter;
         }
 
-        public Filter CreateFilter(FilterBlock fromBlock, FilterBlock toBlock, object address = null, IEnumerable<object> topics = null)
+        public Filter CreateFilter(FilterBlock fromBlock, FilterBlock toBlock, 
+            object address = null, IEnumerable<object> topics = null)
         {
-            Filter filter = new Filter
-            (
-                fromBlock,
-                toBlock,
-                GetAddress(address).Address,
-                GetTopics(topics)
-            );
+            var filter = new Filter(fromBlock, toBlock, GetAddress(address), GetTopicsFilter(topics));
             AddFilter(filter);
 
             return filter;
@@ -65,6 +61,35 @@ namespace Nethermind.Blockchain.Filters
             filter.FilterId = _filters.Any() ? _filters.Max(f => f.Key) + 1 : 1;
             _filters[filter.FilterId] = filter;
         }
+        
+        private TopicsFilter GetTopicsFilter(IEnumerable<object> topics = null)
+        {
+            var filterTopics = GetFilterTopics(topics);
+            var expressions = new List<TopicExpression>();
+
+            for (int i = 0; i < filterTopics.Length; i++)
+            {
+                var filterTopic = filterTopics[i];
+                var orExpression = new OrExpression(new[]
+                {
+                    GetTopicExpression(filterTopic.First),
+                    GetTopicExpression(filterTopic.Second)
+                });
+                expressions.Add(orExpression);
+            }
+
+            return new TopicsFilter(expressions.ToArray());
+        }
+        
+        private TopicExpression GetTopicExpression(Keccak topic)
+        {
+            if (topic == null)
+            {
+                return new AnyTopic();
+            }
+
+            return new SpecificTopic(topic);
+        }
 
         private static FilterAddress GetAddress(object address)
         {
@@ -77,9 +102,9 @@ namespace Nethermind.Blockchain.Filters
                 };
         }
 
-        private static IEnumerable<FilterTopic> GetTopics(IEnumerable<object> topics)
+        private static FilterTopic[] GetFilterTopics(IEnumerable<object> topics)
         {
-            return topics?.Select(GetTopic);
+            return topics?.Select(GetTopic).ToArray();
         }
 
         private static FilterTopic GetTopic(object obj)
