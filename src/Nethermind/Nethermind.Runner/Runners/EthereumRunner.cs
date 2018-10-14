@@ -339,11 +339,11 @@ namespace Nethermind.Runner.Runners
 
             EthereumSigner = ethereumSigner;
 
-            if (_initConfig.IsMining)
-            {
-                var producer = new DevBlockProducer(transactionStore, _blockchainProcessor, _blockTree, _logManager);
-                producer.Start();
-            }
+//            if (_initConfig.IsMining)
+//            {
+//                var producer = new DevBlockProducer(transactionStore, _blockchainProcessor, _blockTree, _logManager);
+//                producer.Start();
+//            }
             
             _blockchainProcessor.Start();
             LoadGenesisBlock(chainSpec,
@@ -440,9 +440,9 @@ namespace Nethermind.Runner.Runners
 
         private ISealEngine ConfigureSealEngine()
         {
-            var sealEngine = NullSealEngine.Instance;
-//            var difficultyCalculator = new DifficultyCalculator(_specProvider);
-//            var sealEngine = new EthashSealEngine(new Ethash(_logManager), difficultyCalculator, _logManager);
+//            var sealEngine = NullSealEngine.Instance;
+            var difficultyCalculator = new DifficultyCalculator(_specProvider);
+            var sealEngine = new EthashSealEngine(new Ethash(_logManager), difficultyCalculator, _logManager);
 
 //            var blockMiningTime = TimeSpan.FromMilliseconds(_initConfig.FakeMiningDelay);
 //            var sealEngine = new FakeSealEngine(blockMiningTime, false);
