@@ -138,10 +138,10 @@ namespace Nethermind.KeyStore
             }
         }
 
-        public int InputBlockSize { get { return _symmetricAlgorithm.BlockSize / 8; } }
-        public int OutputBlockSize { get { return _symmetricAlgorithm.BlockSize / 8; } }
-        public bool CanTransformMultipleBlocks { get { return true; } }
-        public bool CanReuseTransform { get { return false; } }
+        public int InputBlockSize => _symmetricAlgorithm.BlockSize / 8;
+        public int OutputBlockSize => _symmetricAlgorithm.BlockSize / 8;
+        public bool CanTransformMultipleBlocks => true;
+        public bool CanReuseTransform => false;
 
         public void Dispose()
         {

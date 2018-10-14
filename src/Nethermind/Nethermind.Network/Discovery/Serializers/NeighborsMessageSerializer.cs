@@ -33,10 +33,10 @@ namespace Nethermind.Network.Discovery.Serializers
     {
         public NeighborsMessageSerializer(
             ISigner signer,
-            IPrivateKeyProvider privateKeyProvider,
+            IPrivateKeyGenerator privateKeyGenerator,
             IDiscoveryMessageFactory messageFactory,
             INodeIdResolver nodeIdResolver,
-            INodeFactory nodeFactory) : base(signer, privateKeyProvider, messageFactory, nodeIdResolver, nodeFactory)
+            INodeFactory nodeFactory) : base(signer, privateKeyGenerator, messageFactory, nodeIdResolver, nodeFactory)
         {
         }
 

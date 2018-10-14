@@ -18,7 +18,7 @@
 
 namespace Nethermind.KeyStore
 {
-    public class KDFParams
+    public class KdfParams
     {
         public int DkLen { get; set; }
         public int N { get; set; }

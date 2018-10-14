@@ -36,10 +36,12 @@ namespace Nethermind.Network.Crypto
     {
         private const int KeySize = 128;
         private readonly ICryptoRandom _cryptoRandom;
+        private PrivateKeyGenerator _keyGenerator;
 
         public EciesCipher(ICryptoRandom cryptoRandom)
         {
             _cryptoRandom = cryptoRandom;
+            _keyGenerator = new PrivateKeyGenerator(cryptoRandom);
         }
 
         public byte[] Decrypt(PrivateKey privateKey, byte[] ciphertextBody, byte[] macData = null)
@@ -61,7 +63,7 @@ namespace Nethermind.Network.Crypto
         public byte[] Encrypt(PublicKey recipientPublicKey, byte[] plaintext, byte[] macData)
         {
             byte[] iv = _cryptoRandom.GenerateRandomBytes(KeySize / 8);
-            PrivateKey ephemeralPrivateKey = new PrivateKeyProvider(_cryptoRandom).PrivateKey;
+            PrivateKey ephemeralPrivateKey = _keyGenerator.Generate();
 
             ECPublicKeyParameters publicKeyParameters = BouncyCrypto.WrapPublicKey(recipientPublicKey);
             ECPrivateKeyParameters ephemeralPrivateKeyParameters = BouncyCrypto.WrapPrivateKey(ephemeralPrivateKey);

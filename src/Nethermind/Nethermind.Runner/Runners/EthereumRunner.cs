@@ -58,6 +58,7 @@ using Nethermind.Runner.Config;
 using Nethermind.Stats;
 using Nethermind.Store;
 using Nethermind.Store.Rpc;
+using Nethermind.Wallet;
 using PingMessageSerializer = Nethermind.Network.P2P.PingMessageSerializer;
 using PongMessageSerializer = Nethermind.Network.P2P.PongMessageSerializer;
 
@@ -73,7 +74,7 @@ namespace Nethermind.Runner.Runners
         private readonly IInitConfig _initConfig;
         private readonly INetworkHelper _networkHelper;
 
-        private PrivateKey _privateKey;
+        private PrivateKey _nodeKey;
         private ICryptoRandom _cryptoRandom = new CryptoRandom();
         private IJsonSerializer _jsonSerializer = new UnforgivingJsonSerializer();
         private ISigner _signer = new Signer();
@@ -132,17 +133,17 @@ namespace Nethermind.Runner.Runners
                 if (!File.Exists(UnsecuredNodeKeyFilePath))
                 {
                     if (_logger.IsInfo) _logger.Info("Generating private key for the node (no node key in configuration)");
-                    _privateKey = new PrivateKeyProvider(_cryptoRandom).PrivateKey;
-                    File.WriteAllBytes(UnsecuredNodeKeyFilePath, _privateKey.KeyBytes);
+                    _nodeKey = new PrivateKeyGenerator(_cryptoRandom).Generate();
+                    File.WriteAllBytes(UnsecuredNodeKeyFilePath, _nodeKey.KeyBytes);
                 }
                 else
                 {
-                    _privateKey = new PrivateKey(File.ReadAllBytes(UnsecuredNodeKeyFilePath));
+                    _nodeKey = new PrivateKey(File.ReadAllBytes(UnsecuredNodeKeyFilePath));
                 }
             }
             else
             {
-                _privateKey = new PrivateKey(_initConfig.TestNodeKey);
+                _nodeKey = new PrivateKey(_initConfig.TestNodeKey);
             }
 
             _dbBasePath = _initConfig.BaseDbPath ?? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "db");
@@ -329,21 +330,21 @@ namespace Nethermind.Runner.Runners
             BlockchainBridge = new BlockchainBridge(
                 ethereumSigner,
                 stateProvider,
-                _keyStore,
                 _blockTree,
                 _blockchainProcessor,
                 txTracer,
                 _dbProvider,
                 transactionStore,
-                new FilterStore());
+                new FilterStore(),
+                new DevWallet(_logManager));
 
             EthereumSigner = ethereumSigner;
 
-//            if (_initConfig.IsMining)
-//            {
-//                var producer = new DevBlockProducer(transactionStore, _blockchainProcessor, _blockTree, _logManager);
-//                producer.Start();
-//            }
+            if (_initConfig.IsMining)
+            {
+                var producer = new DevBlockProducer(transactionStore, _blockchainProcessor, _blockTree, _logManager);
+                producer.Start();
+            }
             
             _blockchainProcessor.Start();
             LoadGenesisBlock(chainSpec,
@@ -435,7 +436,7 @@ namespace Nethermind.Runner.Runners
 
             var localIp = _networkHelper.GetLocalIp();
             if (_logger.IsInfo) _logger.Info($"Node is up and listening on {localIp}:{_initConfig.P2PPort}");
-            if (_logger.IsInfo) _logger.Info($"enode://{_privateKey.PublicKey}@{localIp}:{_initConfig.P2PPort}");
+            if (_logger.IsInfo) _logger.Info($"enode://{_nodeKey.PublicKey}@{localIp}:{_initConfig.P2PPort}");
         }
 
         private ISealEngine ConfigureSealEngine()
@@ -534,7 +535,7 @@ namespace Nethermind.Runner.Runners
             _messageSerializationService.Register(new AuthEip8MessageSerializer(eip8Pad));
             _messageSerializationService.Register(new AckEip8MessageSerializer(eip8Pad));
             var encryptionHandshakeServiceA = new EncryptionHandshakeService(_messageSerializationService, eciesCipher,
-                _cryptoRandom, new Signer(), _privateKey, _logManager);
+                _cryptoRandom, new Signer(), _nodeKey, _logManager);
 
             /* p2p */
             _messageSerializationService.Register(new HelloMessageSerializer());
@@ -552,7 +553,7 @@ namespace Nethermind.Runner.Runners
             _messageSerializationService.Register(new BlockBodiesMessageSerializer());
             _messageSerializationService.Register(new NewBlockMessageSerializer());
 
-            _rlpxPeer = new RlpxPeer(new NodeId(_privateKey.PublicKey), _initConfig.P2PPort,
+            _rlpxPeer = new RlpxPeer(new NodeId(_nodeKey.PublicKey), _initConfig.P2PPort,
                 _syncManager,
                 _messageSerializationService,
                 encryptionHandshakeServiceA,
@@ -584,7 +585,7 @@ namespace Nethermind.Runner.Runners
         {
             _configProvider.GetConfig<INetworkConfig>().MasterPort = _initConfig.DiscoveryPort;
 
-            var privateKeyProvider = new PrivateKeyProvider(_privateKey);
+            var privateKeyProvider = new SameKeyGenerator(_nodeKey);
             var discoveryMessageFactory = new DiscoveryMessageFactory(_configProvider);
             var nodeIdResolver = new NodeIdResolver(_signer);
 
@@ -651,7 +652,7 @@ namespace Nethermind.Runner.Runners
                 _configProvider,
                 _logManager, _perfService);
 
-            _discoveryApp.Initialize(_privateKey.PublicKey);
+            _discoveryApp.Initialize(_nodeKey.PublicKey);
         }
 
         private Task StartDiscovery()

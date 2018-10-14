@@ -37,15 +37,13 @@ namespace Nethermind.Runner
     public abstract class RunnerAppBase
     {
         protected ILogger Logger;
-        protected readonly IPrivateKeyProvider PrivateKeyProvider;
         private IJsonRpcRunner _jsonRpcRunner = NullRunner.Instance;
         private IEthereumRunner _ethereumRunner = NullRunner.Instance;
         private TaskCompletionSource<object> _cancelKeySource;
 
-        protected RunnerAppBase(ILogger logger, IPrivateKeyProvider privateKeyProvider)
+        protected RunnerAppBase(ILogger logger)
         {
             Logger = logger;
-            PrivateKeyProvider = privateKeyProvider;
             AppDomain.CurrentDomain.ProcessExit += CurrentDomainOnProcessExit;
         }
 

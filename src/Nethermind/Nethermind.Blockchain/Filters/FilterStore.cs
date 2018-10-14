@@ -29,7 +29,10 @@ namespace Nethermind.Blockchain.Filters
     {
         private readonly ConcurrentDictionary<int, FilterBase> _filters = new ConcurrentDictionary<int, FilterBase>();
 
-        public IReadOnlyCollection<Filter> GetAll() => _filters.Select(f => f.Value).OfType<Filter>().ToList();
+        public IReadOnlyCollection<Filter> GetAll()
+        {
+            return _filters.Select(f => f.Value).OfType<Filter>().ToList();
+        }
 
         public BlockFilter CreateBlockFilter(UInt256 startBlockNumber)
         {
@@ -40,7 +43,7 @@ namespace Nethermind.Blockchain.Filters
 
         public Filter CreateFilter(FilterBlock fromBlock, FilterBlock toBlock, object address = null, IEnumerable<object> topics = null)
         {
-            var filter = new Filter
+            Filter filter = new Filter
             (
                 fromBlock,
                 toBlock,
@@ -51,7 +54,12 @@ namespace Nethermind.Blockchain.Filters
 
             return filter;
         }
-        
+
+        public void RemoveFilter(int filterId)
+        {
+            _filters.TryRemove(filterId, out _);
+        }
+
         private void AddFilter(FilterBase filter)
         {
             filter.FilterId = _filters.Any() ? _filters.Max(f => f.Key) + 1 : 1;
@@ -59,16 +67,20 @@ namespace Nethermind.Blockchain.Filters
         }
 
         private static FilterAddress GetAddress(object address)
-            => address is null
+        {
+            return address is null
                 ? null
                 : new FilterAddress
                 {
                     Address = address is string s ? new Address(s) : null,
                     Addresses = address is IEnumerable<string> e ? e.Select(a => new Address(a)).ToList() : null
                 };
+        }
 
         private static IEnumerable<FilterTopic> GetTopics(IEnumerable<object> topics)
-            => topics?.Select(GetTopic);
+        {
+            return topics?.Select(GetTopic);
+        }
 
         private static FilterTopic GetTopic(object obj)
         {
@@ -84,13 +96,13 @@ namespace Nethermind.Blockchain.Filters
             }
 
             var topics = (obj as IEnumerable<string>)?.ToList();
-            var first = topics?.FirstOrDefault();
-            var second = topics?.Skip(1).FirstOrDefault();
+            string first = topics?.FirstOrDefault();
+            string second = topics?.Skip(1).FirstOrDefault();
 
             return new FilterTopic
             {
                 First = first is null ? null : new Keccak(first),
-                Second = second is null ? null : new Keccak(second),
+                Second = second is null ? null : new Keccak(second)
             };
         }
     }
