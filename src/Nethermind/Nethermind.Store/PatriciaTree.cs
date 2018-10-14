@@ -40,10 +40,9 @@ namespace Nethermind.Store
         public static readonly Keccak EmptyTreeHash = Keccak.EmptyTreeHash;
 
         /// <summary>
-        /// Note at the moment this can be static because we never add to any two different Patricia trees in parallel
-        /// THis would be receipts, transactions, state, storage - all of them are sequential so only on etree at the time uses NodeStack
+        /// To save allocations this used to be static but this caused one of the hardest to reproduce issues when we actually decided to run some of the tree operations in parallel.
         /// </summary>
-        private static readonly Stack<StackedNode> NodeStack = new Stack<StackedNode>(); // TODO: if switching to parallel then need to pool tree operations with separate node stacks?, if...
+        private readonly Stack<StackedNode> _nodeStack = new Stack<StackedNode>();
 
         private static readonly ConcurrentQueue<Exception> CommitExceptions = new ConcurrentQueue<Exception>();
 
