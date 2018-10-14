@@ -25,6 +25,7 @@ namespace Nethermind.Core.Encoding
     {
         public TransactionReceipt Decode(Rlp.DecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
+            bool isStorage = rlpBehaviors.HasFlag(RlpBehaviors.Storage);
             TransactionReceipt receipt = new TransactionReceipt();
             context.ReadSequenceLength();
             byte[] firstItem = context.DecodeByteArray();
@@ -37,7 +38,14 @@ namespace Nethermind.Core.Encoding
                 receipt.PostTransactionState = firstItem.Length == 0 ? null : new Keccak(firstItem);
             }
 
-            receipt.GasUsed = (long)context.DecodeUBigInt(); // TODO: review
+            if(isStorage) receipt.BlockHash = context.DecodeKeccak();
+            if(isStorage) receipt.BlockNumber = context.DecodeUInt256();
+            if(isStorage) receipt.Index = context.DecodeInt();
+            if(isStorage) receipt.Sender = context.DecodeAddress();
+            if(isStorage) receipt.Recipient = context.DecodeAddress();
+            if(isStorage) receipt.ContractAddress = context.DecodeAddress();
+            if(isStorage) receipt.GasUsed = (long) context.DecodeUBigInt();
+            receipt.GasUsedTotal = (long) context.DecodeUBigInt();
             receipt.Bloom = context.DecodeBloom();
 
             int lastCheck = context.ReadSequenceLength() + context.Position;
@@ -59,9 +67,25 @@ namespace Nethermind.Core.Encoding
 
         public Rlp Encode(TransactionReceipt item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
+            if (rlpBehaviors.HasFlag(RlpBehaviors.Storage))
+            {
+                return Rlp.Encode(
+                    rlpBehaviors.HasFlag(RlpBehaviors.Eip658Receipts) ? Rlp.Encode(item.StatusCode) : Rlp.Encode(item.PostTransactionState),
+                    Rlp.Encode(item.BlockHash),
+                    Rlp.Encode(item.BlockNumber),
+                    Rlp.Encode(item.Index),
+                    Rlp.Encode(item.Sender),
+                    Rlp.Encode(item.Recipient),
+                    Rlp.Encode(item.ContractAddress),
+                    Rlp.Encode(item.GasUsed),
+                    Rlp.Encode(item.GasUsedTotal),
+                    Rlp.Encode(item.Bloom),
+                    Rlp.Encode(item.Logs));
+            }
+
             return Rlp.Encode(
                 rlpBehaviors.HasFlag(RlpBehaviors.Eip658Receipts) ? Rlp.Encode(item.StatusCode) : Rlp.Encode(item.PostTransactionState),
-                Rlp.Encode(item.GasUsed),
+                Rlp.Encode(item.GasUsedTotal),
                 Rlp.Encode(item.Bloom),
                 Rlp.Encode(item.Logs));
         }

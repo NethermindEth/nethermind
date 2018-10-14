@@ -30,28 +30,22 @@ namespace Nethermind.Blockchain
 {
     public class TransactionStore : ITransactionStore
     {
-        private readonly IDb _txDb;
         private readonly IDb _receiptsDb;
         private readonly ISpecProvider _specProvider;
         private readonly ConcurrentDictionary<Keccak, Transaction> _pending = new ConcurrentDictionary<Keccak, Transaction>();
 
-        public TransactionStore(IDb receiptsDb, IDb txDb, ISpecProvider specProvider)
+        public TransactionStore(IDb receiptsDb, ISpecProvider specProvider)
         {
-            _receiptsDb = receiptsDb;
-            _txDb = txDb;
+            _receiptsDb = receiptsDb;            
             _specProvider = specProvider;
         }
         
-        public void StoreProcessedTransaction(Transaction transaction, TransactionReceipt receipt, Keccak blockHash, UInt256 blockNumber, int index)
+        public void StoreProcessedTransaction(Keccak txHash, TransactionReceipt receipt)
         {
             if(receipt == null) throw new ArgumentNullException(nameof(receipt));
-            if(transaction == null) throw new ArgumentNullException(nameof(transaction));
             
-            IReleaseSpec spec = _specProvider.GetSpec(blockNumber);
-            _receiptsDb.Set(transaction.Hash, Rlp.Encode(receipt, spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None).Bytes);
-            
-            TxInfo txInfo = new TxInfo(blockHash, blockNumber, index);
-            _txDb.Set(transaction.Hash, Rlp.Encode(txInfo).Bytes);
+            IReleaseSpec spec = _specProvider.GetSpec(receipt.BlockNumber);
+            _receiptsDb.Set(txHash, Rlp.Encode(receipt, spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts | RlpBehaviors.Storage: RlpBehaviors.Storage).Bytes);
         }
 
         public TransactionReceipt GetReceipt(Keccak txHash)
@@ -63,13 +57,7 @@ namespace Nethermind.Blockchain
             }
             
             Rlp rlp = new Rlp(receiptData);
-            return Rlp.Decode<TransactionReceipt>(rlp);
-        }
-
-        public TxInfo GetTxInfo(Keccak txHash)
-        {
-            Rlp rlp = new Rlp(_txDb.Get(txHash));
-            return Rlp.Decode<TxInfo>(rlp);
+            return Rlp.Decode<TransactionReceipt>(rlp, RlpBehaviors.Storage);
         }
 
         public AddTransactionResult AddPending(Transaction transaction)

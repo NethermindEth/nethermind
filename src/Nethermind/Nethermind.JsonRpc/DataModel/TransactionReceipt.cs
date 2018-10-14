@@ -16,7 +16,6 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -30,6 +29,8 @@ namespace Nethermind.JsonRpc.DataModel
         public Quantity BlockNumber { get; set; }
         public Quantity CumulativeGasUsed { get; set; }
         public Quantity GasUsed { get; set; }
+        public Data From { get; set; }
+        public Data To { get; set; }
         public Data ContractAddress { get; set; }
         public IEnumerable<Log> Logs { get; set; }
         public Data LogsBloom { get; set; }
@@ -46,6 +47,8 @@ namespace Nethermind.JsonRpc.DataModel
                 blockNumber = BlockNumber?.ToJson(),
                 cumulativeGasUsed = CumulativeGasUsed?.ToJson(),
                 gasUsed = GasUsed?.ToJson(),
+                from = From?.ToJson(),
+                to = To?.ToJson(),
                 contractAddress = ContractAddress?.ToJson(),
                 logs = Logs?.Select(x => x.ToJson()).ToArray(),
                 logsBloom = LogsBloom?.ToJson(),

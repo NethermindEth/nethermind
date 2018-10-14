@@ -17,6 +17,7 @@
  */
 
 using Nethermind.Core.Crypto;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Core
 {
@@ -27,15 +28,21 @@ namespace Nethermind.Core
         /// </summary>
         public byte StatusCode { get; set; }
 
+        public UInt256 BlockNumber { get; set; }
+        public Keccak BlockHash { get; set; }
+        public int Index { get; set; }
+        public long GasUsed { get; set; }
+        public long GasUsedTotal { get; set; }
+        public Address Sender { get; set; }
+        public Address ContractAddress { get; set; }
+        public Address Recipient { get; set; }
+        
         /// <summary>
         ///     Removed in EIP-658
         /// </summary>
         public Keccak PostTransactionState { get; set; }
-
-        public long GasUsed { get; set; }
         public Bloom Bloom { get; set; }
         public LogEntry[] Logs { get; set; }
-        public Address Recipient { get; set; }
         public string Error { get; set; }
     }
 }

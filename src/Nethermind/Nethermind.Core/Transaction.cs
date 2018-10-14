@@ -40,9 +40,8 @@ namespace Nethermind.Core
         public bool IsSigned => Signature != null;
         public bool IsContractCreation => Init != null;
         public bool IsMessageCall => Data != null;
-        public bool IsValid { get; set; }
         public Keccak Hash { get; set; }
-        public PublicKey DeliveredBy { get; set; } // TODO: create a wrapper?
+        public PublicKey DeliveredBy { get; set; } // tks: this is added so we do not send the pending tx back to original sources, not used yet
 
         public static Keccak CalculateHash(Transaction transaction)
         {

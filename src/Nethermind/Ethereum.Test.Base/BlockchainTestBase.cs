@@ -234,7 +234,7 @@ namespace Ethereum.Test.Base
             DifficultyCalculator.Wrapped = new DifficultyCalculator(specProvider);
             IRewardCalculator rewardCalculator = new RewardCalculator(specProvider);
 
-            ITransactionStore transactionStore = new TransactionStore(new MemDb(), new MemDb(), specProvider);
+            ITransactionStore transactionStore = new TransactionStore(new MemDb(), specProvider);
             IBlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), specProvider, transactionStore, _logManager);
             IBlockhashProvider blockhashProvider = new BlockhashProvider(blockTree);
             ISignatureValidator signatureValidator = new SignatureValidator(ChainId.MainNet);

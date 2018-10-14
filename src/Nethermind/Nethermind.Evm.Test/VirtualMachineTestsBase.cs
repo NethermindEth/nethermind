@@ -120,7 +120,7 @@ namespace Nethermind.Evm.Test
                 .TestObject;
 
             Block block = Build.A.Block.WithNumber(blockNumber).TestObject;
-            return _processor.Execute(transaction, block.Header, shouldTrace);
+            return _processor.Execute(0, transaction, block.Header, shouldTrace);
         }
 
         protected void AssertGas(TransactionReceipt receipt, long gas)

@@ -46,12 +46,35 @@ namespace Nethermind.JsonRpc
 
         public Block MapBlock(Core.Block block, bool returnFullTransactionObjects)
         {
+            Transaction[] transactions = null;
+            Data[] transactionHashes = null;
+            if (returnFullTransactionObjects)
+            {
+                transactions = new Transaction[block.Transactions.Length];
+            }
+            else
+            {
+                transactionHashes = new Data[block.Transactions.Length];
+            }
+
+            for (int i = 0; i < block.Transactions.Length; i++)
+            {
+                if (returnFullTransactionObjects)
+                {
+                    transactions[i] = MapTransaction(block.Hash, block.Number, i, block.Transactions[i]);
+                }
+                else
+                {
+                    transactionHashes[i] = new Data(block.Transactions[i].Hash);
+                }
+            }
+            
             var blockModel = new Block
             {
                 Hash = new Data(block.Hash.Bytes),               
                 Uncles = block.Ommers?.Select(x => new Data(x.Hash)).ToArray(),
-                Transactions = returnFullTransactionObjects ? block.Transactions?.Select(x => MapTransaction(x, block)).ToArray() : null,
-                TransactionHashes = !returnFullTransactionObjects ? block.Transactions?.Select(x => new Data(x.Hash)).ToArray() : null
+                Transactions = transactions,
+                TransactionHashes = transactionHashes
             };
 
             if (block.Header == null)
@@ -79,17 +102,35 @@ namespace Nethermind.JsonRpc
             return blockModel;
         }
 
-        public Transaction MapTransaction(Core.Transaction transaction, Core.Block block)
+        public Transaction MapTransaction(Keccak blockHash, UInt256 blockNumber, int index, Core.Transaction transaction)
         {   
             return new Transaction
             {
                 Hash = new Data(transaction.Hash),
                 Nonce = new Quantity(transaction.Nonce),
-                BlockHash = block != null ? new Data(block.Hash) : null,
-                BlockNumber = block?.Header != null ? new Quantity(block.Header.Number) : null,
-                TransactionIndex = block?.Transactions != null ? new Quantity(GetTransactionIndex(transaction, block)) : null,
-                From = new Data(_signer.RecoverAddress(transaction, block.Number)),
+                BlockHash = new Data(blockHash),
+                BlockNumber = new Quantity(blockNumber),
+                TransactionIndex = new Quantity(index),
+                From = new Data(transaction.SenderAddress),
                 To = new Data(transaction.To),
+                Value = new Quantity(transaction.Value),
+                GasPrice = new Quantity(transaction.GasPrice),
+                Gas = new Quantity(transaction.GasLimit),
+                Data = new Data(transaction.Data)
+            };
+        }
+        
+        public Transaction MapTransaction(Core.TransactionReceipt receipt, Core.Transaction transaction)
+        {   
+            return new Transaction
+            {
+                Hash = new Data(transaction.Hash),
+                Nonce = new Quantity(transaction.Nonce),
+                BlockHash = new Data(receipt.BlockHash),
+                BlockNumber = new Quantity(receipt.BlockNumber),
+                TransactionIndex = new Quantity(receipt.Index),
+                From = new Data(receipt.Sender),
+                To = new Data(receipt.Recipient),
                 Value = new Quantity(transaction.Value),
                 GasPrice = new Quantity(transaction.GasPrice),
                 Gas = new Quantity(transaction.GasLimit),
@@ -118,17 +159,19 @@ namespace Nethermind.JsonRpc
             return tx;
         }
 
-        public TransactionReceipt MapTransactionReceipt(Core.TransactionReceipt receipt, Core.Transaction transaction, Core.Block block)
+        public TransactionReceipt MapTransactionReceipt(Keccak hash, Core.TransactionReceipt receipt)
         {
             return new TransactionReceipt
             {
-                TransactionHash = new Data(transaction.Hash),
-                TransactionIndex = block?.Transactions != null ? new Quantity(GetTransactionIndex(transaction, block)) : null,
-                BlockHash = block != null ? new Data(block.Hash) : null,
-                BlockNumber = block?.Header != null ? new Quantity(block.Header.Number) : null,
-                //CumulativeGasUsed = new Quantity(receipt.GasUsed),
+                TransactionHash = new Data(hash),
+                TransactionIndex = new Quantity(receipt.Index),
+                BlockHash = new Data(receipt.BlockHash),
+                BlockNumber = new Quantity(receipt.BlockNumber),
+                CumulativeGasUsed = new Quantity(receipt.GasUsedTotal),
                 GasUsed = new Quantity(receipt.GasUsed),
-                ContractAddress = transaction.IsContractCreation && receipt.Recipient != null ? new Data(receipt.Recipient) : null,
+                From = new Data(receipt.Sender),
+                To = new Data(receipt.Recipient),
+                ContractAddress = new Data(receipt.ContractAddress),
                 Logs = receipt.Logs?.Select(MapLog).ToArray(),
                 LogsBloom = new Data(receipt.Bloom?.Bytes),
                 Status = new Quantity(receipt.StatusCode)
@@ -192,19 +235,6 @@ namespace Nethermind.JsonRpc
         public Log MapLog(LogEntry logEntry)
         {
             throw new System.NotImplementedException();
-        }
-
-        private BigInteger GetTransactionIndex(Core.Transaction transaction, Core.Block block)
-        {
-            for (var i = 0; i < block.Transactions.Length; i++)
-            {
-                var trans = block.Transactions[i];
-                if (trans.Hash.Equals(transaction.Hash))
-                {
-                    return i;
-                }
-            }
-            throw new Exception($"Cannot find transaction in block transactions based on transaction hash: {transaction.Hash}, blockHash: {block.Hash}.");
         }
     }
 }

@@ -129,7 +129,13 @@ namespace Nethermind.Blockchain
                 return;
             }
 
-            Block processedBlock = _processor.Process(block, ProcessingOptions.ReadOnlyChain, NullTraceListener.Instance);
+            Block processedBlock = _processor.Process(block, ProcessingOptions.ReadOnlyChain | ProcessingOptions.StoreReceipts, NullTraceListener.Instance);
+            if (processedBlock == null)
+            {
+                if(_logger.IsError) _logger.Error("Block prepared by block producer was rejected by processor");
+                return;
+            }
+            
             _blockTree.SuggestBlock(processedBlock);
         }
     }

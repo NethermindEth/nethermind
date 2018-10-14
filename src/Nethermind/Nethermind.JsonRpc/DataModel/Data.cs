@@ -24,8 +24,6 @@ namespace Nethermind.JsonRpc.DataModel
 {
     public class Data : IJsonRpcResult, IJsonRpcRequest
     {
-        public byte[] Value { get; private set; }
-
         public Data()
         {
         }
@@ -35,19 +33,31 @@ namespace Nethermind.JsonRpc.DataModel
             Value = Bytes.FromHexString(value);
         }
 
+        public Data(Bloom bloom)
+        {
+            Value = bloom.Bytes;
+        }
+
         public Data(Keccak hash)
         {
             Value = hash.Bytes;
         }
-        
+
         public Data(Address address)
         {
             Value = address.Bytes;
         }
-        
+
         public Data(byte[] value)
         {
             Value = value;
+        }
+
+        public byte[] Value { get; private set; }
+
+        public void FromJson(string jsonValue)
+        {
+            Value = Bytes.FromHexString(jsonValue);
         }
 
         public object ToJson()
@@ -55,10 +65,9 @@ namespace Nethermind.JsonRpc.DataModel
             return Value?.ToHexString(true);
         }
 
-        // TODO: do we need it? 14/08/2018
-        public void FromJson(string jsonValue)
+        public override string ToString()
         {
-            Value = Bytes.FromHexString(jsonValue);
+            return Value?.ToHexString(true);
         }
     }
 }

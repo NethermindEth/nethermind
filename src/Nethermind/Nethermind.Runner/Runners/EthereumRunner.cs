@@ -222,7 +222,7 @@ namespace Nethermind.Runner.Runners
 //            IDbProvider debugReader = new ReadOnlyDbProvider(new RocksDbProvider(Path.Combine(_dbBasePath, "debug"), dbConfig));
 //            _dbProvider = debugReader;
 
-            var transactionStore = new TransactionStore(_dbProvider.ReceiptsDb, _dbProvider.TxDb, _specProvider);
+            var transactionStore = new TransactionStore(_dbProvider.ReceiptsDb, _specProvider);
             var sealEngine = ConfigureSealEngine();
 
             /* blockchain */

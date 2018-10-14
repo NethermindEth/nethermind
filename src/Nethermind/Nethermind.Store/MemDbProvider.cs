@@ -22,7 +22,6 @@ namespace Nethermind.Store
     {
         public ISnapshotableDb StateDb { get; } = new StateDb();
         public ISnapshotableDb CodeDb { get; } = new StateDb();
-        public IDb TxDb { get; } = new MemDb();
         public IDb ReceiptsDb { get; } = new MemDb();
         public IDb BlocksDb { get; } = new MemDb();
         public IDb BlockInfosDb { get; } = new MemDb();
@@ -31,7 +30,6 @@ namespace Nethermind.Store
         {
             StateDb?.Dispose();
             CodeDb?.Dispose();
-            TxDb?.Dispose();
             ReceiptsDb?.Dispose();
             BlocksDb?.Dispose();
             BlockInfosDb?.Dispose();

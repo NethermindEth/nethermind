@@ -24,7 +24,6 @@ namespace Nethermind.Store
     {
         ISnapshotableDb StateDb { get; }
         ISnapshotableDb CodeDb { get; }
-        IDb TxDb { get; }
         IDb ReceiptsDb { get; }
         IDb BlocksDb { get; }
         IDb BlockInfosDb { get; }

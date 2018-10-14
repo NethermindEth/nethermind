@@ -47,10 +47,10 @@ namespace Nethermind.JsonRpc.Module
         Signature Sign(PrivateKey privateKey, Keccak message);
 
         void AddTxData(UInt256 blockNumber);
-        Transaction GetTransaction(Keccak transactionHash);
+        (TransactionReceipt receipt, Transaction transaction) GetTransaction(Keccak transactionHash);
         Keccak GetBlockHash(Keccak transactionHash);
         Keccak SendTransaction(Transaction transaction);
-        TransactionReceipt GetTransactionReceipt(Keccak transactionHash);
+        TransactionReceipt GetTransactionReceipt(Keccak txHash);
         TransactionTrace GetTransactionTrace(Keccak transactionHash);
         TransactionTrace GetTransactionTrace(UInt256 blockNumber, int index);
         TransactionTrace GetTransactionTrace(Keccak blockHash, int index);

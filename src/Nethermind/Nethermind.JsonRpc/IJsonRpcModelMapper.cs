@@ -17,6 +17,8 @@
  */
 
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.JsonRpc.DataModel;
 using Block = Nethermind.JsonRpc.DataModel.Block;
 using Transaction = Nethermind.JsonRpc.DataModel.Transaction;
@@ -27,9 +29,10 @@ namespace Nethermind.JsonRpc
     public interface IJsonRpcModelMapper
     {
         Block MapBlock(Core.Block block, bool returnFullTransactionObjects);
-        Transaction MapTransaction(Core.Transaction transaction, Core.Block block);
+        Transaction MapTransaction(Keccak blockHash, UInt256 blockNumber, int index, Core.Transaction transaction);
+        Transaction MapTransaction(Core.TransactionReceipt receipt, Core.Transaction transaction);
         Core.Transaction MapTransaction(Transaction transaction);
-        TransactionReceipt MapTransactionReceipt(Core.TransactionReceipt receipt, Core.Transaction transaction, Core.Block block);
+        TransactionReceipt MapTransactionReceipt(Keccak txHash, Core.TransactionReceipt receipt);
         TransactionTrace MapTransactionTrace(Evm.TransactionTrace transactionTrace);
         BlockTraceItem[] MapBlockTrace(Evm.BlockTrace blockTrace);
         Log MapLog(LogEntry logEntry);

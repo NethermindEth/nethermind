@@ -46,21 +46,12 @@ namespace Nethermind.Evm
             _storageProvider = storageProvider ?? throw new ArgumentNullException(nameof(storageProvider));
         }
 
-        private TransactionReceipt GetNullReceipt(BlockHeader block)
+        private TransactionReceipt GetNullReceipt(int index, BlockHeader block, Transaction transaction, Address recipient)
         {
-            TransactionReceipt transactionReceipt = new TransactionReceipt();
-            transactionReceipt.Logs = LogEntry.EmptyLogs;
-            transactionReceipt.Bloom = Bloom.Empty;
-            if (!_specProvider.GetSpec(block.Number).IsEip658Enabled)
-            {
-                transactionReceipt.PostTransactionState = _stateProvider.StateRoot;
-            }
-
-            transactionReceipt.StatusCode = StatusCode.Failure;
-            return transactionReceipt;
+            return BuildTransactionReceipt(index, block, transaction, (long)transaction.GasLimit, StatusCode.Failure, LogEntry.EmptyLogs, recipient);
         }
 
-        public (TransactionReceipt, TransactionTrace) Execute(Transaction transaction, BlockHeader block, bool shouldTrace)
+        public (TransactionReceipt, TransactionTrace) Execute(int index, Transaction transaction, BlockHeader block, bool shouldTrace)
         {
             IReleaseSpec spec = _specProvider.GetSpec(block.Number);
             Address recipient = transaction.To;
@@ -76,7 +67,7 @@ namespace Nethermind.Evm
             if (sender == null)
             {
                 TraceLogInvalidTx(transaction, "SENDER_NOT_SPECIFIED");
-                return (GetNullReceipt(block), TransactionTrace.QuickFail);
+                return (GetNullReceipt(index, block, transaction, recipient), TransactionTrace.QuickFail);
             }
 
             long intrinsicGas = _intrinsicGasCalculator.Calculate(transaction, spec);
@@ -85,32 +76,35 @@ namespace Nethermind.Evm
             if (gasLimit < intrinsicGas)
             {
                 TraceLogInvalidTx(transaction, $"GAS_LIMIT_BELOW_INTRINSIC_GAS {gasLimit} < {intrinsicGas}");
-                return (GetNullReceipt(block), TransactionTrace.QuickFail);
+                return (GetNullReceipt(index, block, transaction, recipient), TransactionTrace.QuickFail);
             }
 
             if (gasLimit > block.GasLimit - block.GasUsed)
             {
                 TraceLogInvalidTx(transaction, $"BLOCK_GAS_LIMIT_EXCEEDED {gasLimit} > {block.GasLimit} - {block.GasUsed}");
-                return (GetNullReceipt(block), TransactionTrace.QuickFail);
+                return (GetNullReceipt(index, block, transaction, recipient), TransactionTrace.QuickFail);
             }
 
             if (!_stateProvider.AccountExists(sender))
             {
                 TraceLogInvalidTx(transaction, $"SENDER_ACCOUNT_DOES_NOT_EXIST {sender}");
-                _stateProvider.CreateAccount(sender, 0);
+                if (gasPrice == UInt256.Zero)
+                {
+                    _stateProvider.CreateAccount(sender, UInt256.Zero);
+                }
             }
 
             UInt256 senderBalance = _stateProvider.GetBalance(sender);
             if ((ulong) intrinsicGas * gasPrice + value > senderBalance)
             {
                 TraceLogInvalidTx(transaction, $"INSUFFICIENT_SENDER_BALANCE: ({sender})_BALANCE = {senderBalance}");
-                return (GetNullReceipt(block), TransactionTrace.QuickFail);
+                return (GetNullReceipt(index, block, transaction, recipient), TransactionTrace.QuickFail);
             }
 
             if (transaction.Nonce != _stateProvider.GetNonce(sender))
             {
                 TraceLogInvalidTx(transaction, $"WRONG_TRANSACTION_NONCE: {transaction.Nonce} (expected {_stateProvider.GetNonce(sender)})");
-                return (GetNullReceipt(block), TransactionTrace.QuickFail);
+                return (GetNullReceipt(index, block, transaction, recipient), TransactionTrace.QuickFail);
             }
 
             _stateProvider.IncrementNonce(sender);
@@ -246,7 +240,7 @@ namespace Nethermind.Evm
                 substate.Trace.ReturnValue = substate.Output?.ToHexString();
             }
 
-            return (BuildTransactionReceipt(block, statusCode, (statusCode == StatusCode.Success && substate.Logs.Any()) ? substate.Logs.ToArray() : LogEntry.EmptyLogs, recipient), substate?.Trace ?? TransactionTrace.QuickFail);
+            return (BuildTransactionReceipt(index, block, transaction, spentGas, statusCode, (statusCode == StatusCode.Success && substate.Logs.Any()) ? substate.Logs.ToArray() : LogEntry.EmptyLogs, recipient), substate?.Trace ?? TransactionTrace.QuickFail);
         }
 
         private void TraceLogInvalidTx(Transaction transaction, string reason)
@@ -275,19 +269,27 @@ namespace Nethermind.Evm
             return spentGas;
         }
 
-        private TransactionReceipt BuildTransactionReceipt(BlockHeader block, byte statusCode, LogEntry[] logEntries, Address recipient)
+        private TransactionReceipt BuildTransactionReceipt(int index, BlockHeader block, Transaction transaction, long spentGas, byte statusCode, LogEntry[] logEntries, Address recipient)
         {
             TransactionReceipt transactionReceipt = new TransactionReceipt();
             transactionReceipt.Logs = logEntries;
             transactionReceipt.Bloom = logEntries.Length == 0 ? Bloom.Empty : BuildBloom(logEntries);
-            transactionReceipt.GasUsed = block.GasUsed;
+            transactionReceipt.GasUsedTotal = block.GasUsed;
             if (!_specProvider.GetSpec(block.Number).IsEip658Enabled)
             {
                 transactionReceipt.PostTransactionState = _stateProvider.StateRoot;
             }
 
             transactionReceipt.StatusCode = statusCode;
-            transactionReceipt.Recipient = recipient;
+            transactionReceipt.Recipient = transaction.IsContractCreation ? null : recipient;
+            
+            transactionReceipt.BlockHash = block.Hash;
+            transactionReceipt.BlockNumber = block.Number;
+            transactionReceipt.Index = index;
+            transactionReceipt.GasUsed = spentGas;
+            transactionReceipt.Sender = transaction.SenderAddress;
+            transactionReceipt.ContractAddress = transaction.IsContractCreation ? recipient : null;
+            
             return transactionReceipt;
         }
 
