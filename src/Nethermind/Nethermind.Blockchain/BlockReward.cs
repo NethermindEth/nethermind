@@ -21,7 +21,7 @@ using Nethermind.Core;
 
 namespace Nethermind.Blockchain
 {
-    public struct BlockReward
+    public class BlockReward
     {
         public BlockReward(Address address, BigInteger value)
         {

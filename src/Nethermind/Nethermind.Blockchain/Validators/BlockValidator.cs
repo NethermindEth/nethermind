@@ -64,6 +64,7 @@ namespace Nethermind.Blockchain.Validators
             if (txsRoot != block.Header.TransactionsRoot)
             {
                 if (_logger.IsDebug) _logger.Debug($"Invalid block ({block.ToString(Block.Format.HashAndNumber)}) tx root {txsRoot} != stated tx root {block.Header.TransactionsRoot}");
+                return false;
             }
 
             if (block.Header.OmmersHash != Keccak.Compute(Rlp.Encode(block.Ommers)))
@@ -108,7 +109,7 @@ namespace Nethermind.Blockchain.Validators
                 }
             }
 
-            return true;
+            return isValid;
         }
     }
 }

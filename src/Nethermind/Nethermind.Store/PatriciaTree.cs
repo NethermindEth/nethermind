@@ -40,10 +40,9 @@ namespace Nethermind.Store
         public static readonly Keccak EmptyTreeHash = Keccak.EmptyTreeHash;
 
         /// <summary>
-        /// Note at the moment this can be static because we never add to any two different Patricia trees in parallel
-        /// THis would be receipts, transactions, state, storage - all of them are sequential so only on etree at the time uses NodeStack
+        /// To save allocations this used to be static but this caused one of the hardest to reproduce issues when we actually decided to run some of the tree operations in parallel.
         /// </summary>
-        private static readonly Stack<StackedNode> NodeStack = new Stack<StackedNode>(); // TODO: if switching to parallel then need to pool tree operations with separate node stacks?, if...
+        private readonly Stack<StackedNode> _nodeStack = new Stack<StackedNode>();
 
         private static readonly ConcurrentQueue<Exception> CommitExceptions = new ConcurrentQueue<Exception>();
 
@@ -242,7 +241,7 @@ namespace Nethermind.Store
         {
             if (isUpdate)
             {
-                NodeStack.Clear();
+                _nodeStack.Clear();
             }
 
             if (isUpdate && updateValue.Length == 0)
@@ -290,15 +289,15 @@ namespace Nethermind.Store
         // TODO: this can be removed now but is lower priority temporarily while the patricia rewrite testing is in progress
         private void ConnectNodes(TrieNode node)
         {
-            bool isRoot = NodeStack.Count == 0;
+            bool isRoot = _nodeStack.Count == 0;
             TrieNode nextNode = node;
 
             while (!isRoot)
             {
-                StackedNode parentOnStack = NodeStack.Pop();
+                StackedNode parentOnStack = _nodeStack.Pop();
                 node = parentOnStack.Node;
 
-                isRoot = NodeStack.Count == 0;
+                isRoot = _nodeStack.Count == 0;
 
                 if (node.IsLeaf)
                 {
@@ -430,7 +429,7 @@ namespace Nethermind.Store
             TrieNode childNode = node.GetChild(context.UpdatePath[context.CurrentIndex]);
             if (context.IsUpdate)
             {
-                NodeStack.Push(new StackedNode(node, context.UpdatePath[context.CurrentIndex]));
+                _nodeStack.Push(new StackedNode(node, context.UpdatePath[context.CurrentIndex]));
             }
 
             context.CurrentIndex++;
@@ -535,7 +534,7 @@ namespace Nethermind.Store
                 byte[] extensionPath = longerPath.Slice(0, extensionLength);
                 TrieNode extension = TreeNodeFactory.CreateExtension(new HexPrefix(false, extensionPath));
                 extension.IsDirty = true;
-                NodeStack.Push(new StackedNode(extension, 0));
+                _nodeStack.Push(new StackedNode(extension, 0));
             }
 
             TrieNode branch = TreeNodeFactory.CreateBranch();
@@ -559,7 +558,7 @@ namespace Nethermind.Store
             node.Key = new HexPrefix(true, leafPath);
             node.Value = longerPathValue;
 
-            NodeStack.Push(new StackedNode(branch, longerPath[extensionLength]));
+            _nodeStack.Push(new StackedNode(branch, longerPath[extensionLength]));
             ConnectNodes(node);
 
             return context.UpdateValue;
@@ -578,7 +577,7 @@ namespace Nethermind.Store
                 context.CurrentIndex += extensionLength;
                 if (context.IsUpdate)
                 {
-                    NodeStack.Push(new StackedNode(node, 0));
+                    _nodeStack.Push(new StackedNode(node, 0));
                 }
 
                 TrieNode next = node.GetChild(0);
@@ -607,7 +606,7 @@ namespace Nethermind.Store
                 byte[] extensionPath = node.Path.Slice(0, extensionLength);
                 node.Key = new HexPrefix(false, extensionPath);
                 node.IsDirty = true;
-                NodeStack.Push(new StackedNode(node, 0));
+                _nodeStack.Push(new StackedNode(node, 0));
             }
 
             TrieNode branch = TreeNodeFactory.CreateBranch();
