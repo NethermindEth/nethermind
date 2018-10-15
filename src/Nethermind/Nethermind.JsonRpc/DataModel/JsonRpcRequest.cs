@@ -16,6 +16,8 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System.Numerics;
+
 namespace Nethermind.JsonRpc.DataModel
 {
     public class JsonRpcRequest
@@ -23,7 +25,7 @@ namespace Nethermind.JsonRpc.DataModel
         public string Jsonrpc { get; set; }
         public string Method { get; set; }
         public string[] Params { get; set; }
-        public int Id { get; set; }
+        public BigInteger Id { get; set; }
 
         public override string ToString()
         {

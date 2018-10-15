@@ -60,20 +60,25 @@ namespace Nethermind.JsonRpc.Module
             if (Logger.IsTrace) Logger.Trace($"eth_syncing request, result: {result.ToJson()}");
             return ResultWrapper<SynchingResult>.Success(result);
         }
+        
+        public ResultWrapper<Data> eth_snapshot()
+        {
+            return ResultWrapper<Data>.Fail("eth_snapshot not supported");
+        }
 
         public ResultWrapper<Data> eth_coinbase()
         {
-            throw new NotImplementedException();
+            return ResultWrapper<Data>.Fail("eth_coinbase not supported");
         }
 
         public ResultWrapper<bool> eth_mining()
         {
-            throw new NotImplementedException();
+            return ResultWrapper<bool>.Fail("eth_mining not supported");
         }
 
         public ResultWrapper<Quantity> eth_hashrate()
         {
-            throw new NotImplementedException();
+            return ResultWrapper<Quantity>.Fail("eth_hashrate not supported");
         }
 
         [Todo("Gas pricer to be implemented")]
@@ -129,7 +134,7 @@ namespace Nethermind.JsonRpc.Module
 
         public ResultWrapper<Data> eth_getStorageAt(Data address, Quantity positionIndex, BlockParameter blockParameter)
         {
-            throw new NotImplementedException();
+            return ResultWrapper<Data>.Fail("eth_getStorageAt not supported");
         }
 
         public ResultWrapper<Quantity> eth_getTransactionCount(Data address, BlockParameter blockParameter)
@@ -264,7 +269,7 @@ namespace Nethermind.JsonRpc.Module
 
         public ResultWrapper<Quantity> eth_estimateGas(Transaction transactionCall, BlockParameter blockParameter)
         {
-            throw new NotImplementedException();
+            return ResultWrapper<Quantity>.Fail("eth_estimateGas not supported");
         }
 
         public ResultWrapper<Block> eth_getBlockByHash(Data blockHash, bool returnFullTransactionObjects)
@@ -457,22 +462,22 @@ namespace Nethermind.JsonRpc.Module
 
         public ResultWrapper<IEnumerable<string>> eth_getCompilers()
         {
-            throw new NotImplementedException();
+            return ResultWrapper<IEnumerable<string>>.Fail("eth_getCompilers not supported");
         }
 
         public ResultWrapper<Data> eth_compileLLL(string code)
         {
-            throw new NotImplementedException();
+            return ResultWrapper<Data>.Fail("eth_compileLLL not supported");
         }
 
         public ResultWrapper<Data> eth_compileSolidity(string code)
         {
-            throw new NotImplementedException();
+            return ResultWrapper<Data>.Fail("eth_compileSolidity not supported");
         }
 
         public ResultWrapper<Data> eth_compileSerpent(string code)
         {
-            throw new NotImplementedException();
+            return ResultWrapper<Data>.Fail("eth_compileSerpent not supported");
         }
 
         public ResultWrapper<Quantity> eth_newFilter(Filter filter)
@@ -507,7 +512,7 @@ namespace Nethermind.JsonRpc.Module
 
         public ResultWrapper<Quantity> eth_newPendingTransactionFilter(Filter filter)
         {
-            throw new NotImplementedException();
+            return ResultWrapper<Quantity>.Fail("eth_newPendingTransactionFilter not supported");
         }
 
         public ResultWrapper<bool> eth_uninstallFilter(Quantity filterId)
@@ -526,27 +531,27 @@ namespace Nethermind.JsonRpc.Module
 
         public ResultWrapper<IEnumerable<Log>> eth_getFilterLogs(Quantity filterId)
         {
-            throw new NotImplementedException();
+            return ResultWrapper<IEnumerable<Log>>.Fail("eth_getFilterLogs not supported");
         }
 
         public ResultWrapper<IEnumerable<Log>> eth_getLogs(Filter filter)
         {
-            throw new NotImplementedException();
+            return ResultWrapper<IEnumerable<Log>>.Fail("eth_getLogs not supported");
         }
 
         public ResultWrapper<IEnumerable<Data>> eth_getWork()
         {
-            throw new NotImplementedException();
+            return ResultWrapper<IEnumerable<Data>>.Fail("eth_getWork not supported");
         }
 
         public ResultWrapper<bool> eth_submitWork(Data nonce, Data headerPowHash, Data mixDigest)
         {
-            throw new NotImplementedException();
+            return ResultWrapper<bool>.Fail("eth_submitWork not supported");
         }
 
         public ResultWrapper<bool> eth_submitHashrate(string hashRate, string id)
         {
-            throw new NotImplementedException();
+            return ResultWrapper<bool>.Fail("eth_submitHashrate not supported");
         }
 
         private ResultWrapper<Quantity> GetOmmersCount(BlockParameter blockParameter)

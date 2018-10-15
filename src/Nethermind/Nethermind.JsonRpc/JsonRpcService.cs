@@ -20,6 +20,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Numerics;
 using System.Reflection;
 using System.Runtime.InteropServices.WindowsRuntime;
 using Nethermind.Config;
@@ -182,7 +183,7 @@ namespace Nethermind.JsonRpc
             }
         }
 
-        private JsonRpcResponse GetSuccessResponse(object result, int id)
+        private JsonRpcResponse GetSuccessResponse(object result, BigInteger id)
         {
             var response = new JsonRpcResponse
             {
@@ -199,7 +200,7 @@ namespace Nethermind.JsonRpc
             return GetErrorResponse(errorType, message, 0, null);
         }
         
-        private JsonRpcResponse GetErrorResponse(ErrorType errorType, string message, int id, string methodName)
+        private JsonRpcResponse GetErrorResponse(ErrorType errorType, string message, BigInteger id, string methodName)
         {
             _logger.Debug($"Sending error response, method: {methodName ?? "none"}, id: {id}, errorType: {errorType}, message: {message}");
             var response = new JsonRpcResponse
