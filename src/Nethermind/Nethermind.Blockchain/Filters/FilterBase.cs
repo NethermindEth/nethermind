@@ -20,6 +20,11 @@ namespace Nethermind.Blockchain.Filters
 {
     public abstract class FilterBase
     {
-        public int FilterId { get; set; }
+        public int FilterId { get; }
+
+        protected FilterBase(int id)
+        {
+            FilterId = id;
+        }
     }
 }

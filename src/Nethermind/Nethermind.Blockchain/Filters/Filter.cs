@@ -32,8 +32,8 @@ namespace Nethermind.Blockchain.Filters
         public FilterBlock ToBlock { get; }
         public FilterAddress Address { get; }
         
-        public Filter(FilterBlock fromBlock, FilterBlock toBlock,
-            FilterAddress address, TopicsFilter topicsFilter)
+        public Filter(int id, FilterBlock fromBlock, FilterBlock toBlock,
+            FilterAddress address, TopicsFilter topicsFilter) : base(id)
         {
             FromBlock = fromBlock;
             ToBlock = toBlock;
