@@ -1,7 +1,10 @@
 using System.Collections.Generic;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Test.Builders;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Dirichlet.Numerics;
 using NSubstitute;
 using NUnit.Framework;
 using Build = Nethermind.Core.Test.Builders.Build;
@@ -20,26 +23,29 @@ namespace Nethermind.Blockchain.Test
         }
 
         [Test]
-        public void filter_logs_should_not_be_empty()
+        public void filter_logs_should_not_be_empty_for_zero_address_and_topic()
         {
             var filterId = 1;
-            var filter = FilterBuilder.CreateFilter()
+            var filter = FilterBuilder.New()
                 .WithId(filterId)
-                .FromEarliestBlock()
+                .FromBlock(UInt256.Zero)
                 .ToLatestBlock()
-                .WithAddress(TestObject.AddressA)
+                .WithAddress(Address.Zero)
                 .WithTopicExpressions(
-                    TestTopicExpressions.Any, 
-                    TestTopicExpressions.Specific(TestObject.KeccakA))
+                    TestTopicExpressions.Specific(Keccak.Zero))
                 .Build();
 
-            _filterStore.GetAll().Returns(new List<Filter>{ filter});
+            var transactionReceiptContext = TransactionReceiptContextBuilder.New()
+                .WithBlockNumber(UInt256.One)
+                .Build();
 
-            // var filterManager = new FilterManager(_filterStore);
-            //TODO: Transaction receipt context stub
-            // var logs = filterManager.GetLogs(filterId);
+            _filterStore.GetAll().Returns(new List<Filter> {filter});
 
-            // Assert.IsNotEmpty(logs);
+            _filterManager = new FilterManager(_filterStore);
+            _filterManager.AddTransactionReceipt(transactionReceiptContext);
+            var logs = _filterManager.GetLogs(filterId);
+
+            Assert.IsNotEmpty(logs);
         }
     }
 }

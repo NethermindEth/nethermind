@@ -9,7 +9,7 @@ namespace Nethermind.Blockchain.Test.Builders
 {
     public class FilterBuilder
     {
-        private int _id;
+        private int _id = 1;
         private FilterBlock _fromBlock = new FilterBlock(FilterBlockType.Latest);
         private FilterBlock _toBlock = new FilterBlock(FilterBlockType.Latest);
         private FilterAddress _address = new FilterAddress();
@@ -19,7 +19,7 @@ namespace Nethermind.Blockchain.Test.Builders
         {
         }
 
-        public static FilterBuilder CreateFilter()
+        public static FilterBuilder New()
         {
             return new FilterBuilder();
         }
@@ -31,9 +31,9 @@ namespace Nethermind.Blockchain.Test.Builders
             return this;
         }
 
-        public FilterBuilder FromBlockId(UInt256 blockId)
+        public FilterBuilder FromBlock(UInt256 number)
         {
-            _fromBlock = new FilterBlock(blockId);
+            _fromBlock = new FilterBlock(number);
 
             return this;
         }
@@ -59,9 +59,9 @@ namespace Nethermind.Blockchain.Test.Builders
             return this;
         }
 
-        public FilterBuilder ToBlockId(UInt256 blockId)
+        public FilterBuilder ToBlock(UInt256 number)
         {
-            _toBlock = new FilterBlock(blockId);
+            _toBlock = new FilterBlock(number);
 
             return this;
         }
@@ -108,9 +108,6 @@ namespace Nethermind.Blockchain.Test.Builders
             return this;
         }
 
-        public Filter Build()
-        {
-            return new Filter(_id, _fromBlock, _toBlock, _address, _topicsFilter);
-        }
+        public Filter Build() => new Filter(_id, _fromBlock, _toBlock, _address, _topicsFilter);
     }
 }

@@ -28,6 +28,7 @@ namespace Nethermind.Blockchain.Filters
         public FilterBlock(UInt256 blockId)
         {
             BlockId = blockId;
+            Type = FilterBlockType.BlockId;
         }
         
         public FilterBlock(FilterBlockType type)

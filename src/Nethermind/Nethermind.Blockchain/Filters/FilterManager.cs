@@ -51,8 +51,9 @@ namespace Nethermind.Blockchain.Filters
         private void StoreLogs(Filter filter, TransactionReceiptContext receiptContext)
         {
             var logs = _logs.ContainsKey(filter.FilterId) ? _logs[filter.FilterId] : new List<FilterLog>();
-            foreach (var logEntry in receiptContext.Receipt.Logs)
+            for (var index = 0; index < receiptContext.Receipt.Logs.Length; index++)
             {
+                var logEntry = receiptContext.Receipt.Logs[index];
                 var filterLog = CreateLog(filter, receiptContext, logEntry);
                 if (!(filterLog is null))
                 {
@@ -65,6 +66,11 @@ namespace Nethermind.Blockchain.Filters
 
         private FilterLog CreateLog(Filter filter, TransactionReceiptContext receiptContext, LogEntry logEntry)
         {
+            if (!filter.Accepts(logEntry))
+            {
+                return null;
+            }
+            
             if (filter.FromBlock.Type == FilterBlockType.BlockId && filter.FromBlock.BlockId > receiptContext.BlockNumber)
             {
                 return null;
@@ -96,26 +102,6 @@ namespace Nethermind.Blockchain.Filters
             return new FilterLog(receiptContext.LogIndex, receiptContext.BlockNumber, receiptContext.BlockHash,
                 receiptContext.TransactionIndex, receiptContext.TransactionHash, logEntry.LoggersAddress,
                 logEntry.Data, logEntry.Topics);
-        }
-
-        private Address GetAddress(Filter filter, LogEntry logEntry)
-        {
-            if (filter.Address == null)
-            {
-                return logEntry.LoggersAddress;
-            }
-
-            if (filter.Address.Address != null && filter.Address.Address == logEntry.LoggersAddress)
-            {
-                return logEntry.LoggersAddress;
-            }
-
-            if (filter.Address.Addresses == null || !filter.Address.Addresses.Any())
-            {
-                return logEntry.LoggersAddress;
-            }
-
-            return filter.Address.Addresses.SingleOrDefault(a => a == logEntry.LoggersAddress);
         }
     }
 }
