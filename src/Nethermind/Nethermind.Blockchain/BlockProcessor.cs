@@ -190,8 +190,6 @@ namespace Nethermind.Blockchain
             TransactionReceipt[] receipts = ProcessTransactions(block, traceListener);
             SetReceiptsRootAndBloom(block, receipts);
             ApplyMinerRewards(block);
-            
-            _storageProvider.Commit(_specProvider.GetSpec(block.Number));
             _stateProvider.Commit(_specProvider.GetSpec(block.Number));
             
             block.Header.StateRoot = _stateProvider.StateRoot;
