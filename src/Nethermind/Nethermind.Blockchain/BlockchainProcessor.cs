@@ -227,7 +227,7 @@ namespace Nethermind.Blockchain
             if (_logger.IsTrace) _logger.Trace($"Total transactions of block {suggestedBlock.ToString(Block.Format.Short)} is {totalTransactions}");
 
             Block[] processedBlocks = null;
-            if (totalDifficulty > (_blockTree.Head?.TotalDifficulty ?? 0) || options.HasFlag(ProcessingOptions.ForceProcessing))
+            if (totalDifficulty > (_blockTree.Head?.TotalDifficulty ?? 0) || (options & ProcessingOptions.ForceProcessing) != 0)
             {
                 List<Block> blocksToBeAddedToMain = new List<Block>();
                 Block toBeProcessed = suggestedBlock;
@@ -296,7 +296,7 @@ namespace Nethermind.Blockchain
                     }
                 }
 
-                processedBlocks = _blockProcessor.Process(stateRoot, blocks, options.HasFlag(ProcessingOptions.ReadOnlyChain), options.HasFlag(ProcessingOptions.StoreReceipts), traceListener);
+                processedBlocks = _blockProcessor.Process(stateRoot, blocks, options, traceListener);
                 if (!options.HasFlag(ProcessingOptions.ReadOnlyChain) && !options.HasFlag(ProcessingOptions.ForceProcessing))
                 {
                     // TODO: lots of unnecessary loading and decoding here, review after adding support for loading headers only

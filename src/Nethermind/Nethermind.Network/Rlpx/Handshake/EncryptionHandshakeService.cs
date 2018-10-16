@@ -34,6 +34,7 @@ namespace Nethermind.Network.Rlpx.Handshake
     {
         private static int MacBitsSize = 256;
 
+        private readonly IPrivateKeyGenerator _ephemeralGenerator;
         private readonly ICryptoRandom _cryptoRandom;
         private readonly IEciesCipher _eciesCipher;
         private readonly IMessageSerializationService _messageSerializationService;
@@ -55,13 +56,14 @@ namespace Nethermind.Network.Rlpx.Handshake
             _privateKey = privateKey ?? throw new ArgumentNullException(nameof(privateKey));;
             _cryptoRandom = cryptoRandom ?? throw new ArgumentNullException(nameof(cryptoRandom));
             _signer = signer ?? throw new ArgumentNullException(nameof(signer));
+            _ephemeralGenerator = new PrivateKeyGenerator(_cryptoRandom);
         }
 
         public Packet Auth(NodeId remoteNodeId, EncryptionHandshake handshake)
         {
             handshake.RemoteNodeId = remoteNodeId;
             handshake.InitiatorNonce = _cryptoRandom.GenerateRandomBytes(32);
-            handshake.EphemeralPrivateKey = new PrivateKeyProvider(_cryptoRandom).PrivateKey;
+            handshake.EphemeralPrivateKey = _ephemeralGenerator.Generate();
 
             byte[] staticSharedSecret = BouncyCrypto.Agree(_privateKey, remoteNodeId.PublicKey);
             byte[] forSigning = staticSharedSecret.Xor(handshake.InitiatorNonce);
@@ -109,7 +111,7 @@ namespace Nethermind.Network.Rlpx.Handshake
 
             handshake.RemoteNodeId = nodeId;
             handshake.RecipientNonce = _cryptoRandom.GenerateRandomBytes(32);
-            handshake.EphemeralPrivateKey = new PrivateKeyProvider(_cryptoRandom).PrivateKey;
+            handshake.EphemeralPrivateKey = _ephemeralGenerator.Generate();
 
             handshake.InitiatorNonce = authMessage.Nonce;
             byte[] staticSharedSecret = BouncyCrypto.Agree(_privateKey, handshake.RemoteNodeId.PublicKey);

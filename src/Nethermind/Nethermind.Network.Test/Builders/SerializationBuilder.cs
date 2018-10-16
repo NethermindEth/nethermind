@@ -75,7 +75,7 @@ namespace Nethermind.Network.Test.Builders
         {
             var config = new JsonConfigProvider();
             Signer signer = new Signer();
-            var privateKeyProvider = new PrivateKeyProvider(privateKey);
+            var privateKeyProvider = new SameKeyGenerator(privateKey);
 
             PingMessageSerializer pingSerializer = new PingMessageSerializer(signer, privateKeyProvider, new DiscoveryMessageFactory(config), new NodeIdResolver(signer), new NodeFactory());
             PongMessageSerializer pongSerializer = new PongMessageSerializer(signer, privateKeyProvider, new DiscoveryMessageFactory(config), new NodeIdResolver(signer), new NodeFactory());

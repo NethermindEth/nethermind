@@ -16,17 +16,15 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
-namespace Nethermind.Core.Test.Builders
+namespace Nethermind.Wallet
 {
-    public class PrivateKeyBuilder : BuilderBase<PrivateKey>
+    public interface IWallet
     {
-        private PrivateKeyGenerator _generator = new PrivateKeyGenerator();
-        
-        public PrivateKeyBuilder()
-        {
-            TestObject = _generator.Generate();
-        }
+        Address[] GetAccounts();
+        void Sign(Transaction tx, int chainId);
+        Signature Sign(Address address, Keccak message);
     }
 }

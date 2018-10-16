@@ -41,6 +41,7 @@ namespace Nethermind.Blockchain
         private readonly ILogger _logger;
         private readonly ITransactionStore _transactionStore;
         private readonly IRewardCalculator _rewardCalculator;
+        private readonly IBlockValidator _blockValidator;
 
         public BlockProcessor(
             ISpecProvider specProvider,
@@ -66,34 +67,20 @@ namespace Nethermind.Blockchain
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
         }
 
-        private readonly IBlockValidator _blockValidator;
-
         private TransactionReceipt[] ProcessTransactions(Block block, ITraceListener traceListener)
         {
             TransactionReceipt[] receipts = new TransactionReceipt[block.Transactions.Length];
             for (int i = 0; i < block.Transactions.Length; i++)
             {
                 if (_logger.IsTrace) _logger.Trace($"Processing transaction {i}");
-                var currentTx = block.Transactions[i];
+                Transaction currentTx = block.Transactions[i];
+                TransactionTrace trace;
                 bool shouldTrace = traceListener.ShouldTrace(currentTx.Hash);
-                UInt256 contractNonce = default;
-                if (currentTx.IsContractCreation)
-                {
-                    contractNonce = _stateProvider.GetNonce(currentTx.SenderAddress);
-                }
-                
-                (TransactionReceipt receipt, TransactionTrace trace) = _transactionProcessor.Execute(i, currentTx, block.Header, shouldTrace);
+                (receipts[i], trace) = _transactionProcessor.Execute(i, currentTx, block.Header, shouldTrace);
                 if (shouldTrace)
                 {
                     traceListener.RecordTrace(currentTx.Hash, trace);
                 }
-
-                if (currentTx.Hash == null)
-                {
-                    throw new InvalidOperationException("Transaction's hash is null when processing");
-                }
-
-                receipts[i] = receipt;
             }
 
             return receipts;
@@ -114,7 +101,7 @@ namespace Nethermind.Blockchain
             block.Header.Bloom = receipts.Length > 0 ? TransactionProcessor.BuildBloom(receipts) : Bloom.Empty;
         }
 
-        public Block[] Process(Keccak branchStateRoot, Block[] suggestedBlocks, bool tryOnly, bool storeTxData, ITraceListener traceListener)
+        public Block[] Process(Keccak branchStateRoot, Block[] suggestedBlocks, ProcessingOptions options, ITraceListener traceListener)
         {
             if (suggestedBlocks.Length == 0)
             {
@@ -138,18 +125,15 @@ namespace Nethermind.Blockchain
             {
                 for (int i = 0; i < suggestedBlocks.Length; i++)
                 {
-                    processedBlocks[i] = ProcessOne(suggestedBlocks[i], tryOnly, storeTxData, traceListener);
+                    processedBlocks[i] = ProcessOne(suggestedBlocks[i], options, traceListener);
+                    if (_logger.IsTrace) _logger.Trace($"Committing trees - state root {_stateProvider.StateRoot}");
+                    _stateProvider.CommitTree();
+                    _storageProvider.CommitTrees();
                 }
 
-                if (tryOnly)
+                if ((options & ProcessingOptions.ReadOnlyChain) != 0)
                 {
-                    if (_logger.IsTrace) _logger.Trace($"Reverting blocks after test run - state root {_stateProvider.StateRoot}");
-                    _stateDb.Restore(stateSnapshot);
-                    _codeDb.Restore(codeSnapshot);
-                    _storageProvider.Reset();
-                    _stateProvider.Reset();
-                    _stateProvider.StateRoot = snapshotStateRoot;
-                    if (_logger.IsTrace) _logger.Trace($"Reverted blocks after test run - state root {_stateProvider.StateRoot}");
+                    Restore(stateSnapshot, codeSnapshot, snapshotStateRoot);
                 }
                 else
                 {
@@ -162,15 +146,20 @@ namespace Nethermind.Blockchain
             }
             catch (InvalidBlockException) // TODO: which exception to catch here?
             {
-                if (_logger.IsTrace) _logger.Trace($"Reverting blocks after exception - state root {_stateProvider.StateRoot}");
-                _stateDb.Restore(stateSnapshot);
-                _codeDb.Restore(codeSnapshot);
-                _storageProvider.Reset();
-                _stateProvider.Reset();
-                _stateProvider.StateRoot = snapshotStateRoot;
-                if (_logger.IsTrace) _logger.Trace($"Reverted blocks after exception - state root {_stateProvider.StateRoot}");
+                Restore(stateSnapshot, codeSnapshot, snapshotStateRoot);
                 throw;
             }
+        }
+
+        private void Restore(int stateSnapshot, int codeSnapshot, Keccak snapshotStateRoot)
+        {
+            if (_logger.IsTrace) _logger.Trace($"Reverting blocks {_stateProvider.StateRoot}");
+            _stateDb.Restore(stateSnapshot);
+            _codeDb.Restore(codeSnapshot);
+            _storageProvider.Reset();
+            _stateProvider.Reset();
+            _stateProvider.StateRoot = snapshotStateRoot;
+            if (_logger.IsTrace) _logger.Trace($"Reverted blocks {_stateProvider.StateRoot}");
         }
 
         private void ApplyDaoTransition()
@@ -184,98 +173,64 @@ namespace Nethermind.Blockchain
             }
         }
 
-        private Block ProcessOne(Block suggestedBlock, bool tryOnly, bool storeTxData, ITraceListener traceListener)
+        private Block ProcessOne(Block suggestedBlock, ProcessingOptions options, ITraceListener traceListener)
         {
-            Block processedBlock = suggestedBlock;
-            if (!suggestedBlock.IsGenesis)
+            if (suggestedBlock.IsGenesis)
             {
-                processedBlock = ProcessNonGenesis(suggestedBlock, tryOnly, storeTxData, traceListener);
+                return suggestedBlock;
             }
 
-            if (_logger.IsTrace) _logger.Trace($"Committing block - state root {_stateProvider.StateRoot}");
-            _stateProvider.CommitTree();
-            _storageProvider.CommitTrees();
-
-            return processedBlock;
-        }
-
-        private Block ProcessNonGenesis(Block suggestedBlock, bool readOnlyChain, bool storeTxData, ITraceListener traceListener)
-        {
             if (_specProvider.DaoBlockNumber.HasValue && _specProvider.DaoBlockNumber.Value == suggestedBlock.Header.Number)
             {
                 if (_logger.IsInfo) _logger.Info("Applying DAO transition");
                 ApplyDaoTransition();
             }
 
-            if (_logger.IsTrace) _logger.Trace($"Block beneficiary {suggestedBlock.Header.Beneficiary}");
-            if (_logger.IsTrace) _logger.Trace($"Block gas limit {suggestedBlock.Header.GasLimit}");
-            if (_logger.IsTrace) _logger.Trace($"Block gas used {suggestedBlock.Header.GasUsed}");
-            if (_logger.IsTrace) _logger.Trace($"Block difficulty {suggestedBlock.Header.Difficulty}");
-
-            (Block processedBlock, TransactionReceipt[] receipts) = ProcessBlock(
-                suggestedBlock.Header.Hash,
-                suggestedBlock.Header.ParentHash,
-                suggestedBlock.Header.Difficulty,
-                suggestedBlock.Header.Number,
-                suggestedBlock.Header.Timestamp,
-                suggestedBlock.Header.Beneficiary,
-                suggestedBlock.Header.GasLimit,
-                suggestedBlock.Header.ExtraData,
-                suggestedBlock.Transactions,
-                suggestedBlock.Header.MixHash,
-                suggestedBlock.Header.Nonce,
-                suggestedBlock.Header.OmmersHash,
-                suggestedBlock.Ommers,
-                traceListener);
-
-            processedBlock.Header.TransactionsRoot = suggestedBlock.TransactionsRoot;
-            processedBlock.Header.Hash = BlockHeader.CalculateHash(processedBlock.Header);
-            
-            if (!readOnlyChain && !_blockValidator.ValidateProcessedBlock(processedBlock, suggestedBlock))
-            {
-                if (_logger.IsError) _logger.Error($"Processed block is not valid {suggestedBlock.ToString(Block.Format.HashAndNumber)}");
-                throw new InvalidBlockException($"{suggestedBlock.ToString(Block.Format.HashAndNumber)}");
-            }
-            
-            if (storeTxData)
-            {
-                for (int i = 0; i < processedBlock.Transactions.Length; i++)
-                {
-                    receipts[i].BlockHash = processedBlock.Hash;
-                    _transactionStore.StoreProcessedTransaction(processedBlock.Transactions[i].Hash, receipts[i]);    
-                }
-            }
-
-            return processedBlock;
-        }
-
-        private (Block Block, TransactionReceipt[] Receipts) ProcessBlock(
-            Keccak hash,
-            Keccak parentHash,
-            UInt256 difficulty,
-            UInt256 number,
-            UInt256 timestamp,
-            Address beneficiary,
-            long gasLimit,
-            byte[] extraData,
-            Transaction[] transactions,
-            Keccak mixHash,
-            ulong nonce,
-            Keccak ommersHash,
-            BlockHeader[] ommers,
-            ITraceListener traceListener)
-        {
-            BlockHeader header = new BlockHeader(parentHash, ommersHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData);
-            header.Hash = hash;
-            header.MixHash = mixHash;
-            header.Nonce = nonce;
-            Block block = new Block(header, transactions, ommers);
+            Block block = PrepareBlockForProcessing(suggestedBlock);
             TransactionReceipt[] receipts = ProcessTransactions(block, traceListener);
             SetReceiptsRootAndBloom(block, receipts);
             ApplyMinerRewards(block);
             _stateProvider.Commit(_specProvider.GetSpec(block.Number));
-            header.StateRoot = _stateProvider.StateRoot;
-            return (block, receipts);
+            
+            block.Header.StateRoot = _stateProvider.StateRoot;
+            block.Header.Hash = BlockHeader.CalculateHash(block.Header);
+            if ((options & ProcessingOptions.ReadOnlyChain) == 0 &&
+                (options & ProcessingOptions.NoValidation) == 0 &&
+                !_blockValidator.ValidateProcessedBlock(block, suggestedBlock))
+            {
+                if (_logger.IsError) _logger.Error($"Processed block is not valid {suggestedBlock.ToString(Block.Format.HashAndNumber)}");
+                throw new InvalidBlockException($"{suggestedBlock.ToString(Block.Format.HashAndNumber)}");
+            }
+
+            if ((options & ProcessingOptions.StoreReceipts) != 0)
+            {
+                StoreTxReceipts(block, receipts);
+            }
+
+            return block;
+        }
+
+        private void StoreTxReceipts(Block block, TransactionReceipt[] receipts)
+        {
+            for (int i = 0; i < block.Transactions.Length; i++)
+            {
+                receipts[i].BlockHash = block.Hash;
+                _transactionStore.StoreProcessedTransaction(block.Transactions[i].Hash, receipts[i]);
+            }
+        }
+
+        private Block PrepareBlockForProcessing(Block suggestedBlock)
+        {
+            if (_logger.IsTrace) _logger.Trace($"{suggestedBlock.Header.ToString(BlockHeader.Format.Full)}");
+
+            var s = suggestedBlock.Header;
+            BlockHeader header = new BlockHeader(s.ParentHash, s.OmmersHash, s.Beneficiary, s.Difficulty, s.Number, s.GasLimit, s.Timestamp, s.ExtraData);
+            Block processedBlock = new Block(header, suggestedBlock.Transactions, suggestedBlock.Ommers);
+            header.Hash = s.Hash;
+            header.MixHash = s.MixHash;
+            header.Nonce = s.Nonce;
+            header.TransactionsRoot = suggestedBlock.TransactionsRoot;
+            return processedBlock;
         }
 
         private void ApplyMinerRewards(Block block)
@@ -284,15 +239,21 @@ namespace Nethermind.Blockchain
             BlockReward[] rewards = _rewardCalculator.CalculateRewards(block);
             for (int i = 0; i < rewards.Length; i++)
             {
-                if (_logger.IsTrace) _logger.Trace($"    {((decimal) rewards[i].Value / (decimal) Unit.Ether):N3}{Unit.EthSymbol} for account at {rewards[i].Address}");
-                if (!_stateProvider.AccountExists(rewards[i].Address))
-                {
-                    _stateProvider.CreateAccount(rewards[i].Address, (UInt256) rewards[i].Value);
-                }
-                else
-                {
-                    _stateProvider.AddToBalance(rewards[i].Address, (UInt256) rewards[i].Value, _specProvider.GetSpec(block.Number));
-                }
+                BlockReward reward = rewards[i];
+                ApplyMinerReward(block, reward);
+            }
+        }
+
+        private void ApplyMinerReward(Block block, BlockReward reward)
+        {
+            if (_logger.IsTrace) _logger.Trace($"    {((decimal) reward.Value / (decimal) Unit.Ether):N3}{Unit.EthSymbol} for account at {reward.Address}");
+            if (!_stateProvider.AccountExists(reward.Address))
+            {
+                _stateProvider.CreateAccount(reward.Address, (UInt256) reward.Value);
+            }
+            else
+            {
+                _stateProvider.AddToBalance(reward.Address, (UInt256) reward.Value, _specProvider.GetSpec(block.Number));
             }
         }
     }

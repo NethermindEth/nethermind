@@ -39,7 +39,7 @@ namespace Nethermind.JsonRpc.Module
         ResultWrapper<Quantity> eth_getUncleCountByBlockHash(Data blockHash);
         ResultWrapper<Quantity> eth_getUncleCountByBlockNumber(BlockParameter blockParameter);
         ResultWrapper<Data> eth_getCode(Data address, BlockParameter blockParameter);
-        ResultWrapper<Data> eth_sign(Data address, Data message);
+        ResultWrapper<Data> eth_sign(Data addressData, Data message);
         ResultWrapper<Data> eth_sendTransaction(Transaction transaction);
         ResultWrapper<Data> eth_sendRawTransaction(Data transation);
         ResultWrapper<Data> eth_call(Transaction transactionCall, BlockParameter blockParameter);

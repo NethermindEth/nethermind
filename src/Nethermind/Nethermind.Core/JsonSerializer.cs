@@ -18,6 +18,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 using System.Linq;
 using Nethermind.Core.Logging;
 using Newtonsoft.Json;
@@ -91,7 +92,13 @@ namespace Nethermind.Core
             var values = new List<string>();
             foreach (var value in paramsToken.Value<IEnumerable<object>>())
             {
-                var valueString = value.ToString();
+                var valueString = value?.ToString();
+                if (valueString == null)
+                {
+                    values.Add($"\"null\"");
+                    continue;
+                }
+                
                 if (valueString.StartsWith("{") || valueString.StartsWith("["))
                 {
                     values.Add(Serialize(valueString));

@@ -16,17 +16,38 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Core.Crypto;
+using System;
 
-namespace Nethermind.Core.Test.Builders
+namespace Nethermind.Core
 {
-    public class PrivateKeyBuilder : BuilderBase<PrivateKey>
+    [AttributeUsage(AttributeTargets.All, AllowMultiple = true)]
+    public class TodoAttribute : Attribute
     {
-        private PrivateKeyGenerator _generator = new PrivateKeyGenerator();
-        
-        public PrivateKeyBuilder()
+        private readonly string _issueLink;
+        private readonly string _comment;
+        private readonly Impr _impr;
+
+        public TodoAttribute(string comment)
         {
-            TestObject = _generator.Generate();
+            _comment = comment;
         }
+        
+        public TodoAttribute(Impr impr, string issueLink = null)
+        {
+            _impr = impr;
+            _issueLink = issueLink;
+        }
+    }
+
+    [Flags]
+    public enum Impr
+    {
+        None,
+        Allocations,
+        MemoryUsage,
+        Performance,
+        Readability,
+        TestCoverage,
+        All
     }
 }

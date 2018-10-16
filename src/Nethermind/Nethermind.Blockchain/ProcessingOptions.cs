@@ -27,6 +27,7 @@ namespace Nethermind.Blockchain
         ReadOnlyChain,
         ForceProcessing,
         StoreReceipts,
+        NoValidation,
         All
     }
 }

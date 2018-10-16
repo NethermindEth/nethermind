@@ -109,7 +109,8 @@ namespace Nethermind.Evm
 
             _stateProvider.IncrementNonce(sender);
             _stateProvider.SubtractFromBalance(sender, (ulong) gasLimit * gasPrice, spec);
-            _stateProvider.Commit(spec);
+            _stateProvider.Commit(_specProvider.GetSpec(block.Number));
+            
 
             long unspentGas = gasLimit - intrinsicGas;
             long spentGas = gasLimit;
@@ -230,8 +231,11 @@ namespace Nethermind.Evm
                 }
             }
 
-            _storageProvider.Commit(spec);
-            _stateProvider.Commit(spec);
+//            if (!_specProvider.GetSpec(block.Number).IsEip658Enabled)
+//            {
+                _storageProvider.Commit(spec);
+                _stateProvider.Commit(spec);
+//            }
 
             block.GasUsed += spentGas;
 

@@ -28,5 +28,6 @@ namespace Nethermind.Blockchain.Filters
         BlockFilter CreateBlockFilter(UInt256 startBlockNumber);
 
         Filter CreateFilter(FilterBlock fromBlock, FilterBlock toBlock, object address = null, IEnumerable<object> topics = null);
+        void RemoveFilter(int filterId);
     }
 }

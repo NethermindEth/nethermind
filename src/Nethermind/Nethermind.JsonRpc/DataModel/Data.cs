@@ -30,22 +30,22 @@ namespace Nethermind.JsonRpc.DataModel
 
         public Data(string value)
         {
-            Value = Bytes.FromHexString(value);
+            Value = value == null ? null : Bytes.FromHexString(value);
         }
 
         public Data(Bloom bloom)
         {
-            Value = bloom.Bytes;
+            Value = bloom?.Bytes;
         }
 
         public Data(Keccak hash)
         {
-            Value = hash.Bytes;
+            Value = hash?.Bytes;
         }
 
         public Data(Address address)
         {
-            Value = address.Bytes;
+            Value = address?.Bytes;
         }
 
         public Data(byte[] value)

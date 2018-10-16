@@ -67,6 +67,16 @@ namespace Nethermind.Blockchain
             return Trace(block, block.Transactions[txIndex].Hash);
         }
 
+        public TransactionTrace Trace(UInt256 blockNumber, Transaction tx)
+        {
+            Block block = _blockTree.FindBlock(blockNumber);
+            if (block == null) throw new InvalidOperationException("Only historical blocks");
+            block.Transactions = new [] {tx};
+            TraceListener listener = new TraceListener(tx.Hash);
+            _processor.Process(block, ProcessingOptions.ForceProcessing | ProcessingOptions.NoValidation, listener);
+            return listener.Trace;
+        }
+
         public BlockTrace TraceBlock(Keccak blockHash)
         {
             Block block = _blockTree.FindBlock(blockHash, false);

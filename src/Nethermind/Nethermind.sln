@@ -89,6 +89,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Chains", "Chains", "{D75E83
 		Chains\private_miner2.json = Chains\private_miner2.json
 		Chains\ropsten.json = Chains\ropsten.json
 		Chains\spaceneth.json = Chains\spaceneth.json
+		Chains\rinkeby.json = Chains\rinkeby.json
 	EndProjectSection
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.RunnerSpawner", "Nethermind.RunnerSpawner\Nethermind.RunnerSpawner.csproj", "{7285ABAE-A946-437E-A6DD-F1DECFE7F8D5}"
@@ -140,6 +141,10 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Store.Rpc", "Nethermind.Store.Rpc\Nethermind.Store.Rpc.csproj", "{FC966422-78F7-4D8E-9012-F5E3843CD217}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.JsonRpc.Client", "Nethermind.JsonRpc.Client\Nethermind.JsonRpc.Client.csproj", "{B4FAD285-1FCC-49FC-BBE8-EA8A9356097F}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Wallet", "Nethermind.Wallet\Nethermind.Wallet.csproj", "{8F646907-E900-4AA4-A4FD-F4A8DBC81AA6}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Wallet.Test", "Nethermind.Wallet.Test\Nethermind.Wallet.Test.csproj", "{7765262D-2A18-4C65-80F6-6C94977A5DAD}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -367,6 +372,14 @@ Global
 		{B4FAD285-1FCC-49FC-BBE8-EA8A9356097F}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{B4FAD285-1FCC-49FC-BBE8-EA8A9356097F}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{B4FAD285-1FCC-49FC-BBE8-EA8A9356097F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{8F646907-E900-4AA4-A4FD-F4A8DBC81AA6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8F646907-E900-4AA4-A4FD-F4A8DBC81AA6}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8F646907-E900-4AA4-A4FD-F4A8DBC81AA6}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8F646907-E900-4AA4-A4FD-F4A8DBC81AA6}.Release|Any CPU.Build.0 = Release|Any CPU
+		{7765262D-2A18-4C65-80F6-6C94977A5DAD}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7765262D-2A18-4C65-80F6-6C94977A5DAD}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7765262D-2A18-4C65-80F6-6C94977A5DAD}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7765262D-2A18-4C65-80F6-6C94977A5DAD}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -411,6 +424,7 @@ Global
 		{294F2DF2-1F01-4478-A613-EF911C21DD2E} = {499A7CDB-1708-4460-A6B5-9A2B9AC50FAE}
 		{0CD42613-757B-4AA6-903D-CDFC0EAC697B} = {499A7CDB-1708-4460-A6B5-9A2B9AC50FAE}
 		{462BCF0B-2B76-45F0-A73D-34B540FEA569} = {1564814A-27F8-40A3-943E-8E950D5EE17D}
+		{7765262D-2A18-4C65-80F6-6C94977A5DAD} = {1564814A-27F8-40A3-943E-8E950D5EE17D}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {092CA5E3-6180-4ED7-A3CB-9B57FAC2AA85}

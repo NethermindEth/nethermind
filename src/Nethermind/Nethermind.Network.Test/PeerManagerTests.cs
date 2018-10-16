@@ -82,8 +82,8 @@ namespace Nethermind.Network.Test
             
             _nodeFactory = new NodeFactory();
             _localPeer = new TestRlpxPeer();
-            var keyProvider = new PrivateKeyProvider(new CryptoRandom());
-            var key = keyProvider.PrivateKey.PublicKey;
+            var keyProvider = new PrivateKeyGenerator(new CryptoRandom());
+            var key = keyProvider.Generate().PublicKey;
             _synchronizationManager = Substitute.For<ISynchronizationManager>();
 
             var nodeTable = new NodeTable(_nodeFactory, Substitute.For<IKeyStore>(), new NodeDistanceCalculator(_configurationProvider), _configurationProvider, _logManager);

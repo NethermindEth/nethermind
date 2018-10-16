@@ -58,9 +58,11 @@ namespace Nethermind.KeyStore
     ///    "Version": 3
     ///}
     /// </summary>
+    [DoNotUseInSecuredContext("Untested, also uses lots of unsafe software key generation techniques")]
     public class FileKeyStore : IKeyStore
     {
-        private readonly IKeystoreConfig _configurationProvider;
+        private readonly PrivateKeyGenerator _privateKeyGenerator;
+        private readonly IKeystoreConfig _config;
         private readonly IJsonSerializer _jsonSerializer;
         private readonly ISymmetricEncrypter _symmetricEncrypter;
         private readonly ICryptoRandom _cryptoRandom;
@@ -70,30 +72,16 @@ namespace Nethermind.KeyStore
         public FileKeyStore(IConfigProvider configurationProvider, IJsonSerializer jsonSerializer, ISymmetricEncrypter symmetricEncrypter, ICryptoRandom cryptoRandom, ILogManager logManager)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _configurationProvider = configurationProvider.GetConfig<IKeystoreConfig>();
-            _jsonSerializer = jsonSerializer;
-            _symmetricEncrypter = symmetricEncrypter;
-            _cryptoRandom = cryptoRandom;
-            _keyStoreEncoding = Encoding.GetEncoding(_configurationProvider.KeyStoreEncoding);
+            _config = configurationProvider?.GetConfig<IKeystoreConfig>() ?? throw new ArgumentNullException(nameof(configurationProvider));
+            _jsonSerializer = jsonSerializer ?? throw new ArgumentNullException(nameof(jsonSerializer));
+            _symmetricEncrypter = symmetricEncrypter ?? throw new ArgumentNullException(nameof(symmetricEncrypter));
+            _cryptoRandom = cryptoRandom ?? throw new ArgumentNullException(nameof(cryptoRandom));
+            _keyStoreEncoding = Encoding.GetEncoding(_config.KeyStoreEncoding);
+            _privateKeyGenerator = new PrivateKeyGenerator(_cryptoRandom);
         }
 
         public int Version => 3;
         public int CryptoVersion => 1;
-
-        public class NoRandom : RandomNumberGenerator
-        {
-            private readonly byte[] _salt;
-
-            public NoRandom(byte[] salt)
-            {
-                _salt = salt;
-            }
-            
-            public override void GetBytes(byte[] data)
-            {
-                _salt.CopyTo(data.AsSpan());
-            }
-        }
         
         public (PrivateKey PrivateKey, Result Result) GetKey(Address address, SecureString password)
         {
@@ -166,7 +154,7 @@ namespace Nethermind.KeyStore
 
         public (PrivateKey PrivateKey, Result Result) GenerateKey(SecureString password)
         {
-            var privateKey = new PrivateKeyProvider(_cryptoRandom).PrivateKey;
+            var privateKey = _privateKeyGenerator.Generate();
             var result = StoreKey(privateKey, password);
             return result.ResultType == ResultType.Success ? (privateKey, result) : (null, result);
         }
@@ -176,19 +164,19 @@ namespace Nethermind.KeyStore
             var salt = _cryptoRandom.GenerateRandomBytes(32);
             var passBytes = password.ToByteArray(_keyStoreEncoding);
 
-            var derivedKey = SCrypt.ComputeDerivedKey(passBytes, salt, _configurationProvider.KdfparamsN, _configurationProvider.KdfparamsR, _configurationProvider.KdfparamsP, null, _configurationProvider.KdfparamsDklen);
+            var derivedKey = SCrypt.ComputeDerivedKey(passBytes, salt, _config.KdfparamsN, _config.KdfparamsR, _config.KdfparamsP, null, _config.KdfparamsDklen);
 
             var encryptKey = Keccak.Compute(derivedKey.Take(16).ToArray()).Bytes.Take(16).ToArray();
             var encryptContent = key.KeyBytes;
-            var iv = _cryptoRandom.GenerateRandomBytes(_configurationProvider.IVSize);
+            var iv = _cryptoRandom.GenerateRandomBytes(_config.IVSize);
 
-            var cipher = _symmetricEncrypter.Encrypt(encryptContent, encryptKey, iv, _configurationProvider.Cipher);
+            var cipher = _symmetricEncrypter.Encrypt(encryptContent, encryptKey, iv, _config.Cipher);
             if (cipher == null)
             {
                 return Result.Fail("Error during encryption");
             }
 
-            var mac = Keccak.Compute(derivedKey.Skip(_configurationProvider.KdfparamsDklen - 16).Take(16).Concat(cipher).ToArray()).Bytes;
+            var mac = Keccak.Compute(derivedKey.Skip(_config.KdfparamsDklen - 16).Take(16).Concat(cipher).ToArray()).Bytes;
 
             var address = key.Address.ToString();
             var keyStoreItem = new KeyStoreItem
@@ -196,19 +184,19 @@ namespace Nethermind.KeyStore
                 Address = address,
                 Crypto = new Crypto
                 {
-                    Cipher = _configurationProvider.Cipher,
+                    Cipher = _config.Cipher,
                     CipherText = cipher.ToHexString(true),
                     CipherParams = new CipherParams
                     {
                         IV = iv.ToHexString(true)
                     },
-                    KDF = _configurationProvider.Kdf,
-                    KDFParams = new KDFParams
+                    KDF = _config.Kdf,
+                    KDFParams = new KdfParams
                     {
-                       DkLen = _configurationProvider.KdfparamsDklen,
-                       N = _configurationProvider.KdfparamsN,
-                       P = _configurationProvider.KdfparamsP,
-                       R = _configurationProvider.KdfparamsR,
+                       DkLen = _config.KdfparamsDklen,
+                       N = _config.KdfparamsN,
+                       P = _config.KdfparamsP,
+                       R = _config.KdfparamsR,
                        Salt = salt.ToHexString(true)
                     },
                     MAC = mac.ToHexString(true),
@@ -272,7 +260,7 @@ namespace Nethermind.KeyStore
 
         private string GetStoreDirectory()
         {
-            var directory = _configurationProvider.KeyStoreDirectory;
+            var directory = _config.KeyStoreDirectory;
             if (!Directory.Exists(directory))
             {
                 Directory.CreateDirectory(directory);

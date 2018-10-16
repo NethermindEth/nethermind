@@ -34,9 +34,10 @@ namespace Nethermind.JsonRpc.Module
 {
     public interface IBlockchainBridge
     {
-        (IReadOnlyCollection<Address> Addresses, Result Result) GetKeyAddresses();
-        (PrivateKey PrivateKey, Result Result) GetKey(Address address, SecureString password);
-
+        IReadOnlyCollection<Address> GetWalletAccounts();
+        Signature Sign(Address address, Keccak message);
+        
+        int GetNetworkId();
         BlockHeader Head { get; }
         BlockHeader BestSuggested { get; }
         Block FindBlock(Keccak blockHash, bool mainChainOnly);
@@ -44,10 +45,8 @@ namespace Nethermind.JsonRpc.Module
         Block RetrieveHeadBlock();
         Block RetrieveGenesisBlock();
 
-        Signature Sign(PrivateKey privateKey, Keccak message);
-
         void AddTxData(UInt256 blockNumber);
-        (TransactionReceipt receipt, Transaction transaction) GetTransaction(Keccak transactionHash);
+        (TransactionReceipt Receipt, Transaction Transaction) GetTransaction(Keccak transactionHash);
         Keccak GetBlockHash(Keccak transactionHash);
         Keccak SendTransaction(Transaction transaction);
         TransactionReceipt GetTransactionReceipt(Keccak txHash);
@@ -56,18 +55,18 @@ namespace Nethermind.JsonRpc.Module
         TransactionTrace GetTransactionTrace(Keccak blockHash, int index);
         BlockTrace GetBlockTrace(Keccak blockHash);
         BlockTrace GetBlockTrace(UInt256 blockNumber);
+        byte[] Call(Block block, Transaction transaction);
         byte[] GetDbValue(string dbName, byte[] key);
 
         byte[] GetCode(Address address);
         byte[] GetCode(Keccak codeHash);
         BigInteger GetNonce(Address address);
         BigInteger GetBalance(Address address);
-
         Account GetAccount(Address address, Keccak stateRoot);
-        int GetNetworkId();
+        
         int NewBlockFilter();
+        void UninstallFilter(int filterId);
         object[] GetFilterChanges(int filterId);
-
         int NewFilter(FilterBlock fromBlock, FilterBlock toBlock, object address = null,
             IEnumerable<object> topics = null);
     }

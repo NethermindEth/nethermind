@@ -16,10 +16,18 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.KeyStore
+using System;
+
+namespace Nethermind.Core
 {
-    public class KeyHeader
+    [AttributeUsage(AttributeTargets.Class | AttributeTargets.Method | AttributeTargets.Property)]
+    public class RequiresSecurityReviewAttribute : Attribute
     {
-        
+        private readonly string _comment;
+
+        public RequiresSecurityReviewAttribute(string comment)
+        {
+            _comment = comment;
+        }
     }
 }

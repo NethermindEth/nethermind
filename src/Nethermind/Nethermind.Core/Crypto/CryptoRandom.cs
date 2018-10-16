@@ -21,10 +21,11 @@ using System.Security.Cryptography;
 
 namespace Nethermind.Core.Crypto
 {
+    [RequiresSecurityReview("Analyze RNGCryptoServiceProvider quality and its behaviour on reuse")]
     public class CryptoRandom : ICryptoRandom
     {
         private readonly RandomNumberGenerator _secureRandom = new RNGCryptoServiceProvider();
-        private readonly Random _random = new Random(); // TODO: check where it is used via NextInt and review if carries any security risks
+        private readonly Random _random = new Random();
 
         public byte[] GenerateRandomBytes(int length)
         {
@@ -33,6 +34,7 @@ namespace Nethermind.Core.Crypto
             return bytes;
         }
 
+        [RequiresSecurityReview("There should be no unsecured method in a class that suggests security")]
         public int NextInt(int max)
         {   
             return _random.Next(max);

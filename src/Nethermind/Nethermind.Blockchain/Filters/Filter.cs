@@ -28,18 +28,17 @@ namespace Nethermind.Blockchain.Filters
     public class Filter : FilterBase
     {
         private readonly TopicsFilter _topicsFilter;
-        private readonly Address _address;
-        public FilterBlock FromBlock { get; set; }
-        public FilterBlock ToBlock { get; set; }
-        public FilterAddress Address { get; set; }
-        public IEnumerable<FilterTopic> Topics { get; set; }
+        public FilterBlock FromBlock { get; }
+        public FilterBlock ToBlock { get; }
+        public FilterAddress Address { get; }
         
-        public Filter(FilterBlock fromBlock, FilterBlock toBlock, Address address, IEnumerable<FilterTopic> topicsFilter)
+        public Filter(FilterBlock fromBlock, FilterBlock toBlock,
+            FilterAddress address, TopicsFilter topicsFilter)
         {
             FromBlock = fromBlock;
             ToBlock = toBlock;
-            Topics = topicsFilter;
-            _address = address;
+            Address = address;
+            _topicsFilter = topicsFilter;
         }
 
         public bool Accepts(LogEntry logEntry)

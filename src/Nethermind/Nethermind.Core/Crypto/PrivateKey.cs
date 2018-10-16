@@ -23,7 +23,7 @@ using Nethermind.Secp256k1;
 
 namespace Nethermind.Core.Crypto
 {
-    // TODO: remove entirely and handle private key more securely
+    [DoNotUseInSecuredContext("Any secure private key handling should be done on hardware or with memory protection")]
     public class PrivateKey
     {
         public byte[] KeyBytes { get; }
@@ -54,7 +54,8 @@ namespace Nethermind.Core.Crypto
                     nameof(keyBytes));
             }
 
-            KeyBytes = keyBytes;
+            KeyBytes = new byte[32];
+            keyBytes.AsSpan().CopyTo(KeyBytes);
         }
 
         public PublicKey PublicKey => LazyInitializer.EnsureInitialized(ref _publicKey, ComputePublicKey);

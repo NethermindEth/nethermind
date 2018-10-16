@@ -30,8 +30,6 @@ namespace Nethermind.Runner
 {
     public class HiveRunnerApp : RunnerAppBase, IRunnerApp
     {
-        private static readonly PrivateKey PrivateKey = new PrivateKey("49a7b37aa6f6645917e7b807e9d1c00d4fa71f18343b0d4122a4d2df64dd6fee");
-
         private const string DefaultHost = "localhost";
         private const string DefaultBootNode = "enode://6ce05930c72abc632c58e2e4324f7c7ea478cec0ed4fa2528982cf34483094e9cbc9216e7aa349691242576d552a2a56aaeae426c5303ded677ce455ba1acd9d@13.84.180.240:30303";
         private const int DefaultHttpPort = 8345;
@@ -41,7 +39,7 @@ namespace Nethermind.Runner
         private const string DefaultBlocksDir = "blocks";
         private const string DefaultKeysDir = "keys";
 
-        public HiveRunnerApp(ILogger logger) : base(logger, new PrivateKeyProvider(PrivateKey))
+        public HiveRunnerApp(ILogger logger) : base(logger)
         {
         }
 

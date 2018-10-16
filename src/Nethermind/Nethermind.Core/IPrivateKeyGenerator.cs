@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -18,15 +18,25 @@
 
 using Nethermind.Core.Crypto;
 
-namespace Nethermind.Core.Test.Builders
+namespace Nethermind.Core
 {
-    public class PrivateKeyBuilder : BuilderBase<PrivateKey>
+    public interface IPrivateKeyGenerator
     {
-        private PrivateKeyGenerator _generator = new PrivateKeyGenerator();
-        
-        public PrivateKeyBuilder()
+        PrivateKey Generate();
+    }
+
+    public class SameKeyGenerator : IPrivateKeyGenerator
+    {
+        private readonly PrivateKey _privateKey;
+
+        public SameKeyGenerator(PrivateKey privateKey)
         {
-            TestObject = _generator.Generate();
+            _privateKey = privateKey;
+        }
+        
+        public PrivateKey Generate()
+        {
+            return _privateKey;
         }
     }
 }

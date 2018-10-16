@@ -30,21 +30,21 @@ namespace Nethermind.Store
     {
         internal const int StartCapacity = 16;
 
-        private readonly Dictionary<StorageAddress, Stack<int>> _intraBlockCache = new Dictionary<StorageAddress, Stack<int>>();
+        private Dictionary<StorageAddress, Stack<int>> _intraBlockCache = new Dictionary<StorageAddress, Stack<int>>(StartCapacity);
 
         /// <summary>
         /// EIP-1283
         /// </summary>
-        private readonly Dictionary<StorageAddress, byte[]> _originalValues = new Dictionary<StorageAddress, byte[]>();
+        private Dictionary<StorageAddress, byte[]> _originalValues = new Dictionary<StorageAddress, byte[]>();
 
-        private readonly HashSet<StorageAddress> _committedThisRound = new HashSet<StorageAddress>();
+        private HashSet<StorageAddress> _committedThisRound = new HashSet<StorageAddress>();
 
         private readonly ILogger _logger;
 
         private readonly ISnapshotableDb _stateDb;
         private readonly IStateProvider _stateProvider;
 
-        private readonly Dictionary<Address, StorageTree> _storages = new Dictionary<Address, StorageTree>();
+        private Dictionary<Address, StorageTree> _storages = new Dictionary<Address, StorageTree>(StartCapacity);
 
         private int _capacity = StartCapacity;
         private Change[] _changes = new Change[StartCapacity];
@@ -241,8 +241,9 @@ namespace Nethermind.Store
             _capacity = Math.Max(StartCapacity, _capacity / 2);
             _changes = new Change[_capacity];
             _currentPosition = -1;
-            _committedThisRound.Clear();
-            _intraBlockCache.Clear();
+            _committedThisRound = new HashSet<StorageAddress>(Math.Max(StartCapacity, _committedThisRound.Count / 2));
+            _intraBlockCache = new Dictionary<StorageAddress, Stack<int>>(Math.Max(StartCapacity, _intraBlockCache.Count / 2));
+            _originalValues = new Dictionary<StorageAddress, byte[]>(Math.Max(StartCapacity, _originalValues.Count / 2));
 //            _destructedStorages.Clear();
         }
 
@@ -260,7 +261,7 @@ namespace Nethermind.Store
         }
 
         /// <summary>
-        /// The code handlign destroy is commented out. There are plenty of ethereum tests which handle collision of addresses.
+        /// The code handling destroy is commented out. There are plenty of ethereum tests which handle collision of addresses.
         /// I would like to clarify why we even consider it a possibility?
         /// </summary>
         /// <param name="address"></param>
@@ -280,7 +281,7 @@ namespace Nethermind.Store
             }
 
             // only needed here as there is no control over cached storage size otherwise
-            _storages.Clear();
+            _storages = new Dictionary<Address, StorageTree>(StartCapacity);
         }
 
         private StorageTree GetOrCreateStorage(Address address)

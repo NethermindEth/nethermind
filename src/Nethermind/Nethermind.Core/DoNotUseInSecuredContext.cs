@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,12 +16,18 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Core.Crypto;
+using System;
 
 namespace Nethermind.Core
 {
-    public interface IPrivateKeyProvider
+    [AttributeUsage(AttributeTargets.Class)]
+    public class DoNotUseInSecuredContext : Attribute
     {
-        PrivateKey PrivateKey { get;}
+        private readonly string _comment;
+
+        public DoNotUseInSecuredContext(string comment)
+        {
+            _comment = comment;
+        }
     }
 }

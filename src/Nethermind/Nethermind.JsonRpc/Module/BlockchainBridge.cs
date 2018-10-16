@@ -19,55 +19,54 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
-using System.Security;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Model;
+using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
-using Nethermind.KeyStore;
 using Nethermind.Store;
-using Block = Nethermind.Core.Block;
-using Transaction = Nethermind.Core.Transaction;
-using TransactionReceipt = Nethermind.Core.TransactionReceipt;
-using TransactionTrace = Nethermind.Evm.TransactionTrace;
+using Nethermind.Wallet;
 
 namespace Nethermind.JsonRpc.Module
 {
+    [DoNotUseInSecuredContext("Not reviewed, work in progress")]
+    [Todo("Split the class into separate modules / bridges")]
+    [Todo("Any state requests should be taken from specified state snapshot (potentially current)")]
+    [Todo("We need a concurrent State representation that can track idnependently from a given state root")]
     public class BlockchainBridge : IBlockchainBridge
     {
         private readonly IBlockchainProcessor _blockchainProcessor;
-        private readonly ITxTracer _txTracer;
         private readonly IBlockTree _blockTree;
-        private readonly IKeyStore _keyStore;
+        private readonly IFilterStore _filterStore;
         private readonly IEthereumSigner _signer;
         private readonly IDb _stateDb;
         private readonly IStateProvider _stateProvider;
         private readonly ITransactionStore _transactionStore;
-        private readonly IFilterStore _filterStore;
+        private readonly ITxTracer _txTracer;
+        private readonly IWallet _wallet;
         private Dictionary<string, IDb> _dbMappings;
 
         public BlockchainBridge(IEthereumSigner signer,
             IStateProvider stateProvider,
-            IKeyStore keyStore,
             IBlockTree blockTree,
             IBlockchainProcessor blockchainProcessor,
             ITxTracer txTracer,
             IDbProvider dbProvider,
             ITransactionStore transactionStore,
-            IFilterStore filterStore)
+            IFilterStore filterStore,
+            IWallet wallet)
         {
             _signer = signer ?? throw new ArgumentNullException(nameof(signer));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
-            _keyStore = keyStore ?? throw new ArgumentNullException(nameof(keyStore));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _blockchainProcessor = blockchainProcessor ?? throw new ArgumentNullException(nameof(blockchainProcessor));
             _txTracer = txTracer ?? throw new ArgumentNullException(nameof(txTracer));
             _stateDb = dbProvider?.StateDb ?? throw new ArgumentNullException(nameof(dbProvider.StateDb));
             _transactionStore = transactionStore ?? throw new ArgumentNullException(nameof(transactionStore));
             _filterStore = filterStore ?? throw new ArgumentException(nameof(filterStore));
+            _wallet = wallet ?? throw new ArgumentException(nameof(wallet));
 
             IDb blockInfosDb = dbProvider?.BlockInfosDb ?? throw new ArgumentNullException(nameof(dbProvider.BlockInfosDb));
             IDb blocksDb = dbProvider?.BlocksDb ?? throw new ArgumentNullException(nameof(dbProvider.BlocksDb));
@@ -85,14 +84,14 @@ namespace Nethermind.JsonRpc.Module
             };
         }
 
-        public (IReadOnlyCollection<Address> Addresses, Result Result) GetKeyAddresses()
+        public IReadOnlyCollection<Address>  GetWalletAccounts()
         {
-            return _keyStore.GetKeyAddresses();
+            return _wallet.GetAccounts();
         }
 
-        public (PrivateKey PrivateKey, Result Result) GetKey(Address address, SecureString password)
+        public Signature Sign(Address address, Keccak message)
         {
-            return _keyStore.GetKey(address, password);
+            return _wallet.Sign(address, message);
         }
 
         public BlockHeader Head => _blockTree.Head;
@@ -131,13 +130,10 @@ namespace Nethermind.JsonRpc.Module
             _blockchainProcessor.AddTxData(block);
         }
 
-        public (TransactionReceipt, Transaction) GetTransaction(Keccak transactionHash)
+        public (TransactionReceipt Receipt, Transaction Transaction) GetTransaction(Keccak transactionHash)
         {
             TransactionReceipt receipt = _transactionStore.GetReceipt(transactionHash);
-            if (receipt.BlockHash == null)
-            {
-                return (null, null);
-            }
+            if (receipt.BlockHash == null) return (null, null);
 
             Block block = _blockTree.FindBlock(receipt.BlockHash, true);
             return (receipt, block.Transactions[receipt.Index]);
@@ -150,20 +146,17 @@ namespace Nethermind.JsonRpc.Module
 
         public Keccak SendTransaction(Transaction transaction)
         {
-            PrivateKey mock = new PrivateKey(Keccak.OfAnEmptyString.Bytes);
-            transaction.SenderAddress = mock.Address;
-            _signer.Sign(mock, transaction, _blockTree.Head.Number);
+            _stateProvider.StateRoot = _blockTree.Head.StateRoot;
+            
+            if (transaction.SenderAddress == null) transaction.SenderAddress = _wallet.GetAccounts()[0];
+
+            transaction.Nonce = _stateProvider.GetNonce(transaction.SenderAddress);
+            _wallet.Sign(transaction, _blockTree.ChainId);
             transaction.Hash = Transaction.CalculateHash(transaction);
 
-            if (_signer.RecoverAddress(transaction, _blockTree.Head.Number) != transaction.SenderAddress)
-            {
-                throw new InvalidOperationException("Invalid signature");
-            }
+            if (_signer.RecoverAddress(transaction, _blockTree.Head.Number) != transaction.SenderAddress) throw new InvalidOperationException("Invalid signature");
 
-            if (_stateProvider.GetNonce(transaction.SenderAddress) != transaction.Nonce)
-            {
-                throw new InvalidOperationException("Invalid nonce");
-            }
+            if (_stateProvider.GetNonce(transaction.SenderAddress) != transaction.Nonce) throw new InvalidOperationException("Invalid nonce");
 
             _transactionStore.AddPending(transaction);
             return transaction.Hash;
@@ -197,6 +190,14 @@ namespace Nethermind.JsonRpc.Module
         public BlockTrace GetBlockTrace(UInt256 blockNumber)
         {
             return _txTracer.TraceBlock(blockNumber);
+        }
+
+        public byte[] Call(Block block, Transaction transaction)
+        {
+            _stateProvider.StateRoot = block.StateRoot;
+            transaction.Nonce = _stateProvider.GetNonce(transaction.SenderAddress);
+            transaction.Hash = Transaction.CalculateHash(transaction);
+            return Bytes.FromHexString(_txTracer.Trace(block.Number, transaction).ReturnValue);
         }
 
         public byte[] GetDbValue(string dbName, byte[] key)
@@ -244,6 +245,11 @@ namespace Nethermind.JsonRpc.Module
         public int NewBlockFilter()
         {
             return _filterStore.CreateBlockFilter(_blockTree.Head.Number).FilterId;
+        }
+
+        public void UninstallFilter(int filterId)
+        {
+            _filterStore.RemoveFilter(filterId);
         }
 
         public object[] GetFilterChanges(int filterId)
