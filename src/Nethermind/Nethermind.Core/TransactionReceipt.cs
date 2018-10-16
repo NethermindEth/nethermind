@@ -30,6 +30,7 @@ namespace Nethermind.Core
 
         public UInt256 BlockNumber { get; set; }
         public Keccak BlockHash { get; set; }
+        public Keccak TransactionHash { get; set; } //TODO: Set transaction hash
         public int Index { get; set; }
         public long GasUsed { get; set; }
         public long GasUsedTotal { get; set; }

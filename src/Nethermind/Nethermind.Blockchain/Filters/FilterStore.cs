@@ -37,7 +37,7 @@ namespace Nethermind.Blockchain.Filters
 
         public BlockFilter CreateBlockFilter(UInt256 startBlockNumber)
         {
-            BlockFilter blockFilter = new BlockFilter(startBlockNumber);
+            BlockFilter blockFilter = new BlockFilter(GetFilterId(), startBlockNumber);
             AddFilter(blockFilter);
             return blockFilter;
         }
@@ -45,7 +45,8 @@ namespace Nethermind.Blockchain.Filters
         public Filter CreateFilter(FilterBlock fromBlock, FilterBlock toBlock, 
             object address = null, IEnumerable<object> topics = null)
         {
-            var filter = new Filter(fromBlock, toBlock, GetAddress(address), GetTopicsFilter(topics));
+            var filter = new Filter(GetFilterId(), fromBlock, toBlock, 
+                GetAddress(address), GetTopicsFilter(topics));
             AddFilter(filter);
 
             return filter;
@@ -58,9 +59,10 @@ namespace Nethermind.Blockchain.Filters
 
         private void AddFilter(FilterBase filter)
         {
-            filter.FilterId = _filters.Any() ? _filters.Max(f => f.Key) + 1 : 1;
-            _filters[filter.FilterId] = filter;
+            _filters[filter.Id] = filter;
         }
+
+        private int GetFilterId() => _filters.Any() ? _filters.Max(f => f.Key) + 1 : 1;
         
         private TopicsFilter GetTopicsFilter(IEnumerable<object> topics = null)
         {

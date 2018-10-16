@@ -239,12 +239,12 @@ namespace Nethermind.JsonRpc.Module
         public int NewFilter(FilterBlock fromBlock, FilterBlock toBlock,
             object address = null, IEnumerable<object> topics = null)
         {
-            return _filterStore.CreateFilter(fromBlock, toBlock, address, topics).FilterId;
+            return _filterStore.CreateFilter(fromBlock, toBlock, address, topics).Id;
         }
 
         public int NewBlockFilter()
         {
-            return _filterStore.CreateBlockFilter(_blockTree.Head.Number).FilterId;
+            return _filterStore.CreateBlockFilter(_blockTree.Head.Number).Id;
         }
 
         public void UninstallFilter(int filterId)

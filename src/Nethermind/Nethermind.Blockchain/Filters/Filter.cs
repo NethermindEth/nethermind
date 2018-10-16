@@ -16,12 +16,9 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Blockchain.Filters.Topics;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Blockchain.Filters
 {
@@ -32,8 +29,8 @@ namespace Nethermind.Blockchain.Filters
         public FilterBlock ToBlock { get; }
         public FilterAddress Address { get; }
         
-        public Filter(FilterBlock fromBlock, FilterBlock toBlock,
-            FilterAddress address, TopicsFilter topicsFilter)
+        public Filter(int id, FilterBlock fromBlock, FilterBlock toBlock,
+            FilterAddress address, TopicsFilter topicsFilter) : base(id)
         {
             FromBlock = fromBlock;
             ToBlock = toBlock;

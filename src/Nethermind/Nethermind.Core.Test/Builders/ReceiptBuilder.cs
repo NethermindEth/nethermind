@@ -17,6 +17,7 @@
  */
 
 using Nethermind.Core.Crypto;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Core.Test.Builders
 {
@@ -31,6 +32,37 @@ namespace Nethermind.Core.Test.Builders
         public ReceiptBuilder WithState(Keccak state)
         {
             TestObjectInternal.PostTransactionState = state;
+            return this;
+        }
+
+        public ReceiptBuilder WithLogs(LogEntry[] logs)
+        {
+            TestObjectInternal.Logs = logs;
+            return this;
+        }
+
+        //TODO: Transaction hash for transaction receipt builder
+        public ReceiptBuilder WithTransactionHash(Keccak hash)
+        {
+            TestObject.TransactionHash = hash;
+            return this;
+        }
+
+        public ReceiptBuilder WithBlockNumber(UInt256 number)
+        {
+            TestObject.BlockNumber = number;
+            return this;
+        }
+
+        public ReceiptBuilder WithBlockHash(Keccak hash)
+        {
+            TestObject.BlockHash = hash;
+            return this;
+        }
+
+        public ReceiptBuilder WithTransactionIndex(int index)
+        {
+            TestObjectInternal.Index = index;
             return this;
         }
     }
