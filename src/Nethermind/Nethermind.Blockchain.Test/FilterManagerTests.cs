@@ -25,147 +25,162 @@ namespace Nethermind.Blockchain.Test
 
         [Test]
         public void logs_should_not_be_empty_for_default_filter_parameters()
-            => LogsShouldNotBeEmpty(filter => { }, receiptContext => { });
+            => LogsShouldNotBeEmpty(filter => { }, receipt => { });
+
+        [Test]
+        public void many_logs_should_not_be_empty_for_default_filter_parameters()
+            => LogsShouldNotBeEmpty(new Action<FilterBuilder>[] {filter => { }, filter => { }, filter => { }},
+                new Action<TransactionReceiptContextBuilder>[] {receipt => { }, receipt => { }, receipt => { }});
 
         [Test]
         public void logs_should_not_be_empty_for_from_block_earliest_type()
-            => LogsShouldNotBeEmpty(filter => filter.FromEarliestBlock(), receiptContext => { });
+            => LogsShouldNotBeEmpty(filter => filter.FromEarliestBlock(), receipt => { });
 
         [Test]
         public void logs_should_not_be_empty_for_from_block_pending_type()
-            => LogsShouldNotBeEmpty(filter => filter.FromPendingBlock(), receiptContext => { });
+            => LogsShouldNotBeEmpty(filter => filter.FromPendingBlock(), receipt => { });
 
         [Test]
         public void logs_should_not_be_empty_for_from_block_latest_type()
-            => LogsShouldNotBeEmpty(filter => filter.FromLatestBlock(), receiptContext => { });
+            => LogsShouldNotBeEmpty(filter => filter.FromLatestBlock(), receipt => { });
 
         [Test]
         public void logs_should_not_be_empty_for_to_block_earliest_type()
-            => LogsShouldNotBeEmpty(filter => filter.ToEarliestBlock(), receiptContext => { });
+            => LogsShouldNotBeEmpty(filter => filter.ToEarliestBlock(), receipt => { });
 
         [Test]
         public void logs_should_not_be_empty_for_to_block_pending_type()
-            => LogsShouldNotBeEmpty(filter => filter.ToPendingBlock(), receiptContext => { });
+            => LogsShouldNotBeEmpty(filter => filter.ToPendingBlock(), receipt => { });
 
         [Test]
         public void logs_should_not_be_empty_for_to_block_latest_type()
-            => LogsShouldNotBeEmpty(filter => filter.ToLatestBlock(), receiptContext => { });
+            => LogsShouldNotBeEmpty(filter => filter.ToLatestBlock(), receipt => { });
 
         [Test]
         public void logs_should_not_be_empty_for_from_block_number_in_range()
             => LogsShouldNotBeEmpty(filter => filter.FromBlock(UInt256.One),
-                receiptContext => receiptContext.WithBlockNumber(new UInt256(2)));
-        
+                receipt => receipt.WithBlockNumber(new UInt256(2)));
+
         [Test]
         public void logs_should_be_empty_for_from_block_number_not_in_range()
             => LogsShouldBeEmpty(filter => filter.FromBlock(UInt256.One),
-                receiptContext => receiptContext.WithBlockNumber(UInt256.Zero));
+                receipt => receipt.WithBlockNumber(UInt256.Zero));
 
         [Test]
         public void logs_should_not_be_empty_for_to_block_number_in_range()
             => LogsShouldNotBeEmpty(filter => filter.ToBlock(new UInt256(2)),
-                receiptContext => receiptContext.WithBlockNumber(UInt256.One));
+                receipt => receipt.WithBlockNumber(UInt256.One));
 
         [Test]
         public void logs_should_be_empty_for_to_block_number_not_in_range()
             => LogsShouldBeEmpty(filter => filter.ToBlock(UInt256.One),
-                receiptContext => receiptContext.WithBlockNumber(new UInt256(2)));
+                receipt => receipt.WithBlockNumber(new UInt256(2)));
 
         [Test]
         public void logs_should_not_be_empty_for_from_block_number_in_range_and_to_block_number_in_range()
             => LogsShouldNotBeEmpty(filter => filter.FromBlock(new UInt256(2)).ToBlock(new UInt256(6)),
-                receiptContext => receiptContext.WithBlockNumber(new UInt256(4)));
+                receipt => receipt.WithBlockNumber(new UInt256(4)));
 
         [Test]
         public void logs_should_be_empty_for_from_block_number_in_range_and_to_block_number_not_in_range()
             => LogsShouldBeEmpty(filter => filter.FromBlock(new UInt256(2)).ToBlock(new UInt256(3)),
-                receiptContext => receiptContext.WithBlockNumber(new UInt256(4)));
+                receipt => receipt.WithBlockNumber(new UInt256(4)));
 
         [Test]
         public void logs_should_be_empty_for_from_block_number_not_in_range_and_to_block_number_in_range()
             => LogsShouldBeEmpty(filter => filter.FromBlock(new UInt256(5)).ToBlock(new UInt256(7)),
-                receiptContext => receiptContext.WithBlockNumber(new UInt256(4)));
+                receipt => receipt.WithBlockNumber(new UInt256(4)));
 
         [Test]
         public void logs_should_be_empty_for_from_block_number_not_in_range_and_to_block_number_not_in_range()
             => LogsShouldBeEmpty(filter => filter.FromBlock(new UInt256(2)).ToBlock(new UInt256(3)),
-                receiptContext => receiptContext.WithBlockNumber(new UInt256(4)));
+                receipt => receipt.WithBlockNumber(new UInt256(4)));
 
         [Test]
         public void logs_should_not_be_empty_for_existing_address()
             => LogsShouldNotBeEmpty(filter => filter.WithAddress(TestObject.AddressA),
-                receiptContext => receiptContext
+                receipt => receipt
                     .WithReceipt(Build.A.TransactionReceipt
-                        .WithLogs(new [] { Build.A.LogEntry.WithAddress(TestObject.AddressA).TestObject }).TestObject));
+                        .WithLogs(new[] {Build.A.LogEntry.WithAddress(TestObject.AddressA).TestObject}).TestObject));
 
         [Test]
         public void logs_should_be_empty_for_non_existing_address()
             => LogsShouldBeEmpty(filter => filter.WithAddress(TestObject.AddressA),
-                receiptContext => receiptContext
+                receipt => receipt
                     .WithReceipt(Build.A.TransactionReceipt
-                        .WithLogs(new [] { Build.A.LogEntry.WithAddress(TestObject.AddressB).TestObject }).TestObject));
+                        .WithLogs(new[] {Build.A.LogEntry.WithAddress(TestObject.AddressB).TestObject}).TestObject));
 
         [Test]
         public void logs_should_not_be_empty_for_existing_addresses()
-            => LogsShouldNotBeEmpty(filter => filter.WithAddresses(new [] { TestObject.AddressA, TestObject.AddressB }),
-                receiptContext => receiptContext
+            => LogsShouldNotBeEmpty(filter => filter.WithAddresses(new[] {TestObject.AddressA, TestObject.AddressB}),
+                receipt => receipt
                     .WithReceipt(Build.A.TransactionReceipt
-                        .WithLogs(new [] { Build.A.LogEntry.WithAddress(TestObject.AddressB).TestObject }).TestObject));
+                        .WithLogs(new[] {Build.A.LogEntry.WithAddress(TestObject.AddressB).TestObject}).TestObject));
 
         [Test]
         public void logs_should_be_empty_for_non_existing_addresses()
-            => LogsShouldBeEmpty(filter => filter.WithAddresses(new [] { TestObject.AddressA, TestObject.AddressB }),
-                receiptContext => receiptContext
+            => LogsShouldBeEmpty(filter => filter.WithAddresses(new[] {TestObject.AddressA, TestObject.AddressB}),
+                receipt => receipt
                     .WithReceipt(Build.A.TransactionReceipt
-                        .WithLogs(new [] { Build.A.LogEntry.WithAddress(TestObject.AddressC).TestObject }).TestObject));
+                        .WithLogs(new[] {Build.A.LogEntry.WithAddress(TestObject.AddressC).TestObject}).TestObject));
 
         [Test]
         public void logs_should_not_be_empty_for_existing_specific_topic()
             => LogsShouldNotBeEmpty(filter => filter
                     .WithTopicExpressions(TestTopicExpressions.Specific(TestObject.KeccakA)),
-                receiptContext => receiptContext
+                receipt => receipt
                     .WithReceipt(Build.A.TransactionReceipt
-                        .WithLogs(new [] { Build.A.LogEntry.WithTopics(new [] { TestObject.KeccakA, TestObject.KeccakB }).TestObject }).TestObject));
+                        .WithLogs(new[]
+                            {Build.A.LogEntry.WithTopics(new[] {TestObject.KeccakA, TestObject.KeccakB}).TestObject})
+                        .TestObject));
 
         [Test]
         public void logs_should_be_empty_for_non_existing_specific_topic()
             => LogsShouldBeEmpty(filter => filter
                     .WithTopicExpressions(TestTopicExpressions.Specific(TestObject.KeccakA)),
-                receiptContext => receiptContext
+                receipt => receipt
                     .WithReceipt(Build.A.TransactionReceipt
-                        .WithLogs(new [] { Build.A.LogEntry.WithTopics(new [] { TestObject.KeccakB, TestObject.KeccakC }).TestObject }).TestObject));
+                        .WithLogs(new[]
+                            {Build.A.LogEntry.WithTopics(new[] {TestObject.KeccakB, TestObject.KeccakC}).TestObject})
+                        .TestObject));
 
         [Test]
         public void logs_should_not_be_empty_for_existing_any_topic()
             => LogsShouldNotBeEmpty(filter => filter
                     .WithTopicExpressions(TestTopicExpressions.Any),
-                receiptContext => receiptContext
+                receipt => receipt
                     .WithReceipt(Build.A.TransactionReceipt
-                        .WithLogs(new [] { Build.A.LogEntry.WithTopics(new [] { TestObject.KeccakA, TestObject.KeccakB }).TestObject }).TestObject));
+                        .WithLogs(new[]
+                            {Build.A.LogEntry.WithTopics(new[] {TestObject.KeccakA, TestObject.KeccakB}).TestObject})
+                        .TestObject));
 
         [Test]
         public void logs_should_not_be_empty_for_existing_or_topic()
             => LogsShouldNotBeEmpty(filter => filter
-                    .WithTopicExpressions(TestTopicExpressions.Or(new [] 
-                        { 
-                            TestTopicExpressions.Specific(TestObject.KeccakB),
-                            TestTopicExpressions.Specific(TestObject.KeccakD)
-                        })),
-                receiptContext => receiptContext
+                    .WithTopicExpressions(TestTopicExpressions.Or(new[]
+                    {
+                        TestTopicExpressions.Specific(TestObject.KeccakB),
+                        TestTopicExpressions.Specific(TestObject.KeccakD)
+                    })),
+                receipt => receipt
                     .WithReceipt(Build.A.TransactionReceipt
-                        .WithLogs(new [] { Build.A.LogEntry.WithTopics(new [] { TestObject.KeccakB, TestObject.KeccakC }).TestObject }).TestObject));
+                        .WithLogs(new[]
+                            {Build.A.LogEntry.WithTopics(new[] {TestObject.KeccakB, TestObject.KeccakC}).TestObject})
+                        .TestObject));
 
         [Test]
         public void logs_should_be_empty_for_non_existing_or_topic()
             => LogsShouldBeEmpty(filter => filter
-                    .WithTopicExpressions(TestTopicExpressions.Or(new [] 
-                        { 
-                            TestTopicExpressions.Specific(TestObject.KeccakA),
-                            TestTopicExpressions.Specific(TestObject.KeccakD)
-                        })),
-                receiptContext => receiptContext
+                    .WithTopicExpressions(TestTopicExpressions.Or(new[]
+                    {
+                        TestTopicExpressions.Specific(TestObject.KeccakA),
+                        TestTopicExpressions.Specific(TestObject.KeccakD)
+                    })),
+                receipt => receipt
                     .WithReceipt(Build.A.TransactionReceipt
-                        .WithLogs(new [] { Build.A.LogEntry.WithTopics(new [] { TestObject.KeccakB, TestObject.KeccakC }).TestObject }).TestObject));
+                        .WithLogs(new[]
+                            {Build.A.LogEntry.WithTopics(new[] {TestObject.KeccakB, TestObject.KeccakC}).TestObject})
+                        .TestObject));
 
         [Test]
         public void logs_should_not_be_empty_for_existing_block_and_address_and_topics()
@@ -173,84 +188,109 @@ namespace Nethermind.Blockchain.Test
                     .FromBlock(UInt256.One)
                     .ToBlock(new UInt256(10))
                     .WithAddress(TestObject.AddressA)
-                    .WithTopicExpressions(TestTopicExpressions.Or(new [] 
-                        { 
-                            TestTopicExpressions.Specific(TestObject.KeccakB),
-                            TestTopicExpressions.Specific(TestObject.KeccakD)
-                        })),
-                receiptContext => receiptContext
+                    .WithTopicExpressions(TestTopicExpressions.Or(new[]
+                    {
+                        TestTopicExpressions.Specific(TestObject.KeccakB),
+                        TestTopicExpressions.Specific(TestObject.KeccakD)
+                    })),
+                receipt => receipt
                     .WithBlockNumber(new UInt256(6))
                     .WithReceipt(Build.A.TransactionReceipt
-                        .WithLogs(new [] { Build.A.LogEntry.WithAddress(TestObject.AddressA)
-                            .WithTopics(new [] { TestObject.KeccakB, TestObject.KeccakC }).TestObject }).TestObject));
+                        .WithLogs(new[]
+                        {
+                            Build.A.LogEntry.WithAddress(TestObject.AddressA)
+                                .WithTopics(new[] {TestObject.KeccakB, TestObject.KeccakC}).TestObject
+                        }).TestObject));
 
         [Test]
         public void logs_should_not_be_empty_for_existing_block_and_addresses_and_topics()
             => LogsShouldNotBeEmpty(filter => filter
                     .FromBlock(UInt256.One)
                     .ToBlock(new UInt256(10))
-                    .WithAddresses(new [] { TestObject.AddressA, TestObject.AddressB })
-                    .WithTopicExpressions(TestTopicExpressions.Or(new [] 
-                        { 
-                            TestTopicExpressions.Specific(TestObject.KeccakB),
-                            TestTopicExpressions.Specific(TestObject.KeccakD)
-                        })),
-                receiptContext => receiptContext
+                    .WithAddresses(new[] {TestObject.AddressA, TestObject.AddressB})
+                    .WithTopicExpressions(TestTopicExpressions.Or(new[]
+                    {
+                        TestTopicExpressions.Specific(TestObject.KeccakB),
+                        TestTopicExpressions.Specific(TestObject.KeccakD)
+                    })),
+                receipt => receipt
                     .WithBlockNumber(new UInt256(6))
                     .WithReceipt(Build.A.TransactionReceipt
-                        .WithLogs(new [] { Build.A.LogEntry.WithAddress(TestObject.AddressA)
-                            .WithTopics(new [] { TestObject.KeccakB, TestObject.KeccakC }).TestObject }).TestObject));
+                        .WithLogs(new[]
+                        {
+                            Build.A.LogEntry.WithAddress(TestObject.AddressA)
+                                .WithTopics(new[] {TestObject.KeccakB, TestObject.KeccakC}).TestObject
+                        }).TestObject));
 
         [Test]
         public void logs_should_be_empty_for_existing_block_and_addresses_and_non_existing_topic()
             => LogsShouldBeEmpty(filter => filter
                     .FromBlock(UInt256.One)
                     .ToBlock(new UInt256(10))
-                    .WithAddresses(new [] { TestObject.AddressA, TestObject.AddressB })
-                    .WithTopicExpressions(TestTopicExpressions.Or(new [] 
-                        { 
-                            TestTopicExpressions.Specific(TestObject.KeccakC),
-                            TestTopicExpressions.Specific(TestObject.KeccakD)
-                        })),
-                receiptContext => receiptContext
+                    .WithAddresses(new[] {TestObject.AddressA, TestObject.AddressB})
+                    .WithTopicExpressions(TestTopicExpressions.Or(new[]
+                    {
+                        TestTopicExpressions.Specific(TestObject.KeccakC),
+                        TestTopicExpressions.Specific(TestObject.KeccakD)
+                    })),
+                receipt => receipt
                     .WithBlockNumber(new UInt256(6))
                     .WithReceipt(Build.A.TransactionReceipt
-                        .WithLogs(new [] { Build.A.LogEntry.WithAddress(TestObject.AddressA)
-                            .WithTopics(new [] { TestObject.KeccakB, TestObject.KeccakC }).TestObject }).TestObject));
+                        .WithLogs(new[]
+                        {
+                            Build.A.LogEntry.WithAddress(TestObject.AddressA)
+                                .WithTopics(new[] {TestObject.KeccakB, TestObject.KeccakC}).TestObject
+                        }).TestObject));
+
 
         private void LogsShouldNotBeEmpty(Action<FilterBuilder> filterBuilder,
             Action<TransactionReceiptContextBuilder> receiptContextBuilder)
-        {
-            var filter = BuildFilter(filterBuilder);
-            var receiptContext = BuildReceiptContext(receiptContextBuilder);
+            => LogsShouldNotBeEmpty(new[] {filterBuilder}, new[] {receiptContextBuilder});
 
-            Assert(filter, receiptContext, logs => logs.Should().NotBeEmpty());
-        }
-        
         private void LogsShouldBeEmpty(Action<FilterBuilder> filterBuilder,
             Action<TransactionReceiptContextBuilder> receiptContextBuilder)
-        {
-            var filter = BuildFilter(filterBuilder);
-            var receiptContext = BuildReceiptContext(receiptContextBuilder);
+            => LogsShouldBeEmpty(new[] {filterBuilder}, new[] {receiptContextBuilder});
 
-            Assert(filter, receiptContext, logs => logs.Should().BeEmpty());
-        }
+        private void LogsShouldNotBeEmpty(IEnumerable<Action<FilterBuilder>> filterBuilders,
+            IEnumerable<Action<TransactionReceiptContextBuilder>> receiptContextBuilders)
+            => Assert(filterBuilders, receiptContextBuilders, logs => logs.Should().NotBeEmpty());
 
-        private void Assert(Filter filter, TransactionReceiptContext receiptContext,
+        private void LogsShouldBeEmpty(IEnumerable<Action<FilterBuilder>> filterBuilders,
+            IEnumerable<Action<TransactionReceiptContextBuilder>> receiptContextBuilders)
+            => Assert(filterBuilders, receiptContextBuilders, logs => logs.Should().BeEmpty());
+
+        private void Assert(IEnumerable<Action<FilterBuilder>> filterBuilders,
+            IEnumerable<Action<TransactionReceiptContextBuilder>> receiptContextBuilders,
             Action<IEnumerable<FilterLog>> logsAssertion)
         {
-            _filterStore.GetAll().Returns(new List<Filter> {filter});
+            var filters = new List<Filter>();
+            var receiptContexts = new List<TransactionReceiptContext>();
+            foreach (var filterBuilder in filterBuilders)
+            {
+                filters.Add(BuildFilter(filterBuilder));
+            }
+
+            foreach (var receiptContextBuilder in receiptContextBuilders)
+            {
+                receiptContexts.Add(BuildReceiptContext(receiptContextBuilder));
+            }
+
+            _filterStore.GetAll().Returns(filters);
             _filterManager = new FilterManager(_filterStore);
-            _filterManager.AddTransactionReceipt(receiptContext);
+            foreach (var receipt in receiptContexts)
+            {
+                _filterManager.AddTransactionReceipt(receipt);
+            }
 
-            var logs = _filterManager.GetLogs(filter.Id);
-
-            logsAssertion(logs);
+            foreach (var filter in filters)
+            {
+                var logs = _filterManager.GetLogs(filter.Id);
+                logsAssertion(logs);
+            }
         }
 
         private static Filter BuildFilter(Action<FilterBuilder> builder)
         {
-            var l = Build.A.TransactionReceipt;
             var builderInstance = FilterBuilder.New();
             builder(builderInstance);
 
