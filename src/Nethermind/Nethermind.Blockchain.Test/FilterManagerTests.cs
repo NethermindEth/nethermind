@@ -33,11 +33,11 @@ namespace Nethermind.Blockchain.Test
 
         [Test]
         public void logs_should_not_be_empty_for_from_block_pending_type()
-            => LogsShouldNotBeEmpty(filter => filter.FromEarliestBlock(), receiptContext => { });
+            => LogsShouldNotBeEmpty(filter => filter.FromPendingBlock(), receiptContext => { });
 
         [Test]
         public void logs_should_not_be_empty_for_from_block_latest_type()
-            => LogsShouldNotBeEmpty(filter => filter.FromEarliestBlock(), receiptContext => { });
+            => LogsShouldNotBeEmpty(filter => filter.FromLatestBlock(), receiptContext => { });
 
         [Test]
         public void logs_should_not_be_empty_for_to_block_earliest_type()
