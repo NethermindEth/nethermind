@@ -199,6 +199,10 @@ namespace Nethermind.Runner.Runners
             {
                 _specProvider = MainNetSpecProvider.Instance;
             }
+            else if (chainSpec.ChainId == RinkebySpecProvider.Instance.ChainId)
+            {
+                _specProvider = RinkebySpecProvider.Instance;
+            }
             else
             {
                 _specProvider = new SingleReleaseSpecProvider(LatestRelease.Instance, chainSpec.ChainId);
