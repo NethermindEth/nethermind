@@ -28,7 +28,7 @@ namespace Nethermind.Blockchain.Test
             => LogsShouldNotBeEmpty(filter => { }, receipt => { });
 
         [Test]
-        public void many_logs_should_not_be_empty_for_default_filter_parameters()
+        public void many_logs_should_not_be_empty_for_default_filters_parameters()
             => LogsShouldNotBeEmpty(new Action<FilterBuilder>[] {filter => { }, filter => { }, filter => { }},
                 new Action<TransactionReceiptContextBuilder>[] {receipt => { }, receipt => { }, receipt => { }});
 
@@ -62,6 +62,22 @@ namespace Nethermind.Blockchain.Test
                 receipt => receipt.WithBlockNumber(new UInt256(2)));
 
         [Test]
+        public void many_logs_should_not_be_empty_for_from_blocks_numbers_in_range()
+            => LogsShouldNotBeEmpty(
+                new Action<FilterBuilder>[]
+                {
+                    filter => filter.FromBlock(UInt256.One), 
+                    filter => filter.FromBlock(new UInt256(2)),
+                    filter => filter.FromBlock(new UInt256(3))
+                },
+                new Action<TransactionReceiptContextBuilder>[]
+                {
+                    receipt => receipt.WithBlockNumber(new UInt256(1)),
+                    receipt => receipt.WithBlockNumber(new UInt256(5)),
+                    receipt => receipt.WithBlockNumber(new UInt256(10))
+                });
+
+        [Test]
         public void logs_should_be_empty_for_from_block_number_not_in_range()
             => LogsShouldBeEmpty(filter => filter.FromBlock(UInt256.One),
                 receipt => receipt.WithBlockNumber(UInt256.Zero));
@@ -70,6 +86,22 @@ namespace Nethermind.Blockchain.Test
         public void logs_should_not_be_empty_for_to_block_number_in_range()
             => LogsShouldNotBeEmpty(filter => filter.ToBlock(new UInt256(2)),
                 receipt => receipt.WithBlockNumber(UInt256.One));
+
+        [Test]
+        public void many_logs_should_not_be_empty_for_to_blocks_numbers_in_range()
+            => LogsShouldNotBeEmpty(
+                new Action<FilterBuilder>[]
+                {
+                    filter => filter.ToBlock(UInt256.One), 
+                    filter => filter.ToBlock(new UInt256(5)),
+                    filter => filter.ToBlock(new UInt256(10))
+                },
+                new Action<TransactionReceiptContextBuilder>[]
+                {
+                    receipt => receipt.WithBlockNumber(new UInt256(1)),
+                    receipt => receipt.WithBlockNumber(new UInt256(2)),
+                    receipt => receipt.WithBlockNumber(new UInt256(3))
+                });
 
         [Test]
         public void logs_should_be_empty_for_to_block_number_not_in_range()
@@ -282,11 +314,14 @@ namespace Nethermind.Blockchain.Test
                 _filterManager.AddTransactionReceipt(receipt);
             }
 
-            foreach (var filter in filters)
+            NUnit.Framework.Assert.Multiple(() =>
             {
-                var logs = _filterManager.GetLogs(filter.Id);
-                logsAssertion(logs);
-            }
+                foreach (var filter in filters)
+                {
+                    var logs = _filterManager.GetLogs(filter.Id);
+                    logsAssertion(logs);
+                }
+            });
         }
 
         private static Filter BuildFilter(Action<FilterBuilder> builder)
