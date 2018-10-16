@@ -21,6 +21,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Blockchain.Filters
 {
@@ -37,22 +38,22 @@ namespace Nethermind.Blockchain.Filters
         public FilterLog[] GetLogs(int filterId)
             => (_logs.ContainsKey(filterId) ? _logs[filterId] : new List<FilterLog>()).ToArray();
 
-        public void AddTransactionReceipt(TransactionReceiptContext receiptContext)
+        public void AddTransactionReceipt(TransactionReceipt receipt)
         {
             var filters = _filterStore.GetAll();
             foreach (var filter in filters)
             {
-                StoreLogs(filter, receiptContext);
+                StoreLogs(filter, receipt);
             }
         }
 
-        private void StoreLogs(Filter filter, TransactionReceiptContext receiptContext)
+        private void StoreLogs(Filter filter, TransactionReceipt receipt)
         {
             var logs = _logs.ContainsKey(filter.Id) ? _logs[filter.Id] : new List<FilterLog>();
-            for (var index = 0; index < receiptContext.Receipt.Logs.Length; index++)
+            for (var index = 0; index < receipt.Logs.Length; index++)
             {
-                var logEntry = receiptContext.Receipt.Logs[index];
-                var filterLog = CreateLog(filter, receiptContext, logEntry);
+                var logEntry = receipt.Logs[index];
+                var filterLog = CreateLog(filter, receipt, logEntry);
                 if (!(filterLog is null))
                 {
                     logs.Add(filterLog);
@@ -61,14 +62,14 @@ namespace Nethermind.Blockchain.Filters
             _logs[filter.Id] = logs;
         }
 
-        private FilterLog CreateLog(Filter filter, TransactionReceiptContext receiptContext, LogEntry logEntry)
+        private FilterLog CreateLog(Filter filter, TransactionReceipt receipt, LogEntry logEntry)
         {            
-            if (filter.FromBlock.Type == FilterBlockType.BlockId && filter.FromBlock.BlockId > receiptContext.BlockNumber)
+            if (filter.FromBlock.Type == FilterBlockType.BlockId && filter.FromBlock.BlockId > receipt.BlockNumber)
             {
                 return null;
             }
 
-            if (filter.ToBlock.Type == FilterBlockType.BlockId && filter.ToBlock.BlockId < receiptContext.BlockNumber)
+            if (filter.ToBlock.Type == FilterBlockType.BlockId && filter.ToBlock.BlockId < receipt.BlockNumber)
             {
                 return null;
             }
@@ -82,22 +83,23 @@ namespace Nethermind.Blockchain.Filters
                                                                 || filter.ToBlock.Type == FilterBlockType.Earliest ||
                                                                 filter.ToBlock.Type == FilterBlockType.Pending)
             {
-                return CreateLog(receiptContext, logEntry);
+                return CreateLog(UInt256.One, receipt, logEntry);
             }
 
             if (filter.FromBlock.Type == FilterBlockType.Latest || filter.ToBlock.Type == FilterBlockType.Latest)
             {
                 //TODO: check if is last mined block
-                return CreateLog(receiptContext, logEntry);
+                return CreateLog(UInt256.One, receipt, logEntry);
             }
 
-            return CreateLog(receiptContext, logEntry);
+            return CreateLog(UInt256.One, receipt, logEntry);
         }
 
-        private FilterLog CreateLog(TransactionReceiptContext receiptContext, LogEntry logEntry)
+        //TODO: Pass a proper log index
+        private FilterLog CreateLog(UInt256 logIndex, TransactionReceipt receipt, LogEntry logEntry)
         {
-            return new FilterLog(receiptContext.LogIndex, receiptContext.BlockNumber, receiptContext.BlockHash,
-                receiptContext.TransactionIndex, receiptContext.TransactionHash, logEntry.LoggersAddress,
+            return new FilterLog(logIndex, receipt.BlockNumber, receipt.BlockHash,
+                receipt.Index, receipt.TransactionHash, logEntry.LoggersAddress,
                 logEntry.Data, logEntry.Topics);
         }
     }

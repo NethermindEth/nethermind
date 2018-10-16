@@ -23,6 +23,6 @@ namespace Nethermind.Blockchain.Filters
     public interface IFilterManager
     {
         FilterLog[] GetLogs(int filterId);
-        void AddTransactionReceipt(TransactionReceiptContext receiptContext);
+        void AddTransactionReceipt(TransactionReceipt receipt);
     }
 }
