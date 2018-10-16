@@ -50,7 +50,7 @@ namespace Nethermind.Blockchain.Filters
 
         private void StoreLogs(Filter filter, TransactionReceiptContext receiptContext)
         {
-            var logs = _logs.ContainsKey(filter.FilterId) ? _logs[filter.FilterId] : new List<FilterLog>();
+            var logs = _logs.ContainsKey(filter.Id) ? _logs[filter.Id] : new List<FilterLog>();
             for (var index = 0; index < receiptContext.Receipt.Logs.Length; index++)
             {
                 var logEntry = receiptContext.Receipt.Logs[index];
@@ -61,7 +61,7 @@ namespace Nethermind.Blockchain.Filters
                 }
             }
 
-            _logs[filter.FilterId] = logs;
+            _logs[filter.Id] = logs;
         }
 
         private FilterLog CreateLog(Filter filter, TransactionReceiptContext receiptContext, LogEntry logEntry)

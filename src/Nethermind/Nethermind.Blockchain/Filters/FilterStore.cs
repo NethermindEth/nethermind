@@ -59,7 +59,7 @@ namespace Nethermind.Blockchain.Filters
 
         private void AddFilter(FilterBase filter)
         {
-            _filters[filter.FilterId] = filter;
+            _filters[filter.Id] = filter;
         }
 
         private int GetFilterId() => _filters.Any() ? _filters.Max(f => f.Key) + 1 : 1;

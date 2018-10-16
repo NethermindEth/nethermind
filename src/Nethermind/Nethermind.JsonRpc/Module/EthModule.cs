@@ -501,7 +501,8 @@ namespace Nethermind.JsonRpc.Module
                 case BlockParameterType.Latest: return FilterBlockType.Latest;
                 case BlockParameterType.Earliest: return FilterBlockType.Earliest;
                 case BlockParameterType.Pending: return FilterBlockType.Pending;
-                default: return FilterBlockType.BlockId;
+                case BlockParameterType.BlockId: return FilterBlockType.BlockId;
+                default: return FilterBlockType.Latest;
             }
         }
 
