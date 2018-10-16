@@ -118,7 +118,106 @@ namespace Nethermind.Blockchain.Test
                 receiptContext => receiptContext
                     .WithReceipt(Build.A.TransactionReceipt
                         .WithLogs(new [] { Build.A.LogEntry.WithAddress(TestObject.AddressC).TestObject }).TestObject));
-        
+
+        [Test]
+        public void logs_should_not_be_empty_for_existing_specific_topic()
+            => LogsShouldNotBeEmpty(filter => filter
+                    .WithTopicExpressions(TestTopicExpressions.Specific(TestObject.KeccakA)),
+                receiptContext => receiptContext
+                    .WithReceipt(Build.A.TransactionReceipt
+                        .WithLogs(new [] { Build.A.LogEntry.WithTopics(new [] { TestObject.KeccakA, TestObject.KeccakB }).TestObject }).TestObject));
+
+        [Test]
+        public void logs_should_be_empty_for_non_existing_specific_topic()
+            => LogsShouldBeEmpty(filter => filter
+                    .WithTopicExpressions(TestTopicExpressions.Specific(TestObject.KeccakA)),
+                receiptContext => receiptContext
+                    .WithReceipt(Build.A.TransactionReceipt
+                        .WithLogs(new [] { Build.A.LogEntry.WithTopics(new [] { TestObject.KeccakB, TestObject.KeccakC }).TestObject }).TestObject));
+
+        [Test]
+        public void logs_should_not_be_empty_for_existing_any_topic()
+            => LogsShouldNotBeEmpty(filter => filter
+                    .WithTopicExpressions(TestTopicExpressions.Any),
+                receiptContext => receiptContext
+                    .WithReceipt(Build.A.TransactionReceipt
+                        .WithLogs(new [] { Build.A.LogEntry.WithTopics(new [] { TestObject.KeccakA, TestObject.KeccakB }).TestObject }).TestObject));
+
+        [Test]
+        public void logs_should_not_be_empty_for_existing_or_topic()
+            => LogsShouldNotBeEmpty(filter => filter
+                    .WithTopicExpressions(TestTopicExpressions.Or(new [] 
+                        { 
+                            TestTopicExpressions.Specific(TestObject.KeccakB),
+                            TestTopicExpressions.Specific(TestObject.KeccakD)
+                        })),
+                receiptContext => receiptContext
+                    .WithReceipt(Build.A.TransactionReceipt
+                        .WithLogs(new [] { Build.A.LogEntry.WithTopics(new [] { TestObject.KeccakB, TestObject.KeccakC }).TestObject }).TestObject));
+
+        [Test]
+        public void logs_should_be_empty_for_non_existing_or_topic()
+            => LogsShouldBeEmpty(filter => filter
+                    .WithTopicExpressions(TestTopicExpressions.Or(new [] 
+                        { 
+                            TestTopicExpressions.Specific(TestObject.KeccakA),
+                            TestTopicExpressions.Specific(TestObject.KeccakD)
+                        })),
+                receiptContext => receiptContext
+                    .WithReceipt(Build.A.TransactionReceipt
+                        .WithLogs(new [] { Build.A.LogEntry.WithTopics(new [] { TestObject.KeccakB, TestObject.KeccakC }).TestObject }).TestObject));
+
+        [Test]
+        public void logs_should_not_be_empty_for_existing_block_and_address_and_topics()
+            => LogsShouldNotBeEmpty(filter => filter
+                    .FromBlock(UInt256.One)
+                    .ToBlock(new UInt256(10))
+                    .WithAddress(TestObject.AddressA)
+                    .WithTopicExpressions(TestTopicExpressions.Or(new [] 
+                        { 
+                            TestTopicExpressions.Specific(TestObject.KeccakB),
+                            TestTopicExpressions.Specific(TestObject.KeccakD)
+                        })),
+                receiptContext => receiptContext
+                    .WithBlockNumber(new UInt256(6))
+                    .WithReceipt(Build.A.TransactionReceipt
+                        .WithLogs(new [] { Build.A.LogEntry.WithAddress(TestObject.AddressA)
+                            .WithTopics(new [] { TestObject.KeccakB, TestObject.KeccakC }).TestObject }).TestObject));
+
+        [Test]
+        public void logs_should_not_be_empty_for_existing_block_and_addresses_and_topics()
+            => LogsShouldNotBeEmpty(filter => filter
+                    .FromBlock(UInt256.One)
+                    .ToBlock(new UInt256(10))
+                    .WithAddresses(new [] { TestObject.AddressA, TestObject.AddressB })
+                    .WithTopicExpressions(TestTopicExpressions.Or(new [] 
+                        { 
+                            TestTopicExpressions.Specific(TestObject.KeccakB),
+                            TestTopicExpressions.Specific(TestObject.KeccakD)
+                        })),
+                receiptContext => receiptContext
+                    .WithBlockNumber(new UInt256(6))
+                    .WithReceipt(Build.A.TransactionReceipt
+                        .WithLogs(new [] { Build.A.LogEntry.WithAddress(TestObject.AddressA)
+                            .WithTopics(new [] { TestObject.KeccakB, TestObject.KeccakC }).TestObject }).TestObject));
+
+        [Test]
+        public void logs_should_be_empty_for_existing_block_and_addresses_and_non_existing_topic()
+            => LogsShouldBeEmpty(filter => filter
+                    .FromBlock(UInt256.One)
+                    .ToBlock(new UInt256(10))
+                    .WithAddresses(new [] { TestObject.AddressA, TestObject.AddressB })
+                    .WithTopicExpressions(TestTopicExpressions.Or(new [] 
+                        { 
+                            TestTopicExpressions.Specific(TestObject.KeccakC),
+                            TestTopicExpressions.Specific(TestObject.KeccakD)
+                        })),
+                receiptContext => receiptContext
+                    .WithBlockNumber(new UInt256(6))
+                    .WithReceipt(Build.A.TransactionReceipt
+                        .WithLogs(new [] { Build.A.LogEntry.WithAddress(TestObject.AddressA)
+                            .WithTopics(new [] { TestObject.KeccakB, TestObject.KeccakC }).TestObject }).TestObject));
+
         private void LogsShouldNotBeEmpty(Action<FilterBuilder> filterBuilder,
             Action<TransactionReceiptContextBuilder> receiptContextBuilder)
         {
