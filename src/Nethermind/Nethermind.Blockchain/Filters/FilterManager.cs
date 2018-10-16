@@ -26,9 +26,7 @@ namespace Nethermind.Blockchain.Filters
 {
     public class FilterManager : IFilterManager
     {
-        private readonly ConcurrentDictionary<int, List<FilterLog>> _logs =
-            new ConcurrentDictionary<int, List<FilterLog>>();
-
+        private readonly ConcurrentDictionary<int, List<FilterLog>> _logs = new ConcurrentDictionary<int, List<FilterLog>>();
         private readonly IFilterStore _filterStore;
 
         public FilterManager(IFilterStore filterStore)
@@ -60,23 +58,22 @@ namespace Nethermind.Blockchain.Filters
                     logs.Add(filterLog);
                 }
             }
-
             _logs[filter.Id] = logs;
         }
 
         private FilterLog CreateLog(Filter filter, TransactionReceiptContext receiptContext, LogEntry logEntry)
-        {
-            if (!filter.Accepts(logEntry))
-            {
-                return null;
-            }
-            
+        {            
             if (filter.FromBlock.Type == FilterBlockType.BlockId && filter.FromBlock.BlockId > receiptContext.BlockNumber)
             {
                 return null;
             }
 
             if (filter.ToBlock.Type == FilterBlockType.BlockId && filter.ToBlock.BlockId < receiptContext.BlockNumber)
+            {
+                return null;
+            }
+
+            if (!filter.Accepts(logEntry))
             {
                 return null;
             }
@@ -94,7 +91,7 @@ namespace Nethermind.Blockchain.Filters
                 return CreateLog(receiptContext, logEntry);
             }
 
-            return null;
+            return CreateLog(receiptContext, logEntry);
         }
 
         private FilterLog CreateLog(TransactionReceiptContext receiptContext, LogEntry logEntry)

@@ -5,6 +5,7 @@ using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Test.Builders;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
 using NSubstitute;
 using NUnit.Framework;
@@ -27,32 +28,96 @@ namespace Nethermind.Blockchain.Test
             => LogsShouldNotBeEmpty(filter => { }, receiptContext => { });
 
         [Test]
-        public void logs_should_not_be_empty_for_specific_topic()
-            => LogsShouldNotBeEmpty(filter => filter.WithId(1)
-                    .WithTopicExpressions(TestTopicExpressions.Specific(Keccak.Zero)),
-                receiptContext => { });
+        public void logs_should_not_be_empty_for_from_block_earliest_type()
+            => LogsShouldNotBeEmpty(filter => filter.FromEarliestBlock(), receiptContext => { });
+
+        [Test]
+        public void logs_should_not_be_empty_for_from_block_pending_type()
+            => LogsShouldNotBeEmpty(filter => filter.FromEarliestBlock(), receiptContext => { });
+
+        [Test]
+        public void logs_should_not_be_empty_for_from_block_latest_type()
+            => LogsShouldNotBeEmpty(filter => filter.FromEarliestBlock(), receiptContext => { });
+
+        [Test]
+        public void logs_should_not_be_empty_for_to_block_earliest_type()
+            => LogsShouldNotBeEmpty(filter => filter.ToEarliestBlock(), receiptContext => { });
+
+        [Test]
+        public void logs_should_not_be_empty_for_to_block_pending_type()
+            => LogsShouldNotBeEmpty(filter => filter.ToPendingBlock(), receiptContext => { });
+
+        [Test]
+        public void logs_should_not_be_empty_for_to_block_latest_type()
+            => LogsShouldNotBeEmpty(filter => filter.ToLatestBlock(), receiptContext => { });
 
         [Test]
         public void logs_should_not_be_empty_for_from_block_number_in_range()
-            => LogsShouldNotBeEmpty(filter => filter
-                    .FromBlock(UInt256.One),
+            => LogsShouldNotBeEmpty(filter => filter.FromBlock(UInt256.One),
                 receiptContext => receiptContext.WithBlockNumber(new UInt256(2)));
         
         [Test]
         public void logs_should_be_empty_for_from_block_number_not_in_range()
-            => LogsShouldBeEmpty(filter => filter
-                    .FromBlock(UInt256.One),
+            => LogsShouldBeEmpty(filter => filter.FromBlock(UInt256.One),
                 receiptContext => receiptContext.WithBlockNumber(UInt256.Zero));
-        
+
         [Test]
-        public void logs_should_not_be_empty_for_existing_address_and_specific_topic()
-            => LogsShouldNotBeEmpty(filter => filter.WithId(1)
-                    .FromBlock(UInt256.One)
-                    .ToLatestBlock()
-                    .WithAddress(Address.Zero)
-                    .WithTopicExpressions(TestTopicExpressions.Specific(Keccak.Zero)),
+        public void logs_should_not_be_empty_for_to_block_number_in_range()
+            => LogsShouldNotBeEmpty(filter => filter.ToBlock(new UInt256(2)),
                 receiptContext => receiptContext.WithBlockNumber(UInt256.One));
 
+        [Test]
+        public void logs_should_be_empty_for_to_block_number_not_in_range()
+            => LogsShouldBeEmpty(filter => filter.ToBlock(UInt256.One),
+                receiptContext => receiptContext.WithBlockNumber(new UInt256(2)));
+
+        [Test]
+        public void logs_should_not_be_empty_for_from_block_number_in_range_and_to_block_number_in_range()
+            => LogsShouldNotBeEmpty(filter => filter.FromBlock(new UInt256(2)).ToBlock(new UInt256(6)),
+                receiptContext => receiptContext.WithBlockNumber(new UInt256(4)));
+
+        [Test]
+        public void logs_should_be_empty_for_from_block_number_in_range_and_to_block_number_not_in_range()
+            => LogsShouldBeEmpty(filter => filter.FromBlock(new UInt256(2)).ToBlock(new UInt256(3)),
+                receiptContext => receiptContext.WithBlockNumber(new UInt256(4)));
+
+        [Test]
+        public void logs_should_be_empty_for_from_block_number_not_in_range_and_to_block_number_in_range()
+            => LogsShouldBeEmpty(filter => filter.FromBlock(new UInt256(5)).ToBlock(new UInt256(7)),
+                receiptContext => receiptContext.WithBlockNumber(new UInt256(4)));
+
+        [Test]
+        public void logs_should_be_empty_for_from_block_number_not_in_range_and_to_block_number_not_in_range()
+            => LogsShouldBeEmpty(filter => filter.FromBlock(new UInt256(2)).ToBlock(new UInt256(3)),
+                receiptContext => receiptContext.WithBlockNumber(new UInt256(4)));
+
+        [Test]
+        public void logs_should_not_be_empty_for_existing_address()
+            => LogsShouldNotBeEmpty(filter => filter.WithAddress(TestObject.AddressA),
+                receiptContext => receiptContext
+                    .WithReceipt(Build.A.TransactionReceipt
+                        .WithLogs(new [] { Build.A.LogEntry.WithAddress(TestObject.AddressA).TestObject }).TestObject));
+
+        [Test]
+        public void logs_should_be_empty_for_non_existing_address()
+            => LogsShouldBeEmpty(filter => filter.WithAddress(TestObject.AddressA),
+                receiptContext => receiptContext
+                    .WithReceipt(Build.A.TransactionReceipt
+                        .WithLogs(new [] { Build.A.LogEntry.WithAddress(TestObject.AddressB).TestObject }).TestObject));
+
+        [Test]
+        public void logs_should_not_be_empty_for_existing_addresses()
+            => LogsShouldNotBeEmpty(filter => filter.WithAddresses(new [] { TestObject.AddressA, TestObject.AddressB }),
+                receiptContext => receiptContext
+                    .WithReceipt(Build.A.TransactionReceipt
+                        .WithLogs(new [] { Build.A.LogEntry.WithAddress(TestObject.AddressB).TestObject }).TestObject));
+
+        [Test]
+        public void logs_should_be_empty_for_non_existing_addresses()
+            => LogsShouldBeEmpty(filter => filter.WithAddresses(new [] { TestObject.AddressA, TestObject.AddressB }),
+                receiptContext => receiptContext
+                    .WithReceipt(Build.A.TransactionReceipt
+                        .WithLogs(new [] { Build.A.LogEntry.WithAddress(TestObject.AddressC).TestObject }).TestObject));
         
         private void LogsShouldNotBeEmpty(Action<FilterBuilder> filterBuilder,
             Action<TransactionReceiptContextBuilder> receiptContextBuilder)
@@ -86,6 +151,7 @@ namespace Nethermind.Blockchain.Test
 
         private static Filter BuildFilter(Action<FilterBuilder> builder)
         {
+            var l = Build.A.TransactionReceipt;
             var builderInstance = FilterBuilder.New();
             builder(builderInstance);
 

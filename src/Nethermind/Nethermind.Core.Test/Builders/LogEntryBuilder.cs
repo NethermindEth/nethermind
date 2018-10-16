@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -20,23 +20,42 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Core.Test.Builders
 {
-    public class ReceiptBuilder : BuilderBase<TransactionReceipt>
+    public class LogEntryBuilder : BuilderBase<LogEntry>
     {
-        public ReceiptBuilder()
+        private Address _address = Address.Zero;
+        private byte[] _data = new byte[0];
+        private Keccak[] _topics = new [] {Keccak.Zero}; 
+
+        public LogEntryBuilder()
         {
-            TestObjectInternal = new TransactionReceipt();
-            TestObjectInternal.Logs = new [] {new LogEntry(Address.Zero, new byte[0], new [] {Keccak.Zero}),};
+            Build();
         }
 
-        public ReceiptBuilder WithState(Keccak state)
+        public LogEntryBuilder WithAddress(Address address)
         {
-            TestObjectInternal.PostTransactionState = state;
-            return this;
+            _address = address;
+            
+            return Build();
         }
 
-        public ReceiptBuilder WithLogs(LogEntry[] logs)
+        public LogEntryBuilder WithData(byte[] data)
         {
-            TestObjectInternal.Logs = logs;
+            _data = data;
+
+            return Build();
+        }
+
+        public LogEntryBuilder WithTopics(Keccak[] topics)
+        {
+            _topics = topics;
+            
+            return Build();
+        }
+
+        private LogEntryBuilder Build()
+        {
+            TestObjectInternal = new LogEntry(_address, _data, _topics);
+            
             return this;
         }
     }
