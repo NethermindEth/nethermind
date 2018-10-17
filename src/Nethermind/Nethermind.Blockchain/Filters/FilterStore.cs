@@ -71,16 +71,24 @@ namespace Nethermind.Blockchain.Filters
 
             for (int i = 0; i < filterTopics.Length; i++)
             {
-                var filterTopic = filterTopics[i];
-                var orExpression = new OrExpression(new[]
-                {
-                    GetTopicExpression(filterTopic.First),
-                    GetTopicExpression(filterTopic.Second)
-                });
-                expressions.Add(orExpression);
+                expressions.Add(GetTopicExpression(filterTopics[i]));
             }
 
             return new TopicsFilter(expressions.ToArray());
+        }
+        
+        private TopicExpression GetTopicExpression(FilterTopic filterTopic)
+        {
+            if (filterTopic == null)
+            {
+                return new AnyTopic();
+            }
+
+            return new OrExpression(new[]
+            {
+                GetTopicExpression(filterTopic.First),
+                GetTopicExpression(filterTopic.Second)
+            });
         }
         
         private TopicExpression GetTopicExpression(Keccak topic)
