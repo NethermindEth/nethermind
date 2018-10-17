@@ -30,9 +30,9 @@ namespace Nethermind.Blockchain.Filters
     {
         private readonly ConcurrentDictionary<int, FilterBase> _filters = new ConcurrentDictionary<int, FilterBase>();
 
-        public IReadOnlyCollection<Filter> GetAll()
+        public Filter[] GetFilters()
         {
-            return _filters.Select(f => f.Value).OfType<Filter>().ToList();
+            return _filters.Select(f => f.Value).OfType<Filter>().ToArray();
         }
 
         public BlockFilter CreateBlockFilter(UInt256 startBlockNumber)

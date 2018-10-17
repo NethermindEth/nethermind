@@ -15,12 +15,14 @@ namespace Nethermind.Blockchain.Test
     public class FilterManagerTests
     {
         private IFilterStore _filterStore;
+        private IBlockProcessor _blockProcessor;
         private IFilterManager _filterManager;
 
         [SetUp]
         public void Setup()
         {
             _filterStore = Substitute.For<IFilterStore>();
+            _blockProcessor = Substitute.For<IBlockProcessor>();
         }
 
         [Test]
@@ -289,12 +291,9 @@ namespace Nethermind.Blockchain.Test
                 receipts.Add(BuildReceipt(receiptBuilder));
             }
 
-            _filterStore.GetAll().Returns(filters);
-            _filterManager = new FilterManager(_filterStore);
-            foreach (var receipt in receipts)
-            {
-                _filterManager.AddTransactionReceipt(receipt);
-            }
+            _filterStore.GetFilters().Returns(filters.ToArray());
+            _filterManager = new FilterManager(_filterStore, _blockProcessor);
+            _filterManager.AddTransactionReceipts(receipts.ToArray());
 
             NUnit.Framework.Assert.Multiple(() =>
             {

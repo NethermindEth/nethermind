@@ -23,7 +23,7 @@ namespace Nethermind.Blockchain.Filters
 {
     public interface IFilterStore
     {
-        IReadOnlyCollection<Filter> GetAll();
+        Filter[] GetFilters();
         
         BlockFilter CreateBlockFilter(UInt256 startBlockNumber);
 

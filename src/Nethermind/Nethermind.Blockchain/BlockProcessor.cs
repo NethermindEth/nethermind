@@ -42,6 +42,7 @@ namespace Nethermind.Blockchain
         private readonly ITransactionStore _transactionStore;
         private readonly IRewardCalculator _rewardCalculator;
         private readonly IBlockValidator _blockValidator;
+        public event EventHandler<TransactionReceiptsCreatedEventArgs> TransactionReceiptsCreated;
 
         public BlockProcessor(
             ISpecProvider specProvider,
@@ -206,6 +207,8 @@ namespace Nethermind.Blockchain
             {
                 StoreTxReceipts(block, receipts);
             }
+
+            TransactionReceiptsCreated?.Invoke(this, new TransactionReceiptsCreatedEventArgs(receipts));
 
             return block;
         }
