@@ -40,6 +40,7 @@ namespace Nethermind.JsonRpc.Module
         private readonly IBlockchainProcessor _blockchainProcessor;
         private readonly IBlockTree _blockTree;
         private readonly IFilterStore _filterStore;
+        private readonly IFilterManager _filterManager;
         private readonly IEthereumSigner _signer;
         private readonly IDb _stateDb;
         private readonly IStateProvider _stateProvider;
@@ -56,6 +57,7 @@ namespace Nethermind.JsonRpc.Module
             IDbProvider dbProvider,
             ITransactionStore transactionStore,
             IFilterStore filterStore,
+            IFilterManager filterManager,
             IWallet wallet)
         {
             _signer = signer ?? throw new ArgumentNullException(nameof(signer));
@@ -66,6 +68,7 @@ namespace Nethermind.JsonRpc.Module
             _stateDb = dbProvider?.StateDb ?? throw new ArgumentNullException(nameof(dbProvider.StateDb));
             _transactionStore = transactionStore ?? throw new ArgumentNullException(nameof(transactionStore));
             _filterStore = filterStore ?? throw new ArgumentException(nameof(filterStore));
+            _filterManager = filterManager;
             _wallet = wallet ?? throw new ArgumentException(nameof(wallet));
 
             IDb blockInfosDb = dbProvider?.BlockInfosDb ?? throw new ArgumentNullException(nameof(dbProvider.BlockInfosDb));

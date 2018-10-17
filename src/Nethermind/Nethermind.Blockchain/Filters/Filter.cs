@@ -40,12 +40,12 @@ namespace Nethermind.Blockchain.Filters
 
         public bool Accepts(LogEntry logEntry)
         {
-            if (Address.Address != null && Address.Address != logEntry.LoggersAddress)
+            if (Address?.Address != null && Address.Address != logEntry.LoggersAddress)
             {
                 return false;
             }
             
-            if (Address.Addresses != null && Address.Addresses.All(a => a != logEntry.LoggersAddress))
+            if (Address?.Addresses != null && Address.Addresses.All(a => a != logEntry.LoggersAddress))
             {
                 return false;
             }

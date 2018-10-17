@@ -16,11 +16,13 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Logging;
 using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Blockchain.Filters
@@ -30,11 +32,13 @@ namespace Nethermind.Blockchain.Filters
         private readonly ConcurrentDictionary<int, List<FilterLog>> _logs = new ConcurrentDictionary<int, List<FilterLog>>();
         private readonly IFilterStore _filterStore;
         private readonly IBlockProcessor _blockProcessor;
+        private readonly ILogger _logger;
 
-        public FilterManager(IFilterStore filterStore, IBlockProcessor blockProcessor)
+        public FilterManager(IFilterStore filterStore, IBlockProcessor blockProcessor, ILogManager logManager)
         {
             _filterStore = filterStore;
             _blockProcessor = blockProcessor;
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _blockProcessor.TransactionReceiptsCreated += (s,e) => AddTransactionReceipts(e.Receipts);
         }
 
@@ -43,39 +47,60 @@ namespace Nethermind.Blockchain.Filters
 
         public void AddTransactionReceipts(params TransactionReceipt[] receipts)
         {
-            if (receipts == null || !receipts.Any())
+            if (receipts == null || receipts.Length == 0)
             {
                 return;
             }
 
             var filters = _filterStore.GetFilters();
-            foreach (var receipt in receipts)
+            if (filters == null || filters.Length == 0)
             {
-                StoreLogs(filters, receipt);
+                return;
+            }
+
+            for (var i = 0; i < receipts.Length; i++)
+            {
+                StoreLogs(filters, receipts[i]);
             }
         }
 
         private void StoreLogs(Filter[] filters, TransactionReceipt receipt)
         {
-            for (var i = 0; i < receipt.Logs.Length; i++)
+            for (var i = 0; i < filters.Length; i++)
             {
-                var logEntry = receipt.Logs[i];
-                for (var j = 0; j < receipt.Logs.Length; j++)
-                {
-                    var filter = filters[j];
-                    var logs = _logs.ContainsKey(filter.Id) ? _logs[filter.Id] : new List<FilterLog>();
-                    var filterLog = CreateLog(filter, receipt, logEntry);
-                    if (!(filterLog is null))
-                    {
-                        logs.Add(filterLog);
-                    }
-                    _logs[filter.Id] = logs;
-                }
+                StoreLogs(filters[i], receipt);
             }
         }
 
+        private void StoreLogs(Filter filter, TransactionReceipt receipt)
+        {
+            if (receipt.Logs == null || receipt.Logs.Length == 0)
+            {
+                return;
+            }
+            
+            var logs = _logs.ContainsKey(filter.Id) ? _logs[filter.Id] : new List<FilterLog>();
+            for (var i = 0; i < receipt.Logs.Length; i++)
+            {
+                var logEntry = receipt.Logs[i];
+                var filterLog = CreateLog(filter, receipt, logEntry);
+                if (!(filterLog is null))
+                {
+                    logs.Add(filterLog);
+                }
+            }
+
+            if (logs.Count == 0)
+            {
+                return;
+            }
+
+            _logs[filter.Id] = logs;
+            _logger.Debug($"Filter with id: '{filter.Id}' contains {logs.Count} logs.");
+        }
+
         private FilterLog CreateLog(Filter filter, TransactionReceipt receipt, LogEntry logEntry)
-        {            
+        {
             if (filter.FromBlock.Type == FilterBlockType.BlockId && filter.FromBlock.BlockId > receipt.BlockNumber)
             {
                 return null;
