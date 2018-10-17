@@ -18,6 +18,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace Nethermind.JsonRpc.DataModel
 {
@@ -31,11 +32,20 @@ namespace Nethermind.JsonRpc.DataModel
         public Quantity BlockNumber { get; set; }
         public Data Address { get; set; }
         public Data Data { get; set; }
-        public IEnumerable<Data> Topics { get; set; }
+        public Data[] Topics { get; set; }
 
         public object ToJson()
-        {
-            throw new NotImplementedException();
-        }
+            => new
+            {
+                removed = Removed,
+                logIndex = LogIndex?.ToJson(),
+                transactionIndex = TransactionIndex?.ToJson(),
+                transactionHash = TransactionHash?.ToJson(),
+                blockHash = BlockHash?.ToJson(),
+                blockNumber = BlockNumber?.ToJson(),
+                address = Address?.ToJson(),
+                data = Data?.ToJson(),
+                topics = Topics?.Select(t => t.ToJson()).ToArray()
+            };
     }
 }

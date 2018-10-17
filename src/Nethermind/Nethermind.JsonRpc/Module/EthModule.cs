@@ -532,7 +532,26 @@ namespace Nethermind.JsonRpc.Module
 
         public ResultWrapper<IEnumerable<Log>> eth_getFilterLogs(Quantity filterId)
         {
-            return ResultWrapper<IEnumerable<Log>>.Fail("eth_getFilterLogs not supported");
+            var id = filterId.Value.ToInt32();
+            if (!_blockchainBridge.FilterExists(id))
+            {
+                return ResultWrapper<IEnumerable<Log>>.Fail($"Filter with id: '{filterId}' does not exist.");
+            }
+            
+            return ResultWrapper<IEnumerable<Log>>.Success(
+                _blockchainBridge.GetFilterLogs(id)
+                    .Select(l => new Log
+                    {
+                        Removed = l.Removed,
+                        LogIndex = new Quantity(l.LogIndex),
+                        TransactionHash = new Data(l.TransactionHash),
+                        TransactionIndex = new Quantity(l.TransactionIndex),
+                        BlockHash = new Data(l.BlockHash),
+                        BlockNumber = new Quantity(l.BlockNumber),
+                        Data = new Data(l.Data),
+                        Address = new Data(l.Address),
+                        Topics = l.Topics.Select(t => new Data(t)).ToArray()
+                    }));
         }
 
         public ResultWrapper<IEnumerable<Log>> eth_getLogs(Filter filter)

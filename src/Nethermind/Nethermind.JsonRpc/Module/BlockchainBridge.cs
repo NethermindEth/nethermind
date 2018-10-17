@@ -239,6 +239,16 @@ namespace Nethermind.JsonRpc.Module
             return _blockTree.ChainId;
         }
 
+        public bool FilterExists(int filterId)
+        {
+            return _filterStore.FilterExist(filterId);
+        }
+
+        public FilterLog[] GetFilterLogs(int filterId)
+        {
+            return _filterManager.GetLogs(filterId);
+        }
+
         public int NewFilter(FilterBlock fromBlock, FilterBlock toBlock,
             object address = null, IEnumerable<object> topics = null)
         {
