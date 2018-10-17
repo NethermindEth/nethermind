@@ -45,6 +45,17 @@ namespace Nethermind.Blockchain.Filters
         public FilterLog[] GetLogs(int filterId)
             => (_logs.ContainsKey(filterId) ? _logs[filterId] : new List<FilterLog>()).ToArray();
 
+        public FilterLog[] GetLogsAsPolling(int filterId)
+        {
+            if (!_logs.ContainsKey(filterId))
+            {
+                return new FilterLog[0];
+            }
+            var logs = _logs[filterId].ToArray();
+            _logs[filterId].Clear();
+            return logs;
+        }
+        
         public void AddTransactionReceipts(params TransactionReceipt[] receipts)
         {
             if (receipts == null || receipts.Length == 0)

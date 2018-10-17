@@ -265,9 +265,9 @@ namespace Nethermind.JsonRpc.Module
             _filterStore.RemoveFilter(filterId);
         }
 
-        public object[] GetFilterChanges(int filterId)
+        public FilterLog[] GetFilterChanges(int filterId)
         {
-            return new object[] {_blockTree.Head.Hash};
+            return _filterManager.GetLogsAsPolling(filterId);
         }
     }
 }

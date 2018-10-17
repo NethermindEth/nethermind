@@ -66,7 +66,7 @@ namespace Nethermind.JsonRpc.Module
         
         int NewBlockFilter();
         void UninstallFilter(int filterId);
-        object[] GetFilterChanges(int filterId);
+        FilterLog[] GetFilterChanges(int filterId);
         bool FilterExists(int filterId);
         FilterLog[] GetFilterLogs(int filterId);
         int NewFilter(FilterBlock fromBlock, FilterBlock toBlock, object address = null,
