@@ -199,6 +199,10 @@ namespace Nethermind.Runner.Runners
             {
                 _specProvider = MainNetSpecProvider.Instance;
             }
+            else if (chainSpec.ChainId == RinkebySpecProvider.Instance.ChainId)
+            {
+                _specProvider = RinkebySpecProvider.Instance;
+            }
             else
             {
                 _specProvider = new SingleReleaseSpecProvider(LatestRelease.Instance, chainSpec.ChainId);
@@ -224,7 +228,6 @@ namespace Nethermind.Runner.Runners
 //            _dbProvider = debugReader;
 
             var transactionStore = new TransactionStore(_dbProvider.ReceiptsDb, _specProvider);
-            var sealEngine = ConfigureSealEngine();
 
             /* blockchain */
             _blockTree = new BlockTree(
@@ -233,6 +236,12 @@ namespace Nethermind.Runner.Runners
                 _specProvider,
                 transactionStore,
                 _logManager);
+
+            var sealEngine = 
+                (_specProvider is MainNetSpecProvider) ? ConfigureSealEngine() :
+                (_specProvider is RopstenSpecProvider) ? ConfigureSealEngine() :
+                (_specProvider is RinkebySpecProvider) ? ConfigureCliqueSealEngine() :
+                null;
 
             /* validation */
             var headerValidator = new HeaderValidator(
@@ -285,8 +294,9 @@ namespace Nethermind.Runner.Runners
                 virtualMachine,
                 _logManager);
 
-            var rewardCalculator = new RewardCalculator(
-                _specProvider);
+            var rewardCalculator = (_specProvider is RinkebySpecProvider) 
+                ? (IRewardCalculator) new CliqueRewardCalculator(_specProvider)
+                : new RewardCalculator(_specProvider);
 
             var blockProcessor = new BlockProcessor(
                 _specProvider,
@@ -454,9 +464,18 @@ namespace Nethermind.Runner.Runners
 //                TestTransactionsGenerator testTransactionsGenerator =
 //                    new TestTransactionsGenerator(transactionStore, ethereumSigner, transactionDelay, _logManager);
 //                // stateProvider.CreateAccount(testTransactionsGenerator.SenderAddress, 1000.Ether());
-//                // stateProvider.Commit(specProvider.GenesisSpec);
-//                testTransactionsGenerator.Start();
-//            }
+            return sealEngine;
+        }
+
+        private ISealEngine ConfigureCliqueSealEngine()
+        {
+            var config = new CliqueConfig()
+            {
+                Period = 15,
+                Epoch = 30000
+            };
+            var clique = new Clique(config, _dbProvider.BlocksDb, _blockTree, _logManager);
+            var sealEngine = new CliqueSealEngine(clique, _logManager);
             return sealEngine;
         }
 
