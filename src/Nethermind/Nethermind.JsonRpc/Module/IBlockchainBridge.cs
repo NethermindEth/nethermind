@@ -36,7 +36,7 @@ namespace Nethermind.JsonRpc.Module
     {
         IReadOnlyCollection<Address> GetWalletAccounts();
         Signature Sign(Address address, Keccak message);
-        
+
         int GetNetworkId();
         BlockHeader Head { get; }
         BlockHeader BestSuggested { get; }
@@ -63,13 +63,18 @@ namespace Nethermind.JsonRpc.Module
         BigInteger GetNonce(Address address);
         BigInteger GetBalance(Address address);
         Account GetAccount(Address address, Keccak stateRoot);
-        
+
         int NewBlockFilter();
-        void UninstallFilter(int filterId);
-        FilterLog[] GetFilterChanges(int filterId);
-        bool FilterExists(int filterId);
-        FilterLog[] GetFilterLogs(int filterId);
+
         int NewFilter(FilterBlock fromBlock, FilterBlock toBlock, object address = null,
+            IEnumerable<object> topics = null);
+
+        void UninstallFilter(int filterId);
+        bool FilterExists(int filterId);
+        FilterLog[] GetFilterChanges(int filterId);
+        FilterLog[] GetFilterLogs(int filterId);
+
+        FilterLog[] GetLogs(FilterBlock fromBlock, FilterBlock toBlock, object address = null,
             IEnumerable<object> topics = null);
     }
 }

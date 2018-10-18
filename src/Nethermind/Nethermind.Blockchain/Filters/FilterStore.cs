@@ -37,19 +37,20 @@ namespace Nethermind.Blockchain.Filters
             return _filters.Select(f => f.Value).OfType<Filter>().ToArray();
         }
 
-        public BlockFilter CreateBlockFilter(UInt256 startBlockNumber)
+        public BlockFilter CreateBlockFilter(UInt256 startBlockNumber, bool setId = true)
         {
-            BlockFilter blockFilter = new BlockFilter(GetFilterId(), startBlockNumber);
-            AddFilter(blockFilter);
+            var filterId = setId ? GetFilterId() : 0;
+            var blockFilter = new BlockFilter(filterId, startBlockNumber);
+            
             return blockFilter;
         }
 
-        public Filter CreateFilter(FilterBlock fromBlock, FilterBlock toBlock, 
-            object address = null, IEnumerable<object> topics = null)
+        public Filter CreateFilter(FilterBlock fromBlock, FilterBlock toBlock,
+            object address = null, IEnumerable<object> topics = null, bool setId = true)
         {
-            var filter = new Filter(GetFilterId(), fromBlock, toBlock, 
+            var filterId = setId ? GetFilterId() : 0;
+            var filter = new Filter(filterId, fromBlock, toBlock,
                 GetAddress(address), GetTopicsFilter(topics));
-            AddFilter(filter);
 
             return filter;
         }
@@ -59,7 +60,7 @@ namespace Nethermind.Blockchain.Filters
             _filters.TryRemove(filterId, out _);
         }
 
-        private void AddFilter(FilterBase filter)
+        public void SaveFilter(FilterBase filter)
         {
             _filters[filter.Id] = filter;
         }
@@ -133,8 +134,8 @@ namespace Nethermind.Blockchain.Filters
             }
 
             var topics = (obj as IEnumerable<string>)?.ToList();
-            string first = topics?.FirstOrDefault();
-            string second = topics?.Skip(1).FirstOrDefault();
+            var first = topics?.FirstOrDefault();
+            var second = topics?.Skip(1).FirstOrDefault();
 
             return new FilterTopic
             {

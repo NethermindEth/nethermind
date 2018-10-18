@@ -542,10 +542,15 @@ namespace Nethermind.JsonRpc.Module
 
         public ResultWrapper<IEnumerable<Log>> eth_getLogs(Filter filter)
         {
-            return ResultWrapper<IEnumerable<Log>>.Fail("eth_getLogs not supported");
+            var fromBlock = MapFilterBlock(filter.FromBlock);
+            var toBlock = MapFilterBlock(filter.ToBlock);
+
+            return MapLogs(_blockchainBridge.GetLogs(fromBlock, toBlock,
+                filter.Address,
+                filter.Topics));
         }
-        
-        private ResultWrapper<IEnumerable<Log>> MapLogs(FilterLog[] logs)
+
+        private ResultWrapper<IEnumerable<Log>> MapLogs(IEnumerable<FilterLog> logs)
             => ResultWrapper<IEnumerable<Log>>.Success(
                 logs.Select(l => new Log
                 {
