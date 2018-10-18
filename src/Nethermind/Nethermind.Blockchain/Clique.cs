@@ -273,7 +273,7 @@ namespace Nethermind.Blockchain
                 headers[headers.Count - 1 - i] = headers[i];
                 headers[i] = temp;
             }
-            snap.Apply(headers);
+            snap = snap.Apply(headers);
 
             Keccak snapHash = new Keccak(snap.Hash);
 
