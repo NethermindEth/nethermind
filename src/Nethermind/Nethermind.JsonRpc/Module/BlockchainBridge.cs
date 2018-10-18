@@ -21,9 +21,11 @@ using System.Collections.Generic;
 using System.Numerics;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
+using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Logging;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.Store;
@@ -47,6 +49,7 @@ namespace Nethermind.JsonRpc.Module
         private readonly ITransactionStore _transactionStore;
         private readonly ITxTracer _txTracer;
         private readonly IWallet _wallet;
+        private readonly ITransactionProcessor _transactionProcessor;
         private Dictionary<string, IDb> _dbMappings;
 
         public BlockchainBridge(IEthereumSigner signer,
@@ -58,7 +61,8 @@ namespace Nethermind.JsonRpc.Module
             ITransactionStore transactionStore,
             IFilterStore filterStore,
             IFilterManager filterManager,
-            IWallet wallet)
+            IWallet wallet,
+            ITransactionProcessor transactionProcessor)
         {
             _signer = signer ?? throw new ArgumentNullException(nameof(signer));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
@@ -70,6 +74,7 @@ namespace Nethermind.JsonRpc.Module
             _filterStore = filterStore ?? throw new ArgumentException(nameof(filterStore));
             _filterManager = filterManager;
             _wallet = wallet ?? throw new ArgumentException(nameof(wallet));
+            _transactionProcessor = transactionProcessor ?? throw new ArgumentException(nameof(transactionProcessor));
 
             IDb blockInfosDb = dbProvider?.BlockInfosDb ??
                                throw new ArgumentNullException(nameof(dbProvider.BlockInfosDb));
@@ -200,10 +205,11 @@ namespace Nethermind.JsonRpc.Module
 
         public byte[] Call(Block block, Transaction transaction)
         {
-            _stateProvider.StateRoot = block.StateRoot;
+            BlockHeader header = new BlockHeader(block.Hash, Keccak.OfAnEmptySequenceRlp, block.Beneficiary, block.Difficulty, block.Number + 1, (long)transaction.GasLimit, block.Timestamp + 1, Bytes.Empty);
             transaction.Nonce = _stateProvider.GetNonce(transaction.SenderAddress);
             transaction.Hash = Transaction.CalculateHash(transaction);
-            return Bytes.FromHexString(_txTracer.Trace(block.Number, transaction).ReturnValue);
+            (TransactionReceipt receipt, TransactionTrace trace) =  _transactionProcessor.CallAndRestore(0, transaction, header, true);
+            return Bytes.FromHexString(trace.ReturnValue);
         }
 
         public byte[] GetDbValue(string dbName, byte[] key)

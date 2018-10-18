@@ -25,6 +25,7 @@ using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Store;
+using Transaction = Nethermind.Core.Transaction;
 
 namespace Nethermind.Evm
 {
@@ -51,7 +52,18 @@ namespace Nethermind.Evm
             return BuildTransactionReceipt(index, block, transaction, (long)transaction.GasLimit, StatusCode.Failure, LogEntry.EmptyLogs, recipient);
         }
 
+        [Todo("Wider work needed to split calls and execution properly")]
+        public (TransactionReceipt, TransactionTrace) CallAndRestore(int index, Transaction transaction, BlockHeader block, bool shouldTrace)
+        {
+            return Execute(index, transaction, block, shouldTrace, true);
+        }
+
         public (TransactionReceipt, TransactionTrace) Execute(int index, Transaction transaction, BlockHeader block, bool shouldTrace)
+        {
+            return Execute(index, transaction, block, shouldTrace, false);
+        }
+        
+        public (TransactionReceipt, TransactionTrace) Execute(int index, Transaction transaction, BlockHeader block, bool shouldTrace, bool readOnly)
         {
             IReleaseSpec spec = _specProvider.GetSpec(block.Number);
             Address recipient = transaction.To;
@@ -233,11 +245,22 @@ namespace Nethermind.Evm
 
 //            if (!_specProvider.GetSpec(block.Number).IsEip658Enabled)
 //            {
+            if (!readOnly)
+            {
                 _storageProvider.Commit(spec);
                 _stateProvider.Commit(spec);
+            }
+            else
+            {
+                _storageProvider.Reset();
+                _stateProvider.Reset();
+            }
 //            }
 
-            block.GasUsed += spentGas;
+            if (!readOnly)
+            {
+                block.GasUsed += spentGas;
+            }
 
             if (substate?.Trace != null)
             {

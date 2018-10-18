@@ -350,7 +350,8 @@ namespace Nethermind.Runner.Runners
                 transactionStore,
                 filterStore,
                 new FilterManager(filterStore, blockProcessor, _logManager), 
-                new DevWallet(_logManager));
+                new DevWallet(_logManager),
+                transactionProcessor);
 
             EthereumSigner = ethereumSigner;
 
