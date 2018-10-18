@@ -173,8 +173,10 @@ namespace Nethermind.Core
 
         public Keccak HashCliqueHeader()
         {
+            int extraSeal = 65;
+            int shortExtraLength = ExtraData.Length - extraSeal;
             byte[] fullExtraData = ExtraData;
-            byte[] shortExtraData = ExtraData.Take(32).ToArray();
+            byte[] shortExtraData = ExtraData.Take(shortExtraLength).ToArray();
             ExtraData = shortExtraData;
             Rlp rlp = Rlp.Encode(this);
             Keccak sigHash = Keccak.Compute(rlp);
