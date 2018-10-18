@@ -182,7 +182,7 @@ namespace Nethermind.Blockchain
             // Ensure that the difficulty corresponds to the turn-ness of the signer
             if (!FakeDiff)
             {
-                bool inturn = snap.Inturn(_logger, header.Number, signer);
+                bool inturn = snap.Inturn(header.Number, signer);
                 if (inturn && header.Difficulty != DiffInTurn)
                 {
                     _logger.Warn($"Invalid block difficulty {header.Difficulty} - should be in-turn {DiffInTurn}");
@@ -380,7 +380,7 @@ namespace Nethermind.Blockchain
 
         private UInt256 CalcDifficulty(Snapshot snapshot, Address signer)
         {
-            if (snapshot.Inturn(_logger, snapshot.Number + 1, signer))
+            if (snapshot.Inturn(snapshot.Number + 1, signer))
             {
                 return new UInt256(DiffInTurn);
             }
@@ -468,7 +468,7 @@ namespace Nethermind.Blockchain
             if (number % Config.Epoch == 0)
             {
                 var signersBytes = new byte[snap.Signers.Count * AddressLength];
-                var signers = snap.GetSigners(_logger);
+                var signers = snap.GetSigners();
                 for (int i = 0; i < signers.Length; i++)
                 {
                     Address signer = signers[i];

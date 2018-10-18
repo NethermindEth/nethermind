@@ -299,9 +299,9 @@ namespace Nethermind.Blockchain
             return true;
         }
 
-        public bool Inturn(ILogger logger, UInt256 number, Address signer)
+        public bool Inturn(UInt256 number, Address signer)
         {
-            Address[] signers = GetSigners(logger);
+            Address[] signers = GetSigners();
             int offset = 0;
             while (offset < Signers.Count && signers[offset] != signer)
             {
@@ -310,7 +310,7 @@ namespace Nethermind.Blockchain
             return ((long)number % signers.Length == offset);
         }
 
-        public Address[] GetSigners(ILogger logger)
+        public Address[] GetSigners()
         {
             Address[] sigs = new Address[Signers.Count];
             Signers.CopyTo(sigs);
