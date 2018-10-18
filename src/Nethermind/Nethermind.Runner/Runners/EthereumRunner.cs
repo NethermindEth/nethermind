@@ -237,11 +237,12 @@ namespace Nethermind.Runner.Runners
                 transactionStore,
                 _logManager);
 
+            // TODO: read seal engine from ChainSpec
             var sealEngine = 
                 (_specProvider is MainNetSpecProvider) ? ConfigureSealEngine() :
                 (_specProvider is RopstenSpecProvider) ? ConfigureSealEngine() :
                 (_specProvider is RinkebySpecProvider) ? ConfigureCliqueSealEngine() :
-                null;
+                NullSealEngine.Instance;
 
             /* validation */
             var headerValidator = new HeaderValidator(

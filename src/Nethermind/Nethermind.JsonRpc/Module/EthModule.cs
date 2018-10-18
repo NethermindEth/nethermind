@@ -60,7 +60,7 @@ namespace Nethermind.JsonRpc.Module
             if (Logger.IsTrace) Logger.Trace($"eth_syncing request, result: {result.ToJson()}");
             return ResultWrapper<SynchingResult>.Success(result);
         }
-        
+
         public ResultWrapper<Data> eth_snapshot()
         {
             return ResultWrapper<Data>.Fail("eth_snapshot not supported");
@@ -522,21 +522,31 @@ namespace Nethermind.JsonRpc.Module
             return ResultWrapper<bool>.Success(true);
         }
 
-        public ResultWrapper<IEnumerable<Log>> eth_getFilterChanges(Quantity filterId)
+        public ResultWrapper<IEnumerable<object>> eth_getFilterChanges(Quantity filterId)
         {
             var id = filterId.Value.ToInt32();
-            
-            return _blockchainBridge.FilterExists(id)
-                ? MapLogs(_blockchainBridge.GetFilterChanges(id))
-                : ResultWrapper<IEnumerable<Log>>.Fail($"Filter with id: '{filterId}' does not exist.");
+            FilterType filterType = _blockchainBridge.GetFilterType(id);
+            switch (filterType)
+            {
+                case FilterType.BlockFilter:
+                    return _blockchainBridge.FilterExists(id)
+                        ? ResultWrapper<IEnumerable<object>>.Success(_blockchainBridge.GetBlockFilterChanges(id).Select(b => new Data(b.Bytes)))
+                        : ResultWrapper<IEnumerable<object>>.Fail($"Filter with id: '{filterId}' does not exist.");
+                case FilterType.LogFilter:
+                    return _blockchainBridge.FilterExists(id)
+                        ? ResultWrapper<IEnumerable<object>>.Success(MapLogs(_blockchainBridge.GetLogFilterChanges(id)))
+                        : ResultWrapper<IEnumerable<object>>.Fail($"Filter with id: '{filterId}' does not exist.");
+                default:
+                    throw new NotSupportedException($"Filter type {filterType} is not supported");
+            }
         }
 
         public ResultWrapper<IEnumerable<Log>> eth_getFilterLogs(Quantity filterId)
         {
             var id = filterId.Value.ToInt32();
-            
+
             return _blockchainBridge.FilterExists(id)
-                ? MapLogs(_blockchainBridge.GetFilterLogs(id))
+                ? ResultWrapper<IEnumerable<Log>>.Success(MapLogs(_blockchainBridge.GetFilterLogs(id)))
                 : ResultWrapper<IEnumerable<Log>>.Fail($"Filter with id: '{filterId}' does not exist.");
         }
 
@@ -545,14 +555,13 @@ namespace Nethermind.JsonRpc.Module
             var fromBlock = MapFilterBlock(filter.FromBlock);
             var toBlock = MapFilterBlock(filter.ToBlock);
 
-            return MapLogs(_blockchainBridge.GetLogs(fromBlock, toBlock,
+            return ResultWrapper<IEnumerable<Log>>.Success(MapLogs(_blockchainBridge.GetLogs(fromBlock, toBlock,
                 filter.Address,
-                filter.Topics));
+                filter.Topics)));
         }
 
-        private ResultWrapper<IEnumerable<Log>> MapLogs(IEnumerable<FilterLog> logs)
-            => ResultWrapper<IEnumerable<Log>>.Success(
-                logs.Select(l => new Log
+        private IEnumerable<Log> MapLogs(IEnumerable<FilterLog> logs)
+            =>  logs.Select(l => new Log
                 {
                     Removed = l.Removed,
                     LogIndex = new Quantity(l.LogIndex),
@@ -563,7 +572,7 @@ namespace Nethermind.JsonRpc.Module
                     Data = new Data(l.Data),
                     Address = new Data(l.Address),
                     Topics = l.Topics.Select(t => new Data(t)).ToArray()
-                }));
+                });
 
         public ResultWrapper<IEnumerable<Data>> eth_getWork()
         {

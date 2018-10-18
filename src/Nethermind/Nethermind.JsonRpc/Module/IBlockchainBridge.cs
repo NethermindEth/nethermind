@@ -71,7 +71,9 @@ namespace Nethermind.JsonRpc.Module
 
         void UninstallFilter(int filterId);
         bool FilterExists(int filterId);
-        FilterLog[] GetFilterChanges(int filterId);
+        FilterLog[] GetLogFilterChanges(int filterId);
+        Keccak[] GetBlockFilterChanges(int filterId);
+        FilterType GetFilterType(int filterId);
         FilterLog[] GetFilterLogs(int filterId);
 
         FilterLog[] GetLogs(FilterBlock fromBlock, FilterBlock toBlock, object address = null,

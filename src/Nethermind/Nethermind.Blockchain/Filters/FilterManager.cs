@@ -30,40 +30,97 @@ namespace Nethermind.Blockchain.Filters
     public class FilterManager : IFilterManager
     {
         private readonly ConcurrentDictionary<int, List<FilterLog>> _logs = new ConcurrentDictionary<int, List<FilterLog>>();
+        private readonly ConcurrentDictionary<int, List<Keccak>> _blockHashes = new ConcurrentDictionary<int, List<Keccak>>();
         private readonly IFilterStore _filterStore;
-        private readonly IBlockProcessor _blockProcessor;
         private readonly ILogger _logger;
 
         public FilterManager(IFilterStore filterStore, IBlockProcessor blockProcessor, ILogManager logManager)
         {
-            _filterStore = filterStore;
-            _blockProcessor = blockProcessor;
+            _filterStore = filterStore ?? throw new ArgumentNullException(nameof(filterStore));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _blockProcessor.TransactionReceiptsCreated += (s,e) => AddTransactionReceipts(e.Receipts);
+            blockProcessor.BlockProcessed += OnBlockProcessed;
+            
+            _filterStore.FilterRemoved += FilterStoreOnFilterRemoved; 
+        }
+
+        private void FilterStoreOnFilterRemoved(object sender, FilterEventArgs e)
+        {
+            if (_blockHashes.ContainsKey(e.FilterId))
+            {
+                _blockHashes.TryRemove(e.FilterId, out _);
+            }
+            else
+            {
+                _logs.TryRemove(e.FilterId, out _);
+            }
+        }
+
+        private Keccak _lastBlockHash;
+
+        private void OnBlockProcessed(object sender, BlockProcessedEventArgs e)
+        {
+            _lastBlockHash = e.Block.Hash;
+            AddTransactionReceipts(e.Receipts);
+            AddBlock(e.Block);
         }
 
         public FilterLog[] GetLogs(int filterId)
-            => (_logs.ContainsKey(filterId) ? _logs[filterId] : new List<FilterLog>()).ToArray();
+        {
+            _logs.TryGetValue(filterId, out List<FilterLog> logs);
+            return logs?.ToArray() ?? Array.Empty<FilterLog>();
+        }
 
-        public FilterLog[] GetLogsAsPolling(int filterId)
+        public Keccak[] GetBlocksHashes(int filterId)
+        {
+            _blockHashes.TryGetValue(filterId, out List<Keccak> blockHashes);
+            return blockHashes?.ToArray() ?? Array.Empty<Keccak>();
+        }
+
+        [Todo("Truffle sends transaction first and then polls so we hack it here for now")]
+        public Keccak[] PollBlockHashes(int filterId)
+        {            
+            if (!_blockHashes.ContainsKey(filterId))
+            {
+                if (_lastBlockHash != null)
+                {
+                    Keccak[] hackedResult = new [] {_lastBlockHash}; // truffle hack
+                    _lastBlockHash = null;
+                    return hackedResult;
+                }
+                
+                return Array.Empty<Keccak>();
+            }            
+            
+            var blockHashes = _blockHashes[filterId].ToArray();
+            _blockHashes[filterId].Clear();
+            return blockHashes;
+        }
+
+        public FilterLog[] PollLogs(int filterId)
         {
             if (!_logs.ContainsKey(filterId))
             {
-                return new FilterLog[0];
+                return Array.Empty<FilterLog>();
             }
+
             var logs = _logs[filterId].ToArray();
             _logs[filterId].Clear();
             return logs;
         }
-        
-        public void AddTransactionReceipts(params TransactionReceipt[] receipts)
+
+        private void AddTransactionReceipts(params TransactionReceipt[] receipts)
         {
-            if (receipts == null || receipts.Length == 0)
+            if (receipts == null)
+            {
+                throw new ArgumentNullException(nameof(receipts));
+            }
+
+            if (receipts.Length == 0)
             {
                 return;
             }
 
-            var filters = _filterStore.GetFilters();
+            var filters = _filterStore.GetFilters<LogFilter>();
             if (filters == null || filters.Length == 0)
             {
                 return;
@@ -75,7 +132,43 @@ namespace Nethermind.Blockchain.Filters
             }
         }
 
-        private void StoreLogs(Filter[] filters, TransactionReceipt receipt)
+        private void AddBlock(Block block)
+        {
+            if (block == null)
+            {
+                throw new ArgumentNullException(nameof(block));
+            }
+
+            var filters = _filterStore.GetFilters<BlockFilter>();
+            if (filters == null || filters.Length == 0)
+            {
+                return;
+            }
+
+            StoreBlock(filters, block);
+        }
+
+        private void StoreBlock(BlockFilter[] filters, Block block)
+        {
+            for (var i = 0; i < filters.Length; i++)
+            {
+                StoreBlock(filters[i], block);
+            }
+        }
+
+        private void StoreBlock(BlockFilter filter, Block block)
+        {
+            if (block.Hash == null)
+            {
+                throw new InvalidOperationException("Cannot filter on blocks without calculated hashes");
+            }
+
+            var blocks = _blockHashes.GetOrAdd(filter.Id, i => new List<Keccak>());
+            blocks.Add(block.Hash);
+            _logger.Debug($"Filter with id: '{filter.Id}' contains {blocks.Count} blocks.");
+        }
+
+        private void StoreLogs(LogFilter[] filters, TransactionReceipt receipt)
         {
             for (var i = 0; i < filters.Length; i++)
             {
@@ -83,14 +176,14 @@ namespace Nethermind.Blockchain.Filters
             }
         }
 
-        private void StoreLogs(Filter filter, TransactionReceipt receipt)
+        private void StoreLogs(LogFilter filter, TransactionReceipt receipt)
         {
             if (receipt.Logs == null || receipt.Logs.Length == 0)
             {
                 return;
             }
-            
-            var logs = _logs.ContainsKey(filter.Id) ? _logs[filter.Id] : new List<FilterLog>();
+
+            var logs = _logs.GetOrAdd(filter.Id, i => new List<FilterLog>());
             for (var i = 0; i < receipt.Logs.Length; i++)
             {
                 var logEntry = receipt.Logs[i];
@@ -106,35 +199,34 @@ namespace Nethermind.Blockchain.Filters
                 return;
             }
 
-            _logs[filter.Id] = logs;
             _logger.Debug($"Filter with id: '{filter.Id}' contains {logs.Count} logs.");
         }
 
-        private FilterLog CreateLog(Filter filter, TransactionReceipt receipt, LogEntry logEntry)
+        private FilterLog CreateLog(LogFilter logFilter, TransactionReceipt receipt, LogEntry logEntry)
         {
-            if (filter.FromBlock.Type == FilterBlockType.BlockId && filter.FromBlock.BlockId > receipt.BlockNumber)
+            if (logFilter.FromBlock.Type == FilterBlockType.BlockId && logFilter.FromBlock.BlockId > receipt.BlockNumber)
             {
                 return null;
             }
 
-            if (filter.ToBlock.Type == FilterBlockType.BlockId && filter.ToBlock.BlockId < receipt.BlockNumber)
+            if (logFilter.ToBlock.Type == FilterBlockType.BlockId && logFilter.ToBlock.BlockId < receipt.BlockNumber)
             {
                 return null;
             }
 
-            if (!filter.Accepts(logEntry))
+            if (!logFilter.Accepts(logEntry))
             {
                 return null;
             }
 
-            if (filter.FromBlock.Type == FilterBlockType.Earliest || filter.FromBlock.Type == FilterBlockType.Pending
-                                                                || filter.ToBlock.Type == FilterBlockType.Earliest ||
-                                                                filter.ToBlock.Type == FilterBlockType.Pending)
+            if (logFilter.FromBlock.Type == FilterBlockType.Earliest || logFilter.FromBlock.Type == FilterBlockType.Pending
+                                                                     || logFilter.ToBlock.Type == FilterBlockType.Earliest ||
+                                                                     logFilter.ToBlock.Type == FilterBlockType.Pending)
             {
                 return CreateLog(UInt256.One, receipt, logEntry);
             }
 
-            if (filter.FromBlock.Type == FilterBlockType.Latest || filter.ToBlock.Type == FilterBlockType.Latest)
+            if (logFilter.FromBlock.Type == FilterBlockType.Latest || logFilter.ToBlock.Type == FilterBlockType.Latest)
             {
                 //TODO: check if is last mined block
                 return CreateLog(UInt256.One, receipt, logEntry);

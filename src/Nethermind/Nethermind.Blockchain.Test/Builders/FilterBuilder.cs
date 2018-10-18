@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using Microsoft.AspNetCore.Identity.UI.Pages.Internal;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Filters.Topics;
 using Nethermind.Core;
@@ -9,7 +10,7 @@ namespace Nethermind.Blockchain.Test.Builders
 {
     public class FilterBuilder
     {
-        private int _id = 1;
+        private static int _id;
         private FilterBlock _fromBlock = new FilterBlock(FilterBlockType.Latest);
         private FilterBlock _toBlock = new FilterBlock(FilterBlockType.Latest);
         private FilterAddress _address = new FilterAddress();
@@ -19,15 +20,16 @@ namespace Nethermind.Blockchain.Test.Builders
         {
         }
 
-        public static FilterBuilder New()
+        public static FilterBuilder New(ref int currentFilterIndex)
         {
+            _id = currentFilterIndex;
+            currentFilterIndex++;
             return new FilterBuilder();
         }
         
         public FilterBuilder WithId(int id)
         {
             _id = id;
-
             return this;
         }
 
@@ -108,6 +110,6 @@ namespace Nethermind.Blockchain.Test.Builders
             return this;
         }
 
-        public Filter Build() => new Filter(_id, _fromBlock, _toBlock, _address, _topicsFilter);
+        public LogFilter Build() => new LogFilter(_id, _fromBlock, _toBlock, _address, _topicsFilter);
     }
 }

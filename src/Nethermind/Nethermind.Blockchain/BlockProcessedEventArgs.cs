@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,20 +16,22 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+
+using System;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 
 namespace Nethermind.Blockchain
 {
-    public class TransactionInfo
+    public class BlockProcessedEventArgs : EventArgs
     {
-        public TransactionInfo(Transaction transaction, PublicKey receivedFrom)
+        public BlockProcessedEventArgs(Block block, TransactionReceipt[] receipts)
         {
-            Transaction = transaction;
-            ReceivedFrom = receivedFrom;
+            Receipts = receipts;
+            Block = block;
         }
-        
-        public Transaction Transaction { get; set; }
-        public PublicKey ReceivedFrom { get; set; }
+
+        public TransactionReceipt[] Receipts { get; }
+
+        public Block Block { get; }
     }
 }

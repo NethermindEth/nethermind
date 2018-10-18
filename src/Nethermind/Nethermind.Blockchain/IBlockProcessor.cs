@@ -26,6 +26,6 @@ namespace Nethermind.Blockchain
     public interface IBlockProcessor
     {
         Block[] Process(Keccak branchStateRoot, Block[] suggestedBlocks, ProcessingOptions processingOptions, ITraceListener traceListener);
-        event EventHandler<TransactionReceiptsCreatedEventArgs> TransactionReceiptsCreated;
+        event EventHandler<BlockProcessedEventArgs> BlockProcessed;
     }
 }

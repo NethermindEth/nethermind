@@ -244,7 +244,12 @@ namespace Nethermind.JsonRpc.Module
 
         public bool FilterExists(int filterId)
         {
-            return _filterStore.FilterExist(filterId);
+            return _filterStore.FilterExists(filterId);
+        }
+
+        public FilterType GetFilterType(int filterId)
+        {
+            return _filterStore.GetFilterType(filterId);
         }
 
         public FilterLog[] GetFilterLogs(int filterId)
@@ -255,7 +260,7 @@ namespace Nethermind.JsonRpc.Module
         public FilterLog[] GetLogs(FilterBlock fromBlock, FilterBlock toBlock, object address = null,
             IEnumerable<object> topics = null)
         {
-            var filter = _filterStore.CreateFilter(fromBlock, toBlock, address, topics, setId: false);
+            var filter = _filterStore.CreateLogFilter(fromBlock, toBlock, address, topics, setId: false);
             
             return new FilterLog[0];
         }
@@ -263,9 +268,8 @@ namespace Nethermind.JsonRpc.Module
         public int NewFilter(FilterBlock fromBlock, FilterBlock toBlock,
             object address = null, IEnumerable<object> topics = null)
         {
-            var filter = _filterStore.CreateFilter(fromBlock, toBlock, address, topics);
+            var filter = _filterStore.CreateLogFilter(fromBlock, toBlock, address, topics);
             _filterStore.SaveFilter(filter);
-
             return filter.Id;
         }
 
@@ -273,7 +277,6 @@ namespace Nethermind.JsonRpc.Module
         {
             var filter = _filterStore.CreateBlockFilter(_blockTree.Head.Number);
             _filterStore.SaveFilter(filter);
-
             return filter.Id;
         }
 
@@ -282,9 +285,14 @@ namespace Nethermind.JsonRpc.Module
             _filterStore.RemoveFilter(filterId);
         }
 
-        public FilterLog[] GetFilterChanges(int filterId)
+        public FilterLog[] GetLogFilterChanges(int filterId)
         {
-            return _filterManager.GetLogsAsPolling(filterId);
+            return _filterManager.PollLogs(filterId);
+        }
+
+        public Keccak[] GetBlockFilterChanges(int filterId)
+        {
+            return _filterManager.PollBlockHashes(filterId);
         }
     }
 }
