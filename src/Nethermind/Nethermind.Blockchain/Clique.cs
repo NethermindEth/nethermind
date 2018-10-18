@@ -57,24 +57,23 @@ namespace Nethermind.Blockchain
         private readonly BlockTree _blockTree;
         private readonly ILogger _logger;
         CliqueConfig Config;
-        IDb Db;
+        ISigner _signer;
+        PrivateKey _key;
+        IDb _db;
         LruCache<Keccak, Snapshot> Recents;
         LruCache<Keccak, Address> Signatures;
         Dictionary<Address, Boolean> Proposals;
-        Boolean FakeDiff;
-        Address Signer; // TODO set this
-        // TODO set private key / keystore
-        // signFn SignerFn       // Signer function to authorize hashes with
-        // lock   sync.RWMutex   // Protects the signer fields
 
-        public Clique(CliqueConfig config, IDb db, BlockTree blockTree, ILogManager logManager)
+        public Clique(CliqueConfig config, ISigner signer, PrivateKey key, IDb db, BlockTree blockTree, ILogManager logManager)
         {
             if (config.Epoch == 0)
             {
                 config.Epoch = EpochLength;
             }
             Config = config;
-            Db = db;
+            _signer = signer;
+            _key = key;
+            _db = db;
             Recents = new LruCache<Keccak, Snapshot>(InmemorySnapshots);
             Signatures = new LruCache<Keccak, Address>(InmemorySignatures);
             Proposals = new Dictionary<Address, bool>();
@@ -84,10 +83,6 @@ namespace Nethermind.Blockchain
 
         public Block Mine(Block block)
         {
-            // TODO get from runner
-            EthereumSigner ethereumSigner = new EthereumSigner(null, null);
-            PrivateKey privateKey = new PrivateKey("4BAF705261CEC7C64626F3DB0D3E17B13B05B12F1DAC638A28244F991D87F452");
-
             BlockHeader header = block.Header;
 
             // Sealing the genesis block is not supported
@@ -105,7 +100,7 @@ namespace Nethermind.Blockchain
 
             // Bail out if we're unauthorized to sign a block
             Snapshot snapshot = GetSnapshot(number - 1, header.ParentHash, null);
-            if (!snapshot.Signers.Contains(Signer))
+            if (!snapshot.Signers.Contains(_key.Address))
             {
                 throw new InvalidOperationException("Not authorized to sign a block");
             }
@@ -115,7 +110,7 @@ namespace Nethermind.Blockchain
             {
                 UInt64 seen = item.Key;
                 Address recent = item.Value;
-                if (recent == Signer)
+                if (recent == _key.Address)
                 {
                     uint limit = (uint)snapshot.Signers.Count / 2 + 1;
                     if (number < limit || seen > (uint)number - limit)
@@ -181,19 +176,16 @@ namespace Nethermind.Blockchain
                 }
             }
             // Ensure that the difficulty corresponds to the turn-ness of the signer
-            if (!FakeDiff)
+            bool inturn = snap.Inturn(header.Number, signer);
+            if (inturn && header.Difficulty != DiffInTurn)
             {
-                bool inturn = snap.Inturn(header.Number, signer);
-                if (inturn && header.Difficulty != DiffInTurn)
-                {
-                    _logger.Warn($"Invalid block difficulty {header.Difficulty} - should be in-turn {DiffInTurn}");
-                    return false;
-                }
-                if (!inturn && header.Difficulty != DiffNoTurn)
-                {
-                    _logger.Warn($"Invalid block difficulty {header.Difficulty} - should be no-turn {DiffNoTurn}");
-                    return false;
-                }
+                _logger.Warn($"Invalid block difficulty {header.Difficulty} - should be in-turn {DiffInTurn}");
+                return false;
+            }
+            if (!inturn && header.Difficulty != DiffNoTurn)
+            {
+                _logger.Warn($"Invalid block difficulty {header.Difficulty} - should be no-turn {DiffNoTurn}");
+                return false;
             }
             return true;
         }
@@ -215,7 +207,7 @@ namespace Nethermind.Blockchain
                 // If an on-disk checkpoint snapshot can be found, use that
                 if (number % CheckpointInterval == 0)
                 {
-                    s = Snapshot.LoadSnapshot(Config, Signatures, Db, hash.Bytes);
+                    s = Snapshot.LoadSnapshot(Config, Signatures, _db, hash.Bytes);
                     if (s != null)
                     {
                         snap = s;
@@ -237,7 +229,7 @@ namespace Nethermind.Blockchain
                             signers[i] = new Address(signerBytes);
                         }
                         snap = Snapshot.NewSnapshot(Config, Signatures, number, blockHash.Bytes, signers);
-                        snap.Store(Db);
+                        snap.Store(_db);
                         break;
                     }
                 }
@@ -282,7 +274,7 @@ namespace Nethermind.Blockchain
             // If we've generated a new checkpoint snapshot, save to disk
             if ((uint)snap.Number % CheckpointInterval == 0 && headers.Count > 0)
             {
-                snap.Store(Db);
+                snap.Store(_db);
             }
             return snap;
         }
@@ -322,7 +314,7 @@ namespace Nethermind.Blockchain
                 }
             }
             // Set the correct difficulty
-            header.Difficulty = CalcDifficulty(snap, Signer);
+            header.Difficulty = CalcDifficulty(snap, _key.Address);
             // Ensure the extra data has all it's components
             if (header.ExtraData.Length < ExtraVanity)
             {
@@ -376,7 +368,7 @@ namespace Nethermind.Blockchain
         {
             ulong parentNumber = (ulong)parent.Number;
             Snapshot snap = GetSnapshot(parentNumber, BlockHeader.CalculateHash(parent), null);
-            return CalcDifficulty(snap, Signer);
+            return CalcDifficulty(snap, _key.Address);
         }
 
         private UInt256 CalcDifficulty(Snapshot snapshot, Address signer)
