@@ -168,7 +168,7 @@ namespace Nethermind.Blockchain
                     }
                 }
                 // Resolve the authorization key and check against signers
-                Address signer = Clique.GetBlockSealer(header, Sigcache);
+                Address signer = header.GetBlockSealer(Sigcache);
                 if (!snap.Signers.Contains(signer))
                 {
                     throw new InvalidOperationException("Unauthorized signer");

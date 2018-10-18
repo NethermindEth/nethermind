@@ -158,7 +158,7 @@ namespace Nethermind.Blockchain
             // Retrieve the snapshot needed to verify this header and cache it
             Snapshot snap = GetSnapshot(number - 1, header.ParentHash, parents);
             // Resolve the authorization key and check against signers
-            Address signer = GetBlockSealer(header, Signatures);
+            Address signer = header.GetBlockSealer(Signatures);
             if (!snap.Signers.Contains(signer))
             {
                 _logger.Warn($"Invalid block signer {signer} - not authorized to sign a block");
@@ -487,41 +487,6 @@ namespace Nethermind.Blockchain
                 }
             }
             return true;
-        }
-
-        public static Address GetBlockSealer(BlockHeader header, LruCache<Keccak, Address> signatures)
-        {
-            Address address = signatures.Get(header.Hash);
-            if (address != null)
-            {
-                return address;
-            }
-            // Retrieve the signature from the header extra-data
-            if (header.ExtraData.Length < ExtraSeal)
-            {
-                return null;
-            }
-            byte[] signatureBytes = header.ExtraData.TakeLast(Clique.ExtraSeal).ToArray();
-            Signature signature = new Signature(signatureBytes);
-            signature.V += 27;
-            // Recover the Ethereum address
-            // TODO Get SpecProvider or EthereumSigner from Runner
-            EthereumSigner signer = new EthereumSigner(RinkebySpecProvider.Instance, NullLogManager.Instance);
-            Keccak message = HeaderHash(header);
-            address = signer.RecoverAddress(signature, message);
-            signatures.Set(header.Hash, address);
-            return address;
-        }
-
-        private static Keccak HeaderHash(BlockHeader header)
-        {
-            byte[] fullExtraData = header.ExtraData;
-            byte[] shortExtraData = header.ExtraData.Take(32).ToArray();
-            header.ExtraData = shortExtraData;
-            Rlp rlp = Rlp.Encode(header);
-            Keccak sigHash = Keccak.Compute(rlp);
-            header.ExtraData = fullExtraData;
-            return sigHash;
         }
     }
 

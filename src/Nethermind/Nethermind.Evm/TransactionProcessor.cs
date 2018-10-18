@@ -219,15 +219,17 @@ namespace Nethermind.Evm
 
             if (_logger.IsTrace) _logger.Trace("Gas spent: " + spentGas);
 
-            if (statusCode == StatusCode.Failure || !(substate?.DestroyList.Contains(block.Beneficiary) ?? false))
+            // Get actual block author, as block.Beneficiary may be used for other purposes in PoA
+            var blockAuthor = block.GetAuthor(_specProvider);
+            if (statusCode == StatusCode.Failure || !(substate?.DestroyList.Contains(blockAuthor) ?? false))
             {
-                if (!_stateProvider.AccountExists(block.Beneficiary))
+                if (!_stateProvider.AccountExists(blockAuthor))
                 {
-                    _stateProvider.CreateAccount(block.Beneficiary, (ulong) spentGas * gasPrice);
+                    _stateProvider.CreateAccount(blockAuthor, (ulong) spentGas * gasPrice);
                 }
                 else
                 {
-                    _stateProvider.AddToBalance(block.Beneficiary, (ulong) spentGas * gasPrice, spec);
+                    _stateProvider.AddToBalance(blockAuthor, (ulong) spentGas * gasPrice, spec);
                 }
             }
 

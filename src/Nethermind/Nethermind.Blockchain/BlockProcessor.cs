@@ -230,6 +230,7 @@ namespace Nethermind.Blockchain
             header.MixHash = s.MixHash;
             header.Nonce = s.Nonce;
             header.TransactionsRoot = suggestedBlock.TransactionsRoot;
+            header.Author = suggestedBlock.Header.GetAuthor(_specProvider);
             return processedBlock;
         }
 
