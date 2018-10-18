@@ -23,6 +23,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
+using Newtonsoft.Json;
 
 namespace Nethermind.Core
 {
@@ -77,6 +78,7 @@ namespace Nethermind.Core
         {
         }
 
+        [JsonConstructor]
         public Address(byte[] bytes)
         {
             if (bytes == null)
