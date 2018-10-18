@@ -50,6 +50,7 @@ namespace Nethermind.Blockchain
         private const int DiffInTurn = 2;
         private const int DiffNoTurn = 1;
         private readonly Keccak EmptyMixHash = new Keccak("0x0000000000000000000000000000000000000000000000000000000000000000");
+        private readonly Address ZeroAddress = new Address("0x0000000000000000000000000000000000000000");
 
         private const int AddressLength = 20;
 
@@ -392,7 +393,7 @@ namespace Nethermind.Blockchain
             ulong number = (ulong)header.Number;
             // Checkpoint blocks need to enforce zero beneficiary
             bool checkpoint = ((ulong)number % Config.Epoch) == 0;
-            if (checkpoint && header.Beneficiary != null)
+            if (checkpoint && header.Beneficiary != ZeroAddress)
             {
                 _logger.Warn($"Invalid block beneficiary ({header.Beneficiary}) - should be empty on checkpoint");
                 return false;
