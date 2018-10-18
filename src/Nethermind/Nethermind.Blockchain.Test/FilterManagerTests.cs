@@ -5,6 +5,7 @@ using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Test.Builders;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Logging;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
 using NSubstitute;
@@ -15,12 +16,16 @@ namespace Nethermind.Blockchain.Test
     public class FilterManagerTests
     {
         private IFilterStore _filterStore;
+        private IBlockProcessor _blockProcessor;
         private IFilterManager _filterManager;
+        private ILogManager _logManager;
 
         [SetUp]
         public void Setup()
         {
             _filterStore = Substitute.For<IFilterStore>();
+            _blockProcessor = Substitute.For<IBlockProcessor>();
+            _logManager = Substitute.For<ILogManager>();
         }
 
         [Test]
@@ -289,12 +294,9 @@ namespace Nethermind.Blockchain.Test
                 receipts.Add(BuildReceipt(receiptBuilder));
             }
 
-            _filterStore.GetAll().Returns(filters);
-            _filterManager = new FilterManager(_filterStore);
-            foreach (var receipt in receipts)
-            {
-                _filterManager.AddTransactionReceipt(receipt);
-            }
+            _filterStore.GetFilters().Returns(filters.ToArray());
+            _filterManager = new FilterManager(_filterStore, _blockProcessor, _logManager);
+            _filterManager.AddTransactionReceipts(receipts.ToArray());
 
             NUnit.Framework.Assert.Multiple(() =>
             {

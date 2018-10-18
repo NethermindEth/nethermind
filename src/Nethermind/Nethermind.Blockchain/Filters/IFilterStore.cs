@@ -23,11 +23,14 @@ namespace Nethermind.Blockchain.Filters
 {
     public interface IFilterStore
     {
-        IReadOnlyCollection<Filter> GetAll();
-        
-        BlockFilter CreateBlockFilter(UInt256 startBlockNumber);
+        bool FilterExist(int filterId);
+        Filter[] GetFilters();
+        BlockFilter CreateBlockFilter(UInt256 startBlockNumber, bool setId = true);
 
-        Filter CreateFilter(FilterBlock fromBlock, FilterBlock toBlock, object address = null, IEnumerable<object> topics = null);
+        Filter CreateFilter(FilterBlock fromBlock, FilterBlock toBlock, object address = null,
+            IEnumerable<object> topics = null, bool setId = true);
+
+        void SaveFilter(FilterBase filter);
         void RemoveFilter(int filterId);
     }
 }

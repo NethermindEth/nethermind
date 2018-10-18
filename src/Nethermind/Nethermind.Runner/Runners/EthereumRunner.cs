@@ -335,6 +335,8 @@ namespace Nethermind.Runner.Runners
                 encrypter,
                 _cryptoRandom,
                 _logManager);
+            
+            var filterStore = new FilterStore();
 
             //creating blockchain bridge
             BlockchainBridge = new BlockchainBridge(
@@ -345,7 +347,8 @@ namespace Nethermind.Runner.Runners
                 txTracer,
                 _dbProvider,
                 transactionStore,
-                new FilterStore(),
+                filterStore,
+                new FilterManager(filterStore, blockProcessor, _logManager), 
                 new DevWallet(_logManager));
 
             EthereumSigner = ethereumSigner;

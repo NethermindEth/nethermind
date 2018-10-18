@@ -522,23 +522,48 @@ namespace Nethermind.JsonRpc.Module
             return ResultWrapper<bool>.Success(true);
         }
 
-        public ResultWrapper<Data[]> eth_getFilterChanges(Quantity filterId)
+        public ResultWrapper<IEnumerable<Log>> eth_getFilterChanges(Quantity filterId)
         {
-            return ResultWrapper<Data[]>.Success(
-                _blockchainBridge.GetFilterChanges(filterId.Value.ToInt32())
-                    .Select(o => new Data((Keccak) o)).ToArray()
-            );
+            var id = filterId.Value.ToInt32();
+            
+            return _blockchainBridge.FilterExists(id)
+                ? MapLogs(_blockchainBridge.GetFilterChanges(id))
+                : ResultWrapper<IEnumerable<Log>>.Fail($"Filter with id: '{filterId}' does not exist.");
         }
 
         public ResultWrapper<IEnumerable<Log>> eth_getFilterLogs(Quantity filterId)
         {
-            return ResultWrapper<IEnumerable<Log>>.Fail("eth_getFilterLogs not supported");
+            var id = filterId.Value.ToInt32();
+            
+            return _blockchainBridge.FilterExists(id)
+                ? MapLogs(_blockchainBridge.GetFilterLogs(id))
+                : ResultWrapper<IEnumerable<Log>>.Fail($"Filter with id: '{filterId}' does not exist.");
         }
 
         public ResultWrapper<IEnumerable<Log>> eth_getLogs(Filter filter)
         {
-            return ResultWrapper<IEnumerable<Log>>.Fail("eth_getLogs not supported");
+            var fromBlock = MapFilterBlock(filter.FromBlock);
+            var toBlock = MapFilterBlock(filter.ToBlock);
+
+            return MapLogs(_blockchainBridge.GetLogs(fromBlock, toBlock,
+                filter.Address,
+                filter.Topics));
         }
+
+        private ResultWrapper<IEnumerable<Log>> MapLogs(IEnumerable<FilterLog> logs)
+            => ResultWrapper<IEnumerable<Log>>.Success(
+                logs.Select(l => new Log
+                {
+                    Removed = l.Removed,
+                    LogIndex = new Quantity(l.LogIndex),
+                    TransactionHash = new Data(l.TransactionHash),
+                    TransactionIndex = new Quantity(l.TransactionIndex),
+                    BlockHash = new Data(l.BlockHash),
+                    BlockNumber = new Quantity(l.BlockNumber),
+                    Data = new Data(l.Data),
+                    Address = new Data(l.Address),
+                    Topics = l.Topics.Select(t => new Data(t)).ToArray()
+                }));
 
         public ResultWrapper<IEnumerable<Data>> eth_getWork()
         {

@@ -24,6 +24,7 @@ namespace Nethermind.Blockchain.Filters
 {
     public class FilterLog
     {
+        public bool Removed { get; }
         public UInt256 LogIndex { get; }
         public UInt256 BlockNumber { get; }
         public Keccak BlockHash { get; }

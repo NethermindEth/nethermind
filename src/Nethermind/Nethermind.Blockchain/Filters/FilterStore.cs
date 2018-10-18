@@ -30,24 +30,27 @@ namespace Nethermind.Blockchain.Filters
     {
         private readonly ConcurrentDictionary<int, FilterBase> _filters = new ConcurrentDictionary<int, FilterBase>();
 
-        public IReadOnlyCollection<Filter> GetAll()
+        public bool FilterExist(int filterId) => _filters.ContainsKey(filterId);
+
+        public Filter[] GetFilters()
         {
-            return _filters.Select(f => f.Value).OfType<Filter>().ToList();
+            return _filters.Select(f => f.Value).OfType<Filter>().ToArray();
         }
 
-        public BlockFilter CreateBlockFilter(UInt256 startBlockNumber)
+        public BlockFilter CreateBlockFilter(UInt256 startBlockNumber, bool setId = true)
         {
-            BlockFilter blockFilter = new BlockFilter(GetFilterId(), startBlockNumber);
-            AddFilter(blockFilter);
+            var filterId = setId ? GetFilterId() : 0;
+            var blockFilter = new BlockFilter(filterId, startBlockNumber);
+            
             return blockFilter;
         }
 
-        public Filter CreateFilter(FilterBlock fromBlock, FilterBlock toBlock, 
-            object address = null, IEnumerable<object> topics = null)
+        public Filter CreateFilter(FilterBlock fromBlock, FilterBlock toBlock,
+            object address = null, IEnumerable<object> topics = null, bool setId = true)
         {
-            var filter = new Filter(GetFilterId(), fromBlock, toBlock, 
+            var filterId = setId ? GetFilterId() : 0;
+            var filter = new Filter(filterId, fromBlock, toBlock,
                 GetAddress(address), GetTopicsFilter(topics));
-            AddFilter(filter);
 
             return filter;
         }
@@ -57,7 +60,7 @@ namespace Nethermind.Blockchain.Filters
             _filters.TryRemove(filterId, out _);
         }
 
-        private void AddFilter(FilterBase filter)
+        public void SaveFilter(FilterBase filter)
         {
             _filters[filter.Id] = filter;
         }
@@ -71,16 +74,24 @@ namespace Nethermind.Blockchain.Filters
 
             for (int i = 0; i < filterTopics.Length; i++)
             {
-                var filterTopic = filterTopics[i];
-                var orExpression = new OrExpression(new[]
-                {
-                    GetTopicExpression(filterTopic.First),
-                    GetTopicExpression(filterTopic.Second)
-                });
-                expressions.Add(orExpression);
+                expressions.Add(GetTopicExpression(filterTopics[i]));
             }
 
             return new TopicsFilter(expressions.ToArray());
+        }
+        
+        private TopicExpression GetTopicExpression(FilterTopic filterTopic)
+        {
+            if (filterTopic == null)
+            {
+                return new AnyTopic();
+            }
+
+            return new OrExpression(new[]
+            {
+                GetTopicExpression(filterTopic.First),
+                GetTopicExpression(filterTopic.Second)
+            });
         }
         
         private TopicExpression GetTopicExpression(Keccak topic)
@@ -123,8 +134,8 @@ namespace Nethermind.Blockchain.Filters
             }
 
             var topics = (obj as IEnumerable<string>)?.ToList();
-            string first = topics?.FirstOrDefault();
-            string second = topics?.Skip(1).FirstOrDefault();
+            var first = topics?.FirstOrDefault();
+            var second = topics?.Skip(1).FirstOrDefault();
 
             return new FilterTopic
             {

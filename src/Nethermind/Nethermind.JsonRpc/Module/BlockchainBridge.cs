@@ -40,6 +40,7 @@ namespace Nethermind.JsonRpc.Module
         private readonly IBlockchainProcessor _blockchainProcessor;
         private readonly IBlockTree _blockTree;
         private readonly IFilterStore _filterStore;
+        private readonly IFilterManager _filterManager;
         private readonly IEthereumSigner _signer;
         private readonly IDb _stateDb;
         private readonly IStateProvider _stateProvider;
@@ -56,6 +57,7 @@ namespace Nethermind.JsonRpc.Module
             IDbProvider dbProvider,
             ITransactionStore transactionStore,
             IFilterStore filterStore,
+            IFilterManager filterManager,
             IWallet wallet)
         {
             _signer = signer ?? throw new ArgumentNullException(nameof(signer));
@@ -66,9 +68,11 @@ namespace Nethermind.JsonRpc.Module
             _stateDb = dbProvider?.StateDb ?? throw new ArgumentNullException(nameof(dbProvider.StateDb));
             _transactionStore = transactionStore ?? throw new ArgumentNullException(nameof(transactionStore));
             _filterStore = filterStore ?? throw new ArgumentException(nameof(filterStore));
+            _filterManager = filterManager;
             _wallet = wallet ?? throw new ArgumentException(nameof(wallet));
 
-            IDb blockInfosDb = dbProvider?.BlockInfosDb ?? throw new ArgumentNullException(nameof(dbProvider.BlockInfosDb));
+            IDb blockInfosDb = dbProvider?.BlockInfosDb ??
+                               throw new ArgumentNullException(nameof(dbProvider.BlockInfosDb));
             IDb blocksDb = dbProvider?.BlocksDb ?? throw new ArgumentNullException(nameof(dbProvider.BlocksDb));
             IDb receiptsDb = dbProvider?.ReceiptsDb ?? throw new ArgumentNullException(nameof(dbProvider.ReceiptsDb));
             IDb codeDb = dbProvider?.CodeDb ?? throw new ArgumentNullException(nameof(dbProvider.CodeDb));
@@ -84,7 +88,7 @@ namespace Nethermind.JsonRpc.Module
             };
         }
 
-        public IReadOnlyCollection<Address>  GetWalletAccounts()
+        public IReadOnlyCollection<Address> GetWalletAccounts()
         {
             return _wallet.GetAccounts();
         }
@@ -147,16 +151,18 @@ namespace Nethermind.JsonRpc.Module
         public Keccak SendTransaction(Transaction transaction)
         {
             _stateProvider.StateRoot = _blockTree.Head.StateRoot;
-            
+
             if (transaction.SenderAddress == null) transaction.SenderAddress = _wallet.GetAccounts()[0];
 
             transaction.Nonce = _stateProvider.GetNonce(transaction.SenderAddress);
             _wallet.Sign(transaction, _blockTree.ChainId);
             transaction.Hash = Transaction.CalculateHash(transaction);
 
-            if (_signer.RecoverAddress(transaction, _blockTree.Head.Number) != transaction.SenderAddress) throw new InvalidOperationException("Invalid signature");
+            if (_signer.RecoverAddress(transaction, _blockTree.Head.Number) != transaction.SenderAddress)
+                throw new InvalidOperationException("Invalid signature");
 
-            if (_stateProvider.GetNonce(transaction.SenderAddress) != transaction.Nonce) throw new InvalidOperationException("Invalid nonce");
+            if (_stateProvider.GetNonce(transaction.SenderAddress) != transaction.Nonce)
+                throw new InvalidOperationException("Invalid nonce");
 
             _transactionStore.AddPending(transaction);
             return transaction.Hash;
@@ -236,15 +242,39 @@ namespace Nethermind.JsonRpc.Module
             return _blockTree.ChainId;
         }
 
+        public bool FilterExists(int filterId)
+        {
+            return _filterStore.FilterExist(filterId);
+        }
+
+        public FilterLog[] GetFilterLogs(int filterId)
+        {
+            return _filterManager.GetLogs(filterId);
+        }
+
+        public FilterLog[] GetLogs(FilterBlock fromBlock, FilterBlock toBlock, object address = null,
+            IEnumerable<object> topics = null)
+        {
+            var filter = _filterStore.CreateFilter(fromBlock, toBlock, address, topics, setId: false);
+            
+            return new FilterLog[0];
+        }
+
         public int NewFilter(FilterBlock fromBlock, FilterBlock toBlock,
             object address = null, IEnumerable<object> topics = null)
         {
-            return _filterStore.CreateFilter(fromBlock, toBlock, address, topics).Id;
+            var filter = _filterStore.CreateFilter(fromBlock, toBlock, address, topics);
+            _filterStore.SaveFilter(filter);
+
+            return filter.Id;
         }
 
         public int NewBlockFilter()
         {
-            return _filterStore.CreateBlockFilter(_blockTree.Head.Number).Id;
+            var filter = _filterStore.CreateBlockFilter(_blockTree.Head.Number);
+            _filterStore.SaveFilter(filter);
+
+            return filter.Id;
         }
 
         public void UninstallFilter(int filterId)
@@ -252,9 +282,9 @@ namespace Nethermind.JsonRpc.Module
             _filterStore.RemoveFilter(filterId);
         }
 
-        public object[] GetFilterChanges(int filterId)
+        public FilterLog[] GetFilterChanges(int filterId)
         {
-            return new object[] {_blockTree.Head.Hash};
+            return _filterManager.GetLogsAsPolling(filterId);
         }
     }
 }
