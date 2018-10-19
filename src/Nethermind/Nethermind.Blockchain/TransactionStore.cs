@@ -64,6 +64,7 @@ namespace Nethermind.Blockchain
         {
             if (_pending.ContainsKey(transaction.Hash))
             {
+                NewPending?.Invoke(this, new TransactionEventArgs(transaction)); // hack
                 return AddTransactionResult.AlreadyKnown;
             }
 

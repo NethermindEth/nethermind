@@ -89,6 +89,15 @@ namespace Nethermind.Core
         private void UpdateParams(JToken token)
         {
             var paramsToken = token.SelectToken("params");
+            if (paramsToken == null)
+            {
+                paramsToken = token.SelectToken("Params");
+                if (paramsToken == null)
+                {
+                    throw new FormatException("Missing 'params' token");
+                }
+            }
+            
             var values = new List<string>();
             foreach (var value in paramsToken.Value<IEnumerable<object>>())
             {

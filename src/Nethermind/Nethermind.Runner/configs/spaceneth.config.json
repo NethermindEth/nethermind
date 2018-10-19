@@ -13,7 +13,7 @@
       "HttpHost": "127.0.0.1",
       "HttpPort": 8345,
       "ChainSpecPath": "chainspec\\spaceneth.json",
-      "BaseDbPath": "spaceneth",
+      "BaseDbPath": "spaceneth_db",
       "LogFileName": "spaceneth.logs.txt"
     }
   },
