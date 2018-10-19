@@ -16,7 +16,6 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
 using System.Linq;
 using System.Numerics;
 using Nethermind.Core;
@@ -37,13 +36,6 @@ namespace Nethermind.JsonRpc
 {
     public class JsonRpcModelMapper : IJsonRpcModelMapper
     {
-        private readonly IEthereumSigner _signer;
-
-        public JsonRpcModelMapper(IEthereumSigner signer)
-        {
-            _signer = signer;
-        }
-
         public Block MapBlock(Core.Block block, bool returnFullTransactionObjects)
         {
             Transaction[] transactions = null;

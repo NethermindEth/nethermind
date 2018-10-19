@@ -61,6 +61,7 @@ namespace Nethermind.Runner
             services.AddSingleton<IConfigProvider>(ConfigProvider);
             services.AddSingleton<ILogManager>(LogManager);
             services.AddSingleton<IBlockchainBridge>(BlockchainBridge);
+            services.AddSingleton<IDebugBridge>(DebugBridge);
             services.AddSingleton<IJsonSerializer, JsonSerializer>();
             services.AddSingleton<IJsonRpcModelMapper, JsonRpcModelMapper>();
             services.AddSingleton<IModuleProvider, ModuleProvider>();

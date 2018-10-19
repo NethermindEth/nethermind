@@ -189,23 +189,21 @@ namespace Nethermind.Runner.Runners
         {
             public IStateProvider StateProvider;
             public IStorageProvider StorageProvider;
-            public IBlockTree BlockTree;
             public IBlockhashProvider BlockhashProvider;
             public IVirtualMachine VirtualMachine;
             public TransactionProcessor TransactionProcessor;
+            public IBlockTree BlockTree;
 
-            public RpcState(ISpecProvider specProvider, IReadOnlyDbProvider readOnlyDbProvider, ILogManager logManager)
+            public RpcState(IBlockTree blockTree, ISpecProvider specProvider, IReadOnlyDbProvider readOnlyDbProvider, ILogManager logManager)
             {
                 ISnapshotableDb stateDb = readOnlyDbProvider.StateDb;
                 IDb codeDb = readOnlyDbProvider.CodeDb;
-                IDb blockDb = readOnlyDbProvider.BlocksDb;
-                IDb blockInfoDb = readOnlyDbProvider.BlockInfosDb;
                 StateTree stateTree = new StateTree(readOnlyDbProvider.StateDb);
             
                 StateProvider = new StateProvider(stateTree, codeDb, logManager);
                 StorageProvider = new StorageProvider(stateDb, StateProvider, logManager);
-            
-                BlockTree = new BlockTree(blockDb, blockInfoDb, specProvider, NullTransactionStore.Instance, logManager);
+
+                BlockTree = new RpcBlockTreeWrapper(blockTree);
                 BlockhashProvider = new BlockhashProvider(BlockTree);
             
                 VirtualMachine = new VirtualMachine(StateProvider, StorageProvider, BlockhashProvider, logManager);
@@ -372,7 +370,7 @@ namespace Nethermind.Runner.Runners
                 IFilterStore filterStore = new FilterStore();
                 IFilterManager filterManager = new FilterManager(filterStore, blockProcessor, _logManager);
                 IWallet wallet = new DevWallet(_logManager);
-                RpcState rpcState = new RpcState(_specProvider, rpcDbProvider, _logManager);
+                RpcState rpcState = new RpcState(_blockTree, _specProvider, rpcDbProvider, _logManager);
 
                 //creating blockchain bridge
                 BlockchainBridge = new BlockchainBridge(
@@ -383,7 +381,7 @@ namespace Nethermind.Runner.Runners
                     filterStore,
                     filterManager,
                     wallet,
-                    transactionProcessor);
+                    rpcState.TransactionProcessor);
                 
                 DebugBridge = new DebugBridge(debugDbProvider, txTracer, _blockchainProcessor);
             }

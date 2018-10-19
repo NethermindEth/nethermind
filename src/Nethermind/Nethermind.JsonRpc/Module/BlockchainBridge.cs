@@ -19,6 +19,7 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Core;
@@ -34,7 +35,6 @@ namespace Nethermind.JsonRpc.Module
     [DoNotUseInSecuredContext("Not reviewed, work in progress")]
     public class BlockchainBridge : IBlockchainBridge
     {
-        
         private readonly IBlockTree _blockTree;
         private readonly IFilterManager _filterManager;
         private readonly IFilterStore _filterStore;
@@ -44,6 +44,7 @@ namespace Nethermind.JsonRpc.Module
         private readonly ITransactionStore _transactionStore;
         private readonly IWallet _wallet;
 
+        private ReaderWriterLockSlim _readerWriterLockSlim = new ReaderWriterLockSlim();
 
         public BlockchainBridge(IEthereumSigner signer,
             IStateProvider stateProvider,
@@ -113,21 +114,28 @@ namespace Nethermind.JsonRpc.Module
 
         public Keccak SendTransaction(Transaction transaction)
         {
-            _stateProvider.StateRoot = _blockTree.Head.StateRoot;
-
-            if (transaction.SenderAddress == null) transaction.SenderAddress = _wallet.GetAccounts()[0];
-
-            transaction.Nonce = _stateProvider.GetNonce(transaction.SenderAddress);
-            _wallet.Sign(transaction, _blockTree.ChainId);
-            transaction.Hash = Transaction.CalculateHash(transaction);
-
-            if (_stateProvider.GetNonce(transaction.SenderAddress) != transaction.Nonce)
+            try
             {
-                throw new InvalidOperationException("Invalid nonce");
-            }
+                _readerWriterLockSlim.EnterWriteLock();
+                _stateProvider.StateRoot = _blockTree.Head.StateRoot;
 
-            _transactionStore.AddPending(transaction, _blockTree.Head.Number);
-            return transaction.Hash;
+                if (transaction.SenderAddress == null) transaction.SenderAddress = _wallet.GetAccounts()[0];
+
+                transaction.Nonce = _stateProvider.GetNonce(transaction.SenderAddress);
+                _wallet.Sign(transaction, _blockTree.ChainId);
+                transaction.Hash = Transaction.CalculateHash(transaction);
+
+                if (_stateProvider.GetNonce(transaction.SenderAddress) != transaction.Nonce) throw new InvalidOperationException("Invalid nonce");
+
+                _transactionStore.AddPending(transaction, _blockTree.Head.Number);
+
+                _stateProvider.Reset();
+                return transaction.Hash;
+            }
+            finally
+            {
+                _readerWriterLockSlim.ExitWriteLock();
+            }
         }
 
         public TransactionReceipt GetTransactionReceipt(Keccak txHash)
@@ -137,37 +145,92 @@ namespace Nethermind.JsonRpc.Module
 
         public byte[] Call(Block block, Transaction transaction)
         {
-            BlockHeader header = new BlockHeader(block.Hash, Keccak.OfAnEmptySequenceRlp, block.Beneficiary, block.Difficulty, block.Number + 1, (long) transaction.GasLimit, block.Timestamp + 1, Bytes.Empty);
-            transaction.Nonce = _stateProvider.GetNonce(transaction.SenderAddress);
-            transaction.Hash = Transaction.CalculateHash(transaction);
-            (TransactionReceipt receipt, TransactionTrace trace) = _transactionProcessor.CallAndRestore(0, transaction, header, true);
-            return Bytes.FromHexString(trace.ReturnValue);
+            try
+            {
+                _readerWriterLockSlim.EnterWriteLock();
+                _stateProvider.StateRoot = _blockTree.Head.StateRoot;
+                BlockHeader header = new BlockHeader(block.Hash, Keccak.OfAnEmptySequenceRlp, block.Beneficiary, block.Difficulty, block.Number + 1, (long) transaction.GasLimit, block.Timestamp + 1, Bytes.Empty);
+                transaction.Nonce = _stateProvider.GetNonce(transaction.SenderAddress);
+                transaction.Hash = Transaction.CalculateHash(transaction);
+                (TransactionReceipt receipt, TransactionTrace trace) = _transactionProcessor.CallAndRestore(0, transaction, header, true);
+
+                _stateProvider.Reset();
+                return Bytes.FromHexString(trace.ReturnValue);
+            }
+            finally
+            {
+                _readerWriterLockSlim.ExitWriteLock();
+            }
         }
 
         public byte[] GetCode(Address address)
         {
-            return _stateProvider.GetCode(address);
+            try
+            {
+                _readerWriterLockSlim.EnterReadLock();
+                _stateProvider.StateRoot = _blockTree.Head.StateRoot;
+                return _stateProvider.GetCode(address);
+            }
+            finally
+            {
+                _readerWriterLockSlim.ExitReadLock();
+            }
         }
 
         public byte[] GetCode(Keccak codeHash)
         {
-            return _stateProvider.GetCode(codeHash);
+            try
+            {
+                _readerWriterLockSlim.EnterReadLock();
+                _stateProvider.StateRoot = _blockTree.Head.StateRoot;
+                return _stateProvider.GetCode(codeHash);
+            }
+            finally
+            {
+                _readerWriterLockSlim.ExitReadLock();
+            }
         }
 
         public BigInteger GetNonce(Address address)
         {
-            return _stateProvider.GetNonce(address);
+            try
+            {
+                _readerWriterLockSlim.EnterReadLock();
+                _stateProvider.StateRoot = _blockTree.Head.StateRoot;
+                return _stateProvider.GetNonce(address);
+            }
+            finally
+            {
+                _readerWriterLockSlim.ExitReadLock();
+            }
         }
 
         public BigInteger GetBalance(Address address)
         {
-            return _stateProvider.GetBalance(address);
+            try
+            {
+                _readerWriterLockSlim.EnterReadLock();
+                _stateProvider.StateRoot = _blockTree.Head.StateRoot;
+                return _stateProvider.GetBalance(address);
+            }
+            finally
+            {
+                _readerWriterLockSlim.ExitReadLock();
+            }
         }
 
         public Account GetAccount(Address address, Keccak stateRoot)
         {
-            _stateProvider.StateRoot = stateRoot;
-            return _stateProvider.GetAccount(address);
+            try
+            {
+                _readerWriterLockSlim.EnterReadLock();
+                _stateProvider.StateRoot = stateRoot;
+                return _stateProvider.GetAccount(address);
+            }
+            finally
+            {
+                _readerWriterLockSlim.ExitReadLock();
+            }
         }
 
         public int GetNetworkId()
