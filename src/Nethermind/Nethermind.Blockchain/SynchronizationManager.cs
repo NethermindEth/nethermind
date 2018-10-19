@@ -179,7 +179,7 @@ namespace Nethermind.Blockchain
         public void AddNewTransaction(Transaction transaction, NodeId receivedFrom)
         {
             if (_logger.IsTrace) _logger.Trace($"Received a pending transaction {transaction.Hash} from {receivedFrom}");
-            _transactionStore.AddPending(transaction);
+            _transactionStore.AddPending(transaction, HeadNumber);
         }
 
         public async Task AddPeer(ISynchronizationPeer synchronizationPeer)

@@ -21,6 +21,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
 using Nethermind.Core.Specs;
@@ -44,7 +45,7 @@ namespace Nethermind.Blockchain.Test
             IBlockValidator blockValidator = Build.A.BlockValidator.ThatAlwaysReturnsTrue.TestObject;
             ITransactionValidator transactionValidator = Build.A.TransactionValidator.ThatAlwaysReturnsTrue.TestObject;
             
-            _manager = new SynchronizationManager(_blockTree, blockValidator, headerValidator, new TransactionStore(new MemDb(), RopstenSpecProvider.Instance), transactionValidator, NullLogManager.Instance, new BlockchainConfig(), new PerfService(NullLogManager.Instance));
+            _manager = new SynchronizationManager(_blockTree, blockValidator, headerValidator, new TransactionStore(new MemDb(), RopstenSpecProvider.Instance, NullEthereumSigner.Instance), transactionValidator, NullLogManager.Instance, new BlockchainConfig(), new PerfService(NullLogManager.Instance));
         }
 
         private IBlockTree _blockTree;

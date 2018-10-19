@@ -33,7 +33,7 @@ namespace Nethermind.Blockchain
         BlockHeader Head { get; }
 
         bool CanAcceptNewBlocks { get; }
-        Task LoadBlocksFromDb(CancellationToken cancellationToken, UInt256? startBlockNumber, int batchSize = BlockTree.DbLoadBatchSize, int maxBlocksToLoad = int.MaxValue); // TODO: start block number for testing, consider making it internal and keep the public without arguments
+        Task LoadBlocksFromDb(CancellationToken cancellationToken, UInt256? startBlockNumber, int batchSize = BlockTree.DbLoadBatchSize, int maxBlocksToLoad = int.MaxValue);
         AddBlockResult SuggestBlock(Block block);
         Block FindBlock(Keccak blockHash, bool mainChainOnly);
         BlockHeader FindHeader(Keccak blockHash);
@@ -46,7 +46,7 @@ namespace Nethermind.Blockchain
         void MoveToMain(Keccak blockHash);
         void MoveToBranch(Keccak blockHash);
         bool WasProcessed(Keccak blockHash);
-        void MarkAsProcessed(Keccak blockHash); // TODO: null receipts by default so the existing tests do not fail, to be changed later alongside the tests
+        void MarkAsProcessed(Keccak blockHash);
 
         event EventHandler<BlockEventArgs> NewBestSuggestedBlock;
         event EventHandler<BlockEventArgs> BlockAddedToMain;

@@ -19,13 +19,12 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
-using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Logging;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.Store;
@@ -34,30 +33,22 @@ using Nethermind.Wallet;
 namespace Nethermind.JsonRpc.Module
 {
     [DoNotUseInSecuredContext("Not reviewed, work in progress")]
-    [Todo("Split the class into separate modules / bridges")]
-    [Todo("Any state requests should be taken from specified state snapshot (potentially current)")]
-    [Todo("We need a concurrent State representation that can track idnependently from a given state root")]
     public class BlockchainBridge : IBlockchainBridge
     {
-        private readonly IBlockchainProcessor _blockchainProcessor;
         private readonly IBlockTree _blockTree;
-        private readonly IFilterStore _filterStore;
         private readonly IFilterManager _filterManager;
+        private readonly IFilterStore _filterStore;
         private readonly IEthereumSigner _signer;
-        private readonly IDb _stateDb;
         private readonly IStateProvider _stateProvider;
-        private readonly ITransactionStore _transactionStore;
-        private readonly ITxTracer _txTracer;
-        private readonly IWallet _wallet;
         private readonly ITransactionProcessor _transactionProcessor;
-        private Dictionary<string, IDb> _dbMappings;
+        private readonly ITransactionStore _transactionStore;
+        private readonly IWallet _wallet;
+
+        private ReaderWriterLockSlim _readerWriterLockSlim = new ReaderWriterLockSlim();
 
         public BlockchainBridge(IEthereumSigner signer,
             IStateProvider stateProvider,
             IBlockTree blockTree,
-            IBlockchainProcessor blockchainProcessor,
-            ITxTracer txTracer,
-            IDbProvider dbProvider,
             ITransactionStore transactionStore,
             IFilterStore filterStore,
             IFilterManager filterManager,
@@ -67,30 +58,11 @@ namespace Nethermind.JsonRpc.Module
             _signer = signer ?? throw new ArgumentNullException(nameof(signer));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            _blockchainProcessor = blockchainProcessor ?? throw new ArgumentNullException(nameof(blockchainProcessor));
-            _txTracer = txTracer ?? throw new ArgumentNullException(nameof(txTracer));
-            _stateDb = dbProvider?.StateDb ?? throw new ArgumentNullException(nameof(dbProvider.StateDb));
             _transactionStore = transactionStore ?? throw new ArgumentNullException(nameof(transactionStore));
             _filterStore = filterStore ?? throw new ArgumentException(nameof(filterStore));
-            _filterManager = filterManager;
+            _filterManager = filterManager ?? throw new ArgumentException(nameof(filterManager));
             _wallet = wallet ?? throw new ArgumentException(nameof(wallet));
             _transactionProcessor = transactionProcessor ?? throw new ArgumentException(nameof(transactionProcessor));
-
-            IDb blockInfosDb = dbProvider?.BlockInfosDb ??
-                               throw new ArgumentNullException(nameof(dbProvider.BlockInfosDb));
-            IDb blocksDb = dbProvider?.BlocksDb ?? throw new ArgumentNullException(nameof(dbProvider.BlocksDb));
-            IDb receiptsDb = dbProvider?.ReceiptsDb ?? throw new ArgumentNullException(nameof(dbProvider.ReceiptsDb));
-            IDb codeDb = dbProvider?.CodeDb ?? throw new ArgumentNullException(nameof(dbProvider.CodeDb));
-
-            _dbMappings = new Dictionary<string, IDb>(StringComparer.InvariantCultureIgnoreCase)
-            {
-                {DbNames.State, _stateDb},
-                {DbNames.Storage, _stateDb},
-                {DbNames.BlockInfos, blockInfosDb},
-                {DbNames.Blocks, blocksDb},
-                {DbNames.Code, codeDb},
-                {DbNames.Receipts, receiptsDb}
-            };
         }
 
         public IReadOnlyCollection<Address> GetWalletAccounts()
@@ -126,19 +98,6 @@ namespace Nethermind.JsonRpc.Module
             return _blockTree.FindBlock(_blockTree.Genesis.Hash, true);
         }
 
-        public Signature Sign(PrivateKey privateKey, Keccak message)
-        {
-            return _signer.Sign(privateKey, message);
-        }
-
-        public void AddTxData(UInt256 blockNumber)
-        {
-            Block block = _blockTree.FindBlock(blockNumber);
-            if (block == null) throw new InvalidOperationException("Only blocks from the past");
-
-            _blockchainProcessor.AddTxData(block);
-        }
-
         public (TransactionReceipt Receipt, Transaction Transaction) GetTransaction(Keccak transactionHash)
         {
             TransactionReceipt receipt = _transactionStore.GetReceipt(transactionHash);
@@ -155,22 +114,28 @@ namespace Nethermind.JsonRpc.Module
 
         public Keccak SendTransaction(Transaction transaction)
         {
-            _stateProvider.StateRoot = _blockTree.Head.StateRoot;
+            try
+            {
+                _readerWriterLockSlim.EnterWriteLock();
+                _stateProvider.StateRoot = _blockTree.Head.StateRoot;
 
-            if (transaction.SenderAddress == null) transaction.SenderAddress = _wallet.GetAccounts()[0];
+                if (transaction.SenderAddress == null) transaction.SenderAddress = _wallet.GetAccounts()[0];
 
-            transaction.Nonce = _stateProvider.GetNonce(transaction.SenderAddress);
-            _wallet.Sign(transaction, _blockTree.ChainId);
-            transaction.Hash = Transaction.CalculateHash(transaction);
+                transaction.Nonce = _stateProvider.GetNonce(transaction.SenderAddress);
+                _wallet.Sign(transaction, _blockTree.ChainId);
+                transaction.Hash = Transaction.CalculateHash(transaction);
 
-            if (_signer.RecoverAddress(transaction, _blockTree.Head.Number) != transaction.SenderAddress)
-                throw new InvalidOperationException("Invalid signature");
+                if (_stateProvider.GetNonce(transaction.SenderAddress) != transaction.Nonce) throw new InvalidOperationException("Invalid nonce");
 
-            if (_stateProvider.GetNonce(transaction.SenderAddress) != transaction.Nonce)
-                throw new InvalidOperationException("Invalid nonce");
+                _transactionStore.AddPending(transaction, _blockTree.Head.Number);
 
-            _transactionStore.AddPending(transaction);
-            return transaction.Hash;
+                _stateProvider.Reset();
+                return transaction.Hash;
+            }
+            finally
+            {
+                _readerWriterLockSlim.ExitWriteLock();
+            }
         }
 
         public TransactionReceipt GetTransactionReceipt(Keccak txHash)
@@ -178,69 +143,94 @@ namespace Nethermind.JsonRpc.Module
             return _transactionStore.GetReceipt(txHash);
         }
 
-        public TransactionTrace GetTransactionTrace(Keccak transactionHash)
-        {
-            return _txTracer.Trace(transactionHash);
-        }
-
-        public TransactionTrace GetTransactionTrace(UInt256 blockNumber, int index)
-        {
-            return _txTracer.Trace(blockNumber, index);
-        }
-
-        public TransactionTrace GetTransactionTrace(Keccak blockHash, int index)
-        {
-            return _txTracer.Trace(blockHash, index);
-        }
-
-        public BlockTrace GetBlockTrace(Keccak blockHash)
-        {
-            return _txTracer.TraceBlock(blockHash);
-        }
-
-        public BlockTrace GetBlockTrace(UInt256 blockNumber)
-        {
-            return _txTracer.TraceBlock(blockNumber);
-        }
-
         public byte[] Call(Block block, Transaction transaction)
         {
-            BlockHeader header = new BlockHeader(block.Hash, Keccak.OfAnEmptySequenceRlp, block.Beneficiary, block.Difficulty, block.Number + 1, (long)transaction.GasLimit, block.Timestamp + 1, Bytes.Empty);
-            transaction.Nonce = _stateProvider.GetNonce(transaction.SenderAddress);
-            transaction.Hash = Transaction.CalculateHash(transaction);
-            (TransactionReceipt receipt, TransactionTrace trace) =  _transactionProcessor.CallAndRestore(0, transaction, header, true);
-            return Bytes.FromHexString(trace.ReturnValue);
-        }
+            try
+            {
+                _readerWriterLockSlim.EnterWriteLock();
+                _stateProvider.StateRoot = _blockTree.Head.StateRoot;
+                BlockHeader header = new BlockHeader(block.Hash, Keccak.OfAnEmptySequenceRlp, block.Beneficiary, block.Difficulty, block.Number + 1, (long) transaction.GasLimit, block.Timestamp + 1, Bytes.Empty);
+                transaction.Nonce = _stateProvider.GetNonce(transaction.SenderAddress);
+                transaction.Hash = Transaction.CalculateHash(transaction);
+                (TransactionReceipt receipt, TransactionTrace trace) = _transactionProcessor.CallAndRestore(0, transaction, header, true);
 
-        public byte[] GetDbValue(string dbName, byte[] key)
-        {
-            return _dbMappings[dbName][key];
+                _stateProvider.Reset();
+                return Bytes.FromHexString(trace.ReturnValue);
+            }
+            finally
+            {
+                _readerWriterLockSlim.ExitWriteLock();
+            }
         }
 
         public byte[] GetCode(Address address)
         {
-            return _stateProvider.GetCode(address);
+            try
+            {
+                _readerWriterLockSlim.EnterReadLock();
+                _stateProvider.StateRoot = _blockTree.Head.StateRoot;
+                return _stateProvider.GetCode(address);
+            }
+            finally
+            {
+                _readerWriterLockSlim.ExitReadLock();
+            }
         }
 
         public byte[] GetCode(Keccak codeHash)
         {
-            return _stateProvider.GetCode(codeHash);
+            try
+            {
+                _readerWriterLockSlim.EnterReadLock();
+                _stateProvider.StateRoot = _blockTree.Head.StateRoot;
+                return _stateProvider.GetCode(codeHash);
+            }
+            finally
+            {
+                _readerWriterLockSlim.ExitReadLock();
+            }
         }
 
         public BigInteger GetNonce(Address address)
         {
-            return _stateProvider.GetNonce(address);
+            try
+            {
+                _readerWriterLockSlim.EnterReadLock();
+                _stateProvider.StateRoot = _blockTree.Head.StateRoot;
+                return _stateProvider.GetNonce(address);
+            }
+            finally
+            {
+                _readerWriterLockSlim.ExitReadLock();
+            }
         }
 
         public BigInteger GetBalance(Address address)
         {
-            return _stateProvider.GetBalance(address);
+            try
+            {
+                _readerWriterLockSlim.EnterReadLock();
+                _stateProvider.StateRoot = _blockTree.Head.StateRoot;
+                return _stateProvider.GetBalance(address);
+            }
+            finally
+            {
+                _readerWriterLockSlim.ExitReadLock();
+            }
         }
 
         public Account GetAccount(Address address, Keccak stateRoot)
         {
-            StateTree stateTree = new StateTree(_stateDb, stateRoot);
-            return stateTree.Get(address);
+            try
+            {
+                _readerWriterLockSlim.EnterReadLock();
+                _stateProvider.StateRoot = stateRoot;
+                return _stateProvider.GetAccount(address);
+            }
+            finally
+            {
+                _readerWriterLockSlim.ExitReadLock();
+            }
         }
 
         public int GetNetworkId()
@@ -266,22 +256,21 @@ namespace Nethermind.JsonRpc.Module
         public FilterLog[] GetLogs(FilterBlock fromBlock, FilterBlock toBlock, object address = null,
             IEnumerable<object> topics = null)
         {
-            var filter = _filterStore.CreateLogFilter(fromBlock, toBlock, address, topics, setId: false);
-            
+            LogFilter filter = _filterStore.CreateLogFilter(fromBlock, toBlock, address, topics, false);
             return new FilterLog[0];
         }
 
         public int NewFilter(FilterBlock fromBlock, FilterBlock toBlock,
             object address = null, IEnumerable<object> topics = null)
         {
-            var filter = _filterStore.CreateLogFilter(fromBlock, toBlock, address, topics);
+            LogFilter filter = _filterStore.CreateLogFilter(fromBlock, toBlock, address, topics);
             _filterStore.SaveFilter(filter);
             return filter.Id;
         }
 
         public int NewBlockFilter()
         {
-            var filter = _filterStore.CreateBlockFilter(_blockTree.Head.Number);
+            BlockFilter filter = _filterStore.CreateBlockFilter(_blockTree.Head.Number);
             _filterStore.SaveFilter(filter);
             return filter.Id;
         }
@@ -299,6 +288,11 @@ namespace Nethermind.JsonRpc.Module
         public Keccak[] GetBlockFilterChanges(int filterId)
         {
             return _filterManager.PollBlockHashes(filterId);
+        }
+
+        public Signature Sign(PrivateKey privateKey, Keccak message)
+        {
+            return _signer.Sign(privateKey, message);
         }
     }
 }

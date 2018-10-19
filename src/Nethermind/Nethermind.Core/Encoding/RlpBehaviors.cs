@@ -24,10 +24,10 @@ namespace Nethermind.Core.Encoding
     public enum RlpBehaviors
     {
         None,
-        AllowExtraData,
-        ExcludeBlockMixHashAndNonce,
-        Storage,
-        Eip658Receipts,
-        All
+        AllowExtraData = 1,
+        ExcludeBlockMixHashAndNonce = 2,
+        Storage = 4,
+        Eip658Receipts = 8,
+        All = 15
     }
 }

@@ -25,6 +25,7 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.JsonRpc.Config;
 using Nethermind.JsonRpc.DataModel;
 using Nethermind.JsonRpc.Module;
@@ -72,7 +73,7 @@ namespace Nethermind.JsonRpc.Test
             var response = _jsonRpcService.SendRequest(requestJson);
             var quantity = new Quantity();
             quantity.FromJson(response.Result.ToString());
-            Assert.AreEqual(quantity.GetValue(), new BigInteger(2));
+            Assert.AreEqual(quantity.AsNumber(), new UInt256(2));
         }
 
         [Test]

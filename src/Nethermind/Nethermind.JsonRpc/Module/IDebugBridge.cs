@@ -17,13 +17,19 @@
  */
 
 using Nethermind.Core.Crypto;
-using Nethermind.JsonRpc.Module;
+using Nethermind.Dirichlet.Numerics;
+using Nethermind.Evm;
 
-namespace Nethermind.Runner.Runners
+namespace Nethermind.JsonRpc.Module
 {
-    public interface IEthereumRunner : IRunner
+    public interface IDebugBridge
     {
-        IDebugBridge DebugBridge { get; }
-        IBlockchainBridge BlockchainBridge { get; }
+        TransactionTrace GetTransactionTrace(Keccak transactionHash);
+        TransactionTrace GetTransactionTrace(UInt256 blockNumber, int index);
+        TransactionTrace GetTransactionTrace(Keccak blockHash, int index);
+        BlockTrace GetBlockTrace(Keccak blockHash);
+        BlockTrace GetBlockTrace(UInt256 blockNumber);
+        byte[] GetDbValue(string dbName, byte[] key);
+        void AddTxData(Keccak blockHash);
     }
 }

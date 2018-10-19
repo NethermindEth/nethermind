@@ -17,7 +17,9 @@
  */
 
 using System;
+using System.IO;
 using System.Linq;
+using System.Numerics;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -30,50 +32,58 @@ namespace Nethermind.JsonRpc.Module
 {
     public class DebugModule : ModuleBase, IDebugModule
     {
-        private readonly IBlockchainBridge _blockchainBridge;
+        private readonly IDebugBridge _debugBridge;
         private readonly IJsonRpcModelMapper _modelMapper;
 
-        public DebugModule(IConfigProvider configurationProvider, ILogManager logManager, IBlockchainBridge blockchainBridge, IJsonRpcModelMapper modelMapper, IJsonSerializer jsonSerializer)
+        public DebugModule(IConfigProvider configurationProvider, ILogManager logManager, IDebugBridge debugBridge, IJsonRpcModelMapper modelMapper, IJsonSerializer jsonSerializer)
             : base(configurationProvider, logManager, jsonSerializer)
         {
-            _blockchainBridge = blockchainBridge;
+            _debugBridge = debugBridge;
             _modelMapper = modelMapper;
         }
 
         public ResultWrapper<TransactionTrace> debug_traceTransaction(Data transationHash)
         {
-            var transactionTrace = _blockchainBridge.GetTransactionTrace(new Keccak(transationHash.Value));
+            var transactionTrace = _debugBridge.GetTransactionTrace(new Keccak(transationHash.Value));
             if (transactionTrace == null)
             {
                 return ResultWrapper<TransactionTrace>.Fail($"Cannot find transactionTrace for hash: {transationHash.Value}", ErrorType.NotFound);
             }
+
             var transactionModel = _modelMapper.MapTransactionTrace(transactionTrace);
 
             if (Logger.IsTrace) Logger.Trace($"{nameof(debug_traceTransaction)} request {transationHash.ToJson()}, result: {GetJsonLog(transactionModel.ToJson())}");
             return ResultWrapper<TransactionTrace>.Success(transactionModel);
         }
-        
+
         public ResultWrapper<TransactionTrace> debug_traceTransactionByBlockhashAndIndex(Data blockhash, int index)
         {
-            var transactionTrace = _blockchainBridge.GetTransactionTrace(new Keccak(blockhash.Value), index);
+            var transactionTrace = _debugBridge.GetTransactionTrace(new Keccak(blockhash.Value), index);
             if (transactionTrace == null)
             {
                 return ResultWrapper<TransactionTrace>.Fail($"Cannot find transactionTrace {blockhash}", ErrorType.NotFound);
             }
+
             var transactionModel = _modelMapper.MapTransactionTrace(transactionTrace);
 
             if (Logger.IsTrace) Logger.Trace($"{nameof(debug_traceTransactionByBlockhashAndIndex)} request {blockhash}, result: {GetJsonLog(transactionModel.ToJson())}");
             return ResultWrapper<TransactionTrace>.Success(transactionModel);
         }
-        
+
         public ResultWrapper<TransactionTrace> debug_traceTransactionByBlockAndIndex(BlockParameter blockParameter, int index)
         {
-            UInt256 blockNo = (UInt256) blockParameter.BlockId.GetValue().Value;
-            var transactionTrace = _blockchainBridge.GetTransactionTrace(blockNo, index);
+            UInt256? blockNo = blockParameter.BlockId.AsNumber();
+            if (!blockNo.HasValue)
+            {
+                throw new InvalidDataException("Block number value incorrect");
+            }
+
+            var transactionTrace = _debugBridge.GetTransactionTrace(blockNo.Value, index);
             if (transactionTrace == null)
             {
                 return ResultWrapper<TransactionTrace>.Fail($"Cannot find transactionTrace {blockNo}", ErrorType.NotFound);
             }
+
             var transactionModel = _modelMapper.MapTransactionTrace(transactionTrace);
 
             if (Logger.IsTrace) Logger.Trace($"{nameof(debug_traceTransactionByBlockAndIndex)} request {blockNo}, result: {GetJsonLog(transactionModel.ToJson())}");
@@ -86,9 +96,9 @@ namespace Nethermind.JsonRpc.Module
             {
                 throw new InvalidOperationException("Can only addTxData for historical blocks");
             }
-            
-            UInt256 blockNo = (UInt256) blockParameter.BlockId.GetValue().Value;
-            _blockchainBridge.AddTxData(blockNo);
+
+            Keccak blockHash = new Keccak(blockParameter.BlockId.Value);
+            _debugBridge.AddTxData(blockHash);
             return ResultWrapper<bool>.Success(true);
         }
 
@@ -104,13 +114,18 @@ namespace Nethermind.JsonRpc.Module
                 throw new InvalidOperationException("Can only addTxData for historical blocks");
             }
 
-            UInt256 blockNo = (UInt256) blockParameter.BlockId.GetValue().Value;
-            var blockTrace = _blockchainBridge.GetBlockTrace(blockNo); // tks ...
+            UInt256? blockNo = blockParameter.BlockId.AsNumber();
+            if (!blockNo.HasValue)
+            {
+                throw new InvalidDataException("Block number value incorrect");
+            }
+
+            var blockTrace = _debugBridge.GetBlockTrace(blockNo.Value);
             if (blockTrace == null)
             {
                 return ResultWrapper<BlockTraceItem[]>.Fail($"Trace is null for block {blockNo}", ErrorType.NotFound);
             }
-            
+
             var blockTraceModel = _modelMapper.MapBlockTrace(blockTrace);
 
             if (Logger.IsTrace) Logger.Trace($"{nameof(debug_traceBlockByNumber)} request {blockParameter}, result: {GetJsonLog(blockTraceModel.Select(btm => btm.ToJson()))}");
@@ -119,12 +134,12 @@ namespace Nethermind.JsonRpc.Module
 
         public ResultWrapper<BlockTraceItem[]> debug_traceBlockByHash(Data blockHash)
         {
-            var blockTrace = _blockchainBridge.GetBlockTrace(new Keccak(blockHash.Value));
+            var blockTrace = _debugBridge.GetBlockTrace(new Keccak(blockHash.Value));
             if (blockTrace == null)
             {
                 return ResultWrapper<BlockTraceItem[]>.Fail($"Trace is null for block {blockHash}", ErrorType.NotFound);
             }
-            
+
             var blockTraceModel = _modelMapper.MapBlockTrace(blockTrace);
 
             if (Logger.IsTrace) Logger.Trace($"{nameof(debug_traceBlockByHash)} request {blockHash.ToJson()}, result: {GetJsonLog(blockTraceModel.Select(btm => btm.ToJson()))}");
@@ -168,7 +183,7 @@ namespace Nethermind.JsonRpc.Module
 
         public ResultWrapper<byte[]> debug_getFromDb(string dbName, Data key)
         {
-            var dbValue = _blockchainBridge.GetDbValue(dbName, key.Value);
+            var dbValue = _debugBridge.GetDbValue(dbName, key.Value);
             if (Logger.IsTrace) Logger.Trace($"{nameof(debug_getFromDb)} request [{dbName}, {key.Value.ToHexString()}], result: {dbValue.ToHexString()}");
             return ResultWrapper<byte[]>.Success(dbValue);
         }

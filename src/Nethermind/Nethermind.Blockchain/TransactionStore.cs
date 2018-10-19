@@ -30,42 +30,47 @@ namespace Nethermind.Blockchain
 {
     public class TransactionStore : ITransactionStore
     {
-        private readonly IDb _receiptsDb;
-        private readonly ISpecProvider _specProvider;
         private readonly ConcurrentDictionary<Keccak, Transaction> _pending = new ConcurrentDictionary<Keccak, Transaction>();
+        private readonly IDb _receiptsDb;
+        private readonly IEthereumSigner _signer;
+        private readonly ISpecProvider _specProvider;
 
-        public TransactionStore(IDb receiptsDb, ISpecProvider specProvider)
+        public TransactionStore(IDb receiptsDb, ISpecProvider specProvider, IEthereumSigner signer)
         {
-            _receiptsDb = receiptsDb;            
-            _specProvider = specProvider;
+            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+            _receiptsDb = receiptsDb ?? throw new ArgumentNullException(nameof(receiptsDb));
+            _signer = signer ?? throw new ArgumentNullException(nameof(signer));
         }
-        
+
         public void StoreProcessedTransaction(Keccak txHash, TransactionReceipt receipt)
         {
-            if(receipt == null) throw new ArgumentNullException(nameof(receipt));
-            
+            if (receipt == null) throw new ArgumentNullException(nameof(receipt));
+
             IReleaseSpec spec = _specProvider.GetSpec(receipt.BlockNumber);
-            _receiptsDb.Set(txHash, Rlp.Encode(receipt, spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts | RlpBehaviors.Storage: RlpBehaviors.Storage).Bytes);
+            _receiptsDb.Set(txHash, Rlp.Encode(receipt, spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts | RlpBehaviors.Storage : RlpBehaviors.Storage).Bytes);
         }
 
         public TransactionReceipt GetReceipt(Keccak txHash)
         {
-            byte[] receiptData = _receiptsDb.Get(txHash);
-            if (receiptData == null)
-            {
-                return null;
-            }
-            
+            var receiptData = _receiptsDb.Get(txHash);
+            if (receiptData == null) return null;
+
             Rlp rlp = new Rlp(receiptData);
             return Rlp.Decode<TransactionReceipt>(rlp, RlpBehaviors.Storage);
         }
 
-        public AddTransactionResult AddPending(Transaction transaction)
+        public AddTransactionResult AddPending(Transaction transaction, UInt256 blockNumber)
         {
             if (_pending.ContainsKey(transaction.Hash))
             {
                 NewPending?.Invoke(this, new TransactionEventArgs(transaction)); // hack
                 return AddTransactionResult.AlreadyKnown;
+            }
+
+            Address recoveredAddress = _signer.RecoverAddress(transaction, blockNumber);
+            if (recoveredAddress != transaction.SenderAddress)
+            {
+                throw new InvalidOperationException("Invalid signature");
             }
 
             _pending[transaction.Hash] = transaction;
@@ -75,10 +80,7 @@ namespace Nethermind.Blockchain
 
         public void RemovePending(Transaction transaction)
         {
-            if (_pending.ContainsKey(transaction.Hash))
-            {
-                _pending.TryRemove(transaction.Hash, out Transaction _);
-            }
+            if (_pending.ContainsKey(transaction.Hash)) _pending.TryRemove(transaction.Hash, out Transaction _);
         }
 
         public Transaction[] GetAllPending()

@@ -18,11 +18,9 @@
 
 using System.Collections.Generic;
 using System.Numerics;
-using System.Security;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Model;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Block = Nethermind.Core.Block;
@@ -45,18 +43,11 @@ namespace Nethermind.JsonRpc.Module
         Block RetrieveHeadBlock();
         Block RetrieveGenesisBlock();
 
-        void AddTxData(UInt256 blockNumber);
         (TransactionReceipt Receipt, Transaction Transaction) GetTransaction(Keccak transactionHash);
         Keccak GetBlockHash(Keccak transactionHash);
         Keccak SendTransaction(Transaction transaction);
         TransactionReceipt GetTransactionReceipt(Keccak txHash);
-        TransactionTrace GetTransactionTrace(Keccak transactionHash);
-        TransactionTrace GetTransactionTrace(UInt256 blockNumber, int index);
-        TransactionTrace GetTransactionTrace(Keccak blockHash, int index);
-        BlockTrace GetBlockTrace(Keccak blockHash);
-        BlockTrace GetBlockTrace(UInt256 blockNumber);
         byte[] Call(Block block, Transaction transaction);
-        byte[] GetDbValue(string dbName, byte[] key);
 
         byte[] GetCode(Address address);
         byte[] GetCode(Keccak codeHash);

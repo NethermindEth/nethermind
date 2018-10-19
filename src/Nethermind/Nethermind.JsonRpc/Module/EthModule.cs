@@ -128,7 +128,7 @@ namespace Nethermind.JsonRpc.Module
                 return result;
             }
 
-            if (Logger.IsTrace) Logger.Trace($"eth_getBalance request {address.ToJson()}, {blockParameter}, result: {result.Data.GetValue()}");
+            if (Logger.IsTrace) Logger.Trace($"eth_getBalance request {address.ToJson()}, {blockParameter}, result: {result.Data.AsNumber()}");
             return result;
         }
 
@@ -150,7 +150,7 @@ namespace Nethermind.JsonRpc.Module
                 return result;
             }
 
-            if (Logger.IsTrace) Logger.Trace($"eth_getTransactionCount request {address.ToJson()}, {blockParameter}, result: {result.Data.GetValue()}");
+            if (Logger.IsTrace) Logger.Trace($"eth_getTransactionCount request {address.ToJson()}, {blockParameter}, result: {result.Data.AsNumber()}");
             return result;
         }
 
@@ -179,7 +179,7 @@ namespace Nethermind.JsonRpc.Module
                 return ResultWrapper<Quantity>.Fail(transactionCount.Result.Error, transactionCount.ErrorType);
             }
 
-            if (Logger.IsTrace) Logger.Trace($"eth_getBlockTransactionCountByNumber request {blockParameter}, result: {transactionCount.Data.GetValue()}");
+            if (Logger.IsTrace) Logger.Trace($"eth_getBlockTransactionCountByNumber request {blockParameter}, result: {transactionCount.Data.AsNumber()}");
             return transactionCount;
         }
 
@@ -208,7 +208,7 @@ namespace Nethermind.JsonRpc.Module
                 return ResultWrapper<Quantity>.Fail(ommersCount.Result.Error, ommersCount.ErrorType);
             }
 
-            if (Logger.IsTrace) Logger.Trace($"eth_getUncleCountByBlockNumber request {blockParameter}, result: {ommersCount.Data.GetValue()}");
+            if (Logger.IsTrace) Logger.Trace($"eth_getUncleCountByBlockNumber request {blockParameter}, result: {ommersCount.Data.AsNumber()}");
             return ommersCount;
         }
 
@@ -326,7 +326,7 @@ namespace Nethermind.JsonRpc.Module
                 return ResultWrapper<Transaction>.Fail($"Cannot find block for hash: {blockHash.Value}", ErrorType.NotFound);
             }
 
-            var index = positionIndex.GetValue();
+            var index = positionIndex.AsNumber();
             if (!index.HasValue)
             {
                 return ResultWrapper<Transaction>.Fail("Position Index is required", ErrorType.InvalidParams);
@@ -357,7 +357,7 @@ namespace Nethermind.JsonRpc.Module
                 return ResultWrapper<Transaction>.Fail(result.Result.Error, result.ErrorType);
             }
 
-            var index = positionIndex.GetValue();
+            var index = positionIndex.AsNumber();
             if (!index.HasValue)
             {
                 return ResultWrapper<Transaction>.Fail("Position Index is required", ErrorType.InvalidParams);
@@ -399,7 +399,7 @@ namespace Nethermind.JsonRpc.Module
                 return ResultWrapper<Block>.Fail($"Cannot find block for hash: {blockHash}", ErrorType.NotFound);
             }
 
-            var index = positionIndex.GetValue();
+            var index = positionIndex.AsNumber();
             if (!index.HasValue)
             {
                 return ResultWrapper<Block>.Fail("Position Index is required", ErrorType.InvalidParams);
@@ -436,7 +436,7 @@ namespace Nethermind.JsonRpc.Module
                 return ResultWrapper<Block>.Fail(result.Result.Error, result.ErrorType);
             }
 
-            var index = positionIndex.GetValue();
+            var index = positionIndex.AsNumber();
             if (!index.HasValue)
             {
                 return ResultWrapper<Block>.Fail("Position Index is required", ErrorType.InvalidParams);
@@ -491,7 +491,7 @@ namespace Nethermind.JsonRpc.Module
 
         private FilterBlock MapFilterBlock(BlockParameter parameter)
             => parameter.BlockId != null
-                ? new FilterBlock(new UInt256(parameter.BlockId.GetValue() ?? 0))
+                ? new FilterBlock(new UInt256(parameter.BlockId.AsNumber() ?? 0))
                 : new FilterBlock(MapFilterBlockType(parameter.Type));
 
         private FilterBlockType MapFilterBlockType(BlockParameterType type)
@@ -695,7 +695,7 @@ namespace Nethermind.JsonRpc.Module
                         return ResultWrapper<Core.Block>.Fail($"Block id is required for {BlockParameterType.BlockId}", ErrorType.InvalidParams);
                     }
 
-                    var value = blockParameter.BlockId.GetValue();
+                    var value = blockParameter.BlockId.AsNumber();
                     if (!value.HasValue)
                     {
                         return ResultWrapper<Core.Block>.Fail("Invalid block id", ErrorType.InvalidParams);

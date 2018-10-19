@@ -20,6 +20,10 @@ using System;
 
 namespace Nethermind.Store
 {
+    public interface IReadOnlyDbProvider : IDbProvider
+    {
+    }
+    
     public interface IDbProvider : IDisposable
     {
         ISnapshotableDb StateDb { get; }
