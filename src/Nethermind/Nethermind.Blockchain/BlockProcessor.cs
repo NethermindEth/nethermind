@@ -194,7 +194,10 @@ namespace Nethermind.Blockchain
                 throw new InvalidBlockException($"{suggestedBlock.ToString(Block.Format.HashAndNumber)}");
             }
 
-            if ((options & ProcessingOptions.StoreReceipts) != 0) StoreTxReceipts(block, receipts);
+            if ((options & ProcessingOptions.StoreReceipts) != 0)
+            {
+                StoreTxReceipts(block, receipts);
+            }
 
             BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(block, receipts));
             return block;

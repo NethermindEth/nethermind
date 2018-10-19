@@ -26,6 +26,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Specs.ChainSpec;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 using Nethermind.Mining;
 using Nethermind.Mining.Difficulty;
@@ -40,7 +41,9 @@ namespace Nethermind.Blockchain.Test
         [Test]
         public async Task Test()
         {
-            TimeSpan miningDelay = TimeSpan.FromMilliseconds(50);
+            int timeMultiplier = 1; // for debugging
+            
+            TimeSpan miningDelay = TimeSpan.FromMilliseconds(50 * timeMultiplier);
 
             /* logging & instrumentation */
             OneLoggerLogManager logger = new OneLoggerLogManager(new SimpleConsoleLogger(true));
@@ -53,7 +56,7 @@ namespace Nethermind.Blockchain.Test
 
             /* store & validation */
             
-            EthereumSigner ethereumSigner = new EthereumSigner(specProvider, logger);
+            EthereumSigner ethereumSigner = new EthereumSigner(specProvider, NullLogManager.Instance);
             MemDb receiptsDb = new MemDb();
             TransactionStore transactionStore = new TransactionStore(receiptsDb, specProvider, ethereumSigner);
             BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), specProvider, transactionStore, logger);
@@ -70,7 +73,7 @@ namespace Nethermind.Blockchain.Test
             StateProvider stateProvider = new StateProvider(stateTree, codeDb, logger);
             StorageProvider storageProvider = new StorageProvider(stateDb, stateProvider, logger);
 
-            TestTransactionsGenerator generator = new TestTransactionsGenerator(transactionStore, new EthereumSigner(specProvider, NullLogManager.Instance), TimeSpan.FromMilliseconds(5), NullLogManager.Instance);
+            TestTransactionsGenerator generator = new TestTransactionsGenerator(transactionStore, ethereumSigner, TimeSpan.FromMilliseconds(5 * timeMultiplier), NullLogManager.Instance);
             generator.Start();
 
             /* blockchain processing */
@@ -107,7 +110,7 @@ namespace Nethermind.Blockchain.Test
                 if (args.Block.Number == 6) manualResetEvent.Set();
             };
 
-            manualResetEvent.WaitOne(miningDelay * 12);
+            manualResetEvent.WaitOne(miningDelay * 12 * timeMultiplier);
 
             await blockchainProcessor.StopAsync(true).ContinueWith(
                 t =>
@@ -116,16 +119,34 @@ namespace Nethermind.Blockchain.Test
 
                     Assert.GreaterOrEqual((int) blockTree.Head.Number, 6);
                 });
-
-            blockchainProcessor.AddTxData(blockTree.FindBlock(1).Hash);
-
-            TxTracer tracer = new TxTracer(blockchainProcessor, transactionStore, blockTree);
-
-            blockchainProcessor.Process(blockTree.FindBlock(1), ProcessingOptions.ForceProcessing | ProcessingOptions.StoreReceipts, NullTraceListener.Instance);
-            Assert.AreNotEqual(0, receiptsDb.Keys.Count, "receipts");
-            TransactionTrace trace = tracer.Trace(blockTree.FindBlock(1).Transactions[0].Hash);
             
-            Assert.AreSame(TransactionTrace.QuickFail, trace);
+            int previousCount = 0;
+            int totalTx = 0;
+            for (int i = 0; i < 6; i++)
+            {
+                Block block = blockTree.FindBlock(new UInt256(i));
+                Console.WriteLine($"Block {i} with {block.Transactions.Length} txs");
+                
+                blockchainProcessor.AddTxData(block.Hash);
+                
+                TxTracer tracer = new TxTracer(blockchainProcessor, transactionStore, blockTree);
+
+                int currentCount = receiptsDb.Keys.Count;
+                Console.WriteLine($"Current count of receipts {currentCount}");
+                Console.WriteLine($"Previous count of receipts {previousCount}");
+                
+                if (block.Transactions.Length > 0)
+                {
+                    TransactionTrace trace = tracer.Trace(block.Transactions[0].Hash);
+                    Assert.AreSame(TransactionTrace.QuickFail, trace);
+                    Assert.AreNotEqual(previousCount, currentCount, $"receipts at block {i}");
+                    totalTx += block.Transactions.Length;
+                }
+                
+                previousCount = currentCount;
+            }
+            
+            Assert.AreNotEqual(0, totalTx, "no tx in blocks");
         }
     }
 }

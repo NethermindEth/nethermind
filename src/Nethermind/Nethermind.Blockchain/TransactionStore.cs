@@ -67,7 +67,11 @@ namespace Nethermind.Blockchain
                 return AddTransactionResult.AlreadyKnown;
             }
 
-            if (_signer.RecoverAddress(transaction, blockNumber) != transaction.SenderAddress) throw new InvalidOperationException("Invalid signature");
+            Address recoveredAddress = _signer.RecoverAddress(transaction, blockNumber);
+            if (recoveredAddress != transaction.SenderAddress)
+            {
+                throw new InvalidOperationException("Invalid signature");
+            }
 
             _pending[transaction.Hash] = transaction;
             NewPending?.Invoke(this, new TransactionEventArgs(transaction));

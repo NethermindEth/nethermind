@@ -23,11 +23,11 @@ namespace Nethermind.Blockchain
     [Flags]
     public enum ProcessingOptions
     {
-        None,
-        ReadOnlyChain,
-        ForceProcessing,
-        StoreReceipts,
-        NoValidation,
-        All
+        None = 0,
+        ReadOnlyChain = 1,
+        ForceProcessing = 2,
+        StoreReceipts = 4,
+        NoValidation = 8,
+        All = 15
     }
 }

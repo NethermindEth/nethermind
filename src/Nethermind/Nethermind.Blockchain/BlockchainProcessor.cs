@@ -264,7 +264,7 @@ namespace Nethermind.Blockchain
 
                 List<Block> unprocessedBlocksToBeAddedToMain = new List<Block>();
                 Block[] blocks;
-                if (options.HasFlag(ProcessingOptions.ForceProcessing))
+                if ((options & ProcessingOptions.ForceProcessing) != 0)
                 {
                     blocksToBeAddedToMain.Clear();
                     blocks = new Block[1];
@@ -303,7 +303,7 @@ namespace Nethermind.Blockchain
                 }
 
                 processedBlocks = _blockProcessor.Process(stateRoot, blocks, options, traceListener);
-                if (!options.HasFlag(ProcessingOptions.ReadOnlyChain) && !options.HasFlag(ProcessingOptions.ForceProcessing))
+                if ((options & (ProcessingOptions.ReadOnlyChain | ProcessingOptions.ForceProcessing)) == 0)
                 {
                     // TODO: lots of unnecessary loading and decoding here, review after adding support for loading headers only
                     List<BlockHeader> blocksToBeRemovedFromMain = new List<BlockHeader>();
@@ -355,7 +355,7 @@ namespace Nethermind.Blockchain
                 throw new InvalidOperationException("Block without total difficulty calculated was suggested for processing");
             }
 
-            if (!options.HasFlag(ProcessingOptions.ReadOnlyChain) && suggestedBlock.Hash == null)
+            if ((options & ProcessingOptions.ReadOnlyChain) == 0 && suggestedBlock.Hash == null)
             {
                 throw new InvalidOperationException("Block hash should be known at this stage if the block is not read only");
             }
