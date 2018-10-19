@@ -41,7 +41,7 @@ namespace Nethermind.JsonRpc.Test
             debugBridge.GetDbValue(Arg.Any<string>(), Arg.Any<byte[]>()).Returns(value);
             
             IConfigProvider configProvider = Substitute.For<IConfigProvider>();
-            IJsonRpcModelMapper modelMapper = new JsonRpcModelMapper(Substitute.For<IEthereumSigner>());
+            IJsonRpcModelMapper modelMapper = new JsonRpcModelMapper();
             DebugModule module = new DebugModule(configProvider, NullLogManager.Instance, debugBridge, modelMapper, new UnforgivingJsonSerializer());
             JsonRpcResponse response = RpcTest.TestRequest<IDebugModule>(module, "debug_getFromDb", "STATE", key.ToHexString());
             
@@ -57,7 +57,7 @@ namespace Nethermind.JsonRpc.Test
             debugBridge.GetDbValue(Arg.Any<string>(), Arg.Any<byte[]>()).Returns((byte[])null);
 
             IConfigProvider configProvider = Substitute.For<IConfigProvider>();
-            IJsonRpcModelMapper modelMapper = new JsonRpcModelMapper(Substitute.For<IEthereumSigner>());
+            IJsonRpcModelMapper modelMapper = new JsonRpcModelMapper();
             DebugModule module = new DebugModule(configProvider, NullLogManager.Instance, debugBridge, modelMapper, new UnforgivingJsonSerializer());
             JsonRpcResponse response = RpcTest.TestRequest<IDebugModule>(module, "debug_getFromDb", "STATE", key.ToHexString());
             
