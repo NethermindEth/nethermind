@@ -36,7 +36,7 @@ namespace Nethermind.Blockchain.Test
         [Test]
         public void Can_store_and_retrieve_receipt()
         {
-            TransactionStore store = new TransactionStore(new MemDb(), RopstenSpecProvider.Instance);
+            TransactionStore store = new TransactionStore(new MemDb(), RopstenSpecProvider.Instance, NullEthereumSigner.Instance);
 
             Transaction tx = Build.A.Transaction.Signed(_signer, TestObject.PrivateKeyA, 1).TestObject;
             TransactionReceipt txReceipt = Build.A.TransactionReceipt.WithState(TestObject.KeccakB).TestObject;

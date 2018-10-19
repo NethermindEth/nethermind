@@ -41,7 +41,6 @@ namespace Nethermind.Runner
         public ILogManager LogManager { private get; set; }
         public IBlockchainBridge BlockchainBridge { private get; set; }
         public IDebugBridge DebugBridge { private get; set; }
-        public IEthereumSigner EthereumSigner { private get; set; }
 
         public void RegisterJsonRpcServices(IServiceCollection services)
         {
@@ -58,8 +57,7 @@ namespace Nethermind.Runner
                 throw new Exception("BlockchainBridge is required");
             }
 
-            //JsonRPC
-            services.AddSingleton<IEthereumSigner>(EthereumSigner);
+            //JsonRPC            
             services.AddSingleton<IConfigProvider>(ConfigProvider);
             services.AddSingleton<ILogManager>(LogManager);
             services.AddSingleton<IBlockchainBridge>(BlockchainBridge);

@@ -52,8 +52,10 @@ namespace Nethermind.Blockchain.Test
             RopstenSpecProvider specProvider = RopstenSpecProvider.Instance;
 
             /* store & validation */
+            
+            EthereumSigner ethereumSigner = new EthereumSigner(specProvider, logger);
             MemDb receiptsDb = new MemDb();
-            TransactionStore transactionStore = new TransactionStore(receiptsDb, specProvider);
+            TransactionStore transactionStore = new TransactionStore(receiptsDb, specProvider, ethereumSigner);
             BlockTree blockTree = new BlockTree(new MemDb(), new MemDb(), specProvider, transactionStore, logger);
             DifficultyCalculator difficultyCalculator = new DifficultyCalculator(specProvider);
             HeaderValidator headerValidator = new HeaderValidator(blockTree, sealEngine, specProvider, logger);
@@ -68,12 +70,10 @@ namespace Nethermind.Blockchain.Test
             StateProvider stateProvider = new StateProvider(stateTree, codeDb, logger);
             StorageProvider storageProvider = new StorageProvider(stateDb, stateProvider, logger);
 
-            /* blockchain processing */
-            EthereumSigner ethereumSigner = new EthereumSigner(specProvider, logger);
-
             TestTransactionsGenerator generator = new TestTransactionsGenerator(transactionStore, new EthereumSigner(specProvider, NullLogManager.Instance), TimeSpan.FromMilliseconds(5), NullLogManager.Instance);
             generator.Start();
 
+            /* blockchain processing */
             BlockhashProvider blockhashProvider = new BlockhashProvider(blockTree);
             VirtualMachine virtualMachine = new VirtualMachine(stateProvider, storageProvider, blockhashProvider, logger);
             TransactionProcessor processor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, logger);
@@ -117,7 +117,7 @@ namespace Nethermind.Blockchain.Test
                     Assert.GreaterOrEqual((int) blockTree.Head.Number, 6);
                 });
 
-            blockchainProcessor.AddTxData(blockTree.FindBlock(1));
+            blockchainProcessor.AddTxData(blockTree.FindBlock(1).Hash);
 
             TxTracer tracer = new TxTracer(blockchainProcessor, transactionStore, blockTree);
 

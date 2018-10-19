@@ -255,7 +255,7 @@ namespace Nethermind.Runner.Runners
 //            IDbProvider debugReader = new ReadOnlyDbProvider(new RocksDbProvider(Path.Combine(_dbBasePath, "debug"), dbConfig));
 //            _dbProvider = debugReader;
 
-            var transactionStore = new TransactionStore(_dbProvider.ReceiptsDb, _specProvider);
+            var transactionStore = new TransactionStore(_dbProvider.ReceiptsDb, _specProvider, ethereumSigner);
 
             /* blockchain */
             _blockTree = new BlockTree(
@@ -379,14 +379,13 @@ namespace Nethermind.Runner.Runners
                     ethereumSigner,
                     rpcState.StateProvider,
                     rpcState.BlockTree,
-                    _blockchainProcessor,
                     transactionStore,
                     filterStore,
                     filterManager,
                     wallet,
                     transactionProcessor);
                 
-                DebugBridge = new DebugBridge(debugDbProvider, txTracer);
+                DebugBridge = new DebugBridge(debugDbProvider, txTracer, _blockchainProcessor);
             }
 
             if (_initConfig.IsMining)
