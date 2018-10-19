@@ -97,7 +97,7 @@ namespace Nethermind.Runner
 
                 await StartRunners(configProvider);
                 await Task.WhenAny(userCancelTask, _cancelKeySource.Task);
-
+                                                                                                                                                                                                                                                                                                        
                 Console.WriteLine("Closing, please wait until all functions are stopped properly...");
                 StopAsync().Wait();
                 Console.WriteLine("All done, goodbye!");

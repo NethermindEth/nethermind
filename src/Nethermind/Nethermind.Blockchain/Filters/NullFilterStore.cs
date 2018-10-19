@@ -24,12 +24,12 @@ namespace Nethermind.Blockchain.Filters
 {
     public class NullFilterStore : IFilterStore
     {
-        public static NullFilterStore Instance { get; } = new NullFilterStore();
-
         private NullFilterStore()
         {
         }
-        
+
+        public static NullFilterStore Instance { get; } = new NullFilterStore();
+
         public bool FilterExists(int filterId)
         {
             return false;
@@ -65,6 +65,10 @@ namespace Nethermind.Blockchain.Filters
             throw new InvalidOperationException($"{nameof(NullFilterStore)} does not support filter creation");
         }
 
-        public event EventHandler<FilterEventArgs> FilterRemoved;
+        public event EventHandler<FilterEventArgs> FilterRemoved
+        {
+            add { }
+            remove { }
+        }
     }
 }

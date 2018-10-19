@@ -54,6 +54,10 @@ namespace Nethermind.Blockchain
             return Array.Empty<Transaction>();
         }
 
-        public event EventHandler<TransactionEventArgs> NewPending;
+        public event EventHandler<TransactionEventArgs> NewPending
+        {
+            add { }
+            remove { }
+        }
     }
 }

@@ -185,6 +185,25 @@ namespace Nethermind.Runner.Runners
             return chainSpec;
         }
 
+        [Todo("This will be replaced with a bigger rewrite of state management so we can create a state at will")]
+        private class AlternativeChain
+        {
+            public BlockchainProcessor Processor { get; }
+
+            public AlternativeChain(IBlockTree blockTree, IBlockValidator blockValidator, IRewardCalculator rewardCalculator, ISpecProvider specProvider, IReadOnlyDbProvider dbProvider, IEthereumSigner signer, ILogManager logManager)
+            {
+                IStateProvider stateProvider = new StateProvider(new StateTree(dbProvider.StateDb), dbProvider.CodeDb, logManager);
+                StorageProvider storageProvider = new StorageProvider(dbProvider.StateDb, stateProvider, logManager);
+                IBlockTree readOnlyTree = new ReadOnlyBlockTree(blockTree);
+                BlockhashProvider blockhashProvider = new BlockhashProvider(readOnlyTree);
+                VirtualMachine virtualMachine = new VirtualMachine(stateProvider, storageProvider, blockhashProvider, logManager);
+                ITransactionProcessor transactionProcessor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, logManager);
+                ITransactionStore transactionStore = new TransactionStore(dbProvider.ReceiptsDb, specProvider, signer);
+                IBlockProcessor blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, transactionProcessor, dbProvider.StateDb, dbProvider.CodeDb, stateProvider, storageProvider, transactionStore, logManager);
+                Processor = new BlockchainProcessor(readOnlyTree, blockProcessor, signer, logManager);
+            }
+        }
+        
         private class RpcState
         {
             public IStateProvider StateProvider;
@@ -203,7 +222,7 @@ namespace Nethermind.Runner.Runners
                 StateProvider = new StateProvider(stateTree, codeDb, logManager);
                 StorageProvider = new StorageProvider(stateDb, StateProvider, logManager);
 
-                BlockTree = new RpcBlockTreeWrapper(blockTree);
+                BlockTree = new ReadOnlyBlockTree(blockTree);
                 BlockhashProvider = new BlockhashProvider(BlockTree);
             
                 VirtualMachine = new VirtualMachine(StateProvider, StorageProvider, BlockhashProvider, logManager);
@@ -342,7 +361,6 @@ namespace Nethermind.Runner.Runners
                 blockProcessor,
                 ethereumSigner,
                 _logManager);
-           
 
             // create shared objects between discovery and peer manager
             _nodeFactory = new NodeFactory();
@@ -363,10 +381,13 @@ namespace Nethermind.Runner.Runners
                 _logManager);
             
             if (_initConfig.JsonRpcEnabled)
-            {
+            {   
                 IReadOnlyDbProvider debugDbProvider = new ReadOnlyDbProvider(_dbProvider, true);
                 IReadOnlyDbProvider rpcDbProvider = new ReadOnlyDbProvider(_dbProvider, false);
-                ITxTracer txTracer = new TxTracer(_blockchainProcessor, transactionStore, _blockTree);
+
+                AlternativeChain rpcChain = new AlternativeChain(_blockTree, blockValidator, rewardCalculator, _specProvider, rpcDbProvider, ethereumSigner, _logManager);
+                
+                ITxTracer txTracer = new TxTracer(rpcChain.Processor, transactionStore, _blockTree);
                 IFilterStore filterStore = new FilterStore();
                 IFilterManager filterManager = new FilterManager(filterStore, blockProcessor, _logManager);
                 IWallet wallet = new DevWallet(_logManager);
@@ -383,12 +404,14 @@ namespace Nethermind.Runner.Runners
                     wallet,
                     rpcState.TransactionProcessor);
                 
-                DebugBridge = new DebugBridge(debugDbProvider, txTracer, _blockchainProcessor);
+                DebugBridge = new DebugBridge(debugDbProvider, txTracer, rpcChain.Processor);
             }
 
             if (_initConfig.IsMining)
             {
-                var producer = new DevBlockProducer(transactionStore, _blockchainProcessor, _blockTree, _logManager);
+                IReadOnlyDbProvider minerDbProvider = new ReadOnlyDbProvider(_dbProvider, false);
+                AlternativeChain devChain = new AlternativeChain(_blockTree, blockValidator, rewardCalculator, _specProvider, minerDbProvider, ethereumSigner, _logManager);
+                var producer = new DevBlockProducer(transactionStore, devChain.Processor, _blockTree, _logManager);
                 producer.Start();
             }
             

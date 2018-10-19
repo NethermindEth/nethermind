@@ -19,18 +19,17 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 
-namespace Nethermind.Runner.Runners
+namespace Nethermind.Blockchain
 {
-    public class RpcBlockTreeWrapper : IBlockTree
+    public class ReadOnlyBlockTree : IBlockTree
     {
         private readonly IBlockTree _wrapped;
 
-        public RpcBlockTreeWrapper(IBlockTree wrapped)
+        public ReadOnlyBlockTree(IBlockTree wrapped)
         {
             _wrapped = wrapped;
         }
@@ -43,12 +42,12 @@ namespace Nethermind.Runner.Runners
 
         public Task LoadBlocksFromDb(CancellationToken cancellationToken, UInt256? startBlockNumber, int batchSize = BlockTree.DbLoadBatchSize, int maxBlocksToLoad = Int32.MaxValue)
         {
-            throw new InvalidOperationException($"{nameof(RpcBlockTreeWrapper)} does not expect {nameof(LoadBlocksFromDb)} calls");
+            throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(LoadBlocksFromDb)} calls");
         }
 
         public AddBlockResult SuggestBlock(Block block)
         {
-            throw new InvalidOperationException($"{nameof(RpcBlockTreeWrapper)} does not expect {nameof(SuggestBlock)} calls");
+            throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(SuggestBlock)} calls");
         }
 
         public Block FindBlock(Keccak blockHash, bool mainChainOnly)
@@ -88,17 +87,17 @@ namespace Nethermind.Runner.Runners
 
         public void MoveToMain(Block block)
         {
-            throw new InvalidOperationException($"{nameof(RpcBlockTreeWrapper)} does not expect {nameof(MoveToMain)} calls");
+            throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(MoveToMain)} calls");
         }
 
         public void MoveToMain(Keccak blockHash)
         {
-            throw new InvalidOperationException($"{nameof(RpcBlockTreeWrapper)} does not expect {nameof(MoveToMain)} calls");
+            throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(MoveToMain)} calls");
         }
 
         public void MoveToBranch(Keccak blockHash)
         {
-            throw new InvalidOperationException($"{nameof(RpcBlockTreeWrapper)} does not expect {nameof(MoveToBranch)} calls");
+            throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(MoveToBranch)} calls");
         }
 
         public bool WasProcessed(Keccak blockHash)
@@ -108,11 +107,25 @@ namespace Nethermind.Runner.Runners
 
         public void MarkAsProcessed(Keccak blockHash)
         {
-            throw new InvalidOperationException($"{nameof(RpcBlockTreeWrapper)} does not expect {nameof(MarkAsProcessed)} calls");
+            throw new InvalidOperationException($"{nameof(ReadOnlyBlockTree)} does not expect {nameof(MarkAsProcessed)} calls");
         }
 
-        public event EventHandler<BlockEventArgs> NewBestSuggestedBlock;
-        public event EventHandler<BlockEventArgs> BlockAddedToMain;
-        public event EventHandler<BlockEventArgs> NewHeadBlock;
+        public event EventHandler<BlockEventArgs> NewBestSuggestedBlock
+        {
+            add { }
+            remove { }
+        }
+
+        public event EventHandler<BlockEventArgs> BlockAddedToMain
+        {
+            add { }
+            remove { }
+        }
+        
+        public event EventHandler<BlockEventArgs> NewHeadBlock
+        {
+            add { }
+            remove { }
+        }
     }
 }
