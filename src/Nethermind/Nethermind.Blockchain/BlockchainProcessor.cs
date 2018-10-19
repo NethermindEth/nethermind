@@ -193,6 +193,9 @@ namespace Nethermind.Blockchain
                 if (_logger.IsTrace) _logger.Trace($"Processing block {block.ToString(Block.Format.Short)}).");
 
                 Process(block, ProcessingOptions.StoreReceipts, NullTraceListener.Instance);
+                if (_logger.IsTrace) _logger.Trace($"Processed block {block.ToString(Block.Format.Full)}");
+
+                _stats.UpdateStats(block, _recoveryQueue.Count, _blockQueue.Count);
 
                 if (_logger.IsTrace) _logger.Trace($"Now {_blockQueue.Count} blocks waiting in the queue.");
                 if (_blockQueue.Count == 0)
@@ -200,14 +203,6 @@ namespace Nethermind.Blockchain
                     ProcessingQueueEmpty?.Invoke(this, EventArgs.Empty);
                 }
             }
-        }
-
-        private void Process(Block suggestedBlock)
-        {
-            Process(suggestedBlock, ProcessingOptions.None, NullTraceListener.Instance);
-            if (_logger.IsTrace) _logger.Trace($"Processed block {suggestedBlock.ToString(Block.Format.Full)}");
-
-            _stats.UpdateStats(suggestedBlock, _recoveryQueue.Count, _blockQueue.Count);
         }
 
         [Todo("At the moment this one is more of a DEV tool as it may lead to state corruption with the main execution line.")]
