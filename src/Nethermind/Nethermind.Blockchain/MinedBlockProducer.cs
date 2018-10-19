@@ -33,6 +33,7 @@ using Nethermind.Mining.Difficulty;
 
 namespace Nethermind.Blockchain
 {
+    [Todo("Introduce strategy for collecting Transacions for the block?")]
     public class MinedBlockProducer : IBlockProducer
     {
         private static readonly BigInteger MinGasPriceForMining = 1;

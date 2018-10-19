@@ -28,6 +28,7 @@ namespace Nethermind.Blockchain
         ForceProcessing = 2,
         StoreReceipts = 4,
         NoValidation = 8,
-        All = 15
+        WithRollback = 16,
+        All = 31
     }
 }

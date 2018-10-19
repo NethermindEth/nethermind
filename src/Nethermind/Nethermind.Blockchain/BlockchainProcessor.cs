@@ -192,7 +192,7 @@ namespace Nethermind.Blockchain
             {
                 if (_logger.IsTrace) _logger.Trace($"Processing block {block.ToString(Block.Format.Short)}).");
 
-                Process(block);
+                Process(block, ProcessingOptions.StoreReceipts, NullTraceListener.Instance);
 
                 if (_logger.IsTrace) _logger.Trace($"Now {_blockQueue.Count} blocks waiting in the queue.");
                 if (_blockQueue.Count == 0)
@@ -210,6 +210,7 @@ namespace Nethermind.Blockchain
             _stats.UpdateStats(suggestedBlock, _recoveryQueue.Count, _blockQueue.Count);
         }
 
+        [Todo("At the moment this one is more of a DEV tool as it may lead to state corruption with the main execution line.")]
         public void AddTxData(Keccak blockHash)
         {
             Block block = _blockTree.FindBlock(blockHash, true);
