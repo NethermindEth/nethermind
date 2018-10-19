@@ -19,6 +19,7 @@
 using System;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Evm;
 
 namespace Nethermind.Blockchain
@@ -30,10 +31,9 @@ namespace Nethermind.Blockchain
         Block Process(Block block, ProcessingOptions options, ITraceListener listener);
         
         /// <summary>
-        /// Executes a block from the past, stores receipts and tx hash -> block number mapping.
+        /// Executes a block from the past, stores receipts.
         /// </summary>
-        /// <param name="block"></param>
-        void AddTxData(Block block); // TODO: tks: should be queued
+        void AddTxData(Keccak blockHash);
         event EventHandler ProcessingQueueEmpty;
     }
 }

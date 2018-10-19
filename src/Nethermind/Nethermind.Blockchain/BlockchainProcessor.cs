@@ -210,8 +210,14 @@ namespace Nethermind.Blockchain
             _stats.UpdateStats(suggestedBlock, _recoveryQueue.Count, _blockQueue.Count);
         }
 
-        public void AddTxData(Block block)
+        public void AddTxData(Keccak blockHash)
         {
+            Block block = _blockTree.FindBlock(blockHash, true);
+            if (block == null)
+            {
+                throw new InvalidOperationException("Can only add tx data for block that is already on main chain");
+            }
+            
             Process(block, ProcessingOptions.ForceProcessing | ProcessingOptions.StoreReceipts, NullTraceListener.Instance);
         }
 

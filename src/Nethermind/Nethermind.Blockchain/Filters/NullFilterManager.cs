@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,14 +16,37 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using Nethermind.Core.Crypto;
-using Nethermind.JsonRpc.Module;
 
-namespace Nethermind.Runner.Runners
+namespace Nethermind.Blockchain.Filters
 {
-    public interface IEthereumRunner : IRunner
+    public class NullFilterManager : IFilterManager
     {
-        IDebugBridge DebugBridge { get; }
-        IBlockchainBridge BlockchainBridge { get; }
+        public static NullFilterManager Instance { get; } = new NullFilterManager();
+
+        private NullFilterManager()
+        {
+        }
+        
+        public FilterLog[] GetLogs(int filterId)
+        {
+            return Array.Empty<FilterLog>();
+        }
+
+        public FilterLog[] PollLogs(int filterId)
+        {
+            return Array.Empty<FilterLog>();
+        }
+
+        public Keccak[] GetBlocksHashes(int filterId)
+        {
+            return Array.Empty<Keccak>();
+        }
+
+        public Keccak[] PollBlockHashes(int filterId)
+        {
+            return Array.Empty<Keccak>();
+        }
     }
 }

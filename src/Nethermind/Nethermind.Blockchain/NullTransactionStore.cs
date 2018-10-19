@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -23,15 +23,37 @@ using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Blockchain
 {
-    public interface ITransactionStore
+    public class NullTransactionStore : ITransactionStore
     {
-        void StoreProcessedTransaction(Keccak txHash, TransactionReceipt receipt);
-        TransactionReceipt GetReceipt(Keccak txHash);
-        
-        // tks: there will be split of TxPool and TxStore where one is responsible for pooling and serving txs for mining and broadcast and the other for storing processed txs and receipts
-        AddTransactionResult AddPending(Transaction transaction, UInt256 blockNumber);
-        void RemovePending(Transaction transaction);
-        Transaction[] GetAllPending();
-        event EventHandler<TransactionEventArgs> NewPending;
+        private NullTransactionStore()
+        {
+        }
+
+        public static NullTransactionStore Instance { get; } = new NullTransactionStore();
+
+        public void StoreProcessedTransaction(Keccak txHash, TransactionReceipt receipt)
+        {
+        }
+
+        public TransactionReceipt GetReceipt(Keccak txHash)
+        {
+            throw new NotSupportedException();
+        }
+
+        public AddTransactionResult AddPending(Transaction transaction, UInt256 blockNumber)
+        {
+            return AddTransactionResult.Added;
+        }
+
+        public void RemovePending(Transaction transaction)
+        {
+        }
+
+        public Transaction[] GetAllPending()
+        {
+            return Array.Empty<Transaction>();
+        }
+
+        public event EventHandler<TransactionEventArgs> NewPending;
     }
 }

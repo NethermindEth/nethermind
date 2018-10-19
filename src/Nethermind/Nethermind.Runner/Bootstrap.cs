@@ -40,6 +40,7 @@ namespace Nethermind.Runner
         public IConfigProvider ConfigProvider { private get; set; }
         public ILogManager LogManager { private get; set; }
         public IBlockchainBridge BlockchainBridge { private get; set; }
+        public IDebugBridge DebugBridge { private get; set; }
         public IEthereumSigner EthereumSigner { private get; set; }
 
         public void RegisterJsonRpcServices(IServiceCollection services)

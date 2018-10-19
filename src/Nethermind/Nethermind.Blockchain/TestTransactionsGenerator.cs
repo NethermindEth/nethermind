@@ -86,7 +86,7 @@ namespace Nethermind.Blockchain
 
             tx.Hash = Transaction.CalculateHash(tx);
 
-            _store.AddPending(tx);
+            _store.AddPending(tx, 1);
             _logger.Debug($"Generated a test transaction for testing ({_count - 1}).");
         }
 
