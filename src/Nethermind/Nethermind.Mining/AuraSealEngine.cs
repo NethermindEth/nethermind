@@ -31,6 +31,18 @@ namespace Nethermind.Mining
     public class AuraSealEngine : ISealEngine
     {
         private readonly ILogger _logger;
+        private UInt16 stepDuration;
+        private UInt64 startStep;
+        private UInt64 validateScoreTransition;
+        private UInt64 validateStepTransition;
+        private Boolean immediateTransitions;
+        private ulong blockReward;
+        private UInt64 blockRewardContractTransition;
+        private Uint64 maximumUncleCountTransition;
+        private UInt16 maximumUncleCount;
+        private UInt64 emptyStepsTransition;
+        private Int16 maximumEmptySteps;
+
 
         public AuraSealEngine(ILogManager logManager)
         {
