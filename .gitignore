@@ -335,4 +335,8 @@ ASALocalRun/
 docs/build/
 out/
 db/
+<<<<<<< HEAD
 src/Nethermind/Nethermind.Runner/git-hash
+=======
+.DS_Store
+>>>>>>> implementing the aura seal engine
