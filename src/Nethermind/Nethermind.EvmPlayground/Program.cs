@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Linq;
 using System.Threading.Tasks;
-using System.Text;
 
 namespace Nethermind.EvmPlayground
 {
@@ -20,7 +19,7 @@ namespace Nethermind.EvmPlayground
                     string codeText = Console.ReadLine();
                     codeText = RunMacros(codeText);
                     Console.WriteLine(codeText);
-                    var code = codeText.Split(" ", StringSplitOptions.RemoveEmptyEntries).Select(Byte.Parse).ToArray();
+                    var code = codeText.Split(" ", StringSplitOptions.RemoveEmptyEntries).Select(byte.Parse).ToArray();
                     string hash = await client.SendInit(code);
                     await Task.Delay(100);
                     string receipt = await client.GetReceipt(hash);
@@ -36,33 +35,30 @@ namespace Nethermind.EvmPlayground
             }
         }
 
-        public static string HexStringToDecString(string hex)
-        {
-            StringBuilder sb = new StringBuilder();
-            sb.AppendFormat("{0:x2}", hex);
-            return sb.ToString();
-        }
-
         private static string ExpandPushHex(string input)
         {
-            string[] expansion = input.Split(' ').ToArray();
-            string ret;
+            if (!input.Contains("PX", StringComparison.InvariantCultureIgnoreCase)) return input;
 
-            for (int i = 0; i < expansion.Length - 1; i++) {
-                if (expansion[i] == "PX") {
-                    if (expansion[i+1].Length <= 64) {
-                        expansion[i] = (96 + (expansion[i+1].Length / 2) - 1).ToString();
-                        string decimals = String.Join(" ", Bytes.FromHexString(expansion[i+1]).Select(x => x.ToString()));
-                        Console.WriteLine($"PX {expansion[i+1]} expanded to: {expansion[i]} {decimals}");
-                        expansion[i+1] = decimals;
+            var expansion = input.Split(' ').ToArray();
+
+            for (int i = 0; i < expansion.Length - 1; i++)
+                if (string.Equals(expansion[i], "PX", StringComparison.InvariantCultureIgnoreCase))
+                {
+                    if (expansion[i + 1].Length <= 64)
+                    {
+                        expansion[i] = (96 + expansion[i + 1].Length / 2 - 1).ToString();
+                        string decimals = string.Join(" ", Bytes.FromHexString(expansion[i + 1]).Select(x => x.ToString()));
+                        Console.WriteLine($"PX {expansion[i + 1]} expanded to: {expansion[i]} {decimals}");
+                        expansion[i + 1] = decimals;
                     }
-                    else {
-                        Console.WriteLine($"PX operand {expansion[i+1]} is greater than 32 bytes");
+                    else
+                    {
+                        Console.WriteLine($"PX operand {expansion[i + 1]} is greater than 32 bytes");
                     }
                 }
-            }
-            ret = String.Join(" ", expansion);
-            return ret;
+
+            string result = string.Join(' ', expansion);
+            return result;
         }
 
         private static string RunMacros(string input)
