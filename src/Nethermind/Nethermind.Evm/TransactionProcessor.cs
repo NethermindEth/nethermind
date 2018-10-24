@@ -316,6 +316,7 @@ namespace Nethermind.Evm
             transactionReceipt.GasUsed = spentGas;
             transactionReceipt.Sender = transaction.SenderAddress;
             transactionReceipt.ContractAddress = transaction.IsContractCreation ? recipient : null;
+            transactionReceipt.TransactionHash = transaction.Hash;
             
             return transactionReceipt;
         }
