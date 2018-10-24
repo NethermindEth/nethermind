@@ -72,5 +72,9 @@ namespace Nethermind.Mining
         {
             throw new NotImplementedException();
         }
+        public  string currentTime()
+        {
+            return string.Format("{0:HH:mm:ss tt}", DateTime.Now);
+        }
     }
 }
