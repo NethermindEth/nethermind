@@ -77,7 +77,7 @@ namespace Nethermind.Blockchain
 
         public bool ValidateSeal(BlockHeader header)
         {
-            return _clique.VerifySeal(header, null);
+            return _clique.VerifySeal(header);
         }
 
         public bool IsMining { get; set; }

@@ -99,7 +99,7 @@ namespace Nethermind.Blockchain
             }
 
             // Bail out if we're unauthorized to sign a block
-            Snapshot snapshot = GetSnapshot(number - 1, header.ParentHash, null);
+            Snapshot snapshot = GetSnapshot(number - 1, header.ParentHash);
             if (!snapshot.Signers.Contains(_key.Address))
             {
                 throw new InvalidOperationException("Not authorized to sign a block");
@@ -145,14 +145,71 @@ namespace Nethermind.Blockchain
 
         public bool VerifyHeader(BlockHeader header)
         {
-            return VerifyHeader(header, null);
+            ulong number = (ulong)header.Number;
+            // Checkpoint blocks need to enforce zero beneficiary
+            bool checkpoint = ((ulong)number % Config.Epoch) == 0;
+            if (checkpoint && header.Beneficiary != ZeroAddress)
+            {
+                _logger.Warn($"Invalid block beneficiary ({header.Beneficiary}) - should be empty on checkpoint");
+                return false;
+            }
+            // Nonces must be 0x00..0 or 0xff..f, zeroes enforced on checkpoints
+            if (header.Nonce != NonceAuthVote && header.Nonce != NonceDropVote)
+            {
+                _logger.Warn($"Invalid block nonce ({header.Nonce})");
+                return false;
+            }
+            if (checkpoint && header.Nonce != NonceDropVote)
+            {
+                _logger.Warn($"Invalid block nonce ({header.Nonce}) - should be zeroes on checkpoints");
+                return false;
+            }
+            if (header.ExtraData.Length < ExtraVanity)
+            {
+                _logger.Warn($"Invalid block extra data length - missing vanity");
+            }
+            if (header.ExtraData.Length < ExtraVanity + ExtraSeal)
+            {
+                _logger.Warn($"Invalid block extra data length - missing seal");
+            }
+            // Ensure that the extra-data contains a signer list on checkpoint, but none otherwise
+            int singersBytes = header.ExtraData.Length - ExtraVanity - ExtraSeal;
+            if (!checkpoint && singersBytes != 0)
+            {
+                _logger.Warn($"Invalid block extra-data ({header.ExtraData}) - should be empty on non-checkpoints");
+                return false;
+            }
+            if (checkpoint && singersBytes % AddressLength != 0)
+            {
+                _logger.Warn($"Invalid block nonce ({header.ExtraData}) - should contain a list of signers on checkpoints");
+                return false;
+            }
+            // Ensure that the mix digest is zero as we don't have fork protection currently
+            if (header.MixHash != EmptyMixHash)
+            {
+                _logger.Warn($"Invalid block mix hash ({header.MixHash}) - should be zeroes");
+                return false;
+            }
+            // Ensure that the block doesn't contain any uncles which are meaningless in PoA
+            if (header.OmmersHash != OmmersHash)
+            {
+                _logger.Warn($"Invalid block ommers hash ({header.OmmersHash}) - ommers are meaningless in Clique");
+                return false;
+            }
+            if (header.Difficulty != DiffInTurn && header.Difficulty != DiffNoTurn)
+            {
+                _logger.Warn($"Invalid block difficulty ({header.Difficulty}) - should be {DiffInTurn} or {DiffNoTurn}");
+            }
+            // If all checks passed, validate any special fields for hard forks
+            // TODO if misc.VerifyForkHashes(chain.Config(), header, false) { return false; }
+            return VerifyCascadingFields(header);
         }
 
-        public bool VerifySeal(BlockHeader header, BlockHeader[] parents)
+        public bool VerifySeal(BlockHeader header)
         {
             ulong number = (ulong)header.Number;
             // Retrieve the snapshot needed to verify this header and cache it
-            Snapshot snap = GetSnapshot(number - 1, header.ParentHash, parents);
+            Snapshot snap = GetSnapshot(number - 1, header.ParentHash);
             // Resolve the authorization key and check against signers
             Address signer = header.GetBlockSealer(Signatures);
             if (!snap.Signers.Contains(signer))
@@ -190,7 +247,7 @@ namespace Nethermind.Blockchain
             return true;
         }
 
-        private Snapshot GetSnapshot(ulong number, Keccak hash, BlockHeader[] parents)
+        private Snapshot GetSnapshot(ulong number, Keccak hash)
         {
             // Search for a snapshot in memory or on disk for checkpoints
             List<BlockHeader> headers = new List<BlockHeader>();
@@ -235,25 +292,11 @@ namespace Nethermind.Blockchain
                 }
                 // No snapshot for this header, gather the header and move backward
                 BlockHeader header;
-                if (parents != null && parents.Length > 0)
+                // No explicit parents (or no more left), reach out to the database
+                header = _blockTree.FindHeader(hash);
+                if (header == null)
                 {
-                    // If we have explicit parents, pick from there (enforced)
-                    header = parents[parents.Length - 1];
-                    Keccak parentHash = BlockHeader.CalculateHash(header);
-                    if (parentHash != hash || header.Number != number)
-                    {
-                        throw new InvalidOperationException("Unknown ancestor");
-                    }
-                    parents = parents.Take(parents.Length - 1).ToArray();
-                }
-                else
-                {
-                    // No explicit parents (or no more left), reach out to the database
-                    header = _blockTree.FindHeader(hash);
-                    if (header == null)
-                    {
-                        throw new InvalidOperationException("Unknown ancestor");
-                    }
+                    throw new InvalidOperationException("Unknown ancestor");
                 }
                 headers.Add(header);
                 number = number - 1;
@@ -284,7 +327,7 @@ namespace Nethermind.Blockchain
             // If the block isn't a checkpoint, cast a random vote (good enough for now)
             ulong number = (ulong)header.Number;
             // Assemble the voting snapshot to check which votes make sense
-            Snapshot snap = GetSnapshot(number - 1, header.ParentHash, null);
+            Snapshot snap = GetSnapshot(number - 1, header.ParentHash);
             if ((uint)number % Config.Epoch != 0)
             {
                 // Gather all the proposals that make sense voting on
@@ -367,7 +410,7 @@ namespace Nethermind.Blockchain
         private UInt256 CalcDifficulty(uint time, BlockHeader parent)
         {
             ulong parentNumber = (ulong)parent.Number;
-            Snapshot snap = GetSnapshot(parentNumber, BlockHeader.CalculateHash(parent), null);
+            Snapshot snap = GetSnapshot(parentNumber, BlockHeader.CalculateHash(parent));
             return CalcDifficulty(snap, _key.Address);
         }
 
@@ -380,82 +423,18 @@ namespace Nethermind.Blockchain
             return new UInt256(DiffNoTurn);
         }
 
-        private bool VerifyHeader(BlockHeader header, BlockHeader[] parents)
-        {
-            ulong number = (ulong)header.Number;
-            // Checkpoint blocks need to enforce zero beneficiary
-            bool checkpoint = ((ulong)number % Config.Epoch) == 0;
-            if (checkpoint && header.Beneficiary != ZeroAddress)
-            {
-                _logger.Warn($"Invalid block beneficiary ({header.Beneficiary}) - should be empty on checkpoint");
-                return false;
-            }
-            // Nonces must be 0x00..0 or 0xff..f, zeroes enforced on checkpoints
-            if (header.Nonce != NonceAuthVote && header.Nonce != NonceDropVote)
-            {
-                _logger.Warn($"Invalid block nonce ({header.Nonce})");
-                return false;
-            }
-            if (checkpoint && header.Nonce != NonceDropVote)
-            {
-                _logger.Warn($"Invalid block nonce ({header.Nonce}) - should be zeroes on checkpoints");
-                return false;
-            }
-            if (header.ExtraData.Length < ExtraVanity)
-            {
-                _logger.Warn($"Invalid block extra data length - missing vanity");
-            }
-            if (header.ExtraData.Length < ExtraVanity + ExtraSeal)
-            {
-                _logger.Warn($"Invalid block extra data length - missing seal");
-            }
-            // Ensure that the extra-data contains a signer list on checkpoint, but none otherwise
-            int singersBytes = header.ExtraData.Length - ExtraVanity - ExtraSeal;
-            if (!checkpoint && singersBytes != 0)
-            {
-                _logger.Warn($"Invalid block extra-data ({header.ExtraData}) - should be empty on non-checkpoints");
-                return false;
-            }
-            if (checkpoint && singersBytes % AddressLength != 0)
-            {
-                _logger.Warn($"Invalid block nonce ({header.ExtraData}) - should contain a list of signers on checkpoints");
-                return false;
-            }
-            // Ensure that the mix digest is zero as we don't have fork protection currently
-            if (header.MixHash != EmptyMixHash)
-            {
-                _logger.Warn($"Invalid block mix hash ({header.MixHash}) - should be zeroes");
-                return false;
-            }
-            // Ensure that the block doesn't contain any uncles which are meaningless in PoA
-            if (header.OmmersHash != OmmersHash)
-            {
-                _logger.Warn($"Invalid block ommers hash ({header.OmmersHash}) - ommers are meaningless in Clique");
-                return false;
-            }
-            if (header.Difficulty != DiffInTurn && header.Difficulty != DiffNoTurn)
-            {
-                _logger.Warn($"Invalid block difficulty ({header.Difficulty}) - should be {DiffInTurn} or {DiffNoTurn}");
-            }
-            // If all checks passed, validate any special fields for hard forks
-            // TODO if misc.VerifyForkHashes(chain.Config(), header, false) { return false; }
-            return VerifyCascadingFields(header, parents);
-        }
-
-        private bool VerifyCascadingFields(BlockHeader header, BlockHeader[] parents)
+        private bool VerifyCascadingFields(BlockHeader header)
         {
             ulong number = (ulong)header.Number;
             // Ensure that the block's timestamp isn't too close to it's parent
-            BlockHeader parent = (parents != null && parents.Length > 0) 
-                ? parents.Last() 
-                : _blockTree.FindHeader(header.ParentHash);
+            BlockHeader parent = _blockTree.FindHeader(header.ParentHash);
             if (parent.Timestamp + Config.Period > header.Timestamp)
             {
                 _logger.Warn($"Incorrect block timestamp ({header.Timestamp}) - should have big enough different with parent");
                 return false;
             }
             // Retrieve the snapshot needed to verify this header and cache it
-            Snapshot snap = GetSnapshot(number - 1, header.ParentHash, parents);
+            Snapshot snap = GetSnapshot(number - 1, header.ParentHash);
 
             // If the block is a checkpoint block, verify the signer list
             if (number % Config.Epoch == 0)
