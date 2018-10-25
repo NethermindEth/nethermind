@@ -19,6 +19,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Data;
 using System.Diagnostics;
 using System.Linq;
 using System.Numerics;
@@ -76,7 +77,8 @@ namespace Nethermind.Blockchain
             ITransactionStore transactionStore,
             ITransactionValidator transactionValidator,
             ILogManager logManager,
-            IBlockchainConfig blockchainConfig, IPerfService perfService)
+            IBlockchainConfig blockchainConfig,
+            IPerfService perfService)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));
@@ -177,7 +179,7 @@ namespace Nethermind.Blockchain
 
             if (_logger.IsTrace) _logger.Trace($"Adding new block {block.Hash} ({block.Number}) from {receivedFrom}");
 
-            if (block.Number <= _blockTree.BestSuggested.Number + 1)
+            if (block.Number <= _blockTree.BestKnownNumber + 1)
             {
                 if (_logger.IsTrace) _logger.Trace($"Suggesting a block {block.Hash} ({block.Number}) from {receivedFrom} with {block.Transactions.Length} transactions");
                 if (_logger.IsTrace) _logger.Trace($"{block}");
@@ -345,7 +347,7 @@ namespace Nethermind.Blockchain
 
         private void CheckIfSyncingWithFastestPeer()
         {
-            var bestLatencyPeer = _peers.Values.Where(x => x.NumberAvailable > _blockTree.BestSuggested.Number).OrderBy(x => x.Peer.NodeStats.GetAverageLatency(NodeLatencyStatType.BlockHeaders) ?? 100000).FirstOrDefault();
+            var bestLatencyPeer = _peers.Values.Where(x => x.NumberAvailable > _blockTree.BestKnownNumber).OrderBy(x => x.Peer.NodeStats.GetAverageLatency(NodeLatencyStatType.BlockHeaders) ?? 100000).FirstOrDefault();
             if (bestLatencyPeer != null && _currentSyncingPeerInfo != null && _currentSyncingPeerInfo.Peer?.NodeId != bestLatencyPeer.Peer?.NodeId)
             {
                 if (_logger.IsTrace) _logger.Trace("Checking if any available peer is faster than current sync peer");
@@ -391,7 +393,7 @@ namespace Nethermind.Blockchain
             }
 
             //As we deal with UInt256 if we substruct bigger value from smaller value we get very big value as a result (overflow) which is incorret (unsigned)
-            var letencyDiff = peerInfo.NumberAvailable > _blockTree.BestSuggested.Number ? peerInfo.NumberAvailable - _blockTree.BestSuggested.Number : 0;
+            var letencyDiff = peerInfo.NumberAvailable > _blockTree.BestKnownNumber ? peerInfo.NumberAvailable - _blockTree.BestKnownNumber : 0;
             if (letencyDiff < _blockchainConfig.MinAvailableBlockDiffForSyncSwitch)
             {
                 if (_logger.IsDebug) _logger.Debug($"Skipping latency switch due to lower latency benefit than threshold - letencyDiff: {letencyDiff}, threshold: {_blockchainConfig.MinAvailableBlockDiffForSyncSwitch}");
@@ -520,7 +522,7 @@ namespace Nethermind.Blockchain
                     if (_logger.IsDebug)
                         _logger.Debug(
                             "No more peers with better block available, finishing sync process, " +
-                            $"best known block #: {_blockTree.BestSuggested.Number}, " +
+                            $"best known block #: {_blockTree.BestKnownNumber}, " +
                             $"best peer block #: {(_peers.Values.Any() ? _peers.Values.Max(x => x.NumberAvailable) : 0)}");
                     return;
                 }
@@ -528,13 +530,13 @@ namespace Nethermind.Blockchain
                 SyncEvent?.Invoke(this, new SyncEventArgs(peerInfo.Peer, SyncStatus.Started)
                 {
                     NodeBestBlockNumber = peerInfo.NumberAvailable,
-                    OurBestBlockNumber = _blockTree.BestSuggested.Number
+                    OurBestBlockNumber = _blockTree.BestKnownNumber
                 });
 
                 if (_logger.IsDebug)
                     _logger.Debug(
                         $"Starting sync processes with {peerInfo}, FullNodeId: {peerInfo.Peer.NodeId.PublicKey} " +
-                        $"best known block #: {_blockTree.BestSuggested.Number}, " +
+                        $"best known block #: {_blockTree.BestKnownNumber}, " +
                         $"best peer block #: {peerInfo.NumberAvailable}");
 
                 var currentPeerNodeId = peerInfo.Peer?.NodeId;
@@ -562,7 +564,7 @@ namespace Nethermind.Blockchain
                         SyncEvent?.Invoke(this, new SyncEventArgs(peerInfo.Peer, SyncStatus.Failed)
                         {
                             NodeBestBlockNumber = peerInfo.NumberAvailable,
-                            OurBestBlockNumber = _blockTree.BestSuggested.Number
+                            OurBestBlockNumber = _blockTree.BestKnownNumber
                         });
                     }
                     else if (t.IsCanceled || _peerSyncCancellationTokenSource.IsCancellationRequested)
@@ -579,24 +581,24 @@ namespace Nethermind.Blockchain
                             SyncEvent?.Invoke(this, new SyncEventArgs(peerInfo.Peer, SyncStatus.Cancelled)
                             {
                                 NodeBestBlockNumber = peerInfo.NumberAvailable,
-                                OurBestBlockNumber = _blockTree.BestSuggested.Number
+                                OurBestBlockNumber = _blockTree.BestKnownNumber
                             });
                         }
                     }
                     else if (t.IsCompleted)
                     {
-                        if (_logger.IsDebug) _logger.Debug($"Sync process finished with nodeId: {currentPeerNodeId}. Best block now is {_blockTree.BestSuggested.Hash} ({_blockTree.BestSuggested.Number})");
+                        if (_logger.IsDebug) _logger.Debug($"Sync process finished with nodeId: {currentPeerNodeId}. Best known block is ({_blockTree.BestKnownNumber})");
                         SyncEvent?.Invoke(this, new SyncEventArgs(peerInfo.Peer, SyncStatus.Completed)
                         {
                             NodeBestBlockNumber = peerInfo.NumberAvailable,
-                            OurBestBlockNumber = _blockTree.BestSuggested.Number
+                            OurBestBlockNumber = _blockTree.BestKnownNumber
                         });
                     }
 
                     if (_logger.IsDebug)
                         _logger.Debug(
                             $"Finished peer sync process [{(t.IsFaulted ? "FAULTED" : t.IsCanceled ? "CANCELED" : t.IsCompleted ? "COMPLETED" : "OTHER")}] with Node: {peerInfo}], " +
-                            $"best known block #: {_blockTree.BestSuggested.Number} ({_blockTree.BestSuggested.Number}), " +
+                            $"best known block #: {_blockTree.BestKnownNumber} ({_blockTree.BestKnownNumber}), " +
                             $"best peer block #: {peerInfo.NumberAvailable} ({peerInfo.NumberAvailable})");
 
                     var source = _peerSyncCancellationTokenSource;
@@ -608,7 +610,7 @@ namespace Nethermind.Blockchain
 
         private PeerInfo SelectBestPeerForSync()
         {
-            var availablePeers = _peers.Values.Where(x => x.NumberAvailable > _blockTree.BestSuggested.Number).Where(x => x.IsInitialized).Select(x => new {PeerInfo = x, AvLat = x.Peer.NodeStats.GetAverageLatency(NodeLatencyStatType.BlockHeaders)})
+            var availablePeers = _peers.Values.Where(x => x.NumberAvailable > _blockTree.BestKnownNumber).Where(x => x.IsInitialized).Select(x => new {PeerInfo = x, AvLat = x.Peer.NodeStats.GetAverageLatency(NodeLatencyStatType.BlockHeaders)})
                 .OrderBy(x => x.AvLat ?? 100000).ToArray();
             if (!availablePeers.Any())
             {
@@ -625,13 +627,15 @@ namespace Nethermind.Blockchain
             return selectedInfo;
         }
 
+        private UInt256 _lastSyncNumber = 0;
+        
         [Todo(Improve.Readability, "Let us review the cancellation approach here")]
         private async Task SynchronizeWithPeerAsync(PeerInfo peerInfo)
         {
             bool wasCanceled = false;
 
             ISynchronizationPeer peer = peerInfo.Peer;
-            UInt256 bestNumber = _blockTree.BestSuggested.Number;
+            UInt256 bestNumber = _blockTree.BestKnownNumber;
 //            UInt256 bestDifficulty = _blockTree.BestSuggested.Difficulty;
 
             const int maxLookup = 2 * MaxBatchSize;
@@ -725,6 +729,38 @@ namespace Nethermind.Blockchain
                     throw bodiesTask.Exception;
                 }
 
+                // todo: need to confirm that not a single receipt is missing
+                Task<TransactionReceipt[][]> receiptsTask = peer.GetReceipts(hashes.ToArray(), _peerSyncCancellationTokenSource.Token);
+                if (receiptsTask.IsFaulted)
+                {
+                    _sinceLastTimeout = 0;
+                    if (receiptsTask.Exception.InnerExceptions.Any(x => x.InnerException is TimeoutException))
+                    {
+                        if (_logger.IsTrace) _logger.Error("Failed to retrieve receipts when synchronizing (Timeout)", receiptsTask.Exception);
+                    }
+                    else
+                    {
+                        if (_logger.IsError) _logger.Error("Failed to retrieve receipts when synchronizing", receiptsTask.Exception);
+                    }
+
+                    throw receiptsTask.Exception;
+                }
+
+                TransactionReceipt[][] receipts = receiptsTask.Result;
+                for (int blockIndex = 0; blockIndex < blocks.Length; blockIndex++)
+                {
+                    for (int txIndex = 0; txIndex < blocks[blockIndex].Transactions.Length; txIndex++)
+                    {
+                        TransactionReceipt receipt = receipts[blockIndex][txIndex];
+                        if (receipt == null)
+                        {
+                            throw new DataException($"Missing receipt for {blocks[blockIndex].Hash}->{txIndex}");
+                        }
+                        
+                        _transactionStore.StoreProcessedTransaction(receipt.TransactionHash, receipt);
+                    }   
+                }
+                
                 if (blocks.Length == 0)
                 {
                     if (_batchSize == MinBatchSize)
@@ -820,7 +856,13 @@ namespace Nethermind.Blockchain
                 }
 
                 peerInfo.NumberReceived = blocks[blocks.Length - 1].Number;
-                bestNumber = _blockTree.BestSuggested.Number;
+                bestNumber = _blockTree.BestKnownNumber;
+//                if (_blockchainConfig.SyncReceipts && bestNumber > _lastSyncNumber && bestNumber % 10000 == 0)
+                if (bestNumber > _lastSyncNumber + 10000)
+                {
+                    _lastSyncNumber = bestNumber;
+                    if (_logger.IsInfo) _logger.Info($"Downloading blocks. Current best at {_blockTree.BestKnownNumber}");    
+                }
             }
 
             if (_logger.IsTrace) _logger.Trace($"Stopping sync processes with Node: {peerInfo.Peer.NodeId}, wasCancelled: {wasCanceled}");
@@ -866,7 +908,7 @@ namespace Nethermind.Blockchain
                             new SyncEventArgs(peer, SyncStatus.InitCompleted)
                             {
                                 NodeBestBlockNumber = getNumberTask.Result,
-                                OurBestBlockNumber = _blockTree.BestSuggested.Number
+                                OurBestBlockNumber = _blockTree.BestKnownNumber
                             });
 
                         bool result = _peers.TryGetValue(peer.NodeId, out PeerInfo peerInfo);
@@ -878,7 +920,7 @@ namespace Nethermind.Blockchain
 
                         peerInfo.NumberAvailable = getNumberTask.Result;
 //                        peerInfo.Difficulty = getDifficultyTask.Result;
-                        peerInfo.NumberReceived = _blockTree.BestSuggested.Number;
+                        peerInfo.NumberReceived = _blockTree.BestKnownNumber;
                         peerInfo.IsInitialized = true;
                     }
                 }, token);

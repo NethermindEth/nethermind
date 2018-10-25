@@ -23,6 +23,7 @@ using System.Reflection;
 using System.Security;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Validators;
@@ -421,9 +422,17 @@ namespace Nethermind.Runner.Runners
                 string.IsNullOrWhiteSpace(_initConfig.GenesisHash) ? null : new Keccak(_initConfig.GenesisHash),
                 _blockTree, stateProvider, _specProvider);
 
+            if (_initConfig.ProcessingEnabled)
+            {
 #pragma warning disable 4014
-            LoadBlocksFromDb();
+                LoadBlocksFromDb();
 #pragma warning restore 4014
+            }
+            else
+            {
+                if (_logger.IsWarn) _logger.Warn($"Shutting down processor due to {nameof(InitConfig)}.{nameof(InitConfig.ProcessingEnabled)} set to false");
+                await _blockchainProcessor.StopAsync();
+            }
 
             await InitializeNetwork(
                 transactionStore,
@@ -464,7 +473,7 @@ namespace Nethermind.Runner.Runners
         {
             if (!_initConfig.NetworkEnabled)
             {
-                if (_logger.IsInfo) _logger.Info($"Skipping blockchain synchronization init ({nameof(IInitConfig.NetworkEnabled)} = false)");
+                if (_logger.IsWarn) _logger.Warn($"Skipping network init due to ({nameof(IInitConfig.NetworkEnabled)} set to false)");
                 return;
             }
 
@@ -597,7 +606,7 @@ namespace Nethermind.Runner.Runners
         {
             if (!_initConfig.SynchronizationEnabled)
             {
-                if (_logger.IsInfo) _logger.Info($"Skipping blockchain synchronization init ({nameof(IInitConfig.SynchronizationEnabled)} = false)");
+                if (_logger.IsWarn) _logger.Warn($"Skipping blockchain synchronization init due to ({nameof(IInitConfig.SynchronizationEnabled)} set to false)");
                 return Task.CompletedTask;
             }
 
@@ -658,7 +667,7 @@ namespace Nethermind.Runner.Runners
         {
             if (!_initConfig.PeerManagerEnabled)
             {
-                if (_logger.IsInfo) _logger.Info("Skipping peer manager init (PeerManagerEnabled} = false)");
+                if (_logger.IsWarn) _logger.Warn($"Skipping peer manager init due to {nameof(_initConfig.PeerManagerEnabled)} set to false)");
                 return;
             }
 
@@ -745,7 +754,7 @@ namespace Nethermind.Runner.Runners
         {
             if (!_initConfig.DiscoveryEnabled)
             {
-                if (_logger.IsInfo) _logger.Info($"Skipping discovery init ({nameof(IInitConfig.DiscoveryEnabled)} = false)");
+                if (_logger.IsWarn) _logger.Warn($"Skipping discovery init due to ({nameof(IInitConfig.DiscoveryEnabled)} set to false)");
                 return Task.CompletedTask;
             }
 

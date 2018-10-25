@@ -19,6 +19,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Core;
@@ -110,9 +111,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             throw new NotImplementedException();
         }
 
-        public override async Task<byte[][]> GetNodeData(Keccak[] hashes)
+        public override async Task<byte[][]> GetNodeData(Keccak[] hashes, CancellationToken token)
         {
-            return await base.GetNodeData(hashes);
+            return await base.GetNodeData(hashes, token);
         }
 
         public override void SendNodeData(byte[][] values)
@@ -125,9 +126,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             base.SendReceipts(receipts);
         }
 
-        public override async Task<TransactionReceipt[][]> GetReceipts(Keccak[] blockHashes)
+        public override async Task<TransactionReceipt[][]> GetReceipts(Keccak[] blockHashes, CancellationToken token)
         {
-            return await base.GetReceipts(blockHashes);
+            return await base.GetReceipts(blockHashes, token);
         }
     }
 }
