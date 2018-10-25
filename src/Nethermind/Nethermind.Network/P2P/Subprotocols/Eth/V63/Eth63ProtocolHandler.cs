@@ -90,7 +90,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 
         private void Handle(GetReceiptsMessage msg)
         {
-            TransactionReceipt[][] receipts = SyncManager.GetReceipts(msg.BlockHashes); 
+            TransactionReceipt[][] receipts = SyncManager.GetReceipts(msg.BlockHashes);
             Send(new ReceiptsMessage(receipts));
         }
 
@@ -102,11 +102,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
         private void Handle(GetNodeDataMessage msg)
         {
             byte[][] nodeData = SyncManager.GetNodeData(msg.Keys);
-            if (nodeData.Any(d => d != null))
-            {
-                
-            }
-            
             Send(new NodeDataMessage(nodeData));
         }
 

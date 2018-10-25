@@ -58,7 +58,7 @@ namespace Nethermind.Blockchain
         private readonly object _isSyncingLock = new object();
         private bool _isSyncing;
         private bool _isInitialized;
-        
+
         private PeerInfo _currentSyncingPeerInfo;
         private System.Timers.Timer _syncTimer;
 
@@ -126,7 +126,7 @@ namespace Nethermind.Blockchain
                     {
                         continue;
                     }
-                    
+
                     blockReceipts[receiptIndex] = _transactionStore.GetReceipt(block.Transactions[receiptIndex].Hash);
                 }
 
@@ -143,7 +143,6 @@ namespace Nethermind.Blockchain
 
         public Block Find(UInt256 number)
         {
-            
             return _blockTree.Head.Number >= number ? _blockTree.FindBlock(number) : null;
         }
 
@@ -155,7 +154,7 @@ namespace Nethermind.Blockchain
         public void AddNewBlock(Block block, NodeId receivedFrom)
         {
             // TODO: validation
-            
+
             _peers.TryGetValue(receivedFrom, out PeerInfo peerInfo);
             if (peerInfo == null)
             {
@@ -175,12 +174,12 @@ namespace Nethermind.Blockchain
                     return;
                 }
             }
-            
+
             if (_logger.IsTrace) _logger.Trace($"Adding new block {block.Hash} ({block.Number}) from {receivedFrom}");
-            
+
             if (block.Number <= _blockTree.BestSuggested.Number + 1)
             {
-                if (_logger.IsTrace) _logger.Trace( $"Suggesting a block {block.Hash} ({block.Number}) from {receivedFrom} with {block.Transactions.Length} transactions");
+                if (_logger.IsTrace) _logger.Trace($"Suggesting a block {block.Hash} ({block.Number}) from {receivedFrom} with {block.Transactions.Length} transactions");
                 if (_logger.IsTrace) _logger.Trace($"{block}");
 
                 AddBlockResult result = _blockTree.SuggestBlock(block);
@@ -226,9 +225,9 @@ namespace Nethermind.Blockchain
             if (!_isInitialized)
             {
                 if (_logger.IsTrace) _logger.Trace($"Synchronization is disabled, adding peer is blocked: {synchronizationPeer.NodeId}");
-                return;    
+                return;
             }
-            
+
             if (_peers.ContainsKey(synchronizationPeer.NodeId))
             {
                 if (_logger.IsError) _logger.Error($"Sync peer already in peers collection: {synchronizationPeer.NodeId}");
@@ -261,7 +260,7 @@ namespace Nethermind.Blockchain
                     CheckIfNewPeerIsBetterSyncCandidate(peerInfo);
                     RequestSync();
                 }
-                
+
                 initCancelSource.Dispose();
                 linkedSource.Dispose();
             });
@@ -281,8 +280,8 @@ namespace Nethermind.Blockchain
                 //possible if sync failed - we remove peer and eventually initiate disconnect, which calls remove peer again
                 return;
             }
-            
-            if(_currentSyncingPeerInfo?.Peer.NodeId.Equals(synchronizationPeer.NodeId) ?? false)
+
+            if (_currentSyncingPeerInfo?.Peer.NodeId.Equals(synchronizationPeer.NodeId) ?? false)
             {
                 if (_logger.IsTrace) _logger.Trace($"Requesting peer cancel with: {synchronizationPeer.NodeId}");
                 _peerSyncCancellationTokenSource?.Cancel();
@@ -312,9 +311,9 @@ namespace Nethermind.Blockchain
             _peerSyncCancellationTokenSource?.Cancel();
 
             await Task.CompletedTask;
-            
+
             // TODO: tks: with return before some perf calc that was started will never be finished
-            if(_logger.IsInfo) _logger.Info("Sync shutdown complete.. please wait for all components to close");
+            if (_logger.IsInfo) _logger.Info("Sync shutdown complete.. please wait for all components to close");
             _perfService.EndPerfCalc(key, "Close: SynchronizationManager");
         }
 
@@ -329,12 +328,12 @@ namespace Nethermind.Blockchain
                 {
                     RequestSync();
                 }
-                
+
                 var initPeerCount = _peers.Count(p => p.Value.IsInitialized);
                 if (initPeerCount != _lastSyncPeersCount)
                 {
                     _lastSyncPeersCount = initPeerCount;
-                    if (_logger.IsInfo) _logger.Info($"Available sync peers: {initPeerCount}({_peers.Count})/{_blockchainConfig.SyncPeersMaxCount} {(_isSyncing ? $" (sync in progress with peer: {_currentSyncingPeerInfo?.Peer?.NodeId} ({_currentSyncingPeerInfo?.NumberReceived}/{_currentSyncingPeerInfo?.NumberAvailable}))" : string.Empty)}"); 
+                    if (_logger.IsInfo) _logger.Info($"Sync peers {initPeerCount}({_peers.Count})/{_blockchainConfig.SyncPeersMaxCount} {(_isSyncing ? $"(sync in progress with {_currentSyncingPeerInfo?.ToString()})" : string.Empty)}");
                 }
 
                 CheckIfSyncingWithFastestPeer();
@@ -354,7 +353,7 @@ namespace Nethermind.Blockchain
             }
             else
             {
-                if (_logger.IsTrace) _logger.Trace($"NotSyncing or Syncing with fastest peer: bestLatencyPeer: {bestLatencyPeer?.Peer?.NodeId?.ToString() ?? "none"}, currentSyncingPeer: {_currentSyncingPeerInfo?.Peer?.NodeId?.ToString() ?? "none"}");
+                if (_logger.IsTrace) _logger.Trace($"NotSyncing or Syncing with fastest peer: bestLatencyPeer: {bestLatencyPeer?.ToString() ?? "none"}, currentSyncingPeer: {_currentSyncingPeerInfo?.ToString() ?? "none"}");
             }
         }
 
@@ -406,8 +405,8 @@ namespace Nethermind.Blockchain
                 if (_logger.IsDebug)
                 {
                     _logger.Debug($"{peerDesc} peer with better latency, requesting cancel for current sync process{Environment.NewLine}" +
-                                 $"{peerDesc} peer: {peerInfo.Peer.NodeId}, NumberAvailable: {peerInfo.NumberAvailable}, Latency: {newPeerLatency}{Environment.NewLine}" +
-                                 $"Current peer: {_currentSyncingPeerInfo?.Peer.NodeId}, NumberAvailable: {_currentSyncingPeerInfo?.NumberAvailable}, Latency: {currentSyncPeerLatency}");
+                                  $"{peerDesc} {peerInfo}, Latency: {newPeerLatency}{Environment.NewLine}" +
+                                  $"Current peer: {_currentSyncingPeerInfo}, Latency: {currentSyncPeerLatency}");
                 }
 
                 _requestedSyncCancelDueToBetterPeer = true;
@@ -418,8 +417,8 @@ namespace Nethermind.Blockchain
                 if (_logger.IsDebug)
                 {
                     _logger.Debug($"{peerDesc} peer with worse latency{Environment.NewLine}" +
-                                  $"{peerDesc} peer: {peerInfo.Peer.NodeId}, NumberAvailable: {peerInfo.NumberAvailable}, Latency: {newPeerLatency}{Environment.NewLine}" +
-                                  $"Current peer: {_currentSyncingPeerInfo?.Peer.NodeId}, NumberAvailable: {_currentSyncingPeerInfo?.NumberAvailable}, Latency: {currentSyncPeerLatency}");
+                                  $"{peerDesc} {peerInfo}, Latency: {newPeerLatency}{Environment.NewLine}" +
+                                  $"Current {_currentSyncingPeerInfo}, Latency: {currentSyncPeerLatency}");
                 }
             }
         }
@@ -497,7 +496,7 @@ namespace Nethermind.Blockchain
                 {
                     if (_logger.IsError) _logger.Error($"Error during sync process: {t.Exception}");
                 }
-                
+
                 lock (_isSyncingLock)
                 {
                     _isSyncing = false;
@@ -518,10 +517,11 @@ namespace Nethermind.Blockchain
                 var peerInfo = _currentSyncingPeerInfo = SelectBestPeerForSync();
                 if (peerInfo == null)
                 {
-                    if (_logger.IsDebug) _logger.Debug(
-                        "No more peers with better block available, finishing sync process, " +
-                        $"best known block #: {_blockTree.BestSuggested.Number}, " +
-                        $"best peer block #: {(_peers.Values.Any() ? _peers.Values.Max(x => x.NumberAvailable) : 0)}");
+                    if (_logger.IsDebug)
+                        _logger.Debug(
+                            "No more peers with better block available, finishing sync process, " +
+                            $"best known block #: {_blockTree.BestSuggested.Number}, " +
+                            $"best peer block #: {(_peers.Values.Any() ? _peers.Values.Max(x => x.NumberAvailable) : 0)}");
                     return;
                 }
 
@@ -531,10 +531,11 @@ namespace Nethermind.Blockchain
                     OurBestBlockNumber = _blockTree.BestSuggested.Number
                 });
 
-                if (_logger.IsDebug) _logger.Debug(
-                    $"Starting sync processes with Node: {peerInfo.Peer.NodeId} [{peerInfo.Peer.ClientId}], FullNodeId: {peerInfo.Peer.NodeId.PublicKey} " +
-                    $"best known block #: {_blockTree.BestSuggested.Number}, " +
-                    $"best peer block #: {peerInfo.NumberAvailable}");
+                if (_logger.IsDebug)
+                    _logger.Debug(
+                        $"Starting sync processes with {peerInfo}, FullNodeId: {peerInfo.Peer.NodeId.PublicKey} " +
+                        $"best known block #: {_blockTree.BestSuggested.Number}, " +
+                        $"best peer block #: {peerInfo.NumberAvailable}");
 
                 var currentPeerNodeId = peerInfo.Peer?.NodeId;
 
@@ -548,11 +549,11 @@ namespace Nethermind.Blockchain
                         {
                             if (t.Exception != null && t.Exception.InnerExceptions.Any(x => x is TimeoutException))
                             {
-                                if (_logger.IsWarn) _logger.Warn($"Stopping Sync with node: {currentPeerNodeId}. {t.Exception?.Message}");
+                                if (_logger.IsDebug) _logger.Debug($"Stopping sync with node: {currentPeerNodeId}. {t.Exception?.Message}");
                             }
                             else
                             {
-                                _logger.Error($"Stopping Sync with node: {currentPeerNodeId}. Error in the sync process.", t.Exception);
+                                _logger.Error($"Stopping sync with node: {currentPeerNodeId}. Error in the sync process.", t.Exception);
                             }
                         }
 
@@ -564,7 +565,7 @@ namespace Nethermind.Blockchain
                             OurBestBlockNumber = _blockTree.BestSuggested.Number
                         });
                     }
-                    else if (t.IsCanceled)
+                    else if (t.IsCanceled || _peerSyncCancellationTokenSource.IsCancellationRequested)
                     {
                         if (_requestedSyncCancelDueToBetterPeer)
                         {
@@ -592,37 +593,39 @@ namespace Nethermind.Blockchain
                         });
                     }
 
-                    if (_logger.IsDebug) _logger.Debug(
-                        $"Finished peer sync process [{(t.IsFaulted ? "FAULTED" : t.IsCanceled ? "CANCELED" : t.IsCompleted ? "COMPLETED" : "OTHER")}] with Node: {peerInfo.Peer.NodeId} [{peerInfo.Peer.ClientId}], " +
-                        $"best known block #: {_blockTree.BestSuggested.Number} ({_blockTree.BestSuggested.Number}), " +
-                        $"best peer block #: {peerInfo.NumberAvailable} ({peerInfo.NumberAvailable})");
+                    if (_logger.IsDebug)
+                        _logger.Debug(
+                            $"Finished peer sync process [{(t.IsFaulted ? "FAULTED" : t.IsCanceled ? "CANCELED" : t.IsCompleted ? "COMPLETED" : "OTHER")}] with Node: {peerInfo}], " +
+                            $"best known block #: {_blockTree.BestSuggested.Number} ({_blockTree.BestSuggested.Number}), " +
+                            $"best peer block #: {peerInfo.NumberAvailable} ({peerInfo.NumberAvailable})");
 
                     var source = _peerSyncCancellationTokenSource;
                     _peerSyncCancellationTokenSource = null;
                     source?.Dispose();
-                    
                 }, syncCancellationToken);
             }
         }
 
         private PeerInfo SelectBestPeerForSync()
         {
-            var availablePeers = _peers.Values.Where(x => x.NumberAvailable > _blockTree.BestSuggested.Number).Where(x => x.IsInitialized).Select(x => new {PeerInfo = x, AvLat = x.Peer.NodeStats.GetAverageLatency(NodeLatencyStatType.BlockHeaders) })
+            var availablePeers = _peers.Values.Where(x => x.NumberAvailable > _blockTree.BestSuggested.Number).Where(x => x.IsInitialized).Select(x => new {PeerInfo = x, AvLat = x.Peer.NodeStats.GetAverageLatency(NodeLatencyStatType.BlockHeaders)})
                 .OrderBy(x => x.AvLat ?? 100000).ToArray();
             if (!availablePeers.Any())
             {
                 return null;
             }
-                
+
             if (_logger.IsDebug) _logger.Debug($"Candidates for Sync: {Environment.NewLine}{string.Join(Environment.NewLine, availablePeers.Select(x => $"{x.PeerInfo.Peer.NodeId} | NumberAvailable: {x.PeerInfo.NumberAvailable} | BlockHeaderAvLatency: {x.AvLat?.ToString() ?? "none"}").ToArray())}");
             var selectedInfo = availablePeers.First().PeerInfo;
             if (selectedInfo.Peer.NodeId == _currentSyncingPeerInfo?.Peer?.NodeId)
             {
-                if (_logger.IsWarn) _logger.Warn($"Potential error, selecting same peer for sync as prev sync peer, id: {selectedInfo.Peer.NodeId}");
+                if (_logger.IsDebug) _logger.Debug($"Potential error, selecting same peer for sync as prev sync peer, id: {selectedInfo.Peer.NodeId}");
             }
+
             return selectedInfo;
         }
-         
+
+        [Todo(Improve.Readability, "Let us review the cancellation approach here")]
         private async Task SynchronizeWithPeerAsync(PeerInfo peerInfo)
         {
             bool wasCanceled = false;
@@ -661,7 +664,7 @@ namespace Nethermind.Blockchain
                 UInt256 blocksLeft = peerInfo.NumberAvailable - peerInfo.NumberReceived;
                 int blocksToRequest = (int) BigInteger.Min(blocksLeft + 1, _batchSize);
                 if (_logger.IsTrace) _logger.Trace($"Sync request to peer with {peerInfo.NumberAvailable} blocks. Got {peerInfo.NumberReceived} and asking for {blocksToRequest} more.");
-                
+
                 Task<BlockHeader[]> headersTask = peer.GetBlockHeaders(peerInfo.NumberReceived, blocksToRequest, 0, _peerSyncCancellationTokenSource.Token);
                 BlockHeader[] headers = await headersTask;
                 if (headersTask.IsCanceled)
@@ -675,14 +678,14 @@ namespace Nethermind.Blockchain
                     _sinceLastTimeout = 0;
                     if (headersTask.Exception.InnerExceptions.Any(x => x.InnerException is TimeoutException))
                     {
-                        _batchSize = Math.Max(MinBatchSize, _batchSize / 2);
+                        DecreaseBatchSize();
                         if (_logger.IsTrace) _logger.Error("Failed to retrieve headers when synchronizing (Timeout)", headersTask.Exception);
                     }
                     else
                     {
                         if (_logger.IsError) _logger.Error("Failed to retrieve headers when synchronizing", headersTask.Exception);
                     }
-                    
+
                     throw headersTask.Exception;
                 }
 
@@ -718,13 +721,27 @@ namespace Nethermind.Blockchain
                     {
                         if (_logger.IsError) _logger.Error("Failed to retrieve bodies when synchronizing", bodiesTask.Exception);
                     }
+
                     throw bodiesTask.Exception;
                 }
-                
+
+                if (blocks.Length == 0)
+                {
+                    if (_batchSize == MinBatchSize)
+                    {
+                        if (_logger.IsInfo) _logger.Info($"Received no blocks from {_currentSyncingPeerInfo} in response to {blocksToRequest} blocks requested. Cancelling.");
+                        throw new EthSynchronizationException("Peer sent an empty block list");
+                    }
+
+                    if (_logger.IsInfo) _logger.Info($"Received no blocks from {_currentSyncingPeerInfo} in response to {blocksToRequest} blocks requested. Decreasing batch size from {_batchSize}.");
+                    DecreaseBatchSize();
+                    continue;
+                }
+
                 _sinceLastTimeout++;
                 if (_sinceLastTimeout > 8)
                 {
-                    _batchSize = Math.Min(MaxBatchSize, _batchSize * 2);
+                    IncreaseBatchSize();
                 }
 
                 for (int i = 0; i < blocks.Length; i++)
@@ -743,7 +760,7 @@ namespace Nethermind.Blockchain
                     if (parent == null)
                     {
                         ancestorLookupLevel += _batchSize;
-                        peerInfo.NumberReceived = peerInfo.NumberReceived >= _batchSize ? (peerInfo.NumberReceived - (UInt256)_batchSize) : UInt256.Zero;
+                        peerInfo.NumberReceived = peerInfo.NumberReceived >= _batchSize ? (peerInfo.NumberReceived - (UInt256) _batchSize) : UInt256.Zero;
                         continue;
                     }
                 }
@@ -763,7 +780,7 @@ namespace Nethermind.Blockchain
                     {
                         return;
                     }
-                    
+
                     if (_logger.IsTrace) _logger.Trace($"Received {blocks[i]} from {peer.NodeId}");
 
                     if (_blockValidator.ValidateSuggestedBlock(blocks[i]))
@@ -809,6 +826,16 @@ namespace Nethermind.Blockchain
             if (_logger.IsTrace) _logger.Trace($"Stopping sync processes with Node: {peerInfo.Peer.NodeId}, wasCancelled: {wasCanceled}");
         }
 
+        private void IncreaseBatchSize()
+        {
+            _batchSize = Math.Min(MaxBatchSize, _batchSize * 2);
+        }
+
+        private void DecreaseBatchSize()
+        {
+            _batchSize = Math.Max(MinBatchSize, _batchSize / 2);
+        }
+
         private async Task InitPeerInfo(ISynchronizationPeer peer, CancellationToken token)
         {
             if (_logger.IsTrace) _logger.Trace($"Requesting head block info from {peer.NodeId}");
@@ -845,10 +872,10 @@ namespace Nethermind.Blockchain
                         bool result = _peers.TryGetValue(peer.NodeId, out PeerInfo peerInfo);
                         if (!result)
                         {
-                            _logger.Error($"Initializing PeerInfo failed for {peer.NodeId}");
+                            if (_logger.IsDebug) _logger.Debug($"Initializing PeerInfo failed for {peer.NodeId}");
                             throw new EthSynchronizationException($"Initializing peer info failed for {peer.NodeId.ToString()}");
                         }
-                        
+
                         peerInfo.NumberAvailable = getNumberTask.Result;
 //                        peerInfo.Difficulty = getDifficultyTask.Result;
                         peerInfo.NumberReceived = _blockTree.BestSuggested.Number;
@@ -865,14 +892,26 @@ namespace Nethermind.Blockchain
             }
 
             public bool IsInitialized { get; set; }
+
             public ISynchronizationPeer Peer { get; }
+
 //            public UInt256 Difficulty { get; set; }
             public UInt256 NumberAvailable { get; set; }
             public UInt256 NumberReceived { get; set; }
 
             public override string ToString()
             {
-                return $"Peer {Peer.NodeId}, Available {NumberAvailable}, Received {NumberReceived}";
+                return ToString(true);
+            }
+
+            public string ToString(bool fullFormat)
+            {
+                if (fullFormat)
+                {
+                    return $"[Peer|{Peer?.NodeId}|{NumberReceived}/{NumberAvailable}|{Peer?.ClientId}]";
+                }
+
+                return $"[Peer|{Peer?.NodeId}|{NumberReceived}/{NumberAvailable}]";
             }
         }
     }
