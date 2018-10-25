@@ -42,8 +42,6 @@ namespace Nethermind.Blockchain
         void SendNewTransaction(Transaction transaction);
         
         Task<TransactionReceipt[][]> GetReceipts(Keccak[] blockHash, CancellationToken token);
-        void SendReceipts(TransactionReceipt[][] receipts);
         Task<byte[][]> GetNodeData(Keccak[] hashes, CancellationToken token);
-        void SendNodeData(byte[][] values);
     }
 }

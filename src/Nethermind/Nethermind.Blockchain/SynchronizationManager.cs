@@ -218,7 +218,7 @@ namespace Nethermind.Blockchain
         public void AddNewTransaction(Transaction transaction, NodeId receivedFrom)
         {
             if (_logger.IsTrace) _logger.Trace($"Received a pending transaction {transaction.Hash} from {receivedFrom}");
-            _transactionStore.AddPending(transaction, HeadNumber);
+//            _transactionStore.AddPending(transaction, HeadNumber);
         }
 
         public async Task AddPeer(ISynchronizationPeer synchronizationPeer)
@@ -628,7 +628,7 @@ namespace Nethermind.Blockchain
         }
 
         private UInt256 _lastSyncNumber = 0;
-        
+
         [Todo(Improve.Readability, "Let us review the cancellation approach here")]
         private async Task SynchronizeWithPeerAsync(PeerInfo peerInfo)
         {
@@ -655,6 +655,7 @@ namespace Nethermind.Blockchain
 
                 if (_peerSyncCancellationTokenSource.IsCancellationRequested)
                 {
+                    if (_logger.IsInfo) _logger.Info($"SOMEONE CANCELLED");
                     return;
                 }
 
@@ -729,38 +730,6 @@ namespace Nethermind.Blockchain
                     throw bodiesTask.Exception;
                 }
 
-                // todo: need to confirm that not a single receipt is missing
-                Task<TransactionReceipt[][]> receiptsTask = peer.GetReceipts(hashes.ToArray(), _peerSyncCancellationTokenSource.Token);
-                if (receiptsTask.IsFaulted)
-                {
-                    _sinceLastTimeout = 0;
-                    if (receiptsTask.Exception.InnerExceptions.Any(x => x.InnerException is TimeoutException))
-                    {
-                        if (_logger.IsTrace) _logger.Error("Failed to retrieve receipts when synchronizing (Timeout)", receiptsTask.Exception);
-                    }
-                    else
-                    {
-                        if (_logger.IsError) _logger.Error("Failed to retrieve receipts when synchronizing", receiptsTask.Exception);
-                    }
-
-                    throw receiptsTask.Exception;
-                }
-
-                TransactionReceipt[][] receipts = receiptsTask.Result;
-                for (int blockIndex = 0; blockIndex < blocks.Length; blockIndex++)
-                {
-                    for (int txIndex = 0; txIndex < blocks[blockIndex].Transactions.Length; txIndex++)
-                    {
-                        TransactionReceipt receipt = receipts[blockIndex][txIndex];
-                        if (receipt == null)
-                        {
-                            throw new DataException($"Missing receipt for {blocks[blockIndex].Hash}->{txIndex}");
-                        }
-                        
-                        _transactionStore.StoreProcessedTransaction(receipt.TransactionHash, receipt);
-                    }   
-                }
-                
                 if (blocks.Length == 0)
                 {
                     if (_batchSize == MinBatchSize)
@@ -798,6 +767,61 @@ namespace Nethermind.Blockchain
                         ancestorLookupLevel += _batchSize;
                         peerInfo.NumberReceived = peerInfo.NumberReceived >= _batchSize ? (peerInfo.NumberReceived - (UInt256) _batchSize) : UInt256.Zero;
                         continue;
+                    }
+                }
+
+                Block[] blocksWithTransactions = blocks.Where(b => b.Transactions.Length != 0).ToArray();
+                if (blocksWithTransactions.Length != 0)
+                {
+                    Task<TransactionReceipt[][]> receiptsTask = peer.GetReceipts(blocksWithTransactions.Select(b => b.Hash).ToArray(), _peerSyncCancellationTokenSource.Token);
+                    TransactionReceipt[][] receipts = await receiptsTask;
+                    if (receiptsTask.IsCanceled)
+                    {
+                        wasCanceled = true;
+                        break;
+                    }
+
+                    if (receiptsTask.IsFaulted)
+                    {
+                        _sinceLastTimeout = 0;
+                        if (receiptsTask.Exception.InnerExceptions.Any(x => x.InnerException is TimeoutException))
+                        {
+                            if (_logger.IsTrace) _logger.Error("Failed to retrieve receipts when synchronizing (Timeout)", receiptsTask.Exception);
+                        }
+                        else
+                        {
+                            if (_logger.IsError) _logger.Error("Failed to retrieve receipts when synchronizing", receiptsTask.Exception);
+                        }
+
+                        throw receiptsTask.Exception;
+                    }
+
+                    for (int blockIndex = 0; blockIndex < blocksWithTransactions.Length; blockIndex++)
+                    {
+                        long gasUsedTotal = 0;
+                        for (int txIndex = 0; txIndex < blocksWithTransactions[blockIndex].Transactions.Length; txIndex++)
+                        {
+                            TransactionReceipt receipt = receipts[blockIndex][txIndex];
+                            if (receipt == null)
+                            {
+                                throw new DataException($"Missing receipt for {blocksWithTransactions[blockIndex].Hash}->{txIndex}");
+                            }
+
+                            receipt.Index = txIndex;
+                            receipt.BlockHash = blocksWithTransactions[blockIndex].Hash;
+                            receipt.BlockNumber = blocksWithTransactions[blockIndex].Number;
+                            receipt.TransactionHash = blocksWithTransactions[blockIndex].Transactions[txIndex].Hash;
+                            gasUsedTotal += receipt.GasUsed;
+                            receipt.GasUsedTotal = gasUsedTotal;
+                            receipt.Recipient = blocksWithTransactions[blockIndex].Transactions[txIndex].To;
+
+                            // only after execution
+                            // receipt.Sender = blocksWithTransactions[blockIndex].Transactions[txIndex].SenderAddress; // TODO: need to recover
+                            // receipt.Error = ...
+                            // receipt.ContractAddress = ...
+
+                            _transactionStore.StoreProcessedTransaction(receipt.TransactionHash, receipt);
+                        }
                     }
                 }
 
@@ -858,10 +882,10 @@ namespace Nethermind.Blockchain
                 peerInfo.NumberReceived = blocks[blocks.Length - 1].Number;
                 bestNumber = _blockTree.BestKnownNumber;
 //                if (_blockchainConfig.SyncReceipts && bestNumber > _lastSyncNumber && bestNumber % 10000 == 0)
-                if (bestNumber > _lastSyncNumber + 10000)
+                if (bestNumber > _lastSyncNumber + 1000)
                 {
                     _lastSyncNumber = bestNumber;
-                    if (_logger.IsInfo) _logger.Info($"Downloading blocks. Current best at {_blockTree.BestKnownNumber}");    
+                    if (_logger.IsInfo) _logger.Info($"Downloading blocks. Current best at {_blockTree.BestKnownNumber}");
                 }
             }
 

@@ -17,8 +17,7 @@
  */
 
 using System;
-using System.Collections.Generic;
-using System.Linq;
+using System.Collections.Concurrent;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -31,23 +30,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 {
     public class Eth63ProtocolHandler : Eth62ProtocolHandler
     {
-        [Todo(Improve.Refactor, "reuse base mssage types from eth62")]
-        private static readonly Dictionary<int, Type> MessageTypes = new Dictionary<int, Type>
-        {
-            {Eth62MessageCode.Status, typeof(StatusMessage)},
-            {Eth62MessageCode.NewBlockHashes, typeof(NewBlockHashesMessage)},
-            {Eth62MessageCode.Transactions, typeof(TransactionsMessage)},
-            {Eth62MessageCode.GetBlockHeaders, typeof(GetBlockHeadersMessage)},
-            {Eth62MessageCode.BlockHeaders, typeof(BlockHeadersMessage)},
-            {Eth62MessageCode.GetBlockBodies, typeof(GetBlockBodiesMessage)},
-            {Eth62MessageCode.BlockBodies, typeof(BlockBodiesMessage)},
-            {Eth62MessageCode.NewBlock, typeof(NewBlockMessage)},
-            {Eth62MessageCode.NewBlock, typeof(NewBlockMessage)},
-            {Eth63MessageCode.GetNodeData, typeof(GetNodeDataMessage)},
-            {Eth63MessageCode.NodeData, typeof(NodeDataMessage)},
-            {Eth63MessageCode.GetReceipts, typeof(GetReceiptsMessage)},
-            {Eth63MessageCode.Receipts, typeof(ReceiptsMessage)}
-        };
+        private readonly BlockingCollection<Request<GetNodeDataMessage, byte[][]>> _nodeDataRequests
+            = new BlockingCollection<Request<GetNodeDataMessage, byte[][]>>();
+
+        private readonly BlockingCollection<Request<GetReceiptsMessage, TransactionReceipt[][]>> _receiptsRequests
+            = new BlockingCollection<Request<GetReceiptsMessage, TransactionReceipt[][]>>();
 
         public Eth63ProtocolHandler(
             IP2PSession p2PSession,
@@ -62,11 +49,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
         public override byte ProtocolVersion => 63;
 
         public override int MessageIdSpaceSize => 17; // magic number here following Go
-
-        public override Type ResolveMessageType(int messageCode)
-        {
-            return MessageTypes[messageCode];
-        }
 
         public override void HandleMessage(Packet message)
         {
@@ -88,7 +70,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
                     break;
             }
         }
-
+        
         private void Handle(GetReceiptsMessage msg)
         {
             TransactionReceipt[][] receipts = SyncManager.GetReceipts(msg.BlockHashes);
@@ -97,7 +79,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 
         private void Handle(ReceiptsMessage msg)
         {
-            throw new NotImplementedException();
+            var request = _receiptsRequests.Take();
+            if (IsRequestMatched(request, msg))
+            {
+                request.CompletionSource.SetResult(msg.Receipts);
+            }
         }
 
         private void Handle(GetNodeDataMessage msg)
@@ -108,27 +94,99 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 
         private void Handle(NodeDataMessage msg)
         {
-            throw new NotImplementedException();
+            var request = _nodeDataRequests.Take();
+            if (IsRequestMatched(request, msg))
+            {
+                request.CompletionSource.SetResult(msg.Data);
+            }
         }
 
-        public override async Task<byte[][]> GetNodeData(Keccak[] hashes, CancellationToken token)
+        public override async Task<byte[][]> GetNodeData(Keccak[] keys, CancellationToken token)
         {
-            return await base.GetNodeData(hashes, token);
+            var msg = new GetNodeDataMessage(keys);
+            byte[][] receipts = await SendRequest(msg, token);
+            return receipts;
         }
-
-        public override void SendNodeData(byte[][] values)
-        {
-            base.SendNodeData(values);
-        }
-
-        public override void SendReceipts(TransactionReceipt[][] receipts)
-        {
-            base.SendReceipts(receipts);
-        }
-
+        
         public override async Task<TransactionReceipt[][]> GetReceipts(Keccak[] blockHashes, CancellationToken token)
         {
-            return await base.GetReceipts(blockHashes, token);
+            var msg = new GetReceiptsMessage(blockHashes);
+            TransactionReceipt[][] receipts = await SendRequest(msg, token);
+            return receipts;
+        }
+
+        [Todo(Improve.Refactor, "Generic approach to requests")]
+        private async Task<byte[][]> SendRequest(GetNodeDataMessage message, CancellationToken token)
+        {
+            if (Logger.IsTrace)
+            {
+                Logger.Trace("Sending node fata request:");
+                Logger.Trace($"Keys count: {message.Keys.Length}");
+            }
+
+            var request = new Request<GetNodeDataMessage, byte[][]>(message);
+            _nodeDataRequests.Add(request, token);
+
+            Send(request.Message);
+
+            Task<byte[][]> task = request.CompletionSource.Task;
+            var firstTask = await Task.WhenAny(task, Task.Delay(Timeouts.Eth, token));
+            if (firstTask.IsCanceled)
+            {
+                token.ThrowIfCancellationRequested();
+            }
+
+            if (firstTask == task)
+            {
+                return task.Result;
+            }
+
+            throw new TimeoutException($"{P2PSession.RemoteNodeId} Request timeout in {nameof(GetNodeDataMessage)}");
+        }
+        
+        [Todo(Improve.Refactor, "Generic approach to requests")]
+        private async Task<TransactionReceipt[][]> SendRequest(GetReceiptsMessage message, CancellationToken token)
+        {
+            if (Logger.IsTrace)
+            {
+                Logger.Trace("Sending node fata request:");
+                Logger.Trace($"Hashes count: {message.BlockHashes.Length}");
+            }
+
+            var request = new Request<GetReceiptsMessage, TransactionReceipt[][]>(message);
+            _receiptsRequests.Add(request, token);
+
+            Send(request.Message);
+
+            Task<TransactionReceipt[][]> task = request.CompletionSource.Task;
+            var firstTask = await Task.WhenAny(task, Task.Delay(Timeouts.Eth, token));
+            if (firstTask.IsCanceled)
+            {
+                token.ThrowIfCancellationRequested();
+            }
+
+            if (firstTask == task)
+            {
+                return task.Result;
+            }
+
+            throw new TimeoutException($"{P2PSession.RemoteNodeId} Request timeout in {nameof(GetReceiptsMessage)}");
+        }
+        
+        [Todo(Improve.MissingFunctionality, "Need to compare response")]
+        private bool IsRequestMatched(
+            Request<GetNodeDataMessage, byte[][]> request,
+            NodeDataMessage response)
+        {
+            return response.PacketType == Eth63MessageCode.NodeData; // TODO: more detailed
+        }
+
+        [Todo(Improve.MissingFunctionality, "Need to compare response")]
+        private bool IsRequestMatched(
+            Request<GetReceiptsMessage, TransactionReceipt[][]> request,
+            ReceiptsMessage response)
+        {
+            return response.PacketType == Eth63MessageCode.Receipts; // TODO: more detailed
         }
     }
 }

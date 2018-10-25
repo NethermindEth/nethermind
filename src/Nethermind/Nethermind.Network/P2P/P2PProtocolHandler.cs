@@ -160,7 +160,12 @@ namespace Nethermind.Network.P2P
             _isInitialized = true;
             
             // TODO: proper validation on connection | tks: we handle this now in peer manager as well, any need to do it twice? 
-            if(!capabilities.Any(x => x.ProtocolCode == Protocol.Eth && (x.Version == 62 || x.Version == 63)))
+//            if(!capabilities.Any(x => x.ProtocolCode == Protocol.Eth && (x.Version == 62 || x.Version == 63)))
+//            {    
+//                Disconnect(DisconnectReason.UselessPeer);
+//            }
+            
+            if(!capabilities.Any(x => x.ProtocolCode == Protocol.Eth && (x.Version == 63)))
             {    
                 Disconnect(DisconnectReason.UselessPeer);
             }

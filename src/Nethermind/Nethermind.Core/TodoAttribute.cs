@@ -52,6 +52,7 @@ namespace Nethermind.Core
         Readability = 8,
         TestCoverage = 16,
         Refactor = 32,
-        All = 63
+        MissingFunctionality = 64,
+        All = 127
     }
 }

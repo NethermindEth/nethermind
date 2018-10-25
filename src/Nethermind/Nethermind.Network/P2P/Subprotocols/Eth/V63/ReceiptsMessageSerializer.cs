@@ -25,11 +25,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 {
     public class ReceiptsMessageSerializer : IMessageSerializer<ReceiptsMessage>
     {
+        [Todo(Improve.MissingFunctionality, "When serializing receipts we need either to just get raw receipts from storage that were stored in the bare format or recognize the block number from spec provider")]
         public byte[] Serialize(ReceiptsMessage message)
         {
             if (message.Receipts == null) return Rlp.OfEmptySequence.Bytes;
-
-            return Rlp.Encode(message.Receipts.Select(b => b == null ? Rlp.OfEmptySequence : Rlp.Encode(b.Select(n => n == null ? Rlp.OfEmptySequence : Rlp.Encode(n, RlpBehaviors.Storage)).ToArray())).ToArray()).Bytes;
+            return Rlp.Encode(message.Receipts.Select(b => b == null ? Rlp.OfEmptySequence : Rlp.Encode(b.Select(n => n == null ? Rlp.OfEmptySequence : Rlp.Encode(n)).ToArray())).ToArray()).Bytes;
         }
 
         public ReceiptsMessage Deserialize(byte[] bytes)
@@ -39,7 +39,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             Rlp.DecoderContext decoderContext = bytes.AsRlpContext();
 
             var data = decoderContext.DecodeArray(itemContext =>
-                itemContext.DecodeArray(nestedContext => Rlp.Decode<TransactionReceipt>(nestedContext, RlpBehaviors.Storage)) ?? new TransactionReceipt[0]);
+                itemContext.DecodeArray(nestedContext => Rlp.Decode<TransactionReceipt>(nestedContext)) ?? new TransactionReceipt[0]);
             ReceiptsMessage message = new ReceiptsMessage(data);
 
             return message;

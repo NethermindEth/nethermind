@@ -863,7 +863,8 @@ namespace Nethermind.Network
 
         private bool ValidateCapabilities(IEnumerable<Capability> capabilities)
         {
-            return capabilities.Any(x => x.ProtocolCode == Protocol.Eth && (x.Version == 62 || x.Version == 63));
+//            return capabilities.Any(x => x.ProtocolCode == Protocol.Eth && (x.Version == 62 || x.Version == 63));
+            return capabilities.Any(x => x.ProtocolCode == Protocol.Eth && (x.Version == 63));
         }
 
         private bool ValidateChainId(long chainId)

@@ -17,6 +17,7 @@
  */
 
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63;
 using NUnit.Framework;
@@ -96,5 +97,15 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
             TransactionReceipt[][] data = {new[] {Build.A.TransactionReceipt.TestObject, Build.A.TransactionReceipt.TestObject}, null, new[] {null, Build.A.TransactionReceipt.TestObject}};
             Test(data);
         }
+        
+        [Test]
+        public void Roundtrip_mainnet_sample()
+        {
+            byte[] bytes = Bytes.FromHexString("f9012ef9012bf90128a08ccc6709a5df7acef07f97c5681356b6c37cfac15b554aff68e986f57116df2e825208b9010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000c0");
+            ReceiptsMessageSerializer serializer = new ReceiptsMessageSerializer();
+            ReceiptsMessage message = serializer.Deserialize(bytes);
+            byte[] serialized = serializer.Serialize(message);
+            Assert.AreEqual(bytes,  serialized);
+        }   
     }
 }
