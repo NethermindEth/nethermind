@@ -28,8 +28,12 @@ namespace Nethermind.Blockchain.Filters
 {
     public class FilterManager : IFilterManager
     {
-        private readonly ConcurrentDictionary<int, List<FilterLog>> _logs = new ConcurrentDictionary<int, List<FilterLog>>();
-        private readonly ConcurrentDictionary<int, List<Keccak>> _blockHashes = new ConcurrentDictionary<int, List<Keccak>>();
+        private readonly ConcurrentDictionary<int, List<FilterLog>> _logs =
+            new ConcurrentDictionary<int, List<FilterLog>>();
+
+        private readonly ConcurrentDictionary<int, List<Keccak>> _blockHashes =
+            new ConcurrentDictionary<int, List<Keccak>>();
+
         private readonly IFilterStore _filterStore;
         private readonly ILogger _logger;
 
@@ -38,8 +42,9 @@ namespace Nethermind.Blockchain.Filters
             _filterStore = filterStore ?? throw new ArgumentNullException(nameof(filterStore));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             blockProcessor.BlockProcessed += OnBlockProcessed;
-            
-            _filterStore.FilterRemoved += FilterStoreOnFilterRemoved; 
+            blockProcessor.TransactionProcessed += OnTransactionProcessed;
+
+            _filterStore.FilterRemoved += FilterStoreOnFilterRemoved;
         }
 
         private void FilterStoreOnFilterRemoved(object sender, FilterEventArgs e)
@@ -59,8 +64,12 @@ namespace Nethermind.Blockchain.Filters
         private void OnBlockProcessed(object sender, BlockProcessedEventArgs e)
         {
             _lastBlockHash = e.Block.Hash;
-            AddTransactionReceipts(e.Receipts);
             AddBlock(e.Block);
+        }
+
+        private void OnTransactionProcessed(object sender, TransactionProcessedEventArgs e)
+        {
+            AddTransactionReceipts(e.Receipt);
         }
 
         public FilterLog[] GetLogs(int filterId)
@@ -77,19 +86,19 @@ namespace Nethermind.Blockchain.Filters
 
         [Todo("Truffle sends transaction first and then polls so we hack it here for now")]
         public Keccak[] PollBlockHashes(int filterId)
-        {            
+        {
             if (!_blockHashes.ContainsKey(filterId))
             {
                 if (_lastBlockHash != null)
                 {
-                    Keccak[] hackedResult = new [] {_lastBlockHash}; // truffle hack
+                    Keccak[] hackedResult = new[] {_lastBlockHash}; // truffle hack
                     _lastBlockHash = null;
                     return hackedResult;
                 }
-                
+
                 return Array.Empty<Keccak>();
-            }            
-            
+            }
+
             var blockHashes = _blockHashes[filterId].ToArray();
             _blockHashes[filterId].Clear();
             return blockHashes;
@@ -203,7 +212,8 @@ namespace Nethermind.Blockchain.Filters
 
         private FilterLog CreateLog(LogFilter logFilter, TransactionReceipt receipt, LogEntry logEntry)
         {
-            if (logFilter.FromBlock.Type == FilterBlockType.BlockId && logFilter.FromBlock.BlockId > receipt.BlockNumber)
+            if (logFilter.FromBlock.Type == FilterBlockType.BlockId &&
+                logFilter.FromBlock.BlockId > receipt.BlockNumber)
             {
                 return null;
             }
@@ -218,9 +228,10 @@ namespace Nethermind.Blockchain.Filters
                 return null;
             }
 
-            if (logFilter.FromBlock.Type == FilterBlockType.Earliest || logFilter.FromBlock.Type == FilterBlockType.Pending
-                                                                     || logFilter.ToBlock.Type == FilterBlockType.Earliest ||
-                                                                     logFilter.ToBlock.Type == FilterBlockType.Pending)
+            if (logFilter.FromBlock.Type == FilterBlockType.Earliest
+                || logFilter.FromBlock.Type == FilterBlockType.Pending
+                || logFilter.ToBlock.Type == FilterBlockType.Earliest
+                || logFilter.ToBlock.Type == FilterBlockType.Pending)
             {
                 return CreateLog(UInt256.One, receipt, logEntry);
             }

@@ -38,7 +38,7 @@ namespace Nethermind.Blockchain.Test.Filters
         private FilterManager _filterManager;
         private ILogManager _logManager;
         private int _currentFilterId;
-        
+
         [SetUp]
         public void Setup()
         {
@@ -91,7 +91,7 @@ namespace Nethermind.Blockchain.Test.Filters
             => LogsShouldNotBeEmpty(
                 new Action<FilterBuilder>[]
                 {
-                    filter => filter.FromBlock(UInt256.One), 
+                    filter => filter.FromBlock(UInt256.One),
                     filter => filter.FromBlock(new UInt256(2)),
                     filter => filter.FromBlock(new UInt256(3))
                 },
@@ -117,7 +117,7 @@ namespace Nethermind.Blockchain.Test.Filters
             => LogsShouldNotBeEmpty(
                 new Action<FilterBuilder>[]
                 {
-                    filter => filter.ToBlock(UInt256.One), 
+                    filter => filter.ToBlock(UInt256.One),
                     filter => filter.ToBlock(new UInt256(5)),
                     filter => filter.ToBlock(new UInt256(10))
                 },
@@ -313,7 +313,7 @@ namespace Nethermind.Blockchain.Test.Filters
             {
                 receipts.Add(BuildReceipt(receiptBuilder));
             }
-            
+
             // adding always a simple block filter and test
             Block block = Build.A.Block.TestObject;
             BlockFilter blockFilter = new BlockFilter(_currentFilterId++, 0);
@@ -322,8 +322,14 @@ namespace Nethermind.Blockchain.Test.Filters
             _filterStore.GetFilters<LogFilter>().Returns(filters.OfType<LogFilter>().ToArray());
             _filterStore.GetFilters<BlockFilter>().Returns(filters.OfType<BlockFilter>().ToArray());
             _filterManager = new FilterManager(_filterStore, _blockProcessor, _logManager);
-            
-            _blockProcessor.BlockProcessed += Raise.EventWith(_blockProcessor, new BlockProcessedEventArgs(block, receipts.ToArray()));
+
+            _blockProcessor.BlockProcessed += Raise.EventWith(_blockProcessor, new BlockProcessedEventArgs(block));
+
+            foreach (var receipt in receipts)
+            {
+                _blockProcessor.TransactionProcessed +=
+                    Raise.EventWith(_blockProcessor, new TransactionProcessedEventArgs(receipt));
+            }
 
             NUnit.Framework.Assert.Multiple(() =>
             {
@@ -332,7 +338,7 @@ namespace Nethermind.Blockchain.Test.Filters
                     var logs = _filterManager.GetLogs(filter.Id);
                     logsAssertion(logs);
                 }
-                
+
                 var hashes = _filterManager.GetBlocksHashes(blockFilter.Id);
                 NUnit.Framework.Assert.AreEqual(1, hashes.Length);
             });

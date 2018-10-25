@@ -67,6 +67,7 @@ namespace Nethermind.Blockchain
         }
 
         public event EventHandler<BlockProcessedEventArgs> BlockProcessed;
+        public event EventHandler<TransactionProcessedEventArgs> TransactionProcessed;
 
         public Block[] Process(Keccak branchStateRoot, Block[] suggestedBlocks, ProcessingOptions options, ITraceListener traceListener)
         {
@@ -125,6 +126,7 @@ namespace Nethermind.Blockchain
                 TransactionTrace trace;
                 bool shouldTrace = traceListener.ShouldTrace(currentTx.Hash);
                 (receipts[i], trace) = _transactionProcessor.Execute(i, currentTx, block.Header, shouldTrace);
+                TransactionProcessed?.Invoke(this, new TransactionProcessedEventArgs(receipts[i]));
                 if (shouldTrace) traceListener.RecordTrace(currentTx.Hash, trace);
             }
 
@@ -199,7 +201,7 @@ namespace Nethermind.Blockchain
                 StoreTxReceipts(block, receipts);
             }
 
-            BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(block, receipts));
+            BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(block));
             return block;
         }
 
