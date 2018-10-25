@@ -111,7 +111,7 @@ namespace Nethermind.Network.Test
             var p2pArgs = new P2PProtocolInitializedEventArgs(p2pProtocol)
             {
                 P2PVersion = 4,
-                Capabilities = new[] {new Capability(Protocol.Eth, 62)}.ToList(),
+                Capabilities = new[] {new Capability(Protocol.Eth, 62), new Capability(Protocol.Eth, 63)}.ToList(),
             };
             p2pSession.TriggerProtocolInitialized(p2pArgs);
             AssertTrue(() => _peerManager.ActivePeers.First().NodeStats.DidEventHappen(NodeStatsEventType.P2PInitialized), 5000);
@@ -119,7 +119,7 @@ namespace Nethermind.Network.Test
 
             //trigger eth62 initialization
             var eth62 = new Eth62ProtocolHandler(p2pSession, new MessageSerializationService(), _synchronizationManager, _logManager, new PerfService(_logManager));
-            var args = new Eth62ProtocolInitializedEventArgs(eth62)
+            var args = new EthProtocolInitializedEventArgs(eth62)
             {
                 ChainId = _synchronizationManager.ChainId
             };
@@ -161,7 +161,7 @@ namespace Nethermind.Network.Test
             var p2pArgs = new P2PProtocolInitializedEventArgs(p2pProtocol)
             {
                 P2PVersion = 4,
-                Capabilities = new[] { new Capability(Protocol.Eth, 62) }.ToList()
+                Capabilities = new[] { new Capability(Protocol.Eth, 62), new Capability(Protocol.Eth, 63) }.ToList()
             };
             p2pSession.TriggerProtocolInitialized(p2pArgs);
             AssertTrue(() => _peerManager.ActivePeers.First().NodeStats.DidEventHappen(NodeStatsEventType.P2PInitialized), 5000);
@@ -169,7 +169,7 @@ namespace Nethermind.Network.Test
 
             //trigger eth62 initialization
             var eth62 = new Eth62ProtocolHandler(p2pSession, new MessageSerializationService(), _synchronizationManager, _logManager, new PerfService(_logManager));
-            var args = new Eth62ProtocolInitializedEventArgs(eth62)
+            var args = new EthProtocolInitializedEventArgs(eth62)
             {
                 ChainId = _synchronizationManager.ChainId
             };
@@ -205,7 +205,7 @@ namespace Nethermind.Network.Test
             var p2pArgs = new P2PProtocolInitializedEventArgs(p2pProtocol)
             {
                 P2PVersion = 1,
-                Capabilities = new[] { new Capability(Protocol.Eth, 62) }.ToList()
+                Capabilities = new[] { new Capability(Protocol.Eth, 62), new Capability(Protocol.Eth, 63) }.ToList()
             };
             p2pSession.TriggerProtocolInitialized(p2pArgs);
             AssertTrue(() => p2pSession.Disconected, 5000);
@@ -223,7 +223,7 @@ namespace Nethermind.Network.Test
             var p2pArgs = new P2PProtocolInitializedEventArgs(p2pProtocol)
             {
                 P2PVersion = 5,
-                Capabilities = new[] { new Capability(Protocol.Eth, 60) }.ToList()
+                Capabilities = new[] { new Capability(Protocol.Eth, 60),new Capability(Protocol.Eth, 61) }.ToList()
             };
             p2pSession.TriggerProtocolInitialized(p2pArgs);
             AssertTrue(() => p2pSession.Disconected, 5000);
@@ -238,7 +238,7 @@ namespace Nethermind.Network.Test
 
             //trigger eth62 initialization
             var eth62 = new Eth62ProtocolHandler(p2pSession, new MessageSerializationService(), _synchronizationManager, _logManager, new PerfService(_logManager));
-            var args = new Eth62ProtocolInitializedEventArgs(eth62)
+            var args = new EthProtocolInitializedEventArgs(eth62)
             {
                 ChainId = 100
             };

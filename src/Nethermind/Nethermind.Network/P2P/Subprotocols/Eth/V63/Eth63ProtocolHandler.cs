@@ -18,6 +18,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Core;
@@ -50,8 +51,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
         public Eth63ProtocolHandler(
             IP2PSession p2PSession,
             IMessageSerializationService serializer,
-            ISynchronizationManager sync,
-            ILogManager logManager, IPerfService perfService) : base(p2PSession, serializer, sync, logManager, perfService)
+            ISynchronizationManager syncManager,
+            ILogManager logManager, IPerfService perfService) : base(p2PSession, serializer, syncManager, logManager, perfService)
         {
         }
 
@@ -89,7 +90,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 
         private void Handle(GetReceiptsMessage msg)
         {
-            throw new NotImplementedException();
+            TransactionReceipt[][] receipts = SyncManager.GetReceipts(msg.BlockHashes); 
+            Send(new ReceiptsMessage(receipts));
         }
 
         private void Handle(ReceiptsMessage msg)
@@ -99,7 +101,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 
         private void Handle(GetNodeDataMessage msg)
         {
-            throw new NotImplementedException();
+            byte[][] nodeData = SyncManager.GetNodeData(msg.Keys);
+            if (nodeData.Any(d => d != null))
+            {
+                
+            }
+            
+            Send(new NodeDataMessage(nodeData));
         }
 
         private void Handle(NodeDataMessage msg)

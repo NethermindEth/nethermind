@@ -469,6 +469,7 @@ namespace Nethermind.Runner.Runners
             }
 
             _syncManager = new SynchronizationManager(
+                _dbProvider.StateDb,
                 _blockTree,
                 blockValidator,
                 headerValidator,

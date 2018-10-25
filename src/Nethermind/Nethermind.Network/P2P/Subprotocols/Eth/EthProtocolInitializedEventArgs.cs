@@ -17,13 +17,11 @@
  */
 
 using System.Numerics;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth
 {
-    [Todo(Improve.Refactor, "Validate need for separate event args for different eth versions")]
-    public class Eth63ProtocolInitializedEventArgs : ProtocolInitializedEventArgs
+    public class EthProtocolInitializedEventArgs : ProtocolInitializedEventArgs
     {
         public string Protocol { get; set; }
         public byte ProtocolVersion { get; set; }
@@ -32,7 +30,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         public Keccak BestHash { get; set; }
         public Keccak GenesisHash { get; set; }
 
-        public Eth63ProtocolInitializedEventArgs(Eth62ProtocolHandler protocolHandler) : base(protocolHandler)
+        public EthProtocolInitializedEventArgs(Eth62ProtocolHandler protocolHandler) : base(protocolHandler)
         {
         }
     }

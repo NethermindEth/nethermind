@@ -624,7 +624,7 @@ namespace Nethermind.Network
                     peer.P2PMessageSender = p2PProtocolHandler;
                     break;
                 case Eth63ProtocolHandler eth63Protocolhandler:
-                    var eth63EventArgs = (Eth63ProtocolInitializedEventArgs) e;
+                    var eth63EventArgs = (EthProtocolInitializedEventArgs) e;
                     peer.NodeStats.AddNodeStatsEth62InitializedEvent(new Eth62NodeDetails
                     {
                         ChainId = eth63EventArgs.ChainId,
@@ -652,7 +652,7 @@ namespace Nethermind.Network
 
                     break;
                 case Eth62ProtocolHandler ethProtocolhandler:
-                    var eth62EventArgs = (Eth62ProtocolInitializedEventArgs) e;
+                    var eth62EventArgs = (EthProtocolInitializedEventArgs) e;
                     peer.NodeStats.AddNodeStatsEth62InitializedEvent(new Eth62NodeDetails
                     {
                         ChainId = eth62EventArgs.ChainId,
@@ -823,7 +823,7 @@ namespace Nethermind.Network
 
                     break;
                 case Protocol.Eth:
-                    var ethArgs = (Eth62ProtocolInitializedEventArgs) eventArgs;
+                    var ethArgs = (EthProtocolInitializedEventArgs) eventArgs;
                     if (!ValidateChainId(ethArgs.ChainId))
                     {
                         if (_logger.IsTrace)

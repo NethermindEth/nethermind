@@ -31,6 +31,7 @@ using Nethermind.Core.Logging;
 using Nethermind.Core.Model;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Stats.Model;
+using Nethermind.Store;
 
 namespace Nethermind.Blockchain
 {
@@ -50,6 +51,7 @@ namespace Nethermind.Blockchain
 
         private readonly ITransactionStore _transactionStore;
         private readonly ITransactionValidator _transactionValidator;
+        private readonly IDb _stateDb;
         private readonly IBlockchainConfig _blockchainConfig;
         private readonly IBlockTree _blockTree;
 
@@ -67,6 +69,7 @@ namespace Nethermind.Blockchain
         private readonly Stopwatch _entireSyncStopWatch = new Stopwatch();
 
         public SynchronizationManager(
+            IDb stateDb,
             IBlockTree blockTree,
             IBlockValidator blockValidator,
             IHeaderValidator headerValidator,
@@ -76,6 +79,7 @@ namespace Nethermind.Blockchain
             IBlockchainConfig blockchainConfig, IPerfService perfService)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));
             _blockchainConfig = blockchainConfig ?? throw new ArgumentNullException(nameof(blockchainConfig));
             _perfService = perfService;
 
@@ -97,6 +101,40 @@ namespace Nethermind.Blockchain
         public UInt256 HeadNumber => _blockTree.Head.Number;
         public UInt256 TotalDifficulty => _blockTree.Head.TotalDifficulty ?? 0;
         public event EventHandler<SyncEventArgs> SyncEvent;
+
+        public byte[][] GetNodeData(Keccak[] keys)
+        {
+            byte[][] values = new byte[keys.Length][];
+            for (int i = 0; i < keys.Length; i++)
+            {
+                values[i] = _stateDb.Get(keys[i]);
+            }
+
+            return values;
+        }
+
+        public TransactionReceipt[][] GetReceipts(Keccak[] blockHashes)
+        {
+            TransactionReceipt[][] receipts = new TransactionReceipt[blockHashes.Length][];
+            for (int blockIndex = 0; blockIndex < blockHashes.Length; blockIndex++)
+            {
+                Block block = Find(blockHashes[blockIndex]);
+                TransactionReceipt[] blockReceipts = new TransactionReceipt[block?.Transactions.Length ?? 0];
+                for (int receiptIndex = 0; receiptIndex < (block?.Transactions.Length ?? 0); receiptIndex++)
+                {
+                    if (block == null)
+                    {
+                        continue;
+                    }
+                    
+                    blockReceipts[receiptIndex] = _transactionStore.GetReceipt(block.Transactions[receiptIndex].Hash);
+                }
+
+                receipts[blockIndex] = blockReceipts;
+            }
+
+            return receipts;
+        }
 
         public Block Find(Keccak hash)
         {
