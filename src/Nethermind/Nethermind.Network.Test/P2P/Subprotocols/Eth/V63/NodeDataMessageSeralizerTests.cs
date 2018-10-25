@@ -16,7 +16,8 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Network.P2P.Subprotocols.Eth.V63;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
@@ -24,16 +25,42 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
     [TestFixture]
     public class NodeDataMessageSerializerTests
     {
+        private static void Test(byte[][] data)
+        {
+            NodeDataMessage message = new NodeDataMessage(data);
+            NodeDataMessageSerializer serializer = new NodeDataMessageSerializer();
+            var serialized = serializer.Serialize(message);
+            NodeDataMessage deserialized = serializer.Deserialize(serialized);
+
+            if (data == null)
+            {
+                Assert.AreEqual(0, deserialized.Data.Length);
+            }
+            else
+            {
+                Assert.AreEqual(data.Length, deserialized.Data.Length, "length");
+                for (int i = 0; i < data.Length; i++) Assert.AreEqual(data[i] ?? new byte[0], deserialized.Data[i], $"data[{i}]");
+            }
+        }
+
         [Test]
         public void Roundtrip()
         {
-            throw new NotImplementedException();
+            byte[][] data = {TestObject.KeccakA.Bytes, TestObject.KeccakB.Bytes, TestObject.KeccakC.Bytes};
+            Test(data);
+        }
+
+        [Test]
+        public void Roundtrip_with_null_top_level()
+        {
+            Test(null);
         }
 
         [Test]
         public void Roundtrip_with_nulls()
         {
-            throw new NotImplementedException();
+            byte[][] data = {TestObject.KeccakA.Bytes, null, TestObject.KeccakC.Bytes};
+            Test(data);
         }
     }
 }

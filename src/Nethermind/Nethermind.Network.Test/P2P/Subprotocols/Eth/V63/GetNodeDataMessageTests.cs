@@ -16,6 +16,10 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Network.P2P.Subprotocols.Eth.V63;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
@@ -23,6 +27,18 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
     [TestFixture]
     public class GetNodeDataMessageTests
     {
+        [Test]
+        public void Sets_values_from_contructor_argument()
+        {
+            Keccak[] keys = {TestObject.KeccakA, TestObject.KeccakB};
+            GetNodeDataMessage message = new GetNodeDataMessage(keys);
+            Assert.AreSame(keys, message.Keys);
+        }
 
+        [Test]
+        public void Throws_on_null_argument()
+        {
+            Assert.Throws<ArgumentNullException>(() => new GetNodeDataMessage(null));
+        }
     }
 }

@@ -16,6 +16,8 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.Core;
+using Nethermind.Network.P2P.Subprotocols.Eth.V63;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
@@ -23,6 +25,27 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
     [TestFixture]
     public class ReceiptsMessageTests
     {
+        [Test]
+        public void Accepts_nulls_inside()
+        {
+            TransactionReceipt[][] data = {new[] {new TransactionReceipt(), new TransactionReceipt()}, null};
+            ReceiptsMessage message = new ReceiptsMessage(data);
+            Assert.AreSame(data, message.Receipts);
+        }
 
+        [Test]
+        public void Accepts_nulls_top_level()
+        {
+            ReceiptsMessage message = new ReceiptsMessage(null);
+            Assert.AreEqual(0, message.Receipts.Length);
+        }
+
+        [Test]
+        public void Sets_values_from_contructor_argument()
+        {
+            TransactionReceipt[][] data = {new[] {new TransactionReceipt(), new TransactionReceipt()}, new[] {new TransactionReceipt(), new TransactionReceipt()}};
+            ReceiptsMessage message = new ReceiptsMessage(data);
+            Assert.AreSame(data, message.Receipts);
+        }
     }
 }

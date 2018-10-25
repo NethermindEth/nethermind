@@ -52,6 +52,7 @@ using Nethermind.Network.Discovery.RoutingTable;
 using Nethermind.Network.Discovery.Serializers;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth;
+using Nethermind.Network.P2P.Subprotocols.Eth.V63;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Runner.Config;
@@ -604,7 +605,7 @@ namespace Nethermind.Runner.Runners
             _syncManager.Start();
             return Task.CompletedTask;
         }
-
+        
         private async Task InitPeer()
         {
             /* rlpx */
@@ -621,7 +622,7 @@ namespace Nethermind.Runner.Runners
             _messageSerializationService.Register(new PingMessageSerializer());
             _messageSerializationService.Register(new PongMessageSerializer());
 
-            /* eth */
+            /* eth62 */
             _messageSerializationService.Register(new StatusMessageSerializer());
             _messageSerializationService.Register(new TransactionsMessageSerializer());
             _messageSerializationService.Register(new GetBlockHeadersMessageSerializer());
@@ -630,6 +631,12 @@ namespace Nethermind.Runner.Runners
             _messageSerializationService.Register(new BlockHeadersMessageSerializer());
             _messageSerializationService.Register(new BlockBodiesMessageSerializer());
             _messageSerializationService.Register(new NewBlockMessageSerializer());
+            
+            /* eth63 */
+            _messageSerializationService.Register(new GetNodeDataMessageSerializer());
+            _messageSerializationService.Register(new NodeDataMessageSerializer());
+            _messageSerializationService.Register(new GetReceiptsMessageSerializer());
+            _messageSerializationService.Register(new ReceiptsMessageSerializer());
 
             _rlpxPeer = new RlpxPeer(new NodeId(_nodeKey.PublicKey), _initConfig.P2PPort,
                 _syncManager,

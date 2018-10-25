@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.Network.P2P.Subprotocols.Eth.V63;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
@@ -23,6 +24,27 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
     [TestFixture]
     public class NodeDataMessageTests
     {
+        [Test]
+        public void Accepts_nulls_inside()
+        {
+            byte[][] data = {new byte[] {1, 2, 3}, null};
+            NodeDataMessage message = new NodeDataMessage(data);
+            Assert.AreSame(data, message.Data);
+        }
 
+        [Test]
+        public void Accepts_nulls_top_level()
+        {
+            NodeDataMessage message = new NodeDataMessage(null);
+            Assert.AreEqual(0, message.Data.Length);
+        }
+
+        [Test]
+        public void Sets_values_from_contructor_argument()
+        {
+            byte[][] data = {new byte[] {1, 2, 3}, new byte[] {4, 5, 6}};
+            NodeDataMessage message = new NodeDataMessage(data);
+            Assert.AreSame(data, message.Data);
+        }
     }
 }

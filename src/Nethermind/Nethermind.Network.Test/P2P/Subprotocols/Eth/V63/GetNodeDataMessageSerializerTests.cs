@@ -16,7 +16,9 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Network.P2P.Subprotocols.Eth.V63;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
@@ -24,16 +26,29 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
     [TestFixture]
     public class GetNodeDataMessageSerializerTests
     {
+        private static void Test(Keccak[] keys)
+        {
+            GetNodeDataMessage message = new GetNodeDataMessage(keys);
+            GetNodeDataMessageSerializer serializer = new GetNodeDataMessageSerializer();
+            var serialized = serializer.Serialize(message);
+            GetNodeDataMessage deserialized = serializer.Deserialize(serialized);
+
+            Assert.AreEqual(keys.Length, deserialized.Keys.Length, "length");
+            for (int i = 0; i < keys.Length; i++) Assert.AreEqual(keys[i], deserialized.Keys[i], $"keys[{i}]");
+        }
+
         [Test]
         public void Roundtrip()
         {
-            throw new NotImplementedException();
+            Keccak[] keys = {TestObject.KeccakA, TestObject.KeccakB, TestObject.KeccakC};
+            Test(keys);
         }
 
         [Test]
         public void Roundtrip_with_nulls()
         {
-            throw new NotImplementedException();
+            Keccak[] keys = {null, TestObject.KeccakA, null, TestObject.KeccakB, null, null};
+            Test(keys);
         }
     }
 }

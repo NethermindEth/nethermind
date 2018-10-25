@@ -134,7 +134,7 @@ namespace Nethermind.Core.Encoding
                 Rlp[] rlpSequence = new Rlp[items.Length];
                 for (int i = 0; i < items.Length; i++)
                 {
-                    rlpSequence[i] = decoder.Encode(items[i], behaviors);
+                    rlpSequence[i] = items[i] == null ? OfEmptySequence : decoder.Encode(items[i], behaviors);
                 }
 
                 return Encode(rlpSequence);
@@ -189,7 +189,7 @@ namespace Nethermind.Core.Encoding
             {
                 return OfEmptyByteArray;
             }
-            
+
             byte[] bytes = new byte[32];
             value.ToBigEndian(bytes);
             return Encode(bytes.WithoutLeadingZeros());
@@ -383,10 +383,10 @@ namespace Nethermind.Core.Encoding
                 rlpResult[0] = prefix;
                 serializedLength.CopyTo(rlpResult.AsSpan(1));
                 input.CopyTo(rlpResult.AsSpan(1 + serializedLength.Length));
-                return new Rlp(rlpResult);    
+                return new Rlp(rlpResult);
             }
         }
-        
+
         public static Rlp Encode(byte[] input)
         {
             return Encode(input.AsSpan());
@@ -959,7 +959,7 @@ namespace Nethermind.Core.Encoding
             public Bloom DecodeBloom()
             {
                 Span<byte> bloomBytes;
-                
+
                 // tks: not sure why but some nodes send us Blooms in a sequence form
                 // https://github.com/NethermindEth/nethermind/issues/113
                 if (Data[Position] == 249)
@@ -1041,7 +1041,15 @@ namespace Nethermind.Core.Encoding
                 T[] result = new T[count];
                 for (int i = 0; i < result.Length; i++)
                 {
-                    result[i] = decodeItem(this);
+                    if (Data[Position] == OfEmptySequence[0])
+                    {
+                        result[i] = default;
+                        Position++;
+                    }
+                    else
+                    {
+                        result[i] = decodeItem(this);    
+                    }
                 }
 
                 return result;
@@ -1123,7 +1131,7 @@ namespace Nethermind.Core.Encoding
 
                     return Read(length);
                 }
-                
+
                 throw new RlpException($"Unexpected prefix value of {prefix} when decoding a byte array.");
             }
 
@@ -1140,7 +1148,7 @@ namespace Nethermind.Core.Encoding
         }
 
         public override bool Equals(object other)
-        {            
+        {
             return Equals(other as Rlp);
         }
 
