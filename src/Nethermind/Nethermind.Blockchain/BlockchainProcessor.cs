@@ -192,7 +192,10 @@ namespace Nethermind.Blockchain
             {
                 if (_logger.IsTrace) _logger.Trace($"Processing block {block.ToString(Block.Format.Short)}).");
 
-                Process(block);
+                Process(block, ProcessingOptions.StoreReceipts, NullTraceListener.Instance);
+                if (_logger.IsTrace) _logger.Trace($"Processed block {block.ToString(Block.Format.Full)}");
+
+                _stats.UpdateStats(block, _recoveryQueue.Count, _blockQueue.Count);
 
                 if (_logger.IsTrace) _logger.Trace($"Now {_blockQueue.Count} blocks waiting in the queue.");
                 if (_blockQueue.Count == 0)
@@ -202,16 +205,15 @@ namespace Nethermind.Blockchain
             }
         }
 
-        private void Process(Block suggestedBlock)
+        [Todo("At the moment this one is more of a DEV tool as it may lead to state corruption with the main execution line.")]
+        public void AddTxData(Keccak blockHash)
         {
-            Process(suggestedBlock, ProcessingOptions.None, NullTraceListener.Instance);
-            if (_logger.IsTrace) _logger.Trace($"Processed block {suggestedBlock.ToString(Block.Format.Full)}");
-
-            _stats.UpdateStats(suggestedBlock, _recoveryQueue.Count, _blockQueue.Count);
-        }
-
-        public void AddTxData(Block block)
-        {
+            Block block = _blockTree.FindBlock(blockHash, true);
+            if (block == null)
+            {
+                throw new InvalidOperationException("Can only add tx data for block that is already on main chain");
+            }
+            
             Process(block, ProcessingOptions.ForceProcessing | ProcessingOptions.StoreReceipts, NullTraceListener.Instance);
         }
 
@@ -258,7 +260,7 @@ namespace Nethermind.Blockchain
 
                 List<Block> unprocessedBlocksToBeAddedToMain = new List<Block>();
                 Block[] blocks;
-                if (options.HasFlag(ProcessingOptions.ForceProcessing))
+                if ((options & ProcessingOptions.ForceProcessing) != 0)
                 {
                     blocksToBeAddedToMain.Clear();
                     blocks = new Block[1];
@@ -297,7 +299,7 @@ namespace Nethermind.Blockchain
                 }
 
                 processedBlocks = _blockProcessor.Process(stateRoot, blocks, options, traceListener);
-                if (!options.HasFlag(ProcessingOptions.ReadOnlyChain) && !options.HasFlag(ProcessingOptions.ForceProcessing))
+                if ((options & (ProcessingOptions.ReadOnlyChain | ProcessingOptions.ForceProcessing)) == 0)
                 {
                     // TODO: lots of unnecessary loading and decoding here, review after adding support for loading headers only
                     List<BlockHeader> blocksToBeRemovedFromMain = new List<BlockHeader>();
@@ -349,7 +351,7 @@ namespace Nethermind.Blockchain
                 throw new InvalidOperationException("Block without total difficulty calculated was suggested for processing");
             }
 
-            if (!options.HasFlag(ProcessingOptions.ReadOnlyChain) && suggestedBlock.Hash == null)
+            if ((options & ProcessingOptions.ReadOnlyChain) == 0 && suggestedBlock.Hash == null)
             {
                 throw new InvalidOperationException("Block hash should be known at this stage if the block is not read only");
             }

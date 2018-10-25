@@ -279,6 +279,13 @@ namespace Nethermind.Evm
                         _parityTouchBugAccount = null;
                     }
 
+                    if (_trace != null)
+                    {
+                        _traceEntry.Error = ex.GetType().Name;
+                        _traceEntry.GasCost = 0;
+                        _trace.Entries.Add(_traceEntry);
+                    }
+                    
                     if (currentState.ExecutionType == ExecutionType.Transaction || currentState.ExecutionType == ExecutionType.DirectPrecompile || currentState.ExecutionType == ExecutionType.DirectCreate)
                     {
                         if(_trace != null) _trace.Failed = true;

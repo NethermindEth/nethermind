@@ -30,6 +30,7 @@ using Nethermind.Evm;
 
 namespace Nethermind.Blockchain
 {
+    [Todo("Introduce strategy for collecting Transacions for the block?")]
     public class DevBlockProducer : IBlockProducer
     {
         private static readonly BigInteger MinGasPriceForMining = 1;
@@ -41,12 +42,12 @@ namespace Nethermind.Blockchain
 
         public DevBlockProducer(
             ITransactionStore transactionStore,
-            IBlockchainProcessor processor,
+            IBlockchainProcessor devProcessor,
             IBlockTree blockTree,
             ILogManager logManager)
         {
             _transactionStore = transactionStore ?? throw new ArgumentNullException(nameof(transactionStore));
-            _processor = processor ?? throw new ArgumentNullException(nameof(processor));
+            _processor = devProcessor ?? throw new ArgumentNullException(nameof(devProcessor));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
@@ -129,13 +130,14 @@ namespace Nethermind.Blockchain
                 return;
             }
 
-            Block processedBlock = _processor.Process(block, ProcessingOptions.ReadOnlyChain | ProcessingOptions.StoreReceipts, NullTraceListener.Instance);
+            Block processedBlock = _processor.Process(block, ProcessingOptions.ReadOnlyChain | ProcessingOptions.WithRollback, NullTraceListener.Instance);
             if (processedBlock == null)
             {
-                if(_logger.IsError) _logger.Error("Block prepared by block producer was rejected by processor");
+                if (_logger.IsError) _logger.Error("Block prepared by block producer was rejected by processor");
                 return;
             }
-            
+
+            if (_logger.IsInfo) _logger.Info($"Suggesting newly mined block {processedBlock.ToString(Block.Format.HashAndNumber)}");
             _blockTree.SuggestBlock(processedBlock);
         }
     }

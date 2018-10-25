@@ -1,26 +1,51 @@
+/*
+ * Copyright (c) 2018 Demerzel Solutions Limited
+ * This file is part of the Nethermind library.
+ *
+ * The Nethermind library is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * The Nethermind library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+ */
+
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using FluentAssertions;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Test.Builders;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
+using Nethermind.Core.Logging;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Dirichlet.Numerics;
 using NSubstitute;
 using NUnit.Framework;
 
-namespace Nethermind.Blockchain.Test
+namespace Nethermind.Blockchain.Test.Filters
 {
     public class FilterManagerTests
     {
         private IFilterStore _filterStore;
-        private IFilterManager _filterManager;
-
+        private IBlockProcessor _blockProcessor;
+        private FilterManager _filterManager;
+        private ILogManager _logManager;
+        private int _currentFilterId;
+        
         [SetUp]
         public void Setup()
         {
+            _currentFilterId = 0;
             _filterStore = Substitute.For<IFilterStore>();
+            _blockProcessor = Substitute.For<IBlockProcessor>();
+            _logManager = Substitute.For<ILogManager>();
         }
 
         [Test]
@@ -277,7 +302,7 @@ namespace Nethermind.Blockchain.Test
             IEnumerable<Action<ReceiptBuilder>> receiptBuilders,
             Action<IEnumerable<FilterLog>> logsAssertion)
         {
-            var filters = new List<Filter>();
+            var filters = new List<FilterBase>();
             var receipts = new List<TransactionReceipt>();
             foreach (var filterBuilder in filterBuilders)
             {
@@ -288,27 +313,34 @@ namespace Nethermind.Blockchain.Test
             {
                 receipts.Add(BuildReceipt(receiptBuilder));
             }
+            
+            // adding always a simple block filter and test
+            Block block = Build.A.Block.TestObject;
+            BlockFilter blockFilter = new BlockFilter(_currentFilterId++, 0);
+            filters.Add(blockFilter);
 
-            _filterStore.GetAll().Returns(filters);
-            _filterManager = new FilterManager(_filterStore);
-            foreach (var receipt in receipts)
-            {
-                _filterManager.AddTransactionReceipt(receipt);
-            }
+            _filterStore.GetFilters<LogFilter>().Returns(filters.OfType<LogFilter>().ToArray());
+            _filterStore.GetFilters<BlockFilter>().Returns(filters.OfType<BlockFilter>().ToArray());
+            _filterManager = new FilterManager(_filterStore, _blockProcessor, _logManager);
+            
+            _blockProcessor.BlockProcessed += Raise.EventWith(_blockProcessor, new BlockProcessedEventArgs(block, receipts.ToArray()));
 
             NUnit.Framework.Assert.Multiple(() =>
             {
-                foreach (var filter in filters)
+                foreach (var filter in filters.OfType<LogFilter>())
                 {
                     var logs = _filterManager.GetLogs(filter.Id);
                     logsAssertion(logs);
                 }
+                
+                var hashes = _filterManager.GetBlocksHashes(blockFilter.Id);
+                NUnit.Framework.Assert.AreEqual(1, hashes.Length);
             });
         }
 
-        private static Filter BuildFilter(Action<FilterBuilder> builder)
+        private LogFilter BuildFilter(Action<FilterBuilder> builder)
         {
-            var builderInstance = FilterBuilder.New();
+            var builderInstance = FilterBuilder.New(ref _currentFilterId);
             builder(builderInstance);
 
             return builderInstance.Build();

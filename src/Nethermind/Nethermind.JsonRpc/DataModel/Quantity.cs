@@ -17,7 +17,10 @@
  */
 
 using System.Numerics;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.JsonRpc.DataModel
 {
@@ -51,10 +54,15 @@ namespace Nethermind.JsonRpc.DataModel
             return Value?.ToHexString(true);
         }
 
-        // TODO: use UInt256 here?
-        public BigInteger? GetValue()
+        [Todo("Use UInt256 here")]
+        public UInt256? AsNumber()
         {
-            return Value != null ? new BigInteger(Value, false, true) : (BigInteger?) null;
+            return Value != null ?  (UInt256?)new BigInteger(Value, false, true) : null;
+        }
+        
+        public Keccak AsHash()
+        {
+            return Value != null ? new Keccak(Value) : null;
         }
 
         public override string ToString()

@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm;
@@ -25,5 +26,6 @@ namespace Nethermind.Blockchain
     public interface IBlockProcessor
     {
         Block[] Process(Keccak branchStateRoot, Block[] suggestedBlocks, ProcessingOptions processingOptions, ITraceListener traceListener);
+        event EventHandler<BlockProcessedEventArgs> BlockProcessed;
     }
 }

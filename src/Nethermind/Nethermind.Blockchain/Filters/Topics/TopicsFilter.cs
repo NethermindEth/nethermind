@@ -22,9 +22,11 @@ namespace Nethermind.Blockchain.Filters.Topics
 {
     public class TopicsFilter
     {
+        public static TopicsFilter AnyTopic { get; } = new TopicsFilter();
+
         private readonly TopicExpression[] _expressions;
 
-        public TopicsFilter(TopicExpression[] expressions)
+        public TopicsFilter(params TopicExpression[] expressions)
         {
             _expressions = expressions;
         }

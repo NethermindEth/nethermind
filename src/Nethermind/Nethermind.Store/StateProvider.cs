@@ -18,8 +18,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
-using System.Numerics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -79,6 +77,11 @@ namespace Nethermind.Store
         public bool IsEmptyAccount(Address address)
         {
             return GetThroughCache(address).IsEmpty;
+        }
+
+        public Account GetAccount(Address address)
+        {
+            return GetThroughCache(address);
         }
 
         public bool IsDeadAccount(Address address)

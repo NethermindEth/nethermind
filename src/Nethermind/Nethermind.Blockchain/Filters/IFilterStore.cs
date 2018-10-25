@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Collections.Generic;
 using Nethermind.Dirichlet.Numerics;
 
@@ -23,11 +24,16 @@ namespace Nethermind.Blockchain.Filters
 {
     public interface IFilterStore
     {
-        IReadOnlyCollection<Filter> GetAll();
-        
-        BlockFilter CreateBlockFilter(UInt256 startBlockNumber);
+        bool FilterExists(int filterId);
+        T[] GetFilters<T>() where T : FilterBase;
+        BlockFilter CreateBlockFilter(UInt256 startBlockNumber, bool setId = true);
+        LogFilter CreateLogFilter(FilterBlock fromBlock, FilterBlock toBlock, object address = null,
+            IEnumerable<object> topics = null, bool setId = true);
 
-        Filter CreateFilter(FilterBlock fromBlock, FilterBlock toBlock, object address = null, IEnumerable<object> topics = null);
+        void SaveFilter(FilterBase filter);
         void RemoveFilter(int filterId);
+        FilterType GetFilterType(int filterId);
+
+        event EventHandler<FilterEventArgs> FilterRemoved;
     }
 }

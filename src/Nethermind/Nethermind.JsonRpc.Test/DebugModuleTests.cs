@@ -35,14 +35,14 @@ namespace Nethermind.JsonRpc.Test
         [Test]
         public void Get_from_db()
         {
-            IBlockchainBridge blockchainBridge = Substitute.For<IBlockchainBridge>();
+            IDebugBridge debugBridge = Substitute.For<IDebugBridge>();
             byte[] key = new byte[] {1, 2, 3};
             byte[] value = new byte[] {4, 5, 6};
-            blockchainBridge.GetDbValue(Arg.Any<string>(), Arg.Any<byte[]>()).Returns(value);
+            debugBridge.GetDbValue(Arg.Any<string>(), Arg.Any<byte[]>()).Returns(value);
             
             IConfigProvider configProvider = Substitute.For<IConfigProvider>();
-            IJsonRpcModelMapper modelMapper = new JsonRpcModelMapper(Substitute.For<IEthereumSigner>());
-            DebugModule module = new DebugModule(configProvider, NullLogManager.Instance, blockchainBridge, modelMapper, new UnforgivingJsonSerializer());
+            IJsonRpcModelMapper modelMapper = new JsonRpcModelMapper();
+            DebugModule module = new DebugModule(configProvider, NullLogManager.Instance, debugBridge, modelMapper, new UnforgivingJsonSerializer());
             JsonRpcResponse response = RpcTest.TestRequest<IDebugModule>(module, "debug_getFromDb", "STATE", key.ToHexString());
             
             byte[] result = Bytes.FromHexString((string)response.Result);
@@ -52,13 +52,13 @@ namespace Nethermind.JsonRpc.Test
         [Test]
         public void Get_from_db_null_value()
         {   
-            IBlockchainBridge blockchainBridge = Substitute.For<IBlockchainBridge>();            
+            IDebugBridge debugBridge = Substitute.For<IDebugBridge>();            
             byte[] key = new byte[] {1, 2, 3};
-            blockchainBridge.GetDbValue(Arg.Any<string>(), Arg.Any<byte[]>()).Returns((byte[])null);
+            debugBridge.GetDbValue(Arg.Any<string>(), Arg.Any<byte[]>()).Returns((byte[])null);
 
             IConfigProvider configProvider = Substitute.For<IConfigProvider>();
-            IJsonRpcModelMapper modelMapper = new JsonRpcModelMapper(Substitute.For<IEthereumSigner>());
-            DebugModule module = new DebugModule(configProvider, NullLogManager.Instance, blockchainBridge, modelMapper, new UnforgivingJsonSerializer());
+            IJsonRpcModelMapper modelMapper = new JsonRpcModelMapper();
+            DebugModule module = new DebugModule(configProvider, NullLogManager.Instance, debugBridge, modelMapper, new UnforgivingJsonSerializer());
             JsonRpcResponse response = RpcTest.TestRequest<IDebugModule>(module, "debug_getFromDb", "STATE", key.ToHexString());
             
             Assert.IsNull(response.Error, "error");

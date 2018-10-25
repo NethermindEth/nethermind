@@ -37,6 +37,8 @@ namespace Nethermind.Store
 
         bool IsEmptyAccount(Address address);
 
+        Account GetAccount(Address address);
+        
         UInt256 GetNonce(Address address);
 
         UInt256 GetBalance(Address address);

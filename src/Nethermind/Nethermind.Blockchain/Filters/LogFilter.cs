@@ -22,14 +22,14 @@ using Nethermind.Core;
 
 namespace Nethermind.Blockchain.Filters
 {
-    public class Filter : FilterBase
+    public class LogFilter : FilterBase
     {
         private readonly TopicsFilter _topicsFilter;
         public FilterBlock FromBlock { get; }
         public FilterBlock ToBlock { get; }
         public FilterAddress Address { get; }
         
-        public Filter(int id, FilterBlock fromBlock, FilterBlock toBlock,
+        public LogFilter(int id, FilterBlock fromBlock, FilterBlock toBlock,
             FilterAddress address, TopicsFilter topicsFilter) : base(id)
         {
             FromBlock = fromBlock;
@@ -40,12 +40,12 @@ namespace Nethermind.Blockchain.Filters
 
         public bool Accepts(LogEntry logEntry)
         {
-            if (Address.Address != null && Address.Address != logEntry.LoggersAddress)
+            if (Address?.Address != null && Address.Address != logEntry.LoggersAddress)
             {
                 return false;
             }
             
-            if (Address.Addresses != null && Address.Addresses.All(a => a != logEntry.LoggersAddress))
+            if (Address?.Addresses != null && Address.Addresses.All(a => a != logEntry.LoggersAddress))
             {
                 return false;
             }

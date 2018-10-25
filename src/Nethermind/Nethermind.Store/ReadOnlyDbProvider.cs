@@ -20,27 +20,20 @@ using System;
 
 namespace Nethermind.Store
 {
-    public class ReadOnlyDbProvider : IDbProvider
+    public class ReadOnlyDbProvider : IReadOnlyDbProvider
     {
-        private readonly IDbProvider _wrappedProvider;
-
-        public ReadOnlyDbProvider(IDbProvider wrappedProvider)
+        public ReadOnlyDbProvider(IDbProvider wrappedProvider, bool createInMemoryWriteStore)
         {
-            _wrappedProvider = wrappedProvider ?? throw new ArgumentNullException(nameof(wrappedProvider));
-            StateDb = new StateDb(new ReadOnlyDb(wrappedProvider.StateDb));
-            CodeDb = new StateDb(new ReadOnlyDb(wrappedProvider.CodeDb));
-            ReceiptsDb = new ReadOnlyDb(wrappedProvider.ReceiptsDb);
-            BlockInfosDb = new ReadOnlyDb(wrappedProvider.BlockInfosDb);
-            BlocksDb = new ReadOnlyDb(wrappedProvider.BlocksDb);
+            wrappedProvider = wrappedProvider ?? throw new ArgumentNullException(nameof(wrappedProvider));
+            StateDb = new StateDb(new ReadOnlyDb(wrappedProvider.StateDb, createInMemoryWriteStore));
+            CodeDb = new StateDb(new ReadOnlyDb(wrappedProvider.CodeDb, createInMemoryWriteStore));
+            ReceiptsDb = new ReadOnlyDb(wrappedProvider.ReceiptsDb, createInMemoryWriteStore);
+            BlockInfosDb = new ReadOnlyDb(wrappedProvider.BlockInfosDb, createInMemoryWriteStore);
+            BlocksDb = new ReadOnlyDb(wrappedProvider.BlocksDb, createInMemoryWriteStore);
         }
-        
+
         public void Dispose()
         {
-            StateDb.Dispose();
-            CodeDb.Dispose();
-            ReceiptsDb.Dispose();
-            BlockInfosDb.Dispose();
-            BlocksDb.Dispose();
         }
 
         public ISnapshotableDb StateDb { get; }

@@ -97,7 +97,7 @@ namespace Nethermind.Runner
 
                 await StartRunners(configProvider);
                 await Task.WhenAny(userCancelTask, _cancelKeySource.Task);
-
+                                                                                                                                                                                                                                                                                                        
                 Console.WriteLine("Closing, please wait until all functions are stopped properly...");
                 StopAsync().Wait();
                 Console.WriteLine("All done, goodbye!");
@@ -147,7 +147,7 @@ namespace Nethermind.Runner
                 Bootstrap.Instance.ConfigProvider = configProvider;
                 Bootstrap.Instance.LogManager = logManager;
                 Bootstrap.Instance.BlockchainBridge = _ethereumRunner.BlockchainBridge;
-                Bootstrap.Instance.EthereumSigner = _ethereumRunner.EthereumSigner;
+                Bootstrap.Instance.DebugBridge = _ethereumRunner.DebugBridge;
 
                 _jsonRpcRunner = new JsonRpcRunner(configProvider, logManager);
                 await _jsonRpcRunner.Start().ContinueWith(x =>

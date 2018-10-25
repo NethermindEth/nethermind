@@ -22,10 +22,7 @@
 
 on Linux:
 ```
-sudo apt-get update
-sudo apt-get install libsnappy-dev
-sudo apt-get install libc6-dev
-sudo apt-get install libc6
+sudo apt-get update && sudo apt-get install libsnappy-dev libc6-dev libc6
 ```
 
 on Mac:
@@ -35,10 +32,10 @@ brew install gmp
 
 then (any platform):
 ```
-git clone https://github.com/tkstanczak/nethermind.git --recursive
+git clone https://github.com/tkstanczak/nethermind --recursive
 cd nethermind/src/Nethermind
 dotnet build -c Release
-cd src/Nethermind/Nethermind.Runner
+cd Nethermind.Runner
 dotnet run
 ```
 

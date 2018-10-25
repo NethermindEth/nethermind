@@ -23,7 +23,7 @@ namespace Nethermind.Runner.Runners
 {
     public interface IEthereumRunner : IRunner
     {
+        IDebugBridge DebugBridge { get; }
         IBlockchainBridge BlockchainBridge { get; }
-        IEthereumSigner EthereumSigner { get; }
     }
 }

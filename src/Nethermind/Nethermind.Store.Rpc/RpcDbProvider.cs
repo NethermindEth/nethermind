@@ -29,11 +29,11 @@ namespace Nethermind.Store.Rpc
         public RpcDbProvider(IJsonSerializer serializer, IJsonRpcClient client, ILogManager logManager, IDbProvider recordDbProvider)
         {
             _recordDbProvider = recordDbProvider;
-            StateDb = new StateDb(new ReadOnlyDb(new RpcDb(DbNames.State, serializer, client, logManager, recordDbProvider?.StateDb)));
-            CodeDb = new StateDb(new ReadOnlyDb(new RpcDb(DbNames.Code, serializer, client, logManager, recordDbProvider?.CodeDb)));
-            ReceiptsDb = new StateDb(new ReadOnlyDb(new RpcDb(DbNames.Receipts, serializer, client, logManager, recordDbProvider?.ReceiptsDb)));
-            BlocksDb = new StateDb(new ReadOnlyDb(new RpcDb(DbNames.Blocks, serializer, client, logManager, recordDbProvider?.BlocksDb)));
-            BlockInfosDb = new StateDb(new ReadOnlyDb(new RpcDb(DbNames.BlockInfos, serializer, client, logManager, recordDbProvider?.BlockInfosDb)));
+            StateDb = new StateDb(new ReadOnlyDb(new RpcDb(DbNames.State, serializer, client, logManager, recordDbProvider?.StateDb), true));
+            CodeDb = new StateDb(new ReadOnlyDb(new RpcDb(DbNames.Code, serializer, client, logManager, recordDbProvider?.CodeDb), true));
+            ReceiptsDb = new ReadOnlyDb(new RpcDb(DbNames.Receipts, serializer, client, logManager, recordDbProvider?.ReceiptsDb), true);
+            BlocksDb = new ReadOnlyDb(new RpcDb(DbNames.Blocks, serializer, client, logManager, recordDbProvider?.BlocksDb), true);
+            BlockInfosDb = new ReadOnlyDb(new RpcDb(DbNames.BlockInfos, serializer, client, logManager, recordDbProvider?.BlockInfosDb), true);
         }
         
         public ISnapshotableDb StateDb { get; }

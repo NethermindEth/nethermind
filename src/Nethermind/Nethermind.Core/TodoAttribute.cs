@@ -42,12 +42,12 @@ namespace Nethermind.Core
     [Flags]
     public enum Impr
     {
-        None,
-        Allocations,
-        MemoryUsage,
-        Performance,
-        Readability,
-        TestCoverage,
-        All
+        None = 0,
+        Allocations = 1,
+        MemoryUsage = 2,
+        Performance = 4,
+        Readability = 8,
+        TestCoverage = 16,
+        All = 31
     }
 }
