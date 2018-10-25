@@ -74,6 +74,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         public virtual byte ProtocolVersion => 62;
         public string ProtocolCode => "eth";
         public virtual int MessageIdSpaceSize => 8;
+        public virtual bool IsFastSyncSupported => false;
         public NodeId NodeId => P2PSession.RemoteNodeId;
         public INodeStats NodeStats => P2PSession.NodeStats;
         public string ClientId { get; set; }
@@ -196,6 +197,28 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
             TransactionsMessage msg = new TransactionsMessage(transaction);
             Send(msg);
+        }
+
+        public virtual async Task<TransactionReceipt[][]> GetReceipts(Keccak[] blockHash)
+        {
+            await Task.CompletedTask;
+            throw new NotSupportedException("Fast sync not supported by eth62 protocol");
+        }
+
+        public virtual void SendReceipts(TransactionReceipt[][] receipts)
+        {
+            throw new NotSupportedException("Fast sync not supported by eth62 protocol");
+        }
+
+        public virtual async Task<byte[][]> GetNodeData(Keccak[] hashes)
+        {
+            await Task.CompletedTask;
+            throw new NotSupportedException("Fast sync not supported by eth62 protocol");
+        }
+
+        public virtual void SendNodeData(byte[][] values)
+        {
+            throw new NotSupportedException("Fast sync not supported by eth62 protocol");
         }
 
         protected override TimeSpan InitTimeout => Timeouts.Eth62Status;

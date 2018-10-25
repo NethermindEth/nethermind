@@ -37,6 +37,7 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Network.P2P.Subprotocols.Eth.V63;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 
@@ -596,7 +597,7 @@ namespace Nethermind.Network
                     }
                 }
 
-                //Initializing disconnect if it hasnt been done already - in case of e.g. timeout earier and unexcepted further connection
+                //Initializing disconnect if it hasn't been done already - in case of e.g. timeout earlier and unexpected further connection
                 await session.InitiateDisconnectAsync(DisconnectReason.Other);
 
                 return;
@@ -621,6 +622,34 @@ namespace Nethermind.Network
                     }
 
                     peer.P2PMessageSender = p2PProtocolHandler;
+                    break;
+                case Eth63ProtocolHandler eth63Protocolhandler:
+                    var eth63EventArgs = (Eth63ProtocolInitializedEventArgs) e;
+                    peer.NodeStats.AddNodeStatsEth62InitializedEvent(new Eth62NodeDetails
+                    {
+                        ChainId = eth63EventArgs.ChainId,
+                        BestHash = eth63EventArgs.BestHash,
+                        GenesisHash = eth63EventArgs.GenesisHash,
+                        Protocol = eth63EventArgs.Protocol,
+                        ProtocolVersion = eth63EventArgs.ProtocolVersion,
+                        TotalDifficulty = eth63EventArgs.TotalDifficulty
+                    });
+                    result = await ValidateProtocol(Protocol.Eth, peer, e);
+                    if (!result)
+                    {
+                        return;
+                    }
+
+                    //TODO move this outside, so syncManager have access to NodeStats and NodeDetails
+                    eth63Protocolhandler.ClientId = peer.NodeStats.P2PNodeDetails.ClientId;
+                    peer.SynchronizationPeer = eth63Protocolhandler;
+
+                    if (_logger.IsTrace) _logger.Trace($"Eth62 initialized, adding sync peer: {peer.Node.Id}");
+
+                    //Add/Update peer to the storage and to sync manager
+                    _peerStorage.UpdateNodes(new[] {new NetworkNode(peer.Node.Id.PublicKey, peer.Node.Host, peer.Node.Port, peer.Node.Description, peer.NodeStats.NewPersistedNodeReputation)});
+                    await _synchronizationManager.AddPeer(eth63Protocolhandler);
+
                     break;
                 case Eth62ProtocolHandler ethProtocolhandler:
                     var eth62EventArgs = (Eth62ProtocolInitializedEventArgs) e;
@@ -834,7 +863,7 @@ namespace Nethermind.Network
 
         private bool ValidateCapabilities(IEnumerable<Capability> capabilities)
         {
-            return capabilities.Any(x => x.ProtocolCode == Protocol.Eth && x.Version == 62);
+            return capabilities.Any(x => x.ProtocolCode == Protocol.Eth && (x.Version == 62 || x.Version == 63));
         }
 
         private bool ValidateChainId(long chainId)

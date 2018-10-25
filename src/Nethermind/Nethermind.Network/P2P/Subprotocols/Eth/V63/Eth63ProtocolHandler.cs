@@ -17,15 +17,36 @@
  */
 
 using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
-using Nethermind.Stats;
+using Nethermind.Network.Rlpx;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 {
     public class Eth63ProtocolHandler : Eth62ProtocolHandler
     {
+        [Todo(Improve.Refactor, "reuse base mssage types from eth62")]
+        private static readonly Dictionary<int, Type> MessageTypes = new Dictionary<int, Type>
+        {
+            {Eth62MessageCode.Status, typeof(StatusMessage)},
+            {Eth62MessageCode.NewBlockHashes, typeof(NewBlockHashesMessage)},
+            {Eth62MessageCode.Transactions, typeof(TransactionsMessage)},
+            {Eth62MessageCode.GetBlockHeaders, typeof(GetBlockHeadersMessage)},
+            {Eth62MessageCode.BlockHeaders, typeof(BlockHeadersMessage)},
+            {Eth62MessageCode.GetBlockBodies, typeof(GetBlockBodiesMessage)},
+            {Eth62MessageCode.BlockBodies, typeof(BlockBodiesMessage)},
+            {Eth62MessageCode.NewBlock, typeof(NewBlockMessage)},
+            {Eth62MessageCode.NewBlock, typeof(NewBlockMessage)},
+            {Eth63MessageCode.GetNodeData, typeof(GetNodeDataMessage)},
+            {Eth63MessageCode.NodeData, typeof(NodeDataMessage)},
+            {Eth63MessageCode.GetReceipts, typeof(GetReceiptsMessage)},
+            {Eth63MessageCode.Receipts, typeof(ReceiptsMessage)}
+        };
+
         public Eth63ProtocolHandler(
             IP2PSession p2PSession,
             IMessageSerializationService serializer,
@@ -33,15 +54,77 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             ILogManager logManager, IPerfService perfService) : base(p2PSession, serializer, sync, logManager, perfService)
         {
         }
-        
+
+        public override bool IsFastSyncSupported => true;
+
         public override byte ProtocolVersion => 63;
 
         public override int MessageIdSpaceSize => 17; // magic number here following Go
-        
+
         public override Type ResolveMessageType(int messageCode)
         {
-            // TODO:
-            return base.ResolveMessageType(messageCode);
+            return MessageTypes[messageCode];
+        }
+
+        public override void HandleMessage(Packet message)
+        {
+            base.HandleMessage(message);
+
+            switch (message.PacketType)
+            {
+                case Eth63MessageCode.GetReceipts:
+                    Handle(Deserialize<GetReceiptsMessage>(message.Data));
+                    break;
+                case Eth63MessageCode.Receipts:
+                    Handle(Deserialize<ReceiptsMessage>(message.Data));
+                    break;
+                case Eth63MessageCode.GetNodeData:
+                    Handle(Deserialize<GetNodeDataMessage>(message.Data));
+                    break;
+                case Eth63MessageCode.NodeData:
+                    Handle(Deserialize<NodeDataMessage>(message.Data));
+                    break;
+            }
+        }
+
+        private void Handle(GetReceiptsMessage msg)
+        {
+            throw new NotImplementedException();
+        }
+
+        private void Handle(ReceiptsMessage msg)
+        {
+            throw new NotImplementedException();
+        }
+
+        private void Handle(GetNodeDataMessage msg)
+        {
+            throw new NotImplementedException();
+        }
+
+        private void Handle(NodeDataMessage msg)
+        {
+            throw new NotImplementedException();
+        }
+
+        public override async Task<byte[][]> GetNodeData(Keccak[] hashes)
+        {
+            return await base.GetNodeData(hashes);
+        }
+
+        public override void SendNodeData(byte[][] values)
+        {
+            base.SendNodeData(values);
+        }
+
+        public override void SendReceipts(TransactionReceipt[][] receipts)
+        {
+            base.SendReceipts(receipts);
+        }
+
+        public override async Task<TransactionReceipt[][]> GetReceipts(Keccak[] blockHashes)
+        {
+            return await base.GetReceipts(blockHashes);
         }
     }
 }

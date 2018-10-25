@@ -249,7 +249,7 @@ namespace Nethermind.Network.P2P
                 case Protocol.Eth:
                     if (version < 62 || version > 63)
                     {
-                        throw new NotSupportedException();
+                        throw new NotSupportedException($"Eth protocolo version {version} is not supported.");
                     }
 
                     protocolHandler = version == 62
@@ -257,7 +257,6 @@ namespace Nethermind.Network.P2P
                         : new Eth63ProtocolHandler(this, _serializer, _syncManager, _logManager, _perfService);
                     protocolHandler.ProtocolInitialized += (sender, args) =>
                     {
-                        //await _syncManager.AddPeer((Eth62ProtocolHandler)protocolHandler);
                         ProtocolInitialized?.Invoke(this, args);
                     };
                     break;

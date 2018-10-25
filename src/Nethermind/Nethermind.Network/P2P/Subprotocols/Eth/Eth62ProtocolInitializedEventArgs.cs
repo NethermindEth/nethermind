@@ -16,12 +16,22 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Runtime.InteropServices;
+using System.Numerics;
+using Nethermind.Core.Crypto;
 
-namespace Nethermind.Core
+namespace Nethermind.Network.P2P.Subprotocols.Eth
 {
-    public static class ClientVersion
+    public class Eth62ProtocolInitializedEventArgs : ProtocolInitializedEventArgs
     {
-        public static readonly string Description = $"Nethermind/v0.9.0-eth63test/{RuntimeInformation.OSArchitecture}-{RuntimeInformation.OSDescription.Trim().Replace(" ", "_")}/{RuntimeInformation.FrameworkDescription.Trim().Replace(".NET ", "").Replace(" ", "")}";
+        public string Protocol { get; set; }
+        public byte ProtocolVersion { get; set; }
+        public long ChainId { get; set; }
+        public BigInteger TotalDifficulty { get; set; }
+        public Keccak BestHash { get; set; }
+        public Keccak GenesisHash { get; set; }
+
+        public Eth62ProtocolInitializedEventArgs(Eth62ProtocolHandler protocolHandler) : base(protocolHandler)
+        {
+        }
     }
 }
