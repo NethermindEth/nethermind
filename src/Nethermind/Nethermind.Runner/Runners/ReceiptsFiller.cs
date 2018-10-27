@@ -137,7 +137,7 @@ namespace Nethermind.Runner.Runners
 
             string dbBasePath = _initConfig.BaseDbPath ?? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "db");
             IDbProvider writableDbProvider= new RocksDbProvider(dbBasePath, dbConfig);
-            _dbProvider = new ReadOnlyDbProvider(_dbProvider, true);
+            _dbProvider = new ReadOnlyDbProvider(writableDbProvider, true);
 
             var transactionStore = new TransactionStore(writableDbProvider.ReceiptsDb, _specProvider, ethereumSigner);
 
@@ -239,9 +239,7 @@ namespace Nethermind.Runner.Runners
             
             _blockchainProcessor.Start();
             Feeder feeder = new Feeder(_blockchainProcessor, _initConfig.ReceiptsFillerStart, _initConfig.ReceiptsFillerEnd);
-#pragma warning disable 4014
             feeder.Start();
-#pragma warning restore 4014
             
             await Task.CompletedTask;
         }
@@ -259,12 +257,15 @@ namespace Nethermind.Runner.Runners
                 _rangeHigh = rangeHigh;
             }
 
-            public async Task Start()
+            public void Start()
             {
-                for (int i = _rangeLow; i < _rangeHigh; i++)
+                Task.Run(() =>
                 {
-                    _processor.SuggestBlock((UInt256)i, ProcessingOptions.ForceProcessing | ProcessingOptions.StoreReceipts | ProcessingOptions.ReadOnlyChain);
-                }
+                    for (int i = _rangeLow; i < _rangeHigh; i++)
+                    {
+                        _processor.SuggestBlock((UInt256) i, ProcessingOptions.ForceProcessing | ProcessingOptions.StoreReceipts | ProcessingOptions.ReadOnlyChain);
+                    }
+                });
             }
         }
 
