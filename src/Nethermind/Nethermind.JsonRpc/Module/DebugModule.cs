@@ -89,15 +89,23 @@ namespace Nethermind.JsonRpc.Module
             if (Logger.IsTrace) Logger.Trace($"{nameof(debug_traceTransactionByBlockAndIndex)} request {blockNo}, result: {GetJsonLog(transactionModel.ToJson())}");
             return ResultWrapper<TransactionTrace>.Success(transactionModel);
         }
-
-        public ResultWrapper<bool> debug_addTxData(BlockParameter blockParameter)
+        
+        public ResultWrapper<bool> debug_addTxDataByNumber(Quantity blockNumberData)
         {
-            if (blockParameter.Type != BlockParameterType.BlockId)
+            UInt256? blockNumber = blockNumberData.AsNumber();
+            if (!blockNumber.HasValue)
             {
-                throw new InvalidOperationException("Can only addTxData for historical blocks");
+                throw new InvalidDataException("Expected block number value");
             }
-
-            Keccak blockHash = new Keccak(blockParameter.BlockId.Value);
+            
+            _debugBridge.AddTxData(blockNumber.Value);
+            return ResultWrapper<bool>.Success(true);
+        }
+        
+        public ResultWrapper<bool> debug_addTxDataByHash(Data blockHashData)
+        {
+            Keccak blockHash = new Keccak(blockHashData.Value);
+            
             _debugBridge.AddTxData(blockHash);
             return ResultWrapper<bool>.Success(true);
         }
@@ -107,17 +115,12 @@ namespace Nethermind.JsonRpc.Module
             throw new NotImplementedException();
         }
 
-        public ResultWrapper<BlockTraceItem[]> debug_traceBlockByNumber(BlockParameter blockParameter)
+        public ResultWrapper<BlockTraceItem[]> debug_traceBlockByNumber(Quantity blockNumber)
         {
-            if (blockParameter.Type != BlockParameterType.BlockId)
-            {
-                throw new InvalidOperationException("Can only addTxData for historical blocks");
-            }
-
-            UInt256? blockNo = blockParameter.BlockId.AsNumber();
+            UInt256? blockNo = blockNumber.AsNumber();
             if (!blockNo.HasValue)
             {
-                throw new InvalidDataException("Block number value incorrect");
+                throw new InvalidDataException("Expected block number value");
             }
 
             var blockTrace = _debugBridge.GetBlockTrace(blockNo.Value);
@@ -128,7 +131,7 @@ namespace Nethermind.JsonRpc.Module
 
             var blockTraceModel = _modelMapper.MapBlockTrace(blockTrace);
 
-            if (Logger.IsTrace) Logger.Trace($"{nameof(debug_traceBlockByNumber)} request {blockParameter}, result: {GetJsonLog(blockTraceModel.Select(btm => btm.ToJson()))}");
+            if (Logger.IsTrace) Logger.Trace($"{nameof(debug_traceBlockByNumber)} request {blockNumber}, result: {GetJsonLog(blockTraceModel.Select(btm => btm.ToJson()))}");
             return ResultWrapper<BlockTraceItem[]>.Success(blockTraceModel);
         }
 

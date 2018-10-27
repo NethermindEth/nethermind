@@ -108,7 +108,7 @@ namespace Nethermind.Runner.Runners
         }
 
         public IBlockchainBridge BlockchainBridge { get; private set; }
-        public IDebugBridge DebugBridge { get; private set; }        
+        public IDebugBridge DebugBridge { get; private set; }
 
         public async Task Start()
         {
@@ -190,9 +190,17 @@ namespace Nethermind.Runner.Runners
         [Todo("This will be replaced with a bigger rewrite of state management so we can create a state at will")]
         private class AlternativeChain
         {
-            public BlockchainProcessor Processor { get; }
+            public IBlockchainProcessor Processor { get; }
 
-            public AlternativeChain(IBlockTree blockTree, IBlockValidator blockValidator, IRewardCalculator rewardCalculator, ISpecProvider specProvider, IReadOnlyDbProvider dbProvider, IEthereumSigner signer, ILogManager logManager)
+            public AlternativeChain(
+                IBlockTree blockTree,
+                IBlockValidator blockValidator,
+                IRewardCalculator rewardCalculator,
+                ISpecProvider specProvider,
+                IReadOnlyDbProvider dbProvider,
+                IEthereumSigner signer,
+                ILogManager logManager,
+                ITransactionStore customTransactionStore)
             {
                 IStateProvider stateProvider = new StateProvider(new StateTree(dbProvider.StateDb), dbProvider.CodeDb, logManager);
                 StorageProvider storageProvider = new StorageProvider(dbProvider.StateDb, stateProvider, logManager);
@@ -200,12 +208,17 @@ namespace Nethermind.Runner.Runners
                 BlockhashProvider blockhashProvider = new BlockhashProvider(readOnlyTree);
                 VirtualMachine virtualMachine = new VirtualMachine(stateProvider, storageProvider, blockhashProvider, logManager);
                 ITransactionProcessor transactionProcessor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, logManager);
-                ITransactionStore transactionStore = new TransactionStore(dbProvider.ReceiptsDb, specProvider, signer);
+                ITransactionStore transactionStore = customTransactionStore;
                 IBlockProcessor blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, transactionProcessor, dbProvider.StateDb, dbProvider.CodeDb, stateProvider, storageProvider, transactionStore, logManager);
-                Processor = new BlockchainProcessor(readOnlyTree, blockProcessor, signer, logManager);
+                Processor = new BlockchainProcessor(readOnlyTree, blockProcessor, signer, logManager, true);
+            }
+
+            public AlternativeChain(IBlockTree blockTree, IBlockValidator blockValidator, IRewardCalculator rewardCalculator, ISpecProvider specProvider, IReadOnlyDbProvider dbProvider, IEthereumSigner signer, ILogManager logManager)
+                : this(blockTree, blockValidator, rewardCalculator, specProvider, dbProvider, signer, logManager, new TransactionStore(dbProvider.ReceiptsDb, specProvider, signer))
+            {
             }
         }
-        
+
         private class RpcState
         {
             public IStateProvider StateProvider;
@@ -220,18 +233,18 @@ namespace Nethermind.Runner.Runners
                 ISnapshotableDb stateDb = readOnlyDbProvider.StateDb;
                 IDb codeDb = readOnlyDbProvider.CodeDb;
                 StateTree stateTree = new StateTree(readOnlyDbProvider.StateDb);
-            
+
                 StateProvider = new StateProvider(stateTree, codeDb, logManager);
                 StorageProvider = new StorageProvider(stateDb, StateProvider, logManager);
 
                 BlockTree = new ReadOnlyBlockTree(blockTree);
                 BlockhashProvider = new BlockhashProvider(BlockTree);
-            
+
                 VirtualMachine = new VirtualMachine(StateProvider, StorageProvider, BlockhashProvider, logManager);
                 TransactionProcessor = new TransactionProcessor(specProvider, StateProvider, StorageProvider, VirtualMachine, logManager);
-            }    
+            }
         }
-        
+
         private async Task InitBlockchain()
         {
             ChainSpec chainSpec = LoadChainSpec(_initConfig.ChainSpecPath);
@@ -285,7 +298,7 @@ namespace Nethermind.Runner.Runners
                 _logManager);
 
             // TODO: read seal engine from ChainSpec
-            var sealEngine = 
+            var sealEngine =
                 (_specProvider is MainNetSpecProvider) ? ConfigureSealEngine() :
                 (_specProvider is RopstenSpecProvider) ? ConfigureSealEngine() :
                 (_specProvider is RinkebySpecProvider) ? ConfigureCliqueSealEngine() :
@@ -342,7 +355,7 @@ namespace Nethermind.Runner.Runners
                 virtualMachine,
                 _logManager);
 
-            var rewardCalculator = (_specProvider is RinkebySpecProvider) 
+            var rewardCalculator = (_specProvider is RinkebySpecProvider)
                 ? (IRewardCalculator) new CliqueRewardCalculator(_specProvider)
                 : new RewardCalculator(_specProvider);
 
@@ -362,7 +375,8 @@ namespace Nethermind.Runner.Runners
                 _blockTree,
                 blockProcessor,
                 ethereumSigner,
-                _logManager);
+                _logManager,
+                true);
 
             // create shared objects between discovery and peer manager
             _nodeFactory = new NodeFactory();
@@ -381,14 +395,12 @@ namespace Nethermind.Runner.Runners
                 encrypter,
                 _cryptoRandom,
                 _logManager);
-            
-            if (_initConfig.JsonRpcEnabled)
-            {   
-                IReadOnlyDbProvider debugDbProvider = new ReadOnlyDbProvider(_dbProvider, true);
-                IReadOnlyDbProvider rpcDbProvider = new ReadOnlyDbProvider(_dbProvider, false);
 
+            if (_initConfig.JsonRpcEnabled)
+            {
+                IReadOnlyDbProvider rpcDbProvider = new ReadOnlyDbProvider(_dbProvider, false);
                 AlternativeChain rpcChain = new AlternativeChain(_blockTree, blockValidator, rewardCalculator, _specProvider, rpcDbProvider, ethereumSigner, _logManager);
-                
+
                 ITxTracer txTracer = new TxTracer(rpcChain.Processor, transactionStore, _blockTree);
                 IFilterStore filterStore = new FilterStore();
                 IFilterManager filterManager = new FilterManager(filterStore, blockProcessor, _logManager);
@@ -405,8 +417,11 @@ namespace Nethermind.Runner.Runners
                     filterManager,
                     wallet,
                     rpcState.TransactionProcessor);
-                
-                DebugBridge = new DebugBridge(debugDbProvider, txTracer, rpcChain.Processor);
+
+                TransactionStore debugTransactionStore = new TransactionStore(_dbProvider.ReceiptsDb, _specProvider, ethereumSigner);
+                AlternativeChain debugChain = new AlternativeChain(_blockTree, blockValidator, rewardCalculator, _specProvider, rpcDbProvider, ethereumSigner, _logManager, debugTransactionStore);
+                IReadOnlyDbProvider debugDbProvider = new ReadOnlyDbProvider(_dbProvider, false);
+                DebugBridge = new DebugBridge(debugDbProvider, txTracer, rpcChain.Processor, debugChain.Processor);
             }
 
             if (_initConfig.IsMining)
@@ -416,7 +431,7 @@ namespace Nethermind.Runner.Runners
                 var producer = new DevBlockProducer(transactionStore, devChain.Processor, _blockTree, _logManager);
                 producer.Start();
             }
-            
+
             _blockchainProcessor.Start();
             LoadGenesisBlock(chainSpec,
                 string.IsNullOrWhiteSpace(_initConfig.GenesisHash) ? null : new Keccak(_initConfig.GenesisHash),
@@ -615,7 +630,7 @@ namespace Nethermind.Runner.Runners
             _syncManager.Start();
             return Task.CompletedTask;
         }
-        
+
         private async Task InitPeer()
         {
             /* rlpx */
@@ -641,7 +656,7 @@ namespace Nethermind.Runner.Runners
             _messageSerializationService.Register(new BlockHeadersMessageSerializer());
             _messageSerializationService.Register(new BlockBodiesMessageSerializer());
             _messageSerializationService.Register(new NewBlockMessageSerializer());
-            
+
             /* eth63 */
             _messageSerializationService.Register(new GetNodeDataMessageSerializer());
             _messageSerializationService.Register(new NodeDataMessageSerializer());

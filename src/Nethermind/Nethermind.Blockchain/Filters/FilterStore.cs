@@ -19,11 +19,13 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using Nethermind.Blockchain.Filters.Topics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
+using NLog.Filters;
 
 namespace Nethermind.Blockchain.Filters
 {
@@ -127,15 +129,24 @@ namespace Nethermind.Blockchain.Filters
             return new SpecificTopic(topic);
         }
 
-        private static FilterAddress GetAddress(object address)
+        private static AddressFilter GetAddress(object address)
         {
-            return address is null
-                ? null
-                : new FilterAddress
-                {
-                    Address = address is string s ? new Address(s) : null,
-                    Addresses = address is IEnumerable<string> e ? e.Select(a => new Address(a)).ToList() : null
-                };
+            if (address is null)
+            {
+                return AddressFilter.AnyAddress; 
+            }
+
+            if (address is string s)
+            {
+                return new AddressFilter(new Address(s));
+            }
+            
+            if (address is IEnumerable<string> e)
+            {
+                return new AddressFilter(e.Select(a => new Address(a)).ToHashSet());
+            }
+            
+            throw new InvalidDataException("Invalid address filter format");
         }
 
         private static FilterTopic[] GetFilterTopics(IEnumerable<object> topics)

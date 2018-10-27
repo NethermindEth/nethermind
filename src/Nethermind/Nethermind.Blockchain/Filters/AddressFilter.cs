@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,11 +16,36 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.Runner.Runners
+using System.Collections.Generic;
+using Nethermind.Core;
+
+namespace Nethermind.Blockchain.Filters
 {
-    public enum EthereumRunnerType
+    public class AddressFilter
     {
-        Default,
-        Hive
+        public static AddressFilter AnyAddress = new AddressFilter((Address)null);
+
+        public AddressFilter(Address address)
+        {
+            Address = address;
+        }
+        
+        public AddressFilter(HashSet<Address> addresses)
+        {
+            Addresses = addresses;
+        }
+        
+        public Address Address { get; set; }
+        public HashSet<Address> Addresses { get; set; }
+
+        public bool Accepts(Address address)
+        {
+            if (Addresses != null)
+            {
+                return Addresses.Contains(address);
+            }
+
+            return Address == null || Address == address;
+        }
     }
 }

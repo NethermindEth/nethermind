@@ -22,6 +22,7 @@ namespace Nethermind.Store
 {
     public interface IReadOnlyDbProvider : IDbProvider
     {
+        void ClearTempChanges();
     }
     
     public interface IDbProvider : IDisposable

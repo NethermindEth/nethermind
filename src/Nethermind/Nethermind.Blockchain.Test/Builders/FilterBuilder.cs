@@ -1,6 +1,23 @@
+/*
+ * Copyright (c) 2018 Demerzel Solutions Limited
+ * This file is part of the Nethermind library.
+ *
+ * The Nethermind library is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Lesser General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * The Nethermind library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
+ */
+
 using System.Collections.Generic;
 using System.Linq;
-using Microsoft.AspNetCore.Identity.UI.Pages.Internal;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Filters.Topics;
 using Nethermind.Core;
@@ -13,7 +30,7 @@ namespace Nethermind.Blockchain.Test.Builders
         private static int _id;
         private FilterBlock _fromBlock = new FilterBlock(FilterBlockType.Latest);
         private FilterBlock _toBlock = new FilterBlock(FilterBlockType.Latest);
-        private FilterAddress _address = new FilterAddress();
+        private AddressFilter _address = new AddressFilter((Address)null);
         private TopicsFilter _topicsFilter = new TopicsFilter(new TopicExpression[0]);
 
         private FilterBuilder()
@@ -91,14 +108,14 @@ namespace Nethermind.Blockchain.Test.Builders
 
         public FilterBuilder WithAddress(Address address)
         {
-            _address = new FilterAddress { Address = address};
+            _address = new AddressFilter(address);
 
             return this;
         }
 
         public FilterBuilder WithAddresses(IEnumerable<Address> addresses)
         {
-            _address = new FilterAddress { Addresses = addresses};
+            _address = new AddressFilter(addresses.ToHashSet());
 
             return this;
         }
