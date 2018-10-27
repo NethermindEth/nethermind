@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,18 +16,29 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Numerics;
+using System;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Network.P2P.Subprotocols.Eth.V63;
+using NUnit.Framework;
 
-namespace Nethermind.Stats.Model
+namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
 {
-    public class Eth62NodeDetails
+    [TestFixture]
+    public class GetReceiptsMessageTests
     {
-        public string Protocol { get; set; }
-        public byte ProtocolVersion { get; set; }
-        public long ChainId { get; set; }
-        public BigInteger TotalDifficulty { get; set; }
-        public Keccak BestHash { get; set; }
-        public Keccak GenesisHash { get; set; }
+        [Test]
+        public void Sets_values_from_contructor_argument()
+        {
+            Keccak[] hashes = {TestObject.KeccakA, TestObject.KeccakB};
+            GetReceiptsMessage message = new GetReceiptsMessage(hashes);
+            Assert.AreSame(hashes, message.BlockHashes);
+        }
+
+        [Test]
+        public void Throws_on_null_argument()
+        {
+            Assert.Throws<ArgumentNullException>(() => new GetReceiptsMessage(null));
+        }
     }
 }

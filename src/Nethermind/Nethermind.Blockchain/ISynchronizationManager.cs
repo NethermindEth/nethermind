@@ -29,6 +29,8 @@ namespace Nethermind.Blockchain
     public interface ISynchronizationManager
     {
         void HintBlock(Keccak hash, UInt256 number, NodeId receivedFrom);
+        byte[][] GetNodeData(Keccak[] keys);
+        TransactionReceipt[][] GetReceipts(Keccak[] blockHashes);
         Block Find(Keccak hash);
         Block Find(UInt256 number);
         Block[] Find(Keccak hash, int numberOfBlocks, int skip, bool reverse);

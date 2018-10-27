@@ -18,11 +18,10 @@
 
 using System.Numerics;
 using Nethermind.Core.Crypto;
-using Nethermind.Network.P2P.Subprotocols.Eth;
 
-namespace Nethermind.Network.P2P
+namespace Nethermind.Network.P2P.Subprotocols.Eth
 {
-    public class Eth62ProtocolInitializedEventArgs : ProtocolInitializedEventArgs
+    public class EthProtocolInitializedEventArgs : ProtocolInitializedEventArgs
     {
         public string Protocol { get; set; }
         public byte ProtocolVersion { get; set; }
@@ -31,7 +30,7 @@ namespace Nethermind.Network.P2P
         public Keccak BestHash { get; set; }
         public Keccak GenesisHash { get; set; }
 
-        public Eth62ProtocolInitializedEventArgs(Eth62ProtocolHandler protocolHandler) : base(protocolHandler)
+        public EthProtocolInitializedEventArgs(Eth62ProtocolHandler protocolHandler) : base(protocolHandler)
         {
         }
     }

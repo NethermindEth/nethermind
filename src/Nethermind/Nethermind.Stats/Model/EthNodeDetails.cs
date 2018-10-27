@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,14 +16,18 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.Blockchain
+using System.Numerics;
+using Nethermind.Core.Crypto;
+
+namespace Nethermind.Stats.Model
 {
-    public class BlockchainConfig : IBlockchainConfig
+    public class EthNodeDetails
     {
-        public int SyncTimerInterval { get; set; } = 5000;
-        public int SyncPeersMaxCount { get; set; } = 25;
-        public long MinAvailableBlockDiffForSyncSwitch { get; } = 100;
-        public long MinLatencyDiffForSyncSwitch { get; } = 5;
-        public bool SyncReceipts { get; } = false;
+        public string Protocol { get; set; }
+        public byte ProtocolVersion { get; set; }
+        public long ChainId { get; set; }
+        public BigInteger TotalDifficulty { get; set; }
+        public Keccak BestHash { get; set; }
+        public Keccak GenesisHash { get; set; }
     }
 }

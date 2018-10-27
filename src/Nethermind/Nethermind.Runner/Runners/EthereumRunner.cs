@@ -23,6 +23,7 @@ using System.Reflection;
 using System.Security;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Validators;
@@ -52,6 +53,7 @@ using Nethermind.Network.Discovery.RoutingTable;
 using Nethermind.Network.Discovery.Serializers;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth;
+using Nethermind.Network.P2P.Subprotocols.Eth.V63;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Runner.Config;
@@ -420,9 +422,17 @@ namespace Nethermind.Runner.Runners
                 string.IsNullOrWhiteSpace(_initConfig.GenesisHash) ? null : new Keccak(_initConfig.GenesisHash),
                 _blockTree, stateProvider, _specProvider);
 
+            if (_initConfig.ProcessingEnabled)
+            {
 #pragma warning disable 4014
-            LoadBlocksFromDb();
+                LoadBlocksFromDb();
 #pragma warning restore 4014
+            }
+            else
+            {
+                if (_logger.IsWarn) _logger.Warn($"Shutting down processor due to {nameof(InitConfig)}.{nameof(InitConfig.ProcessingEnabled)} set to false");
+                await _blockchainProcessor.StopAsync();
+            }
 
             await InitializeNetwork(
                 transactionStore,
@@ -463,11 +473,12 @@ namespace Nethermind.Runner.Runners
         {
             if (!_initConfig.NetworkEnabled)
             {
-                if (_logger.IsInfo) _logger.Info($"Skipping blockchain synchronization init ({nameof(IInitConfig.NetworkEnabled)} = false)");
+                if (_logger.IsWarn) _logger.Warn($"Skipping network init due to ({nameof(IInitConfig.NetworkEnabled)} set to false)");
                 return;
             }
 
             _syncManager = new SynchronizationManager(
+                _dbProvider.StateDb,
                 _blockTree,
                 blockValidator,
                 headerValidator,
@@ -595,7 +606,7 @@ namespace Nethermind.Runner.Runners
         {
             if (!_initConfig.SynchronizationEnabled)
             {
-                if (_logger.IsInfo) _logger.Info($"Skipping blockchain synchronization init ({nameof(IInitConfig.SynchronizationEnabled)} = false)");
+                if (_logger.IsWarn) _logger.Warn($"Skipping blockchain synchronization init due to ({nameof(IInitConfig.SynchronizationEnabled)} set to false)");
                 return Task.CompletedTask;
             }
 
@@ -604,7 +615,7 @@ namespace Nethermind.Runner.Runners
             _syncManager.Start();
             return Task.CompletedTask;
         }
-
+        
         private async Task InitPeer()
         {
             /* rlpx */
@@ -621,7 +632,7 @@ namespace Nethermind.Runner.Runners
             _messageSerializationService.Register(new PingMessageSerializer());
             _messageSerializationService.Register(new PongMessageSerializer());
 
-            /* eth */
+            /* eth62 */
             _messageSerializationService.Register(new StatusMessageSerializer());
             _messageSerializationService.Register(new TransactionsMessageSerializer());
             _messageSerializationService.Register(new GetBlockHeadersMessageSerializer());
@@ -630,6 +641,12 @@ namespace Nethermind.Runner.Runners
             _messageSerializationService.Register(new BlockHeadersMessageSerializer());
             _messageSerializationService.Register(new BlockBodiesMessageSerializer());
             _messageSerializationService.Register(new NewBlockMessageSerializer());
+            
+            /* eth63 */
+            _messageSerializationService.Register(new GetNodeDataMessageSerializer());
+            _messageSerializationService.Register(new NodeDataMessageSerializer());
+            _messageSerializationService.Register(new GetReceiptsMessageSerializer());
+            _messageSerializationService.Register(new ReceiptsMessageSerializer());
 
             _rlpxPeer = new RlpxPeer(new NodeId(_nodeKey.PublicKey), _initConfig.P2PPort,
                 _syncManager,
@@ -650,7 +667,7 @@ namespace Nethermind.Runner.Runners
         {
             if (!_initConfig.PeerManagerEnabled)
             {
-                if (_logger.IsInfo) _logger.Info("Skipping peer manager init (PeerManagerEnabled} = false)");
+                if (_logger.IsWarn) _logger.Warn($"Skipping peer manager init due to {nameof(_initConfig.PeerManagerEnabled)} set to false)");
                 return;
             }
 
@@ -737,7 +754,7 @@ namespace Nethermind.Runner.Runners
         {
             if (!_initConfig.DiscoveryEnabled)
             {
-                if (_logger.IsInfo) _logger.Info($"Skipping discovery init ({nameof(IInitConfig.DiscoveryEnabled)} = false)");
+                if (_logger.IsWarn) _logger.Warn($"Skipping discovery init due to ({nameof(IInitConfig.DiscoveryEnabled)} set to false)");
                 return Task.CompletedTask;
             }
 

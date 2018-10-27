@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,14 +16,12 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.Blockchain
+using NUnit.Framework;
+
+namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
 {
-    public class BlockchainConfig : IBlockchainConfig
+    [TestFixture]
+    public class Eth63ProtocolHandlerTests
     {
-        public int SyncTimerInterval { get; set; } = 5000;
-        public int SyncPeersMaxCount { get; set; } = 25;
-        public long MinAvailableBlockDiffForSyncSwitch { get; } = 100;
-        public long MinLatencyDiffForSyncSwitch { get; } = 5;
-        public bool SyncReceipts { get; } = false;
     }
 }

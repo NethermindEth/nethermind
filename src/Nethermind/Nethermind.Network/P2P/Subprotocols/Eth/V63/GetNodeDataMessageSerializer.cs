@@ -16,18 +16,23 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using Nethermind.Core.Encoding;
+using Nethermind.Core.Extensions;
+
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 {
     public class GetNodeDataMessageSerializer : IMessageSerializer<GetNodeDataMessage>
     {
         public byte[] Serialize(GetNodeDataMessage message)
         {
-            throw new System.NotImplementedException();
+            return Rlp.Encode(message.Keys).Bytes;
         }
 
         public GetNodeDataMessage Deserialize(byte[] bytes)
         {
-            throw new System.NotImplementedException();
+            Rlp.DecoderContext decoderContext = bytes.AsRlpContext();
+            var keys = decoderContext.DecodeArray(itemContext => itemContext.DecodeKeccak());
+            return new GetNodeDataMessage(keys);
         }
     }
 }

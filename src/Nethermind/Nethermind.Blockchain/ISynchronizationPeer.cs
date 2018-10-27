@@ -28,6 +28,7 @@ namespace Nethermind.Blockchain
 {
     public interface ISynchronizationPeer
     {
+        bool IsFastSyncSupported { get; }
         NodeId NodeId { get; }
         INodeStats NodeStats { get; }
         string ClientId { get; }
@@ -39,5 +40,8 @@ namespace Nethermind.Blockchain
         Task<UInt256> GetHeadDifficulty(CancellationToken token);
         void SendNewBlock(Block block);
         void SendNewTransaction(Transaction transaction);
+        
+        Task<TransactionReceipt[][]> GetReceipts(Keccak[] blockHash, CancellationToken token);
+        Task<byte[][]> GetNodeData(Keccak[] hashes, CancellationToken token);
     }
 }

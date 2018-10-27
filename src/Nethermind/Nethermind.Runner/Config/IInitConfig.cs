@@ -26,6 +26,7 @@ namespace Nethermind.Runner.Config
         bool DiscoveryEnabled { get; set; }
         bool SynchronizationEnabled { get; set; }
         bool NetworkEnabled { get; set; }
+        bool ProcessingEnabled { get; set; }
         bool PeerManagerEnabled { get; set; }
         bool IsMining { get; set; }
         int FakeMiningDelay { get; set; }

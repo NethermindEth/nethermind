@@ -37,7 +37,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 {
     public class Eth62ProtocolHandler : ProtocolHandlerBase, IProtocolHandler, ISynchronizationPeer
     {
-        private readonly ISynchronizationManager _sync;
+        protected ISynchronizationManager SyncManager { get; }
 
         private readonly BlockingCollection<Request<GetBlockHeadersMessage, BlockHeader[]>> _headersRequests
             = new BlockingCollection<Request<GetBlockHeadersMessage, BlockHeader[]>>();
@@ -49,31 +49,20 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         private Keccak _remoteHeadBlockHash;
         private BigInteger _remoteHeadBlockDifficulty;
 
-        private static readonly Dictionary<int, Type> MessageTypes = new Dictionary<int, Type>
-        {
-            {Eth62MessageCode.Status, typeof(StatusMessage)},
-            {Eth62MessageCode.NewBlockHashes, typeof(NewBlockHashesMessage)},
-            {Eth62MessageCode.Transactions, typeof(TransactionsMessage)},
-            {Eth62MessageCode.GetBlockHeaders, typeof(GetBlockHeadersMessage)},
-            {Eth62MessageCode.BlockHeaders, typeof(BlockHeadersMessage)},
-            {Eth62MessageCode.GetBlockBodies, typeof(GetBlockBodiesMessage)},
-            {Eth62MessageCode.BlockBodies, typeof(BlockBodiesMessage)},
-            {Eth62MessageCode.NewBlock, typeof(NewBlockMessage)},
-        };
-
         public Eth62ProtocolHandler(
             IP2PSession p2PSession,
             IMessageSerializationService serializer,
-            ISynchronizationManager sync,
+            ISynchronizationManager syncManager,
             ILogManager logManager, IPerfService perfService)
             : base(p2PSession, serializer, logManager, perfService)
         {
-            _sync = sync;
+            SyncManager = syncManager;
         }
 
         public virtual byte ProtocolVersion => 62;
         public string ProtocolCode => "eth";
         public virtual int MessageIdSpaceSize => 8;
+        public virtual bool IsFastSyncSupported => false;
         public NodeId NodeId => P2PSession.RemoteNodeId;
         public INodeStats NodeStats => P2PSession.NodeStats;
         public string ClientId { get; set; }
@@ -91,18 +80,18 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         public void Init()
         {
             Logger.Trace($"{P2PSession.RemoteNodeId} {ProtocolCode} v{ProtocolVersion} subprotocol initializing");
-            if (_sync.Head == null)
+            if (SyncManager.Head == null)
             {
                 throw new InvalidOperationException("Initializing sync protocol without the head block set");
             }
 
-            BlockHeader head = _sync.Head;
+            BlockHeader head = SyncManager.Head;
             StatusMessage statusMessage = new StatusMessage();
-            statusMessage.ChainId = _sync.ChainId;
+            statusMessage.ChainId = SyncManager.ChainId;
             statusMessage.ProtocolVersion = ProtocolVersion;
             statusMessage.TotalDifficulty = head.Difficulty;
             statusMessage.BestHash = head.Hash;
-            statusMessage.GenesisHash = _sync.Genesis.Hash;
+            statusMessage.GenesisHash = SyncManager.Genesis.Hash;
 
             Send(statusMessage);
 
@@ -114,11 +103,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                     Logger.Error("Error during eth62Protocol handler timeout logic", x.Exception);
                 }
             });
-        }
-
-        public virtual Type ResolveMessageType(int messageCode)
-        {
-            return MessageTypes[messageCode];
         }
 
         public virtual void HandleMessage(Packet message)
@@ -198,6 +182,18 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             Send(msg);
         }
 
+        public virtual async Task<TransactionReceipt[][]> GetReceipts(Keccak[] blockHash, CancellationToken token)
+        {
+            await Task.CompletedTask;
+            throw new NotSupportedException("Fast sync not supported by eth62 protocol");
+        }
+
+        public virtual async Task<byte[][]> GetNodeData(Keccak[] hashes, CancellationToken token)
+        {
+            await Task.CompletedTask;
+            throw new NotSupportedException("Fast sync not supported by eth62 protocol");
+        }
+
         protected override TimeSpan InitTimeout => Timeouts.Eth62Status;
 
         private void Handle(StatusMessage status)
@@ -226,7 +222,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
             ReceivedProtocolInitMsg(status);
 
-            var eventArgs = new Eth62ProtocolInitializedEventArgs(this)
+            var eventArgs = new EthProtocolInitializedEventArgs(this)
             {
                 ChainId = status.ChainId,
                 BestHash = status.BestHash,
@@ -243,7 +239,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         {
             for (int i = 0; i < msg.Transactions.Length; i++)
             {
-                _sync.AddNewTransaction(msg.Transactions[i], NodeId);
+                SyncManager.AddNewTransaction(msg.Transactions[i], NodeId);
             }
         }
 
@@ -254,7 +250,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
             for (int i = 0; i < hashes.Length; i++)
             {
-                blocks[i] = _sync.Find(hashes[i]);
+                blocks[i] = SyncManager.Find(hashes[i]);
             }
 
             Send(new BlockBodiesMessage(blocks));
@@ -274,13 +270,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             Keccak startingHash = getBlockHeadersMessage.StartingBlockHash;
             if (startingHash == null)
             {
-                startingHash = _sync.Find(getBlockHeadersMessage.StartingBlockNumber)?.Hash;
+                startingHash = SyncManager.Find(getBlockHeadersMessage.StartingBlockNumber)?.Hash;
             }
 
             Block[] blocks =
                 startingHash == null
                     ? new Block[0]
-                    : _sync.Find(startingHash, (int) getBlockHeadersMessage.MaxHeaders, (int) getBlockHeadersMessage.Skip, getBlockHeadersMessage.Reverse == 1);
+                    : SyncManager.Find(startingHash, (int) getBlockHeadersMessage.MaxHeaders, (int) getBlockHeadersMessage.Skip, getBlockHeadersMessage.Reverse == 1);
 
             BlockHeader[] headers = new BlockHeader[blocks.Length];
             for (int i = 0; i < blocks.Length; i++)
@@ -291,6 +287,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             Send(new BlockHeadersMessage(headers));
         }
 
+        [Todo(Improve.MissingFunctionality, "Need to compare response")]
         private bool IsRequestMatched(
             Request<GetBlockHeadersMessage, BlockHeader[]> request,
             BlockHeadersMessage response)
@@ -298,6 +295,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             return response.PacketType == Eth62MessageCode.BlockHeaders; // TODO: more detailed
         }
 
+        [Todo(Improve.MissingFunctionality, "Need to compare response")]
         private bool IsRequestMatched(
             Request<GetBlockBodiesMessage, Block[]> request,
             BlockBodiesMessage response)
@@ -335,16 +333,16 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         {
             foreach ((Keccak Hash, UInt256 Number) hint in newBlockHashes.BlockHashes)
             {
-                _sync.HintBlock(hint.Hash, hint.Number, NodeId);
+                SyncManager.HintBlock(hint.Hash, hint.Number, NodeId);
             }
         }
 
         private void Handle(NewBlockMessage newBlock)
         {
-            _sync.AddNewBlock(newBlock.Block, P2PSession.RemoteNodeId);
+            SyncManager.AddNewBlock(newBlock.Block, P2PSession.RemoteNodeId);
         }
 
-        private class Request<TMsg, TResult>
+        protected class Request<TMsg, TResult>
         {
             public Request(TMsg message)
             {
@@ -356,6 +354,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             public TaskCompletionSource<TResult> CompletionSource { get; }
         }
 
+        [Todo(Improve.Refactor, "Generic approach to requests")]
         private async Task<BlockHeader[]> SendRequest(GetBlockHeadersMessage message, CancellationToken token)
         {
             if (Logger.IsTrace)
@@ -374,7 +373,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
             Send(request.Message);
             Task<BlockHeader[]> task = request.CompletionSource.Task;
-            var firstTask = await Task.WhenAny(task, Task.Delay(Timeouts.Eth62, token));
+            var firstTask = await Task.WhenAny(task, Task.Delay(Timeouts.Eth, token));
             if (firstTask.IsCanceled)
             {
                 token.ThrowIfCancellationRequested();
@@ -390,10 +389,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 return task.Result;
             }
 
-            // TODO: work in progress
             throw new TimeoutException($"{P2PSession.RemoteNodeId} Request timeout in {nameof(GetBlockHeadersMessage)}");
         }
 
+        [Todo(Improve.Refactor, "Generic approach to requests")]
         private async Task<Block[]> SendRequest(GetBlockBodiesMessage message, CancellationToken token)
         {
             if (Logger.IsTrace)
@@ -409,7 +408,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             Send(request.Message);
 
             Task<Block[]> task = request.CompletionSource.Task;
-            var firstTask = await Task.WhenAny(task, Task.Delay(Timeouts.Eth62, token));
+            var firstTask = await Task.WhenAny(task, Task.Delay(Timeouts.Eth, token));
             if (firstTask.IsCanceled)
             {
                 token.ThrowIfCancellationRequested();
@@ -425,7 +424,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 return task.Result;
             }
 
-            // TODO: work in progress
             throw new TimeoutException($"{P2PSession.RemoteNodeId} Request timeout in {nameof(GetBlockBodiesMessage)}");
         }
 

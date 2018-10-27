@@ -16,11 +16,21 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
+using Nethermind.Core.Crypto;
+
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 {
     public class GetNodeDataMessage : P2PMessage
     {
         public override int PacketType { get; } = 0x0d;
         public override string Protocol { get; } = "eth";
+
+        public Keccak[] Keys { get; set; }
+
+        public GetNodeDataMessage(Keccak[] keys)
+        {            
+            Keys = keys ?? throw new ArgumentNullException(nameof(keys));
+        }
     }
 }

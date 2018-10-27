@@ -22,6 +22,10 @@ namespace Nethermind.Core.Test.Builders
 {
     public static class TestObject
     {
+        public static byte[] RandomDataA = {1, 2, 3};
+        public static byte[] RandomDataB = {4, 5, 6, 7};
+        public static byte[] RandomDataC = {1, 2, 8, 9, 10};
+
         public static Keccak KeccakA = Keccak.Compute("A");
         public static Keccak KeccakB = Keccak.Compute("B");
         public static Keccak KeccakC = Keccak.Compute("C");
@@ -35,12 +39,12 @@ namespace Nethermind.Core.Test.Builders
         public static PrivateKey PrivateKeyB = new PrivateKey("020102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f");
         public static PrivateKey PrivateKeyC = new PrivateKey("030102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f");
         public static PrivateKey PrivateKeyD = new PrivateKey("040102030405060708090a0b0c0d0e0f000102030405060708090a0b0c0d0e0f");
-        
+
         public static PublicKey PublicKeyA = PrivateKeyA.PublicKey;
         public static PublicKey PublicKeyB = PrivateKeyB.PublicKey;
         public static PublicKey PublicKeyC = PrivateKeyC.PublicKey;
         public static PublicKey PublicKeyD = PrivateKeyD.PublicKey;
-        
+
         public static Address AddressA = PublicKeyA.Address;
         public static Address AddressB = PublicKeyB.Address;
         public static Address AddressC = PublicKeyC.Address;

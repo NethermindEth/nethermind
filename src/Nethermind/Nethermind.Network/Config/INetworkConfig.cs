@@ -88,22 +88,22 @@ namespace Nethermind.Network.Config
         int PingRetryCount { get; }
 
         /// <summary>
-        /// Time between running dicovery processes in miliseconds
+        /// Time between running discovery processes in milliseconds
         /// </summary>
         int DiscoveryInterval { get; }
 
         /// <summary>
-        /// Time between persisting discovered nodes in miliseconds
+        /// Time between persisting discovered nodes in milliseconds
         /// </summary>
-        int DiscoveryPersistanceInterval { get; }
+        int DiscoveryPersistenceInterval { get; }
 
         /// <summary>
-        /// Time between discovery cicles in miliseconds
+        /// Time between discovery cicles in milliseconds
         /// </summary>
         int DiscoveryNewCycleWaitTime { get; }
 
         ///// <summary>
-        ///// Time between running refresh processes in miliseconds
+        ///// Time between running refresh processes in milliseconds
         ///// </summary>
         //int RefreshInterval { get; }
 
@@ -118,7 +118,7 @@ namespace Nethermind.Network.Config
         string KeyPass { get; }
 
         /// <summary>
-        /// Timeout for closing UDP channel in miliseconds
+        /// Timeout for closing UDP channel in milliseconds
         /// </summary>
         int UdpChannelCloseTimeout { get; }
 
@@ -153,7 +153,7 @@ namespace Nethermind.Network.Config
         string DbBasePath { get; set; } // TODO: move from Network config
 
         /// <summary>
-        /// On/Off for discovery persistance
+        /// On/Off for discovery persistence
         /// </summary>
         bool IsDiscoveryNodesPersistenceOn { get; }
 
@@ -163,7 +163,7 @@ namespace Nethermind.Network.Config
         bool IsPeersPersistenceOn { get; }
 
         /// <summary>
-        /// Time between running peer update in miliseconds
+        /// Time between running peer update in milliseconds
         /// </summary>
         int ActivePeerUpdateInterval { get; }
 
@@ -188,9 +188,9 @@ namespace Nethermind.Network.Config
         int FailedConnectionDelay { get; }
 
         /// <summary>
-        /// Time between persisting peers in miliseconds
+        /// Time between persisting peers in milliseconds
         /// </summary>
-        int PeersPersistanceInterval { get; }
+        int PeersPersistenceInterval { get; }
 
         /// <summary>
         /// Time between sending p2p ping

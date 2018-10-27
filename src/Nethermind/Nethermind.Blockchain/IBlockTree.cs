@@ -30,6 +30,7 @@ namespace Nethermind.Blockchain
         int ChainId { get; }
         BlockHeader Genesis { get; }
         BlockHeader BestSuggested { get; }
+        UInt256 BestKnownNumber { get; }
         BlockHeader Head { get; }
 
         bool CanAcceptNewBlocks { get; }

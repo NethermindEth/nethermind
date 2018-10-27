@@ -28,7 +28,7 @@ namespace Nethermind.Stats
         void AddNodeStatsHandshakeEvent(ConnectionDirection connectionDirection);
         void AddNodeStatsDisconnectEvent(DisconnectType disconnectType, DisconnectReason disconnectReason);
         void AddNodeStatsP2PInitializedEvent(P2PNodeDetails nodeDetails);
-        void AddNodeStatsEth62InitializedEvent(Eth62NodeDetails nodeDetails);
+        void AddNodeStatsEth62InitializedEvent(EthNodeDetails nodeDetails);
         void AddNodeStatsSyncEvent(NodeStatsEventType nodeStatsEventType, SyncNodeDetails syncDetails);
 
         bool DidEventHappen(NodeStatsEventType nodeStatsEventType);
@@ -43,7 +43,7 @@ namespace Nethermind.Stats
         DateTime? LastDisconnectTime { get; set; }
         DateTime? LastFailedConnectionTime { get; set; }
         P2PNodeDetails P2PNodeDetails { get; }
-        Eth62NodeDetails Eth62NodeDetails { get; }
+        EthNodeDetails EthNodeDetails { get; }
         CompatibilityValidationType? FailedCompatibilityValidation { get; set; }
         Node Node { get; }
 
