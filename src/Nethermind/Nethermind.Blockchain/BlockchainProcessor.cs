@@ -214,7 +214,7 @@ namespace Nethermind.Blockchain
                 throw new InvalidOperationException("Can only add tx data for block that is already on main chain");
             }
             
-            Process(block, ProcessingOptions.ForceProcessing | ProcessingOptions.StoreReceipts, NullTraceListener.Instance);
+            Process(block, ProcessingOptions.ForceProcessing | ProcessingOptions.StoreReceipts | ProcessingOptions.ReadOnlyChain, NullTraceListener.Instance);
         }
 
         public event EventHandler ProcessingQueueEmpty;
@@ -299,7 +299,7 @@ namespace Nethermind.Blockchain
                 }
 
                 processedBlocks = _blockProcessor.Process(stateRoot, blocks, options, traceListener);
-                if ((options & (ProcessingOptions.ReadOnlyChain | ProcessingOptions.ForceProcessing)) == 0)
+                if ((options & ProcessingOptions.ReadOnlyChain) == 0)
                 {
                     // TODO: lots of unnecessary loading and decoding here, review after adding support for loading headers only
                     List<BlockHeader> blocksToBeRemovedFromMain = new List<BlockHeader>();

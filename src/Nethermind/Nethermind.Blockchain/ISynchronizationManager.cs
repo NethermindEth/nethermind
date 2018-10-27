@@ -17,7 +17,6 @@
  */
 
 using System;
-using System.Numerics;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;

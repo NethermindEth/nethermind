@@ -79,7 +79,7 @@ namespace Nethermind.Blockchain
 
             if (branchStateRoot != null && _stateProvider.StateRoot != branchStateRoot)
             {
-                /* discarding the other branch data */
+                /* discarding the other branch data - chain reorganization */
                 _storageProvider.Reset();
                 _stateProvider.Reset();
                 _stateProvider.StateRoot = branchStateRoot;
@@ -102,14 +102,13 @@ namespace Nethermind.Blockchain
                 }
                 else
                 {
-                    // todo: should be transactional so worth to look at column families
                     _stateDb.Commit();
                     _codeDb.Commit();
                 }
 
                 return processedBlocks;
             }
-            catch (InvalidBlockException) // TODO: which exception to catch here?
+            catch (InvalidBlockException)
             {
                 Restore(stateSnapshot, codeSnapshot, snapshotStateRoot);
                 throw;
@@ -159,17 +158,6 @@ namespace Nethermind.Blockchain
             if (_logger.IsTrace) _logger.Trace($"Reverted blocks {_stateProvider.StateRoot}");
         }
 
-        private void ApplyDaoTransition()
-        {
-            Address withdrawAccount = DaoData.DaoWithdrawalAccount;
-            foreach (Address daoAccount in DaoData.DaoAccounts)
-            {
-                UInt256 balance = _stateProvider.GetBalance(daoAccount);
-                _stateProvider.AddToBalance(withdrawAccount, balance, Dao.Instance);
-                _stateProvider.SubtractFromBalance(daoAccount, balance, Dao.Instance);
-            }
-        }
-
         private Block ProcessOne(Block suggestedBlock, ProcessingOptions options, ITraceListener traceListener)
         {
             if (suggestedBlock.IsGenesis) return suggestedBlock;
@@ -188,9 +176,7 @@ namespace Nethermind.Blockchain
 
             block.Header.StateRoot = _stateProvider.StateRoot;
             block.Header.Hash = BlockHeader.CalculateHash(block.Header);
-            if ((options & ProcessingOptions.ReadOnlyChain) == 0 &&
-                (options & ProcessingOptions.NoValidation) == 0 &&
-                !_blockValidator.ValidateProcessedBlock(block, suggestedBlock))
+            if ((options & ProcessingOptions.NoValidation) == 0 && !_blockValidator.ValidateProcessedBlock(block, suggestedBlock))
             {
                 if (_logger.IsError) _logger.Error($"Processed block is not valid {suggestedBlock.ToString(Block.Format.HashAndNumber)}");
                 throw new InvalidBlockException($"{suggestedBlock.ToString(Block.Format.HashAndNumber)}");
@@ -243,9 +229,24 @@ namespace Nethermind.Blockchain
         {
             if (_logger.IsTrace) _logger.Trace($"    {(decimal) reward.Value / (decimal) Unit.Ether:N3}{Unit.EthSymbol} for account at {reward.Address}");
             if (!_stateProvider.AccountExists(reward.Address))
+            {
                 _stateProvider.CreateAccount(reward.Address, (UInt256) reward.Value);
+            }
             else
+            {
                 _stateProvider.AddToBalance(reward.Address, (UInt256) reward.Value, _specProvider.GetSpec(block.Number));
+            }
+        }
+        
+        private void ApplyDaoTransition()
+        {
+            Address withdrawAccount = DaoData.DaoWithdrawalAccount;
+            foreach (Address daoAccount in DaoData.DaoAccounts)
+            {
+                UInt256 balance = _stateProvider.GetBalance(daoAccount);
+                _stateProvider.AddToBalance(withdrawAccount, balance, Dao.Instance);
+                _stateProvider.SubtractFromBalance(daoAccount, balance, Dao.Instance);
+            }
         }
     }
 }
