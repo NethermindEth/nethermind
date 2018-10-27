@@ -29,11 +29,8 @@ namespace Nethermind.Blockchain
         void Start();
         Task StopAsync(bool processRemainingBlocks = false);
         Block Process(Block block, ProcessingOptions options, ITraceListener listener);
-        
-        /// <summary>
-        /// Executes a block from the past, stores receipts.
-        /// </summary>
-        void AddTxData(Keccak blockHash);
+        void SuggestBlock(Block block, ProcessingOptions options);
+        void SuggestBlock(Keccak blockHash, ProcessingOptions options);
         event EventHandler ProcessingQueueEmpty;
     }
 }

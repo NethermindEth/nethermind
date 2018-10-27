@@ -127,7 +127,7 @@ namespace Nethermind.Blockchain.Test
                 Block block = blockTree.FindBlock(new UInt256(i));
                 Console.WriteLine($"Block {i} with {block.Transactions.Length} txs");
                 
-                blockchainProcessor.AddTxData(block.Hash);
+                blockchainProcessor.SuggestBlock(block.Hash, ProcessingOptions.ForceProcessing | ProcessingOptions.StoreReceipts | ProcessingOptions.ReadOnlyChain);
                 
                 TxTracer tracer = new TxTracer(blockchainProcessor, transactionStore, blockTree);
 

@@ -84,10 +84,9 @@ namespace Nethermind.JsonRpc.Module
             return _txTracer.TraceBlock(blockNumber);
         }
         
-        [Todo("Now we can suggest blocks here")]
         public void AddTxData(Keccak blockHash)
         {
-            _blockchainProcessor.AddTxData(blockHash);
+            _blockchainProcessor.SuggestBlock(blockHash, ProcessingOptions.ForceProcessing | ProcessingOptions.StoreReceipts | ProcessingOptions.ReadOnlyChain);
         }
     }
 }
