@@ -28,8 +28,8 @@ namespace Nethermind.Runner.Config
         bool NetworkEnabled { get; set; }
         bool ProcessingEnabled { get; set; }
         bool PeerManagerEnabled { get; set; }
+        bool RunAsReceiptsFiller { get; set; }
         bool IsMining { get; set; }
-        int FakeMiningDelay { get; set; }
         string HttpHost { get; set; }
         int HttpPort { get; set; }
         int DiscoveryPort { get; set; }
@@ -43,5 +43,7 @@ namespace Nethermind.Runner.Config
         string LogFileName { get; set; }
         string LogDirectory { get; set; }
         bool LogPerfStatsOnDebug { get; set; }
+        int ReceiptsFillerStart { get; set; }
+        int ReceiptsFillerEnd { get; set; }
     }
 }

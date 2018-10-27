@@ -21,9 +21,31 @@ using Nethermind.Core;
 
 namespace Nethermind.Blockchain.Filters
 {
-    public class FilterAddress
+    public class AddressFilter
     {
+        public static AddressFilter AnyAddress = new AddressFilter((Address)null);
+
+        public AddressFilter(Address address)
+        {
+            Address = address;
+        }
+        
+        public AddressFilter(HashSet<Address> addresses)
+        {
+            Addresses = addresses;
+        }
+        
         public Address Address { get; set; }
-        public IEnumerable<Address> Addresses { get; set; }
+        public HashSet<Address> Addresses { get; set; }
+
+        public bool Accepts(Address address)
+        {
+            if (Addresses != null)
+            {
+                return Addresses.Contains(address);
+            }
+
+            return Address == null || Address == address;
+        }
     }
 }

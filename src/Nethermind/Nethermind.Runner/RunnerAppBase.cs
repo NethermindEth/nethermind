@@ -121,28 +121,35 @@ namespace Nethermind.Runner
             var initParams = configProvider.GetConfig<IInitConfig>();
             var logManager = new NLogManager(initParams.LogFileName, initParams.LogDirectory);
 
-            //discovering and setting local, remote ips for client machine
-            var networkHelper = new NetworkHelper(Logger);
-            var localHost = networkHelper.GetLocalIp()?.ToString() ?? "127.0.0.1";
-            var networkConfig = configProvider.GetConfig<INetworkConfig>();
-            networkConfig.MasterExternalIp = localHost;
-            networkConfig.MasterHost = localHost;
+            if (initParams.RunAsReceiptsFiller)
+            {
+                _ethereumRunner = new ReceiptsFiller(configProvider, logManager);
+            }
+            else
+            {
+                //discovering and setting local, remote ips for client machine
+                var networkHelper = new NetworkHelper(Logger);
+                var localHost = networkHelper.GetLocalIp()?.ToString() ?? "127.0.0.1";
+                var networkConfig = configProvider.GetConfig<INetworkConfig>();
+                networkConfig.MasterExternalIp = localHost;
+                networkConfig.MasterHost = localHost;
 
-            string path = initParams.ChainSpecPath;
-            ChainSpecLoader chainSpecLoader = new ChainSpecLoader(new UnforgivingJsonSerializer());
-            ChainSpec chainSpec = chainSpecLoader.LoadFromFile(path);
+                string path = initParams.ChainSpecPath;
+                ChainSpecLoader chainSpecLoader = new ChainSpecLoader(new UnforgivingJsonSerializer());
+                ChainSpec chainSpec = chainSpecLoader.LoadFromFile(path);
 
-            var nodes = chainSpec.NetworkNodes.Select(nn => GetNode(nn, localHost)).ToArray();
-            networkConfig.BootNodes = nodes;
-            networkConfig.DbBasePath = initParams.BaseDbPath;
+                var nodes = chainSpec.NetworkNodes.Select(nn => GetNode(nn, localHost)).ToArray();
+                networkConfig.BootNodes = nodes;
+                networkConfig.DbBasePath = initParams.BaseDbPath;
+                _ethereumRunner = new EthereumRunner(configProvider, networkHelper, logManager);
+            }
 
-            _ethereumRunner = new EthereumRunner(configProvider, networkHelper, logManager);
             await _ethereumRunner.Start().ContinueWith(x =>
             {
                 if (x.IsFaulted && Logger.IsError) Logger.Error("Error during ethereum runner start", x.Exception);
             });
 
-            if (initParams.JsonRpcEnabled)
+            if (initParams.JsonRpcEnabled && !initParams.RunAsReceiptsFiller)
             {
                 Bootstrap.Instance.ConfigProvider = configProvider;
                 Bootstrap.Instance.LogManager = logManager;
