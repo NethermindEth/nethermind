@@ -59,7 +59,7 @@ namespace Nethermind.Network.Discovery
 
         private Timer _discoveryTimer;
         //private Timer _refreshTimer;
-        private Timer _discoveryPersistanceTimer;
+        private Timer _discoveryPersistenceTimer;
 
         private IChannel _channel;
         private MultithreadEventLoopGroup _group;
@@ -119,7 +119,7 @@ namespace Nethermind.Network.Discovery
             _appShutdownSource.Cancel();
             StopDiscoveryTimer();
             //StopRefreshTimer();
-            StopDiscoveryPersistanceTimer();
+            StopDiscoveryPersistenceTimer();
 
             if (_storageCommitTask != null)
             {
@@ -239,7 +239,7 @@ namespace Nethermind.Network.Discovery
                     return;
                 }
                 
-                InitializeDiscoveryPersistanceTimer();
+                InitializeDiscoveryPersistenceTimer();
                 InitializeDiscoveryTimer();
 
                 await RunDiscoveryAsync(cancellationToken);
@@ -309,29 +309,29 @@ namespace Nethermind.Network.Discovery
             }
         }
 
-        private void InitializeDiscoveryPersistanceTimer()
+        private void InitializeDiscoveryPersistenceTimer()
         {
-            if(_logger.IsDebug) _logger.Debug("Starting discovery persistance timer");
-            _discoveryPersistanceTimer = new Timer(_configurationProvider.DiscoveryPersistanceInterval) {AutoReset = false};
-            _discoveryPersistanceTimer.Elapsed += (sender, e) =>
+            if(_logger.IsDebug) _logger.Debug("Starting discovery persistence timer");
+            _discoveryPersistenceTimer = new Timer(_configurationProvider.DiscoveryPersistenceInterval) {AutoReset = false};
+            _discoveryPersistenceTimer.Elapsed += (sender, e) =>
             {
-                _discoveryPersistanceTimer.Enabled = false;
+                _discoveryPersistenceTimer.Enabled = false;
                 RunDiscoveryCommit();
-                _discoveryPersistanceTimer.Enabled = true;
+                _discoveryPersistenceTimer.Enabled = true;
             };
-            _discoveryPersistanceTimer.Start();
+            _discoveryPersistenceTimer.Start();
         }
 
-        private void StopDiscoveryPersistanceTimer()
+        private void StopDiscoveryPersistenceTimer()
         {
             try
             {
-                if(_logger.IsDebug) _logger.Debug("Stopping discovery persistance timer");
-                _discoveryPersistanceTimer?.Stop();
+                if(_logger.IsDebug) _logger.Debug("Stopping discovery persistence timer");
+                _discoveryPersistenceTimer?.Stop();
             }
             catch (Exception e)
             {
-                _logger.Error("Error during discovery persistance timer stop", e);
+                _logger.Error("Error during discovery persistence timer stop", e);
             }
         }
 

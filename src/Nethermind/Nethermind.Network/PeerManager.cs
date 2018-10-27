@@ -57,7 +57,7 @@ namespace Nethermind.Network
         private readonly INetworkStorage _peerStorage;
         private readonly INodeFactory _nodeFactory;
         private System.Timers.Timer _activePeersTimer;
-        private System.Timers.Timer _peerPersistanceTimer;
+        private System.Timers.Timer _peerPersistenceTimer;
         private System.Timers.Timer _pingTimer;
         private int _logCounter = 1;
         private bool _isStarted;
@@ -66,7 +66,7 @@ namespace Nethermind.Network
         private readonly IPerfService _perfService;
         private bool _isDiscoveryEnabled;
         private Task _storageCommitTask;
-        private long _prevActivePeersCount = 0;
+        private long _prevActivePeersCount;
 
         private readonly ConcurrentDictionary<NodeId, Peer> _activePeers = new ConcurrentDictionary<NodeId, Peer>();
         private readonly ConcurrentDictionary<NodeId, Peer> _candidatePeers = new ConcurrentDictionary<NodeId, Peer>();
@@ -134,7 +134,7 @@ namespace Nethermind.Network
                 StartActivePeersTimer();
             }
 
-            StartPeerPersistanceTimer();
+            StartPeerPersistenceTimer();
             StartPingTimer();
 
             _isStarted = true;
@@ -151,7 +151,7 @@ namespace Nethermind.Network
                 StopActivePeersTimer();
             }
 
-            StopPeerPersistanceTimer();
+            StopPeerPersistenceTimer();
             StopPingTimer();
 
             var closingTasks = new List<Task>();
@@ -162,7 +162,7 @@ namespace Nethermind.Network
                 {
                     if (x.IsFaulted)
                     {
-                        if (_logger.IsError) _logger.Error("Error during peer persistance stop.", x.Exception);
+                        if (_logger.IsError) _logger.Error("Error during peer persistence stop.", x.Exception);
                     }
                 });
                 
@@ -863,8 +863,7 @@ namespace Nethermind.Network
 
         private bool ValidateCapabilities(IEnumerable<Capability> capabilities)
         {
-//            return capabilities.Any(x => x.ProtocolCode == Protocol.Eth && (x.Version == 62 || x.Version == 63));
-            return capabilities.Any(x => x.ProtocolCode == Protocol.Eth && (x.Version == 63));
+            return capabilities.Any(x => x.ProtocolCode == Protocol.Eth && (x.Version == 62 || x.Version == 63));
         }
 
         private bool ValidateChainId(long chainId)
@@ -1026,31 +1025,31 @@ namespace Nethermind.Network
             }
         }
 
-        private void StartPeerPersistanceTimer()
+        private void StartPeerPersistenceTimer()
         {
-            if (_logger.IsDebug) _logger.Debug("Starting peer persistance timer");
+            if (_logger.IsDebug) _logger.Debug("Starting peer persistence timer");
 
-            _peerPersistanceTimer = new System.Timers.Timer(_networkConfig.PeersPersistanceInterval) {AutoReset = false};
-            _peerPersistanceTimer.Elapsed += (sender, e) =>
+            _peerPersistenceTimer = new System.Timers.Timer(_networkConfig.PeersPersistenceInterval) {AutoReset = false};
+            _peerPersistenceTimer.Elapsed += (sender, e) =>
             {
-                _peerPersistanceTimer.Enabled = false;
+                _peerPersistenceTimer.Enabled = false;
                 RunPeerCommit();
-                _peerPersistanceTimer.Enabled = true;
+                _peerPersistenceTimer.Enabled = true;
             };
 
-            _peerPersistanceTimer.Start();
+            _peerPersistenceTimer.Start();
         }
 
-        private void StopPeerPersistanceTimer()
+        private void StopPeerPersistenceTimer()
         {
             try
             {
-                if (_logger.IsDebug) _logger.Debug("Stopping peer persistance timer");
-                _peerPersistanceTimer?.Stop();
+                if (_logger.IsDebug) _logger.Debug("Stopping peer persistence timer");
+                _peerPersistenceTimer?.Stop();
             }
             catch (Exception e)
             {
-                _logger.Error("Error during peer persistance timer stop", e);
+                _logger.Error("Error during peer persistence timer stop", e);
             }
         }
 

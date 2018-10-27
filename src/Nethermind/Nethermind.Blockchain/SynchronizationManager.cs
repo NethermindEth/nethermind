@@ -20,7 +20,6 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Data;
-using System.Diagnostics;
 using System.Linq;
 using System.Numerics;
 using System.Threading;
@@ -67,7 +66,6 @@ namespace Nethermind.Blockchain
         private bool _requestedSyncCancelDueToBetterPeer;
         private CancellationTokenSource _aggregateSyncCancellationTokenSource = new CancellationTokenSource();
         private int _lastSyncPeersCount;
-        private readonly Stopwatch _entireSyncStopWatch = new Stopwatch();
 
         public SynchronizationManager(
             IDb stateDb,
@@ -83,7 +81,7 @@ namespace Nethermind.Blockchain
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));
             _blockchainConfig = blockchainConfig ?? throw new ArgumentNullException(nameof(blockchainConfig));
-            _perfService = perfService;
+            _perfService = perfService ?? throw new ArgumentNullException(nameof(perfService));
 
             _transactionStore = transactionStore ?? throw new ArgumentNullException(nameof(transactionStore));
             _transactionValidator = transactionValidator ?? throw new ArgumentNullException(nameof(transactionValidator));
@@ -93,8 +91,6 @@ namespace Nethermind.Blockchain
             _headerValidator = headerValidator ?? throw new ArgumentNullException(nameof(headerValidator));
 
             if (_logger.IsDebug) _logger.Debug($"Initialized SynchronizationManager with head block {Head.ToString(BlockHeader.Format.Short)}");
-
-            _entireSyncStopWatch.Start();
         }
 
         public int ChainId => _blockTree.ChainId;
@@ -770,60 +766,8 @@ namespace Nethermind.Blockchain
                     }
                 }
 
-                Block[] blocksWithTransactions = blocks.Where(b => b.Transactions.Length != 0).ToArray();
-                if (blocksWithTransactions.Length != 0)
-                {
-                    Task<TransactionReceipt[][]> receiptsTask = peer.GetReceipts(blocksWithTransactions.Select(b => b.Hash).ToArray(), _peerSyncCancellationTokenSource.Token);
-                    TransactionReceipt[][] receipts = await receiptsTask;
-                    if (receiptsTask.IsCanceled)
-                    {
-                        wasCanceled = true;
-                        break;
-                    }
-
-                    if (receiptsTask.IsFaulted)
-                    {
-                        _sinceLastTimeout = 0;
-                        if (receiptsTask.Exception.InnerExceptions.Any(x => x.InnerException is TimeoutException))
-                        {
-                            if (_logger.IsTrace) _logger.Error("Failed to retrieve receipts when synchronizing (Timeout)", receiptsTask.Exception);
-                        }
-                        else
-                        {
-                            if (_logger.IsError) _logger.Error("Failed to retrieve receipts when synchronizing", receiptsTask.Exception);
-                        }
-
-                        throw receiptsTask.Exception;
-                    }
-
-                    for (int blockIndex = 0; blockIndex < blocksWithTransactions.Length; blockIndex++)
-                    {
-                        long gasUsedTotal = 0;
-                        for (int txIndex = 0; txIndex < blocksWithTransactions[blockIndex].Transactions.Length; txIndex++)
-                        {
-                            TransactionReceipt receipt = receipts[blockIndex][txIndex];
-                            if (receipt == null)
-                            {
-                                throw new DataException($"Missing receipt for {blocksWithTransactions[blockIndex].Hash}->{txIndex}");
-                            }
-
-                            receipt.Index = txIndex;
-                            receipt.BlockHash = blocksWithTransactions[blockIndex].Hash;
-                            receipt.BlockNumber = blocksWithTransactions[blockIndex].Number;
-                            receipt.TransactionHash = blocksWithTransactions[blockIndex].Transactions[txIndex].Hash;
-                            gasUsedTotal += receipt.GasUsed;
-                            receipt.GasUsedTotal = gasUsedTotal;
-                            receipt.Recipient = blocksWithTransactions[blockIndex].Transactions[txIndex].To;
-
-                            // only after execution
-                            // receipt.Sender = blocksWithTransactions[blockIndex].Transactions[txIndex].SenderAddress; // TODO: need to recover
-                            // receipt.Error = ...
-                            // receipt.ContractAddress = ...
-
-                            _transactionStore.StoreProcessedTransaction(receipt.TransactionHash, receipt);
-                        }
-                    }
-                }
+                /* // fast sync receipts download when ETH63 implemented fully
+                if (await DownloadReceipts(blocks, peer)) break; */
 
                 // Parity 1.11 non canonical blocks when testing on 27/06
                 for (int i = 0; i < blocks.Length; i++)
@@ -856,12 +800,6 @@ namespace Nethermind.Blockchain
                                 _logger.Error(message);
                                 peerInfo.NumberReceived -= peerInfo.NumberReceived <= 60 ? UInt256.Zero : (UInt256) 60;
                                 throw new EthSynchronizationException(message);
-//                                if (_logger.IsTrace) _logger.Trace("Resyncing split");
-//                                peerInfo.NumberReceived -= 1;
-//                                var syncTask =
-//                                    Task.Run(() => SynchronizeWithPeerAsync(peerInfo, _peerSyncCancellationTokenSource.Token),
-//                                        _peerSyncCancellationTokenSource.Token);
-//                                await syncTask;
                             }
                             else
                             {
@@ -881,7 +819,6 @@ namespace Nethermind.Blockchain
 
                 peerInfo.NumberReceived = blocks[blocks.Length - 1].Number;
                 bestNumber = _blockTree.BestKnownNumber;
-//                if (_blockchainConfig.SyncReceipts && bestNumber > _lastSyncNumber && bestNumber % 10000 == 0)
                 if (bestNumber > _lastSyncNumber + 1000)
                 {
                     _lastSyncNumber = bestNumber;
@@ -890,6 +827,66 @@ namespace Nethermind.Blockchain
             }
 
             if (_logger.IsTrace) _logger.Trace($"Stopping sync processes with Node: {peerInfo.Peer.NodeId}, wasCancelled: {wasCanceled}");
+        }
+
+        [Todo(Improve.MissingFunctionality, "Eth63 / fast sync can download receipts using this method. Fast sync is not implemented although its methods and serializers are already written.")]
+        private async Task<bool> DownloadReceipts(Block[] blocks, ISynchronizationPeer peer)
+        {
+            Block[] blocksWithTransactions = blocks.Where(b => b.Transactions.Length != 0).ToArray();
+            if (blocksWithTransactions.Length != 0)
+            {
+                Task<TransactionReceipt[][]> receiptsTask = peer.GetReceipts(blocksWithTransactions.Select(b => b.Hash).ToArray(), _peerSyncCancellationTokenSource.Token);
+                TransactionReceipt[][] receipts = await receiptsTask;
+                if (receiptsTask.IsCanceled)
+                {
+                    return true;
+                }
+
+                if (receiptsTask.IsFaulted)
+                {
+                    _sinceLastTimeout = 0;
+                    if (receiptsTask.Exception.InnerExceptions.Any(x => x.InnerException is TimeoutException))
+                    {
+                        if (_logger.IsTrace) _logger.Error("Failed to retrieve receipts when synchronizing (Timeout)", receiptsTask.Exception);
+                    }
+                    else
+                    {
+                        if (_logger.IsError) _logger.Error("Failed to retrieve receipts when synchronizing", receiptsTask.Exception);
+                    }
+
+                    throw receiptsTask.Exception;
+                }
+
+                for (int blockIndex = 0; blockIndex < blocksWithTransactions.Length; blockIndex++)
+                {
+                    long gasUsedTotal = 0;
+                    for (int txIndex = 0; txIndex < blocksWithTransactions[blockIndex].Transactions.Length; txIndex++)
+                    {
+                        TransactionReceipt receipt = receipts[blockIndex][txIndex];
+                        if (receipt == null)
+                        {
+                            throw new DataException($"Missing receipt for {blocksWithTransactions[blockIndex].Hash}->{txIndex}");
+                        }
+
+                        receipt.Index = txIndex;
+                        receipt.BlockHash = blocksWithTransactions[blockIndex].Hash;
+                        receipt.BlockNumber = blocksWithTransactions[blockIndex].Number;
+                        receipt.TransactionHash = blocksWithTransactions[blockIndex].Transactions[txIndex].Hash;
+                        gasUsedTotal += receipt.GasUsed;
+                        receipt.GasUsedTotal = gasUsedTotal;
+                        receipt.Recipient = blocksWithTransactions[blockIndex].Transactions[txIndex].To;
+
+                        // only after execution
+                        // receipt.Sender = blocksWithTransactions[blockIndex].Transactions[txIndex].SenderAddress; 
+                        // receipt.Error = ...
+                        // receipt.ContractAddress = ...
+
+                        _transactionStore.StoreProcessedTransaction(receipt.TransactionHash, receipt);
+                    }
+                }
+            }
+
+            return false;
         }
 
         private void IncreaseBatchSize()
