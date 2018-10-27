@@ -88,9 +88,9 @@ namespace Nethermind.Stats
             CaptureEvent(NodeStatsEventType.P2PInitialized, nodeDetails);
         }
 
-        public void AddNodeStatsEth62InitializedEvent(Eth62NodeDetails nodeDetails)
+        public void AddNodeStatsEth62InitializedEvent(EthNodeDetails nodeDetails)
         {
-            Eth62NodeDetails = nodeDetails;
+            EthNodeDetails = nodeDetails;
             _statCounters[NodeStatsEventType.Eth62Initialized].Increment();
             CaptureEvent(NodeStatsEventType.Eth62Initialized, null, nodeDetails);
         }
@@ -176,7 +176,7 @@ namespace Nethermind.Stats
 
         public P2PNodeDetails P2PNodeDetails { get; private set; }
 
-        public Eth62NodeDetails Eth62NodeDetails { get; private set; }
+        public EthNodeDetails EthNodeDetails { get; private set; }
 
         public CompatibilityValidationType? FailedCompatibilityValidation { get; set; }
 
@@ -184,7 +184,7 @@ namespace Nethermind.Stats
 
         public Node Node { get; }
 
-        private void CaptureEvent(NodeStatsEventType eventType, P2PNodeDetails p2PNodeDetails = null, Eth62NodeDetails eth62NodeDetails = null, DisconnectDetails disconnectDetails = null, ConnectionDirection? connectionDirection = null, SyncNodeDetails syncNodeDetails = null)
+        private void CaptureEvent(NodeStatsEventType eventType, P2PNodeDetails p2PNodeDetails = null, EthNodeDetails ethNodeDetails = null, DisconnectDetails disconnectDetails = null, ConnectionDirection? connectionDirection = null, SyncNodeDetails syncNodeDetails = null)
         {
             if (!_statsConfig.CaptureNodeStatsEventHistory)
             {
@@ -201,7 +201,7 @@ namespace Nethermind.Stats
                 EventType = eventType,
                 EventDate = DateTime.Now,
                 P2PNodeDetails = p2PNodeDetails,
-                Eth62NodeDetails = eth62NodeDetails,
+                EthNodeDetails = ethNodeDetails,
                 DisconnectDetails = disconnectDetails,
                 ConnectionDirection = connectionDirection,
                 SyncNodeDetails = syncNodeDetails

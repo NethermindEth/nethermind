@@ -21,7 +21,7 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Stats.Model
 {
-    public class Eth62NodeDetails
+    public class EthNodeDetails
     {
         public string Protocol { get; set; }
         public byte ProtocolVersion { get; set; }
