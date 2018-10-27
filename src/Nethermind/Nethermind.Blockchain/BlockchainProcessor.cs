@@ -35,6 +35,7 @@ namespace Nethermind.Blockchain
     {
         private readonly IBlockProcessor _blockProcessor;
         private readonly IEthereumSigner _signer;
+        private readonly bool _storeReceiptsByDefault;
         private readonly IBlockTree _blockTree;
         private readonly ILogger _logger;
 
@@ -50,16 +51,19 @@ namespace Nethermind.Blockchain
         private const int SoftMaxRecoveryQueueSizeInTx = 10000; // adjust based on tx or gas
         private const int MaxProcessingQueueSize = 2000; // adjust based on tx or gas
 
+        [Todo(Improve.Refactor, "Store receipts by default should be configurable")]
         public BlockchainProcessor(
             IBlockTree blockTree,
             IBlockProcessor blockProcessor,
             IEthereumSigner signer,
-            ILogManager logManager)
+            ILogManager logManager,
+            bool storeReceiptsByDefault)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _blockProcessor = blockProcessor ?? throw new ArgumentNullException(nameof(blockProcessor));
             _signer = signer ?? throw new ArgumentNullException(nameof(signer));
+            _storeReceiptsByDefault = storeReceiptsByDefault;
 
             _blockTree.NewBestSuggestedBlock += OnNewBestBlock;
             _stats = new ProcessingStats(_logger);
@@ -67,9 +71,21 @@ namespace Nethermind.Blockchain
 
         private void OnNewBestBlock(object sender, BlockEventArgs blockEventArgs)
         {
-            SuggestBlock(blockEventArgs.Block, ProcessingOptions.StoreReceipts);
+            SuggestBlock(blockEventArgs.Block, _storeReceiptsByDefault ? ProcessingOptions.StoreReceipts : ProcessingOptions.None);
         }
 
+        public void SuggestBlock(UInt256 blockNumber, ProcessingOptions processingOptions)
+        {
+            if ((processingOptions & ProcessingOptions.ReadOnlyChain) == 0 ||
+                (processingOptions & ProcessingOptions.ForceProcessing) == 0)
+            {
+                throw new InvalidOperationException("Probably not what you meant as when processing old blocks you should not modify the chain and you need to enforce processing");
+            }
+            
+            Block block = _blockTree.FindBlock(blockNumber);
+            SuggestBlock(block, processingOptions);
+        }
+        
         public void SuggestBlock(Keccak blockHash, ProcessingOptions processingOptions)
         {
             Block block = _blockTree.FindBlock(blockHash, false);

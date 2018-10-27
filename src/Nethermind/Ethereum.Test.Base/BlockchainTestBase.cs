@@ -272,7 +272,8 @@ namespace Ethereum.Test.Base
                 blockTree,
                 blockProcessor,
                 signer,
-                _logManager);
+                _logManager,
+                false);
 
             InitializeTestState(test, stateProvider, storageProvider, specProvider);
 

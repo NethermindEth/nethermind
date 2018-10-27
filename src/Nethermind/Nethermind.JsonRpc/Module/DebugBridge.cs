@@ -18,6 +18,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -29,13 +30,16 @@ namespace Nethermind.JsonRpc.Module
 {
     public class DebugBridge : IDebugBridge
     {
-        private readonly IBlockchainProcessor _blockchainProcessor;
+        private readonly IBlockchainProcessor _traceProcessot;
+        private readonly IBlockchainProcessor _receiptsProcessor;
         private readonly ITxTracer _txTracer;
         private Dictionary<string, IDb> _dbMappings;
 
-        public DebugBridge(IReadOnlyDbProvider dbProvider, ITxTracer txTracer, IBlockchainProcessor blockchainProcessor)
+        public DebugBridge(IReadOnlyDbProvider dbProvider, ITxTracer txTracer, IBlockchainProcessor traceProcessor, IBlockchainProcessor receiptsProcessor)
         {
-            _blockchainProcessor = blockchainProcessor ?? throw new ArgumentNullException(nameof(blockchainProcessor));
+            _traceProcessot = traceProcessor ?? throw new ArgumentNullException(nameof(traceProcessor));
+            _receiptsProcessor = receiptsProcessor ?? throw new ArgumentNullException(nameof(traceProcessor));
+            _receiptsProcessor.ProcessingQueueEmpty += (sender, args) => _receiptProcessedEvent.Set();
             _txTracer = txTracer ?? throw new ArgumentNullException(nameof(txTracer));
             dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
             IDb blockInfosDb = dbProvider.BlockInfosDb ?? throw new ArgumentNullException(nameof(dbProvider.BlockInfosDb));
@@ -84,9 +88,18 @@ namespace Nethermind.JsonRpc.Module
             return _txTracer.TraceBlock(blockNumber);
         }
         
+        private AutoResetEvent _receiptProcessedEvent = new AutoResetEvent(false);
+        
+        public void AddTxData(UInt256 blockNumber)
+        {
+            _receiptsProcessor.SuggestBlock(blockNumber, ProcessingOptions.ForceProcessing | ProcessingOptions.StoreReceipts | ProcessingOptions.ReadOnlyChain); 
+            _receiptProcessedEvent.WaitOne(TimeSpan.FromSeconds(60));
+        }
+        
         public void AddTxData(Keccak blockHash)
         {
-            _blockchainProcessor.SuggestBlock(blockHash, ProcessingOptions.ForceProcessing | ProcessingOptions.StoreReceipts | ProcessingOptions.ReadOnlyChain);
+            _receiptsProcessor.SuggestBlock(blockHash, ProcessingOptions.ForceProcessing | ProcessingOptions.StoreReceipts | ProcessingOptions.ReadOnlyChain); 
+            _receiptProcessedEvent.WaitOne(TimeSpan.FromSeconds(60));
         }
     }
 }

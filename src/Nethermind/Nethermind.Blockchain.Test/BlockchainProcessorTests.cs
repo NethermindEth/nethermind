@@ -82,7 +82,7 @@ namespace Nethermind.Blockchain.Test
             TransactionProcessor processor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, logger);
             RewardCalculator rewardCalculator = new RewardCalculator(specProvider);
             BlockProcessor blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, processor, stateDb, codeDb, stateProvider, storageProvider, transactionStore, logger);
-            BlockchainProcessor blockchainProcessor = new BlockchainProcessor(blockTree, blockProcessor, ethereumSigner, logger);
+            BlockchainProcessor blockchainProcessor = new BlockchainProcessor(blockTree, blockProcessor, ethereumSigner, logger, false);
 
             /* load ChainSpec and init */
             ChainSpecLoader loader = new ChainSpecLoader(new UnforgivingJsonSerializer());
@@ -110,15 +110,8 @@ namespace Nethermind.Blockchain.Test
                 if (args.Block.Number == 6) manualResetEvent.Set();
             };
 
-            manualResetEvent.WaitOne(miningDelay * 12 * timeMultiplier);
-
-            await blockchainProcessor.StopAsync(true).ContinueWith(
-                t =>
-                {
-                    if (t.IsFaulted) throw t.Exception;
-
-                    Assert.GreaterOrEqual((int) blockTree.Head.Number, 6);
-                });
+            manualResetEvent.WaitOne(miningDelay * 12 * timeMultiplier * 1000);
+            await minedBlockProducer.StopAsync();
             
             int previousCount = 0;
             int totalTx = 0;
@@ -127,7 +120,10 @@ namespace Nethermind.Blockchain.Test
                 Block block = blockTree.FindBlock(new UInt256(i));
                 Console.WriteLine($"Block {i} with {block.Transactions.Length} txs");
                 
+                ManualResetEvent suggestEvent = new ManualResetEvent(false);
+                blockchainProcessor.ProcessingQueueEmpty += (sender, args) => suggestEvent.Set(); 
                 blockchainProcessor.SuggestBlock(block.Hash, ProcessingOptions.ForceProcessing | ProcessingOptions.StoreReceipts | ProcessingOptions.ReadOnlyChain);
+                suggestEvent.WaitOne(1000);
                 
                 TxTracer tracer = new TxTracer(blockchainProcessor, transactionStore, blockTree);
 

@@ -31,5 +31,6 @@ namespace Nethermind.JsonRpc.Module
         BlockTrace GetBlockTrace(UInt256 blockNumber);
         byte[] GetDbValue(string dbName, byte[] key);
         void AddTxData(Keccak blockHash);
+        void AddTxData(UInt256 blockNumber);
     }
 }
