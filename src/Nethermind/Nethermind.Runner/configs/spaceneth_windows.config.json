@@ -7,6 +7,7 @@
       "DiscoveryEnabled": false,
       "SynchronizationEnabled": false,
       "PeerManagerEnabled": false,
+      "ProcessingEnabled": true,
       "IsMining": true,
       "DiscoveryPort": 30312,
       "P2PPort": 30312,

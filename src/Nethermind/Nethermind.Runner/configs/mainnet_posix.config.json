@@ -6,6 +6,7 @@
       "NetworkEnabled": true,
       "DiscoveryEnabled": true,
       "SynchronizationEnabled": true,
+      "ProcessingEnabled": true,
       "IsMining": false,
       "DiscoveryPort": 30312,
       "P2PPort": 30312,
