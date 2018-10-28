@@ -37,6 +37,7 @@ namespace Nethermind.Blockchain
         public int ChainId => _wrapped.ChainId;
         public BlockHeader Genesis => _wrapped.Genesis;
         public BlockHeader BestSuggested => _wrapped.BestSuggested;
+        public UInt256 BestKnownNumber => _wrapped.BestKnownNumber;
         public BlockHeader Head => _wrapped.Head;
         public bool CanAcceptNewBlocks { get; } = false;
 

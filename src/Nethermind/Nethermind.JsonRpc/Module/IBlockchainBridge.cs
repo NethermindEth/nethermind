@@ -56,7 +56,6 @@ namespace Nethermind.JsonRpc.Module
         Account GetAccount(Address address, Keccak stateRoot);
 
         int NewBlockFilter();
-
         int NewFilter(FilterBlock fromBlock, FilterBlock toBlock, object address = null,
             IEnumerable<object> topics = null);
 

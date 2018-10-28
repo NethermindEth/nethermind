@@ -27,5 +27,6 @@ namespace Nethermind.Blockchain
     {
         Block[] Process(Keccak branchStateRoot, Block[] suggestedBlocks, ProcessingOptions processingOptions, ITraceListener traceListener);
         event EventHandler<BlockProcessedEventArgs> BlockProcessed;
+        event EventHandler<TransactionProcessedEventArgs> TransactionProcessed;
     }
 }

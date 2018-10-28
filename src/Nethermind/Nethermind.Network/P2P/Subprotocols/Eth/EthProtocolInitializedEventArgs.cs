@@ -19,9 +19,9 @@
 using System.Numerics;
 using Nethermind.Core.Crypto;
 
-namespace Nethermind.Stats.Model
+namespace Nethermind.Network.P2P.Subprotocols.Eth
 {
-    public class Eth62NodeDetails
+    public class EthProtocolInitializedEventArgs : ProtocolInitializedEventArgs
     {
         public string Protocol { get; set; }
         public byte ProtocolVersion { get; set; }
@@ -29,5 +29,9 @@ namespace Nethermind.Stats.Model
         public BigInteger TotalDifficulty { get; set; }
         public Keccak BestHash { get; set; }
         public Keccak GenesisHash { get; set; }
+
+        public EthProtocolInitializedEventArgs(Eth62ProtocolHandler protocolHandler) : base(protocolHandler)
+        {
+        }
     }
 }

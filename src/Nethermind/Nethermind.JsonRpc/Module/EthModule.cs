@@ -484,9 +484,8 @@ namespace Nethermind.JsonRpc.Module
         {
             var fromBlock = MapFilterBlock(filter.FromBlock);
             var toBlock = MapFilterBlock(filter.ToBlock);
-
-            return ResultWrapper<Quantity>.Success(new Quantity(
-                _blockchainBridge.NewFilter(fromBlock, toBlock, filter.Address, filter.Topics)));
+            int filterId = _blockchainBridge.NewFilter(fromBlock, toBlock, filter.Address, filter.Topics);
+            return ResultWrapper<Quantity>.Success(new Quantity(filterId));
         }
 
         private FilterBlock MapFilterBlock(BlockParameter parameter)
@@ -508,7 +507,8 @@ namespace Nethermind.JsonRpc.Module
 
         public ResultWrapper<Quantity> eth_newBlockFilter()
         {
-            return ResultWrapper<Quantity>.Success(new Quantity(_blockchainBridge.NewBlockFilter()));
+            int filterId = _blockchainBridge.NewBlockFilter();
+            return ResultWrapper<Quantity>.Success(new Quantity(filterId));
         }
 
         public ResultWrapper<Quantity> eth_newPendingTransactionFilter(Filter filter)
@@ -530,11 +530,11 @@ namespace Nethermind.JsonRpc.Module
             {
                 case FilterType.BlockFilter:
                     return _blockchainBridge.FilterExists(id)
-                        ? ResultWrapper<IEnumerable<object>>.Success(_blockchainBridge.GetBlockFilterChanges(id).Select(b => new Data(b.Bytes)))
+                        ? ResultWrapper<IEnumerable<object>>.Success(_blockchainBridge.GetBlockFilterChanges(id).Select(b => new Data(b.Bytes)).ToArray())
                         : ResultWrapper<IEnumerable<object>>.Fail($"Filter with id: '{filterId}' does not exist.");
                 case FilterType.LogFilter:
                     return _blockchainBridge.FilterExists(id)
-                        ? ResultWrapper<IEnumerable<object>>.Success(MapLogs(_blockchainBridge.GetLogFilterChanges(id)))
+                        ? ResultWrapper<IEnumerable<object>>.Success(MapLogs(_blockchainBridge.GetLogFilterChanges(id)).ToArray())
                         : ResultWrapper<IEnumerable<object>>.Fail($"Filter with id: '{filterId}' does not exist.");
                 default:
                     throw new NotSupportedException($"Filter type {filterType} is not supported");

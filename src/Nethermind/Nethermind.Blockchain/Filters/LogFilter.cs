@@ -16,7 +16,6 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Linq;
 using Nethermind.Blockchain.Filters.Topics;
 using Nethermind.Core;
 
@@ -24,33 +23,23 @@ namespace Nethermind.Blockchain.Filters
 {
     public class LogFilter : FilterBase
     {
+        private readonly AddressFilter _addressFilter;
         private readonly TopicsFilter _topicsFilter;
         public FilterBlock FromBlock { get; }
         public FilterBlock ToBlock { get; }
-        public FilterAddress Address { get; }
         
         public LogFilter(int id, FilterBlock fromBlock, FilterBlock toBlock,
-            FilterAddress address, TopicsFilter topicsFilter) : base(id)
+            AddressFilter addressFilter, TopicsFilter topicsFilter) : base(id)
         {
             FromBlock = fromBlock;
             ToBlock = toBlock;
-            Address = address;
+            _addressFilter = addressFilter;
             _topicsFilter = topicsFilter;
         }
 
         public bool Accepts(LogEntry logEntry)
         {
-            if (Address?.Address != null && Address.Address != logEntry.LoggersAddress)
-            {
-                return false;
-            }
-            
-            if (Address?.Addresses != null && Address.Addresses.All(a => a != logEntry.LoggersAddress))
-            {
-                return false;
-            }
-
-            return _topicsFilter.Accepts(logEntry);
+            return _addressFilter.Accepts(logEntry.LoggersAddress) && _topicsFilter.Accepts(logEntry);
         }
     }
 }

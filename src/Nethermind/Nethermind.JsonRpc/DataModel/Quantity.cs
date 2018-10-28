@@ -57,7 +57,7 @@ namespace Nethermind.JsonRpc.DataModel
         [Todo("Use UInt256 here")]
         public UInt256? AsNumber()
         {
-            return Value != null ?  (UInt256?)new BigInteger(Value, false, true) : null;
+            return Value != null ? (UInt256?)new BigInteger(Value, false, true) : null;
         }
         
         public Keccak AsHash()

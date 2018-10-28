@@ -20,6 +20,7 @@ using System;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Dirichlet.Numerics;
 using Nethermind.Evm;
 
 namespace Nethermind.Blockchain
@@ -29,11 +30,9 @@ namespace Nethermind.Blockchain
         void Start();
         Task StopAsync(bool processRemainingBlocks = false);
         Block Process(Block block, ProcessingOptions options, ITraceListener listener);
-        
-        /// <summary>
-        /// Executes a block from the past, stores receipts.
-        /// </summary>
-        void AddTxData(Keccak blockHash);
+        void SuggestBlock(Block block, ProcessingOptions options);
+        void SuggestBlock(Keccak blockHash, ProcessingOptions options);
+        void SuggestBlock(UInt256 blockNumber, ProcessingOptions options);
         event EventHandler ProcessingQueueEmpty;
     }
 }

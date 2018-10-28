@@ -24,14 +24,11 @@ namespace Nethermind.Blockchain
 {
     public class BlockProcessedEventArgs : EventArgs
     {
-        public BlockProcessedEventArgs(Block block, TransactionReceipt[] receipts)
+        public Block Block { get; }
+        
+        public BlockProcessedEventArgs(Block block)
         {
-            Receipts = receipts;
             Block = block;
         }
-
-        public TransactionReceipt[] Receipts { get; }
-
-        public Block Block { get; }
     }
 }

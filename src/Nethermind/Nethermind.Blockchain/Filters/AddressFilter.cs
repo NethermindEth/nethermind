@@ -16,14 +16,36 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.Blockchain
+using System.Collections.Generic;
+using Nethermind.Core;
+
+namespace Nethermind.Blockchain.Filters
 {
-    public class BlockchainConfig : IBlockchainConfig
+    public class AddressFilter
     {
-        public int SyncTimerInterval { get; set; } = 5000;
-        public int SyncPeersMaxCount { get; set; } = 25;
-        public long MinAvailableBlockDiffForSyncSwitch { get; } = 100;
-        public long MinLatencyDiffForSyncSwitch { get; } = 5;
-        public bool SyncReceipts { get; } = false;
+        public static AddressFilter AnyAddress = new AddressFilter((Address)null);
+
+        public AddressFilter(Address address)
+        {
+            Address = address;
+        }
+        
+        public AddressFilter(HashSet<Address> addresses)
+        {
+            Addresses = addresses;
+        }
+        
+        public Address Address { get; set; }
+        public HashSet<Address> Addresses { get; set; }
+
+        public bool Accepts(Address address)
+        {
+            if (Addresses != null)
+            {
+                return Addresses.Contains(address);
+            }
+
+            return Address == null || Address == address;
+        }
     }
 }

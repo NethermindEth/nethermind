@@ -24,7 +24,7 @@ namespace Nethermind.Network
     {
         public static readonly TimeSpan InitialConnection = TimeSpan.FromSeconds(10);
         public static readonly TimeSpan TcpClose = TimeSpan.FromSeconds(5);
-        public static readonly TimeSpan Eth62 = TimeSpan.FromSeconds(5);
+        public static readonly TimeSpan Eth = TimeSpan.FromSeconds(5);
         public static readonly TimeSpan P2PPing = TimeSpan.FromSeconds(5);
         public static readonly TimeSpan P2PHello = TimeSpan.FromSeconds(5);
         public static readonly TimeSpan Eth62Status = TimeSpan.FromSeconds(5);

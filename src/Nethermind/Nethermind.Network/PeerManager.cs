@@ -37,6 +37,7 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Network.P2P.Subprotocols.Eth.V63;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 
@@ -56,7 +57,7 @@ namespace Nethermind.Network
         private readonly INetworkStorage _peerStorage;
         private readonly INodeFactory _nodeFactory;
         private System.Timers.Timer _activePeersTimer;
-        private System.Timers.Timer _peerPersistanceTimer;
+        private System.Timers.Timer _peerPersistenceTimer;
         private System.Timers.Timer _pingTimer;
         private int _logCounter = 1;
         private bool _isStarted;
@@ -65,7 +66,7 @@ namespace Nethermind.Network
         private readonly IPerfService _perfService;
         private bool _isDiscoveryEnabled;
         private Task _storageCommitTask;
-        private long _prevActivePeersCount = 0;
+        private long _prevActivePeersCount;
 
         private readonly ConcurrentDictionary<NodeId, Peer> _activePeers = new ConcurrentDictionary<NodeId, Peer>();
         private readonly ConcurrentDictionary<NodeId, Peer> _candidatePeers = new ConcurrentDictionary<NodeId, Peer>();
@@ -133,7 +134,7 @@ namespace Nethermind.Network
                 StartActivePeersTimer();
             }
 
-            StartPeerPersistanceTimer();
+            StartPeerPersistenceTimer();
             StartPingTimer();
 
             _isStarted = true;
@@ -150,7 +151,7 @@ namespace Nethermind.Network
                 StopActivePeersTimer();
             }
 
-            StopPeerPersistanceTimer();
+            StopPeerPersistenceTimer();
             StopPingTimer();
 
             var closingTasks = new List<Task>();
@@ -161,7 +162,7 @@ namespace Nethermind.Network
                 {
                     if (x.IsFaulted)
                     {
-                        if (_logger.IsError) _logger.Error("Error during peer persistance stop.", x.Exception);
+                        if (_logger.IsError) _logger.Error("Error during peer persistence stop.", x.Exception);
                     }
                 });
                 
@@ -210,8 +211,8 @@ namespace Nethermind.Network
                 var failedInitialConnect = 0;
                 var connectionRounds = 0;
 
-                var candidateSelection = SelectCandidates();
-                var remainingCandidates = candidateSelection.Candidates;
+                var candidateSelection = SelectAndRankCandidates();
+                IReadOnlyCollection<Peer> remainingCandidates = candidateSelection.Candidates;
                 if (!remainingCandidates.Any())
                 {
                     return;
@@ -224,17 +225,17 @@ namespace Nethermind.Network
                         break;
                     }
                     
-                    var key = _perfService.StartPerfCalc();
+                    var perfCalcKey = _perfService.StartPerfCalc();
 
                     var availableActiveCount = _networkConfig.ActivePeersMaxCount - _activePeers.Count;
-                    int nodesToTry = Math.Min(remainingCandidates.Count(), availableActiveCount);
+                    int nodesToTry = Math.Min(remainingCandidates.Count, availableActiveCount);
                     if (nodesToTry == 0)
                     {
                         break;
                     }
                     
-                    var candidatesToTry = remainingCandidates.Take(nodesToTry).ToArray();
-                    remainingCandidates = remainingCandidates.Skip(nodesToTry).ToArray();
+                    var candidatesToTry = remainingCandidates.Take(nodesToTry);
+                    remainingCandidates = remainingCandidates.Skip(nodesToTry).ToList();
                     Parallel.ForEach(candidatesToTry, async (peer, loopState) =>
                     {
                         if (loopState.ShouldExitCurrentIteration || _cancellationTokenSource.IsCancellationRequested)
@@ -245,7 +246,7 @@ namespace Nethermind.Network
                         Interlocked.Increment(ref tryCount);
 
                         // Can happen when In connection is received from the same peer and is initialized before we get here
-                        // In this case we do not initialze OUT connection
+                        // In this case we do not initialize OUT connection
                         if (!AddActivePeer(peer.Node.Id, peer, "upgrading candidate"))
                         {
                             if (_logger.IsTrace) _logger.Trace($"Active peer was already added to collection: {peer.Node.Id}");
@@ -269,7 +270,7 @@ namespace Nethermind.Network
                         Interlocked.Increment(ref newActiveNodes);
                     });
 
-                    _perfService.EndPerfCalc(key, "RunPeerUpdate");
+                    _perfService.EndPerfCalc(perfCalcKey, "RunPeerUpdate");
                     connectionRounds++;
                 }
                 
@@ -314,26 +315,26 @@ namespace Nethermind.Network
             _activePeers.TryRemove(nodeId, out _);
         }
 
-        private (IEnumerable<Peer> Candidates, IDictionary<ActivePeerSelectionCounter, int> Counters, IEnumerable<Peer> IncompatiblePeers) SelectCandidates()
+        private (IReadOnlyCollection<Peer> Candidates, IDictionary<ActivePeerSelectionCounter, int> Counters, IReadOnlyCollection<Peer> IncompatiblePeers) SelectAndRankCandidates()
         {
             var counters = Enum.GetValues(typeof(ActivePeerSelectionCounter)).OfType<ActivePeerSelectionCounter>().ToDictionary(x => x, y => 0);
-            var candidates = new List<Peer>();
-            var incompatiblePeers = new List<Peer>();
             var availableActiveCount = _networkConfig.ActivePeersMaxCount - _activePeers.Count;
             if (availableActiveCount <= 0)
             {
-                return (candidates, counters, incompatiblePeers);
+                return (Array.Empty<Peer>(), counters, Array.Empty<Peer>());
             }
 
             var candidatesSnapshot = _candidatePeers.Where(x => !_activePeers.ContainsKey(x.Key)).ToArray();
             if (!candidatesSnapshot.Any())
             {
-                return (candidates, counters, incompatiblePeers);
+                return (Array.Empty<Peer>(), counters, Array.Empty<Peer>());
             }
 
             counters[ActivePeerSelectionCounter.AllNonActiveCandidates] = candidatesSnapshot.Length;
 
-            for (var i = 0; i < candidatesSnapshot.Length; i++)
+            List<Peer> candidates = new List<Peer>();
+            List<Peer> incompatiblePeers = new List<Peer>();
+            for (int i = 0; i < candidatesSnapshot.Length; i++)
             {
                 var candidate = candidatesSnapshot[i];
                 if (candidate.Value.Node.Port == 0)
@@ -363,7 +364,7 @@ namespace Nethermind.Network
                 candidates.Add(candidate.Value);
             }
 
-            return (candidates.OrderBy(x => x.NodeStats.IsTrustedPeer).ThenByDescending(x => x.NodeStats.CurrentNodeReputation).ToArray(), counters, incompatiblePeers);
+            return (candidates.OrderBy(x => x.NodeStats.IsTrustedPeer).ThenByDescending(x => x.NodeStats.CurrentNodeReputation).ToList(), counters, incompatiblePeers);
         }
 
         private void LogSessionStats()
@@ -380,7 +381,7 @@ namespace Nethermind.Network
                     Count = peers.Count(y => y.NodeStats.DidEventHappen(x))
                 }).ToArray();
 
-                var chains = peers.Where(x => x.NodeStats.Eth62NodeDetails != null).GroupBy(x => x.NodeStats.Eth62NodeDetails.ChainId).Select(
+                var chains = peers.Where(x => x.NodeStats.EthNodeDetails != null).GroupBy(x => x.NodeStats.EthNodeDetails.ChainId).Select(
                     x => new {ChainName = ChainId.GetChainName((int) x.Key), Count = x.Count()}).ToArray();
                 var clients = peers.Where(x => x.NodeStats.P2PNodeDetails != null).Select(x => x.NodeStats.P2PNodeDetails.ClientId).GroupBy(x => x).Select(
                     x => new {ClientId = x.Key, Count = x.Count()}).ToArray();
@@ -420,7 +421,7 @@ namespace Nethermind.Network
             _logger.Info($"Overall latency stats: {Environment.NewLine}{string.Join(Environment.NewLine, latencyDict.Select(x => $"{x.x.Node.Id}: {string.Join(" | ", x.Av.Select(y => $"{y.Key.ToString()}: {y.Value?.ToString() ?? "-"}"))}"))}");
         }
 
-        private string GetIncompatibleDesc(IEnumerable<Peer> incompatibleNodes)
+        private string GetIncompatibleDesc(IReadOnlyCollection<Peer> incompatibleNodes)
         {
             if (!incompatibleNodes.Any())
             {
@@ -596,7 +597,7 @@ namespace Nethermind.Network
                     }
                 }
 
-                //Initializing disconnect if it hasnt been done already - in case of e.g. timeout earier and unexcepted further connection
+                //Initializing disconnect if it hasn't been done already - in case of e.g. timeout earlier and unexpected further connection
                 await session.InitiateDisconnectAsync(DisconnectReason.Other);
 
                 return;
@@ -622,16 +623,16 @@ namespace Nethermind.Network
 
                     peer.P2PMessageSender = p2PProtocolHandler;
                     break;
-                case Eth62ProtocolHandler ethProtocolhandler:
-                    var eth62EventArgs = (Eth62ProtocolInitializedEventArgs) e;
-                    peer.NodeStats.AddNodeStatsEth62InitializedEvent(new Eth62NodeDetails
+                case Eth62ProtocolHandler ethProtocolHandler: // note that this covers eth63 as well
+                    var ethEventArgs = (EthProtocolInitializedEventArgs) e;
+                    peer.NodeStats.AddNodeStatsEth62InitializedEvent(new EthNodeDetails
                     {
-                        ChainId = eth62EventArgs.ChainId,
-                        BestHash = eth62EventArgs.BestHash,
-                        GenesisHash = eth62EventArgs.GenesisHash,
-                        Protocol = eth62EventArgs.Protocol,
-                        ProtocolVersion = eth62EventArgs.ProtocolVersion,
-                        TotalDifficulty = eth62EventArgs.TotalDifficulty
+                        ChainId = ethEventArgs.ChainId,
+                        BestHash = ethEventArgs.BestHash,
+                        GenesisHash = ethEventArgs.GenesisHash,
+                        Protocol = ethEventArgs.Protocol,
+                        ProtocolVersion = ethEventArgs.ProtocolVersion,
+                        TotalDifficulty = ethEventArgs.TotalDifficulty
                     });
                     result = await ValidateProtocol(Protocol.Eth, peer, e);
                     if (!result)
@@ -640,14 +641,14 @@ namespace Nethermind.Network
                     }
 
                     //TODO move this outside, so syncManager have access to NodeStats and NodeDetails
-                    ethProtocolhandler.ClientId = peer.NodeStats.P2PNodeDetails.ClientId;
-                    peer.SynchronizationPeer = ethProtocolhandler;
+                    ethProtocolHandler.ClientId = peer.NodeStats.P2PNodeDetails.ClientId;
+                    peer.SynchronizationPeer = ethProtocolHandler;
 
-                    if (_logger.IsTrace) _logger.Trace($"Eth62 initialized, adding sync peer: {peer.Node.Id}");
+                    if (_logger.IsTrace) _logger.Trace($"Eth version {ethProtocolHandler.ProtocolVersion} initialized, adding sync peer: {peer.Node.Id}");
 
                     //Add/Update peer to the storage and to sync manager
                     _peerStorage.UpdateNodes(new[] {new NetworkNode(peer.Node.Id.PublicKey, peer.Node.Host, peer.Node.Port, peer.Node.Description, peer.NodeStats.NewPersistedNodeReputation)});
-                    await _synchronizationManager.AddPeer(ethProtocolhandler);
+                    await _synchronizationManager.AddPeer(ethProtocolHandler);
 
                     break;
             }
@@ -794,7 +795,7 @@ namespace Nethermind.Network
 
                     break;
                 case Protocol.Eth:
-                    var ethArgs = (Eth62ProtocolInitializedEventArgs) eventArgs;
+                    var ethArgs = (EthProtocolInitializedEventArgs) eventArgs;
                     if (!ValidateChainId(ethArgs.ChainId))
                     {
                         if (_logger.IsTrace)
@@ -834,7 +835,7 @@ namespace Nethermind.Network
 
         private bool ValidateCapabilities(IEnumerable<Capability> capabilities)
         {
-            return capabilities.Any(x => x.ProtocolCode == Protocol.Eth && x.Version == 62);
+            return capabilities.Any(x => x.ProtocolCode == Protocol.Eth && (x.Version == 62 || x.Version == 63));
         }
 
         private bool ValidateChainId(long chainId)
@@ -996,31 +997,31 @@ namespace Nethermind.Network
             }
         }
 
-        private void StartPeerPersistanceTimer()
+        private void StartPeerPersistenceTimer()
         {
-            if (_logger.IsDebug) _logger.Debug("Starting peer persistance timer");
+            if (_logger.IsDebug) _logger.Debug("Starting peer persistence timer");
 
-            _peerPersistanceTimer = new System.Timers.Timer(_networkConfig.PeersPersistanceInterval) {AutoReset = false};
-            _peerPersistanceTimer.Elapsed += (sender, e) =>
+            _peerPersistenceTimer = new System.Timers.Timer(_networkConfig.PeersPersistenceInterval) {AutoReset = false};
+            _peerPersistenceTimer.Elapsed += (sender, e) =>
             {
-                _peerPersistanceTimer.Enabled = false;
+                _peerPersistenceTimer.Enabled = false;
                 RunPeerCommit();
-                _peerPersistanceTimer.Enabled = true;
+                _peerPersistenceTimer.Enabled = true;
             };
 
-            _peerPersistanceTimer.Start();
+            _peerPersistenceTimer.Start();
         }
 
-        private void StopPeerPersistanceTimer()
+        private void StopPeerPersistenceTimer()
         {
             try
             {
-                if (_logger.IsDebug) _logger.Debug("Stopping peer persistance timer");
-                _peerPersistanceTimer?.Stop();
+                if (_logger.IsDebug) _logger.Debug("Stopping peer persistence timer");
+                _peerPersistenceTimer?.Stop();
             }
             catch (Exception e)
             {
-                _logger.Error("Error during peer persistance timer stop", e);
+                _logger.Error("Error during peer persistence timer stop", e);
             }
         }
 
@@ -1221,9 +1222,9 @@ namespace Nethermind.Network
                 sb.AppendLine($"P2P details: ClientId: {nodeStats.P2PNodeDetails.ClientId}, P2PVersion: {nodeStats.P2PNodeDetails.P2PVersion}, Capabilities: {GetCapabilities(nodeStats.P2PNodeDetails)}");
             }
 
-            if (nodeStats.Eth62NodeDetails != null)
+            if (nodeStats.EthNodeDetails != null)
             {
-                sb.AppendLine($"Eth62 details: ChainId: {ChainId.GetChainName((int) nodeStats.Eth62NodeDetails.ChainId)}, TotalDifficulty: {nodeStats.Eth62NodeDetails.TotalDifficulty}");
+                sb.AppendLine($"Eth62 details: ChainId: {ChainId.GetChainName((int) nodeStats.EthNodeDetails.ChainId)}, TotalDifficulty: {nodeStats.EthNodeDetails.TotalDifficulty}");
             }
 
             foreach (var statsEvent in nodeStats.EventHistory.OrderBy(x => x.EventDate).ToArray())
@@ -1239,9 +1240,9 @@ namespace Nethermind.Network
                     sb.Append($" | {statsEvent.P2PNodeDetails.ClientId} | v{statsEvent.P2PNodeDetails.P2PVersion} | {GetCapabilities(statsEvent.P2PNodeDetails)}");
                 }
 
-                if (statsEvent.Eth62NodeDetails != null)
+                if (statsEvent.EthNodeDetails != null)
                 {
-                    sb.Append($" | {ChainId.GetChainName((int) statsEvent.Eth62NodeDetails.ChainId)} | TotalDifficulty:{statsEvent.Eth62NodeDetails.TotalDifficulty}");
+                    sb.Append($" | {ChainId.GetChainName((int) statsEvent.EthNodeDetails.ChainId)} | TotalDifficulty:{statsEvent.EthNodeDetails.TotalDifficulty}");
                 }
 
                 if (statsEvent.DisconnectDetails != null)

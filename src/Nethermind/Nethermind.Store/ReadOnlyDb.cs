@@ -58,5 +58,10 @@ namespace Nethermind.Store
         public void CommitBatch()
         {
         }
+        
+        public void ClearTempChanges()
+        {
+            _memDb = new MemDb();
+        }
     }
 }

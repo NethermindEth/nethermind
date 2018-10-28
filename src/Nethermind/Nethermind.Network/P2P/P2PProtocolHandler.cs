@@ -141,8 +141,6 @@ namespace Nethermind.Network.P2P
 
             ProtocolVersion = hello.P2PVersion;
 
-            //TODO Check required capabilities and disconnect if not supported
-
             var capabilities = hello.Capabilities;
             foreach (Capability remotePeerCapability in capabilities)
             {
@@ -158,9 +156,13 @@ namespace Nethermind.Network.P2P
             }
 
             _isInitialized = true;
+             
+            if(!capabilities.Any(x => x.ProtocolCode == Protocol.Eth && (x.Version == 62 || x.Version == 63)))
+            {    
+                Disconnect(DisconnectReason.UselessPeer);
+            }
             
-            // TODO: proper validation on connection
-            if(!capabilities.Any(x => x.ProtocolCode == Protocol.Eth && x.Version == 62))
+            if(!capabilities.Any(x => x.ProtocolCode == Protocol.Eth && (x.Version == 63)))
             {    
                 Disconnect(DisconnectReason.UselessPeer);
             }
@@ -226,6 +228,7 @@ namespace Nethermind.Network.P2P
         private static readonly List<Capability> SupportedCapabilities = new List<Capability>
         {
             new Capability(Protocol.Eth, 62),
+            new Capability(Protocol.Eth, 63),
         };
 
         private void SendHello()

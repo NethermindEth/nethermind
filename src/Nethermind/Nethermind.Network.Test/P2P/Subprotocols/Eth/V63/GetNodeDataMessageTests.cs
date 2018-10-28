@@ -16,14 +16,29 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-namespace Nethermind.Blockchain
+using System;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Network.P2P.Subprotocols.Eth.V63;
+using NUnit.Framework;
+
+namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
 {
-    public class BlockchainConfig : IBlockchainConfig
+    [TestFixture]
+    public class GetNodeDataMessageTests
     {
-        public int SyncTimerInterval { get; set; } = 5000;
-        public int SyncPeersMaxCount { get; set; } = 25;
-        public long MinAvailableBlockDiffForSyncSwitch { get; } = 100;
-        public long MinLatencyDiffForSyncSwitch { get; } = 5;
-        public bool SyncReceipts { get; } = false;
+        [Test]
+        public void Sets_values_from_contructor_argument()
+        {
+            Keccak[] keys = {TestObject.KeccakA, TestObject.KeccakB};
+            GetNodeDataMessage message = new GetNodeDataMessage(keys);
+            Assert.AreSame(keys, message.Keys);
+        }
+
+        [Test]
+        public void Throws_on_null_argument()
+        {
+            Assert.Throws<ArgumentNullException>(() => new GetNodeDataMessage(null));
+        }
     }
 }

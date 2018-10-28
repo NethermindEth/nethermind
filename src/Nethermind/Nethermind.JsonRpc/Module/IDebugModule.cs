@@ -25,9 +25,10 @@ namespace Nethermind.JsonRpc.Module
         ResultWrapper<TransactionTrace> debug_traceTransaction(Data transationHash);
         ResultWrapper<TransactionTrace> debug_traceTransactionByBlockAndIndex(BlockParameter blockParameter, int txIndex);
         ResultWrapper<TransactionTrace> debug_traceTransactionByBlockhashAndIndex(Data blockHash, int txIndex);
-        ResultWrapper<bool> debug_addTxData(BlockParameter blockParameter);
+        ResultWrapper<bool> debug_addTxDataByNumber(Quantity blockNumberData);
+        ResultWrapper<bool> debug_addTxDataByHash(Data blockHash);
         ResultWrapper<BlockTraceItem[]> debug_traceBlock(Data blockRlp);
-        ResultWrapper<BlockTraceItem[]> debug_traceBlockByNumber(BlockParameter blockParameter);
+        ResultWrapper<BlockTraceItem[]> debug_traceBlockByNumber(Quantity number);
         ResultWrapper<BlockTraceItem[]> debug_traceBlockByHash(Data blockHash);
         ResultWrapper<BlockTraceItem[]> debug_traceBlockFromFile(string fileName);
         ResultWrapper<State> debug_dumpBlock(BlockParameter blockParameter);

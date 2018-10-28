@@ -16,7 +16,6 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc.Module;
 
 namespace Nethermind.Runner.Runners

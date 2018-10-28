@@ -32,7 +32,7 @@ namespace Nethermind.JsonRpc.DataModel
         public Data From { get; set; }
         public Data To { get; set; }
         public Data ContractAddress { get; set; }
-        public IEnumerable<Log> Logs { get; set; }
+        public Log[] Logs { get; set; }
         public Data LogsBloom { get; set; }
         public Data Root { get; set; }
         public Quantity Status { get; set; }

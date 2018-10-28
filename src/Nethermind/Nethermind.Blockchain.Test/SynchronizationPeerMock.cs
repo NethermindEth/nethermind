@@ -37,6 +37,7 @@ namespace Nethermind.Blockchain.Test
             _blockTree = blockTree;
         }
 
+        public bool IsFastSyncSupported => false;
         public NodeId NodeId { get; set; } = new NodeId(TestObject.PublicKeyA);
         public INodeStats NodeStats { get; set; }
         public string ClientId { get; set; }
@@ -99,6 +100,36 @@ namespace Nethermind.Blockchain.Test
         }
 
         public void SendNewTransaction(Transaction transaction)
+        {
+            throw new NotImplementedException();
+        }
+
+        public Task<TransactionReceipt[][]> GetReceipts(Keccak[] blockHash, CancellationToken token)
+        {
+            throw new NotImplementedException();
+        }
+
+        public Task<TransactionReceipt[][]> GetReceipts(Keccak[] blockHash)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void SendReceipts(TransactionReceipt[][] receipts)
+        {
+            throw new NotImplementedException();
+        }
+
+        public Task<byte[][]> GetNodeData(Keccak[] hashes, CancellationToken token)
+        {
+            throw new NotImplementedException();
+        }
+
+        public Task<byte[][]> GetNodeData(Keccak[] hashes)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void SendNodeData(byte[][] values)
         {
             throw new NotImplementedException();
         }

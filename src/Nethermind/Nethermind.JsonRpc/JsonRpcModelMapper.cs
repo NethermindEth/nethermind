@@ -16,6 +16,7 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.Linq;
 using System.Numerics;
 using Nethermind.Core;
@@ -153,7 +154,7 @@ namespace Nethermind.JsonRpc
 
         public TransactionReceipt MapTransactionReceipt(Keccak hash, Core.TransactionReceipt receipt)
         {
-            return new TransactionReceipt
+            TransactionReceipt mapped = new TransactionReceipt
             {
                 TransactionHash = new Data(hash),
                 TransactionIndex = new Quantity(receipt.Index),
@@ -164,10 +165,21 @@ namespace Nethermind.JsonRpc
                 From = new Data(receipt.Sender),
                 To = new Data(receipt.Recipient),
                 ContractAddress = new Data(receipt.ContractAddress),
-                Logs = receipt.Logs?.Select(MapLog).ToArray(),
+                Logs = receipt.Logs?.Select(MapLog).ToArray() ?? Array.Empty<Log>(),
                 LogsBloom = new Data(receipt.Bloom?.Bytes),
                 Status = new Quantity(receipt.StatusCode)
             };
+
+            for (int i = 0; i < mapped.Logs.Length; i++)
+            {
+                mapped.Logs[i].BlockHash = mapped.BlockHash;
+                mapped.Logs[i].BlockNumber = mapped.BlockNumber;
+                mapped.Logs[i].LogIndex = new Quantity(i);
+                mapped.Logs[i].TransactionHash = mapped.TransactionHash;
+                mapped.Logs[i].TransactionIndex = mapped.TransactionIndex;
+            }
+
+            return mapped;
         }
 
         public TransactionTrace MapTransactionTrace(Evm.TransactionTrace transactionTrace)
@@ -226,7 +238,11 @@ namespace Nethermind.JsonRpc
 
         public Log MapLog(LogEntry logEntry)
         {
-            throw new System.NotImplementedException();
+            Log log = new Log();
+            log.Data = new Data(logEntry.Data);
+            log.Address = new Data(logEntry.LoggersAddress);
+            log.Topics = logEntry.Topics.Select(t => new Data(t)).ToArray();
+            return log;
         }
     }
 }

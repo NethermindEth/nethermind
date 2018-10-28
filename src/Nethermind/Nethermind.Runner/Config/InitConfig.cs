@@ -24,9 +24,10 @@ namespace Nethermind.Runner.Config
         public bool DiscoveryEnabled { get; set; } = true;
         public bool SynchronizationEnabled { get; set; } = true;
         public bool NetworkEnabled { get; set; } = true;
+        public bool ProcessingEnabled { get; set; } = true;
         public bool PeerManagerEnabled { get; set; } = true;
+        public bool RunAsReceiptsFiller { get; set; } = false;
         public bool IsMining { get; set; } = false;
-        public int FakeMiningDelay { get; set; } = 12000;
         public string HttpHost { get; set; } = "127.0.0.1";
         public int HttpPort { get; set; } = 8545;
         public int DiscoveryPort { get; set; } = 30312;
@@ -41,5 +42,7 @@ namespace Nethermind.Runner.Config
         //in case of null, the path is set to ExecutingAssembly.Location\logs
         public string LogDirectory { get; set; } = null;
         public bool LogPerfStatsOnDebug { get; set; } = false;
+        public int ReceiptsFillerStart { get; set; } = 0;
+        public int ReceiptsFillerEnd { get; set; } = 1;
     }
 }

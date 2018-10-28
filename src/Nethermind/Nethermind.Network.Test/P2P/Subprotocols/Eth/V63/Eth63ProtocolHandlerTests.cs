@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,14 +16,12 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Collections.Generic;
-using Nethermind.Core;
+using NUnit.Framework;
 
-namespace Nethermind.Blockchain.Filters
+namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
 {
-    public class FilterAddress
+    [TestFixture]
+    public class Eth63ProtocolHandlerTests
     {
-        public Address Address { get; set; }
-        public IEnumerable<Address> Addresses { get; set; }
     }
 }
