@@ -31,17 +31,24 @@ namespace Nethermind.Mining
     public class AuraSealEngine : ISealEngine
     {
         private readonly ILogger _logger;
-        private UInt16 stepDuration;
-        private UInt64 startStep;
-        private UInt64 validateScoreTransition;
-        private UInt64 validateStepTransition;
-        private Boolean immediateTransitions;
-        private ulong blockReward;
-        private UInt64 blockRewardContractTransition;
-        private Uint64 maximumUncleCountTransition;
-        private UInt16 maximumUncleCount;
-        private UInt64 emptyStepsTransition;
-        private Int16 maximumEmptySteps;
+
+        public struct AuthorityRoundParams {
+                private UInt16 stepDuration;
+                private UInt64 startStep;
+                private UInt64[] validators;
+                private UInt64 validateScoreTransition;
+                private UInt64 validateStepTransition;
+                private Boolean immediateTransitions;
+                private UInt256 blockReward;
+                private UInt64 blockRewardContractTransition;
+                private Uint64 maximumUncleCountTransition;
+                private UInt16 maximumUncleCount;
+                private UInt64 emptyStepsTransition;
+                private UInt64 maximumEmptySteps;
+
+        }
+
+        private UInt16 U16_MAX = UInt16.MaxValue;
 
 
         public AuraSealEngine(ILogManager logManager)
@@ -72,9 +79,15 @@ namespace Nethermind.Mining
         {
             throw new NotImplementedException();
         }
-        public  string currentTime()
+        private string currentTime()
         {
             return string.Format("{0:HH:mm:ss tt}", DateTime.Now);
+        }
+        // load the authority round params from JSON
+        private void loadAuthorityRoundParams(JObject json) {
+
+            
+
         }
     }
 }
