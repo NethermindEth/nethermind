@@ -231,22 +231,19 @@ namespace Nethermind.Evm
 
             if (_logger.IsTrace) _logger.Trace("Gas spent: " + spentGas);
 
-            // Get actual block author, as block.Beneficiary may be used for other purposes in PoA
-            var blockAuthor = block.GetAuthor(_specProvider);
-            if (statusCode == StatusCode.Failure || !(substate?.DestroyList.Contains(blockAuthor) ?? false))
+            Address gasBeneficiary = block.GasBeneficiary;
+            if (statusCode == StatusCode.Failure || !(substate?.DestroyList.Contains(gasBeneficiary) ?? false))
             {
-                if (!_stateProvider.AccountExists(blockAuthor))
+                if (!_stateProvider.AccountExists(gasBeneficiary))
                 {
-                    _stateProvider.CreateAccount(blockAuthor, (ulong) spentGas * gasPrice);
+                    _stateProvider.CreateAccount(gasBeneficiary, (ulong) spentGas * gasPrice);
                 }
                 else
                 {
-                    _stateProvider.AddToBalance(blockAuthor, (ulong) spentGas * gasPrice, spec);
+                    _stateProvider.AddToBalance(gasBeneficiary, (ulong) spentGas * gasPrice, spec);
                 }
             }
 
-//            if (!_specProvider.GetSpec(block.Number).IsEip658Enabled)
-//            {
             if (!readOnly)
             {
                 _storageProvider.Commit(spec);
@@ -257,7 +254,6 @@ namespace Nethermind.Evm
                 _storageProvider.Reset();
                 _stateProvider.Reset();
             }
-//            }
 
             if (!readOnly)
             {

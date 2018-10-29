@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,7 +16,21 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Runtime.CompilerServices;
+using Nethermind.Core;
+using Nethermind.Core.Test.Builders;
+using NUnit.Framework;
 
-[assembly: InternalsVisibleTo("Nethermind.Core.Test")]
-[assembly: InternalsVisibleTo("Nethermind.Clique.Test")]
+namespace Nethermind.Clique.Test
+{
+    public class RewardCalculatorTests
+    {
+        [Test]
+        public void Clique_reward()
+        {
+            Block block = Build.A.Block.WithNumber(10).TestObject;
+            CliqueRewardCalculator calculator = new CliqueRewardCalculator();
+            var rewards = calculator.CalculateRewards(block);
+            Assert.IsEmpty(rewards);
+        }
+    }
+}

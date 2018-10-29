@@ -17,27 +17,25 @@
  */
 
 using System;
-using System.Numerics;
 using Nethermind.Core;
-using Nethermind.Core.Extensions;
-using Nethermind.Core.Specs;
-using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Blockchain
 {
-    public class CliqueRewardCalculator : IRewardCalculator
+    public class CompositeDataRecoveryStep : IBlockDataRecoveryStep
     {
-        private readonly ISpecProvider _specProvider;
+        private readonly IBlockDataRecoveryStep[] _recoverySteps;
 
-        public CliqueRewardCalculator(ISpecProvider specProvider)
+        public CompositeDataRecoveryStep(params IBlockDataRecoveryStep[] recoverySteps)
         {
-            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+            _recoverySteps = recoverySteps ?? throw new ArgumentNullException(nameof(recoverySteps));
         }
-
-        public BlockReward[] CalculateRewards(Block block)
+        
+        public void RecoverData(Block block)
         {
-            // There's no block rewards in Cluque
-            return new BlockReward[0];
+            for (int i = 0; i < _recoverySteps.Length; i++)
+            {
+                _recoverySteps[i].RecoverData(block);
+            }
         }
     }
 }

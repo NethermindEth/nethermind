@@ -20,19 +20,19 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
-using System.Text;
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
 using Nethermind.Core.Specs;
 using Nethermind.Dirichlet.Numerics;
-using Nethermind.HashLib;
 using Nethermind.Store;
 
-[assembly: InternalsVisibleTo("Nethermind.Blockchain.Test")]
+[assembly: InternalsVisibleTo("Nethermind.Clique.Test")]
 
-namespace Nethermind.Blockchain
+namespace Nethermind.Clique
 {
     public class Clique
     {
@@ -204,7 +204,7 @@ namespace Nethermind.Blockchain
             // TODO if misc.VerifyForkHashes(chain.Config(), header, false) { return false; }
             return VerifyCascadingFields(header);
         }
-
+        
         public bool VerifySeal(BlockHeader header)
         {
             ulong number = (ulong)header.Number;
@@ -459,20 +459,6 @@ namespace Nethermind.Blockchain
                 }
             }
             return true;
-        }
-    }
-
-    public class CliqueConfig
-    {
-        public UInt64 Period
-        {
-            get;
-            set;
-        }
-        public UInt64 Epoch
-        {
-            get;
-            set;
         }
     }
 }

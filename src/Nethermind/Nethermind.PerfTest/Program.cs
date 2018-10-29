@@ -306,11 +306,11 @@ namespace Nethermind.PerfTest
             if (_logger.IsInfo) _logger.Info("State DBs deleted");
 
             /* spec */
-            
+
             var specProvider = RopstenSpecProvider.Instance;
             var difficultyCalculator = new DifficultyCalculator(specProvider);
             var sealEngine = new EthashSealEngine(new Ethash(_logManager), difficultyCalculator, _logManager);
-            
+
             var dbProvider = new RocksDbProvider(DbBasePath, DbConfig.Default);
             var stateDb = dbProvider.StateDb;
             var codeDb = dbProvider.CodeDb;
@@ -340,7 +340,7 @@ namespace Nethermind.PerfTest
             var processor = new TransactionProcessor(specProvider, stateProvider, storageProvider, virtualMachine, _logManager);
             var rewardCalculator = new RewardCalculator(specProvider);
             var blockProcessor = new BlockProcessor(specProvider, blockValidator, rewardCalculator, processor, stateDb, codeDb, stateProvider, storageProvider, transactionStore, _logManager);
-            var blockchainProcessor = new BlockchainProcessor(blockTree, blockProcessor, ethereumSigner, _logManager, true);
+            var blockchainProcessor = new BlockchainProcessor(blockTree, blockProcessor, new TxSignaturesRecoveryStep(ethereumSigner), _logManager, true);
 
             /* load ChainSpec and init */
             ChainSpecLoader loader = new ChainSpecLoader(new UnforgivingJsonSerializer());
@@ -378,14 +378,14 @@ namespace Nethermind.PerfTest
                 }
 
                 totalGas += currentHead.GasUsed;
-                if ((BigInteger)args.Block.Number % 10000 == 9999)
+                if ((BigInteger) args.Block.Number % 10000 == 9999)
                 {
                     stopwatch.Stop();
                     long ms = 1_000L * stopwatch.ElapsedTicks / Stopwatch.Frequency;
                     BigInteger number = args.Block.Number + 1;
                     _logger.Warn($"TOTAL after {number} (ms)     : " + ms);
-                    _logger.Warn($"TOTAL after {number} blocks/s : {(decimal)currentHead.Number / (ms / 1000m),5}");
-                    _logger.Warn($"TOTAL after {number} Mgas/s   : {((decimal)totalGas / 1000000) / (ms / 1000m),5}");
+                    _logger.Warn($"TOTAL after {number} blocks/s : {(decimal) currentHead.Number / (ms / 1000m),5}");
+                    _logger.Warn($"TOTAL after {number} Mgas/s   : {((decimal) totalGas / 1000000) / (ms / 1000m),5}");
                     _logger.Warn($"TOTAL after {number} mem (GC) : {GC.GetTotalMemory(false)}");
                     _logger.Warn($"TOTAL after {number} GC (0)   : {GC.CollectionCount(0)}");
                     _logger.Warn($"TOTAL after {number} GC (1)   : {GC.CollectionCount(1)}");

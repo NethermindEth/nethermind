@@ -20,18 +20,16 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Text;
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
-using Nethermind.Core.Specs;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Store;
 
-[assembly: InternalsVisibleTo("Nethermind.Blockchain.Test")]
-
-namespace Nethermind.Blockchain
+namespace Nethermind.Clique
 {
-    class Snapshot
+    internal class Snapshot
     {
         public CliqueConfig Config;
         public LruCache<Keccak, Address> Sigcache;
@@ -196,7 +194,7 @@ namespace Nethermind.Blockchain
                     }
                 }
                 // Tally up the new vote from the signer
-                bool authorize = header.Nonce == Clique.NonceAuthVote;
+                bool authorize = header.Nonce == Nethermind.Clique.Clique.NonceAuthVote;
                 if (snap.Cast(header.Beneficiary, authorize))
                 {
                     Vote vote = new Vote(signer, number, header.Beneficiary, authorize);
@@ -342,34 +340,6 @@ namespace Nethermind.Blockchain
                 keyBytes[i] ^= snapshotBytes[i];
             }
             return new Keccak(keyBytes);
-        }
-    }
-
-    class Vote
-    {
-        public Address Signer;
-        public UInt256 Block;
-        public Address Address;
-        public bool Authorize;
-
-        public Vote(Address signer, UInt256 block, Address address, bool authorize)
-        {
-            Signer = signer;
-            Block = block;
-            Address = address;
-            Authorize = authorize;
-        }
-    }
-
-    class Tally
-    {
-        public bool Authorize;
-        public int Votes;
-
-        public Tally(bool authorize)
-        {
-            Authorize = authorize;
-            Votes = 0;
         }
     }
 }

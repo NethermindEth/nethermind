@@ -56,7 +56,7 @@ namespace Ethereum.Test.Base
             DifficultyCalculator = new DifficultuCalculatorWrapper();
             SealEngine = new EthashSealEngine(new Ethash(_logManager), DifficultyCalculator, _logManager); // temporarily keep reusing the same one as otherwise it would recreate cache for each test    
         }
-        
+
         [SetUp]
         public void Setup()
         {
@@ -190,13 +190,13 @@ namespace Ethereum.Test.Base
         private class DifficultuCalculatorWrapper : IDifficultyCalculator
         {
             public IDifficultyCalculator Wrapped { get; set; }
-            
+
             public UInt256 Calculate(UInt256 parentDifficulty, UInt256 parentTimestamp, UInt256 currentTimestamp, UInt256 blockNumber, bool parentHasUncles)
             {
                 return Wrapped.Calculate(parentDifficulty, parentTimestamp, currentTimestamp, blockNumber, parentHasUncles);
             }
         }
-        
+
         protected async Task RunTest(BlockchainTest test, Stopwatch stopwatch = null)
         {
             Assert.IsNull(test.LoadFailure, "test data loading failure");
@@ -271,7 +271,7 @@ namespace Ethereum.Test.Base
             IBlockchainProcessor blockchainProcessor = new BlockchainProcessor(
                 blockTree,
                 blockProcessor,
-                signer,
+                new TxSignaturesRecoveryStep(signer),
                 _logManager,
                 false);
 
@@ -459,7 +459,7 @@ namespace Ethereum.Test.Base
 
                 differencesBefore = differences.Count;
 
-                KeyValuePair<UInt256, byte[]>[] clearedStorages = new KeyValuePair<UInt256, byte[]>[0]; 
+                KeyValuePair<UInt256, byte[]>[] clearedStorages = new KeyValuePair<UInt256, byte[]>[0];
                 if (test.Pre.ContainsKey(accountState.Key))
                 {
                     clearedStorages = test.Pre[accountState.Key].Storage.Where(s => !accountState.Value.Storage.ContainsKey(s.Key)).ToArray();

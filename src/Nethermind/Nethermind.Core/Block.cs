@@ -21,7 +21,6 @@ using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Core
@@ -147,8 +146,6 @@ namespace Nethermind.Core
 
             return builder.ToString();
         }
-
-        public bool HasAddressesRecovered => Transactions.Length == 0 || Transactions[0].SenderAddress != null;
         
         public override string ToString()
         {
