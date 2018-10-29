@@ -161,11 +161,6 @@ namespace Nethermind.Network.P2P
             {    
                 Disconnect(DisconnectReason.UselessPeer);
             }
-            
-            if(!capabilities.Any(x => x.ProtocolCode == Protocol.Eth && (x.Version == 63)))
-            {    
-                Disconnect(DisconnectReason.UselessPeer);
-            }
                 
             ReceivedProtocolInitMsg(hello);
 
