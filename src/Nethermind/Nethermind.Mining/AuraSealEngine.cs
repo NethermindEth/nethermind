@@ -23,6 +23,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Logging;
+using Nethermind.Dirichlet.Numerics;
 
 [assembly: InternalsVisibleTo("Nethermind.Blockchain.Test")]
 
@@ -41,7 +42,7 @@ namespace Nethermind.Mining
                 private Boolean immediateTransitions;
                 private UInt256 blockReward;
                 private UInt64 blockRewardContractTransition;
-                private Uint64 maximumUncleCountTransition;
+                private UInt64 maximumUncleCountTransition;
                 private UInt16 maximumUncleCount;
                 private UInt64 emptyStepsTransition;
                 private UInt64 maximumEmptySteps;
@@ -49,7 +50,6 @@ namespace Nethermind.Mining
         }
 
         private UInt16 U16_MAX = UInt16.MaxValue;
-
 
         public AuraSealEngine(ILogManager logManager)
         {
@@ -79,14 +79,9 @@ namespace Nethermind.Mining
         {
             throw new NotImplementedException();
         }
-        private string currentTime()
-        {
-            return string.Format("{0:HH:mm:ss tt}", DateTime.Now);
-        }
-        // load the authority round params from JSON
-        private void loadAuthorityRoundParams(JObject json) {
 
-            
+        // load the authority round params from JSON
+        private void loadAuthorityRoundParams() {
 
         }
     }
