@@ -82,7 +82,7 @@ namespace Nethermind.Runner.Runners
         public async Task StopAsync()
         {
             if (_logger.IsInfo) _logger.Info("Shutting down...");
-            
+
             if (_logger.IsInfo) _logger.Info("Stopping blockchain processor...");
             var blockchainProcessorTask = _blockchainProcessor?.StopAsync() ?? Task.CompletedTask;
 
@@ -106,7 +106,7 @@ namespace Nethermind.Runner.Runners
         {
             ChainSpec chainSpec = LoadChainSpec(_initConfig.ChainSpecPath);
 
-            /* spec */            
+            /* spec */
             if (chainSpec.ChainId == RopstenSpecProvider.Instance.ChainId)
             {
                 _specProvider = RopstenSpecProvider.Instance;
@@ -136,7 +136,7 @@ namespace Nethermind.Runner.Runners
             }
 
             string dbBasePath = _initConfig.BaseDbPath ?? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "db");
-            IDbProvider writableDbProvider= new RocksDbProvider(dbBasePath, dbConfig);
+            IDbProvider writableDbProvider = new RocksDbProvider(dbBasePath, dbConfig);
             _dbProvider = new ReadOnlyDbProvider(writableDbProvider, true);
 
             var transactionStore = new TransactionStore(writableDbProvider.ReceiptsDb, _specProvider, ethereumSigner);
@@ -154,7 +154,7 @@ namespace Nethermind.Runner.Runners
                 (_specProvider is RopstenSpecProvider) ? ConfigureSealEngine() :
                 (_specProvider is RinkebySpecProvider) ? ConfigureCliqueSealEngine() :
                 NullSealEngine.Instance;
-            
+
             /* validation */
             var headerValidator = new HeaderValidator(
                 _blockTree,
@@ -178,7 +178,7 @@ namespace Nethermind.Runner.Runners
                 _logManager);
 
             /* state */
-            
+
             var stateTree = new StateTree(_dbProvider.StateDb);
 
             var stateProvider = new StateProvider(
@@ -228,7 +228,7 @@ namespace Nethermind.Runner.Runners
             {
                 if (_logger.IsInfo) _logger.Info($"Filled receipts for {args.Block.ToString(Block.Format.Short)}");
                 _dbProvider.ClearTempChanges();
-            }; 
+            };
 
             _blockchainProcessor = new BlockchainProcessor(
                 _blockTree,
@@ -236,14 +236,14 @@ namespace Nethermind.Runner.Runners
                 ethereumSigner,
                 _logManager,
                 true);
-            
+
             _blockchainProcessor.Start();
             Feeder feeder = new Feeder(_blockchainProcessor, _initConfig.ReceiptsFillerStart, _initConfig.ReceiptsFillerEnd);
             feeder.Start();
-            
+
             await Task.CompletedTask;
         }
-        
+
         private class Feeder
         {
             private readonly IBlockchainProcessor _processor;
@@ -270,7 +270,7 @@ namespace Nethermind.Runner.Runners
         }
 
         private IReadOnlyDbProvider _dbProvider;
-        
+
         private ISealEngine ConfigureSealEngine()
         {
             var difficultyCalculator = new DifficultyCalculator(_specProvider);
@@ -280,15 +280,7 @@ namespace Nethermind.Runner.Runners
 
         private ISealEngine ConfigureCliqueSealEngine()
         {
-            var config = new CliqueConfig
-            {
-                Period = 15,
-                Epoch = 30000
-            };
-            
-            var clique = new Clique(config, _dbProvider.BlocksDb, _blockTree, _logManager);
-            var sealEngine = new CliqueSealEngine(clique, _logManager);
-            return sealEngine;
+            throw new NotSupportedException();
         }
     }
 }

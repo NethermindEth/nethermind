@@ -133,7 +133,7 @@ namespace Nethermind.Blockchain
             // Sign all the things!
             // TODO custom rlp encoding
             Keccak headerHash = Keccak.Compute(Rlp.Encode(header));
-            Signature signature = ethereumSigner.Sign(privateKey, headerHash);
+            Signature signature = _signer.Sign(_key, headerHash);
             byte[] signatureBytes = signature.Bytes;
             Array.Copy(signatureBytes, 0, header.ExtraData, header.ExtraData.Length - ExtraSeal, signatureBytes.Length);
 
