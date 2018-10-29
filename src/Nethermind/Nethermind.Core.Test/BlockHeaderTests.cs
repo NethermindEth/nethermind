@@ -18,6 +18,7 @@
 
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test
@@ -74,6 +75,74 @@ namespace Nethermind.Core.Test
             header.Hash = BlockHeader.CalculateHash(header);
 
             Assert.AreEqual(new Keccak(Bytes.FromHexString("0x1423c2875714c31049cacfea8450f66a73ecbd61d7a6ab13089406a491aa9fc2")), header.Hash);
+        }
+
+        [Test]
+        public void Author()
+        {
+            Address author = new Address("0x05a56e2d52c817161883f50c441c3228cfe54d9f");
+
+            BlockHeader header = new BlockHeader();
+            header.Beneficiary = author;
+
+            Assert.AreEqual(header.GetAuthor(MainNetSpecProvider.Instance), author);
+            Assert.AreEqual(header.GetAuthor(RopstenSpecProvider.Instance), author);
+        }
+
+        [Test]
+        public void BlockSealer()
+        {
+            BlockHeader header = new BlockHeader();
+
+            header.Bloom = new Bloom(
+                Bytes.FromHexString("0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000")
+                    .ToBigEndianBitArray2048());
+            header.ParentHash = new Keccak("0x6d31ab6b6ee360d075bb032a094fb4ea52617268b760d15b47aa439604583453");
+            header.OmmersHash = new Keccak("0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347");
+            header.Beneficiary = new Address("0x0000000000000000000000000000000000000000");
+            header.StateRoot = new Keccak("0x9853b6c62bd454466f4843b73e2f0bdd655a4e754c259d6cc0ad4e580d788f43");
+            header.TransactionsRoot = new Keccak("0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421");
+            header.ReceiptsRoot = new Keccak("0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421");
+            header.Difficulty = 2;
+            header.Number = 269;
+            header.GasLimit = 4712388;
+            header.GasUsed = 0;
+            header.Timestamp = 1492014479;
+            header.ExtraData = Bytes.FromHexString("0xd783010600846765746887676f312e372e33856c696e757800000000000000004e2b663c52c4c1ef0db29649f1f4addd93257f33d6fe0ae6bd365e63ac9aac4169e2b761aa245fabbf0302055f01b8b5391fa0a134bab19710fd225ffac3afdf01");
+            header.MixHash = new Keccak("0x0000000000000000000000000000000000000000000000000000000000000000");
+            header.Nonce = 0;
+
+            Address expectedBlockSealer = new Address("0xb279182d99e65703f0076e4812653aab85fca0f0");
+            Address blockSealer = header.GetBlockSealer();
+            Assert.AreEqual(expectedBlockSealer, blockSealer);
+        }
+
+        [Test]
+        public void CliqueHashHeader()
+        {
+            BlockHeader header = new BlockHeader();
+
+            header.Bloom = new Bloom(
+                Bytes.FromHexString("0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000")
+                    .ToBigEndianBitArray2048());
+            header.ParentHash = new Keccak("0x6d31ab6b6ee360d075bb032a094fb4ea52617268b760d15b47aa439604583453");
+            header.OmmersHash = new Keccak("0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347");
+            header.Beneficiary = new Address("0x0000000000000000000000000000000000000000");
+            header.StateRoot = new Keccak("0x9853b6c62bd454466f4843b73e2f0bdd655a4e754c259d6cc0ad4e580d788f43");
+            header.TransactionsRoot = new Keccak("0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421");
+            header.ReceiptsRoot = new Keccak("0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421");
+            header.Difficulty = 2;
+            header.Number = 269;
+            header.GasLimit = 4712388;
+            header.GasUsed = 0;
+            header.Timestamp = 1492014479;
+            header.ExtraData = Bytes.FromHexString("0xd783010600846765746887676f312e372e33856c696e757800000000000000004e2b663c52c4c1ef0db29649f1f4addd93257f33d6fe0ae6bd365e63ac9aac4169e2b761aa245fabbf0302055f01b8b5391fa0a134bab19710fd225ffac3afdf01");
+            header.MixHash = new Keccak("0x0000000000000000000000000000000000000000000000000000000000000000");
+            header.Nonce = 0;
+
+            Keccak expectedHeaderHash = new Keccak("0x7b27b6add9e8d0184c722dde86a2a3f626630264bae3d62ffeea1585ce6e3cdd");
+            Keccak headerHash = header.HashCliqueHeader();
+            Assert.AreEqual(expectedHeaderHash, headerHash);
         }
     }
 }

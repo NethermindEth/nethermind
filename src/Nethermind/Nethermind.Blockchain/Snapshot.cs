@@ -35,7 +35,7 @@ namespace Nethermind.Blockchain
     {
         public CliqueConfig Config;
         public LruCache<Keccak, Address> Sigcache;
-        public UInt256 Number;
+        public uint Number;
         public byte[] Hash;
         public HashSet<Address> Signers;
         public Dictionary<UInt64, Address> Recents;
@@ -51,7 +51,7 @@ namespace Nethermind.Blockchain
         {
             this.Config = config;
             this.Sigcache = sigcache;
-            this.Number = number;
+            this.Number = (uint)number;
             this.Hash = hash;
             this.Signers = signers;
             this.Recents = recents;
@@ -168,7 +168,7 @@ namespace Nethermind.Blockchain
                     }
                 }
                 // Resolve the authorization key and check against signers
-                Address signer = Clique.GetBlockSealer(header, Sigcache);
+                Address signer = header.GetBlockSealer(Sigcache);
                 if (!snap.Signers.Contains(signer))
                 {
                     throw new InvalidOperationException("Unauthorized signer");
@@ -247,7 +247,7 @@ namespace Nethermind.Blockchain
                     snap.Tally.Remove(header.Beneficiary);
                 }
             }
-            snap.Number += (ulong)headers.Count;
+            snap.Number += (uint)headers.Count;
             snap.Hash = BlockHeader.CalculateHash(headers[headers.Count - 1]).Bytes;
             return snap;
         }
@@ -299,9 +299,9 @@ namespace Nethermind.Blockchain
             return true;
         }
 
-        public bool Inturn(ILogger logger, UInt256 number, Address signer)
+        public bool Inturn(UInt256 number, Address signer)
         {
-            Address[] signers = GetSigners(logger);
+            Address[] signers = GetSigners();
             int offset = 0;
             while (offset < Signers.Count && signers[offset] != signer)
             {
@@ -310,7 +310,7 @@ namespace Nethermind.Blockchain
             return ((long)number % signers.Length == offset);
         }
 
-        public Address[] GetSigners(ILogger logger)
+        public Address[] GetSigners()
         {
             Address[] sigs = new Address[Signers.Count];
             Signers.CopyTo(sigs);

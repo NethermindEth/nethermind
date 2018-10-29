@@ -17,10 +17,13 @@
  */
 
 using System.Diagnostics;
+using System.Linq;
 using System.Text;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Logging;
+using Nethermind.Core.Specs;
 using Nethermind.Dirichlet.Numerics;
 
 namespace Nethermind.Core
@@ -64,6 +67,7 @@ namespace Nethermind.Core
         public UInt256? TotalDifficulty { get; set; }
         public UInt256? TotalTransactions { get; set; }
         public SealEngineType SealEngineType { get; set; } = SealEngineType.Ethash;
+        public Address Author { get; set; }
 
         public static Keccak CalculateHash(Rlp headerRlp)
         {
@@ -119,6 +123,65 @@ namespace Nethermind.Core
                         return $"{Number} ({Hash.Bytes.ToHexString().Substring(58, 6)})";
                     }
             }
+        }
+
+        public Address GetAuthor(ISpecProvider specProvider)
+        {
+            if (Author != null)
+            {
+                return Author;
+            }
+            if (specProvider == MainNetSpecProvider.Instance)
+            {
+                Author = Beneficiary;
+            }
+            if (specProvider == RopstenSpecProvider.Instance)
+            {
+                Author = Beneficiary;
+            }
+            if (specProvider == RinkebySpecProvider.Instance)
+            {
+                Author = GetBlockSealer();
+            }
+            return Author;
+        }
+
+        public Address GetBlockSealer(LruCache<Keccak, Address> signatures = null)
+        {
+            int extraSeal = 65;
+            Address address = signatures?.Get(Hash);
+            if (address != null)
+            {
+                return address;
+            }
+            // Retrieve the signature from the header extra-data
+            if (ExtraData.Length < extraSeal)
+            {
+                return null;
+            }
+            byte[] signatureBytes = ExtraData.TakeLast(extraSeal).ToArray();
+            Signature signature = new Signature(signatureBytes);
+            signature.V += 27;
+            // Recover the Ethereum address
+            // TODO Get SpecProvider or EthereumSigner from Runner
+            EthereumSigner signer = new EthereumSigner(RinkebySpecProvider.Instance, NullLogManager.Instance);
+            Keccak message = HashCliqueHeader();
+            address = signer.RecoverAddress(signature, message);
+            signatures?.Set(Hash, address);
+            return address;
+        }
+
+        public Keccak HashCliqueHeader()
+        {
+            int extraSeal = 65;
+            int shortExtraLength = ExtraData.Length - extraSeal;
+            byte[] fullExtraData = ExtraData;
+            byte[] shortExtraData = ExtraData.Take(shortExtraLength).ToArray();
+            ExtraData = shortExtraData;
+            Rlp rlp = Rlp.Encode(this);
+            Keccak sigHash = Keccak.Compute(rlp);
+            ExtraData = fullExtraData;
+            return sigHash;
         }
 
         public enum Format // TODO: use formatting strings / standard approach?
