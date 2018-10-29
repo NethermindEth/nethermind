@@ -819,10 +819,10 @@ namespace Nethermind.Blockchain
 
                 peerInfo.NumberReceived = blocks[blocks.Length - 1].Number;
                 bestNumber = _blockTree.BestKnownNumber;
-                if (bestNumber > _lastSyncNumber + 1000)
+                if (bestNumber > _lastSyncNumber + 10000)
                 {
                     _lastSyncNumber = bestNumber;
-                    if (_logger.IsInfo) _logger.Info($"Downloading blocks. Current best at {_blockTree.BestKnownNumber}");
+                    if (_logger.IsDebug) _logger.Debug($"Downloading blocks. Current best at {_blockTree.BestKnownNumber}");
                 }
             }
 
