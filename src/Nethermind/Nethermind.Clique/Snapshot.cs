@@ -18,9 +18,7 @@
 
 using System;
 using System.Collections.Generic;
-using System.Runtime.CompilerServices;
 using System.Text;
-using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
@@ -31,61 +29,65 @@ namespace Nethermind.Clique
 {
     internal class Snapshot
     {
-        public CliqueConfig Config;
-        public LruCache<Keccak, Address> Sigcache;
-        public UInt256 Number;
-        public byte[] Hash;
-        public HashSet<Address> Signers;
-        public Dictionary<UInt64, Address> Recents;
-        public List<Vote> Votes;
-        public Dictionary<Address, Tally> Tally;
+        public CliqueConfig Config { get; set; }
+        public LruCache<Keccak, Address> SigCache { get; private set; }
+        public UInt256 Number { get; private set; }
+        public byte[] Hash { get; private set; }
+        public HashSet<Address> Signers { get; private set; }
+        public Dictionary<UInt64, Address> Recent { get; private set; }
+        private List<Vote> _votes;
+        private Dictionary<Address, Tally> _tally;
 
-        Snapshot()
+        internal Snapshot()
         {
-            this.Votes = new List<Vote>();
+            _votes = new List<Vote>();
         }
 
-        public Snapshot(CliqueConfig config, LruCache<Keccak, Address> sigcache, UInt256 number, byte[] hash, HashSet<Address> signers, Dictionary<UInt64, Address> recents, Dictionary<Address, Tally> tally)
+        internal Snapshot(CliqueConfig config, LruCache<Keccak, Address> sigCache, UInt256 number, byte[] hash, HashSet<Address> signers, Dictionary<UInt64, Address> recent, Dictionary<Address, Tally> tally)
         {
-            this.Config = config;
-            this.Sigcache = sigcache;
-            this.Number = number;
-            this.Hash = hash;
-            this.Signers = signers;
-            this.Recents = recents;
-            this.Votes = new List<Vote>();
-            this.Tally = tally;
+            Config = config;
+            SigCache = sigCache;
+            Number = number;
+            Hash = hash;
+            Signers = signers;
+            Recent = recent;
+            _votes = new List<Vote>();
+            _tally = tally;
         }
-
-        Snapshot Copy()
+        
+        private Snapshot Clone()
         {
-            Snapshot s = new Snapshot();
-            s.Config = Config;
-            s.Sigcache = Sigcache;
-            s.Number = Number;
-            s.Hash = Hash;
-            s.Signers = new HashSet<Address>();
-            s.Recents = new Dictionary<ulong, Address>();
-            s.Votes = new List<Vote>();
-            s.Tally = new Dictionary<Address, Tally>();
+            Snapshot clone = new Snapshot();
+            clone.Config = Config;
+            clone.SigCache = SigCache;
+            clone.Number = Number;
+            clone.Hash = Hash;
+            clone.Signers = new HashSet<Address>();
+            clone.Recent = new Dictionary<ulong, Address>();
+            clone._votes = new List<Vote>();
+            clone._tally = new Dictionary<Address, Tally>();
 
             foreach (Address signer in Signers)
             {
-                s.Signers.Add(signer);
+                clone.Signers.Add(signer);
             }
-            foreach (var pair in Recents)
+            
+            foreach (var pair in Recent)
             {
-                s.Recents[pair.Key] = pair.Value;
+                clone.Recent[pair.Key] = pair.Value;
             }
-            foreach (Vote vote in Votes)
+            
+            foreach (Vote vote in _votes)
             {
-                s.Votes.Add(vote);
+                clone._votes.Add(vote);
             }
-            foreach (var pair in Tally)
+            
+            foreach (var pair in _tally)
             {
-                s.Tally[pair.Key] = pair.Value;
+                clone._tally[pair.Key] = pair.Value;
             }
-            return s;
+            
+            return clone;
         }
 
         public static Snapshot NewSnapshot(CliqueConfig config, LruCache<Keccak, Address> sigcache, UInt256 number, byte[] hash, Address[] signers)
@@ -114,7 +116,7 @@ namespace Nethermind.Clique
             JsonSerializer serializer = new JsonSerializer(NullLogManager.Instance);
             Snapshot snap = serializer.Deserialize<Snapshot>(json);
             snap.Config = config;
-            snap.Sigcache = sigcache;
+            snap.SigCache = sigcache;
             return snap;
         }
 
@@ -147,42 +149,42 @@ namespace Nethermind.Clique
                 throw new InvalidOperationException("Invalid voting chain");
             }
             // Iterate through the headers and create a new snapshot
-            Snapshot snap = Copy();
+            Snapshot snap = Clone();
             foreach (BlockHeader header in headers)
             {
                 // Remove any votes on checkpoint blocks
                 ulong number = (ulong)header.Number;
                 if (number % Config.Epoch == 0)
                 {
-                    snap.Votes.Clear();
-                    snap.Tally = new Dictionary<Address, Tally>();
+                    snap._votes.Clear();
+                    snap._tally = new Dictionary<Address, Tally>();
                 }
                 // Delete the oldest signer from the recent list to allow it signing again
                 {
                     ulong limit = (ulong)(snap.Signers.Count) / 2 + 1;
                     if (number >= limit)
                     {
-                        snap.Recents.Remove((uint)number - limit);
+                        snap.Recent.Remove((uint)number - limit);
                     }
                 }
                 // Resolve the authorization key and check against signers
-                Address signer = header.GetBlockSealer(Sigcache);
+                Address signer = header.GetBlockSealer(SigCache);
                 if (!snap.Signers.Contains(signer))
                 {
                     throw new InvalidOperationException("Unauthorized signer");
                 }
-                foreach (Address recent in snap.Recents.Values)
+                foreach (Address recent in snap.Recent.Values)
                 {
                     if (recent == signer)
                     {
                         throw new InvalidOperationException("Recently signed");
                     }
                 }
-                snap.Recents[(uint)number] = signer;
+                snap.Recent[(uint)number] = signer;
                 // Header authorized, discard any previous votes from the signer
-                for (int i = 0; i < snap.Votes.Count; i++)
+                for (int i = 0; i < snap._votes.Count; i++)
                 {
-                    Vote vote = snap.Votes[i];
+                    Vote vote = snap._votes[i];
                     if (vote.Signer == signer && vote.Address == header.Beneficiary)
                     {
                         // Uncast the vote from the cached tally
@@ -198,10 +200,10 @@ namespace Nethermind.Clique
                 if (snap.Cast(header.Beneficiary, authorize))
                 {
                     Vote vote = new Vote(signer, number, header.Beneficiary, authorize);
-                    snap.Votes.Add(vote);
+                    snap._votes.Add(vote);
                 }
                 // If the vote passed, update the list of signers
-                Tally tally = snap.Tally[header.Beneficiary];
+                Tally tally = snap._tally[header.Beneficiary];
                 if (tally.Votes > snap.Signers.Count / 2)
                 {
                     if (tally.Authorize)
@@ -216,15 +218,15 @@ namespace Nethermind.Clique
                     ulong limit = (ulong)snap.Signers.Count / 2 + 1;
                     if (number >= limit)
                     {
-                        snap.Recents.Remove((uint)number - limit);
+                        snap.Recent.Remove((uint)number - limit);
                     }
                     // Discard any previous votes the deauthorized signer cast
-                    for (int i = 0; i < snap.Votes.Count; i++)
+                    for (int i = 0; i < snap._votes.Count; i++)
                     {
-                        if (snap.Votes[i].Signer == header.Beneficiary)
+                        if (snap._votes[i].Signer == header.Beneficiary)
                         {
                             // Uncast the vote from the cached tally
-                            snap.Uncast(snap.Votes[i].Address, snap.Votes[i].Authorize);
+                            snap.Uncast(snap._votes[i].Address, snap._votes[i].Authorize);
 
                             // Uncast the vote from the chronological list
                             // snap.Votes = append(snap.Votes[:i], snap.Votes[i+1:]...)
@@ -233,16 +235,16 @@ namespace Nethermind.Clique
                         }
                     }
                     // Discard any previous votes around the just changed account
-                    for (int i = 0; i < snap.Votes.Count; i++)
+                    for (int i = 0; i < snap._votes.Count; i++)
                     {
-                        if (snap.Votes[i].Address == header.Beneficiary)
+                        if (snap._votes[i].Address == header.Beneficiary)
                         {
                             //snap.Votes = append(snap.Votes[:i], snap.Votes[i+1:]...)
                             // TODO
                             i--;
                         }
                     }
-                    snap.Tally.Remove(header.Beneficiary);
+                    snap._tally.Remove(header.Beneficiary);
                 }
             }
             snap.Number += (uint)headers.Count;
@@ -258,9 +260,9 @@ namespace Nethermind.Clique
 
         public bool Cast(Address address, bool authorize)
         {
-            if (!Tally.ContainsKey(address))
+            if (!_tally.ContainsKey(address))
             {
-                Tally[address] = new Tally(authorize);
+                _tally[address] = new Tally(authorize);
             }
             // Ensure the vote is meaningful
             if (!ValidVote(address, authorize))
@@ -268,18 +270,18 @@ namespace Nethermind.Clique
                 return false;
             }
             // Cast the vote into tally
-            Tally[address].Votes++;
+            _tally[address].Votes++;
             return true;
         }
 
         public bool Uncast(Address address, bool authorize)
         {
             // If there's no tally, it's a dangling vote, just drop
-            if (!Tally.ContainsKey(address))
+            if (!_tally.ContainsKey(address))
             {
                 return true;
             }
-            Tally tally = Tally[address];
+            Tally tally = _tally[address];
             // Ensure we only revert counted votes
             if (tally.Authorize != authorize)
             {
@@ -292,7 +294,7 @@ namespace Nethermind.Clique
             }
             else
             {
-                Tally.Remove(address);
+                _tally.Remove(address);
             }
             return true;
         }

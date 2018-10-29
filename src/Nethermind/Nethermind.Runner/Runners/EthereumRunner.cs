@@ -565,7 +565,7 @@ namespace Nethermind.Runner.Runners
                 Period = 15,
                 Epoch = 30000
             };
-            var clique = new Clique.Clique(config, _signer, _nodeKey,_dbProvider.BlocksDb, _blockTree, _logManager);
+            var clique = new Clique.Clique(config, _signer, _nodeKey, _dbProvider.BlocksDb, _blockTree, _logManager);
             var sealEngine = new CliqueSealEngine(clique, _logManager);
             return sealEngine;
         }

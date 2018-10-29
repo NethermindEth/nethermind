@@ -113,12 +113,6 @@ namespace Nethermind.Blockchain.Validators
                 _logger.Warn($"Invalid block header ({header.Hash}) - block number is not parent + 1");
             }
 
-            bool extraDataNotTooLong = header.ExtraData.Length <= 32;
-            if (!extraDataNotTooLong)
-            {
-                _logger.Warn($"Invalid block header ({header.Hash}) - extra data too long");
-            }
-
             if (_logger.IsTrace)
             {
                 _logger.Trace($"Validating block {header.Hash} ({header.Number}) - DAO block {_daoBlockNumber}, extraData {header.ExtraData.ToHexString(true)}");
@@ -143,7 +137,6 @@ namespace Nethermind.Blockchain.Validators
 //                   gasLimitAboveAbsoluteMinimum && // TODO: tests are consistently not following this rule
                 timestampMoreThanAtParent &&
                 numberIsParentPlusOne &&
-                extraDataNotTooLong &&
                 hashAsExpected &&
                 extraDataValid;
         }
