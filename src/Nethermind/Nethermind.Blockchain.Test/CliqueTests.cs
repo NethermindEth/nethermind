@@ -89,9 +89,9 @@ namespace Nethermind.Blockchain.Test
 
         private Block GetRinkebyGenesis()
         {
-            Keccak parentHash = new Keccak("0x0000000000000000000000000000000000000000000000000000000000000000");
-            Keccak ommersHash = new Keccak("0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347");
-            Address beneficiary = new Address("0x0000000000000000000000000000000000000000");
+            Keccak parentHash = Keccak.Zero;
+            Keccak ommersHash = Keccak.OfAnEmptySequenceRlp;
+            Address beneficiary = Address.Zero;
             UInt256 difficulty = UInt256.Parse("1");
             UInt256 number = UInt256.Parse("0");
             int gasLimit = 4700000;
