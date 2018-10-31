@@ -22,6 +22,7 @@ using System.Reflection;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Validators;
+using Nethermind.Clique;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -209,7 +210,7 @@ namespace Nethermind.Runner.Runners
                 _logManager);
 
             var rewardCalculator = (_specProvider is RinkebySpecProvider)
-                ? (IRewardCalculator) new CliqueRewardCalculator(_specProvider)
+                ? (IRewardCalculator) new CliqueRewardCalculator()
                 : new RewardCalculator(_specProvider);
 
             var blockProcessor = new BlockProcessor(
@@ -233,7 +234,7 @@ namespace Nethermind.Runner.Runners
             _blockchainProcessor = new BlockchainProcessor(
                 _blockTree,
                 blockProcessor,
-                ethereumSigner,
+                new TxSignaturesRecoveryStep(ethereumSigner), 
                 _logManager,
                 true);
 

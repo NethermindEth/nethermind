@@ -34,7 +34,7 @@ namespace Nethermind.Blockchain
     public class BlockchainProcessor : IBlockchainProcessor
     {
         private readonly IBlockProcessor _blockProcessor;
-        private readonly IEthereumSigner _signer;
+        private readonly IBlockDataRecoveryStep _recoveryStep;
         private readonly bool _storeReceiptsByDefault;
         private readonly IBlockTree _blockTree;
         private readonly ILogger _logger;
@@ -55,14 +55,14 @@ namespace Nethermind.Blockchain
         public BlockchainProcessor(
             IBlockTree blockTree,
             IBlockProcessor blockProcessor,
-            IEthereumSigner signer,
+            IBlockDataRecoveryStep recoveryStep,
             ILogManager logManager,
             bool storeReceiptsByDefault)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _blockProcessor = blockProcessor ?? throw new ArgumentNullException(nameof(blockProcessor));
-            _signer = signer ?? throw new ArgumentNullException(nameof(signer));
+            _recoveryStep = recoveryStep ?? throw new ArgumentNullException(nameof(recoveryStep));
             _storeReceiptsByDefault = storeReceiptsByDefault;
 
             _blockTree.NewBestSuggestedBlock += OnNewBestBlock;
@@ -81,11 +81,11 @@ namespace Nethermind.Blockchain
             {
                 throw new InvalidOperationException("Probably not what you meant as when processing old blocks you should not modify the chain and you need to enforce processing");
             }
-            
+
             Block block = _blockTree.FindBlock(blockNumber);
             SuggestBlock(block, processingOptions);
         }
-        
+
         public void SuggestBlock(Keccak blockHash, ProcessingOptions processingOptions)
         {
             Block block = _blockTree.FindBlock(blockHash, false);
@@ -176,7 +176,8 @@ namespace Nethermind.Blockchain
                 ResolveBlockRef(blockRef);
                 _currentRecoveryQueueSize -= blockRef.Block.Transactions.Length;
                 if (_logger.IsTrace) _logger.Trace($"Recovering addresses for block {blockRef.BlockHash ?? blockRef.Block.Hash}.");
-                _signer.RecoverAddresses(blockRef.Block);
+                _recoveryStep.RecoverData(blockRef.Block);
+
                 try
                 {
                     _blockQueue.Add(blockRef);
@@ -223,7 +224,7 @@ namespace Nethermind.Blockchain
                 }
 
                 Block block = blockRef.Block;
-                
+
                 if (_logger.IsTrace) _logger.Trace($"Processing block {block.ToString(Block.Format.Short)}).");
                 Process(block, blockRef.ProcessingOptions, NullTraceListener.Instance);
                 if (_logger.IsTrace) _logger.Trace($"Processed block {block.ToString(Block.Format.Full)}");
@@ -313,11 +314,8 @@ namespace Nethermind.Blockchain
 
                 for (int i = 0; i < blocks.Length; i++)
                 {
-                    /* this can happen if the block was loaded as an ancestor and did not go thtough the recovery queue */
-                    if (!blocks[i].HasAddressesRecovered)
-                    {
-                        _signer.RecoverAddresses(blocks[i]);
-                    }
+                    /* this can happen if the block was loaded as an ancestor and did not go through the recovery queue */
+                    _recoveryStep.RecoverData(blocks[i]);
                 }
 
                 processedBlocks = _blockProcessor.Process(stateRoot, blocks, options, traceListener);

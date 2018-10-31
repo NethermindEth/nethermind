@@ -85,10 +85,18 @@ namespace Nethermind.Mining
         
         public bool ValidateParams(Block parent, BlockHeader header)
         {   
+            bool extraDataNotTooLong = header.ExtraData.Length <= 32;
+            if (!extraDataNotTooLong)
+            {
+                _logger.Warn($"Invalid block header ({header.Hash}) - extra data too long {header.ExtraData.Length}");
+                return false;
+            }
+            
             UInt256 difficulty = _difficultyCalculator.Calculate(parent.Header.Difficulty, parent.Header.Timestamp, header.Timestamp, header.Number, parent.Ommers.Length > 0);
             bool isDifficultyCorrect = difficulty == header.Difficulty;
             if (!isDifficultyCorrect)
             {
+                _logger.Warn($"Invalid block header ({header.Hash}) - incorrect diffuclty {header.Difficulty} instead of {difficulty}");
                 return false;
             }
 

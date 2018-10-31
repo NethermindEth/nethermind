@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,7 +16,16 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Runtime.CompilerServices;
+namespace Nethermind.Clique
+{
+    internal class Tally
+    {
+        public bool Authorize { get; }
+        public int Votes { get; set; }
 
-[assembly: InternalsVisibleTo("Nethermind.Core.Test")]
-[assembly: InternalsVisibleTo("Nethermind.Clique.Test")]
+        public Tally(bool authorize)
+        {
+            Authorize = authorize;
+        }
+    }
+}
