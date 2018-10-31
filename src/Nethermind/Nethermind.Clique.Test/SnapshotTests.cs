@@ -74,7 +74,7 @@ namespace Nethermind.Clique.Test
                 Period = 15,
                 Epoch = 30000
             };
-            _clique = new Nethermind.Clique.Clique(config, null, key, db, blockTree, NullLogManager.Instance);
+            _clique = new Nethermind.Clique.Clique(config, NullEthereumSigner.Instance, key, db, blockTree, NullLogManager.Instance);
         }
 
         [Test]
@@ -131,9 +131,9 @@ namespace Nethermind.Clique.Test
                 Period = 15,
                 Epoch = 30000
             };
-            LruCache<Keccak, Address> sigcache = new LruCache<Keccak, Address>(10);
+            LruCache<Keccak, Address> sigCache = new LruCache<Keccak, Address>(10);
             Block genesis = GetRinkebyGenesis();
-            Snapshot snapshot = Snapshot.LoadSnapshot(config, sigcache, _snapshotDb, genesis.Hash.Bytes);
+            Snapshot snapshot = Snapshot.LoadSnapshot(config, sigCache, _snapshotDb, genesis.Hash.Bytes);
             // Block 1
             Assert.IsTrue(snapshot.Inturn(1, _signer1));
             Assert.IsFalse(snapshot.Inturn(1, _signer2));
