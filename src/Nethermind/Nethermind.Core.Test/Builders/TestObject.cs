@@ -22,6 +22,12 @@ namespace Nethermind.Core.Test.Builders
 {
     public static class TestObject
     {
+        static TestObject()
+        {
+            NonZeroBloom = new Bloom();
+            NonZeroBloom.Set(KeccakA.Bytes);
+        }
+        
         public static byte[] RandomDataA = {1, 2, 3};
         public static byte[] RandomDataB = {4, 5, 6, 7};
         public static byte[] RandomDataC = {1, 2, 8, 9, 10};
@@ -49,5 +55,7 @@ namespace Nethermind.Core.Test.Builders
         public static Address AddressB = PublicKeyB.Address;
         public static Address AddressC = PublicKeyC.Address;
         public static Address AddressD = PublicKeyD.Address;
+
+        public static Bloom NonZeroBloom;
     }
 }

@@ -48,15 +48,18 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         private bool _statusReceived;
         private Keccak _remoteHeadBlockHash;
         private BigInteger _remoteHeadBlockDifficulty;
+        private IPerfService _perfService;
 
         public Eth62ProtocolHandler(
             IP2PSession p2PSession,
             IMessageSerializationService serializer,
             ISynchronizationManager syncManager,
-            ILogManager logManager, IPerfService perfService)
-            : base(p2PSession, serializer, logManager, perfService)
+            ILogManager logManager,
+            IPerfService perfService)
+            : base(p2PSession, serializer, logManager)
         {
             SyncManager = syncManager;
+            _perfService = perfService ?? throw new ArgumentNullException(nameof(perfService));
         }
 
         public virtual byte ProtocolVersion => 62;
@@ -369,7 +372,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
             var request = new Request<GetBlockHeadersMessage, BlockHeader[]>(message);
             _headersRequests.Add(request, token);
-            var perfCalcId = PerfService.StartPerfCalc();
+            var perfCalcId = _perfService.StartPerfCalc();
 
             Send(request.Message);
             Task<BlockHeader[]> task = request.CompletionSource.Task;
@@ -381,7 +384,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
             if (firstTask == task)
             {
-                var latency = PerfService.EndPerfCalc(perfCalcId);
+                var latency = _perfService.EndPerfCalc(perfCalcId);
                 if (latency.HasValue)
                 {
                     P2PSession?.NodeStats.AddLatencyCaptureEvent(NodeLatencyStatType.BlockHeaders, latency.Value);
@@ -403,7 +406,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
             var request = new Request<GetBlockBodiesMessage, Block[]>(message);
             _bodiesRequests.Add(request, token);
-            var perfCalcId = PerfService.StartPerfCalc();
+            var perfCalcId = _perfService.StartPerfCalc();
 
             Send(request.Message);
 
@@ -416,7 +419,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 
             if (firstTask == task)
             {
-                var latency = PerfService.EndPerfCalc(perfCalcId);
+                var latency = _perfService.EndPerfCalc(perfCalcId);
                 if (latency.HasValue)
                 {
                     P2PSession?.NodeStats.AddLatencyCaptureEvent(NodeLatencyStatType.BlockBodies, latency.Value);
