@@ -16,17 +16,12 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System;
-using System.IO;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Encoding;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Logging;
-using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Db;
-using Nethermind.Db.Config;
 using Nethermind.Dirichlet.Numerics;
 using Nethermind.Store;
 using NUnit.Framework;
@@ -47,13 +42,13 @@ namespace Nethermind.Blockchain.Test
         public void Setup_chain()
         {
             // Import blocks
-            var blockTree = Build.A.BlockTree().TestObject;
-            var block1 = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(block1Rlp)));
-            var block2 = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(block2Rlp)));
-            var block3 = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(block3Rlp)));
-            var block4 = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(block4Rlp)));
-            var block5 = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(block5Rlp)));
-            var genesisBlock = GetRinkebyGenesis();
+            BlockTree blockTree = Build.A.BlockTree().TestObject;
+            Block block1 = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(block1Rlp)));
+            Block block2 = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(block2Rlp)));
+            Block block3 = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(block3Rlp)));
+            Block block4 = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(block4Rlp)));
+            Block block5 = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(block5Rlp)));
+            Block genesisBlock = GetRinkebyGenesis();
             // Add blocks
             MineBlock(blockTree, genesisBlock);
             MineBlock(blockTree, block1);
@@ -62,10 +57,10 @@ namespace Nethermind.Blockchain.Test
             MineBlock(blockTree, block4);
             MineBlock(blockTree, block5);
             // Get a test private key
-            var key = Build.A.PrivateKey.TestObject;
+            PrivateKey key = Build.A.PrivateKey.TestObject;
             // Init snapshot db
-            var db = new MemDb();
-            var config = new CliqueConfig()
+            IDb db = new MemDb();
+            CliqueConfig config = new CliqueConfig()
             {
                 Period = 15,
                 Epoch = 30000
@@ -92,10 +87,10 @@ namespace Nethermind.Blockchain.Test
             Keccak parentHash = Keccak.Zero;
             Keccak ommersHash = Keccak.OfAnEmptySequenceRlp;
             Address beneficiary = Address.Zero;
-            UInt256 difficulty = UInt256.Parse("1");
-            UInt256 number = UInt256.Parse("0");
+            UInt256 difficulty = new UInt256(1);
+            UInt256 number = new UInt256(0);
             int gasLimit = 4700000;
-            UInt256 timestamp = UInt256.Parse("1492009146");
+            UInt256 timestamp = new UInt256(1492009146);
             byte[] extraData = Bytes.FromHexString("52657370656374206d7920617574686f7269746168207e452e436172746d616e42eb768f2244c8811c63729a21a3569731535f067ffc57839b00206d1ad20c69a1981b489f772031b279182d99e65703f0076e4812653aab85fca0f00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000");
             BlockHeader header = new BlockHeader(parentHash, ommersHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData);
             Block genesis = new Block(header, new BlockHeader[0]);
