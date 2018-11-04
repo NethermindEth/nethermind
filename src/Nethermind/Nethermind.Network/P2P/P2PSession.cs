@@ -62,16 +62,17 @@ namespace Nethermind.Network.P2P
             INodeStatsProvider nodeStatsProvider,
             INodeStats nodeStats,
             ILogManager logManager,
-            IChannel channel, IPerfService perfService)
+            IChannel channel,
+            IPerfService perfService)
         {
+            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+            _channel = channel ?? throw new ArgumentNullException(nameof(channel));
+            _nodeStatsProvider = nodeStatsProvider ?? throw new ArgumentNullException(nameof(nodeStatsProvider));
+            _perfService = perfService ?? throw new ArgumentNullException(nameof(perfService));
             _serializer = serializer ?? throw new ArgumentNullException(nameof(serializer));
             _syncManager = syncManager ?? throw new ArgumentNullException(nameof(syncManager));
-            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _logger = logManager.GetClassLogger();
-            _channel = channel;
-            _perfService = perfService;
-
-            _nodeStatsProvider = nodeStatsProvider;
+            
             NodeStats = nodeStats;
             LocalNodeId = localNodeId;
             RemoteNodeId = remoteId;

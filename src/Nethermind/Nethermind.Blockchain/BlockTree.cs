@@ -83,8 +83,9 @@ namespace Nethermind.Blockchain
                     Block genesisBlock = Load(genesisLevel.BlockInfos[0].BlockHash).Block;
                     Genesis = genesisBlock.Header;
                     LoadHeadBlock();
-                    LoadBestKnown();
                 }
+                
+                LoadBestKnown();
             }
 
             if (_logger.IsInfo) _logger.Info($"Block tree initialized, last processed is {Head?.ToString(BlockHeader.Format.Short) ?? "0"}, best queued is {BestSuggested?.Number.ToString() ?? "0"}, best known is {BestKnownNumber}");

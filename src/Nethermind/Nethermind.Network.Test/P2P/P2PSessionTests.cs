@@ -53,7 +53,7 @@ namespace Nethermind.Network.Test.P2P
                 Substitute.For<ISynchronizationManager>(),
                 Substitute.For<INodeStatsProvider>(),
                 Substitute.For<INodeStats>(),
-                NullLogManager.Instance, null, null);
+                NullLogManager.Instance, Substitute.For<IChannel>(), Substitute.For<IPerfService>());
             factory.Init(4, Substitute.For<IChannelHandlerContext>(), sender);
             
             sender.Received().Enqueue(Arg.Is<Packet>(p => p.PacketType == 0 && p.Protocol == "p2p"));
