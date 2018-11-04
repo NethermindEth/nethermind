@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,7 +16,24 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Runtime.CompilerServices;
+using Nethermind.Core;
+using Nethermind.Dirichlet.Numerics;
 
-[assembly: InternalsVisibleTo("Nethermind.Core.Test")]
-[assembly: InternalsVisibleTo("Nethermind.Clique.Test")]
+namespace Nethermind.Clique
+{
+    internal class Vote
+    {
+        public Address Signer { get; }
+        public UInt256 Block { get; }
+        public Address Address { get; }
+        public bool Authorize { get; }
+
+        public Vote(Address signer, UInt256 block, Address address, bool authorize)
+        {
+            Signer = signer;
+            Block = block;
+            Address = address;
+            Authorize = authorize;
+        }
+    }
+}

@@ -31,6 +31,7 @@ namespace Nethermind.Network.P2P
 {
     public class P2PProtocolHandler : ProtocolHandlerBase, IProtocolHandler, IP2PMessageSender
     {
+        private readonly IPerfService _perfService;
         private bool _sentHello;
         private bool _isInitialized;
         private TaskCompletionSource<Packet> _pongCompletionSource;
@@ -41,8 +42,9 @@ namespace Nethermind.Network.P2P
             NodeId localNodeId,
             int listenPort,
             ILogManager logManager, IPerfService perfService)
-            : base(p2PSession, serializer, logManager, perfService)
+            : base(p2PSession, serializer, logManager)
         {
+            _perfService = perfService ?? throw new ArgumentNullException(nameof(perfService));
             LocalNodeId = localNodeId;
             ListenPort = listenPort;
             AgreedCapabilities = new List<Capability>();
@@ -193,7 +195,7 @@ namespace Nethermind.Network.P2P
             if (Logger.IsTrace) Logger.Trace($"{P2PSession.RemoteNodeId} P2P sending ping on {P2PSession.RemotePort} ({RemoteClientId})");
             Send(PingMessage.Instance);
             P2PSession?.NodeStats.AddNodeStatsEvent(NodeStatsEventType.P2PPingOut);
-            var pingPerfCalcId = PerfService.StartPerfCalc(); 
+            var pingPerfCalcId = _perfService.StartPerfCalc(); 
 
             var firstTask = await Task.WhenAny(pongTask, Task.Delay(Timeouts.P2PPing));
             _pongCompletionSource = null;
@@ -202,7 +204,7 @@ namespace Nethermind.Network.P2P
                 return false;
             }
 
-            var latency = PerfService.EndPerfCalc(pingPerfCalcId);
+            var latency = _perfService.EndPerfCalc(pingPerfCalcId);
             if (latency.HasValue)
             {
                 P2PSession?.NodeStats.AddLatencyCaptureEvent(NodeLatencyStatType.P2PPingPong, latency.Value);

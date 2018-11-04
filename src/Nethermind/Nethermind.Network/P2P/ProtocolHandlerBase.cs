@@ -29,16 +29,14 @@ namespace Nethermind.Network.P2P
     {
         private readonly IMessageSerializationService _serializer;
         protected IP2PSession P2PSession { get; }
-        protected readonly TaskCompletionSource<MessageBase> InitCompletionSource;
-        protected IPerfService PerfService { get; }
+        private readonly TaskCompletionSource<MessageBase> _initCompletionSource;
 
-        protected ProtocolHandlerBase(IP2PSession p2PSession, IMessageSerializationService serializer, ILogManager logManager, IPerfService perfService)
+        protected ProtocolHandlerBase(IP2PSession p2PSession, IMessageSerializationService serializer, ILogManager logManager)
         {
             Logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _serializer = serializer ?? throw new ArgumentNullException(nameof(serializer));
             P2PSession = p2PSession ?? throw new ArgumentNullException(nameof(p2PSession));
-            InitCompletionSource = new TaskCompletionSource<MessageBase>();
-            PerfService = perfService;
+            _initCompletionSource = new TaskCompletionSource<MessageBase>();
         }
 
         protected ILogger Logger { get; }
@@ -58,7 +56,7 @@ namespace Nethermind.Network.P2P
 
         protected async Task CheckProtocolInitTimeout()
         {
-            var receivedInitMsgTask = InitCompletionSource.Task;
+            var receivedInitMsgTask = _initCompletionSource.Task;
             var firstTask = await Task.WhenAny(receivedInitMsgTask, Task.Delay(InitTimeout));
             
             if (firstTask != receivedInitMsgTask)
@@ -74,7 +72,7 @@ namespace Nethermind.Network.P2P
 
         protected void ReceivedProtocolInitMsg(MessageBase msg)
         {
-            InitCompletionSource?.SetResult(msg);
+            _initCompletionSource?.SetResult(msg);
         }
     }
 }

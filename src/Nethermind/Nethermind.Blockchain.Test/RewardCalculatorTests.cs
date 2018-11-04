@@ -101,16 +101,5 @@ namespace Nethermind.Blockchain.Test
             Assert.AreEqual(1500000000000000000, (long)rewards[1].Value, "uncle1");
             Assert.AreEqual(1500000000000000000, (long)rewards[2].Value, "uncle2");
         }
-
-        [Test]
-        public void Clique_reward()
-        {
-            Block block = Build.A.Block.WithNumber(10).TestObject;
-            CliqueRewardCalculator calculator = new CliqueRewardCalculator(RinkebySpecProvider.Instance);
-
-            BlockReward[] rewards = calculator.CalculateRewards(block);
-
-            Assert.IsEmpty(rewards);
-        }
     }
 }

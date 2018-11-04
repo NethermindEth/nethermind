@@ -17,13 +17,11 @@
  */
 
 using Nethermind.Core;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Dirichlet.Numerics;
-using Nethermind.Network.P2P.Subprotocols.Eth.V63;
+using Nethermind.Network.P2P.Subprotocols.Tru;
 using NUnit.Framework;
 
-namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
+namespace Nethermind.Network.Test.P2P.Subprotocols.Tru
 {
     [TestFixture]
     public class ReceiptsMessageSerializerTests
@@ -59,15 +57,15 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
                             else
                             {
                                 Assert.AreEqual(receipts[i][j].Bloom, deserialized.Receipts[i][j].Bloom, $"receipts[{i}][{j}].Bloom");
-                                Assert.Null(deserialized.Receipts[i][j].Error, $"receipts[{i}][{j}].Error");
-                                Assert.AreEqual(0, deserialized.Receipts[i][j].Index, $"receipts[{i}][{j}].Index");
+                                Assert.AreEqual(receipts[i][j].Error, deserialized.Receipts[i][j].Error, $"receipts[{i}][{j}].Error");
+                                Assert.AreEqual(receipts[i][j].Index, deserialized.Receipts[i][j].Index, $"receipts[{i}][{j}].Index");
                                 Assert.AreEqual(receipts[i][j].Logs.Length, deserialized.Receipts[i][j].Logs.Length, $"receipts[{i}][{j}].Logs.Length");
-                                Assert.Null(deserialized.Receipts[i][j].Recipient, $"receipts[{i}][{j}].Recipient");
-                                Assert.Null(deserialized.Receipts[i][j].Sender, $"receipts[{i}][{j}].Sender");
-                                Assert.Null(deserialized.Receipts[i][j].BlockHash, $"receipts[{i}][{j}].BlockHash");
-                                Assert.AreEqual(UInt256.Zero, deserialized.Receipts[i][j].BlockNumber, $"receipts[{i}][{j}].BlockNumber");
-                                Assert.Null(deserialized.Receipts[i][j].ContractAddress, $"receipts[{i}][{j}].ContractAddress");
-                                Assert.AreEqual(0L, deserialized.Receipts[i][j].GasUsed, $"receipts[{i}][{j}].GasUsed");
+                                Assert.AreEqual(receipts[i][j].Recipient, deserialized.Receipts[i][j].Recipient, $"receipts[{i}][{j}].Recipient");
+                                Assert.AreEqual(receipts[i][j].Sender, deserialized.Receipts[i][j].Sender, $"receipts[{i}][{j}].Sender");
+                                Assert.AreEqual(receipts[i][j].BlockHash, deserialized.Receipts[i][j].BlockHash, $"receipts[{i}][{j}].BlockHash");
+                                Assert.AreEqual(receipts[i][j].BlockNumber, deserialized.Receipts[i][j].BlockNumber, $"receipts[{i}][{j}].BlockNumber");
+                                Assert.AreEqual(receipts[i][j].ContractAddress, deserialized.Receipts[i][j].ContractAddress, $"receipts[{i}][{j}].ContractAddress");
+                                Assert.AreEqual(receipts[i][j].GasUsed, deserialized.Receipts[i][j].GasUsed, $"receipts[{i}][{j}].GasUsed");
                                 Assert.AreEqual(receipts[i][j].StatusCode, deserialized.Receipts[i][j].StatusCode, $"receipts[{i}][{j}].StatusCode");
                                 Assert.AreEqual(receipts[i][j].GasUsedTotal, deserialized.Receipts[i][j].GasUsedTotal, $"receipts[{i}][{j}].GasUsedTotal");
                                 Assert.AreEqual(receipts[i][j].PostTransactionState, deserialized.Receipts[i][j].PostTransactionState, $"receipts[{i}][{j}].PostTransactionState");
@@ -96,16 +94,6 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         {
             TransactionReceipt[][] data = {new[] {Build.A.TransactionReceipt.WithAllFieldsFilled.TestObject, Build.A.TransactionReceipt.WithAllFieldsFilled.TestObject}, null, new[] {null, Build.A.TransactionReceipt.WithAllFieldsFilled.TestObject}};
             Test(data);
-        }
-        
-        [Test]
-        public void Roundtrip_mainnet_sample()
-        {
-            byte[] bytes = Bytes.FromHexString("f9012ef9012bf90128a08ccc6709a5df7acef07f97c5681356b6c37cfac15b554aff68e986f57116df2e825208b9010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000c0");
-            ReceiptsMessageSerializer serializer = new ReceiptsMessageSerializer();
-            ReceiptsMessage message = serializer.Deserialize(bytes);
-            byte[] serialized = serializer.Serialize(message);
-            Assert.AreEqual(bytes,  serialized);
-        }   
+        } 
     }
 }

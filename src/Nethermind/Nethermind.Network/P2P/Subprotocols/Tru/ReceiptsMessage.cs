@@ -16,7 +16,19 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Runtime.CompilerServices;
+using Nethermind.Core;
 
-[assembly: InternalsVisibleTo("Nethermind.Core.Test")]
-[assembly: InternalsVisibleTo("Nethermind.Clique.Test")]
+namespace Nethermind.Network.P2P.Subprotocols.Tru
+{
+    public class ReceiptsMessage : P2PMessage
+    {
+        public TransactionReceipt[][] Receipts { get; }
+        public override int PacketType { get; } = 0x02;
+        public override string Protocol { get; } = "tru";
+
+        public ReceiptsMessage(TransactionReceipt[][] receipts)
+        {
+            Receipts = receipts ?? new TransactionReceipt[0][];
+        }
+    }
+}

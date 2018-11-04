@@ -16,7 +16,23 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Runtime.CompilerServices;
+using Nethermind.Core.Encoding;
+using Nethermind.Core.Extensions;
 
-[assembly: InternalsVisibleTo("Nethermind.Core.Test")]
-[assembly: InternalsVisibleTo("Nethermind.Clique.Test")]
+namespace Nethermind.Network.P2P.Subprotocols.Tru
+{
+    public class GetReceiptsMessageSerializer : IMessageSerializer<GetReceiptsMessage>
+    {
+        public byte[] Serialize(GetReceiptsMessage message)
+        {
+            return Rlp.Encode(message.BlockHashes).Bytes;
+        }
+
+        public GetReceiptsMessage Deserialize(byte[] bytes)
+        {
+            Rlp.DecoderContext decoderContext = bytes.AsRlpContext();
+            var hashes = decoderContext.DecodeArray(itemContext => itemContext.DecodeKeccak());
+            return new GetReceiptsMessage(hashes);
+        }
+    }
+}

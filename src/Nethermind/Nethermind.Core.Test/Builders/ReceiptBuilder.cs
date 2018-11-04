@@ -26,8 +26,21 @@ namespace Nethermind.Core.Test.Builders
         public ReceiptBuilder()
         {
             TestObjectInternal = new TransactionReceipt();
-            TestObjectInternal.Logs = new [] {new LogEntry(Address.Zero, new byte[0], new [] {Keccak.Zero}),};
+            TestObjectInternal.Logs = new[] {new LogEntry(Address.Zero, new byte[0], new[] {Keccak.Zero}),};
         }
+
+        public ReceiptBuilder WithAllFieldsFilled => WithBloom(Test.Builders.TestObject.NonZeroBloom)
+            .WithError("error")
+            .WithIndex(2)
+            .WithSender(Test.Builders.TestObject.AddressA)
+            .WithRecipient(Test.Builders.TestObject.AddressB)
+            .WithContractAddress(Test.Builders.TestObject.AddressC)
+            .WithGasUsed(100)
+            .WithTransactionHash(Builders.TestObject.KeccakA)
+            .WithState(Builders.TestObject.KeccakB)
+            .WithBlockHash(Builders.TestObject.KeccakC)
+            .WithBlockNumber(2)
+            .WithGasUsedTotal(1000);
 
         public ReceiptBuilder WithState(Keccak state)
         {
@@ -41,7 +54,6 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        //TODO: Transaction hash for transaction receipt builder
         public ReceiptBuilder WithTransactionHash(Keccak hash)
         {
             TestObject.TransactionHash = hash;
@@ -59,10 +71,52 @@ namespace Nethermind.Core.Test.Builders
             TestObject.BlockHash = hash;
             return this;
         }
+        
+        public ReceiptBuilder WithGasUsedTotal(long gasTotal)
+        {
+            TestObjectInternal.GasUsedTotal = gasTotal;
+            return this;
+        }
 
-        public ReceiptBuilder WithTransactionIndex(int index)
+        public ReceiptBuilder WithGasUsed(long gasUsed)
+        {
+            TestObjectInternal.GasUsed = gasUsed;
+            return this;
+        }
+        
+        public ReceiptBuilder WithBloom(Bloom bloom)
+        {
+            TestObjectInternal.Bloom = bloom;
+            return this;
+        }
+        
+        public ReceiptBuilder WithError(string error)
+        {
+            TestObjectInternal.Error = error;
+            return this;
+        }
+        
+        public ReceiptBuilder WithIndex(int index)
         {
             TestObjectInternal.Index = index;
+            return this;
+        }
+        
+        public ReceiptBuilder WithSender(Address sender)
+        {
+            TestObjectInternal.Sender = sender;
+            return this;
+        }
+        
+        public ReceiptBuilder WithContractAddress(Address contractAddress)
+        {
+            TestObjectInternal.ContractAddress = contractAddress;
+            return this;
+        }
+        
+        public ReceiptBuilder WithRecipient(Address recipient)
+        {
+            TestObjectInternal.Recipient = recipient;
             return this;
         }
     }

@@ -25,7 +25,7 @@ namespace Nethermind.Core.Encoding
     {
         public TransactionReceipt Decode(Rlp.DecoderContext context, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            bool isStorage = rlpBehaviors.HasFlag(RlpBehaviors.Storage);
+            bool isStorage = (rlpBehaviors & RlpBehaviors.Storage) != 0;
             TransactionReceipt receipt = new TransactionReceipt();
             context.ReadSequenceLength();
             byte[] firstItem = context.DecodeByteArray();
@@ -56,9 +56,16 @@ namespace Nethermind.Core.Encoding
                 logEntries.Add(Rlp.Decode<LogEntry>(context, RlpBehaviors.AllowExtraData));
             }
 
-            if (!rlpBehaviors.HasFlag(RlpBehaviors.AllowExtraData))
+            bool allowExtraData = (rlpBehaviors & RlpBehaviors.AllowExtraData) != 0;
+            if (!allowExtraData)
             {
                 context.Check(lastCheck);
+            }
+            
+            // since error was added later we can only rely on it in cases where we read receipt only and no data follows
+            if (isStorage && !allowExtraData && context.Position != context.Length)
+            {
+                receipt.Error = context.DecodeString();
             }
 
             receipt.Logs = logEntries.ToArray();
@@ -80,7 +87,8 @@ namespace Nethermind.Core.Encoding
                     Rlp.Encode(item.GasUsed),
                     Rlp.Encode(item.GasUsedTotal),
                     Rlp.Encode(item.Bloom),
-                    Rlp.Encode(item.Logs));
+                    Rlp.Encode(item.Logs),
+                    Rlp.Encode(item.Error));
             }
 
             return Rlp.Encode(

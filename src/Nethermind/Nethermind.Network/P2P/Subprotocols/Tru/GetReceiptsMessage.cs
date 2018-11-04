@@ -16,7 +16,21 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Runtime.CompilerServices;
+using System;
+using Nethermind.Core.Crypto;
 
-[assembly: InternalsVisibleTo("Nethermind.Core.Test")]
-[assembly: InternalsVisibleTo("Nethermind.Clique.Test")]
+namespace Nethermind.Network.P2P.Subprotocols.Tru
+{
+    public class GetReceiptsMessage : P2PMessage
+    {
+        public override int PacketType { get; } = 0x01;
+        public override string Protocol { get; } = "tru";
+
+        public Keccak[] BlockHashes { get; set; }
+        
+        public GetReceiptsMessage(Keccak[] blockHashes)
+        {
+            BlockHashes = blockHashes ?? throw new ArgumentNullException(nameof(blockHashes));
+        }
+    }
+}

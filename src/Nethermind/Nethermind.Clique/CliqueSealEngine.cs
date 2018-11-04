@@ -17,21 +17,14 @@
  */
 
 using System;
-using System.Linq;
 using System.Numerics;
-using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Encoding;
 using Nethermind.Core.Logging;
-using Nethermind.Dirichlet.Numerics;
 using Nethermind.Mining;
 
-[assembly: InternalsVisibleTo("Nethermind.Blockchain.Test")]
-
-namespace Nethermind.Blockchain
+namespace Nethermind.Clique
 {
     public class CliqueSealEngine : ISealEngine
     {

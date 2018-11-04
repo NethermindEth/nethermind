@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,7 +16,17 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Runtime.CompilerServices;
+using Nethermind.Blockchain;
+using Nethermind.Core;
 
-[assembly: InternalsVisibleTo("Nethermind.Core.Test")]
-[assembly: InternalsVisibleTo("Nethermind.Clique.Test")]
+namespace Nethermind.Clique
+{
+    public class AuthorRecoveryStep : IBlockDataRecoveryStep
+    {
+        public void RecoverData(Block block)
+        {
+            if (block.Header.Author != null) return;
+            block.Header.Author = block.Header.GetBlockSealer();
+        }
+    }
+}

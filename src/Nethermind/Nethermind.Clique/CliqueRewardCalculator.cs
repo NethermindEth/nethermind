@@ -1,4 +1,4 @@
-﻿/*
+/*
  * Copyright (c) 2018 Demerzel Solutions Limited
  * This file is part of the Nethermind library.
  *
@@ -16,7 +16,16 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Runtime.CompilerServices;
+using System;
+using Nethermind.Blockchain;
+using Nethermind.Core;
 
-[assembly: InternalsVisibleTo("Nethermind.Core.Test")]
-[assembly: InternalsVisibleTo("Nethermind.Clique.Test")]
+namespace Nethermind.Clique
+{
+    public class CliqueRewardCalculator : IRewardCalculator
+    {
+        private static BlockReward[] _noRewardsInClique = Array.Empty<BlockReward>();
+
+        public BlockReward[] CalculateRewards(Block block) => _noRewardsInClique;
+    }
+}

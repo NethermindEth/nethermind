@@ -16,7 +16,6 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
-using System.Numerics;
 using Nethermind.Core.Crypto;
 using Nethermind.Dirichlet.Numerics;
 
@@ -50,6 +49,96 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal.ParentHash = parentHeader.Hash;
             TestObjectInternal.Number = parentHeader.Number + 1;
             TestObjectInternal.GasLimit = parentHeader.GasLimit;
+            return this;
+        }
+        
+        public BlockHeaderBuilder WithParentHash(Keccak parentHash)
+        {
+            TestObjectInternal.ParentHash = parentHash;
+            return this;
+        }
+
+        public BlockHeaderBuilder WithOmmersHash(Keccak ommersHash)
+        {
+            TestObjectInternal.OmmersHash = ommersHash;
+            return this;
+        }
+
+        public BlockHeaderBuilder WithBeneficiary(Address beneficiary)
+        {
+            TestObjectInternal.Beneficiary = beneficiary;
+            return this;
+        }
+
+        public BlockHeaderBuilder WithBloom(Bloom bloom)
+        {
+            TestObjectInternal.Bloom = bloom;
+            return this;
+        }
+
+        public BlockHeaderBuilder WithStateRoot(Keccak stateRoot)
+        {
+            TestObjectInternal.StateRoot = stateRoot;
+            return this;
+        }
+
+        public BlockHeaderBuilder WithTransactionsRoot(Keccak transactionsRoot)
+        {
+            TestObjectInternal.TransactionsRoot = transactionsRoot;
+            return this;
+        }
+        
+        public BlockHeaderBuilder WithReceiptsRoot(Keccak receiptsRoot)
+        {
+            TestObjectInternal.ReceiptsRoot = receiptsRoot;
+            return this;
+        }
+
+        public BlockHeaderBuilder WithDifficulty(UInt256 difficulty)
+        {
+            TestObjectInternal.Difficulty = difficulty;
+            return this;
+        }
+
+        public BlockHeaderBuilder WithNumber(UInt256 blockNumber)
+        {
+            TestObjectInternal.Number = blockNumber;
+            return this;
+        }
+
+        public BlockHeaderBuilder WithGasLimit(long gasLimit)
+        {
+            TestObjectInternal.GasLimit = gasLimit;
+            return this;
+        }
+
+        public BlockHeaderBuilder WithGasUsed(long gasUsed)
+        {
+            TestObjectInternal.GasUsed = gasUsed;
+            return this;
+        }
+
+        public BlockHeaderBuilder WithTimestamp(UInt256 timestamp)
+        {
+            TestObjectInternal.Timestamp = timestamp;
+            return this;
+        }
+
+        public BlockHeaderBuilder WithExtraData(byte[] extraData)
+        {
+            TestObjectInternal.ExtraData = extraData;
+            return this;
+        }
+
+        public BlockHeaderBuilder WithMixHash(Keccak mixHash)
+        {
+            TestObjectInternal.MixHash = mixHash;
+            return this;
+        }
+
+        public BlockHeaderBuilder WithNonce(ulong nonce)
+        {
+            TestObjectInternal.Nonce = nonce;
             return this;
         }
     }
