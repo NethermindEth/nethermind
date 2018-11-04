@@ -66,25 +66,17 @@ namespace Nethermind.Clique.Test
             MineBlock(blockTree, block4);
             MineBlock(blockTree, block5);
             // Get a test private key
-            var key = Build.A.PrivateKey.TestObject;
+            PrivateKey key = Build.A.PrivateKey.TestObject;
             // Init snapshot db
             var db = new MemDb();
-            var config = new CliqueConfig()
-            {
-                Period = 15,
-                Epoch = 30000
-            };
+            var config = GetRinkebyConfig();
             _clique = new Nethermind.Clique.Clique(config, NullEthereumSigner.Instance, key, db, blockTree, NullLogManager.Instance);
         }
 
         [Test]
         public void Creates_new_snapshot()
         {
-            var config = new CliqueConfig()
-            {
-                Period = 15,
-                Epoch = 30000
-            };
+            CliqueConfig config = GetRinkebyConfig();
             LruCache<Keccak, Address> sigcache = new LruCache<Keccak, Address>(10);
             Block genesis = GetRinkebyGenesis();
             HashSet<Address> signers = new HashSet<Address>()
@@ -103,11 +95,7 @@ namespace Nethermind.Clique.Test
         [Test]
         public void Loads_snapshot()
         {
-            var config = new CliqueConfig()
-            {
-                Period = 15,
-                Epoch = 30000
-            };
+            CliqueConfig config = GetRinkebyConfig();
             LruCache<Keccak, Address> sigcache = new LruCache<Keccak, Address>(10);
             Block genesis = GetRinkebyGenesis();
             Snapshot snapshot = Snapshot.LoadSnapshot(
@@ -116,7 +104,7 @@ namespace Nethermind.Clique.Test
             Assert.AreEqual(config, snapshot.Config);
             Assert.AreEqual(sigcache, snapshot.SigCache);
             Assert.AreEqual(genesis.Hash.Bytes, snapshot.Hash);
-            Assert.AreEqual(genesis.Number, snapshot.Number);
+            Assert.AreEqual((uint)genesis.Number, snapshot.Number);
             // Check signers
             Assert.IsTrue(snapshot.Signers.Contains(_signer1));
             Assert.IsTrue(snapshot.Signers.Contains(_signer2));
@@ -126,11 +114,7 @@ namespace Nethermind.Clique.Test
         [TestCase()]
         public void Recognises_signer_turn()
         {
-            var config = new CliqueConfig()
-            {
-                Period = 15,
-                Epoch = 30000
-            };
+            var config = GetRinkebyConfig();
             LruCache<Keccak, Address> sigCache = new LruCache<Keccak, Address>(10);
             Block genesis = GetRinkebyGenesis();
             Snapshot snapshot = Snapshot.LoadSnapshot(config, sigCache, _snapshotDb, genesis.Hash.Bytes);
@@ -153,15 +137,24 @@ namespace Nethermind.Clique.Test
             Keccak parentHash = Keccak.Zero;
             Keccak ommersHash = Keccak.OfAnEmptySequenceRlp;
             Address beneficiary = Address.Zero;
-            UInt256 difficulty = UInt256.Parse("1");
-            UInt256 number = UInt256.Parse("0");
+            UInt256 difficulty = new UInt256(1);
+            UInt256 number = new UInt256(0);
             int gasLimit = 4700000;
-            UInt256 timestamp = UInt256.Parse("1492009146");
+            UInt256 timestamp = new UInt256(1492009146);
             byte[] extraData = Bytes.FromHexString("52657370656374206d7920617574686f7269746168207e452e436172746d616e42eb768f2244c8811c63729a21a3569731535f067ffc57839b00206d1ad20c69a1981b489f772031b279182d99e65703f0076e4812653aab85fca0f00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000");
             BlockHeader header = new BlockHeader(parentHash, ommersHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData);
             Block genesis = new Block(header, new BlockHeader[0]);
             genesis.Hash = new Keccak("0x6341fd3daf94b748c72ced5a5b26028f2474f5f00d824504e4fa37a75767e177");
             return genesis;
+        }
+
+        private CliqueConfig GetRinkebyConfig()
+        {
+            return new CliqueConfig()
+            {
+                Period = 15,
+                Epoch = 30000
+            };
         }
 
         private void MineBlock(BlockTree tree, Block block)
