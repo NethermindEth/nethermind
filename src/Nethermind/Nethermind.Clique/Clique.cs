@@ -124,13 +124,18 @@ namespace Nethermind.Clique
                 Random rnd = new Random();
                 delay += rnd.Next(wiggle);
             }
+            // Sign immediately if the timestamp is in the past
+            delay = delay > 0 ? delay : 0;
 
             // Sign all the things!
-            // TODO custom rlp encoding
-            Keccak headerHash = Keccak.Compute(Rlp.Encode(header));
+            Keccak headerHash = header.HashCliqueHeader();
             Signature signature = _signer.Sign(_key, headerHash);
+            // Copy signature bytes (R and S)
             byte[] signatureBytes = signature.Bytes;
             Array.Copy(signatureBytes, 0, header.ExtraData, header.ExtraData.Length - ExtraSeal, signatureBytes.Length);
+            // Copy signature's recovery id (V)
+            byte recoveryId = signature.V >= 27 ? (byte)(signature.V - 27) : signature.V;
+            header.ExtraData[header.ExtraData.Length - 1] = recoveryId;
 
             // Wait until sealing is terminated or delay timeout.
             System.Threading.Thread.Sleep((int) delay);
