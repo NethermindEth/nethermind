@@ -119,7 +119,7 @@ namespace Nethermind.Blockchain.Test
             Assert.AreEqual(config, snapshot.Config);
             Assert.AreEqual(sigcache, snapshot.Sigcache);
             Assert.AreEqual(genesis.Hash.Bytes, snapshot.Hash);
-            Assert.AreEqual(genesis.Number, snapshot.Number);
+            Assert.AreEqual((uint)genesis.Number, snapshot.Number);
             // Check signers
             Assert.IsTrue(snapshot.Signers.Contains(signer1));
             Assert.IsTrue(snapshot.Signers.Contains(signer2));

@@ -35,7 +35,7 @@ namespace Nethermind.Blockchain
     {
         public CliqueConfig Config;
         public LruCache<Keccak, Address> Sigcache;
-        public UInt256 Number;
+        public uint Number;
         public byte[] Hash;
         public HashSet<Address> Signers;
         public Dictionary<UInt64, Address> Recents;
@@ -51,7 +51,7 @@ namespace Nethermind.Blockchain
         {
             this.Config = config;
             this.Sigcache = sigcache;
-            this.Number = number;
+            this.Number = (uint)number;
             this.Hash = hash;
             this.Signers = signers;
             this.Recents = recents;
