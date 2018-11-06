@@ -41,7 +41,6 @@ namespace Nethermind.Clique
 
         public async Task<Block> MineAsync(Block processed, CancellationToken cancellationToken)
         {
-            _logger.Info("MineAsync");
             Block block = await MineAsync(cancellationToken, processed, null).ContinueWith(t =>
             {
                 if (t.IsFaulted)
@@ -55,9 +54,7 @@ namespace Nethermind.Clique
 
             if (block == null)
             {
-                // TODO throw
-                // throw new SealEngineException($"{nameof(MineAsync)} failed");
-                return null;
+                throw new SealEngineException($"{nameof(MineAsync)} failed");
             }
 
             return block;

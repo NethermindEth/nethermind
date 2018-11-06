@@ -191,8 +191,7 @@ namespace Nethermind.Clique
                         // Uncast the vote from the cached tally
                         snapshot.Uncast(vote.Address, vote.Authorize);
                         // Uncast the vote from the chronological list
-                        // snap.Votes = append(snap.Votes[:i], snap.Votes[i+1:]...)
-                        // TODO
+                        snapshot.Votes.RemoveAt(i);
                         break;
                     }
                 }
@@ -230,8 +229,7 @@ namespace Nethermind.Clique
                             snapshot.Uncast(snapshot.Votes[i].Address, snapshot.Votes[i].Authorize);
 
                             // Uncast the vote from the chronological list
-                            // snap.Votes = append(snap.Votes[:i], snap.Votes[i+1:]...)
-                            // TODO
+                            snapshot.Votes.RemoveAt(i);
                             i--;
                         }
                     }
@@ -240,8 +238,7 @@ namespace Nethermind.Clique
                     {
                         if (snapshot.Votes[i].Address == header.Beneficiary)
                         {
-                            //snap.Votes = append(snap.Votes[:i], snap.Votes[i+1:]...)
-                            // TODO
+                            snapshot.Votes.RemoveAt(i);
                             i--;
                         }
                     }

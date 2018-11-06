@@ -210,8 +210,6 @@ namespace Nethermind.Clique
                 _logger.Warn($"Invalid block difficulty ({header.Difficulty}) - should be {DiffInTurn} or {DiffNoTurn}");
             }
 
-            // If all checks passed, validate any special fields for hard forks
-            // TODO if misc.VerifyForkHashes(chain.Config(), header, false) { return false; }
             return VerifyCascadingFields(header);
         }
 
