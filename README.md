@@ -1,11 +1,15 @@
-<img src="Nethermind.png" width="600">
+<img src="Nethermind.png" width="200">
 
-# Full .NET Core Ethereum client.
+# .NET Core Ethereum client
 
 [![Gitter](https://img.shields.io/gitter/room/nethermindeth/nethermind.svg)](https://gitter.im/nethermindeth/nethermind)
 [![Build Status](https://travis-ci.org/NethermindEth/nethermind.svg?branch=master)](https://travis-ci.org/NethermindEth/nethermind)
 [![GitHub release](https://img.shields.io/github/release/NethermindEth/nethermind.svg)](https://github.com/NethermindEth/nethermind/releases)
 
+## Download and run:
+[Windows](https://downloads.nethermind.io)<br/>
+[Linux](https://downloads.nethermind.io)<br/>
+[MacOS](https://downloads.nethermind.io)<br/>
 
 ## Build (Windows / Linux / MacOS)
 
