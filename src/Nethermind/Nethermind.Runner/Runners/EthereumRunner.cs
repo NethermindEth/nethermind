@@ -506,7 +506,9 @@ namespace Nethermind.Runner.Runners
                 transactionStore,
                 txValidator,
                 _logManager,
-                _configProvider.GetConfig<IBlockchainConfig>(), _perfService);
+                _configProvider.GetConfig<IBlockchainConfig>(),
+                _perfService,
+                new Mempool(_logManager));
 
             InitDiscovery();
             await InitPeer();

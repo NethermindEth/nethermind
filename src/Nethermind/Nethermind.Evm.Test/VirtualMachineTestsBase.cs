@@ -115,7 +115,7 @@ namespace Nethermind.Evm.Test
             Transaction transaction = Build.A.Transaction
                 .WithGasLimit((ulong) gasLimit)
                 .WithGasPrice(1)
-                .WithTo(TestObject.AddressB)
+                .To(TestObject.AddressB)
                 .SignedAndResolved(_ethereumSigner, TestObject.PrivateKeyA, blockNumber)
                 .TestObject;
 
