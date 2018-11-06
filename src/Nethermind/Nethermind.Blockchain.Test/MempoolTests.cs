@@ -27,12 +27,12 @@ namespace Nethermind.Blockchain.Test
             _specProvider = MainNetSpecProvider.Instance;
             _ethereumSigner = new EthereumSigner(_specProvider, _logManager);
             _remoteBlockTree = Build.A.BlockTree(_genesisBlock).OfChainLength(0).TestObject;
-            _mempool = new Mempool(_logManager);
         }
 
         [Test]
         public void Test()
         {
+            _mempool = new Mempool(_logManager, iterationsLimit: 1000, iterationInterval: 10);
             var peers = GetPeers();
             var transactions = GetTransactions(peers);
 
