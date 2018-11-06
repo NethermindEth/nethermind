@@ -20,7 +20,7 @@ using System;
 
 namespace Nethermind.Mining
 {
-    internal class SealEngineException : Exception
+    public class SealEngineException : Exception
     {
         public SealEngineException(string message) : base(message)
         {
