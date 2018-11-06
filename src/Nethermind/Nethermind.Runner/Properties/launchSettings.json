@@ -1,22 +1,22 @@
 {
   "profiles": {
-    "Nethermind.Runner": {
-      "commandName": "Project",
-      "commandLineArgs": "--config configs\\mainnet_windows_discovery.config.json --baseDbPath D:\\crypto\\db",
-      "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
-      }
-    },
     "Ropsten": {
       "commandName": "Project",
-      "commandLineArgs": "--config configs\\ropsten_windows_discovery.config.json --baseDbPath D:\\chains",
+      "commandLineArgs": "--config configs\\ropsten_windows.config.json --baseDbPath C:\\nethermind_db",
       "environmentVariables": {
         " ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
     "MainNet": {
       "commandName": "Project",
-      "commandLineArgs": "--config configs\\mainnet_windows_discovery.config.json --baseDbPath D:\\chains",
+      "commandLineArgs": "--config configs\\mainnet_windows.config.json --baseDbPath C:\\nethermind_db",
+      "environmentVariables": {
+        " ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    },
+    "Rinkeby": {
+      "commandName": "Project",
+      "commandLineArgs": "--config configs\\rinkeby_windows.config.json --baseDbPath C:\\nethermind_db",
       "environmentVariables": {
         " ASPNETCORE_ENVIRONMENT": "Development"
       }
