@@ -7,9 +7,9 @@
 [![GitHub release](https://img.shields.io/github/release/NethermindEth/nethermind.svg)](https://github.com/NethermindEth/nethermind/releases)
 
 ## Download and run:
-[Windows](https://downloads.nethermind.io)<br/>
-[Linux](https://downloads.nethermind.io)<br/>
-[MacOS](https://downloads.nethermind.io)<br/>
+[Windows](http://downloads.nethermind.io)<br/>
+[Linux](http://downloads.nethermind.io)<br/>
+[MacOS](http://downloads.nethermind.io)<br/>
 
 ## Build (Windows / Linux / MacOS)
 
