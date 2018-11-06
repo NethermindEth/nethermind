@@ -17,8 +17,8 @@ namespace Nethermind.Blockchain
         private readonly ConcurrentDictionary<PublicKey, ISynchronizationPeer> _peers =
             new ConcurrentDictionary<PublicKey, ISynchronizationPeer>();
 
-        private static readonly object obj = new object();
-        private static readonly int _iterationsLimit = 2;
+        private static readonly int _transactionsLimit = 4096;
+        private static readonly int _iterationsLimit = 10;
         private readonly ILogger _logger;
         private readonly Timer _timer;
 
@@ -42,6 +42,11 @@ namespace Nethermind.Blockchain
 
         public void AddTransaction(Transaction transaction)
         {
+            if (_transactions.Count >= _transactionsLimit)
+            {
+                return;
+            }
+
             var peers = _peers.Select(p => p.Value).ToArray();
             var peerGroups = new PeerGroups();
             peerGroups.GenerateGroup(transaction, peers);
@@ -58,10 +63,10 @@ namespace Nethermind.Blockchain
             var transactionsToRemove = new List<Transaction>();
             foreach ((Transaction transaction, PeerGroups peerGroups) in _transactions)
             {
-                if (peerGroups.Groups.Count < _iterationsLimit)
+                if (peerGroups.Iterations < _iterationsLimit)
                 {
                     var peers = _peers.Select(p => p.Value).ToArray();
-                    peerGroups.Notify(transaction, peers);
+                    peerGroups.Notify(transaction);
                     peerGroups.GenerateGroup(transaction, peers);
                     continue;
                 }
@@ -77,54 +82,69 @@ namespace Nethermind.Blockchain
 
         private class PeerGroups
         {
+            private int _iterations;
+            public int Iterations => _iterations;
             public ConcurrentQueue<PeerGroup> Groups { get; } = new ConcurrentQueue<PeerGroup>();
 
-            public void Notify(Transaction transaction, ISynchronizationPeer[] peers)
+            public void Notify(Transaction transaction)
             {
-                if (Groups.Count >= _iterationsLimit)
+                if (Groups.Count == 0)
                 {
                     return;
                 }
 
-                var existingPeers = Groups.SelectMany(p => p.Peers).ToArray();
-                for (var i = 0; i < existingPeers.Length; i++)
+                if (Groups.TryPeek(out var peerGroup))
                 {
-                    var peer = existingPeers[i];
-                    peer.SendNewTransaction(transaction);
+                    var peers = peerGroup.Peers.ToArray();
+                    for (var i = 0; i < peers.Length; i++)
+                    {
+                        var peer = peers[i];
+                        peer.SendNewTransaction(transaction);
+                    }
                 }
             }
 
             public void GenerateGroup(Transaction transaction, ISynchronizationPeer[] peers)
             {
-                //TODO: Get rid of lock
-                lock (obj)
+                var oldIterations = System.Threading.Volatile.Read(ref _iterations);
+                var newIterations = oldIterations;
+                if (System.Threading.Interlocked.CompareExchange(ref _iterations, newIterations, oldIterations) !=
+                    oldIterations)
                 {
-                    if (Groups.Count >= _iterationsLimit)
-                    {
-                        return;
-                    }
-
-                    var availablePeers = GetAvailablePeers(transaction, peers);
-                    if (availablePeers.Length == 0)
-                    {
-                        return;
-                    }
-
-                    var selectedPeers = SelectPeers(availablePeers, peers.Length, Groups.Count);
-                    if (selectedPeers.Length == 0)
-                    {
-                        return;
-                    }
-
-                    var peerGroup = new PeerGroup(new ConcurrentBag<ISynchronizationPeer>(selectedPeers));
-                    Groups.Enqueue(peerGroup);
+                    return;
                 }
+
+                System.Threading.Interlocked.Increment(ref _iterations);
+                if (_iterations >= _iterationsLimit)
+                {
+                    return;
+                }
+
+                if (Groups.Count >= _iterationsLimit)
+                {
+                    return;
+                }
+
+                var availablePeers = GetAvailablePeers(transaction, peers);
+                if (availablePeers.Length == 0)
+                {
+                    return;
+                }
+
+                var selectedPeers = SelectPeers(availablePeers, peers.Length, Groups.Count);
+                if (selectedPeers.Length == 0)
+                {
+                    return;
+                }
+
+                var peerGroup = new PeerGroup(new ConcurrentBag<ISynchronizationPeer>(selectedPeers));
+                Groups.Enqueue(peerGroup);
             }
 
             private ISynchronizationPeer[] SelectPeers(ISynchronizationPeer[] peers, int allPeersCount, int iteration)
             {
                 //TODO: Select peers using a proper function.
-                
+
                 return peers.Take(2).ToArray();
             }
 
