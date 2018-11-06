@@ -2,7 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
-using System.Timers;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
@@ -11,23 +11,27 @@ namespace Nethermind.Blockchain
 {
     public class Mempool : IMempool
     {
+        private readonly ILogger _logger;
+
         private readonly ConcurrentDictionary<Transaction, PeerGroups> _transactions =
             new ConcurrentDictionary<Transaction, PeerGroups>();
 
         private readonly ConcurrentDictionary<PublicKey, ISynchronizationPeer> _peers =
             new ConcurrentDictionary<PublicKey, ISynchronizationPeer>();
 
-        private static readonly int _transactionsLimit = 4096;
-        private static readonly int _iterationsLimit = 10;
-        private readonly ILogger _logger;
+        private readonly int _transactionsLimit;
+        private readonly int _iterationsLimit;
+        private readonly int _iterationInterval;
         private readonly Timer _timer;
 
-        public Mempool(ILogManager logManager)
+        public Mempool(ILogManager logManager, int transactionsLimit = 4096, int iterationsLimit = 10,
+            int iterationInterval = 1000)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _timer = new Timer {Interval = 1000};
-            _timer.Elapsed += OnTimerElapsed;
-            _timer.Start();
+            _transactionsLimit = transactionsLimit;
+            _iterationsLimit = iterationsLimit;
+            _iterationInterval = iterationInterval;
+            _timer = new Timer(OnTimerCallback, null, iterationInterval, Timeout.Infinite);
         }
 
         public void AddPeer(ISynchronizationPeer peer)
@@ -49,14 +53,16 @@ namespace Nethermind.Blockchain
 
             var peers = _peers.Select(p => p.Value).ToArray();
             var peerGroups = new PeerGroups();
-            peerGroups.GenerateGroup(transaction, peers);
+            peerGroups.GenerateGroup(transaction, peers, _iterationsLimit);
             _transactions.TryAdd(transaction, peerGroups);
         }
 
-        private void OnTimerElapsed(object sender, ElapsedEventArgs e)
+        private void OnTimerCallback(object state)
         {
             if (_transactions.Count == 0)
             {
+                _timer.Change(1, Timeout.Infinite);
+
                 return;
             }
 
@@ -67,7 +73,7 @@ namespace Nethermind.Blockchain
                 {
                     var peers = _peers.Select(p => p.Value).ToArray();
                     peerGroups.Notify(transaction);
-                    peerGroups.GenerateGroup(transaction, peers);
+                    peerGroups.GenerateGroup(transaction, peers, _iterationsLimit);
                     continue;
                 }
 
@@ -78,6 +84,8 @@ namespace Nethermind.Blockchain
             {
                 _transactions.TryRemove(transactionsToRemove[i], out _);
             }
+
+            _timer.Change(_iterationInterval, Timeout.Infinite);
         }
 
         private class PeerGroups
@@ -104,34 +112,21 @@ namespace Nethermind.Blockchain
                 }
             }
 
-            public void GenerateGroup(Transaction transaction, ISynchronizationPeer[] peers)
+            public void GenerateGroup(Transaction transaction, ISynchronizationPeer[] peers, int iterationsLimit)
             {
-                var oldIterations = System.Threading.Volatile.Read(ref _iterations);
-                var newIterations = oldIterations;
-                if (System.Threading.Interlocked.CompareExchange(ref _iterations, newIterations, oldIterations) !=
-                    oldIterations)
+                if (_iterations == iterationsLimit)
                 {
                     return;
                 }
 
-                System.Threading.Interlocked.Increment(ref _iterations);
-                if (_iterations >= _iterationsLimit)
-                {
-                    return;
-                }
-
-                if (Groups.Count >= _iterationsLimit)
-                {
-                    return;
-                }
-
+                _iterations++;
                 var availablePeers = GetAvailablePeers(transaction, peers);
                 if (availablePeers.Length == 0)
                 {
                     return;
                 }
 
-                var selectedPeers = SelectPeers(availablePeers, peers.Length, Groups.Count);
+                var selectedPeers = SelectPeers(availablePeers, peers.Length);
                 if (selectedPeers.Length == 0)
                 {
                     return;
@@ -141,10 +136,9 @@ namespace Nethermind.Blockchain
                 Groups.Enqueue(peerGroup);
             }
 
-            private ISynchronizationPeer[] SelectPeers(ISynchronizationPeer[] peers, int allPeersCount, int iteration)
+            private ISynchronizationPeer[] SelectPeers(ISynchronizationPeer[] peers, int allPeersCount)
             {
                 //TODO: Select peers using a proper function.
-
                 return peers.Take(2).ToArray();
             }
 
