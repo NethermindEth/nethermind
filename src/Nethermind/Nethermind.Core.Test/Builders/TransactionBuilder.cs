@@ -41,7 +41,7 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
         
-        public TransactionBuilder WithTo(Address address)
+        public TransactionBuilder To(Address address)
         {
             TestObjectInternal.To = address;
             return this;
@@ -76,6 +76,12 @@ namespace Nethermind.Core.Test.Builders
         {
             signer.Sign(privateKey, TestObjectInternal, blockNumber);
             TestObjectInternal.SenderAddress = privateKey.Address;
+            return this;
+        }
+
+        public TransactionBuilder DeliveredBy(PublicKey publicKey)
+        {
+            TestObject.DeliveredBy = publicKey;
             return this;
         }
 

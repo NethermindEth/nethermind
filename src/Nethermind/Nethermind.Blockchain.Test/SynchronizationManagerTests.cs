@@ -44,18 +44,23 @@ namespace Nethermind.Blockchain.Test
             _blockTree = Build.A.BlockTree(_genesisBlock).OfChainLength(1).TestObject;
             _stateDb = new MemDb();
             _receiptsDb = new MemDb();
+            _mempool = Substitute.For<IMempool>();
 
             IHeaderValidator headerValidator = Build.A.HeaderValidator.ThatAlwaysReturnsTrue.TestObject;
             IBlockValidator blockValidator = Build.A.BlockValidator.ThatAlwaysReturnsTrue.TestObject;
             ITransactionValidator transactionValidator = Build.A.TransactionValidator.ThatAlwaysReturnsTrue.TestObject;
 
-            _manager = new SynchronizationManager(_stateDb, _blockTree, blockValidator, headerValidator, new TransactionStore(_receiptsDb, RopstenSpecProvider.Instance, NullEthereumSigner.Instance), transactionValidator, NullLogManager.Instance, new BlockchainConfig(), new PerfService(NullLogManager.Instance));
+            _manager = new SynchronizationManager(_stateDb, _blockTree, blockValidator, headerValidator,
+                new TransactionStore(_receiptsDb, RopstenSpecProvider.Instance, NullEthereumSigner.Instance),
+                transactionValidator, NullLogManager.Instance, new BlockchainConfig(),
+                new PerfService(NullLogManager.Instance), _mempool);
         }
 
         private IDb _stateDb;
         private IDb _receiptsDb;
         private IBlockTree _blockTree;
         private IBlockTree _remoteBlockTree;
+        private IMempool _mempool;
         private Block _genesisBlock;
         private SynchronizationManager _manager;
 

@@ -32,13 +32,14 @@ namespace Nethermind.Blockchain.Test
     {
         private readonly IBlockTree _blockTree;
 
-        public SynchronizationPeerMock(IBlockTree blockTree)
+        public SynchronizationPeerMock(IBlockTree blockTree, PublicKey publicKey = null)
         {
             _blockTree = blockTree;
+            NodeId = new NodeId(publicKey ?? TestObject.PublicKeyA);
         }
 
         public bool IsFastSyncSupported => false;
-        public NodeId NodeId { get; set; } = new NodeId(TestObject.PublicKeyA);
+        public NodeId NodeId { get; set; }
         public INodeStats NodeStats { get; set; }
         public string ClientId { get; set; }
 
@@ -101,7 +102,6 @@ namespace Nethermind.Blockchain.Test
 
         public void SendNewTransaction(Transaction transaction)
         {
-            throw new NotImplementedException();
         }
 
         public Task<TransactionReceipt[][]> GetReceipts(Keccak[] blockHash, CancellationToken token)
