@@ -1,4 +1,6 @@
 using System.Collections.Generic;
+using System.Security.Cryptography;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -32,7 +34,7 @@ namespace Nethermind.Blockchain.Test
         [Test]
         public void Test()
         {
-            _mempool = new Mempool(_logManager, iterationsLimit: 1000, iterationInterval: 10);
+            _mempool = new Mempool(_logManager, iterationsLimit: 10, iterationsInterval: 10);
             var peers = GetPeers();
             var transactions = GetTransactions(peers);
 
@@ -47,13 +49,19 @@ namespace Nethermind.Blockchain.Test
             }
         }
 
-        private ISynchronizationPeer[] GetPeers()
+        private ISynchronizationPeer[] GetPeers(int limit = 100)
         {
             var peers = new List<ISynchronizationPeer>();
-            peers.Add(GetPeer(TestObject.PublicKeyA));
-            peers.Add(GetPeer(TestObject.PublicKeyB));
-            peers.Add(GetPeer(TestObject.PublicKeyC));
-            peers.Add(GetPeer(TestObject.PublicKeyD));
+            var bytes = new byte[32];
+            using (var rng = new RNGCryptoServiceProvider())
+            {
+                for (var i = 0; i < limit; i++)
+                {
+                    rng.GetBytes(bytes);
+                    var privateKey = new PrivateKey(bytes);
+                    peers.Add(GetPeer(privateKey.PublicKey));
+                }
+            }
 
             return peers.ToArray();
         }
@@ -61,7 +69,7 @@ namespace Nethermind.Blockchain.Test
         private ISynchronizationPeer GetPeer(PublicKey publicKey)
             => new SynchronizationPeerMock(_remoteBlockTree, publicKey);
 
-        private Transaction[] GetTransactions(IEnumerable<ISynchronizationPeer> peers, int transactionsPerPeer = 2)
+        private Transaction[] GetTransactions(IEnumerable<ISynchronizationPeer> peers, int transactionsPerPeer = 10)
         {
             var transactions = new List<Transaction>();
             var addressNumber = 0;

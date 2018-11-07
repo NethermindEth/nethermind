@@ -21,49 +21,96 @@ namespace Nethermind.Blockchain
 
         private readonly int _transactionsLimit;
         private readonly int _iterationsLimit;
-        private readonly int _iterationInterval;
+        private readonly int _iterationsInterval;
         private readonly Timer _timer;
 
-        public Mempool(ILogManager logManager, int transactionsLimit = 4096, int iterationsLimit = 10,
-            int iterationInterval = 1000)
+        public Mempool(ILogManager logManager, int transactionsLimit = 4096,
+            int iterationsLimit = 10, int iterationsInterval = 1000)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _transactionsLimit = transactionsLimit;
             _iterationsLimit = iterationsLimit;
-            _iterationInterval = iterationInterval;
-            _timer = new Timer(OnTimerCallback, null, iterationInterval, Timeout.Infinite);
+            _iterationsInterval = iterationsInterval;
+            _timer = new Timer(OnTimerCallback, null, iterationsInterval, Timeout.Infinite);
         }
 
         public void AddPeer(ISynchronizationPeer peer)
         {
+            if (_logger.IsDebug)
+            {
+                _logger.Debug($"Added peer: {peer.ClientId}");
+            }
+
             _peers.TryAdd(peer.NodeId.PublicKey, peer);
         }
 
         public void RemovePeer(ISynchronizationPeer peer)
         {
+            if (_logger.IsDebug)
+            {
+                _logger.Debug($"Removed peer: {peer.ClientId}");
+            }
+
             _peers.TryRemove(peer.NodeId.PublicKey, out _);
+            if (_transactions.Count == 0)
+            {
+                return;
+            }
+
+            foreach ((_, PeerGroups peerGroups) in _transactions)
+            {
+                foreach (var group in peerGroups.Groups)
+                {
+                    if (group.Peers.TryRemove(peer.NodeId.PublicKey, out _))
+                    {
+                        if (_logger.IsDebug)
+                        {
+                            _logger.Debug($"Removed peer: {peer.ClientId} from group.");
+                        }
+                    }
+                }
+            }
         }
 
         public void AddTransaction(Transaction transaction)
         {
             if (_transactions.Count >= _transactionsLimit)
             {
+                if (_logger.IsDebug)
+                {
+                    _logger.Debug($"Transactions limit ({_transactionsLimit}) reached.");
+                }
+
                 return;
+            }
+
+            if (_logger.IsDebug)
+            {
+                _logger.Debug($"Added transaction: {transaction.Hash}");
             }
 
             var peers = _peers.Select(p => p.Value).ToArray();
             var peerGroups = new PeerGroups();
             peerGroups.GenerateGroup(transaction, peers, _iterationsLimit);
             _transactions.TryAdd(transaction, peerGroups);
+            if (_logger.IsDebug)
+            {
+                _logger.Debug($"Added new peer groups for transaction: {transaction.Hash}");
+            }
         }
 
         private void OnTimerCallback(object state)
         {
             if (_transactions.Count == 0)
             {
-                _timer.Change(1, Timeout.Infinite);
+                _timer.Change(_iterationsInterval, Timeout.Infinite);
 
                 return;
+            }
+
+            if (_logger.IsDebug)
+            {
+                _logger.Debug($"Notifying peers about {_transactions.Count} transactions.");
             }
 
             var transactionsToRemove = new List<Transaction>();
@@ -80,18 +127,35 @@ namespace Nethermind.Blockchain
                 transactionsToRemove.Add(transaction);
             }
 
+            if (transactionsToRemove.Count == 0)
+            {
+                if (_logger.IsDebug)
+                {
+                    _logger.Debug($"No transactions found to be removed.");
+                }
+
+                _timer.Change(_iterationsInterval, Timeout.Infinite);
+
+                return;
+            }
+
+            if (_logger.IsDebug)
+            {
+                _logger.Debug($"Removing: {_transactions.Count} transactions");
+            }
+
             for (var i = 0; i < transactionsToRemove.Count; i++)
             {
                 _transactions.TryRemove(transactionsToRemove[i], out _);
             }
 
-            _timer.Change(_iterationInterval, Timeout.Infinite);
+            _timer.Change(_iterationsInterval, Timeout.Infinite);
         }
 
         private class PeerGroups
         {
-            private int _iterations;
-            public int Iterations => _iterations;
+            private static readonly Random Random = new Random();
+            public int Iterations { get; private set; }
             public ConcurrentQueue<PeerGroup> Groups { get; } = new ConcurrentQueue<PeerGroup>();
 
             public void Notify(Transaction transaction)
@@ -107,19 +171,19 @@ namespace Nethermind.Blockchain
                     for (var i = 0; i < peers.Length; i++)
                     {
                         var peer = peers[i];
-                        peer.SendNewTransaction(transaction);
+                        peer.Value.SendNewTransaction(transaction);
                     }
                 }
             }
 
             public void GenerateGroup(Transaction transaction, ISynchronizationPeer[] peers, int iterationsLimit)
             {
-                if (_iterations == iterationsLimit)
+                if (Iterations == iterationsLimit)
                 {
                     return;
                 }
 
-                _iterations++;
+                Iterations++;
                 var availablePeers = GetAvailablePeers(transaction, peers);
                 if (availablePeers.Length == 0)
                 {
@@ -132,14 +196,33 @@ namespace Nethermind.Blockchain
                     return;
                 }
 
-                var peerGroup = new PeerGroup(new ConcurrentBag<ISynchronizationPeer>(selectedPeers));
+                var peerGroup = new PeerGroup(selectedPeers.ToDictionary(p => p.NodeId.PublicKey, p => p));
                 Groups.Enqueue(peerGroup);
             }
 
             private ISynchronizationPeer[] SelectPeers(ISynchronizationPeer[] peers, int allPeersCount)
             {
-                //TODO: Select peers using a proper function.
-                return peers.Take(2).ToArray();
+                if (peers.Length == 0 || allPeersCount == 0)
+                {
+                    return new ISynchronizationPeer[0];
+                }
+
+                var from = 1;
+                var to = (int) Math.Floor(Math.Sqrt(peers.Length));
+                if (Groups.TryPeek(out var peerGroup))
+                {
+                    from = peerGroup.Peers.Count;
+                    if (from > to)
+                    {
+                        var temp = to;
+                        to = from;
+                        from = temp;
+                    }
+                }
+
+                var take = Random.Next(from, to);
+
+                return peers.Take(take).ToArray();
             }
 
             private ISynchronizationPeer[] GetAvailablePeers(Transaction transaction, ISynchronizationPeer[] peers)
@@ -159,7 +242,7 @@ namespace Nethermind.Blockchain
                     for (var j = 0; j < addedPeers.Length; j++)
                     {
                         var addedPeer = addedPeers[j];
-                        if (peer.NodeId.PublicKey.Equals(addedPeer.NodeId.PublicKey))
+                        if (peer.NodeId.PublicKey.Equals(addedPeer.Value.NodeId.PublicKey))
                         {
                             addPeer = false;
                             break;
@@ -178,11 +261,11 @@ namespace Nethermind.Blockchain
 
         private class PeerGroup
         {
-            public ConcurrentBag<ISynchronizationPeer> Peers { get; }
+            public ConcurrentDictionary<PublicKey, ISynchronizationPeer> Peers { get; }
 
-            public PeerGroup(ConcurrentBag<ISynchronizationPeer> peers)
+            public PeerGroup(IDictionary<PublicKey, ISynchronizationPeer> peers)
             {
-                Peers = peers;
+                Peers = new ConcurrentDictionary<PublicKey, ISynchronizationPeer>(peers);
             }
         }
     }
