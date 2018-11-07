@@ -1,7 +1,6 @@
 using System.Collections.Generic;
 using System.Security.Cryptography;
-using System.Threading;
-using System.Threading.Tasks;
+using Nethermind.Blockchain.TransactionPools;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Logging;
@@ -12,13 +11,13 @@ using NUnit.Framework;
 namespace Nethermind.Blockchain.Test
 {
     [TestFixture]
-    public class MempoolTests
+    public class TransactionPoolTests
     {
         private IEthereumSigner _ethereumSigner;
         private ISpecProvider _specProvider;
         private ILogManager _logManager;
         private Block _genesisBlock;
-        private IMempool _mempool;
+        private ITransactionPool _transactionPool;
         private IBlockTree _remoteBlockTree;
 
         [SetUp]
@@ -34,18 +33,18 @@ namespace Nethermind.Blockchain.Test
         [Test]
         public void Test()
         {
-            _mempool = new Mempool(_logManager, iterationsLimit: 10, iterationsInterval: 10);
+            _transactionPool = new TransactionPool(new NonPersistentTransactionPoolStrategy(), _logManager);
             var peers = GetPeers();
             var transactions = GetTransactions(peers);
 
             foreach (var peer in peers)
             {
-                _mempool.AddPeer(peer);
+                _transactionPool.AddPeer(peer);
             }
 
             foreach (var transaction in transactions)
             {
-                _mempool.AddTransaction(transaction);
+                _transactionPool.AddTransaction(transaction);
             }
         }
 

@@ -26,6 +26,7 @@ using System.Threading.Tasks;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
+using Nethermind.Blockchain.TransactionPools;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Clique;
 using Nethermind.Config;
@@ -508,7 +509,7 @@ namespace Nethermind.Runner.Runners
                 _logManager,
                 _configProvider.GetConfig<IBlockchainConfig>(),
                 _perfService,
-                new Mempool(_logManager));
+                new TransactionPool(new NonPersistentTransactionPoolStrategy(), _logManager));
 
             InitDiscovery();
             await InitPeer();

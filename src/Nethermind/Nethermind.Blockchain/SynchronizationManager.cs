@@ -24,6 +24,7 @@ using System.Linq;
 using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.TransactionPools;
 using Nethermind.Blockchain.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -46,7 +47,7 @@ namespace Nethermind.Blockchain
         private readonly IBlockValidator _blockValidator;
         private readonly IHeaderValidator _headerValidator;
         private readonly IPerfService _perfService;
-        private readonly IMempool _mempool;
+        private readonly ITransactionPool _transactionPool;
         private readonly ConcurrentDictionary<NodeId, PeerInfo> _peers = new ConcurrentDictionary<NodeId, PeerInfo>();
         private readonly ConcurrentDictionary<NodeId, CancellationTokenSource> _initCancelTokens = new ConcurrentDictionary<NodeId, CancellationTokenSource>();
 
@@ -78,13 +79,13 @@ namespace Nethermind.Blockchain
             ILogManager logManager,
             IBlockchainConfig blockchainConfig,
             IPerfService perfService,
-            IMempool mempool)
+            ITransactionPool transactionPool)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));
             _blockchainConfig = blockchainConfig ?? throw new ArgumentNullException(nameof(blockchainConfig));
             _perfService = perfService ?? throw new ArgumentNullException(nameof(perfService));
-            _mempool = mempool;
+            _transactionPool = transactionPool;
 
             _transactionStore = transactionStore ?? throw new ArgumentNullException(nameof(transactionStore));
             _transactionValidator = transactionValidator ?? throw new ArgumentNullException(nameof(transactionValidator));
@@ -222,7 +223,7 @@ namespace Nethermind.Blockchain
             }
             if (_transactionStore.AddPending(transaction, HeadNumber) == AddTransactionResult.Added)
             {
-                _mempool.AddTransaction(transaction);
+                _transactionPool.AddTransaction(transaction);
             }
         }
 
@@ -243,7 +244,7 @@ namespace Nethermind.Blockchain
 
             var peerInfo = new PeerInfo(synchronizationPeer);
             _peers.TryAdd(synchronizationPeer.NodeId, peerInfo);
-            _mempool.AddPeer(peerInfo.Peer);
+            _transactionPool.AddPeer(peerInfo.Peer);
 
             var initCancelSource = _initCancelTokens[synchronizationPeer.NodeId] = new CancellationTokenSource();
             var linkedSource = CancellationTokenSource.CreateLinkedTokenSource(initCancelSource.Token, _aggregateSyncCancellationTokenSource.Token);
@@ -288,7 +289,7 @@ namespace Nethermind.Blockchain
                 //possible if sync failed - we remove peer and eventually initiate disconnect, which calls remove peer again
                 return;
             }
-            _mempool.RemovePeer(peerInfo.Peer);
+            _transactionPool.RemovePeer(peerInfo.Peer);
 
             if (_currentSyncingPeerInfo?.Peer.NodeId.Equals(synchronizationPeer.NodeId) ?? false)
             {
