@@ -71,6 +71,12 @@ namespace Nethermind.Core
             set => Header.Beneficiary = value;
         }
         
+        public Address Author
+        {
+            get => Header.Author;
+            set => Header.Author = value;
+        }
+        
         public Keccak StateRoot
         {
             get => Header.StateRoot;

@@ -207,6 +207,7 @@ namespace Nethermind.Blockchain
             BlockHeader s = suggestedBlock.Header;
             BlockHeader header = new BlockHeader(s.ParentHash, s.OmmersHash, s.Beneficiary, s.Difficulty, s.Number, s.GasLimit, s.Timestamp, s.ExtraData);
             Block processedBlock = new Block(header, suggestedBlock.Transactions, suggestedBlock.Ommers);
+            header.Author = suggestedBlock.Header.Author;
             header.Hash = s.Hash;
             header.MixHash = s.MixHash;
             header.Nonce = s.Nonce;

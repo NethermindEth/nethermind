@@ -210,7 +210,7 @@ namespace Nethermind.Runner.Runners
                 _logManager);
 
             var rewardCalculator = (_specProvider is RinkebySpecProvider)
-                ? (IRewardCalculator) new CliqueRewardCalculator()
+                ? (IRewardCalculator) new NoBlockRewards()
                 : new RewardCalculator(_specProvider);
 
             var blockProcessor = new BlockProcessor(

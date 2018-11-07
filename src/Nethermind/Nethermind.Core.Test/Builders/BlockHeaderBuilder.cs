@@ -70,6 +70,12 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
+        public BlockHeaderBuilder WithAuthor(Address address)
+        {
+            TestObjectInternal.Author = address;
+            return this;
+        }
+        
         public BlockHeaderBuilder WithBloom(Bloom bloom)
         {
             TestObjectInternal.Bloom = bloom;

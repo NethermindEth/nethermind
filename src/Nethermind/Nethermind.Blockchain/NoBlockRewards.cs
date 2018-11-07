@@ -16,21 +16,15 @@
  * along with the Nethermind. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using Nethermind.Core;
-using Nethermind.Core.Test.Builders;
-using NUnit.Framework;
 
-namespace Nethermind.Clique.Test
+namespace Nethermind.Blockchain
 {
-    public class RewardCalculatorTests
-    {
-        [Test]
-        public void Clique_reward()
-        {
-            Block block = Build.A.Block.WithNumber(10).TestObject;
-            CliqueRewardCalculator calculator = new CliqueRewardCalculator();
-            var rewards = calculator.CalculateRewards(block);
-            Assert.IsEmpty(rewards);
-        }
+    public class NoBlockRewards : IRewardCalculator
+    {   
+        private static BlockReward[] _noRewards = Array.Empty<BlockReward>();
+
+        public BlockReward[] CalculateRewards(Block block) => _noRewards;
     }
 }

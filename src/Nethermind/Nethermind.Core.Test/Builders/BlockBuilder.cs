@@ -31,6 +31,12 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal = new Block(header);
         }
 
+        public BlockBuilder WithHeader(BlockHeader header)
+        {
+            TestObjectInternal.Header = header;
+            return this;
+        }
+        
         public BlockBuilder WithNumber(UInt256 number)
         {
             TestObjectInternal.Header.Number = number;
